@@ -353,10 +353,10 @@ Manatee also follows the newer layout-base behavior selected by the FCoSE depend
 
 Merman independently implements Mermaid-compatible behavior while translating selected algorithms, generating defaults, copying architecture icon data, and retaining upstream fixtures and snapshots.
 
-- Version: `11.16.0`
+- Version: `11.16.1`
 - Source: <https://github.com/mermaid-js/mermaid.git>
-- Source ref: `mermaid@11.16.0`
-- Source commit: `7c0cafcf42e76bfaf79d0cbbd12edb986612f014`
+- Source ref: `mermaid@11.16.1`
+- Source commit: `7ecca0cd7f1658ef74f4e7e91f925724ef403bbf`
 - Source path: `packages/mermaid`
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License expression: `MIT`

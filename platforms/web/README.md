@@ -55,6 +55,28 @@ package loader supplies `MERMAN_WASM_URL` when its returned module is initialize
 and forwards an explicit input unchanged. This keeps URL and cache policy at the package/host
 boundary and prevents internal bundles from acquiring a hidden second WASM asset.
 
+## Mounting SVG
+
+`renderSvg()` returns Mermaid-parity source and deliberately makes no browser DOM-safety claim.
+Use `renderSvgToElement(target, source)` for the standard navigable authoring surface: it validates
+the serialized SVG, parses it in the target's document, rechecks fragment resolution at that exact
+mount boundary, and hardens external anchors with a new browsing context plus
+`noopener noreferrer`.
+
+Hosts that own parsing themselves must choose one explicit capability:
+
+- `assertSelfContainedSvgForDom()` rejects navigation as well as external rendering resources;
+- `assertNavigableSvgForDom()` admits Mermaid-compatible anchor navigation while continuing to
+  reject external images, styles, filters, scripts, tracking, and automatic resource loads.
+
+The validators return opaque, package-instance-bound capabilities. Keep the returned value until
+the real owner document is known. For navigable SVG, call `prepareNavigableSvgForDomMount()` after
+importing the parsed root into that document; for a closed preview, call
+`prepareSelfContainedSvgForDomMount()`. Both helpers revalidate the actual parsed root immediately
+before insertion. Object literals, structured clones, source/tree substitution, and a
+self-contained admission cannot stand in for a navigable admission. CSP, iframe/origin
+isolation, and whether navigation is enabled during stale UI states remain host responsibilities.
+
 ## Runtime Lifecycle
 
 Initialize Merman once per browser realm and reuse it; repeated `initMerman()` calls share the cached initialization and module. There is no separate WASM unload API, so a main-thread runtime lives for the page realm. The package does not create or own a Worker: a host that loads Merman in a dedicated Worker must terminate that Worker after initialization failure, replacement, or application teardown. Synchronous WASM calls cannot be interrupted from the same realm, so Worker termination is the hard cancellation boundary. Dispose every `BrowserTextMeasurementSession` created by `createBrowserTextMeasurementSession()` as soon as it is no longer needed.

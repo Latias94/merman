@@ -2,7 +2,7 @@
 
 # Capability Surface v1
 
-Semantic digest: `sha256:eb4071e40d62961acd912573be39f0a41f8a5b1e3927702bedc983980d829988`
+Semantic digest: `sha256:02e572e1010d2a3d440b69eef260cdf3b2d7f5a88f8c28ebe9fa486e184e722e`
 
 ## Public Leaves
 
@@ -40,18 +40,18 @@ Semantic digest: `sha256:eb4071e40d62961acd912573be39f0a41f8a5b1e3927702bedc9839
 
 ## Binding Operations
 
-| ID | Capability | Media type | Requires URI | Targets |
-| --- | --- | --- | --- | --- |
-| `analysis-facts-json` | `analysis` | `application/json` | no | `native`, `web` |
-| `analysis-json` | `analysis` | `application/json` | no | `native`, `web`, `typst` |
-| `ascii` | `ascii` | `text/plain; charset=utf-8` | no | `native`, `web` |
-| `document-analysis-facts-json` | `analysis` | `application/json` | yes | `native`, `web` |
-| `document-analysis-json` | `analysis` | `application/json` | yes | `native`, `web` |
-| `jpeg` | `jpeg` | `image/jpeg` | no | `native` |
-| `layout-json` | `svg` | `application/json` | no | `native`, `web` |
-| `pdf` | `pdf` | `application/pdf` | no | `native` |
-| `png` | `png` | `image/png` | no | `native` |
-| `semantic-json` | none | `application/json` | no | `native`, `web` |
-| `svg` | `svg` | `image/svg+xml` | no | `native`, `web`, `typst` |
-| `svg-plan-json` | `svg` | `application/json` | no | `native`, `web` |
-| `validation-json` | `analysis` | `application/json` | no | `native`, `web` |
+| ID | Capability | Output | Compiled prerequisites | Media type | Requires URI | Targets |
+| --- | --- | --- | --- | --- | --- | --- |
+| `analysis-facts-json` | `analysis` | none | none | `application/json` | no | `native`, `web` |
+| `analysis-json` | `analysis` | none | none | `application/json` | no | `native`, `web`, `typst` |
+| `ascii` | `ascii` | `ascii` | none | `text/plain; charset=utf-8` | no | `native`, `web` |
+| `document-analysis-facts-json` | `analysis` | none | none | `application/json` | yes | `native`, `web` |
+| `document-analysis-json` | `analysis` | none | none | `application/json` | yes | `native`, `web` |
+| `jpeg` | `jpeg` | `jpeg` | `svg` | `image/jpeg` | no | `native` |
+| `layout-json` | `svg` | none | none | `application/json` | no | `native`, `web` |
+| `pdf` | `pdf` | `pdf` | `svg` | `application/pdf` | no | `native` |
+| `png` | `png` | `png` | `svg` | `image/png` | no | `native` |
+| `semantic-json` | none | none | none | `application/json` | no | `native`, `web` |
+| `svg` | `svg` | `svg` | none | `image/svg+xml` | no | `native`, `web`, `typst` |
+| `svg-plan-json` | `svg` | none | none | `application/json` | no | `native`, `web` |
+| `validation-json` | `analysis` | none | none | `application/json` | no | `native`, `web` |

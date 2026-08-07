@@ -90,11 +90,11 @@
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
         "look": "classic"
       },
       {
@@ -106,11 +106,11 @@
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
         "look": "classic"
       },
       {
@@ -122,20 +122,16 @@
         "style": "fill:none",
         "labelStyle": "",
         "label": "",
+        "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
         "look": "classic"
       }
     ],
     "other": {},
     "links": {
-      "Safe": {
-        "url": "https://example.com/path;params?x=1#frag",
-        "tooltip": "safe tooltip"
-      },
       "Bad": [
         {
           "url": "javascript:alert(1)",
@@ -145,23 +141,16 @@
           "url": "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==;x=y",
           "tooltip": "data tooltip"
         }
-      ]
+      ],
+      "Safe": {
+        "url": "https://example.com/path;params?x=1#frag",
+        "tooltip": "safe tooltip"
+      }
     },
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
     "states": {
-      "root_start": {
-        "id": "root_start",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": true
-      },
       "Safe": {
         "id": "Safe",
         "type": "default",
@@ -194,6 +183,17 @@
         "styles": [],
         "textStyles": [],
         "start": false
+      },
+      "root_start": {
+        "id": "root_start",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": true
       }
     },
     "relations": [

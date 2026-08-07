@@ -1,7 +1,6 @@
 {
-  "schemaVersion": 5,
+  "schemaVersion": 6,
   "harness": "playground/scripts/zenuml-core-candidate-matrix.mjs",
-  "harnessSha256": "fb071834c9e0b354bb957d3a275e7f0bd6dfc772b7603ec7d29abd3df5b8fc99",
   "command": "npm run verify:zenuml-candidate",
   "onlineCommand": "npm run verify:zenuml-candidate:online",
   "oracle": {
@@ -2225,16 +2224,6 @@
     "passedCount": 22,
     "totalSvgBytes": 147525,
     "maxSvgBytes": 24888,
-    "validatorSources": [
-      {
-        "path": "platforms/web/src/svg-safety-policy.ts",
-        "sha256": "f60b4a6f8f91cb92e606cb0820772e1e5cca80991eaf21af7a5528aa53f581cf"
-      },
-      {
-        "path": "platforms/web/src/svg-safety.ts",
-        "sha256": "ed915775295c6a1c66097bdbea5c6c00e613f0cd88fe7f5584bf77cbbb11c0cd"
-      }
-    ],
     "fixtures": [
       {
         "name": "basic.mmd",
@@ -2399,7 +2388,7 @@
     "probeCount": 13,
     "observationCount": 13,
     "passedObservationCount": 13,
-    "artifactSha256": "e7a35d6e7430387b55479cb1ef06dfb9c0e8f6720c0026d390d486d1c5d65e18"
+    "artifactSha256": "390f7e9a6c59d6f20ada77f999bd64523807ebabd2910f527616b4e8d4099c33"
   },
   "security": {
     "artifact": "tools/upstreams/ZENUML_BROWSER_SECURITY_EVIDENCE.json",
@@ -2408,7 +2397,7 @@
     "probeCount": 18,
     "observationCount": 18,
     "passedObservationCount": 18,
-    "artifactSha256": "e7a35d6e7430387b55479cb1ef06dfb9c0e8f6720c0026d390d486d1c5d65e18"
+    "artifactSha256": "390f7e9a6c59d6f20ada77f999bd64523807ebabd2910f527616b4e8d4099c33"
   },
   "resource": {
     "measurementScope": "runtime-entry",

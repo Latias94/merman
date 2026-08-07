@@ -14,17 +14,19 @@ Application code imports `package:merman/merman.dart`. Generated raw FFI declara
 
 ```dart
 final merman = Merman.open();
-try {
-  final catalog = merman.runtimeCatalog;
-  if (catalog.supportsOutput('svg')) {
-    final svg = merman.renderSvg(source);
-  }
-} finally {
-  merman.close();
+final catalog = merman.runtimeCatalog;
+if (catalog.supportsOutput('svg')) {
+  final svg = merman.renderSvg(source);
 }
 ```
 
-`Merman.runtimeCatalog` is the primary runtime capability API. The facade validates flat runtime-catalog schema `1`, ABI transport version `3`, supported options and payload schema versions, named metadata IDs, sorted capability/output/operation/adapter IDs, text measurement availability, complete resource-to-operation relations, and agreement between the table and catalog package versions before it creates a usable engine.
+`Merman` is a stateless discovery and one-shot facade; it owns no native engine token and therefore
+has no `close()` method. Each operation constructs a fresh deterministic engine and closes it before
+returning. `Merman.runtimeCatalog` is the primary runtime capability API. The facade validates flat
+runtime-catalog schema `1`, ABI transport version `3`, supported options and payload schema
+versions, named metadata IDs, sorted capability/output/operation/adapter IDs, text measurement
+availability, complete resource-to-operation relations, and agreement between the table and catalog
+package versions before it becomes usable.
 
 Detailed registries remain separate from that flat catalog. `supportedDiagrams()`, `asciiCapabilities()`, `diagramFamilyCapabilities()`, `lintRuleCatalog()`, `supportedThemes()`, and `presentationCatalog()` call the generic appended ABI 3 `metadata_collect` slot and return immutable typed Dart values. This keeps the metadata surface extensible without adding per-catalog native symbols or copying detailed catalogs into the runtime catalog.
 
@@ -61,7 +63,10 @@ Discovery sends:
 - `MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST`;
 - the Dart consumer's `MermanNativeApi` capacity.
 
-The frozen ABI 3 prefix has five ordered slots: `runtime_catalog`, `engine_new`, `engine_try_close`, `execute_collect`, and `result_free`. The current table appends `metadata_collect` at code `5`. The caller passes its real table capacity and the producer returns the largest complete prefix safely initialized within that capacity. The Dart consumer accepts a prefix at least as large as `MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE`, verifies the returned ABI version and minimum-prefix digest, then reads an appended slot only when the returned initialized size reaches that field and its pointer is nonzero. It does not require the initialized prefix size to equal the current `ffigen` struct size, so an append-only ABI 3 producer remains discoverable without exposing a partial function pointer.
+The ABI 3 table is size-tagged. The caller passes its real table capacity and the producer returns
+only complete fields safely initialized within that capacity, so a host never reads a partial
+function pointer. Release builds use the matching generated header and current complete table;
+historical five- or six-slot producers are not a supported compatibility target.
 
 The returned digests have separate roles:
 
@@ -72,8 +77,10 @@ The returned digests have separate roles:
 `package_version` is also provenance unless the caller deliberately pins an exact artifact:
 
 - `Merman.open()` loads the package-owned library, requires the exact generated `mermanPackageVersion`, and treats a missing current `metadata_collect` slot as a damaged bundled artifact;
-- `Merman.openPath(...)` requires only compatible ABI 3 discovery and accepts another package version; a five-slot producer remains usable for runtime catalog and operations, while named metadata methods report that the optional slot is unavailable;
-- `Merman.fromDynamicLibrary(...)` is ABI-compatible by default and accepts `expectedPackageVersion:` when an embedding application wants an explicit exact pin.
+- `Merman.openPath(...)` accepts another package version only when it implements the current complete
+  ABI table and runtime schemas;
+- `Merman.fromDynamicLibrary(...)` applies the same current-contract requirement and accepts
+  `expectedPackageVersion:` when an embedding application wants an explicit exact pin.
 
 The exact package version lives in `lib/src/generated/package_version.dart`, is exported as `mermanPackageVersion`, and is updated from the workspace release authority alongside `pubspec.yaml`. The contract test rejects projection drift.
 
@@ -97,42 +104,54 @@ This ownership path applies to runtime catalog loading, named metadata loading, 
 
 ## Engine Lifecycle
 
-The native engine is an opaque nonzero `uint64_t` token stored privately as a Dart `int`. `Merman` owns one default engine, and `MermanReusableEngine` owns an independent token.
+The native engine is an opaque nonzero `uint64_t` token stored privately as a Dart `int` by
+`MermanEngine`. Constructor options and services are immutable for that engine. `Merman` does not
+retain a token.
 
-An optional `MermanTextMeasurer` is immutable constructor state:
+An optional `MermanTextMeasurer` is installed through `MermanEngineServices`:
 
 ```dart
-final merman = Merman.open(
-  textMeasurer: (request) {
-    if (request.operation == MermanTextMeasurementOperation.measure) {
-      return MermanTextMeasureResult.metrics(
-        width: 42,
-        height: 18,
-        lineCount: 1,
-      );
-    }
-    return null;
-  },
+final engine = MermanEngine(
+  services: MermanEngineServices(
+    textMeasurer: (request) {
+      if (request.operation == MermanTextMeasurementOperation.measure) {
+        return MermanTextMeasureResult.metrics(
+          width: 42,
+          height: 18,
+          lineCount: 1,
+        );
+      }
+      return null;
+    },
+  ),
 );
+try {
+  engine.renderSvg(source);
+} finally {
+  engine.close();
+}
 ```
 
-Pass the callback to `Merman.open`, `Merman.openPath`, `Merman.fromDynamicLibrary`, or `Merman.reusableEngine`. Create another engine to use another callback.
+Create another engine to use another callback. Construction validates the service contract but does
+not invoke the callback.
 
-`close()` and its compatibility alias `dispose()` call `engine_try_close` and never wait:
+`MermanEngine.close()` calls `engine_try_close` and never waits:
 
 - `MERMAN_NATIVE_STATUS_OK` retires the token, clears the Dart handle, and releases callback state;
 - `MERMAN_NATIVE_STATUS_BUSY` throws `MermanBusyException` and retains the token and callback for retry;
 - `MERMAN_NATIVE_STATUS_REENTRANT_CALL` throws `MermanReentrantCallException` and retains the token and callback for retry;
 - a second close after success is idempotent.
 
-`Merman` marks itself closed only after its default engine closes successfully. Closing or re-entering a reusable engine from its active callback is rejected locally with the same REENTRANT classification. This mirrors the native admission contract without blocking the Dart isolate.
+A close or execution attempted from the engine's active callback is rejected locally with the same
+REENTRANT classification. This mirrors the native admission contract without blocking the Dart
+isolate. There is no `dispose()` compatibility alias.
 
 ## Options And Output
 
 Pass SVG, resource, layout, environment, and theme options to engine construction:
 
 ```dart
-final merman = Merman.open(
+final engine = MermanEngine(
   optionsJson: '''
     {
       "version": 2,
@@ -147,6 +166,20 @@ Each `execute` call accepts the operation, source, optional URI, and generic `op
 
 Every current backend materializes its output, so the transport returns one owned result instead of exposing a chunk sink. The public facade copies bytes before native cleanup, making SVG, bitmap, PDF, and JSON lifetimes identical.
 
+## Immutable Icon Registries
+
+`MermanIconPack` accepts one in-memory IconifyJSON collection and an optional registration-name
+override. `MermanIconPackSet.fromPacks(...)` validates fixed byte/count ceilings and snapshots
+immutable UTF-8 buffers. Those buffers are borrowed only during `MermanEngine` construction; the
+engine owns the parsed registry when construction returns. The same Dart pack set can therefore be
+reused for multiple engine constructions without exposing a native mutable handle.
+
+Merman performs no filesystem, package, or network acquisition and does not trim collections.
+Hosts must acquire and pre-trim packs that exceed the fixed limits reported by the runtime catalog.
+Icon fragments are XML-validated, deterministically ID-scoped, and sanitized under the effective
+Mermaid configuration before embedding. This does not make parity/readable SVG safe for direct
+browser DOM insertion; use `SafeInlineSvg`, CSP, or a sandbox at that boundary.
+
 ## Text Measurement
 
 The callback runs synchronously through `NativeCallable.isolateLocal`. Create, use, and close a measured engine on the same isolate. Do not wait for WebView JavaScript, a platform channel, another isolate, or font loading inside the callback. Precompute or cache a measurement service and return `null` when it has no faithful answer so Merman can use its deterministic fallback.
@@ -154,6 +187,20 @@ The callback runs synchronously through `NativeCallable.isolateLocal`. Create, u
 The callback bridge catches every Dart exception and returns `MERMAN_NATIVE_STATUS_CALLBACK_ERROR`; no Dart exception may unwind across the C boundary. Request and result operation codes come from the generated text-measurement header rather than handwritten Dart numbers.
 
 See [host text measurement](HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi) for cache keys and display-surface guidance.
+
+## Migrating From The Previous Prerelease API
+
+- Keep `Merman` only for stateless discovery and one-shot calls; it no longer owns an engine or
+  exposes `close()`/`dispose()`.
+- Delete `MermanReusableEngine` and `Merman.reusableEngine(...)`; construct `MermanEngine(...)`
+  directly.
+- Delete constructor-level `textMeasurer:` parameters and use `MermanEngineServices`.
+- Call `MermanEngine.close()` deterministically. Busy and re-entrant failures preserve the complete
+  engine and callback for retry.
+- Use typed `MermanOperationMetadata`; its raw JSON preserves additive fields and unknown future
+  output-plan kinds.
+- Treat runtime operation and resource-limit IDs as open value objects. A newly appended numeric C
+  operation still requires an updated generated Dart SDK before invocation.
 
 ## Platform Packaging
 
@@ -168,15 +215,20 @@ See [host text measurement](HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi) for cach
 Flutter uses owner-specific C ABI recipes. Android selects `flutter-android-native`; iOS and desktop select their corresponding target-set recipes. These recipes package `merman-ffi` directly. The Kotlin AAR's JNI transport remains structurally isolated in `merman-android-jni`, and Python's UniFFI transport is not part of the Dart call path.
 
 ```sh
-cargo build -p merman-ffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random'
+cargo build -p merman-ffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime'
 ```
+
+`native-runtime` is the C binding's atomic clock, time-zone, and random adapter feature. The
+loaded runtime catalog still reports those adapters by their concrete `system-clock`,
+`system-timezone`, and `system-random` IDs; Flutter hosts should not treat the Cargo aggregate as a
+runtime capability ID.
 
 Android slices are assembled by `platforms/android/build-android.py --artifact-profile flutter-android-native`; iOS and desktop helpers are `platforms/flutter/build-ios.sh` and `platforms/flutter/build-desktop.sh`. Flutter Web is not supported because this package uses `dart:ffi`; use `@mermanjs/web` in browsers.
 
 ## Local Verification
 
 ```sh
-cargo build -p merman-ffi --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random'
+cargo build -p merman-ffi --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime'
 cd platforms/flutter
 flutter pub get
 dart run ffigen --config ffigen.yaml
@@ -186,11 +238,16 @@ dart run tool/abi3_contract_test.dart
 dart run example/smoke.dart ../../target/debug/libmerman_ffi.dylib
 ```
 
-Use `.so` on Linux and `.dll` on Windows. The local contract test statically projects the frozen minimum prefix, optional metadata slot, and allocation token; validates runtime-catalog and typed metadata relations; checks package-version projection; verifies BUSY/REENTRANT decoding; and deterministically fuzzes malformed native error payloads. The real-library smoke loads all six metadata catalogs, repeatedly executes generic operations, exercises result cleanup, verifies exact-version and ABI-compatible loading, uses constructor-owned text measurement, proves a callback-time REENTRANT close retains the engine, and closes successfully afterward.
+Use `.so` on Linux and `.dll` on Windows. The local contract test validates the current complete ABI
+3 table boundary, runtime-catalog and typed metadata relations, package-version projection,
+BUSY/REENTRANT decoding, and malformed native error payloads. The real-library smoke intentionally
+does one service-backed SVG render through icon packs and host text measurement, then closes the
+engine. Owner-local Rust and Dart contract tests carry the exhaustive operation and lifecycle cases.
 
-The repository-wide gate also checks generated declaration freshness and can build Android slices:
+The repository-wide gate checks generated declaration freshness and the desktop smoke. Android
+packaging has its own direct entry point:
 
 ```sh
-python3 scripts/verify-platform-bindings.py --build-android-slices
-python3 scripts/verify-platform-bindings.py --build-android-slices --run-flutter-android-smoke
+python3 scripts/verify-platform-bindings.py
+python3 platforms/flutter/tool/android-smoke.py --targets aarch64-linux-android
 ```

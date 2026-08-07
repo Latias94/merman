@@ -15,9 +15,10 @@ const TREE_VIEW_DIRECTORY_NODE_TYPE: &str = "directory";
 pub(crate) fn render_tree_view_diagram_svg_model(
     layout: &TreeViewDiagramLayout,
     model: &TreeViewDiagramRenderModel,
-    effective_config: &serde_json::Value,
+    effective_config: &merman_core::MermaidConfig,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
+    let effective_config_value = effective_config.as_value();
     let diagram_id = options.diagram_id.as_deref().unwrap_or("treeView");
     let diagram_id_esc = escape_xml(diagram_id);
     let acc_title = model
@@ -49,7 +50,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::TreeView, diagram_id)
             .write_open(&mut out, root_spec, root_chrome)?;
 
-    let css = tree_view_css(effective_config);
+    let css = tree_view_css(effective_config_value);
     if let Some(title) = acc_title {
         let _ = write!(
             &mut out,
@@ -68,9 +69,15 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     }
     let _ = write!(&mut out, "<style>{css}</style>");
     let icon_symbol_ids = tree_view_icon_symbol_ids(layout, diagram_id);
-    push_tree_view_icon_defs(&mut out, &icon_symbol_ids, options.icon_registry());
+    push_tree_view_icon_defs(
+        &mut out,
+        &icon_symbol_ids,
+        options.icon_registry(),
+        effective_config,
+        options.work_meter(),
+    )?;
     let emit_icon_use =
-        config_string(effective_config, &["securityLevel"]).as_deref() == Some("loose");
+        config_string(effective_config_value, &["securityLevel"]).as_deref() == Some("loose");
     out.push_str("<g/>");
     out.push_str(r#"<g class="tree-view">"#);
     let mut next_node = 0usize;
@@ -216,9 +223,11 @@ fn push_tree_view_icon_defs(
     out: &mut String,
     icon_symbol_ids: &BTreeMap<&str, String>,
     icon_registry: Option<&crate::svg::IconRegistry>,
-) {
+    effective_config: &merman_core::MermaidConfig,
+    work_meter: &crate::resources::OperationWorkMeter,
+) -> Result<()> {
     if icon_symbol_ids.is_empty() {
-        return;
+        return Ok(());
     }
     out.push_str("<defs>");
     for (icon, symbol_id) in icon_symbol_ids {
@@ -231,25 +240,30 @@ fn push_tree_view_icon_defs(
                 fmt(TREE_VIEW_ICON_SIZE)
             );
         } else {
-            let icon_svg = icon_registry
-                .and_then(|registry| {
-                    registry.svg_for_scoped(
-                        icon,
-                        TREE_VIEW_ICON_SIZE,
-                        TREE_VIEW_ICON_SIZE,
-                        None,
-                        None,
-                        symbol_id,
-                    )
-                })
-                .unwrap_or_else(|| {
-                    mermaid_unknown_icon_svg(fmt(TREE_VIEW_ICON_SIZE), fmt(TREE_VIEW_ICON_SIZE))
-                });
+            let icon_svg = match icon_registry {
+                Some(registry) => {
+                    registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
+                        icon_name: icon,
+                        width_px: TREE_VIEW_ICON_SIZE,
+                        height_px: TREE_VIEW_ICON_SIZE,
+                        fallback_prefix: None,
+                        extra_class: None,
+                        id_scope: symbol_id,
+                        effective_config,
+                        work_meter,
+                    })?
+                }
+                None => None,
+            }
+            .unwrap_or_else(|| {
+                mermaid_unknown_icon_svg(fmt(TREE_VIEW_ICON_SIZE), fmt(TREE_VIEW_ICON_SIZE))
+            });
             out.push_str(&icon_svg);
         }
         out.push_str("</g>");
     }
     out.push_str("</defs>");
+    Ok(())
 }
 
 fn tree_view_icon_symbol_ids<'a>(

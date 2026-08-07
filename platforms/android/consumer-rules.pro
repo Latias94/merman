@@ -1,8 +1,13 @@
-# merman Android wrapper exposes static JNI entry points from io.merman.MermanEngine.
+# JNI registers one-shot methods on Merman and reusable methods on MermanEngine.
+-keep class io.merman.Merman { *; }
 -keep class io.merman.MermanEngine { *; }
--keep class io.merman.MermanReusableEngine { *; }
 -keep class io.merman.MermanOperationResult { *; }
 -keep class io.merman.MermanException { *; }
+
+# Native icon-pack preflight resolves this exact class and static method by name.
+-keep,allowoptimization class io.merman.MermanJniStrings {
+    public static long utf8Length(java.lang.String);
+}
 
 # The native host-text callback uses JNI class, constructor, method, and field names directly.
 -keep,allowoptimization interface io.merman.MermanTextMeasurer {

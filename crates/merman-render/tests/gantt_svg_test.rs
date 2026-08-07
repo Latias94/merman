@@ -1,4 +1,4 @@
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
@@ -141,6 +141,10 @@ fn gantt_layout_stops_at_the_maximum_utc_date_without_panicking() {
 }
 
 fn render_gantt_svg_from_text(text: &str) -> String {
+    render_gantt_svg_from_text_with_engine(Engine::new(), text)
+}
+
+fn render_gantt_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
     let session = RenderEnvironment::deterministic()
         .with_runtime_policy(
             merman_core::runtime::RuntimePolicy::deterministic()
@@ -149,7 +153,7 @@ fn render_gantt_svg_from_text(text: &str) -> String {
         .begin_session()
         .expect("begin render session");
     let parsed = futures::executor::block_on(
-        Engine::new().parse_diagram_for_render_model(text, ParseOptions::default()),
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
     .expect("parse ok")
     .expect("diagram detected");
@@ -165,6 +169,34 @@ fn render_gantt_svg_from_text(text: &str) -> String {
         .expect("render svg")
         .svg()
         .to_owned()
+}
+
+#[test]
+fn gantt_task_text_height_follows_final_svg_security_sanitization() {
+    let source = r#"gantt
+dateFormat YYYY-MM-DD
+section Delivery
+Task: task, 2024-01-01, 1d
+"#;
+    let strict = render_gantt_svg_from_text(source);
+    let loose = render_gantt_svg_from_text_with_engine(
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "loose"
+        }))),
+        source,
+    );
+
+    let task_text_heights = |svg: &str| {
+        let document = roxmltree::Document::parse(svg).expect("valid Gantt SVG XML");
+        document
+            .descendants()
+            .filter(|node| node.has_tag_name("text") && node.attribute("id").is_some())
+            .filter_map(|node| node.attribute("text-height").map(str::to_owned))
+            .collect::<Vec<_>>()
+    };
+
+    assert!(task_text_heights(&strict).is_empty(), "{strict}");
+    assert_eq!(task_text_heights(&loose), vec!["20"], "{loose}");
 }
 
 #[test]

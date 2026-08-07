@@ -31,6 +31,7 @@ use crate::cmd::{
 };
 use crate::util::sha256_hex;
 use family_lock::acquire_upstream_svg_family_locks_with_timeout;
+use merman_fixture_render_context::{FixtureRenderContext, RenderContextCatalog, SecurityLevel};
 use regex::Regex;
 use schema::*;
 use std::collections::{BTreeMap, BTreeSet};
@@ -39,11 +40,74 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 #[cfg(test)]
 use transaction::{write_manifest, write_manifest_batch_with_installer};
-use transaction::{write_manifest_batch, write_manifest_with_post_install_validator};
+use transaction::{
+    write_manifest_batch_with_post_install_validator, write_manifest_with_post_install_validator,
+};
 
 const MANIFEST_FILE_NAME: &str = "_baseline-manifest.json";
 const MANIFEST_SCHEMA_VERSION: u32 = 3;
 const RENDERER_REVISION: &str = "xtask-upstream-svg-v3";
+
+#[derive(Debug)]
+pub(crate) struct UpstreamSvgRenderContextSnapshot {
+    manifest_path: PathBuf,
+    manifest_sha256: String,
+    catalog: RenderContextCatalog,
+}
+
+impl UpstreamSvgRenderContextSnapshot {
+    pub(crate) fn capture(fixtures_root: &Path) -> Result<Self, XtaskError> {
+        let manifest_path =
+            fixtures_root.join(merman_fixture_render_context::MANIFEST_RELATIVE_PATH);
+        let manifest = fs::read(&manifest_path).map_err(|source| XtaskError::ReadFile {
+            path: manifest_path.display().to_string(),
+            source,
+        })?;
+        let manifest_text = std::str::from_utf8(&manifest).map_err(|error| {
+            XtaskError::UpstreamSvgFailed(format!(
+                "fixture render-context catalog {} is not UTF-8: {error}",
+                manifest_path.display()
+            ))
+        })?;
+        let catalog =
+            RenderContextCatalog::from_json(fixtures_root, manifest_text).map_err(|error| {
+                XtaskError::UpstreamSvgFailed(format!(
+                    "invalid fixture render-context catalog under {}: {error}",
+                    fixtures_root.display()
+                ))
+            })?;
+
+        Ok(Self {
+            manifest_path,
+            manifest_sha256: sha256_hex(&manifest),
+            catalog,
+        })
+    }
+
+    pub(crate) fn catalog(&self) -> &RenderContextCatalog {
+        &self.catalog
+    }
+
+    pub(crate) fn validate_live_hash(&self) -> Result<(), XtaskError> {
+        let live_manifest = fs::read(&self.manifest_path).map_err(|source| {
+            XtaskError::UpstreamSvgFailed(format!(
+                "fixture render-context catalog changed after snapshot capture at {}: {source}",
+                self.manifest_path.display()
+            ))
+        })?;
+        let live_sha256 = sha256_hex(&live_manifest);
+        if live_sha256 != self.manifest_sha256 {
+            return Err(XtaskError::UpstreamSvgFailed(format!(
+                "fixture render-context catalog changed after snapshot capture at {}: expected SHA-256 {}, found {}; rerun generation",
+                self.manifest_path.display(),
+                self.manifest_sha256,
+                live_sha256
+            )));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 struct CompleteCorpus {
     fixtures: BTreeMap<String, PathBuf>,
@@ -390,6 +454,7 @@ fn validate_mermaid_1116_svg(diagram: &str, stem: &str, svg_path: &Path) -> Resu
     Ok(())
 }
 
+#[cfg(test)]
 fn build_complete_manifest_with_source(
     diagram: &str,
     fixtures_dir: &Path,
@@ -397,13 +462,31 @@ fn build_complete_manifest_with_source(
     source: UpstreamSvgSource,
     attestation: UpstreamSvgAttestation,
 ) -> Result<UpstreamSvgManifest, XtaskError> {
+    let render_contexts = render_context_catalog_for_family(diagram, fixtures_dir)?;
+    build_complete_manifest_with_source_and_render_contexts(
+        diagram,
+        fixtures_dir,
+        upstream_dir,
+        source,
+        attestation,
+        &render_contexts,
+    )
+}
+
+fn build_complete_manifest_with_source_and_render_contexts(
+    diagram: &str,
+    fixtures_dir: &Path,
+    upstream_dir: &Path,
+    source: UpstreamSvgSource,
+    attestation: UpstreamSvgAttestation,
+    render_contexts: &RenderContextCatalog,
+) -> Result<UpstreamSvgManifest, XtaskError> {
     attestation.validate()?;
     let CompleteCorpus {
         fixtures,
         excluded,
         svgs,
     } = collect_complete_corpus(diagram, fixtures_dir, upstream_dir)?;
-    let profile = renderer_profile(diagram).to_string();
     let mut manifest = UpstreamSvgManifest::empty(source, attestation);
     manifest.complete = true;
 
@@ -417,7 +500,11 @@ fn build_complete_manifest_with_source(
             UpstreamSvgFixtureProvenance {
                 input_sha256: hash_file(&fixture_path)?,
                 svg_sha256: hash_file(svg_path)?,
-                renderer_profile: profile.clone(),
+                renderer_profile: renderer_profile_for_fixture(
+                    diagram,
+                    &fixture_path,
+                    render_contexts,
+                )?,
             },
         );
     }
@@ -477,6 +564,7 @@ fn build_complete_generated_manifest_with_source(
     excluded_fixtures: &[CapturedUpstreamSvgExclusion],
     source: UpstreamSvgSource,
     attestation: UpstreamSvgAttestation,
+    render_contexts: &RenderContextCatalog,
 ) -> Result<UpstreamSvgManifest, XtaskError> {
     attestation.validate()?;
     let CompleteCorpus {
@@ -496,7 +584,6 @@ fn build_complete_generated_manifest_with_source(
         )));
     }
 
-    let profile = renderer_profile(diagram).to_string();
     let mut manifest = UpstreamSvgManifest::empty(source, attestation);
     manifest.complete = true;
     for (stem, fixture_path) in fixtures {
@@ -518,7 +605,11 @@ fn build_complete_generated_manifest_with_source(
             UpstreamSvgFixtureProvenance {
                 input_sha256: evidence.input_sha256().to_string(),
                 svg_sha256: hash_file(svg_path)?,
-                renderer_profile: profile.clone(),
+                renderer_profile: renderer_profile_for_fixture(
+                    diagram,
+                    &fixture_path,
+                    render_contexts,
+                )?,
             },
         );
     }
@@ -546,6 +637,7 @@ fn build_complete_generated_manifest_with_source(
 pub(crate) struct UpstreamSvgProvenanceValidator {
     diagram: String,
     manifest: UpstreamSvgManifest,
+    render_contexts: RenderContextCatalog,
 }
 
 impl UpstreamSvgProvenanceValidator {
@@ -603,7 +695,9 @@ impl UpstreamSvgProvenanceValidator {
                 self.diagram, stem
             )
         })?;
-        let expected_profile = renderer_profile(&self.diagram);
+        let expected_profile =
+            renderer_profile_for_fixture(&self.diagram, fixture_path, &self.render_contexts)
+                .map_err(|error| error.to_string())?;
         if entry.renderer_profile != expected_profile {
             return Err(format!(
                 "upstream SVG provenance profile mismatch for {}/{}: manifest={}, expected={expected_profile}",
@@ -619,6 +713,25 @@ impl UpstreamSvgProvenanceValidator {
             stem,
         )?;
         validate_hash(svg_path, &entry.svg_sha256, "SVG", &self.diagram, stem)
+    }
+
+    pub(crate) fn fixture_site_config(
+        &self,
+        fixture_path: &Path,
+    ) -> Result<Option<merman::MermaidConfig>, String> {
+        self.render_contexts
+            .context_for_fixture(fixture_path)
+            .map_err(|error| {
+                format!(
+                    "failed to resolve fixture render context for {}/{}: {error}",
+                    self.diagram,
+                    fixture_path.display()
+                )
+            })
+            .map(|context| {
+                context
+                    .map(|context| merman::MermaidConfig::from_value(context.site_config_value()))
+            })
     }
 
     pub(crate) fn validate_excluded_fixture(
@@ -731,6 +844,7 @@ fn load_upstream_svg_provenance_with_source(
     let validator = UpstreamSvgProvenanceValidator {
         diagram: diagram.to_string(),
         manifest,
+        render_contexts: render_context_catalog_for_family(diagram, fixtures_dir)?,
     };
     if require_complete {
         validator.validate_complete_coverage(fixtures_dir, upstream_dir)?;
@@ -744,22 +858,38 @@ impl UpstreamSvgProvenanceValidator {
         fixtures_dir: &Path,
         upstream_dir: &Path,
     ) -> Result<(), XtaskError> {
-        let expected = build_complete_manifest_with_source(
+        validate_complete_coverage_with_render_contexts(
             &self.diagram,
+            &self.manifest,
             fixtures_dir,
             upstream_dir,
-            self.manifest.source.clone(),
-            self.manifest.attestation.clone(),
+            &self.render_contexts,
         )
-        .map_err(|err| XtaskError::SvgCompareFailed(err.to_string()))?;
-        if expected == self.manifest {
-            Ok(())
-        } else {
-            Err(XtaskError::SvgCompareFailed(format!(
-                "complete upstream SVG provenance manifest drifted for {}; rebuild or re-adopt the full family",
-                self.diagram
-            )))
-        }
+    }
+}
+
+fn validate_complete_coverage_with_render_contexts(
+    diagram: &str,
+    manifest: &UpstreamSvgManifest,
+    fixtures_dir: &Path,
+    upstream_dir: &Path,
+    render_contexts: &RenderContextCatalog,
+) -> Result<(), XtaskError> {
+    let expected = build_complete_manifest_with_source_and_render_contexts(
+        diagram,
+        fixtures_dir,
+        upstream_dir,
+        manifest.source.clone(),
+        manifest.attestation.clone(),
+        render_contexts,
+    )
+    .map_err(|err| XtaskError::SvgCompareFailed(err.to_string()))?;
+    if expected == *manifest {
+        Ok(())
+    } else {
+        Err(XtaskError::SvgCompareFailed(format!(
+            "complete upstream SVG provenance manifest drifted for {diagram}; rebuild or re-adopt the full family"
+        )))
     }
 }
 
@@ -773,6 +903,38 @@ pub(crate) struct UpstreamSvgProvenanceWriteRequest<'a> {
     pub(crate) full_generation: bool,
     pub(crate) fresh_output: bool,
     pub(crate) render_environment: UpstreamSvgRenderEnvironment,
+    pub(crate) render_contexts: &'a UpstreamSvgRenderContextSnapshot,
+}
+
+fn write_manifest_from_render_context_snapshot<V>(
+    out_dir: &Path,
+    manifest: &UpstreamSvgManifest,
+    render_contexts: &UpstreamSvgRenderContextSnapshot,
+    validate_after_install: V,
+) -> Result<(), XtaskError>
+where
+    V: FnOnce() -> Result<(), XtaskError>,
+{
+    render_contexts.validate_live_hash()?;
+    write_manifest_with_post_install_validator(out_dir, manifest, || {
+        validate_after_install()?;
+        render_contexts.validate_live_hash()
+    })
+}
+
+fn write_manifest_batch_from_render_context_snapshot<V>(
+    manifests: &[(&Path, &UpstreamSvgManifest)],
+    render_contexts: &UpstreamSvgRenderContextSnapshot,
+    validate_after_install: V,
+) -> Result<(), XtaskError>
+where
+    V: FnOnce() -> Result<(), XtaskError>,
+{
+    render_contexts.validate_live_hash()?;
+    write_manifest_batch_with_post_install_validator(manifests, || {
+        validate_after_install()?;
+        render_contexts.validate_live_hash()
+    })
 }
 
 pub(crate) fn write_upstream_svg_provenance<V>(
@@ -791,6 +953,7 @@ where
         full_generation,
         fresh_output,
         render_environment,
+        render_contexts,
     } = request;
     render_environment.validate()?;
     let source = current_source()?;
@@ -803,10 +966,12 @@ where
             excluded_fixtures,
             source,
             UpstreamSvgAttestation::generated(render_environment),
+            render_contexts.catalog(),
         )?;
-        return write_manifest_with_post_install_validator(
+        return write_manifest_from_render_context_snapshot(
             out_dir,
             &manifest,
+            render_contexts,
             validate_after_install,
         );
     }
@@ -816,7 +981,6 @@ where
     let mut manifest =
         prepare_generated_manifest(existing, &source, &render_environment, fresh_output)?;
 
-    let profile = renderer_profile(diagram).to_string();
     for fixture in generated_fixtures {
         fixture.validate_captured_hashes()?;
         let stem = fixture.stem().to_string();
@@ -827,7 +991,11 @@ where
             UpstreamSvgFixtureProvenance {
                 input_sha256: fixture.input_sha256().to_string(),
                 svg_sha256: hash_file(&svg_path)?,
-                renderer_profile: profile.clone(),
+                renderer_profile: renderer_profile_for_fixture(
+                    diagram,
+                    fixture.live_path(),
+                    render_contexts.catalog(),
+                )?,
             },
         );
         manifest.excluded.remove(&stem);
@@ -846,14 +1014,21 @@ where
     }
 
     if manifest.complete {
-        UpstreamSvgProvenanceValidator {
-            diagram: diagram.to_string(),
-            manifest: manifest.clone(),
-        }
-        .validate_complete_coverage(fixtures_dir, out_dir)?;
+        validate_complete_coverage_with_render_contexts(
+            diagram,
+            &manifest,
+            fixtures_dir,
+            out_dir,
+            render_contexts.catalog(),
+        )?;
     }
 
-    write_manifest_with_post_install_validator(out_dir, &manifest, validate_after_install)
+    write_manifest_from_render_context_snapshot(
+        out_dir,
+        &manifest,
+        render_contexts,
+        validate_after_install,
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1028,6 +1203,7 @@ fn adopt_existing_manifests_with_source_and_lock_timeout<S: AsRef<str>>(
         .map(|(_, upstream_dir)| upstream_dir.clone())
         .collect();
     let _family_locks = acquire_upstream_svg_family_locks_with_timeout(&lock_dirs, lock_timeout)?;
+    let render_contexts = UpstreamSvgRenderContextSnapshot::capture(fixtures_root)?;
 
     let mut validated = Vec::with_capacity(families.len());
     for (diagram, upstream_dir) in families {
@@ -1042,12 +1218,13 @@ fn adopt_existing_manifests_with_source_and_lock_timeout<S: AsRef<str>>(
                 "refusing to replace generated upstream SVG provenance for {diagram} with adopted-existing; rerun with --allow-downgrade only when the loss of render attestation is intentional"
             )));
         }
-        let manifest = build_complete_manifest_with_source(
+        let manifest = build_complete_manifest_with_source_and_render_contexts(
             &diagram,
             &fixtures_dir,
             &upstream_dir,
             source.clone(),
             UpstreamSvgAttestation::adopted_existing(),
+            render_contexts.catalog(),
         )?;
         validated.push((upstream_dir, manifest));
     }
@@ -1056,7 +1233,7 @@ fn adopt_existing_manifests_with_source_and_lock_timeout<S: AsRef<str>>(
         .iter()
         .map(|(upstream_dir, manifest)| (upstream_dir.as_path(), manifest))
         .collect();
-    write_manifest_batch(&writes)
+    write_manifest_batch_from_render_context_snapshot(&writes, &render_contexts, || Ok(()))
 }
 
 fn validate_existing_manifests_with_source<S: AsRef<str>>(
@@ -1217,7 +1394,7 @@ fn current_source() -> Result<UpstreamSvgSource, XtaskError> {
     })
 }
 
-fn renderer_profile(diagram: &str) -> &'static str {
+fn base_renderer_profile(diagram: &str) -> &'static str {
     match diagram {
         "sequence" => "seeded-puppeteer-seed-1-date-now-1704067200000-sequence-math-settled-v1",
         "architecture" | "gitgraph" => "seeded-puppeteer-seed-1-date-now-1704067200000",
@@ -1225,6 +1402,70 @@ fn renderer_profile(diagram: &str) -> &'static str {
         "gantt" => "mmdc-default-width-1200",
         _ => "mmdc-default",
     }
+}
+
+fn renderer_profile(diagram: &str, fixture_context: Option<&FixtureRenderContext>) -> String {
+    let base = base_renderer_profile(diagram);
+    match fixture_context.map(FixtureRenderContext::security_level) {
+        None => base.to_string(),
+        Some(SecurityLevel::Loose) => format!("{base}-host-security-loose-v1"),
+        Some(SecurityLevel::Sandbox) => {
+            format!("{base}-host-security-sandbox-to-strict-v1")
+        }
+    }
+}
+
+fn render_context_catalog_for_family(
+    diagram: &str,
+    fixtures_dir: &Path,
+) -> Result<RenderContextCatalog, XtaskError> {
+    let mut candidates = Vec::with_capacity(2);
+    if fixtures_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name == diagram)
+        && let Some(parent) = fixtures_dir.parent()
+    {
+        candidates.push(parent);
+    }
+    candidates.push(fixtures_dir);
+
+    let fixtures_root = candidates
+        .into_iter()
+        .find(|candidate| {
+            candidate
+                .join(merman_fixture_render_context::MANIFEST_RELATIVE_PATH)
+                .is_file()
+        })
+        .ok_or_else(|| {
+            XtaskError::UpstreamSvgFailed(format!(
+                "missing fixture render-context catalog for {diagram} under {}",
+                fixtures_dir.display()
+            ))
+        })?;
+
+    RenderContextCatalog::load(fixtures_root).map_err(|error| {
+        XtaskError::UpstreamSvgFailed(format!(
+            "invalid fixture render-context catalog for {diagram} under {}: {error}",
+            fixtures_root.display()
+        ))
+    })
+}
+
+fn renderer_profile_for_fixture(
+    diagram: &str,
+    fixture_path: &Path,
+    render_contexts: &RenderContextCatalog,
+) -> Result<String, XtaskError> {
+    let fixture_context = render_contexts
+        .context_for_fixture(fixture_path)
+        .map_err(|error| {
+            XtaskError::UpstreamSvgFailed(format!(
+                "failed to resolve fixture render context for {diagram}/{}: {error}",
+                fixture_path.display()
+            ))
+        })?;
+    Ok(renderer_profile(diagram, fixture_context))
 }
 
 fn fixture_stem(path: &Path) -> Result<&str, XtaskError> {

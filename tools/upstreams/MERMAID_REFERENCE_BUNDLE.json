@@ -5,18 +5,18 @@
     "id": "mermaid",
     "role": "core",
     "package": "mermaid",
-    "version": "11.16.0",
-    "declaredRange": "11.16.0",
-    "latestStable": "11.16.0",
-    "integrity": "sha512-Zvm3kbstgdpvIJPPItlL7fppIZ3kibvc1oZIGxdvk9t6UFz6flv+Jw7FtRGKwfcI8OckmH04LqG6LlS6X4B1pA==",
-    "tarballUrl": "https://registry.npmjs.org/mermaid/-/mermaid-11.16.0.tgz",
-    "attestationUrl": "https://registry.npmjs.org/-/npm/v1/attestations/mermaid@11.16.0",
+    "version": "11.16.1",
+    "declaredRange": "11.16.1",
+    "latestStable": "11.16.1",
+    "integrity": "sha512-TQsq6u22fAn3rek5VOubrhKPo1g5hwC3FXUN9hiyupTckcYiGuuKGkNQrKYwGJkXUxZdojwRG46gsSCFZMDp4g==",
+    "tarballUrl": "https://registry.npmjs.org/mermaid/-/mermaid-11.16.1.tgz",
+    "attestationUrl": "https://registry.npmjs.org/-/npm/v1/attestations/mermaid@11.16.1",
     "publishGitHead": null,
-    "installedContentSha256": "3b6a6e2a483e5e6b470be13f765dd648271a35b9d4e322d854d85bd065381ad0",
+    "installedContentSha256": "25fce8dc49850c02fa00127febd3976315983f13e7018d86b8c330dde04d808a",
     "source": {
       "repository": "https://github.com/mermaid-js/mermaid.git",
-      "reference": "mermaid@11.16.0",
-      "commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+      "reference": "mermaid@11.16.1",
+      "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
       "checkoutPath": "repo-ref/mermaid",
       "packagePath": "packages/mermaid"
     },
@@ -44,8 +44,8 @@
     "installedContentSha256": "a4fe4881a4713c581d9d9c20bab1fc72e573ca43b46c8abad26d834ed59400d2",
     "source": {
       "repository": "https://github.com/mermaid-js/mermaid.git",
-      "reference": "mermaid@11.16.0",
-      "commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+      "reference": "mermaid@11.16.1",
+      "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
       "checkoutPath": "repo-ref/mermaid",
       "packagePath": "packages/parser"
     },
@@ -163,8 +163,8 @@
         },
         "source": {
           "repository": "https://github.com/mermaid-js/mermaid.git",
-          "reference": "mermaid@11.16.0",
-          "commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+          "reference": "mermaid@11.16.1",
+          "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
           "checkoutPath": "repo-ref/mermaid",
           "packagePath": "packages/mermaid-zenuml"
         },
@@ -304,8 +304,8 @@
       },
       "source": {
         "repository": "https://github.com/mermaid-js/mermaid.git",
-        "reference": "mermaid@11.16.0",
-        "commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+        "reference": "mermaid@11.16.1",
+        "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
         "checkoutPath": "repo-ref/mermaid",
         "packagePath": "packages/mermaid-layout-elk"
       },
@@ -339,8 +339,8 @@
       },
       "source": {
         "repository": "https://github.com/mermaid-js/mermaid.git",
-        "reference": "mermaid@11.16.0",
-        "commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+        "reference": "mermaid@11.16.1",
+        "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
         "checkoutPath": "repo-ref/mermaid",
         "packagePath": "packages/mermaid-layout-tidy-tree"
       },
@@ -381,8 +381,8 @@
       ]
     },
     "workspace": "tools/mermaid-cli",
-    "packageJsonSha256": "947577fc1c008c828ad20eb732d3f864105083c53dde42c53078cfc2cb0cebc9",
-    "packageLockSha256": "ee4807cdbff1f78777c661b066e1382f81e49677ec1f10d591aa8951915f063a",
+    "packageJsonSha256": "7d7e8fe6b51e2453626138bf8abe22c802522324b2288ee866718bc49b7c2441",
+    "packageLockSha256": "e9efb5f87a2a39ee1a5184cd7d1bdc69d85bd47ace850adaf76ca99975eac6ac",
     "configSha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc"
   },
   "installPolicy": {

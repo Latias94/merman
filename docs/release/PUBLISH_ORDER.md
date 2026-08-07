@@ -100,7 +100,6 @@ python3 scripts/verify-release-crate-order.py
 cargo check -p merman-ffi
 cargo check -p merman-uniffi
 cargo nextest run -p merman-bindings-core -p merman-ffi -p merman-uniffi
-cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke
 ```
 
 For crates.io packaging, prefer publish dry-runs once registry dependencies are available. The

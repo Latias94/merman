@@ -445,10 +445,34 @@ Results:
   JavaScript and package contracts, stable WASM source/profile/capability inputs, and semantic
   evidence to deterministic content digests. Current generated JavaScript and WASM artifacts must
   still match their provenance, while platform-specific WASM binary identity and host-form tool
-  descriptions do not invalidate the cross-platform receipt. The hermetic authority verifier
-  recomputes those inputs and the derived decision without a browser. The complete receipt is
-  checked in at
+  descriptions do not invalidate the cross-platform receipt. The checked receipt is historical
+  on-demand architecture evidence; its normal authority verifier validates the derived decision
+  and the current dependency/lockfile/Worker-import topology without recomputing historical content
+  digests. Routine implementation drift uses ordinary build, provenance, semantic, and contract
+  tests rather than a browser-measurement gate. The complete receipt is checked in at
   [`editor-artifact-receipt-v2.json`](./editor-artifact-receipt-v2.json).
+
+### 2026-08-06 - Behavior-Owned Evidence Boundaries
+
+Changes:
+
+- Removed the R16 freshness gate that compared current build/runtime/package digests with the
+  checked browser-measurement receipt. Those hashes remain recorded historical capture provenance
+  and are checked for receipt shape and internally derived consistency, not current-source identity.
+- Kept the fast selection-topology contract: the selected package must match current Playground
+  dependency declarations, exact local lockfile resolutions, and the actual language Worker import
+  graph.
+- Kept browser measurement on demand for an explicit full/editor architecture reconsideration;
+  normal source, Rust/WASM, Vite, and dependency changes do not require Chromium remeasurement.
+- Kept ZenUML evidence bound to the probe contract, artifact digest, observed categories, and
+  pass/count facts. Implementation source-byte hashes were removed because they turned ordinary
+  security-policy maintenance into a stale evidence failure.
+
+Validation intent:
+
+- Fast Node contract and topology tests run in normal prepared validation.
+- Chromium R16 and ZenUML browser lanes remain explicit on-demand evidence refresh commands, not
+  merge gates.
 
 ### 2026-08-06 - Portable R16 And ZenUML Evidence Boundaries
 
@@ -598,7 +622,7 @@ Changes:
 - Upgraded the Playground to Vite 8.2.0 and `@vitejs/plugin-react` 6.0.5, removed
   `vite-plugin-wasm`, migrated the local resizable-panel boundary to v4, and aligned the approved
   React, Radix, Lucide, Sonner, Tailwind, i18n, ESLint, and Playwright peer groups.
-- Kept Mermaid 11.16.0, Monaco 0.55.1, TypeScript 5.7.3, and the Node 22 type line intentionally.
+- Kept Mermaid 11.16.1, Monaco 0.55.1, TypeScript 5.7.3, and the Node 22 type line intentionally.
   Monaco 0.56 removes the contribution-only entry used by the current editor closure; Mermaid and
   TypeScript changes remain owned by their dedicated alignment/support decisions.
 - Configured wasm-bindgen to omit its implicit default module path. Public Web package wrappers
@@ -636,7 +660,7 @@ Results:
 - Dependency trees and the generated 250,560-byte production license report passed. The Playground
   complete and production audits plus the browser-test tooling complete audit reported zero
   vulnerabilities; the browser-test package has no production dependency graph to audit.
-- `npm outdated` reports only the intentional lines above: Node types 22.20.1, Mermaid 11.16.0,
+- `npm outdated` reports only the intentional lines above: Node types 22.20.1, Mermaid 11.16.1,
   Monaco 0.55.1, and TypeScript 5.7.3. The Playwright runtime and test package are exactly 1.62.1.
 - Complete prepared tests passed, including 45 build-graph, 56 editor Worker, 24 R16
   contract/authority, 4 dependency-policy, and 98 Benchmark tests, plus all focused runtime,

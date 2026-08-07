@@ -11,7 +11,7 @@ use svgtypes::{FuncIRI, IRI, Length};
 
 use super::SvgReferencePlan;
 use super::builtin::attr_sanitize::{
-    attribute_violates_resvg_contract, matches_active_svg_element,
+    matches_active_svg_element, parsed_attribute_violates_resvg_contract,
 };
 use super::builtin::css_sanitize::{
     validate_resvg_css_declaration_list, validate_resvg_css_stylesheet,
@@ -616,7 +616,7 @@ fn validate_element(
             continue;
         }
         let semantic_name = xml_name(local_name.as_ref())?;
-        if attribute_violates_resvg_contract(element_name, qualified_name, &value) {
+        if parsed_attribute_violates_resvg_contract(element_name, qualified_name, &value) {
             return Err(validation_error(format!(
                 "attribute {qualified_name:?} on <{element_name}> violates the resvg-safe contract"
             )));
@@ -1118,6 +1118,20 @@ mod tests {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="paint"/><rect id="filter-source"/></defs><circle fill="url(#paint)" style="clip-path:url(#clip);content:&quot;45deg&quot;"/><image href="data:image/png;base64,AAAA"/><filter><feImage href="#filter-source"/><feImage href="data:image/png;base64,BBBB"/></filter></svg>"##;
 
         validate(svg).unwrap();
+    }
+
+    #[test]
+    fn accepts_a_parsed_literal_navigation_entity_without_decoding_it_twice() {
+        validate(
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><a href="javascript&amp;colon;ticket"><text>safe literal</text></a></svg>"#,
+        )
+        .unwrap();
+        assert!(
+            validate(
+                r#"<svg xmlns="http://www.w3.org/2000/svg"><a href=" https://example.test "><text>not normalized</text></a></svg>"#
+            )
+            .is_err()
+        );
     }
 
     #[test]

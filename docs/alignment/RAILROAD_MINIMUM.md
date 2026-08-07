@@ -1,9 +1,9 @@
-# Railroad Minimum (Mermaid@11.16.0)
+# Railroad Minimum (Mermaid@11.16.1)
 
 This document tracks the first local support slice for Mermaid `railroad-beta`,
 `railroad-ebnf-beta`, `railroad-abnf-beta`, and `railroad-peg-beta`.
 
-Upstream references at pinned Mermaid 11.16.0:
+Upstream references at pinned Mermaid 11.16.1:
 
 - Detector: `packages/mermaid/src/diagrams/railroad/*Detector.ts`
 - Parser adapters: `packages/mermaid/src/diagrams/railroad/parser/*.ts`

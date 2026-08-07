@@ -1,7 +1,7 @@
 //! Source-backed color operations used by Mermaid themes and renderers.
 //!
 //! The behavior in this module mirrors Khroma 2.1.0, the color package pinned by Mermaid
-//! 11.16.0. Parsing is intentionally implemented as a small structured parser rather than a
+//! 11.16.1. Parsing is intentionally implemented as a small structured parser rather than a
 //! regular expression so every accepted component and separator has an explicit owner.
 
 use ryu_js::Buffer;

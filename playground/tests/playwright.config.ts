@@ -55,7 +55,10 @@ export default defineConfig({
     {
       name: "chromium-mobile-interactions",
       testMatch: /mobile\.interactions\.spec\.ts/u,
-      use: { ...devices["Pixel 7"] },
+      use: {
+        ...devices["Pixel 7"],
+        permissions: ["clipboard-read", "clipboard-write"],
+      },
     },
     {
       name: "firefox-smoke",

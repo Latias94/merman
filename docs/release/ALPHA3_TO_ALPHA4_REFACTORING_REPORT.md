@@ -98,7 +98,8 @@ The public migration is mechanical where an old aggregate has a direct replaceme
 | `ratex-math` | `math` |
 | `raster` | Select `png`, `jpeg`, and/or `pdf` independently. |
 | `core-full` | No direct replacement: core language semantics are invariant; select only the required output capabilities. |
-| `core-host` | Select `system-clock`, `system-timezone`, `system-random`, and/or `system-timing` for the host behavior actually required. |
+| `core-host` | On lower-level Rust crates and the CLI, select `system-clock`, `system-timezone`, `system-random`, and/or `system-timing` for the host behavior actually required. |
+| Separate binding-crate `system-clock`, `system-timezone`, or `system-random` features | Select the atomic `native-runtime` feature on `merman-bindings-core`, `merman-ffi`, `merman-uniffi`, or `merman-android-jni`; partial binding runtime sets are removed. |
 | Historical `full`/`tiny` profile aliases | Use an exact artifact profile, or disable Cargo defaults and select observable leaves. |
 
 The old Cargo names have been removed; there are no compatibility aliases. Browser consumers
@@ -106,6 +107,11 @@ must also replace historical `@mermanjs/web/<subpath>` or raw `pkg/**` imports w
 public package. There is no subpath or raw-WASM fallback, and the measured `@mermanjs/web-render`
 is the complete SVG/layout/math product rather than a name-only replacement for an older basic
 render profile.
+
+The binding aggregate does not replace the concrete runtime vocabulary. Runtime catalogs and
+generated language projections still expose `system-clock`, `system-timezone`, and
+`system-random`; `native-runtime` exists only at artifact assembly time so transports cannot
+compile a native runtime policy that is impossible to call successfully.
 
 At the manifest level, `merman` moved raster implementation dependencies behind
 `merman-export`: its direct dependency count changed from 11 to 9 while its public capability
@@ -443,7 +449,7 @@ Before the final alpha.4 release report:
 
 1. rerun the complete-product and minimal same-capability alpha.3 A/B lanes against the final
    release commit, including Class, Sequence, Requirement, and Mindmap attribution;
-2. refresh artifact sizes and dependency closures from the same target revision;
+2. refresh artifact-size evidence and rerun the current artifact-profile dependency claims;
 3. attach the exact host, toolchain, recipe, fixture, and source-commit ledger; and
 4. keep Node and browser-WASM throughput claims explicitly unproven until their own admission
    evidence exists.

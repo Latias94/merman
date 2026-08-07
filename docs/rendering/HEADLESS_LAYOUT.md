@@ -1,6 +1,6 @@
 # Headless Layout
 
-Merman lays out Mermaid `@11.16.0` diagrams in Rust without a browser or JavaScript runtime. Layout
+Merman lays out Mermaid `@11.16.1` diagrams in Rust without a browser or JavaScript runtime. Layout
 is part of the canonical typed headless operation, not a JSON-first stage that can be paired with an
 unrelated semantic model.
 

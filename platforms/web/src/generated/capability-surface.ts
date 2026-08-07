@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:eb4071e40d62961acd912573be39f0a41f8a5b1e3927702bedc983980d829988" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:02e572e1010d2a3d440b69eef260cdf3b2d7f5a88f8c28ebe9fa486e184e722e" as const;
 
 export const WEB_CAPABILITIES = [
   {
@@ -63,60 +63,80 @@ export const WEB_BINDING_OPERATIONS = [
   {
     "id": "analysis-facts-json",
     "capability": "analysis",
+    "output": null,
+    "compiled_prerequisites": [],
     "media_type": "application/json",
     "requires_uri": false
   },
   {
     "id": "analysis-json",
     "capability": "analysis",
+    "output": null,
+    "compiled_prerequisites": [],
     "media_type": "application/json",
     "requires_uri": false
   },
   {
     "id": "ascii",
     "capability": "ascii",
+    "output": "ascii",
+    "compiled_prerequisites": [],
     "media_type": "text/plain; charset=utf-8",
     "requires_uri": false
   },
   {
     "id": "document-analysis-facts-json",
     "capability": "analysis",
+    "output": null,
+    "compiled_prerequisites": [],
     "media_type": "application/json",
     "requires_uri": true
   },
   {
     "id": "document-analysis-json",
     "capability": "analysis",
+    "output": null,
+    "compiled_prerequisites": [],
     "media_type": "application/json",
     "requires_uri": true
   },
   {
     "id": "layout-json",
     "capability": "svg",
+    "output": null,
+    "compiled_prerequisites": [],
     "media_type": "application/json",
     "requires_uri": false
   },
   {
     "id": "semantic-json",
     "capability": null,
+    "output": null,
+    "compiled_prerequisites": [],
     "media_type": "application/json",
     "requires_uri": false
   },
   {
     "id": "svg",
     "capability": "svg",
+    "output": "svg",
+    "compiled_prerequisites": [],
     "media_type": "image/svg+xml",
     "requires_uri": false
   },
   {
     "id": "svg-plan-json",
     "capability": "svg",
+    "output": null,
+    "compiled_prerequisites": [],
     "media_type": "application/json",
     "requires_uri": false
   },
   {
     "id": "validation-json",
     "capability": "analysis",
+    "output": null,
+    "compiled_prerequisites": [],
     "media_type": "application/json",
     "requires_uri": false
   }

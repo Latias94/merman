@@ -1,4 +1,5 @@
 use crate::Result;
+use cssparser::{Delimiter, Parser, ParserInput};
 use std::borrow::Cow;
 
 use super::css_override::{CssOverridePolicy, strip_css_important};
@@ -129,10 +130,11 @@ fn scope_css_block(css: &str, scope: &str) -> String {
             return out;
         };
 
+        let body = &css[open + 1..close];
         if selector.trim_start().starts_with('@') {
-            push_scoped_at_rule(&mut out, selector, &css[open + 1..close], scope);
+            push_scoped_at_rule(&mut out, selector, body, scope);
         } else {
-            out.push_str(&scope_selector(selector, scope));
+            out.push_str(&scope_selector(selector, body, scope));
             out.push(' ');
             out.push_str(&css[open..=close]);
         }
@@ -187,7 +189,11 @@ fn is_css_grouping_rule(name: &str) -> bool {
     )
 }
 
-fn scope_selector(selector: &str, scope: &str) -> String {
+fn scope_selector(selector: &str, body: &str, scope: &str) -> String {
+    let safe_root_declarations = selector
+        .split(',')
+        .any(|part| matches!(part.trim(), "&") || part.trim() == scope)
+        && has_only_safe_root_declarations(body);
     selector
         .split(',')
         .map(|part| {
@@ -196,7 +202,9 @@ fn scope_selector(selector: &str, scope: &str) -> String {
                 String::new()
             } else {
                 let expanded = trimmed.replace('&', scope);
-                if is_safely_scoped_selector(&expanded, scope) {
+                if (expanded == scope && safe_root_declarations)
+                    || is_already_namespaced(&expanded, scope)
+                {
                     expanded
                 } else if let Some(scoped) = replace_root_selector(&expanded, ":root", scope) {
                     scoped
@@ -292,6 +300,62 @@ fn consume_attribute_qualifiers(mut selector: &str) -> Option<&str> {
         selector = &selector[end?..];
     }
     Some(selector)
+}
+
+fn has_only_safe_root_declarations(body: &str) -> bool {
+    let mut input = ParserInput::new(body);
+    let mut parser = Parser::new(&mut input);
+
+    while !parser.is_exhausted() {
+        if parser
+            .try_parse(|declaration| declaration.expect_semicolon())
+            .is_ok()
+        {
+            continue;
+        }
+
+        let allowed = parser.parse_until_after(Delimiter::Semicolon, |declaration| {
+            let property = declaration.expect_ident_cloned()?;
+            declaration.expect_colon()?;
+            while declaration.next_including_whitespace().is_ok() {}
+
+            Ok::<_, cssparser::ParseError<'_, ()>>(matches!(
+                property.as_ref(),
+                "font-family" | "font-size" | "fill"
+            ))
+        });
+        if !matches!(allowed, Ok(true)) {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn is_already_namespaced(selector: &str, scope: &str) -> bool {
+    let Some(suffix) = selector.strip_prefix(scope) else {
+        return false;
+    };
+    if suffix.starts_with('>') {
+        return true;
+    }
+
+    let Some(first) = suffix.chars().next() else {
+        return false;
+    };
+    if !is_css_whitespace(first) {
+        return false;
+    }
+
+    let descendant = suffix.trim_start_matches(is_css_whitespace);
+    !descendant.is_empty()
+        && !descendant.starts_with('+')
+        && !descendant.starts_with('~')
+        && !descendant.starts_with("||")
+}
+
+fn is_css_whitespace(ch: char) -> bool {
+    matches!(ch, ' ' | '\n' | '\r' | '\t' | '\u{000C}')
 }
 
 fn css_escape_id(id: &str) -> String {
@@ -476,9 +540,42 @@ mod tests {
     #[test]
     fn scoped_css_handles_escaped_brackets_and_unclosed_repeated_attributes() {
         assert_eq!(
-            scope_selector(r"svg[data-label=a\]b] .node, svg[a][b", "#diagram"),
+            scope_selector(
+                r"svg[data-label=a\]b] .node, svg[a][b",
+                "color: red;",
+                "#diagram",
+            ),
             r"#diagram[data-label=a\]b] .node, #diagram svg[a][b"
         );
+    }
+
+    #[test]
+    fn scoped_css_matches_mermaid_namespace_boundary_rules() {
+        let cases = [
+            ("& ~ *", "color: red;", "#diagram #diagram ~ *"),
+            (
+                "& \n\t \r \u{000C} \r\n + *",
+                "color: red;",
+                "#diagram #diagram \n\t \r \u{000C} \r\n + *",
+            ),
+            ("& || *", "color: red;", "#diagram #diagram || *"),
+            ("&", "color: red;", "#diagram #diagram"),
+            (
+                "&",
+                "font-family: serif; font-size: 12px; fill: red;",
+                "#diagram",
+            ),
+            ("& > *", "color: red;", "#diagram > *"),
+            ("& *", "color: red;", "#diagram *"),
+        ];
+
+        for (selector, body, expected) in cases {
+            assert_eq!(
+                scope_selector(selector, body, "#diagram"),
+                expected,
+                "selector: {selector:?}"
+            );
+        }
     }
 
     #[test]

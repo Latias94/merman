@@ -860,13 +860,13 @@ flowchart TD
         "expected loose mode to preserve Mermaid-renderable mailto links: {loose}"
     );
     assert!(
-        loose.contains(r#"<a transform=""#),
-        "expected loose mode to keep Mermaid's anchor wrappers for declared links: {loose}"
+        loose.contains(r#"target="_blank""#),
+        "expected loose flowchart parity to preserve the Mermaid link target: {loose}"
     );
     assert!(
-        !loose.contains(r#"xlink:href="notes://do-your-thing/id""#)
-            && !loose.contains(r#"xlink:href="javascript:alert(1)""#),
-        "expected loose mode SVG sanitizer parity to omit unknown and script hrefs: {loose}"
+        loose.contains(r#"xlink:href="notes://do-your-thing/id""#)
+            && loose.contains(r#"xlink:href="javascript:alert(1)""#),
+        "expected loose mode to skip Mermaid's final SVG sanitizer for trusted links: {loose}"
     );
 }
 
@@ -1184,6 +1184,61 @@ flowchart TB
 }
 
 #[test]
+fn flowchart_colored_marker_whitespace_follows_security_level() {
+    fn marker_path_colors(svg: &str) -> (String, String) {
+        let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
+        let marker = document
+            .descendants()
+            .find(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "marker"
+                    && node
+                        .attribute("id")
+                        .is_some_and(|id| id.ends_with("-pointEnd__orange"))
+            })
+            .expect("orange point-end marker");
+        let path = marker
+            .children()
+            .find(|node| node.is_element() && node.tag_name().name() == "path")
+            .expect("marker path");
+        (
+            path.attribute("stroke").expect("marker stroke").to_string(),
+            path.attribute("fill").expect("marker fill").to_string(),
+        )
+    }
+
+    let source = r#"flowchart TB
+    A --> B
+    linkStyle 0 color:orange, stroke: orange;
+"#;
+
+    for security_level in ["strict", "sandbox"] {
+        let svg = render_flowchart_svg_from_text_with_engine(
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "securityLevel": security_level
+            }))),
+            source,
+        );
+        assert_eq!(
+            marker_path_colors(&svg),
+            ("orange".to_string(), "orange".to_string()),
+            "{security_level}"
+        );
+    }
+
+    let loose = render_flowchart_svg_from_text_with_engine(
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "loose"
+        }))),
+        source,
+    );
+    assert_eq!(
+        marker_path_colors(&loose),
+        (" orange".to_string(), " orange".to_string())
+    );
+}
+
+#[test]
 fn flowchart_svg_honors_node_text_color_theme_variable() {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
         "themeVariables": {
@@ -1254,6 +1309,79 @@ D@{ shape: cloud, label: "same" }
         Some(10),
         "cloud must preserve Mermaid 11.16's ten relative arc segments"
     );
+}
+
+#[test]
+fn flowchart_cylinder_label_offset_y_follows_security_level() {
+    fn cylinder_label_offset(svg: &str, node_id: &str) -> Option<(String, String)> {
+        let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
+        let id_prefix = format!("merman-flowchart-{node_id}-");
+        let node = document
+            .descendants()
+            .find(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "g"
+                    && node
+                        .attribute("id")
+                        .is_some_and(|id| id.starts_with(&id_prefix))
+            })
+            .unwrap_or_else(|| panic!("Flowchart node wrapper for {node_id}"));
+        let shape = node
+            .children()
+            .find(|child| {
+                child.is_element()
+                    && child.attribute("class").is_some_and(|class| {
+                        class
+                            .split_whitespace()
+                            .any(|part| part == "label-container")
+                    })
+            })
+            .unwrap_or_else(|| panic!("Flowchart shape for {node_id}"));
+        let offset = shape.attribute("label-offset-y")?.to_string();
+        let path_offset = shape
+            .attribute("d")
+            .expect("cylinder path data")
+            .strip_prefix("M0,")
+            .expect("cylinder path starts at x=0")
+            .split_once(' ')
+            .expect("cylinder path first segment")
+            .0
+            .to_string();
+        Some((offset, path_offset))
+    }
+
+    let source = r#"flowchart TB
+C@{ shape: cylinder, label: "Cylinder" }
+L@{ shape: lined-cylinder, label: "Lined cylinder" }
+"#;
+
+    for security_level in ["strict", "sandbox"] {
+        let svg = render_flowchart_svg_from_text_with_engine(
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "securityLevel": security_level
+            }))),
+            source,
+        );
+        for node_id in ["C", "L"] {
+            assert_eq!(
+                cylinder_label_offset(&svg, node_id),
+                None,
+                "{security_level}"
+            );
+        }
+    }
+
+    let loose = render_flowchart_svg_from_text_with_engine(
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "loose"
+        }))),
+        source,
+    );
+    for node_id in ["C", "L"] {
+        let (offset, path_offset) = cylinder_label_offset(&loose, node_id)
+            .unwrap_or_else(|| panic!("label-offset-y for {node_id}"));
+        assert_eq!(offset, path_offset, "{node_id}");
+    }
 }
 
 #[test]

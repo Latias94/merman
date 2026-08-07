@@ -4,8 +4,8 @@ This document defines the admitted `classDiagram` parser, model, Dagre/ELK layou
 
 ## Baseline
 
-Upstream baseline: Mermaid `11.16.0` at
-`7c0cafcf42e76bfaf79d0cbbd12edb986612f014`.
+Upstream baseline: Mermaid `11.16.1` at
+`7ecca0cd7f1658ef74f4e7e91f925724ef403bbf`.
 
 ## Supported (current)
 

@@ -19,6 +19,18 @@ export async function inspectPackageManifests(nodeRoot, descriptor) {
   if (versions.size !== 1 || !versions.has(descriptor.version)) {
     throw new Error("Node candidate package versions must be exact and lockstep.");
   }
+  const engineRanges = new Set([
+    root.manifest.engines?.node,
+    ...targets.map((item) => item.manifest.engines?.node),
+  ]);
+  if (
+    typeof descriptor.node_engine !== "string" ||
+    descriptor.node_engine.length === 0 ||
+    engineRanges.size !== 1 ||
+    !engineRanges.has(descriptor.node_engine)
+  ) {
+    throw new Error("Node candidate package engine ranges must be explicit and lockstep.");
+  }
   for (const item of targets) {
     if (root.manifest.optionalDependencies?.[item.manifest.name] !== descriptor.version) {
       throw new Error(`${item.manifest.name} must be an exact-version optional dependency.`);

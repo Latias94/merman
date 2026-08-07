@@ -102,14 +102,16 @@ generate_swift_bindings() {
     fi
 
     echo "==> Generating Swift UniFFI bindings"
-    python3 "$REPO_ROOT/scripts/artifact_profile_recipe.py" "$RECIPE_PROFILE" \
-        --run-example generate_swift_bindings \
+    cargo run \
+        --package merman-uniffi \
+        --manifest-path "$REPO_ROOT/crates/merman-uniffi/Cargo.toml" \
         --locked \
-        --extra-feature bindgen-smoke \
-        --example-argument=--library \
-        --example-argument="$METADATA_LIBRARY" \
-        --example-argument=--output-dir \
-        --example-argument="$SWIFT_BINDINGS_DIR"
+        --no-default-features \
+        --features binding-generation \
+        --example generate_swift_bindings \
+        -- \
+        --library "$METADATA_LIBRARY" \
+        --output-dir "$SWIFT_BINDINGS_DIR"
 
     for artifact in Merman.swift MermanFFI.h MermanFFI.modulemap; do
         if [[ ! -f "$SWIFT_BINDINGS_DIR/$artifact" ]]; then

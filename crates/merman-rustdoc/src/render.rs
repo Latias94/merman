@@ -156,7 +156,9 @@ fn render_mermaid_svg(
     let rendered = match pipeline {
         PipelineMode::Parity => renderer.render_svg_sync(source),
         PipelineMode::Readable => renderer.render_svg_readable_sync(source),
-        PipelineMode::ResvgSafe => renderer.render_svg_resvg_safe_sync(source),
+        PipelineMode::ResvgSafe => renderer
+            .render_resvg_compatible_svg_sync(source)
+            .map(|svg| svg.map(merman::svg::ResvgCompatibleSvg::into_string)),
     };
     rendered
         .map_err(|err| {

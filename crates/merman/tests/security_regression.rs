@@ -4,7 +4,6 @@ use merman::MermaidConfig;
 use merman::svg::{HeadlessRenderer, RenderEnvironment, RenderResourcePolicy};
 #[cfg(feature = "png")]
 use std::io::Cursor;
-use std::sync::Arc;
 
 fn render_svg(renderer: &HeadlessRenderer, name: &str, source: &str) -> String {
     renderer
@@ -15,8 +14,9 @@ fn render_svg(renderer: &HeadlessRenderer, name: &str, source: &str) -> String {
 
 fn render_resvg_safe(renderer: &HeadlessRenderer, name: &str, source: &str) -> String {
     renderer
-        .render_svg_resvg_safe_sync(source)
+        .render_resvg_compatible_svg_sync(source)
         .unwrap_or_else(|err| panic!("{name}: render failed: {err}"))
+        .map(merman::svg::ResvgCompatibleSvg::into_string)
         .unwrap_or_else(|| panic!("{name}: no diagram detected"))
 }
 
@@ -60,6 +60,79 @@ fn strict_click_javascript_url_does_not_emit_renderable_href() {
     assert_xml_parseable("security-url", &svg);
     assert!(!svg.to_ascii_lowercase().contains("javascript:"), "{svg}");
     assert!(!svg.contains(r#"xlink:href="about:blank""#), "{svg}");
+}
+
+#[test]
+fn kanban_ticket_navigation_is_preserved_under_strict_mermaid_security() {
+    let source = r#"---
+config:
+  kanban:
+    ticketBaseUrl: 'https://mermaidchart.atlassian.net/browse/#TICKET#'
+---
+kanban
+  Todo
+    id4[Create parsing tests]@{ ticket: MC-2038 }
+"#;
+    let renderer = HeadlessRenderer::new().with_diagram_id("security-kanban-link");
+
+    let parity = render_svg(&renderer, "security-kanban-link", source);
+    let resvg_safe = render_resvg_safe(&renderer, "security-kanban-link-resvg", source);
+
+    for svg in [&parity, &resvg_safe] {
+        assert_xml_parseable("security-kanban-link-output", svg);
+        assert!(
+            svg.contains(r#"xlink:href="https://mermaidchart.atlassian.net/browse/MC-2038""#),
+            "{svg}"
+        );
+        assert!(!svg.contains(r#"target="_blank""#), "{svg}");
+    }
+}
+
+#[test]
+fn kanban_strict_security_removes_an_unsafe_ticket_href_but_keeps_the_anchor() {
+    let renderer = HeadlessRenderer::new()
+        .with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "strict",
+            "kanban": {
+                "ticketBaseUrl": "javascript:alert('#TICKET#')"
+            }
+        })))
+        .with_diagram_id("security-kanban-strict");
+    let source = "kanban\n  Todo\n    id4[Create parsing tests]@{ ticket: MC-2038 }\n";
+
+    let svg = render_svg(&renderer, "security-kanban-strict", source);
+
+    assert_xml_parseable("security-kanban-strict", &svg);
+    assert!(svg.contains(r#"<a class="kanban-ticket-link">"#), "{svg}");
+    assert!(!svg.contains("xlink:href"), "{svg}");
+    assert!(!svg.contains(r#"target="_blank""#), "{svg}");
+    assert!(!svg.to_ascii_lowercase().contains("javascript:"), "{svg}");
+    assert!(!svg.contains("about:blank"), "{svg}");
+    assert!(svg.contains("MC-2038"), "{svg}");
+}
+
+#[test]
+fn kanban_loose_parity_and_resvg_safe_keep_separate_security_contracts() {
+    let renderer = HeadlessRenderer::new()
+        .with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "loose",
+            "kanban": {
+                "ticketBaseUrl": "javascript:alert('#TICKET#')"
+            }
+        })))
+        .with_diagram_id("security-kanban-loose");
+    let source = "kanban\n  Todo\n    id4[Create parsing tests]@{ ticket: MC-2038 }\n";
+
+    let parity = render_svg(&renderer, "security-kanban-loose-parity", source);
+    let resvg_safe = render_resvg_safe(&renderer, "security-kanban-loose-resvg", source);
+
+    assert!(parity.contains("javascript:alert("), "{parity}");
+    assert!(parity.contains(r#"target="_blank""#), "{parity}");
+    assert!(
+        !resvg_safe.to_ascii_lowercase().contains("javascript:"),
+        "{resvg_safe}"
+    );
+    assert!(resvg_safe.contains("MC-2038"), "{resvg_safe}");
 }
 
 #[test]
@@ -177,7 +250,9 @@ fn raw_resvg_safe_pipeline_strips_active_svg_content() {
 </svg>"##;
 
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let out = merman::svg::svg_resvg_safe(svg, &session).unwrap();
+    let out = merman::svg::finalize_resvg_svg(svg, &session)
+        .unwrap()
+        .into_string();
 
     assert_xml_parseable("raw-resvg-safe-active-content", &out);
     let lower = out.to_ascii_lowercase();
@@ -256,17 +331,18 @@ fn render_resource_limit_rejects_oversized_flowchart_model() {
 
 #[test]
 fn resvg_safe_pipeline_strips_active_content_from_trusted_custom_icons() {
-    let mut registry = merman::svg::IconRegistry::new();
-    registry.insert(
-        "test:active",
-        merman::svg::IconSvg::new(
-            r##"<script>alert(1)</script><path id="shape" d="M0 0H16V16H0z"/><use href="#shape" onclick="alert(1)"/><a href="javascript:alert(1)"><path d="M1 1H2V2H1z"/></a>"##,
-            16.0,
-            16.0,
-        ),
-    );
+    let pack = br##"{
+        "prefix":"test",
+        "icons":{
+            "active":{
+                "body":"<script>alert(1)</script><path id=\"shape\" d=\"M0 0H16V16H0z\"/><use href=\"#shape\" onclick=\"alert(1)\"/><a href=\"javascript:alert(1)\"><path d=\"M1 1H2V2H1z\"/></a>"
+            }
+        }
+    }"##;
+    let registry = merman::svg::IconRegistry::from_packs([merman::svg::IconPack::new(pack)])
+        .expect("valid Iconify pack");
     let renderer = HeadlessRenderer::new()
-        .with_environment(RenderEnvironment::deterministic().with_icon_registry(Arc::new(registry)))
+        .with_environment(RenderEnvironment::deterministic().with_icon_registry(registry))
         .with_svg_options(merman::svg::SvgRenderOptions {
             diagram_id: Some("security-icon".to_string()),
             ..Default::default()
@@ -283,6 +359,122 @@ fn resvg_safe_pipeline_strips_active_content_from_trusted_custom_icons() {
     assert!(!lower.contains("onclick"), "{svg}");
     assert!(!lower.contains("javascript:"), "{svg}");
     assert!(svg.contains("IconifyId"), "{svg}");
+}
+
+#[test]
+#[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn repeated_maximum_icon_uses_one_svg_budget_across_svg_and_export_paths() {
+    let maximum =
+        usize::try_from(merman::svg::IconRegistryResourceLimitId::MaxBodyBytes.fixed_value())
+            .expect("maximum icon body bytes fit usize");
+    let prefix = r#"<path data-padding=""#;
+    let suffix = r#"" d="M0 0H16V16H0z"/>"#;
+    let body = format!(
+        "{prefix}{}{suffix}",
+        "x".repeat(maximum - prefix.len() - suffix.len())
+    );
+    assert_eq!(body.len(), maximum);
+    let pack = format!(
+        r#"{{"prefix":"test","icons":{{"max":{{"body":{}}}}}}}"#,
+        serde_json::to_string(&body).unwrap()
+    );
+    let registry =
+        merman::svg::IconRegistry::from_packs([merman::svg::IconPack::new(pack.as_bytes())])
+            .expect("maximum body pack is admitted");
+    let source = r#"flowchart TD
+    A@{ icon: "test:max", label: "A" } --> B@{ icon: "test:max", label: "B" }
+"#;
+
+    let renderer = |budget: Option<usize>| {
+        let mut policy = RenderResourcePolicy::unbounded_for_trusted_input();
+        if let Some(budget) = budget {
+            policy = policy
+                .with_limit(merman::svg::ResourceLimitId::MaxSvgBytes, budget)
+                .expect("positive SVG budget");
+        }
+        HeadlessRenderer::new()
+            .with_environment(
+                RenderEnvironment::deterministic().with_icon_registry(registry.clone()),
+            )
+            .with_resource_policy(policy)
+            .with_diagram_id("maximum-icon-export")
+    };
+
+    let baseline = renderer(None)
+        .render_svg_sync(source)
+        .expect("unbounded parity render")
+        .expect("flowchart detected");
+    let mut low = 1usize;
+    let mut high = baseline.len();
+    assert!(
+        renderer(Some(high))
+            .render_resvg_compatible_svg_sync(source)
+            .is_ok(),
+        "the serialized baseline length must be a passing upper bound"
+    );
+    while low < high {
+        let middle = low + (high - low) / 2;
+        if renderer(Some(middle))
+            .render_resvg_compatible_svg_sync(source)
+            .is_ok()
+        {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    let exact_budget = low;
+    assert!(exact_budget > 1);
+
+    let exact = renderer(Some(exact_budget));
+    exact
+        .render_resvg_compatible_svg_sync(source)
+        .expect("exact SVG budget")
+        .expect("flowchart detected");
+    let raster_options = merman::svg::export::RasterOptions::default();
+    assert!(
+        exact
+            .render_png_sync(source, &raster_options)
+            .expect("PNG exact SVG budget")
+            .expect("flowchart detected")
+            .starts_with(b"\x89PNG\r\n\x1a\n")
+    );
+    assert!(
+        exact
+            .render_jpeg_sync(source, &raster_options)
+            .expect("JPEG exact SVG budget")
+            .expect("flowchart detected")
+            .starts_with(b"\xff\xd8\xff")
+    );
+    assert!(
+        exact
+            .render_pdf_sync(source)
+            .expect("PDF exact SVG budget")
+            .expect("flowchart detected")
+            .starts_with(b"%PDF-")
+    );
+
+    let one_less = renderer(Some(exact_budget - 1));
+    let svg_error = one_less
+        .render_resvg_compatible_svg_sync(source)
+        .expect_err("SVG budget plus one must fail");
+    assert!(
+        svg_error.to_string().contains("max_svg_bytes"),
+        "{svg_error}"
+    );
+    for error in [
+        one_less
+            .render_png_sync(source, &raster_options)
+            .expect_err("PNG must share the SVG budget"),
+        one_less
+            .render_jpeg_sync(source, &raster_options)
+            .expect_err("JPEG must share the SVG budget"),
+        one_less
+            .render_pdf_sync(source)
+            .expect_err("PDF must share the SVG budget"),
+    ] {
+        assert!(error.to_string().contains("max_svg_bytes"), "{error}");
+    }
 }
 
 #[test]

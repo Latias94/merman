@@ -23,6 +23,11 @@ export function assertRuntimeOwnerEvidence(capabilities, evidence) {
     "runtime output IDs",
   );
   assertExactStringArray(
+    capabilities?.output_ids,
+    expectedWebOutputIds(evidence?.runtime_capability_ids),
+    "runtime outputs derived from binding operations",
+  );
+  assertExactStringArray(
     capabilities?.operation_ids,
     expectedWebOperationIds(evidence?.runtime_capability_ids),
     "runtime operation IDs",
@@ -42,6 +47,23 @@ function assertExactStringArray(actual, expected, label) {
 }
 
 export function expectedWebOperationIds(capabilityIds) {
+  const operations = selectedWebOperations(capabilityIds);
+  return operations === null
+    ? null
+    : operations.map((operation) => operation.id).sort(compareNames);
+}
+
+export function expectedWebOutputIds(capabilityIds) {
+  const operations = selectedWebOperations(capabilityIds);
+  return operations === null
+    ? null
+    : operations
+        .map((operation) => operation.output)
+        .filter((output) => output !== null)
+        .sort(compareNames);
+}
+
+function selectedWebOperations(capabilityIds) {
   if (
     !Array.isArray(capabilityIds) ||
     !capabilityIds.every((item) => typeof item === "string")
@@ -49,13 +71,10 @@ export function expectedWebOperationIds(capabilityIds) {
     return null;
   }
   const available = new Set(capabilityIds);
-  return webBindingOperations
-    .filter(
-      (operation) =>
-        operation.capability === null || available.has(operation.capability),
-    )
-    .map((operation) => operation.id)
-    .sort(compareNames);
+  return webBindingOperations.filter(
+    (operation) =>
+      operation.capability === null || available.has(operation.capability),
+  );
 }
 
 function bindingOperationsForWeb(descriptor) {
@@ -66,6 +85,16 @@ function bindingOperationsForWeb(descriptor) {
   ) {
     throw new Error("WASM runtime evidence requires canonical binding operations.");
   }
+  const outputIds = new Set(
+    Array.isArray(descriptor.outputs)
+      ? descriptor.outputs.map((output) => output?.id)
+      : [],
+  );
+  const capabilityIds = new Set(
+    Array.isArray(descriptor.capabilities)
+      ? descriptor.capabilities.map((capability) => capability?.id)
+      : [],
+  );
   return descriptor.binding_operations
     .filter(
       (operation) =>
@@ -80,13 +109,26 @@ function bindingOperationsForWeb(descriptor) {
         !(
           operation.capability === null ||
           typeof operation.capability === "string"
-        )
+        ) ||
+        !Object.hasOwn(operation, "output") ||
+        !(operation.output === null || typeof operation.output === "string") ||
+        !Array.isArray(operation.compiled_prerequisites) ||
+        operation.compiled_prerequisites.some(
+          (capability) => typeof capability !== "string" || capability.length === 0,
+        ) ||
+        JSON.stringify(operation.compiled_prerequisites) !==
+          JSON.stringify([...new Set(operation.compiled_prerequisites)].sort(compareNames)) ||
+        operation.compiled_prerequisites.some(
+          (capability) => !capabilityIds.has(capability),
+        ) ||
+        (operation.output !== null && !outputIds.has(operation.output))
       ) {
         throw new Error("WASM runtime evidence found an invalid binding operation.");
       }
       return {
         capability: operation.capability,
         id: operation.id,
+        output: operation.output,
       };
     });
 }

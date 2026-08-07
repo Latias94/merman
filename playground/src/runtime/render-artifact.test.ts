@@ -2,48 +2,62 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  assertSafeInlineSvgArtifact,
-  projectSafeInlineSvg,
-  type SafeInlineSvg,
+  assertNavigableInlineSvgArtifact,
+  projectNavigableInlineSvg,
+  type NavigableInlineSvg,
 } from "./render-artifact.ts";
 
-// @ts-expect-error SafeInlineSvg is constructible only through the validated projector.
-const forgedArtifact: SafeInlineSvg = {
-  kind: "safe-inline-svg",
+// @ts-expect-error NavigableInlineSvg is constructible only through the validated projector.
+const forgedArtifact: NavigableInlineSvg = {
+  kind: "navigable-inline-svg",
   svg: '<svg xmlns="http://www.w3.org/2000/svg" />',
   exportFormats: { png: true, svg: true },
 };
 void forgedArtifact;
 
-test("render output is projected through the strict inline SVG path", () => {
+test("render output is projected through the navigable inline SVG path", () => {
   const svg = '<svg xmlns="http://www.w3.org/2000/svg"><text>safe</text></svg>';
-  const artifact = projectSafeInlineSvg(svg);
-  assert.equal(artifact.kind, "safe-inline-svg");
+  const artifact = projectNavigableInlineSvg(svg);
+  assert.equal(artifact.kind, "navigable-inline-svg");
   assert.equal(artifact.svg, svg);
   assert.deepEqual(artifact.exportFormats, { png: true, svg: true });
   assert.equal(Object.isFrozen(artifact), true);
-  assert.doesNotThrow(() => assertSafeInlineSvgArtifact(artifact));
+  assert.doesNotThrow(() => assertNavigableInlineSvgArtifact(artifact));
+});
+
+test("admits safe user-activated SVG anchor navigation", () => {
+  for (const href of [
+    "https://example.test/browse/MC-1",
+    "http://example.test/browse/MC-1",
+    "mailto:maintainer@example.test",
+    "#local-ticket",
+  ]) {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg"><a href="${href}"><text>ticket</text></a></svg>`;
+    const artifact = projectNavigableInlineSvg(svg);
+    assert.equal(artifact.svg, svg);
+  }
 });
 
 test("rejects spread clones that retain the compile-time SVG brand", () => {
-  const artifact = projectSafeInlineSvg(
+  const artifact = projectNavigableInlineSvg(
     '<svg xmlns="http://www.w3.org/2000/svg"><text>safe</text></svg>'
   );
-  const forgedArtifact: SafeInlineSvg = {
+  const forgedArtifact: NavigableInlineSvg = {
     ...artifact,
     svg: '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)" />',
   };
 
-  assert.throws(() => assertSafeInlineSvgArtifact(forgedArtifact));
+  assert.throws(() => assertNavigableInlineSvgArtifact(forgedArtifact));
 });
 
-test("strict inline rejection fails closed for unsafe publication shapes", () => {
+test("inline rejection still fails closed for unsafe publication shapes", () => {
   for (const svg of [
     "<div>not an SVG</div>",
     '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
     '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)" />',
     '<svg xmlns="http://www.w3.org/2000/svg"><image href="https://example.test/tracker.png" /></svg>',
+    '<svg xmlns="http://www.w3.org/2000/svg"><a href="javascript:alert(1)"><text>unsafe</text></a></svg>',
   ]) {
-    assert.throws(() => projectSafeInlineSvg(svg));
+    assert.throws(() => projectNavigableInlineSvg(svg));
   }
 });

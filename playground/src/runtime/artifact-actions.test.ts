@@ -24,7 +24,7 @@ import type {
   RenderCoordinatorState,
   RenderPublicationId,
 } from "./render-coordinator.ts";
-import { projectSafeInlineSvg } from "./render-artifact.ts";
+import { projectNavigableInlineSvg } from "./render-artifact.ts";
 import { MERMAID_JS_VERSION } from "./mermaid-requirements.ts";
 
 test("selects SVG and ASCII only from the named current publication", async () => {
@@ -47,6 +47,42 @@ test("selects SVG and ASCII only from the named current publication", async () =
     "download-svg:mermaid:mermaid-diagram",
     "copy-ascii:ascii-current",
     "download-ascii:ascii-current:merman-diagram",
+  ]);
+});
+
+test("publishes ASCII actions independently from a failed Merman SVG", async () => {
+  const successful = completedPublication("ascii-only");
+  const publication: CompletedRenderBatch = Object.freeze({
+    ...successful,
+    status: "failed",
+    merman: Object.freeze({
+      detail: null,
+      engine: "merman",
+      message: "Unsafe SVG.",
+      stage: "svg-validation",
+      status: "failure",
+    }),
+    mermaid: null,
+  });
+  const calls: string[] = [];
+  const owner = createArtifactActionOwner({
+    getRenderState: () => publication,
+    getRuntimeState: () => readyRuntime(),
+    io: recordingIo(calls),
+  });
+
+  await owner({
+    action: "copy-ascii",
+    publicationId: publication.snapshot.publicationId,
+  });
+  await owner({
+    action: "download-ascii",
+    publicationId: publication.snapshot.publicationId,
+  });
+
+  assert.deepEqual(calls, [
+    "copy-ascii:ascii-ascii-only",
+    "download-ascii:ascii-ascii-only:merman-diagram",
   ]);
 });
 
@@ -93,7 +129,7 @@ test("rerenders only Merman PNG through the resvg-safe operation", async () => {
   const runtime = readyRuntime((input) => {
     renderInputs.push(input);
     return {
-      artifact: projectSafeInlineSvg(svg("merman-png")),
+      artifact: projectNavigableInlineSvg(svg("merman-png")),
       error: null,
       renderTime: 1,
       status: "success",
@@ -186,21 +222,23 @@ function completedPublication(
       effectiveLayoutId: "dagre",
     }),
     diagnostics: null,
+    ascii: Object.freeze({
+      artifact: `ascii-${key}`,
+      status: "success",
+    }),
     publishedAt: 1,
     snapshot: Object.freeze({ operation, publicationId: id }),
     svgPlan: null,
     status: "success",
     merman: Object.freeze({
-      artifact: projectSafeInlineSvg(svg("merman")),
-      ascii: `ascii-${key}`,
-      asciiError: null,
+      artifact: projectNavigableInlineSvg(svg("merman")),
       engine: "merman",
       presentedAt: null,
       renderTimeMs: 1,
       status: "success",
     }),
     mermaid: Object.freeze({
-      artifact: projectSafeInlineSvg(svg("mermaid")),
+      artifact: projectNavigableInlineSvg(svg("mermaid")),
       engine: "mermaid",
       prepareTimeMs: 1,
       presentationTimeMs: 1,
@@ -226,7 +264,7 @@ function publicationId(value: number): RenderPublicationId {
 
 function readyRuntime(
   render: MermanDomainFacade["render"] = (input) => ({
-    artifact: projectSafeInlineSvg(svg(input.source)),
+    artifact: projectNavigableInlineSvg(svg(input.source)),
     error: null,
     renderTime: 1,
     status: "success",

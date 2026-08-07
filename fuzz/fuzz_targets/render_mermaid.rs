@@ -14,8 +14,8 @@ fuzz_target!(|data: &[u8]| {
     };
 
     RENDERER.with(|renderer| {
-        if let Ok(Some(svg)) = renderer.render_svg_resvg_safe_sync(source) {
-            assert_resvg_safe_svg(&svg);
+        if let Ok(Some(svg)) = renderer.render_resvg_compatible_svg_sync(source) {
+            assert_resvg_safe_svg(svg.as_ref());
         }
     });
 });

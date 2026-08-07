@@ -219,7 +219,7 @@ fn render_icon_rect_frame(
             common.node_id,
             icon_name,
             icon_size,
-        );
+        )?;
         let _ = write!(
             out,
             r#"<g transform="translate({},{})" style="color: {};"><g>{}</g></g>"#,

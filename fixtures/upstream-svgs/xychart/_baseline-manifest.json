@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "source": {
-    "mermaid_version": "11.16.0",
+    "mermaid_version": "11.16.1",
     "mermaid_cli_version": "11.16.0",
-    "mermaid_source_tag": "mermaid@11.16.0",
-    "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
-    "package_json_sha256": "947577fc1c008c828ad20eb732d3f864105083c53dde42c53078cfc2cb0cebc9",
-    "package_lock_sha256": "ee4807cdbff1f78777c661b066e1382f81e49677ec1f10d591aa8951915f063a",
+    "mermaid_source_tag": "mermaid@11.16.1",
+    "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
+    "package_json_sha256": "7d7e8fe6b51e2453626138bf8abe22c802522324b2288ee866718bc49b7c2441",
+    "package_lock_sha256": "e9efb5f87a2a39ee1a5184cd7d1bdc69d85bd47ace850adaf76ca99975eac6ac",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v3"
   },
@@ -29,9 +29,9 @@
         "release": "25.5.0"
       },
       "mermaid_runtime": {
-        "esm_version": "11.16.0",
-        "iife_version": "11.16.0",
-        "mermaid_package_sha256": "3b6a6e2a483e5e6b470be13f765dd648271a35b9d4e322d854d85bd065381ad0",
+        "esm_version": "11.16.1",
+        "iife_version": "11.16.1",
+        "mermaid_package_sha256": "25fce8dc49850c02fa00127febd3976315983f13e7018d86b8c330dde04d808a",
         "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
       },
       "font_probe": {
@@ -349,12 +349,12 @@
     },
     "upstream_xychart_axis_range_only_jison_spec": {
       "input_sha256": "8b87d96bf3d739887fc7b181411a1383abd6e0278dea7246d859cdf044a227ae",
-      "svg_sha256": "7cefa0206e79a4a02d6168643731534b4c1725d5740db6afb2ecb45a1c7c8b83",
+      "svg_sha256": "3785b2167beb2bf864f4e2d18e68a4419eda9f5b2723e81a697b159aa189d817",
       "renderer_profile": "mmdc-default"
     },
     "upstream_xychart_axis_title_and_decimal_range_jison_spec": {
       "input_sha256": "95713fa70777f7bda028a846b3c19e2eada414c4ab8a10dd4240998eb65ab21b",
-      "svg_sha256": "b1a4640a83762d11370b9f181ed163a9220142bb83e01489ad3cd67625bda1b8",
+      "svg_sha256": "042503e372b6f088ed4b6346e6904f0d74a23b36baf88cc137b1e0dafb784ba4",
       "renderer_profile": "mmdc-default"
     },
     "upstream_xychart_band_mismatch_db": {
@@ -369,7 +369,7 @@
     },
     "upstream_xychart_plot_numbers_and_titles_jison_spec": {
       "input_sha256": "1c6eefd22f3dc00ae3fc98cbb623b8c47f00734ff291d289f5c05d3e8a8c72ee",
-      "svg_sha256": "f4fcf67c1881234110a723f9e43f8ee400a6141e8bc8eda44ecd9da8b2e9d95d",
+      "svg_sha256": "c6873910b480e66da79ace10f9002d2a55bc6b5934328fa50d0fe62acca41827",
       "renderer_profile": "mmdc-default"
     },
     "upstream_xychart_xaxis_band_cat2asdf_jison_spec": {

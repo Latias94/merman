@@ -329,10 +329,11 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             text_measurer,
             sanitize_config,
             icon_registry: options.icon_registry(),
+            work_meter: options.work_meter(),
             content_bounds: &mut content_bounds,
         };
-        push_architecture_services_and_junctions(&mut node_render_ctx);
-        push_architecture_groups(&mut node_render_ctx, &group_rects);
+        push_architecture_services_and_junctions(&mut node_render_ctx)?;
+        push_architecture_groups(&mut node_render_ctx, &group_rects)?;
     }
 
     out.push_str("</svg>\n");

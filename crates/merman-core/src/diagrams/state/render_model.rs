@@ -102,7 +102,9 @@ pub struct StateDiagramRenderLink {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum StateDiagramRenderLinks {
+    /// Preserve the historical compatibility shape for a single declaration.
     One(StateDiagramRenderLink),
+    /// Preserve every repeated declaration in source order.
     Many(Vec<StateDiagramRenderLink>),
 }
 

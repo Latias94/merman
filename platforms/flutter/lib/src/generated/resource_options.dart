@@ -16,62 +16,359 @@ enum MermanResourceProfile {
   final String id;
 }
 
-enum MermanResourceLimitId {
-  maxSourceBytes('max_source_bytes', true, 1),
-  maxModelItems('max_model_items', true, 1),
-  maxModelTextBytes('max_model_text_bytes', true, 1),
-  maxModelNestingDepth('max_model_nesting_depth', true, 1),
-  maxLayoutWorkUnits('max_layout_work_units', true, 1),
-  maxSvgBytes('max_svg_bytes', true, 1),
-  maxSvgElements('max_svg_elements', true, 1),
-  maxThemeEncodedBytes('max_theme_encoded_bytes', true, 0),
-  maxThemeBase64Bytes('max_theme_base64_bytes', true, 0),
-  maxFontAssetCompressedBytes('max_font_asset_compressed_bytes', true, 0),
-  maxFontAssetDecodedBytes('max_font_asset_decoded_bytes', true, 0),
-  maxFontCatalogDecodedBytes('max_font_catalog_decoded_bytes', true, 0),
-  maxFontAssets('max_font_assets', true, 0),
-  maxFontFaces('max_font_faces', true, 0),
-  maxFontTables('max_font_tables', true, 0),
-  maxFontAliases('max_font_aliases', true, 0),
-  maxFontDecodedExpansionRatio('max_font_decoded_expansion_ratio', true, 1),
-  themeEncodedBytesHardCap('theme_encoded_bytes_hard_cap', false, 1),
-  themeBase64BytesHardCap('theme_base64_bytes_hard_cap', false, 1),
-  fontAssetCompressedBytesHardCap(
-      'font_asset_compressed_bytes_hard_cap', false, 1),
-  fontAssetDecodedBytesHardCap('font_asset_decoded_bytes_hard_cap', false, 1),
-  fontCatalogDecodedBytesHardCap(
-      'font_catalog_decoded_bytes_hard_cap', false, 1),
-  fontAssetsHardCap('font_assets_hard_cap', false, 1),
-  fontFacesHardCap('font_faces_hard_cap', false, 1),
-  fontTablesHardCap('font_tables_hard_cap', false, 1),
-  fontAliasesHardCap('font_aliases_hard_cap', false, 1),
-  fontDecodedExpansionRatioHardCap(
-      'font_decoded_expansion_ratio_hard_cap', false, 1),
-  maxDocumentDiagrams('max_document_diagrams', true, 0),
-  maxAsciiGridCells('max_ascii_grid_cells', true, 1),
-  maxRasterWidth('max_raster_width', true, 1),
-  maxRasterHeight('max_raster_height', true, 1),
-  maxRasterPixels('max_raster_pixels', true, 1),
-  maxEmbeddedImageBytes('max_embedded_image_bytes', true, 1),
-  maxTotalEmbeddedImageBytes('max_total_embedded_image_bytes', true, 1),
-  maxEmbeddedImagePixels('max_embedded_image_pixels', true, 1),
-  maxTotalEmbeddedImagePixels('max_total_embedded_image_pixels', true, 1),
-  maxPdfFilterImagePixels('max_pdf_filter_image_pixels', true, 1),
-  maxSvgConversionIsolationDepth(
-      'max_svg_conversion_isolation_depth', false, 1),
-  maxSvgConversionFilterPrimitivesPerFilter(
-      'max_svg_conversion_filter_primitives_per_filter', false, 1),
-  maxTotalSvgConversionFilterPrimitives(
-      'max_total_svg_conversion_filter_primitives', false, 1),
-  maxSvgConversionSubroots('max_svg_conversion_subroots', false, 1),
-  maxNestedSvgImages('max_nested_svg_images', false, 1),
-  svgBackendTreeNodes('svg_backend_tree_nodes', false, 1),
-  ;
+final class MermanResourceLimitId {
+  static const maxSourceBytes = MermanResourceLimitId._known(
+    'max_source_bytes',
+    'source',
+    true,
+    1,
+  );
+  static const maxModelItems = MermanResourceLimitId._known(
+    'max_model_items',
+    'layout_model',
+    true,
+    1,
+  );
+  static const maxModelTextBytes = MermanResourceLimitId._known(
+    'max_model_text_bytes',
+    'layout_model',
+    true,
+    1,
+  );
+  static const maxModelNestingDepth = MermanResourceLimitId._known(
+    'max_model_nesting_depth',
+    'layout_model',
+    true,
+    1,
+  );
+  static const maxLayoutWorkUnits = MermanResourceLimitId._known(
+    'max_layout_work_units',
+    'layout_model',
+    true,
+    1,
+  );
+  static const maxSvgBytes = MermanResourceLimitId._known(
+    'max_svg_bytes',
+    'svg_output',
+    true,
+    1,
+  );
+  static const maxSvgElements = MermanResourceLimitId._known(
+    'max_svg_elements',
+    'svg_postprocess',
+    true,
+    1,
+  );
+  static const maxThemeEncodedBytes = MermanResourceLimitId._known(
+    'max_theme_encoded_bytes',
+    'theme_input',
+    true,
+    0,
+  );
+  static const maxThemeBase64Bytes = MermanResourceLimitId._known(
+    'max_theme_base64_bytes',
+    'theme_input',
+    true,
+    0,
+  );
+  static const maxFontAssetCompressedBytes = MermanResourceLimitId._known(
+    'max_font_asset_compressed_bytes',
+    'font_decode',
+    true,
+    0,
+  );
+  static const maxFontAssetDecodedBytes = MermanResourceLimitId._known(
+    'max_font_asset_decoded_bytes',
+    'font_decode',
+    true,
+    0,
+  );
+  static const maxFontCatalogDecodedBytes = MermanResourceLimitId._known(
+    'max_font_catalog_decoded_bytes',
+    'font_catalog',
+    true,
+    0,
+  );
+  static const maxFontAssets = MermanResourceLimitId._known(
+    'max_font_assets',
+    'font_catalog',
+    true,
+    0,
+  );
+  static const maxFontFaces = MermanResourceLimitId._known(
+    'max_font_faces',
+    'font_catalog',
+    true,
+    0,
+  );
+  static const maxFontTables = MermanResourceLimitId._known(
+    'max_font_tables',
+    'font_catalog',
+    true,
+    0,
+  );
+  static const maxFontAliases = MermanResourceLimitId._known(
+    'max_font_aliases',
+    'font_catalog',
+    true,
+    0,
+  );
+  static const maxFontDecodedExpansionRatio = MermanResourceLimitId._known(
+    'max_font_decoded_expansion_ratio',
+    'font_decode',
+    true,
+    1,
+  );
+  static const themeEncodedBytesHardCap = MermanResourceLimitId._known(
+    'theme_encoded_bytes_hard_cap',
+    'theme_input',
+    false,
+    1,
+  );
+  static const themeBase64BytesHardCap = MermanResourceLimitId._known(
+    'theme_base64_bytes_hard_cap',
+    'theme_input',
+    false,
+    1,
+  );
+  static const fontAssetCompressedBytesHardCap = MermanResourceLimitId._known(
+    'font_asset_compressed_bytes_hard_cap',
+    'font_decode',
+    false,
+    1,
+  );
+  static const fontAssetDecodedBytesHardCap = MermanResourceLimitId._known(
+    'font_asset_decoded_bytes_hard_cap',
+    'font_decode',
+    false,
+    1,
+  );
+  static const fontCatalogDecodedBytesHardCap = MermanResourceLimitId._known(
+    'font_catalog_decoded_bytes_hard_cap',
+    'font_catalog',
+    false,
+    1,
+  );
+  static const fontAssetsHardCap = MermanResourceLimitId._known(
+    'font_assets_hard_cap',
+    'font_catalog',
+    false,
+    1,
+  );
+  static const fontFacesHardCap = MermanResourceLimitId._known(
+    'font_faces_hard_cap',
+    'font_catalog',
+    false,
+    1,
+  );
+  static const fontTablesHardCap = MermanResourceLimitId._known(
+    'font_tables_hard_cap',
+    'font_catalog',
+    false,
+    1,
+  );
+  static const fontAliasesHardCap = MermanResourceLimitId._known(
+    'font_aliases_hard_cap',
+    'font_catalog',
+    false,
+    1,
+  );
+  static const fontDecodedExpansionRatioHardCap = MermanResourceLimitId._known(
+    'font_decoded_expansion_ratio_hard_cap',
+    'font_decode',
+    false,
+    1,
+  );
+  static const maxDocumentDiagrams = MermanResourceLimitId._known(
+    'max_document_diagrams',
+    'document_scan',
+    true,
+    0,
+  );
+  static const maxAsciiGridCells = MermanResourceLimitId._known(
+    'max_ascii_grid_cells',
+    'ascii_layout',
+    true,
+    1,
+  );
+  static const maxRasterWidth = MermanResourceLimitId._known(
+    'max_raster_width',
+    'raster_allocation',
+    true,
+    1,
+  );
+  static const maxRasterHeight = MermanResourceLimitId._known(
+    'max_raster_height',
+    'raster_allocation',
+    true,
+    1,
+  );
+  static const maxRasterPixels = MermanResourceLimitId._known(
+    'max_raster_pixels',
+    'raster_allocation',
+    true,
+    1,
+  );
+  static const maxEmbeddedImageBytes = MermanResourceLimitId._known(
+    'max_embedded_image_bytes',
+    'embedded_image_decode',
+    true,
+    1,
+  );
+  static const maxTotalEmbeddedImageBytes = MermanResourceLimitId._known(
+    'max_total_embedded_image_bytes',
+    'embedded_image_decode',
+    true,
+    1,
+  );
+  static const maxEmbeddedImagePixels = MermanResourceLimitId._known(
+    'max_embedded_image_pixels',
+    'embedded_image_decode',
+    true,
+    1,
+  );
+  static const maxTotalEmbeddedImagePixels = MermanResourceLimitId._known(
+    'max_total_embedded_image_pixels',
+    'embedded_image_decode',
+    true,
+    1,
+  );
+  static const maxPdfFilterImagePixels = MermanResourceLimitId._known(
+    'max_pdf_filter_image_pixels',
+    'pdf_filter_rasterization',
+    true,
+    1,
+  );
+  static const maxSvgConversionIsolationDepth = MermanResourceLimitId._known(
+    'max_svg_conversion_isolation_depth',
+    'svg_conversion',
+    false,
+    1,
+  );
+  static const maxSvgConversionFilterPrimitivesPerFilter =
+      MermanResourceLimitId._known(
+    'max_svg_conversion_filter_primitives_per_filter',
+    'svg_conversion',
+    false,
+    1,
+  );
+  static const maxTotalSvgConversionFilterPrimitives =
+      MermanResourceLimitId._known(
+    'max_total_svg_conversion_filter_primitives',
+    'svg_conversion',
+    false,
+    1,
+  );
+  static const maxSvgConversionSubroots = MermanResourceLimitId._known(
+    'max_svg_conversion_subroots',
+    'svg_conversion',
+    false,
+    1,
+  );
+  static const maxNestedSvgImages = MermanResourceLimitId._known(
+    'max_nested_svg_images',
+    'svg_conversion',
+    false,
+    1,
+  );
+  static const svgBackendTreeNodes = MermanResourceLimitId._known(
+    'svg_backend_tree_nodes',
+    'svg_conversion',
+    false,
+    1,
+  );
 
-  const MermanResourceLimitId(this.id, this.overridable, this.minimumValue);
+  static const List<MermanResourceLimitId> knownValues =
+      <MermanResourceLimitId>[
+    maxSourceBytes,
+    maxModelItems,
+    maxModelTextBytes,
+    maxModelNestingDepth,
+    maxLayoutWorkUnits,
+    maxSvgBytes,
+    maxSvgElements,
+    maxThemeEncodedBytes,
+    maxThemeBase64Bytes,
+    maxFontAssetCompressedBytes,
+    maxFontAssetDecodedBytes,
+    maxFontCatalogDecodedBytes,
+    maxFontAssets,
+    maxFontFaces,
+    maxFontTables,
+    maxFontAliases,
+    maxFontDecodedExpansionRatio,
+    themeEncodedBytesHardCap,
+    themeBase64BytesHardCap,
+    fontAssetCompressedBytesHardCap,
+    fontAssetDecodedBytesHardCap,
+    fontCatalogDecodedBytesHardCap,
+    fontAssetsHardCap,
+    fontFacesHardCap,
+    fontTablesHardCap,
+    fontAliasesHardCap,
+    fontDecodedExpansionRatioHardCap,
+    maxDocumentDiagrams,
+    maxAsciiGridCells,
+    maxRasterWidth,
+    maxRasterHeight,
+    maxRasterPixels,
+    maxEmbeddedImageBytes,
+    maxTotalEmbeddedImageBytes,
+    maxEmbeddedImagePixels,
+    maxTotalEmbeddedImagePixels,
+    maxPdfFilterImagePixels,
+    maxSvgConversionIsolationDepth,
+    maxSvgConversionFilterPrimitivesPerFilter,
+    maxTotalSvgConversionFilterPrimitives,
+    maxSvgConversionSubroots,
+    maxNestedSvgImages,
+    svgBackendTreeNodes,
+  ];
+
+  const MermanResourceLimitId._known(
+    this.id,
+    this.phase,
+    this.overridable,
+    this.minimumValue,
+  );
+
+  const MermanResourceLimitId._unknown(this.id)
+      : phase = null,
+        overridable = null,
+        minimumValue = null;
+
+  factory MermanResourceLimitId.fromId(String id) {
+    if (id.isEmpty) {
+      throw ArgumentError.value(
+        id,
+        'id',
+        'Resource limit id must not be empty',
+      );
+    }
+    for (final value in knownValues) {
+      if (value.id == id) {
+        return value;
+      }
+    }
+    return MermanResourceLimitId._unknown(id);
+  }
+
   final String id;
-  final bool overridable;
-  final int minimumValue;
+  final String? phase;
+  final bool? overridable;
+  final int? minimumValue;
+
+  bool get isKnown => phase != null;
+
+  @override
+  bool operator ==(Object other) =>
+      other is MermanResourceLimitId && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
+
+  @override
+  String toString() => id;
 }
 
 enum MermanResourceOverrideId {

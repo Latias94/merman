@@ -7,19 +7,43 @@ import { fileURLToPath } from "node:url";
 import { loadNativeTransport } from "../src/candidates/native.mjs";
 import { loadNodeWasmTransport } from "../src/candidates/wasm.mjs";
 import {
+  assertRuntimePackageVersion,
   loadNativeBinding,
-  nativeLoaderPackageVersion,
+  nodeLoaderPackageVersion,
   nativePackageName,
   resolveNodeTarget,
 } from "../src/native-loader.mjs";
 import {
+  MermanDisposedError,
   MermanInvalidTransportError,
   MermanMissingPlatformPackageError,
   MermanOperationError,
   MermanUnsupportedTargetError,
+  NODE_TRANSPORT_LIMITS,
+  NODE_WIRE_CONTRACT,
 } from "../src/errors.mjs";
+import { CAPABILITY_DESCRIPTOR_DIGEST } from "../src/generated/capability-surface.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+function transportIdentity(transportKind, overrides = {}) {
+  return {
+    schema_version: 1,
+    package_id: NODE_WIRE_CONTRACT.package_id,
+    artifact_id: NODE_WIRE_CONTRACT.artifact_id,
+    package_version: nodeLoaderPackageVersion(),
+    transport_kind: transportKind,
+    transport_api_version: NODE_WIRE_CONTRACT.transport_api_version,
+    binding_result_payload_version: NODE_WIRE_CONTRACT.binding_result_payload_version,
+    capability_descriptor_digest: CAPABILITY_DESCRIPTOR_DIGEST,
+    wire_contract: NODE_WIRE_CONTRACT,
+    ...overrides,
+  };
+}
+
+function transportIdentityJson(transportKind, overrides = {}) {
+  return JSON.stringify(transportIdentity(transportKind, overrides));
+}
 
 const glibcReport = { header: { glibcVersionRuntime: "2.39" }, sharedObjects: [] };
 const muslReport = {
@@ -77,7 +101,7 @@ test("the loader resolves one target-specific package and no browser package", (
 
 test("the native loader reads its expected version from its own package manifest", () => {
   const manifest = JSON.parse(readFileSync(path.join(nodeRoot, "package.json"), "utf8"));
-  assert.equal(nativeLoaderPackageVersion(), manifest.version);
+  assert.equal(nodeLoaderPackageVersion(), manifest.version);
 });
 
 test("the native loader accepts and caches an exact-version runtime catalog", async () => {
@@ -85,22 +109,178 @@ test("the native loader accepts and caches an exact-version runtime catalog", as
   class NativeEngine {
     execute() {}
     executeSync() {}
+    metadataJson(id) {
+      return JSON.stringify({ id });
+    }
     runtimeCatalogJson() {
       catalogReads += 1;
-      return JSON.stringify({ package_version: nativeLoaderPackageVersion() });
+      return JSON.stringify({ package_version: nodeLoaderPackageVersion() });
     }
   }
 
   const transport = await loadNativeTransport("{}", {
-    loadPackage: () => ({ NativeEngine }),
+    loadPackage: () => ({
+      NativeEngine,
+      transportIdentityJson: () => transportIdentityJson("napi"),
+    }),
   });
   assert.equal(catalogReads, 1);
   assert.equal(
     JSON.parse(transport.runtimeCatalogJson()).package_version,
-    nativeLoaderPackageVersion(),
+    nodeLoaderPackageVersion(),
   );
   assert.equal(catalogReads, 1);
   await transport.dispose();
+});
+
+test("the native version preflight accepts bounded catalog text only", () => {
+  assert.throws(
+    () => assertRuntimePackageVersion({
+      package_version: nodeLoaderPackageVersion(),
+    }),
+    MermanInvalidTransportError,
+  );
+
+  const catalog = JSON.stringify({ package_version: nodeLoaderPackageVersion() });
+  const exactCatalog = catalog + " ".repeat(
+    NODE_TRANSPORT_LIMITS.runtime_catalog.max_utf8_bytes - Buffer.byteLength(catalog),
+  );
+  assert.equal(assertRuntimePackageVersion(exactCatalog), exactCatalog);
+  assert.throws(
+    () => assertRuntimePackageVersion(`${exactCatalog} `),
+    /wire limit/i,
+  );
+});
+
+test("candidate identity is a strict transport and contract preflight", async () => {
+  const invalidIdentities = [
+    transportIdentity("napi", { package_version: "0.0.0-stale" }),
+    transportIdentity("wasm", {}),
+    transportIdentity("napi", { transport_api_version: 99 }),
+    transportIdentity("napi", { binding_result_payload_version: 99 }),
+    transportIdentity("napi", { capability_descriptor_digest: "sha256:stale" }),
+    transportIdentity("napi", {
+      wire_contract: { ...NODE_WIRE_CONTRACT, artifact_id: "future-artifact" },
+    }),
+    { ...transportIdentity("napi"), package_id: "@mermanjs/other" },
+  ];
+  for (const identity of invalidIdentities) {
+    let constructed = false;
+    class NativeEngine {
+      constructor() {
+        constructed = true;
+      }
+    }
+    await assert.rejects(
+      loadNativeTransport("{}", {
+        loadPackage: () => ({
+          NativeEngine,
+          transportIdentityJson: () => JSON.stringify(identity),
+        }),
+      }),
+      MermanInvalidTransportError,
+    );
+    assert.equal(constructed, false);
+  }
+
+  for (const identityJson of [
+    null,
+    () => transportIdentity("wasm"),
+    () => transportIdentityJson("wasm", { package_version: "0.0.0-stale" }),
+    () => transportIdentityJson("napi"),
+  ]) {
+    let constructed = false;
+    class WasmEngine {
+      constructor() {
+        constructed = true;
+      }
+    }
+    await assert.rejects(
+      loadNodeWasmTransport("{}", {
+        modulePath: "candidate:node-wasm",
+        loadModule: async () => ({
+          WasmEngine,
+          ...(identityJson === null ? {} : { transportIdentityJson: identityJson }),
+        }),
+      }),
+      MermanInvalidTransportError,
+    );
+    assert.equal(constructed, false);
+  }
+
+  const identityJson = transportIdentityJson("napi");
+  const exactIdentityJson = identityJson + " ".repeat(
+    NODE_TRANSPORT_LIMITS.identity.max_utf8_bytes - Buffer.byteLength(identityJson),
+  );
+  assert.equal(
+    Buffer.byteLength(exactIdentityJson),
+    NODE_TRANSPORT_LIMITS.identity.max_utf8_bytes,
+  );
+  let exactConstructed = false;
+  class ExactNativeEngine {
+    constructor() {
+      exactConstructed = true;
+    }
+    execute() {
+      return "{}";
+    }
+    executeSync() {
+      return "{}";
+    }
+    metadataJson() {
+      return "{}";
+    }
+    runtimeCatalogJson() {
+      return JSON.stringify({ package_version: nodeLoaderPackageVersion() });
+    }
+  }
+  const exactTransport = await loadNativeTransport("{}", {
+    loadPackage: () => ({
+      NativeEngine: ExactNativeEngine,
+      transportIdentityJson: () => exactIdentityJson,
+    }),
+  });
+  assert.equal(exactConstructed, true);
+  await exactTransport.dispose();
+
+  await assert.rejects(
+    loadNativeTransport("{}", {
+      loadPackage: () => ({
+        NativeEngine: ExactNativeEngine,
+        transportIdentityJson: () => `${exactIdentityJson} `,
+      }),
+    }),
+    /wire limit/i,
+  );
+});
+
+test("candidate identity export failures become typed invalid-transport errors", async () => {
+  for (const transportKind of ["napi", "wasm"]) {
+    const identityFailure = new Error(`${transportKind} identity failed`);
+    const readIdentity = () => {
+      throw identityFailure;
+    };
+    const load = transportKind === "napi"
+      ? () => loadNativeTransport("{}", {
+        loadPackage: () => ({
+          NativeEngine: class NativeEngine {},
+          transportIdentityJson: readIdentity,
+        }),
+      })
+      : () => loadNodeWasmTransport("{}", {
+        modulePath: "candidate:node-wasm",
+        loadModule: async () => ({
+          WasmEngine: class WasmEngine {},
+          transportIdentityJson: readIdentity,
+        }),
+      });
+    await assert.rejects(load, (error) => {
+      assert.ok(error instanceof MermanInvalidTransportError);
+      assert.match(error.message, /identity preflight failed/i);
+      assert.equal(error.cause, identityFailure);
+      return true;
+    });
+  }
 });
 
 test("the native loader rejects a stale binary runtime catalog", async () => {
@@ -108,6 +288,9 @@ test("the native loader rejects a stale binary runtime catalog", async () => {
   class NativeEngine {
     execute() {}
     executeSync() {}
+    metadataJson(id) {
+      return JSON.stringify({ id });
+    }
     runtimeCatalogJson() {
       return JSON.stringify({ package_version: "0.0.0-stale" });
     }
@@ -118,17 +301,49 @@ test("the native loader rejects a stale binary runtime catalog", async () => {
 
   await assert.rejects(
     loadNativeTransport("{}", {
-      loadPackage: () => ({ NativeEngine }),
+      loadPackage: () => ({
+        NativeEngine,
+        transportIdentityJson: () => transportIdentityJson("napi"),
+      }),
     }),
     (error) => {
       assert.ok(error instanceof MermanInvalidTransportError);
-      assert.match(error.message, /native runtime package version.*loader package/i);
+      assert.match(error.message, /runtime package version.*loader package/i);
       assert.match(error.message, /0\.0\.0-stale/);
-      assert.match(error.message, new RegExp(nativeLoaderPackageVersion().replaceAll(".", "\\.")));
+      assert.match(error.message, new RegExp(nodeLoaderPackageVersion().replaceAll(".", "\\.")));
       return true;
     },
   );
   assert.equal(disposed, true);
+});
+
+test("the Node WASM loader rejects and disposes a stale runtime catalog", async () => {
+  let disposeCalls = 0;
+  class WasmEngine {
+    execute() {}
+    executeSync() {}
+    metadataJson(id) {
+      return JSON.stringify({ id });
+    }
+    runtimeCatalogJson() {
+      return JSON.stringify({ package_version: "0.0.0-stale" });
+    }
+    dispose() {
+      disposeCalls += 1;
+    }
+  }
+
+  await assert.rejects(
+    loadNodeWasmTransport("{}", {
+      modulePath: "candidate:node-wasm",
+      loadModule: async () => ({
+        WasmEngine,
+        transportIdentityJson: () => transportIdentityJson("wasm"),
+      }),
+    }),
+    /runtime package version.*loader package/i,
+  );
+  assert.equal(disposeCalls, 1);
 });
 
 test("a corrupt browser WASM package cannot become a silent fallback", () => {
@@ -164,10 +379,16 @@ test("the explicit Node WASM artifact keeps its CommonJS boundary inside the ESM
   writeFileSync(
     modulePath,
     `module.exports = {
+  transportIdentityJson() {
+    return ${JSON.stringify(transportIdentityJson("wasm"))};
+  },
   WasmEngine: class WasmEngine {
     execute(value) { return value; }
     executeSync(value) { return value; }
-    runtimeCatalogJson() { return "{}"; }
+    metadataJson(id) { return JSON.stringify({ id }); }
+    runtimeCatalogJson() {
+      return JSON.stringify({ package_version: ${JSON.stringify(nodeLoaderPackageVersion())} });
+    }
   },
 };
 `,
@@ -177,6 +398,51 @@ test("the explicit Node WASM artifact keeps its CommonJS boundary inside the ESM
   assert.equal(await transport.execute("async"), "async");
   assert.equal(transport.executeSync("sync"), "sync");
   await transport.dispose();
+});
+
+test("candidate wrappers dispose owned engines once and fail closed afterward", async () => {
+  for (const transportKind of ["napi", "wasm"]) {
+    let disposeCalls = 0;
+    class CandidateEngine {
+      execute(value) {
+        return value;
+      }
+      executeSync(value) {
+        return value;
+      }
+      metadataJson(id) {
+        return JSON.stringify({ id });
+      }
+      runtimeCatalogJson() {
+        return JSON.stringify({ package_version: nodeLoaderPackageVersion() });
+      }
+      dispose() {
+        disposeCalls += 1;
+      }
+    }
+    const transport = transportKind === "napi"
+      ? await loadNativeTransport("{}", {
+        loadPackage: () => ({
+          NativeEngine: CandidateEngine,
+          transportIdentityJson: () => transportIdentityJson("napi"),
+        }),
+      })
+      : await loadNodeWasmTransport("{}", {
+        modulePath: "candidate:node-wasm",
+        loadModule: async () => ({
+          WasmEngine: CandidateEngine,
+          transportIdentityJson: () => transportIdentityJson("wasm"),
+        }),
+      });
+
+    assert.equal(await transport.execute("request"), "request");
+    await transport.dispose();
+    await transport.dispose();
+    assert.equal(disposeCalls, 1);
+    assert.throws(() => transport.execute("request"), MermanDisposedError);
+    assert.throws(() => transport.executeSync("request"), MermanDisposedError);
+    assert.throws(() => transport.metadataJson("supported-diagrams"), MermanDisposedError);
+  }
 });
 
 test("candidate constructors preserve bindings-core typed errors", async () => {
@@ -198,15 +464,23 @@ test("candidate constructors preserve bindings-core typed errors", async () => {
   }
   class WasmEngine {
     constructor() {
-      throw envelope;
+      throw new Error(JSON.stringify(envelope));
     }
   }
 
   for (const create of [
-    () => loadNativeTransport("{}", { loadPackage: () => ({ NativeEngine }) }),
+    () => loadNativeTransport("{}", {
+      loadPackage: () => ({
+        NativeEngine,
+        transportIdentityJson: () => transportIdentityJson("napi"),
+      }),
+    }),
     () => loadNodeWasmTransport("{}", {
       modulePath: "candidate:node-wasm",
-      loadModule: async () => ({ WasmEngine }),
+      loadModule: async () => ({
+        WasmEngine,
+        transportIdentityJson: () => transportIdentityJson("wasm"),
+      }),
     }),
   ]) {
     await assert.rejects(create, (error) => {

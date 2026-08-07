@@ -1,6 +1,7 @@
 use super::super::*;
 use super::geometry::node_left_top;
 use super::model::SequenceSvgModel;
+use merman_core::svg_security::{MermaidNavigationSecurity, prepare_mermaid_navigation_href};
 use rustc_hash::FxHashMap;
 
 pub(super) fn render_sequence_actor_popup_menus(
@@ -76,15 +77,25 @@ pub(super) fn render_sequence_actor_popup_menus(
             let Some(href) = url.as_str() else {
                 continue;
             };
-            let href = merman_core::utils::format_url(href, sanitize_config)
-                .filter(|u| u.trim() != merman_core::utils::BLANK_URL);
+            let security_level_loose = sanitize_config.get_str("securityLevel") == Some("loose");
+            let href = merman_core::utils::sanitize_url(href);
+            let href = prepare_mermaid_navigation_href(
+                &href,
+                MermaidNavigationSecurity::from_security_level_loose(security_level_loose),
+            );
+            let target_attr = if security_level_loose {
+                r#" target="_blank""#
+            } else {
+                ""
+            };
             let text_x = x + 10.0;
             let text_y = actor_height + link_y + 10.0;
             if let Some(href) = href {
                 let _ = write!(
                     out,
-                    r##"<a xlink:href="{href}"><text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor" style="text-anchor: start; font-size: 16px; font-weight: 400;"><tspan x="{x}" dy="0">{label}</tspan></text></a>"##,
-                    href = escape_xml(&href),
+                    r##"<a xlink:href="{href}"{target}><text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor" style="text-anchor: start; font-size: 16px; font-weight: 400;"><tspan x="{x}" dy="0">{label}</tspan></text></a>"##,
+                    href = href.as_serialized_str(),
+                    target = target_attr,
                     x = fmt(text_x),
                     y = fmt(text_y),
                     label = escape_xml(label)

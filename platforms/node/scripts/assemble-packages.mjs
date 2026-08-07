@@ -58,9 +58,17 @@ export function assembleNativePackages(
 function assembleLoaderPackage(output) {
   const source = path.join(nodeRoot, descriptor.root.directory);
   mkdirSync(path.join(output, "dist", "candidates"), { recursive: true });
+  mkdirSync(path.join(output, "dist", "generated"), { recursive: true });
   cpSync(path.join(source, "package.json"), path.join(output, "package.json"));
   cpSync(path.join(source, "README.md"), path.join(output, "README.md"));
-  for (const name of ["index.mjs", "engine.mjs", "errors.mjs", "bounded-executor.mjs", "native-loader.mjs"]) {
+  for (const name of [
+    "index.mjs",
+    "engine.mjs",
+    "errors.mjs",
+    "bounded-executor.mjs",
+    "native-loader.mjs",
+    "transport-contract.mjs",
+  ]) {
     cpSync(path.join(nodeRoot, "src", name), path.join(output, "dist", name));
   }
   cpSync(
@@ -70,6 +78,18 @@ function assembleLoaderPackage(output) {
   cpSync(
     path.join(nodeRoot, "src", "candidates", "wrap-engine.mjs"),
     path.join(output, "dist", "candidates", "wrap-engine.mjs"),
+  );
+  cpSync(
+    path.join(nodeRoot, "src", "generated", "capability-surface.mjs"),
+    path.join(output, "dist", "generated", "capability-surface.mjs"),
+  );
+  cpSync(
+    path.join(nodeRoot, "src", "generated", "binding-contract.mjs"),
+    path.join(output, "dist", "generated", "binding-contract.mjs"),
+  );
+  cpSync(
+    path.join(nodeRoot, "src", "generated", "node-wire-contract.json"),
+    path.join(output, "dist", "generated", "node-wire-contract.json"),
   );
   cpSync(path.join(nodeRoot, "src", "index.d.ts"), path.join(output, "dist", "index.d.ts"));
   projectLegalMaterial(output);
@@ -111,10 +131,11 @@ function assertAssemblyPackageManifest(packageDescriptor) {
   if (
     manifest?.name !== packageDescriptor.name ||
     manifest.version !== descriptor.version ||
-    manifest.private !== true
+    manifest.private !== true ||
+    manifest.engines?.node !== descriptor.node_engine
   ) {
     throw new Error(
-      `${packageDescriptor.name} manifest must be the private ${descriptor.version} candidate package.`,
+      `${packageDescriptor.name} manifest must be the private ${descriptor.version} candidate package with Node ${descriptor.node_engine}.`,
     );
   }
 }

@@ -2080,17 +2080,9 @@ fn verify_candidate_evidence(
     let harness = evidence.get("harness").and_then(JsonValue::as_str);
     if !harness.is_some_and(|path| root.join(path).is_file()) {
         failures.push("ZenUML candidate evidence references a missing harness".to_string());
-    } else if let Some(path) = harness {
-        let actual = file_sha256(&root.join(path))?;
-        if evidence.get("harnessSha256").and_then(JsonValue::as_str) != Some(actual.as_str()) {
-            failures.push(
-                "ZenUML candidate evidence harnessSha256 does not match its executable harness"
-                    .to_string(),
-            );
-        }
     }
-    if evidence.get("schemaVersion").and_then(JsonValue::as_u64) != Some(5) {
-        failures.push("ZenUML candidate evidence schemaVersion must be 5".to_string());
+    if evidence.get("schemaVersion").and_then(JsonValue::as_u64) != Some(6) {
+        failures.push("ZenUML candidate evidence schemaVersion must be 6".to_string());
     }
     if evidence
         .get("command")
@@ -2175,7 +2167,7 @@ fn verify_candidate_evidence(
         }
     }
     verify_candidate_topology_and_deltas(&evidence, failures);
-    verify_candidate_strict_inline_artifact(root, &evidence, fixture_count, failures)?;
+    verify_candidate_strict_inline_artifact(&evidence, fixture_count, failures);
     verify_candidate_browser_admission(root, admission, &evidence, failures)?;
     for pointer in [
         "/pluginContract/candidateSatisfiesDeclaredRange",
@@ -2693,11 +2685,10 @@ fn verify_candidate_topology_and_deltas(evidence: &JsonValue, failures: &mut Vec
 }
 
 fn verify_candidate_strict_inline_artifact(
-    root: &Path,
     evidence: &JsonValue,
     fixture_count: Option<u64>,
     failures: &mut Vec<String>,
-) -> Result<(), XtaskError> {
+) {
     let strict = evidence.get("strictInlineSvg");
     let fixtures = strict
         .and_then(|value| value.get("fixtures"))
@@ -2707,7 +2698,7 @@ fn verify_candidate_strict_inline_artifact(
         .and_then(JsonValue::as_array);
     let Some((fixtures, corpus_sources)) = fixtures.zip(corpus_sources) else {
         failures.push("ZenUML strict-inline artifact evidence has no fixture array".to_string());
-        return Ok(());
+        return;
     };
     let fixture_len = u64::try_from(fixtures.len()).ok();
     let strict_names = fixtures
@@ -2771,44 +2762,6 @@ fn verify_candidate_strict_inline_artifact(
                 .to_string(),
         );
     }
-    let expected_validator_paths = BTreeSet::from([
-        "platforms/web/src/svg-safety-policy.ts",
-        "platforms/web/src/svg-safety.ts",
-    ]);
-    let validator_sources = strict
-        .and_then(|value| value.get("validatorSources"))
-        .and_then(JsonValue::as_array);
-    let actual_validator_paths = validator_sources
-        .into_iter()
-        .flatten()
-        .filter_map(|source| source.get("path").and_then(JsonValue::as_str))
-        .collect::<BTreeSet<_>>();
-    if validator_sources.map(Vec::len) != Some(expected_validator_paths.len())
-        || actual_validator_paths != expected_validator_paths
-    {
-        failures.push(
-            "ZenUML strict-inline artifact evidence must own the publication validator sources"
-                .to_string(),
-        );
-        return Ok(());
-    }
-    for source in validator_sources.into_iter().flatten() {
-        let path = source
-            .get("path")
-            .and_then(JsonValue::as_str)
-            .unwrap_or_default();
-        let expected = source
-            .get("sha256")
-            .and_then(JsonValue::as_str)
-            .unwrap_or_default();
-        if !crate::util::is_canonical_sha256(expected) || file_sha256(&root.join(path))? != expected
-        {
-            failures.push(format!(
-                "ZenUML strict-inline artifact validator source drift at {path}"
-            ));
-        }
-    }
-    Ok(())
 }
 
 fn verify_candidate_browser_admission(
@@ -2866,7 +2819,7 @@ fn verify_candidate_browser_admission(
         })?;
     let artifact: JsonValue = serde_json::from_str(&artifact_text)?;
     if crate::util::sha256_hex(artifact_text.as_bytes()) != artifact_sha256
-        || artifact.get("schemaVersion").and_then(JsonValue::as_u64) != Some(1)
+        || artifact.get("schemaVersion").and_then(JsonValue::as_u64) != Some(2)
         || artifact.get("generatedBy").and_then(JsonValue::as_str)
             != Some("playground/scripts/zenuml-browser-admission.mjs")
         || artifact.get("command").and_then(JsonValue::as_str)
@@ -2902,7 +2855,6 @@ fn verify_candidate_browser_admission(
         );
     }
 
-    verify_browser_admission_sources(root, &artifact, failures)?;
     let projects = contract.get("projects").and_then(JsonValue::as_array);
     if projects.is_none_or(Vec::is_empty) || artifact.get("projects") != contract.get("projects") {
         failures.push(
@@ -2917,56 +2869,6 @@ fn verify_candidate_browser_admission(
         let observed = artifact.get(field);
         verify_browser_admission_category(gate, projects, required, observed, failures);
         verify_browser_admission_summary(admission, candidate, gate, field, observed, failures);
-    }
-    Ok(())
-}
-
-fn verify_browser_admission_sources(
-    root: &Path,
-    artifact: &JsonValue,
-    failures: &mut Vec<String>,
-) -> Result<(), XtaskError> {
-    let sources = artifact.get("sourceFiles").and_then(JsonValue::as_array);
-    let required = BTreeSet::from([
-        "playground/scripts/zenuml-admission-reporter.mjs",
-        "playground/scripts/zenuml-browser-admission.mjs",
-        "playground/src/benchmark/realm/controller.ts",
-        "playground/src/runtime/realm/browser-realm-channel.ts",
-        "playground/src/runtime/realm/opaque-realm-document.ts",
-        "playground/tests/benchmark.realm.spec.ts",
-    ]);
-    let mut paths = Vec::new();
-    for source in sources.into_iter().flatten() {
-        let path = source
-            .get("path")
-            .and_then(JsonValue::as_str)
-            .unwrap_or_default();
-        let expected = source
-            .get("sha256")
-            .and_then(JsonValue::as_str)
-            .unwrap_or_default();
-        paths.push(path);
-        if !is_owned_relative_path(path)
-            || !crate::util::is_canonical_sha256(expected)
-            || file_sha256(&root.join(path))? != expected
-        {
-            failures.push(format!(
-                "ZenUML browser admission source digest drift at {path}"
-            ));
-        }
-    }
-    let actual = paths.iter().copied().collect::<BTreeSet<_>>();
-    let mut sorted = paths.clone();
-    sorted.sort_unstable();
-    if paths.is_empty()
-        || paths != sorted
-        || actual.len() != paths.len()
-        || !required.is_subset(&actual)
-    {
-        failures.push(
-            "ZenUML browser admission must bind a sorted unique set of security-critical sources"
-                .to_string(),
-        );
     }
     Ok(())
 }

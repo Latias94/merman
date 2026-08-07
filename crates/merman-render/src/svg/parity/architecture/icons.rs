@@ -47,10 +47,10 @@ pub(super) fn write_arch_icon_svg(
     icon_name: &str,
     icon_size_px: f64,
     id_scope: &str,
-) {
+) -> crate::Result<()> {
     let body = arch_icon_body(icon_name);
     let body = if arch_icon_body_has_internal_ids(icon_name) {
-        Cow::Owned(scope_svg_internal_ids(body, id_scope))
+        Cow::Owned(scope_svg_internal_ids(body, id_scope)?)
     } else {
         Cow::Borrowed(body)
     };
@@ -61,6 +61,7 @@ pub(super) fn write_arch_icon_svg(
     out.push_str(r#"" viewBox="0 0 80 80">"#);
     out.push_str(body.as_ref());
     out.push_str("</svg>");
+    Ok(())
 }
 
 pub(super) fn write_arch_icon_svg_with_registry(
@@ -69,32 +70,40 @@ pub(super) fn write_arch_icon_svg_with_registry(
     icon_size_px: f64,
     icon_registry: Option<&crate::svg::IconRegistry>,
     id_scope: &str,
-) {
-    if let Some(svg) = icon_registry.and_then(|registry| {
-        registry.svg_for_scoped(
+    effective_config: &merman_core::MermaidConfig,
+    work_meter: &crate::resources::OperationWorkMeter,
+) -> crate::Result<()> {
+    let svg = match icon_registry {
+        Some(registry) => registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
             icon_name,
-            icon_size_px,
-            icon_size_px,
-            Some("architecture"),
-            None,
+            width_px: icon_size_px,
+            height_px: icon_size_px,
+            fallback_prefix: Some("mermaid-architecture"),
+            extra_class: None,
             id_scope,
-        )
-    }) {
+            effective_config,
+            work_meter,
+        })?,
+        None => None,
+    };
+    if let Some(svg) = svg {
         out.push_str(&svg);
     } else {
-        write_arch_icon_svg(out, icon_name, icon_size_px, id_scope);
+        write_arch_icon_svg(out, icon_name, icon_size_px, id_scope)?;
     }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::svg::{IconRegistry, IconSvg};
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+    use crate::svg::{IconPack, IconRegistry};
 
     #[test]
     fn write_arch_icon_svg_preserves_builtin_id_scoping_behavior() {
         let mut server = String::new();
-        write_arch_icon_svg(&mut server, "server", 80.0, "scope-a");
+        write_arch_icon_svg(&mut server, "server", 80.0, "scope-a").unwrap();
         assert!(server.starts_with(
             r#"<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">"#
         ));
@@ -102,7 +111,7 @@ mod tests {
         assert!(!server.contains("IconifyId"), "{server}");
 
         let mut database = String::new();
-        write_arch_icon_svg(&mut database, "database", 80.0, "scope-b");
+        write_arch_icon_svg(&mut database, "database", 80.0, "scope-b").unwrap();
         assert!(database.contains(r#"id="IconifyId"#), "{database}");
         assert!(!database.contains(r#"id="b""#), "{database}");
     }
@@ -117,15 +126,19 @@ mod tests {
 
     #[test]
     fn write_arch_icon_svg_with_registry_scopes_internal_ids_per_architecture_node() {
-        let mut registry = IconRegistry::new();
-        registry.insert(
-            "test:clip",
-            IconSvg::new(
-                r##"<defs><clipPath id="clip"><path id="shape" d="M0 0H16V16H0z"/></clipPath></defs><path data-icon="fixture" clip-path="url(#clip)" d="M0 0H16V16H0z"/><use href="#shape" xlink:href="#shape"/>"##,
-                16.0,
-                16.0,
-            ),
-        );
+        let pack = br##"{
+            "prefix":"test",
+            "icons":{
+                "clip":{
+                    "body":"<defs><clipPath id=\"clip\"><path id=\"shape\" d=\"M0 0H16V16H0z\"/></clipPath></defs><path data-icon=\"fixture\" clip-path=\"url(#clip)\" d=\"M0 0H16V16H0z\"/><use href=\"#shape\" xlink:href=\"#shape\"/>"
+                }
+            }
+        }"##;
+        let registry = IconRegistry::from_packs([IconPack::new(pack)]).unwrap();
+        let effective_config =
+            merman_core::MermaidConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+        let work_meter =
+            OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
 
         let mut service = String::new();
         write_arch_icon_svg_with_registry(
@@ -134,7 +147,10 @@ mod tests {
             80.0,
             Some(&registry),
             "diagram-service-a-icon",
-        );
+            &effective_config,
+            &work_meter,
+        )
+        .unwrap();
         let mut group = String::new();
         write_arch_icon_svg_with_registry(
             &mut group,
@@ -142,7 +158,10 @@ mod tests {
             60.0,
             Some(&registry),
             "diagram-group-app-icon",
-        );
+            &effective_config,
+            &work_meter,
+        )
+        .unwrap();
 
         for svg in [&service, &group] {
             assert!(!svg.contains(r#"id="clip""#), "{svg}");

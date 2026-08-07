@@ -1,7 +1,7 @@
 {
   "schema_version": 3,
-  "mermaid_version": "11.16.0",
-  "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+  "mermaid_version": "11.16.1",
+  "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
   "comparator_revision": "semantic-label-v3",
   "decimals": 3,
   "entries": [

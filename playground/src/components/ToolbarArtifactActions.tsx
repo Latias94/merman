@@ -71,6 +71,7 @@ export function useToolbarArtifactActions() {
   const currentMerman =
     currentBatch?.merman.status === "success" ? currentBatch.merman : null;
   const artifactActionsEnabled = currentMerman !== null;
+  const asciiAvailable = currentBatch?.ascii.status === "success";
 
   const handleExportSVG = useCallback(async () => {
     try {
@@ -193,7 +194,7 @@ export function useToolbarArtifactActions() {
   return {
     artifactActionsEnabled,
     asciiExportDescription,
-    asciiAvailable: Boolean(currentMerman?.ascii),
+    asciiAvailable,
     handleCopyCode,
     handleCopyMarkdown,
     handleCopySVG,

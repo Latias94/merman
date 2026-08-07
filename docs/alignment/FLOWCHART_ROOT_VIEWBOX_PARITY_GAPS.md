@@ -1,7 +1,7 @@
 # Flowchart Root Viewport Parity (Mermaid 11.16)
 
 This note describes the current Flowchart root viewport contract and the focused tools used when
-`parity-root` regresses. The pinned authority is Mermaid `11.16.0`; see
+`parity-root` regresses. The pinned authority is Mermaid `11.16.1`; see
 `tools/upstreams/REPOS.lock.json` for the exact source revision.
 
 ## Ownership

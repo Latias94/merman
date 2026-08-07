@@ -7,6 +7,7 @@ use crate::svg::parity::util;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_lined_cylinder(
     out: &mut String,
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,
 ) {
@@ -31,9 +32,16 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_lined_cylinder(
     );
     let _ = write!(
         out,
-        r#"<path d="{}" class="basic label-container outer-path" style="{}" transform="translate({},{})"/>"#,
+        r#"<path d="{}" class="basic label-container outer-path" style="{}""#,
         escape_attr(&path_data),
         escape_attr(common.style),
+    );
+    if ctx.security_level_loose {
+        let _ = write!(out, r#" label-offset-y="{}""#, util::fmt(ry));
+    }
+    let _ = write!(
+        out,
+        r#" transform="translate({},{})"/>"#,
         util::fmt(-w / 2.0),
         util::fmt(-(h / 2.0 + ry))
     );

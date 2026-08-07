@@ -233,6 +233,41 @@ fn render_sequence_svg_from_text_with_engine(engine: Engine, text: &str) -> Stri
         .to_string()
 }
 
+#[test]
+fn sequence_actor_links_follow_mermaid_security_level() {
+    let strict = render_sequence_svg_from_text(
+        r#"sequenceDiagram
+participant Alice
+link Alice: Docs @ https://example.test/docs
+link Alice: Script @ javascript:alert(1)
+"#,
+    );
+    assert!(
+        strict.contains(r#"xlink:href="https://example.test/docs""#),
+        "{strict}"
+    );
+    assert!(
+        strict.contains("<a><text") && !strict.contains("javascript:alert(1)"),
+        "{strict}"
+    );
+
+    let loose = render_sequence_svg_from_text_with_engine(
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "loose"
+        }))),
+        r#"sequenceDiagram
+participant Alice
+link Alice: Script @ javascript:alert(1)
+"#,
+    );
+    assert!(
+        loose.contains(r#"xlink:href="about:blank""#)
+            && loose.contains(r#"target="_blank""#)
+            && !loose.to_ascii_lowercase().contains("javascript:"),
+        "{loose}"
+    );
+}
+
 fn render_sequence_svg_with_theme_variables(
     text: &str,
     theme_variables: serde_json::Value,

@@ -96,7 +96,7 @@ fn main() -> Result<(), merman_core::Error> {
 
 ## Compatibility
 
-`merman-core` tracks Mermaid `@11.16.0` and treats pinned upstream behavior as the compatibility target. Compatibility semantic JSON is the public serialized parser projection. It is not a second successful grammar or the master built-in render input. Typed render models and editor facts project the same family semantic construction into purpose-specific shapes.
+`merman-core` tracks Mermaid `@11.16.1` and treats pinned upstream behavior as the compatibility target. Compatibility semantic JSON is the public serialized parser projection. It is not a second successful grammar or the master built-in render input. Typed render models and editor facts project the same family semantic construction into purpose-specific shapes.
 
 The built-in Diagram Family catalog is the authoritative source for ids, aliases, detector order, parser/editor/render capabilities, metadata, configuration namespaces, and authoring headers. The pinned Mermaid catalog is complete and independent of Cargo feature selection. Custom parser overlays remain explicit and do not inherit a built-in renderer or editor capability.
 

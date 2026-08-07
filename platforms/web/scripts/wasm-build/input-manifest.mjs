@@ -28,7 +28,6 @@ const ROOT_FILE_INPUTS = [
   "abi/text-measurement-v1.json",
   "capabilities/artifact-profiles-v1.json",
   "capabilities/feature-surface-v1.json",
-  "capabilities/generated/capability_surface.rs",
   "platforms/web/scripts/build-wasm.mjs",
   "platforms/web/web-surface-descriptor.schema.json",
   "platforms/web/web-surface-descriptor.json",

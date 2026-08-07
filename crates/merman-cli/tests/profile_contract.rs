@@ -751,6 +751,9 @@ fn serve_icon_body_once() -> (String, std::thread::JoinHandle<Result<(), String>
             }
         };
         stream
+            .set_nonblocking(false)
+            .map_err(|error| format!("make icon fixture stream blocking: {error}"))?;
+        stream
             .set_read_timeout(Some(Duration::from_secs(5)))
             .map_err(|error| format!("set icon fixture timeout: {error}"))?;
         let mut request = Vec::new();

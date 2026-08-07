@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "mermaidRelease": "11.16.0",
+  "mermaidRelease": "11.16.1",
   "plugin": "@mermaid-js/mermaid-zenuml@0.2.3",
   "oracle": {
     "version": "3.47.8",
@@ -141,9 +141,9 @@
   "excludedLatestMajor": {
     "version": "4.2.0",
     "commit": "377f6002edac0e7591d6f788bc2d925e0e8a6f85",
-    "reason": "Rejected from Mermaid 11.16 graph: plugin range ^3.47.0 and Mermaid workspace range ^3.47.8 both exclude major 4.",
+    "reason": "Rejected from Mermaid 11.16.1 graph: plugin range ^3.47.0 and Mermaid workspace range ^3.47.8 both exclude major 4.",
     "nextAdmission": "separate-major-zenuml-v4",
     "artifact": "tools/upstreams/ZENUML_CORE_V4_DEFERRED_ADMISSION.json",
-    "artifactSha256": "c86e5a8aa45c64404e9e4bfb6decd923e107ce1258cdcaba39c22be4082a9fa0"
+    "artifactSha256": "5c5cb7f623d66cbcf825fdd99b24bfca9dbf46b08af66cb55c76def7f57f011b"
   }
 }

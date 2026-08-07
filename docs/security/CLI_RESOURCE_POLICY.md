@@ -24,9 +24,10 @@ change.
 | `trusted-native` | Default CLI use on trusted local files and batch jobs |
 | `unbounded-for-trusted-input` | Explicitly trusted exceptional workloads |
 
-The unbounded profile removes policy ceilings, but it does not remove integer
-overflow checks, backend hard capabilities, job and redirect guards, or finite
-network timeouts.
+The unbounded profile removes caller-policy ceilings where the underlying
+capability is actually unbounded. It does not remove integer overflow checks,
+renderer-owned icon-registry ceilings, backend hard capabilities, job and
+redirect guards, or finite network timeouts.
 
 ## CLI-Owned Defaults
 
@@ -39,10 +40,10 @@ parallelism.
 | `max_config_bytes` | 256 KiB | 512 KiB | 4 MiB | Unlimited |
 | `max_css_bytes` | 512 KiB | 1 MiB | 8 MiB | Unlimited |
 | `max_puppeteer_config_bytes` | 256 KiB | 512 KiB | 2 MiB | Unlimited |
-| `max_local_icon_body_bytes` | 8 MiB | 16 MiB | 64 MiB | Unlimited |
-| `max_remote_icon_body_bytes` | 8 MiB | 16 MiB | 64 MiB | Unlimited |
-| `max_aggregate_icon_bytes` | 16 MiB | 32 MiB | 256 MiB | Unlimited |
-| `max_icon_packs` | 8 | 16 | 64 | 256 hard guard |
+| `max_local_icon_body_bytes` | 8 MiB | 16 MiB | 16 MiB | 16 MiB hard capability |
+| `max_remote_icon_body_bytes` | 8 MiB | 16 MiB | 16 MiB | 16 MiB hard capability |
+| `max_aggregate_icon_bytes` | 16 MiB | 32 MiB | 32 MiB | 32 MiB hard capability |
+| `max_icon_packs` | 8 | 16 | 16 | 16 hard capability |
 | `max_markdown_charts` | 256 | 1,024 | 8,192 | Unlimited |
 | `max_staged_bytes` | 512 MiB | 1 GiB | 8 GiB | Unlimited |
 | `max_scheduling_weight_bytes` | 576 MiB | 640 MiB | 2 GiB | Unlimited |
@@ -81,12 +82,31 @@ For each set, measure file bytes and select the maximum without splitting paths
 on whitespace. Fence counts must use the CLI's Markdown scanner rather than a
 regular-expression approximation.
 
-The CSS, Puppeteer compatibility, icon-body, staged-output, and scheduling
-ceilings are initial engineering ceilings. The repository does not yet contain
-a representative production corpus for those workload classes, so they must
-not be presented as statistically calibrated limits. A future reduction
-requires a checked-in measurement receipt, a representative near-high-water
-test, and an explicit review of the remaining margin.
+Icon acquisition is intentionally no looser than the renderer constructor it
+feeds. A CLI profile or `--resource-limit` override may tighten local, remote,
+aggregate, or pack-count admission, but it cannot request a value above the
+renderer-owned 16 MiB per-pack, 32 MiB aggregate, and 16-pack capabilities.
+After acquisition, the same bytes still pass the renderer's JSON, identifier,
+geometry, alias, XML, retained-memory, and build-work ceilings. The CLI never
+substitutes its acquisition ledger for renderer admission.
+
+The icon ceilings were calibrated on 2026-08-04 against four complete Iconify
+collections totaling 23,705,343 encoded bytes and 44,210 resolved entries, a
+256-icon-per-pack curated subset, and synthetic exact-ceiling body/alias,
+entry/edge, and XML rewrite fixtures. The complete corpus high-water marks were
+8,396,150 bytes for one pack and 23,705,343 bytes aggregate, leaving about 2.0x
+and 1.42x encoded-byte headroom respectively. Exact and plus-one tests remain
+authoritative for admission behavior; the calibration receipt records latency,
+allocation, retained memory, render amplification, toolchain, host, and input
+hash provenance. See
+[`ICON_REGISTRY_CALIBRATION_2026-08-04.md`](../performance/ICON_REGISTRY_CALIBRATION_2026-08-04.md).
+
+The CSS, Puppeteer compatibility, staged-output, and scheduling ceilings remain
+initial engineering ceilings. The repository does not yet contain a
+representative production corpus for those workload classes, so they must not
+be presented as statistically calibrated limits. A future reduction requires a
+checked-in measurement receipt, a representative near-high-water test, and an
+explicit review of the remaining margin.
 
 ## Network Boundary
 

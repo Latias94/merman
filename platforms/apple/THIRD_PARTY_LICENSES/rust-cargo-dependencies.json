@@ -18,12 +18,10 @@
             "layout-cytoscape",
             "layout-elk",
             "math",
+            "native-runtime",
             "pdf",
             "png",
-            "svg",
-            "system-clock",
-            "system-random",
-            "system-timezone"
+            "svg"
           ],
           "target": {
             "name": "merman_uniffi",
@@ -80,9 +78,9 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "7ec3ef0b5f2b4841da09d67ec956aef997ed0073282e18053b266127731b8d81",
+    "cargo_lock_sha256": "4931598f4a3ef065ac02661d3a025949e16713bfd60f2cfedbe8eae5d5136c99",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
-    "artifact_bundle_sha256": "90eabe91a74e87fa437108a2d0c854f3eb77ae47b849efac4c72584b6a5d0c1f"
+    "artifact_bundle_sha256": "529c7344ebe791ec0dc16b7b61363595c6ae4d1d1475f76cf93b53c9f711af6c"
   },
   "target_dependency_closures": [
     {

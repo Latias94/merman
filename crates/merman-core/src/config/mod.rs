@@ -242,47 +242,145 @@ pub(crate) fn mirror_legacy_font_family_into_theme_variables_value(value: &mut V
 }
 
 fn deep_merge_value(base: &mut Value, incoming: &Value) {
-    let mut stack: Vec<Vec<String>> = vec![Vec::new()];
+    // Mermaid 11.16.1 uses `assignWithDepth(dst, src)` with its default depth of two for site,
+    // frontmatter, and directive configuration. Keep that bounded traversal instead of turning
+    // configuration merging into an unbounded recursive deep merge.
+    assign_with_depth(base, incoming, 2);
+}
 
-    while let Some(path) = stack.pop() {
-        let Some(in_value) = value_at_key_path(incoming, &path) else {
-            continue;
-        };
-        let Some(base_slot) = value_at_key_path_mut(base, &path) else {
-            continue;
-        };
+fn assign_with_depth(destination: &mut Value, source: &Value, depth: usize) {
+    if let Value::Array(source_items) = source {
+        match destination {
+            Value::Array(destination_items) => merge_arrays(destination_items, source_items),
+            Value::Object(_) => merge_array_of_sources(destination, source_items, depth),
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+        }
+        return;
+    }
 
-        match (base_slot, in_value) {
-            (Value::Object(base_map), Value::Object(in_map)) => {
-                for (key, in_child) in in_map {
-                    if base_map.contains_key(key) {
-                        let mut child_path = path.clone();
-                        child_path.push(key.clone());
-                        stack.push(child_path);
-                    } else {
-                        base_map.insert(key.clone(), clone_value_nonrecursive(in_child));
+    if destination.is_null() {
+        // Mermaid 11.16.1 treats a null destination as an absent value and returns the source.
+        // Mutating the slot in place is the JSON equivalent of the caller assigning that return
+        // value back to the parent property.
+        replace_value_nonrecursive(destination, clone_value_nonrecursive(source));
+        return;
+    }
+
+    if source.is_null() {
+        // `assignWithDepth` ignores null-valued object properties when the destination is present.
+        return;
+    }
+
+    if depth == 0 {
+        object_assign(destination, source);
+        return;
+    }
+
+    let (Value::Object(destination_map), Value::Object(source_map)) = (destination, source) else {
+        return;
+    };
+
+    for (key, source_child) in source_map {
+        if is_non_null_js_object(source_child) {
+            match destination_map.get_mut(key) {
+                Some(destination_child) if is_js_object(destination_child) => {
+                    assign_with_depth(destination_child, source_child, depth - 1);
+                }
+                Some(_) => {}
+                None => {
+                    destination_map.insert(key.clone(), empty_container_for(source_child));
+                    if let Some(destination_child) = destination_map.get_mut(key) {
+                        assign_with_depth(destination_child, source_child, depth - 1);
                     }
                 }
             }
-            (base_slot, in_value) => {
-                replace_value_nonrecursive(base_slot, clone_value_nonrecursive(in_value));
-            }
+        } else if !source_child.is_null()
+            && destination_map
+                .get(key)
+                .is_none_or(|value| !is_js_object(value))
+        {
+            insert_cloned(destination_map, key, source_child);
         }
     }
 }
 
-fn value_at_key_path<'a>(mut value: &'a Value, path: &[String]) -> Option<&'a Value> {
-    for key in path {
-        value = value.as_object()?.get(key)?;
+fn merge_array_of_sources(destination: &mut Value, source_items: &[Value], depth: usize) {
+    let mut stack = source_items.iter().rev().collect::<Vec<_>>();
+    while let Some(source) = stack.pop() {
+        if let Value::Array(items) = source {
+            stack.extend(items.iter().rev());
+        } else {
+            assign_with_depth(destination, source, depth);
+        }
     }
-    Some(value)
 }
 
-fn value_at_key_path_mut<'a>(mut value: &'a mut Value, path: &[String]) -> Option<&'a mut Value> {
-    for key in path {
-        value = value.as_object_mut()?.get_mut(key)?;
+fn merge_arrays(destination: &mut Vec<Value>, source: &[Value]) {
+    for source_item in source {
+        let already_present = is_json_primitive(source_item)
+            && destination
+                .iter()
+                .any(|destination_item| same_json_primitive(destination_item, source_item));
+        if !already_present {
+            destination.push(clone_value_nonrecursive(source_item));
+        }
     }
-    Some(value)
+}
+
+fn object_assign(destination: &mut Value, source: &Value) {
+    match (destination, source) {
+        (Value::Object(destination_map), Value::Object(source_map)) => {
+            for (key, source_child) in source_map {
+                insert_cloned(destination_map, key, source_child);
+            }
+        }
+        // JavaScript arrays can own named properties, while JSON arrays cannot represent them.
+        // Numeric config keys are not part of Mermaid's public config shape, so leave this
+        // unrepresentable object-to-array case unchanged.
+        (Value::Array(_), Value::Object(_)) => {}
+        (destination, source) => {
+            replace_value_nonrecursive(destination, clone_value_nonrecursive(source));
+        }
+    }
+}
+
+fn insert_cloned(destination: &mut Map<String, Value>, key: &str, source: &Value) {
+    if let Some(previous) = destination.insert(key.to_string(), clone_value_nonrecursive(source)) {
+        drop_value_nonrecursive(previous);
+    }
+}
+
+fn empty_container_for(value: &Value) -> Value {
+    if value.is_array() {
+        Value::Array(Vec::new())
+    } else {
+        Value::Object(Map::new())
+    }
+}
+
+fn is_js_object(value: &Value) -> bool {
+    matches!(value, Value::Null | Value::Array(_) | Value::Object(_))
+}
+
+fn is_non_null_js_object(value: &Value) -> bool {
+    matches!(value, Value::Array(_) | Value::Object(_))
+}
+
+fn is_json_primitive(value: &Value) -> bool {
+    matches!(
+        value,
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_)
+    )
+}
+
+fn same_json_primitive(left: &Value, right: &Value) -> bool {
+    match (left, right) {
+        (Value::Null, Value::Null) => true,
+        (Value::Bool(left), Value::Bool(right)) => left == right,
+        (Value::Number(left), Value::Number(right)) => left.as_f64() == right.as_f64(),
+        (Value::String(left), Value::String(right)) => left == right,
+        _ => false,
+    }
 }
 
 pub(crate) fn replace_value_nonrecursive(slot: &mut Value, value: Value) {
@@ -476,6 +574,188 @@ mod tests {
         assert_eq!(cfg.get_str("themeVariables.fontFamily"), Some("Inter"));
     }
 
+    #[test]
+    fn deep_merge_ignores_null_source_values() {
+        let mut config = MermaidConfig::from_value(json!({
+            "theme": "default",
+            "flowchart": {
+                "htmlLabels": true
+            }
+        }));
+
+        config.deep_merge(&json!({
+            "theme": null,
+            "flowchart": {
+                "htmlLabels": null,
+                "curve": "basis"
+            },
+            "newValue": null
+        }));
+
+        assert_eq!(
+            config.as_value(),
+            &json!({
+                "theme": "default",
+                "flowchart": {
+                    "htmlLabels": true,
+                    "curve": "basis"
+                }
+            })
+        );
+
+        config.deep_merge(&Value::Null);
+        assert_eq!(config.get_str("theme"), Some("default"));
+    }
+
+    #[test]
+    fn deep_merge_preserves_null_values_inside_arrays() {
+        let mut config = MermaidConfig::from_value(json!({
+            "values": ["old"]
+        }));
+
+        config.deep_merge(&json!({
+            "values": [1, null, 2]
+        }));
+
+        assert_eq!(config.as_value()["values"], json!(["old", 1, null, 2]));
+    }
+
+    #[test]
+    fn deep_merge_preserves_null_values_at_the_depth_boundary() {
+        let mut config = MermaidConfig::default();
+
+        config.deep_merge(&json!({
+            "flowchart": {
+                "curve": "basis",
+                "nested": {
+                    "ignored": null,
+                    "kept": true
+                },
+                "values": [1, null, { "insideArray": null }]
+            }
+        }));
+
+        assert_eq!(
+            config.as_value()["flowchart"],
+            json!({
+                "curve": "basis",
+                "nested": {
+                    "ignored": null,
+                    "kept": true
+                },
+                "values": [1, null, { "insideArray": null }]
+            })
+        );
+    }
+
+    #[test]
+    fn deep_merge_deduplicates_primitives_in_new_arrays() {
+        let mut config = MermaidConfig::default();
+
+        config.deep_merge(&json!({
+            "values": [1, 1.0, null, null, { "value": 1 }, { "value": 1 }]
+        }));
+
+        assert_eq!(
+            config.as_value()["values"],
+            json!([1, null, { "value": 1 }, { "value": 1 }])
+        );
+    }
+
+    #[test]
+    fn deep_merge_does_not_clobber_dissimilar_types_but_replaces_null_destinations() {
+        let mut config = MermaidConfig::from_value(json!({
+            "object": { "kept": true },
+            "scalar": "kept",
+            "nullObject": null,
+            "nullScalar": null
+        }));
+
+        config.deep_merge(&json!({
+            "object": "ignored",
+            "scalar": { "ignored": true },
+            "nullObject": { "accepted": true },
+            "nullScalar": "accepted"
+        }));
+
+        assert_eq!(
+            config.as_value(),
+            &json!({
+                "object": { "kept": true },
+                "scalar": "kept",
+                "nullObject": { "accepted": true },
+                "nullScalar": null
+            })
+        );
+
+        let mut root_null = MermaidConfig::from_value(Value::Null);
+        root_null.deep_merge(&json!({ "accepted": true }));
+        assert_eq!(root_null.as_value(), &json!({ "accepted": true }));
+    }
+
+    #[test]
+    fn deep_merge_uses_object_assign_at_the_default_depth_boundary() {
+        let mut config = MermaidConfig::from_value(json!({
+            "bar": {
+                "bar": {
+                    "foo": {
+                        "message": "old",
+                        "willBe": "clobbered"
+                    },
+                    "preservedSibling": true
+                }
+            }
+        }));
+
+        config.deep_merge(&json!({
+            "bar": {
+                "bar": {
+                    "foo": {
+                        "message": "new"
+                    }
+                }
+            }
+        }));
+
+        assert_eq!(
+            config.as_value(),
+            &json!({
+                "bar": {
+                    "bar": {
+                        "foo": {
+                            "message": "new"
+                        },
+                        "preservedSibling": true
+                    }
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn deep_merge_replaces_nested_null_at_the_depth_boundary() {
+        let mut config = MermaidConfig::from_value(json!({
+            "outer": {
+                "inner": {
+                    "slot": null
+                }
+            }
+        }));
+
+        config.deep_merge(&json!({
+            "outer": {
+                "inner": {
+                    "slot": { "accepted": true }
+                }
+            }
+        }));
+
+        assert_eq!(
+            config.as_value()["outer"]["inner"]["slot"],
+            json!({ "accepted": true })
+        );
+    }
+
     fn deep_config_value(depth: usize) -> Value {
         let mut value = Value::String("leaf".to_string());
         for idx in (0..depth).rev() {
@@ -628,7 +908,7 @@ mod tests {
     }
 
     #[test]
-    fn secure_filtered_overrides_always_removes_secure_key() {
+    fn secure_filtered_overrides_keeps_the_merged_secure_policy() {
         let mut site_config = crate::generated::default_site_config();
         site_config.deep_merge(&json!({
             "secure": ["fontSize"]
@@ -644,7 +924,7 @@ mod tests {
 
         assert!(filtered.as_value().get("secure").is_none());
         assert!(filtered.as_value().get("fontSize").is_none());
-        assert_eq!(filtered.get_str("securityLevel"), Some("loose"));
+        assert!(filtered.get_str("securityLevel").is_none());
         assert_eq!(filtered.get_str("theme"), Some("dark"));
     }
 }

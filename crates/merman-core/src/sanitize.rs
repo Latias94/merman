@@ -1,33 +1,87 @@
 use crate::MermaidConfig;
 use crate::generated::dompurify_defaults;
-use lol_html::{RewriteStrSettings, element, rewrite_str};
+use lol_html::{HtmlRewriter, RewriteStrSettings, Settings, element};
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
-fn break_to_placeholder(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    let mut cursor = 0usize;
-    let mut probe = 0usize;
-
-    while let Some(rel_start) = input[probe..].find('<') {
-        let start = probe + rel_start;
-        let Some(end) = mermaid_line_break_tag_end(input, start) else {
-            probe = start + 1;
-            continue;
-        };
-
-        out.push_str(&input[cursor..start]);
-        out.push_str("#br#");
-        cursor = end;
-        probe = end;
-    }
-
-    out.push_str(&input[cursor..]);
-    out
+/// Failure produced by the shared sanitizer pipeline.
+///
+/// This is an internal cross-crate SPI, not a stable extension surface.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SanitizeFailure<E> {
+    /// The HTML parser rejected ambiguous or malformed input.
+    RejectedInput,
+    /// The caller-owned output sink rejected an allocation or output chunk.
+    Output(E),
+    /// The HTML rewriter produced bytes that were not valid UTF-8.
+    InvalidUtf8Output,
 }
 
-fn placeholder_to_break(input: &str) -> String {
-    input.replace("#br#", "<br/>")
+/// Caller-owned storage policy for the shared sanitizer pipeline.
+///
+/// The core text API uses an ordinary `String` sink. Renderers handling untrusted retained
+/// markup can supply a bounded sink without adding their resource-limit machinery to semantic-only
+/// artifacts.
+///
+/// This is an internal cross-crate SPI, not a stable extension surface.
+#[doc(hidden)]
+pub trait SanitizeOutputSink {
+    /// Sink-specific output or allocation error.
+    type Error;
+
+    /// Checks the length of a generated output fragment before it is allocated.
+    fn checked_output_len(&self, current: usize, additional: usize) -> Result<usize, Self::Error>;
+
+    /// Allocates a string whose final length has already passed `checked_output_len`.
+    fn string_with_capacity(&self, capacity: usize) -> Result<String, Self::Error>;
+
+    /// Allocates the byte buffer used by the streaming HTML rewriter.
+    fn output_buffer(&self, input_len: usize) -> Result<Vec<u8>, Self::Error>;
+
+    /// Appends one streaming HTML rewriter chunk to the output buffer.
+    fn push_output_chunk(&self, output: &mut Vec<u8>, chunk: &[u8]) -> Result<(), Self::Error>;
+}
+
+#[derive(Debug, Clone, Copy)]
+struct StringOutputSink;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct StringOutputError;
+
+impl SanitizeOutputSink for StringOutputSink {
+    type Error = StringOutputError;
+
+    fn checked_output_len(&self, current: usize, additional: usize) -> Result<usize, Self::Error> {
+        current.checked_add(additional).ok_or(StringOutputError)
+    }
+
+    fn string_with_capacity(&self, capacity: usize) -> Result<String, Self::Error> {
+        let mut output = String::new();
+        output
+            .try_reserve_exact(capacity)
+            .map_err(|_| StringOutputError)?;
+        Ok(output)
+    }
+
+    fn output_buffer(&self, input_len: usize) -> Result<Vec<u8>, Self::Error> {
+        let mut output = Vec::new();
+        output
+            .try_reserve_exact(input_len)
+            .map_err(|_| StringOutputError)?;
+        Ok(output)
+    }
+
+    fn push_output_chunk(&self, output: &mut Vec<u8>, chunk: &[u8]) -> Result<(), Self::Error> {
+        self.checked_output_len(output.len(), chunk.len())?;
+        output
+            .try_reserve(chunk.len())
+            .map_err(|_| StringOutputError)?;
+        output.extend_from_slice(chunk);
+        Ok(())
+    }
 }
 
 fn mermaid_line_break_tag_end(input: &str, start: usize) -> Option<usize> {
@@ -83,18 +137,79 @@ fn is_js_regex_whitespace(ch: char) -> bool {
     )
 }
 
-fn escape_html_preserving_breaks(text: &str, escape_equals: bool) -> String {
-    let with_placeholders = break_to_placeholder(text);
-    let mut out = String::with_capacity(with_placeholders.len());
-    for ch in with_placeholders.chars() {
+fn escape_html_preserving_breaks<S: SanitizeOutputSink>(
+    text: &str,
+    escape_equals: bool,
+    sink: &S,
+) -> Result<String, SanitizeFailure<S::Error>> {
+    let mut output_len = 0usize;
+    let mut cursor = 0usize;
+    while cursor < text.len() {
+        if text.as_bytes()[cursor] == b'<'
+            && let Some(end) = mermaid_line_break_tag_end(text, cursor)
+        {
+            output_len = sink
+                .checked_output_len(output_len, "<br/>".len())
+                .map_err(SanitizeFailure::Output)?;
+            cursor = end;
+            continue;
+        }
+
+        let ch = text[cursor..]
+            .chars()
+            .next()
+            .expect("cursor always points at a UTF-8 boundary");
+        let replacement_len = match ch {
+            '<' | '>' => 4,
+            '=' if escape_equals => 5,
+            _ => ch.len_utf8(),
+        };
+        output_len = sink
+            .checked_output_len(output_len, replacement_len)
+            .map_err(SanitizeFailure::Output)?;
+        cursor += ch.len_utf8();
+    }
+
+    let mut out = sink
+        .string_with_capacity(output_len)
+        .map_err(SanitizeFailure::Output)?;
+    cursor = 0;
+    while cursor < text.len() {
+        if text.as_bytes()[cursor] == b'<'
+            && let Some(end) = mermaid_line_break_tag_end(text, cursor)
+        {
+            out.push_str("<br/>");
+            cursor = end;
+            continue;
+        }
+
+        let ch = text[cursor..]
+            .chars()
+            .next()
+            .expect("cursor always points at a UTF-8 boundary");
         match ch {
             '<' => out.push_str("&lt;"),
             '>' => out.push_str("&gt;"),
             '=' if escape_equals => out.push_str("&#61;"),
             _ => out.push(ch),
         }
+        cursor += ch.len_utf8();
     }
-    placeholder_to_break(&out)
+    Ok(out)
+}
+
+fn owned_output<S: SanitizeOutputSink>(
+    text: &str,
+    sink: &S,
+) -> Result<String, SanitizeFailure<S::Error>> {
+    let output_len = sink
+        .checked_output_len(0, text.len())
+        .map_err(SanitizeFailure::Output)?;
+    let mut out = sink
+        .string_with_capacity(output_len)
+        .map_err(SanitizeFailure::Output)?;
+    out.push_str(text);
+    Ok(out)
 }
 
 fn default_allowed_tags() -> &'static HashSet<&'static str> {
@@ -249,6 +364,59 @@ fn is_dompurify_allowed_uri(value: &str) -> bool {
         || bytes
             .get(cursor)
             .is_some_and(|byte| !is_dompurify_uri_scheme_byte(*byte) && *byte != b':')
+}
+
+/// Normalizes a URI-bearing attribute value that already exists in the DOM.
+///
+/// DOMPurify trims every attribute except `value`, validates URI attributes after removing its
+/// `ATTR_WHITESPACE` set, and writes the trimmed value back to the DOM. This entry point must not
+/// decode character references again: a literal `&colon;` assigned through `setAttribute()` is a
+/// literal DOM value, not an encoded colon.
+#[doc(hidden)]
+pub(crate) fn dompurify_normalize_dom_uri_attribute(value: &str) -> Option<String> {
+    let value = dompurify_normalize_dom_attribute_value("href", value);
+    let value_no_ws = remove_dompurify_attr_whitespace(value);
+    (is_dompurify_allowed_uri(value_no_ws.as_ref()) || value.is_empty()).then(|| value.to_string())
+}
+
+/// Applies DOMPurify's pre-validation attribute-value normalization to an existing DOM value.
+#[doc(hidden)]
+pub(crate) fn dompurify_normalize_dom_attribute_value<'a>(name: &str, value: &'a str) -> &'a str {
+    if name.eq_ignore_ascii_case("value") {
+        value
+    } else {
+        trim_ecmascript_whitespace(value)
+    }
+}
+
+/// Normalizes a URI-bearing attribute read from serialized SVG source.
+///
+/// Serialized source is decoded exactly once before applying the DOM-value contract.
+#[doc(hidden)]
+pub(crate) fn dompurify_normalize_serialized_uri_attribute(value: &str) -> Option<String> {
+    let decoded_value = decode_attr_html_entities(value);
+    dompurify_normalize_dom_uri_attribute(&decoded_value)
+}
+
+fn trim_ecmascript_whitespace(value: &str) -> &str {
+    value.trim_matches(is_ecmascript_trim_whitespace)
+}
+
+fn is_ecmascript_trim_whitespace(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{0009}'..='\u{000D}'
+            | '\u{0020}'
+            | '\u{00A0}'
+            | '\u{1680}'
+            | '\u{2000}'..='\u{200A}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{202F}'
+            | '\u{205F}'
+            | '\u{3000}'
+            | '\u{FEFF}'
+    )
 }
 
 fn has_dompurify_allowed_uri_scheme(value: &str) -> bool {
@@ -450,8 +618,7 @@ fn dompurify_is_valid_attribute(
         return true;
     }
 
-    let decoded_value = decode_attr_html_entities(value);
-    let value_no_ws = remove_dompurify_attr_whitespace(&decoded_value);
+    let value_no_ws = remove_dompurify_attr_whitespace(value);
 
     if is_dompurify_allowed_uri(value_no_ws.as_ref()) {
         return true;
@@ -459,7 +626,7 @@ fn dompurify_is_valid_attribute(
 
     if matches!(lc_name, "src" | "xlink:href" | "href")
         && lc_tag != "script"
-        && decoded_value.starts_with("data:")
+        && value.starts_with("data:")
         && cfg.data_uri_tags.contains(lc_tag)
     {
         return true;
@@ -473,42 +640,9 @@ fn dompurify_is_valid_attribute(
 }
 
 fn decode_attr_html_entities(input: &str) -> String {
-    if input.is_empty() {
-        return String::new();
-    }
-
-    // Mermaid's sanitizer normalizes these spellings before DOMPurify sees a parsed attribute.
-    // Preserve that compatibility, then apply the full HTML attribute entity algorithm because
-    // lol_html exposes the raw source value to the rewrite callback.
-    let mut out = replace_ascii_case_insensitive_literal(input, "&colon;", ":");
-    out = replace_ascii_case_insensitive_literal(&out, "&newline;", "\n");
-    out = replace_ascii_case_insensitive_literal(&out, "&tab;", "\t");
-    out = replace_decimal_colon_entity_like_current_regex(&out);
-    out = replace_hex_colon_entity_like_current_regex(&out);
-    htmlize::unescape_attribute(out).into_owned()
-}
-
-fn replace_ascii_case_insensitive_literal(input: &str, needle: &str, replacement: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    let bytes = input.as_bytes();
-    let needle = needle.as_bytes();
-    let mut cursor = 0usize;
-    let mut probe = 0usize;
-
-    while let Some(rel_start) = input[probe..].find('&') {
-        let start = probe + rel_start;
-        if ascii_case_insensitive_starts_with(bytes, start, needle) {
-            out.push_str(&input[cursor..start]);
-            out.push_str(replacement);
-            cursor = start + needle.len();
-            probe = cursor;
-        } else {
-            probe = start + 1;
-        }
-    }
-
-    out.push_str(&input[cursor..]);
-    out
+    // `lol_html` exposes the serialized source spelling. Decode exactly the one layer that a
+    // browser parser would consume before DOMPurify reads `Attr.value`.
+    htmlize::unescape_attribute(input).into_owned()
 }
 
 fn ascii_case_insensitive_starts_with(haystack: &[u8], start: usize, needle: &[u8]) -> bool {
@@ -522,84 +656,13 @@ fn ascii_case_insensitive_starts_with(haystack: &[u8], start: usize, needle: &[u
         })
 }
 
-fn replace_decimal_colon_entity_like_current_regex(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    let bytes = input.as_bytes();
-    let mut cursor = 0usize;
-    let mut probe = 0usize;
-
-    while let Some(rel_start) = input[probe..].find("&#") {
-        let start = probe + rel_start;
-        let mut end = start + 2;
-        while bytes.get(end) == Some(&b'0') {
-            end += 1;
-        }
-
-        if bytes.get(end..end + 2) == Some(b"58") {
-            end += 2;
-            if bytes.get(end) == Some(&b';') {
-                end += 1;
-            }
-            out.push_str(&input[cursor..start]);
-            out.push(':');
-            cursor = end;
-            probe = end;
-        } else {
-            probe = start + 1;
-        }
-    }
-
-    out.push_str(&input[cursor..]);
-    out
-}
-
-fn replace_hex_colon_entity_like_current_regex(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    let bytes = input.as_bytes();
-    let mut cursor = 0usize;
-    let mut probe = 0usize;
-
-    while let Some(rel_start) = input[probe..].find("&#") {
-        let start = probe + rel_start;
-        let mut end = start + 2;
-        if !bytes
-            .get(end)
-            .is_some_and(|b| b.eq_ignore_ascii_case(&b'x'))
-        {
-            probe = start + 1;
-            continue;
-        }
-
-        end += 1;
-        while bytes.get(end) == Some(&b'0') {
-            end += 1;
-        }
-
-        let is_colon_hex = bytes.get(end) == Some(&b'3')
-            && bytes
-                .get(end + 1)
-                .is_some_and(|b| b.eq_ignore_ascii_case(&b'a'));
-        if is_colon_hex {
-            end += 2;
-            if bytes.get(end) == Some(&b';') {
-                end += 1;
-            }
-            out.push_str(&input[cursor..start]);
-            out.push(':');
-            cursor = end;
-            probe = end;
-        } else {
-            probe = start + 1;
-        }
-    }
-
-    out.push_str(&input[cursor..]);
-    out
-}
-
-fn dompurify_like_sanitize_html(text: &str, cfg: &DompurifyEffectiveConfig) -> String {
+fn dompurify_like_sanitize_html<S: SanitizeOutputSink>(
+    text: &str,
+    cfg: &DompurifyEffectiveConfig,
+    sink: &S,
+) -> Result<String, SanitizeFailure<S::Error>> {
     if text.is_empty() {
-        return text.to_string();
+        return Ok(String::new());
     }
 
     // `lol_html::rewrite_str` is less permissive than browser parsing (and therefore DOMPurify).
@@ -609,24 +672,37 @@ fn dompurify_like_sanitize_html(text: &str, cfg: &DompurifyEffectiveConfig) -> S
     //
     // To stay closer to Mermaid's `sanitizeText` behavior, pre-escape such `<` tokens before
     // running the DOMPurify-like rewrite.
-    fn escape_stray_lt(input: &str) -> std::borrow::Cow<'_, str> {
+    fn escape_stray_lt<'a, S: SanitizeOutputSink>(
+        input: &'a str,
+        sink: &S,
+    ) -> Result<Cow<'a, str>, SanitizeFailure<S::Error>> {
         let bytes = input.as_bytes();
         let mut pos = 0usize;
+        let mut stray_count = 0usize;
         while pos < bytes.len() {
             if bytes[pos] == b'<' {
                 let next = bytes.get(pos + 1).copied().unwrap_or(b' ');
                 let tag_start = next.is_ascii_alphabetic() || matches!(next, b'/' | b'!' | b'?');
                 if !tag_start {
-                    break;
+                    stray_count = sink
+                        .checked_output_len(stray_count, 1)
+                        .map_err(SanitizeFailure::Output)?;
                 }
             }
             pos += 1;
         }
-        if pos >= bytes.len() {
-            return std::borrow::Cow::Borrowed(input);
+        if stray_count == 0 {
+            return Ok(Cow::Borrowed(input));
         }
 
-        let mut out = String::with_capacity(input.len() + 8);
+        let growth = stray_count.saturating_mul("&lt;".len() - 1);
+        let output_len = sink
+            .checked_output_len(input.len(), growth)
+            .map_err(SanitizeFailure::Output)?;
+
+        let mut out = sink
+            .string_with_capacity(output_len)
+            .map_err(SanitizeFailure::Output)?;
         let mut last = 0usize;
         let mut i = 0usize;
         while i < bytes.len() {
@@ -644,10 +720,10 @@ fn dompurify_like_sanitize_html(text: &str, cfg: &DompurifyEffectiveConfig) -> S
             i += 1;
         }
         out.push_str(&input[last..]);
-        std::borrow::Cow::Owned(out)
+        Ok(Cow::Owned(out))
     }
 
-    let text = escape_stray_lt(text);
+    let text = escape_stray_lt(text, sink)?;
 
     let rewrite_str_settings = RewriteStrSettings::new()
         .append_element_content_handler(element!("script", |el| {
@@ -692,18 +768,16 @@ fn dompurify_like_sanitize_html(text: &str, cfg: &DompurifyEffectiveConfig) -> S
 
             for (name, value) in attrs {
                 let lc_name = name.to_ascii_lowercase();
-                if !dompurify_is_valid_attribute(cfg, &lc_tag, &lc_name, &value) {
+                let parsed_value = decode_attr_html_entities(&value);
+                let normalized_value =
+                    dompurify_normalize_dom_attribute_value(&lc_name, &parsed_value);
+                if !dompurify_is_valid_attribute(cfg, &lc_tag, &lc_name, normalized_value) {
                     el.remove_attribute(&name);
                     continue;
                 }
 
-                if matches!(lc_name.as_str(), "href" | "src" | "xlink:href") {
-                    // DOMPurify validates URI values on parsed DOM values (entities already decoded).
-                    // `lol_html` gives us raw values, so apply HTML attribute entity semantics here.
-                    let decoded = decode_attr_html_entities(&value);
-                    if decoded != value {
-                        let _ = el.set_attribute(&name, &decoded);
-                    }
+                if normalized_value != value {
+                    let _ = el.set_attribute(&name, normalized_value);
                 }
             }
 
@@ -720,21 +794,47 @@ fn dompurify_like_sanitize_html(text: &str, cfg: &DompurifyEffectiveConfig) -> S
             Ok(())
         }));
 
-    rewrite_str(text.as_ref(), rewrite_str_settings).unwrap_or_else(|_| text.into_owned())
+    let settings: Settings<'_, '_> = rewrite_str_settings.into();
+    let mut output = sink
+        .output_buffer(text.len())
+        .map_err(SanitizeFailure::Output)?;
+    let mut sink_error = None;
+    {
+        let mut rewriter = HtmlRewriter::new(settings, |chunk: &[u8]| {
+            if sink_error.is_some() {
+                return;
+            }
+            if let Err(error) = sink.push_output_chunk(&mut output, chunk) {
+                sink_error = Some(error);
+            }
+        });
+        rewriter
+            .write(text.as_bytes())
+            .map_err(|_| SanitizeFailure::RejectedInput)?;
+        rewriter.end().map_err(|_| SanitizeFailure::RejectedInput)?;
+    }
+    if let Some(error) = sink_error {
+        return Err(SanitizeFailure::Output(error));
+    }
+    String::from_utf8(output).map_err(|_| SanitizeFailure::InvalidUtf8Output)
 }
 
 pub fn remove_script(text: &str) -> String {
-    if text.is_empty() {
-        return text.to_string();
-    }
-    if !text.contains('<') {
-        return text.to_string();
+    try_remove_script(text, &StringOutputSink).unwrap_or_default()
+}
+
+fn try_remove_script<S: SanitizeOutputSink>(
+    text: &str,
+    sink: &S,
+) -> Result<String, SanitizeFailure<S::Error>> {
+    if text.is_empty() || !text.contains('<') {
+        return owned_output(text, sink);
     }
     let cfg = dompurify_effective_config(
         &MermaidConfig::from_value(serde_json::Value::Object(serde_json::Map::new())),
         false,
     );
-    dompurify_like_sanitize_html(text, &cfg)
+    dompurify_like_sanitize_html(text, &cfg, sink)
 }
 
 fn effective_html_labels(config: &MermaidConfig) -> bool {
@@ -792,43 +892,62 @@ fn sanitizer_preserves_unformatted_ascii_paragraph(config: &MermaidConfig) -> bo
     paragraph_is_allowed && !list_contains("FORBID_TAGS", "p")
 }
 
-fn sanitize_more(text: &str, config: &MermaidConfig) -> String {
+fn sanitize_more<S: SanitizeOutputSink>(
+    text: &str,
+    config: &MermaidConfig,
+    sink: &S,
+) -> Result<String, SanitizeFailure<S::Error>> {
     let html_labels_enabled = effective_html_labels(config);
     if !html_labels_enabled {
-        return text.to_string();
+        return owned_output(text, sink);
     }
 
     let level = config.get_str("securityLevel");
     if matches!(level, Some("antiscript" | "strict" | "sandbox")) {
-        return remove_script(text);
+        return try_remove_script(text, sink);
     }
 
     if level != Some("loose") {
-        return escape_html_preserving_breaks(text, true);
+        return escape_html_preserving_breaks(text, true, sink);
     }
 
-    text.to_string()
+    owned_output(text, sink)
 }
 
 pub fn sanitize_text(text: &str, config: &MermaidConfig) -> String {
+    sanitize_text_with_sink(text, config, &StringOutputSink).unwrap_or_default()
+}
+
+/// Sanitizes text through a caller-owned output sink.
+///
+/// Parser ambiguity always fails closed. Resource-aware callers should implement a sink that
+/// rejects output growth and allocation failure according to their local policy.
+///
+/// This is an internal cross-crate SPI, not a stable extension surface.
+#[doc(hidden)]
+pub fn sanitize_text_with_sink<S: SanitizeOutputSink>(
+    text: &str,
+    config: &MermaidConfig,
+    sink: &S,
+) -> Result<String, SanitizeFailure<S::Error>> {
     if text.is_empty() {
-        return text.to_string();
+        return Ok(String::new());
     }
     // This grammar contains no user-controlled markup. Skip DOM parsing only when the configured
     // policy also guarantees that the sole generated `<p>` element is preserved unchanged.
     if is_unformatted_ascii_paragraph(text)
         && sanitizer_preserves_unformatted_ascii_paragraph(config)
     {
-        return text.to_string();
+        return owned_output(text, sink);
     }
 
-    let t = sanitize_more(text, config);
+    let t = sanitize_more(text, config, sink)?;
     if !t.contains('<') {
-        return t;
+        return Ok(t);
     }
 
     let cfg = dompurify_effective_config(config, true);
-    dompurify_like_sanitize_html(&t, &cfg)
+    dompurify_like_sanitize_html(&t, &cfg, sink)
 }
 
 pub fn sanitize_text_or_array(
@@ -868,19 +987,21 @@ mod tests {
     }
 
     #[test]
-    fn break_to_placeholder_matches_mermaid_line_break_regex_shape() {
+    fn preserved_line_breaks_match_mermaid_regex_shape() {
         assert_eq!(
-            break_to_placeholder("A<br>B<BR/>C<br \t/>D<br   >E"),
-            "A#br#B#br#C#br#D#br#E"
+            escape_html_preserving_breaks("A<br>B<BR/>C<br \t/>D<br   >E", true, &StringOutputSink)
+                .unwrap(),
+            "A<br/>B<br/>C<br/>D<br/>E"
         );
         assert_eq!(
-            break_to_placeholder("<br / > <brx> </br> < br>"),
-            "<br / > <brx> </br> < br>"
+            escape_html_preserving_breaks("A<br\u{00A0}/>B<br\u{FEFF}>C", true, &StringOutputSink,)
+                .unwrap(),
+            "A<br/>B<br/>C"
         );
-        assert_eq!(
-            break_to_placeholder("A<br\u{00A0}/>B<br\u{FEFF}>C"),
-            "A#br#B#br#C"
-        );
+        assert_eq!(mermaid_line_break_tag_end("<br / >", 0), None);
+        assert_eq!(mermaid_line_break_tag_end("<brx>", 0), None);
+        assert_eq!(mermaid_line_break_tag_end("</br>", 0), None);
+        assert_eq!(mermaid_line_break_tag_end("< br>", 0), None);
     }
 
     #[test]
@@ -891,7 +1012,7 @@ mod tests {
             "flowchart": { "htmlLabels": true }
         }));
         assert_eq!(
-            sanitize_more(r#"<b a=1>ok</b>"#, &root_false),
+            sanitize_more(r#"<b a=1>ok</b>"#, &root_false, &StringOutputSink).unwrap(),
             r#"<b a=1>ok</b>"#
         );
 
@@ -901,7 +1022,7 @@ mod tests {
             "flowchart": { "htmlLabels": false }
         }));
         assert_eq!(
-            sanitize_more(r#"<b a=1>ok</b>"#, &root_true),
+            sanitize_more(r#"<b a=1>ok</b>"#, &root_true, &StringOutputSink).unwrap(),
             r#"<b>ok</b>"#
         );
 
@@ -910,7 +1031,7 @@ mod tests {
             "flowchart": { "htmlLabels": false }
         }));
         assert_eq!(
-            sanitize_more(r#"<b a=1>ok</b>"#, &deprecated_false),
+            sanitize_more(r#"<b a=1>ok</b>"#, &deprecated_false, &StringOutputSink,).unwrap(),
             r#"<b a=1>ok</b>"#
         );
     }
@@ -918,17 +1039,20 @@ mod tests {
     #[test]
     fn decode_attr_entities_matches_browser_attribute_semantics_without_regex() {
         assert_eq!(
-            decode_attr_html_entities("javascript&colon;alert&NEWLINE;one&TAB;two"),
+            decode_attr_html_entities("javascript&colon;alert&NewLine;one&Tab;two"),
             "javascript:alert\none\ttwo"
         );
         assert_eq!(
             decode_attr_html_entities("a&#58;b&#00058;c&#058d"),
             "a:b:c:d"
         );
+        let high_code_point = char::from_u32(0x3adef).expect("valid HTML numeric reference");
         assert_eq!(
             decode_attr_html_entities("a&#x3a;b&#X0003A;c&#x03adef"),
-            "a:b:c:def"
+            format!("a:b:c{high_code_point}")
         );
+        assert_eq!(decode_attr_html_entities("&Colon;"), "∷");
+        assert_eq!(decode_attr_html_entities("&COLON;"), "&COLON;");
         assert_eq!(
             decode_attr_html_entities("&colon &newline &tab &#59; &#x3b;"),
             "&colon &newline &tab ; ;"
@@ -1037,6 +1161,71 @@ mod tests {
     }
 
     #[test]
+    fn dompurify_uri_attribute_normalization_preserves_the_representation_layer() {
+        for value in [
+            "https://example.test",
+            "jav&#x61;script:alert(1)",
+            "javascript&#58;alert(1)",
+            "javascript&colon;alert(1)",
+        ] {
+            assert_eq!(
+                dompurify_normalize_dom_uri_attribute(value).as_deref(),
+                Some(value),
+                "DOM: {value}"
+            );
+        }
+        assert_eq!(
+            dompurify_normalize_dom_uri_attribute(""),
+            Some(String::new())
+        );
+        assert_eq!(
+            dompurify_normalize_dom_uri_attribute("  https://example.test  "),
+            Some("https://example.test".into())
+        );
+        assert_eq!(
+            dompurify_normalize_dom_uri_attribute(" \t\n "),
+            Some(String::new())
+        );
+        for value in [
+            "java\nscript:alert(1)",
+            "java\tscript:alert(1)",
+            "\u{FEFF}javascript:alert(1)",
+            "javascript:alert(1)",
+            "data:text/html,alert(1)",
+            "vbscript:alert(1)",
+            "unknown:ticket",
+            "about:blank",
+        ] {
+            assert_eq!(
+                dompurify_normalize_dom_uri_attribute(value),
+                None,
+                "DOM: {value}"
+            );
+        }
+
+        assert_eq!(
+            dompurify_normalize_serialized_uri_attribute("jav&#x61;script:alert(1)"),
+            None
+        );
+        assert_eq!(
+            dompurify_normalize_serialized_uri_attribute("jav&amp;#x61;script:alert(1)"),
+            Some("jav&#x61;script:alert(1)".into())
+        );
+        assert_eq!(
+            dompurify_normalize_serialized_uri_attribute("javascript&amp;colon;ticket"),
+            Some("javascript&colon;ticket".into())
+        );
+        assert_eq!(
+            dompurify_normalize_serialized_uri_attribute("javascript&Colon;ticket"),
+            Some("javascript∷ticket".into())
+        );
+        assert_eq!(
+            dompurify_normalize_serialized_uri_attribute(""),
+            Some(String::new())
+        );
+    }
+
+    #[test]
     fn remove_script_strips_script_blocks_and_javascript_urls_and_events() {
         let label_string = r#"1
 		Act1: Hello 1<script src="http://abc.com/script1.js"></script>1
@@ -1093,6 +1282,22 @@ mod tests {
             .trim(),
             r#"<a href="https://mermaid.js.org/" target="_self">note about mermaid</a>"#
         );
+    }
+
+    #[test]
+    fn ambiguous_markup_fails_closed_in_strict_and_loose_modes() {
+        let payload = "<select><xmp><script>alert(1)</script></xmp></select>";
+        for security_level in ["strict", "loose"] {
+            let config = MermaidConfig::from_value(json!({
+                "securityLevel": security_level,
+                "htmlLabels": true
+            }));
+            assert_eq!(
+                sanitize_text_with_sink(payload, &config, &StringOutputSink),
+                Err(SanitizeFailure::RejectedInput)
+            );
+            assert_eq!(sanitize_text(payload, &config), "");
+        }
     }
 
     #[test]

@@ -7,7 +7,7 @@ import {
   type ExportFormat,
 } from "./export-options.js";
 import { errorMessage } from "./error-message.js";
-import { assertSafePreviewSvg } from "./preview-svg-safety.js";
+import { assertSelfContainedPreviewSvg } from "./preview-svg-safety.js";
 import { renderMermanSource } from "./renderer.js";
 
 export interface ExportRenderedDiagramRequest {
@@ -148,7 +148,7 @@ export async function renderSafeSvg(
     signalLabel,
   });
   const svg = result.stdout.toString("utf8");
-  assertSafePreviewSvg(svg);
+  assertSelfContainedPreviewSvg(svg);
   return svg;
 }
 

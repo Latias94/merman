@@ -1,7 +1,7 @@
 import * as assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { assertSafePreviewSvg } from "../preview-svg-safety.js";
+import { assertSelfContainedPreviewSvg } from "../preview-svg-safety.js";
 
 const PNG_1X1 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
@@ -184,7 +184,7 @@ function animatedWebp(): Buffer {
 describe("preview SVG safety", () => {
   it("accepts local inert SVG output", () => {
     assert.doesNotThrow(() =>
-      assertSafePreviewSvg(
+      assertSelfContainedPreviewSvg(
         '<svg viewBox="0 0 100 50"><defs><marker id="arrow"></marker></defs><a href="#node"><text>ok</text></a></svg>',
       ),
     );
@@ -192,7 +192,7 @@ describe("preview SVG safety", () => {
 
   it("accepts inert Mermaid HTML labels inside foreignObject", () => {
     assert.doesNotThrow(() =>
-      assertSafePreviewSvg(
+      assertSelfContainedPreviewSvg(
         '<svg viewBox="0 0 100 50"><foreignObject width="10" height="24" overflow="visible"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"><p>A</p></span></div></foreignObject></svg>',
       ),
     );
@@ -200,7 +200,7 @@ describe("preview SVG safety", () => {
 
   it("accepts local fragment and raster data URL references", () => {
     assert.doesNotThrow(() =>
-      assertSafePreviewSvg(
+      assertSelfContainedPreviewSvg(
         `<svg><defs><linearGradient id="fill"></linearGradient><filter id="shadow"><feImage href="${rasterDataUrl("png", PNG_1X1)}"/></filter><clipPath id="clip"></clipPath><mask id="mask"></mask><marker id="arrow"></marker></defs><rect fill="url(#fill)" filter="url(#shadow)" clip-path="url(#clip)" mask="url(#mask)" marker-end="url(#arrow)"/><a href="#node">x</a><image href="${rasterDataUrl("png", PNG_1X1)}"/></svg>`,
       ),
     );
@@ -212,11 +212,11 @@ describe("preview SVG safety", () => {
       ["webp", WEBP_1X1],
       ["webp", WEBP_LOSSLESS_1X1],
     ] as const) {
-      assert.doesNotThrow(() => assertSafePreviewSvg(svgRaster(rasterDataUrl(format, payload))));
+      assert.doesNotThrow(() => assertSelfContainedPreviewSvg(svgRaster(rasterDataUrl(format, payload))));
     }
     for (const payload of [WEBP_1X1, WEBP_LOSSLESS_1X1]) {
       assert.doesNotThrow(() =>
-        assertSafePreviewSvg(
+        assertSelfContainedPreviewSvg(
           svgRaster(
             rasterDataUrl(
               "webp",
@@ -227,15 +227,15 @@ describe("preview SVG safety", () => {
       );
     }
     assert.doesNotThrow(() =>
-      assertSafePreviewSvg('<svg><style>text { fill: url(/* local */ #fill); }</style><text>ok</text></svg>'),
+      assertSelfContainedPreviewSvg('<svg><style>text { fill: url(/* local */ #fill); }</style><text>ok</text></svg>'),
     );
     assert.doesNotThrow(() =>
-      assertSafePreviewSvg(
+      assertSelfContainedPreviewSvg(
         "<svg><style>/*\u0130*/ text { fill: red; }</StYlE><text>ok</text></svg>",
       ),
     );
     assert.doesNotThrow(() =>
-      assertSafePreviewSvg(
+      assertSelfContainedPreviewSvg(
         '<svg><style>div.mermaidTooltip{position:absolute;pointer-events:none;z-index:100;}</style><text>ok</text></svg>',
       ),
     );
@@ -243,15 +243,15 @@ describe("preview SVG safety", () => {
 
   it("rejects malformed base64, malformed raster headers, and MIME mismatches", () => {
     assert.throws(
-      () => assertSafePreviewSvg(svgRaster("data:image/png;base64,AB==")),
+      () => assertSelfContainedPreviewSvg(svgRaster("data:image/png;base64,AB==")),
       /malformed embedded raster data URL/,
     );
     assert.throws(
-      () => assertSafePreviewSvg(svgRaster("data:image/png;base64,iVBORw0KGgo=")),
+      () => assertSelfContainedPreviewSvg(svgRaster("data:image/png;base64,iVBORw0KGgo=")),
       /malformed embedded raster image/,
     );
     assert.throws(
-      () => assertSafePreviewSvg(svgRaster(rasterDataUrl("gif", PNG_1X1))),
+      () => assertSelfContainedPreviewSvg(svgRaster(rasterDataUrl("gif", PNG_1X1))),
       /MIME type does not match/,
     );
   });
@@ -263,7 +263,7 @@ describe("preview SVG safety", () => {
     gifOutsideLogicalScreen.writeUInt16LE(0xffff, imageDescriptor + 7);
     assert.throws(
       () =>
-        assertSafePreviewSvg(
+        assertSelfContainedPreviewSvg(
           svgRaster(rasterDataUrl("gif", gifOutsideLogicalScreen.toString("base64"))),
         ),
       /malformed embedded raster image/,
@@ -273,7 +273,7 @@ describe("preview SVG safety", () => {
       const mismatched = extendedStaticWebp(payload, 1, 1, 8192, 4096);
       assert.throws(
         () =>
-          assertSafePreviewSvg(
+          assertSelfContainedPreviewSvg(
             svgRaster(rasterDataUrl("webp", mismatched.toString("base64"))),
           ),
         /malformed embedded raster image/,
@@ -283,13 +283,13 @@ describe("preview SVG safety", () => {
 
   it("enforces source, encoded, and decoded byte budgets before normalization or allocation", () => {
     assert.throws(
-      () => assertSafePreviewSvg("€".repeat(Math.floor(MAX_SVG_SOURCE_BYTES / 3) + 1)),
+      () => assertSelfContainedPreviewSvg("€".repeat(Math.floor(MAX_SVG_SOURCE_BYTES / 3) + 1)),
       /source byte limit/,
     );
 
     assert.throws(
       () =>
-        assertSafePreviewSvg(
+        assertSelfContainedPreviewSvg(
           svgRaster(rasterDataUrl("png", "A".repeat(MAX_ENCODED_IMAGE_BYTES + 4))),
         ),
       /per-image encoded byte limit/,
@@ -297,14 +297,14 @@ describe("preview SVG safety", () => {
 
     const oversized = Buffer.alloc(MAX_IMAGE_BYTES + 1).toString("base64");
     assert.throws(
-      () => assertSafePreviewSvg(svgRaster(rasterDataUrl("png", oversized))),
+      () => assertSelfContainedPreviewSvg(svgRaster(rasterDataUrl("png", oversized))),
       /per-image byte limit/,
     );
 
     const maximum = structuralPngWithDecodedBytes(MAX_IMAGE_BYTES).toString("base64");
     assert.throws(
       () =>
-        assertSafePreviewSvg(
+        assertSelfContainedPreviewSvg(
           `<svg><image href="${rasterDataUrl("png", maximum)}"/><feImage href="${rasterDataUrl("png", maximum)}"/><image href="${rasterDataUrl("png", PNG_1X1)}"/></svg>`,
         ),
       /aggregate byte limit/,
@@ -315,7 +315,7 @@ describe("preview SVG safety", () => {
     );
     assert.throws(
       () =>
-        assertSafePreviewSvg(
+        assertSelfContainedPreviewSvg(
           `<svg><image href="${rasterDataUrl("png", maximum)}"/><feImage href="${rasterDataUrl("png", maximum)}"/><image href="${rasterDataUrl("png", encodedAggregateOverflow)}"/></svg>`,
         ),
       /aggregate encoded byte limit/,
@@ -327,11 +327,11 @@ describe("preview SVG safety", () => {
     const oversized = structuralPng(4097, 4096).toString("base64");
     const maximum = structuralPng(4096, 4096).toString("base64");
     assert.throws(
-      () => assertSafePreviewSvg(svgRaster(rasterDataUrl("png", zeroWidth))),
+      () => assertSelfContainedPreviewSvg(svgRaster(rasterDataUrl("png", zeroWidth))),
       /malformed embedded raster image/,
     );
     assert.throws(
-      () => assertSafePreviewSvg(svgRaster(rasterDataUrl("png", oversized), "feImage")),
+      () => assertSelfContainedPreviewSvg(svgRaster(rasterDataUrl("png", oversized), "feImage")),
       /per-image pixel limit/,
     );
 
@@ -344,14 +344,14 @@ describe("preview SVG safety", () => {
       ["webp", extendedStaticWebp(WEBP_1X1, 4097, 4096, 4097, 4096)],
     ] as const) {
       assert.throws(
-        () => assertSafePreviewSvg(svgRaster(rasterDataUrl(format, bytes.toString("base64")))),
+        () => assertSelfContainedPreviewSvg(svgRaster(rasterDataUrl(format, bytes.toString("base64")))),
         /per-image pixel limit/,
       );
     }
 
     assert.throws(
       () =>
-        assertSafePreviewSvg(
+        assertSelfContainedPreviewSvg(
           `<svg><image href="${rasterDataUrl("png", maximum)}"/><feImage href="${rasterDataUrl("png", maximum)}"/><image href="${rasterDataUrl("png", PNG_1X1)}"/></svg>`,
         ),
       /aggregate pixel limit/,
@@ -365,7 +365,7 @@ describe("preview SVG safety", () => {
       ["webp", animatedWebp()],
     ] as const) {
       assert.throws(
-        () => assertSafePreviewSvg(svgRaster(rasterDataUrl(format, bytes.toString("base64")))),
+        () => assertSelfContainedPreviewSvg(svgRaster(rasterDataUrl(format, bytes.toString("base64")))),
         /animated or multi-frame/,
       );
     }
@@ -376,7 +376,7 @@ describe("preview SVG safety", () => {
       const data = Buffer.alloc(chunkType === "fcTL" ? 26 : 4);
       assert.throws(
         () =>
-          assertSafePreviewSvg(
+          assertSelfContainedPreviewSvg(
             svgRaster(
               rasterDataUrl(
                 "png",
@@ -390,7 +390,7 @@ describe("preview SVG safety", () => {
 
     assert.throws(
       () =>
-        assertSafePreviewSvg(
+        assertSelfContainedPreviewSvg(
           svgRaster(
             rasterDataUrl(
               "gif",
@@ -406,14 +406,14 @@ describe("preview SVG safety", () => {
     ]) {
       assert.throws(
         () =>
-          assertSafePreviewSvg(svgRaster(rasterDataUrl("gif", gif.toString("base64")))),
+          assertSelfContainedPreviewSvg(svgRaster(rasterDataUrl("gif", gif.toString("base64")))),
         /malformed embedded raster image/,
       );
     }
 
     assert.throws(
       () =>
-        assertSafePreviewSvg(
+        assertSelfContainedPreviewSvg(
           svgRaster(
             rasterDataUrl(
               "png",
@@ -435,7 +435,7 @@ describe("preview SVG safety", () => {
     ]) {
       assert.throws(
         () =>
-          assertSafePreviewSvg(
+          assertSelfContainedPreviewSvg(
             svgRaster(rasterDataUrl("webp", webp.toString("base64"))),
           ),
         /malformed embedded raster image/,
@@ -451,14 +451,14 @@ describe("preview SVG safety", () => {
     ] as const) {
       assert.throws(
         () =>
-          assertSafePreviewSvg(
+          assertSelfContainedPreviewSvg(
             svgRaster(rasterDataUrl("png", pngWithMetadata(type, data).toString("base64"))),
           ),
         /malformed embedded raster image/,
       );
     }
     assert.doesNotThrow(() =>
-      assertSafePreviewSvg(
+      assertSelfContainedPreviewSvg(
         svgRaster(
           rasterDataUrl(
             "png",
@@ -474,7 +474,7 @@ describe("preview SVG safety", () => {
 
   it("accepts comments around a single SVG root", () => {
     assert.doesNotThrow(() =>
-      assertSafePreviewSvg(
+      assertSelfContainedPreviewSvg(
         "<!-- generated by test --><svg><text>ok</text></svg><!-- trailing comment -->",
       ),
     );
@@ -482,176 +482,176 @@ describe("preview SVG safety", () => {
 
   it("accepts many ignorable chunks without recursive parsing", () => {
     const prefix = Array.from({ length: 2_000 }, (_, index) => `<!-- ${index} -->`).join("");
-    assert.doesNotThrow(() => assertSafePreviewSvg(`${prefix}<svg><text>ok</text></svg>`));
+    assert.doesNotThrow(() => assertSelfContainedPreviewSvg(`${prefix}<svg><text>ok</text></svg>`));
   });
 
   it("rejects non-SVG renderer output", () => {
-    assert.throws(() => assertSafePreviewSvg("<html></html>"), /non-SVG/);
-    assert.throws(() => assertSafePreviewSvg("text before root<svg></svg>"), /non-SVG/);
+    assert.throws(() => assertSelfContainedPreviewSvg("<html></html>"), /non-SVG/);
+    assert.throws(() => assertSelfContainedPreviewSvg("text before root<svg></svg>"), /non-SVG/);
   });
 
   it("rejects active or interactive content after the SVG root closes", () => {
     assert.throws(
-      () => assertSafePreviewSvg("<svg></svg><style>button{color:red}</style>"),
+      () => assertSelfContainedPreviewSvg("<svg></svg><style>button{color:red}</style>"),
       /malformed/,
     );
     assert.throws(
-      () => assertSafePreviewSvg("<svg></svg><button autofocus>run</button>"),
+      () => assertSelfContainedPreviewSvg("<svg></svg><button autofocus>run</button>"),
       /malformed/,
     );
   });
 
   it("rejects unsupported elements and mismatched SVG tags", () => {
     assert.throws(
-      () => assertSafePreviewSvg('<svg><div tabindex="0">run</div></svg>'),
+      () => assertSelfContainedPreviewSvg('<svg><div tabindex="0">run</div></svg>'),
       /unsupported element/,
     );
-    assert.throws(() => assertSafePreviewSvg("<svg><g></svg></g>"), /malformed/);
+    assert.throws(() => assertSelfContainedPreviewSvg("<svg><g></svg></g>"), /malformed/);
   });
 
   it("rejects active embedded SVG content", () => {
-    assert.throws(() => assertSafePreviewSvg("<svg><script>alert(1)</script></svg>"), /active/);
-    assert.throws(() => assertSafePreviewSvg("<svg><iframe></iframe></svg>"), /active/);
-    assert.throws(() => assertSafePreviewSvg('<svg><animate attributeName="href" to="https://example.com/x"/></svg>'), /active/);
-    assert.throws(() => assertSafePreviewSvg("<svg><set attributeName=\"fill\" to=\"url(https://example.com/x)\"/></svg>"), /active/);
+    assert.throws(() => assertSelfContainedPreviewSvg("<svg><script>alert(1)</script></svg>"), /active/);
+    assert.throws(() => assertSelfContainedPreviewSvg("<svg><iframe></iframe></svg>"), /active/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><animate attributeName="href" to="https://example.com/x"/></svg>'), /active/);
+    assert.throws(() => assertSelfContainedPreviewSvg("<svg><set attributeName=\"fill\" to=\"url(https://example.com/x)\"/></svg>"), /active/);
   });
 
   it("rejects interactive or non-label foreignObject content", () => {
     assert.throws(
-      () => assertSafePreviewSvg("<svg><foreignObject><button>run</button></foreignObject></svg>"),
+      () => assertSelfContainedPreviewSvg("<svg><foreignObject><button>run</button></foreignObject></svg>"),
       /foreignObject/,
     );
     assert.throws(
-      () => assertSafePreviewSvg('<svg><foreignObject><input value="x"/></foreignObject></svg>'),
+      () => assertSelfContainedPreviewSvg('<svg><foreignObject><input value="x"/></foreignObject></svg>'),
       /foreignObject/,
     );
     assert.throws(
-      () => assertSafePreviewSvg("<svg><foreignObject><style>button{color:red}</style></foreignObject></svg>"),
+      () => assertSelfContainedPreviewSvg("<svg><foreignObject><style>button{color:red}</style></foreignObject></svg>"),
       /foreignObject/,
     );
     assert.throws(
-      () => assertSafePreviewSvg('<svg><foreignObject><div tabindex="0">focus</div></foreignObject></svg>'),
+      () => assertSelfContainedPreviewSvg('<svg><foreignObject><div tabindex="0">focus</div></foreignObject></svg>'),
       /interactive/,
     );
     assert.throws(
-      () => assertSafePreviewSvg('<svg><foreignObject tabindex="0"><div>focus</div></foreignObject></svg>'),
+      () => assertSelfContainedPreviewSvg('<svg><foreignObject tabindex="0"><div>focus</div></foreignObject></svg>'),
       /interactive/,
     );
   });
 
   it("rejects event handlers and unsafe URL attributes", () => {
-    assert.throws(() => assertSafePreviewSvg('<svg><text onclick="alert(1)">x</text></svg>'), /event/);
-    assert.throws(() => assertSafePreviewSvg('<svg><text OnClick="alert(1)">x</text></svg>'), /event/);
-    assert.throws(() => assertSafePreviewSvg('<svg OnLoad="alert(1)"><text>x</text></svg>'), /event/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><text onclick="alert(1)">x</text></svg>'), /event/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><text OnClick="alert(1)">x</text></svg>'), /event/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg OnLoad="alert(1)"><text>x</text></svg>'), /event/);
     assert.throws(
-      () => assertSafePreviewSvg('<svg><foreignObject><div onclick="alert(1)">x</div></foreignObject></svg>'),
+      () => assertSelfContainedPreviewSvg('<svg><foreignObject><div onclick="alert(1)">x</div></foreignObject></svg>'),
       /event/,
     );
-    assert.throws(() => assertSafePreviewSvg('<svg><a href="javascript:alert(1)">x</a></svg>'), /unsafe URL/);
-    assert.throws(() => assertSafePreviewSvg('<svg><a href="java&#115;cript:alert(1)">x</a></svg>'), /unsafe URL/);
-    assert.throws(() => assertSafePreviewSvg('<svg><a href="java&#115cript:alert(1)">x</a></svg>'), /external|unsafe URL/);
-    assert.throws(() => assertSafePreviewSvg('<svg><a href="javascript&colon;alert(1)">x</a></svg>'), /external|unsafe URL/);
-    assert.throws(() => assertSafePreviewSvg('<svg><a xlink:href="JavaScript:alert(1)">x</a></svg>'), /unsafe URL/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><a href="javascript:alert(1)">x</a></svg>'), /unsafe URL/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><a href="java&#115;cript:alert(1)">x</a></svg>'), /unsafe URL/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><a href="java&#115cript:alert(1)">x</a></svg>'), /external|unsafe URL/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><a href="javascript&colon;alert(1)">x</a></svg>'), /external|unsafe URL/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><a xlink:href="JavaScript:alert(1)">x</a></svg>'), /unsafe URL/);
     assert.throws(
-      () => assertSafePreviewSvg('<svg><image href="data:text/html,hello"/></svg>'),
+      () => assertSelfContainedPreviewSvg('<svg><image href="data:text/html,hello"/></svg>'),
       /malformed embedded raster data URL/,
     );
-    assert.throws(() => assertSafePreviewSvg('<svg><image href="file:///etc/passwd"/></svg>'), /unsafe URL/);
-    assert.throws(() => assertSafePreviewSvg('<svg><a href="command:workbench.action.openSettings">x</a></svg>'), /unsafe URL/);
-    assert.throws(() => assertSafePreviewSvg('<svg><a href="vscode://file/path">x</a></svg>'), /unsafe URL/);
-    assert.throws(() => assertSafePreviewSvg('<svg><a href="foo:bar">x</a></svg>'), /unsafe URL/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><image href="file:///etc/passwd"/></svg>'), /unsafe URL/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><a href="command:workbench.action.openSettings">x</a></svg>'), /unsafe URL/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><a href="vscode://file/path">x</a></svg>'), /unsafe URL/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><a href="foo:bar">x</a></svg>'), /unsafe URL/);
     assert.throws(
-      () => assertSafePreviewSvg('<svg><foreignObject><img srcset="https://example.com/a.png 1x"/></foreignObject></svg>'),
+      () => assertSelfContainedPreviewSvg('<svg><foreignObject><img srcset="https://example.com/a.png 1x"/></foreignObject></svg>'),
       /foreignObject/,
     );
-    assert.throws(() => assertSafePreviewSvg('<svg><image srcset="https://example.com/a.png 1x"/></svg>'), /srcset/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><image srcset="https://example.com/a.png 1x"/></svg>'), /srcset/);
     assert.throws(
-      () => assertSafePreviewSvg('<svg><foreignObject><button formaction="https://example.com/post">x</button></foreignObject></svg>'),
+      () => assertSelfContainedPreviewSvg('<svg><foreignObject><button formaction="https://example.com/post">x</button></foreignObject></svg>'),
       /foreignObject/,
     );
     assert.throws(
-      () => assertSafePreviewSvg('<svg><a href="#node" ping="https://example.com/ping">x</a></svg>'),
-      /external/,
+      () => assertSelfContainedPreviewSvg('<svg><a href="#node" ping="https://example.com/ping">x</a></svg>'),
+      /tracking/,
     );
     assert.throws(
-      () => assertSafePreviewSvg('<svg xml:base="https://example.com/sprite.svg"><use href="#icon"/></svg>'),
+      () => assertSelfContainedPreviewSvg('<svg xml:base="https://example.com/sprite.svg"><use href="#icon"/></svg>'),
       /base/,
     );
     assert.throws(
-      () => assertSafePreviewSvg('<svg><image href="data:image/svg+xml,%3Csvg%20onload%3Dalert(1)%3E"/></svg>'),
+      () => assertSelfContainedPreviewSvg('<svg><image href="data:image/svg+xml,%3Csvg%20onload%3Dalert(1)%3E"/></svg>'),
       /malformed embedded raster data URL/,
     );
   });
 
   it("rejects external resource references", () => {
-    assert.throws(() => assertSafePreviewSvg('<svg><image href="https://example.com/a.png"/></svg>'), /external/);
-    assert.throws(() => assertSafePreviewSvg('<svg><use href="//example.com/sprite.svg#x"/></svg>'), /external/);
-    assert.throws(() => assertSafePreviewSvg('<svg><image href="images/a.png"/></svg>'), /external/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><image href="https://example.com/a.png"/></svg>'), /external/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><use href="//example.com/sprite.svg#x"/></svg>'), /external/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><image href="images/a.png"/></svg>'), /external/);
   });
 
   it("rejects external resources in SVG URL-bearing attributes", () => {
-    assert.throws(() => assertSafePreviewSvg('<svg><rect fill="url(https://example.com/fill.svg#x)"/></svg>'), /external/);
-    assert.throws(() => assertSafePreviewSvg('<svg><rect stroke="url(file:///tmp/stroke.svg#x)"/></svg>'), /unsafe/);
-    assert.throws(() => assertSafePreviewSvg('<svg><rect filter="url(data:image/svg+xml,%3Csvg%3E)"/></svg>'), /unsafe/);
-    assert.throws(() => assertSafePreviewSvg('<svg><rect clip-path="url(//example.com/clip.svg#x)"/></svg>'), /external/);
-    assert.throws(() => assertSafePreviewSvg('<svg><rect mask="url(images/mask.svg#x)"/></svg>'), /external/);
-    assert.throws(() => assertSafePreviewSvg('<svg><path marker-end="url(javascript:alert(1))"/></svg>'), /unsafe/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><rect fill="url(https://example.com/fill.svg#x)"/></svg>'), /external/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><rect stroke="url(file:///tmp/stroke.svg#x)"/></svg>'), /unsafe/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><rect filter="url(data:image/svg+xml,%3Csvg%3E)"/></svg>'), /unsafe/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><rect clip-path="url(//example.com/clip.svg#x)"/></svg>'), /external/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><rect mask="url(images/mask.svg#x)"/></svg>'), /external/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><path marker-end="url(javascript:alert(1))"/></svg>'), /unsafe/);
   });
 
   it("rejects unsafe CSS references", () => {
-    assert.throws(() => assertSafePreviewSvg('<svg><text style="fill:url(javascript:alert(1))">x</text></svg>'), /CSS URL/);
-    assert.throws(() => assertSafePreviewSvg('<svg><text style="fill:u&#114l(https://example.com/a.svg#x)">x</text></svg>'), /CSS resource|CSS URL/);
-    assert.throws(() => assertSafePreviewSvg('<svg><text style="fill:url&lpar;https://example.com/a.svg#x&rpar;">x</text></svg>'), /CSS resource|CSS URL/);
-    assert.throws(() => assertSafePreviewSvg('<svg><text style="fill:url(jav\\61script:alert(1))">x</text></svg>'), /CSS URL/);
-    assert.throws(() => assertSafePreviewSvg('<svg><text style="fill:url(file:///tmp/a.svg)">x</text></svg>'), /CSS URL/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><text style="fill:url(javascript:alert(1))">x</text></svg>'), /CSS URL/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><text style="fill:u&#114l(https://example.com/a.svg#x)">x</text></svg>'), /CSS resource|CSS URL/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><text style="fill:url&lpar;https://example.com/a.svg#x&rpar;">x</text></svg>'), /CSS resource|CSS URL/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><text style="fill:url(jav\\61script:alert(1))">x</text></svg>'), /CSS URL/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><text style="fill:url(file:///tmp/a.svg)">x</text></svg>'), /CSS URL/);
     assert.throws(
-      () => assertSafePreviewSvg('<svg><text style="fill:url(data:image/svg+xml,%3Csvg%3E)">x</text></svg>'),
+      () => assertSelfContainedPreviewSvg('<svg><text style="fill:url(data:image/svg+xml,%3Csvg%3E)">x</text></svg>'),
       /unsafe embedded resource references/,
     );
     assert.throws(
       () =>
-        assertSafePreviewSvg(
+        assertSelfContainedPreviewSvg(
           '<svg><foreignObject><div style="background-image:image-set(&quot;https://example.com/a.png&quot; 1x)">x</div></foreignObject></svg>',
         ),
       /CSS resource/,
     );
     assert.throws(
-      () => assertSafePreviewSvg('<svg><style>text { background-image: -webkit-image-set("https://example.com/a.png" 1x); }</style></svg>'),
+      () => assertSelfContainedPreviewSvg('<svg><style>text { background-image: -webkit-image-set("https://example.com/a.png" 1x); }</style></svg>'),
       /CSS resource/,
     );
     assert.throws(
-      () => assertSafePreviewSvg("<svg><style>svg{position:fixed;inset:0;z-index:999999}</style></svg>"),
+      () => assertSelfContainedPreviewSvg("<svg><style>svg{position:fixed;inset:0;z-index:999999}</style></svg>"),
       /viewport-escaping CSS/,
     );
     assert.throws(
-      () => assertSafePreviewSvg('<svg style="position:fixed;inset:0"></svg>'),
+      () => assertSelfContainedPreviewSvg('<svg style="position:fixed;inset:0"></svg>'),
       /viewport-escaping CSS/,
     );
     assert.throws(
-      () => assertSafePreviewSvg("<svg><style>svg{position:absolute;inset:0;z-index:999999}</style></svg>"),
+      () => assertSelfContainedPreviewSvg("<svg><style>svg{position:absolute;inset:0;z-index:999999}</style></svg>"),
       /viewport-escaping CSS/,
     );
     assert.throws(
-      () => assertSafePreviewSvg("<svg><style>@media all{svg{position:absolute;inset:0;z-index:999999}}</style></svg>"),
+      () => assertSelfContainedPreviewSvg("<svg><style>@media all{svg{position:absolute;inset:0;z-index:999999}}</style></svg>"),
       /viewport-escaping CSS/,
     );
     assert.throws(
-      () => assertSafePreviewSvg("<svg><style>@supports(display:block){svg{position:fixed;inset:0}}</style></svg>"),
+      () => assertSelfContainedPreviewSvg("<svg><style>@supports(display:block){svg{position:fixed;inset:0}}</style></svg>"),
       /viewport-escaping CSS/,
     );
     assert.throws(
-      () => assertSafePreviewSvg('<svg style="position:absolute;left:0;top:0"></svg>'),
+      () => assertSelfContainedPreviewSvg('<svg style="position:absolute;left:0;top:0"></svg>'),
       /viewport-escaping CSS/,
     );
-    assert.throws(() => assertSafePreviewSvg('<svg><style>@import "https://example.com/a.css";</style></svg>'), /CSS resource/);
-    assert.throws(() => assertSafePreviewSvg('<svg><style>@im&#112ort "https://example.com/a.css";</style></svg>'), /CSS resource/);
-    assert.throws(() => assertSafePreviewSvg('<svg><style>@im&#x2f;*hidden*&#x2f;port "https://example.com/a.css";</style></svg>'), /CSS resource/);
-    assert.throws(() => assertSafePreviewSvg('<svg><style>text { fill: url(//example.com/a.svg#x); }</style></svg>'), /CSS resource/);
-    assert.throws(() => assertSafePreviewSvg('<svg><style>text { fill: u&#x72l(https://example.com/a.svg#x); }</style></svg>'), /CSS resource|CSS URL/);
-    assert.throws(() => assertSafePreviewSvg('<svg><style>text { fill: u&#x2f;*hidden*&#x2f;rl(javascript:alert(1)); }</style></svg>'), /CSS resource|CSS URL/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><style>@import "https://example.com/a.css";</style></svg>'), /CSS resource/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><style>@im&#112ort "https://example.com/a.css";</style></svg>'), /CSS resource/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><style>@im&#x2f;*hidden*&#x2f;port "https://example.com/a.css";</style></svg>'), /CSS resource/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><style>text { fill: url(//example.com/a.svg#x); }</style></svg>'), /CSS resource/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><style>text { fill: u&#x72l(https://example.com/a.svg#x); }</style></svg>'), /CSS resource|CSS URL/);
+    assert.throws(() => assertSelfContainedPreviewSvg('<svg><style>text { fill: u&#x2f;*hidden*&#x2f;rl(javascript:alert(1)); }</style></svg>'), /CSS resource|CSS URL/);
     assert.throws(
       () =>
-        assertSafePreviewSvg(
+        assertSelfContainedPreviewSvg(
           '<svg><style>text { fill: url(#ok); stroke: /* padding #safe */ url(https://example.com/x.svg#x); }</style></svg>',
         ),
       /CSS resource|CSS URL/,
@@ -660,46 +660,46 @@ describe("preview SVG safety", () => {
 
   it("rejects shadow-scoping CSS selectors", () => {
     assert.throws(
-      () => assertSafePreviewSvg("<svg><style>:host{position:fixed;inset:0}</style></svg>"),
+      () => assertSelfContainedPreviewSvg("<svg><style>:host{position:fixed;inset:0}</style></svg>"),
       /shadow CSS/,
     );
     assert.throws(
-      () => assertSafePreviewSvg("<svg><style>:host-context(body){z-index:999999}</style></svg>"),
+      () => assertSelfContainedPreviewSvg("<svg><style>:host-context(body){z-index:999999}</style></svg>"),
       /shadow CSS/,
     );
     assert.throws(
-      () => assertSafePreviewSvg("<svg><style>::slotted(*){display:block}</style></svg>"),
+      () => assertSelfContainedPreviewSvg("<svg><style>::slotted(*){display:block}</style></svg>"),
       /shadow CSS/,
     );
     assert.throws(
-      () => assertSafePreviewSvg("<svg><style>:h\\6fst{position:fixed}</style></svg>"),
+      () => assertSelfContainedPreviewSvg("<svg><style>:h\\6fst{position:fixed}</style></svg>"),
       /shadow CSS/,
     );
     assert.throws(
-      () => assertSafePreviewSvg("<svg><style>:h/*hidden*/ost{position:fixed}</style></svg>"),
+      () => assertSelfContainedPreviewSvg("<svg><style>:h/*hidden*/ost{position:fixed}</style></svg>"),
       /shadow CSS/,
     );
   });
 
   it("rejects CSS resource keywords hidden behind CSS escapes", () => {
     assert.throws(
-      () => assertSafePreviewSvg('<svg><style>@im\\70ort "https://example.com/a.css";</style></svg>'),
+      () => assertSelfContainedPreviewSvg('<svg><style>@im\\70ort "https://example.com/a.css";</style></svg>'),
       /CSS resource/,
     );
     assert.throws(
-      () => assertSafePreviewSvg('<svg><style>text { fill: u\\72l(//example.com/a.svg#x); }</style></svg>'),
+      () => assertSelfContainedPreviewSvg('<svg><style>text { fill: u\\72l(//example.com/a.svg#x); }</style></svg>'),
       /CSS resource/,
     );
     assert.throws(
-      () => assertSafePreviewSvg('<svg><style>text { fill: u\\000072 l(javascript:alert(1)); }</style></svg>'),
+      () => assertSelfContainedPreviewSvg('<svg><style>text { fill: u\\000072 l(javascript:alert(1)); }</style></svg>'),
       /CSS URL/,
     );
     assert.throws(
-      () => assertSafePreviewSvg('<svg><style>@im/*hidden*/port "https://example.com/a.css";</style></svg>'),
+      () => assertSelfContainedPreviewSvg('<svg><style>@im/*hidden*/port "https://example.com/a.css";</style></svg>'),
       /CSS resource/,
     );
     assert.throws(
-      () => assertSafePreviewSvg('<svg><style>text { fill: u/*hidden*/rl(//example.com/a.svg#x); }</style></svg>'),
+      () => assertSelfContainedPreviewSvg('<svg><style>text { fill: u/*hidden*/rl(//example.com/a.svg#x); }</style></svg>'),
       /CSS resource/,
     );
   });

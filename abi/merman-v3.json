@@ -8,8 +8,8 @@
     "operation_code_count": 14,
     "error_kind_count": 5,
     "callback_count": 1,
-    "function_slot_count": 5,
-    "record_count": 9
+    "function_slot_count": 7,
+    "record_count": 11
   },
   "minimum_semantics": [
     {
@@ -53,6 +53,54 @@
       "description": "Callback and user_data are immutable constructor-owned engine state, remain valid until successful quiescent engine_try_close, and may be released only after that close succeeds."
     }
   ],
+  "opaque_scalars": [
+    {
+      "id": "engine_token",
+      "c_name": "MermanNativeEngineToken",
+      "rust_name": "MermanNativeEngineToken",
+      "c_type": "uint64_t",
+      "rust_type": "u64",
+      "invalid_value": 0,
+      "domain": {
+        "tag": 1,
+        "mask": 3,
+        "counter_shift": 2,
+        "maximum_counter": 2305843009213693951,
+        "maximum_value": 9223372036854775805
+      },
+      "description": "An opaque process-lifetime monotonic engine identity. The low-bit domain tag rejects accidental cross-kind use, every issued value remains positive when projected through a signed 64-bit host integer, and the token is not an authorization boundary."
+    },
+    {
+      "id": "result_allocation_token",
+      "c_name": null,
+      "rust_name": null,
+      "c_type": "uint64_t",
+      "rust_type": "u64",
+      "invalid_value": 0,
+      "domain": {
+        "tag": 2,
+        "mask": 3,
+        "counter_shift": 2,
+        "maximum_counter": 2305843009213693951,
+        "maximum_value": 9223372036854775806
+      },
+      "description": "An opaque process-lifetime monotonic result-allocation ownership identity stored in MermanNativeResult.allocation_token. The low-bit domain tag rejects accidental engine-token use, every issued value remains positive when projected through a signed 64-bit host integer, and the token is not an authorization boundary."
+    }
+  ],
+  "caller_memory_rules": [
+    {
+      "id": "record_pointer_alignment",
+      "description": "Every caller-supplied native record pointer must be naturally aligned for its declared C record type. Status-returning entry points reject safely allocated misaligned records before typed access; the void result_free operation treats a misaligned record as invalid and releases nothing."
+    },
+    {
+      "id": "caller_memory_validity",
+      "description": "For the complete duration of a call, every caller record and every storage range reachable through it must be readable, live, and immutable except for declared writable outputs, which must remain writable and live. Runtime validation detects only representable shape, size, alignment, range, and documented overlap errors; dangling, unreadable, concurrently mutated, or otherwise invalid memory remains a caller contract violation and is not promised a typed status."
+    },
+    {
+      "id": "engine_services_constructor_memory",
+      "description": "For engine_new_with_services, out_engine and out_result must be disjoint from each other and from the outer config, the pack record array, embedded options, JSON bytes, and registration-name bytes. Structural record storage must not overlap any nested byte slice it describes. Read-only options, JSON, and registration-name slices may overlap each other, including multiple logical packs reusing the same bytes; each logical pack is still charged independently. out_engine must be initialized to zero and remains zero on every failure. In artifacts exposing the icon-registry constructor service, the implementation validates icon_pack_count against the fixed pack ceiling before checked multiplication or array access and rejects nonzero count with a null or misaligned array. Artifacts without the svg capability may return missing-capability for any nonzero icon_pack_count without dereferencing or validating the pack array or nested pack slices. The code-6 constructor requires text_measure_user_data to be null when text_measure is null without changing the code-1 engine_new contract."
+    }
+  ],
   "error_kinds": [
     { "id": "generic", "c_name": "MERMAN_NATIVE_ERROR_KIND_GENERIC", "json_name": "generic", "description": "A failure without a more specific machine-readable binding classification." },
     { "id": "unknown_operation", "c_name": "MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION", "json_name": "unknown-operation", "description": "The requested operation identifier or numeric code is not part of the ABI operation vocabulary." },
@@ -64,42 +112,57 @@
     "c_name": "merman_get_native_api",
     "rust_name": "merman_get_native_api",
     "calling_convention": "C",
+    "return_c_type": "MermanNativeStatus",
+    "return_rust_type": "MermanNativeStatus",
+    "parameters": [
+      { "name": "request", "c_type": "const MermanNativeApiRequest *", "rust_type": "*const MermanNativeApiRequest" },
+      { "name": "out_api", "c_type": "MermanNativeApi *", "rust_type": "*mut MermanNativeApi" }
+    ],
     "description": "The only exported native ABI symbol. It validates the requested ABI and minimum-prefix layout digest before returning the common prefix of a size-tagged function table."
   },
   "status_codes": [
-    { "id": "ok", "c_name": "MERMAN_NATIVE_STATUS_OK", "code": 0, "description": "The operation completed successfully." },
-    { "id": "invalid_argument", "c_name": "MERMAN_NATIVE_STATUS_INVALID_ARGUMENT", "code": 1, "description": "A pointer, length, struct size, or option value is invalid." },
-    { "id": "utf8_error", "c_name": "MERMAN_NATIVE_STATUS_UTF8_ERROR", "code": 2, "description": "A UTF-8 input slice is invalid." },
-    { "id": "options_json_error", "c_name": "MERMAN_NATIVE_STATUS_OPTIONS_JSON_ERROR", "code": 3, "description": "Engine or request options JSON is invalid." },
-    { "id": "no_diagram", "c_name": "MERMAN_NATIVE_STATUS_NO_DIAGRAM", "code": 4, "description": "No Mermaid diagram was detected." },
-    { "id": "parse_error", "c_name": "MERMAN_NATIVE_STATUS_PARSE_ERROR", "code": 5, "description": "Mermaid parsing failed." },
-    { "id": "render_error", "c_name": "MERMAN_NATIVE_STATUS_RENDER_ERROR", "code": 6, "description": "Layout, render, or export failed." },
-    { "id": "unsupported_operation", "c_name": "MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION", "code": 7, "description": "The requested operation is unknown or one of its required capabilities is not compiled into this artifact." },
-    { "id": "panic", "c_name": "MERMAN_NATIVE_STATUS_PANIC", "code": 8, "description": "A Rust panic was caught at the native boundary." },
-    { "id": "internal_error", "c_name": "MERMAN_NATIVE_STATUS_INTERNAL_ERROR", "code": 9, "description": "An unexpected internal error occurred." },
-    { "id": "resource_limit_exceeded", "c_name": "MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED", "code": 10, "description": "A configured resource limit was exceeded." },
-    { "id": "abi_mismatch", "c_name": "MERMAN_NATIVE_STATUS_ABI_MISMATCH", "code": 11, "description": "The host requested a different native ABI version." },
-    { "id": "abi_layout_mismatch", "c_name": "MERMAN_NATIVE_STATUS_ABI_LAYOUT_MISMATCH", "code": 12, "description": "The host requested a different ABI descriptor layout digest." },
-    { "id": "callback_error", "c_name": "MERMAN_NATIVE_STATUS_CALLBACK_ERROR", "code": 13, "description": "A host callback could not produce a result. Rendering may continue through a source-backed fallback." },
-    { "id": "reentrant_call", "c_name": "MERMAN_NATIVE_STATUS_REENTRANT_CALL", "code": 14, "description": "A callback re-entered or retired the same engine." },
-    { "id": "invalid_engine", "c_name": "MERMAN_NATIVE_STATUS_INVALID_ENGINE", "code": 15, "description": "The supplied engine token is unknown or has already been released." },
-    { "id": "busy", "c_name": "MERMAN_NATIVE_STATUS_BUSY", "code": 16, "description": "The reusable engine has an active operation and cannot be closed or concurrently entered under its callback policy." }
+    { "id": "ok", "c_name": "MERMAN_NATIVE_STATUS_OK", "code": 0, "error_kinds": [], "description": "The operation completed successfully." },
+    { "id": "invalid_argument", "c_name": "MERMAN_NATIVE_STATUS_INVALID_ARGUMENT", "code": 1, "error_kinds": ["generic"], "description": "A pointer, length, struct size, or option value is invalid." },
+    { "id": "utf8_error", "c_name": "MERMAN_NATIVE_STATUS_UTF8_ERROR", "code": 2, "error_kinds": ["generic"], "description": "A UTF-8 input slice is invalid." },
+    { "id": "options_json_error", "c_name": "MERMAN_NATIVE_STATUS_OPTIONS_JSON_ERROR", "code": 3, "error_kinds": ["generic"], "description": "Engine or request options JSON is invalid." },
+    { "id": "no_diagram", "c_name": "MERMAN_NATIVE_STATUS_NO_DIAGRAM", "code": 4, "error_kinds": ["generic"], "description": "No Mermaid diagram was detected." },
+    { "id": "parse_error", "c_name": "MERMAN_NATIVE_STATUS_PARSE_ERROR", "code": 5, "error_kinds": ["generic"], "description": "Mermaid parsing failed." },
+    { "id": "render_error", "c_name": "MERMAN_NATIVE_STATUS_RENDER_ERROR", "code": 6, "error_kinds": ["generic"], "description": "Layout, render, or export failed." },
+    { "id": "unsupported_operation", "c_name": "MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION", "code": 7, "error_kinds": ["generic", "unknown_operation", "missing_capability"], "description": "The requested operation is unknown or one of its required capabilities is not compiled into this artifact." },
+    { "id": "panic", "c_name": "MERMAN_NATIVE_STATUS_PANIC", "code": 8, "error_kinds": ["generic"], "description": "A Rust panic was caught at the native boundary." },
+    { "id": "internal_error", "c_name": "MERMAN_NATIVE_STATUS_INTERNAL_ERROR", "code": 9, "error_kinds": ["generic"], "description": "An unexpected internal error occurred." },
+    { "id": "resource_limit_exceeded", "c_name": "MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED", "code": 10, "error_kinds": ["generic"], "description": "A configured resource limit was exceeded." },
+    { "id": "abi_mismatch", "c_name": "MERMAN_NATIVE_STATUS_ABI_MISMATCH", "code": 11, "error_kinds": ["generic"], "description": "The host requested a different native ABI version." },
+    { "id": "abi_layout_mismatch", "c_name": "MERMAN_NATIVE_STATUS_ABI_LAYOUT_MISMATCH", "code": 12, "error_kinds": ["generic"], "description": "The host requested a different ABI descriptor layout digest." },
+    { "id": "callback_error", "c_name": "MERMAN_NATIVE_STATUS_CALLBACK_ERROR", "code": 13, "error_kinds": ["generic"], "description": "A host callback could not produce a result. Rendering may continue through a source-backed fallback." },
+    { "id": "reentrant_call", "c_name": "MERMAN_NATIVE_STATUS_REENTRANT_CALL", "code": 14, "error_kinds": ["reentrant_call"], "description": "A callback re-entered or retired the same engine." },
+    { "id": "invalid_engine", "c_name": "MERMAN_NATIVE_STATUS_INVALID_ENGINE", "code": 15, "error_kinds": ["generic"], "description": "The supplied engine token is unknown or has already been released." },
+    { "id": "busy", "c_name": "MERMAN_NATIVE_STATUS_BUSY", "code": 16, "error_kinds": ["busy"], "description": "The reusable engine has an active operation and cannot be closed or concurrently entered under its callback policy." }
   ],
   "operation_codes": [
-    { "id": "none", "c_name": "MERMAN_NATIVE_OPERATION_NONE", "code": 0 },
-    { "id": "svg", "c_name": "MERMAN_NATIVE_OPERATION_SVG", "code": 1 },
-    { "id": "png", "c_name": "MERMAN_NATIVE_OPERATION_PNG", "code": 2 },
-    { "id": "jpeg", "c_name": "MERMAN_NATIVE_OPERATION_JPEG", "code": 3 },
-    { "id": "pdf", "c_name": "MERMAN_NATIVE_OPERATION_PDF", "code": 4 },
-    { "id": "ascii", "c_name": "MERMAN_NATIVE_OPERATION_ASCII", "code": 5 },
-    { "id": "semantic_json", "c_name": "MERMAN_NATIVE_OPERATION_SEMANTIC_JSON", "code": 6 },
-    { "id": "layout_json", "c_name": "MERMAN_NATIVE_OPERATION_LAYOUT_JSON", "code": 7 },
-    { "id": "analysis_json", "c_name": "MERMAN_NATIVE_OPERATION_ANALYSIS_JSON", "code": 8 },
-    { "id": "analysis_facts_json", "c_name": "MERMAN_NATIVE_OPERATION_ANALYSIS_FACTS_JSON", "code": 9 },
-    { "id": "validation_json", "c_name": "MERMAN_NATIVE_OPERATION_VALIDATION_JSON", "code": 10 },
-    { "id": "document_analysis_json", "c_name": "MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON", "code": 11 },
-    { "id": "document_analysis_facts_json", "c_name": "MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON", "code": 12 },
-    { "id": "svg_plan_json", "c_name": "MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON", "code": 13 }
+    {
+      "id": "none",
+      "c_name": "MERMAN_NATIVE_OPERATION_NONE",
+      "code": 0,
+      "executable": false,
+      "non_executable_failure": {
+        "status_id": "invalid_argument",
+        "error_kind_id": "generic"
+      }
+    },
+    { "id": "svg", "c_name": "MERMAN_NATIVE_OPERATION_SVG", "code": 1, "executable": true },
+    { "id": "png", "c_name": "MERMAN_NATIVE_OPERATION_PNG", "code": 2, "executable": true },
+    { "id": "jpeg", "c_name": "MERMAN_NATIVE_OPERATION_JPEG", "code": 3, "executable": true },
+    { "id": "pdf", "c_name": "MERMAN_NATIVE_OPERATION_PDF", "code": 4, "executable": true },
+    { "id": "ascii", "c_name": "MERMAN_NATIVE_OPERATION_ASCII", "code": 5, "executable": true },
+    { "id": "semantic_json", "c_name": "MERMAN_NATIVE_OPERATION_SEMANTIC_JSON", "code": 6, "executable": true },
+    { "id": "layout_json", "c_name": "MERMAN_NATIVE_OPERATION_LAYOUT_JSON", "code": 7, "executable": true },
+    { "id": "analysis_json", "c_name": "MERMAN_NATIVE_OPERATION_ANALYSIS_JSON", "code": 8, "executable": true },
+    { "id": "analysis_facts_json", "c_name": "MERMAN_NATIVE_OPERATION_ANALYSIS_FACTS_JSON", "code": 9, "executable": true },
+    { "id": "validation_json", "c_name": "MERMAN_NATIVE_OPERATION_VALIDATION_JSON", "code": 10, "executable": true },
+    { "id": "document_analysis_json", "c_name": "MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON", "code": 11, "executable": true },
+    { "id": "document_analysis_facts_json", "c_name": "MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON", "code": 12, "executable": true },
+    { "id": "svg_plan_json", "c_name": "MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON", "code": 13, "executable": true }
   ],
   "callbacks": [
     {
@@ -194,6 +257,20 @@
         { "name": "out_result", "c_type": "MermanNativeResult *", "rust_type": "*mut MermanNativeResult" }
       ],
       "description": "Collect one named binding metadata document. The UTF-8 metadata_id is borrowed for the call. Success writes JSON to metadata_or_error_json with operation none; every written success or failure result owns a nonzero allocation token and must be released with result_free."
+    },
+    {
+      "id": "engine_new_with_services",
+      "c_name": "MermanNativeEngineNewWithServicesFn",
+      "rust_name": "MermanNativeEngineNewWithServicesFn",
+      "code": 6,
+      "return_c_type": "MermanNativeStatus",
+      "return_rust_type": "MermanNativeStatus",
+      "parameters": [
+        { "name": "config", "c_type": "const MermanNativeEngineServicesConfig *", "rust_type": "*const MermanNativeEngineServicesConfig" },
+        { "name": "out_engine", "c_type": "MermanNativeEngineToken *", "rust_type": "*mut MermanNativeEngineToken" },
+        { "name": "out_result", "c_type": "MermanNativeResult *", "rust_type": "*mut MermanNativeResult" }
+      ],
+      "description": "Create a reusable engine from one size-tagged service configuration. The embedded engine_config preserves the code-1 configuration record, icon pack records and nested slices are borrowed only until return, and successful construction retains only the immutable registry plus any host callback state. The caller initializes out_engine to zero. All structural inputs and nested slices must be disjoint from writable outputs; read-only payload slices may overlap each other."
     }
   ],
   "records": [
@@ -328,6 +405,29 @@
         { "name": "capability_catalog_digest", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed static capability catalog provenance digest" },
         { "name": "package_version", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed static package version bytes" }
       ]
+    },
+    {
+      "id": "icon_pack",
+      "c_name": "MermanNativeIconPack",
+      "rust_name": "MermanNativeIconPack",
+      "description": "One size-tagged borrowed IconifyJSON collection for transactional engine construction. A zero-length registration_name means no override; a non-empty UTF-8 registration name replaces the JSON prefix for this logical pack.",
+      "fields": [
+        { "name": "struct_size", "c_type": "uint32_t", "rust_type": "u32", "ownership": "caller initializes to sizeof(MermanNativeIconPack)" },
+        { "name": "json", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed only until engine_new_with_services returns" },
+        { "name": "registration_name", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "optional UTF-8 override borrowed only until engine_new_with_services returns; zero length means absent" }
+      ]
+    },
+    {
+      "id": "engine_services_config",
+      "c_name": "MermanNativeEngineServicesConfig",
+      "rust_name": "MermanNativeEngineServicesConfig",
+      "description": "A size-tagged reusable-engine configuration that embeds the published engine configuration and optionally borrows a contiguous array of Iconify packs for one transactional immutable registry build.",
+      "fields": [
+        { "name": "struct_size", "c_type": "uint32_t", "rust_type": "u32", "ownership": "caller initializes to sizeof(MermanNativeEngineServicesConfig)" },
+        { "name": "engine_config", "c_type": "MermanNativeEngineConfig", "rust_type": "MermanNativeEngineConfig", "ownership": "embedded published engine configuration; options are borrowed for the call and callback state is retained only by a successfully published engine" },
+        { "name": "icon_packs", "c_type": "const MermanNativeIconPack *", "rust_type": "*const MermanNativeIconPack", "ownership": "borrowed contiguous record array for the call; null only when icon_pack_count is zero" },
+        { "name": "icon_pack_count", "c_type": "size_t", "rust_type": "usize", "ownership": "number of logical pack records; zero installs no icon-registry service" }
+      ]
     }
   ],
   "ownership_rules": [
@@ -335,6 +435,7 @@
     { "id": "borrowed_slices", "description": "Input, media-type, and callback slices are borrowed. Hosts must not retain their pointers after the enclosing call or callback returns." },
     { "id": "engine_tokens", "description": "Engine tokens are opaque u64 values. engine_try_close never waits: callback-active returns reentrant-call, another active operation returns busy with the token still valid, and quiescent success permanently closes admission before retiring the token. A transport reference acquired before successful close cannot enter afterwards. Callback and user_data are immutable constructor-owned state and may be released after successful close." },
     { "id": "host_callbacks", "description": "Host callbacks are synchronous and borrowed for the call. They MUST NOT unwind, throw, propagate SEH, longjmp, or otherwise perform a non-local exit across the ABI boundary. Merman converts returned status values only; it cannot catch foreign exceptions." },
-    { "id": "disabled_capabilities", "description": "A known operation whose backend is absent is rejected before backend work with unsupported_operation, kind missing-capability, and the canonical capability_id. An unknown operation code returns the same status with kind unknown-operation and a null capability_id. Both failures are written results with nonzero allocation_token values and must be released with result_free." }
+    { "id": "disabled_capabilities", "description": "A known operation whose backend is absent is rejected before backend work with unsupported_operation, kind missing-capability, and the canonical capability_id. An unknown operation code returns the same status with kind unknown-operation and a null capability_id. Both failures are written results with nonzero allocation_token values and must be released with result_free." },
+    { "id": "engine_services", "description": "engine_new_with_services borrows the outer configuration, embedded options, pack records, IconifyJSON bytes, and registration names only until return and never invokes the host callback during construction. A successful engine owns the fully validated immutable registry without retaining pack pointers; callback and user_data follow the existing quiescent-close lifetime. Any validation, registry, service-conflict, engine, token, result-allocation, or panic failure publishes no caller-visible engine. If publication must be rolled back, the token is retired under lock and the complete engine and service graph are destroyed only after all registry and admission locks are released." }
   ]
 }

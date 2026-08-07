@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   assertRuntimeOwnerEvidence,
   expectedWebOperationIds,
+  expectedWebOutputIds,
 } from "./wasm-build/runtime-evidence.mjs";
 
 describe("WASM runtime owner evidence", () => {
@@ -14,6 +15,13 @@ describe("WASM runtime owner evidence", () => {
   const expectedOperationIds = expectedWebOperationIds(
     evidence.runtime_capability_ids,
   );
+  const expectedOutputIds = expectedWebOutputIds(evidence.runtime_capability_ids);
+
+  it("derives outputs from explicit operation relationships", () => {
+    assert.deepEqual(expectedOutputIds, ["svg"]);
+    assert.deepEqual(expectedWebOutputIds(["ascii"]), ["ascii"]);
+    assert.deepEqual(expectedWebOutputIds(["analysis"]), []);
+  });
 
   it("accepts exact runtime capability and output IDs", () => {
     assert.doesNotThrow(() =>
@@ -21,7 +29,7 @@ describe("WASM runtime owner evidence", () => {
         {
           capability_ids: ["analysis", "svg"],
           operation_ids: expectedOperationIds,
-          output_ids: ["svg"],
+          output_ids: expectedOutputIds,
         },
         evidence,
       ),
@@ -32,9 +40,9 @@ describe("WASM runtime owner evidence", () => {
     assert.throws(
       () =>
         assertRuntimeOwnerEvidence(
-        {
-          capability_ids: ["analysis", "svg"],
-          operation_ids: expectedOperationIds,
+          {
+            capability_ids: ["analysis", "svg"],
+            operation_ids: expectedOperationIds,
             output_ids: ["ascii", "svg"],
           },
           evidence,
@@ -47,9 +55,9 @@ describe("WASM runtime owner evidence", () => {
     assert.throws(
       () =>
         assertRuntimeOwnerEvidence(
-        {
-          capability_ids: ["analysis", "svg"],
-          operation_ids: expectedOperationIds,
+          {
+            capability_ids: ["analysis", "svg"],
+            operation_ids: expectedOperationIds,
             output_ids: [],
           },
           evidence,
@@ -59,9 +67,9 @@ describe("WASM runtime owner evidence", () => {
     assert.throws(
       () =>
         assertRuntimeOwnerEvidence(
-        {
-          capability_ids: ["analysis", "svg"],
-          operation_ids: expectedOperationIds,
+          {
+            capability_ids: ["analysis", "svg"],
+            operation_ids: expectedOperationIds,
             output_ids: ["svg", "ascii"],
           },
           {
@@ -84,7 +92,7 @@ describe("WASM runtime owner evidence", () => {
             {
               capability_ids: ["analysis", "svg"],
               operation_ids: operationIds,
-              output_ids: ["svg"],
+              output_ids: expectedOutputIds,
             },
             evidence,
           ),

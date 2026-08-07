@@ -72,14 +72,19 @@ class WorkflowPathFilterTests(unittest.TestCase):
             "Cargo.lock",
             "Cargo.toml",
             "capabilities/artifact-profiles-v1.json",
+            "crates/merman-node/Cargo.lock",
             "crates/**/Cargo.toml",
             "docs/security/RUSTSEC_EXCEPTIONS.json",
             "fuzz/Cargo.lock",
             "fuzz/Cargo.toml",
+            "platforms/node/candidate-builds.json",
             "platforms/**/THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
             "platforms/python/legal/rust-cargo-dependencies/*.json",
+            "rust-toolchain.toml",
+            "scripts/artifact_profile_recipe.py",
             "scripts/generate-rust-license-report.py",
             "scripts/python_wheel_licenses.py",
+            "scripts/strict_json.py",
             "scripts/verify_artifact_dependency_closures.py",
             "scripts/verify_rustsec_exceptions.py",
         }
@@ -88,6 +93,25 @@ class WorkflowPathFilterTests(unittest.TestCase):
             with self.subTest(event_name=event_name):
                 self.assert_event_paths_include(
                     ".github/workflows/security-audit.yml",
+                    event_name,
+                    required_paths,
+                )
+
+    def test_npm_audit_paths_cover_all_lockfile_inputs(self) -> None:
+        required_paths = {
+            ".github/workflows/npm-audit.yml",
+            "playground/package.json",
+            "playground/package-lock.json",
+            "playground/tests/package.json",
+            "playground/tests/package-lock.json",
+            "tools/mermaid-cli/package.json",
+            "tools/mermaid-cli/package-lock.json",
+        }
+
+        for event_name in ("push", "pull_request"):
+            with self.subTest(event_name=event_name):
+                self.assert_event_paths_include(
+                    ".github/workflows/npm-audit.yml",
                     event_name,
                     required_paths,
                 )
@@ -135,6 +159,22 @@ class WorkflowPathFilterTests(unittest.TestCase):
                     event_name,
                     required_paths,
                 )
+
+    def test_performance_paths_cover_native_memory_inputs(self) -> None:
+        required_paths = {
+            ".github/workflows/performance.yml",
+            "Cargo.lock",
+            "Cargo.toml",
+            "crates/merman-bindings-core/**",
+            "docs/performance/**",
+            "tools/bench/**",
+        }
+
+        self.assert_event_paths_include(
+            ".github/workflows/performance.yml",
+            "pull_request",
+            required_paths,
+        )
 
     def assert_event_paths_include(
         self,

@@ -4,9 +4,15 @@
 
 ### Breaking changes
 
+- Split the public SDK into a stateless `Merman` discovery/one-shot facade and a directly constructed, explicitly closeable `MermanEngine`. Removed `MermanReusableEngine`, `Merman.reusableEngine(...)`, the engine-owning `Merman` lifecycle, `dispose()`, and callback-specialized facade constructors without compatibility aliases.
+- Replaced constructor-level `textMeasurer:` arguments with immutable `MermanEngineServices`, which composes an optional host text measurer and `MermanIconPackSet`.
+- Require the current complete ABI 3 table, runtime catalog, schemas, and service constructor for every Flutter native-library entry point; historical partial producers are no longer accepted.
+- Replaced raw operation metadata maps with typed `MermanOperationMetadata` and the open `MermanOutputPlan` hierarchy. Read additive metadata through `rawJson`; unknown future plans are preserved as `MermanUnknownOutputPlan`.
+- Replaced the closed `MermanOperation` enum with a generated value object. Iterate `MermanOperation.knownValues` instead of `.values`; unknown runtime operation IDs remain discoverable but require an updated SDK before invocation.
+- Replaced the closed runtime resource-limit enum with the open `MermanResourceLimitId` value object. Compare stable IDs or generated constants and iterate `.knownValues`; resource profiles and caller-owned override IDs remain closed inputs.
 - Rebuilt the Dart FFI transport against the frozen ABI 3 minimum prefix. The pre-freeze layout digest and `engine_free` table slot are no longer accepted; discovery now uses the minimum-prefix digest and `engine_try_close`.
 - Replaced the prerelease ABI 2 wrapper with ABI 3 table discovery. Direct `merman_*` symbol lookup, manually maintained raw Dart FFI records, and ABI 2 compatibility paths are removed. Upgrade the Dart package and its bundled native artifacts together.
-- Moved host text measurement to reusable-engine construction: pass `textMeasurer:` to `Merman.reusableEngine(...)`. The former post-construction callback installation API is removed.
+- Moved host text measurement into reusable-engine services. The former post-construction callback installation API is removed.
 - Replaced format-specific option envelopes with generic `optionsJson` on `execute` and every convenience method. Request options deeply override the reusable engine baseline for one call; `runtime_policy` remains constructor-owned.
 - Replaced parser-backed document facts with their final schema 1 shape. Other versions are rejected before body decoding; remove `fact_source: "text_scan"` handling and consume parser-backed items with explicit unavailable bodies.
 - Renamed binding option fields `viewport_width` and `viewport_height` to `container_width` and `container_height`, and removed the legacy Flowchart ELK backend selector; update serialized `optionsJson` before upgrading.
@@ -16,7 +22,11 @@
 
 ### Added
 
-- Added opaque native result allocation-token ownership, typed BUSY and REENTRANT exceptions, optional immutable text measurement on `Merman` construction, and ABI-compatible `openPath` loading.
+- Added immutable `MermanIconPack` and `MermanIconPackSet.fromPacks` values plus borrowed pack-buffer construction through the ABI 3 service slot. Native engine construction transactionally validates packs, preserves structured icon-registry errors, and owns the parsed registry after return.
+- Added generated operation-metadata decoding, typed raster/PDF output plans, result-returning PNG/JPEG/PDF helpers, generic metadata dispatch, and named `analysisFactsJson` / `svgPlanJson` helpers.
+- Added generated option-group, payload-schema, operation, and constructor-service contract projections. Current runtime sections are required and validated strictly while their vocabularies remain additive.
+- Added retryable, deterministic, idempotent engine close semantics that release callback state only after confirmed native quiescence. Failed constructor rollback retains callback state instead of creating a dangling native callback.
+- Added opaque native result allocation-token ownership, typed BUSY and REENTRANT exceptions, optional immutable text measurement on reusable-engine construction, and ABI-compatible `openPath` loading.
 - Added ffigen-generated ABI 3 declarations, checked against the native table's version, digest,
   and function pointers before use.
 - Added a strict flat `MermanRuntimeCatalog` that validates the loaded artifact's capability,
@@ -25,7 +35,7 @@
   SVG, PNG, JPEG, PDF, ASCII, semantic/layout/analysis JSON, document analysis, and validation.
 - Added generated resource options so Flutter callers can choose `interactive`, `constrained`,
   `trusted-native`, or `unbounded-for-trusted-input` without copying limit tables.
-- Restored typed and cached diagram, ASCII, parser/render, lint-rule, Mermaid-theme, and presentation metadata APIs through the appended ABI 3 `metadata_collect` slot. Exact-version package loading requires the slot, while `openPath` retains frozen five-slot prefix compatibility.
+- Restored typed and cached diagram, ASCII, parser/render, lint-rule, Mermaid-theme, and presentation metadata APIs through ABI 3 `metadata_collect`. Release consumers use the matching current table; historical partial-table compatibility is no longer an SDK contract.
 
 ### Changed
 

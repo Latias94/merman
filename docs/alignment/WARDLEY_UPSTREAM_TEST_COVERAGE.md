@@ -1,7 +1,7 @@
-# Wardley Upstream Test Coverage (Mermaid@11.16.0)
+# Wardley Upstream Test Coverage (Mermaid@11.16.1)
 
-Scope: pinned Mermaid `11.16.0`, commit
-`7c0cafcf42e76bfaf79d0cbbd12edb986612f014`.
+Scope: pinned Mermaid `11.16.1`, commit
+`7ecca0cd7f1658ef74f4e7e91f925724ef403bbf`.
 
 ## Pinned Sources
 

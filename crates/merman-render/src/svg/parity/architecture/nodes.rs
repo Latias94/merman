@@ -27,6 +27,7 @@ pub(super) struct ArchitectureNodeRenderContext<'a, M: ArchitectureModelAccess> 
     pub(super) text_measurer: &'a dyn TextMeasurer,
     pub(super) sanitize_config: &'a merman_core::MermaidConfig,
     pub(super) icon_registry: Option<&'a crate::svg::IconRegistry>,
+    pub(super) work_meter: &'a crate::resources::OperationWorkMeter,
     pub(super) content_bounds: &'a mut Option<Bounds>,
 }
 
@@ -44,7 +45,7 @@ fn write_diagram_node_id(out: &mut String, diagram_id: &str, node_id: &str) {
 
 pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAccess>(
     ctx: &mut ArchitectureNodeRenderContext<'_, M>,
-) {
+) -> crate::Result<()> {
     let out = &mut *ctx.out;
     let diagram_id = ctx.diagram_id;
     let model = ctx.model;
@@ -95,15 +96,17 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                             settings.icon_size_px,
                             ctx.icon_registry,
                             &id_scope,
-                        );
+                            sanitize_config,
+                            ctx.work_meter,
+                        )?;
                     } else {
-                        write_arch_icon_svg(out, icon, settings.icon_size_px, "");
+                        write_arch_icon_svg(out, icon, settings.icon_size_px, "")?;
                     }
                     out.push_str("</g>");
                 }
                 (None, Some(icon_text)) => {
                     out.push_str("<g>");
-                    write_arch_icon_svg(out, "blank", settings.icon_size_px, "");
+                    write_arch_icon_svg(out, "blank", settings.icon_size_px, "")?;
                     out.push_str("</g>");
 
                     // Mermaid computes `iconText` clamp from the DOM `font-size` applied to the
@@ -160,12 +163,13 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
         }
         out.push_str("</g>");
     }
+    Ok(())
 }
 
 pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
     ctx: &mut ArchitectureNodeRenderContext<'a, M>,
     group_rects: &[GroupRect<'a>],
-) {
+) -> crate::Result<()> {
     let out = &mut *ctx.out;
     let settings = ctx.settings;
     let text_measurer = ctx.text_measurer;
@@ -217,9 +221,11 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
                         group_icon_size_px,
                         ctx.icon_registry,
                         &id_scope,
-                    );
+                        ctx.sanitize_config,
+                        ctx.work_meter,
+                    )?;
                 } else {
-                    write_arch_icon_svg(out, icon, group_icon_size_px, "");
+                    write_arch_icon_svg(out, icon, group_icon_size_px, "")?;
                 }
                 out.push_str("</g></g>");
                 shifted_x1 += group_icon_size_px;
@@ -266,4 +272,5 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
 
         out.push_str("</g>");
     }
+    Ok(())
 }

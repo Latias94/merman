@@ -5,7 +5,11 @@
 //! The crate intentionally stays thin: all parsing, rendering, options parsing, and error
 //! classification are delegated to `merman-bindings-core`.
 
-use merman_bindings_core::{ArtifactCapabilitySurface, BindingError, RuntimeCatalog};
+use merman_bindings_core::{
+    ArtifactContractSpec, BindingError, BindingOperationRequest, BindingTransportKey,
+    CapabilityKey, ConstructorServiceKey, OperationKey, RuntimeCatalog, RuntimePolicyExposure,
+    TargetKey, TransportCompiledExtensionKey, ValidatedArtifactContract,
+};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
@@ -33,42 +37,61 @@ use serde::Deserialize;
 /// This is independent from the native C ABI and the Typst plugin ABI. It changes when the
 /// JavaScript/WASM export or runtime-contract wire shape becomes incompatible.
 pub const WASM_TRANSPORT_API_VERSION: u32 = 3;
-
-fn wasm_capability_surface() -> ArtifactCapabilitySurface {
-    #[cfg(all(feature = "svg", target_arch = "wasm32"))]
-    let text_measurement_projection =
-        merman_bindings_core::TextMeasurementProviderProjection::PreserveCompiled;
-    #[cfg(not(all(feature = "svg", target_arch = "wasm32")))]
-    let text_measurement_projection =
-        merman_bindings_core::TextMeasurementProviderProjection::VendoredOnly;
-
-    let projected = merman_bindings_core::compiled_runtime_capability_surface()
-        .project_to_descriptor_target("web", text_measurement_projection)
-        .expect("the Web target is declared by the capability descriptor");
-
+const WASM_OPERATIONS: &[OperationKey] = &[
+    #[cfg(feature = "analysis")]
+    OperationKey::AnalysisFactsJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::AnalysisJson,
+    #[cfg(feature = "ascii")]
+    OperationKey::Ascii,
+    #[cfg(feature = "analysis")]
+    OperationKey::DocumentAnalysisFactsJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::DocumentAnalysisJson,
+    #[cfg(feature = "svg")]
+    OperationKey::LayoutJson,
+    OperationKey::SemanticJson,
+    #[cfg(feature = "svg")]
+    OperationKey::Svg,
+    #[cfg(feature = "svg")]
+    OperationKey::SvgPlanJson,
+    #[cfg(feature = "analysis")]
+    OperationKey::ValidationJson,
+];
+const WASM_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
+    #[cfg(feature = "layout-cytoscape")]
+    CapabilityKey::LayoutCytoscape,
+    #[cfg(feature = "layout-elk")]
+    CapabilityKey::LayoutElk,
+    #[cfg(feature = "math")]
+    CapabilityKey::Math,
+];
+const WASM_TRANSPORT_EXTENSIONS: &[TransportCompiledExtensionKey] = &[
     #[cfg(feature = "editor")]
-    {
-        let capabilities = projected.runtime_capabilities();
-        let mut capability_ids = capabilities.capability_ids;
-        capability_ids.push("editor");
-        capability_ids.sort_unstable();
-        ArtifactCapabilitySurface::new_with_operation_ids(
-            capability_ids,
-            capabilities.output_ids,
-            capabilities.operation_ids,
-            capabilities.system_adapter_ids,
-            capabilities.text_measurement,
-        )
-        .expect("the Web editor transport owns analysis-backed editor APIs")
-    }
-    #[cfg(not(feature = "editor"))]
-    {
-        projected
-    }
+    TransportCompiledExtensionKey::Editor,
+];
+const WASM_CONSTRUCTOR_SERVICES: &[ConstructorServiceKey] = &[
+    #[cfg(all(feature = "svg", target_arch = "wasm32"))]
+    ConstructorServiceKey::HostTextMeasurement,
+];
+
+// Keep feature selection in the transport owner. Dependency features may be unified by Cargo.
+static ARTIFACT_CONTRACT: ValidatedArtifactContract =
+    ArtifactContractSpec::new(TargetKey::Web, BindingTransportKey::Web)
+        .with_operations(WASM_OPERATIONS)
+        .with_supplemental_capabilities(WASM_SUPPLEMENTAL_CAPABILITIES)
+        .with_all_available_metadata()
+        .with_constructor_services(WASM_CONSTRUCTOR_SERVICES)
+        .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
+        .with_transport_extensions(WASM_TRANSPORT_EXTENSIONS)
+        .materialize();
+
+fn wasm_artifact_contract() -> &'static ValidatedArtifactContract {
+    &ARTIFACT_CONTRACT
 }
 
 fn wasm_runtime_catalog() -> RuntimeCatalog {
-    merman_bindings_core::runtime_catalog_for(WASM_TRANSPORT_API_VERSION, wasm_capability_surface())
+    wasm_artifact_contract().runtime_catalog(WASM_TRANSPORT_API_VERSION)
 }
 
 #[wasm_bindgen(start)]
@@ -88,17 +111,21 @@ pub fn package_version() -> String {
 
 #[wasm_bindgen(js_name = renderSvg)]
 pub fn render_svg(source: &str, options_json: Option<String>) -> Result<String, JsValue> {
-    string_result(merman_bindings_core::render_svg(
+    string_result(execute_wasm_operation(
+        "svg",
         source.as_bytes(),
         options_bytes(options_json.as_deref()),
+        None,
     ))
 }
 
 #[wasm_bindgen(js_name = svgPlanJson)]
 pub fn svg_plan_json(source: &str, options_json: Option<String>) -> Result<JsValue, JsValue> {
-    json_value_result(merman_bindings_core::svg_plan_json(
+    json_value_result(execute_wasm_operation(
+        "svg-plan-json",
         source.as_bytes(),
         options_bytes(options_json.as_deref()),
+        None,
     ))
 }
 
@@ -110,10 +137,11 @@ pub fn render_svg_with_text_measurer(
     callback: js_sys::Function,
 ) -> Result<String, JsValue> {
     with_host_text_measure_callback(callback, || {
-        let engine =
-            merman_bindings_core::BindingEngine::new(options_bytes(options_json.as_deref()))
-                .map_err(binding_error_to_js)?;
-        let engine = engine.with_host_text_measurer(Arc::new(WasmHostTextMeasurer));
+        let services = merman_bindings_core::BindingEngineServices::new()
+            .with_host_text_measurer(Arc::new(WasmHostTextMeasurer));
+        let engine = wasm_artifact_contract()
+            .create_engine_with_services(options_bytes(options_json.as_deref()), services)
+            .map_err(binding_error_to_js)?;
         string_result(engine.render_svg(source.as_bytes()))
     })
 }
@@ -126,43 +154,52 @@ pub fn layout_json_with_text_measurer(
     callback: js_sys::Function,
 ) -> Result<String, JsValue> {
     with_host_text_measure_callback(callback, || {
-        let engine =
-            merman_bindings_core::BindingEngine::new(options_bytes(options_json.as_deref()))
-                .map_err(binding_error_to_js)?;
-        let engine = engine.with_host_text_measurer(Arc::new(WasmHostTextMeasurer));
+        let services = merman_bindings_core::BindingEngineServices::new()
+            .with_host_text_measurer(Arc::new(WasmHostTextMeasurer));
+        let engine = wasm_artifact_contract()
+            .create_engine_with_services(options_bytes(options_json.as_deref()), services)
+            .map_err(binding_error_to_js)?;
         string_result(engine.layout_json(source.as_bytes()))
     })
 }
 
 #[wasm_bindgen(js_name = parseJson)]
 pub fn parse_json(source: &str, options_json: Option<String>) -> Result<String, JsValue> {
-    string_result(merman_bindings_core::parse_json(
+    string_result(execute_wasm_operation(
+        "semantic-json",
         source.as_bytes(),
         options_bytes(options_json.as_deref()),
+        None,
     ))
 }
 
 #[wasm_bindgen(js_name = layoutJson)]
 pub fn layout_json(source: &str, options_json: Option<String>) -> Result<String, JsValue> {
-    string_result(merman_bindings_core::layout_json(
+    string_result(execute_wasm_operation(
+        "layout-json",
         source.as_bytes(),
         options_bytes(options_json.as_deref()),
+        None,
     ))
 }
 
 #[wasm_bindgen(js_name = renderAscii)]
 pub fn render_ascii(source: &str, options_json: Option<String>) -> Result<String, JsValue> {
-    string_result(merman_bindings_core::render_ascii(
+    string_result(execute_wasm_operation(
+        "ascii",
         source.as_bytes(),
         options_bytes(options_json.as_deref()),
+        None,
     ))
 }
 
 #[wasm_bindgen]
 pub fn analyze(source: &str, options_json: Option<String>) -> Result<JsValue, JsValue> {
-    json_value_result(merman_bindings_core::analyze_json(
+    json_value_result(execute_wasm_operation(
+        "analysis-json",
         source.as_bytes(),
         options_bytes(options_json.as_deref()),
+        None,
     ))
 }
 
@@ -173,52 +210,55 @@ pub fn analyze_json(source: &str, options_json: Option<String>) -> Result<JsValu
 
 #[wasm_bindgen(js_name = analysisFacts)]
 pub fn analysis_facts(source: &str, options_json: Option<String>) -> Result<JsValue, JsValue> {
-    json_value_result(merman_bindings_core::analysis_facts_json(
+    json_value_result(execute_wasm_operation(
+        "analysis-facts-json",
         source.as_bytes(),
         options_bytes(options_json.as_deref()),
+        None,
     ))
 }
 
 #[wasm_bindgen(js_name = analyzeDocument)]
 pub fn analyze_document(
     source: &str,
+    uri: String,
     options_json: Option<String>,
-    uri: Option<String>,
 ) -> Result<JsValue, JsValue> {
-    let uri = document_uri(uri);
-    json_value_result(merman_bindings_core::analyze_document_json(
+    json_value_result(execute_wasm_operation(
+        "document-analysis-json",
         source.as_bytes(),
         options_bytes(options_json.as_deref()),
-        uri.as_bytes(),
+        Some(uri.as_bytes()),
     ))
 }
 
 #[wasm_bindgen(js_name = analyzeDocumentFacts)]
 pub fn analyze_document_facts(
     source: &str,
+    uri: String,
     options_json: Option<String>,
-    uri: Option<String>,
 ) -> Result<JsValue, JsValue> {
-    let uri = document_uri(uri);
-    json_value_result(merman_bindings_core::analyze_document_facts_json(
+    json_value_result(execute_wasm_operation(
+        "document-analysis-facts-json",
         source.as_bytes(),
         options_bytes(options_json.as_deref()),
-        uri.as_bytes(),
+        Some(uri.as_bytes()),
     ))
 }
 
 #[wasm_bindgen]
 pub fn validate(source: &str, options_json: Option<String>) -> Result<JsValue, JsValue> {
-    json_value_result(merman_bindings_core::validate_json(
+    json_value_result(execute_wasm_operation(
+        "validation-json",
         source.as_bytes(),
         options_bytes(options_json.as_deref()),
+        None,
     ))
 }
 
 #[wasm_bindgen(js_name = supportedDiagrams)]
 pub fn supported_diagrams() -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(merman_bindings_core::supported_diagrams())
-        .map_err(|err| JsValue::from_str(&err.to_string()))
+    json_value_result(wasm_artifact_contract().metadata_json("supported-diagrams"))
 }
 
 #[wasm_bindgen(js_name = runtimeCatalog)]
@@ -230,47 +270,63 @@ pub fn runtime_catalog() -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen(js_name = diagramFamilyCapabilities)]
 pub fn diagram_family_capabilities() -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(&merman_bindings_core::diagram_family_capabilities())
-        .map_err(|err| JsValue::from_str(&err.to_string()))
+    json_value_result(wasm_artifact_contract().metadata_json("diagram-family-capabilities"))
 }
 
 #[wasm_bindgen(js_name = lintRuleCatalog)]
 pub fn lint_rule_catalog() -> Result<JsValue, JsValue> {
-    json_value_result(merman_bindings_core::lint_rule_catalog_json())
+    json_value_result(wasm_artifact_contract().metadata_json("lint-rule-catalog"))
 }
 
 #[wasm_bindgen(js_name = supportedThemes)]
 pub fn supported_themes() -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(merman_bindings_core::supported_themes())
-        .map_err(|err| JsValue::from_str(&err.to_string()))
+    json_value_result(wasm_artifact_contract().metadata_json("supported-themes"))
 }
 
 #[wasm_bindgen(js_name = presentationCatalog)]
 pub fn presentation_catalog() -> Result<JsValue, JsValue> {
-    json_value_result(merman_bindings_core::presentation_catalog_json_for(
-        &wasm_capability_surface(),
-    ))
+    json_value_result(wasm_artifact_contract().metadata_json("presentation-catalog"))
 }
 
 #[wasm_bindgen(js_name = asciiSupportedDiagrams)]
 pub fn ascii_supported_diagrams() -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(merman_bindings_core::ascii_supported_diagrams())
+    serde_wasm_bindgen::to_value(wasm_ascii_supported_diagrams())
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
 #[wasm_bindgen(js_name = asciiCapabilities)]
 pub fn ascii_capabilities() -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(&merman_bindings_core::ascii_capabilities())
-        .map_err(|err| JsValue::from_str(&err.to_string()))
+    json_value_result(wasm_artifact_contract().metadata_json("ascii-capabilities"))
+}
+
+fn wasm_ascii_supported_diagrams() -> &'static [&'static str] {
+    if wasm_artifact_contract()
+        .runtime_capabilities()
+        .has_capability("ascii")
+    {
+        merman_bindings_core::ascii_supported_diagrams()
+    } else {
+        &[]
+    }
 }
 
 fn options_bytes(options_json: Option<&str>) -> &[u8] {
     options_json.unwrap_or_default().as_bytes()
 }
 
-pub(crate) fn document_uri(uri: Option<String>) -> String {
-    uri.filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "file:///merman/document.mmd".to_string())
+fn execute_wasm_operation(
+    operation_id: &'static str,
+    source: &[u8],
+    options_json: &[u8],
+    uri: Option<&[u8]>,
+) -> Result<Vec<u8>, BindingError> {
+    wasm_artifact_contract()
+        .execute_once(
+            BindingOperationRequest::new(operation_id, source)
+                .with_optional_uri(uri)
+                .with_options_json(options_json),
+        )
+        .map(merman_bindings_core::BindingOperationResult::into_data)
 }
 
 fn string_result(result: Result<Vec<u8>, BindingError>) -> Result<String, JsValue> {
@@ -581,14 +637,78 @@ mod tests {
     #[cfg(feature = "svg")]
     #[test]
     fn svg_plan_reports_the_owner_capability_payload() {
-        let result =
-            merman_bindings_core::svg_plan_json(b"flowchart TD\nA[Hello] --> B[World]", b"")
-                .unwrap();
+        let result = execute_wasm_operation(
+            "svg-plan-json",
+            b"flowchart TD\nA[Hello] --> B[World]",
+            b"",
+            None,
+        )
+        .unwrap();
         let plan: serde_json::Value = serde_json::from_slice(&result).unwrap();
 
         assert_eq!(plan["planned_operation_id"], "svg");
         assert_eq!(plan["missing_capability_ids"], serde_json::json!([]));
         assert_eq!(plan["ready"], true);
+    }
+
+    #[cfg(all(
+        feature = "svg",
+        not(feature = "layout-cytoscape"),
+        not(feature = "layout-elk"),
+        not(feature = "math")
+    ))]
+    #[test]
+    fn ambient_render_dependencies_do_not_widen_the_wasm_owner_contract() {
+        let capabilities = wasm_artifact_contract().runtime_capabilities();
+        assert!(capabilities.has_capability("svg"));
+
+        for (capability_id, source) in [
+            (
+                "layout-cytoscape",
+                "architecture-beta\n  service api(server)[API]",
+            ),
+            (
+                "layout-elk",
+                "---\nconfig:\n  layout: elk\n---\nflowchart TD\nA --> B",
+            ),
+            ("math", "flowchart TD\nA[\"$$x^2$$\"] --> B"),
+        ] {
+            assert!(!capabilities.has_capability(capability_id));
+
+            let plan =
+                execute_wasm_operation("svg-plan-json", source.as_bytes(), b"", None).unwrap();
+            let plan: serde_json::Value = serde_json::from_slice(&plan).unwrap();
+            assert_eq!(
+                plan["required_capability_ids"],
+                serde_json::json!([capability_id])
+            );
+            assert_eq!(
+                plan["missing_capability_ids"],
+                serde_json::json!([capability_id])
+            );
+            assert_eq!(plan["ready"], false);
+
+            let error = execute_wasm_operation("svg", source.as_bytes(), b"", None)
+                .expect_err("the WASM owner contract must reject ambient render capabilities");
+            assert_eq!(
+                error.status(),
+                merman_bindings_core::BindingStatus::UnsupportedOperation
+            );
+            assert_eq!(error.capability_id(), Some(capability_id));
+        }
+
+        let error = execute_wasm_operation(
+            "svg",
+            b"flowchart TD\nA --> B",
+            br#"{"environment":{"math_renderer":"ratex"}}"#,
+            None,
+        )
+        .expect_err("explicit ratex selection requires owner-selected math");
+        assert_eq!(
+            error.status(),
+            merman_bindings_core::BindingStatus::UnsupportedOperation
+        );
+        assert_eq!(error.capability_id(), Some("math"));
     }
 
     #[cfg(feature = "analysis")]
@@ -721,8 +841,8 @@ mod tests {
         let value: Value = serde_wasm_bindgen::from_value(
             analyze_document(
                 "before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
+                "file:///tmp/example.md".to_string(),
                 None,
-                Some("file:///tmp/example.md".to_string()),
             )
             .unwrap(),
         )
@@ -736,8 +856,8 @@ mod tests {
         let value: Value = serde_json::from_slice(
             &merman_bindings_core::analyze_document_json(
                 b"before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
-                b"",
                 b"file:///tmp/example.md",
+                b"",
             )
             .unwrap(),
         )
@@ -765,8 +885,8 @@ mod tests {
         let value: Value = serde_wasm_bindgen::from_value(
             analyze_document_facts(
                 "before\n```mermaid\nflowchart TD\nA@{\n  shape: rou\n}\n```\nafter\n",
+                "file:///tmp/example.md".to_string(),
                 None,
-                Some("file:///tmp/example.md".to_string()),
             )
             .unwrap(),
         )
@@ -780,8 +900,8 @@ mod tests {
         let value: Value = serde_json::from_slice(
             &merman_bindings_core::analyze_document_facts_json(
                 b"before\n```mermaid\nflowchart TD\nA@{\n  shape: rou\n}\n```\nafter\n",
-                b"",
                 b"file:///tmp/example.md",
+                b"",
             )
             .unwrap(),
         )
@@ -852,24 +972,62 @@ mod tests {
     }
 
     #[test]
-    fn runtime_catalog_tracks_the_resolved_dependency_surface_and_local_relations() {
-        let catalog = wasm_runtime_catalog();
-        let capabilities = catalog.capabilities;
-        let backend = merman_bindings_core::compiled_runtime_capabilities();
+    fn wasm_execution_is_bound_to_the_deterministic_web_contract() {
+        let error = execute_wasm_operation(
+            "semantic-json",
+            b"flowchart TD\nA --> B",
+            br#"{"runtime_policy":"native"}"#,
+            None,
+        )
+        .expect_err("the Web contract must reject native runtime policy selection");
 
-        for capability_id in [
-            "analysis",
-            "ascii",
-            "layout-cytoscape",
-            "layout-elk",
-            "math",
-            "svg",
-        ] {
+        assert_eq!(
+            error.status(),
+            merman_bindings_core::BindingStatus::OptionsJsonError
+        );
+        assert!(error.message().contains("not exposed by target `web`"));
+    }
+
+    #[test]
+    fn runtime_catalog_follows_the_wasm_feature_surface_and_local_relations() {
+        let catalog = wasm_runtime_catalog();
+        assert_eq!(
+            catalog
+                .payload_schemas
+                .iter()
+                .map(|schema| (schema.id, schema.version))
+                .collect::<Vec<_>>(),
+            vec![(
+                "binding-result",
+                merman_bindings_core::BINDING_RESULT_PAYLOAD_VERSION,
+            )]
+        );
+        let capabilities = catalog.capabilities;
+
+        assert_eq!(
+            capabilities.has_capability("analysis"),
+            cfg!(feature = "analysis")
+        );
+        assert_eq!(
+            capabilities.has_capability("ascii"),
+            cfg!(feature = "ascii")
+        );
+        assert_eq!(
+            wasm_ascii_supported_diagrams().is_empty(),
+            !cfg!(feature = "ascii")
+        );
+        assert_eq!(capabilities.has_capability("svg"), cfg!(feature = "svg"));
+        #[cfg(feature = "svg")]
+        {
             assert_eq!(
-                capabilities.has_capability(capability_id),
-                backend.has_capability(capability_id),
-                "Web projection must follow the resolved backend for {capability_id}"
+                capabilities.has_capability("layout-cytoscape"),
+                cfg!(feature = "layout-cytoscape")
             );
+            assert_eq!(
+                capabilities.has_capability("layout-elk"),
+                cfg!(feature = "layout-elk")
+            );
+            assert_eq!(capabilities.has_capability("math"), cfg!(feature = "math"));
         }
         assert!(
             capabilities.system_adapter_ids.is_empty(),

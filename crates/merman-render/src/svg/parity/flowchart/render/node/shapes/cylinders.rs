@@ -33,9 +33,16 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_cylinder(
 
     let _ = write!(
         out,
-        r#"<path d="{}" class="basic label-container outer-path" style="{}" transform="translate({},{})"/>"#,
+        r#"<path d="{}" class="basic label-container outer-path" style="{}""#,
         escape_attr(&path_data),
         escape_attr(common.style),
+    );
+    if ctx.security_level_loose {
+        let _ = write!(out, r#" label-offset-y="{}""#, fmt(ry));
+    }
+    let _ = write!(
+        out,
+        r#" transform="translate({},{})"/>"#,
         fmt(-w / 2.0),
         fmt(-(h / 2.0 + ry))
     );

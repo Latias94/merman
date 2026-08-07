@@ -12,7 +12,7 @@ import type {
   ValidationResult,
 } from "@mermanjs/web";
 import { projectError, type ErrorProjection } from "./error-projection.ts";
-import type { SafeInlineSvg } from "./render-artifact.ts";
+import type { NavigableInlineSvg } from "./render-artifact.ts";
 import type { ConfiguredMermanOperationInput } from "./merman-operation-input.ts";
 export {
   isMermanSvgPipeline,
@@ -38,7 +38,7 @@ export type MermanRenderFailureStage = "render" | "svg-validation";
 
 export type MermanRenderResult =
   | {
-      readonly artifact: SafeInlineSvg;
+      readonly artifact: NavigableInlineSvg;
       readonly error: null;
       readonly renderTime: number;
       readonly status: "success";

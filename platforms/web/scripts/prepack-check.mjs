@@ -376,6 +376,25 @@ function assertPackageTypeConsumers(checked) {
         }
       }
       imports.push("}", `void check${index};`, `void checkModule${index};`);
+      if (item.descriptor.valueExportNames.includes("assertNavigableSvgForDom")) {
+        imports.push(
+          `import { assertNavigableSvgForDom as assertNavigable${index}, assertSelfContainedSvgForDom as assertSelfContained${index}, prepareNavigableSvgForDomMount as prepareNavigable${index}, prepareSelfContainedSvgForDomMount as prepareSelfContained${index} } from ${JSON.stringify(item.descriptor.name)};`,
+          `import type { NavigableSvgDomAdmission as NavigableAdmission${index}, SelfContainedSvgDomAdmission as SelfContainedAdmission${index} } from ${JSON.stringify(item.descriptor.name)};`,
+          `const navigableAdmission${index}: NavigableAdmission${index} = assertNavigable${index}("<svg/>");`,
+          `const selfContainedAdmission${index}: SelfContainedAdmission${index} = assertSelfContained${index}("<svg/>");`,
+          `declare const svgRoot${index}: SVGSVGElement;`,
+          `declare const svgDocument${index}: Document;`,
+          `prepareNavigable${index}(navigableAdmission${index}, svgRoot${index}, svgDocument${index});`,
+          `prepareSelfContained${index}(selfContainedAdmission${index}, svgRoot${index}, svgDocument${index});`,
+          `// @ts-expect-error self-contained admission cannot authorize navigable mounting.`,
+          `prepareNavigable${index}(selfContainedAdmission${index}, svgRoot${index}, svgDocument${index});`,
+          `// @ts-expect-error navigable admission cannot authorize self-contained mounting.`,
+          `prepareSelfContained${index}(navigableAdmission${index}, svgRoot${index}, svgDocument${index});`,
+          `// @ts-expect-error admissions cannot be forged as structural object literals.`,
+          `const forgedAdmission${index}: NavigableAdmission${index} = { hasFragmentReferences: false };`,
+          `void forgedAdmission${index};`,
+        );
+      }
     }
     writeJson(path.join(root, "tsconfig.json"), {
       compilerOptions: {

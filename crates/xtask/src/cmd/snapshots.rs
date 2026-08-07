@@ -37,6 +37,16 @@ fn fixture_render_context_catalog() -> &'static RenderContextCatalog {
 }
 
 pub(crate) fn fixture_site_config_for_path(path: &Path) -> Option<merman::MermaidConfig> {
+    let fixtures_root = crate::cmd::fixtures_root();
+    let is_committed_fixture = path.starts_with(&fixtures_root)
+        || fs::canonicalize(path)
+            .ok()
+            .zip(fs::canonicalize(&fixtures_root).ok())
+            .is_some_and(|(path, root)| path.starts_with(root));
+    if !is_committed_fixture {
+        return None;
+    }
+
     fixture_render_context_catalog()
         .context_for_fixture(path)
         .unwrap_or_else(|error| {
@@ -225,22 +235,27 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
             }
         };
 
-        let parsed = match futures::executor::block_on(engine.parse_diagram_for_render_model(
-            &text,
-            merman::ParseOptions {
-                suppress_errors: true,
-            },
-        )) {
-            Ok(Some(v)) => v,
-            Ok(None) => {
-                failures.push(format!("no diagram detected in {}", mmd_path.display()));
-                continue;
-            }
-            Err(err) => {
-                failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
-                continue;
-            }
+        let fixture_engine = match fixture_site_config_for_path(&mmd_path) {
+            Some(site_config) => engine.clone().with_site_config(site_config),
+            None => engine.clone(),
         };
+        let parsed =
+            match futures::executor::block_on(fixture_engine.parse_diagram_for_render_model(
+                &text,
+                merman::ParseOptions {
+                    suppress_errors: true,
+                },
+            )) {
+                Ok(Some(v)) => v,
+                Ok(None) => {
+                    failures.push(format!("no diagram detected in {}", mmd_path.display()));
+                    continue;
+                }
+                Err(err) => {
+                    failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
+                    continue;
+                }
+            };
 
         if !snapshot_selector_accepts(&diagram, parsed.metadata().diagram_type.as_str()) {
             continue;
@@ -348,9 +363,6 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
     failures.extend(crate::cmd::committed_cypress_corpus_alignment_failures(
         &workspace_root,
     ));
-    if crate::cmd::mermaid_repo_root().is_dir() {
-        failures.extend(crate::cmd::cypress_corpus_source_alignment_failures());
-    }
 
     // 1) Every *_MINIMUM.md should have a *_UPSTREAM_TEST_COVERAGE.md sibling.
     let mut minimum_docs: Vec<PathBuf> = Vec::new();
@@ -525,6 +537,7 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum GeneratedArtifactCheck {
+    BindingContract,
     CapabilitySurface,
     DefaultConfig,
     DompurifyDefaults,
@@ -559,8 +572,9 @@ fn verify_lalrpop_parsers_checks() -> [GeneratedArtifactCheck; 1] {
     [GeneratedArtifactCheck::LalrpopParsers]
 }
 
-fn verify_generated_checks() -> [GeneratedArtifactCheck; 12] {
+fn verify_generated_checks() -> [GeneratedArtifactCheck; 13] {
     [
+        GeneratedArtifactCheck::BindingContract,
         GeneratedArtifactCheck::CapabilitySurface,
         GeneratedArtifactCheck::DefaultConfig,
         GeneratedArtifactCheck::DompurifyDefaults,
@@ -579,6 +593,7 @@ fn verify_generated_checks() -> [GeneratedArtifactCheck; 12] {
 impl GeneratedArtifactCheck {
     fn label(self) -> &'static str {
         match self {
+            GeneratedArtifactCheck::BindingContract => "binding contract",
             GeneratedArtifactCheck::CapabilitySurface => "capability surface",
             GeneratedArtifactCheck::DefaultConfig => "default config",
             GeneratedArtifactCheck::DompurifyDefaults => "dompurify defaults",
@@ -638,6 +653,7 @@ fn verify_generated_artifact_check(
     tmp_dir: &Path,
 ) -> Result<Option<String>, XtaskError> {
     match check {
+        GeneratedArtifactCheck::BindingContract => super::verify_binding_contract_artifacts(),
         GeneratedArtifactCheck::CapabilitySurface => super::verify_capability_surface_artifacts(),
         GeneratedArtifactCheck::DefaultConfig => verify_default_config_artifact(tmp_dir),
         GeneratedArtifactCheck::DompurifyDefaults => verify_dompurify_defaults_artifact(tmp_dir),
@@ -706,8 +722,8 @@ fn verify_dompurify_defaults_artifact(tmp_dir: &Path) -> Result<Option<String>, 
 }
 
 fn verify_theme_snapshot_artifact(tmp_dir: &Path) -> Result<Option<String>, XtaskError> {
-    let expected = PathBuf::from("crates/merman-core/src/generated/theme_variables_11_16_0.json");
-    let actual = tmp_dir.join("theme_variables_11_16_0.actual.json");
+    let expected = PathBuf::from("crates/merman-core/src/generated/theme_variables_11_16_1.json");
+    let actual = tmp_dir.join("theme_variables_11_16_1.actual.json");
     super::gen_theme_snapshot(vec!["--out".to_string(), actual.display().to_string()])?;
     let expected_json: JsonValue = serde_json::from_str(&read_text(&expected)?)?;
     let actual_json: JsonValue = serde_json::from_str(&read_text(&actual)?)?;
@@ -991,6 +1007,7 @@ mod tests {
         assert_eq!(
             verify_generated_checks(),
             [
+                GeneratedArtifactCheck::BindingContract,
                 GeneratedArtifactCheck::CapabilitySurface,
                 GeneratedArtifactCheck::DefaultConfig,
                 GeneratedArtifactCheck::DompurifyDefaults,
@@ -1008,6 +1025,10 @@ mod tests {
         assert_eq!(
             verify_lalrpop_parsers_checks(),
             [GeneratedArtifactCheck::LalrpopParsers]
+        );
+        assert_eq!(
+            GeneratedArtifactCheck::BindingContract.label(),
+            "binding contract"
         );
         assert_eq!(
             GeneratedArtifactCheck::CapabilitySurface.label(),

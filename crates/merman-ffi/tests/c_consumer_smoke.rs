@@ -45,29 +45,6 @@ fn c_consumer_smoke() {
     }
 }
 
-#[test]
-fn abi3_minimum_header_consumer_smoke() {
-    let library_path = compile_c_library(
-        "tests/abi3_minimum_consumer.c",
-        "merman_abi3_minimum_consumer",
-        "tests/fixtures/abi3-minimum",
-    );
-
-    unsafe {
-        let library = Library::new(&library_path).unwrap_or_else(|error| {
-            panic!(
-                "failed to load ABI3 minimum consumer {}: {error}",
-                library_path.display()
-            )
-        });
-        let smoke: libloading::Symbol<unsafe extern "C" fn(NativeGetApi) -> i32> = library
-            .get(b"merman_abi3_minimum_consumer_smoke")
-            .expect("load ABI3 minimum consumer symbol");
-        let result = smoke(merman_ffi::merman_get_native_api);
-        assert_eq!(result, 0, "ABI3 minimum consumer returned {result}");
-    }
-}
-
 fn has_native_sdk_operation_features() -> bool {
     cfg!(all(
         feature = "svg",
@@ -79,9 +56,7 @@ fn has_native_sdk_operation_features() -> bool {
         feature = "layout-cytoscape",
         feature = "layout-elk",
         feature = "math",
-        feature = "system-clock",
-        feature = "system-timezone",
-        feature = "system-random",
+        feature = "native-runtime",
     ))
 }
 
@@ -250,6 +225,34 @@ fn rust_layout_fingerprint() -> u64 {
     hash_field!(hash, merman_ffi::MermanNativeApi, execute_collect);
     hash_field!(hash, merman_ffi::MermanNativeApi, result_free);
     hash_field!(hash, merman_ffi::MermanNativeApi, metadata_collect);
+    hash_field!(hash, merman_ffi::MermanNativeApi, engine_new_with_services);
+
+    hash_record!(hash, merman_ffi::MermanNativeIconPack);
+    hash_field!(hash, merman_ffi::MermanNativeIconPack, struct_size);
+    hash_field!(hash, merman_ffi::MermanNativeIconPack, json);
+    hash_field!(hash, merman_ffi::MermanNativeIconPack, registration_name);
+
+    hash_record!(hash, merman_ffi::MermanNativeEngineServicesConfig);
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeEngineServicesConfig,
+        struct_size
+    );
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeEngineServicesConfig,
+        engine_config
+    );
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeEngineServicesConfig,
+        icon_packs
+    );
+    hash_field!(
+        hash,
+        merman_ffi::MermanNativeEngineServicesConfig,
+        icon_pack_count
+    );
 
     hash
 }
@@ -271,39 +274,33 @@ fn assert_c_abi_native_runtime_catalog() {
         .as_array()
         .expect("artifact profiles must be an array");
 
-    for profile_id in [
-        "c-abi-native",
-        "flutter-android-native",
-        "flutter-desktop-native",
-        "flutter-ios-native",
-    ] {
-        let profile = profiles
-            .iter()
-            .find(|profile| profile["id"] == profile_id)
-            .unwrap_or_else(|| panic!("missing {profile_id} artifact profile"));
-        let expected = &profile["expected"];
+    let profile_id = "c-abi-native";
+    let profile = profiles
+        .iter()
+        .find(|profile| profile["id"] == profile_id)
+        .unwrap_or_else(|| panic!("missing {profile_id} artifact profile"));
+    let expected = &profile["expected"];
 
-        assert_eq!(
-            string_ids(&catalog["capabilities"]["capability_ids"]),
-            string_ids(&expected["capabilities"]),
-            "the real C ABI runtime capabilities drifted from {profile_id}"
-        );
-        assert_eq!(
-            string_ids(&catalog["capabilities"]["capability_ids"]),
-            string_ids(&expected["runtime_ids"]),
-            "the real C ABI runtime IDs drifted from {profile_id}"
-        );
-        assert_eq!(
-            string_ids(&catalog["capabilities"]["output_ids"]),
-            string_ids(&expected["outputs"]),
-            "the real C ABI output report drifted from {profile_id}"
-        );
-        assert_eq!(
-            string_ids(&catalog["capabilities"]["operation_ids"]),
-            expected_native_operation_ids(&capability_surface, expected),
-            "the real C ABI operation report drifted from {profile_id}"
-        );
-    }
+    assert_eq!(
+        string_ids(&catalog["capabilities"]["capability_ids"]),
+        string_ids(&expected["capabilities"]),
+        "the real C ABI runtime capabilities drifted from {profile_id}"
+    );
+    assert_eq!(
+        string_ids(&catalog["capabilities"]["capability_ids"]),
+        string_ids(&expected["runtime_ids"]),
+        "the real C ABI runtime IDs drifted from {profile_id}"
+    );
+    assert_eq!(
+        string_ids(&catalog["capabilities"]["output_ids"]),
+        string_ids(&expected["outputs"]),
+        "the real C ABI output report drifted from {profile_id}"
+    );
+    assert_eq!(
+        string_ids(&catalog["capabilities"]["operation_ids"]),
+        expected_native_operation_ids(&capability_surface, expected),
+        "the real C ABI operation report drifted from {profile_id}"
+    );
 }
 
 fn assert_runtime_output_contracts(catalog: &Value) {

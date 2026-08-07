@@ -11,7 +11,7 @@ cargo-fuzz = true
 base64 = "0.22.1"
 libfuzzer-sys = "0.4"
 merman = { path = "../crates/merman", default-features = false, features = ["svg", "layout-cytoscape", "layout-elk", "math"] }
-merman-ffi = { path = "../crates/merman-ffi", default-features = false, features = ["analysis", "ascii", "svg", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "system-clock", "system-timezone", "system-random"] }
+merman-ffi = { path = "../crates/merman-ffi", default-features = false, features = ["analysis", "ascii", "svg", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "native-runtime", "system-clock", "system-timezone", "system-random"] }
 merman-render = { path = "../crates/merman-render", default-features = false }
 roxmltree = "0.21.1"
 

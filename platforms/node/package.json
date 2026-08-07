@@ -3,6 +3,9 @@
   "version": "0.8.0-alpha.4",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "test": "node --test tests/*.test.mjs",
     "check:packages": "node scripts/verify-packages.mjs",

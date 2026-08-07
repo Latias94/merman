@@ -4,7 +4,8 @@ export function wrapCandidateEngine(engine, label) {
   if (
     typeof engine?.execute !== "function" ||
     typeof engine?.executeSync !== "function" ||
-    typeof engine?.runtimeCatalogJson !== "function"
+    typeof engine?.runtimeCatalogJson !== "function" ||
+    typeof engine?.metadataJson !== "function"
   ) {
     throw new MermanInvalidTransportError(`${label} does not implement the operation contract.`);
   }
@@ -17,6 +18,7 @@ export function wrapCandidateEngine(engine, label) {
     execute: (requestJson) => currentEngine().execute(requestJson),
     executeSync: (requestJson) => currentEngine().executeSync(requestJson),
     runtimeCatalogJson: () => currentEngine().runtimeCatalogJson(),
+    metadataJson: (id) => currentEngine().metadataJson(id),
     dispose: () => {
       const disposing = ownedEngine;
       ownedEngine = null;

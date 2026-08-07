@@ -35,7 +35,7 @@ import {
   type BenchmarkStageWatchdog,
   type BenchmarkStageTimer,
 } from "./stage-watchdog.ts";
-import { projectSafeInlineSvg } from "../../runtime/render-artifact.ts";
+import { projectNavigableInlineSvg } from "../../runtime/render-artifact.ts";
 import type { BenchmarkEngine } from "../trace.ts";
 import { benchmarkPhasePath } from "../phase-contract.ts";
 import { benchmarkIntentModeFromKind } from "../sample-plan.ts";
@@ -327,7 +327,7 @@ export async function createBenchmarkRealmSession(
             "Successful benchmark response has no isolated presentation receipt."
           );
         }
-        projectSafeInlineSvg(response.svg);
+        projectNavigableInlineSvg(response.svg);
         const strictSvgValidatedAt = dependencies.now();
         parentPublication = deriveBenchmarkParentPublicationEvidence({
           dispatchedAt: current.dispatchedAt,

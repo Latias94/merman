@@ -28,6 +28,12 @@ cargo run -p xtask -- verify-artifact-profiles --descriptor path/to/fixture.json
 
 The semantic SHA-256 digest covers the complete capability descriptor. Project plans, migration units, release status, and documentation paths deliberately do not live in either machine contract.
 
+Schema version 1 is still a pre-stable contract. Its object shape may evolve incompatibly during
+the 0.x release line, including new required fields, only when the semantic digest and every strict
+projection or verifier change in lockstep. Consumers must use the digest—not the schema number
+alone—as the exact compatibility identity. A schema-version bump is reserved for a representation
+whose meaning is no longer the same v1 model.
+
 ## Contract Boundaries
 
 An artifact profile says which capabilities are requested for one concrete product build. Cargo features are additive, so a feature list cannot prove that an omitted feature or dependency is absent. An artifact profile can make that claim only when it records `default_features: false` and the corresponding build or dependency-closure probe passes. There is no hand-maintained `observed` status: executable evidence is the successful probe.

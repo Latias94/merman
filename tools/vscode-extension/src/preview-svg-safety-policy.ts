@@ -78,6 +78,7 @@ const SVG_ELEMENTS = new Set([
 ]);
 
 const FOREIGN_OBJECT_LABEL_ELEMENTS = new Set([
+  "a",
   "div",
   "span",
   "p",
@@ -137,7 +138,21 @@ const PNG_STATIC_CHUNKS = new Set([
 ]);
 const PNG_COMPRESSED_METADATA_CHUNKS = new Set(["iCCP", "zTXt"]);
 const RASTER_DATA_IMAGE_URL = /^data:image\/(png|gif|jpe?g|webp);base64,([a-z0-9+/]*={0,2})$/i;
+const CSS_HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 const URL_SCHEME = /^[a-z][a-z0-9+.-]*:/;
+const MERMAID_NAVIGATION_SCHEMES = new Set([
+  "callto:",
+  "cid:",
+  "ftp:",
+  "ftps:",
+  "http:",
+  "https:",
+  "mailto:",
+  "matrix:",
+  "sms:",
+  "tel:",
+  "xmpp:",
+]);
 const RAW_URL_ATTRIBUTES = new Set([
   "action",
   "background",
@@ -180,9 +195,36 @@ interface SvgAttribute {
   value: string;
 }
 
-export function assertSafeSvgWithMessagePrefix(svg: string, messagePrefix: string): void {
-  const scanner = new SvgSafetyScanner(svg, messagePrefix);
-  scanner.assertSafe();
+interface SvgSafetyPolicy {
+  readonly anchorNavigation: "fragment-only" | "mermaid-compatible";
+}
+
+export interface SvgSafetyInspection {
+  readonly hasFragmentReferences: boolean;
+}
+
+const SELF_CONTAINED_SVG_POLICY: SvgSafetyPolicy = Object.freeze({
+  anchorNavigation: "fragment-only",
+});
+
+const NAVIGABLE_SVG_POLICY: SvgSafetyPolicy = Object.freeze({
+  anchorNavigation: "mermaid-compatible",
+});
+
+export function assertSelfContainedSvgWithMessagePrefix(
+  svg: string,
+  messagePrefix: string,
+): SvgSafetyInspection {
+  const scanner = new SvgSafetyScanner(svg, messagePrefix, SELF_CONTAINED_SVG_POLICY);
+  return scanner.assertSafe();
+}
+
+export function assertNavigableSvgWithMessagePrefix(
+  svg: string,
+  messagePrefix: string,
+): SvgSafetyInspection {
+  const scanner = new SvgSafetyScanner(svg, messagePrefix, NAVIGABLE_SVG_POLICY);
+  return scanner.assertSafe();
 }
 
 class SvgSafetyScanner {
@@ -194,14 +236,16 @@ class SvgSafetyScanner {
   private embeddedImageEncodedBytes = 0;
   private embeddedImageBytes = 0;
   private embeddedImagePixels = 0;
+  private hasFragmentReferences = false;
   private readonly elementStack: string[] = [];
 
   constructor(
     private readonly source: string,
     private readonly messagePrefix: string,
+    private readonly policy: SvgSafetyPolicy,
   ) {}
 
-  assertSafe(): void {
+  assertSafe(): SvgSafetyInspection {
     if (
       this.source.length > MAX_SAFE_SVG_SOURCE_CODE_UNITS ||
       !utf8LengthAtMost(this.source, MAX_SAFE_SVG_SOURCE_UTF8_BYTES)
@@ -284,6 +328,7 @@ class SvgSafetyScanner {
     if (this.foreignObjectDepth !== 0) {
       throw this.error("malformed SVG output.");
     }
+    return Object.freeze({ hasFragmentReferences: this.hasFragmentReferences });
   }
 
   private nextTag(): SvgTag | null {
@@ -424,6 +469,9 @@ class SvgSafetyScanner {
       if (nameWithoutNamespace.startsWith("on")) {
         throw this.error("SVG with event handler attributes.");
       }
+      if (elementName === "a") {
+        this.assertSafeAnchorInteractionAttribute(nameWithoutNamespace, value);
+      }
       if (nameWithoutNamespace === "base") {
         throw this.error("SVG with base URL attributes.");
       }
@@ -431,10 +479,10 @@ class SvgSafetyScanner {
         this.assertSafeSrcset(value);
       }
       if (RAW_URL_ATTRIBUTES.has(nameWithoutNamespace)) {
-        this.assertSafeUrl(value, "attribute", elementName, nameWithoutNamespace);
+        this.assertSafeUrl(attribute.value, "attribute", elementName, nameWithoutNamespace);
       }
       if (SVG_URL_REFERENCE_ATTRIBUTES.has(nameWithoutNamespace)) {
-        this.assertSafeUrlReferences(value, "attribute");
+        this.assertSafeUrlReferences(value, nameWithoutNamespace);
       }
       if (nameWithoutNamespace === "style") {
         this.assertSafeCss(value);
@@ -448,16 +496,62 @@ class SvgSafetyScanner {
     }
   }
 
+  private assertSafeAnchorInteractionAttribute(name: string, value: string): void {
+    if (name === "download") {
+      throw this.error("SVG with unsupported navigation download attributes.");
+    }
+    if (name === "ping" || name === "attributionsrc") {
+      throw this.error("SVG with unsupported navigation tracking attributes.");
+    }
+    if (name === "target") {
+      const trimmedTarget = value.trim();
+      if (value !== trimmedTarget) {
+        throw this.error("SVG with malformed navigation target attributes.");
+      }
+      const target = trimmedTarget.toLowerCase();
+      const allowedTarget =
+        target === "" ||
+        (this.policy.anchorNavigation === "mermaid-compatible" &&
+          (target === "_self" ||
+            target === "_blank" ||
+            target === "_parent" ||
+            target === "_top"));
+      if (!allowedTarget) {
+        throw this.error("SVG with unsupported navigation target attributes.");
+      }
+    }
+    if (
+      name === "rel" &&
+      value
+        .toLowerCase()
+        .split(/\s+/u)
+        .includes("opener")
+    ) {
+      throw this.error("SVG with unsafe navigation relationship attributes.");
+    }
+  }
+
   private assertSafeUrl(
     value: string,
     source: "attribute" | "css",
     elementName?: string,
     attributeName?: string,
   ): void {
-    const normalized = decodeCssEscapes(decodeXmlEntities(value));
+    const normalized = source === "attribute" ? decodeXmlEntities(value) : value;
+    const decoded = normalized;
     const compact = removeAsciiWhitespaceAndControl(normalized).toLowerCase();
     const trimmed = normalized.trim().toLowerCase();
     if (compact.startsWith("#")) {
+      this.hasFragmentReferences = true;
+      return;
+    }
+    if (
+      source === "attribute" &&
+      elementName === "a" &&
+      attributeName === "href" &&
+      this.policy.anchorNavigation === "mermaid-compatible"
+    ) {
+      this.assertSafeAnchorNavigationUrl(value, decoded, normalized, compact, trimmed);
       return;
     }
     if (compact.startsWith("data:")) {
@@ -495,6 +589,56 @@ class SvgSafetyScanner {
         ? "SVG with unsafe CSS URL references."
         : "SVG with unsafe URL attributes.",
     );
+  }
+
+  private assertSafeAnchorNavigationUrl(
+    rawValue: string,
+    decodedValue: string,
+    normalized: string,
+    compact: string,
+    trimmed: string,
+  ): void {
+    // Navigation URLs are intentionally stricter than ordinary URL parsing:
+    // whitespace, CSS escapes, and character references must not be able to
+    // disguise the scheme or turn a relative URL into an ambient navigation.
+    if (
+      decodedValue !== normalized ||
+      containsCharacterReference(rawValue.replace(/&amp;/gi, "")) ||
+      normalized !== normalized.trim() ||
+      compact !== normalized.toLowerCase()
+    ) {
+      throw this.error("SVG with unsafe navigation URL attributes.");
+    }
+    if (!trimmed) {
+      throw this.error("SVG with malformed navigation URL attributes.");
+    }
+    if (trimmed.startsWith("//") || trimmed.includes("\\")) {
+      throw this.error("SVG with ambient navigation URL attributes.");
+    }
+
+    const schemeMatch = URL_SCHEME.exec(trimmed);
+    if (!schemeMatch) {
+      return;
+    }
+
+    const scheme = schemeMatch[0].toLowerCase();
+    if (!MERMAID_NAVIGATION_SCHEMES.has(scheme)) {
+      throw this.error("SVG with unsafe navigation URL attributes.");
+    }
+
+    if (scheme !== "http:" && scheme !== "https:" && scheme !== "ftp:" && scheme !== "ftps:") {
+      return;
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(trimmed);
+    } catch {
+      throw this.error("SVG with malformed navigation URL attributes.");
+    }
+    if (!parsed.hostname) {
+      throw this.error("SVG with malformed navigation URL attributes.");
+    }
   }
 
   private assertSafeEmbeddedRasterDataUrl(value: string): void {
@@ -604,7 +748,7 @@ class SvgSafetyScanner {
     }
   }
 
-  private assertSafeUrlReferences(value: string, source: "attribute" | "css"): void {
+  private assertSafeUrlReferences(value: string, attributeName: string): void {
     const normalized = decodeCssEscapes(decodeXmlEntities(value));
     const lower = normalized.toLowerCase();
     let cursor = 0;
@@ -632,7 +776,7 @@ class SvgSafetyScanner {
         (rawValue.startsWith("'") && rawValue.endsWith("'"))
           ? rawValue.slice(1, -1)
           : rawValue;
-      this.assertSafeUrl(unquoted, source);
+      this.assertSafeUrl(unquoted, "css");
       cursor = valueEnd + 1;
     }
 
@@ -641,11 +785,21 @@ class SvgSafetyScanner {
     }
 
     const compact = removeAsciiWhitespaceAndControl(normalized).toLowerCase();
-    if (!compact || compact === "none" || compact.startsWith("#")) {
+    if (!compact || compact === "none") {
+      return;
+    }
+    if (compact.startsWith("#")) {
+      if (attributeName === "fill" || attributeName === "stroke") {
+        if (!CSS_HEX_COLOR.test(compact)) {
+          throw this.error("SVG with malformed hexadecimal paint values.");
+        }
+        return;
+      }
+      this.hasFragmentReferences = true;
       return;
     }
     if (compact.startsWith("//") || compact.startsWith("/") || URL_SCHEME.test(compact)) {
-      this.assertSafeUrl(normalized, source);
+      this.assertSafeUrl(normalized, "css");
     }
   }
 

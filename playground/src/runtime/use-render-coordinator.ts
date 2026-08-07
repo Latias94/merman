@@ -31,21 +31,17 @@ export function selectVisibleRenderBatch(
 export function selectCurrentDiagramType(
   state: RenderCoordinatorState
 ): DiagramType | "unknown" {
-  if (
-    !isCompletedRenderState(state) ||
-    state.detection.status !== "available"
-  ) {
+  const batch = selectVisibleRenderBatch(state);
+  if (!batch || batch.detection.status !== "available") {
     return "unknown";
   }
-  return state.detection.diagramType;
+  return batch.detection.diagramType;
 }
 
 export function selectCurrentDetectionValidity(
   state: RenderCoordinatorState
 ): "valid" | "recoverable-invalid" | "unknown" {
-  return isCompletedRenderState(state)
-    ? state.detection.validity
-    : "unknown";
+  return selectVisibleRenderBatch(state)?.detection.validity ?? "unknown";
 }
 
 export function selectCurrentMermanRenderTime(

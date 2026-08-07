@@ -2,7 +2,7 @@
 
 This document defines the admitted Mermaid `error` diagram contract in `merman`.
 
-Baseline: Mermaid `@11.16.0`.
+Baseline: Mermaid `@11.16.1`.
 
 ## Source authority
 

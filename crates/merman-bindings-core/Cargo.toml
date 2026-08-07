@@ -18,9 +18,14 @@ artifact-profile-required = true
 
 [features]
 default = []
-system-clock = ["merman/system-clock", "merman-analysis?/system-clock"]
-system-timezone = ["merman/system-timezone", "merman-analysis?/system-timezone"]
-system-random = ["merman/system-random", "merman-analysis?/system-random"]
+native-runtime = [
+    "merman/system-clock",
+    "merman/system-timezone",
+    "merman/system-random",
+    "merman-analysis?/system-clock",
+    "merman-analysis?/system-timezone",
+    "merman-analysis?/system-random",
+]
 analysis = ["dep:merman-analysis"]
 ascii = ["merman/ascii"]
 svg = ["merman/svg"]

@@ -27,21 +27,35 @@ runtime closure, the Worker/equivalence closure, the portable full/editor
 runtime package contract, and equivalence evidence through selection-input
 digests. The package contract binds exact runtime JavaScript, package exports,
 artifact profile and capabilities, and the WASM source digest. Before computing
-that contract, the verifier still requires every current JavaScript and WASM
-runtime artifact to match its own provenance record. It deliberately excludes
-the platform-specific WASM binary identity, build-input digest, and host-form
-tool descriptions: the same pinned sources and toolchain release can emit
-different bytes on supported builders. `npm run verify:editor-artifact-authority`
-recomputes the portable digests and the derived decision without building or
-launching a browser. Documentation, browser-test-only changes, emitted
-declarations, source maps, and host-only WASM rebuild differences do not force an
-R16 freshness failure. Source, profile, capability, runtime JavaScript,
-Playground runtime, and transitive build-config changes do. Vite may split shared
-chunks across any production HTML entry, and the PostCSS/Tailwind build can
-project lazy-workbench classes into the initial stylesheet. Tailwind automatic
-source detection is disabled; its explicit source roots are all members of the
-production TypeScript runtime closure, so test and tooling text cannot mutate
-the measured CSS.
+that contract during measurement, every JavaScript and WASM runtime artifact
+must match its own provenance record. The recorded contract deliberately
+excludes platform-specific WASM binary identity, build-input digest, and
+host-form tool descriptions: the same pinned sources and toolchain release can
+emit different bytes on supported builders.
+
+`npm run verify:editor-artifact-authority` is a fast selection-topology check,
+not a measurement-freshness gate. It validates that the checked receipt records
+an authoritative capture, then proves that the current package dependencies,
+exact local lockfile resolutions, and the single runtime `?worker` edge reachable
+from `src/editor/worker-browser.ts` still implement the artifact selected by that
+receipt. The verifier follows the resolved production Worker target rather than a
+historical filename. It does not compare the receipt's historical content
+digests with the current build. Ordinary source, package, or WASM changes
+therefore use their normal unit, contract, provenance, and build checks instead
+of forcing a new Chromium run.
+
+Rerun the on-demand measurement only when maintainers deliberately:
+
+- reconsider switching between the `full` and `editor` Worker artifacts;
+- change the 5%/20 ms, memory, cold-byte, or semantic-equivalence decision rules;
+- change the two-artifact topology, realm ownership, or measurement method; or
+- request new economic evidence after a major architecture change.
+
+Vite may split shared chunks across any production HTML entry, and the
+PostCSS/Tailwind build can project lazy-workbench classes into the initial
+stylesheet. Tailwind automatic source detection is disabled; its explicit
+source roots are all members of the production TypeScript runtime closure, so
+test and tooling text cannot mutate the measured CSS.
 
 The equivalence probe uses the production `WorkerClient` and the emitted
 `merman-language.worker` as an explicit module Worker. Its input is the generated

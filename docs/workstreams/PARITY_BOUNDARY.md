@@ -4,7 +4,7 @@ This document defines how far merman should go when reproducing Mermaid output. 
 keep merman useful as a Rust library: deterministic, browser-free, fast, and maintainable. Mermaid
 CLI pixel parity is a diagnostic tool, not the product boundary.
 
-Pinned upstream baseline: Mermaid `@11.16.0`.
+Pinned upstream baseline: Mermaid `@11.16.1`.
 
 ## Product Boundary
 

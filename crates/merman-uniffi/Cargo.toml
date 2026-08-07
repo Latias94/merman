@@ -21,17 +21,15 @@ artifact-profile-required = true
 
 [[example]]
 name = "generate_python_package"
-required-features = ["bindgen-smoke"]
+required-features = ["binding-generation"]
 
 [[example]]
 name = "generate_swift_bindings"
-required-features = ["bindgen-smoke"]
+required-features = ["binding-generation"]
 
 [features]
 default = []
-system-clock = ["merman-bindings-core/system-clock"]
-system-timezone = ["merman-bindings-core/system-timezone"]
-system-random = ["merman-bindings-core/system-random"]
+native-runtime = ["merman-bindings-core/native-runtime"]
 analysis = ["merman-bindings-core/analysis"]
 ascii = ["merman-bindings-core/ascii"]
 svg = ["merman-bindings-core/svg"]
@@ -41,7 +39,7 @@ pdf = ["svg", "merman-bindings-core/pdf"]
 layout-cytoscape = ["svg", "merman-bindings-core/layout-cytoscape"]
 layout-elk = ["svg", "merman-bindings-core/layout-elk"]
 math = ["svg", "merman-bindings-core/math"]
-bindgen-smoke = ["uniffi/bindgen", "uniffi/cargo-metadata"]
+binding-generation = ["uniffi/bindgen", "uniffi/cargo-metadata"]
 
 [dependencies]
 merman-bindings-core.workspace = true

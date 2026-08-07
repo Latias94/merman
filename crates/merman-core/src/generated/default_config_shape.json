@@ -1,5 +1,5 @@
 {
-  "baselineVersion": "11.16.0",
+  "baselineVersion": "11.16.1",
   "configKeys": [
     "$ref",
     "THEME_COLOR_LIMIT",

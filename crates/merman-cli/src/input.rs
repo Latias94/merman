@@ -95,6 +95,16 @@ pub(crate) fn read_bytes(
     )
 }
 
+pub(crate) fn read_bytes_with_limit(
+    reader: impl Read,
+    resource: impl Into<String>,
+    limit: InputLimit,
+    length_hint: Option<u64>,
+) -> Result<Vec<u8>, InputReadError> {
+    let resource = resource.into();
+    read_bytes_impl(reader, &resource, limit, length_hint)
+}
+
 pub(crate) fn read_utf8(
     reader: impl Read,
     resource: impl Into<String>,

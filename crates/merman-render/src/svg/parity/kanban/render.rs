@@ -197,6 +197,7 @@ pub(crate) fn render_kanban_diagram_svg(
     let (layout, prepared_sections, prepared_items) = prepared.render_parts();
     debug_assert_eq!(layout.sections.len(), prepared_sections.len());
     debug_assert_eq!(layout.items.len(), prepared_items.len());
+    let security_level_loose = effective_config.get_str("securityLevel") == Some("loose");
     let effective_config = effective_config.as_value();
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
 
@@ -235,8 +236,7 @@ pub(crate) fn render_kanban_diagram_svg(
     let label_style = config_view.layout_settings().text_style;
     let label_min_height =
         KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX * (label_style.font_size / 16.0).max(f64::EPSILON);
-    let render_settings = config_view.render_settings();
-    let data_look = render_settings.look;
+    let data_look = config_view.look();
     let data_look_attr = escape_attr(data_look.as_str());
 
     // Mermaid emits a single empty <g/> before the diagram content for kanban.
@@ -286,10 +286,6 @@ pub(crate) fn render_kanban_diagram_svg(
     let item_label_inset_x = KANBAN_SECTION_PADDING_PX;
     let text_measurer = options.text_measurer_for(TextMeasurementPhase::Wrap);
 
-    fn kanban_ticket_url(ticket_base_url: Option<&str>, ticket: &str) -> Option<String> {
-        Some(ticket_base_url?.replace("#TICKET#", ticket))
-    }
-
     fn kanban_priority_stroke(priority: &str) -> Option<&'static str> {
         match priority.trim() {
             "Very High" => Some("red"),
@@ -301,11 +297,11 @@ pub(crate) fn render_kanban_diagram_svg(
         }
     }
 
-    for (n, prepared_labels) in layout.items.iter().zip(prepared_items) {
+    for (n, prepared_item) in layout.items.iter().zip(prepared_items) {
         let max_w = (n.width - item_label_inset_x).max(0.0);
         let rect_x = -n.width / 2.0;
         let rect_y = -n.height / 2.0;
-        let title_geometry = prepared_labels.title.geometry;
+        let title_geometry = prepared_item.title.geometry;
         let ticket_geometry =
             measure_kanban_plain_label(&text_measurer, n.ticket.as_deref(), &label_style);
         let assigned_geometry =
@@ -355,7 +351,7 @@ pub(crate) fn render_kanban_diagram_svg(
             KanbanLabelGroup {
                 position: (left_x, title_y),
                 text: Some(n.label.as_str()),
-                html: Some(prepared_labels.title.html.as_str()),
+                html: Some(prepared_item.title.html.as_str()),
                 geometry: title_geometry,
                 div_class: n.icon.as_deref().map(|_| "labelBkg"),
                 wrap_title: true,
@@ -365,12 +361,15 @@ pub(crate) fn render_kanban_diagram_svg(
         // Ticket label: wrap in <a> when ticketBaseUrl is configured (upstream behavior).
         let ticket_text = n.ticket.as_deref();
         if let Some(t) = ticket_text.filter(|t| !t.is_empty()) {
-            if let Some(url) = kanban_ticket_url(render_settings.ticket_base_url.as_deref(), t) {
-                let _ = write!(
-                    &mut out,
-                    r#"<a class="kanban-ticket-link" xlink:href="{}">"#,
-                    escape_attr(&url)
-                );
+            if let Some(ticket_link) = prepared_item.ticket_link.as_ref() {
+                out.push_str(r#"<a class="kanban-ticket-link""#);
+                if let Some(href) = ticket_link.href.as_ref() {
+                    let _ = write!(&mut out, r#" xlink:href="{}""#, href.as_serialized_str());
+                }
+                if security_level_loose {
+                    out.push_str(r#" target="_blank""#);
+                }
+                out.push('>');
                 write_kanban_label_group(
                     &mut out,
                     &label_context,
@@ -515,6 +514,38 @@ mod tests {
         &svg[start..end]
     }
 
+    fn ticket_layout(ticket: &str) -> KanbanDiagramLayout {
+        KanbanDiagramLayout {
+            bounds: Some(Bounds {
+                min_x: 0.0,
+                min_y: -300.0,
+                max_x: 220.0,
+                max_y: 80.0,
+            }),
+            section_width: 200.0,
+            padding: KANBAN_SECTION_PADDING_PX,
+            max_label_height: KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX,
+            viewbox_padding: 8.0,
+            use_max_width: true,
+            sections: Vec::new(),
+            items: vec![KanbanItemLayout {
+                id: "task".to_string(),
+                label: "Create parsing tests".to_string(),
+                parent_id: "todo".to_string(),
+                center_x: 100.0,
+                center_y: -240.0,
+                width: 185.0,
+                height: 56.0,
+                rx: 5.0,
+                ry: 5.0,
+                ticket: Some(ticket.to_string()),
+                assigned: None,
+                priority: None,
+                icon: None,
+            }],
+        }
+    }
+
     #[test]
     fn kanban_css_includes_upstream_theme_rules() {
         let css = kanban_css("k", &serde_json::json!({})).unwrap();
@@ -542,6 +573,80 @@ mod tests {
                 "#k .kanban-label{dy:1em;alignment-baseline:middle;text-anchor:middle;dominant-baseline:middle;text-align:center;}"
             ),
             "expected kanban label styling: {css}"
+        );
+    }
+
+    #[test]
+    fn kanban_ticket_links_preserve_the_final_upstream_anchor_shape() {
+        let layout = ticket_layout("MC-2038");
+        let config = serde_json::json!({
+            "securityLevel": "strict",
+            "kanban": {
+                "ticketBaseUrl": "https://mermaidchart.atlassian.net/browse/#TICKET#"
+            }
+        });
+
+        let svg = render_test_kanban(&layout, &config, &SvgRenderOptions::default()).unwrap();
+
+        assert!(svg.contains(
+            r#"<a class="kanban-ticket-link" xlink:href="https://mermaidchart.atlassian.net/browse/MC-2038">"#
+        ));
+        assert!(!svg.contains(r#"target="_blank""#), "{svg}");
+    }
+
+    #[test]
+    fn kanban_loose_parity_preserves_upstream_ticket_target() {
+        let layout = ticket_layout("MC-2038");
+        let config = serde_json::json!({
+            "securityLevel": "loose",
+            "kanban": {
+                "ticketBaseUrl": "https://mermaidchart.atlassian.net/browse/#TICKET#"
+            }
+        });
+
+        let svg = render_test_kanban(&layout, &config, &SvgRenderOptions::default()).unwrap();
+
+        assert!(svg.contains(
+            r#"<a class="kanban-ticket-link" xlink:href="https://mermaidchart.atlassian.net/browse/MC-2038" target="_blank">"#
+        ));
+    }
+
+    #[test]
+    fn kanban_strict_security_removes_unsafe_href_but_preserves_ticket_anchor() {
+        let layout = ticket_layout("MC-2038");
+        let config = serde_json::json!({
+            "securityLevel": "strict",
+            "kanban": {
+                "ticketBaseUrl": "javascript:alert('#TICKET#')"
+            }
+        });
+
+        let svg = render_test_kanban(&layout, &config, &SvgRenderOptions::default()).unwrap();
+
+        assert!(svg.contains(r#"<a class="kanban-ticket-link">"#), "{svg}");
+        assert!(!svg.contains("xlink:href"), "{svg}");
+        assert!(!svg.contains(r#"target="_blank""#), "{svg}");
+        assert!(!svg.contains("about:blank"), "{svg}");
+        assert!(svg.contains("<p>MC-2038</p>"), "{svg}");
+    }
+
+    #[test]
+    fn kanban_strict_security_preserves_dom_literal_entity_spelling() {
+        let layout = ticket_layout("MC-2038");
+        let config = serde_json::json!({
+            "securityLevel": "strict",
+            "kanban": {
+                "ticketBaseUrl": "jav&#x61;script:#TICKET#"
+            }
+        });
+
+        let svg = render_test_kanban(&layout, &config, &SvgRenderOptions::default()).unwrap();
+
+        assert!(
+            svg.contains(
+                r#"<a class="kanban-ticket-link" xlink:href="jav&amp;#x61;script:MC-2038">"#
+            ),
+            "{svg}"
         );
     }
 

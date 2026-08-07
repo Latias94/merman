@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "package_id": "@mermanjs/node",
+  "artifact_id": "merman-node-static-svg",
+  "transport_api_version": 1,
+  "binding_result_payload_version": 1,
+  "artifact": {
+    "capability_ids": [
+      "layout-cytoscape",
+      "layout-elk",
+      "math",
+      "svg"
+    ],
+    "output_ids": [
+      "svg"
+    ],
+    "output_contracts": [
+      {
+        "id": "svg",
+        "media_type": "image/svg+xml",
+        "system_fonts": null,
+        "embedded_images": null
+      }
+    ],
+    "system_adapter_ids": [],
+    "operation_ids": [
+      "layout-json",
+      "semantic-json",
+      "svg",
+      "svg-plan-json"
+    ],
+    "metadata_ids": [
+      "diagram-family-capabilities",
+      "presentation-catalog",
+      "supported-diagrams",
+      "supported-themes"
+    ],
+    "option_group_ids": [
+      "environment",
+      "fixed_local_offset_minutes",
+      "fixed_today",
+      "layout",
+      "parse",
+      "presentation",
+      "resources",
+      "runtime_policy",
+      "site_config",
+      "svg",
+      "version"
+    ],
+    "constructor_service_ids": [],
+    "text_measurement_provider_ids": [
+      "vendored"
+    ]
+  },
+  "documents": {
+    "identity": {
+      "max_utf8_bytes": 4096,
+      "max_depth": 8,
+      "max_members": 128,
+      "max_tokens": 256,
+      "max_string_utf8_bytes": 1024
+    },
+    "binding_options": {
+      "max_utf8_bytes": 1048576,
+      "max_depth": 64,
+      "max_members": 65536,
+      "max_tokens": 262144,
+      "max_string_utf8_bytes": 1048576
+    },
+    "request": {
+      "max_utf8_bytes": 10485760,
+      "max_depth": 8,
+      "max_members": 16,
+      "max_tokens": 64,
+      "max_string_utf8_bytes": 8388608
+    },
+    "runtime_catalog": {
+      "max_utf8_bytes": 1048576,
+      "max_depth": 64,
+      "max_members": 65536,
+      "max_tokens": 262144,
+      "max_string_utf8_bytes": 1048576
+    },
+    "response": {
+      "max_utf8_bytes": 27262976,
+      "max_depth": 8,
+      "max_members": 32,
+      "max_tokens": 128,
+      "max_string_utf8_bytes": 16777216
+    },
+    "error": {
+      "max_utf8_bytes": 262144,
+      "max_depth": 8,
+      "max_members": 32,
+      "max_tokens": 128,
+      "max_string_utf8_bytes": 65536
+    },
+    "metadata": {
+      "max_utf8_bytes": 8388608,
+      "max_depth": 64,
+      "max_members": 131072,
+      "max_tokens": 524288,
+      "max_string_utf8_bytes": 8388608
+    }
+  },
+  "fields": {
+    "operation_id_utf8_bytes": 128,
+    "media_type_utf8_bytes": 128,
+    "metadata_id_utf8_bytes": 128,
+    "uri_utf8_bytes": 16384,
+    "source_utf8_bytes": 8388608,
+    "options_json_utf8_bytes": 1048576,
+    "data_utf8_bytes": 16777216,
+    "metadata_json_utf8_bytes": 8388608,
+    "error_code_name_utf8_bytes": 128,
+    "error_kind_utf8_bytes": 128,
+    "error_message_utf8_bytes": 65536,
+    "capability_id_utf8_bytes": 128,
+    "package_version_utf8_bytes": 128,
+    "contract_digest_utf8_bytes": 128
+  }
+}

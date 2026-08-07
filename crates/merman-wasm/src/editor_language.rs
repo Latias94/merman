@@ -1,4 +1,4 @@
-use crate::{binding_error_to_js, document_uri};
+use crate::binding_error_to_js;
 #[cfg(test)]
 use merman_analysis::AnalysisPayload;
 use merman_analysis::{
@@ -732,7 +732,8 @@ fn js_value<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
 }
 
 fn editor_uri(uri: Option<String>) -> String {
-    document_uri(uri)
+    uri.filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "file:///merman/document.mmd".to_string())
 }
 
 fn validate_editor_session_version(version: i32, previous: Option<i32>) -> Result<(), JsValue> {

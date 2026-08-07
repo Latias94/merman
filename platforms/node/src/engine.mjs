@@ -1,8 +1,35 @@
 import { BoundedExecutor } from "./bounded-executor.mjs";
 import {
   MermanInvalidTransportError,
+  NODE_TRANSPORT_FIELD_LIMITS,
+  NODE_TRANSPORT_LIMITS,
+  NODE_WIRE_CONTRACT,
+  assertUtf8Field,
+  decodeWireInvocationError,
   decodeWireResponse,
+  encodeTransportJson,
+  parseRuntimeCatalogJsonText,
+  parseTransportJsonText,
+  sameJsonValue,
 } from "./errors.mjs";
+import {
+  BINDING_OPTION_GROUP_SPECS,
+  BINDING_OPERATION_EXPECTATIONS,
+  BINDING_OPTIONS_SCHEMA_VERSION,
+  BINDING_PAYLOAD_SCHEMAS,
+  BINDING_TRANSPORT_EXPOSURE_SPECS,
+  CAPABILITY_SPECS,
+  CONSTRUCTOR_SERVICE_SPECS,
+  METADATA_SPECS,
+  RUNTIME_CATALOG_FIELD_IDENTIFIER_PATTERN,
+  RUNTIME_CATALOG_IDENTIFIER_PATTERN,
+  RUNTIME_CATALOG_MAX_SAFE_INTEGER,
+  RUNTIME_CATALOG_SCHEMA_VERSION,
+  TEXT_MEASUREMENT_PROTOCOL_VERSION,
+  TEXT_MEASUREMENT_PROVIDER_IDS,
+  TEXT_MEASUREMENT_PROVIDER_SPECS,
+  VENDORED_TEXT_MEASUREMENT_PROVIDER_ID,
+} from "./generated/binding-contract.mjs";
 
 const RESOURCE_PROFILES = new Set([
   "interactive",
@@ -10,7 +37,56 @@ const RESOURCE_PROFILES = new Set([
   "trusted-native",
   "unbounded-for-trusted-input",
 ]);
-const BINDING_OPTIONS_SCHEMA_VERSION = 2;
+const RUNTIME_CATALOG_IDENTIFIER = new RegExp(RUNTIME_CATALOG_IDENTIFIER_PATTERN);
+const RUNTIME_CATALOG_FIELD_IDENTIFIER = new RegExp(
+  RUNTIME_CATALOG_FIELD_IDENTIFIER_PATTERN,
+);
+const NODE_TRANSPORT_EXPOSURE = BINDING_TRANSPORT_EXPOSURE_SPECS.find(
+  (spec) => spec.id === "node",
+);
+if (NODE_TRANSPORT_EXPOSURE === undefined) {
+  throw new Error("Generated binding contract is missing the Node transport exposure.");
+}
+const PAYLOAD_SCHEMA_SPEC_BY_ID = new Map(
+  BINDING_PAYLOAD_SCHEMAS.map((spec) => [spec.id, spec]),
+);
+const CAPABILITY_SPEC_BY_ID = new Map(CAPABILITY_SPECS.map((spec) => [spec.id, spec]));
+const REQUIRED_PAYLOAD_SCHEMAS = new Map(
+  NODE_TRANSPORT_EXPOSURE.payload_schema_ids.map((id) => [
+    id,
+    PAYLOAD_SCHEMA_SPEC_BY_ID.get(id).version,
+  ]),
+);
+const OPTION_GROUP_SPEC_BY_ID = new Map(
+  BINDING_OPTION_GROUP_SPECS.map((spec) => [spec.id, spec]),
+);
+const METADATA_SPEC_BY_ID = new Map(METADATA_SPECS.map((spec) => [spec.id, spec]));
+const OPERATION_EXPECTATION_BY_ID = new Map(
+  BINDING_OPERATION_EXPECTATIONS.map((expectation) => [
+    expectation.operation_id,
+    expectation,
+  ]),
+);
+const CONSTRUCTOR_SERVICE_SPEC_BY_ID = new Map(
+  CONSTRUCTOR_SERVICE_SPECS.map((spec) => [spec.id, spec]),
+);
+const NODE_CONSTRUCTOR_SERVICE_CANDIDATE_IDS = new Set(
+  NODE_TRANSPORT_EXPOSURE.constructor_service_candidate_ids,
+);
+const TEXT_MEASUREMENT_PROVIDER_SPEC_BY_ID = new Map(
+  TEXT_MEASUREMENT_PROVIDER_SPECS.map((spec) => [spec.id, spec]),
+);
+const KNOWN_TEXT_MEASUREMENT_PROVIDER_IDS = new Set(TEXT_MEASUREMENT_PROVIDER_IDS);
+const COMPILED_PREREQUISITES_BY_OPERATION_ID = new Map(
+  BINDING_OPERATION_EXPECTATIONS.map(({ operation_id, compiled_prerequisite_ids }) => [
+    operation_id,
+    compiled_prerequisite_ids,
+  ]),
+);
+const KNOWN_OUTPUT_CONTRACT_BY_ID = new Map(
+  NODE_WIRE_CONTRACT.artifact.output_contracts.map((contract) => [contract.id, contract]),
+);
+const MERMAN_ENGINE_CONSTRUCTION_TOKEN = Symbol("MermanEngine construction");
 
 export async function createNodeEngine(
   {
@@ -24,11 +100,21 @@ export async function createNodeEngine(
     throw new MermanInvalidTransportError("A concrete Node candidate transport loader is required.");
   }
   const normalizedOptions = normalizeBindingOptions(bindingOptions);
-  const transport = await loadTransport(JSON.stringify(normalizedOptions));
+  const optionsJson = encodeTransportJson(
+    normalizedOptions,
+    "binding options",
+    NODE_TRANSPORT_LIMITS.binding_options,
+  );
+  const transport = await loadTransport(optionsJson);
   try {
     assertTransport(transport);
     const runtimeCatalog = validateRuntimeCatalog(await transport.runtimeCatalogJson());
-    return new MermanNodeEngine(transport, runtimeCatalog, { concurrency, maxQueue });
+    return new MermanEngine(
+      MERMAN_ENGINE_CONSTRUCTION_TOKEN,
+      transport,
+      runtimeCatalog,
+      { concurrency, maxQueue },
+    );
   } catch (error) {
     await disposeUnusableTransport(transport);
     throw error;
@@ -37,8 +123,7 @@ export async function createNodeEngine(
 
 export function normalizeBindingOptions(value = {}) {
   if (!isPlainObject(value)) throw new TypeError("bindingOptions must be a plain object.");
-  rejectNonWireValues(value);
-  const normalized = structuredClone(value);
+  const normalized = cloneBoundedJsonValue(value, "bindingOptions");
   normalized.version ??= BINDING_OPTIONS_SCHEMA_VERSION;
   if (normalized.version !== BINDING_OPTIONS_SCHEMA_VERSION) {
     throw new RangeError(
@@ -46,6 +131,11 @@ export function normalizeBindingOptions(value = {}) {
     );
   }
   normalized.runtime_policy ??= "deterministic";
+  if (normalized.runtime_policy !== "deterministic") {
+    throw new RangeError(
+      "bindingOptions.runtime_policy must be `deterministic` for @mermanjs/node.",
+    );
+  }
   normalized.resources ??= {};
   if (!isPlainObject(normalized.resources)) {
     throw new TypeError("bindingOptions.resources must be a plain object.");
@@ -57,15 +147,26 @@ export function normalizeBindingOptions(value = {}) {
   return normalized;
 }
 
-export class MermanNodeEngine {
+export class MermanEngine {
   #disposePromise = null;
   #executor;
+  #metadataIds;
+  #operationIds;
   #runtimeCatalog;
   #transport;
 
-  constructor(transport, runtimeCatalog, queueOptions) {
+  constructor(constructionToken, transport, runtimeCatalog, queueOptions) {
+    if (constructionToken !== MERMAN_ENGINE_CONSTRUCTION_TOKEN) {
+      throw new MermanInvalidTransportError(
+        "MermanEngine instances must be created with createNodeEngine().",
+      );
+    }
     this.#transport = transport;
     this.#runtimeCatalog = runtimeCatalog;
+    this.#metadataIds = new Set(
+      runtimeCatalog.metadata_ids.filter((id) => METADATA_SPEC_BY_ID.has(id)),
+    );
+    this.#operationIds = new Set(runtimeCatalog.capabilities.operation_ids);
     this.#executor = new BoundedExecutor(queueOptions);
   }
 
@@ -92,17 +193,75 @@ export class MermanNodeEngine {
     }).data;
   }
 
+  svgPlanJson(source, options = {}) {
+    return this.executeOperation(
+      { operationId: "svg-plan-json", source, optionsJson: options.optionsJson },
+      { signal: options.signal },
+    ).then((result) => result.data);
+  }
+
+  svgPlanJsonSync(source, options = {}) {
+    return this.executeOperationSync({
+      operationId: "svg-plan-json",
+      source,
+      optionsJson: options.optionsJson,
+    }).data;
+  }
+
+  metadataJson(id) {
+    this.#executor.assertOpen();
+    if (typeof id !== "string" || id.length === 0) {
+      throw new TypeError("metadata id must be a non-empty string.");
+    }
+    if (!this.#metadataIds.has(id)) {
+      throw new RangeError(
+        `metadata id \`${id}\` is not callable through this SDK and artifact contract.`,
+      );
+    }
+    let value;
+    try {
+      value = this.#transport.metadataJson(id);
+    } catch (cause) {
+      throw decodeWireInvocationError(cause, `Merman metadata \`${id}\``);
+    }
+    parseTransportJsonText(
+      value,
+      `metadata \`${id}\``,
+      NODE_TRANSPORT_LIMITS.metadata,
+    );
+    return value;
+  }
+
   executeOperation(request, { signal } = {}) {
-    const requestJson = operationRequestJson(request);
+    const encoded = operationRequestJson(request);
     return this.#executor.submit(
-      async () => decodeWireResponse(await this.#transport.execute(requestJson)),
+      async () => {
+        let responseJson;
+        try {
+          responseJson = await this.#transport.execute(encoded.json);
+        } catch (cause) {
+          throw decodeWireInvocationError(cause, "Merman operation");
+        }
+        return decodeWireResponse(responseJson, encoded.expectation, {
+          requireUnavailable: !this.#operationIds.has(encoded.expectation.operation_id),
+        });
+      },
       { signal },
     );
   }
 
   executeOperationSync(request) {
     this.#executor.assertSyncAvailable();
-    return decodeWireResponse(this.#transport.executeSync(operationRequestJson(request)));
+    const encoded = operationRequestJson(request);
+    let responseJson;
+    try {
+      responseJson = this.#transport.executeSync(encoded.json);
+    } catch (cause) {
+      throw decodeWireInvocationError(cause, "Merman operation");
+    }
+    return decodeWireResponse(responseJson, encoded.expectation, {
+      requireUnavailable: !this.#operationIds.has(encoded.expectation.operation_id),
+    });
   }
 
   dispose() {
@@ -131,20 +290,63 @@ function operationRequestJson(value) {
   if (typeof operationId !== "string" || operationId.length === 0) {
     throw new TypeError("operationId must be a non-empty string.");
   }
+  if (!OPERATION_EXPECTATION_BY_ID.has(operationId)) {
+    throw new RangeError(
+      `operation id \`${operationId}\` is not callable through this SDK version.`,
+    );
+  }
+  const expectation = OPERATION_EXPECTATION_BY_ID.get(operationId);
   if (typeof source !== "string") throw new TypeError("source must be a string.");
   if (uri !== null && typeof uri !== "string") throw new TypeError("uri must be a string or null.");
+  const normalizedUri = uri === "" ? null : uri;
+  if (expectation.requires_uri && normalizedUri === null) {
+    throw new TypeError(`operation \`${operationId}\` requires a non-empty uri.`);
+  }
+  if (!expectation.requires_uri && normalizedUri !== null) {
+    throw new TypeError(`operation \`${operationId}\` does not accept a uri.`);
+  }
+  assertUtf8Field(
+    operationId,
+    "operation request operationId",
+    NODE_TRANSPORT_FIELD_LIMITS.operation_id_utf8_bytes,
+  );
+  assertUtf8Field(
+    source,
+    "operation request source",
+    NODE_TRANSPORT_FIELD_LIMITS.source_utf8_bytes,
+  );
+  if (normalizedUri !== null) {
+    assertUtf8Field(
+      normalizedUri,
+      "operation request uri",
+      NODE_TRANSPORT_FIELD_LIMITS.uri_utf8_bytes,
+    );
+  }
   const request = {
     operation_id: operationId,
     source,
-    uri,
+    uri: normalizedUri,
   };
   if (optionsJson !== undefined) {
     if (typeof optionsJson !== "string") {
       throw new TypeError("optionsJson must be a JSON string when provided.");
     }
+    assertUtf8Field(
+      optionsJson,
+      "operation request optionsJson",
+      NODE_TRANSPORT_FIELD_LIMITS.options_json_utf8_bytes,
+    );
+    parseTransportJsonText(
+      optionsJson,
+      "operation request optionsJson",
+      NODE_TRANSPORT_LIMITS.binding_options,
+    );
     request.options_json = optionsJson;
   }
-  return JSON.stringify(request);
+  return {
+    expectation,
+    json: encodeTransportJson(request, "operation request", NODE_TRANSPORT_LIMITS.request),
+  };
 }
 
 function assertTransport(transport) {
@@ -152,10 +354,11 @@ function assertTransport(transport) {
     !transport ||
     typeof transport.execute !== "function" ||
     typeof transport.executeSync !== "function" ||
-    typeof transport.runtimeCatalogJson !== "function"
+    typeof transport.runtimeCatalogJson !== "function" ||
+    typeof transport.metadataJson !== "function"
   ) {
     throw new MermanInvalidTransportError(
-      "Merman transport must provide runtimeCatalogJson(), execute(), and executeSync().",
+      "Merman transport must provide runtimeCatalogJson(), metadataJson(), execute(), and executeSync().",
     );
   }
 }
@@ -169,21 +372,29 @@ async function disposeUnusableTransport(transport) {
 }
 
 export function validateRuntimeCatalog(value) {
-  let catalog;
-  try {
-    catalog = typeof value === "string" ? JSON.parse(value) : value;
-  } catch (cause) {
-    throw new MermanInvalidTransportError("Merman transport returned invalid runtime catalog JSON.", cause);
+  if (typeof value !== "string") {
+    throw new MermanInvalidTransportError(
+      "Merman transport runtime catalog must be JSON text.",
+    );
   }
+  const catalog = parseRuntimeCatalogJsonText(value);
   if (!isPlainObject(catalog)) {
     throw new MermanInvalidTransportError("Merman transport returned an invalid runtime catalog.");
   }
-  if (catalog.schema_version !== 1 || catalog.transport_api_version !== 1) {
+  if (
+    catalog.schema_version !== RUNTIME_CATALOG_SCHEMA_VERSION ||
+    catalog.transport_api_version !== 1
+  ) {
     throw new MermanInvalidTransportError("Merman transport returned an unsupported runtime catalog version.");
   }
   if (typeof catalog.package_version !== "string" || catalog.package_version.length === 0) {
     throw new MermanInvalidTransportError("Merman runtime catalog has an invalid package version.");
   }
+  assertUtf8Field(
+    catalog.package_version,
+    "runtime catalog package_version",
+    NODE_TRANSPORT_FIELD_LIMITS.package_version_utf8_bytes,
+  );
   const optionsSchemaVersions = sortedUniquePositiveIntegers(
     catalog.options_schema_versions,
     "options_schema_versions",
@@ -194,7 +405,6 @@ export function validateRuntimeCatalog(value) {
     );
   }
   validatePayloadSchemas(catalog.payload_schemas);
-  sortedUniqueStrings(catalog.metadata_ids, "metadata_ids");
 
   const capabilities = catalog.capabilities;
   const registry = catalog.registry;
@@ -209,19 +419,106 @@ export function validateRuntimeCatalog(value) {
     capabilities.system_adapter_ids,
     "system_adapter_ids",
   );
-  if (
-    !outputIds.every((id) => operationIds.includes(id)) ||
-    !systemAdapterIds.every((id) => capabilityIds.includes(id))
-  ) {
+  if (!systemAdapterIds.every((id) => capabilityIds.includes(id))) {
     throw new MermanInvalidTransportError(
       "Merman runtime catalog contains invalid capability relations.",
     );
   }
-  validateTextMeasurement(capabilities.text_measurement, capabilityIds.includes("svg"));
+  validateCapabilityImplications(capabilityIds);
+  validateOperationRelations({ capabilityIds, operationIds, outputIds });
+  const metadataIds = validateMetadataIds(catalog.metadata_ids, new Set(capabilityIds));
+  validateKnownArtifactIdentity({
+    capabilityIds,
+    metadataIds,
+    operationIds,
+    outputIds,
+    systemAdapterIds,
+  });
+  const requiresSvgPipeline = capabilityIds.includes("svg") || operationIds.some((id) =>
+    COMPILED_PREREQUISITES_BY_OPERATION_ID.get(id)?.includes("svg")
+  );
+  const textMeasurementProviderIds = validateTextMeasurement(capabilities.text_measurement, {
+    requiresSvgPipeline,
+  });
+  validateKnownIds(
+    textMeasurementProviderIds,
+    NODE_WIRE_CONTRACT.artifact.text_measurement_provider_ids,
+    (id) => TEXT_MEASUREMENT_PROVIDER_SPEC_BY_ID.has(id),
+    "text measurement providers",
+  );
+  // A valid provider record may describe a future operation whose prerequisite is unknown to this
+  // SDK. Preserve that additive discovery while requiring the known SVG closure when recognized.
+  const usesSvgPipeline = requiresSvgPipeline || capabilities.text_measurement !== null;
+  const optionGroupIds = validateOptionGroupIds(catalog, {
+    capabilityIds: new Set(capabilityIds),
+    usesSvgPipeline,
+  });
+  const constructorServices = validateConstructorServices(catalog, {
+    textMeasurementProviderIds: new Set(textMeasurementProviderIds),
+    usesSvgPipeline,
+  });
   validateOutputContracts(catalog.output_contracts, outputIds);
   validateRegistry(registry);
   validateResources(resources, new Set(operationIds));
-  return structuredClone(catalog);
+  const normalized = structuredClone(catalog);
+  normalized.option_group_ids = optionGroupIds;
+  normalized.constructor_service_ids = constructorServices.ids;
+  normalized.constructor_service_contracts = constructorServices.contracts;
+  return normalized;
+}
+
+function validateKnownArtifactIdentity({
+  capabilityIds,
+  metadataIds,
+  operationIds,
+  outputIds,
+  systemAdapterIds,
+}) {
+  const expected = NODE_WIRE_CONTRACT.artifact;
+  validateKnownIds(
+    capabilityIds,
+    expected.capability_ids,
+    (id) => CAPABILITY_SPEC_BY_ID.has(id),
+    "capabilities",
+  );
+  validateKnownIds(
+    operationIds,
+    expected.operation_ids,
+    (id) => OPERATION_EXPECTATION_BY_ID.has(id),
+    "operations",
+  );
+  validateKnownIds(
+    metadataIds,
+    expected.metadata_ids,
+    (id) => METADATA_SPEC_BY_ID.has(id),
+    "metadata IDs",
+  );
+  const knownOutputIds = new Set(
+    BINDING_OPERATION_EXPECTATIONS
+      .map((expectation) => expectation.output_id)
+      .filter((id) => id !== null),
+  );
+  validateKnownIds(
+    outputIds,
+    expected.output_ids,
+    (id) => knownOutputIds.has(id),
+    "outputs",
+  );
+  validateKnownIds(
+    systemAdapterIds,
+    expected.system_adapter_ids,
+    (id) => CAPABILITY_SPEC_BY_ID.has(id),
+    "system adapters",
+  );
+}
+
+function validateKnownIds(actual, expected, isKnown, label) {
+  const actualKnown = actual.filter(isKnown);
+  if (!sameOrderedStrings(actualKnown, expected)) {
+    throw new MermanInvalidTransportError(
+      `Merman runtime catalog known ${label} do not match the Node artifact contract.`,
+    );
+  }
 }
 
 function validatePayloadSchemas(value) {
@@ -243,6 +540,235 @@ function validatePayloadSchemas(value) {
     ids.push(schema.id);
   }
   sortedUniqueStrings(ids, "payload_schemas.id");
+  const actualKnownIds = ids.filter((id) => PAYLOAD_SCHEMA_SPEC_BY_ID.has(id));
+  if (!sameStringSet(actualKnownIds, new Set(REQUIRED_PAYLOAD_SCHEMAS.keys()))) {
+    throw new MermanInvalidTransportError(
+      "Merman runtime catalog payload schemas do not match the Node transport exposure.",
+    );
+  }
+  for (const [id, version] of REQUIRED_PAYLOAD_SCHEMAS) {
+    const schema = value.find((candidate) => candidate.id === id);
+    if (!schema || schema.version !== version) {
+      throw new MermanInvalidTransportError(
+        `Merman runtime catalog must advertise payload schema ${id} version ${version}.`,
+      );
+    }
+  }
+}
+
+function validateOperationRelations({ capabilityIds, operationIds, outputIds }) {
+  const capabilityIdSet = new Set(capabilityIds);
+  const outputIdSet = new Set(outputIds);
+  for (const id of operationIds) {
+    const expectation = OPERATION_EXPECTATION_BY_ID.get(id);
+    if (!expectation) continue;
+    if (
+      expectation.availability_capability_id !== null &&
+      !capabilityIdSet.has(expectation.availability_capability_id)
+    ) {
+      throw new MermanInvalidTransportError(
+        `Merman runtime catalog operation ${id} is missing its advertised capability.`,
+      );
+    }
+    if (expectation.output_id !== null && !outputIdSet.has(expectation.output_id)) {
+      throw new MermanInvalidTransportError(
+        `Merman runtime catalog operation ${id} is missing its output contract.`,
+      );
+    }
+  }
+}
+
+function validateCapabilityImplications(capabilityIds) {
+  const capabilityIdSet = new Set(capabilityIds);
+  for (const capabilityId of capabilityIds) {
+    const spec = CAPABILITY_SPEC_BY_ID.get(capabilityId);
+    if (spec === undefined) continue;
+    for (const implicationId of spec.implication_ids) {
+      if (!capabilityIdSet.has(implicationId)) {
+        throw new MermanInvalidTransportError(
+          `Merman runtime capability ${capabilityId} is missing implied capability ${implicationId}.`,
+        );
+      }
+    }
+  }
+}
+
+function validateMetadataIds(value, capabilityIds) {
+  const ids = sortedUniqueStrings(value, "metadata_ids");
+  for (const id of ids) {
+    const spec = METADATA_SPEC_BY_ID.get(id);
+    if (
+      spec?.required_capability_id !== null &&
+      spec?.required_capability_id !== undefined &&
+      !capabilityIds.has(spec.required_capability_id)
+    ) {
+      throw new MermanInvalidTransportError(
+        `Merman runtime metadata ${id} requires capability ${spec.required_capability_id}.`,
+      );
+    }
+  }
+  return ids;
+}
+
+function validateOptionGroupIds(catalog, { capabilityIds, usesSvgPipeline }) {
+  if (!Object.hasOwn(catalog, "option_group_ids")) return [];
+  const ids = sortedUniqueFieldIdentifiers(catalog.option_group_ids, "option_group_ids");
+  const applicable = new Set();
+  for (const spec of BINDING_OPTION_GROUP_SPECS) {
+    if (
+      spec.always_available ||
+      (spec.requires_svg_pipeline && usesSvgPipeline) ||
+      spec.any_capability_ids.some((id) => capabilityIds.has(id))
+    ) {
+      applicable.add(spec.id);
+    }
+  }
+
+  const knownIds = ids.filter((id) => OPTION_GROUP_SPEC_BY_ID.has(id));
+  if (
+    !knownIds.every((id) => applicable.has(id)) ||
+    !sameOrderedStrings(knownIds, NODE_WIRE_CONTRACT.artifact.option_group_ids)
+  ) {
+    throw new MermanInvalidTransportError(
+      "Merman runtime catalog option groups do not match the artifact capability closure.",
+    );
+  }
+  return ids;
+}
+
+function validateConstructorServices(catalog, {
+  textMeasurementProviderIds,
+  usesSvgPipeline,
+}) {
+  const hasIds = Object.hasOwn(catalog, "constructor_service_ids");
+  const hasContracts = Object.hasOwn(catalog, "constructor_service_contracts");
+  if (!hasIds && !hasContracts) return { ids: [], contracts: [] };
+  if (!hasIds || !hasContracts) {
+    throw new MermanInvalidTransportError(
+      "Merman runtime catalog must advertise constructor service IDs and contracts together.",
+    );
+  }
+  const ids = sortedUniqueStrings(
+    catalog.constructor_service_ids,
+    "constructor_service_ids",
+  );
+  validateKnownIds(
+    ids,
+    NODE_WIRE_CONTRACT.artifact.constructor_service_ids,
+    (id) => CONSTRUCTOR_SERVICE_SPEC_BY_ID.has(id),
+    "constructor services",
+  );
+  const contracts = catalog.constructor_service_contracts;
+  if (!Array.isArray(contracts)) {
+    throw new MermanInvalidTransportError(
+      "Merman runtime catalog has invalid constructor service contracts.",
+    );
+  }
+  const contractIds = [];
+  const providerOwners = new Map();
+  for (const contract of contracts) {
+    if (
+      !isPlainObject(contract) ||
+      typeof contract.id !== "string" ||
+      contract.id.length === 0 ||
+      !Array.isArray(contract.resource_limits)
+    ) {
+      throw new MermanInvalidTransportError(
+        "Merman runtime catalog has an invalid constructor service contract.",
+      );
+    }
+    const providerIds = sortedUniqueStrings(
+      contract.provided_text_measurement_provider_ids,
+      `constructor_service_contracts.${contract.id}.provided_text_measurement_provider_ids`,
+    );
+    validateConstructorResourceLimits(contract.resource_limits, contract.id);
+    for (const providerId of providerIds) {
+      if (providerOwners.has(providerId)) {
+        throw new MermanInvalidTransportError(
+          "Merman runtime catalog text measurement providers must have one constructor service owner.",
+        );
+      }
+      providerOwners.set(providerId, contract.id);
+      if (!textMeasurementProviderIds.has(providerId)) {
+        throw new MermanInvalidTransportError(
+          "Merman runtime catalog constructor services name an unavailable text measurement provider.",
+        );
+      }
+      const providerSpec = TEXT_MEASUREMENT_PROVIDER_SPEC_BY_ID.get(providerId);
+      if (
+        providerSpec !== undefined &&
+        (providerSpec.source !== "constructor-service" ||
+          providerSpec.constructor_service_id !== contract.id)
+      ) {
+        throw new MermanInvalidTransportError(
+          "Merman runtime catalog constructor service provider ownership is inconsistent.",
+        );
+      }
+    }
+    const knownSpec = CONSTRUCTOR_SERVICE_SPEC_BY_ID.get(contract.id);
+    if (knownSpec?.requires_svg_pipeline && !usesSvgPipeline) {
+      throw new MermanInvalidTransportError(
+        "Merman runtime catalog advertises a constructor service without an SVG pipeline.",
+      );
+    }
+    if (
+      knownSpec !== undefined &&
+      !sameStringSet(
+        providerIds,
+        new Set(knownSpec.provided_text_measurement_provider_ids),
+      )
+    ) {
+      throw new MermanInvalidTransportError(
+        "Merman runtime catalog constructor service providers do not match the generated contract.",
+      );
+    }
+    contractIds.push(contract.id);
+  }
+  sortedUniqueStrings(contractIds, "constructor_service_contracts.id");
+  if (!sameOrderedStrings(contractIds, ids)) {
+    throw new MermanInvalidTransportError(
+      "Merman runtime catalog constructor service contracts do not match constructor_service_ids.",
+    );
+  }
+  for (const id of ids) {
+    if (
+      CONSTRUCTOR_SERVICE_SPEC_BY_ID.has(id) &&
+      !NODE_CONSTRUCTOR_SERVICE_CANDIDATE_IDS.has(id)
+    ) {
+      throw new MermanInvalidTransportError(
+        "Merman runtime catalog advertises a constructor service unavailable through the Node facade.",
+      );
+    }
+  }
+  return { ids, contracts };
+}
+
+function validateConstructorResourceLimits(limits, serviceId) {
+  const ids = [];
+  for (const limit of limits) {
+    if (
+      !isPlainObject(limit) ||
+      typeof limit.id !== "string" ||
+      limit.id.length === 0 ||
+      typeof limit.phase !== "string" ||
+      limit.phase.length === 0 ||
+      typeof limit.unit !== "string" ||
+      limit.unit.length === 0 ||
+      typeof limit.description !== "string" ||
+      limit.description.length === 0 ||
+      !safeInteger(limit.value) ||
+      limit.value < 0
+    ) {
+      throw new MermanInvalidTransportError(
+        `Merman runtime catalog constructor service ${serviceId} has an invalid resource limit.`,
+      );
+    }
+    ids.push(limit.id);
+  }
+  sortedUniqueFieldIdentifiers(
+    ids,
+    `constructor_service_contracts.${serviceId}.resource_limits.id`,
+  );
 }
 
 function validateOutputContracts(value, outputIds) {
@@ -265,8 +791,24 @@ function validateOutputContracts(value, outputIds) {
       );
     }
     contractIds.push(contract.id);
+    assertUtf8Field(
+      contract.media_type,
+      `runtime catalog output_contracts.${contract.id}.media_type`,
+      NODE_TRANSPORT_FIELD_LIMITS.media_type_utf8_bytes,
+    );
     validateSystemFonts(contract.system_fonts);
     validateEmbeddedImages(contract.embedded_images);
+    const known = KNOWN_OUTPUT_CONTRACT_BY_ID.get(contract.id);
+    if (
+      known !== undefined &&
+      (contract.media_type !== known.media_type ||
+        !sameJsonValue(contract.system_fonts, known.system_fonts) ||
+        !sameJsonValue(contract.embedded_images, known.embedded_images))
+    ) {
+      throw new MermanInvalidTransportError(
+        `Merman runtime catalog output contract ${contract.id} disagrees with the generated artifact profile.`,
+      );
+    }
   }
   if (
     contractIds.some((id, index) => index > 0 && contractIds[index - 1] >= id) ||
@@ -284,11 +826,11 @@ function validateSystemFonts(value) {
   if (
     !isPlainObject(value) ||
     typeof value.source_id !== "string" ||
-    value.source_id.length === 0 ||
+    !RUNTIME_CATALOG_IDENTIFIER.test(value.source_id) ||
     typeof value.discovery !== "string" ||
-    value.discovery.length === 0 ||
+    !RUNTIME_CATALOG_IDENTIFIER.test(value.discovery) ||
     typeof value.cache_scope !== "string" ||
-    value.cache_scope.length === 0 ||
+    !RUNTIME_CATALOG_IDENTIFIER.test(value.cache_scope) ||
     typeof value.host_dependent !== "boolean" ||
     typeof value.caller_configurable !== "boolean" ||
     typeof value.resource_bounded !== "boolean"
@@ -328,16 +870,12 @@ function validateEmbeddedImages(value) {
   }
 }
 
-function validateTextMeasurement(value, hasSvg) {
-  if (!hasSvg) {
-    if (value !== null) {
-      throw new MermanInvalidTransportError(
-        "Merman runtime catalog reports text measurement without the SVG capability.",
-      );
-    }
-    return;
-  }
-  if (!isPlainObject(value) || !positiveSafeInteger(value.protocol_version)) {
+function validateTextMeasurement(value, { requiresSvgPipeline }) {
+  if (value === null && !requiresSvgPipeline) return [];
+  if (
+    !isPlainObject(value) ||
+    value.protocol_version !== TEXT_MEASUREMENT_PROTOCOL_VERSION
+  ) {
     throw new MermanInvalidTransportError(
       "Merman runtime catalog has invalid text measurement metadata.",
     );
@@ -346,16 +884,36 @@ function validateTextMeasurement(value, hasSvg) {
     value.provider_ids,
     "text_measurement.provider_ids",
   );
-  if (providerIds.length !== 1 || providerIds[0] !== "vendored") {
+  if (providerIds.length === 0) {
     throw new MermanInvalidTransportError(
-      "Merman runtime catalog must expose only the callable vendored text measurement provider.",
+      "Merman runtime catalog text measurement must advertise at least one provider.",
     );
   }
+  if (
+    providerIds.some(
+      (id) =>
+        KNOWN_TEXT_MEASUREMENT_PROVIDER_IDS.has(id) &&
+        id !== VENDORED_TEXT_MEASUREMENT_PROVIDER_ID,
+    )
+  ) {
+    throw new MermanInvalidTransportError(
+      "Merman runtime catalog advertises a known text measurement provider unavailable through the Node facade.",
+    );
+  }
+  if (
+    requiresSvgPipeline &&
+    !providerIds.includes(VENDORED_TEXT_MEASUREMENT_PROVIDER_ID)
+  ) {
+    throw new MermanInvalidTransportError(
+      "Merman runtime catalog must expose the callable vendored text measurement provider for the SVG pipeline.",
+    );
+  }
+  return providerIds;
 }
 
 function validateRegistry(value) {
   if (
-    !Number.isSafeInteger(value.diagram_family_count) ||
+    !safeInteger(value.diagram_family_count) ||
     value.diagram_family_count < 0
   ) {
     throw new MermanInvalidTransportError(
@@ -367,9 +925,9 @@ function validateRegistry(value) {
 function validateResources(value, operationIds) {
   if (
     typeof value.general_binding_default_profile !== "string" ||
-    value.general_binding_default_profile.length === 0 ||
+    !RUNTIME_CATALOG_IDENTIFIER.test(value.general_binding_default_profile) ||
     typeof value.cli_default_profile !== "string" ||
-    value.cli_default_profile.length === 0 ||
+    !RUNTIME_CATALOG_IDENTIFIER.test(value.cli_default_profile) ||
     !Array.isArray(value.limits) ||
     value.limits.length === 0 ||
     !Array.isArray(value.profiles) ||
@@ -386,7 +944,7 @@ function validateResources(value, operationIds) {
     if (
       !isPlainObject(limit) ||
       typeof limit.id !== "string" ||
-      limit.id.length === 0 ||
+      !RUNTIME_CATALOG_FIELD_IDENTIFIER.test(limit.id) ||
       limitIds.has(limit.id) ||
       typeof limit.phase !== "string" ||
       limit.phase.length === 0 ||
@@ -394,7 +952,7 @@ function validateResources(value, operationIds) {
       limit.description.length === 0 ||
       typeof limit.overridable !== "boolean" ||
       typeof limit.hard_cap !== "boolean" ||
-      !Number.isSafeInteger(limit.minimum_value) ||
+      !safeInteger(limit.minimum_value) ||
       limit.minimum_value < 0 ||
       !Array.isArray(limit.operation_ids)
     ) {
@@ -425,7 +983,7 @@ function validateResources(value, operationIds) {
     if (
       !isPlainObject(profile) ||
       typeof profile.id !== "string" ||
-      profile.id.length === 0 ||
+      !RUNTIME_CATALOG_IDENTIFIER.test(profile.id) ||
       profileIds.has(profile.id) ||
       typeof profile.purpose !== "string" ||
       profile.purpose.length === 0 ||
@@ -448,7 +1006,7 @@ function validateResources(value, operationIds) {
       if (
         (limit === null && hardCapIds.has(id)) ||
         (limit !== null &&
-          (!Number.isSafeInteger(limit) || limit < limitMinimums.get(id)))
+          (!safeInteger(limit) || limit < limitMinimums.get(id)))
       ) {
         throw new MermanInvalidTransportError(
           "Merman runtime catalog resource profile has an invalid limit.",
@@ -485,8 +1043,16 @@ function sameStringSet(values, expected) {
   return values.length === expected.size && values.every((value) => expected.has(value));
 }
 
+function sameOrderedStrings(left, right) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 function positiveSafeInteger(value) {
-  return Number.isSafeInteger(value) && value > 0;
+  return safeInteger(value) && value > 0;
+}
+
+function safeInteger(value) {
+  return Number.isInteger(value) && Math.abs(value) <= RUNTIME_CATALOG_MAX_SAFE_INTEGER;
 }
 
 function sortedUniquePositiveIntegers(value, field) {
@@ -503,6 +1069,23 @@ function sortedUniquePositiveIntegers(value, field) {
 }
 
 function sortedUniqueStrings(value, field) {
+  sortedUniqueNonEmptyStrings(value, field);
+  if (value.some((item) => !RUNTIME_CATALOG_IDENTIFIER.test(item))) {
+    throw new MermanInvalidTransportError(
+      `Merman runtime catalog ${field} must contain valid identifiers.`,
+    );
+  }
+  for (const item of value) {
+    assertUtf8Field(
+      item,
+      `runtime catalog ${field}`,
+      NODE_TRANSPORT_FIELD_LIMITS.capability_id_utf8_bytes,
+    );
+  }
+  return value;
+}
+
+function sortedUniqueNonEmptyStrings(value, field) {
   if (
     !Array.isArray(value) ||
     value.some((item) => typeof item !== "string" || item.length === 0) ||
@@ -515,17 +1098,154 @@ function sortedUniqueStrings(value, field) {
   return value;
 }
 
-function rejectNonWireValues(value) {
-  if (typeof value === "function") {
-    throw new TypeError("JavaScript text measurement callbacks are not supported by @mermanjs/node.");
+function sortedUniqueFieldIdentifiers(value, field) {
+  sortedUniqueNonEmptyStrings(value, field);
+  if (value.some((item) => !RUNTIME_CATALOG_FIELD_IDENTIFIER.test(item))) {
+    throw new MermanInvalidTransportError(
+      `Merman runtime catalog ${field} must contain valid field identifiers.`,
+    );
   }
-  if (!value || typeof value !== "object") return;
-  for (const [key, child] of Object.entries(value)) {
-    if (/text.*measur|measur.*text|font.*callback/i.test(key)) {
-      throw new TypeError("JavaScript text measurement callbacks are not supported by @mermanjs/node.");
+  for (const item of value) {
+    assertUtf8Field(
+      item,
+      `runtime catalog ${field}`,
+      NODE_TRANSPORT_FIELD_LIMITS.capability_id_utf8_bytes,
+    );
+  }
+  return value;
+}
+
+function cloneBoundedJsonValue(root, label) {
+  const limits = NODE_TRANSPORT_LIMITS.binding_options;
+  const active = new WeakSet();
+  const clone = jsonContainerClone(root, label);
+  const stack = [{ depth: 1, source: root, target: clone, exiting: false }];
+  let members = 0;
+  let tokens = 1;
+
+  while (stack.length > 0) {
+    const frame = stack.pop();
+    if (frame.exiting) {
+      active.delete(frame.source);
+      continue;
     }
-    rejectNonWireValues(child);
+    if (active.has(frame.source)) {
+      throw new TypeError(`${label} must not contain cyclic references.`);
+    }
+    if (frame.depth > limits.max_depth) {
+      throw new RangeError(`${label} exceeds the structural depth limit ${limits.max_depth}.`);
+    }
+    active.add(frame.source);
+    stack.push({ ...frame, exiting: true });
+
+    const entries = jsonContainerEntries(
+      frame.source,
+      label,
+      limits.max_members - members,
+      limits.max_members,
+    );
+    members += entries.length;
+    if (members > limits.max_members) {
+      throw new RangeError(`${label} exceeds the member-work limit ${limits.max_members}.`);
+    }
+
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      const [key, child] = entries[index];
+      assertUtf8Field(key, `${label} object key`, limits.max_string_utf8_bytes);
+      tokens += 1;
+      if (tokens > limits.max_tokens) {
+        throw new RangeError(`${label} exceeds the token-work limit ${limits.max_tokens}.`);
+      }
+
+      if (child === null || typeof child === "boolean") {
+        defineJsonValue(frame.target, key, child);
+      } else if (typeof child === "string") {
+        assertUtf8Field(child, `${label}.${key}`, limits.max_string_utf8_bytes);
+        defineJsonValue(frame.target, key, child);
+      } else if (typeof child === "number") {
+        if (!Number.isFinite(child)) {
+          throw new TypeError(`${label}.${key} must be a finite JSON number.`);
+        }
+        defineJsonValue(frame.target, key, child);
+      } else if (typeof child === "object") {
+        const childClone = jsonContainerClone(child, `${label}.${key}`);
+        defineJsonValue(frame.target, key, childClone);
+        stack.push({
+          depth: frame.depth + 1,
+          source: child,
+          target: childClone,
+          exiting: false,
+        });
+      } else {
+        throw new TypeError(`${label}.${key} is not a JSON wire value.`);
+      }
+    }
   }
+  return clone;
+}
+
+function jsonContainerClone(value, label) {
+  if (Array.isArray(value)) return [];
+  if (!isPlainObject(value)) {
+    throw new TypeError(`${label} must contain only arrays and plain objects.`);
+  }
+  return Object.getPrototypeOf(value) === null ? Object.create(null) : {};
+}
+
+function jsonContainerEntries(value, label, remainingMembers, maxMembers) {
+  if (Array.isArray(value)) {
+    if (value.length > remainingMembers) {
+      throw new RangeError(`${label} exceeds the member-work limit ${maxMembers}.`);
+    }
+    const keys = Reflect.ownKeys(value);
+    if (keys.some((key) => typeof key === "symbol")) {
+      throw new TypeError(`${label} must not contain symbol keys.`);
+    }
+    for (let index = 0; index < value.length; index += 1) {
+      if (!Object.hasOwn(value, index)) {
+        throw new TypeError(`${label} arrays must not contain holes.`);
+      }
+    }
+    if (keys.length !== value.length + 1) {
+      throw new TypeError(`${label} arrays must not contain custom properties.`);
+    }
+    const entries = new Array(value.length);
+    for (let index = 0; index < value.length; index += 1) {
+      const key = String(index);
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor?.enumerable || !("value" in descriptor)) {
+        throw new TypeError(`${label}.${key} must be an enumerable data property.`);
+      }
+      entries[index] = [key, descriptor.value];
+    }
+    return entries;
+  }
+
+  const entries = [];
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key === "symbol") {
+      throw new TypeError(`${label} must not contain symbol keys.`);
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor?.enumerable || !("value" in descriptor)) {
+      throw new TypeError(`${label}.${key} must be an enumerable data property.`);
+    }
+    entries.push([key, descriptor.value]);
+  }
+  return entries;
+}
+
+function defineJsonValue(target, key, value) {
+  if (Array.isArray(target)) {
+    target[Number(key)] = value;
+    return;
+  }
+  Object.defineProperty(target, key, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  });
 }
 
 function isPlainObject(value) {

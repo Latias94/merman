@@ -4,6 +4,9 @@
   "private": true,
   "description": "Private Merman Node/SSG candidate loader pending U14 evidence admission.",
   "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "main": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "exports": {

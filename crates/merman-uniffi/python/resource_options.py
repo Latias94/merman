@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
-from typing import Mapping, Optional
+from typing import ClassVar, Mapping, Optional, Tuple
 
 BINDING_OPTIONS_SCHEMA_VERSION = 2
 
@@ -17,50 +17,222 @@ class ResourceProfile(str, Enum):
     TRUSTED_NATIVE = "trusted-native"
     UNBOUNDED_FOR_TRUSTED_INPUT = "unbounded-for-trusted-input"
 
-class ResourceLimitId(str, Enum):
-    MAX_SOURCE_BYTES = "max_source_bytes"
-    MAX_MODEL_ITEMS = "max_model_items"
-    MAX_MODEL_TEXT_BYTES = "max_model_text_bytes"
-    MAX_MODEL_NESTING_DEPTH = "max_model_nesting_depth"
-    MAX_LAYOUT_WORK_UNITS = "max_layout_work_units"
-    MAX_SVG_BYTES = "max_svg_bytes"
-    MAX_SVG_ELEMENTS = "max_svg_elements"
-    MAX_THEME_ENCODED_BYTES = "max_theme_encoded_bytes"
-    MAX_THEME_BASE64_BYTES = "max_theme_base64_bytes"
-    MAX_FONT_ASSET_COMPRESSED_BYTES = "max_font_asset_compressed_bytes"
-    MAX_FONT_ASSET_DECODED_BYTES = "max_font_asset_decoded_bytes"
-    MAX_FONT_CATALOG_DECODED_BYTES = "max_font_catalog_decoded_bytes"
-    MAX_FONT_ASSETS = "max_font_assets"
-    MAX_FONT_FACES = "max_font_faces"
-    MAX_FONT_TABLES = "max_font_tables"
-    MAX_FONT_ALIASES = "max_font_aliases"
-    MAX_FONT_DECODED_EXPANSION_RATIO = "max_font_decoded_expansion_ratio"
-    THEME_ENCODED_BYTES_HARD_CAP = "theme_encoded_bytes_hard_cap"
-    THEME_BASE64_BYTES_HARD_CAP = "theme_base64_bytes_hard_cap"
-    FONT_ASSET_COMPRESSED_BYTES_HARD_CAP = "font_asset_compressed_bytes_hard_cap"
-    FONT_ASSET_DECODED_BYTES_HARD_CAP = "font_asset_decoded_bytes_hard_cap"
-    FONT_CATALOG_DECODED_BYTES_HARD_CAP = "font_catalog_decoded_bytes_hard_cap"
-    FONT_ASSETS_HARD_CAP = "font_assets_hard_cap"
-    FONT_FACES_HARD_CAP = "font_faces_hard_cap"
-    FONT_TABLES_HARD_CAP = "font_tables_hard_cap"
-    FONT_ALIASES_HARD_CAP = "font_aliases_hard_cap"
-    FONT_DECODED_EXPANSION_RATIO_HARD_CAP = "font_decoded_expansion_ratio_hard_cap"
-    MAX_DOCUMENT_DIAGRAMS = "max_document_diagrams"
-    MAX_ASCII_GRID_CELLS = "max_ascii_grid_cells"
-    MAX_RASTER_WIDTH = "max_raster_width"
-    MAX_RASTER_HEIGHT = "max_raster_height"
-    MAX_RASTER_PIXELS = "max_raster_pixels"
-    MAX_EMBEDDED_IMAGE_BYTES = "max_embedded_image_bytes"
-    MAX_TOTAL_EMBEDDED_IMAGE_BYTES = "max_total_embedded_image_bytes"
-    MAX_EMBEDDED_IMAGE_PIXELS = "max_embedded_image_pixels"
-    MAX_TOTAL_EMBEDDED_IMAGE_PIXELS = "max_total_embedded_image_pixels"
-    MAX_PDF_FILTER_IMAGE_PIXELS = "max_pdf_filter_image_pixels"
-    MAX_SVG_CONVERSION_ISOLATION_DEPTH = "max_svg_conversion_isolation_depth"
-    MAX_SVG_CONVERSION_FILTER_PRIMITIVES_PER_FILTER = "max_svg_conversion_filter_primitives_per_filter"
-    MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES = "max_total_svg_conversion_filter_primitives"
-    MAX_SVG_CONVERSION_SUBROOTS = "max_svg_conversion_subroots"
-    MAX_NESTED_SVG_IMAGES = "max_nested_svg_images"
-    SVG_BACKEND_TREE_NODES = "svg_backend_tree_nodes"
+class ResourceLimitId(str):
+    __slots__ = ()
+    MAX_SOURCE_BYTES: ClassVar[ResourceLimitId]
+    MAX_MODEL_ITEMS: ClassVar[ResourceLimitId]
+    MAX_MODEL_TEXT_BYTES: ClassVar[ResourceLimitId]
+    MAX_MODEL_NESTING_DEPTH: ClassVar[ResourceLimitId]
+    MAX_LAYOUT_WORK_UNITS: ClassVar[ResourceLimitId]
+    MAX_SVG_BYTES: ClassVar[ResourceLimitId]
+    MAX_SVG_ELEMENTS: ClassVar[ResourceLimitId]
+    MAX_THEME_ENCODED_BYTES: ClassVar[ResourceLimitId]
+    MAX_THEME_BASE64_BYTES: ClassVar[ResourceLimitId]
+    MAX_FONT_ASSET_COMPRESSED_BYTES: ClassVar[ResourceLimitId]
+    MAX_FONT_ASSET_DECODED_BYTES: ClassVar[ResourceLimitId]
+    MAX_FONT_CATALOG_DECODED_BYTES: ClassVar[ResourceLimitId]
+    MAX_FONT_ASSETS: ClassVar[ResourceLimitId]
+    MAX_FONT_FACES: ClassVar[ResourceLimitId]
+    MAX_FONT_TABLES: ClassVar[ResourceLimitId]
+    MAX_FONT_ALIASES: ClassVar[ResourceLimitId]
+    MAX_FONT_DECODED_EXPANSION_RATIO: ClassVar[ResourceLimitId]
+    THEME_ENCODED_BYTES_HARD_CAP: ClassVar[ResourceLimitId]
+    THEME_BASE64_BYTES_HARD_CAP: ClassVar[ResourceLimitId]
+    FONT_ASSET_COMPRESSED_BYTES_HARD_CAP: ClassVar[ResourceLimitId]
+    FONT_ASSET_DECODED_BYTES_HARD_CAP: ClassVar[ResourceLimitId]
+    FONT_CATALOG_DECODED_BYTES_HARD_CAP: ClassVar[ResourceLimitId]
+    FONT_ASSETS_HARD_CAP: ClassVar[ResourceLimitId]
+    FONT_FACES_HARD_CAP: ClassVar[ResourceLimitId]
+    FONT_TABLES_HARD_CAP: ClassVar[ResourceLimitId]
+    FONT_ALIASES_HARD_CAP: ClassVar[ResourceLimitId]
+    FONT_DECODED_EXPANSION_RATIO_HARD_CAP: ClassVar[ResourceLimitId]
+    MAX_DOCUMENT_DIAGRAMS: ClassVar[ResourceLimitId]
+    MAX_ASCII_GRID_CELLS: ClassVar[ResourceLimitId]
+    MAX_RASTER_WIDTH: ClassVar[ResourceLimitId]
+    MAX_RASTER_HEIGHT: ClassVar[ResourceLimitId]
+    MAX_RASTER_PIXELS: ClassVar[ResourceLimitId]
+    MAX_EMBEDDED_IMAGE_BYTES: ClassVar[ResourceLimitId]
+    MAX_TOTAL_EMBEDDED_IMAGE_BYTES: ClassVar[ResourceLimitId]
+    MAX_EMBEDDED_IMAGE_PIXELS: ClassVar[ResourceLimitId]
+    MAX_TOTAL_EMBEDDED_IMAGE_PIXELS: ClassVar[ResourceLimitId]
+    MAX_PDF_FILTER_IMAGE_PIXELS: ClassVar[ResourceLimitId]
+    MAX_SVG_CONVERSION_ISOLATION_DEPTH: ClassVar[ResourceLimitId]
+    MAX_SVG_CONVERSION_FILTER_PRIMITIVES_PER_FILTER: ClassVar[ResourceLimitId]
+    MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES: ClassVar[ResourceLimitId]
+    MAX_SVG_CONVERSION_SUBROOTS: ClassVar[ResourceLimitId]
+    MAX_NESTED_SVG_IMAGES: ClassVar[ResourceLimitId]
+    SVG_BACKEND_TREE_NODES: ClassVar[ResourceLimitId]
+    known_values: ClassVar[Tuple[ResourceLimitId, ...]]
+
+    def __new__(cls, value: str) -> ResourceLimitId:
+        if not isinstance(value, str) or not value:
+            raise ValueError("resource limit id must be a non-empty string")
+        return str.__new__(cls, value)
+
+    @property
+    def id(self) -> str:
+        return str(self)
+
+    @property
+    def phase(self) -> Optional[str]:
+        metadata = _RESOURCE_LIMIT_METADATA.get(str(self))
+        return None if metadata is None else metadata[0]
+
+    @property
+    def overridable(self) -> Optional[bool]:
+        metadata = _RESOURCE_LIMIT_METADATA.get(str(self))
+        return None if metadata is None else metadata[1]
+
+    @property
+    def minimum_value(self) -> Optional[int]:
+        metadata = _RESOURCE_LIMIT_METADATA.get(str(self))
+        return None if metadata is None else metadata[2]
+
+    @property
+    def is_known(self) -> bool:
+        return str(self) in _RESOURCE_LIMIT_METADATA
+
+    @classmethod
+    def from_id(cls, value: str) -> ResourceLimitId:
+        known = _RESOURCE_LIMIT_BY_ID.get(value)
+        return known if known is not None else cls(value)
+
+ResourceLimitId.MAX_SOURCE_BYTES = ResourceLimitId("max_source_bytes")
+ResourceLimitId.MAX_MODEL_ITEMS = ResourceLimitId("max_model_items")
+ResourceLimitId.MAX_MODEL_TEXT_BYTES = ResourceLimitId("max_model_text_bytes")
+ResourceLimitId.MAX_MODEL_NESTING_DEPTH = ResourceLimitId("max_model_nesting_depth")
+ResourceLimitId.MAX_LAYOUT_WORK_UNITS = ResourceLimitId("max_layout_work_units")
+ResourceLimitId.MAX_SVG_BYTES = ResourceLimitId("max_svg_bytes")
+ResourceLimitId.MAX_SVG_ELEMENTS = ResourceLimitId("max_svg_elements")
+ResourceLimitId.MAX_THEME_ENCODED_BYTES = ResourceLimitId("max_theme_encoded_bytes")
+ResourceLimitId.MAX_THEME_BASE64_BYTES = ResourceLimitId("max_theme_base64_bytes")
+ResourceLimitId.MAX_FONT_ASSET_COMPRESSED_BYTES = ResourceLimitId("max_font_asset_compressed_bytes")
+ResourceLimitId.MAX_FONT_ASSET_DECODED_BYTES = ResourceLimitId("max_font_asset_decoded_bytes")
+ResourceLimitId.MAX_FONT_CATALOG_DECODED_BYTES = ResourceLimitId("max_font_catalog_decoded_bytes")
+ResourceLimitId.MAX_FONT_ASSETS = ResourceLimitId("max_font_assets")
+ResourceLimitId.MAX_FONT_FACES = ResourceLimitId("max_font_faces")
+ResourceLimitId.MAX_FONT_TABLES = ResourceLimitId("max_font_tables")
+ResourceLimitId.MAX_FONT_ALIASES = ResourceLimitId("max_font_aliases")
+ResourceLimitId.MAX_FONT_DECODED_EXPANSION_RATIO = ResourceLimitId("max_font_decoded_expansion_ratio")
+ResourceLimitId.THEME_ENCODED_BYTES_HARD_CAP = ResourceLimitId("theme_encoded_bytes_hard_cap")
+ResourceLimitId.THEME_BASE64_BYTES_HARD_CAP = ResourceLimitId("theme_base64_bytes_hard_cap")
+ResourceLimitId.FONT_ASSET_COMPRESSED_BYTES_HARD_CAP = ResourceLimitId("font_asset_compressed_bytes_hard_cap")
+ResourceLimitId.FONT_ASSET_DECODED_BYTES_HARD_CAP = ResourceLimitId("font_asset_decoded_bytes_hard_cap")
+ResourceLimitId.FONT_CATALOG_DECODED_BYTES_HARD_CAP = ResourceLimitId("font_catalog_decoded_bytes_hard_cap")
+ResourceLimitId.FONT_ASSETS_HARD_CAP = ResourceLimitId("font_assets_hard_cap")
+ResourceLimitId.FONT_FACES_HARD_CAP = ResourceLimitId("font_faces_hard_cap")
+ResourceLimitId.FONT_TABLES_HARD_CAP = ResourceLimitId("font_tables_hard_cap")
+ResourceLimitId.FONT_ALIASES_HARD_CAP = ResourceLimitId("font_aliases_hard_cap")
+ResourceLimitId.FONT_DECODED_EXPANSION_RATIO_HARD_CAP = ResourceLimitId("font_decoded_expansion_ratio_hard_cap")
+ResourceLimitId.MAX_DOCUMENT_DIAGRAMS = ResourceLimitId("max_document_diagrams")
+ResourceLimitId.MAX_ASCII_GRID_CELLS = ResourceLimitId("max_ascii_grid_cells")
+ResourceLimitId.MAX_RASTER_WIDTH = ResourceLimitId("max_raster_width")
+ResourceLimitId.MAX_RASTER_HEIGHT = ResourceLimitId("max_raster_height")
+ResourceLimitId.MAX_RASTER_PIXELS = ResourceLimitId("max_raster_pixels")
+ResourceLimitId.MAX_EMBEDDED_IMAGE_BYTES = ResourceLimitId("max_embedded_image_bytes")
+ResourceLimitId.MAX_TOTAL_EMBEDDED_IMAGE_BYTES = ResourceLimitId("max_total_embedded_image_bytes")
+ResourceLimitId.MAX_EMBEDDED_IMAGE_PIXELS = ResourceLimitId("max_embedded_image_pixels")
+ResourceLimitId.MAX_TOTAL_EMBEDDED_IMAGE_PIXELS = ResourceLimitId("max_total_embedded_image_pixels")
+ResourceLimitId.MAX_PDF_FILTER_IMAGE_PIXELS = ResourceLimitId("max_pdf_filter_image_pixels")
+ResourceLimitId.MAX_SVG_CONVERSION_ISOLATION_DEPTH = ResourceLimitId("max_svg_conversion_isolation_depth")
+ResourceLimitId.MAX_SVG_CONVERSION_FILTER_PRIMITIVES_PER_FILTER = ResourceLimitId("max_svg_conversion_filter_primitives_per_filter")
+ResourceLimitId.MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES = ResourceLimitId("max_total_svg_conversion_filter_primitives")
+ResourceLimitId.MAX_SVG_CONVERSION_SUBROOTS = ResourceLimitId("max_svg_conversion_subroots")
+ResourceLimitId.MAX_NESTED_SVG_IMAGES = ResourceLimitId("max_nested_svg_images")
+ResourceLimitId.SVG_BACKEND_TREE_NODES = ResourceLimitId("svg_backend_tree_nodes")
+
+RESOURCE_LIMIT_IDS = (
+    ResourceLimitId.MAX_SOURCE_BYTES,
+    ResourceLimitId.MAX_MODEL_ITEMS,
+    ResourceLimitId.MAX_MODEL_TEXT_BYTES,
+    ResourceLimitId.MAX_MODEL_NESTING_DEPTH,
+    ResourceLimitId.MAX_LAYOUT_WORK_UNITS,
+    ResourceLimitId.MAX_SVG_BYTES,
+    ResourceLimitId.MAX_SVG_ELEMENTS,
+    ResourceLimitId.MAX_THEME_ENCODED_BYTES,
+    ResourceLimitId.MAX_THEME_BASE64_BYTES,
+    ResourceLimitId.MAX_FONT_ASSET_COMPRESSED_BYTES,
+    ResourceLimitId.MAX_FONT_ASSET_DECODED_BYTES,
+    ResourceLimitId.MAX_FONT_CATALOG_DECODED_BYTES,
+    ResourceLimitId.MAX_FONT_ASSETS,
+    ResourceLimitId.MAX_FONT_FACES,
+    ResourceLimitId.MAX_FONT_TABLES,
+    ResourceLimitId.MAX_FONT_ALIASES,
+    ResourceLimitId.MAX_FONT_DECODED_EXPANSION_RATIO,
+    ResourceLimitId.THEME_ENCODED_BYTES_HARD_CAP,
+    ResourceLimitId.THEME_BASE64_BYTES_HARD_CAP,
+    ResourceLimitId.FONT_ASSET_COMPRESSED_BYTES_HARD_CAP,
+    ResourceLimitId.FONT_ASSET_DECODED_BYTES_HARD_CAP,
+    ResourceLimitId.FONT_CATALOG_DECODED_BYTES_HARD_CAP,
+    ResourceLimitId.FONT_ASSETS_HARD_CAP,
+    ResourceLimitId.FONT_FACES_HARD_CAP,
+    ResourceLimitId.FONT_TABLES_HARD_CAP,
+    ResourceLimitId.FONT_ALIASES_HARD_CAP,
+    ResourceLimitId.FONT_DECODED_EXPANSION_RATIO_HARD_CAP,
+    ResourceLimitId.MAX_DOCUMENT_DIAGRAMS,
+    ResourceLimitId.MAX_ASCII_GRID_CELLS,
+    ResourceLimitId.MAX_RASTER_WIDTH,
+    ResourceLimitId.MAX_RASTER_HEIGHT,
+    ResourceLimitId.MAX_RASTER_PIXELS,
+    ResourceLimitId.MAX_EMBEDDED_IMAGE_BYTES,
+    ResourceLimitId.MAX_TOTAL_EMBEDDED_IMAGE_BYTES,
+    ResourceLimitId.MAX_EMBEDDED_IMAGE_PIXELS,
+    ResourceLimitId.MAX_TOTAL_EMBEDDED_IMAGE_PIXELS,
+    ResourceLimitId.MAX_PDF_FILTER_IMAGE_PIXELS,
+    ResourceLimitId.MAX_SVG_CONVERSION_ISOLATION_DEPTH,
+    ResourceLimitId.MAX_SVG_CONVERSION_FILTER_PRIMITIVES_PER_FILTER,
+    ResourceLimitId.MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES,
+    ResourceLimitId.MAX_SVG_CONVERSION_SUBROOTS,
+    ResourceLimitId.MAX_NESTED_SVG_IMAGES,
+    ResourceLimitId.SVG_BACKEND_TREE_NODES,
+)
+ResourceLimitId.known_values = RESOURCE_LIMIT_IDS
+_RESOURCE_LIMIT_BY_ID = {limit.id: limit for limit in RESOURCE_LIMIT_IDS}
+_RESOURCE_LIMIT_METADATA = {
+    "max_source_bytes": ("source", True, 1),
+    "max_model_items": ("layout_model", True, 1),
+    "max_model_text_bytes": ("layout_model", True, 1),
+    "max_model_nesting_depth": ("layout_model", True, 1),
+    "max_layout_work_units": ("layout_model", True, 1),
+    "max_svg_bytes": ("svg_output", True, 1),
+    "max_svg_elements": ("svg_postprocess", True, 1),
+    "max_theme_encoded_bytes": ("theme_input", True, 0),
+    "max_theme_base64_bytes": ("theme_input", True, 0),
+    "max_font_asset_compressed_bytes": ("font_decode", True, 0),
+    "max_font_asset_decoded_bytes": ("font_decode", True, 0),
+    "max_font_catalog_decoded_bytes": ("font_catalog", True, 0),
+    "max_font_assets": ("font_catalog", True, 0),
+    "max_font_faces": ("font_catalog", True, 0),
+    "max_font_tables": ("font_catalog", True, 0),
+    "max_font_aliases": ("font_catalog", True, 0),
+    "max_font_decoded_expansion_ratio": ("font_decode", True, 1),
+    "theme_encoded_bytes_hard_cap": ("theme_input", False, 1),
+    "theme_base64_bytes_hard_cap": ("theme_input", False, 1),
+    "font_asset_compressed_bytes_hard_cap": ("font_decode", False, 1),
+    "font_asset_decoded_bytes_hard_cap": ("font_decode", False, 1),
+    "font_catalog_decoded_bytes_hard_cap": ("font_catalog", False, 1),
+    "font_assets_hard_cap": ("font_catalog", False, 1),
+    "font_faces_hard_cap": ("font_catalog", False, 1),
+    "font_tables_hard_cap": ("font_catalog", False, 1),
+    "font_aliases_hard_cap": ("font_catalog", False, 1),
+    "font_decoded_expansion_ratio_hard_cap": ("font_decode", False, 1),
+    "max_document_diagrams": ("document_scan", True, 0),
+    "max_ascii_grid_cells": ("ascii_layout", True, 1),
+    "max_raster_width": ("raster_allocation", True, 1),
+    "max_raster_height": ("raster_allocation", True, 1),
+    "max_raster_pixels": ("raster_allocation", True, 1),
+    "max_embedded_image_bytes": ("embedded_image_decode", True, 1),
+    "max_total_embedded_image_bytes": ("embedded_image_decode", True, 1),
+    "max_embedded_image_pixels": ("embedded_image_decode", True, 1),
+    "max_total_embedded_image_pixels": ("embedded_image_decode", True, 1),
+    "max_pdf_filter_image_pixels": ("pdf_filter_rasterization", True, 1),
+    "max_svg_conversion_isolation_depth": ("svg_conversion", False, 1),
+    "max_svg_conversion_filter_primitives_per_filter": ("svg_conversion", False, 1),
+    "max_total_svg_conversion_filter_primitives": ("svg_conversion", False, 1),
+    "max_svg_conversion_subroots": ("svg_conversion", False, 1),
+    "max_nested_svg_images": ("svg_conversion", False, 1),
+    "svg_backend_tree_nodes": ("svg_conversion", False, 1),
+}
 
 class ResourceOverrideId(str, Enum):
     MAX_SOURCE_BYTES = "max_source_bytes"

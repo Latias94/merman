@@ -1,5 +1,6 @@
 use crate::Result;
 use cssparser::{Delimiter, Parser, ParserInput};
+use merman_core::svg_security::{MermaidSvgUriRepresentation, admit_mermaid_svg_uri_attribute};
 use std::borrow::Cow;
 
 use super::css_sanitize::sanitize_css_value;
@@ -146,6 +147,19 @@ fn sanitized_attr_replacement(element_name: &str, name: &str, value: &str) -> At
         return AttrReplacement::Unchanged;
     }
 
+    if is_anchor_navigation_attribute(element_name, name) {
+        let Some(normalized_value) =
+            admit_mermaid_svg_uri_attribute(value, MermaidSvgUriRepresentation::SerializedSvg)
+        else {
+            return AttrReplacement::Drop;
+        };
+        let normalized_value = escape_xml_attr(&normalized_value);
+        if normalized_value != value {
+            return AttrReplacement::Replace(format!(r#" {name}="{normalized_value}""#));
+        }
+        return AttrReplacement::Unchanged;
+    }
+
     if should_drop_attribute(element_name, name, value) {
         return AttrReplacement::Drop;
     }
@@ -224,12 +238,20 @@ fn should_drop_attribute(element_name: &str, name: &str, value: &str) -> bool {
     }
 }
 
-pub(in crate::svg::pipeline) fn attribute_violates_resvg_contract(
+pub(in crate::svg::pipeline) fn parsed_attribute_violates_resvg_contract(
     element_name: &str,
     name: &str,
     value: &str,
 ) -> bool {
-    should_drop_attribute(element_name, name, value)
+    if is_anchor_navigation_attribute(element_name, name) {
+        return admit_mermaid_svg_uri_attribute(value, MermaidSvgUriRepresentation::DomValue)
+            .is_none_or(|normalized| normalized != value);
+    }
+
+    // The scanner contract consumes serialized source. Re-serialize this parsed XML value before
+    // reusing it so character references are interpreted exactly once, not once per validation
+    // stage.
+    should_drop_attribute(element_name, name, &escape_xml_attr(value))
 }
 
 fn is_event_handler_attribute(name: &str) -> bool {
@@ -263,6 +285,11 @@ fn is_unsafe_url_attribute(element_name: &str, name: &str, value: &str) -> bool 
     }
 }
 
+fn is_anchor_navigation_attribute(element_name: &str, name: &str) -> bool {
+    local_name(element_name).eq_ignore_ascii_case("a")
+        && local_name(name.trim()).eq_ignore_ascii_case("href")
+}
+
 fn is_url_function_attribute(name: &str) -> bool {
     matches!(
         name,
@@ -281,20 +308,7 @@ fn is_url_function_attribute(name: &str) -> bool {
 }
 
 fn is_unsafe_navigation_url_value(value: &str) -> bool {
-    let value = normalize_url_attr_for_scheme_check(value);
-    if value.is_empty() || value.starts_with('#') {
-        return false;
-    }
-
-    if value.starts_with("data:") {
-        return true;
-    }
-
-    let Some(colon) = value.find(':') else {
-        return false;
-    };
-    let scheme = &value[..colon];
-    !matches!(scheme, "http" | "https" | "mailto")
+    admit_mermaid_svg_uri_attribute(value, MermaidSvgUriRepresentation::SerializedSvg).is_none()
 }
 
 pub(super) fn is_unsafe_render_resource_url_value(value: &str) -> bool {
@@ -690,7 +704,7 @@ fn is_numeric_token_boundary(ch: Option<char>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::sanitize_element_attributes;
+    use super::{parsed_attribute_violates_resvg_contract, sanitize_element_attributes};
 
     #[test]
     fn sanitize_style_attribute_drops_invalid_bare_declarations() {
@@ -799,6 +813,64 @@ mod tests {
         assert!(!lower.contains("javascript"), "got: {out}");
         assert!(!lower.contains("data:text/html"), "got: {out}");
         assert!(!lower.contains("file:///"), "got: {out}");
+    }
+
+    #[test]
+    fn sanitize_element_attributes_decodes_exactly_one_svg_serialization_layer() {
+        let svg = r##"<svg>
+<a href="jav&#x61;script:alert(1)"><text>decoded by the SVG parser</text></a>
+<a href="jav&amp;#x61;script:alert(2)"><text>literal DOM entity spelling</text></a>
+<a href=""><text>empty href</text></a>
+</svg>"##;
+
+        let out = sanitize_element_attributes(svg);
+
+        assert!(!out.contains(r#"href="jav&#x61;script:alert(1)""#), "{out}");
+        assert!(
+            out.contains(r#"href="jav&amp;#x61;script:alert(2)""#),
+            "{out}"
+        );
+        assert!(out.contains(r#"href="""#), "{out}");
+    }
+
+    #[test]
+    fn sanitize_element_attributes_normalizes_anchor_dom_values_like_dompurify() {
+        let svg = format!(
+            r##"<svg>
+<a href="  https://example.test/ticket  "><text>trimmed</text></a>
+<a href="   "><text>empty</text></a>
+<a href="{}javascript:alert(1)"><text>bom</text></a>
+</svg>"##,
+            '\u{FEFF}'
+        );
+
+        let out = sanitize_element_attributes(&svg);
+
+        assert!(
+            out.contains(r#"href="https://example.test/ticket""#),
+            "{out}"
+        );
+        assert!(out.contains(r#"href="""#), "{out}");
+        assert!(!out.contains("javascript:alert(1)"), "{out}");
+    }
+
+    #[test]
+    fn parsed_resvg_contract_does_not_decode_navigation_entities_twice() {
+        assert!(!parsed_attribute_violates_resvg_contract(
+            "a",
+            "href",
+            "javascript&colon;ticket"
+        ));
+        assert!(parsed_attribute_violates_resvg_contract(
+            "a",
+            "href",
+            "javascript:ticket"
+        ));
+        assert!(parsed_attribute_violates_resvg_contract(
+            "a",
+            "href",
+            " https://example.test "
+        ));
     }
 
     #[test]
@@ -956,6 +1028,37 @@ mod tests {
         );
         assert!(!out.contains("data:image/png;base64,BBBB"), "{out}");
         assert_eq!(sanitize_element_attributes(&out), out);
+    }
+
+    #[test]
+    fn sanitize_element_attributes_preserves_dompurify_safe_anchor_schemes() {
+        let svg = r##"<svg>
+<a href="ftp://example.com/file"><text>ftp</text></a>
+<a href="ftps://example.com/file"><text>ftps</text></a>
+<a href="tel:+123"><text>tel</text></a>
+<a href="callto:+123"><text>call</text></a>
+<a href="sms:+123"><text>sms</text></a>
+<a href="cid:part@example.com"><text>cid</text></a>
+<a href="xmpp:user@example.com"><text>xmpp</text></a>
+<a href="matrix:r/room:example.com"><text>matrix</text></a>
+<a href="javascript:alert(1)"><text>script</text></a>
+</svg>"##;
+
+        let out = sanitize_element_attributes(svg);
+
+        for href in [
+            "ftp://example.com/file",
+            "ftps://example.com/file",
+            "tel:+123",
+            "callto:+123",
+            "sms:+123",
+            "cid:part@example.com",
+            "xmpp:user@example.com",
+            "matrix:r/room:example.com",
+        ] {
+            assert!(out.contains(&format!(r#"href="{href}""#)), "{href}: {out}");
+        }
+        assert!(!out.contains("javascript:alert(1)"), "{out}");
     }
 
     #[test]

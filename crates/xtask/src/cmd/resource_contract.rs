@@ -6,10 +6,11 @@
 
 use crate::XtaskError;
 use merman_bindings_core::{
-    BINDING_OPTIONS_SCHEMA_VERSION, BindingResourceContract, RuntimeResourceContract,
-    TextMeasurementProviderProjection, binding_resource_contract,
-    compiled_runtime_capability_surface, runtime_catalog_for,
+    ArtifactContractSpec, BINDING_OPTIONS_SCHEMA_VERSION, BindingResourceContract,
+    BindingTransportKey, CapabilityKey, OperationKey, RuntimePolicyExposure,
+    RuntimeResourceContract, TargetKey, binding_resource_contract,
 };
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -22,8 +23,292 @@ const UNIFFI_RUST_OUTPUT: &str = "crates/merman-uniffi/src/generated/resource_co
 const WEB_OUTPUT: &str = "platforms/web/src/generated/resource-contract.ts";
 const ANDROID_OUTPUT: &str = "platforms/android/src/main/kotlin/io/merman/MermanResourceOptions.kt";
 const FLUTTER_OUTPUT: &str = "platforms/flutter/lib/src/generated/resource_options.dart";
+const SWIFT_OUTPUT: &str = "platforms/apple/Sources/Merman/Generated/MermanResourceContract.swift";
+// `generate_python_package` exclusively owns the package-local `_resource_options.py` copy.
 const UNIFFI_PYTHON_TEMPLATE_OUTPUT: &str = "crates/merman-uniffi/python/resource_options.py";
-const PYTHON_PACKAGE_OUTPUT: &str = "platforms/python/merman/src/merman/_resource_options.py";
+const FULL_WEB_OPERATIONS: &[OperationKey] = &[
+    OperationKey::AnalysisFactsJson,
+    OperationKey::AnalysisJson,
+    OperationKey::Ascii,
+    OperationKey::DocumentAnalysisFactsJson,
+    OperationKey::DocumentAnalysisJson,
+    OperationKey::LayoutJson,
+    OperationKey::SemanticJson,
+    OperationKey::Svg,
+    OperationKey::SvgPlanJson,
+    OperationKey::ValidationJson,
+];
+const FULL_WEB_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
+    CapabilityKey::LayoutCytoscape,
+    CapabilityKey::LayoutElk,
+    CapabilityKey::Math,
+];
+const DART_RESERVED_WORDS: &[&str] = &[
+    "abstract",
+    "as",
+    "assert",
+    "async",
+    "await",
+    "base",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "covariant",
+    "default",
+    "deferred",
+    "do",
+    "dynamic",
+    "else",
+    "enum",
+    "export",
+    "extends",
+    "extension",
+    "external",
+    "factory",
+    "false",
+    "final",
+    "finally",
+    "for",
+    "get",
+    "hide",
+    "if",
+    "implements",
+    "import",
+    "in",
+    "interface",
+    "is",
+    "late",
+    "library",
+    "mixin",
+    "new",
+    "null",
+    "of",
+    "on",
+    "operator",
+    "part",
+    "required",
+    "rethrow",
+    "return",
+    "sealed",
+    "set",
+    "show",
+    "static",
+    "super",
+    "switch",
+    "sync",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "type",
+    "typedef",
+    "var",
+    "void",
+    "when",
+    "while",
+    "with",
+    "yield",
+];
+const DART_PROFILE_FIXED_MEMBERS: &[&str] = &[
+    "hashCode",
+    "id",
+    "index",
+    "name",
+    "noSuchMethod",
+    "runtimeType",
+    "toString",
+    "values",
+];
+const DART_LIMIT_FIXED_MEMBERS: &[&str] = &[
+    "fromId",
+    "hashCode",
+    "id",
+    "isKnown",
+    "knownValues",
+    "minimumValue",
+    "noSuchMethod",
+    "overridable",
+    "phase",
+    "runtimeType",
+    "toString",
+];
+const DART_OVERRIDE_FIXED_MEMBERS: &[&str] = &[
+    "hashCode",
+    "id",
+    "index",
+    "minimumValue",
+    "name",
+    "noSuchMethod",
+    "runtimeType",
+    "toString",
+    "values",
+];
+const SWIFT_RESERVED_WORDS: &[&str] = &[
+    "Any",
+    "Self",
+    "Type",
+    "Protocol",
+    "as",
+    "associatedtype",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "continue",
+    "default",
+    "defer",
+    "deinit",
+    "do",
+    "else",
+    "enum",
+    "extension",
+    "fallthrough",
+    "false",
+    "fileprivate",
+    "for",
+    "func",
+    "guard",
+    "if",
+    "import",
+    "in",
+    "init",
+    "inout",
+    "internal",
+    "is",
+    "let",
+    "nil",
+    "open",
+    "operator",
+    "private",
+    "protocol",
+    "public",
+    "repeat",
+    "rethrows",
+    "return",
+    "some",
+    "static",
+    "struct",
+    "subscript",
+    "super",
+    "switch",
+    "throw",
+    "throws",
+    "true",
+    "try",
+    "typealias",
+    "var",
+    "where",
+    "while",
+];
+const SWIFT_LIMIT_FIXED_MEMBERS: &[&str] = &[
+    "description",
+    "fromId",
+    "hashValue",
+    "id",
+    "isKnown",
+    "knownValues",
+    "metadata",
+    "minimumValue",
+    "overridable",
+    "phase",
+];
+const RUST_PASCAL_RESERVED_WORDS: &[&str] = &["Self"];
+#[derive(Clone, Copy)]
+struct ProjectionRules {
+    language: &'static str,
+    namespace: &'static str,
+    project: fn(&str) -> String,
+    reserved_words: &'static [&'static str],
+    fixed_members: &'static [&'static str],
+}
+
+const DART_PROFILE_PROJECTION: ProjectionRules = ProjectionRules {
+    language: "Dart",
+    namespace: "MermanResourceProfile",
+    project: camel_case,
+    reserved_words: DART_RESERVED_WORDS,
+    fixed_members: DART_PROFILE_FIXED_MEMBERS,
+};
+const DART_LIMIT_PROJECTION: ProjectionRules = ProjectionRules {
+    language: "Dart",
+    namespace: "MermanResourceLimitId",
+    project: camel_case,
+    reserved_words: DART_RESERVED_WORDS,
+    fixed_members: DART_LIMIT_FIXED_MEMBERS,
+};
+const DART_OVERRIDE_PROJECTION: ProjectionRules = ProjectionRules {
+    language: "Dart",
+    namespace: "MermanResourceOverrideId",
+    project: camel_case,
+    reserved_words: DART_RESERVED_WORDS,
+    fixed_members: DART_OVERRIDE_FIXED_MEMBERS,
+};
+const SWIFT_LIMIT_PROJECTION: ProjectionRules = ProjectionRules {
+    language: "Swift",
+    namespace: "MermanResourceLimitId",
+    project: camel_case,
+    reserved_words: SWIFT_RESERVED_WORDS,
+    fixed_members: SWIFT_LIMIT_FIXED_MEMBERS,
+};
+const RUST_PROFILE_PROJECTION: ProjectionRules = ProjectionRules {
+    language: "Rust",
+    namespace: "MermanResourceProfile",
+    project: pascal_case,
+    reserved_words: RUST_PASCAL_RESERVED_WORDS,
+    fixed_members: &[],
+};
+const RUST_OVERRIDE_PROJECTION: ProjectionRules = ProjectionRules {
+    language: "Rust",
+    namespace: "MermanResourceOverrideId",
+    project: pascal_case,
+    reserved_words: RUST_PASCAL_RESERVED_WORDS,
+    fixed_members: &[],
+};
+const KOTLIN_PROFILE_PROJECTION: ProjectionRules = ProjectionRules {
+    language: "Kotlin",
+    namespace: "MermanResourceProfile",
+    project: upper_snake,
+    reserved_words: &[],
+    fixed_members: &[],
+};
+const KOTLIN_LIMIT_PROJECTION: ProjectionRules = ProjectionRules {
+    language: "Kotlin",
+    namespace: "MermanResourceLimitId",
+    project: upper_snake,
+    reserved_words: &[],
+    fixed_members: &[],
+};
+const KOTLIN_OVERRIDE_PROJECTION: ProjectionRules = ProjectionRules {
+    language: "Kotlin",
+    namespace: "MermanResourceOverrideId",
+    project: upper_snake,
+    reserved_words: &[],
+    fixed_members: &[],
+};
+const PYTHON_PROFILE_PROJECTION: ProjectionRules = ProjectionRules {
+    language: "Python",
+    namespace: "ResourceProfile",
+    project: upper_snake,
+    reserved_words: &[],
+    fixed_members: &[],
+};
+const PYTHON_LIMIT_PROJECTION: ProjectionRules = ProjectionRules {
+    language: "Python",
+    namespace: "ResourceLimitId",
+    project: upper_snake,
+    reserved_words: &[],
+    fixed_members: &[],
+};
+const PYTHON_OVERRIDE_PROJECTION: ProjectionRules = ProjectionRules {
+    language: "Python",
+    namespace: "ResourceOverrideId",
+    project: upper_snake,
+    reserved_words: &[],
+    fixed_members: &[],
+};
 
 fn pascal_case(value: &str) -> String {
     value
@@ -53,6 +338,152 @@ fn upper_snake(value: &str) -> String {
     value.replace('-', "_").to_ascii_uppercase()
 }
 
+fn is_ascii_identifier(value: &str) -> bool {
+    let mut bytes = value.bytes();
+    matches!(bytes.next(), Some(byte) if byte.is_ascii_alphabetic() || byte == b'_')
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+}
+
+fn validate_projected_members<'a>(
+    values: impl IntoIterator<Item = &'a str>,
+    context: &str,
+    rules: ProjectionRules,
+) -> Result<(), String> {
+    let mut projected = BTreeMap::new();
+    for value in values {
+        let member = (rules.project)(value);
+        if !is_ascii_identifier(&member) {
+            return Err(format!(
+                "{context} id `{value}` projects to invalid {} identifier `{member}`",
+                rules.language
+            ));
+        }
+        if rules.reserved_words.contains(&member.as_str()) {
+            return Err(format!(
+                "{context} id `{value}` projects to reserved {} keyword `{member}`",
+                rules.language
+            ));
+        }
+        if rules.fixed_members.contains(&member.as_str()) {
+            return Err(format!(
+                "{context} id `{value}` projects to fixed {} {} member `{member}`",
+                rules.language, rules.namespace
+            ));
+        }
+        if let Some(previous) = projected.insert(member.clone(), value) {
+            return Err(format!(
+                "{context} ids `{previous}` and `{value}` both project to {} {} member `{member}`",
+                rules.language, rules.namespace
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_c_macro_symbols(contract: &BindingResourceContract) -> Result<(), String> {
+    let mut symbols = BTreeMap::new();
+    for limit in &contract.limits {
+        let base = format!("MERMAN_RESOURCE_LIMIT_{}", upper_snake(limit.stable_id));
+        for symbol in [
+            base.clone(),
+            format!("{base}_MINIMUM"),
+            format!("{base}_OVERRIDABLE"),
+        ] {
+            if let Some(previous) = symbols.insert(symbol.clone(), limit.stable_id) {
+                return Err(format!(
+                    "resource limit ids `{previous}` and `{}` both emit C macro `{symbol}`",
+                    limit.stable_id
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_resource_projections(contract: &BindingResourceContract) -> Result<(), String> {
+    validate_projected_members(
+        contract.profiles.iter().map(|profile| profile.id),
+        "resource profile",
+        DART_PROFILE_PROJECTION,
+    )?;
+    validate_projected_members(
+        contract.limits.iter().map(|limit| limit.stable_id),
+        "resource limit",
+        DART_LIMIT_PROJECTION,
+    )?;
+    validate_projected_members(
+        contract.limits.iter().map(|limit| limit.stable_id),
+        "resource limit",
+        SWIFT_LIMIT_PROJECTION,
+    )?;
+    validate_projected_members(
+        contract
+            .limits
+            .iter()
+            .filter(|limit| limit.overridable)
+            .map(|limit| limit.stable_id),
+        "resource override",
+        DART_OVERRIDE_PROJECTION,
+    )?;
+
+    validate_projected_members(
+        contract.profiles.iter().map(|profile| profile.id),
+        "resource profile",
+        RUST_PROFILE_PROJECTION,
+    )?;
+    validate_projected_members(
+        contract
+            .limits
+            .iter()
+            .filter(|limit| limit.overridable)
+            .map(|limit| limit.stable_id),
+        "resource override",
+        RUST_OVERRIDE_PROJECTION,
+    )?;
+
+    validate_projected_members(
+        contract.profiles.iter().map(|profile| profile.id),
+        "resource profile",
+        KOTLIN_PROFILE_PROJECTION,
+    )?;
+    validate_projected_members(
+        contract.limits.iter().map(|limit| limit.stable_id),
+        "resource limit",
+        KOTLIN_LIMIT_PROJECTION,
+    )?;
+    validate_projected_members(
+        contract
+            .limits
+            .iter()
+            .filter(|limit| limit.overridable)
+            .map(|limit| limit.stable_id),
+        "resource override",
+        KOTLIN_OVERRIDE_PROJECTION,
+    )?;
+
+    validate_projected_members(
+        contract.profiles.iter().map(|profile| profile.id),
+        "resource profile",
+        PYTHON_PROFILE_PROJECTION,
+    )?;
+    validate_projected_members(
+        contract.limits.iter().map(|limit| limit.stable_id),
+        "resource limit",
+        PYTHON_LIMIT_PROJECTION,
+    )?;
+    validate_projected_members(
+        contract
+            .limits
+            .iter()
+            .filter(|limit| limit.overridable)
+            .map(|limit| limit.stable_id),
+        "resource override",
+        PYTHON_OVERRIDE_PROJECTION,
+    )?;
+
+    validate_c_macro_symbols(contract)
+}
+
 fn web_profile_default(contract: &RuntimeResourceContract) -> &'static str {
     let defaults = contract
         .profiles
@@ -75,10 +506,15 @@ fn generated_preamble(comment: &str) -> String {
 }
 
 fn web_resource_contract() -> RuntimeResourceContract {
-    let surface = compiled_runtime_capability_surface()
-        .project_to_descriptor_target("web", TextMeasurementProviderProjection::VendoredOnly)
-        .expect("the compiled binding surface projects to the Web target");
-    runtime_catalog_for(0, surface).resources
+    const WEB_CONTRACT: merman_bindings_core::ValidatedArtifactContract =
+        ArtifactContractSpec::new(TargetKey::Web, BindingTransportKey::Web)
+            .with_operations(FULL_WEB_OPERATIONS)
+            .with_supplemental_capabilities(FULL_WEB_SUPPLEMENTAL_CAPABILITIES)
+            .with_all_available_metadata()
+            .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
+            .materialize();
+
+    WEB_CONTRACT.runtime_catalog(0).resources
 }
 
 fn render_c_header(contract: &BindingResourceContract) -> String {
@@ -141,19 +577,28 @@ fn render_typescript(contract: &RuntimeResourceContract) -> String {
         "export const BINDING_OPTIONS_SCHEMA_VERSION = {BINDING_OPTIONS_SCHEMA_VERSION} as const;\n"
     )
     .unwrap();
-    out.push_str("export const RESOURCE_PROFILES = [\n");
+    out.push_str("export const RESOURCE_PROFILES = Object.freeze([\n");
     for profile in profiles {
         writeln!(out, "  {:?},", profile.id).unwrap();
     }
-    out.push_str("] as const;\nexport type ResourceProfile = (typeof RESOURCE_PROFILES)[number];\n\nexport const RESOURCE_LIMIT_IDS = [\n");
+    out.push_str("] as const);\nexport type ResourceProfile = (typeof RESOURCE_PROFILES)[number];\nconst RESOURCE_PROFILE_ID_SET: ReadonlySet<string> = new Set(RESOURCE_PROFILES);\n\nexport const RESOURCE_LIMIT_IDS = Object.freeze([\n");
     for limit in limits {
         writeln!(out, "  {:?},", limit.id).unwrap();
     }
-    out.push_str("] as const;\nexport type ResourceLimitId = (typeof RESOURCE_LIMIT_IDS)[number];\n\nexport const RESOURCE_OVERRIDE_IDS = [\n");
+    out.push_str("] as const);\nexport type KnownResourceLimitId = (typeof RESOURCE_LIMIT_IDS)[number];\nexport type ResourceLimitId = string;\nconst RESOURCE_LIMIT_ID_SET: ReadonlySet<string> = new Set(RESOURCE_LIMIT_IDS);\n\nexport interface KnownResourceLimitMetadata {\n  readonly id: KnownResourceLimitId;\n  readonly phase: string;\n  readonly overridable: boolean;\n  readonly minimumValue: number;\n}\n\nexport const RESOURCE_LIMIT_METADATA: Readonly<Record<KnownResourceLimitId, KnownResourceLimitMetadata>> = Object.freeze({\n");
+    for limit in limits {
+        writeln!(
+            out,
+            "  {:?}: Object.freeze({{ id: {:?}, phase: {:?}, overridable: {}, minimumValue: {} }}),",
+            limit.id, limit.id, limit.phase, limit.overridable, limit.minimum_value
+        )
+        .unwrap();
+    }
+    out.push_str("});\n\nexport function isKnownResourceLimitId(id: ResourceLimitId): id is KnownResourceLimitId {\n  return RESOURCE_LIMIT_ID_SET.has(id);\n}\n\nexport function resourceLimitMetadata(\n  id: ResourceLimitId,\n): KnownResourceLimitMetadata | undefined {\n  return isKnownResourceLimitId(id) ? RESOURCE_LIMIT_METADATA[id] : undefined;\n}\n\nexport const RESOURCE_OVERRIDE_IDS = Object.freeze([\n");
     for limit in limits.iter().filter(|limit| limit.overridable) {
         writeln!(out, "  {:?},", limit.id).unwrap();
     }
-    out.push_str("] as const;\nexport type ResourceOverrideId = (typeof RESOURCE_OVERRIDE_IDS)[number];\n\nexport type ResourceLimitOverrides = Partial<Record<ResourceOverrideId, number>>;\n\nexport interface ResourceOptions {\n  profile?: ResourceProfile;\n  limits?: ResourceLimitOverrides;\n}\n\nexport interface RawResourceOptions {\n  profile?: string;\n  limits?: Record<string, number>;\n}\n\ntype ResourceLimitValues = Record<ResourceLimitId, number | null>;\n\nconst RESOURCE_PROFILE_LIMITS: Record<ResourceProfile, ResourceLimitValues> = {\n");
+    out.push_str("] as const);\nexport type ResourceOverrideId = (typeof RESOURCE_OVERRIDE_IDS)[number];\nconst RESOURCE_OVERRIDE_ID_SET: ReadonlySet<string> = new Set(RESOURCE_OVERRIDE_IDS);\n\nexport type ResourceLimitOverrides = Partial<Record<ResourceOverrideId, number>>;\n\nexport interface ResourceOptions {\n  profile?: ResourceProfile;\n  limits?: ResourceLimitOverrides;\n}\n\nexport interface RawResourceOptions {\n  profile?: string;\n  limits?: Record<string, number>;\n}\n\ntype ResourceLimitValues = Record<KnownResourceLimitId, number | null>;\n\nconst RESOURCE_PROFILE_LIMITS: Record<ResourceProfile, ResourceLimitValues> = {\n");
     for profile in profiles {
         writeln!(out, "  {:?}: {{", profile.id).unwrap();
         for limit in limits {
@@ -168,9 +613,9 @@ fn render_typescript(contract: &RuntimeResourceContract) -> String {
     for limit in limits.iter().filter(|limit| limit.overridable) {
         writeln!(out, "  {:?}: {},", limit.id, limit.minimum_value).unwrap();
     }
-    out.push_str("};\n\nexport function resourceOptions(\n  profile?: ResourceProfile,\n  limits: ResourceLimitOverrides = {},\n): ResourceOptions {\n  if (profile !== undefined && !(RESOURCE_PROFILES as readonly string[]).includes(profile)) {\n    throw new RangeError(`unsupported resource profile: ${profile}`);\n  }\n  const normalized: ResourceLimitOverrides = {};\n  for (const [id, value] of Object.entries(limits) as [ResourceOverrideId, number][]) {\n    if (!(RESOURCE_OVERRIDE_IDS as readonly string[]).includes(id)) {\n      throw new RangeError(`resource limit is not overridable: ${id}`);\n    }\n    if (!Number.isSafeInteger(value) || value < RESOURCE_LIMIT_MINIMUMS[id]) {\n      throw new RangeError(`resource limit must be at least ${RESOURCE_LIMIT_MINIMUMS[id]}: ${id}`);\n    }\n    normalized[id] = value;\n  }\n  const resources: ResourceOptions = {};\n  if (profile !== undefined) {\n    resources.profile = profile;\n  }\n  if (Object.keys(normalized).length !== 0) {\n    resources.limits = normalized;\n  }\n  return resources;\n}\n\nexport function tightenResourceOptions(\n  ceiling: ResourceOptions,\n  requested?: ResourceOptions,\n): ResourceOptions {\n  assertResourceOptions(ceiling, \"resource ceiling\");\n  const ceilingProfile = ceiling.profile ?? ");
+    out.push_str("};\n\nexport function resourceOptions(\n  profile?: ResourceProfile,\n  limits: ResourceLimitOverrides = {},\n): ResourceOptions {\n  if (profile !== undefined && !RESOURCE_PROFILE_ID_SET.has(profile)) {\n    throw new RangeError(`unsupported resource profile: ${profile}`);\n  }\n  const normalized: ResourceLimitOverrides = {};\n  for (const [id, value] of Object.entries(limits) as [ResourceOverrideId, number][]) {\n    if (!RESOURCE_OVERRIDE_ID_SET.has(id)) {\n      throw new RangeError(`resource limit is not overridable: ${id}`);\n    }\n    if (!Number.isSafeInteger(value) || value < RESOURCE_LIMIT_MINIMUMS[id]) {\n      throw new RangeError(`resource limit must be at least ${RESOURCE_LIMIT_MINIMUMS[id]}: ${id}`);\n    }\n    normalized[id] = value;\n  }\n  const resources: ResourceOptions = {};\n  if (profile !== undefined) {\n    resources.profile = profile;\n  }\n  if (Object.keys(normalized).length !== 0) {\n    resources.limits = normalized;\n  }\n  return resources;\n}\n\nexport function tightenResourceOptions(\n  ceiling: ResourceOptions,\n  requested?: ResourceOptions,\n): ResourceOptions {\n  assertResourceOptions(ceiling, \"resource ceiling\");\n  const ceilingProfile = ceiling.profile ?? ");
     write!(out, "{default_profile:?}").unwrap();
-    out.push_str(";\n  const normalizedCeiling = resourceOptions(ceilingProfile, ceiling.limits);\n  if (requested === undefined) {\n    return normalizedCeiling;\n  }\n\n  assertResourceOptions(requested, \"requested resources\");\n  const candidate = requested.profile === undefined\n    ? resourceOptions(ceilingProfile, {\n        ...normalizedCeiling.limits,\n        ...(requested.limits ?? {}),\n      })\n    : resourceOptions(requested.profile, requested.limits);\n  const ceilingValues = effectiveResourceLimits(normalizedCeiling);\n  const requestedValues = effectiveResourceLimits(candidate);\n  const tightened: ResourceLimitOverrides = { ...normalizedCeiling.limits };\n  for (const id of RESOURCE_LIMIT_IDS) {\n    const maximum = ceilingValues[id];\n    const value = requestedValues[id];\n    if (maximum !== null && (value === null || value > maximum)) {\n      throw new RangeError(\n        `resources would loosen the transport ceiling for ${id}: requested ${value ?? \"unbounded\"}, maximum ${maximum}`,\n      );\n    }\n    if (\n      value !== null &&\n      (maximum === null || value < maximum) &&\n      (RESOURCE_OVERRIDE_IDS as readonly string[]).includes(id)\n    ) {\n      tightened[id as ResourceOverrideId] = value;\n    }\n  }\n  return Object.keys(tightened).length === 0\n    ? { profile: ceilingProfile }\n    : { profile: ceilingProfile, limits: tightened };\n}\n\nfunction effectiveResourceLimits(options: ResourceOptions): ResourceLimitValues {\n  const profile = options.profile ?? ");
+    out.push_str(";\n  const normalizedCeiling = resourceOptions(ceilingProfile, ceiling.limits);\n  if (requested === undefined) {\n    return normalizedCeiling;\n  }\n\n  assertResourceOptions(requested, \"requested resources\");\n  const candidate = requested.profile === undefined\n    ? resourceOptions(ceilingProfile, {\n        ...normalizedCeiling.limits,\n        ...(requested.limits ?? {}),\n      })\n    : resourceOptions(requested.profile, requested.limits);\n  const ceilingValues = effectiveResourceLimits(normalizedCeiling);\n  const requestedValues = effectiveResourceLimits(candidate);\n  const tightened: ResourceLimitOverrides = { ...normalizedCeiling.limits };\n  for (const id of RESOURCE_LIMIT_IDS) {\n    const maximum = ceilingValues[id];\n    const value = requestedValues[id];\n    if (maximum !== null && (value === null || value > maximum)) {\n      throw new RangeError(\n        `resources would loosen the transport ceiling for ${id}: requested ${value ?? \"unbounded\"}, maximum ${maximum}`,\n      );\n    }\n    if (\n      value !== null &&\n      (maximum === null || value < maximum) &&\n      RESOURCE_OVERRIDE_ID_SET.has(id)\n    ) {\n      tightened[id as ResourceOverrideId] = value;\n    }\n  }\n  return Object.keys(tightened).length === 0\n    ? { profile: ceilingProfile }\n    : { profile: ceilingProfile, limits: tightened };\n}\n\nfunction effectiveResourceLimits(options: ResourceOptions): ResourceLimitValues {\n  const profile = options.profile ?? ");
     write!(out, "{default_profile:?}").unwrap();
     out.push_str(";\n  const values = { ...RESOURCE_PROFILE_LIMITS[profile] };\n  for (const [id, value] of Object.entries(options.limits ?? {}) as [ResourceOverrideId, number][]) {\n    values[id] = value;\n  }\n  return values;\n}\n\nfunction assertResourceOptions(value: unknown, label: string): asserts value is ResourceOptions {\n  if (value === null || typeof value !== \"object\" || Array.isArray(value)) {\n    throw new TypeError(`${label} must be an object`);\n  }\n  const limits = (value as ResourceOptions).limits;\n  if (limits !== undefined && (limits === null || typeof limits !== \"object\" || Array.isArray(limits))) {\n    throw new TypeError(`${label}.limits must be an object`);\n  }\n}\n\nexport function resourceOptionsJson(\n  profile?: ResourceProfile,\n  limits: ResourceLimitOverrides = {},\n): string {\n  const resources = resourceOptions(profile, limits);\n  return JSON.stringify(\n    Object.keys(resources).length === 0\n      ? { version: BINDING_OPTIONS_SCHEMA_VERSION }\n      : { version: BINDING_OPTIONS_SCHEMA_VERSION, resources },\n  );\n}\n\nexport function rawResourceOptionsJson(options: RawResourceOptions): string {\n  return JSON.stringify(\n    Object.keys(options).length === 0\n      ? { version: BINDING_OPTIONS_SCHEMA_VERSION }\n      : { version: BINDING_OPTIONS_SCHEMA_VERSION, resources: options },\n  );\n}\n");
     out
@@ -190,19 +635,24 @@ fn render_kotlin(contract: &BindingResourceContract) -> String {
     for profile in profiles {
         writeln!(out, "    {}(\"{}\"),", upper_snake(profile.id), profile.id).unwrap();
     }
-    out.push_str("}\n\npublic enum class MermanResourceLimitId(public val id: String, public val overridable: Boolean, public val minimumValue: Long) {\n");
+    out.push_str("}\n\npublic class MermanResourceLimitId private constructor(\n    public val id: String,\n    public val phase: String?,\n    public val overridable: Boolean?,\n    public val minimumValue: Long?,\n) {\n    public val isKnown: Boolean\n        get() = phase != null\n\n    override fun equals(other: Any?): Boolean =\n        other is MermanResourceLimitId && id == other.id\n\n    override fun hashCode(): Int = id.hashCode()\n\n    override fun toString(): String = id\n\n    public companion object {\n");
     for limit in limits {
         writeln!(
             out,
-            "    {}(\"{}\", {}, {}),",
+            "        public val {}: MermanResourceLimitId = MermanResourceLimitId(\"{}\", \"{}\", {}, {})",
             upper_snake(limit.stable_id),
             limit.stable_id,
+            limit.phase,
             limit.overridable,
             limit.minimum_value
         )
         .unwrap();
     }
-    out.push_str("}\n\npublic enum class MermanResourceOverrideId(public val id: String, public val minimumValue: Long) {\n");
+    out.push_str("\n        public val knownValues: List<MermanResourceLimitId> =\n            java.util.Collections.unmodifiableList(listOf(\n");
+    for limit in limits {
+        writeln!(out, "            {},", upper_snake(limit.stable_id)).unwrap();
+    }
+    out.push_str("            ))\n\n        private val knownById: Map<String, MermanResourceLimitId> =\n            knownValues.associateBy(MermanResourceLimitId::id)\n\n        @JvmStatic\n        public fun fromId(id: String): MermanResourceLimitId {\n            require(id.isNotEmpty()) { \"Resource limit id must not be empty\" }\n            return knownById[id] ?: MermanResourceLimitId(id, null, null, null)\n        }\n    }\n}\n\npublic enum class MermanResourceOverrideId(public val id: String, public val minimumValue: Long) {\n");
     for limit in limits.iter().filter(|limit| limit.overridable) {
         writeln!(
             out,
@@ -242,33 +692,81 @@ fn render_dart(contract: &BindingResourceContract) -> String {
   final String id;
 }
 
-enum MermanResourceLimitId {
+final class MermanResourceLimitId {
 "#,
     );
     for limit in limits {
         let variant = camel_case(limit.stable_id);
-        let line = format!(
-            "  {variant}('{}', {}, {}),",
-            limit.stable_id, limit.overridable, limit.minimum_value
-        );
-        if line.len() <= 80 {
-            writeln!(out, "{line}").unwrap();
+        let assignment = format!("  static const {variant} = MermanResourceLimitId._known(");
+        if assignment.len() <= 80 {
+            writeln!(out, "{assignment}").unwrap();
         } else {
             writeln!(
                 out,
-                "  {variant}(\n      '{}', {}, {}),",
-                limit.stable_id, limit.overridable, limit.minimum_value
+                "  static const {variant} =\n      MermanResourceLimitId._known("
             )
             .unwrap();
         }
+        writeln!(
+            out,
+            "    '{}',\n    '{}',\n    {},\n    {},\n  );",
+            limit.stable_id, limit.phase, limit.overridable, limit.minimum_value
+        )
+        .unwrap();
     }
     out.push_str(
-        r#"  ;
+        "\n  static const List<MermanResourceLimitId> knownValues =\n      <MermanResourceLimitId>[\n",
+    );
+    for limit in limits {
+        writeln!(out, "    {},", camel_case(limit.stable_id)).unwrap();
+    }
+    out.push_str(
+        r#"  ];
 
-  const MermanResourceLimitId(this.id, this.overridable, this.minimumValue);
+  const MermanResourceLimitId._known(
+    this.id,
+    this.phase,
+    this.overridable,
+    this.minimumValue,
+  );
+
+  const MermanResourceLimitId._unknown(this.id)
+      : phase = null,
+        overridable = null,
+        minimumValue = null;
+
+  factory MermanResourceLimitId.fromId(String id) {
+    if (id.isEmpty) {
+      throw ArgumentError.value(
+        id,
+        'id',
+        'Resource limit id must not be empty',
+      );
+    }
+    for (final value in knownValues) {
+      if (value.id == id) {
+        return value;
+      }
+    }
+    return MermanResourceLimitId._unknown(id);
+  }
+
   final String id;
-  final bool overridable;
-  final int minimumValue;
+  final String? phase;
+  final bool? overridable;
+  final int? minimumValue;
+
+  bool get isKnown => phase != null;
+
+  @override
+  bool operator ==(Object other) =>
+      other is MermanResourceLimitId && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
+
+  @override
+  String toString() => id;
 }
 
 enum MermanResourceOverrideId {
@@ -365,7 +863,7 @@ fn render_python(contract: &BindingResourceContract) -> String {
     let profiles = &contract.profiles;
     let limits = &contract.limits;
     let mut out = generated_preamble("#");
-    out.push_str("from __future__ import annotations\n\nimport json\nfrom dataclasses import dataclass, field\nfrom enum import Enum\nfrom types import MappingProxyType\nfrom typing import Mapping, Optional\n\n");
+    out.push_str("from __future__ import annotations\n\nimport json\nfrom dataclasses import dataclass, field\nfrom enum import Enum\nfrom types import MappingProxyType\nfrom typing import ClassVar, Mapping, Optional, Tuple\n\n");
     writeln!(
         out,
         "BINDING_OPTIONS_SCHEMA_VERSION = {BINDING_OPTIONS_SCHEMA_VERSION}\n"
@@ -375,17 +873,42 @@ fn render_python(contract: &BindingResourceContract) -> String {
     for profile in profiles {
         writeln!(out, "    {} = \"{}\"", upper_snake(profile.id), profile.id).unwrap();
     }
-    out.push_str("\nclass ResourceLimitId(str, Enum):\n");
+    out.push_str("\nclass ResourceLimitId(str):\n    __slots__ = ()\n");
     for limit in limits {
         writeln!(
             out,
-            "    {} = \"{}\"",
+            "    {}: ClassVar[ResourceLimitId]",
+            upper_snake(limit.stable_id)
+        )
+        .unwrap();
+    }
+    out.push_str("    known_values: ClassVar[Tuple[ResourceLimitId, ...]]\n\n    def __new__(cls, value: str) -> ResourceLimitId:\n        if not isinstance(value, str) or not value:\n            raise ValueError(\"resource limit id must be a non-empty string\")\n        return str.__new__(cls, value)\n\n    @property\n    def id(self) -> str:\n        return str(self)\n\n    @property\n    def phase(self) -> Optional[str]:\n        metadata = _RESOURCE_LIMIT_METADATA.get(str(self))\n        return None if metadata is None else metadata[0]\n\n    @property\n    def overridable(self) -> Optional[bool]:\n        metadata = _RESOURCE_LIMIT_METADATA.get(str(self))\n        return None if metadata is None else metadata[1]\n\n    @property\n    def minimum_value(self) -> Optional[int]:\n        metadata = _RESOURCE_LIMIT_METADATA.get(str(self))\n        return None if metadata is None else metadata[2]\n\n    @property\n    def is_known(self) -> bool:\n        return str(self) in _RESOURCE_LIMIT_METADATA\n\n    @classmethod\n    def from_id(cls, value: str) -> ResourceLimitId:\n        known = _RESOURCE_LIMIT_BY_ID.get(value)\n        return known if known is not None else cls(value)\n\n");
+    for limit in limits {
+        writeln!(
+            out,
+            "ResourceLimitId.{} = ResourceLimitId(\"{}\")",
             upper_snake(limit.stable_id),
             limit.stable_id
         )
         .unwrap();
     }
-    out.push_str("\nclass ResourceOverrideId(str, Enum):\n");
+    out.push_str("\nRESOURCE_LIMIT_IDS = (\n");
+    for limit in limits {
+        writeln!(out, "    ResourceLimitId.{},", upper_snake(limit.stable_id)).unwrap();
+    }
+    out.push_str(")\nResourceLimitId.known_values = RESOURCE_LIMIT_IDS\n_RESOURCE_LIMIT_BY_ID = {limit.id: limit for limit in RESOURCE_LIMIT_IDS}\n_RESOURCE_LIMIT_METADATA = {\n");
+    for limit in limits {
+        writeln!(
+            out,
+            "    \"{}\": (\"{}\", {}, {}),",
+            limit.stable_id,
+            limit.phase,
+            if limit.overridable { "True" } else { "False" },
+            limit.minimum_value
+        )
+        .unwrap();
+    }
+    out.push_str("}\n\nclass ResourceOverrideId(str, Enum):\n");
     for limit in limits.iter().filter(|limit| limit.overridable) {
         writeln!(
             out,
@@ -408,6 +931,76 @@ fn render_python(contract: &BindingResourceContract) -> String {
     out.push_str("}\n\ndef _validate_override(limit: ResourceOverrideId, value: int) -> None:\n    if not isinstance(limit, ResourceOverrideId):\n        raise ValueError(f\"resource limit is not overridable: {limit}\")\n    if not isinstance(value, int) or isinstance(value, bool) or value < _MINIMUM_LIMIT_VALUES[limit]:\n        raise ValueError(f\"resource limit must be at least {_MINIMUM_LIMIT_VALUES[limit]}: {limit.value}\")\n\n@dataclass(frozen=True)\nclass ResourceOptions:\n    profile: Optional[ResourceProfile] = None\n    limits: Mapping[ResourceOverrideId, int] = field(default_factory=dict)\n\n    def __post_init__(self) -> None:\n        if self.profile is not None and not isinstance(self.profile, ResourceProfile):\n            raise ValueError(f\"unsupported resource profile: {self.profile}\")\n        normalized = {}\n        for limit, value in self.limits.items():\n            _validate_override(limit, value)\n            normalized[limit] = value\n        object.__setattr__(self, \"limits\", MappingProxyType(normalized))\n\n    def to_options_json(self) -> str:\n        limits = {limit.value: self.limits[limit] for limit in sorted(self.limits, key=lambda item: item.value)}\n        resources = {}\n        if self.profile is not None:\n            resources[\"profile\"] = self.profile.value\n        if limits:\n            resources[\"limits\"] = limits\n        payload = {\"version\": ");
     write!(out, "{BINDING_OPTIONS_SCHEMA_VERSION}").unwrap();
     out.push_str("}\n        if resources:\n            payload[\"resources\"] = resources\n        return json.dumps(payload, separators=(\",\", \":\"), sort_keys=True)\n\n@dataclass\nclass ResourceOptionsBuilder:\n    _profile: Optional[ResourceProfile] = None\n    _limits: dict[ResourceOverrideId, int] = field(default_factory=dict)\n\n    def profile(self, profile: Optional[ResourceProfile]) -> ResourceOptionsBuilder:\n        self._profile = profile\n        return self\n\n    def limit(self, limit: ResourceOverrideId, value: int) -> ResourceOptionsBuilder:\n        _validate_override(limit, value)\n        self._limits[limit] = value\n        return self\n\n    def build(self) -> ResourceOptions:\n        return ResourceOptions(self._profile, dict(self._limits))\n");
+    out
+}
+
+fn render_swift(contract: &BindingResourceContract) -> String {
+    let limits = &contract.limits;
+    let mut out = generated_preamble("//");
+    out.push_str(
+        r#"public struct MermanResourceLimitMetadata: Hashable, Sendable {
+    public let id: String
+    public let phase: String
+    public let overridable: Bool
+    public let minimumValue: UInt64
+}
+
+/// Open, string-backed runtime resource-limit identifier.
+///
+/// Known constants and metadata are generated from the Rust descriptor authority. Unknown future
+/// identifiers remain representable through `fromId(_:)`.
+public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible {
+    public let id: String
+
+    public init(_ id: String) {
+        precondition(!id.isEmpty, "Resource limit id must not be empty")
+        self.id = id
+    }
+
+    public static func fromId(_ id: String) -> MermanResourceLimitId {
+        precondition(!id.isEmpty, "Resource limit id must not be empty")
+        return knownById[id] ?? MermanResourceLimitId(id)
+    }
+
+    public var metadata: MermanResourceLimitMetadata? {
+        Self.metadataById[id]
+    }
+
+    public var phase: String? { metadata?.phase }
+    public var overridable: Bool? { metadata?.overridable }
+    public var minimumValue: UInt64? { metadata?.minimumValue }
+    public var isKnown: Bool { metadata != nil }
+    public var description: String { id }
+
+"#,
+    );
+    for limit in limits {
+        writeln!(
+            out,
+            "    public static let {} = MermanResourceLimitId({:?})",
+            camel_case(limit.stable_id),
+            limit.stable_id,
+        )
+        .unwrap();
+    }
+    out.push_str("\n    public static let knownValues: [MermanResourceLimitId] = [\n");
+    for limit in limits {
+        writeln!(out, "        .{},", camel_case(limit.stable_id)).unwrap();
+    }
+    out.push_str("    ]\n\n    private static let knownById: [String: MermanResourceLimitId] =\n        Dictionary(uniqueKeysWithValues: knownValues.map { ($0.id, $0) })\n\n    private static let metadataById: [String: MermanResourceLimitMetadata] = [\n");
+    for limit in limits {
+        writeln!(
+            out,
+            "        {:?}: MermanResourceLimitMetadata(id: {:?}, phase: {:?}, overridable: {}, minimumValue: {}),",
+            limit.stable_id,
+            limit.stable_id,
+            limit.phase,
+            limit.overridable,
+            limit.minimum_value,
+        )
+        .unwrap();
+    }
+    out.push_str("    ]\n}\n");
     out
 }
 
@@ -447,15 +1040,16 @@ fn render_uniffi(contract: &BindingResourceContract) -> String {
         )
         .unwrap();
     }
-    out.push_str("        }\n    }\n}\n\n#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]\npub struct MermanResourceLimitOverride {\n    pub id: MermanResourceOverrideId,\n    pub value: u64,\n}\n\n#[uniffi::export]\npub fn resource_options_json(\n    profile: Option<MermanResourceProfile>,\n    overrides: Vec<MermanResourceLimitOverride>,\n) -> Result<String, MermanError> {\n    let pairs = overrides\n        .iter()\n        .map(|override_| {\n            usize::try_from(override_.value)\n                .map(|value| (override_.id.id(), value))\n                .map_err(|_| MermanError::internal(\"resource override exceeds host usize\"))\n        })\n        .collect::<Result<Vec<_>, _>>()?;\n    let profile_id = profile.map(MermanResourceProfile::id);\n    let bytes = merman_bindings_core::resource_options_json(profile_id, &pairs)\n        .map_err(MermanError::from_binding)?;\n    String::from_utf8(bytes).map_err(|error| MermanError::internal(error.to_string()))\n}\n");
+    out.push_str("        }\n    }\n}\n\n#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]\npub struct MermanResourceLimitOverride {\n    pub id: MermanResourceOverrideId,\n    pub value: u64,\n}\n\nfn resource_override_value<T>(value: u64, target: &str) -> Result<T, MermanError>\nwhere\n    T: TryFrom<u64>,\n{\n    T::try_from(value).map_err(|_| {\n        MermanError::invalid_argument(format!(\"resource override exceeds {target}\"))\n    })\n}\n\nfn resource_override_host_value(value: u64) -> Result<usize, MermanError> {\n    resource_override_value(value, \"host usize\")\n}\n\n#[uniffi::export]\npub fn resource_options_json(\n    profile: Option<MermanResourceProfile>,\n    overrides: Vec<MermanResourceLimitOverride>,\n) -> Result<String, MermanError> {\n    let pairs = overrides\n        .iter()\n        .map(|override_| {\n            resource_override_host_value(override_.value)\n                .map(|value| (override_.id.id(), value))\n        })\n        .collect::<Result<Vec<_>, _>>()?;\n    let profile_id = profile.map(MermanResourceProfile::id);\n    let bytes = merman_bindings_core::resource_options_json(profile_id, &pairs)\n        .map_err(MermanError::from_binding)?;\n    String::from_utf8(bytes).map_err(|error| MermanError::internal(error.to_string()))\n}\n");
     out
 }
 
-fn generated_artifacts() -> Vec<(PathBuf, String)> {
+fn generated_artifacts() -> Result<Vec<(PathBuf, String)>, XtaskError> {
     let binding_contract = binding_resource_contract();
+    validate_resource_projections(&binding_contract).map_err(XtaskError::ResourceContract)?;
     let web_contract = web_resource_contract();
     let python = render_python(&binding_contract);
-    vec![
+    Ok(vec![
         (
             PathBuf::from(FFI_HEADER_OUTPUT),
             render_c_header(&binding_contract),
@@ -473,9 +1067,9 @@ fn generated_artifacts() -> Vec<(PathBuf, String)> {
             PathBuf::from(FLUTTER_OUTPUT),
             render_dart(&binding_contract),
         ),
-        (PathBuf::from(UNIFFI_PYTHON_TEMPLATE_OUTPUT), python.clone()),
-        (PathBuf::from(PYTHON_PACKAGE_OUTPUT), python),
-    ]
+        (PathBuf::from(SWIFT_OUTPUT), render_swift(&binding_contract)),
+        (PathBuf::from(UNIFFI_PYTHON_TEMPLATE_OUTPUT), python),
+    ])
 }
 
 fn write_artifact(root: &Path, path: &Path, contents: &str) -> Result<(), XtaskError> {
@@ -497,7 +1091,7 @@ pub(crate) fn gen_resource_contract(args: Vec<String>) -> Result<(), XtaskError>
         return Err(XtaskError::Usage);
     }
     let root = crate::cmd::workspace_root();
-    for (path, contents) in generated_artifacts() {
+    for (path, contents) in generated_artifacts()? {
         write_artifact(&root, &path, &contents)?;
     }
     Ok(())
@@ -506,7 +1100,7 @@ pub(crate) fn gen_resource_contract(args: Vec<String>) -> Result<(), XtaskError>
 pub(crate) fn verify_resource_contract_artifacts() -> Result<Option<String>, XtaskError> {
     let root = crate::cmd::workspace_root();
     let mut drift = Vec::new();
-    for (path, expected) in generated_artifacts() {
+    for (path, expected) in generated_artifacts()? {
         let full = root.join(&path);
         let actual = fs::read_to_string(&full).map_err(|source| XtaskError::ReadFile {
             path: full.display().to_string(),
@@ -533,5 +1127,205 @@ pub(crate) fn verify_resource_contract(args: Vec<String>) -> Result<(), XtaskErr
     match verify_resource_contract_artifacts()? {
         Some(message) => Err(XtaskError::VerifyFailed(message)),
         None => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runtime_resource_ids_are_open_while_input_vocabularies_remain_closed() {
+        let binding = binding_resource_contract();
+        let web = web_resource_contract();
+
+        let kotlin = render_kotlin(&binding);
+        assert!(kotlin.contains("public class MermanResourceLimitId private constructor("));
+        assert!(kotlin.contains("public val knownValues: List<MermanResourceLimitId>"));
+        assert!(kotlin.contains("java.util.Collections.unmodifiableList(listOf("));
+        assert!(kotlin.contains("public fun fromId(id: String): MermanResourceLimitId"));
+        assert!(!kotlin.contains("enum class MermanResourceLimitId"));
+        assert!(kotlin.contains("enum class MermanResourceProfile"));
+        assert!(kotlin.contains("enum class MermanResourceOverrideId"));
+
+        let dart = render_dart(&binding);
+        assert!(dart.contains("final class MermanResourceLimitId"));
+        assert!(dart.contains("static const List<MermanResourceLimitId> knownValues"));
+        assert!(dart.contains("factory MermanResourceLimitId.fromId(String id)"));
+        assert!(!dart.contains("enum MermanResourceLimitId"));
+        assert!(dart.contains("enum MermanResourceProfile"));
+        assert!(dart.contains("enum MermanResourceOverrideId"));
+
+        let python = render_python(&binding);
+        assert!(python.contains("class ResourceLimitId(str):"));
+        assert!(python.contains("ResourceLimitId.known_values = RESOURCE_LIMIT_IDS"));
+        assert!(!python.contains("class ResourceLimitId(str, Enum):"));
+        assert!(python.contains("class ResourceProfile(str, Enum):"));
+        assert!(python.contains("class ResourceOverrideId(str, Enum):"));
+
+        let swift = render_swift(&binding);
+        assert!(swift.contains("public struct MermanResourceLimitId"));
+        assert!(swift.contains("public static let knownValues: [MermanResourceLimitId]"));
+        assert!(swift.contains("public static func fromId(_ id: String)"));
+        assert!(swift.contains("public var metadata: MermanResourceLimitMetadata?"));
+        assert!(!swift.contains("enum MermanResourceLimitId"));
+
+        let typescript = render_typescript(&web);
+        assert!(typescript.contains("export type ResourceLimitId = string;"));
+        assert!(typescript.contains("export const RESOURCE_LIMIT_METADATA:"));
+        assert!(typescript.contains("= Object.freeze({"));
+        assert!(typescript.contains("export function isKnownResourceLimitId("));
+        assert!(typescript.contains("export function resourceLimitMetadata("));
+        assert!(typescript.contains("KnownResourceLimitMetadata | undefined"));
+        assert!(
+            typescript
+                .contains("export type ResourceProfile = (typeof RESOURCE_PROFILES)[number];")
+        );
+        assert!(
+            typescript.contains(
+                "export type ResourceOverrideId = (typeof RESOURCE_OVERRIDE_IDS)[number];"
+            )
+        );
+    }
+
+    #[test]
+    fn resource_projection_ownership_and_order_are_deterministic() {
+        let paths = generated_artifacts()
+            .expect("committed resource ids must have safe language projections")
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            paths,
+            [
+                PathBuf::from(FFI_HEADER_OUTPUT),
+                PathBuf::from(UNIFFI_RUST_OUTPUT),
+                PathBuf::from(WEB_OUTPUT),
+                PathBuf::from(ANDROID_OUTPUT),
+                PathBuf::from(FLUTTER_OUTPUT),
+                PathBuf::from(SWIFT_OUTPUT),
+                PathBuf::from(UNIFFI_PYTHON_TEMPLATE_OUTPUT),
+            ]
+        );
+        assert!(
+            !paths.iter().any(|path| {
+                path == Path::new("platforms/python/merman/src/merman/_resource_options.py")
+            }),
+            "the Python package generator exclusively owns the package-local resource helper"
+        );
+    }
+
+    #[test]
+    fn resource_projection_rejects_dart_keywords_fixed_members_and_collisions() {
+        let mut keyword = binding_resource_contract();
+        keyword.profiles[0].id = "class";
+        let error = validate_resource_projections(&keyword)
+            .expect_err("Dart keywords must not become enum members");
+        assert!(error.contains("reserved Dart keyword `class`"), "{error}");
+
+        let mut fixed_member = binding_resource_contract();
+        fixed_member.limits[0].stable_id = "known-values";
+        let error = validate_resource_projections(&fixed_member)
+            .expect_err("fixed Dart resource members must not be shadowed");
+        assert!(
+            error.contains("MermanResourceLimitId member `knownValues`"),
+            "{error}"
+        );
+
+        let mut collision = binding_resource_contract();
+        collision.limits[0].stable_id = "foo_1";
+        collision.limits[1].stable_id = "foo1";
+        let error = validate_resource_projections(&collision)
+            .expect_err("normalized Dart resource members must remain unique");
+        assert!(error.contains("`foo_1` and `foo1`"), "{error}");
+        assert!(
+            error.contains("Dart MermanResourceLimitId member `foo1`"),
+            "{error}"
+        );
+
+        let mut override_member = binding_resource_contract();
+        let limit = override_member
+            .limits
+            .iter_mut()
+            .find(|limit| limit.overridable)
+            .expect("committed contract has an overridable limit");
+        limit.stable_id = "values";
+        let error = validate_resource_projections(&override_member)
+            .expect_err("fixed Dart override members must not be shadowed");
+        assert!(
+            error.contains("MermanResourceOverrideId member `values`"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn resource_projection_rejects_rust_self_keyword() {
+        let mut profile = binding_resource_contract();
+        profile.profiles[0].id = "self";
+        let error = validate_resource_projections(&profile)
+            .expect_err("Rust `Self` must not become an enum variant");
+        assert!(error.contains("reserved Rust keyword `Self`"), "{error}");
+
+        let mut override_id = binding_resource_contract();
+        let limit = override_id
+            .limits
+            .iter_mut()
+            .find(|limit| limit.overridable)
+            .expect("committed contract has an overridable limit");
+        limit.stable_id = "self";
+        let error = validate_resource_projections(&override_id)
+            .expect_err("Rust `Self` must not become an override enum variant");
+        assert!(error.contains("reserved Rust keyword `Self`"), "{error}");
+    }
+
+    #[test]
+    fn resource_projection_rejects_c_derived_macro_collisions() {
+        let mut contract = binding_resource_contract();
+        contract.limits[0].stable_id = "foo";
+        contract.limits[1].stable_id = "foo_minimum";
+
+        let error = validate_resource_projections(&contract)
+            .expect_err("derived C resource macros must remain unique");
+        assert!(error.contains("`foo` and `foo_minimum`"), "{error}");
+        assert!(
+            error.contains("C macro `MERMAN_RESOURCE_LIMIT_FOO_MINIMUM`"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn upper_snake_projection_is_case_sensitive_valid_and_collision_safe() {
+        validate_projected_members(
+            ["class", "lambda"],
+            "synthetic resource profile",
+            KOTLIN_PROFILE_PROJECTION,
+        )
+        .expect("uppercase Kotlin members do not collide with lowercase keywords");
+        validate_projected_members(
+            ["known-by-id", "mro"],
+            "synthetic resource limit",
+            PYTHON_LIMIT_PROJECTION,
+        )
+        .expect("uppercase Python members do not collide with lowercase attributes");
+
+        let error = validate_projected_members(
+            ["1profile"],
+            "synthetic resource profile",
+            KOTLIN_PROFILE_PROJECTION,
+        )
+        .expect_err("projected members must be valid target-language identifiers");
+        assert!(
+            error.contains("invalid Kotlin identifier `1PROFILE`"),
+            "{error}"
+        );
+
+        let error = validate_projected_members(
+            ["foo-bar", "foo_bar"],
+            "synthetic resource limit",
+            KOTLIN_LIMIT_PROJECTION,
+        )
+        .expect_err("normalized UPPER_SNAKE members must remain unique");
+        assert!(error.contains("`foo-bar` and `foo_bar`"), "{error}");
+        assert!(error.contains("member `FOO_BAR`"), "{error}");
     }
 }

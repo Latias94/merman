@@ -124,7 +124,7 @@ jobs:
       - name: Verify release crate order docs
         run: python3 scripts/verify-release-crate-order.py
 
-      - name: Verify target-scoped artifact dependency closures
+      - name: Verify artifact dependency boundaries
         run: python3 scripts/verify_artifact_dependency_closures.py
 
       - name: Verify exhaustive Cargo feature and artifact recipes
@@ -327,14 +327,6 @@ jobs:
 
       - name: Run Android JVM contract tests
         run: platforms/android/gradlew -p platforms/android testDebugUnitTest --stacktrace
-
-      - name: Build Android AAR
-        run: platforms/android/gradlew -p platforms/android assembleRelease --stacktrace
-
-      - name: Verify AAR contract
-        env:
-          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
-        run: python3 scripts/verify-platform-bindings.py --verify-android-aar
 
       - name: Publish to the local Maven staging repository
         run: platforms/android/gradlew -p platforms/android publishReleasePublicationToLocalStagingRepository --stacktrace

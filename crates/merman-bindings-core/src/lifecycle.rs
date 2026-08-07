@@ -55,10 +55,18 @@ impl From<BindingEngineAdmissionError> for crate::BindingError {
 }
 
 #[derive(Debug, Default)]
+enum AdmissionPhase {
+    #[default]
+    Open,
+    Closing,
+    Closed,
+}
+
+#[derive(Debug, Default)]
 struct AdmissionState {
     active_operations: usize,
     callback_active: bool,
-    closed: bool,
+    phase: AdmissionPhase,
 }
 
 /// Shared safe-Rust admission state for reusable binding engines.
@@ -84,7 +92,7 @@ impl BindingEngineAdmission {
         self: &Arc<Self>,
     ) -> Result<BindingOperationAdmission, BindingEngineAdmissionError> {
         let mut state = self.lock_state();
-        if state.closed {
+        if !matches!(state.phase, AdmissionPhase::Open) {
             return Err(BindingEngineAdmissionError::Closed);
         }
         if state.callback_active {
@@ -107,7 +115,7 @@ impl BindingEngineAdmission {
         self: &Arc<Self>,
     ) -> Result<BindingCallbackAdmission, BindingEngineAdmissionError> {
         let mut state = self.lock_state();
-        if state.closed {
+        if !matches!(state.phase, AdmissionPhase::Open) {
             return Err(BindingEngineAdmissionError::Closed);
         }
         if self.mode != BindingEngineAdmissionMode::HostCallback || state.active_operations != 1 {
@@ -127,18 +135,43 @@ impl BindingEngineAdmission {
     ///
     /// Success is a quiescence barrier. An operation that obtained a transport-owned reference
     /// before this call but did not enter admission observes `Closed` afterwards.
-    pub fn try_close(&self) -> Result<(), BindingEngineAdmissionError> {
-        let mut state = self.lock_state();
-        if state.closed {
-            return Err(BindingEngineAdmissionError::Closed);
-        }
-        if state.callback_active {
-            return Err(BindingEngineAdmissionError::ReentrantCall);
-        }
-        if state.active_operations != 0 {
-            return Err(BindingEngineAdmissionError::Busy);
-        }
-        state.closed = true;
+    pub fn try_close(self: &Arc<Self>) -> Result<(), BindingEngineAdmissionError> {
+        self.try_close_detaching(|| ())
+    }
+
+    /// Atomically detaches an owned service graph and destroys it after releasing admission.
+    ///
+    /// Active operations and callbacks fail immediately without changing state. Once one close has
+    /// detached the graph, concurrent and destructor-reentrant closes observe `Closed` immediately.
+    /// They never wait for foreign destructors, because a destructor may itself join or otherwise
+    /// wait for a thread that is attempting the concurrent close.
+    pub fn try_close_detaching<T>(
+        self: &Arc<Self>,
+        detach: impl FnOnce() -> T,
+    ) -> Result<(), BindingEngineAdmissionError> {
+        let completion = {
+            let mut state = self.lock_state();
+            if !matches!(state.phase, AdmissionPhase::Open) {
+                return Err(BindingEngineAdmissionError::Closed);
+            }
+            if state.callback_active {
+                return Err(BindingEngineAdmissionError::ReentrantCall);
+            }
+            if state.active_operations != 0 {
+                return Err(BindingEngineAdmissionError::Busy);
+            }
+            state.phase = AdmissionPhase::Closing;
+            CloseCompletion {
+                admission: Arc::clone(self),
+            }
+        };
+
+        // The state transition is the linearization point. Detach and destruction happen after
+        // releasing the admission mutex so foreign destructors can never deadlock lifecycle
+        // re-entry or a competing close.
+        let detached = detach();
+        drop(detached);
+        drop(completion);
         Ok(())
     }
 
@@ -146,6 +179,20 @@ impl BindingEngineAdmission {
         self.state
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
+struct CloseCompletion {
+    admission: Arc<BindingEngineAdmission>,
+}
+
+impl Drop for CloseCompletion {
+    fn drop(&mut self) {
+        {
+            let mut state = self.admission.lock_state();
+            debug_assert!(matches!(state.phase, AdmissionPhase::Closing));
+            state.phase = AdmissionPhase::Closed;
+        }
     }
 }
 
@@ -188,6 +235,57 @@ impl Drop for BindingCallbackAdmission {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct BlockingDrop {
+        entered: Arc<std::sync::Barrier>,
+        release: Arc<std::sync::Barrier>,
+    }
+
+    impl Drop for BlockingDrop {
+        fn drop(&mut self) {
+            self.entered.wait();
+            self.release.wait();
+        }
+    }
+
+    struct ReentrantDrop {
+        admission: Arc<BindingEngineAdmission>,
+        result: Arc<Mutex<Option<Result<(), BindingEngineAdmissionError>>>>,
+    }
+
+    impl Drop for ReentrantDrop {
+        fn drop(&mut self) {
+            let result = self.admission.try_close();
+            *self
+                .result
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(result);
+        }
+    }
+
+    struct CrossThreadReentrantDrop {
+        admission: Arc<BindingEngineAdmission>,
+        result: Arc<Mutex<Option<Result<(), BindingEngineAdmissionError>>>>,
+    }
+
+    impl Drop for CrossThreadReentrantDrop {
+        fn drop(&mut self) {
+            let admission = Arc::clone(&self.admission);
+            let (started_sender, started_receiver) = std::sync::mpsc::channel();
+            let (result_sender, result_receiver) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                started_sender.send(()).expect("report close thread start");
+                let _ = result_sender.send(admission.try_close());
+            });
+            started_receiver.recv().expect("close thread start");
+            *self
+                .result
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = result_receiver
+                .recv_timeout(std::time::Duration::from_millis(250))
+                .ok();
+        }
+    }
 
     #[test]
     fn callback_free_operations_are_concurrent_across_threads() {
@@ -271,6 +369,83 @@ mod tests {
             acquired_before_close.enter_operation(),
             Err(BindingEngineAdmissionError::Closed)
         ));
+    }
+
+    #[test]
+    fn concurrent_close_returns_closed_while_detached_state_is_destroyed() {
+        let admission = BindingEngineAdmission::new(BindingEngineAdmissionMode::Concurrent);
+        let entered = Arc::new(std::sync::Barrier::new(2));
+        let release = Arc::new(std::sync::Barrier::new(2));
+        let first_admission = Arc::clone(&admission);
+        let first_entered = Arc::clone(&entered);
+        let first_release = Arc::clone(&release);
+        let first = std::thread::spawn(move || {
+            first_admission.try_close_detaching(|| BlockingDrop {
+                entered: first_entered,
+                release: first_release,
+            })
+        });
+
+        entered.wait();
+        let second_admission = Arc::clone(&admission);
+        let (done_sender, done_receiver) = std::sync::mpsc::channel();
+        let second = std::thread::spawn(move || {
+            done_sender
+                .send(second_admission.try_close())
+                .expect("report second close");
+        });
+        assert_eq!(
+            done_receiver
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("a concurrent close must be nonblocking"),
+            Err(BindingEngineAdmissionError::Closed)
+        );
+
+        release.wait();
+        first.join().expect("first close thread").unwrap();
+        second.join().expect("second close thread");
+    }
+
+    #[test]
+    fn detached_state_may_reenter_close_on_the_destroying_thread() {
+        let admission = BindingEngineAdmission::new(BindingEngineAdmissionMode::Concurrent);
+        let result = Arc::new(Mutex::new(None));
+
+        admission
+            .try_close_detaching(|| ReentrantDrop {
+                admission: Arc::clone(&admission),
+                result: Arc::clone(&result),
+            })
+            .expect("outer close");
+
+        assert_eq!(
+            result
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .take(),
+            Some(Err(BindingEngineAdmissionError::Closed))
+        );
+    }
+
+    #[test]
+    fn detached_state_may_wait_for_a_cross_thread_close_without_deadlock() {
+        let admission = BindingEngineAdmission::new(BindingEngineAdmissionMode::Concurrent);
+        let result = Arc::new(Mutex::new(None));
+
+        admission
+            .try_close_detaching(|| CrossThreadReentrantDrop {
+                admission: Arc::clone(&admission),
+                result: Arc::clone(&result),
+            })
+            .expect("outer close");
+
+        assert_eq!(
+            result
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .take(),
+            Some(Err(BindingEngineAdmissionError::Closed))
+        );
     }
 
     #[test]

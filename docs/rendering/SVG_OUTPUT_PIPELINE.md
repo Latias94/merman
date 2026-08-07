@@ -31,7 +31,7 @@ Typical choices:
 
 - Use `render_svg_sync` when the caller wants the closest Mermaid-compatible SVG string.
 - Use `render_svg_readable_sync` or `SvgPipeline::readable()` for browser previews that can keep `<foreignObject>` but should also expose SVG text fallbacks.
-- Use `render_resvg_compatible_svg_with_pipeline_sync` or
+- Use `render_resvg_compatible_svg_sync`, `render_resvg_compatible_svg_with_pipeline_sync`, or
   `SvgPipeline::process_resvg_compatible()` before calling low-level PNG/JPG/PDF encoders.
 - Use `merman-cli render --svg-pipeline resvg-safe` when you want the CLI to write export-safe SVG
   bytes instead of the default Mermaid-parity SVG contract.
@@ -60,12 +60,13 @@ use merman::svg::{HeadlessRenderer, SvgPipeline};
 
 let renderer = HeadlessRenderer::new();
 let svg = renderer
-    .render_svg_with_pipeline_sync(
+    .render_resvg_compatible_svg_with_pipeline_sync(
         "flowchart TD; A[Layer 7\\nHTTP]-->B;",
         &SvgPipeline::resvg_safe(),
     )?
     .unwrap();
-# let _ = svg;
+# let raster_input: &str = svg.as_str();
+# let _ = raster_input;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
@@ -76,11 +77,15 @@ cargo run -p merman --features svg --example custom_svg_pipeline > out.svg
 merman-cli render fixtures/flowchart/basic.mmd --output out.svg --svg-pipeline resvg-safe
 ```
 
-The compatibility helpers are wrappers around the same pipeline:
+The public convenience boundaries are:
 
 - `render_svg_readable_sync(...)` uses `SvgPipeline::readable()`.
-- `render_svg_resvg_safe_sync(...)` uses `SvgPipeline::resvg_safe()`.
-- `svg_readable(svg)` and `svg_resvg_safe(svg)` apply the presets to an existing SVG string.
+- `render_resvg_compatible_svg_sync(...)` uses `SvgPipeline::resvg_safe()` and returns the sealed
+  `ResvgCompatibleSvg` capability.
+- `svg_readable(svg)` applies the readable preset to an existing SVG string.
+- `finalize_resvg_svg(svg, session)` is the explicit typed boundary for an existing SVG string.
+  A generic `apply_svg_pipeline(...)` result remains an ordinary draft `String` even when the
+  selected preset is `resvg_safe`.
 
 The source-string helpers extract root SVG attributes only as descriptive metadata. They never
 promote `aria-roledescription` or any other SVG text into the closed `RenderFamilyKind` capability.
@@ -127,7 +132,9 @@ Custom postprocessors run in insertion order, then the selected built-in preset 
 stage. The resource policy checks output size after every custom pass. A `resvg_safe` pipeline then
 tokenizes and sanitizes CSS, strips active SVG constructs and unsafe attributes, parses the final
 XML, removes external image, paint, filter, cursor, and structural references, and validates the
-residual compatibility contract. Attributes in the SVG, XLink, and XML namespaces are interpreted
+residual compatibility contract. The source scanner treats attribute text as serialized XML and
+normalizes retained anchor navigation once; the terminal validator treats parser output as a DOM
+value and does not decode entities again. Attributes in the SVG, XLink, and XML namespaces are interpreted
 by local name, matching `usvg`; namespace aliases therefore cannot bypass the terminal contract.
 The terminal validator also resolves the same-document `<use>` graph before `usvg`, rejecting
 cycles and expanded node/depth limits while retaining occurrence counts for inline-image export
@@ -146,7 +153,12 @@ styling and structural passes inside the same `SvgPipeline`; if an external comp
 an already finalized string, pass the result through `finalize_resvg_svg` again before rasterizing.
 
 This contract targets `usvg` / `resvg`. It does not claim browser DOM safety. Browser embedding must
-use the Web package's `SafeInlineSvg` validator and the surrounding CSP/sandbox policy.
+choose the Web package's `assertSelfContainedSvgForDom()` or `assertNavigableSvgForDom()` interface
+to match the host's navigation capability, carry the returned admission through the matching
+`prepareSelfContainedSvgForDomMount()` or `prepareNavigableSvgForDomMount()` helper on the actual
+parsed root and owner document, and enforce the surrounding CSP/sandbox policy. This final root and
+mount check prevents unchecked source/tree substitution and keeps fragment-only resource
+references local when an HTML document defines a `<base>` URL.
 
 Parity and readable output retain Mermaid's external-resource references. A host that intentionally
 supports external images should resolve them under its own root, protocol, byte, and pixel policy,

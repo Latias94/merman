@@ -265,6 +265,7 @@
     "asciiMode": "ASCII 预览",
     "asciiNotSupported": "该图表类型不支持 ASCII",
     "asciiNotAvailable": "ASCII 渲染不可用",
+    "asciiDetectionUnavailable": "无法识别图表类型，因此未尝试 ASCII 渲染",
     "copyAscii": "复制 ASCII",
     "copySvg": "复制 SVG",
     "copied": "已复制！",

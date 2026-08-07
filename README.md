@@ -24,7 +24,7 @@
   <a href="https://github.com/Latias94/merman/blob/main/CHANGELOG.md">Changelog</a>
 </p>
 
-Merman is an independent, parity-focused Rust implementation of [Mermaid.js](https://mermaid.js.org/). It targets `mermaid@11.16.0` and parses, analyzes, lays out, and renders Mermaid source without starting Node.js, Puppeteer, Chromium, or another JavaScript runtime in the native render path.
+Merman is an independent, parity-focused Rust implementation of [Mermaid.js](https://mermaid.js.org/). It targets `mermaid@11.16.1` and parses, analyzes, lays out, and renders Mermaid source without starting Node.js, Puppeteer, Chromium, or another JavaScript runtime in the native render path.
 
 Use it as a Rust library, an `mmdc`-style CLI, a browser WASM package, an editor language engine, or a native SDK. The same parser-owned semantics drive every surface.
 
@@ -204,7 +204,7 @@ If an input needs a layout engine or math renderer that was not compiled, Merman
 Merman prioritizes parser, model, layout, theme, sanitizer, and SVG DOM convergence with pinned Mermaid source. It does not claim byte-for-byte Chromium pixels.
 
 - Browser font fallback, `getBBox()` floats, `foreignObject`, and RoughJS path geometry can remain documented residuals where no robust headless derivation exists.
-- Mermaid-parity SVG can contain HTML labels. Use `render_svg_resvg_safe_sync()` or an export command when the consumer cannot render `foreignObject`.
+- Mermaid-parity SVG can contain HTML labels. Use `render_resvg_compatible_svg_sync()` or an export command when a raster consumer cannot render `foreignObject`; browser DOM insertion still requires a Web-host admission policy.
 - PNG, JPEG, and PDF are integration outputs with explicit allocation and resource limits; they are not browser screenshot parity contracts.
 - ASCII/Unicode support varies by diagram family and should be capability-checked.
 

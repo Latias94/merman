@@ -198,7 +198,7 @@ function validateRuntimeEvidence(runtime, capabilityRecipe) {
   }
   let catalog;
   try {
-    catalog = validateRuntimeCatalog(runtime.catalog);
+    catalog = validateRuntimeCatalog(JSON.stringify(runtime.catalog));
   } catch (cause) {
     throw new Error(
       `candidate build receipt runtime catalog is invalid: ${cause instanceof Error ? cause.message : String(cause)}`,
@@ -259,6 +259,8 @@ function validateRuntimeEvidence(runtime, capabilityRecipe) {
     typeof runtime.probe !== "object" ||
     Array.isArray(runtime.probe) ||
     runtime.probe.missing_capability_id !== "png" ||
+    !Number.isSafeInteger(runtime.probe.async_semantic_json_bytes) ||
+    runtime.probe.async_semantic_json_bytes < 1 ||
     !Number.isSafeInteger(runtime.probe.semantic_json_bytes) ||
     runtime.probe.semantic_json_bytes < 1 ||
     !Number.isSafeInteger(runtime.probe.svg_plan_json_bytes) ||

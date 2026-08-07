@@ -11,12 +11,20 @@ const DESCRIPTOR_PATH: &str = "capabilities/feature-surface-v1.json";
 const DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
 const GENERATED_OUTPUTS: &[(&str, ArtifactKind)] = &[
     (
-        "capabilities/generated/capability_surface.rs",
+        "crates/merman-bindings-core/src/generated/capability_surface.rs",
+        ArtifactKind::Rust,
+    ),
+    (
+        "crates/merman-cli/src/generated/capability_surface.rs",
         ArtifactKind::Rust,
     ),
     (
         "capabilities/generated/capability-surface.ts",
         ArtifactKind::TypeScript,
+    ),
+    (
+        "platforms/node/src/generated/capability-surface.mjs",
+        ArtifactKind::NodeJavaScript,
     ),
     (
         "platforms/web/src/generated/capability-surface.ts",
@@ -114,59 +122,59 @@ struct OutputDescriptor {
     targets: Vec<String>,
 }
 
-/// A required JSON field whose value may be either a stable capability ID or explicit `null`.
+/// A required JSON field whose value may be either a stable descriptor ID or explicit `null`.
 ///
 /// Keeping this as a transparent wrapper rather than a bare `Option<String>` makes omission a
-/// descriptor-schema error. Invariant operations must declare `"capability": null` instead of
-/// silently acquiring a fake optional feature requirement.
+/// descriptor-schema error. Callers must distinguish an explicit absence from an accidentally
+/// omitted relationship.
 #[derive(Debug, Clone, Serialize)]
 #[serde(transparent)]
-struct NullableCapabilityId(Option<String>);
+struct RequiredNullableId(Option<String>);
 
-impl<'de> Deserialize<'de> for NullableCapabilityId {
+impl<'de> Deserialize<'de> for RequiredNullableId {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        struct NullableCapabilityIdVisitor;
+        struct RequiredNullableIdVisitor;
 
-        impl serde::de::Visitor<'_> for NullableCapabilityIdVisitor {
-            type Value = NullableCapabilityId;
+        impl serde::de::Visitor<'_> for RequiredNullableIdVisitor {
+            type Value = RequiredNullableId;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                formatter.write_str("a capability ID string or explicit null")
+                formatter.write_str("a stable descriptor ID string or explicit null")
             }
 
             fn visit_unit<E>(self) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
-                Ok(NullableCapabilityId(None))
+                Ok(RequiredNullableId(None))
             }
 
             fn visit_none<E>(self) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
-                Ok(NullableCapabilityId(None))
+                Ok(RequiredNullableId(None))
             }
 
             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
-                Ok(NullableCapabilityId(Some(value.to_owned())))
+                Ok(RequiredNullableId(Some(value.to_owned())))
             }
 
             fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
-                Ok(NullableCapabilityId(Some(value)))
+                Ok(RequiredNullableId(Some(value)))
             }
         }
 
-        deserializer.deserialize_any(NullableCapabilityIdVisitor)
+        deserializer.deserialize_any(RequiredNullableIdVisitor)
     }
 }
 
@@ -174,7 +182,9 @@ impl<'de> Deserialize<'de> for NullableCapabilityId {
 #[serde(deny_unknown_fields)]
 struct BindingOperationDescriptor {
     id: String,
-    capability: NullableCapabilityId,
+    capability: RequiredNullableId,
+    output: RequiredNullableId,
+    compiled_prerequisites: Vec<String>,
     description: String,
     media_type: String,
     requires_uri: bool,
@@ -185,6 +195,7 @@ struct BindingOperationDescriptor {
 enum ArtifactKind {
     Rust,
     TypeScript,
+    NodeJavaScript,
     WebTypeScript,
     CHeader,
     Markdown,
@@ -199,6 +210,7 @@ impl ArtifactKind {
         match self {
             Self::Rust => render_rust(descriptor, digest),
             Self::TypeScript => render_typescript(descriptor, digest),
+            Self::NodeJavaScript => render_node_javascript(descriptor, digest),
             Self::WebTypeScript => render_web_typescript(descriptor, digest),
             Self::CHeader => render_c_header(descriptor, digest),
             Self::Markdown => render_markdown(descriptor, digest),
@@ -256,6 +268,14 @@ fn validate_string_set(values: &[String], path: &str) -> Result<BTreeSet<String>
         if !result.insert(value.clone()) {
             return Err(format!("{path}[{index}]: duplicate ID `{value}`"));
         }
+    }
+    Ok(result)
+}
+
+fn validate_sorted_string_set(values: &[String], path: &str) -> Result<BTreeSet<String>, String> {
+    let result = validate_string_set(values, path)?;
+    if values.windows(2).any(|pair| pair[0] > pair[1]) {
+        return Err(format!("{path}: IDs must be sorted lexicographically"));
     }
     Ok(result)
 }
@@ -453,6 +473,11 @@ fn validate_descriptor(descriptor: &CapabilitySurfaceDescriptor) -> Result<(), S
             ));
         }
     }
+    let output_by_id = descriptor
+        .outputs
+        .iter()
+        .map(|output| (output.id.as_str(), output))
+        .collect::<BTreeMap<_, _>>();
 
     validate_unique_ids(
         descriptor
@@ -462,6 +487,7 @@ fn validate_descriptor(descriptor: &CapabilitySurfaceDescriptor) -> Result<(), S
             .map(|(index, operation)| (index, operation.id.as_str())),
         "binding_operations",
     )?;
+    let mut output_owner_counts = BTreeMap::<&str, usize>::new();
     for (index, operation) in descriptor.binding_operations.iter().enumerate() {
         let base = format!("binding_operations[{index}]");
         validate_kebab_id(&operation.id, &format!("{base}.id"))?;
@@ -469,12 +495,21 @@ fn validate_descriptor(descriptor: &CapabilitySurfaceDescriptor) -> Result<(), S
         require_non_empty(&operation.media_type, &format!("{base}.media_type"))?;
         let operation_targets =
             validate_targets(&operation.targets, &format!("{base}.targets"), &target_ids)?;
-        if let Some(capability_id) = operation.capability.0.as_deref() {
+        let primary_capability = if let Some(capability_id) = operation.capability.0.as_deref() {
             let Some(capability) = capability_by_id.get(capability_id) else {
                 return Err(format!(
                     "{base}.capability: unknown capability `{capability_id}`"
                 ));
             };
+            if !matches!(
+                capability.kind,
+                CapabilityKind::Api | CapabilityKind::Output
+            ) {
+                return Err(format!(
+                    "{base}.capability: `{capability_id}` must be an API or output capability, not `{}`",
+                    capability.kind.as_str()
+                ));
+            }
             for target in &operation_targets {
                 if !capability.targets.contains(target) {
                     return Err(format!(
@@ -482,37 +517,72 @@ fn validate_descriptor(descriptor: &CapabilitySurfaceDescriptor) -> Result<(), S
                     ));
                 }
             }
-        }
-    }
-
-    for output in &descriptor.outputs {
-        let Some((operation_index, operation)) = descriptor
-            .binding_operations
-            .iter()
-            .enumerate()
-            .find(|(_, operation)| operation.id == output.id)
-        else {
-            return Err(format!(
-                "outputs[id={}]: legacy output must have one matching binding operation",
-                output.id
-            ));
+            Some(*capability)
+        } else {
+            None
         };
-        let base = format!("binding_operations[{operation_index}]");
-        if operation.capability.0.as_deref() != Some(output.capability.as_str()) {
+
+        let compiled_prerequisites = validate_sorted_string_set(
+            &operation.compiled_prerequisites,
+            &format!("{base}.compiled_prerequisites"),
+        )?;
+        for (required_index, required_id) in operation.compiled_prerequisites.iter().enumerate() {
+            if operation.capability.0.as_deref() == Some(required_id.as_str()) {
+                return Err(format!(
+                    "{base}.compiled_prerequisites[{required_index}]: availability capability `{required_id}` must not be repeated"
+                ));
+            }
+            let Some(required) = capability_by_id.get(required_id.as_str()) else {
+                return Err(format!(
+                    "{base}.compiled_prerequisites[{required_index}]: unknown capability `{required_id}`"
+                ));
+            };
+            if !matches!(
+                required.kind,
+                CapabilityKind::Api | CapabilityKind::Output | CapabilityKind::Engine
+            ) {
+                return Err(format!(
+                    "{base}.compiled_prerequisites[{required_index}]: `{required_id}` must be an API, output, or engine capability, not `{}`",
+                    required.kind.as_str()
+                ));
+            }
+            for target in &operation_targets {
+                if !required.targets.contains(target) {
+                    return Err(format!(
+                        "{base}.compiled_prerequisites[{required_index}]: capability `{required_id}` is unavailable on target `{target}`"
+                    ));
+                }
+            }
+        }
+        debug_assert_eq!(
+            compiled_prerequisites.len(),
+            operation.compiled_prerequisites.len()
+        );
+
+        let Some(output_id) = operation.output.0.as_deref() else {
+            continue;
+        };
+        let Some(output) = output_by_id.get(output_id) else {
+            return Err(format!("{base}.output: unknown output `{output_id}`"));
+        };
+        *output_owner_counts.entry(output_id).or_default() += 1;
+        if primary_capability.map(|capability| capability.id.as_str())
+            != Some(output.capability.as_str())
+        {
             return Err(format!(
-                "{base}.capability: must match legacy output `{}` capability `{}`",
+                "{base}.capability: must match output `{}` capability `{}`",
                 output.id, output.capability
             ));
         }
         if operation.media_type != output.media_type {
             return Err(format!(
-                "{base}.media_type: must match legacy output `{}` media type `{}`",
+                "{base}.media_type: must match output `{}` media type `{}`",
                 output.id, output.media_type
             ));
         }
         if operation.requires_uri {
             return Err(format!(
-                "{base}.requires_uri: legacy output `{}` must not require a URI",
+                "{base}.requires_uri: output `{}` must not require a URI",
                 output.id
             ));
         }
@@ -520,7 +590,20 @@ fn validate_descriptor(descriptor: &CapabilitySurfaceDescriptor) -> Result<(), S
         let output_targets = output.targets.iter().cloned().collect::<BTreeSet<_>>();
         if operation_targets != output_targets {
             return Err(format!(
-                "{base}.targets: must match legacy output `{}` targets",
+                "{base}.targets: must match output `{}` targets",
+                output.id
+            ));
+        }
+    }
+
+    for output in &descriptor.outputs {
+        let owner_count = output_owner_counts
+            .get(output.id.as_str())
+            .copied()
+            .unwrap_or(0);
+        if owner_count != 1 {
+            return Err(format!(
+                "outputs[id={}]: must be referenced by exactly one binding operation; found {owner_count}",
                 output.id
             ));
         }
@@ -611,6 +694,7 @@ fn semantic_digest(descriptor: &CapabilitySurfaceDescriptor) -> Result<String, S
     }
     for operation in &mut canonical.binding_operations {
         operation.targets.sort();
+        operation.compiled_prerequisites.sort();
     }
     let bytes = serde_json::to_vec(&canonical).map_err(|error| error.to_string())?;
     Ok(format!("sha256:{}", crate::util::sha256_hex(&bytes)))
@@ -660,6 +744,57 @@ fn rust_operation_variant(id: &str) -> String {
         .collect()
 }
 
+fn write_rust_key_enum(
+    out: &mut String,
+    enum_name: &str,
+    ids: &[&str],
+    spec_type: &str,
+    specs: &str,
+) {
+    writeln!(
+        out,
+        "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]\n#[non_exhaustive]\npub enum {enum_name} {{"
+    )
+    .unwrap();
+    for id in ids {
+        writeln!(out, "    {},", rust_operation_variant(id)).unwrap();
+    }
+    out.push_str("}\n\n");
+
+    writeln!(
+        out,
+        "impl {enum_name} {{\n    pub const ALL: &'static [Self] = &["
+    )
+    .unwrap();
+    for id in ids {
+        writeln!(out, "        Self::{},", rust_operation_variant(id)).unwrap();
+    }
+    out.push_str("    ];\n\n    pub fn from_id(id: &str) -> Option<Self> {\n        match id {\n");
+    for id in ids {
+        writeln!(
+            out,
+            "            {id:?} => Some(Self::{}),",
+            rust_operation_variant(id)
+        )
+        .unwrap();
+    }
+    out.push_str("            _ => None,\n        }\n    }\n\n");
+    writeln!(
+        out,
+        "    pub const fn id(self) -> &'static str {{\n        self.spec().id\n    }}\n\n    pub const fn spec(self) -> &'static {spec_type} {{\n        match self {{"
+    )
+    .unwrap();
+    for (index, id) in ids.iter().enumerate() {
+        writeln!(
+            out,
+            "            Self::{} => &{specs}[{index}],",
+            rust_operation_variant(id)
+        )
+        .unwrap();
+    }
+    out.push_str("        }\n    }\n}\n\n");
+}
+
 fn render_rust(descriptor: &CapabilitySurfaceDescriptor, digest: &str) -> Result<String, String> {
     let mut out = String::from(
         "// @generated by `cargo run -p xtask -- gen-capability-surface`.\n// Source: capabilities/feature-surface-v1.json. Do not edit directly.\n\n",
@@ -694,68 +829,70 @@ fn render_rust(descriptor: &CapabilitySurfaceDescriptor, digest: &str) -> Result
     }
     out.push_str("];\n\n");
 
+    let targets = sorted_targets(descriptor);
+    let capabilities = sorted_capabilities(descriptor);
+    let outputs = sorted_outputs(descriptor);
     let operations = sorted_binding_operations(descriptor);
-    out.push_str(
-        "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]\n\
-         pub enum OperationKey {\n",
+    let target_ids = targets
+        .iter()
+        .map(|target| target.id.as_str())
+        .collect::<Vec<_>>();
+    let capability_ids = capabilities
+        .iter()
+        .map(|capability| capability.id.as_str())
+        .collect::<Vec<_>>();
+    let output_ids = outputs
+        .iter()
+        .map(|output| output.id.as_str())
+        .collect::<Vec<_>>();
+    let operation_ids = operations
+        .iter()
+        .map(|operation| operation.id.as_str())
+        .collect::<Vec<_>>();
+    write_rust_key_enum(
+        &mut out,
+        "TargetKey",
+        &target_ids,
+        "TargetDescriptor",
+        "TARGETS",
     );
-    for operation in &operations {
-        writeln!(out, "    {},", rust_operation_variant(&operation.id)).unwrap();
-    }
-    out.push_str("}\n\n");
+    write_rust_key_enum(
+        &mut out,
+        "CapabilityKey",
+        &capability_ids,
+        "CapabilityDescriptor",
+        "CAPABILITIES",
+    );
+    write_rust_key_enum(
+        &mut out,
+        "OutputKey",
+        &output_ids,
+        "OutputDescriptor",
+        "OUTPUTS",
+    );
+    write_rust_key_enum(
+        &mut out,
+        "OperationKey",
+        &operation_ids,
+        "OperationSpec",
+        "OPERATION_SPECS",
+    );
 
     out.push_str(
         "#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n\
+         #[non_exhaustive]\n\
          pub struct OperationSpec {\n\
          \x20   pub key: OperationKey,\n\
          \x20   pub id: &'static str,\n\
-         \x20   pub capability_id: Option<&'static str>,\n\
+         \x20   pub capability: Option<CapabilityKey>,\n\
+         \x20   pub output: Option<OutputKey>,\n\
+         \x20   pub compiled_prerequisites: &'static [CapabilityKey],\n\
          \x20   pub description: &'static str,\n\
          \x20   pub media_type: &'static str,\n\
          \x20   pub requires_uri: bool,\n\
-         \x20   pub targets: &'static [&'static str],\n\
-         }\n\n\
-         impl OperationKey {\n\
-         \x20   pub const ALL: &'static [Self] = &[\n",
+         \x20   pub targets: &'static [TargetKey],\n\
+         }\n\n",
     );
-    for operation in &operations {
-        writeln!(
-            out,
-            "        Self::{},",
-            rust_operation_variant(&operation.id)
-        )
-        .unwrap();
-    }
-    out.push_str(
-        "    ];\n\n\
-         \x20   pub fn from_id(id: &str) -> Option<Self> {\n\
-         \x20       match id {\n",
-    );
-    for operation in &operations {
-        writeln!(
-            out,
-            "            {:?} => Some(Self::{}),",
-            operation.id,
-            rust_operation_variant(&operation.id)
-        )
-        .unwrap();
-    }
-    out.push_str(
-        "            _ => None,\n\
-         \x20       }\n\
-         \x20   }\n\n\
-         \x20   pub const fn spec(self) -> &'static OperationSpec {\n\
-         \x20       match self {\n",
-    );
-    for (index, operation) in operations.iter().enumerate() {
-        writeln!(
-            out,
-            "            Self::{} => &OPERATION_SPECS[{index}],",
-            rust_operation_variant(&operation.id)
-        )
-        .unwrap();
-    }
-    out.push_str("        }\n    }\n}\n\n");
 
     out.push_str("pub const OPERATION_SPECS: &[OperationSpec] = &[\n");
     for operation in &operations {
@@ -767,55 +904,109 @@ fn render_rust(descriptor: &CapabilitySurfaceDescriptor, digest: &str) -> Result
         )
         .unwrap();
         writeln!(out, "        id: {:?},", operation.id).unwrap();
-        writeln!(
-            out,
-            "        capability_id: {:?},",
-            operation.capability.0.as_deref()
-        )
-        .unwrap();
+        match operation.capability.0.as_deref() {
+            Some(capability) => writeln!(
+                out,
+                "        capability: Some(CapabilityKey::{}),",
+                rust_operation_variant(capability)
+            )
+            .unwrap(),
+            None => out.push_str("        capability: None,\n"),
+        }
+        match operation.output.0.as_deref() {
+            Some(output) => writeln!(
+                out,
+                "        output: Some(OutputKey::{}),",
+                rust_operation_variant(output)
+            )
+            .unwrap(),
+            None => out.push_str("        output: None,\n"),
+        }
+        out.push_str("        compiled_prerequisites: &[");
+        for capability in sorted_string_refs(&operation.compiled_prerequisites) {
+            write!(
+                out,
+                "CapabilityKey::{}, ",
+                rust_operation_variant(capability)
+            )
+            .unwrap();
+        }
+        out.push_str("],\n");
         writeln!(out, "        description: {:?},", operation.description).unwrap();
         writeln!(out, "        media_type: {:?},", operation.media_type).unwrap();
         writeln!(out, "        requires_uri: {},", operation.requires_uri).unwrap();
         out.push_str("        targets: &[");
-        write_quoted_list(&mut out, sorted_string_refs(&operation.targets));
+        for target in sorted_string_refs(&operation.targets) {
+            write!(out, "TargetKey::{}, ", rust_operation_variant(target)).unwrap();
+        }
         out.push_str("],\n    },\n");
     }
     out.push_str("];\n\n");
 
-    out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub struct TargetDescriptor {\n    pub id: &'static str,\n    pub description: &'static str,\n}\n\npub const TARGETS: &[TargetDescriptor] = &[\n");
-    for target in sorted_targets(descriptor) {
+    out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n#[non_exhaustive]\npub struct TargetDescriptor {\n    pub key: TargetKey,\n    pub id: &'static str,\n    pub description: &'static str,\n}\n\npub const TARGETS: &[TargetDescriptor] = &[\n");
+    for target in targets {
         writeln!(
             out,
-            "    TargetDescriptor {{ id: {:?}, description: {:?} }},",
-            target.id, target.description
+            "    TargetDescriptor {{ key: TargetKey::{}, id: {:?}, description: {:?} }},",
+            rust_operation_variant(&target.id),
+            target.id,
+            target.description
         )
         .unwrap();
     }
     out.push_str("];\n\n");
 
-    out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub struct CapabilityDescriptor {\n    pub id: &'static str,\n    pub kind: &'static str,\n    pub description: &'static str,\n    pub targets: &'static [&'static str],\n    pub implications: &'static [&'static str],\n}\n\npub const CAPABILITIES: &[CapabilityDescriptor] = &[\n");
-    for capability in sorted_capabilities(descriptor) {
+    out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n#[non_exhaustive]\npub struct CapabilityDescriptor {\n    pub key: CapabilityKey,\n    pub id: &'static str,\n    pub kind: &'static str,\n    pub description: &'static str,\n    pub targets: &'static [TargetKey],\n    pub implications: &'static [CapabilityKey],\n}\n\npub const CAPABILITIES: &[CapabilityDescriptor] = &[\n");
+    for capability in capabilities {
         out.push_str("    CapabilityDescriptor {\n");
+        writeln!(
+            out,
+            "        key: CapabilityKey::{},",
+            rust_operation_variant(&capability.id)
+        )
+        .unwrap();
         writeln!(out, "        id: {:?},", capability.id).unwrap();
         writeln!(out, "        kind: {:?},", capability.kind.as_str()).unwrap();
         writeln!(out, "        description: {:?},", capability.description).unwrap();
         out.push_str("        targets: &[");
-        write_quoted_list(&mut out, sorted_string_refs(&capability.targets));
+        for target in sorted_string_refs(&capability.targets) {
+            write!(out, "TargetKey::{}, ", rust_operation_variant(target)).unwrap();
+        }
         out.push_str("],\n        implications: &[");
-        write_quoted_list(&mut out, sorted_string_refs(&capability.implications));
+        for implication in sorted_string_refs(&capability.implications) {
+            write!(
+                out,
+                "CapabilityKey::{}, ",
+                rust_operation_variant(implication)
+            )
+            .unwrap();
+        }
         out.push_str("],\n    },\n");
     }
     out.push_str("];\n\n");
 
-    out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub struct OutputDescriptor {\n    pub id: &'static str,\n    pub capability: &'static str,\n    pub description: &'static str,\n    pub media_type: &'static str,\n    pub targets: &'static [&'static str],\n}\n\npub const OUTPUTS: &[OutputDescriptor] = &[\n");
-    for output in sorted_outputs(descriptor) {
+    out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n#[non_exhaustive]\npub struct OutputDescriptor {\n    pub key: OutputKey,\n    pub id: &'static str,\n    pub capability: CapabilityKey,\n    pub description: &'static str,\n    pub media_type: &'static str,\n    pub targets: &'static [TargetKey],\n}\n\npub const OUTPUTS: &[OutputDescriptor] = &[\n");
+    for output in outputs {
         out.push_str("    OutputDescriptor {\n");
+        writeln!(
+            out,
+            "        key: OutputKey::{},",
+            rust_operation_variant(&output.id)
+        )
+        .unwrap();
         writeln!(out, "        id: {:?},", output.id).unwrap();
-        writeln!(out, "        capability: {:?},", output.capability).unwrap();
+        writeln!(
+            out,
+            "        capability: CapabilityKey::{},",
+            rust_operation_variant(&output.capability)
+        )
+        .unwrap();
         writeln!(out, "        description: {:?},", output.description).unwrap();
         writeln!(out, "        media_type: {:?},", output.media_type).unwrap();
         out.push_str("        targets: &[");
-        write_quoted_list(&mut out, sorted_string_refs(&output.targets));
+        for target in sorted_string_refs(&output.targets) {
+            write!(out, "TargetKey::{}, ", rust_operation_variant(target)).unwrap();
+        }
         out.push_str("],\n    },\n");
     }
     out.push_str("];\n\n");
@@ -915,6 +1106,8 @@ fn render_typescript(
                 .map(|operation| serde_json::json!({
                     "id": operation.id,
                     "capability": operation.capability.0.as_deref(),
+                    "output": operation.output.0.as_deref(),
+                    "compiled_prerequisites": sorted_string_refs(&operation.compiled_prerequisites),
                     "description": operation.description,
                     "media_type": operation.media_type,
                     "requires_uri": operation.requires_uri,
@@ -964,6 +1157,44 @@ fn render_typescript(
         out.pop();
     }
     out.push('\n');
+    Ok(out)
+}
+
+/// Emit the private Node facade projection used to validate compiled operation prerequisites.
+///
+/// Keep this projection narrow so the loader package does not ship the complete descriptor solely
+/// to recover one relationship. The canonical descriptor remains the sole owner of the operation
+/// IDs and their compiled capability closure.
+fn render_node_javascript(
+    descriptor: &CapabilitySurfaceDescriptor,
+    digest: &str,
+) -> Result<String, String> {
+    let operations = serde_json::json!(
+        sorted_binding_operations(descriptor)
+            .into_iter()
+            .map(|operation| serde_json::json!({
+                "id": operation.id,
+                "compiled_prerequisites": sorted_string_refs(&operation.compiled_prerequisites),
+            }))
+            .collect::<Vec<_>>()
+    );
+    let operations =
+        serde_json::to_string_pretty(&operations).map_err(|error| error.to_string())?;
+    let mut out = String::from(
+        "// @generated by `cargo run -p xtask -- gen-capability-surface`.\n// Source: capabilities/feature-surface-v1.json. Do not edit directly.\n\n",
+    );
+    writeln!(
+        out,
+        "export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = {};",
+        descriptor.schema_version
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "export const CAPABILITY_DESCRIPTOR_DIGEST = {digest:?};\n"
+    )
+    .unwrap();
+    writeln!(out, "export const NODE_BINDING_OPERATIONS = {operations};").unwrap();
     Ok(out)
 }
 
@@ -1046,6 +1277,8 @@ fn render_web_typescript(
                 .map(|operation| serde_json::json!({
                     "id": operation.id,
                     "capability": operation.capability.0.as_deref(),
+                    "output": operation.output.0.as_deref(),
+                    "compiled_prerequisites": sorted_string_refs(&operation.compiled_prerequisites),
                     "media_type": operation.media_type,
                     "requires_uri": operation.requires_uri,
                 }))
@@ -1173,7 +1406,7 @@ fn render_c_header(
         .unwrap();
     }
     out.push_str(
-        "\ntypedef struct MermanCapabilityDescriptor {\n    const char *id;\n    const char *kind;\n    const char *description;\n    const char *const *target_ids;\n    size_t target_count;\n    const char *const *implication_ids;\n    size_t implication_count;\n} MermanCapabilityDescriptor;\n\ntypedef struct MermanOutputDescriptor {\n    const char *id;\n    const char *capability_id;\n    const char *description;\n    const char *media_type;\n    const char *const *target_ids;\n    size_t target_count;\n} MermanOutputDescriptor;\n\ntypedef struct MermanBindingOperationDescriptor {\n    const char *id;\n    const char *capability_id;\n    const char *description;\n    const char *media_type;\n    int requires_uri;\n    const char *const *target_ids;\n    size_t target_count;\n} MermanBindingOperationDescriptor;\n\n",
+        "\ntypedef struct MermanCapabilityDescriptor {\n    const char *id;\n    const char *kind;\n    const char *description;\n    const char *const *target_ids;\n    size_t target_count;\n    const char *const *implication_ids;\n    size_t implication_count;\n} MermanCapabilityDescriptor;\n\ntypedef struct MermanOutputDescriptor {\n    const char *id;\n    const char *capability_id;\n    const char *description;\n    const char *media_type;\n    const char *const *target_ids;\n    size_t target_count;\n} MermanOutputDescriptor;\n\ntypedef struct MermanBindingOperationDescriptor {\n    const char *id;\n    const char *capability_id;\n    const char *description;\n    const char *media_type;\n    int requires_uri;\n    const char *const *target_ids;\n    size_t target_count;\n    const char *output_id;\n    const char *const *compiled_prerequisite_ids;\n    size_t compiled_prerequisite_count;\n} MermanBindingOperationDescriptor;\n\n",
     );
 
     for capability in sorted_capabilities(descriptor) {
@@ -1253,6 +1486,14 @@ fn render_c_header(
             ),
             &sorted_string_refs(&operation.targets),
         );
+        write_c_string_array(
+            &mut out,
+            &format!(
+                "MERMAN_BINDING_OPERATION_{}_COMPILED_PREREQUISITES",
+                upper_snake(&operation.id)
+            ),
+            &sorted_string_refs(&operation.compiled_prerequisites),
+        );
     }
     out.push_str("static const MermanBindingOperationDescriptor MERMAN_BINDING_OPERATIONS[] = {\n");
     for operation in sorted_binding_operations(descriptor) {
@@ -1261,16 +1502,24 @@ fn render_c_header(
             "MERMAN_BINDING_OPERATION_{}_TARGETS",
             upper_snake(&operation.id)
         );
+        let compiled_prerequisites = sorted_string_refs(&operation.compiled_prerequisites);
+        let compiled_prerequisites_name = format!(
+            "MERMAN_BINDING_OPERATION_{}_COMPILED_PREREQUISITES",
+            upper_snake(&operation.id)
+        );
         writeln!(
             out,
-            "    {{ {:?}, {}, {:?}, {:?}, {}, {}, {} }},",
+            "    {{ {:?}, {}, {:?}, {:?}, {}, {}, {}, {}, {}, {} }},",
             operation.id,
             c_nullable_string(operation.capability.0.as_deref()),
             operation.description,
             operation.media_type,
             if operation.requires_uri { 1 } else { 0 },
             c_array_name_or_null(&targets_name, &targets),
-            targets.len()
+            targets.len(),
+            c_nullable_string(operation.output.0.as_deref()),
+            c_array_name_or_null(&compiled_prerequisites_name, &compiled_prerequisites),
+            compiled_prerequisites.len()
         )
         .unwrap();
     }
@@ -1319,7 +1568,7 @@ fn render_markdown(
         .unwrap();
     }
     out.push_str(
-        "\n## Binding Operations\n\n| ID | Capability | Media type | Requires URI | Targets |\n| --- | --- | --- | --- | --- |\n",
+        "\n## Binding Operations\n\n| ID | Capability | Output | Compiled prerequisites | Media type | Requires URI | Targets |\n| --- | --- | --- | --- | --- | --- | --- |\n",
     );
     for operation in sorted_binding_operations(descriptor) {
         let capability = operation
@@ -1328,11 +1577,19 @@ fn render_markdown(
             .as_deref()
             .map(|capability| format!("`{capability}`"))
             .unwrap_or_else(|| "none".to_string());
+        let output = operation
+            .output
+            .0
+            .as_deref()
+            .map(|output| format!("`{output}`"))
+            .unwrap_or_else(|| "none".to_string());
         writeln!(
             out,
-            "| `{}` | {} | `{}` | {} | {} |",
+            "| `{}` | {} | {} | {} | `{}` | {} | {} |",
             operation.id,
             capability,
+            output,
+            code_list(operation.compiled_prerequisites.iter().map(String::as_str)),
             operation.media_type,
             if operation.requires_uri { "yes" } else { "no" },
             code_list(operation.targets.iter().map(String::as_str))
@@ -1344,17 +1601,6 @@ fn render_markdown(
 
 fn upper_snake(value: &str) -> String {
     value.replace('-', "_").to_ascii_uppercase()
-}
-
-fn write_quoted_list<'a>(out: &mut String, values: impl IntoIterator<Item = &'a str>) {
-    let mut first = true;
-    for value in values {
-        if !first {
-            out.push_str(", ");
-        }
-        first = false;
-        write!(out, "{value:?}").unwrap();
-    }
 }
 
 fn code_list<'a>(values: impl IntoIterator<Item = &'a str>) -> String {
@@ -1592,7 +1838,54 @@ mod tests {
             .find(|operation| operation.id == "semantic-json")
             .expect("semantic JSON operation must be declared");
         assert_eq!(semantic_operation.capability.0.as_deref(), None);
+        assert_eq!(semantic_operation.output.0.as_deref(), None);
+        assert!(semantic_operation.compiled_prerequisites.is_empty());
         assert!(!semantic_operation.requires_uri);
+
+        for (operation_id, output_id, compiled_prerequisites) in [
+            ("svg", "svg", &[][..]),
+            ("ascii", "ascii", &[][..]),
+            ("png", "png", &["svg"][..]),
+            ("jpeg", "jpeg", &["svg"][..]),
+            ("pdf", "pdf", &["svg"][..]),
+        ] {
+            let operation = descriptor
+                .binding_operations
+                .iter()
+                .find(|operation| operation.id == operation_id)
+                .expect("output operation must be declared");
+            assert_eq!(operation.output.0.as_deref(), Some(output_id));
+            assert_eq!(
+                operation
+                    .compiled_prerequisites
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>(),
+                compiled_prerequisites
+            );
+        }
+
+        let header = render_c_header(&descriptor, &semantic_digest(&descriptor).unwrap()).unwrap();
+        assert!(header.contains("const char *output_id;"));
+        assert!(header.contains("const char *const *compiled_prerequisite_ids;"));
+        assert!(header.contains("size_t compiled_prerequisite_count;"));
+        assert!(header.contains("MERMAN_BINDING_OPERATION_PNG_COMPILED_PREREQUISITES"));
+    }
+
+    #[test]
+    fn semantic_digest_covers_output_and_compilation_relationships() {
+        let descriptor = committed_descriptor();
+        let baseline = semantic_digest(&descriptor).unwrap();
+
+        let mut changed = descriptor.clone();
+        let png = changed
+            .binding_operations
+            .iter_mut()
+            .find(|operation| operation.id == "png")
+            .unwrap();
+        png.compiled_prerequisites.clear();
+
+        assert_ne!(semantic_digest(&changed).unwrap(), baseline);
     }
 
     #[test]
@@ -1603,6 +1896,15 @@ mod tests {
             rust_operation_variant("document-analysis-facts-json"),
             "DocumentAnalysisFactsJson"
         );
+    }
+
+    #[test]
+    fn output_relationship_allows_an_independent_operation_id() {
+        let mut descriptor = committed_value();
+        let svg = binding_operation_index(&descriptor, "svg");
+        descriptor["binding_operations"][svg]["id"] = json!("render-svg");
+
+        validate_fixture(descriptor).unwrap();
     }
 
     #[test]
@@ -1633,6 +1935,117 @@ mod tests {
             "unexpected diagnostic: {error}"
         );
 
+        let mut missing_output = committed.clone();
+        missing_output["binding_operations"][semantic]
+            .as_object_mut()
+            .unwrap()
+            .remove("output");
+        let error = validate_fixture(missing_output).unwrap_err();
+        assert!(
+            error.contains("missing field `output`"),
+            "unexpected diagnostic: {error}"
+        );
+
+        let mut missing_compiled_prerequisites = committed.clone();
+        missing_compiled_prerequisites["binding_operations"][semantic]
+            .as_object_mut()
+            .unwrap()
+            .remove("compiled_prerequisites");
+        let error = validate_fixture(missing_compiled_prerequisites).unwrap_err();
+        assert!(
+            error.contains("missing field `compiled_prerequisites`"),
+            "unexpected diagnostic: {error}"
+        );
+
+        let mut unknown_output = committed.clone();
+        unknown_output["binding_operations"][semantic]["output"] = json!("unknown-output");
+        let error = validate_fixture(unknown_output).unwrap_err();
+        assert!(
+            error.contains(&format!("binding_operations[{semantic}].output"))
+                && error.contains("unknown output"),
+            "unexpected diagnostic: {error}"
+        );
+
+        let mut unknown_compiled_prerequisite = committed.clone();
+        unknown_compiled_prerequisite["binding_operations"][semantic]["compiled_prerequisites"] =
+            json!(["unknown-capability"]);
+        let error = validate_fixture(unknown_compiled_prerequisite).unwrap_err();
+        assert!(
+            error.contains(&format!(
+                "binding_operations[{semantic}].compiled_prerequisites[0]"
+            )) && error.contains("unknown capability"),
+            "unexpected diagnostic: {error}"
+        );
+
+        let mut duplicate_compiled_prerequisite = committed.clone();
+        duplicate_compiled_prerequisite["binding_operations"][png]["compiled_prerequisites"] =
+            json!(["svg", "svg"]);
+        let error = validate_fixture(duplicate_compiled_prerequisite).unwrap_err();
+        assert!(
+            error.contains(&format!(
+                "binding_operations[{png}].compiled_prerequisites[1]"
+            )) && error.contains("duplicate ID"),
+            "unexpected diagnostic: {error}"
+        );
+
+        let mut unsorted_compiled_prerequisites = committed.clone();
+        unsorted_compiled_prerequisites["binding_operations"][semantic]["compiled_prerequisites"] =
+            json!(["system-fonts", "analysis"]);
+        let error = validate_fixture(unsorted_compiled_prerequisites).unwrap_err();
+        assert!(
+            error.contains(&format!(
+                "binding_operations[{semantic}].compiled_prerequisites"
+            )) && error.contains("sorted lexicographically"),
+            "unexpected diagnostic: {error}"
+        );
+
+        let mut repeated_primary_capability = committed.clone();
+        repeated_primary_capability["binding_operations"][png]["compiled_prerequisites"] =
+            json!(["png"]);
+        let error = validate_fixture(repeated_primary_capability).unwrap_err();
+        assert!(
+            error.contains(&format!(
+                "binding_operations[{png}].compiled_prerequisites[0]"
+            )) && error.contains("availability capability"),
+            "unexpected diagnostic: {error}"
+        );
+
+        let analysis = binding_operation_index(&committed, "analysis-json");
+        let mut target_invalid_compiled_prerequisite = committed.clone();
+        target_invalid_compiled_prerequisite["binding_operations"][analysis]["compiled_prerequisites"] =
+            json!(["math"]);
+        let error = validate_fixture(target_invalid_compiled_prerequisite).unwrap_err();
+        assert!(
+            error.contains(&format!(
+                "binding_operations[{analysis}].compiled_prerequisites[0]"
+            )) && error.contains("unavailable on target `typst`"),
+            "unexpected diagnostic: {error}"
+        );
+
+        for (capability_id, kind) in [("system-clock", "adapter"), ("icons", "tool")] {
+            let mut implementation_invalid_compiled_prerequisite = committed.clone();
+            implementation_invalid_compiled_prerequisite["binding_operations"][png]["compiled_prerequisites"] =
+                json!([capability_id]);
+            let error = validate_fixture(implementation_invalid_compiled_prerequisite).unwrap_err();
+            assert!(
+                error.contains(&format!(
+                    "binding_operations[{png}].compiled_prerequisites[0]"
+                )) && error.contains("must be an API, output, or engine capability")
+                    && error.contains(&format!("not `{kind}`")),
+                "unexpected diagnostic: {error}"
+            );
+        }
+
+        let mut non_operation_capability = committed.clone();
+        non_operation_capability["binding_operations"][semantic]["capability"] =
+            json!("system-clock");
+        let error = validate_fixture(non_operation_capability).unwrap_err();
+        assert!(
+            error.contains(&format!("binding_operations[{semantic}].capability"))
+                && error.contains("must be an API or output capability"),
+            "unexpected diagnostic: {error}"
+        );
+
         let mut invalid_target = committed.clone();
         invalid_target["binding_operations"][png]["targets"] = json!(["web"]);
         let error = validate_fixture(invalid_target).unwrap_err();
@@ -1642,12 +2055,48 @@ mod tests {
             "unexpected diagnostic: {error}"
         );
 
-        let mut mismatched_legacy_output = committed;
-        mismatched_legacy_output["binding_operations"][svg]["media_type"] = json!("text/plain");
-        let error = validate_fixture(mismatched_legacy_output).unwrap_err();
+        let mut mismatched_media_type = committed.clone();
+        mismatched_media_type["binding_operations"][svg]["media_type"] = json!("text/plain");
+        let error = validate_fixture(mismatched_media_type).unwrap_err();
         assert!(
             error.contains(&format!("binding_operations[{svg}].media_type"))
-                && error.contains("must match legacy output"),
+                && error.contains("must match output"),
+            "unexpected diagnostic: {error}"
+        );
+
+        let mut mismatched_capability = committed.clone();
+        mismatched_capability["binding_operations"][svg]["capability"] = json!("analysis");
+        let error = validate_fixture(mismatched_capability).unwrap_err();
+        assert!(
+            error.contains(&format!("binding_operations[{svg}].capability"))
+                && error.contains("must match output"),
+            "unexpected diagnostic: {error}"
+        );
+
+        let mut output_requires_uri = committed.clone();
+        output_requires_uri["binding_operations"][svg]["requires_uri"] = json!(true);
+        let error = validate_fixture(output_requires_uri).unwrap_err();
+        assert!(
+            error.contains(&format!("binding_operations[{svg}].requires_uri"))
+                && error.contains("must not require a URI"),
+            "unexpected diagnostic: {error}"
+        );
+
+        let mut mismatched_targets = committed.clone();
+        mismatched_targets["binding_operations"][svg]["targets"] = json!(["native", "web"]);
+        let error = validate_fixture(mismatched_targets).unwrap_err();
+        assert!(
+            error.contains(&format!("binding_operations[{svg}].targets"))
+                && error.contains("must match output"),
+            "unexpected diagnostic: {error}"
+        );
+
+        let mut missing_output_owner = committed;
+        missing_output_owner["binding_operations"][svg]["output"] = Value::Null;
+        let error = validate_fixture(missing_output_owner).unwrap_err();
+        assert!(
+            error.contains("outputs[id=svg]")
+                && error.contains("referenced by exactly one binding operation; found 0"),
             "unexpected diagnostic: {error}"
         );
     }

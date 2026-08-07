@@ -2,8 +2,7 @@ use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
-use merman_render::svg::{IconRegistry, IconSvg, SvgDebugOptions, SvgRenderOptions};
-use std::sync::Arc;
+use merman_render::svg::{IconPack, IconRegistry, SvgDebugOptions, SvgRenderOptions};
 
 fn render_svg_from_text(text: &str, diagram_id: &str) -> String {
     render_svg_from_text_with_options(
@@ -234,17 +233,17 @@ section Work
 
 #[test]
 fn flowchart_iconify_internal_ids_are_scoped_per_node() {
-    let mut registry = IconRegistry::new();
-    registry.insert(
-        "test:clip",
-        IconSvg::new(
-            r##"<defs><clipPath id="clip"><path id="shape" d="M0 0H16V16H0z"/></clipPath></defs><path data-icon="fixture" clip-path="url(#clip)" d="M0 0H16V16H0z"/><use href="#shape" xlink:href="#shape"/>"##,
-            16.0,
-            16.0,
-        ),
-    );
+    let pack = br##"{
+        "prefix":"test",
+        "icons":{
+            "clip":{
+                "body":"<defs><clipPath id=\"clip\"><path id=\"shape\" d=\"M0 0H16V16H0z\"/></clipPath></defs><path data-icon=\"fixture\" clip-path=\"url(#clip)\" d=\"M0 0H16V16H0z\"/><use href=\"#shape\" xlink:href=\"#shape\"/>"
+            }
+        }
+    }"##;
+    let registry = IconRegistry::from_packs([IconPack::new(pack)]).unwrap();
 
-    let environment = RenderEnvironment::deterministic().with_icon_registry(Arc::new(registry));
+    let environment = RenderEnvironment::deterministic().with_icon_registry(registry);
     let svg = render_svg_from_text_with_environment(
         r#"flowchart TD
 A@{ icon: "test:clip", label: "A" }
@@ -272,11 +271,25 @@ A --> B"#,
 #[test]
 fn tree_view_iconify_internal_ids_are_scoped_per_symbol_and_deterministic() {
     let icon_body = r##"<defs><clipPath id="none"><path id="shape" d="M0 0H16V16H0z"/></clipPath></defs><path data-icon="tree-view-id-fixture" fill="none" clip-path="url(#none)" d="M0 0H16V16H0z"/><use href="#shape" xlink:href="#shape"/><animate begin="shape.end;shape.click"/>"##;
-    let mut registry = IconRegistry::new();
-    registry.insert("foo:bar-baz", IconSvg::new(icon_body, 16.0, 16.0));
-    registry.insert("foo-bar:baz", IconSvg::new(icon_body, 16.0, 16.0));
-    registry.insert("foo:bar-baz-2", IconSvg::new(icon_body, 16.0, 16.0));
-    let environment = RenderEnvironment::deterministic().with_icon_registry(Arc::new(registry));
+    let foo = serde_json::json!({
+        "prefix": "foo",
+        "icons": {
+            "bar-baz": { "body": icon_body },
+            "bar-baz-2": { "body": icon_body }
+        }
+    })
+    .to_string();
+    let foo_bar = serde_json::json!({
+        "prefix": "foo-bar",
+        "icons": { "baz": { "body": icon_body } }
+    })
+    .to_string();
+    let registry = IconRegistry::from_packs([
+        IconPack::new(foo.as_bytes()),
+        IconPack::new(foo_bar.as_bytes()),
+    ])
+    .unwrap();
+    let environment = RenderEnvironment::deterministic().with_icon_registry(registry);
     let options = SvgRenderOptions {
         diagram_id: Some("m15-tree-view-icons".to_string()),
         ..SvgRenderOptions::default()
@@ -372,7 +385,7 @@ fn tree_view_iconify_internal_ids_are_scoped_per_symbol_and_deterministic() {
             .iter()
             .filter(|target| target.starts_with("IconifyId"))
             .count(),
-        9,
+        3,
         "{svg}"
     );
     for target in local_reference_targets {

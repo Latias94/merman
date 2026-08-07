@@ -1,8 +1,8 @@
-# Swimlane Minimum (Mermaid@11.16.0)
+# Swimlane Minimum (Mermaid@11.16.1)
 
 This document records the admitted local support for Mermaid `swimlane-beta`.
 
-Upstream references at pinned Mermaid 11.16.0:
+Upstream references at pinned Mermaid 11.16.1:
 
 - Detector: `packages/mermaid/src/diagrams/swimlanes/detector.ts`
 - Diagram adapter: `packages/mermaid/src/diagrams/swimlanes/swimlanesDiagram.ts`
@@ -56,7 +56,8 @@ Upstream references at pinned Mermaid 11.16.0:
 
 - semantic JSON fixtures are normalized under `fixtures/swimlane/`
 - typed layout and SVG rendering run through the canonical render operation
-- upstream baselines are provenance-locked to Mermaid CLI 11.16.0 and Headless Chrome 131
+- upstream baselines are provenance-locked to `@mermaid-js/mermaid-cli@11.16.0`,
+  `mermaid@11.16.1`, and Headless Chrome 131
 - `xtask compare-swimlane-svgs` is registered through the shared verification-fact catalog
 - the default DOM comparison mode is `parity`; no family-specific comparator normalization is used
 

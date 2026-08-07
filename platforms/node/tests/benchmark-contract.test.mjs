@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -27,12 +34,36 @@ import { summarize } from "../scripts/benchmark/stats.mjs";
 import { svgTransportEvidence } from "../scripts/benchmark/svg-signature.mjs";
 import { digestJson } from "../scripts/stable-json.mjs";
 import { measureWarmSample } from "../scripts/benchmark/worker.mjs";
+import {
+  BINDING_OPTION_GROUP_SPECS,
+  METADATA_SPECS,
+} from "../src/generated/binding-contract.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = path.resolve(nodeRoot, "..", "..");
-const PACKAGE_VERSION = JSON.parse(
+const PACKAGE_SURFACE = JSON.parse(
   readFileSync(path.join(nodeRoot, "package-surfaces.json"), "utf8"),
-).version;
+);
+const PACKAGE_VERSION = PACKAGE_SURFACE.version;
+const STATIC_SVG_OPTION_GROUP_IDS = BINDING_OPTION_GROUP_SPECS
+  .filter(
+    (spec) =>
+      spec.always_available ||
+      spec.requires_svg_pipeline ||
+      spec.any_capability_ids.some((id) =>
+        ["layout-cytoscape", "layout-elk", "math", "svg"].includes(id)
+      ),
+  )
+  .map((spec) => spec.id);
+const STATIC_SVG_METADATA_IDS = METADATA_SPECS
+  .filter(
+    (spec) =>
+      spec.required_capability_id === null ||
+      ["layout-cytoscape", "layout-elk", "math", "svg"].includes(
+        spec.required_capability_id,
+      ),
+  )
+  .map((spec) => spec.id);
 
 const provenance = {
   measured_at_utc: "2026-07-23T12:00:00.000Z",
@@ -153,7 +184,10 @@ const RUNTIME_CATALOG = {
     { id: "binding-result", version: 1 },
     { id: "operation-metadata", version: 1 },
   ],
-  metadata_ids: ["diagram-family-capabilities", "supported-diagrams"],
+  metadata_ids: STATIC_SVG_METADATA_IDS,
+  option_group_ids: STATIC_SVG_OPTION_GROUP_IDS,
+  constructor_service_ids: [],
+  constructor_service_contracts: [],
   capabilities: {
     capability_ids: ["layout-cytoscape", "layout-elk", "math", "svg"],
     output_ids: ["svg"],
@@ -245,6 +279,7 @@ const RUNTIME_EVIDENCE = {
   catalog: RUNTIME_CATALOG,
   probe: {
     missing_capability_id: "png",
+    async_semantic_json_bytes: 120,
     semantic_json_bytes: 120,
     svg_plan_json_bytes: 120,
     svg_bytes: 120,
@@ -331,6 +366,20 @@ function workloadRepresentative(workload) {
   };
 }
 
+function productFacadeTestExports() {
+  return [
+    "export class MermanDisposedError extends Error {}",
+    "export class MermanEngine {}",
+    "export class MermanError extends Error {}",
+    "export class MermanInvalidTransportError extends Error {}",
+    "export class MermanLifecycleError extends Error {}",
+    "export class MermanMissingPlatformPackageError extends Error {}",
+    "export class MermanOperationError extends Error {}",
+    "export class MermanQueueSaturatedError extends Error {}",
+    "export class MermanUnsupportedTargetError extends Error {}",
+  ];
+}
+
 test("benchmark provenance binds every runtime and package assembly input", () => {
   const inputs = collectHarnessInputFiles();
   for (const expected of [
@@ -372,6 +421,7 @@ test("process shutdown probe uses a stable valid smoke diagram", (context) => {
   writeFileSync(
     productModule,
     [
+      ...productFacadeTestExports(),
       "export async function createNodeEngine() {",
       "  return {",
       "    async executeOperation({ source }) {",
@@ -422,6 +472,7 @@ test("cold latency uses the declared successful workload, not the leading corpus
   writeFileSync(
     productModule,
     [
+      ...productFacadeTestExports(),
       "export async function createNodeEngine() {",
       "  return {",
       "    async executeOperation({ source }) {",
@@ -1240,6 +1291,20 @@ test("WASM footprint staging preserves generated artifacts despite wasm-pack's w
   writeFileSync(path.join(artifactRoot, ".gitignore"), "*\n");
 
   const packageRoot = stageWasmPackage(path.join(root, "stage"), loader);
+  const manifest = JSON.parse(readFileSync(path.join(packageRoot, "package.json"), "utf8"));
+  assert.equal(manifest.engines.node, PACKAGE_SURFACE.node_engine);
+  assert.equal(manifest.types, "./index.d.ts");
+  assert.equal(manifest.exports["."].types, "./index.d.ts");
+  assert.equal(existsSync(path.join(packageRoot, "index.d.ts")), true);
+  const entrypoint = readFileSync(path.join(packageRoot, "index.mjs"), "utf8");
+  for (const exported of [
+    "MermanEngine",
+    "MermanInvalidTransportError",
+    "MermanOperationError",
+    "createNodeEngine",
+  ]) {
+    assert.match(entrypoint, new RegExp(`\\b${exported}\\b`));
+  }
   const result = spawnSync("npm", ["pack", "--json", "--dry-run"], {
     cwd: packageRoot,
     encoding: "utf8",
@@ -1248,6 +1313,7 @@ test("WASM footprint staging preserves generated artifacts despite wasm-pack's w
   const files = JSON.parse(result.stdout)[0].files.map((file) => file.path);
   assert(files.includes("artifact/merman_node.js"));
   assert(files.includes("artifact/merman_node_bg.wasm"));
+  assert(files.includes("index.d.ts"));
 });
 
 test("a comparison report rejects missing provenance and mismatched inputs", () => {

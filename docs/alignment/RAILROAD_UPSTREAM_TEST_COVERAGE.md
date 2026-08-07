@@ -1,6 +1,6 @@
-# Railroad Upstream Test Coverage (Mermaid@11.16.0)
+# Railroad Upstream Test Coverage (Mermaid@11.16.1)
 
-Scope: Mermaid tag `@11.16.0`.
+Scope: Mermaid tag `@11.16.1`.
 
 ## Upstream Sources
 
@@ -60,7 +60,7 @@ Scope: Mermaid tag `@11.16.0`.
 ## Upstream SVG Baselines
 
 All four Railroad variants are admitted to the primary SVG parity matrix. The 13 normalized fixtures
-have complete Mermaid `@11.16.0` baselines under the four `fixtures/upstream-svgs/railroad*/`
+have complete Mermaid `@11.16.1` baselines under the four `fixtures/upstream-svgs/railroad*/`
 directories, with per-file input/SVG hashes and explicit provenance attestations. The four
 family-local compare commands and the ordinary `compare-all-svgs` structural DOM gate cover the
 committed corpus; browser-derived root-height differences remain in the exact root residual lane.

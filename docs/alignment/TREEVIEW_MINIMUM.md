@@ -1,8 +1,8 @@
-# TreeView Minimum (Mermaid@11.16.0)
+# TreeView Minimum (Mermaid@11.16.1)
 
 This document tracks the first local support slice for Mermaid `treeView`.
 
-Upstream references at locked commit `7c0cafcf42e76bfaf79d0cbbd12edb986612f014`:
+Upstream references at locked commit `7ecca0cd7f1658ef74f4e7e91f925724ef403bbf`:
 
 - Detector: `packages/mermaid/src/diagrams/treeView/detector.ts`
 - Parser adapter: `packages/mermaid/src/diagrams/treeView/parser.ts`

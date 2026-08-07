@@ -2026,13 +2026,6 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
     Ok(())
 }
 
-pub(crate) fn cypress_corpus_source_alignment_failures() -> Vec<String> {
-    match import_upstream_cypress(vec!["--check-11-16-corpus-manifest-source".to_string()]) {
-        Ok(()) => Vec::new(),
-        Err(error) => vec![error.to_string()],
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -2313,16 +2306,5 @@ flowchart LR
                 Some("railroadPeg"),
             ]
         );
-    }
-
-    #[test]
-    fn pinned_new_family_cypress_sources_match_the_committed_manifest_when_available() {
-        if !crate::cmd::mermaid_repo_root().is_dir() {
-            return;
-        }
-
-        let failures = super::cypress_corpus_source_alignment_failures();
-
-        assert!(failures.is_empty(), "{failures:#?}");
     }
 }

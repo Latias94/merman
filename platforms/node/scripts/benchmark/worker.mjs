@@ -8,6 +8,18 @@ import { svgTransportEvidence } from "./svg-signature.mjs";
 import { digestJson } from "../stable-json.mjs";
 
 const SMOKE_SOURCE = "flowchart TD\nA-->B";
+const PRODUCT_EXPORTS = [
+  "MermanDisposedError",
+  "MermanEngine",
+  "MermanError",
+  "MermanInvalidTransportError",
+  "MermanLifecycleError",
+  "MermanMissingPlatformPackageError",
+  "MermanOperationError",
+  "MermanQueueSaturatedError",
+  "MermanUnsupportedTargetError",
+  "createNodeEngine",
+];
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   await main();
@@ -337,8 +349,8 @@ async function createProductEngine(input, options) {
     throw new Error(`${input.candidate} benchmark lacks an installed product entrypoint.`);
   }
   const facade = await import(input.productModule);
-  if (typeof facade.createNodeEngine !== "function") {
-    throw new Error(`${input.candidate} product entrypoint does not export createNodeEngine().`);
+  if (JSON.stringify(Object.keys(facade).sort()) !== JSON.stringify(PRODUCT_EXPORTS)) {
+    throw new Error(`${input.candidate} product entrypoint does not export the Node facade.`);
   }
   return facade.createNodeEngine(options);
 }

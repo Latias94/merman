@@ -55,60 +55,35 @@ ANDROID_CONSUMER_RULES = (
 )
 
 
-class SemanticOperationFixtureTests(unittest.TestCase):
-    def test_canonical_fixture_uses_the_strict_semantic_schema(self) -> None:
-        cases = verify_platform_bindings.load_semantic_operation_fixtures()
-
-        self.assertEqual(len(cases), 6)
-        self.assertEqual(cases[0]["operation_id"], "semantic-json")
-        self.assertTrue(all(case["operation_id"] != "not-an-operation" for case in cases))
-
-    def test_duplicate_json_keys_are_rejected_at_the_shared_gate(self) -> None:
-        canonical = verify_platform_bindings.SEMANTIC_OPERATION_FIXTURES.read_text(
-            encoding="utf-8"
-        )
-        malformed = canonical.replace(
-            '"max_svg_bytes": 1024',
-            '"max_svg_bytes": 1024,\n            "max_svg_bytes": 2048',
-            1,
-        )
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir) / "fixtures.json"
-            path.write_text(malformed, encoding="utf-8")
-            with self.assertRaisesRegex(RuntimeError, "duplicate JSON key"):
-                verify_platform_bindings.load_semantic_operation_fixtures(path)
-
-    def test_transport_wire_fields_are_rejected(self) -> None:
-        root = json.loads(
-            verify_platform_bindings.SEMANTIC_OPERATION_FIXTURES.read_text(
-                encoding="utf-8"
-            )
-        )
-        root["cases"][0]["native_operation_code"] = 6
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir) / "fixtures.json"
-            path.write_text(json.dumps(root), encoding="utf-8")
-            with self.assertRaisesRegex(RuntimeError, "unknown fields"):
-                verify_platform_bindings.load_semantic_operation_fixtures(path)
-
-    def test_each_case_declares_exactly_one_outcome(self) -> None:
-        root = json.loads(
-            verify_platform_bindings.SEMANTIC_OPERATION_FIXTURES.read_text(
-                encoding="utf-8"
-            )
-        )
-        root["cases"][0]["expected_error_kind"] = "generic"
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir) / "fixtures.json"
-            path.write_text(json.dumps(root), encoding="utf-8")
-            with self.assertRaisesRegex(RuntimeError, "exactly one expected outcome"):
-                verify_platform_bindings.load_semantic_operation_fixtures(path)
-
-
 class NativeSdkRecipeTests(unittest.TestCase):
+    def test_flutter_format_contract_excludes_generator_owned_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            handwritten = (
+                root / "lib" / "merman.dart",
+                root / "example" / "smoke.dart",
+                root / "tool" / "abi3_contract_test.dart",
+            )
+            generated = (
+                root / "lib" / "src" / "generated" / "binding_contract.dart",
+                root / "lib" / "src" / "generated" / "native_abi.dart",
+            )
+            for path in (*handwritten, *generated):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("void main() {}\n", encoding="utf-8")
+
+            paths = verify_platform_bindings.flutter_format_paths(root)
+
+        self.assertEqual(
+            paths,
+            [
+                "lib/merman.dart",
+                "example/smoke.dart",
+                "tool/abi3_contract_test.dart",
+            ],
+        )
+        self.assertTrue(all("/generated/" not in path for path in paths))
+
     def test_android_transport_checks_use_each_exact_descriptor_recipe(self) -> None:
         target = "aarch64-linux-android"
         for recipe in (
@@ -193,15 +168,7 @@ class NativeSdkRecipeTests(unittest.TestCase):
                 str(library),
             ],
         )
-        self.assertEqual(
-            run.call_args_list[1].args[0],
-            [
-                "dart",
-                "run",
-                "tool/semantic_operation_fixtures_test.dart",
-                str(library),
-            ],
-        )
+        self.assertEqual(len(run.call_args_list), 1)
 
     def test_native_library_path_comes_from_the_matching_cargo_artifact(self) -> None:
         recipe = verify_platform_bindings.FLUTTER_DESKTOP_NATIVE_RECIPE
@@ -272,14 +239,8 @@ class NativeSdkRecipeTests(unittest.TestCase):
             str(Path("/opt/android-ndk").resolve()),
         )
 
-    def test_instrumentation_gate_uses_one_explicit_ndk_for_build_and_symbols(self) -> None:
-        llvm_nm = Path("/opt/android-ndk/bin/llvm-nm")
+    def test_instrumentation_gate_builds_slices_then_runs_connected_tests(self) -> None:
         with (
-            mock.patch.object(
-                verify_platform_bindings,
-                "resolve_android_llvm_nm",
-                return_value=llvm_nm,
-            ) as resolve_nm,
             mock.patch.object(
                 verify_platform_bindings,
                 "ensure_android_native_slices",
@@ -289,24 +250,23 @@ class NativeSdkRecipeTests(unittest.TestCase):
                 "resolve_gradle_command",
                 return_value="gradle",
             ),
-            mock.patch.object(verify_platform_bindings, "run"),
-            mock.patch.object(
-                verify_platform_bindings,
-                "assert_android_aar_contract",
-            ) as assert_aar,
-            mock.patch.object(
-                verify_platform_bindings,
-                "assert_android_instrumentation_smoke_report",
-            ),
+            mock.patch.object(verify_platform_bindings, "run") as run,
         ):
             verify_platform_bindings.run_android_instrumentation_smoke(
                 None,
                 "/opt/android-ndk",
             )
 
-        resolve_nm.assert_called_once_with("/opt/android-ndk")
         ensure_slices.assert_called_once_with("/opt/android-ndk")
-        assert_aar.assert_called_once_with(llvm_nm=llvm_nm)
+        run.assert_called_once_with(
+            [
+                "gradle",
+                "-p",
+                str(verify_platform_bindings.ANDROID_ROOT),
+                "connectedAndroidTest",
+                "--stacktrace",
+            ]
+        )
 
 
 class FlutterAndroidSmokeTests(unittest.TestCase):
@@ -410,6 +370,13 @@ class GeneratedBindingFreshnessTests(unittest.TestCase):
         step = workflow_step(job, name="Verify platform bindings")
         self.assertEqual(step["run"], "python3 scripts/verify-platform-bindings.py")
 
+        checkout = next(
+            step
+            for step in job["steps"]
+            if step.get("uses", "").startswith("actions/checkout@")
+        )
+        self.assertEqual(str(checkout.get("with", {}).get("fetch-depth")), "0")
+
 
 class AndroidAarVerificationTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -420,6 +387,17 @@ class AndroidAarVerificationTests(unittest.TestCase):
         )
         symbol_reader.start()
         self.addCleanup(symbol_reader.stop)
+        class_api_reader = mock.patch.object(
+            verify_platform_bindings,
+            "android_class_api",
+            create=True,
+            return_value=(
+                "public final io.merman.MermanIconPackSet getIconPackSet();\n"
+                "public final io.merman.MermanTextMeasurer getTextMeasurer();\n"
+            ),
+        )
+        class_api_reader.start()
+        self.addCleanup(class_api_reader.stop)
 
     def test_ndk_symbol_tool_can_be_resolved_from_environment(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -483,6 +461,55 @@ class AndroidAarVerificationTests(unittest.TestCase):
                     missing,
                 ):
                     verify_platform_bindings.assert_android_aar_contract(aar_path)
+
+    def test_android_aar_rejects_removed_packaging_class(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            aar_path = Path(temp_dir) / "merman-android-release.aar"
+            classes = [
+                *verify_platform_bindings.ANDROID_PACKAGING_SENTINEL_CLASSES,
+                *verify_platform_bindings.ANDROID_FORBIDDEN_PACKAGING_CLASSES,
+            ]
+            write_aar(aar_path, classes)
+
+            with self.assertRaisesRegex(RuntimeError, "MermanIconRegistry.class"):
+                verify_platform_bindings.assert_android_aar_contract(aar_path)
+
+    def test_android_aar_requires_icon_pack_set_getter(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            aar_path = Path(temp_dir) / "merman-android-release.aar"
+            write_aar(
+                aar_path,
+                verify_platform_bindings.ANDROID_PACKAGING_SENTINEL_CLASSES,
+            )
+            with (
+                mock.patch.object(
+                    verify_platform_bindings,
+                    "android_class_api",
+                    return_value="public final io.merman.MermanTextMeasurer getTextMeasurer();\n",
+                ),
+                self.assertRaisesRegex(RuntimeError, "getIconPackSet"),
+            ):
+                verify_platform_bindings.assert_android_aar_contract(aar_path)
+
+    def test_android_aar_rejects_removed_icon_registry_getter(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            aar_path = Path(temp_dir) / "merman-android-release.aar"
+            write_aar(
+                aar_path,
+                verify_platform_bindings.ANDROID_PACKAGING_SENTINEL_CLASSES,
+            )
+            with (
+                mock.patch.object(
+                    verify_platform_bindings,
+                    "android_class_api",
+                    return_value=(
+                        "public final io.merman.MermanIconPackSet getIconPackSet();\n"
+                        "public final io.merman.MermanIconRegistry getIconRegistry();\n"
+                    ),
+                ),
+                self.assertRaisesRegex(RuntimeError, "getIconRegistry"),
+            ):
+                verify_platform_bindings.assert_android_aar_contract(aar_path)
 
     def test_android_aar_reports_missing_projected_resource(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -563,8 +590,8 @@ class AndroidConsumerRulesTests(unittest.TestCase):
         rules = ANDROID_CONSUMER_RULES.read_text(encoding="utf-8")
 
         for class_name in (
+            "io.merman.Merman",
             "io.merman.MermanEngine",
-            "io.merman.MermanReusableEngine",
             "io.merman.MermanOperationResult",
         ):
             with self.subTest(class_name=class_name):
@@ -623,6 +650,17 @@ class AndroidMavenPublicationTests(unittest.TestCase):
         )
         symbol_reader.start()
         self.addCleanup(symbol_reader.stop)
+        class_api_reader = mock.patch.object(
+            verify_platform_bindings,
+            "android_class_api",
+            create=True,
+            return_value=(
+                "public final io.merman.MermanIconPackSet getIconPackSet();\n"
+                "public final io.merman.MermanTextMeasurer getTextMeasurer();\n"
+            ),
+        )
+        class_api_reader.start()
+        self.addCleanup(class_api_reader.stop)
 
     def test_android_maven_publication_contains_complete_release_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -680,59 +718,33 @@ class AndroidMavenPublicationTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "documentation variants: javadoc"):
                 verify_platform_bindings.assert_android_maven_publication(module_root)
 
-
-class AndroidInstrumentationReportTests(unittest.TestCase):
-    def test_android_instrumentation_report_accepts_smoke_test_result(self) -> None:
+    def test_android_maven_publication_rejects_removed_javadoc_entry(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            results_root = Path(temp_dir)
-            report = results_root / "connected" / "TEST-smoke.xml"
-            report.parent.mkdir(parents=True)
-            report.write_text(
-                """
-                <testsuites>
-                  <testsuite name="io.merman.MermanInstrumentedSmokeTest">
-                    <testcase name="runsPublicSmokeIncludingThrowingTextMeasurerFallback" />
-                  </testsuite>
-                  <testsuite name="io.merman.MermanSemanticOperationFixtureTest">
-                    <testcase name="consumesSharedSemanticOperationFixtures" />
-                  </testsuite>
-                </testsuites>
-                """,
-                encoding="utf-8",
-            )
-
-            verify_platform_bindings.assert_android_instrumentation_smoke_report(results_root)
-
-    def test_android_instrumentation_report_requires_smoke_test_result(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            results_root = Path(temp_dir)
-            report = results_root / "connected" / "TEST-other.xml"
-            report.parent.mkdir(parents=True)
-            report.write_text("<testsuite name=\"OtherTest\" />", encoding="utf-8")
-
-            with self.assertRaisesRegex(RuntimeError, "MermanInstrumentedSmokeTest"):
-                verify_platform_bindings.assert_android_instrumentation_smoke_report(results_root)
-
-    def test_android_instrumentation_report_requires_shared_fixture_result(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            results_root = Path(temp_dir)
-            report = results_root / "connected" / "TEST-smoke.xml"
-            report.parent.mkdir(parents=True)
-            report.write_text(
-                """
-                <testsuite name="io.merman.MermanInstrumentedSmokeTest">
-                  <testcase name="runsPublicSmokeIncludingThrowingTextMeasurerFallback" />
-                </testsuite>
-                """,
-                encoding="utf-8",
-            )
-
-            with self.assertRaisesRegex(
-                RuntimeError, "MermanSemanticOperationFixtureTest"
-            ):
-                verify_platform_bindings.assert_android_instrumentation_smoke_report(
-                    results_root
+            module_root = Path(temp_dir) / "merman-android"
+            version_dir = write_android_maven_publication(module_root)
+            javadoc_jar = next(version_dir.glob("*-javadoc.jar"))
+            with zipfile.ZipFile(javadoc_jar, "a") as archive:
+                archive.writestr(
+                    "merman-android/io.merman/-merman-icon-registry/index.html",
+                    b"",
                 )
+
+            with self.assertRaisesRegex(RuntimeError, "removed.*merman-icon-registry"):
+                verify_platform_bindings._assert_android_javadoc_jar(javadoc_jar)
+
+    def test_android_maven_publication_rejects_removed_service_property(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            module_root = Path(temp_dir) / "merman-android"
+            version_dir = write_android_maven_publication(module_root)
+            javadoc_jar = next(version_dir.glob("*-javadoc.jar"))
+            with zipfile.ZipFile(javadoc_jar, "a") as archive:
+                archive.writestr(
+                    "merman-android/io.merman/-merman-engine-services/icon-registry.html",
+                    b"",
+                )
+
+            with self.assertRaisesRegex(RuntimeError, "removed.*icon-registry"):
+                verify_platform_bindings._assert_android_javadoc_jar(javadoc_jar)
 
 
 def write_aar(
@@ -818,8 +830,18 @@ def write_android_maven_publication(
             "index.html",
             "merman-android/package-list",
             "merman-android/io.merman/index.html",
+            "merman-android/io.merman/-merman/index.html",
             "merman-android/io.merman/-merman-engine/index.html",
-            "merman-android/io.merman/-merman-reusable-engine/index.html",
+            "merman-android/io.merman/-merman-engine-services/index.html",
+            "merman-android/io.merman/-merman-engine-services/icon-pack-set.html",
+            "merman-android/io.merman/-merman-icon-pack/index.html",
+            "merman-android/io.merman/-merman-icon-pack-set/index.html",
+            "merman-android/io.merman/-merman-operation-metadata/index.html",
+            "merman-android/io.merman/-merman-operation-result/index.html",
+            "merman-android/io.merman/-merman-output-plan/index.html",
+            "merman-android/io.merman/-merman-raster-output-plan/index.html",
+            "merman-android/io.merman/-merman-pdf-filter-images-output-plan/index.html",
+            "merman-android/io.merman/-merman-unknown-output-plan/index.html",
         ]:
             archive.writestr(entry, b"")
 

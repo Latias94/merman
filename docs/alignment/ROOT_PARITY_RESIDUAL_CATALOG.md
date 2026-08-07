@@ -1,6 +1,6 @@
 # Root Parity Residual Catalog
 
-Baseline: Mermaid `11.16.0@7c0cafcf42e76bfaf79d0cbbd12edb986612f014`.
+Baseline: Mermaid `11.16.1@7ecca0cd7f1658ef74f4e7e91f925724ef403bbf`.
 
 This document is the review evidence for
 `fixtures/_verification/root-parity-residuals.json`. The catalog is verification-only: it cannot
@@ -50,9 +50,10 @@ a new mismatch appears, or descendants no longer satisfy their declared profile.
 
 | Evidence id | Kind | Entries | Families | Source-backed classification |
 | --- | --- | ---: | --- | --- |
-| `browser-root-bbox` | `browser-measurement` | 1,390 | Architecture 33; Class 207; ER 51; Event Modeling 1; Flowchart 543; GitGraph 209; Ishikawa 11; Kanban 1; Mindmap 95; Requirement 42; Sankey 3; State 177; Swimlane 2; Timeline 12; Treemap 3 | Pinned Mermaid derives the final root from `setupGraphViewbox()`, `setupViewPortForSVG()`, or a family-local SVG `getBBox()`. Those paths measure the rendered DOM, including text, strokes, transforms, fallback fonts, and the Chromium float lattice. Merman uses the same padding and sizing algorithms over deterministic emitted-content bounds. |
+| `browser-root-bbox` | `browser-measurement` | 1,389 | Architecture 33; Class 207; ER 51; Event Modeling 1; Flowchart 542; GitGraph 209; Ishikawa 11; Kanban 1; Mindmap 95; Requirement 42; Sankey 3; State 177; Swimlane 2; Timeline 12; Treemap 3 | Pinned Mermaid derives the final root from `setupGraphViewbox()`, `setupViewPortForSVG()`, or a family-local SVG `getBBox()`. Those paths measure the rendered DOM, including text, strokes, transforms, fallback fonts, and the Chromium float lattice. Merman uses the same padding and sizing algorithms over deterministic emitted-content bounds. |
 | `browser-derived-layout` | `browser-measurement` | 121 | Block 41; Journey 4; Pie 43; Railroad 6; Railroad ABNF 2; Railroad EBNF 3; Railroad PEG 2; Sequence 4; TreeView 16 | These families compute root values explicitly, but their upstream dimensions consume `getBBox()`, `getBoundingClientRect()`, or `getComputedTextLength()` earlier in layout. The root residual is therefore the propagated browser measurement, not a second root formula. |
 | `c4-headless-layout` | `source-backed-layout-approximation` | 51 | C4 51 | C4 computes its root from `screenBounds` rather than final SVG `getBBox()`. This evidence class covers the headless profile where no browser screen fact is supplied: Merman ports the pinned `Bounds` and `drawInsideBoundary()` algorithms, but replaces browser-dependent text and screen facts with deterministic measurement and explicit container dimensions. Browser hosts can separately project `screen.availWidth` for exact C4 wrapping. The root-only remainder is retained as the bounded headless-layout approximation. |
+| `external-resource-layout` | `browser-measurement` | 1 | Flowchart 1 | The fixture intentionally retains remote `<img>` references. Mermaid leaves their intrinsic dimensions to the embedding browser, so network availability and image-load completion can change the browser-owned layout and root viewport without changing the Mermaid source or serialized resource reference. |
 | `ishikawa-roughjs` | `rough-js-implementation` | 1 | Ishikawa 1 | The hand-drawn fixture uses RoughJS geometry upstream. Descendants are intentionally compared with `structure`; the exact root bbox follows RoughJS path jitter and stroke bounds that Merman does not reproduce byte-for-byte. |
 
 ## Upstream Source Audit
@@ -137,6 +138,23 @@ existing `browser-root-bbox` classification backed by the pinned Architecture
 `setupGraphViewbox()` call and its SVG `getBBox()` dependency. The catalog decreases from 1,633 to
 1,563 entries and Architecture decreases from 103 to 33 without changing schema, comparison
 revision, normalization, or production rendering.
+
+## 2026-08-07 Mermaid 11.16.1 Baseline Review
+
+The full candidate was regenerated after moving the pinned source baseline from Mermaid 11.16.0
+to 11.16.1. The candidate still contains 1,563 observations across 25 family ids and no descendant
+profile changed. Twenty upstream SVG digest changes retained their existing root signatures and
+evidence classes.
+
+One Flowchart fixture,
+`upstream_cypress_flowchart_v2_spec_4023_should_render_html_labels_with_images_and_or_text_correctly_042`,
+changed its upstream root from `671.344 × 630` to `413.734 × 198`. The Mermaid release diff does
+not change Flowchart image-label rendering. The fixture itself references the remote
+`https://mermaid.js.org/mermaid-logo.svg`, and the regenerated SVG records the browser's unloaded
+intrinsic image dimensions while retaining the same external references. This observation is now
+classified separately as `external-resource-layout`; it is not generalized into a tolerance or a
+production override. The catalog remains exact and hash-bound, so a future remote-load outcome
+change requires another explicit review.
 
 ## Production Boundary
 

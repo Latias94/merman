@@ -229,7 +229,6 @@ describe("WASM input manifest", () => {
       "abi/text-measurement-v1.json",
       "capabilities/artifact-profiles-v1.json",
       "capabilities/feature-surface-v1.json",
-      "capabilities/generated/capability_surface.rs",
       "platforms/web/web-surface-descriptor.schema.json",
       "platforms/web/web-surface-descriptor.json",
       "platforms/web/scripts/build-wasm.mjs",
@@ -507,7 +506,6 @@ function createFixture() {
     "abi/text-measurement-v1.json": "{\"protocol_version\":1}\n",
     "capabilities/artifact-profiles-v1.json": "{\"schema_version\":1}\n",
     "capabilities/feature-surface-v1.json": "{\"schema_version\":1}\n",
-    "capabilities/generated/capability_surface.rs": "pub const CAPABILITY_IDS: &[&str] = &[];\n",
     "crates/merman-core/Cargo.toml": "[package]\nname = \"merman-core\"\n",
     "crates/merman-core/src/lib.rs": [
       'pub const ACTOR: &str = include_str!("../assets/zenuml/actor.svg");',

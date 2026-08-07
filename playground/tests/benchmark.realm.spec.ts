@@ -193,7 +193,7 @@ test("opaque Mermaid defers engine parse/eval and reuses ZenUML, ELK, and tidy-t
         role: "warmup",
       });
       expect(cold.type, JSON.stringify(cold)).toBe("benchmark-sample-success");
-      expect(cold.version).toBe("11.16.0");
+      expect(cold.version).toBe("11.16.1");
       expect(cold.trace.adapter_import_start).not.toBeNull();
       expect(cold.trace.adapter_import_end).toBeGreaterThanOrEqual(
         cold.trace.adapter_import_start!

@@ -1,7 +1,7 @@
 #![cfg(feature = "svg")]
 
 use merman::MermaidConfig;
-use merman::svg::HeadlessRenderer;
+use merman::svg::{HeadlessRenderer, ResvgCompatibleSvg};
 use merman_fixture_render_context::RenderContextCatalog;
 use std::collections::BTreeSet;
 #[cfg(feature = "png")]
@@ -262,8 +262,9 @@ fn render_resvg_safe_with_options(
     renderer
         .with_vendored_text_measurer()
         .with_diagram_id(name)
-        .render_svg_resvg_safe_sync(source)
+        .render_resvg_compatible_svg_sync(source)
         .unwrap_or_else(|err| panic!("{name}: headless resvg-safe render failed: {err}"))
+        .map(ResvgCompatibleSvg::into_string)
         .unwrap_or_else(|| panic!("{name}: no diagram detected"))
 }
 
@@ -743,8 +744,9 @@ fn default_svg_and_resvg_safe_svg_keep_separate_contracts() {
     }
 
     let export_svg = renderer
-        .render_svg_resvg_safe_sync(source)
+        .render_resvg_compatible_svg_sync(source)
         .expect("resvg-safe render should succeed")
+        .map(ResvgCompatibleSvg::into_string)
         .expect("diagram should be detected");
     assert_resvg_safe_output("export-contract", source, &export_svg);
     assert!(
@@ -781,8 +783,9 @@ fn quadrant_raw_and_resvg_safe_outputs_keep_distinct_color_contracts() {
     );
 
     let resvg_safe_svg = renderer
-        .render_svg_resvg_safe_sync(source)
+        .render_resvg_compatible_svg_sync(source)
         .expect("resvg-safe render should succeed")
+        .map(ResvgCompatibleSvg::into_string)
         .expect("quadrant should be detected");
     assert_resvg_safe_output("quadrant-artifact-lanes", source, &resvg_safe_svg);
 

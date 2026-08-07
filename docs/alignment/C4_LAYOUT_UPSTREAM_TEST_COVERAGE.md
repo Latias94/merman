@@ -1,4 +1,4 @@
-# C4 Layout Upstream Test Coverage (Mermaid@11.16.0)
+# C4 Layout Upstream Test Coverage (Mermaid@11.16.1)
 
 This document tracks which **upstream Mermaid C4 layout behaviors** are covered in `merman` via:
 
@@ -11,7 +11,7 @@ This document tracks which **upstream Mermaid C4 layout behaviors** are covered 
 - the semantic edge-label gate activated by the same `--check-dom` flag. This gate is independent
   of canonical DOM normalization and binds each label to its ordered C4 relation.
 
-Scope: Mermaid tag `@11.16.0`.
+Scope: Mermaid tag `@11.16.1`.
 
 ## Upstream sources (layout algorithm)
 

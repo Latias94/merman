@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "source": {
-    "mermaid_version": "11.16.0",
+    "mermaid_version": "11.16.1",
     "mermaid_cli_version": "11.16.0",
-    "mermaid_source_tag": "mermaid@11.16.0",
-    "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
-    "package_json_sha256": "947577fc1c008c828ad20eb732d3f864105083c53dde42c53078cfc2cb0cebc9",
-    "package_lock_sha256": "ee4807cdbff1f78777c661b066e1382f81e49677ec1f10d591aa8951915f063a",
+    "mermaid_source_tag": "mermaid@11.16.1",
+    "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
+    "package_json_sha256": "7d7e8fe6b51e2453626138bf8abe22c802522324b2288ee866718bc49b7c2441",
+    "package_lock_sha256": "e9efb5f87a2a39ee1a5184cd7d1bdc69d85bd47ace850adaf76ca99975eac6ac",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v3"
   },
@@ -29,9 +29,9 @@
         "release": "25.5.0"
       },
       "mermaid_runtime": {
-        "esm_version": "11.16.0",
-        "iife_version": "11.16.0",
-        "mermaid_package_sha256": "3b6a6e2a483e5e6b470be13f765dd648271a35b9d4e322d854d85bd065381ad0",
+        "esm_version": "11.16.1",
+        "iife_version": "11.16.1",
+        "mermaid_package_sha256": "25fce8dc49850c02fa00127febd3976315983f13e7018d86b8c330dde04d808a",
         "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
       },
       "font_probe": {
@@ -74,7 +74,7 @@
     },
     "stress_state_batch5_concurrency_four_regions_long_titles_061": {
       "input_sha256": "402ee0d572cbee499db71d30c03761abc7f9516fcb2c6a6b2494e9ddfb2d59aa",
-      "svg_sha256": "74bd9660db495faa3ae02d4bd5e2b6a3e5653bab580933a8d50b1a5a02eefa0d",
+      "svg_sha256": "18ea4d797751246819580601033e5305011745ec008c2b013dbfd98fcc3eaf1c",
       "renderer_profile": "mmdc-default"
     },
     "stress_state_batch5_deep_nesting_multiple_exits_068": {
@@ -149,12 +149,12 @@
     },
     "stress_state_comments_and_weird_spacing_018": {
       "input_sha256": "b4a217698bab2386ec1028bef33745979b49cb2202f528978b32a22576760ce9",
-      "svg_sha256": "a9a72b013434c7df98ea66cea7dfdc836bc33194b5bc413a0e8cfb874c63be86",
+      "svg_sha256": "9192a3757821738f5ca1a546aee9f92fe35efafdaef6864b48db9ba2c9814201",
       "renderer_profile": "mmdc-default"
     },
     "stress_state_comments_inline_composite_concurrency_043": {
       "input_sha256": "2ca5bfa326cf6778148a6e5ea18e539a0adee0e7fd230e3b43eedaaf6e7a3217",
-      "svg_sha256": "91690f8369610bb880e5142966c01fda8969e47d980b7b356997046a061165cd",
+      "svg_sha256": "15b649bb980e4bdc3e44928cbff2e6c4d5eceb770d2a0aef84f3b05c504205a0",
       "renderer_profile": "mmdc-default"
     },
     "stress_state_composite_self_links_022": {
@@ -169,12 +169,12 @@
     },
     "stress_state_concurrency_three_regions_029": {
       "input_sha256": "2a9638693fc7b4c23c8f57f0ce2b95b2812b625a03358714f9ad4d0af517756d",
-      "svg_sha256": "6b5515ee3c280f8c5770d0e5de8cd512b6dd0041e00d93c45d026dd8af1f805b",
+      "svg_sha256": "76feb5e34d67cce06450ebfe106fc018681172aa3ea84dd882f0567828ce9281",
       "renderer_profile": "mmdc-default"
     },
     "stress_state_concurrency_with_external_edges_051": {
       "input_sha256": "4c8e435e6b962c4e2cef93562b28f22fcded2f11ab67bcf55cfdd9ea09a52635",
-      "svg_sha256": "95f1882b198984e588eca2de8217acc3b6b261e3a3fe5670a362fc232d3bd0b3",
+      "svg_sha256": "eecd96aa93a05f837b27a2546ae2fc9d9a2b3c8d9bf679661f6ce2c11b0493fa",
       "renderer_profile": "mmdc-default"
     },
     "stress_state_cross_composite_transitions_007": {
@@ -304,7 +304,7 @@
     },
     "stress_state_nested_composite_concurrency_001": {
       "input_sha256": "c1cce900de81950a5ae2843134c921109beeb64ffe8d8263fa4a938f482b4fa6",
-      "svg_sha256": "b30dbd3ea83e09819260a9578b7da5d4782a9a829df2b4354d95b98591edf6f9",
+      "svg_sha256": "80cdd1a973cbb7f5d06962800a8fb538ec80e7e6036dc7ba5ec496254602d920",
       "renderer_profile": "mmdc-default"
     },
     "stress_state_nested_composite_cross_edges_and_notes_050": {
@@ -384,7 +384,7 @@
     },
     "stress_state_three_way_concurrency_013": {
       "input_sha256": "3bcf2c6f2ddc8af35c586651138f92add10a1d66dcb9db88b3125b60f1c78758",
-      "svg_sha256": "e541ffd06566e545b80928095f7868125ff7bfa7de79f42bc898780d530cd19f",
+      "svg_sha256": "9826de027652a4e407f02e8e7358244012d3f21199a1459dbd70858b99373e91",
       "renderer_profile": "mmdc-default"
     },
     "stress_state_unicode_and_rtl_036": {
@@ -504,7 +504,7 @@
     },
     "upstream_cypress_statediagram_spec_should_render_concurrency_states_019": {
       "input_sha256": "9f89077abf2d4b9012fc7ea76028ca784b69b9d13d232a5f3bdd234f4a13c547",
-      "svg_sha256": "d95d35f0a7ebbf2ee3ac1667d596a97a4ee7254849089bd9546d30fec36d7fd5",
+      "svg_sha256": "86c720ca5f4fa54a273207f966baba245108da7b26b62918f6e1f50b061ff9aa",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_statediagram_spec_should_render_forks_and_joins_018": {
@@ -544,7 +544,7 @@
     },
     "upstream_cypress_statediagram_v2_spec_should_align_dividers_correctly_038": {
       "input_sha256": "07104c59b3c32936b852bb03c99ead90a7afe33931536d92ab4809e08971f04f",
-      "svg_sha256": "c3d6c25e48ca89c1ddf0fced04af54ff610715a7256abaca31d747f8c4b0f880",
+      "svg_sha256": "09fda1e52ed986b2d185fca9eb08a943b613d601a799b00fc86b7af502da6292",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_statediagram_v2_spec_should_allow_styles_to_take_effect_in_subgraphs_036": {
@@ -689,7 +689,7 @@
     },
     "upstream_cypress_statediagram_v2_spec_v2_should_render_concurrency_states_020": {
       "input_sha256": "0f823c07d492e2e9246b228c40aaa636e2883da17270f7a258de1823193db7e9",
-      "svg_sha256": "c91c0e96812fbff2dc77b42ffdac3b89b32d377822c9b5ac3b79a23a7e30f19b",
+      "svg_sha256": "778dac650016c8445b25bccd3c33fd86fb5b4afa7a342713d4221c532db91bf9",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_statediagram_v2_spec_v2_should_render_forks_and_joins_019": {
@@ -779,7 +779,7 @@
     },
     "upstream_docs_statediagram_concurrency_030": {
       "input_sha256": "17d68bbfe39896a12f203e29a754680b1a71aab56d3644f705e46edffee2fdbb",
-      "svg_sha256": "b4210428580878bc13eb795330386f451389c60395db3880ab5d4ab7071123a0",
+      "svg_sha256": "cd6bad130336dae7c1da74c9b67d9ee18cf24eaf1ebae2a1d7df0ff7b30dadb1",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_statediagram_forks_026": {
@@ -1069,12 +1069,12 @@
     },
     "upstream_pkgtests_statediagram_spec_022": {
       "input_sha256": "ec222ca4739d2ecd7e6db0fcda2c6231b2f0865507d124df3ef85f677daae601",
-      "svg_sha256": "80483ee02951714acbf951cca03dc31474ef503263c6ba3a1fbd7ef5a9054e28",
+      "svg_sha256": "9ef5e692149639cf5a7b83ff8be865aaaed9c4ab95c8a2f933cb80151bc82db9",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_statediagram_spec_023": {
       "input_sha256": "e95f0da71e585eea7b36dd21497e267b917002c47017b49bbc263b71c4da2c21",
-      "svg_sha256": "870a2172ace8e288d872b7826d2c90734856b8c3cd884dd49364200a6480a2a0",
+      "svg_sha256": "434f92aad69f67be62d1577b81417aedf6e84746d80f846e78f7be79cf0da5ae",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_statediagram_spec_025": {
@@ -1204,12 +1204,12 @@
     },
     "upstream_pkgtests_statediagram_v2_spec_022": {
       "input_sha256": "123c2ba2cac6a749e14b023acc2bd8fab2a051f8c84922734076eebe4e5b09e6",
-      "svg_sha256": "bc9d251edeade9e389692303d3009c93b76a459325f57341ad8dddf2fb7e33e3",
+      "svg_sha256": "865c0f233d9befcc5b57a0705583772ae083d932b32747c0db5e6cf79533ec36",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_statediagram_v2_spec_023": {
       "input_sha256": "a4b17bc451d573dbad7c7636388ce555071565ce71158831623dbd844d70c468",
-      "svg_sha256": "fe9828e0cf48848fadc9a20aba78b8df0c8d8cb348c87aa771b12cba951f964f",
+      "svg_sha256": "69ec03b358d1b761a97e321284750f95e83b9235bff79effde7d2d27d405261e",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_statediagram_v2_spec_025": {
@@ -1274,12 +1274,12 @@
     },
     "upstream_stateDiagram_concurrent_state_minimal_spec": {
       "input_sha256": "4feab66e91540a6eb9060a9168f475afda0b48967c39945ab4f6129e17a8bab4",
-      "svg_sha256": "27e56e66e7e954147d65d14894f14a69179096ff40a09f6042a24b34d7520bd7",
+      "svg_sha256": "7e4de58ce4dbdcbab616bbc0a8c39010e1e86db9e13bcc639c369aab7b8d7a6b",
       "renderer_profile": "mmdc-default"
     },
     "upstream_stateDiagram_concurrent_state_spec": {
       "input_sha256": "e51115f5c87d6fb6ca7defd7656b62e6057a5bb8418b01c6987121c505487e14",
-      "svg_sha256": "be35a25eecc91e77bdeed865a401081d012af39410265aa1114827fdb6797512",
+      "svg_sha256": "9de94665f038af322f7b2e44d6d6a29acf9f3930fdef14adb108c0c5ff4f25db",
       "renderer_profile": "mmdc-default"
     },
     "upstream_stateDiagram_direction_default_spec": {
@@ -1414,7 +1414,7 @@
     },
     "upstream_stateDiagram_v2_concurrent_state_spec": {
       "input_sha256": "ae25c53cc9432b727aaf5730153a8b3d9545da9c235127fd00d9021ca1cdc269",
-      "svg_sha256": "dcb1c5ddaef0bf644abea1f1aead9aa2b87b12ef7fc14be40ae795739462de1e",
+      "svg_sha256": "f624660e27fe341b9b00fd5ddef03140cb6fc595d3dbe1f1ba006ba58edcd993",
       "renderer_profile": "mmdc-default"
     },
     "upstream_stateDiagram_v2_floating_notes_spec": {

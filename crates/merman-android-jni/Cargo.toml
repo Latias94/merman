@@ -18,9 +18,7 @@ artifact-profile-required = true
 
 [features]
 default = []
-system-clock = ["merman-bindings-core/system-clock"]
-system-timezone = ["merman-bindings-core/system-timezone"]
-system-random = ["merman-bindings-core/system-random"]
+native-runtime = ["merman-bindings-core/native-runtime"]
 analysis = ["merman-bindings-core/analysis"]
 ascii = ["merman-bindings-core/ascii"]
 svg = ["merman-bindings-core/svg"]
@@ -36,3 +34,4 @@ merman-bindings-core.workspace = true
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = { version = "0.22.4", default-features = false }
+simd_cesu8 = "1.1.1"

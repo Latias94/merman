@@ -2,18 +2,15 @@ package io.merman
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.merman.examples.runMermanSmoke
-import org.json.JSONArray
-import org.json.JSONObject
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class MermanInstrumentedSmokeTest {
     @Test
-    fun runsPublicSmokeIncludingThrowingTextMeasurerFallback() {
+    fun runsPublicPackageSmoke() {
         runMermanSmoke()
     }
-
     @Test
     fun parsesStructuredResourceFailureDetails() {
         val error = MermanException(

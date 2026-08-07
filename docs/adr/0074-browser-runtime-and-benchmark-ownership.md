@@ -209,9 +209,12 @@ the main renderer already requires it, while adding the editor WASM creates a se
 artifact and does not satisfy the lower-cold-bytes/no-memory-regression selection rule. The
 measurement remains an explicit on-demand architectural receipt rather than a browser CI gate.
 Receipt schema 2 binds the decision to deterministic measurement, startup/Worker closure, exact
-runtime package-provenance, and semantic-evidence digests. A hermetic verifier checks those
-inputs, the selected dependency/import path, and every derived decision field during normal tests;
-only a selection-sensitive change requires the browser-heavy measurement to be rerun.
+runtime package-provenance, and semantic-evidence digests at measurement time. Normal tests verify
+the receipt's internally derived decision and the current selected dependency, lockfile link, and
+Worker import path; they do not compare historical capture digests with current implementation
+bytes. Ordinary source and artifact changes remain owned by their build, provenance, semantic, and
+contract tests. The browser-heavy measurement is rerun only for an explicit architecture
+reconsideration of the full/editor selection or its methodology.
 
 The editor Worker owns one analyzed document URI and monotonically increasing version. `didOpen`,
 `didChange`, query, versioned result validation, and disposal cross its typed channel. Diagnostics,

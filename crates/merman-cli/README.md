@@ -247,7 +247,7 @@ Each adapter is also independently selectable with `--system-clock`, `--system-t
 | `trusted-native` | Controlled local automation; CLI default |
 | `unbounded-for-trusted-input` | Explicitly trusted work that owns its cost |
 
-Use repeatable `--resource-limit STABLE_ID=POSITIVE_U64` only for a scoped override. The unbounded profile retains hard protocol guards, finite network timeouts, redirect limits, overflow checks, and backend capabilities.
+Use repeatable `--resource-limit STABLE_ID=POSITIVE_U64` only for a scoped override. The unbounded profile retains hard protocol guards, finite network timeouts, redirect limits, overflow checks, renderer-owned icon-registry ceilings, and backend capabilities.
 
 Local icon packs stay offline:
 
@@ -258,6 +258,18 @@ merman-cli render diagram.mmd \
 merman-cli render diagram.mmd \
   --icon-pack-source logos#icons.json
 ```
+
+Icon acquisition and renderer admission are separate bounded stages. The CLI can accept at most 16
+packs, 16 MiB for one local or remote pack, and 32 MiB in aggregate; constrained profiles are
+tighter. No profile or override can exceed those renderer-owned constructor capabilities. Each
+acquired body is then passed as raw bytes to the shared transactional IconifyJSON builder, which
+validates JSON structure, identifiers, geometry, aliases, SVG bodies, retained memory, and build
+work before publishing an immutable registry. A failed pack publishes no partial registry.
+
+Local package/path lookup and optional HTTP acquisition belong only to the CLI `icons` and
+`network-icons` features. The `merman` and `merman-render` Rust library surfaces include icon
+registry construction in their existing `svg` capability and do not pull CLI lookup, URL, DNS,
+HTTP, Tokio, or filesystem-acquisition dependencies.
 
 HTTP(S) sources require `network-icons` plus `--allow-network`. Loopback, private, link-local, multicast, and unspecified destinations additionally require `--allow-private-network`. Every redirect is resolved and authorized again; diagnostics redact URL credentials, paths, queries, and fragments.
 

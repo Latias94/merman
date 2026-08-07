@@ -7,82 +7,99 @@
 //! typed method set, and every diagram operation goes through `BindingEngine::execute` with the
 //! generated operation vocabulary.
 
+mod artifact_contract;
+
+use artifact_contract::android_artifact_contract;
+#[cfg(feature = "svg")]
+use jni::objects::Global;
 use jni::{
-    Env, EnvUnowned, JavaVM, NativeMethod,
-    errors::{Result as JniResult, ThrowRuntimeExAndDefault},
-    objects::{JClass, JObject, JString, JValue},
+    Env, JavaVM, NativeMethod,
+    errors::{Error as JniError, Result as JniResult},
+    objects::{JClass, JObject, JObjectArray, JString, JValue},
     strings::JNIString,
-    sys::{JNI_ERR, JNI_VERSION_1_6, jboolean, jint, jlong, jobject, jstring},
+    sys::{JNI_ERR, JNI_FALSE, JNI_TRUE, JNI_VERSION_1_6, jboolean, jint, jlong},
+};
+use merman_bindings_core::{
+    BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode, BindingEngineServices,
+    BindingError, BindingOperationRequest, BindingOperationResult,
 };
 #[cfg(feature = "svg")]
-use jni::{errors::Error as JniError, objects::Global};
-use merman_bindings_core::{
-    ArtifactCapabilitySurface, BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode,
-    BindingError, BindingOperationRequest, BindingOperationResult, BindingStatus,
-    TextMeasurementProviderProjection, execute_once,
-};
+use merman_bindings_core::{BindingIconRegistry, BindingStatus, IconPack, build_icon_registry};
 #[cfg(feature = "svg")]
 use std::cell::Cell;
 use std::{
     collections::BTreeMap,
     ffi::c_void,
     panic::{AssertUnwindSafe, catch_unwind},
-    ptr,
     sync::{Arc, Mutex, OnceLock},
 };
 
 const ANDROID_TRANSPORT_API_VERSION: u32 = 1;
 
-fn android_transport_capability_surface() -> ArtifactCapabilitySurface {
-    #[cfg(feature = "svg")]
-    let text_measurement = TextMeasurementProviderProjection::PreserveCompiled;
-    #[cfg(not(feature = "svg"))]
-    let text_measurement = TextMeasurementProviderProjection::VendoredOnly;
-
-    merman_bindings_core::binding_transport_capability_surface()
-        .project_to_descriptor_target("native", text_measurement)
-        .expect("the Android transport exposes a valid native capability surface")
+struct JniEngineState {
+    engine: Mutex<Option<Arc<BindingEngine>>>,
+    admission: Arc<BindingEngineAdmission>,
 }
 
-struct JniReusableEngine {
-    engine: BindingEngine,
-    admission: Arc<BindingEngineAdmission>,
+impl JniEngineState {
+    fn acquire_engine(&self) -> Option<Arc<BindingEngine>> {
+        self.engine
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+            .map(Arc::clone)
+    }
+
+    fn detach_engine(&self) -> Option<Arc<BindingEngine>> {
+        self.engine
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take()
+    }
 }
 
 #[derive(Default)]
 struct JniEngineRegistry {
     last_token: u64,
-    engines: BTreeMap<u64, Arc<JniReusableEngine>>,
+    states: BTreeMap<u64, Arc<JniEngineState>>,
 }
 
 impl JniEngineRegistry {
-    fn register(&mut self, engine: Arc<JniReusableEngine>) -> Result<jlong, BindingError> {
-        let token = self
-            .last_token
-            .checked_add(1)
-            .filter(|token| *token <= i64::MAX as u64)
-            .ok_or_else(|| {
-                BindingError::new(
-                    BindingStatus::InternalError,
-                    "Android reusable-engine token space is exhausted",
-                )
-            })?;
+    fn register(
+        &mut self,
+        state: Arc<JniEngineState>,
+    ) -> Result<jlong, (Box<BindingError>, Arc<JniEngineState>)> {
+        let token = match next_jni_engine_token(self.last_token) {
+            Ok(token) => token,
+            Err(error) => return Err((Box::new(error), state)),
+        };
         self.last_token = token;
-        let previous = self.engines.insert(token, engine);
+        let previous = self.states.insert(token, state);
         debug_assert!(previous.is_none(), "Android engine tokens are never reused");
         Ok(token as jlong)
     }
 
-    fn acquire(&self, token: u64) -> Option<Arc<JniReusableEngine>> {
-        self.engines.get(&token).map(Arc::clone)
+    fn acquire(&self, token: u64) -> Option<Arc<JniEngineState>> {
+        self.states.get(&token).map(Arc::clone)
     }
 
-    fn retire(&mut self, token: u64) -> Option<Arc<JniReusableEngine>> {
-        self.engines.remove(&token)
+    fn retire(&mut self, token: u64) -> Option<Arc<JniEngineState>> {
+        self.states.remove(&token)
     }
 }
 
 static ENGINE_REGISTRY: OnceLock<Mutex<JniEngineRegistry>> = OnceLock::new();
+
+fn next_jni_engine_token(last_token: u64) -> Result<u64, BindingError> {
+    let token = if last_token == 0 {
+        Some(1)
+    } else {
+        last_token.checked_add(1)
+    };
+    token
+        .filter(|token| *token <= i64::MAX as u64)
+        .ok_or_else(|| BindingError::internal("Android engine token space is exhausted"))
+}
 
 #[cfg(feature = "svg")]
 struct JniHostTextMeasurer {
@@ -336,282 +353,293 @@ pub unsafe extern "system" fn JNI_OnLoad(
     }
 }
 
-macro_rules! native_method {
-    ($name:literal, $signature:literal, $function:ident) => {{
-        // Safety: each entry is adjacent to the Kotlin declaration and uses a static JNI method
-        // callback with the exact descriptor recorded in `register_native_methods`.
-        unsafe {
-            NativeMethod::from_raw_parts(
-                jni::jni_str!($name),
-                jni::jni_str!($signature),
-                $function as *const () as *mut c_void,
-            )
-        }
-    }};
-}
+const MERMAN_METHODS: &[NativeMethod] = &[
+    jni::native_method! {
+        static fn native_runtime_catalog_json() -> java.lang.String,
+    },
+    jni::native_method! {
+        static fn native_execute(
+            operation_id: java.lang.String,
+            source: java.lang.String,
+            options_json: java.lang.String,
+            uri: java.lang.String,
+        ) -> io.merman.MermanOperationResult,
+    },
+    jni::native_method! {
+        static fn native_metadata_json(id: java.lang.String) -> java.lang.String,
+    },
+];
+
+const ENGINE_METHODS: &[NativeMethod] = &[
+    jni::native_method! {
+        static fn native_engine_new(
+            options_json: java.lang.String,
+            icon_pack_json: [java.lang.String],
+            icon_pack_registration_names: [java.lang.String],
+            measurer: io.merman.MermanTextMeasurer,
+        ) -> jlong,
+        name = "nativeNew",
+    },
+    jni::native_method! {
+        static fn native_engine_try_close(handle: jlong) -> jboolean,
+        name = "nativeTryClose",
+    },
+    jni::native_method! {
+        static fn native_engine_execute(
+            handle: jlong,
+            operation_id: java.lang.String,
+            source: java.lang.String,
+            options_json: java.lang.String,
+            uri: java.lang.String,
+        ) -> io.merman.MermanOperationResult,
+        name = "nativeExecute",
+    },
+];
 
 fn register_native_methods(env: &mut Env<'_>) -> JniResult<()> {
+    let merman_class = env.find_class(jni::jni_str!("io/merman/Merman"))?;
+    // Safety: `jni::native_method!` generates an ABI-checked wrapper for every descriptor.
+    unsafe { env.register_native_methods(merman_class, MERMAN_METHODS)? };
+
     let engine_class = env.find_class(jni::jni_str!("io/merman/MermanEngine"))?;
-    let engine_methods = [
-        native_method!(
-            "nativeRuntimeCatalogJson",
-            "()Ljava/lang/String;",
-            native_runtime_catalog_json
-        ),
-        native_method!(
-            "nativeExecute",
-            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lio/merman/MermanOperationResult;",
-            native_execute
-        ),
-        native_method!(
-            "nativeMetadataJson",
-            "(Ljava/lang/String;)Ljava/lang/String;",
-            native_metadata_json
-        ),
-    ];
-    // The Kotlin declarations are static (`@JvmStatic`) and the signatures above are kept next to
-    // their Rust callbacks so a load failure replaces undefined name-based lookup.
-    unsafe { env.register_native_methods(engine_class, &engine_methods)? };
-
-    let reusable_class = env.find_class(jni::jni_str!("io/merman/MermanReusableEngine"))?;
-    let reusable_methods = [
-        native_method!(
-            "nativeNew",
-            "(Ljava/lang/String;Lio/merman/MermanTextMeasurer;)J",
-            native_engine_new
-        ),
-        native_method!("nativeTryClose", "(J)Z", native_engine_try_close),
-        native_method!(
-            "nativeExecute",
-            "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lio/merman/MermanOperationResult;",
-            native_engine_execute
-        ),
-    ];
-    unsafe { env.register_native_methods(reusable_class, &reusable_methods) }
+    // Safety: `jni::native_method!` generates an ABI-checked wrapper for every descriptor.
+    unsafe { env.register_native_methods(engine_class, ENGINE_METHODS) }
 }
 
-pub extern "system" fn native_runtime_catalog_json(
-    mut unowned_env: EnvUnowned<'_>,
-    _class: JClass<'_>,
-) -> jstring {
-    with_env_resolved(&mut unowned_env, |env| {
-        Ok(result_to_java_string(
-            env,
-            merman_bindings_core::runtime_catalog_json_for(
-                ANDROID_TRANSPORT_API_VERSION,
-                android_transport_capability_surface(),
-            ),
-        ))
-    })
+fn native_runtime_catalog_json<'local>(
+    env: &mut Env<'local>,
+    _class: JClass<'local>,
+) -> JniResult<JString<'local>> {
+    result_to_java_string(
+        env,
+        android_artifact_contract().runtime_catalog_json(ANDROID_TRANSPORT_API_VERSION),
+    )
 }
 
-pub extern "system" fn native_execute(
-    mut unowned_env: EnvUnowned<'_>,
-    _class: JClass<'_>,
-    operation_id: JString<'_>,
-    source: JString<'_>,
-    options_json: JObject<'_>,
-    uri: JObject<'_>,
-) -> jobject {
-    with_env_resolved(&mut unowned_env, |env| {
-        let Some(operation_id) = required_java_string(env, operation_id, "operationId") else {
-            return Ok(ptr::null_mut());
-        };
-        let Some(source) = required_java_string(env, source, "source") else {
-            return Ok(ptr::null_mut());
-        };
-        let Some(options_json) = optional_java_string(env, options_json, "optionsJson") else {
-            return Ok(ptr::null_mut());
-        };
-        let Some(uri) = nullable_java_string(env, uri, "uri") else {
-            return Ok(ptr::null_mut());
-        };
-        let result = execute_once(BindingOperationRequest {
-            operation_id: &operation_id,
-            source: source.as_bytes(),
-            uri: uri.as_deref().map(str::as_bytes),
-            options_json: options_json.as_bytes(),
-        });
-        Ok(result_to_java_operation_result(env, result))
-    })
+fn native_execute<'local>(
+    env: &mut Env<'local>,
+    _class: JClass<'local>,
+    operation_id: JString<'local>,
+    source: JString<'local>,
+    options_json: JString<'local>,
+    uri: JString<'local>,
+) -> JniResult<JObject<'local>> {
+    let Some(operation_id) = required_java_string(env, operation_id, "operationId") else {
+        return Ok(JObject::null());
+    };
+    let Some(source) = required_java_string(env, source, "source") else {
+        return Ok(JObject::null());
+    };
+    let Some(options_json) = optional_java_string(env, options_json, "optionsJson") else {
+        return Ok(JObject::null());
+    };
+    let Some(uri) = nullable_java_string(env, uri, "uri") else {
+        return Ok(JObject::null());
+    };
+    result_to_java_operation_result(
+        env,
+        android_artifact_contract().execute_once(
+            BindingOperationRequest::new(&operation_id, source.as_bytes())
+                .with_optional_uri(uri.as_deref().map(str::as_bytes))
+                .with_options_json(options_json.as_bytes()),
+        ),
+    )
 }
 
-pub extern "system" fn native_metadata_json(
-    mut unowned_env: EnvUnowned<'_>,
-    _class: JClass<'_>,
-    id: JString<'_>,
-) -> jstring {
-    with_env_resolved(&mut unowned_env, |env| {
-        let Some(id) = required_java_string(env, id, "metadataId") else {
-            return Ok(ptr::null_mut());
-        };
-        Ok(result_to_java_string(
-            env,
-            merman_bindings_core::binding_metadata_json_for(
-                &id,
-                &android_transport_capability_surface(),
-            ),
-        ))
-    })
+fn native_metadata_json<'local>(
+    env: &mut Env<'local>,
+    _class: JClass<'local>,
+    id: JString<'local>,
+) -> JniResult<JString<'local>> {
+    let Some(id) = required_java_string(env, id, "metadataId") else {
+        return Ok(JString::null());
+    };
+    result_to_java_string(env, android_artifact_contract().metadata_json(&id))
 }
 
-pub extern "system" fn native_engine_new(
-    mut unowned_env: EnvUnowned<'_>,
-    _class: JClass<'_>,
-    options_json: JObject<'_>,
-    measurer: JObject<'_>,
-) -> jlong {
-    with_env_resolved(&mut unowned_env, |env| {
-        let Some(options_json) = optional_java_string(env, options_json, "optionsJson") else {
-            return Ok(0);
-        };
-        let result = BindingEngine::from_options(options_json.as_bytes()).and_then(|engine| {
-            let admission = BindingEngineAdmission::new(if measurer.is_null() {
-                BindingEngineAdmissionMode::Concurrent
-            } else {
-                BindingEngineAdmissionMode::HostCallback
-            });
+fn native_engine_new<'local>(
+    env: &mut Env<'local>,
+    _class: JClass<'local>,
+    options_json: JString<'local>,
+    icon_pack_json: JObjectArray<'local, JString<'local>>,
+    icon_pack_registration_names: JObjectArray<'local, JString<'local>>,
+    measurer: JObject<'local>,
+) -> JniResult<jlong> {
+    let Some(options_json) = optional_java_string(env, options_json, "optionsJson") else {
+        return Ok(0);
+    };
+    let admission = BindingEngineAdmission::new(if measurer.is_null() {
+        BindingEngineAdmissionMode::Concurrent
+    } else {
+        BindingEngineAdmissionMode::HostCallback
+    });
 
-            #[cfg(feature = "svg")]
-            let engine = if measurer.is_null() {
-                engine
-            } else {
-                let callback = env.new_global_ref(&measurer).map_err(jni_binding_error)?;
-                let vm = env.get_java_vm().map_err(jni_binding_error)?;
-                engine.with_host_text_measurer(Arc::new(JniHostTextMeasurer::new(
-                    vm,
-                    callback,
-                    Arc::clone(&admission),
-                )))
-            };
+    let result = (|| {
+        #[cfg(feature = "svg")]
+        let mut services = BindingEngineServices::new();
+        #[cfg(feature = "svg")]
+        if let Some(registry) =
+            build_jni_icon_registry(env, &icon_pack_json, &icon_pack_registration_names)?
+        {
+            services = services.with_icon_registry(registry);
+        }
+        #[cfg(feature = "svg")]
+        if !measurer.is_null() {
+            let callback = env.new_global_ref(&measurer).map_err(jni_binding_error)?;
+            let vm = env.get_java_vm().map_err(jni_binding_error)?;
+            services = services.with_host_text_measurer(Arc::new(JniHostTextMeasurer::new(
+                vm,
+                callback,
+                Arc::clone(&admission),
+            )));
+        }
 
-            #[cfg(not(feature = "svg"))]
-            let engine = if measurer.is_null() {
-                engine
-            } else {
+        #[cfg(not(feature = "svg"))]
+        let services = {
+            if icon_pack_array_len(env, &icon_pack_json, &icon_pack_registration_names)? != 0 {
+                return Err(BindingError::missing_capability(
+                    "svg",
+                    "icon registries require the svg capability",
+                ));
+            }
+            if !measurer.is_null() {
                 return Err(BindingError::missing_capability(
                     "svg",
                     "host text measurement requires the svg capability",
                 ));
-            };
+            }
+            BindingEngineServices::new()
+        };
 
-            let state = Arc::new(JniReusableEngine { engine, admission });
-            engine_registry()
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .register(state)
+        let engine = Arc::new(
+            android_artifact_contract()
+                .create_engine_with_services(options_json.as_bytes(), services)?,
+        );
+        let state = Arc::new(JniEngineState {
+            engine: Mutex::new(Some(engine)),
+            admission,
         });
-        match result {
+        let publication = engine_registry()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .register(state);
+        match publication {
             Ok(handle) => Ok(handle),
-            Err(error) => {
-                throw_merman_exception(env, binding_error_text(error));
-                Ok(0)
+            Err((error, state)) => {
+                drop(state);
+                Err(*error)
             }
         }
-    })
+    })();
+    match result {
+        Ok(handle) => Ok(handle),
+        Err(error) => {
+            throw_merman_exception(env, binding_error_text(error));
+            Ok(0)
+        }
+    }
 }
 
-pub extern "system" fn native_engine_try_close(
-    mut unowned_env: EnvUnowned<'_>,
-    _class: JClass<'_>,
+fn native_engine_try_close<'local>(
+    env: &mut Env<'local>,
+    _class: JClass<'local>,
     handle: jlong,
-) -> jboolean {
-    with_env_resolved(&mut unowned_env, |env| {
-        let Some(token) = engine_token(env, handle) else {
-            return Ok(false);
-        };
-        let Some(state) = acquire_engine(env, token) else {
-            return Ok(false);
-        };
-        if let Err(error) = state.admission.try_close() {
-            throw_merman_exception(env, binding_error_text(error.into()));
-            return Ok(false);
-        }
+) -> JniResult<jboolean> {
+    let Some(token) = jni_token(handle) else {
+        return Ok(JNI_TRUE);
+    };
+    let state = engine_registry()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .acquire(token);
+    let Some(state) = state else {
+        return Ok(JNI_TRUE);
+    };
+    let close = state.admission.try_close_detaching(|| {
         let retired = engine_registry()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .retire(token);
-        if retired.is_none() {
-            throw_merman_exception(env, "Merman reusable engine is closed");
-            return Ok(false);
+        retired.as_ref().and_then(|state| state.detach_engine())
+    });
+    match close {
+        Ok(()) | Err(merman_bindings_core::BindingEngineAdmissionError::Closed) => Ok(JNI_TRUE),
+        Err(error) => {
+            throw_merman_exception(env, binding_error_text(error.into()));
+            Ok(JNI_FALSE)
         }
-        Ok(true)
-    })
+    }
 }
 
-pub extern "system" fn native_engine_execute(
-    mut unowned_env: EnvUnowned<'_>,
-    _class: JClass<'_>,
+fn native_engine_execute<'local>(
+    env: &mut Env<'local>,
+    _class: JClass<'local>,
     handle: jlong,
-    operation_id: JString<'_>,
-    source: JString<'_>,
-    options_json: JObject<'_>,
-    uri: JObject<'_>,
-) -> jobject {
-    with_env_resolved(&mut unowned_env, |env| {
-        let Some(token) = engine_token(env, handle) else {
-            return Ok(ptr::null_mut());
-        };
-        let Some(operation_id) = required_java_string(env, operation_id, "operationId") else {
-            return Ok(ptr::null_mut());
-        };
-        let Some(source) = required_java_string(env, source, "source") else {
-            return Ok(ptr::null_mut());
-        };
-        let Some(options_json) = optional_java_string(env, options_json, "optionsJson") else {
-            return Ok(ptr::null_mut());
-        };
-        let Some(uri) = nullable_java_string(env, uri, "uri") else {
-            return Ok(ptr::null_mut());
-        };
-        let Some(state) = acquire_engine(env, token) else {
-            return Ok(ptr::null_mut());
-        };
-        let result = state
-            .admission
-            .enter_operation()
-            .map_err(BindingError::from)
-            .and_then(|_operation| {
-                state.engine.execute(BindingOperationRequest {
-                    operation_id: &operation_id,
-                    source: source.as_bytes(),
-                    uri: uri.as_deref().map(str::as_bytes),
-                    options_json: options_json.as_bytes(),
-                })
-            });
-        Ok(result_to_java_operation_result(env, result))
-    })
+    operation_id: JString<'local>,
+    source: JString<'local>,
+    options_json: JString<'local>,
+    uri: JString<'local>,
+) -> JniResult<JObject<'local>> {
+    let Some(token) = engine_token(env, handle) else {
+        return Ok(JObject::null());
+    };
+    let Some(operation_id) = required_java_string(env, operation_id, "operationId") else {
+        return Ok(JObject::null());
+    };
+    let Some(source) = required_java_string(env, source, "source") else {
+        return Ok(JObject::null());
+    };
+    let Some(options_json) = optional_java_string(env, options_json, "optionsJson") else {
+        return Ok(JObject::null());
+    };
+    let Some(uri) = nullable_java_string(env, uri, "uri") else {
+        return Ok(JObject::null());
+    };
+    let Some(state) = acquire_engine_state(env, token) else {
+        return Ok(JObject::null());
+    };
+    let result = state
+        .admission
+        .enter_operation()
+        .map_err(BindingError::from)
+        .and_then(|_operation| {
+            let engine = state
+                .acquire_engine()
+                .ok_or_else(|| BindingError::invalid_argument("Merman engine is closed"))?;
+            engine.execute(
+                BindingOperationRequest::new(&operation_id, source.as_bytes())
+                    .with_optional_uri(uri.as_deref().map(str::as_bytes))
+                    .with_options_json(options_json.as_bytes()),
+            )
+        });
+    result_to_java_operation_result(env, result)
 }
 
 fn engine_registry() -> &'static Mutex<JniEngineRegistry> {
     ENGINE_REGISTRY.get_or_init(|| Mutex::new(JniEngineRegistry::default()))
 }
 
+fn jni_token(handle: jlong) -> Option<u64> {
+    u64::try_from(handle).ok().filter(|token| *token != 0)
+}
+
 fn engine_token(env: &mut Env<'_>, handle: jlong) -> Option<u64> {
-    let token = u64::try_from(handle).ok().filter(|token| *token != 0);
+    let token = jni_token(handle);
     if token.is_none() {
-        throw_merman_exception(env, "Merman reusable engine is closed");
+        throw_merman_exception(env, "Merman engine is closed");
     }
     token
 }
 
-fn acquire_engine(env: &mut Env<'_>, token: u64) -> Option<Arc<JniReusableEngine>> {
-    let engine = engine_registry()
+fn acquire_engine_state(env: &mut Env<'_>, token: u64) -> Option<Arc<JniEngineState>> {
+    let state = engine_registry()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .acquire(token);
-    if engine.is_none() {
-        throw_merman_exception(env, "Merman reusable engine is closed");
+    if state.is_none() {
+        throw_merman_exception(env, "Merman engine is closed");
     }
-    engine
-}
-
-fn with_env_resolved<T, F>(env: &mut EnvUnowned<'_>, f: F) -> T
-where
-    T: Default,
-    F: FnOnce(&mut Env<'_>) -> JniResult<T>,
-{
-    env.with_env(f).resolve::<ThrowRuntimeExAndDefault>()
+    state
 }
 
 fn required_java_string(env: &mut Env<'_>, value: JString<'_>, name: &str) -> Option<String> {
@@ -622,11 +650,10 @@ fn required_java_string(env: &mut Env<'_>, value: JString<'_>, name: &str) -> Op
     java_string(env, value)
 }
 
-fn optional_java_string(env: &mut Env<'_>, value: JObject<'_>, name: &str) -> Option<String> {
+fn optional_java_string(env: &mut Env<'_>, value: JString<'_>, name: &str) -> Option<String> {
     if value.is_null() {
         return Some(String::new());
     }
-    let value = env.cast_local::<JString<'_>>(value).ok()?;
     java_string(env, value).or_else(|| {
         throw_merman_exception(env, format!("{name} was not a valid Java string"));
         None
@@ -635,13 +662,12 @@ fn optional_java_string(env: &mut Env<'_>, value: JObject<'_>, name: &str) -> Op
 
 fn nullable_java_string(
     env: &mut Env<'_>,
-    value: JObject<'_>,
+    value: JString<'_>,
     name: &str,
 ) -> Option<Option<String>> {
     if value.is_null() {
         return Some(None);
     }
-    let value = env.cast_local::<JString<'_>>(value).ok()?;
     java_string(env, value).map(Some).or_else(|| {
         throw_merman_exception(env, format!("{name} was not a valid Java string"));
         None
@@ -649,33 +675,307 @@ fn nullable_java_string(
 }
 
 fn java_string(env: &mut Env<'_>, value: JString<'_>) -> Option<String> {
-    match value.mutf8_chars(env) {
-        Ok(value) => Some(value.to_string()),
-        Err(error) => {
+    match decode_java_string_strict(env, &value) {
+        Ok(value) => Some(value),
+        Err(JavaStringDecodeError::Jni(error)) => {
             throw_merman_exception(env, format!("failed to read Java string: {error}"));
+            None
+        }
+        Err(JavaStringDecodeError::InvalidModifiedUtf8(error)) => {
+            throw_merman_exception(env, format!("Java string was not valid Unicode: {error}"));
             None
         }
     }
 }
 
-fn result_to_java_operation_result(
+enum JavaStringDecodeError {
+    Jni(JniError),
+    InvalidModifiedUtf8(simd_cesu8::DecodingError),
+}
+
+fn decode_java_string_strict(
     env: &mut Env<'_>,
+    value: &JString<'_>,
+) -> Result<String, JavaStringDecodeError> {
+    let chars = value.mutf8_chars(env).map_err(JavaStringDecodeError::Jni)?;
+    let decoded = simd_cesu8::mutf8::decode_strict(chars.to_bytes())
+        .map_err(JavaStringDecodeError::InvalidModifiedUtf8)?;
+    Ok(decoded.into_owned())
+}
+
+#[cfg(feature = "svg")]
+struct JniIconPackInput {
+    json: String,
+    registration_name: Option<String>,
+}
+
+#[cfg(feature = "svg")]
+struct JniIconPackReference<'local> {
+    json: JString<'local>,
+    json_utf8_bytes: usize,
+    registration_name: Option<(JString<'local>, usize)>,
+}
+
+#[cfg(feature = "svg")]
+fn build_jni_icon_registry<'local>(
+    env: &mut Env<'local>,
+    icon_pack_json: &JObjectArray<'local, JString<'local>>,
+    icon_pack_registration_names: &JObjectArray<'local, JString<'local>>,
+) -> Result<Option<BindingIconRegistry>, BindingError> {
+    let json_len = icon_pack_array_len(env, icon_pack_json, icon_pack_registration_names)?;
+    if json_len == 0 {
+        return Ok(None);
+    }
+
+    let max_packs =
+        icon_registry_limit_usize(merman_bindings_core::IconRegistryResourceLimitId::MaxPacks)?;
+    if json_len > max_packs {
+        return Err(BindingError::icon_registry_resource_limit(
+            merman_bindings_core::IconRegistryResourceLimitId::MaxPacks,
+            u64::try_from(json_len).unwrap_or(u64::MAX),
+            None,
+            "icon pack count exceeds the fixed registry ceiling",
+        ));
+    }
+
+    use merman_bindings_core::IconRegistryResourceLimitId::{
+        MaxInputBytes, MaxPackBytes, MaxPrefixBytes,
+    };
+
+    let max_pack_bytes = icon_registry_limit_usize(MaxPackBytes)?;
+    let max_input_bytes = icon_registry_limit_usize(MaxInputBytes)?;
+    let max_prefix_bytes = icon_registry_limit_usize(MaxPrefixBytes)?;
+
+    // Phase one keeps only bounded local references and exact byte counts. No Java string is
+    // copied or decoded until every pack and registration name passes the complete preflight.
+    let mut references = Vec::with_capacity(json_len);
+    let mut input_bytes = 0usize;
+    for index in 0..json_len {
+        let json = icon_pack_json
+            .get_element(env, index)
+            .map_err(|error| jni_icon_input_error("read icon-pack JSON element", error))?;
+        if json.is_null() {
+            return Err(BindingError::invalid_argument(format!(
+                "icon-pack JSON element {index} must not be null"
+            )));
+        }
+        let json_utf8_bytes = measure_icon_java_string_utf8(
+            env,
+            &json,
+            max_pack_bytes,
+            MaxPackBytes,
+            index,
+            "icon pack contains an unpaired UTF-16 surrogate",
+            "icon pack bytes exceed the fixed per-pack ceiling",
+        )?;
+        let next_input_bytes = input_bytes.checked_add(json_utf8_bytes).ok_or_else(|| {
+            BindingError::icon_registry_resource_limit(
+                MaxInputBytes,
+                u64::MAX,
+                Some(index),
+                "aggregate icon pack byte accounting overflowed",
+            )
+        })?;
+        if next_input_bytes > max_input_bytes {
+            return Err(BindingError::icon_registry_resource_limit(
+                MaxInputBytes,
+                u64::try_from(next_input_bytes).unwrap_or(u64::MAX),
+                Some(index),
+                "aggregate icon pack bytes exceed the fixed registry ceiling",
+            ));
+        }
+
+        let registration_name = icon_pack_registration_names
+            .get_element(env, index)
+            .map_err(|error| {
+                jni_icon_input_error("read icon-pack registration-name element", error)
+            })?;
+        let registration_name = if registration_name.is_null() {
+            None
+        } else {
+            let utf8_bytes = measure_icon_java_string_utf8(
+                env,
+                &registration_name,
+                max_prefix_bytes,
+                MaxPrefixBytes,
+                index,
+                "icon registry registration name contains an unpaired UTF-16 surrogate",
+                "icon registry registration name exceeds the fixed byte ceiling",
+            )?;
+            Some((registration_name, utf8_bytes))
+        };
+        references.push(JniIconPackReference {
+            json,
+            json_utf8_bytes,
+            registration_name,
+        });
+        input_bytes = next_input_bytes;
+    }
+
+    // Phase two performs the bounded copies and strict MUTF-8 decoding only after the complete
+    // transaction has passed the byte preflight.
+    let mut inputs = Vec::with_capacity(references.len());
+    for (index, reference) in references.iter().enumerate() {
+        let json = decode_icon_java_string(
+            env,
+            &reference.json,
+            reference.json_utf8_bytes,
+            index,
+            "read icon-pack JSON element",
+            "icon pack was not valid Unicode",
+        )?;
+        let registration_name = match reference.registration_name.as_ref() {
+            Some((value, utf8_bytes)) => Some(decode_icon_java_string(
+                env,
+                value,
+                *utf8_bytes,
+                index,
+                "read icon-pack registration name",
+                "icon registry registration name was not valid Unicode",
+            )?),
+            None => None,
+        };
+        inputs.push(JniIconPackInput {
+            json,
+            registration_name,
+        });
+    }
+
+    build_icon_registry(inputs.iter().map(|input| {
+        let pack = IconPack::new(input.json.as_bytes());
+        match input.registration_name.as_deref() {
+            Some(registration_name) => pack.with_registration_name(registration_name),
+            None => pack,
+        }
+    }))
+    .map(Some)
+}
+
+fn icon_pack_array_len<'local>(
+    env: &mut Env<'local>,
+    icon_pack_json: &JObjectArray<'local, JString<'local>>,
+    icon_pack_registration_names: &JObjectArray<'local, JString<'local>>,
+) -> Result<usize, BindingError> {
+    if icon_pack_json.is_null() || icon_pack_registration_names.is_null() {
+        return Err(BindingError::invalid_argument(
+            "icon-pack JSON and registration-name arrays must not be null",
+        ));
+    }
+    let json_len = icon_pack_json
+        .len(env)
+        .map_err(|error| jni_icon_input_error("read icon-pack JSON array", error))?;
+    let registration_name_len = icon_pack_registration_names
+        .len(env)
+        .map_err(|error| jni_icon_input_error("read icon-pack registration-name array", error))?;
+    if json_len != registration_name_len {
+        return Err(BindingError::invalid_argument(format!(
+            "icon-pack JSON and registration-name arrays must have the same length ({json_len} != {registration_name_len})"
+        )));
+    }
+    Ok(json_len)
+}
+
+#[cfg(feature = "svg")]
+fn decode_icon_java_string(
+    env: &mut Env<'_>,
+    value: &JString<'_>,
+    expected_utf8_bytes: usize,
+    pack_index: usize,
+    context: &'static str,
+    invalid_message: &'static str,
+) -> Result<String, BindingError> {
+    let decoded = match decode_java_string_strict(env, value) {
+        Ok(decoded) => decoded,
+        Err(JavaStringDecodeError::Jni(error)) => {
+            return Err(jni_icon_input_error(context, error));
+        }
+        Err(JavaStringDecodeError::InvalidModifiedUtf8(_)) => {
+            return Err(BindingError::icon_registry_invalid_utf8(
+                pack_index,
+                invalid_message,
+            ));
+        }
+    };
+    if decoded.len() != expected_utf8_bytes {
+        return Err(BindingError::internal(format!(
+            "Java UTF-8 preflight changed during {context} for icon pack {pack_index}"
+        )));
+    }
+    Ok(decoded)
+}
+
+#[cfg(feature = "svg")]
+fn measure_icon_java_string_utf8(
+    env: &mut Env<'_>,
+    value: &JString<'_>,
+    maximum_bytes: usize,
+    limit: merman_bindings_core::IconRegistryResourceLimitId,
+    pack_index: usize,
+    invalid_message: &'static str,
+    limit_message: &'static str,
+) -> Result<usize, BindingError> {
+    let utf8_bytes = env
+        .call_static_method(
+            jni::jni_str!("io/merman/MermanJniStrings"),
+            jni::jni_str!("utf8Length"),
+            jni::jni_sig!((value: java.lang.String) -> jlong),
+            &[JValue::Object(value)],
+        )
+        .and_then(|value| value.j())
+        .map_err(|error| jni_icon_input_error("measure Java string UTF-8 length", error))?;
+    if utf8_bytes < 0 {
+        return Err(BindingError::icon_registry_invalid_utf8(
+            pack_index,
+            invalid_message,
+        ));
+    }
+    let utf8_bytes = usize::try_from(utf8_bytes)
+        .map_err(|_| BindingError::internal("Java UTF-8 byte length did not fit usize"))?;
+    if utf8_bytes > maximum_bytes {
+        return Err(BindingError::icon_registry_resource_limit(
+            limit,
+            u64::try_from(utf8_bytes).unwrap_or(u64::MAX),
+            Some(pack_index),
+            limit_message,
+        ));
+    }
+    Ok(utf8_bytes)
+}
+
+#[cfg(feature = "svg")]
+fn icon_registry_limit_usize(
+    limit: merman_bindings_core::IconRegistryResourceLimitId,
+) -> Result<usize, BindingError> {
+    usize::try_from(limit.fixed_value()).map_err(|_| {
+        BindingError::internal(format!(
+            "Android cannot represent icon registry limit `{}`",
+            limit.stable_id(),
+        ))
+    })
+}
+
+fn jni_icon_input_error(context: &str, error: JniError) -> BindingError {
+    BindingError::internal(format!("failed to {context}: {error}"))
+}
+
+fn result_to_java_operation_result<'local>(
+    env: &mut Env<'local>,
     result: Result<BindingOperationResult, BindingError>,
-) -> jobject {
+) -> JniResult<JObject<'local>> {
     match result {
         Ok(result) => match new_operation_result(env, result) {
-            Ok(result) => result.into_raw(),
+            Ok(result) => Ok(result),
             Err(error) => {
                 throw_merman_exception(
                     env,
                     format!("failed to allocate Java operation result: {error}"),
                 );
-                ptr::null_mut()
+                Ok(JObject::null())
             }
         },
         Err(error) => {
             throw_merman_exception(env, binding_error_text(error));
-            ptr::null_mut()
+            Ok(JObject::null())
         }
     }
 }
@@ -684,16 +984,17 @@ fn new_operation_result<'local>(
     env: &mut Env<'local>,
     result: BindingOperationResult,
 ) -> Result<JObject<'local>, String> {
+    let (operation, media_type, data, metadata) = result.into_parts();
     let operation_id = env
-        .new_string(result.operation.operation_id())
+        .new_string(operation.operation_id())
         .map_err(|error| error.to_string())?;
     let media_type = env
-        .new_string(result.media_type)
+        .new_string(media_type)
         .map_err(|error| error.to_string())?;
     let data = env
-        .byte_array_from_slice(&result.data)
+        .byte_array_from_slice(&data)
         .map_err(|error| error.to_string())?;
-    let metadata_json = std::str::from_utf8(&result.metadata_json)
+    let metadata_json = std::str::from_utf8(metadata.json_bytes())
         .map_err(|error| format!("native operation metadata was not UTF-8: {error}"))?;
     let metadata_json = env
         .new_string(metadata_json)
@@ -720,18 +1021,21 @@ fn jni_binding_error(error: JniError) -> BindingError {
     )
 }
 
-fn result_to_java_string(env: &mut Env<'_>, result: Result<Vec<u8>, BindingError>) -> jstring {
+fn result_to_java_string<'local>(
+    env: &mut Env<'local>,
+    result: Result<Vec<u8>, BindingError>,
+) -> JniResult<JString<'local>> {
     match result {
         Ok(bytes) => match String::from_utf8(bytes) {
-            Ok(text) => new_java_string(env, &text),
+            Ok(text) => env.new_string(text),
             Err(error) => {
                 throw_merman_exception(env, format!("native metadata was not UTF-8: {error}"));
-                ptr::null_mut()
+                Ok(JString::null())
             }
         },
         Err(error) => {
             throw_merman_exception(env, binding_error_text(error));
-            ptr::null_mut()
+            Ok(JString::null())
         }
     }
 }
@@ -741,16 +1045,6 @@ fn binding_error_text(error: BindingError) -> String {
         &error,
     ))
     .unwrap_or_else(|utf8_error| format!("native error was not UTF-8: {utf8_error}"))
-}
-
-fn new_java_string(env: &mut Env<'_>, value: &str) -> jstring {
-    match env.new_string(value) {
-        Ok(value) => value.into_raw(),
-        Err(error) => {
-            throw_merman_exception(env, format!("failed to allocate Java string: {error}"));
-            ptr::null_mut()
-        }
-    }
 }
 
 fn throw_merman_exception(env: &mut Env<'_>, message: impl AsRef<str>) {

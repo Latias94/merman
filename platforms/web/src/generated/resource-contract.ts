@@ -3,15 +3,16 @@
 
 export const BINDING_OPTIONS_SCHEMA_VERSION = 2 as const;
 
-export const RESOURCE_PROFILES = [
+export const RESOURCE_PROFILES = Object.freeze([
   "interactive",
   "constrained",
   "trusted-native",
   "unbounded-for-trusted-input",
-] as const;
+] as const);
 export type ResourceProfile = (typeof RESOURCE_PROFILES)[number];
+const RESOURCE_PROFILE_ID_SET: ReadonlySet<string> = new Set(RESOURCE_PROFILES);
 
-export const RESOURCE_LIMIT_IDS = [
+export const RESOURCE_LIMIT_IDS = Object.freeze([
   "max_source_bytes",
   "max_model_items",
   "max_model_text_bytes",
@@ -41,10 +42,61 @@ export const RESOURCE_LIMIT_IDS = [
   "font_decoded_expansion_ratio_hard_cap",
   "max_document_diagrams",
   "max_ascii_grid_cells",
-] as const;
-export type ResourceLimitId = (typeof RESOURCE_LIMIT_IDS)[number];
+] as const);
+export type KnownResourceLimitId = (typeof RESOURCE_LIMIT_IDS)[number];
+export type ResourceLimitId = string;
+const RESOURCE_LIMIT_ID_SET: ReadonlySet<string> = new Set(RESOURCE_LIMIT_IDS);
 
-export const RESOURCE_OVERRIDE_IDS = [
+export interface KnownResourceLimitMetadata {
+  readonly id: KnownResourceLimitId;
+  readonly phase: string;
+  readonly overridable: boolean;
+  readonly minimumValue: number;
+}
+
+export const RESOURCE_LIMIT_METADATA: Readonly<Record<KnownResourceLimitId, KnownResourceLimitMetadata>> = Object.freeze({
+  "max_source_bytes": Object.freeze({ id: "max_source_bytes", phase: "source", overridable: true, minimumValue: 1 }),
+  "max_model_items": Object.freeze({ id: "max_model_items", phase: "layout_model", overridable: true, minimumValue: 1 }),
+  "max_model_text_bytes": Object.freeze({ id: "max_model_text_bytes", phase: "layout_model", overridable: true, minimumValue: 1 }),
+  "max_model_nesting_depth": Object.freeze({ id: "max_model_nesting_depth", phase: "layout_model", overridable: true, minimumValue: 1 }),
+  "max_layout_work_units": Object.freeze({ id: "max_layout_work_units", phase: "layout_model", overridable: true, minimumValue: 1 }),
+  "max_svg_bytes": Object.freeze({ id: "max_svg_bytes", phase: "svg_output", overridable: true, minimumValue: 1 }),
+  "max_svg_elements": Object.freeze({ id: "max_svg_elements", phase: "svg_postprocess", overridable: true, minimumValue: 1 }),
+  "max_theme_encoded_bytes": Object.freeze({ id: "max_theme_encoded_bytes", phase: "theme_input", overridable: true, minimumValue: 0 }),
+  "max_theme_base64_bytes": Object.freeze({ id: "max_theme_base64_bytes", phase: "theme_input", overridable: true, minimumValue: 0 }),
+  "max_font_asset_compressed_bytes": Object.freeze({ id: "max_font_asset_compressed_bytes", phase: "font_decode", overridable: true, minimumValue: 0 }),
+  "max_font_asset_decoded_bytes": Object.freeze({ id: "max_font_asset_decoded_bytes", phase: "font_decode", overridable: true, minimumValue: 0 }),
+  "max_font_catalog_decoded_bytes": Object.freeze({ id: "max_font_catalog_decoded_bytes", phase: "font_catalog", overridable: true, minimumValue: 0 }),
+  "max_font_assets": Object.freeze({ id: "max_font_assets", phase: "font_catalog", overridable: true, minimumValue: 0 }),
+  "max_font_faces": Object.freeze({ id: "max_font_faces", phase: "font_catalog", overridable: true, minimumValue: 0 }),
+  "max_font_tables": Object.freeze({ id: "max_font_tables", phase: "font_catalog", overridable: true, minimumValue: 0 }),
+  "max_font_aliases": Object.freeze({ id: "max_font_aliases", phase: "font_catalog", overridable: true, minimumValue: 0 }),
+  "max_font_decoded_expansion_ratio": Object.freeze({ id: "max_font_decoded_expansion_ratio", phase: "font_decode", overridable: true, minimumValue: 1 }),
+  "theme_encoded_bytes_hard_cap": Object.freeze({ id: "theme_encoded_bytes_hard_cap", phase: "theme_input", overridable: false, minimumValue: 1 }),
+  "theme_base64_bytes_hard_cap": Object.freeze({ id: "theme_base64_bytes_hard_cap", phase: "theme_input", overridable: false, minimumValue: 1 }),
+  "font_asset_compressed_bytes_hard_cap": Object.freeze({ id: "font_asset_compressed_bytes_hard_cap", phase: "font_decode", overridable: false, minimumValue: 1 }),
+  "font_asset_decoded_bytes_hard_cap": Object.freeze({ id: "font_asset_decoded_bytes_hard_cap", phase: "font_decode", overridable: false, minimumValue: 1 }),
+  "font_catalog_decoded_bytes_hard_cap": Object.freeze({ id: "font_catalog_decoded_bytes_hard_cap", phase: "font_catalog", overridable: false, minimumValue: 1 }),
+  "font_assets_hard_cap": Object.freeze({ id: "font_assets_hard_cap", phase: "font_catalog", overridable: false, minimumValue: 1 }),
+  "font_faces_hard_cap": Object.freeze({ id: "font_faces_hard_cap", phase: "font_catalog", overridable: false, minimumValue: 1 }),
+  "font_tables_hard_cap": Object.freeze({ id: "font_tables_hard_cap", phase: "font_catalog", overridable: false, minimumValue: 1 }),
+  "font_aliases_hard_cap": Object.freeze({ id: "font_aliases_hard_cap", phase: "font_catalog", overridable: false, minimumValue: 1 }),
+  "font_decoded_expansion_ratio_hard_cap": Object.freeze({ id: "font_decoded_expansion_ratio_hard_cap", phase: "font_decode", overridable: false, minimumValue: 1 }),
+  "max_document_diagrams": Object.freeze({ id: "max_document_diagrams", phase: "document_scan", overridable: true, minimumValue: 0 }),
+  "max_ascii_grid_cells": Object.freeze({ id: "max_ascii_grid_cells", phase: "ascii_layout", overridable: true, minimumValue: 1 }),
+});
+
+export function isKnownResourceLimitId(id: ResourceLimitId): id is KnownResourceLimitId {
+  return RESOURCE_LIMIT_ID_SET.has(id);
+}
+
+export function resourceLimitMetadata(
+  id: ResourceLimitId,
+): KnownResourceLimitMetadata | undefined {
+  return isKnownResourceLimitId(id) ? RESOURCE_LIMIT_METADATA[id] : undefined;
+}
+
+export const RESOURCE_OVERRIDE_IDS = Object.freeze([
   "max_source_bytes",
   "max_model_items",
   "max_model_text_bytes",
@@ -64,8 +116,9 @@ export const RESOURCE_OVERRIDE_IDS = [
   "max_font_decoded_expansion_ratio",
   "max_document_diagrams",
   "max_ascii_grid_cells",
-] as const;
+] as const);
 export type ResourceOverrideId = (typeof RESOURCE_OVERRIDE_IDS)[number];
+const RESOURCE_OVERRIDE_ID_SET: ReadonlySet<string> = new Set(RESOURCE_OVERRIDE_IDS);
 
 export type ResourceLimitOverrides = Partial<Record<ResourceOverrideId, number>>;
 
@@ -79,7 +132,7 @@ export interface RawResourceOptions {
   limits?: Record<string, number>;
 }
 
-type ResourceLimitValues = Record<ResourceLimitId, number | null>;
+type ResourceLimitValues = Record<KnownResourceLimitId, number | null>;
 
 const RESOURCE_PROFILE_LIMITS: Record<ResourceProfile, ResourceLimitValues> = {
   "interactive": {
@@ -234,12 +287,12 @@ export function resourceOptions(
   profile?: ResourceProfile,
   limits: ResourceLimitOverrides = {},
 ): ResourceOptions {
-  if (profile !== undefined && !(RESOURCE_PROFILES as readonly string[]).includes(profile)) {
+  if (profile !== undefined && !RESOURCE_PROFILE_ID_SET.has(profile)) {
     throw new RangeError(`unsupported resource profile: ${profile}`);
   }
   const normalized: ResourceLimitOverrides = {};
   for (const [id, value] of Object.entries(limits) as [ResourceOverrideId, number][]) {
-    if (!(RESOURCE_OVERRIDE_IDS as readonly string[]).includes(id)) {
+    if (!RESOURCE_OVERRIDE_ID_SET.has(id)) {
       throw new RangeError(`resource limit is not overridable: ${id}`);
     }
     if (!Number.isSafeInteger(value) || value < RESOURCE_LIMIT_MINIMUMS[id]) {
@@ -289,7 +342,7 @@ export function tightenResourceOptions(
     if (
       value !== null &&
       (maximum === null || value < maximum) &&
-      (RESOURCE_OVERRIDE_IDS as readonly string[]).includes(id)
+      RESOURCE_OVERRIDE_ID_SET.has(id)
     ) {
       tightened[id as ResourceOverrideId] = value;
     }

@@ -512,8 +512,14 @@ fn state_svg_security_level_controls_unsafe_click_href_rendering() {
     let strict = render_state_svg_from_text(
         r#"%%{init: {"securityLevel": "strict"}}%%
 stateDiagram-v2
-S1
-click S1 href "javascript:alert(1)"
+	S1
+	S2
+	S3
+	S4
+	click S1 href "javascript:alert(1)"
+	click S2 href "jav&#x61;script:alert(2)"
+	click S3 href ""
+	click S4 href "javascript#colon;alert(4)"
 "#,
     );
     assert!(
@@ -523,6 +529,21 @@ click S1 href "javascript:alert(1)"
     assert!(
         !strict.contains(r#"xlink:href="javascript:alert(1)""#),
         "expected strict mode to omit unsafe State click href from SVG: {strict}"
+    );
+    assert!(
+        strict.contains(r#"xlink:href="jav&amp;&amp;x61;script:alert(2)""#),
+        "expected strict mode to run Mermaid cleanup and preserve only the browser-safe literal entity spelling: {strict}"
+    );
+    assert!(
+        strict.contains(r#"xlink:href="""#),
+        "expected strict mode to preserve an empty DOM href like DOMPurify: {strict}"
+    );
+    assert!(!strict.contains(r#"target="_blank""#), "{strict}");
+    assert!(
+        !strict.contains("ﬂ°")
+            && !strict.contains("¶ß")
+            && !strict.contains(r#"xlink:href="javascript&colon;alert(4)""#),
+        "expected strict mode to apply Mermaid cleanup before DOMPurify admission: {strict}"
     );
 
     let loose = render_state_svg_from_text_with_engine(
@@ -535,9 +556,160 @@ click S1 href "javascript:alert(1)"
 "#,
     );
     assert!(
-        loose.contains(r#"xlink:href="javascript:alert(1)""#),
+        loose.contains(r#"xlink:href="javascript:alert(1)" target="_blank""#),
         "expected loose mode to preserve State click hrefs exactly like Mermaid's link injection path: {loose}"
     );
+}
+
+#[test]
+fn state_svg_normalizes_truthy_whitespace_tooltips_after_dompurify() {
+    let svg = render_state_svg_from_text(
+        r#"stateDiagram-v2
+S1
+click S1 "https://example.test" "   "
+"#,
+    );
+
+    assert!(svg.contains(r#"title="""#), "{svg}");
+    assert!(!svg.contains(r#"title="   ""#), "{svg}");
+}
+
+#[test]
+fn state_svg_treats_explicit_and_omitted_empty_tooltips_like_mermaid() {
+    let svg = render_state_svg_from_text(
+        r#"stateDiagram-v2
+S1
+S2
+click S1 "https://example.test/one" ""
+click S2 href "https://example.test/two"
+"#,
+    );
+
+    let explicit = svg
+        .find(r#"xlink:href="https://example.test/one""#)
+        .expect("explicit-tooltip anchor");
+    let explicit_tag = &svg[explicit
+        ..svg[explicit..]
+            .find('>')
+            .map_or(svg.len(), |end| explicit + end)];
+    assert!(!explicit_tag.contains(" title="), "{explicit_tag}");
+
+    let omitted = svg
+        .find(r#"xlink:href="https://example.test/two""#)
+        .expect("href-form anchor");
+    let omitted_tag = &svg[omitted
+        ..svg[omitted..]
+            .find('>')
+            .map_or(svg.len(), |end| omitted + end)];
+    assert!(!omitted_tag.contains(" title="), "{omitted_tag}");
+}
+
+#[test]
+fn state_svg_strict_repeated_unsafe_clicks_preserve_nested_wrappers() {
+    let svg = render_state_svg_from_text(
+        r#"%%{init: {"securityLevel": "strict"}}%%
+stateDiagram-v2
+S1
+click S1 "javascript:alert(1)" "JavaScript"
+click S1 "data:text/html,unsafe" "Data"
+"#,
+    );
+
+    let document = roxmltree::Document::parse(&svg).expect("valid State SVG XML");
+    let node = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.contains("-state-S1-"))
+        })
+        .expect("S1 node");
+    let inner = node.parent().expect("inner link wrapper");
+    let outer = inner.parent().expect("outer link wrapper");
+
+    assert!(inner.has_tag_name("a"), "{svg}");
+    assert!(outer.has_tag_name("a"), "{svg}");
+    assert_eq!(outer.attribute("title"), Some("JavaScript"));
+    assert_eq!(inner.attribute("title"), Some("Data"));
+    assert_eq!(node.attribute("title"), Some("Data"));
+    for anchor in [outer, inner] {
+        assert_eq!(
+            anchor.attribute(("http://www.w3.org/1999/xlink", "href")),
+            None,
+            "{svg}"
+        );
+        assert_eq!(anchor.attribute("target"), None, "{svg}");
+    }
+}
+
+#[test]
+fn state_svg_loose_repeated_clicks_preserve_each_href_and_target() {
+    let svg = render_state_svg_from_text_with_engine(
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "loose"
+        }))),
+        r#"stateDiagram-v2
+S1
+click S1 "https://example.test/first" "First"
+click S1 "https://example.test/last" "Last"
+"#,
+    );
+
+    let document = roxmltree::Document::parse(&svg).expect("valid State SVG XML");
+    let node = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.contains("-state-S1-"))
+        })
+        .expect("S1 node");
+    let inner = node.parent().expect("inner link wrapper");
+    let outer = inner.parent().expect("outer link wrapper");
+
+    assert_eq!(outer.attribute("title"), Some("First"));
+    assert_eq!(inner.attribute("title"), Some("Last"));
+    assert_eq!(node.attribute("title"), Some("Last"));
+    assert_eq!(
+        outer.attribute(("http://www.w3.org/1999/xlink", "href")),
+        Some("https://example.test/first")
+    );
+    assert_eq!(
+        inner.attribute(("http://www.w3.org/1999/xlink", "href")),
+        Some("https://example.test/last")
+    );
+    assert_eq!(outer.attribute("target"), Some("_blank"));
+    assert_eq!(inner.attribute("target"), Some("_blank"));
+}
+
+#[test]
+fn state_svg_empty_later_tooltip_does_not_clear_existing_node_title() {
+    let svg = render_state_svg_from_text(
+        r#"stateDiagram-v2
+S1
+click S1 "https://example.test/first" "First"
+click S1 "https://example.test/last" ""
+"#,
+    );
+
+    let document = roxmltree::Document::parse(&svg).expect("valid State SVG XML");
+    let node = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.contains("-state-S1-"))
+        })
+        .expect("S1 node");
+    let inner = node.parent().expect("inner link wrapper");
+    let outer = inner.parent().expect("outer link wrapper");
+
+    assert_eq!(outer.attribute("title"), Some("First"));
+    assert_eq!(inner.attribute("title"), None);
+    assert_eq!(node.attribute("title"), Some("First"));
 }
 
 #[test]
