@@ -718,6 +718,19 @@ User Testing    :c2, after c1, 5d`;
   assert.ok(measureCallCount > 0);
   assert.ok(measurementOperations.has("wrapped"));
 
+  let explicitHandledCallCount = 0;
+  const explicitHandledSvg = api.renderSvgWithTextMeasurer(
+    source,
+    (request) => {
+      explicitHandledCallCount += 1;
+      const result = hostTextMeasurementResult(request);
+      return result === undefined ? undefined : { handled: true, ...result };
+    },
+    hostTextMeasurementOptions
+  );
+  assert.equal(explicitHandledSvg, measuredSvg);
+  assert.equal(explicitHandledCallCount, measureCallCount);
+
   if (completeCytoscapeRenderSurface) {
     const architectureOperations = new Map();
     const architectureSvg = api.renderSvgWithTextMeasurer(
@@ -745,7 +758,19 @@ User Testing    :c2, after c1, 5d`;
     hostTextMeasurementOptions
   );
   assert.equal(typeof JSON.parse(measuredLayout), "object");
+  const explicitHandledLayout = api.layoutJsonWithTextMeasurer(
+    source,
+    (request) => {
+      const result = hostTextMeasurementResult(request);
+      return result === undefined ? undefined : { handled: true, ...result };
+    },
+    hostTextMeasurementOptions
+  );
+  assert.equal(explicitHandledLayout, measuredLayout);
+
+  let fallbackReferenceSvg;
   for (const fallbackResult of [
+    null,
     undefined,
     { handled: false },
   ]) {
@@ -760,8 +785,70 @@ User Testing    :c2, after c1, 5d`;
     );
     assert.match(fallbackSvg, /<svg/);
     assert.ok(fallbackCallCount > 0);
+    fallbackReferenceSvg ??= fallbackSvg;
+    assert.equal(fallbackSvg, fallbackReferenceSvg);
   }
+
+  const resultFields = [
+    "handled",
+    "kind",
+    "width",
+    "height",
+    "length",
+    "line_count",
+    "bbox_left",
+    "bbox_right",
+    "raw_width",
+  ];
+  const unhandledAccesses = [];
+  const unhandledProxy = new Proxy(
+    { handled: false },
+    {
+      get(target, property, receiver) {
+        if (typeof property === "string" && resultFields.includes(property)) {
+          unhandledAccesses.push(property);
+          if (property !== "handled") {
+            throw new Error(`fallback result unexpectedly read ${property}`);
+          }
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    }
+  );
+  const proxyFallbackSvg = api.renderSvgWithTextMeasurer(
+    source,
+    () => unhandledProxy,
+    hostTextMeasurementOptions
+  );
+  assert.equal(proxyFallbackSvg, fallbackReferenceSvg);
+  assert.ok(unhandledAccesses.length > 0);
+  assert.deepEqual(unhandledAccesses, Array(unhandledAccesses.length).fill("handled"));
+
+  const handledAccesses = [];
+  const proxyMeasuredSvg = api.renderSvgWithTextMeasurer(
+    source,
+    (request) => {
+      const accesses = [];
+      handledAccesses.push(accesses);
+      return new Proxy(hostTextMeasurementResult(request), {
+        get(target, property, receiver) {
+          if (typeof property === "string" && resultFields.includes(property)) {
+            accesses.push(property);
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      });
+    },
+    hostTextMeasurementOptions
+  );
+  assert.equal(proxyMeasuredSvg, measuredSvg);
+  assert.ok(handledAccesses.length > 0);
+  for (const accesses of handledAccesses) {
+    assert.deepEqual(accesses, resultFields);
+  }
+
   for (const invalidResult of [
+    { handled: "false", width: 1, height: 1 },
     { width: Number.POSITIVE_INFINITY, height: 1 },
     { width: -1, height: 1 },
     { width: 1, height: 1, line_count: 0 },

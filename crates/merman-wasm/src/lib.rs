@@ -427,6 +427,18 @@ fn decode_wasm_host_text_measurement(
 struct WasmHostTextMeasurer;
 
 #[cfg(all(feature = "svg", target_arch = "wasm32"))]
+fn wasm_host_text_measurement_handled(
+    value: &JsValue,
+) -> Result<Option<bool>, merman_bindings_core::HostTextMeasurementError> {
+    let handled = js_sys::Reflect::get(value, &JsValue::from_str("handled")).map_err(|err| {
+        merman_bindings_core::HostTextMeasurementError::invalid_value(js_error_message(&err))
+    })?;
+    serde_wasm_bindgen::from_value(handled).map_err(|err| {
+        merman_bindings_core::HostTextMeasurementError::invalid_value(err.to_string())
+    })
+}
+
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
 impl WasmHostTextMeasurer {
     fn call_host(
         &self,
@@ -465,15 +477,7 @@ impl WasmHostTextMeasurer {
                 return Ok(None);
             }
 
-            #[derive(Deserialize)]
-            struct HostDisposition {
-                handled: Option<bool>,
-            }
-            let disposition: HostDisposition = serde_wasm_bindgen::from_value(value.clone())
-                .map_err(|err| {
-                    merman_bindings_core::HostTextMeasurementError::invalid_value(err.to_string())
-                })?;
-            if disposition.handled == Some(false) {
+            if wasm_host_text_measurement_handled(&value)? == Some(false) {
                 return Ok(None);
             }
 
