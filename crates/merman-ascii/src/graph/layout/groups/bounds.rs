@@ -135,10 +135,10 @@ pub(super) fn layout_groups(
         let Some(node_index) = topology.node_index(&layout.id) else {
             continue;
         };
-        if let Some(slot) = node_layout_by_index.get_mut(node_index) {
-            if slot.is_none() {
-                *slot = Some(layout);
-            }
+        if let Some(slot) = node_layout_by_index.get_mut(node_index)
+            && slot.is_none()
+        {
+            *slot = Some(layout);
         }
     }
 

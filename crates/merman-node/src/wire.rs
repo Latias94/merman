@@ -6,9 +6,10 @@ use std::sync::LazyLock;
 use merman_bindings_core::{
     ArtifactContractSpec, BINDING_OPERATION_SCHEMA_VERSION, BindingDiagnosticErrorDetails,
     BindingEngine, BindingError, BindingErrorKind, BindingIconRegistryErrorDetails,
-    BindingOperationRequest, BindingPayloadSchemaKey, BindingResourceErrorDetails, BindingStatus,
-    BindingTransportKey, CAPABILITY_DESCRIPTOR_DIGEST, CapabilityKey, OperationKey,
-    RUNTIME_CATALOG_SCHEMA_VERSION, RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
+    BindingJsSafeResourceErrorDetails, BindingOperationRequest, BindingPayloadSchemaKey,
+    BindingStatus, BindingTransportKey, CAPABILITY_DESCRIPTOR_DIGEST, CapabilityKey, OperationKey,
+    RUNTIME_CATALOG_MAX_SAFE_INTEGER, RUNTIME_CATALOG_SCHEMA_VERSION, RuntimePolicyExposure,
+    TargetKey, ValidatedArtifactContract,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -18,7 +19,6 @@ const NODE_WIRE_CONTRACT_JSON: &str =
     include_str!("../../../platforms/node/src/generated/node-wire-contract.json");
 const NODE_TRANSPORT_API_VERSION: u32 = 1;
 const NODE_BINDING_RESULT_PAYLOAD_VERSION: u32 = BindingPayloadSchemaKey::BindingResult.version();
-const JSON_SAFE_INTEGER_MAX: u64 = 9_007_199_254_740_991;
 const NODE_TARGET: TargetKey = if cfg!(target_arch = "wasm32") {
     TargetKey::Web
 } else {
@@ -382,7 +382,7 @@ struct ErrorPayload<'a> {
 #[derive(Debug, Serialize)]
 struct ErrorDetails<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
-    resource: Option<BindingResourceErrorDetails>,
+    resource: Option<BindingJsSafeResourceErrorDetails>,
     #[serde(skip_serializing_if = "Option::is_none")]
     diagnostic: Option<&'a BindingDiagnosticErrorDetails>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -677,16 +677,14 @@ fn try_error_envelope(error: &BindingError) -> Result<String, String> {
             fields.capability_id_utf8_bytes,
         )?;
     }
-    let resource = error.resource_details();
+    let resource = error.resource_details().map(|details| details.js_safe_json());
     let diagnostic = error.diagnostic_details();
-    if resource.is_some_and(|details| {
-        details.actual > JSON_SAFE_INTEGER_MAX || details.max > JSON_SAFE_INTEGER_MAX
-    }) {
-        return Err("error resource details exceed the JSON-safe integer range".to_owned());
-    }
     if diagnostic
         .and_then(|details| details.span)
-        .is_some_and(|span| span.start > JSON_SAFE_INTEGER_MAX || span.end > JSON_SAFE_INTEGER_MAX)
+        .is_some_and(|span| {
+            span.start > RUNTIME_CATALOG_MAX_SAFE_INTEGER
+                || span.end > RUNTIME_CATALOG_MAX_SAFE_INTEGER
+        })
     {
         return Err("error diagnostic span exceeds the JSON-safe integer range".to_owned());
     }
@@ -1525,6 +1523,46 @@ mod tests {
         assert_eq!(
             payload["error"]["details"]["resource"]["profile"],
             "constrained"
+        );
+        assert_eq!(payload["error"]["details"]["resource"]["cause"], "ceiling");
+        assert_eq!(payload["error"]["details"]["resource"]["actual"], 5);
+        assert_eq!(payload["error"]["details"]["resource"]["max"], 4);
+
+        let error = merman_bindings_core::BindingError::resource_limit_with_cause(
+            merman_bindings_core::BindingResourceLimitCause::ArithmeticOverflow,
+            "layout_model",
+            "max_layout_work_units",
+            u64::MAX,
+            800_000,
+            "interactive",
+            "layout work accounting overflowed",
+        );
+        let payload: serde_json::Value =
+            serde_json::from_str(&error_envelope(&error)).expect("Node error envelope");
+        assert_eq!(
+            payload["error"]["code_name"],
+            "MERMAN_RESOURCE_LIMIT_EXCEEDED"
+        );
+        assert_eq!(
+            payload["error"]["details"]["resource"]["cause"],
+            "arithmetic_overflow"
+        );
+        assert_eq!(
+            payload["error"]["details"]["resource"]["limit_id"],
+            "max_layout_work_units"
+        );
+        assert_eq!(
+            payload["error"]["details"]["resource"]["phase"],
+            "layout_model"
+        );
+        assert_eq!(
+            payload["error"]["details"]["resource"]["actual"],
+            "18446744073709551615"
+        );
+        assert_eq!(payload["error"]["details"]["resource"]["max"], 800_000);
+        assert_eq!(
+            payload["error"]["details"]["resource"]["profile"],
+            "interactive"
         );
     }
 

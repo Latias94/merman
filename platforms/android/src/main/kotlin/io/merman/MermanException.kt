@@ -3,6 +3,7 @@ package io.merman
 import org.json.JSONObject
 
 data class MermanResourceErrorDetails(
+    val cause: String,
     val limitId: String,
     val phase: String,
     val actual: Long,
@@ -75,6 +76,7 @@ class MermanException private constructor(
             localCode = RESOURCE_LIMIT_ERROR_CODE,
             localCodeName = RESOURCE_LIMIT_ERROR_CODE_NAME,
             localResourceDetails = MermanResourceErrorDetails(
+                cause = "ceiling",
                 limitId = limit.id,
                 phase = limit.phase,
                 actual = actual,
@@ -105,12 +107,13 @@ class MermanException private constructor(
         private fun parseResourceDetails(payload: JSONObject): MermanResourceErrorDetails? = runCatching {
             val resource = payload.optJSONObject("details")?.optJSONObject("resource")
                 ?: return null
+            val cause = resource.getString("cause").takeIf(String::isNotEmpty) ?: return null
             val limitId = resource.getString("limit_id").takeIf(String::isNotEmpty) ?: return null
             val phase = resource.getString("phase").takeIf(String::isNotEmpty) ?: return null
             val actual = resource.getLong("actual").takeIf { it >= 0 } ?: return null
             val max = resource.getLong("max").takeIf { it >= 0 } ?: return null
             val profile = resource.getString("profile").takeIf(String::isNotEmpty) ?: return null
-            MermanResourceErrorDetails(limitId, phase, actual, max, profile)
+            MermanResourceErrorDetails(cause, limitId, phase, actual, max, profile)
         }.getOrNull()
 
         private fun parseDiagnosticDetails(payload: JSONObject): MermanDiagnosticErrorDetails? =

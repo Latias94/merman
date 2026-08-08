@@ -9,7 +9,7 @@ use format::{
     JournalEntry, JournalPhase, JournalState, MAX_STATE_BYTES, PriorState, read_at_most,
     validate_entries,
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::{File, OpenOptions, TryLockError};
 use std::hash::{Hash, Hasher};
 use std::io::{Read, Seek, Write};
@@ -162,6 +162,7 @@ impl TransactionEntryPlan {
 pub(crate) struct TransactionPlan {
     owner: GenerationOwner,
     entries: Vec<TransactionEntryPlan>,
+    target_indices: HashMap<RelativeTarget, usize>,
 }
 
 impl TransactionPlan {
@@ -228,9 +229,15 @@ impl TransactionPlan {
             })
             .collect::<Vec<_>>();
         validate_entries(&journal_entries, Path::new(TRANSACTION_DIR_NAME))?;
+        let target_indices = normalized
+            .iter()
+            .enumerate()
+            .map(|(index, entry)| (entry.target.clone(), index))
+            .collect();
         Ok(Self {
             owner,
             entries: normalized,
+            target_indices,
         })
     }
 
@@ -324,6 +331,7 @@ impl LockedRecoveredRoot {
         let TransactionPlan {
             owner,
             entries: planned_entries,
+            target_indices,
         } = plan;
         let mut entries = Vec::with_capacity(planned_entries.len());
         let mut expected_generations = Vec::with_capacity(planned_entries.len());
@@ -364,21 +372,32 @@ impl LockedRecoveredRoot {
         let issued = vec![false; working.state.entries.len()];
         Ok(StagingTransaction {
             working,
+            target_indices,
             issued,
             outstanding_slots: Arc::new(AtomicUsize::new(0)),
+            #[cfg(test)]
+            target_lookup_count: 0,
         })
     }
 }
 
 pub(crate) struct StagingTransaction {
     working: WorkingTransaction,
+    target_indices: HashMap<RelativeTarget, usize>,
     issued: Vec<bool>,
     outstanding_slots: Arc<AtomicUsize>,
+    #[cfg(test)]
+    target_lookup_count: usize,
 }
 
 impl StagingTransaction {
     pub(crate) fn transaction_id(&self) -> &str {
         &self.working.state.id
+    }
+
+    #[cfg(test)]
+    pub(crate) fn target_lookup_count(&self) -> usize {
+        self.target_lookup_count
     }
 
     #[cfg(test)]
@@ -394,18 +413,16 @@ impl StagingTransaction {
         &mut self,
         target: &RelativeTarget,
     ) -> Result<StageSlot, TransactionError> {
-        let index = self
-            .working
-            .state
-            .entries
-            .iter()
-            .position(|entry| &entry.target == target)
-            .ok_or_else(|| {
-                TransactionError::invalid_state(
-                    &self.working.transaction_dir,
-                    "attempted to stage a target outside the transaction plan",
-                )
-            })?;
+        #[cfg(test)]
+        {
+            self.target_lookup_count += 1;
+        }
+        let index = self.target_indices.get(target).copied().ok_or_else(|| {
+            TransactionError::invalid_state(
+                &self.working.transaction_dir,
+                "attempted to stage a target outside the transaction plan",
+            )
+        })?;
         if self.working.state.entries[index].operation != TransactionOperation::Write {
             return Err(TransactionError::invalid_state(
                 &self.working.transaction_dir,

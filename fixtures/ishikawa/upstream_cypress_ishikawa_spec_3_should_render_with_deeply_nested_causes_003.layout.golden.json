@@ -20,7 +20,7 @@
         "y": 357.143,
         "width": 60.0,
         "height": 105.6,
-        "path_d": "M 0 -52.80000000000001 L 0 52.80000000000001 Q 144 0 0 -52.80000000000001 Z",
+        "path_d": "M 0 -52.8 L 0 52.8 Q 144 0 0 -52.8 Z",
         "label": {
           "text": "Server\nOutage",
           "lines": [
@@ -28,15 +28,15 @@
             "Outage"
           ],
           "class_name": "ishikawa-head-label",
-          "x": 42.0,
+          "x": 33.0,
           "y": 357.143,
-          "anchor": "middle",
+          "anchor": "start",
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": 22.75,
+            "min_x": 13.75,
             "min_y": 340.743,
-            "max_x": 61.25,
+            "max_x": 52.25,
             "max_y": 373.543
           }
         }

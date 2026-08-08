@@ -97,7 +97,8 @@ fn bench_network_simplex(c: &mut Criterion) {
                 b.iter_batched(
                     || spec.build(),
                     |mut g| {
-                        rank::network_simplex::network_simplex(black_box(&mut g));
+                        rank::network_simplex::network_simplex(black_box(&mut g))
+                            .expect("benchmark fixture remains a valid network simplex input");
                         black_box(g.node_count());
                     },
                     BatchSize::LargeInput,

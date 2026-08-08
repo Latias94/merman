@@ -57,6 +57,7 @@ impl From<BindingErrorKind> for MermanErrorKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct MermanResourceErrorDetails {
+    pub cause: String,
     pub limit_id: String,
     pub phase: String,
     pub actual: u64,
@@ -107,6 +108,7 @@ impl MermanError {
         let resource = error
             .resource_details()
             .map(|details| MermanResourceErrorDetails {
+                cause: details.cause.as_str().to_string(),
                 limit_id: details.limit_id.to_string(),
                 phase: details.phase.to_string(),
                 actual: details.actual,
@@ -3729,12 +3731,28 @@ A@{ icon: "test:rocket", label: "A" }"#
         assert_eq!(
             resource,
             Some(MermanResourceErrorDetails {
+                cause: "ceiling".to_string(),
                 limit_id: "max_embedded_image_bytes".to_string(),
                 phase: "embedded_image_decode".to_string(),
                 actual: 5,
                 max: 4,
                 profile: "constrained".to_string(),
             })
+        );
+
+        let error = MermanError::from_binding(BindingError::resource_limit_with_cause(
+            merman_bindings_core::BindingResourceLimitCause::ArithmeticOverflow,
+            "layout_model",
+            "max_layout_work_units",
+            u64::MAX,
+            800_000,
+            "interactive",
+            "layout work accounting overflowed",
+        ));
+        let MermanError::Binding { resource, .. } = error;
+        assert_eq!(
+            resource.expect("resource details").cause,
+            "arithmetic_overflow"
         );
     }
 

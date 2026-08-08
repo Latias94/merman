@@ -631,8 +631,8 @@ fn architecture_svg_uses_the_session_measurement_route() {
         "Architecture createText wrapping must request SVG computed text length"
     );
     assert!(
-        operations.contains(&TextMeasurementOperation::TspanBBoxWidth),
-        "Architecture root bounds must request the emitted outer tspan bbox width"
+        operations.contains(&TextMeasurementOperation::BBoxX),
+        "Architecture root bounds must request the emitted formatted-text bbox extents"
     );
     assert!(
         operations.contains(&TextMeasurementOperation::TspanBBoxHeight),
@@ -662,7 +662,7 @@ fn architecture_svg_uses_the_session_measurement_route() {
             .entries()
             .iter()
             .any(|entry| {
-                entry.provenance().operation == TextMeasurementOperation::TspanBBoxWidth
+                entry.provenance().operation == TextMeasurementOperation::BBoxX
                     && entry.provenance().phase == TextMeasurementPhase::SvgBBox
                     && entry.provenance().source
                         == merman_render::environment::TextMeasurementSource::Host

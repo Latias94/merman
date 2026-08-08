@@ -535,13 +535,13 @@ mod tests {
         let raw = "·<br>👩‍💻";
         let exact = options_with_limit(AsciiResourceLimitId::MaxDocumentCells, 4)
             .with_terminal_width_profile(TerminalWidthProfile::Cjk);
-        let mut resources = ResourceContext::new(exact.resources);
+        let resources = ResourceContext::new(exact.resources);
         let label = try_build_normalized_label_lines(
             raw,
             TerminalWidthProfile::Cjk,
             false,
             None,
-            &mut resources,
+            &resources,
         )
         .expect("exact CJK and ZWJ cells should be admitted")
         .expect("non-trimmed label should be retained");
@@ -552,13 +552,13 @@ mod tests {
 
         let below = options_with_limit(AsciiResourceLimitId::MaxDocumentCells, 3)
             .with_terminal_width_profile(TerminalWidthProfile::Cjk);
-        let mut resources = ResourceContext::new(below.resources);
+        let resources = ResourceContext::new(below.resources);
         let error = try_build_normalized_label_lines(
             raw,
             TerminalWidthProfile::Cjk,
             false,
             None,
-            &mut resources,
+            &resources,
         )
         .expect_err("one cell below the exact CJK and ZWJ total should fail");
         assert_limit_error(error, AsciiResourceLimitId::MaxDocumentCells, 4, 3);
@@ -568,13 +568,13 @@ mod tests {
     fn relation_label_trim_keeps_visible_controls_and_authored_breaks() {
         let options = AsciiRenderOptions::ascii()
             .with_resource_profile(ResourceProfile::UnboundedForTrustedInput);
-        let mut resources = ResourceContext::new(options.resources);
+        let resources = ResourceContext::new(options.resources);
         let label = try_build_normalized_label_lines(
             " \t\\nvalue\n ",
             TerminalWidthProfile::Unicode,
             true,
             None,
-            &mut resources,
+            &resources,
         )
         .expect("trimmed relation label should normalize")
         .expect("visible controls and authored breaks keep the label non-empty");

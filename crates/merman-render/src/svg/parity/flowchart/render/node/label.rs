@@ -8,11 +8,10 @@ use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDe
 use crate::svg::parity::flowchart::util::{
     HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, OptionalStyleXmlAttr, flowchart_html_contains_img_tag,
 };
-use crate::svg::parity::flowchart::write_flowchart_svg_text;
-use crate::svg::parity::flowchart::write_flowchart_svg_text_markdown_wrapped;
+use crate::svg::parity::flowchart::{
+    write_flowchart_svg_source_word_lines, write_flowchart_svg_text_markdown_wrapped,
+};
 use crate::svg::parity::{escape_xml_display, fmt_display};
-
-use super::super::root::flowchart_wrap_svg_text_lines;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_label(
     out: &mut String,
@@ -22,8 +21,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
     compiled_styles: &FlowchartCompiledStyles,
     details: &mut FlowchartRenderDetails,
 ) {
-    let label_text_plain =
-        flowchart_label_plain_text(label.text, label.label_type, ctx.node_html_labels);
     let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
         &ctx.html_label_text_style
     } else {
@@ -34,6 +31,30 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
         ctx.class_defs,
         common.node_classes,
         common.node_styles,
+    );
+    let prepared_svg_label = (!ctx.node_html_labels && label.label_type != "markdown").then(|| {
+        let owner = ctx.svg_label_sidecar.and_then(|sidecar| {
+            sidecar.node_owner(common.node_id, ctx.swimlane_direction.is_some())
+        });
+        crate::flowchart::FlowchartSvgLabelRenderPlan::new(
+            ctx.svg_label_sidecar,
+            owner,
+            label.text,
+            ctx.measurer,
+            node_text_style.as_ref(),
+            Some(ctx.wrapping_width),
+            true,
+            crate::flowchart::flowchart_node_svg_width_mode(
+                label.text,
+                label.label_type,
+                ctx.node_wrap_mode,
+                common.shape,
+            ),
+        )
+    });
+    let label_text_plain = prepared_svg_label.as_ref().map_or_else(
+        || flowchart_label_plain_text(label.text, label.label_type, ctx.node_html_labels),
+        |prepared| prepared.plain_text().to_string(),
     );
     let mut label_dy = label.dy;
     if !ctx.node_html_labels
@@ -95,7 +116,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
     };
     let label_has_visual_content = flowchart_html_contains_img_tag(label.text)
         || (label.label_type == "markdown" && label.text.contains("!["));
-    if label_text_plain.trim().is_empty() && !label_has_visual_content {
+    if crate::flowchart::flowchart_label_text_is_empty_for_mode(
+        &label_text_plain,
+        ctx.node_html_labels,
+    ) && !label_has_visual_content
+    {
         metrics.width = 0.0;
         metrics.height = 0.0;
     }
@@ -123,15 +148,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
                 Some(ctx.wrapping_width),
             );
         } else {
-            let wrapped = flowchart_wrap_svg_text_lines(
-                ctx.measurer,
-                &label_text_plain,
-                &node_text_style,
-                Some(ctx.wrapping_width),
-                true,
-            )
-            .join("\n");
-            write_flowchart_svg_text(out, &wrapped, true);
+            let wrapped = prepared_svg_label
+                .as_ref()
+                .expect("non-Markdown SVG labels are prepared before emission")
+                .wrapped_lines();
+            write_flowchart_svg_source_word_lines(out, &wrapped, true);
         }
         out.push_str("</g></g></g>");
     } else {

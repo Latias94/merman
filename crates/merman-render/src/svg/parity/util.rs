@@ -414,10 +414,19 @@ pub(super) fn escape_xml(text: &str) -> String {
 pub(super) use crate::entities::decode_mermaid_entities_for_render_text;
 
 fn xml_text_is_plain_ascii(text: &str) -> bool {
-    text.bytes().all(|b| {
-        matches!(b, b'\t' | b'\n' | b'\r' | 0x20..=0x7f)
-            && !matches!(b, b'&' | b'<' | b'"' | b'\'' | b'#')
-    })
+    !text.contains("]]>")
+        && text.bytes().all(|b| {
+            matches!(b, b'\t' | b'\n' | b'\r' | 0x20..=0x7f)
+                && !matches!(b, b'&' | b'<' | b'"' | b'\'' | b'#')
+        })
+}
+
+fn xml_raw_text_is_plain_ascii(text: &str) -> bool {
+    !text.contains("]]>")
+        && text.bytes().all(|b| {
+            matches!(b, b'\t' | b'\n' | b'\r' | 0x20..=0x7f)
+                && !matches!(b, b'&' | b'<' | b'"' | b'\'')
+        })
 }
 
 fn xml_text_replacement(ch: char) -> Option<&'static str> {
@@ -456,10 +465,23 @@ pub(super) fn escape_xml_into(out: &mut String, text: &str) {
     }
 
     let decoded = decode_mermaid_entities_for_render_text(text);
-    let text = decoded.as_ref();
+    escape_xml_raw_into(out, decoded.as_ref());
+}
+
+pub(super) fn escape_xml_raw_into(out: &mut String, text: &str) {
+    if xml_raw_text_is_plain_ascii(text) {
+        out.push_str(text);
+        return;
+    }
+
     let mut start = 0usize;
     for (i, ch) in text.char_indices() {
-        let Some(replacement) = xml_text_replacement(ch) else {
+        let replacement = if ch == '>' && text[..i].ends_with("]]") {
+            Some("&gt;")
+        } else {
+            xml_text_replacement(ch)
+        };
+        let Some(replacement) = replacement else {
             continue;
         };
         if start < i {
@@ -489,7 +511,12 @@ impl std::fmt::Display for EscapeXmlDisplay<'_> {
         let text = decoded.as_ref();
         let mut start = 0usize;
         for (i, ch) in text.char_indices() {
-            let Some(replacement) = xml_text_replacement(ch) else {
+            let replacement = if ch == '>' && text[..i].ends_with("]]") {
+                Some("&gt;")
+            } else {
+                xml_text_replacement(ch)
+            };
+            let Some(replacement) = replacement else {
                 continue;
             };
             if start < i {
@@ -627,6 +654,34 @@ mod tests {
             assert_eq!(escape_xml_display(src).to_string(), expected);
             assert_eq!(escape_xml(src), expected);
         }
+    }
+
+    #[test]
+    fn raw_xml_escape_preserves_entity_spelling() {
+        let mut out = String::new();
+        escape_xml_raw_into(&mut out, "&nbsp; &#160; &amp; &lt; #quot; <literal>");
+        assert_eq!(
+            out,
+            "&amp;nbsp; &amp;#160; &amp;amp; &amp;lt; #quot; &lt;literal>"
+        );
+    }
+
+    #[test]
+    fn xml_text_escape_breaks_forbidden_cdata_terminators_after_entity_decode() {
+        let source = "A]]#gt;B]]>C";
+        let expected = "A]]&gt;B]]&gt;C";
+
+        assert_eq!(escape_xml(source), expected);
+        assert_eq!(escape_xml_display(source).to_string(), expected);
+
+        let mut raw = String::new();
+        escape_xml_raw_into(&mut raw, "A]]>B");
+        assert_eq!(raw, "A]]&gt;B");
+
+        let xml = format!("<text>{expected}</text>");
+        let document =
+            roxmltree::Document::parse(&xml).expect("escaped XML text must remain parseable");
+        assert_eq!(document.root_element().text(), Some("A]]>B]]>C"));
     }
 
     #[test]

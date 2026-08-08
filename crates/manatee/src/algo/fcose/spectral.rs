@@ -1,8 +1,10 @@
 #![allow(clippy::needless_range_loop)]
 
-use rustc_hash::FxHashMap;
+use super::{FcoseRandom, NoopWorkControl, SimEdge, SimNode, WorkControl};
+use crate::WorkFailure;
 
-use super::{FcoseRandom, SimEdge, SimNode};
+#[cfg(test)]
+use std::cell::Cell;
 
 const INFINITY_HOPS: f64 = 100_000_000.0;
 const SMALL: f64 = 1e-9;
@@ -11,35 +13,114 @@ const DEFAULT_SAMPLE_SIZE: usize = 25;
 const DEFAULT_PI_TOL: f64 = 1e-7;
 
 const MAX_POWER_ITERATIONS: usize = 10_000;
+const MAX_SVD_QR_ITERATIONS_PER_VALUE: usize = 10_000;
+const MAX_SVD_QR_PHASES_PER_VALUE: usize = 4;
 
-pub(super) fn apply_spectral_start_positions(
+#[cfg(test)]
+thread_local! {
+    static TOPOLOGY_BUILD_COUNT: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+fn record_topology_build() {
+    TOPOLOGY_BUILD_COUNT.with(|count| count.set(count.get() + 1));
+}
+
+#[cfg(test)]
+pub(super) fn reset_topology_build_count() {
+    TOPOLOGY_BUILD_COUNT.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+pub(super) fn topology_build_count() -> usize {
+    TOPOLOGY_BUILD_COUNT.with(Cell::get)
+}
+
+/// Immutable hierarchy-derived graph used by every randomized run of one layout invocation.
+///
+/// It intentionally excludes mutable geometry and adjusted ideal lengths, so a rerun can reuse
+/// the expensive transformed adjacency without observing stale spring state.
+#[derive(Debug)]
+pub(super) struct SpectralTopology {
+    real_node_count: usize,
+    adjacency: Vec<Vec<usize>>,
+    adjacency_entries: usize,
+}
+
+impl SpectralTopology {
+    pub(super) fn build<W: WorkControl + ?Sized>(
+        nodes: &[SimNode],
+        edges: &[SimEdge],
+        compound_parent: &[Option<usize>],
+        work_control: &mut W,
+    ) -> Result<Self, WorkFailure> {
+        work_control.charge(topology_build_work_units(
+            nodes.len(),
+            edges.len(),
+            compound_parent.len(),
+        )?)?;
+
+        let adjacency = build_transformed_adjacency(nodes, edges, compound_parent)?;
+
+        let adjacency_entries = adjacency.iter().try_fold(0usize, |total, neighbors| {
+            total
+                .checked_add(neighbors.len())
+                .ok_or(WorkFailure::ArithmeticOverflow)
+        })?;
+
+        #[cfg(test)]
+        record_topology_build();
+
+        Ok(Self {
+            real_node_count: nodes.len(),
+            adjacency,
+            adjacency_entries,
+        })
+    }
+
+    fn node_size(&self) -> usize {
+        self.adjacency.len()
+    }
+}
+
+pub(super) fn apply_spectral_start_positions<W: WorkControl + ?Sized>(
     nodes: &mut [SimNode],
     edges: &[SimEdge],
-    compound_parent: &[Option<usize>],
-    compound_ids_in_order: &[usize],
+    topology: &SpectralTopology,
     node_separation: f64,
     rng: &mut FcoseRandom,
-) -> bool {
+    work_control: &mut W,
+) -> Result<bool, WorkFailure> {
     if nodes.is_empty() {
-        return false;
+        return Ok(false);
+    }
+    if nodes.len() != topology.real_node_count {
+        return Ok(false);
     }
 
     let n_real = nodes.len();
-    let (adjacency, node_size) =
-        build_transformed_adjacency(nodes, edges, compound_parent, compound_ids_in_order);
+    let adjacency = &topology.adjacency;
+    let node_size = topology.node_size();
     if node_size <= 1 {
-        return false;
+        return Ok(false);
     }
 
     // Upstream skips spectral when the transformed graph has 1 or 2 nodes.
     if node_size == 2 {
+        work_control.charge(
+            edges
+                .len()
+                .checked_add(nodes.len())
+                .ok_or(WorkFailure::ArithmeticOverflow)?,
+        )?;
         if n_real != 2 {
-            return false;
+            return Ok(false);
         }
         // Place the second node to the right of the first node using an ideal edge length.
         // This matches upstream spectral.js' fallback path.
         let ideal = edges
             .iter()
+            .filter(|edge| edge.a < n_real && edge.b < n_real)
             .map(|e| e.ideal_length)
             .find(|v| v.is_finite() && *v > 0.0)
             .unwrap_or(50.0);
@@ -51,13 +132,20 @@ pub(super) fn apply_spectral_start_positions(
 
         nodes[1].left = x2 - nodes[1].width / 2.0;
         nodes[1].top = y1 - nodes[1].height / 2.0;
-        return true;
+        return Ok(true);
     }
 
     let sample_size = node_size.min(DEFAULT_SAMPLE_SIZE);
     if sample_size <= 1 {
-        return false;
+        return Ok(false);
     }
+
+    work_control.charge(spectral_runtime_setup_work_units(
+        node_size,
+        topology.adjacency_entries,
+        sample_size,
+        n_real,
+    )?)?;
 
     // Column sampling matrix (squared shortest-path distances).
     // Keep this as a plain Vec-backed matrix to match upstream JS operation order more closely.
@@ -78,7 +166,7 @@ pub(super) fn apply_spectral_start_positions(
         sample = bfs_fill_column(
             sample,
             col,
-            &adjacency,
+            adjacency,
             node_separation,
             &mut c,
             Some(&mut min_dist),
@@ -101,27 +189,224 @@ pub(super) fn apply_spectral_start_positions(
         }
     }
 
-    let inv = match regularized_inverse_from_svd(&phi) {
+    let inv = match regularized_inverse_from_svd(&phi, work_control)? {
         Some(m) => m,
-        None => return false,
+        None => return Ok(false),
     };
 
-    let (x_coords, y_coords) = match power_iteration(rng, &c, &inv, DEFAULT_PI_TOL) {
+    let coordinates = match power_iteration(rng, &c, &inv, DEFAULT_PI_TOL, work_control)? {
         Some(v) => v,
-        None => return false,
+        None => return Ok(false),
     };
 
     for i in 0..n_real {
-        let x = x_coords[i];
-        let y = y_coords[i];
+        let x = coordinates.x[i];
+        let y = coordinates.y[i];
         if !(x.is_finite() && y.is_finite()) {
-            return false;
+            return Ok(false);
         }
         nodes[i].left = x - nodes[i].width / 2.0;
         nodes[i].top = y - nodes[i].height / 2.0;
     }
 
-    true
+    Ok(true)
+}
+
+fn checked_ceil_log2(value: usize) -> usize {
+    if value <= 1 {
+        1
+    } else {
+        (usize::BITS - (value - 1).leading_zeros()) as usize
+    }
+}
+
+fn checked_n_log_n(value: usize) -> Result<usize, WorkFailure> {
+    value
+        .checked_mul(checked_ceil_log2(value))
+        .ok_or(WorkFailure::ArithmeticOverflow)
+}
+
+fn topology_build_work_units(
+    nodes: usize,
+    edges: usize,
+    compounds: usize,
+) -> Result<usize, WorkFailure> {
+    let non_root_elements = nodes
+        .checked_add(compounds)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let elements = non_root_elements
+        .checked_add(1)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let graph_items = elements
+        .checked_add(edges)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let hierarchy_levels = checked_ceil_log2(elements);
+    let hierarchy_work = elements
+        .checked_mul(hierarchy_levels)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    // Per edge the indexed projection can perform one depth-alignment lift, one reverse LCA
+    // scan, and one lift for each endpoint. Keep the fixed endpoint/index work explicit too.
+    let edge_projection_per_edge = hierarchy_levels
+        .checked_mul(4)
+        .and_then(|work| work.checked_add(12))
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let edge_projection_work = edges
+        .checked_mul(edge_projection_per_edge)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let edge_entries = edges
+        .checked_mul(2)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    // Each non-root hierarchy element can contribute at most one representative connection to a
+    // scope dummy. The final adjacency sort therefore includes both original and dummy entries.
+    let dummy_entries = non_root_elements
+        .checked_mul(2)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let final_entries = edge_entries
+        .checked_add(dummy_entries)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    // Original real adjacency and scope-local adjacency each sort the original edge entries; the
+    // transformed graph then sorts the final original-plus-dummy adjacency once more.
+    let original_ordering_work = checked_n_log_n(edge_entries)?
+        .checked_mul(2)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let compound_ordering_work = checked_n_log_n(compounds)?;
+    let adjacency_ordering_work = original_ordering_work
+        .checked_add(checked_n_log_n(final_entries)?)
+        .and_then(|work| work.checked_add(compound_ordering_work))
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let linear_work = elements
+        .checked_mul(12)
+        .and_then(|work| work.checked_add(edges.checked_mul(8)?))
+        .and_then(|work| work.checked_add(final_entries.checked_mul(4)?))
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    graph_items
+        .checked_add(hierarchy_work)
+        .and_then(|work| work.checked_add(edge_projection_work))
+        .and_then(|work| work.checked_add(adjacency_ordering_work))
+        .and_then(|work| work.checked_add(linear_work))
+        .ok_or(WorkFailure::ArithmeticOverflow)
+}
+
+fn spectral_runtime_setup_work_units(
+    nodes: usize,
+    adjacency_entries: usize,
+    sample_size: usize,
+    real_nodes: usize,
+) -> Result<usize, WorkFailure> {
+    let matrix_cells = nodes
+        .checked_mul(sample_size)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let bfs_per_sample = nodes
+        .checked_mul(3)
+        .and_then(|work| work.checked_add(adjacency_entries))
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let bfs_work = bfs_per_sample
+        .checked_mul(sample_size)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let phi_cells = sample_size
+        .checked_mul(sample_size)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let phi_work = phi_cells
+        .checked_mul(2)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let eigensolver_setup = nodes
+        .checked_mul(8)
+        .and_then(|work| work.checked_add(real_nodes))
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    matrix_cells
+        .checked_add(bfs_work)
+        .and_then(|work| work.checked_add(matrix_cells))
+        .and_then(|work| work.checked_add(phi_work))
+        .and_then(|work| work.checked_add(eigensolver_setup))
+        .ok_or(WorkFailure::ArithmeticOverflow)
+}
+
+fn power_iteration_work_units(
+    nodes: usize,
+    sample_size: usize,
+    orthogonalize: bool,
+) -> Result<usize, WorkFailure> {
+    let rectangular = nodes
+        .checked_mul(sample_size)
+        .and_then(|work| work.checked_mul(2))
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let square = sample_size
+        .checked_mul(sample_size)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let vector_factor = if orthogonalize { 14 } else { 12 };
+    let vector_work = nodes
+        .checked_mul(vector_factor)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let temporary_initialization = sample_size
+        .checked_mul(2)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    rectangular
+        .checked_add(square)
+        .and_then(|work| work.checked_add(vector_work))
+        .and_then(|work| work.checked_add(temporary_initialization))
+        .ok_or(WorkFailure::ArithmeticOverflow)
+}
+
+fn svd_setup_work_units(rows: usize, columns: usize) -> Result<usize, WorkFailure> {
+    let rank = rows.min(columns);
+    let matrix_cells = rows
+        .checked_mul(columns)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let bidiagonalization = matrix_cells
+        .checked_mul(rank)
+        .and_then(|work| work.checked_mul(4))
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let left_vectors = rows
+        .checked_mul(rank)
+        .and_then(|work| work.checked_mul(rank))
+        .and_then(|work| work.checked_mul(2))
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let right_vectors = columns
+        .checked_mul(columns)
+        .and_then(|work| work.checked_mul(columns))
+        .and_then(|work| work.checked_mul(2))
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let vector_storage = columns
+        .checked_mul(3)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    matrix_cells
+        .checked_add(bidiagonalization)
+        .and_then(|work| work.checked_add(left_vectors))
+        .and_then(|work| work.checked_add(right_vectors))
+        .and_then(|work| work.checked_add(rows))
+        .and_then(|work| work.checked_add(vector_storage))
+        .ok_or(WorkFailure::ArithmeticOverflow)
+}
+
+fn svd_qr_iteration_work_units(
+    rows: usize,
+    columns: usize,
+    active_columns: usize,
+) -> Result<usize, WorkFailure> {
+    let scan_work = active_columns
+        .checked_mul(8)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    rows.checked_add(columns)
+        .and_then(|work| work.checked_mul(active_columns))
+        .and_then(|work| work.checked_mul(2))
+        .and_then(|work| work.checked_add(scan_work))
+        .ok_or(WorkFailure::ArithmeticOverflow)
+}
+
+fn regularized_inverse_work_units(size: usize) -> Result<usize, WorkFailure> {
+    let square = size
+        .checked_mul(size)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let cube = square
+        .checked_mul(size)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    cube.checked_add(
+        square
+            .checked_mul(2)
+            .ok_or(WorkFailure::ArithmeticOverflow)?,
+    )
+    .and_then(|work| work.checked_add(size.checked_mul(3)?))
+    .ok_or(WorkFailure::ArithmeticOverflow)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -134,9 +419,16 @@ fn build_transformed_adjacency(
     nodes: &[SimNode],
     edges: &[SimEdge],
     compound_parent: &[Option<usize>],
-    compound_ids_in_order: &[usize],
-) -> (Vec<Vec<usize>>, usize) {
+) -> Result<Vec<Vec<usize>>, WorkFailure> {
     let n_real = nodes.len();
+    let compound_count = compound_parent.len();
+    let root_scope = compound_count;
+    let root_element = n_real
+        .checked_add(compound_count)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let element_count = root_element
+        .checked_add(1)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
 
     // Transformed graph starts with all real (childless) nodes, then adds dummy nodes created by
     // `aux.connectComponents(...)` (top-level first, then for each parent in insertion order).
@@ -154,205 +446,167 @@ fn build_transformed_adjacency(
 
     let leaf_deg: Vec<usize> = adjacency.iter().map(|v| v.len()).collect();
 
-    // Match upstream spectral.js ordering:
-    // - compound ids follow the Cytoscape insertion order (Mermaid adds groups first, then services)
-    // - we keep that order as provided by the caller (derived from `graph.compounds`)
-    let compound_ids: Vec<usize> = compound_ids_in_order
-        .iter()
-        .copied()
-        .filter(|id| *id < compound_parent.len())
-        .collect();
-    let mut compound_id_to_ix: Vec<Option<usize>> = vec![None; compound_parent.len()];
-    for (ix, &id) in compound_ids.iter().enumerate() {
-        compound_id_to_ix[id] = Some(ix);
+    let mut parent_element = vec![root_element; element_count];
+    for (leaf, node) in nodes.iter().enumerate() {
+        parent_element[leaf] = node
+            .parent
+            .filter(|parent| *parent < compound_count)
+            .map(|parent| n_real + parent)
+            .unwrap_or(root_element);
     }
-
-    let mut compound_parent_ix: Vec<Option<usize>> = vec![None; compound_ids.len()];
-    for (ix, &compound_id) in compound_ids.iter().enumerate() {
-        let parent_ix = compound_parent
-            .get(compound_id)
-            .copied()
-            .flatten()
-            .and_then(|parent_id| compound_id_to_ix.get(parent_id).copied().flatten());
-        compound_parent_ix[ix] = parent_ix;
+    for (compound, parent) in compound_parent.iter().copied().enumerate() {
+        parent_element[n_real + compound] = parent
+            .filter(|parent| *parent < compound_count)
+            .map(|parent| n_real + parent)
+            .unwrap_or(root_element);
     }
+    parent_element[root_element] = root_element;
 
-    let mut compound_children: Vec<Vec<usize>> = vec![Vec::new(); compound_ids.len()];
-    for child_ix in 0..compound_ids.len() {
-        if let Some(parent_ix) = compound_parent_ix[child_ix] {
-            // Preserve Cytoscape insertion order (child compounds are appended in `compound_ids`
-            // order, which is itself insertion order).
-            compound_children[parent_ix].push(child_ix);
-        }
-    }
-
-    let mut leaf_chain: Vec<Vec<usize>> = vec![Vec::new(); n_real];
-    let mut leaf_immediate_parent: Vec<Option<usize>> = vec![None; n_real];
-    let mut leaf_root_compound: Vec<Option<usize>> = vec![None; n_real];
-    for i in 0..n_real {
-        let mut cur = nodes[i].parent;
-        while let Some(cid) = cur {
-            let Some(cix) = compound_id_to_ix.get(cid).copied().flatten() else {
-                break;
-            };
-            leaf_chain[i].push(cix);
-            cur = compound_parent.get(cid).copied().flatten();
-        }
-        leaf_immediate_parent[i] = leaf_chain[i].first().copied();
-        leaf_root_compound[i] = leaf_chain[i].last().copied();
-    }
-
-    // Track which compounds are actually referenced by any node so we don't treat unrelated
-    // compound definitions as layout elements.
-    let mut compound_used: Vec<bool> = vec![false; compound_ids.len()];
-    for chain in &leaf_chain {
-        for &cix in chain {
-            compound_used[cix] = true;
-        }
-    }
-
-    // Representative childless node per compound: mirror `spectral.js`'s `parentChildMap`.
-    //
-    // Important: upstream does *not* pick a global minimum-degree leaf from all descendants.
-    // Instead, it descends along `children.nodes()[0]` while the current level has no childless
-    // nodes, then picks the minimum-degree leaf among the childless nodes at that level.
-    let mut compound_repr_leaf: Vec<Option<usize>> = vec![None; compound_ids.len()];
-    for cix in 0..compound_ids.len() {
-        if !compound_used[cix] {
+    // Resolve every hierarchy depth once. Graph validation rejects cycles before this allocation.
+    let mut depth = vec![usize::MAX; element_count];
+    depth[root_element] = 0;
+    let mut path: Vec<usize> = Vec::new();
+    for start in 0..root_element {
+        if depth[start] != usize::MAX {
             continue;
         }
-        let mut current = cix;
-        loop {
-            // Direct childless nodes at this level.
-            let mut best_leaf: Option<usize> = None;
-            let mut best_deg: usize = usize::MAX;
-            for leaf in 0..n_real {
-                if leaf_immediate_parent[leaf] != Some(current) {
-                    continue;
-                }
-                let deg = leaf_deg[leaf];
-                match best_leaf {
-                    None => {
-                        best_leaf = Some(leaf);
-                        best_deg = deg;
-                    }
-                    Some(_) if deg < best_deg => {
-                        best_leaf = Some(leaf);
-                        best_deg = deg;
-                    }
-                    _ => {}
-                }
+        path.clear();
+        let mut current = start;
+        while depth[current] == usize::MAX {
+            path.push(current);
+            if path.len() > element_count {
+                return Err(WorkFailure::ArithmeticOverflow);
             }
-            if best_leaf.is_some() {
-                compound_repr_leaf[cix] = best_leaf;
-                break;
-            }
-
-            // No direct leaves: descend into the first compound child (in insertion order).
-            let mut next_compound: Option<usize> = None;
-            for &child in &compound_children[current] {
-                if compound_used.get(child).copied().unwrap_or(false) {
-                    next_compound = Some(child);
-                    break;
-                }
-            }
-            let Some(next) = next_compound else {
-                break;
-            };
-            current = next;
+            current = parent_element[current];
+        }
+        let mut current_depth = depth[current];
+        while let Some(element) = path.pop() {
+            current_depth = current_depth
+                .checked_add(1)
+                .ok_or(WorkFailure::ArithmeticOverflow)?;
+            depth[element] = current_depth;
         }
     }
 
-    let elem_degree = |e: ElemKey| -> usize {
-        match e {
-            ElemKey::Leaf(i) => leaf_deg.get(i).copied().unwrap_or(0),
-            // In upstream Cytoscape, compound nodes do not have direct incident edges.
-            ElemKey::Compound(_) => 0,
+    let hierarchy_levels = checked_ceil_log2(element_count);
+    let mut ancestors: Vec<Vec<usize>> = Vec::with_capacity(hierarchy_levels);
+    ancestors.push(parent_element.clone());
+    for level in 1..hierarchy_levels {
+        let previous = &ancestors[level - 1];
+        let mut current = vec![root_element; element_count];
+        for element in 0..element_count {
+            current[element] = previous[previous[element]];
         }
-    };
-
-    let elem_repr_leaf = |e: ElemKey| -> Option<usize> {
-        match e {
-            ElemKey::Leaf(i) => Some(i),
-            ElemKey::Compound(cix) => compound_repr_leaf.get(cix).copied().flatten(),
-        }
-    };
-
-    // Mirror `spectral.js` preprocessing:
-    // - `aux.connectComponents(cy, eles, aux.getTopMostNodes(nodes), dummyNodes);`
-    // - `parentNodes.forEach(ele => aux.connectComponents(... topMostNodes(ele.descendants()) ...));`
-
-    // Top-level connectComponents.
-    {
-        let mut top_most: Vec<ElemKey> = Vec::new();
-        for cix in 0..compound_ids.len() {
-            if compound_used[cix] && compound_parent_ix[cix].is_none() {
-                top_most.push(ElemKey::Compound(cix));
-            }
-        }
-        for leaf in 0..n_real {
-            if leaf_immediate_parent[leaf].is_none() {
-                top_most.push(ElemKey::Leaf(leaf));
-            }
-        }
-
-        add_dummy_for_scope(
-            &mut adjacency,
-            edges,
-            &top_most,
-            |leaf| {
-                Some(
-                    leaf_root_compound[leaf]
-                        .map(ElemKey::Compound)
-                        .unwrap_or(ElemKey::Leaf(leaf)),
-                )
-            },
-            &elem_degree,
-            &elem_repr_leaf,
-        );
+        ancestors.push(current);
     }
 
-    // Per-compound connectComponents (in parent insertion order).
-    for scope_cix in 0..compound_ids.len() {
-        if !compound_used[scope_cix] {
+    let mut compounds_deep_first: Vec<usize> = (0..compound_count).collect();
+    compounds_deep_first
+        .sort_by_key(|compound| std::cmp::Reverse(depth[n_real.saturating_add(*compound)]));
+
+    // Compute the upstream parentChildMap representative in one bottom-up pass. Direct leaves
+    // win; otherwise the first used compound child in insertion order supplies the representative.
+    let mut compound_used = vec![false; compound_count];
+    let mut direct_best_leaf: Vec<Option<usize>> = vec![None; compound_count];
+    let mut direct_best_degree = vec![usize::MAX; compound_count];
+    for (leaf, node) in nodes.iter().enumerate() {
+        let Some(parent) = node.parent.filter(|parent| *parent < compound_count) else {
+            continue;
+        };
+        compound_used[parent] = true;
+        let degree = leaf_deg[leaf];
+        if direct_best_leaf[parent].is_none() || degree < direct_best_degree[parent] {
+            direct_best_leaf[parent] = Some(leaf);
+            direct_best_degree[parent] = degree;
+        }
+    }
+    for &compound in &compounds_deep_first {
+        if compound_used[compound]
+            && let Some(parent) = compound_parent[compound]
+        {
+            compound_used[parent] = true;
+        }
+    }
+    let mut first_used_child: Vec<Option<usize>> = vec![None; compound_count];
+    for compound in 0..compound_count {
+        if !compound_used[compound] {
             continue;
         }
-
-        // `aux.getTopMostNodes(ele.descendants())` returns the immediate children of the parent.
-        let mut top_most: Vec<ElemKey> = Vec::new();
-        for &child in &compound_children[scope_cix] {
-            if compound_used.get(child).copied().unwrap_or(false) {
-                top_most.push(ElemKey::Compound(child));
-            }
+        if let Some(parent) = compound_parent[compound]
+            && first_used_child[parent].is_none()
+        {
+            first_used_child[parent] = Some(compound);
         }
-        for leaf in 0..n_real {
-            if leaf_immediate_parent[leaf] == Some(scope_cix) {
-                top_most.push(ElemKey::Leaf(leaf));
-            }
-        }
+    }
+    let mut compound_repr_leaf = vec![None; compound_count];
+    for &compound in &compounds_deep_first {
+        compound_repr_leaf[compound] = direct_best_leaf[compound]
+            .or_else(|| first_used_child[compound].and_then(|child| compound_repr_leaf[child]));
+    }
 
-        if top_most.len() <= 1 {
+    // Stable scope members: compounds first in insertion order, then direct leaves in node order.
+    let mut scope_elements: Vec<Vec<ElemKey>> = vec![Vec::new(); compound_count + 1];
+    let mut element_local_index = vec![usize::MAX; element_count];
+    for compound in 0..compound_count {
+        if !compound_used[compound] {
             continue;
         }
+        let scope = compound_parent[compound].unwrap_or(root_scope);
+        element_local_index[n_real + compound] = scope_elements[scope].len();
+        scope_elements[scope].push(ElemKey::Compound(compound));
+    }
+    for (leaf, node) in nodes.iter().enumerate() {
+        let scope = node.parent.unwrap_or(root_scope);
+        element_local_index[leaf] = scope_elements[scope].len();
+        scope_elements[scope].push(ElemKey::Leaf(leaf));
+    }
 
-        add_dummy_for_scope(
-            &mut adjacency,
-            edges,
-            &top_most,
-            |leaf| {
-                // Restrict traversal to this compound's descendants (neighbors outside the scope
-                // are ignored because they don't intersect `topMostNodes` in upstream).
-                if !leaf_chain
-                    .get(leaf)
-                    .is_some_and(|chain| chain.contains(&scope_cix))
-                {
-                    return None;
-                }
-                map_leaf_to_scope_top_most(scope_cix, leaf, &leaf_immediate_parent, &leaf_chain)
-            },
-            &elem_degree,
-            &elem_repr_leaf,
-        );
+    // An original leaf edge connects different direct children in exactly one scope: the LCA of
+    // its endpoints. Assigning it once removes the previous scope-by-edge rescans.
+    let mut scope_edge_pairs: Vec<Vec<(usize, usize)>> = vec![Vec::new(); compound_count + 1];
+    for edge in edges {
+        if edge.a >= n_real || edge.b >= n_real || edge.a == edge.b {
+            continue;
+        }
+        let lca = lowest_common_ancestor(edge.a, edge.b, &depth, &ancestors);
+        let scope = if lca == root_element {
+            root_scope
+        } else if lca >= n_real && lca < root_element {
+            lca - n_real
+        } else {
+            continue;
+        };
+        let a_child = direct_child_below(lca, edge.a, &depth, &ancestors);
+        let b_child = direct_child_below(lca, edge.b, &depth, &ancestors);
+        if a_child == b_child {
+            continue;
+        }
+        let a_index = element_local_index[a_child];
+        let b_index = element_local_index[b_child];
+        if a_index == usize::MAX || b_index == usize::MAX {
+            continue;
+        }
+        scope_edge_pairs[scope].push((a_index, b_index));
+    }
+
+    // Upstream creates the root dummy first, then parent dummies in compound insertion order.
+    add_dummy_for_scope(
+        &mut adjacency,
+        &scope_elements[root_scope],
+        &scope_edge_pairs[root_scope],
+        &leaf_deg,
+        &compound_repr_leaf,
+    );
+    for scope in 0..compound_count {
+        if compound_used[scope] {
+            add_dummy_for_scope(
+                &mut adjacency,
+                &scope_elements[scope],
+                &scope_edge_pairs[scope],
+                &leaf_deg,
+                &compound_repr_leaf,
+            );
+        }
     }
 
     for neigh in &mut adjacency {
@@ -360,72 +614,72 @@ fn build_transformed_adjacency(
         neigh.dedup();
     }
 
-    let node_size = adjacency.len();
-    (adjacency, node_size)
+    Ok(adjacency)
 }
 
-fn map_leaf_to_scope_top_most(
-    scope_cix: usize,
-    leaf: usize,
-    leaf_immediate_parent: &[Option<usize>],
-    leaf_chain: &[Vec<usize>],
-) -> Option<ElemKey> {
-    if leaf_immediate_parent.get(leaf).copied().flatten() == Some(scope_cix) {
-        return Some(ElemKey::Leaf(leaf));
+fn lift_element(mut element: usize, mut steps: usize, ancestors: &[Vec<usize>]) -> usize {
+    let mut level = 0usize;
+    while steps > 0 && level < ancestors.len() {
+        if steps & 1 == 1 {
+            element = ancestors[level][element];
+        }
+        steps >>= 1;
+        level += 1;
     }
+    element
+}
 
-    let chain = leaf_chain.get(leaf)?;
-    let mut pos: Option<usize> = None;
-    for (i, &cix) in chain.iter().enumerate() {
-        if cix == scope_cix {
-            pos = Some(i);
-            break;
+fn lowest_common_ancestor(
+    mut a: usize,
+    mut b: usize,
+    depth: &[usize],
+    ancestors: &[Vec<usize>],
+) -> usize {
+    if depth[a] > depth[b] {
+        a = lift_element(a, depth[a] - depth[b], ancestors);
+    } else if depth[b] > depth[a] {
+        b = lift_element(b, depth[b] - depth[a], ancestors);
+    }
+    if a == b {
+        return a;
+    }
+    for level in (0..ancestors.len()).rev() {
+        if ancestors[level][a] != ancestors[level][b] {
+            a = ancestors[level][a];
+            b = ancestors[level][b];
         }
     }
-    let pos = pos?;
-    if pos == 0 {
-        // Immediate parent handled above; treat as a direct leaf child.
-        return Some(ElemKey::Leaf(leaf));
-    }
-    Some(ElemKey::Compound(chain[pos - 1]))
+    ancestors[0][a]
+}
+
+fn direct_child_below(
+    scope: usize,
+    leaf: usize,
+    depth: &[usize],
+    ancestors: &[Vec<usize>],
+) -> usize {
+    let steps = depth[leaf].saturating_sub(depth[scope]).saturating_sub(1);
+    lift_element(leaf, steps, ancestors)
 }
 
 fn add_dummy_for_scope(
     transformed_adj: &mut Vec<Vec<usize>>,
-    edges: &[SimEdge],
     top_most: &[ElemKey],
-    mut map_leaf_to_elem: impl FnMut(usize) -> Option<ElemKey>,
-    elem_degree: &impl Fn(ElemKey) -> usize,
-    elem_repr_leaf: &impl Fn(ElemKey) -> Option<usize>,
+    edge_pairs: &[(usize, usize)],
+    leaf_deg: &[usize],
+    compound_repr_leaf: &[Option<usize>],
 ) {
     if top_most.len() <= 1 {
         return;
     }
 
-    let mut elem_to_idx: FxHashMap<ElemKey, usize> = FxHashMap::default();
-    for (i, &e) in top_most.iter().enumerate() {
-        elem_to_idx.insert(e, i);
-    }
-
     let mut elem_adj: Vec<Vec<usize>> = vec![Vec::new(); top_most.len()];
-    for e in edges {
-        let Some(a) = map_leaf_to_elem(e.a) else {
-            continue;
-        };
-        let Some(b) = map_leaf_to_elem(e.b) else {
-            continue;
-        };
-        if a == b {
+    for &(a, b) in edge_pairs {
+        if a >= elem_adj.len() || b >= elem_adj.len() || a == b {
             continue;
         }
-        let Some(&ia) = elem_to_idx.get(&a) else {
-            continue;
-        };
-        let Some(&ib) = elem_to_idx.get(&b) else {
-            continue;
-        };
-        elem_adj[ia].push(ib);
-        elem_adj[ib].push(ia);
+        elem_adj[a].push(b);
+        elem_adj[b].push(a);
     }
     for neigh in &mut elem_adj {
         neigh.sort_unstable();
@@ -444,17 +698,27 @@ fn add_dummy_for_scope(
         // Mirror `aux.connectComponents(...)` selection: pick the minimum-degree top-most node
         // in the component, and keep the first one on ties (JS uses `<`, not `<=`).
         let mut best = top_most[comp[0]];
-        let mut best_deg = elem_degree(best);
+        let mut best_deg = match best {
+            ElemKey::Leaf(leaf) => leaf_deg.get(leaf).copied().unwrap_or(0),
+            ElemKey::Compound(_) => 0,
+        };
         for &i in comp.iter().skip(1) {
             let e = top_most[i];
-            let deg = elem_degree(e);
+            let deg = match e {
+                ElemKey::Leaf(leaf) => leaf_deg.get(leaf).copied().unwrap_or(0),
+                ElemKey::Compound(_) => 0,
+            };
             if deg < best_deg {
                 best = e;
                 best_deg = deg;
             }
         }
 
-        let Some(rep_leaf) = elem_repr_leaf(best) else {
+        let rep_leaf = match best {
+            ElemKey::Leaf(leaf) => Some(leaf),
+            ElemKey::Compound(compound) => compound_repr_leaf.get(compound).copied().flatten(),
+        };
+        let Some(rep_leaf) = rep_leaf else {
             continue;
         };
         if rep_leaf >= transformed_adj.len() {
@@ -554,19 +818,28 @@ pub(super) struct SvdResult {
 // This avoids relying on external linear algebra implementations whose numeric behavior can
 // diverge enough to change the spectral basis on symmetric graphs (which cascades into different
 // FCoSE results and parity-root viewports).
-fn regularized_inverse_from_svd(phi: &[Vec<f64>]) -> Option<Vec<Vec<f64>>> {
+fn regularized_inverse_from_svd<W: WorkControl + ?Sized>(
+    phi: &[Vec<f64>],
+    work_control: &mut W,
+) -> Result<Option<Vec<Vec<f64>>>, WorkFailure> {
     let n = phi.len();
     if n == 0 {
-        return None;
+        return Ok(None);
     }
     if phi.iter().any(|r| r.len() != n) {
-        return None;
+        return Ok(None);
     }
 
-    let svd = svd_jama(phi)?;
+    let Some(svd) = svd_jama_controlled(phi, work_control)? else {
+        return Ok(None);
+    };
     if svd.s.is_empty() {
-        return None;
+        return Ok(None);
     }
+
+    // The regularization and V * Sig * U^T multiply are separate from the SVD kernel. Charge the
+    // complete local tranche before allocating its output so rejection cannot leave partial work.
+    work_control.charge(regularized_inverse_work_units(n)?)?;
 
     // layout-base spectral.js:
     // max_s = q[0]^3 where q is sorted descending by the SVD routine.
@@ -596,22 +869,28 @@ fn regularized_inverse_from_svd(phi: &[Vec<f64>]) -> Option<Vec<Vec<f64>>> {
             inv[i][j] = sum;
         }
     }
-    Some(inv)
+    Ok(Some(inv))
 }
 
-fn power_iteration(
+struct SpectralCoordinates {
+    x: Vec<f64>,
+    y: Vec<f64>,
+}
+
+fn power_iteration<W: WorkControl + ?Sized>(
     rng: &mut FcoseRandom,
     c: &[Vec<f64>],
     inv: &[Vec<f64>],
     pi_tol: f64,
-) -> Option<(Vec<f64>, Vec<f64>)> {
+    work_control: &mut W,
+) -> Result<Option<SpectralCoordinates>, WorkFailure> {
     let n = c.len();
     if n == 0 {
-        return None;
+        return Ok(None);
     }
     let sample_size = c[0].len();
     if inv.len() != sample_size || inv.iter().any(|r| r.len() != sample_size) {
-        return None;
+        return Ok(None);
     }
 
     // Match upstream `spectral.js` RNG consumption order:
@@ -635,26 +914,35 @@ fn power_iteration(
     normalize_in_place(&mut y1);
     normalize_in_place(&mut y2);
 
-    let (v1, theta1) = dominant_eigenvector(c, inv, y1, pi_tol)?;
-    let (v2, theta2) = second_eigenvector(c, inv, &v1, y2, pi_tol)?;
+    let (v1, theta1) = match dominant_eigenvector(c, inv, y1, pi_tol, work_control)? {
+        Some(result) => result,
+        None => return Ok(None),
+    };
+    let (v2, theta2) = match second_eigenvector(c, inv, &v1, y2, pi_tol, work_control)? {
+        Some(result) => result,
+        None => return Ok(None),
+    };
 
     let s1 = theta1.abs().sqrt();
     let s2 = theta2.abs().sqrt();
     let x: Vec<f64> = v1.iter().map(|v| v * s1).collect();
     let y: Vec<f64> = v2.iter().map(|v| v * s2).collect();
-    Some((x, y))
+    Ok(Some(SpectralCoordinates { x, y }))
 }
 
-fn dominant_eigenvector(
+fn dominant_eigenvector<W: WorkControl + ?Sized>(
     c: &[Vec<f64>],
     inv: &[Vec<f64>],
     mut y: Vec<f64>,
     pi_tol: f64,
-) -> Option<(Vec<f64>, f64)> {
+    work_control: &mut W,
+) -> Result<Option<(Vec<f64>, f64)>, WorkFailure> {
     let mut previous = SMALL;
     let mut theta = 0.0;
+    let iteration_work = power_iteration_work_units(c.len(), c[0].len(), false)?;
 
     for _ in 0..MAX_POWER_ITERATIONS {
+        work_control.charge(iteration_work)?;
         let v = y.clone();
         let t = mult_gamma(&v);
         let t = mult_l(&t, c, inv);
@@ -667,7 +955,7 @@ fn dominant_eigenvector(
 
         y = next;
         if ratio <= 1.0 + pi_tol && ratio >= 1.0 {
-            return Some((y, theta));
+            return Ok(Some((y, theta)));
         }
         previous = current;
         if previous.abs() < SMALL {
@@ -675,20 +963,23 @@ fn dominant_eigenvector(
         }
     }
 
-    Some((y, theta))
+    Ok(Some((y, theta)))
 }
 
-fn second_eigenvector(
+fn second_eigenvector<W: WorkControl + ?Sized>(
     c: &[Vec<f64>],
     inv: &[Vec<f64>],
     v1: &[f64],
     mut y: Vec<f64>,
     pi_tol: f64,
-) -> Option<(Vec<f64>, f64)> {
+    work_control: &mut W,
+) -> Result<Option<(Vec<f64>, f64)>, WorkFailure> {
     let mut previous = SMALL;
     let mut theta = 0.0;
+    let iteration_work = power_iteration_work_units(c.len(), c[0].len(), true)?;
 
     for _ in 0..MAX_POWER_ITERATIONS {
+        work_control.charge(iteration_work)?;
         let mut v = y.clone();
         let proj = dot(v1, &v);
         for i in 0..v.len() {
@@ -706,7 +997,7 @@ fn second_eigenvector(
 
         y = next;
         if ratio <= 1.0 + pi_tol && ratio >= 1.0 {
-            return Some((y, theta));
+            return Ok(Some((y, theta)));
         }
         previous = current;
         if previous.abs() < SMALL {
@@ -714,7 +1005,7 @@ fn second_eigenvector(
         }
     }
 
-    Some((y, theta))
+    Ok(Some((y, theta)))
 }
 
 fn dot(a: &[f64], b: &[f64]) -> f64 {
@@ -808,14 +1099,27 @@ fn svd_hypot(a: f64, b: f64) -> f64 {
 }
 
 pub(super) fn svd_jama(a_in: &[Vec<f64>]) -> Option<SvdResult> {
+    let mut work_control = NoopWorkControl;
+    svd_jama_controlled(a_in, &mut work_control).ok().flatten()
+}
+
+fn svd_jama_controlled<W: WorkControl + ?Sized>(
+    a_in: &[Vec<f64>],
+    work_control: &mut W,
+) -> Result<Option<SvdResult>, WorkFailure> {
     let m = a_in.len();
     if m == 0 {
-        return None;
+        return Ok(None);
     }
     let n = a_in[0].len();
     if n == 0 || a_in.iter().any(|r| r.len() != n) {
-        return None;
+        return Ok(None);
     }
+
+    // The bidiagonalization and U/V construction loops have fixed bounds derived from the input
+    // shape. Charge them before cloning the matrix; the convergence-dependent QR phase below is
+    // charged once per actual outer iteration.
+    work_control.charge(svd_setup_work_units(m, n)?)?;
 
     let mut a: Vec<Vec<f64>> = a_in.to_vec();
 
@@ -990,10 +1294,22 @@ pub(super) fn svd_jama(a_in: &[Vec<f64>]) -> Option<SvdResult> {
     let mut p_i32 = p as i32;
     let pp = (p - 1) as i32;
     let mut iter = 0i32;
+    let max_outer_iterations = p
+        .max(1)
+        .checked_mul(MAX_SVD_QR_ITERATIONS_PER_VALUE)
+        .and_then(|limit| limit.checked_mul(MAX_SVD_QR_PHASES_PER_VALUE))
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let mut outer_iterations = 0usize;
     let eps = 2f64.powi(-52);
     let tiny = 2f64.powi(-966);
 
     while p_i32 > 0 {
+        if outer_iterations >= max_outer_iterations {
+            return Ok(None);
+        }
+        outer_iterations += 1;
+        work_control.charge(svd_qr_iteration_work_units(m, n, p_i32 as usize)?)?;
+
         let mut k: i32;
         let kase: i32;
 
@@ -1190,9 +1506,55 @@ pub(super) fn svd_jama(a_in: &[Vec<f64>]) -> Option<SvdResult> {
 
         // Prevent pathological infinite loops.
         if iter > 10_000 {
-            break;
+            return Ok(None);
         }
     }
 
-    Some(SvdResult { u, v, s })
+    Ok(Some(SvdResult { u, v, s }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{WorkControl, WorkFailure, svd_jama_controlled, svd_setup_work_units};
+
+    #[derive(Default)]
+    struct RejectAfter {
+        accepted: usize,
+        limit: usize,
+        charges: Vec<usize>,
+    }
+
+    impl WorkControl for RejectAfter {
+        fn charge(&mut self, units: usize) -> Result<(), WorkFailure> {
+            if self.accepted >= self.limit {
+                return Err(WorkFailure::Interrupted);
+            }
+            self.accepted += 1;
+            self.charges.push(units);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn controlled_svd_charges_setup_before_the_iterative_phase() {
+        let matrix = vec![vec![4.0, 1.0], vec![2.0, 3.0]];
+        let mut control = RejectAfter {
+            limit: 1,
+            ..RejectAfter::default()
+        };
+
+        let error = svd_jama_controlled(&matrix, &mut control)
+            .expect_err("the first QR tranche must be rejectable");
+
+        assert_eq!(error, WorkFailure::Interrupted);
+        assert_eq!(control.charges, vec![svd_setup_work_units(2, 2).unwrap()]);
+    }
+
+    #[test]
+    fn svd_work_units_fail_closed_on_overflow() {
+        assert_eq!(
+            svd_setup_work_units(usize::MAX, 2),
+            Err(WorkFailure::ArithmeticOverflow)
+        );
+    }
 }

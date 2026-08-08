@@ -10,7 +10,7 @@ use crate::text::TextMeasurer;
 use super::super::{escape_xml_into, fmt, fmt_into, fmt_string};
 use super::geometry::{arrow_shift, bounds_from_rect, extend_bounds, is_arch_dir_x, is_arch_dir_y};
 use super::labels::{
-    svg_line_plain_text, svg_line_tspan_bbox_width_px, wrap_svg_words_to_lines,
+    svg_line_formatted_bbox_width_px, svg_line_plain_text, wrap_svg_words_to_lines,
     write_svg_text_lines,
 };
 use super::model::ArchitectureModelAccess;
@@ -306,7 +306,7 @@ fn architecture_edge_label_plan(
     let mut first_line_text = None;
     for line in &lines {
         let s = svg_line_plain_text(line);
-        bbox_w = bbox_w.max(svg_line_tspan_bbox_width_px(
+        bbox_w = bbox_w.max(svg_line_formatted_bbox_width_px(
             line,
             text_measurer,
             &settings.text_style,

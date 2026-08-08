@@ -3,7 +3,7 @@ use merman_render::LayoutOptions;
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
     MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
-    TextMeasurementPolicy, TextMeasurementProfileIdentity,
+    TextMeasurementPolicy, TextMeasurementProfileIdentity, TextMeasurementResultKind,
 };
 use merman_render::family;
 use merman_render::model::{SwimlaneDirection, SwimlaneLayout};
@@ -28,6 +28,80 @@ impl HostTextMeasurer for FixedTextMeasurer {
                 height: 20.0,
                 line_count: 1,
             }),
+        }))
+    }
+}
+
+struct WidthAwareTextMeasurer;
+
+impl HostTextMeasurer for WidthAwareTextMeasurer {
+    fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+        let line_width = |line: &str| line.chars().count() as f64 * 8.0;
+        let width = request.text.lines().map(line_width).fold(0.0_f64, f64::max);
+        let line_count = request.text.split('\n').count().max(1);
+        Ok(Some(match request.operation {
+            TextMeasurementOperation::RawBBoxWidth
+            | TextMeasurementOperation::SimpleBBoxWidth
+            | TextMeasurementOperation::ComputedLength => HostTextMeasurement::Length(width),
+            TextMeasurementOperation::RawBBoxHeight
+            | TextMeasurementOperation::SimpleBBoxHeight => HostTextMeasurement::Length(20.0),
+            _ => HostTextMeasurement::Metrics(merman_render::text::TextMetrics {
+                width,
+                height: line_count as f64 * 20.0,
+                line_count,
+            }),
+        }))
+    }
+}
+
+struct FontSizeAwareTextMeasurer;
+
+impl HostTextMeasurer for FontSizeAwareTextMeasurer {
+    fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+        let raw_width = request
+            .text
+            .lines()
+            .map(|line| line.chars().count() as f64 * request.style.font_size * 0.5)
+            .fold(0.0_f64, f64::max);
+        let max_width = request
+            .max_width
+            .filter(|width| width.is_finite() && *width > 0.0);
+        let line_count = max_width
+            .map(|width| (raw_width / width).ceil() as usize)
+            .unwrap_or(1)
+            .max(request.text.lines().count())
+            .max(1);
+        let metrics = merman_render::text::TextMetrics {
+            width: max_width.map_or(raw_width, |width| raw_width.min(width)),
+            height: line_count as f64 * request.style.font_size,
+            line_count,
+        };
+
+        Ok(Some(match request.operation.required_result_kind() {
+            TextMeasurementResultKind::Metrics => HostTextMeasurement::Metrics(metrics),
+            TextMeasurementResultKind::Length => {
+                let length = match request.operation {
+                    TextMeasurementOperation::RawBBoxHeight
+                    | TextMeasurementOperation::SimpleBBoxHeight
+                    | TextMeasurementOperation::TspanBBoxHeight => metrics.height,
+                    TextMeasurementOperation::CreateTextBBoxYOffset
+                    | TextMeasurementOperation::CreateTextMiddleBBoxYOffset => 0.0,
+                    _ => raw_width,
+                };
+                HostTextMeasurement::Length(length)
+            }
+            TextMeasurementResultKind::HorizontalExtents => {
+                HostTextMeasurement::HorizontalExtents {
+                    left: raw_width / 2.0,
+                    right: raw_width / 2.0,
+                }
+            }
+            TextMeasurementResultKind::WrappedWithRawWidth => {
+                HostTextMeasurement::WrappedWithRawWidth {
+                    metrics,
+                    raw_width: Some(raw_width),
+                }
+            }
         }))
     }
 }
@@ -63,6 +137,56 @@ fn try_layout_swimlane(source: &str) -> Result<SwimlaneLayout, String> {
 
 fn layout_swimlane(source: &str) -> SwimlaneLayout {
     try_layout_swimlane(source).expect("swimlane layout")
+}
+
+fn layout_swimlane_with_width_aware_measurer(source: &str) -> SwimlaneLayout {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse swimlane")
+        .expect("detect swimlane");
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.swimlane-width-aware").unwrap(),
+        "1",
+    )
+    .unwrap();
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::host_display(
+            identity,
+            Arc::new(WidthAwareTextMeasurer),
+            TextMeasurementPhase::ALL,
+        ),
+    );
+    let session = environment.begin_session().expect("render session");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare swimlane layout");
+    let projection = artifact.layout_json().expect("swimlane projection");
+    serde_json::from_value(projection["layout"]["SwimlaneDiagram"].clone())
+        .expect("typed swimlane layout")
+}
+
+fn layout_swimlane_with_font_size_aware_measurer(source: &str) -> SwimlaneLayout {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse swimlane")
+        .expect("detect swimlane");
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.swimlane-font-size-aware").unwrap(),
+        "1",
+    )
+    .unwrap();
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::host_display(
+            identity,
+            Arc::new(FontSizeAwareTextMeasurer),
+            TextMeasurementPhase::ALL,
+        ),
+    );
+    let session = environment.begin_session().expect("render session");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare swimlane layout");
+    let projection = artifact.layout_json().expect("swimlane projection");
+    serde_json::from_value(projection["layout"]["SwimlaneDiagram"].clone())
+        .expect("typed swimlane layout")
 }
 
 fn assert_orthogonal(points: &[merman_render::model::LayoutPoint]) {
@@ -223,6 +347,103 @@ B[Loose]
 }
 
 #[test]
+fn swimlane_layout_measures_render_sources_without_leaking_them_into_public_labels() {
+    let layout = layout_swimlane(
+        r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+swimlane-beta LR
+subgraph Lane["&nbsp;Lane&nbsp;"]
+  A["&nbsp;Node&nbsp;"]
+end
+A -->|"&nbsp;Edge&nbsp;"| B
+"#,
+    );
+    let source_width = |text: &str| text.chars().count() as f64 * 8.0;
+
+    let lane = layout
+        .lanes
+        .iter()
+        .find(|lane| lane.id == "Lane")
+        .expect("Lane");
+    assert_eq!(lane.title, "\u{00a0}Lane\u{00a0}");
+    assert_eq!(lane.title_label_width, source_width("&nbsp;Lane&nbsp;"));
+
+    let node = node_by_id(&layout, "A");
+    assert_eq!(node.label, "\u{00a0}Node\u{00a0}");
+    assert_eq!(node.label_width, source_width("&nbsp;Node&nbsp;"));
+
+    let edge_label = layout
+        .nodes
+        .iter()
+        .find(|node| node.is_edge_label)
+        .expect("edge label node");
+    assert_eq!(edge_label.label, "\u{00a0}Edge\u{00a0}");
+    assert_eq!(edge_label.label_width, source_width("&nbsp;Edge&nbsp;"));
+}
+
+#[test]
+fn swimlane_title_metrics_follow_the_flowchart_local_html_labels_setting() {
+    let html = layout_swimlane(
+        r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: true
+---
+swimlane-beta LR
+subgraph Lane["&nbsp;Lane&nbsp;"]
+  A[Node]
+end
+"#,
+    );
+    let svg = layout_swimlane(
+        r#"---
+config:
+  htmlLabels: true
+  flowchart:
+    htmlLabels: false
+---
+swimlane-beta LR
+subgraph Lane["&nbsp;Lane&nbsp;"]
+  A[Node]
+end
+"#,
+    );
+
+    assert_eq!(html.lanes[0].title_label_width, 6.0 * 8.0);
+    assert_eq!(svg.lanes[0].title_label_width, 16.0 * 8.0);
+}
+
+#[test]
+fn swimlane_edge_label_metrics_follow_label_rect_root_html_labels() {
+    let layout = layout_swimlane(
+        r#"---
+config:
+  flowchart:
+    htmlLabels: false
+---
+swimlane-beta LR
+subgraph Lane
+  A[Node]
+end
+A -->|"&nbsp;Edge&nbsp;"| B
+"#,
+    );
+    let edge_label = layout
+        .nodes
+        .iter()
+        .find(|node| node.is_edge_label)
+        .expect("edge label node");
+
+    assert_eq!(edge_label.label, "\u{00a0}Edge\u{00a0}");
+    assert_eq!(edge_label.label_width, 6.0 * 8.0);
+}
+
+#[test]
 fn edge_curves_preserve_explicit_default_and_config_values() {
     let layout = layout_swimlane(
         r#"swimlane-beta TB
@@ -281,7 +502,10 @@ A -->|approval| B
         .expect("edge label node");
     assert_eq!(label.label, "approval");
     assert_eq!(label.shape, "labelRect");
-    assert!((label.width - 64.0).abs() <= EPSILON);
+    assert!(
+        (label.width - 64.0).abs() <= EPSILON,
+        "unexpected edge-label geometry: {label:?}"
+    );
     assert!((label.height - 20.0).abs() <= EPSILON);
     assert!((label.label_width - 64.0).abs() <= EPSILON);
     assert!(a.layer < label.layer && label.layer < b.layer);
@@ -291,6 +515,106 @@ A -->|approval| B
     assert_eq!(edge.label_node_id.as_deref(), Some(label.id.as_str()));
     assert!(point_on_polyline((label.x, label.y), &edge.points));
     assert_orthogonal(&edge.points);
+}
+
+#[test]
+fn edge_label_nodes_use_plain_text_semantics_after_swimlane_conversion() {
+    let layout = layout_swimlane(
+        r#"swimlane-beta LR
+A -->|`This is **bold**`| B
+"#,
+    );
+
+    let label = layout
+        .nodes
+        .iter()
+        .find(|node| node.is_edge_label)
+        .expect("edge label node");
+    assert_eq!(label.label_type, "text");
+    // The public layout projection retains the semantic source spelling. Rendering uses the
+    // parser-owned label source and the converted labelRect's plain-text label type.
+    assert_eq!(label.label, "`This is **bold**`");
+}
+
+#[test]
+fn edge_label_nodes_use_configured_flowchart_wrapping_width() {
+    fn label_for(width: usize) -> merman_render::model::SwimlaneNodeLayout {
+        let source = format!(
+            r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    wrappingWidth: {width}
+---
+swimlane-beta LR
+A -->|one two three four five six seven eight nine ten| B
+"#
+        );
+        layout_swimlane_with_width_aware_measurer(&source)
+            .nodes
+            .into_iter()
+            .find(|node| node.is_edge_label)
+            .expect("edge label node")
+    }
+
+    let narrow = label_for(80);
+    let wide = label_for(240);
+    assert!(
+        narrow.label_height > wide.label_height,
+        "80px must wrap into more rows than 240px: narrow={narrow:?}, wide={wide:?}"
+    );
+    assert!(
+        narrow.label_width <= 80.0 && wide.label_width <= 240.0,
+        "label metrics must be bounded by the configured width: narrow={narrow:?}, wide={wide:?}"
+    );
+}
+
+#[test]
+fn edge_label_nodes_use_only_the_first_concatenated_mermaid_style() {
+    fn edge_label(source: &str) -> merman_render::model::SwimlaneNodeLayout {
+        layout_swimlane_with_font_size_aware_measurer(source)
+            .nodes
+            .into_iter()
+            .find(|node| node.is_edge_label)
+            .expect("edge label node")
+    }
+
+    let default_then_edge = edge_label(
+        r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    wrappingWidth: 1000
+---
+swimlane-beta LR
+A styled@-->|styled edge label| B
+linkStyle default font-size:24px,font-weight:bold
+linkStyle 0 font-size:12px,font-style:italic
+"#,
+    );
+    let edge_only = edge_label(
+        r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    wrappingWidth: 1000
+---
+swimlane-beta LR
+A styled@-->|styled edge label| B
+linkStyle 0 font-size:12px,font-style:italic
+"#,
+    );
+
+    assert!(
+        default_then_edge.label_width > edge_only.label_width * 1.9,
+        "Mermaid's labelRect conversion reads only the first concatenated style, so the 24px default must win over the 12px edge style: default_then_edge={default_then_edge:?}, edge_only={edge_only:?}"
+    );
+    assert!(
+        default_then_edge.label_height > edge_only.label_height * 1.9,
+        "the same first-style rule must drive label height"
+    );
 }
 
 #[test]

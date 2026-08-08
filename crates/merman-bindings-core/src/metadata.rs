@@ -1242,7 +1242,7 @@ mod tests {
         #[cfg(not(feature = "svg"))]
         assert!(layout.is_none());
         #[cfg(feature = "svg")]
-        assert_eq!(interactive.limits["max_layout_work_units"], Some(250_000));
+        assert_eq!(interactive.limits["max_layout_work_units"], Some(800_000));
         let json: Value =
             serde_json::from_slice(&contract.runtime_catalog_json(2).unwrap()).unwrap();
         assert_eq!(json["schema_version"], RUNTIME_CATALOG_SCHEMA_VERSION);

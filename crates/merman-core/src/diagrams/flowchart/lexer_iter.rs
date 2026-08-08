@@ -5,11 +5,17 @@ impl<'input> Iterator for Lexer<'input> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(tok) = self.pending.pop_front() {
-            return Some(Ok(tok));
+            return Some(tok);
         }
 
         if self.pos >= self.input.len() {
             return None;
+        }
+
+        // Mermaid's LINK and START_LINK rules precede NEWLINE/SPACE and include leading `\s*`.
+        // Give an operator spanning line or Unicode whitespace the same longest-match priority.
+        if let Some(res) = self.lex_arrow_and_label() {
+            return Some(res);
         }
 
         if let Some(sep) = self.lex_sep() {
@@ -98,10 +104,6 @@ impl<'input> Iterator for Lexer<'input> {
         self.allow_header_direction = false;
 
         if let Some(res) = self.lex_node_label() {
-            return Some(res);
-        }
-
-        if let Some(res) = self.lex_arrow_and_label() {
             return Some(res);
         }
 

@@ -2461,9 +2461,11 @@ dependencies = [
  "ryu-js",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "svgtypes",
  "thiserror 2.0.19",
  "unicode-linebreak",
+ "unicode-segmentation",
  "unicode-width",
 ]
 

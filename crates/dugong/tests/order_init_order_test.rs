@@ -77,3 +77,28 @@ fn init_order_does_not_assign_an_order_to_subgraph_nodes() {
     let layering = init_order(&g);
     assert_eq!(layering, vec![vec!["a".to_string()]]);
 }
+
+#[test]
+fn init_order_stably_preserves_graphlib_object_key_order_within_a_rank() {
+    let mut g = new_graph();
+    for id in ["ordinary-b", "10", "2", "ordinary-a"] {
+        g.set_node(
+            id,
+            NodeLabel {
+                rank: Some(0),
+                ..Default::default()
+            },
+        );
+    }
+
+    let layering = init_order(&g);
+    assert_eq!(
+        layering,
+        vec![vec![
+            "2".to_string(),
+            "10".to_string(),
+            "ordinary-b".to_string(),
+            "ordinary-a".to_string(),
+        ]]
+    );
+}

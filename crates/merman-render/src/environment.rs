@@ -4,8 +4,8 @@ use crate::math::MathRenderer;
 use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
 use crate::svg::IconRegistry;
 use crate::text::{
-    DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle,
-    VendoredFontMetricsTextMeasurer, WrapMode,
+    DeterministicTextMeasurer, FontMetricsTable, TextMeasurer, TextMetrics, TextStyle,
+    VendoredFontMetricsTextMeasurer, WrapMode, estimate_line_width_px, round_to_1_64_px,
 };
 use crate::{RenderCapability, RenderCapabilityPolicy};
 use merman_core::runtime::{OperationContext, OperationTiming, RuntimePolicy, RuntimePolicyError};
@@ -141,6 +141,7 @@ pub enum InvalidMeasurementProfileIdentity {
 pub struct TextMeasurementProfile {
     identity: TextMeasurementProfileIdentity,
     backend: Arc<dyn TextMeasurer + Send + Sync>,
+    builtin: Option<BuiltinTextMeasurementProfile>,
 }
 
 impl TextMeasurementProfile {
@@ -148,11 +149,27 @@ impl TextMeasurementProfile {
         identity: TextMeasurementProfileIdentity,
         backend: Arc<dyn TextMeasurer + Send + Sync>,
     ) -> Self {
-        Self { identity, backend }
+        Self {
+            identity,
+            backend,
+            builtin: None,
+        }
     }
 
     pub fn identity(&self) -> &TextMeasurementProfileIdentity {
         &self.identity
+    }
+
+    fn new_builtin(
+        identity: TextMeasurementProfileIdentity,
+        backend: Arc<dyn TextMeasurer + Send + Sync>,
+        builtin: BuiltinTextMeasurementProfile,
+    ) -> Self {
+        Self {
+            identity,
+            backend,
+            builtin: Some(builtin),
+        }
     }
 }
 
@@ -164,6 +181,372 @@ impl fmt::Debug for TextMeasurementProfile {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BuiltinTextMeasurementProfile {
+    VendoredParity,
+    Deterministic,
+}
+
+/// Crate-private proof that one operation resolves to a concrete built-in profile route.
+///
+/// The public `TextMeasurer` extension surface cannot construct or name this value. Sequence may
+/// carry it between two stages of the same render operation, but a custom or host-backed measurer
+/// cannot replay built-in authority to validate cached measurements.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BuiltinTextMeasurementOperationCarrier {
+    profile: BuiltinTextMeasurementProfile,
+    phase: TextMeasurementPhase,
+    operation: TextMeasurementOperation,
+}
+
+impl BuiltinTextMeasurementOperationCarrier {
+    pub(crate) const fn into_inline_html(self) -> Option<InlineHtmlMeasurementCarrier> {
+        match (self.phase, self.operation) {
+            (TextMeasurementPhase::Wrap, TextMeasurementOperation::WrappedWithRawWidth) => {
+                Some(InlineHtmlMeasurementCarrier::builtin(self.profile))
+            }
+            _ => None,
+        }
+    }
+
+    pub(crate) fn into_svg_computed_length(
+        self,
+        style: &TextStyle,
+    ) -> Option<BuiltinSvgComputedLength> {
+        match (self.phase, self.operation) {
+            (TextMeasurementPhase::ComputedLength, TextMeasurementOperation::ComputedLength) => {
+                Some(BuiltinSvgComputedLength::new(self.profile, style))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Private authority for one complete rich HTML measurement operation.
+///
+/// Only [`RoutedTextMeasurer`] can attach a built-in profile after resolving the operation's
+/// owning phase. Arbitrary `TextMeasurer` implementations receive [`Self::opaque`], so custom and
+/// host routes cannot copy or replay built-in authority through the public trait surface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct InlineHtmlMeasurementCarrier {
+    builtin: Option<BuiltinTextMeasurementProfile>,
+}
+
+impl InlineHtmlMeasurementCarrier {
+    pub(crate) const fn opaque() -> Self {
+        Self { builtin: None }
+    }
+
+    const fn builtin(profile: BuiltinTextMeasurementProfile) -> Self {
+        Self {
+            builtin: Some(profile),
+        }
+    }
+
+    pub(crate) const fn is_builtin(self) -> bool {
+        self.builtin.is_some()
+    }
+
+    pub(crate) fn begin_inline_html_width(
+        self,
+        style: &TextStyle,
+    ) -> Option<BuiltinInlineHtmlWidth> {
+        self.builtin
+            .map(|profile| BuiltinInlineHtmlWidth::new(profile, style))
+    }
+}
+
+#[derive(Debug, Clone)]
+enum BuiltinInlineRawLineWidth {
+    Vendored {
+        table: &'static FontMetricsTable,
+        font_size: f64,
+        em: f64,
+        prevprev: Option<char>,
+        prev: Option<char>,
+    },
+    Deterministic {
+        font_size: f64,
+        em: f64,
+    },
+}
+
+/// Streaming `getComputedTextLength()` state for a qualified built-in SVG text route.
+///
+/// Flowchart's createText wrapper probes every growing word prefix. Retaining the exact vendored
+/// scalar state avoids rescanning and reallocating the complete prefix while preserving the same
+/// kerning/trigram accumulation order. Host-backed and opaque custom measurers cannot construct
+/// this state, so their observable callback sequence remains unchanged.
+#[derive(Debug, Clone)]
+pub(crate) struct BuiltinSvgComputedLength {
+    line: BuiltinInlineRawLineWidth,
+}
+
+impl BuiltinSvgComputedLength {
+    fn new(profile: BuiltinTextMeasurementProfile, style: &TextStyle) -> Self {
+        let (line, _) = BuiltinInlineRawLineWidth::new(profile, style);
+        Self { line }
+    }
+
+    pub(crate) fn vendored(style: &TextStyle) -> Self {
+        Self::new(BuiltinTextMeasurementProfile::VendoredParity, style)
+    }
+
+    pub(crate) fn deterministic(style: &TextStyle) -> Self {
+        Self::new(BuiltinTextMeasurementProfile::Deterministic, style)
+    }
+
+    pub(crate) fn push_text(&mut self, text: &str) {
+        for ch in text.chars() {
+            self.line.push_char(ch);
+        }
+    }
+
+    pub(crate) fn width_px(&self) -> f64 {
+        let width = self.line.width_px();
+        if width.is_finite() && width >= 0.0 {
+            width
+        } else {
+            0.0
+        }
+    }
+
+    pub(crate) fn reset(&mut self) {
+        self.line.reset();
+    }
+}
+
+impl BuiltinInlineRawLineWidth {
+    fn new(profile: BuiltinTextMeasurementProfile, style: &TextStyle) -> (Self, bool) {
+        let font_size = style.font_size.max(1.0);
+        if profile == BuiltinTextMeasurementProfile::VendoredParity
+            && let Some(table) = VendoredFontMetricsTextMeasurer::unwrapped_html_width_table(style)
+        {
+            return (
+                Self::Vendored {
+                    table,
+                    font_size,
+                    em: 0.0,
+                    prevprev: None,
+                    prev: None,
+                },
+                true,
+            );
+        }
+
+        (Self::Deterministic { font_size, em: 0.0 }, false)
+    }
+
+    fn push_char(&mut self, ch: char) {
+        match self {
+            Self::Vendored {
+                table,
+                em,
+                prevprev,
+                prev,
+                ..
+            } => VendoredFontMetricsTextMeasurer::accumulate_unwrapped_html_char_em(
+                table, em, prevprev, prev, ch,
+            ),
+            Self::Deterministic { em, .. } => {
+                let mut encoded = [0_u8; 4];
+                let scalar = ch.encode_utf8(&mut encoded);
+                // The built-in deterministic profile uses its default heuristic. Accumulating
+                // one scalar's em width at a time preserves `estimate_line_width_px`'s exact
+                // left-to-right floating-point order without copying the growing line.
+                *em += estimate_line_width_px(scalar, 1.0);
+            }
+        }
+    }
+
+    fn width_px(&self) -> f64 {
+        match self {
+            Self::Vendored { font_size, em, .. } | Self::Deterministic { font_size, em } => {
+                *em * *font_size
+            }
+        }
+    }
+
+    fn reset(&mut self) {
+        match self {
+            Self::Vendored {
+                em, prevprev, prev, ..
+            } => {
+                *em = 0.0;
+                *prevprev = None;
+                *prev = None;
+            }
+            Self::Deterministic { em, .. } => *em = 0.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct BuiltinNormalizedTextWidth {
+    line: BuiltinInlineRawLineWidth,
+    max_width_px: f64,
+    pending_blank_width_px: f64,
+    line_index: usize,
+    line_has_non_whitespace: bool,
+}
+
+impl BuiltinNormalizedTextWidth {
+    fn new(line: BuiltinInlineRawLineWidth) -> Self {
+        Self {
+            line,
+            max_width_px: 0.0,
+            pending_blank_width_px: 0.0,
+            line_index: 0,
+            line_has_non_whitespace: false,
+        }
+    }
+
+    fn push_char(&mut self, ch: char) {
+        if ch == '\n' {
+            self.finish_line();
+            return;
+        }
+
+        if !ch.is_whitespace() && !self.line_has_non_whitespace {
+            // Completed whitespace-only lines cease to be trailing as soon as a later visible
+            // scalar arrives. This mirrors `normalized_text_lines` trimming only the final blank
+            // suffix while retaining interior whitespace-only lines.
+            self.max_width_px = self.max_width_px.max(self.pending_blank_width_px);
+            self.pending_blank_width_px = 0.0;
+            self.line_has_non_whitespace = true;
+        }
+        self.line.push_char(ch);
+    }
+
+    fn finish_line(&mut self) {
+        let width = self.line.width_px();
+        if self.line_index == 0 || self.line_has_non_whitespace {
+            self.max_width_px = self.max_width_px.max(width);
+        } else {
+            self.pending_blank_width_px = self.pending_blank_width_px.max(width);
+        }
+        self.line_index = self.line_index.saturating_add(1);
+        self.line_has_non_whitespace = false;
+        self.line.reset();
+    }
+
+    fn finished_width_px(&self) -> f64 {
+        if self.line_index == 0 || self.line_has_non_whitespace {
+            self.max_width_px.max(self.line.width_px())
+        } else {
+            // `DeterministicTextMeasurer::normalized_text_lines` removes the trailing blank
+            // suffix, but always retains the first logical line (already committed above).
+            self.max_width_px
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InlineHtmlBreakState {
+    AfterLt,
+    AfterB,
+    AfterBr,
+    AfterSlash,
+}
+
+#[derive(Debug, Clone)]
+struct PendingInlineHtmlBreak {
+    state: InlineHtmlBreakState,
+    literal: BuiltinNormalizedTextWidth,
+}
+
+/// Exact streaming width state for a qualified built-in HTML measurement route.
+///
+/// Mermaid's pinned `createText.ts:addHtmlSpan` decodes HTML into a real span, so a valid `<br>`
+/// contributes a DOM line break before `getBoundingClientRect()`. This state follows the selected
+/// built-in backend's scalar accumulation order and its existing `normalized_text_lines`
+/// behavior, without retaining or rescanning the potentially unbounded whitespace in an
+/// incomplete tag. It intentionally recognizes only ASCII space, tab, CR, and LF inside `<br>`;
+/// the wider ECMAScript `\s` set and browser text shaping remain bounded browser residuals.
+#[derive(Debug, Clone)]
+pub(crate) struct BuiltinInlineHtmlWidth {
+    normalized: BuiltinNormalizedTextWidth,
+    pending_break: Option<PendingInlineHtmlBreak>,
+    quantize: bool,
+}
+
+impl BuiltinInlineHtmlWidth {
+    fn new(profile: BuiltinTextMeasurementProfile, style: &TextStyle) -> Self {
+        let (line, quantize) = BuiltinInlineRawLineWidth::new(profile, style);
+        Self {
+            normalized: BuiltinNormalizedTextWidth::new(line),
+            pending_break: None,
+            quantize,
+        }
+    }
+
+    pub(crate) fn push_text(&mut self, text: &str) {
+        for ch in text.chars() {
+            self.push_char(ch);
+        }
+    }
+
+    fn push_char(&mut self, ch: char) {
+        let mut current = Some(ch);
+        while let Some(ch) = current.take() {
+            let Some(mut pending) = self.pending_break.take() else {
+                if ch == '<' {
+                    let mut literal = self.normalized.clone();
+                    literal.push_char(ch);
+                    self.pending_break = Some(PendingInlineHtmlBreak {
+                        state: InlineHtmlBreakState::AfterLt,
+                        literal,
+                    });
+                } else {
+                    self.normalized.push_char(ch);
+                }
+                continue;
+            };
+
+            match pending.state {
+                InlineHtmlBreakState::AfterLt if matches!(ch, 'b' | 'B') => {
+                    pending.literal.push_char(ch);
+                    pending.state = InlineHtmlBreakState::AfterB;
+                    self.pending_break = Some(pending);
+                }
+                InlineHtmlBreakState::AfterB if matches!(ch, 'r' | 'R') => {
+                    pending.literal.push_char(ch);
+                    pending.state = InlineHtmlBreakState::AfterBr;
+                    self.pending_break = Some(pending);
+                }
+                InlineHtmlBreakState::AfterBr if matches!(ch, ' ' | '\t' | '\r' | '\n') => {
+                    pending.literal.push_char(ch);
+                    self.pending_break = Some(pending);
+                }
+                InlineHtmlBreakState::AfterBr if ch == '/' => {
+                    pending.literal.push_char(ch);
+                    pending.state = InlineHtmlBreakState::AfterSlash;
+                    self.pending_break = Some(pending);
+                }
+                InlineHtmlBreakState::AfterBr | InlineHtmlBreakState::AfterSlash if ch == '>' => {
+                    self.normalized.push_char('\n');
+                }
+                _ => {
+                    self.normalized = pending.literal;
+                    current = Some(ch);
+                }
+            }
+        }
+    }
+
+    pub(crate) fn width_px(&self) -> f64 {
+        let raw_width_px = self.pending_break.as_ref().map_or_else(
+            || self.normalized.finished_width_px(),
+            |pending| pending.literal.finished_width_px(),
+        );
+        if self.quantize {
+            round_to_1_64_px(raw_width_px)
+        } else {
+            raw_width_px
+        }
+    }
+}
+
 fn vendored_parity_profile() -> TextMeasurementProfile {
     let profile = MeasurementProfileId::new("merman.mermaid-11.16-text-metrics")
         .expect("static vendored profile id is valid");
@@ -172,13 +555,14 @@ fn vendored_parity_profile() -> TextMeasurementProfile {
         concat!(
             "merman-render@",
             env!("CARGO_PKG_VERSION"),
-            "/mermaid@11.16.0"
+            "/mermaid@11.16.1"
         ),
     )
     .expect("static vendored profile version is valid");
-    TextMeasurementProfile::new(
+    TextMeasurementProfile::new_builtin(
         identity,
         Arc::new(VendoredFontMetricsTextMeasurer::initialized()),
+        BuiltinTextMeasurementProfile::VendoredParity,
     )
 }
 
@@ -480,9 +864,10 @@ impl TextMeasurementPolicy {
             concat!("merman-render@", env!("CARGO_PKG_VERSION")),
         )
         .expect("static deterministic profile version is valid");
-        Self::uniform(TextMeasurementProfile::new(
+        Self::uniform(TextMeasurementProfile::new_builtin(
             identity,
             Arc::new(DeterministicTextMeasurer::default()),
+            BuiltinTextMeasurementProfile::Deterministic,
         ))
     }
 
@@ -589,6 +974,28 @@ impl RoutedTextMeasurer<'_> {
         }
     }
 
+    pub(crate) fn builtin_operation_carrier(
+        &self,
+        operation: TextMeasurementOperation,
+    ) -> Option<BuiltinTextMeasurementOperationCarrier> {
+        let phase = self.phase_for(operation);
+        match &self.policy.routes[phase.index()] {
+            TextMeasurementRouteConfig::Profile(profile) => {
+                profile
+                    .builtin
+                    .map(|profile| BuiltinTextMeasurementOperationCarrier {
+                        profile,
+                        phase,
+                        operation,
+                    })
+            }
+            // A host-routed operation remains observable even when its fallback is built-in. It
+            // must stay opaque so callback order, failure position, and provenance cannot be
+            // predicted away.
+            TextMeasurementRouteConfig::Host { .. } => None,
+        }
+    }
+
     fn resolve<T>(
         &self,
         request: HostTextMeasurementRequest<'_>,
@@ -657,6 +1064,23 @@ impl RoutedTextMeasurer<'_> {
 }
 
 impl TextMeasurer for RoutedTextMeasurer<'_> {
+    #[allow(private_interfaces)]
+    fn builtin_operation_carrier(
+        &self,
+        operation: TextMeasurementOperation,
+    ) -> Option<BuiltinTextMeasurementOperationCarrier> {
+        RoutedTextMeasurer::builtin_operation_carrier(self, operation)
+    }
+
+    #[allow(private_interfaces)]
+    fn begin_svg_text_computed_length(
+        &self,
+        style: &TextStyle,
+    ) -> Option<BuiltinSvgComputedLength> {
+        self.builtin_operation_carrier(TextMeasurementOperation::ComputedLength)
+            .and_then(|carrier| carrier.into_svg_computed_length(style))
+    }
+
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
         self.resolve(
             self.request(
@@ -1281,6 +1705,7 @@ impl RenderSession {
                 .provenance()
                 .clone(),
             resource_policy: self.resource_policy,
+            layout_work_units: self.work_meter.used(),
         }
     }
 }
@@ -1293,6 +1718,7 @@ pub struct RenderSessionReport {
     operation_context: OperationContext,
     local_time_zone: LocalTimeZoneProvenance,
     resource_policy: RenderResourcePolicy,
+    layout_work_units: usize,
 }
 
 impl RenderSessionReport {
@@ -1327,6 +1753,14 @@ impl RenderSessionReport {
     pub const fn resource_policy(&self) -> RenderResourcePolicy {
         self.resource_policy
     }
+
+    /// Returns the deterministic owner-accounted layout and geometry work consumed so far.
+    ///
+    /// This value is useful for resource-policy calibration. It is not elapsed time, an
+    /// instruction count, or a portable latency estimate.
+    pub const fn layout_work_units(&self) -> usize {
+        self.layout_work_units
+    }
 }
 
 #[cfg(test)]
@@ -1334,6 +1768,31 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn inline_html_carrier<M: TextMeasurer + ?Sized>(measurer: &M) -> InlineHtmlMeasurementCarrier {
+        measurer
+            .builtin_operation_carrier(TextMeasurementOperation::WrappedWithRawWidth)
+            .and_then(BuiltinTextMeasurementOperationCarrier::into_inline_html)
+            .unwrap_or_else(InlineHtmlMeasurementCarrier::opaque)
+    }
+
+    #[test]
+    fn vendored_profile_identity_tracks_the_pinned_mermaid_release() {
+        let profile = vendored_parity_profile();
+
+        assert_eq!(
+            profile.identity().profile().as_str(),
+            "merman.mermaid-11.16-text-metrics"
+        );
+        assert_eq!(
+            profile.identity().version(),
+            concat!(
+                "merman-render@",
+                env!("CARGO_PKG_VERSION"),
+                "/mermaid@11.16.1"
+            )
+        );
+    }
 
     #[test]
     fn text_measurement_operations_have_stable_external_mappings() {
@@ -1864,6 +2323,215 @@ mod tests {
         ) -> (TextMetrics, Option<f64>) {
             (metrics(14.0), Some(15.0))
         }
+    }
+
+    struct DecliningHost;
+
+    impl HostTextMeasurer for DecliningHost {
+        fn measure(&self, _request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            Ok(None)
+        }
+    }
+
+    struct ForgedCarrierProfile;
+
+    impl TextMeasurer for ForgedCarrierProfile {
+        #[allow(private_interfaces)]
+        fn builtin_operation_carrier(
+            &self,
+            operation: TextMeasurementOperation,
+        ) -> Option<BuiltinTextMeasurementOperationCarrier> {
+            Some(BuiltinTextMeasurementOperationCarrier {
+                profile: BuiltinTextMeasurementProfile::VendoredParity,
+                phase: TextMeasurementPhase::SvgBBox,
+                operation,
+            })
+        }
+
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            metrics(1.0)
+        }
+    }
+
+    #[test]
+    fn private_operation_carriers_only_qualify_builtin_profile_routes() {
+        assert!(
+            BuiltinTextMeasurementOperationCarrier {
+                profile: BuiltinTextMeasurementProfile::VendoredParity,
+                phase: TextMeasurementPhase::SvgBBox,
+                operation: TextMeasurementOperation::WrappedWithRawWidth,
+            }
+            .into_inline_html()
+            .is_none(),
+            "the inline planner requires both the wrapped operation and its Wrap owner phase"
+        );
+
+        let parity_session = RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin parity session");
+        let parity = parity_session.text_measurer(TextMeasurementPhase::Layout);
+        let parity_carrier = inline_html_carrier(&parity);
+        assert!(parity_carrier.is_builtin());
+        let parity_sequence_carrier = parity
+            .builtin_operation_carrier(TextMeasurementOperation::MermaidCalculateTextDimensions)
+            .expect("sequence measurement route is built-in");
+        assert_eq!(parity_sequence_carrier.phase, TextMeasurementPhase::SvgBBox);
+        assert_eq!(
+            parity_sequence_carrier.operation,
+            TextMeasurementOperation::MermaidCalculateTextDimensions
+        );
+
+        let deterministic_session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
+            .begin_session()
+            .expect("begin deterministic session");
+        let deterministic = deterministic_session.text_measurer(TextMeasurementPhase::Layout);
+        let deterministic_carrier = inline_html_carrier(&deterministic);
+        assert!(deterministic_carrier.is_builtin());
+        assert!(
+            deterministic
+                .builtin_operation_carrier(TextMeasurementOperation::MermaidCalculateTextDimensions)
+                .is_some()
+        );
+
+        let custom_profile = TextMeasurementProfile::new(
+            identity("test.custom", "v1", &[]),
+            Arc::new(ForgedCarrierProfile),
+        );
+        let custom_session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::uniform(custom_profile))
+            .begin_session()
+            .expect("begin custom profile session");
+        let custom = custom_session.text_measurer(TextMeasurementPhase::Layout);
+        assert!(!inline_html_carrier(&custom).is_builtin());
+        assert!(
+            custom
+                .builtin_operation_carrier(TextMeasurementOperation::MermaidCalculateTextDimensions)
+                .is_none()
+        );
+
+        let host_policy = TextMeasurementPolicy::host_display(
+            identity("test.host", "v1", &[]),
+            Arc::new(DecliningHost),
+            [TextMeasurementPhase::Wrap, TextMeasurementPhase::SvgBBox],
+        );
+        let host_session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(host_policy)
+            .begin_session()
+            .expect("begin host session");
+        let host = host_session.text_measurer(TextMeasurementPhase::Layout);
+        assert!(
+            !inline_html_carrier(&host).is_builtin(),
+            "host routes remain opaque even when their fallback is vendored"
+        );
+        assert!(
+            host.builtin_operation_carrier(
+                TextMeasurementOperation::MermaidCalculateTextDimensions
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn builtin_inline_stream_matches_backend_order_and_supported_br_normalization() {
+        fn assert_cases(
+            backend: &dyn TextMeasurer,
+            carrier: InlineHtmlMeasurementCarrier,
+            style: &TextStyle,
+            cases: &[(&str, &[&str])],
+        ) {
+            for (text, chunks) in cases {
+                assert_eq!(chunks.concat(), *text);
+                let expected = backend
+                    .measure_wrapped(text, style, None, WrapMode::HtmlLike)
+                    .width;
+                let mut streamed = carrier
+                    .begin_inline_html_width(style)
+                    .expect("built-in carrier starts a streaming width");
+                for chunk in *chunks {
+                    streamed.push_text(chunk);
+                }
+                assert_eq!(
+                    streamed.width_px().to_bits(),
+                    expected.to_bits(),
+                    "text={text:?}, chunks={chunks:?}"
+                );
+            }
+        }
+
+        let cases: &[(&str, &[&str])] = &[
+            ("AVATAR office", &["A", "VAT", "AR ", "office"]),
+            (
+                "alpha<br   />omega",
+                &["alpha<", "b", "r ", "  /", ">", "omega"],
+            ),
+            ("<b<br/>tail", &["<b<", "br", "/>tail"]),
+            ("wide<br / >literal", &["wide<br ", "/ ", ">literal"]),
+            // ECMAScript `\s` also includes form feed. The headless built-in intentionally keeps
+            // that spelling literal until browser-grade HTML parsing is available.
+            (
+                "wide<br\u{000C}/>literal",
+                &["wide<br", "\u{000C}", "/>literal"],
+            ),
+            (
+                "wide\n                         ",
+                &["wide\n", "             ", "            "],
+            ),
+            (" \n  ", &[" ", "\n", "  "]),
+            ("A\u{301}👩‍💻مرحبا世界", &["A\u{301}", "👩‍💻", "مرحبا", "世界"]),
+        ];
+        let style = TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_size: 16.0,
+            font_weight: Some("700".to_string()),
+            font_style: Some("italic".to_string()),
+        };
+
+        let parity_session = RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin parity session");
+        let parity_carrier =
+            inline_html_carrier(&parity_session.text_measurer(TextMeasurementPhase::Wrap));
+        assert_cases(
+            &VendoredFontMetricsTextMeasurer::default(),
+            parity_carrier,
+            &style,
+            cases,
+        );
+        let long_whitespace = " ".repeat(8_192);
+        let long_break = format!("wide<br{long_whitespace}/>tail");
+        let expected = VendoredFontMetricsTextMeasurer::default()
+            .measure_wrapped(&long_break, &style, None, WrapMode::HtmlLike)
+            .width;
+        let mut streamed = parity_carrier
+            .begin_inline_html_width(&style)
+            .expect("parity carrier starts a streaming width");
+        streamed.push_text("wide<br");
+        streamed.push_text(&long_whitespace);
+        streamed.push_text("/>tail");
+        assert_eq!(streamed.width_px().to_bits(), expected.to_bits());
+
+        let mut unknown_font = style.clone();
+        unknown_font.font_family = Some("fixture-private-font".to_string());
+        assert_cases(
+            &VendoredFontMetricsTextMeasurer::default(),
+            parity_carrier,
+            &unknown_font,
+            cases,
+        );
+
+        let deterministic_session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
+            .begin_session()
+            .expect("begin deterministic session");
+        let deterministic_carrier =
+            inline_html_carrier(&deterministic_session.text_measurer(TextMeasurementPhase::Wrap));
+        assert_cases(
+            &DeterministicTextMeasurer::default(),
+            deterministic_carrier,
+            &style,
+            cases,
+        );
     }
 
     #[test]

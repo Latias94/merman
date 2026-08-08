@@ -92,7 +92,7 @@ than translated implicitly.
       "max_model_items": 32000,
       "max_model_text_bytes": 2097152,
       "max_model_nesting_depth": 256,
-      "max_layout_work_units": 250000,
+      "max_layout_work_units": 800000,
       "max_svg_elements": 250000,
       "max_svg_bytes": 25165824,
       "max_document_diagrams": 256,
@@ -512,6 +512,34 @@ cargo bench -p merman --bench mindmap_layout_stress
 cargo nextest run -p merman-render -p merman-bindings-core
 ```
 
+Layout-work ceiling changes must additionally run the fail-closed release calibration probe against
+the closed public fixture manifest and an adjacent typed rejection boundary:
+
+```sh
+CARGO_BUILD_JOBS=1 cargo build --locked --release -p merman \
+  --example layout_work_calibration --features complete-svg
+
+python3 tools/bench/run_layout_work_calibration.py \
+  --authoritative-date YYYY-MM-DD \
+  --out-dir target/bench/layout-work-calibration-YYYY-MM-DD \
+  --timeout-seconds 300 \
+  --full-repeats 5
+```
+
+The wrapper runs the closed corpus five times in fresh processes, verifies byte-identical reports,
+and establishes the first rejected node/edge cardinality by scanning the complete accepted prefix
+without assuming monotonicity. It then launches isolated semantic, layout, SVG, end-to-end, exact
+`W-1`, and boundary probes. Each timing command owns a managed process group so a timeout terminates
+descendants independently of leader exit or pipe closure. The unconditional performance-contract
+CI lane runs the same timeout regression suite. The wrapper requires an empty output directory and
+records the executable, source, manifest, runner, host, timeout, exit status, timing-file byte
+lengths, peak RSS, output, and raw report hashes in one summary. Darwin uses `/usr/bin/time -l`;
+Linux uses GNU `time -v`.
+Unsupported timing formats fail closed rather than silently omitting RSS.
+
+The current `interactive` calibration is recorded in
+[`interactive_layout_work_calibration_2026-08-07.md`](../performance/interactive_layout_work_calibration_2026-08-07.md).
+
 For each changed budget, record the fixture/source hash, profile, explicit overrides, host target,
 peak RSS (or WASM linear memory), timeout, successful output size, and the first rejected cardinality.
 Do not infer a safe limit from a single warm render: compare cold parse, layout, SVG postprocess, and
@@ -737,7 +765,7 @@ Invalid options produce binding errors:
 | Feature-gated operation disabled | `MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION` |
 | Resource budget exceeded | `MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED` |
 
-Resource failures add an optional `details.resource` object to the existing error JSON. It contains `limit_id`, `phase`, `actual`, `max`, and `profile`. Parser and ASCII renderer failures may additionally expose a bounded `details.diagnostic` object with stable `code`, optional byte `span` (`start`, `end`, `kind`), and safe `field`/`diagram_type` context. These fields are machine-readable and must not be recovered by parsing the human-facing `message`; complete source text is never embedded by default. Consumers that understand payload schema `1` should tolerate these additive objects; errors without structured details omit `details`, preserving the previous shape.
+Resource failures add an optional `details.resource` object to the existing error JSON. It contains `cause`, `limit_id`, `phase`, `actual`, `max`, and `profile`. The stable `cause` is `ceiling` when an effective maximum was exceeded and `arithmetic_overflow` when safe work accounting could not represent the required amount. Node and Web/WASM project `actual` and `max` into a lossless JavaScript representation: values through `9007199254740991` (`Number.MAX_SAFE_INTEGER`) are numbers, while larger `u64` values are canonical unsigned decimal strings without leading zeroes, up to `18446744073709551615`. JavaScript consumers must accept both forms and must not coerce the string form through a `number`; the shared non-JavaScript payload and native ABI error JSON retain their existing unsigned-integer representation. Parser and ASCII renderer failures may additionally expose a bounded `details.diagnostic` object with stable `code`, optional byte `span` (`start`, `end`, `kind`), and safe `field`/`diagram_type` context. These fields are machine-readable and must not be recovered by parsing the human-facing `message`; complete source text is never embedded by default. Consumers that understand payload schema `1` should tolerate these additive objects; errors without structured details omit `details`, preserving the previous shape.
 
 Platform wrappers surface those errors through their native exception type:
 

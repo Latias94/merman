@@ -463,26 +463,149 @@ fn bench_flowchart_curves(c: &mut Criterion) {
     );
 }
 
+fn flowchart_svg_label_reuse_source(nodes: usize, unique_text: bool) -> String {
+    assert!(nodes >= 2);
+    let mut source = String::from(
+        r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    wrappingWidth: 120
+---
+flowchart LR
+"#,
+    );
+    for node in 0..nodes {
+        let token = if unique_text {
+            format!("{node:06}")
+        } else {
+            "000000".to_string()
+        };
+        writeln!(
+            &mut source,
+            "  N{node}[\"alpha beta gamma delta epsilon zeta eta theta node {token}\"]"
+        )
+        .expect("write node");
+    }
+    for edge in 1..nodes {
+        let token = if unique_text {
+            format!("{edge:06}")
+        } else {
+            "000000".to_string()
+        };
+        writeln!(
+            &mut source,
+            "  N{} -->|edge label alpha beta gamma delta token {token}| N{edge}",
+            edge - 1
+        )
+        .expect("write edge");
+    }
+    source
+}
+
 fn bench_emit_svg_controls(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
     let layout: LayoutOptions = headless_layout_options();
     let environment = RenderEnvironment::deterministic();
-    let mut group = c.benchmark_group("emit_svg_stress");
+    let mut cases = vec![
+        ("flowchart_medium".to_string(), FLOWCHART_MEDIUM.to_string()),
+        (
+            "flowchart_ports_heavy".to_string(),
+            FLOWCHART_PORTS_HEAVY.to_string(),
+        ),
+    ];
+    for nodes in [8, 64, 256] {
+        cases.push((
+            format!("label_phase_reuse_repeated_n{nodes:03}"),
+            flowchart_svg_label_reuse_source(nodes, false),
+        ));
+        cases.push((
+            format!("label_phase_reuse_unique_n{nodes:03}"),
+            flowchart_svg_label_reuse_source(nodes, true),
+        ));
+    }
 
-    for (name, input) in [
-        ("flowchart_medium", FLOWCHART_MEDIUM),
-        ("flowchart_ports_heavy", FLOWCHART_PORTS_HEAVY),
-    ] {
-        let parsed = engine
-            .parse_diagram_for_render_model_sync(input, parse_opts)
-            .expect("parse")
-            .expect("supported diagram");
+    for nodes in [8, 64, 256] {
+        let repeated = cases
+            .iter()
+            .find(|(name, _)| name == &format!("label_phase_reuse_repeated_n{nodes:03}"))
+            .expect("repeated label case");
+        let unique = cases
+            .iter()
+            .find(|(name, _)| name == &format!("label_phase_reuse_unique_n{nodes:03}"))
+            .expect("unique label case");
+        assert_eq!(
+            repeated.1.len(),
+            unique.1.len(),
+            "repeated and unique controls must have identical source bytes"
+        );
+    }
+
+    let parsed_cases = cases
+        .iter()
+        .map(|(name, input)| {
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(input, parse_opts)
+                .expect("parse")
+                .expect("supported diagram");
+            (name, input, parsed)
+        })
+        .collect::<Vec<_>>();
+
+    let mut public = c.benchmark_group("flowchart_label_public");
+    for (name, input, _) in &parsed_cases {
         let svg_opts = SvgRenderOptions {
             diagram_id: Some(merman::svg::sanitize_svg_id(name)),
             ..SvgRenderOptions::default()
         };
-        group.bench_function(name, |b| {
+        public.bench_function(*name, |b| {
+            b.iter(|| {
+                let svg = merman::svg::render_svg_sync(
+                    &engine,
+                    black_box(input.as_str()),
+                    parse_opts,
+                    &layout,
+                    &svg_opts,
+                )
+                .expect("render")
+                .expect("supported diagram");
+                black_box(svg.len());
+            });
+        });
+    }
+    public.finish();
+
+    let mut prepare = c.benchmark_group("flowchart_label_prepare");
+    for (name, _, parsed) in &parsed_cases {
+        prepare.bench_function(*name, |b| {
+            b.iter_batched(
+                || {
+                    (
+                        parsed.clone(),
+                        environment.begin_session().expect("render session"),
+                    )
+                },
+                |(parsed, session)| {
+                    black_box(
+                        merman_render::family::prepare(parsed, &layout, session).expect("prepare"),
+                    );
+                },
+                BatchSize::SmallInput,
+            );
+        });
+    }
+    prepare.finish();
+
+    let mut group = c.benchmark_group("emit_svg_stress");
+
+    for (name, _, parsed) in &parsed_cases {
+        let svg_opts = SvgRenderOptions {
+            diagram_id: Some(merman::svg::sanitize_svg_id(name)),
+            ..SvgRenderOptions::default()
+        };
+        group.bench_function(*name, |b| {
             b.iter_batched(
                 || {
                     merman_render::family::prepare(

@@ -21,6 +21,27 @@ pub(super) struct PreparedMessageRows {
     extent: SequenceBatchExtent,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(super) struct MessageActorState<'a> {
+    active_counts: &'a [usize],
+    visible_actors: &'a [bool],
+    destroyed_actors: &'a [usize],
+}
+
+impl<'a> MessageActorState<'a> {
+    pub(super) const fn new(
+        active_counts: &'a [usize],
+        visible_actors: &'a [bool],
+        destroyed_actors: &'a [usize],
+    ) -> Self {
+        Self {
+            active_counts,
+            visible_actors,
+            destroyed_actors,
+        }
+    }
+}
+
 impl PreparedMessageRows {
     pub(super) const fn extent(&self) -> SequenceBatchExtent {
         self.extent
@@ -120,11 +141,14 @@ pub(super) fn render_message(
     message: &SequenceMessage,
     layout: &SequenceLayout,
     chars: &SequenceChars,
-    active_counts: &[usize],
-    visible_actors: &[bool],
-    destroyed_actors: &[usize],
+    actor_state: MessageActorState<'_>,
     resources: &mut ResourceContext,
 ) -> Result<Vec<SequenceLine>> {
+    let MessageActorState {
+        active_counts,
+        visible_actors,
+        destroyed_actors,
+    } = actor_state;
     let PreparedMessageRows {
         label_lines,
         extent,
@@ -277,11 +301,14 @@ pub(super) fn render_self_message(
     message: &SequenceMessage,
     layout: &SequenceLayout,
     chars: &SequenceChars,
-    active_counts: &[usize],
-    visible_actors: &[bool],
-    destroyed_actors: &[usize],
+    actor_state: MessageActorState<'_>,
     resources: &mut ResourceContext,
 ) -> Result<Vec<SequenceLine>> {
+    let MessageActorState {
+        active_counts,
+        visible_actors,
+        destroyed_actors,
+    } = actor_state;
     let PreparedMessageRows {
         label_lines,
         extent,

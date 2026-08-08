@@ -7,6 +7,25 @@ import org.junit.Test
 
 class MermanExceptionTest {
     @Test
+    fun parsesStructuredResourceFailureDetails() {
+        val error = MermanException(
+            """{"version":1,"ok":false,"code":10,"code_name":"MERMAN_RESOURCE_LIMIT_EXCEEDED","kind":"generic","capability_id":null,"details":{"resource":{"cause":"arithmetic_overflow","limit_id":"max_embedded_image_bytes","phase":"embedded_image_decode","actual":5,"max":4,"profile":"constrained"}},"message":"embedded image is too large"}""",
+        )
+
+        assertEquals(
+            MermanResourceErrorDetails(
+                cause = "arithmetic_overflow",
+                limitId = "max_embedded_image_bytes",
+                phase = "embedded_image_decode",
+                actual = 5,
+                max = 4,
+                profile = "constrained",
+            ),
+            error.resourceDetails,
+        )
+    }
+
+    @Test
     fun parsesStructuredIconRegistryFailureDetails() {
         val error = MermanException(
             """{"version":1,"ok":false,"code":1,"code_name":"MERMAN_INVALID_ARGUMENT","kind":"generic","capability_id":null,"details":{"icon_registry":{"kind_id":"duplicate-registration-name","pack_index":3,"registration_name":"logos"}},"message":"duplicate icon registry name"}""",
@@ -78,6 +97,7 @@ class MermanExceptionTest {
         assertEquals("MERMAN_RESOURCE_LIMIT_EXCEEDED", error.codeName)
         assertEquals(MermanErrorKind.GENERIC, error.kind)
         assertEquals("icon pack count exceeds the fixed registry ceiling", error.message)
+        assertEquals("ceiling", error.resourceDetails?.cause)
         assertEquals("max_icon_registry_packs", error.resourceDetails?.limitId)
         assertEquals("icon_registry_input", error.resourceDetails?.phase)
         assertEquals(17L, error.resourceDetails?.actual)

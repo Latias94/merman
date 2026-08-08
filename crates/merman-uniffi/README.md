@@ -65,7 +65,7 @@ and an optional open `MermanOutputPlan` record when the operation has an output 
 string `kind`; `raster` and `pdf_filter_images` provide typed payloads for known plans, while
 `raw_json` preserves every current or future plan without a closed foreign-language enum.
 
-Generated `MermanError.Binding` values expose `MermanErrorKind`, an optional `capability_id`, optional `MermanResourceErrorDetails`, and optional `MermanDiagnosticErrorDetails`. Unknown operations have no capability ID; known requests missing a backend preserve the exact descriptor capability ID. Resource and parser failures preserve stable machine fields (including diagnostic code and optional span) without requiring message parsing or retaining complete source text.
+Generated `MermanError.Binding` values expose `MermanErrorKind`, an optional `capability_id`, optional `MermanResourceErrorDetails`, and optional `MermanDiagnosticErrorDetails`. Unknown operations have no capability ID; known requests missing a backend preserve the exact descriptor capability ID. Resource failures preserve the stable cause (`ceiling` or `arithmetic_overflow`), limit ID, phase, actual value, effective maximum, and selected profile. Parser and resource failures preserve stable machine fields without requiring message parsing or retaining complete source text.
 
 ## Text Measurement Ownership
 

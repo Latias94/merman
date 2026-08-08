@@ -66,6 +66,12 @@ impl RenderOperationReport {
     pub fn render_seed(&self) -> std::num::NonZeroU64 {
         self.session.render_seed()
     }
+
+    /// Returns the deterministic owner-accounted layout and geometry work consumed by the
+    /// completed operation. The value supports policy calibration and is not a latency estimate.
+    pub const fn layout_work_units(&self) -> usize {
+        self.session.layout_work_units()
+    }
 }
 
 struct CompletedTypedHeadlessSvg {

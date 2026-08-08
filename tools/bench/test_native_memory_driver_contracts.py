@@ -12,7 +12,8 @@ import sys
 import tempfile
 import unittest
 from collections.abc import Mapping
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -43,11 +44,29 @@ BINDING_CONTRACT_PATH = (
     / "contracts"
     / "binding-request-version-only-memory-v2.json"
 )
+ELK_HIERARCHY_CONTRACT_PATH = (
+    ROOT
+    / "docs"
+    / "performance"
+    / "contracts"
+    / "flowchart-elk-separate-children-memory-v2.json"
+)
+FLOWCHART_LABEL_CONTRACT_PATH = (
+    ROOT
+    / "docs"
+    / "performance"
+    / "contracts"
+    / "flowchart-svg-label-artifact-memory-v1.json"
+)
 EXECUTABLE_SHA256 = "a" * 64
 EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 BINDING_DATA_SHA256 = "471b942eb8877b2ee7c38b86567b13f79fba101df1e5b4767b3421a200e0ad3f"
 BINDING_METADATA_SHA256 = "5662eba44530c1a9bf01f352dd84496fb368c9522757c479f735526d200a9e29"
 BINDING_OUTPUT_SHA256 = "5c5a3cdbe1f692c630006b4c365f348d93d8afd6ea99ecf45d8d2e10524acf53"
+ELK_HIERARCHY_OUTPUT_SHA256 = (
+    "30d91e9ca3384155ebe26a4b4315d740c9746cb899a77eb513b1f966d6adb901"
+)
+FLOWCHART_LABEL_OUTPUT_SHA256 = "940be12b7e2e58603380f52bbfcec8e42baf12d985832f0c966a4eade71312ca"
 
 
 def response_for(request: dict[str, object]) -> dict[str, object]:
@@ -129,6 +148,98 @@ def binding_response_for(request: dict[str, object]) -> dict[str, object]:
     }
 
 
+def elk_hierarchy_response_for(request: dict[str, object]) -> dict[str, object]:
+    scale = int(request["scale"])
+    depth = scale * 2
+    zero = request["mode"] == "zero"
+    return {
+        "schema_version": 2,
+        "lane_id": request["lane_id"],
+        "public_operation": "render-flowchart-elk-hierarchy-svg",
+        "process_lifecycle": "fresh-process",
+        "engine_lifecycle": "reused-engine",
+        "logical_operations_per_estimate": 1,
+        "mode": request["mode"],
+        "scale": scale,
+        "seed": request["seed"],
+        "repeat": request["repeat"],
+        "pid": 1234,
+        "executable_sha256": EXECUTABLE_SHA256,
+        "invocation_id": request["invocation_id"],
+        "nonce": request["nonce"],
+        "output_sha256": EMPTY_SHA256 if zero else ELK_HIERARCHY_OUTPUT_SHA256,
+        "workload_units": depth,
+        "semantic_output": {
+            "kind": "flowchart-elk-hierarchy-render-v2",
+            "metadata_diagram_type_matches": not zero,
+            "metadata_layout_elk": not zero,
+            "semantic_kind_flowchart": not zero,
+            "prepared_family_flowchart": not zero,
+            "svg_role_matches": not zero,
+            "svg_contains_no_nan": not zero,
+            "terminal_node_count": 0 if zero else 1,
+            "scope_cluster_ids_unique": not zero,
+            "scope_cluster_ids_complete": not zero,
+            "view_box_finite_positive": not zero,
+            "strict_nested_geometry": not zero,
+            "rendered_edge_count": 0,
+            "scope_cluster_count": 0 if zero else depth,
+        },
+        "snapshot_live_bytes": 100,
+        "allocation_count": 0 if zero else depth * 10,
+        "allocated_bytes": 0 if zero else depth * 1_000,
+        "live_bytes_after": 100,
+        "peak_live_bytes": 100 if zero else 100 + depth * 100,
+        "peak_growth_bytes": 0 if zero else depth * 100,
+        "counter_overflowed": False,
+        "counter_underflowed": False,
+    }
+
+
+def flowchart_label_response_for(request: dict[str, object]) -> dict[str, object]:
+    scale = int(request["scale"])
+    zero = request["mode"] == "zero"
+    retained = 0 if zero else scale * 1_000
+    return {
+        "schema_version": 3,
+        "lane_id": request["lane_id"],
+        "public_operation": "prepare-render",
+        "process_lifecycle": "fresh-process",
+        "engine_lifecycle": "reused-engine",
+        "logical_operations_per_estimate": 1,
+        "mode": request["mode"],
+        "scale": scale,
+        "seed": request["seed"],
+        "repeat": request["repeat"],
+        "pid": 1234,
+        "executable_sha256": EXECUTABLE_SHA256,
+        "invocation_id": request["invocation_id"],
+        "nonce": request["nonce"],
+        "output_sha256": EMPTY_SHA256 if zero else FLOWCHART_LABEL_OUTPUT_SHA256,
+        "workload_units": scale,
+        "semantic_output": {
+            "kind": "flowchart-prepared-render-v1",
+            "label_profile": "flowchart-non-markdown-svg-node-v1",
+            "metadata_diagram_type_matches": not zero,
+            "prepared_family_flowchart": not zero,
+            "html_labels_disabled": not zero,
+            "prepared_render_alive_at_checkpoint": not zero,
+            "projected_node_labels_match_workload": not zero,
+            "unique_projected_node_labels": not zero,
+            "projected_node_label_count": 0 if zero else scale,
+        },
+        "snapshot_live_bytes": 100,
+        "allocation_count": 0 if zero else scale * 10,
+        "allocated_bytes": 0 if zero else scale * 10_000,
+        "live_bytes_after": 100 + retained,
+        "peak_live_bytes": 100 if zero else 100 + scale * 2_000,
+        "peak_growth_bytes": 0 if zero else scale * 2_000,
+        "live_bytes_after_drop": 100,
+        "counter_overflowed": False,
+        "counter_underflowed": False,
+    }
+
+
 def validate_zero_work_smoke_report(report: Mapping[str, object]) -> None:
     if report.get("outcome") != "protocol_smoke_pass" or report.get("exit_code") != 0:
         raise ValueError("native-memory smoke report did not pass its protocol contract")
@@ -197,6 +308,20 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
         )
 
     @staticmethod
+    def elk_hierarchy_lane():
+        return resolve_lane_selector(
+            load_corpus(CORPUS_PATH),
+            "flowchart-elk-separate-children-memory",
+        )
+
+    @staticmethod
+    def flowchart_label_lane():
+        return resolve_lane_selector(
+            load_corpus(CORPUS_PATH),
+            "flowchart-svg-label-artifact-memory",
+        )
+
+    @staticmethod
     def args(**overrides: object) -> argparse.Namespace:
         values: dict[str, object] = {
             "corpus": str(CORPUS_PATH),
@@ -209,6 +334,7 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
             "seed": run_native_memory.DEFAULT_SEED,
             "bootstrap_resamples": 10_000,
             "timeout_seconds": 30,
+            "build_timeout_seconds": 90,
             "run_id": "test-run",
             "json_out": "target/bench/native-memory-test.json",
             "allow_dirty": True,
@@ -244,9 +370,29 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
             candidate = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
             candidate["evidence_class"] = "candidate-bound"
             candidate["candidate_admission"] = True
+            candidate["metrics"]["retained_growth_bytes"] = {
+                "slope_cap": 2.0,
+                "max_scale_cap": 1000000,
+            }
             path.write_text(json.dumps(candidate), encoding="utf-8")
-            loaded = run_native_memory.load_owner_contract(path, lane=self.lane())
+            retained_lane = replace(
+                self.lane(),
+                measurement_metrics=(
+                    "allocation_count",
+                    "allocated_bytes",
+                    "peak_growth_bytes",
+                    "retained_growth_bytes",
+                ),
+            )
+            loaded = run_native_memory.load_owner_contract(path, lane=retained_lane)
             self.assertIs(loaded["candidate_admission"], True)
+            self.assertIn("retained_growth_bytes", loaded["metrics"])
+
+            with self.assertRaisesRegex(
+                run_native_memory.DriverContractError,
+                "metrics differ from lane measurement_metrics",
+            ):
+                run_native_memory.load_owner_contract(path, lane=self.lane())
 
             candidate["candidate_admission"] = False
             path.write_text(json.dumps(candidate), encoding="utf-8")
@@ -275,6 +421,293 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
         self.assertEqual(recipe.bench, "request_overlay_memory")
         self.assertEqual(recipe.features, ("analysis", "ascii", "svg"))
         self.assertEqual(recipe.corpus, BINDING_CORPUS_PATH)
+
+    def test_elk_hierarchy_contract_registers_linear_depth_memory_probe(self) -> None:
+        lane = self.elk_hierarchy_lane()
+        contract = run_native_memory.load_owner_contract(
+            ELK_HIERARCHY_CONTRACT_PATH,
+            lane=lane,
+        )
+        recipe = run_native_memory.memory_recipe(
+            ROOT,
+            target_dir=ROOT / "target",
+            toolchain=None,
+            corpus=CORPUS_PATH,
+            contract=contract,
+        )
+
+        self.assertEqual(contract["schema_version"], 2)
+        self.assertEqual(contract["evidence_class"], "infrastructure-smoke")
+        self.assertIs(contract["candidate_admission"], False)
+        self.assertEqual(contract["scale"]["dimension"], "scope_cluster_count")
+        self.assertEqual(contract["scale"]["units_per_scale"], 2)
+        self.assertEqual(
+            [scale * contract["scale"]["units_per_scale"] for scale in lane.size_vector],
+            [2, 4, 8, 20, 64, 200],
+        )
+        self.assertEqual(recipe.package, "merman")
+        self.assertEqual(recipe.bench, "elk_hierarchy_memory")
+        self.assertEqual(recipe.features, ("layout-elk",))
+        projection = json.dumps(
+            contract["semantic_response"]["operation"],
+            separators=(",", ":"),
+        ).encode("utf-8")
+        self.assertEqual(
+            hashlib.sha256(projection).hexdigest(),
+            contract["semantic_response"]["operation_output_sha256"],
+        )
+
+    def test_flowchart_label_contract_registers_public_prepared_render_state(self) -> None:
+        lane = self.flowchart_label_lane()
+        contract = run_native_memory.load_owner_contract(
+            FLOWCHART_LABEL_CONTRACT_PATH,
+            lane=lane,
+        )
+        recipe = run_native_memory.memory_recipe(
+            ROOT,
+            target_dir=ROOT / "target",
+            toolchain=None,
+            corpus=CORPUS_PATH,
+            contract=contract,
+        )
+
+        self.assertEqual(contract["schema_version"], 2)
+        self.assertEqual(contract["evidence_class"], "candidate-bound")
+        self.assertIs(contract["candidate_admission"], True)
+        self.assertEqual(
+            contract["scale"]["dimension"], "projected_node_label_count"
+        )
+        self.assertEqual(contract["scale"]["units_per_scale"], 1)
+        self.assertEqual(
+            set(contract["metrics"]),
+            {
+                "allocation_count",
+                "allocated_bytes",
+                "peak_growth_bytes",
+                "retained_growth_bytes",
+            },
+        )
+        self.assertEqual(recipe.package, "merman")
+        self.assertEqual(recipe.bench, "flowchart_svg_label_memory")
+        self.assertEqual(recipe.features, ("svg",))
+        self.assertEqual(contract["probe"]["protocol_schema_version"], 3)
+        self.assertEqual(
+            [entry["path"] for entry in contract["probe"]["inputs"]],
+            [
+                "crates/merman/benches/flowchart_svg_label_memory.rs",
+                "crates/merman/benches/native_memory/allocator.rs",
+                "crates/merman/Cargo.toml",
+                "Cargo.lock",
+            ],
+        )
+        projection = json.dumps(
+            contract["semantic_response"]["operation"],
+            separators=(",", ":"),
+        ).encode("utf-8")
+        self.assertEqual(
+            hashlib.sha256(projection).hexdigest(),
+            contract["semantic_response"]["operation_output_sha256"],
+        )
+
+    def test_flowchart_label_analysis_includes_retained_growth(self) -> None:
+        lane = self.flowchart_label_lane()
+        contract = run_native_memory.load_owner_contract(
+            FLOWCHART_LABEL_CONTRACT_PATH,
+            lane=lane,
+        )
+        nonces = (f"{index:032x}" for index in range(60))
+        schedule = run_native_memory.build_schedule(
+            lane_id=lane.id,
+            repeats=5,
+            seed=1,
+            run_id="flowchart-label-analysis",
+            nonce_factory=lambda: next(nonces),
+        )
+        samples = []
+        for pid, entry in enumerate(schedule, start=10_000):
+            response = flowchart_label_response_for(dict(entry["request"]))
+            response["pid"] = pid
+            samples.append(response)
+
+        analysis, outcomes = run_native_memory.analyze_samples(
+            samples,
+            contract=contract,
+            bootstrap_resamples=100,
+            seed_material="flowchart-label-analysis",
+        )
+
+        self.assertEqual(set(analysis["metrics"]), set(contract["metrics"]))
+        self.assertEqual(
+            analysis["metrics"]["retained_growth_bytes"]["adjustments"][100],
+            (100_000,) * 5,
+        )
+        self.assertEqual(outcomes, ["pass", "pass", "pass", "pass"])
+
+    def test_elk_hierarchy_v2_cannot_be_promoted_by_renaming_the_lane(
+        self,
+    ) -> None:
+        lane = self.elk_hierarchy_lane()
+        renamed_lane = replace(lane, id="renamed-elk-hierarchy-memory")
+        promoted = json.loads(
+            ELK_HIERARCHY_CONTRACT_PATH.read_text(encoding="utf-8")
+        )
+        promoted["lane_id"] = renamed_lane.id
+        promoted["evidence_class"] = "candidate-bound"
+        promoted["candidate_admission"] = True
+
+        with tempfile.TemporaryDirectory() as raw:
+            contract_path = Path(raw) / "elk-hierarchy-promoted-v2.json"
+            contract_path.write_text(json.dumps(promoted), encoding="utf-8")
+            with self.assertRaisesRegex(
+                run_native_memory.DriverContractError,
+                "v2 is permanently non-admission",
+            ):
+                run_native_memory.load_owner_contract(
+                    contract_path,
+                    lane=renamed_lane,
+                )
+
+    def test_candidate_contract_rejects_explicit_executable_without_blocking_diagnostics(
+        self,
+    ) -> None:
+        candidate_report, candidate_exit = run_native_memory.execute(
+            self.args(
+                lane="flowchart-svg-label-artifact-memory",
+                contract=str(FLOWCHART_LABEL_CONTRACT_PATH),
+                executable="/tmp/prebuilt-native-memory",
+                dry_run=True,
+            )
+        )
+        self.assertEqual(candidate_exit, 2)
+        self.assertTrue(
+            any(
+                "candidate-bound native-memory evidence cannot use --executable"
+                in error
+                for error in candidate_report["contract_errors"]
+            )
+        )
+
+        diagnostic_report, diagnostic_exit = run_native_memory.execute(
+            self.args(
+                corpus=str(BINDING_CORPUS_PATH),
+                lane="binding-request-version-only-memory",
+                contract=str(BINDING_CONTRACT_PATH),
+                executable="/tmp/prebuilt-native-memory",
+                dry_run=True,
+            )
+        )
+        self.assertEqual(diagnostic_exit, 0)
+        self.assertIs(diagnostic_report["candidate_admission"], False)
+
+    def test_elk_hierarchy_dry_run_verifies_probe_source_provenance(self) -> None:
+        report, exit_code = run_native_memory.execute(
+            self.args(
+                lane="flowchart-elk-separate-children-memory",
+                contract=str(ELK_HIERARCHY_CONTRACT_PATH),
+                dry_run=True,
+            )
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report["recipe"]["bench"], "elk_hierarchy_memory")
+        self.assertEqual(report["recipe"]["features"], ["layout-elk"])
+        self.assertEqual(len(report["inputs"]["probe_inputs"]), 2)
+
+        damaged = json.loads(ELK_HIERARCHY_CONTRACT_PATH.read_text(encoding="utf-8"))
+        damaged["probe"]["inputs"][0]["sha256"] = "b" * 64
+        with tempfile.TemporaryDirectory() as raw:
+            contract_path = Path(raw) / "elk-hierarchy-damaged.json"
+            contract_path.write_text(json.dumps(damaged), encoding="utf-8")
+            failed, failed_exit = run_native_memory.execute(
+                self.args(
+                    lane="flowchart-elk-separate-children-memory",
+                    contract=str(contract_path),
+                    dry_run=True,
+                )
+            )
+        self.assertEqual(failed_exit, 2)
+        self.assertIn(
+            "owner contract probe input digest differs at index 0",
+            failed["contract_errors"],
+        )
+
+    def test_elk_hierarchy_probe_rejects_semantic_and_workload_drift(self) -> None:
+        lane = self.elk_hierarchy_lane()
+        contract = run_native_memory.load_owner_contract(
+            ELK_HIERARCHY_CONTRACT_PATH,
+            lane=lane,
+        )
+        nonces = (f"{index:032x}" for index in range(60))
+        schedule = run_native_memory.build_schedule(
+            lane_id=lane.id,
+            repeats=5,
+            seed=1,
+            run_id="elk-hierarchy-probe",
+            nonce_factory=lambda: next(nonces),
+        )
+        request = next(
+            entry["request"]
+            for entry in schedule
+            if entry["request"]["mode"] == "operation"
+            and entry["request"]["scale"] == 2
+        )
+
+        valid = elk_hierarchy_response_for(request)
+        completed = SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(valid) + "\n",
+            stderr="",
+        )
+        with mock.patch.object(subprocess, "run", return_value=completed):
+            response = run_native_memory.run_probe(
+                Path("/tmp/elk-hierarchy-memory"),
+                request,
+                executable_sha256=EXECUTABLE_SHA256,
+                lane=lane,
+                contract=contract,
+                timeout_seconds=30,
+            )
+        self.assertEqual(response["workload_units"], int(request["scale"]) * 2)
+        self.assertEqual(
+            response["semantic_output"]["scope_cluster_count"],
+            int(request["scale"]) * 2,
+        )
+
+        mutations = (
+            (
+                lambda payload: payload["semantic_output"].__setitem__(
+                    "terminal_node_count", 0
+                ),
+                "semantic output",
+            ),
+            (
+                lambda payload: payload.__setitem__(
+                    "workload_units", int(payload["workload_units"]) + 1
+                ),
+                "workload_units",
+            ),
+            (
+                lambda payload: payload["semantic_output"].__setitem__(
+                    "scope_cluster_count", 0
+                ),
+                "semantic output",
+            ),
+        )
+        for mutate, message in mutations:
+            payload = elk_hierarchy_response_for(request)
+            mutate(payload)
+            completed.stdout = json.dumps(payload) + "\n"
+            with self.subTest(message=message), mock.patch.object(
+                subprocess, "run", return_value=completed
+            ), self.assertRaisesRegex(run_native_memory.DriverContractError, message):
+                run_native_memory.run_probe(
+                    Path("/tmp/elk-hierarchy-memory"),
+                    request,
+                    executable_sha256=EXECUTABLE_SHA256,
+                    lane=lane,
+                    contract=contract,
+                    timeout_seconds=30,
+                )
 
     def test_binding_probe_is_locked_to_owner_semantics_and_call_scale(self) -> None:
         lane = self.binding_lane()
@@ -500,8 +933,64 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
 
             self.assertEqual(result, 0)
             self.assertFalse(output.exists())
+            self.assertIn("$ cargo clean --locked --profile bench", stdout.getvalue())
             self.assertIn("--locked", stdout.getvalue())
             self.assertIn("planned fresh subprocesses: 60", stdout.getvalue())
+
+    def test_discover_executable_resets_shared_bench_profile_before_build(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            (root / "Cargo.lock").write_text("# lock\n", encoding="utf-8")
+            target_dir = root / "target"
+            executable = target_dir / "release" / "deps" / "native_memory-test"
+            executable.parent.mkdir(parents=True)
+            executable.write_bytes(b"probe")
+            executable.chmod(0o755)
+            recipe = run_native_memory.memory_recipe(
+                root,
+                target_dir=target_dir,
+                toolchain=None,
+            )
+            reset_command = run_native_memory.cargo_clean_bench_profile_command(recipe)
+            build_command = run_native_memory.cargo_prebuild_command(recipe)
+            reset = subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="removed", stderr=""
+            )
+            artifact = json.dumps(
+                {
+                    "reason": "compiler-artifact",
+                    "target": {"name": recipe.bench, "kind": ["bench"]},
+                    "executable": str(executable),
+                }
+            )
+            build = subprocess.CompletedProcess(
+                args=[], returncode=0, stdout=artifact, stderr=""
+            )
+
+            with mock.patch.object(
+                run_native_memory.subprocess,
+                "run",
+                side_effect=[reset, build],
+            ) as run:
+                discovered, provenance = run_native_memory.discover_executable(
+                    recipe,
+                    timeout_seconds=30,
+                )
+
+        self.assertEqual(discovered, executable)
+        self.assertEqual(run.call_count, 2)
+        self.assertEqual(
+            run.call_args_list[0].args[0],
+            reset_command,
+        )
+        self.assertEqual(
+            run.call_args_list[1].args[0],
+            build_command,
+        )
+        self.assertEqual(
+            provenance["profile_reset"]["command"],
+            reset_command,
+        )
 
     def test_dry_run_rejects_an_unexecutable_sampling_contract(self) -> None:
         cases = (
@@ -509,6 +998,7 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
             ("--seed", "-1", "fit the native u64"),
             ("--bootstrap-resamples", "9999", "at least 10000"),
             ("--timeout-seconds", "0", "must be positive"),
+            ("--build-timeout-seconds", "0", "build timeout seconds must be positive"),
         )
         for option, value, message in cases:
             with self.subTest(option=option), redirect_stdout(io.StringIO()):
@@ -726,21 +1216,24 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
     def test_main_writes_contract_failure_report_before_returning_two(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             output = Path(raw) / "failure.json"
-            result = run_native_memory.main(
-                [
-                    "--contract",
-                    str(Path(raw) / "missing.json"),
-                    "--allow-dirty",
-                    "--json-out",
-                    str(output),
-                ]
-            )
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                result = run_native_memory.main(
+                    [
+                        "--contract",
+                        str(Path(raw) / "missing.json"),
+                        "--allow-dirty",
+                        "--json-out",
+                        str(output),
+                    ]
+                )
             report = json.loads(output.read_text(encoding="utf-8"))
 
         self.assertEqual(result, 2)
         self.assertEqual(report["exit_code"], 2)
         self.assertEqual(report["outcome"], "contract_failure")
         self.assertTrue(report["contract_errors"])
+        self.assertIn("contract failure:", stderr.getvalue())
 
     def test_decision_evidence_rejects_dirty_source_by_default(self) -> None:
         dirty = {

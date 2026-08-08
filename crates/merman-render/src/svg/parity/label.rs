@@ -1,9 +1,26 @@
 //! Shared Mermaid `createText` SVG label emission.
 
 use super::*;
+use crate::svg::parity::util::escape_xml_raw_into;
 
-pub(in crate::svg::parity) fn write_svg_text(out: &mut String, text: &str, include_style: bool) {
-    write_svg_text_impl(out, text, include_style, false, true);
+#[derive(Clone, Copy)]
+enum SvgTextEntityMode {
+    DecodedModel,
+    CreateTextSource,
+}
+
+fn write_svg_text_inner_word(
+    out: &mut String,
+    word_index: usize,
+    word: &str,
+    entity_mode: SvgTextEntityMode,
+) {
+    out.push_str(r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal">"#);
+    if word_index > 0 {
+        out.push(' ');
+    }
+    write_svg_text_word(out, word, entity_mode);
+    out.push_str("</tspan>");
 }
 
 pub(in crate::svg::parity) fn write_svg_text_centered(
@@ -11,15 +28,92 @@ pub(in crate::svg::parity) fn write_svg_text_centered(
     text: &str,
     include_style: bool,
 ) {
-    write_svg_text_impl(out, text, include_style, true, true);
+    write_svg_text_impl(
+        out,
+        text,
+        include_style,
+        true,
+        true,
+        SvgTextEntityMode::DecodedModel,
+    );
 }
 
-fn open_svg_text(out: &mut String, include_style: bool, center_text: bool) {
-    match (include_style, center_text) {
-        (true, true) => out.push_str(r#"<text y="-10.1" style="" text-anchor="middle">"#),
-        (true, false) => out.push_str(r#"<text y="-10.1" style="">"#),
-        (false, true) => out.push_str(r#"<text y="-10.1" text-anchor="middle">"#),
-        (false, false) => out.push_str(r#"<text y="-10.1">"#),
+pub(in crate::svg::parity) fn write_svg_text_centered_from_create_text_source(
+    out: &mut String,
+    text: &str,
+    include_style: bool,
+) {
+    write_svg_text_impl(
+        out,
+        text,
+        include_style,
+        true,
+        true,
+        SvgTextEntityMode::CreateTextSource,
+    );
+}
+
+pub(in crate::svg::parity) fn write_svg_text_source_word_lines(
+    out: &mut String,
+    lines: &[Vec<String>],
+    include_style: bool,
+    center_text: bool,
+) {
+    write_svg_text_source_word_lines_impl(out, lines, include_style.then_some(""), center_text);
+}
+
+pub(in crate::svg::parity) fn write_svg_text_source_word_lines_with_style(
+    out: &mut String,
+    lines: &[Vec<String>],
+    style: &str,
+    center_text: bool,
+) {
+    write_svg_text_source_word_lines_impl(out, lines, Some(style), center_text);
+}
+
+fn write_svg_text_source_word_lines_impl(
+    out: &mut String,
+    lines: &[Vec<String>],
+    style: Option<&str>,
+    center_text: bool,
+) {
+    open_svg_text(out, style, center_text);
+
+    if lines.len() == 1 && lines[0].is_empty() {
+        write_empty_tspan(out, center_text, true);
+        out.push_str("</text>");
+        return;
+    }
+
+    for (line_index, words) in lines.iter().enumerate() {
+        open_tspan(out, line_index, center_text, true);
+        for (word_index, word) in words.iter().enumerate() {
+            write_svg_text_inner_word(out, word_index, word, SvgTextEntityMode::CreateTextSource);
+        }
+        out.push_str("</tspan>");
+    }
+
+    out.push_str("</text>");
+}
+
+fn open_svg_text(out: &mut String, style: Option<&str>, center_text: bool) {
+    match (style, center_text) {
+        (Some(style), true) => {
+            let _ = write!(
+                out,
+                r#"<text y="-10.1" style="{}" text-anchor="middle">"#,
+                escape_xml_display(style)
+            );
+        }
+        (Some(style), false) => {
+            let _ = write!(
+                out,
+                r#"<text y="-10.1" style="{}">"#,
+                escape_xml_display(style)
+            );
+        }
+        (None, true) => out.push_str(r#"<text y="-10.1" text-anchor="middle">"#),
+        (None, false) => out.push_str(r#"<text y="-10.1">"#),
     }
 }
 
@@ -81,69 +175,39 @@ fn write_svg_text_impl(
     include_style: bool,
     center_text: bool,
     include_row_class: bool,
+    entity_mode: SvgTextEntityMode,
 ) {
-    open_svg_text(out, include_style, center_text);
+    open_svg_text(out, include_style.then_some(""), center_text);
 
-    let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(text);
+    let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines_for_wrap_mode(
+        text,
+        crate::text::WrapMode::SvgLike,
+    );
     if lines.len() == 1 && lines[0].is_empty() {
         write_empty_tspan(out, center_text, include_row_class);
         out.push_str("</text>");
         return;
     }
 
-    fn split_mermaid_escaped_tag_tokens(line: &str) -> Option<Vec<String>> {
-        let line = line.trim_end();
-        if !line.starts_with('<') || !line.ends_with('>') {
-            return None;
-        }
-        let open_end = line.find('>')?;
-        let open_tag = &line[..=open_end];
-        if open_tag.starts_with("</") {
-            return None;
-        }
-        let tag_name = open_tag
-            .trim_start_matches('<')
-            .trim_end_matches('>')
-            .split_whitespace()
-            .next()
-            .filter(|name| !name.is_empty())?;
-        let close_tag = format!("</{tag_name}>");
-        if !line.ends_with(&close_tag) {
-            return None;
-        }
-        let inner = &line[open_end + 1..line.len() - close_tag.len()];
-        Some(vec![
-            open_tag.to_string(),
-            inner.trim().to_string(),
-            close_tag,
-        ])
-    }
-
     for (index, line) in lines.iter().enumerate() {
         open_tspan(out, index, center_text, include_row_class);
-        let words = split_mermaid_escaped_tag_tokens(line).unwrap_or_else(|| {
-            line.split_whitespace()
-                .filter(|word| !word.is_empty())
-                .map(str::to_string)
-                .collect()
-        });
-        for (word_index, word) in words.iter().enumerate() {
-            let _ = write!(
-                out,
-                r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal">"#
-            );
-            if word_index == 0 {
-                escape_xml_into(out, word);
-            } else {
-                out.push(' ');
-                escape_xml_into(out, word);
-            }
-            out.push_str("</tspan>");
+        for (word_index, word) in crate::text::non_markdown_svg_words(line).enumerate() {
+            write_svg_text_inner_word(out, word_index, word, entity_mode);
         }
         out.push_str("</tspan>");
     }
 
     out.push_str("</text>");
+}
+
+fn write_svg_text_word(out: &mut String, word: &str, entity_mode: SvgTextEntityMode) {
+    match entity_mode {
+        SvgTextEntityMode::DecodedModel => escape_xml_into(out, word),
+        SvgTextEntityMode::CreateTextSource => {
+            let visible = crate::entities::decode_svg_text_content_entities(word);
+            escape_xml_raw_into(out, visible.as_ref());
+        }
+    }
 }
 
 fn normalized_markdown_label(markdown: &str) -> &str {
@@ -200,8 +264,9 @@ fn write_svg_text_markdown_lines(
     include_style: bool,
     center_text: bool,
     include_row_class: bool,
+    entity_mode: SvgTextEntityMode,
 ) {
-    open_svg_text(out, include_style, center_text);
+    open_svg_text(out, include_style.then_some(""), center_text);
 
     if lines.len() == 1 && lines[0].is_empty() {
         write_empty_tspan(out, center_text, include_row_class);
@@ -221,10 +286,10 @@ fn write_svg_text_markdown_lines(
                 font_style, font_weight
             );
             if word_index == 0 {
-                escape_xml_into(out, word);
+                write_svg_text_word(out, word, entity_mode);
             } else {
                 out.push(' ');
-                escape_xml_into(out, word);
+                write_svg_text_word(out, word, entity_mode);
             }
             out.push_str("</tspan>");
         }
@@ -241,7 +306,14 @@ pub(in crate::svg::parity) fn write_svg_text_markdown(
     include_style: bool,
 ) {
     let lines = markdown_to_svg_word_lines(normalized_markdown_label(markdown));
-    write_svg_text_markdown_lines(out, &lines, include_style, false, true);
+    write_svg_text_markdown_lines(
+        out,
+        &lines,
+        include_style,
+        false,
+        true,
+        SvgTextEntityMode::DecodedModel,
+    );
 }
 
 pub(in crate::svg::parity) fn write_svg_text_markdown_centered(
@@ -250,10 +322,33 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_centered(
     include_style: bool,
 ) {
     let lines = markdown_to_svg_word_lines(normalized_markdown_label(markdown));
-    write_svg_text_markdown_lines(out, &lines, include_style, true, true);
+    write_svg_text_markdown_lines(
+        out,
+        &lines,
+        include_style,
+        true,
+        true,
+        SvgTextEntityMode::DecodedModel,
+    );
 }
 
-pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_centered(
+pub(in crate::svg::parity) fn write_svg_text_markdown_from_create_text_source(
+    out: &mut String,
+    markdown: &str,
+    include_style: bool,
+) {
+    let lines = markdown_to_svg_word_lines(normalized_markdown_label(markdown));
+    write_svg_text_markdown_lines(
+        out,
+        &lines,
+        include_style,
+        false,
+        true,
+        SvgTextEntityMode::CreateTextSource,
+    );
+}
+
+pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_centered_from_create_text_source(
     out: &mut String,
     markdown: &str,
     include_style: bool,
@@ -267,10 +362,17 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_centered(
         style,
         max_width_px,
     );
-    write_svg_text_markdown_lines(out, &lines, include_style, true, true);
+    write_svg_text_markdown_lines(
+        out,
+        &lines,
+        include_style,
+        true,
+        true,
+        SvgTextEntityMode::CreateTextSource,
+    );
 }
 
-pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped(
+pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_create_text_source(
     out: &mut String,
     markdown: &str,
     include_style: bool,
@@ -284,5 +386,104 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped(
         style,
         max_width_px,
     );
-    write_svg_text_markdown_lines(out, &lines, include_style, false, true);
+    write_svg_text_markdown_lines(
+        out,
+        &lines,
+        include_style,
+        false,
+        true,
+        SvgTextEntityMode::CreateTextSource,
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{write_svg_text_centered, write_svg_text_source_word_lines};
+
+    #[test]
+    fn non_markdown_svg_text_uses_ecmascript_whitespace_boundaries() {
+        let expected = [
+            r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal">A</tspan>"#,
+            r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> B</tspan>"#,
+        ];
+
+        for text in ["A\tB", "A\u{00A0}B", "A\u{2000}B"] {
+            let mut out = String::new();
+            write_svg_text_centered(&mut out, text, false);
+            for fragment in expected {
+                assert!(out.contains(fragment), "{text:?}: {out}");
+            }
+        }
+    }
+
+    #[test]
+    fn create_text_source_word_lines_preserve_entity_and_tag_provenance() {
+        let raw = vec![vec![
+            "<span class='foo bar'>".to_string(),
+            "X".to_string(),
+            "</span>".to_string(),
+        ]];
+        let mut raw_svg = String::new();
+        write_svg_text_source_word_lines(&mut raw_svg, &raw, false, true);
+        assert!(
+            raw_svg.contains(">&lt;span class=&#39;foo bar&#39;></tspan>"),
+            "{raw_svg}"
+        );
+        assert_eq!(raw_svg.matches("text-inner-tspan").count(), 3, "{raw_svg}");
+
+        let encoded = vec![vec![
+            "&lt;span".to_string(),
+            "class='foo".to_string(),
+            "bar'&gt;X&lt;/span&gt;".to_string(),
+        ]];
+        let mut encoded_svg = String::new();
+        write_svg_text_source_word_lines(&mut encoded_svg, &encoded, false, true);
+        assert!(encoded_svg.contains(">&lt;span</tspan>"), "{encoded_svg}");
+        assert!(
+            encoded_svg.contains("> class=&#39;foo</tspan>"),
+            "{encoded_svg}"
+        );
+        assert_eq!(
+            encoded_svg.matches("text-inner-tspan").count(),
+            3,
+            "{encoded_svg}"
+        );
+
+        let mut angle_svg = String::new();
+        write_svg_text_source_word_lines(
+            &mut angle_svg,
+            &[vec!["&lt;Less&lt;".to_string()]],
+            false,
+            true,
+        );
+        assert!(angle_svg.contains(">&lt;Less&lt;</tspan>"), "{angle_svg}");
+    }
+
+    #[test]
+    fn create_text_source_word_lines_preserve_explicit_empty_rows() {
+        let mut svg = String::new();
+        write_svg_text_source_word_lines(
+            &mut svg,
+            &[Vec::new(), Vec::new(), Vec::new()],
+            true,
+            true,
+        );
+
+        assert_eq!(svg.matches(r#"class="row text-outer-tspan""#).count(), 3);
+    }
+
+    #[test]
+    fn non_markdown_svg_text_tokenizes_tags_anywhere_in_the_line() {
+        let mut out = String::new();
+        write_svg_text_centered(&mut out, "x <strong>A B</strong> y", false);
+
+        let expected = ["x", " &lt;strong>", " A", " B", " &lt;/strong>", " y"];
+        let mut cursor = 0usize;
+        for word in expected {
+            let next = out[cursor..]
+                .find(&format!(">{word}</tspan>"))
+                .unwrap_or_else(|| panic!("missing {word:?}: {out}"));
+            cursor += next + word.len();
+        }
+    }
 }

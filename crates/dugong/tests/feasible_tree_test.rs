@@ -38,6 +38,28 @@ fn feasible_tree_creates_a_tree_for_a_trivial_input_graph() {
 }
 
 #[test]
+fn feasible_tree_treats_zero_minlen_same_rank_edges_as_tight() {
+    let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions::default());
+    g.set_graph(GraphLabel::default());
+    for id in ["a", "b"] {
+        g.set_node(
+            id,
+            NodeLabel {
+                rank: Some(0),
+                ..Default::default()
+            },
+        );
+    }
+    g.set_edge_with_label("a", "b", edge(0));
+
+    let tree = rank::feasible_tree::feasible_tree(&mut g);
+
+    assert_eq!(g.node("a").unwrap().rank, Some(0));
+    assert_eq!(g.node("b").unwrap().rank, Some(0));
+    assert_eq!(tree.neighbors("a"), vec!["b"]);
+}
+
+#[test]
 fn feasible_tree_correctly_shortens_slack_by_pulling_a_node_up() {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions::default());
     g.set_graph(GraphLabel::default());

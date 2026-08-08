@@ -17,6 +17,7 @@ import path from "node:path";
 import { afterEach, describe, it } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { wasmPackEnvironment } from "./wasm-build/build.mjs";
 import {
   acquireOutputLock,
   acquireWorkspaceWasmBuildLock,
@@ -228,12 +229,25 @@ describe("WASM output transaction", () => {
   it("places the build lock in the configured Cargo target directory", () => {
     const root = fixtureRoot();
     assert.equal(
-      workspaceWasmBuildLockDirectory(root),
+      workspaceWasmBuildLockDirectory(root, { cargoTargetDirectory: null }),
       path.join(root, "target", ".merman-wasm-build.lock"),
     );
     assert.equal(
       workspaceWasmBuildLockDirectory(root, { cargoTargetDirectory: "build" }),
       path.join(root, "build", ".merman-wasm-build.lock"),
+    );
+  });
+
+  it("pins wasm-pack to the absolute Cargo metadata target directory", () => {
+    const root = fixtureRoot();
+    const targetDirectory = path.join(root, "target", "isolated");
+
+    assert.deepEqual(
+      wasmPackEnvironment(
+        { target_directory: targetDirectory },
+        { CARGO_TARGET_DIR: "target/isolated", KEEP: "yes" },
+      ),
+      { CARGO_TARGET_DIR: targetDirectory, KEEP: "yes" },
     );
   });
 });

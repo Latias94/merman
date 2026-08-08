@@ -49,6 +49,28 @@ fn longest_path_can_assign_ranks_to_connected_nodes() {
 }
 
 #[test]
+fn longest_path_and_slack_preserve_an_explicit_zero_minlen() {
+    let mut g = new_graph();
+    g.set_node("a", NodeLabel::default());
+    g.set_node("b", NodeLabel::default());
+    g.set_edge_with_label(
+        "a",
+        "b",
+        EdgeLabel {
+            minlen: 0,
+            ..Default::default()
+        },
+    );
+
+    rank::util::longest_path(&mut g);
+
+    assert_eq!(g.node("a").unwrap().rank, Some(0));
+    assert_eq!(g.node("b").unwrap().rank, Some(0));
+    let edge = g.edge_keys().into_iter().next().unwrap();
+    assert_eq!(rank::util::slack(&g, &edge), 0);
+}
+
+#[test]
 fn longest_path_can_assign_ranks_for_a_diamond() {
     let mut g = new_graph();
     g.set_path(&["a", "b", "d"]);

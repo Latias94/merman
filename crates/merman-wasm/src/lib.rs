@@ -355,8 +355,10 @@ pub(crate) fn binding_error_to_js(err: BindingError) -> JsValue {
 }
 
 fn binding_error_payload_value(err: &BindingError) -> Result<serde_json::Value, String> {
-    serde_json::from_slice(&merman_bindings_core::binding_error_payload_json_bytes(err))
-        .map_err(|err| err.to_string())
+    serde_json::from_slice(&merman_bindings_core::binding_error_js_payload_json_bytes(
+        err,
+    ))
+    .map_err(|err| err.to_string())
 }
 
 #[cfg(all(feature = "svg", target_arch = "wasm32"))]
@@ -425,6 +427,18 @@ fn decode_wasm_host_text_measurement(
 struct WasmHostTextMeasurer;
 
 #[cfg(all(feature = "svg", target_arch = "wasm32"))]
+fn wasm_host_text_measurement_handled(
+    value: &JsValue,
+) -> Result<Option<bool>, merman_bindings_core::HostTextMeasurementError> {
+    let handled = js_sys::Reflect::get(value, &JsValue::from_str("handled")).map_err(|err| {
+        merman_bindings_core::HostTextMeasurementError::invalid_value(js_error_message(&err))
+    })?;
+    serde_wasm_bindgen::from_value(handled).map_err(|err| {
+        merman_bindings_core::HostTextMeasurementError::invalid_value(err.to_string())
+    })
+}
+
+#[cfg(all(feature = "svg", target_arch = "wasm32"))]
 impl WasmHostTextMeasurer {
     fn call_host(
         &self,
@@ -463,15 +477,7 @@ impl WasmHostTextMeasurer {
                 return Ok(None);
             }
 
-            #[derive(Deserialize)]
-            struct HostDisposition {
-                handled: Option<bool>,
-            }
-            let disposition: HostDisposition = serde_wasm_bindgen::from_value(value.clone())
-                .map_err(|err| {
-                    merman_bindings_core::HostTextMeasurementError::invalid_value(err.to_string())
-                })?;
-            if disposition.handled == Some(false) {
+            if wasm_host_text_measurement_handled(&value)? == Some(false) {
                 return Ok(None);
             }
 
@@ -594,7 +600,8 @@ mod tests {
         let resource = payload["details"]["resource"]
             .as_object()
             .expect("WASM resource details object");
-        assert_eq!(resource.len(), 5, "WASM resource error shape changed");
+        assert_eq!(resource.len(), 6, "WASM resource error shape changed");
+        assert_eq!(resource["cause"], "ceiling");
         assert_eq!(resource["limit_id"], expected_limit_id);
         assert_eq!(resource["phase"], expected_phase);
         assert_eq!(resource["actual"], details.actual);
@@ -1070,6 +1077,31 @@ mod tests {
             "max_embedded_image_bytes"
         );
         assert_eq!(json["details"]["resource"]["actual"], 5);
+        assert_eq!(json["details"]["resource"]["cause"], "ceiling");
+
+        let err = BindingError::resource_limit_with_cause(
+            merman_bindings_core::BindingResourceLimitCause::ArithmeticOverflow,
+            "layout_model",
+            "max_layout_work_units",
+            u64::MAX,
+            800_000,
+            "interactive",
+            "layout work accounting overflowed",
+        );
+        let json = binding_error_payload_value(&err).unwrap();
+        assert_eq!(json["code_name"], "MERMAN_RESOURCE_LIMIT_EXCEEDED");
+        assert_eq!(json["details"]["resource"]["cause"], "arithmetic_overflow");
+        assert_eq!(
+            json["details"]["resource"]["limit_id"],
+            "max_layout_work_units"
+        );
+        assert_eq!(json["details"]["resource"]["phase"], "layout_model");
+        assert_eq!(
+            json["details"]["resource"]["actual"],
+            "18446744073709551615"
+        );
+        assert_eq!(json["details"]["resource"]["max"], 800_000);
+        assert_eq!(json["details"]["resource"]["profile"], "interactive");
 
         let err = BindingError::new(
             merman_bindings_core::BindingStatus::ParseError,

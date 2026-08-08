@@ -1,6 +1,4 @@
 use crate::XtaskError;
-#[cfg(test)]
-use crate::cmd::read_bounded_child_pipe;
 use crate::cmd::{
     PINNED_DOMPURIFY_VERSION, PINNED_MERMAID_CLI_PACKAGE_SHA256, PINNED_MERMAID_PACKAGE_SHA256,
     ensure_content_addressed_js_script, ensure_upstream_svg_puppeteer_config,
@@ -3424,9 +3422,8 @@ mod tests {
         ensure_seeded_upstream_svg_renderer_script,
         ensure_upstream_svg_render_environment_probe_script, map_bounded_in_order,
         parse_gen_upstream_svgs_options, parse_upstream_svg_jobs, partition_upstream_svg_fixtures,
-        promote_upstream_svg_batch, read_bounded_child_pipe, render_dompurify_defaults_rs,
-        render_family_fixture_svg, scripted_renderer_background_color,
-        select_upstream_svg_diagrams, spawn_timeout_managed_child,
+        promote_upstream_svg_batch, render_dompurify_defaults_rs, render_family_fixture_svg,
+        scripted_renderer_background_color, select_upstream_svg_diagrams,
         unique_upstream_svg_failure_report_path, unique_upstream_svg_temp_path,
         upstream_svg_check_dom_mode, upstream_svg_filter_matches,
         upstream_svg_mermaid_config_value, upstream_svg_package_tree_sha256,
@@ -3434,7 +3431,6 @@ mod tests {
         uses_seeded_upstream_svg_renderer, validate_and_promote_upstream_svg_temp,
         validate_external_upstream_svg_family_lock, validate_mermaid_cli_install,
         validate_upstream_svg_filter_selection, validate_upstream_svg_render_probe,
-        wait_with_bounded_output, wait_with_timeout,
     };
     use crate::XtaskError;
     use crate::cmd::{
@@ -3443,12 +3439,10 @@ mod tests {
     use crate::svgdom::DomMode;
     use serde_json::json;
     use std::fs;
-    use std::io::{Cursor, Write};
     use std::path::{Path, PathBuf};
-    use std::process::{Command, Stdio};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Barrier};
-    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     fn unique_test_root(name: &str) -> PathBuf {
         let nonce = SystemTime::now()
@@ -4417,208 +4411,6 @@ mod tests {
                 .ends_with(".backup")
         }));
         remove_test_root(&root);
-    }
-
-    #[test]
-    fn upstream_svg_timeout_child_helper() {
-        if std::env::var_os("MERMAN_XTASK_TIMEOUT_CHILD").is_some() {
-            std::thread::sleep(Duration::from_secs(30));
-        }
-    }
-
-    #[test]
-    fn upstream_svg_large_pipe_child_helper() {
-        if std::env::var_os("MERMAN_XTASK_LARGE_PIPE_CHILD").is_none() {
-            return;
-        }
-
-        const PAYLOAD_BYTES: usize = 512 * 1024;
-        let stdout_writer = std::thread::spawn(|| {
-            let bytes = vec![b'o'; PAYLOAD_BYTES];
-            std::io::stdout()
-                .lock()
-                .write_all(&bytes)
-                .expect("write large stdout payload");
-        });
-        let stderr_writer = std::thread::spawn(|| {
-            let bytes = vec![b'e'; PAYLOAD_BYTES];
-            std::io::stderr()
-                .lock()
-                .write_all(&bytes)
-                .expect("write large stderr payload");
-        });
-        stdout_writer.join().expect("join stdout writer");
-        stderr_writer.join().expect("join stderr writer");
-    }
-
-    #[test]
-    fn upstream_svg_process_tree_grandchild_helper() {
-        let Some(ready_path) = std::env::var_os("MERMAN_XTASK_TREE_GRANDCHILD_READY") else {
-            return;
-        };
-        let listener = std::net::TcpListener::bind("127.0.0.1:0")
-            .expect("bind process-tree grandchild listener");
-        fs::write(
-            ready_path,
-            listener
-                .local_addr()
-                .expect("grandchild listener address")
-                .to_string(),
-        )
-        .expect("write process-tree ready file");
-        std::thread::sleep(Duration::from_secs(30));
-        drop(listener);
-    }
-
-    #[test]
-    fn upstream_svg_process_tree_child_helper() {
-        let Some(ready_path) = std::env::var_os("MERMAN_XTASK_TREE_CHILD_READY") else {
-            return;
-        };
-        let executable = std::env::current_exe().expect("current test executable");
-        let test_name = format!(
-            "{}::upstream_svg_process_tree_grandchild_helper",
-            module_path!()
-        );
-        let test_name = test_name
-            .strip_prefix(concat!(env!("CARGO_CRATE_NAME"), "::"))
-            .unwrap_or(test_name.as_str());
-        let mut grandchild = Command::new(executable)
-            .args(["--exact", test_name, "--nocapture"])
-            .env("MERMAN_XTASK_TREE_GRANDCHILD_READY", ready_path)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("spawn process-tree grandchild");
-        std::thread::sleep(Duration::from_secs(30));
-        let _ = grandchild.wait();
-    }
-
-    #[test]
-    fn upstream_svg_timeout_terminates_the_managed_process_tree() {
-        let root = unique_test_root("upstream-svg-process-tree");
-        fs::create_dir_all(&root).expect("create process-tree test root");
-        let ready_path = root.join("grandchild-ready.txt");
-        let executable = std::env::current_exe().expect("current test executable");
-        let test_name = format!("{}::upstream_svg_process_tree_child_helper", module_path!());
-        let test_name = test_name
-            .strip_prefix(concat!(env!("CARGO_CRATE_NAME"), "::"))
-            .unwrap_or(test_name.as_str());
-        let mut command = Command::new(executable);
-        command
-            .args(["--exact", test_name, "--nocapture"])
-            .env("MERMAN_XTASK_TREE_CHILD_READY", &ready_path)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        let mut child =
-            spawn_timeout_managed_child(&mut command).expect("spawn process-tree child");
-
-        let ready_deadline = Instant::now() + Duration::from_secs(5);
-        while !ready_path.is_file() && Instant::now() < ready_deadline {
-            std::thread::sleep(Duration::from_millis(20));
-        }
-        let address: std::net::SocketAddr = fs::read_to_string(&ready_path)
-            .expect("read process-tree ready file")
-            .parse()
-            .expect("parse grandchild listener address");
-
-        let error = wait_with_timeout(&mut child, Duration::from_millis(100))
-            .expect_err("managed process tree must time out");
-        assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
-        assert!(
-            child
-                .try_wait()
-                .expect("query process-tree child")
-                .is_some()
-        );
-
-        let release_deadline = Instant::now() + Duration::from_secs(5);
-        loop {
-            match std::net::TcpListener::bind(address) {
-                Ok(listener) => {
-                    drop(listener);
-                    break;
-                }
-                Err(_) if Instant::now() < release_deadline => {
-                    std::thread::sleep(Duration::from_millis(20));
-                }
-                Err(err) => panic!("grandchild listener remained alive after timeout: {err}"),
-            }
-        }
-        remove_test_root(&root);
-    }
-
-    #[test]
-    fn upstream_svg_process_wait_enforces_a_hard_timeout() {
-        let executable = std::env::current_exe().expect("current test executable");
-        let test_name = format!("{}::upstream_svg_timeout_child_helper", module_path!());
-        let test_name = test_name
-            .strip_prefix(concat!(env!("CARGO_CRATE_NAME"), "::"))
-            .unwrap_or(test_name.as_str());
-        let mut command = Command::new(executable);
-        command
-            .args(["--exact", test_name, "--nocapture"])
-            .env("MERMAN_XTASK_TIMEOUT_CHILD", "1")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        let mut child = spawn_timeout_managed_child(&mut command).expect("spawn timeout child");
-        let started = Instant::now();
-
-        let error = wait_with_timeout(&mut child, Duration::from_millis(100))
-            .expect_err("sleeping child must time out");
-
-        assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
-        assert!(
-            child.try_wait().expect("query terminated child").is_some(),
-            "timed-out child must be reaped before wait_with_timeout returns"
-        );
-        assert!(
-            started.elapsed() < Duration::from_secs(5),
-            "hard timeout should terminate promptly"
-        );
-    }
-
-    #[test]
-    fn upstream_svg_probe_drains_large_stdout_and_stderr_without_backpressure() {
-        let executable = std::env::current_exe().expect("current test executable");
-        let test_name = format!("{}::upstream_svg_large_pipe_child_helper", module_path!());
-        let test_name = test_name
-            .strip_prefix(concat!(env!("CARGO_CRATE_NAME"), "::"))
-            .unwrap_or(test_name.as_str());
-        let mut command = Command::new(executable);
-        command
-            .args(["--exact", test_name, "--nocapture"])
-            .env("MERMAN_XTASK_LARGE_PIPE_CHILD", "1")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        let mut child = spawn_timeout_managed_child(&mut command).expect("spawn large-pipe child");
-        let started = Instant::now();
-
-        let output = wait_with_bounded_output(&mut child, Duration::from_secs(5), 1024 * 1024)
-            .expect("large probe output should be drained concurrently");
-
-        assert!(output.status.success());
-        assert!(
-            output.stdout.iter().filter(|byte| **byte == b'o').count() >= 512 * 1024,
-            "stdout payload was truncated"
-        );
-        assert!(
-            output.stderr.iter().filter(|byte| **byte == b'e').count() >= 512 * 1024,
-            "stderr payload was truncated"
-        );
-        assert!(started.elapsed() < Duration::from_secs(5));
-    }
-
-    #[test]
-    fn bounded_probe_reader_drains_to_eof_after_reaching_its_limit() {
-        let bytes = vec![b'x'; 4096];
-        let mut cursor = Cursor::new(bytes);
-
-        let error = read_bounded_child_pipe(&mut cursor, "test", 1024)
-            .expect_err("oversized output must be rejected");
-
-        assert!(error.to_string().contains("exceeded 1024 bytes"));
-        assert_eq!(cursor.position(), 4096);
     }
 
     #[test]

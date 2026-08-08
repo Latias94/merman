@@ -32,44 +32,37 @@ pub(super) fn render_state_node_svg(
         key: StateRoughCacheKey,
         allow_cache: bool,
         build: impl FnOnce() -> String,
-    ) -> Arc<String> {
+    ) -> Rc<String> {
+        #[cfg(test)]
+        ctx.rough_lifecycle_probe
+            .record_draw_request(StateRoughGeometryKind::Circle);
         if !allow_cache {
-            return Arc::new(build());
+            #[cfg(test)]
+            ctx.rough_lifecycle_probe
+                .record_bypass_build(StateRoughGeometryKind::Circle);
+            return Rc::new(build());
         }
-        let existing = { ctx.rough_circle_cache.borrow().get(&key).cloned() };
+        #[cfg(test)]
+        ctx.rough_lifecycle_probe
+            .record_operation_lookup(StateRoughGeometryKind::Circle);
+        let existing = ctx.rough_cache.get_circle(key);
         if let Some(v) = existing {
+            #[cfg(test)]
+            ctx.rough_lifecycle_probe
+                .record_operation_hit(StateRoughGeometryKind::Circle);
             return v;
         }
-
-        if let Some(v) = state_tls_get_circle(key) {
-            ctx.rough_circle_cache
-                .borrow_mut()
-                .insert(key, Arc::clone(&v));
-            return v;
-        }
-
-        if let Ok(global) = state_global_rough_circle_cache().lock()
-            && let Some(v) = global.get(&key)
-        {
-            let v = Arc::clone(v);
-            state_tls_put_circle(key, Arc::clone(&v));
-            ctx.rough_circle_cache
-                .borrow_mut()
-                .insert(key, Arc::clone(&v));
-            return v;
-        }
-
-        let built = Arc::new(build());
-        let cached = if let Ok(mut global) = state_global_rough_circle_cache().lock() {
-            Arc::clone(global.entry(key).or_insert_with(|| Arc::clone(&built)))
-        } else {
-            Arc::clone(&built)
-        };
-        state_tls_put_circle(key, Arc::clone(&cached));
-        ctx.rough_circle_cache
-            .borrow_mut()
-            .insert(key, Arc::clone(&cached));
-        cached
+        #[cfg(test)]
+        ctx.rough_lifecycle_probe
+            .record_operation_miss(StateRoughGeometryKind::Circle);
+        #[cfg(test)]
+        ctx.rough_lifecycle_probe
+            .record_operation_build(StateRoughGeometryKind::Circle);
+        let built = Rc::new(build());
+        ctx.rough_cache.insert_circle(key, Rc::clone(&built));
+        #[cfg(test)]
+        state_rough_lifecycle_observe_operation_cache(ctx);
+        built
     }
 
     #[inline]
@@ -78,49 +71,40 @@ pub(super) fn render_state_node_svg(
         key: StateRoughCacheKey,
         allow_cache: bool,
         build: impl FnOnce() -> (String, String),
-    ) -> (Arc<String>, Arc<String>) {
+    ) -> (Rc<String>, Rc<String>) {
+        #[cfg(test)]
+        ctx.rough_lifecycle_probe
+            .record_draw_request(StateRoughGeometryKind::Paths);
         if !allow_cache {
+            #[cfg(test)]
+            ctx.rough_lifecycle_probe
+                .record_bypass_build(StateRoughGeometryKind::Paths);
             let (fill_d, stroke_d) = build();
-            return (Arc::new(fill_d), Arc::new(stroke_d));
+            return (Rc::new(fill_d), Rc::new(stroke_d));
         }
-        let existing = { ctx.rough_paths_cache.borrow().get(&key).cloned() };
+        #[cfg(test)]
+        ctx.rough_lifecycle_probe
+            .record_operation_lookup(StateRoughGeometryKind::Paths);
+        let existing = ctx.rough_cache.get_paths(key);
         if let Some(v) = existing {
+            #[cfg(test)]
+            ctx.rough_lifecycle_probe
+                .record_operation_hit(StateRoughGeometryKind::Paths);
             return v;
         }
-
-        if let Some(v) = state_tls_get_paths(key) {
-            ctx.rough_paths_cache
-                .borrow_mut()
-                .insert(key, (Arc::clone(&v.0), Arc::clone(&v.1)));
-            return v;
-        }
-
-        if let Ok(global) = state_global_rough_paths_cache().lock()
-            && let Some((fill_d, stroke_d)) = global.get(&key)
-        {
-            let v = (Arc::clone(fill_d), Arc::clone(stroke_d));
-            state_tls_put_paths(key, (Arc::clone(&v.0), Arc::clone(&v.1)));
-            ctx.rough_paths_cache
-                .borrow_mut()
-                .insert(key, (Arc::clone(&v.0), Arc::clone(&v.1)));
-            return v;
-        }
-
+        #[cfg(test)]
+        ctx.rough_lifecycle_probe
+            .record_operation_miss(StateRoughGeometryKind::Paths);
+        #[cfg(test)]
+        ctx.rough_lifecycle_probe
+            .record_operation_build(StateRoughGeometryKind::Paths);
         let (fill_d, stroke_d) = build();
-        let built = (Arc::new(fill_d), Arc::new(stroke_d));
-        let cached = if let Ok(mut global) = state_global_rough_paths_cache().lock() {
-            let entry = global
-                .entry(key)
-                .or_insert_with(|| (Arc::clone(&built.0), Arc::clone(&built.1)));
-            (Arc::clone(&entry.0), Arc::clone(&entry.1))
-        } else {
-            (Arc::clone(&built.0), Arc::clone(&built.1))
-        };
-        state_tls_put_paths(key, (Arc::clone(&cached.0), Arc::clone(&cached.1)));
-        ctx.rough_paths_cache
-            .borrow_mut()
-            .insert(key, (Arc::clone(&cached.0), Arc::clone(&cached.1)));
-        cached
+        let built = (Rc::new(fill_d), Rc::new(stroke_d));
+        ctx.rough_cache
+            .insert_paths(key, (Rc::clone(&built.0), Rc::clone(&built.1)));
+        #[cfg(test)]
+        state_rough_lifecycle_observe_operation_cache(ctx);
+        built
     }
 
     let node_class = if node.css_classes.trim().is_empty() {
@@ -689,32 +673,6 @@ pub(super) fn render_state_node_svg(
                 .unwrap_or(ctx.theme_defaults.rough_stroke_width_value)
                 .max(0.0);
 
-            let rough_start = timing.start();
-            let key = StateRoughCacheKey {
-                tag: 6,
-                a: w.to_bits(),
-                b: h.to_bits(),
-                seed: ctx.hand_drawn_seed.seed(),
-            };
-            if timing.is_enabled() {
-                details.leaf_roughjs_calls += 1;
-                details.leaf_roughjs_unique.insert(key);
-            }
-            let (fill_d, stroke_d) = cached_paths(ctx, key, allow_rough_cache, || {
-                roughjs_paths_for_svg_path(
-                    &mermaid_rounded_rect_path_data(w, h),
-                    "#ECECFF",
-                    "#9370DB",
-                    1.3,
-                    "0 0",
-                    &ctx.hand_drawn_seed,
-                )
-                .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()))
-            });
-            if let Some(s) = rough_start {
-                details.leaf_nodes_roughjs += s.elapsed();
-            }
-
             let label_span_style = if text_style_attr.is_empty() {
                 None
             } else {
@@ -803,6 +761,32 @@ pub(super) fn render_state_node_svg(
                 }
                 drop(_g_emit);
                 return;
+            }
+
+            let rough_start = timing.start();
+            let key = StateRoughCacheKey {
+                tag: 6,
+                a: w.to_bits(),
+                b: h.to_bits(),
+                seed: ctx.hand_drawn_seed.seed(),
+            };
+            if timing.is_enabled() {
+                details.leaf_roughjs_calls += 1;
+                details.leaf_roughjs_unique.insert(key);
+            }
+            let (fill_d, stroke_d) = cached_paths(ctx, key, allow_rough_cache, || {
+                roughjs_paths_for_svg_path(
+                    &mermaid_rounded_rect_path_data(w, h),
+                    "#ECECFF",
+                    "#9370DB",
+                    1.3,
+                    "0 0",
+                    &ctx.hand_drawn_seed,
+                )
+                .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()))
+            });
+            if let Some(s) = rough_start {
+                details.leaf_nodes_roughjs += s.elapsed();
             }
 
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);

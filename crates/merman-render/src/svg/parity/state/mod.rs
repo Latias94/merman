@@ -1,10 +1,14 @@
 use super::*;
 use rustc_hash::FxHashMap;
-use std::sync::Arc;
+use std::rc::Rc;
 mod context;
 mod edge;
 mod node;
 mod rough_cache;
+#[cfg(test)]
+mod rough_dispatch_tests;
+#[cfg(test)]
+mod rough_lifecycle_probe;
 pub(in crate::svg::parity) mod roughjs;
 mod style;
 mod viewport;
@@ -25,6 +29,8 @@ use context::*;
 use edge::*;
 use node::*;
 use rough_cache::*;
+#[cfg(test)]
+use rough_lifecycle_probe::*;
 use style::*;
 use viewport::*;
 
@@ -34,9 +40,6 @@ type StateSvgLink = merman_core::diagrams::state::StateDiagramRenderLink;
 type StateSvgLinks = merman_core::diagrams::state::StateDiagramRenderLinks;
 type StateSvgNode = merman_core::diagrams::state::StateDiagramRenderNode;
 type StateSvgEdge = merman_core::diagrams::state::StateDiagramRenderEdge;
-type StateRoughPathPair = (Arc<String>, Arc<String>);
-type StateRoughPathsCache = FxHashMap<StateRoughCacheKey, StateRoughPathPair>;
-
 struct StateRenderCtx<'a> {
     diagram_id: String,
     diagram_look: String,
@@ -61,8 +64,11 @@ struct StateRenderCtx<'a> {
     measurer: &'a dyn TextMeasurer,
     text_style: crate::text::TextStyle,
     theme_defaults: StateThemeDefaults,
-    rough_circle_cache: std::cell::RefCell<FxHashMap<StateRoughCacheKey, Arc<String>>>,
-    rough_paths_cache: std::cell::RefCell<StateRoughPathsCache>,
+    rough_cache: StateRoughCache,
+    // Keep this field after the operation cache. Rust drops fields in declaration order, so the
+    // test-only probe observes retained global/TLS state after operation-owned entries release.
+    #[cfg(test)]
+    rough_lifecycle_probe: StateRoughLifecycleOperationProbe,
 }
 
 mod render;

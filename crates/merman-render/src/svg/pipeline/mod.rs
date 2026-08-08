@@ -490,6 +490,18 @@ mod tests {
     }
 
     #[test]
+    fn resvg_safe_finalization_drops_unclosed_inline_css_blocks_idempotently() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><path style="filter:5rl('file:///{animatiEtroke:#333"/></svg>"##;
+        let session = render_session();
+
+        let once = super::finalize_resvg_svg(svg, &session).unwrap();
+        let twice = super::finalize_resvg_svg(once.as_str(), &session).unwrap();
+
+        assert_eq!(twice, once);
+        assert!(!once.as_str().contains("style="), "{}", once.as_str());
+    }
+
+    #[test]
     fn resvg_safe_pipeline_bounds_css_nesting_on_a_small_thread_stack() {
         const CSS_NESTING_LIMIT: usize = 64;
 

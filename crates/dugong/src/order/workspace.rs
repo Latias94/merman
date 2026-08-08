@@ -1,6 +1,8 @@
 use super::barycenter::{BarycenterEntryIx, SortEntryIx, SortResultIx, sort_ix};
 use super::{OrderEdgeWeight, OrderNodeLabel, Relationship};
 use crate::graphlib::Graph;
+use crate::work::{checked_add, checked_mul, checked_n_log_n};
+use crate::{WorkControl, WorkError};
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 #[derive(Debug, Clone, Copy)]
@@ -48,10 +50,16 @@ struct LayerRank {
     nodes: Vec<LayerNode>,
     local_by_original: HashMap<usize, usize>,
     root: usize,
+    hierarchy_link_visits: usize,
+    child_sort_work: usize,
 }
 
 impl LayerRank {
-    fn build<N, E, G>(g: &Graph<N, E, G>, rank: i32, nodes_with_rank: &[usize]) -> Self
+    fn build<N, E, G>(
+        g: &Graph<N, E, G>,
+        rank: i32,
+        nodes_with_rank: &[usize],
+    ) -> Result<Self, WorkError>
     where
         N: Default + OrderNodeLabel + 'static,
         E: Default + 'static,
@@ -61,6 +69,8 @@ impl LayerRank {
             nodes: vec![LayerNode::root()],
             local_by_original: HashMap::default(),
             root: 0,
+            hierarchy_link_visits: 0,
+            child_sort_work: 0,
         };
         layer.local_by_original.reserve(nodes_with_rank.len());
 
@@ -94,7 +104,22 @@ impl LayerRank {
             layer.set_parent(local_ix, parent_local);
         }
 
-        layer
+        let mut visited = vec![false; layer.nodes.len()];
+        let mut stack = vec![(layer.root, 0usize)];
+        while let Some((local_ix, depth)) = stack.pop() {
+            if local_ix >= visited.len() || visited[local_ix] {
+                continue;
+            }
+            visited[local_ix] = true;
+            layer.hierarchy_link_visits = checked_add(layer.hierarchy_link_visits, depth)?;
+            let children = layer.children(local_ix).to_vec();
+            layer.child_sort_work =
+                checked_add(layer.child_sort_work, checked_n_log_n(children.len())?)?;
+            let child_depth = checked_add(depth, 1)?;
+            stack.extend(children.into_iter().rev().map(|child| (child, child_depth)));
+        }
+
+        Ok(layer)
     }
 
     fn ensure_original(&mut self, original_ix: usize) -> usize {
@@ -181,19 +206,19 @@ impl LayerRank {
 
 #[derive(Debug, Default)]
 struct ConstraintGraph {
-    edges: Vec<(usize, usize)>,
+    outgoing: HashMap<usize, Vec<usize>>,
     seen: HashSet<(usize, usize)>,
 }
 
 impl ConstraintGraph {
     fn clear(&mut self) {
-        self.edges.clear();
+        self.outgoing.clear();
         self.seen.clear();
     }
 
     fn insert(&mut self, from: usize, to: usize) {
         if self.seen.insert((from, to)) {
-            self.edges.push((from, to));
+            self.outgoing.entry(from).or_default().push(to);
         }
     }
 }
@@ -228,6 +253,8 @@ pub(super) struct OrderWorkspace {
     tracked_orders: Vec<bool>,
     constraints: ConstraintGraph,
     scratch: SortScratch,
+    in_iteration_work_prefix: Vec<usize>,
+    out_iteration_work_prefix: Vec<usize>,
 }
 
 impl OrderWorkspace {
@@ -235,7 +262,7 @@ impl OrderWorkspace {
         g: &Graph<N, E, G>,
         nodes_by_rank: &[Vec<usize>],
         max_rank: i32,
-    ) -> Self
+    ) -> Result<Self, WorkError>
     where
         N: Default + OrderNodeLabel + 'static,
         E: Default + OrderEdgeWeight + 'static,
@@ -252,27 +279,94 @@ impl OrderWorkspace {
         });
         let in_neighbors = build_weighted_neighbors(g, node_slots, Relationship::InEdges);
         let out_neighbors = build_weighted_neighbors(g, node_slots, Relationship::OutEdges);
-        let mut layers = Vec::with_capacity((max_rank + 1).max(0) as usize);
-        for rank in 0..=max_rank {
+        let rank_count =
+            usize::try_from(i64::from(max_rank) + 1).map_err(|_| WorkError::ArithmeticOverflow)?;
+        let mut layers = Vec::with_capacity(rank_count);
+        for rank_index in 0..rank_count {
+            let rank = i32::try_from(rank_index).map_err(|_| WorkError::ArithmeticOverflow)?;
             let nodes = nodes_by_rank
-                .get(rank as usize)
+                .get(rank_index)
                 .map(Vec::as_slice)
                 .unwrap_or(&[]);
-            layers.push(LayerRank::build(g, rank, nodes));
+            layers.push(LayerRank::build(g, rank, nodes)?);
         }
 
-        Self {
+        let mut in_iteration_work_prefix = Vec::with_capacity(layers.len() + 1);
+        let mut out_iteration_work_prefix = Vec::with_capacity(layers.len() + 1);
+        in_iteration_work_prefix.push(0usize);
+        out_iteration_work_prefix.push(0usize);
+        for layer in &layers {
+            let mut in_neighbor_visits = 0usize;
+            let mut out_neighbor_visits = 0usize;
+            for node in &layer.nodes {
+                let Some(original_ix) = node.original_ix else {
+                    continue;
+                };
+                in_neighbor_visits = checked_add(
+                    in_neighbor_visits,
+                    in_neighbors.get(original_ix).map_or(0, Vec::len),
+                )?;
+                out_neighbor_visits = checked_add(
+                    out_neighbor_visits,
+                    out_neighbors.get(original_ix).map_or(0, Vec::len),
+                )?;
+            }
+            let hierarchy_work = checked_mul(layer.hierarchy_link_visits, 3)?;
+            let common_work = checked_add(
+                layer.nodes.len(),
+                checked_add(hierarchy_work, layer.child_sort_work)?,
+            )?;
+            let in_work = checked_add(common_work, in_neighbor_visits)?;
+            let out_work = checked_add(common_work, out_neighbor_visits)?;
+            in_iteration_work_prefix.push(checked_add(
+                *in_iteration_work_prefix.last().unwrap_or(&0),
+                in_work,
+            )?);
+            out_iteration_work_prefix.push(checked_add(
+                *out_iteration_work_prefix.last().unwrap_or(&0),
+                out_work,
+            )?);
+        }
+
+        Ok(Self {
             layers,
             in_neighbors,
             out_neighbors,
             tracked_orders,
             constraints: ConstraintGraph::default(),
             scratch: SortScratch::default(),
-        }
+            in_iteration_work_prefix,
+            out_iteration_work_prefix,
+        })
     }
 
     pub(super) fn begin_sweep(&mut self) {
         self.constraints.clear();
+    }
+
+    pub(super) fn iteration_work_units(
+        &self,
+        ranks: &[i32],
+        relationship: Relationship,
+    ) -> Result<usize, WorkError> {
+        let Some((&first, &last)) = ranks.first().zip(ranks.last()) else {
+            return Ok(0);
+        };
+        let start = usize::try_from(first.min(last)).map_err(|_| WorkError::ArithmeticOverflow)?;
+        let end = usize::try_from(first.max(last))
+            .map_err(|_| WorkError::ArithmeticOverflow)?
+            .checked_add(1)
+            .ok_or(WorkError::ArithmeticOverflow)?;
+        let prefix = match relationship {
+            Relationship::InEdges => &self.in_iteration_work_prefix,
+            Relationship::OutEdges => &self.out_iteration_work_prefix,
+        };
+        let Some((&before, &after)) = prefix.get(start).zip(prefix.get(end)) else {
+            return Err(WorkError::ArithmeticOverflow);
+        };
+        after
+            .checked_sub(before)
+            .ok_or(WorkError::ArithmeticOverflow)
     }
 
     pub(super) fn sort_rank<N, E, G>(
@@ -281,31 +375,35 @@ impl OrderWorkspace {
         rank: usize,
         relationship: Relationship,
         bias_right: bool,
-    ) -> SortResultIx
+        work_control: &mut dyn WorkControl,
+    ) -> Result<SortResultIx, WorkError>
     where
         N: Default + OrderNodeLabel + 'static,
         E: Default + 'static,
         G: Default,
     {
         let Some(layer) = self.layers.get(rank) else {
-            return SortResultIx {
+            return Ok(SortResultIx {
                 vs: Vec::new(),
                 barycenter: None,
                 weight: None,
-            };
+            });
         };
         let neighbors = match relationship {
             Relationship::InEdges => &self.in_neighbors,
             Relationship::OutEdges => &self.out_neighbors,
         };
         sort_subgraph(
-            g,
-            layer,
-            neighbors,
-            &self.tracked_orders,
-            &self.constraints,
+            SortSubgraphContext {
+                graph: g,
+                layer,
+                neighbors,
+                tracked_orders: &self.tracked_orders,
+                constraints: &self.constraints,
+            },
             &mut self.scratch,
             bias_right,
+            work_control,
         )
     }
 
@@ -422,15 +520,20 @@ fn add_subgraph_constraints(
     }
 }
 
+struct SortSubgraphContext<'a, N: Default + 'static, E: Default + 'static, G: Default> {
+    graph: &'a Graph<N, E, G>,
+    layer: &'a LayerRank,
+    neighbors: &'a [Vec<WeightedNeighbor>],
+    tracked_orders: &'a [bool],
+    constraints: &'a ConstraintGraph,
+}
+
 fn sort_subgraph<N, E, G>(
-    g: &Graph<N, E, G>,
-    layer: &LayerRank,
-    neighbors: &[Vec<WeightedNeighbor>],
-    tracked_orders: &[bool],
-    constraints: &ConstraintGraph,
+    context: SortSubgraphContext<'_, N, E, G>,
     scratch: &mut SortScratch,
     bias_right: bool,
-) -> SortResultIx
+    work_control: &mut dyn WorkControl,
+) -> Result<SortResultIx, WorkError>
 where
     N: Default + OrderNodeLabel + 'static,
     E: Default + 'static,
@@ -448,6 +551,13 @@ where
         Exit(Frame),
     }
 
+    let SortSubgraphContext {
+        graph,
+        layer,
+        neighbors,
+        tracked_orders,
+        constraints,
+    } = context;
     let mut results: Vec<Option<SortResultIx>> = (0..layer.nodes.len()).map(|_| None).collect();
     let mut stack = vec![Step::Enter(layer.root)];
 
@@ -464,7 +574,7 @@ where
                     });
                 }
 
-                let barycenters = barycenters(g, layer, neighbors, tracked_orders, &movable);
+                let barycenters = barycenters(graph, layer, neighbors, tracked_orders, &movable);
                 let mut nested = Vec::new();
                 for entry in &barycenters {
                     if !layer.children(entry.v_ix).is_empty() {
@@ -496,7 +606,8 @@ where
                     constraints,
                     scratch,
                     neighbors.len(),
-                );
+                    work_control,
+                )?;
                 expand_subgraphs(&mut entries, &results);
                 for entry in &frame.barycenters {
                     results[entry.v_ix].take();
@@ -516,10 +627,10 @@ where
                     let right_predecessor = first_neighbor_original(layer, neighbors, border_right);
                     if let (Some(left), Some(right)) = (left_predecessor, right_predecessor) {
                         let left_order = layer
-                            .order_by_original(g, tracked_orders, left)
+                            .order_by_original(graph, tracked_orders, left)
                             .unwrap_or(0) as f64;
                         let right_order = layer
-                            .order_by_original(g, tracked_orders, right)
+                            .order_by_original(graph, tracked_orders, right)
                             .unwrap_or(0) as f64;
                         let barycenter = result.barycenter.unwrap_or(0.0);
                         let weight = result.weight.unwrap_or(0.0);
@@ -535,11 +646,11 @@ where
         }
     }
 
-    results[layer.root].take().unwrap_or(SortResultIx {
+    Ok(results[layer.root].take().unwrap_or(SortResultIx {
         vs: Vec::new(),
         barycenter: None,
         weight: None,
-    })
+    }))
 }
 
 fn barycenters<N, E, G>(
@@ -644,7 +755,8 @@ struct ConflictEntry {
     indegree: usize,
     ins: Vec<usize>,
     outs: Vec<usize>,
-    vs: Vec<usize>,
+    head: Option<usize>,
+    tail: Option<usize>,
     i: usize,
     barycenter: Option<f64>,
     weight: Option<f64>,
@@ -657,9 +769,11 @@ fn resolve_conflicts(
     constraints: &ConstraintGraph,
     scratch: &mut SortScratch,
     node_slots: usize,
-) -> Vec<SortEntryIx> {
+    work_control: &mut dyn WorkControl,
+) -> Result<Vec<SortEntryIx>, WorkError> {
     scratch.prepare_entries(node_slots);
     let mut conflicts = Vec::with_capacity(entries.len());
+    let mut next_in_group = vec![None; entries.len()];
     for (entry_ix, entry) in entries.iter().enumerate() {
         if let Some(original_ix) = layer.original_ix(entry.v_ix) {
             scratch.entry_by_original[original_ix] = Some(entry_ix);
@@ -669,7 +783,8 @@ fn resolve_conflicts(
             indegree: 0,
             ins: Vec::new(),
             outs: Vec::new(),
-            vs: vec![entry_ix],
+            head: Some(entry_ix),
+            tail: Some(entry_ix),
             i: entry_ix,
             barycenter: entry.barycenter,
             weight: entry.weight,
@@ -677,15 +792,26 @@ fn resolve_conflicts(
         });
     }
 
-    for &(from, to) in &constraints.edges {
-        let Some(Some(from_entry)) = scratch.entry_by_original.get(from).copied() else {
+    // Pinned Graphlib's global edge scan appends every constraint to its source entry's `out`
+    // array. Interleaving edges from different sources cannot affect those per-source arrays, so
+    // replay sources in entry order while preserving each source's outgoing insertion order. This
+    // is equivalent to Dagre's adjacency construction without collecting and sorting global edge
+    // ordinals.
+    for (from_entry, entry) in entries.iter().enumerate() {
+        let Some(from) = layer.original_ix(entry.v_ix) else {
             continue;
         };
-        let Some(Some(to_entry)) = scratch.entry_by_original.get(to).copied() else {
+        let Some(outgoing) = constraints.outgoing.get(&from) else {
             continue;
         };
-        conflicts[to_entry].indegree += 1;
-        conflicts[from_entry].outs.push(to_entry);
+        work_control.charge(outgoing.len())?;
+        for &to in outgoing {
+            let Some(Some(to_entry)) = scratch.entry_by_original.get(to).copied() else {
+                continue;
+            };
+            conflicts[to_entry].indegree += 1;
+            conflicts[from_entry].outs.push(to_entry);
+        }
     }
     scratch.clear_entries();
 
@@ -712,7 +838,7 @@ fn resolve_conflicts(
                 (Some(incoming), Some(current)) => incoming >= current,
             };
             if should_merge {
-                merge_conflict_entries(&mut conflicts, entry_ix, incoming);
+                merge_conflict_entries(&mut conflicts, &mut next_in_group, entry_ix, incoming);
             }
         }
 
@@ -732,17 +858,28 @@ fn resolve_conflicts(
         if entry.merged {
             continue;
         }
+        let mut vs = Vec::new();
+        let mut current = entry.head;
+        while let Some(entry_ix) = current {
+            vs.push(entries[entry_ix].v_ix);
+            current = next_in_group[entry_ix];
+        }
         resolved.push(SortEntryIx {
-            vs: entry.vs.iter().map(|&ix| entries[ix].v_ix).collect(),
+            vs,
             i: entry.i,
             barycenter: entry.barycenter,
             weight: entry.weight,
         });
     }
-    resolved
+    Ok(resolved)
 }
 
-fn merge_conflict_entries(entries: &mut [ConflictEntry], target: usize, source: usize) {
+fn merge_conflict_entries(
+    entries: &mut [ConflictEntry],
+    next_in_group: &mut [Option<usize>],
+    target: usize,
+    source: usize,
+) {
     if target == source {
         return;
     }
@@ -769,9 +906,17 @@ fn merge_conflict_entries(entries: &mut [ConflictEntry], target: usize, source: 
         weight += entry_weight;
     }
 
-    let mut merged = std::mem::take(&mut source_entry.vs);
-    merged.extend(std::mem::take(&mut target_entry.vs));
-    target_entry.vs = merged;
+    if let Some(source_tail) = source_entry.tail
+        && source_tail < next_in_group.len()
+    {
+        next_in_group[source_tail] = target_entry.head;
+    }
+    target_entry.head = source_entry.head.or(target_entry.head);
+    if target_entry.tail.is_none() {
+        target_entry.tail = source_entry.tail;
+    }
+    source_entry.head = None;
+    source_entry.tail = None;
     if weight != 0.0 {
         target_entry.barycenter = Some(sum / weight);
         target_entry.weight = Some(weight);
@@ -779,3 +924,6 @@ fn merge_conflict_entries(entries: &mut [ConflictEntry], target: usize, source: 
     target_entry.i = target_entry.i.min(source_entry.i);
     source_entry.merged = true;
 }
+
+#[cfg(test)]
+mod tests;

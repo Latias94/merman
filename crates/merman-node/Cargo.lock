@@ -873,6 +873,7 @@ dependencies = [
  "svgtypes",
  "thiserror 2.0.19",
  "unicode-linebreak",
+ "unicode-segmentation",
  "unicode-width",
 ]
 

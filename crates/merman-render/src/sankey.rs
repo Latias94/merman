@@ -1,6 +1,9 @@
+#[cfg(test)]
+use crate::RenderResourcePolicy;
 use crate::model::{Bounds, SankeyDiagramLayout, SankeyLinkLayout, SankeyNodeLayout};
+use crate::resources::OperationWorkMeter;
 use crate::text::TextMeasurer;
-use crate::{Error, RenderResourcePolicy, Result};
+use crate::{Error, Result};
 use merman_core::diagrams::sankey::SankeyDiagramRenderModel;
 use serde_json::Value;
 
@@ -163,22 +166,35 @@ pub(crate) fn layout_sankey_diagram_typed(
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
 ) -> Result<SankeyDiagramLayout> {
-    layout_sankey_diagram_typed_with_resource_policy(
-        model,
-        effective_config,
-        text_measurer,
-        RenderResourcePolicy::interactive(),
-    )
+    let work_meter = OperationWorkMeter::new(RenderResourcePolicy::interactive());
+    layout_sankey_diagram_typed_with_work_meter(model, effective_config, text_measurer, &work_meter)
 }
 
 /// Lays out a Sankey model under the resource policy owned by the render operation.
+#[cfg(test)]
 pub(crate) fn layout_sankey_diagram_typed_with_resource_policy(
     model: &SankeyDiagramRenderModel,
     effective_config: &Value,
     _text_measurer: &dyn TextMeasurer,
     resource_limits: RenderResourcePolicy,
 ) -> Result<SankeyDiagramLayout> {
-    resource_limits.check_layout_work_units(sankey_layout_work_units(model))?;
+    let work_meter = OperationWorkMeter::new(resource_limits);
+    layout_sankey_diagram_typed_with_work_meter(
+        model,
+        effective_config,
+        _text_measurer,
+        &work_meter,
+    )
+}
+
+/// Lays out a Sankey model under the cumulative work meter owned by the render operation.
+pub(crate) fn layout_sankey_diagram_typed_with_work_meter(
+    model: &SankeyDiagramRenderModel,
+    effective_config: &Value,
+    _text_measurer: &dyn TextMeasurer,
+    work_meter: &OperationWorkMeter,
+) -> Result<SankeyDiagramLayout> {
+    work_meter.charge(sankey_layout_work_units(model))?;
 
     let SankeyLayoutSettings {
         width,

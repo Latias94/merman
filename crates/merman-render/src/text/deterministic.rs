@@ -1,6 +1,10 @@
 //! Deterministic text measurement and wrapping fallback.
 
-use super::{TextMeasurer, TextMetrics, TextStyle, WrapMode, estimate_line_width_px};
+use super::{
+    TextMeasurer, TextMetrics, TextStyle, WrapMode, estimate_line_width_px,
+    is_html_collapsible_ascii_whitespace, trim_end_html_collapsible_ascii_whitespace,
+    trim_html_collapsible_ascii_whitespace,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct DeterministicTextMeasurer {
@@ -50,14 +54,17 @@ impl DeterministicTextMeasurer {
         out
     }
 
-    pub fn normalized_text_lines(text: &str) -> Vec<String> {
+    fn normalized_text_lines_with(
+        text: &str,
+        trailing_line_is_empty: impl Fn(&str) -> bool,
+    ) -> Vec<String> {
         let t = Self::replace_br_variants(text);
         let mut out = t.split('\n').map(|s| s.to_string()).collect::<Vec<_>>();
 
         // Mermaid often produces labels with a trailing newline (e.g. YAML `|` block scalars from
         // FlowDB). The rendered label does not keep an extra blank line at the end, so we trim
         // trailing empty lines to keep height parity.
-        while out.len() > 1 && out.last().is_some_and(|s| s.trim().is_empty()) {
+        while out.len() > 1 && out.last().is_some_and(|s| trailing_line_is_empty(s)) {
             out.pop();
         }
 
@@ -66,6 +73,26 @@ impl DeterministicTextMeasurer {
         } else {
             out
         }
+    }
+
+    pub fn normalized_text_lines(text: &str) -> Vec<String> {
+        Self::normalized_text_lines_with(text, |line| {
+            trim_html_collapsible_ascii_whitespace(line).is_empty()
+        })
+    }
+
+    pub(crate) fn normalized_text_lines_for_wrap_mode(
+        text: &str,
+        wrap_mode: WrapMode,
+    ) -> Vec<String> {
+        Self::normalized_text_lines_with(text, |line| match wrap_mode {
+            WrapMode::HtmlLike => line
+                .trim_matches(is_html_collapsible_ascii_whitespace)
+                .is_empty(),
+            WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => line
+                .trim_matches(is_html_collapsible_ascii_whitespace)
+                .is_empty(),
+        })
     }
 
     pub(crate) fn split_line_to_words(text: &str) -> Vec<String> {
@@ -85,7 +112,32 @@ impl DeterministicTextMeasurer {
         out
     }
 
-    fn wrap_line(line: &str, max_chars: usize, break_long_words: bool) -> Vec<String> {
+    fn trim_wrapped_line_end(text: &str, wrap_mode: WrapMode) -> &str {
+        match wrap_mode {
+            WrapMode::HtmlLike => text.trim_end_matches(is_html_collapsible_ascii_whitespace),
+            WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => {
+                text.trim_end_matches(is_html_collapsible_ascii_whitespace)
+            }
+        }
+    }
+
+    fn wrapped_line_has_visible_content(text: &str, wrap_mode: WrapMode) -> bool {
+        match wrap_mode {
+            WrapMode::HtmlLike => !text
+                .trim_matches(is_html_collapsible_ascii_whitespace)
+                .is_empty(),
+            WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => !text
+                .trim_matches(is_html_collapsible_ascii_whitespace)
+                .is_empty(),
+        }
+    }
+
+    fn wrap_line(
+        line: &str,
+        max_chars: usize,
+        break_long_words: bool,
+        wrap_mode: WrapMode,
+    ) -> Vec<String> {
         if max_chars == 0 {
             return vec![line.to_string()];
         }
@@ -105,8 +157,8 @@ impl DeterministicTextMeasurer {
                 continue;
             }
 
-            if !cur.trim().is_empty() {
-                out.push(cur.trim_end().to_string());
+            if Self::wrapped_line_has_visible_content(&cur, wrap_mode) {
+                out.push(Self::trim_wrapped_line_end(&cur, wrap_mode).to_string());
                 cur.clear();
                 tokens.push_front(tok);
                 continue;
@@ -130,8 +182,8 @@ impl DeterministicTextMeasurer {
             }
         }
 
-        if !cur.trim().is_empty() {
-            out.push(cur.trim_end().to_string());
+        if Self::wrapped_line_has_visible_content(&cur, wrap_mode) {
+            out.push(Self::trim_wrapped_line_end(&cur, wrap_mode).to_string());
         }
 
         if out.is_empty() {
@@ -143,6 +195,15 @@ impl DeterministicTextMeasurer {
 }
 
 impl TextMeasurer for DeterministicTextMeasurer {
+    #[allow(private_interfaces)]
+    fn begin_svg_text_computed_length(
+        &self,
+        style: &TextStyle,
+    ) -> Option<crate::environment::BuiltinSvgComputedLength> {
+        (self.char_width_factor == 0.0)
+            .then(|| crate::environment::BuiltinSvgComputedLength::deterministic(style))
+    }
+
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
         self.measure_wrapped(text, style, None, WrapMode::SvgLike)
     }
@@ -169,7 +230,7 @@ impl TextMeasurer for DeterministicTextMeasurer {
     }
 
     fn measure_svg_simple_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
-        let t = text.trim_end();
+        let t = trim_end_html_collapsible_ascii_whitespace(text);
         if t.is_empty() {
             return 0.0;
         }
@@ -177,7 +238,7 @@ impl TextMeasurer for DeterministicTextMeasurer {
     }
 
     fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
-        if text.trim_end().is_empty() {
+        if trim_end_html_collapsible_ascii_whitespace(text).is_empty() {
             0.0
         } else {
             super::svg_wrapped_first_line_bbox_height_px(style)
@@ -217,7 +278,7 @@ impl DeterministicTextMeasurer {
         let max_width = max_width.filter(|w| w.is_finite() && *w > 0.0);
         let break_long_words = matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun);
 
-        let raw_lines = Self::normalized_text_lines(text);
+        let raw_lines = Self::normalized_text_lines_for_wrap_mode(text, wrap_mode);
         let mut raw_width: f64 = 0.0;
         for line in &raw_lines {
             let w = if uses_heuristic_widths {
@@ -235,7 +296,12 @@ impl DeterministicTextMeasurer {
             if let Some(w) = max_width {
                 let char_px = font_size * char_width_factor;
                 let max_chars = ((w / char_px).floor() as isize).max(1) as usize;
-                lines.extend(Self::wrap_line(&line, max_chars, break_long_words));
+                lines.extend(Self::wrap_line(
+                    &line,
+                    max_chars,
+                    break_long_words,
+                    wrap_mode,
+                ));
             } else {
                 lines.push(line);
             }

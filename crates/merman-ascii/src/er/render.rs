@@ -411,7 +411,7 @@ fn parallel_er_lane_rows(
     let line = relationship_line(&relationship.rel_spec.rel_type, charset)?;
     let label_lines = match layout.label.as_ref() {
         Some(label) => {
-            relation_graph::label_lines_with_role(&label, AsciiColorRole::EdgeLabel, resources)?
+            relation_graph::label_lines_with_role(label, AsciiColorRole::EdgeLabel, resources)?
         }
         None => vec![RelationGraphLine::try_with_role(
             "",
@@ -713,7 +713,7 @@ fn self_loop_rows_for_er_relationship(
     )?;
     let label_lines = match layout.label.as_ref() {
         Some(label) => {
-            relation_graph::label_lines_with_role(&label, AsciiColorRole::EdgeLabel, resources)?
+            relation_graph::label_lines_with_role(label, AsciiColorRole::EdgeLabel, resources)?
         }
         None => Vec::new(),
     };

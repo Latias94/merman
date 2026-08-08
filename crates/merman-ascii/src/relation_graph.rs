@@ -12,7 +12,7 @@ use crate::text::split_label_lines;
 use crate::text::{StyledLine, display_width_with_profile};
 use crate::{AsciiError, Result};
 use std::collections::HashSet;
-use std::sync::Arc;
+use std::rc::Rc;
 mod layered;
 mod summary;
 
@@ -21,7 +21,7 @@ pub(crate) use self::summary::*;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct RelationGraphLine {
-    line: Arc<StyledLine>,
+    line: Rc<StyledLine>,
 }
 
 impl Clone for RelationGraphLine {
@@ -32,8 +32,8 @@ impl Clone for RelationGraphLine {
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct RelationGraphBox {
-    id: Arc<String>,
-    lines: Arc<Vec<RelationGraphLine>>,
+    id: Rc<String>,
+    lines: Rc<Vec<RelationGraphLine>>,
     width: usize,
     width_profile: TerminalWidthProfile,
 }
@@ -483,7 +483,7 @@ impl RelationGraphLine {
 
     pub(crate) fn from_styled(line: StyledLine) -> Self {
         Self {
-            line: Arc::new(line),
+            line: Rc::new(line),
         }
     }
 
@@ -493,7 +493,7 @@ impl RelationGraphLine {
 
     fn shared(&self) -> Self {
         Self {
-            line: Arc::clone(&self.line),
+            line: Rc::clone(&self.line),
         }
     }
 }
@@ -507,8 +507,8 @@ impl RelationGraphBox {
             .map(|line| RelationGraphLine::plain(line, width_profile))
             .collect::<Vec<_>>();
         Self {
-            id: Arc::new(id),
-            lines: Arc::new(lines),
+            id: Rc::new(id),
+            lines: Rc::new(lines),
             width,
             width_profile,
         }
@@ -527,8 +527,8 @@ impl RelationGraphBox {
             "relation graph box lines must share one terminal width profile"
         );
         Self {
-            id: Arc::new(id),
-            lines: Arc::new(lines),
+            id: Rc::new(id),
+            lines: Rc::new(lines),
             width,
             width_profile,
         }
@@ -639,8 +639,8 @@ impl RelationGraphBox {
 
     fn shared_projection(&self) -> Self {
         Self {
-            id: Arc::clone(&self.id),
-            lines: Arc::clone(&self.lines),
+            id: Rc::clone(&self.id),
+            lines: Rc::clone(&self.lines),
             width: self.width,
             width_profile: self.width_profile,
         }
@@ -2381,9 +2381,9 @@ mod tests {
         let projected_box = boxes[0].shared_projection();
         let shared_line = boxes[0].lines[0].clone();
 
-        assert!(Arc::ptr_eq(&boxes[0].id, &projected_box.id));
-        assert!(Arc::ptr_eq(&boxes[0].lines, &projected_box.lines));
-        assert!(Arc::ptr_eq(&boxes[0].lines[0].line, &shared_line.line));
+        assert!(Rc::ptr_eq(&boxes[0].id, &projected_box.id));
+        assert!(Rc::ptr_eq(&boxes[0].lines, &projected_box.lines));
+        assert!(Rc::ptr_eq(&boxes[0].lines[0].line, &shared_line.line));
 
         let lines =
             render_relation_component_lines(&boxes, &relations, &options, &mut resources, &adapter)
@@ -2599,11 +2599,11 @@ mod tests {
     #[test]
     fn relation_graph_label_splits_breaks_and_tracks_line_count() {
         let options = AsciiRenderOptions::ascii();
-        let mut resources = test_resources(&options);
+        let resources = test_resources(&options);
         let label = RelationGraphLabel::try_new(
             "north<br>south",
             TerminalWidthProfile::Unicode,
-            &mut resources,
+            &resources,
         )
         .expect("label should fit the selected resource policy")
         .expect("label should be present");
@@ -2616,9 +2616,9 @@ mod tests {
     #[test]
     fn write_centered_relation_label_draws_each_line() {
         let options = AsciiRenderOptions::ascii();
-        let mut resources = test_resources(&options);
+        let resources = test_resources(&options);
         let label =
-            RelationGraphLabel::try_new("A<br>B", TerminalWidthProfile::Unicode, &mut resources)
+            RelationGraphLabel::try_new("A<br>B", TerminalWidthProfile::Unicode, &resources)
                 .expect("label should fit the selected resource policy")
                 .expect("label should be present");
         let mut canvas = Canvas::new(3, 3);

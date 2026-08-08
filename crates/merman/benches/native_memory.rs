@@ -2,7 +2,7 @@
 mod allocator;
 
 use allocator::CountingSystemAllocator;
-use merman::svg::{HeadlessRenderer, RuntimePolicy};
+use merman::svg::{HeadlessRenderer, RenderResourcePolicy, RuntimePolicy};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt::Write as _;
@@ -245,6 +245,11 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
     let source = build_flowchart(request.scale, request.seed)?;
     let renderer = HeadlessRenderer::new()
         .with_strict_parsing()
+        // This fresh-process probe renders repository-generated trusted input under an outer
+        // timeout. Disable configurable policy budgets so the full scale curve measures allocator
+        // behavior without coupling its largest fixture to a product resource-profile ceiling;
+        // hard backend capabilities remain enforced by this profile.
+        .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
         .with_runtime_policy(RuntimePolicy::deterministic().with_fixed_seed(request.seed))
         .with_diagram_id("native-memory-flowchart");
     let input_nodes = NODES_PER_SCALE * u64::from(request.scale);

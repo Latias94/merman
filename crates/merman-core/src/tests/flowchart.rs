@@ -1315,6 +1315,78 @@ fn parse_diagram_flowchart_markdown_strings_in_nodes_and_edges() {
 }
 
 #[test]
+fn parse_diagram_flowchart_edge_text_matches_pinned_jison_states() {
+    let engine = Engine::new();
+    let source = concat!(
+        "flowchart TD\n",
+        "A -- \"foo --> bar\" --> B\n",
+        "B -- \"`foo --> bar`\" --> C\n",
+        "C\n\n\u{00A0}--> D\n",
+        "D -- a-b --> E\n",
+        "E == \"a=b\" ==> F\n",
+        "F -. \"a.b\" .-> G\n",
+        "G -->|\"a|b\"| H\n",
+        "H --\u{0085}--> I\n",
+        "I -- \" \" --> J\n",
+        "J -- \"` `\" --> K\n",
+    );
+    let parsed = block_on(engine.parse_diagram(source, ParseOptions::strict()))
+        .expect("valid pinned-Jison edge text forms")
+        .expect("diagram detected");
+    let edges = parsed.model["edges"].as_array().expect("edges");
+    let edge = |from: &str| {
+        edges
+            .iter()
+            .find(|edge| edge["from"] == json!(from))
+            .unwrap_or_else(|| panic!("missing edge from {from}"))
+    };
+
+    assert_eq!(edge("A")["label"], json!("foo --> bar"));
+    assert_eq!(edge("A")["labelType"], json!("string"));
+    assert_eq!(edge("B")["label"], json!("foo --> bar"));
+    assert_eq!(edge("B")["labelType"], json!("markdown"));
+    assert_eq!(edge("C")["to"], json!("D"));
+    assert_eq!(edge("C")["label"], json!(null));
+    assert_eq!(edge("D")["label"], json!("a-b"));
+    assert_eq!(edge("E")["label"], json!("a=b"));
+    assert_eq!(edge("F")["label"], json!("a.b"));
+    assert_eq!(edge("G")["label"], json!("a|b"));
+    assert_eq!(edge("H")["label"], json!("\u{0085}"));
+    assert_eq!(edge("I")["label"], json!(""));
+    assert_eq!(edge("J")["label"], json!(""));
+
+    for invalid in [
+        "flowchart TD\nA -- --> B\n",
+        "flowchart TD\nA --\u{00A0}--> B\n",
+        "flowchart TD\nA -- \"\" --> B\n",
+        "flowchart TD\nA -- \"``\" --> B\n",
+        "flowchart TD\nA -- \"a\"\"b\" --> B\n",
+        "flowchart TD\nA -- a--b --> B\n",
+        "flowchart TD\nA == a=b ==> B\n",
+        "flowchart TD\nA -. a.b .-> B\n",
+    ] {
+        assert!(
+            block_on(engine.parse_diagram(invalid, ParseOptions::strict())).is_err(),
+            "pinned Mermaid rejects {invalid:?}",
+        );
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_edge_text_skips_long_internal_whitespace_runs() {
+    let engine = Engine::new();
+    let whitespace = "\u{00a0}".repeat(4096);
+    let source = format!("flowchart TD\nA -- prefix{whitespace}suffix --> B\n");
+    let parsed = block_on(engine.parse_diagram(&source, ParseOptions::strict()))
+        .expect("long internal whitespace must parse")
+        .expect("diagram detected");
+    assert_eq!(
+        parsed.model["edges"][0]["label"],
+        json!(format!("prefix{whitespace}suffix"))
+    );
+}
+
+#[test]
 fn parse_diagram_flowchart_plain_node_labels_can_span_indented_lines() {
     let engine = Engine::new();
     let text = "     flowchart TB
@@ -1600,6 +1672,67 @@ fn parse_diagram_flowchart_allows_brackets_inside_quoted_square_labels() {
     assert_eq!(a["shape"], json!("square"));
     assert_eq!(a["label"], json!("chimpansen hoppar ()[]"));
     assert_eq!(a["labelType"], json!("string"));
+}
+
+#[test]
+fn parse_diagram_flowchart_classifies_labels_before_flowdb_trim() {
+    let engine = Engine::new();
+    let nel = '\u{0085}';
+    let source = format!(
+        "flowchart TD\nA[\"{nel}A{nel}\"]\nB[|borders:t|{nel}B{nel}]\nC[\"&nbsp;C&nbsp;\"]\nD[\"#nbsp;D#nbsp;\"]\n"
+    );
+    let parsed = block_on(engine.parse_diagram(&source, ParseOptions::strict()))
+        .expect("valid labels must parse")
+        .expect("diagram detected");
+    let nodes = parsed.model["nodes"].as_array().expect("nodes");
+    let label = |id: &str| {
+        nodes
+            .iter()
+            .find(|node| node["id"] == json!(id))
+            .unwrap_or_else(|| panic!("missing node {id}"))["label"]
+            .as_str()
+            .expect("label")
+    };
+
+    assert_eq!(label("A"), format!("{nel}A{nel}"));
+    assert_eq!(label("B"), format!("{nel}B{nel}"));
+    assert_eq!(label("C"), "\u{00A0}C\u{00A0}");
+    assert_eq!(label("D"), "\u{00A0}D\u{00A0}");
+
+    let edge_source = "flowchart TD\nE --\u{00A0}\"Edge\"\u{FEFF}--> F\nM --\u{FEFF}\"`Markdown`\"\u{00A0}--> N\n";
+    let parsed = block_on(engine.parse_diagram(edge_source, ParseOptions::strict()))
+        .expect("ECMAScript whitespace around edge text belongs to the link tokens")
+        .expect("diagram detected");
+    let edges = parsed.model["edges"].as_array().expect("edges");
+    assert_eq!(edges[0]["label"], json!("Edge"));
+    assert_eq!(edges[0]["labelType"], json!("string"));
+    assert_eq!(edges[1]["label"], json!("Markdown"));
+    assert_eq!(edges[1]["labelType"], json!("markdown"));
+
+    for invalid in [
+        "flowchart TD\nA[\u{FEFF}\"foo\"\u{FEFF}]\n",
+        "flowchart TD\nA[\u{00A0}\"foo\"\u{00A0}]\n",
+        "flowchart TD\nA -->|\u{FEFF}\"foo\"\u{FEFF}| B\n",
+        "flowchart TD\nA --\u{0085}\"foo\"\u{0085}--> B\n",
+        "flowchart TD\nA[\u{FEFF}|borders:t|Label]\n",
+        "flowchart TD\nsubgraph SG[\u{FEFF}\"Title\"\u{FEFF}]\nA\nend\n",
+    ] {
+        assert!(
+            block_on(engine.parse_diagram(invalid, ParseOptions::strict())).is_err(),
+            "Mermaid rejects mixed TEXT/STR label tokens: {invalid:?}",
+        );
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_subgraph_quotes_do_not_support_backslash_escapes() {
+    let engine = Engine::new();
+    let source = "flowchart TD\nsubgraph SG[\"A\\\"]B\"]\nA\nend\n";
+
+    assert!(
+        block_on(engine.parse_diagram(source, ParseOptions::strict())).is_err(),
+        "Mermaid's Jison string state closes on every double quote",
+    );
 }
 
 #[test]
@@ -2154,6 +2287,32 @@ fn parse_diagram_flowchart_subgraph_bracket_quoted_title_sets_label_type_string(
 }
 
 #[test]
+fn parse_diagram_flowchart_subgraph_space_and_multiline_quotes_match_pinned_jison() {
+    let engine = Engine::new();
+    for separator in ['\u{00a0}', '\u{feff}', '\u{202f}'] {
+        let source = format!("flowchart TD\nsubgraph{separator}Name\nA\nend\n");
+        let parsed = block_on(engine.parse_diagram(&source, ParseOptions::strict()))
+            .expect("ECMAScript SPACE token must parse")
+            .expect("diagram detected");
+        assert_eq!(parsed.model["subgraphs"][0]["id"], json!("Name"));
+        assert_eq!(parsed.model["subgraphs"][0]["title"], json!("Name"));
+    }
+
+    for source in [
+        "flowchart TD\nsubgraph SG[\"Line one\nLine two\"]\nA\nend\n",
+        "flowchart TD\nsubgraph \"Line one\nLine two\"\nA\nend\n",
+    ] {
+        let parsed = block_on(engine.parse_diagram(source, ParseOptions::strict()))
+            .expect("quoted subgraph line breaks must parse")
+            .expect("diagram detected");
+        assert_eq!(
+            parsed.model["subgraphs"][0]["title"],
+            json!("Line one\nLine two")
+        );
+    }
+}
+
+#[test]
 fn parse_diagram_flowchart_subgraph_markdown_title_sets_label_type_markdown() {
     let engine = Engine::new();
     let text = "graph TD\nsubgraph \"`**Two**`\"\nA-->B\nend";
@@ -2661,6 +2820,32 @@ fn parse_flowchart_editor_facts_preserve_parser_node_id_spans() {
     assert_eq!(symbol("A").selection.end, a_start + "A".len());
     assert_eq!(symbol("B").selection.start, b_start);
     assert_eq!(symbol("B").selection.end, b_start + "B".len());
+}
+
+#[test]
+fn parse_flowchart_editor_facts_match_flowdb_subgraph_ids() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nsubgraph Explicit\u{feff}[Title]\nA\nend\nsubgraph Auto\u{00a0}Name\nB\nend\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    let explicit = facts
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "Explicit")
+        .expect("explicit subgraph symbol");
+    let explicit_start = text.find("Explicit").unwrap();
+    assert_eq!(explicit.selection.start, explicit_start);
+    assert_eq!(explicit.selection.end, explicit_start + "Explicit".len());
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .all(|symbol| symbol.name != "Auto\u{00a0}Name"),
+        "FlowDB auto-generates the id for a bare subgraph title containing ECMAScript whitespace"
+    );
 }
 
 #[test]
@@ -3209,6 +3394,24 @@ fn parse_flowchart_editor_facts_recovers_from_incomplete_input() {
         expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
             && expected.span == SourceSpan::new(text.len(), text.len())
     }));
+}
+
+#[test]
+fn parse_flowchart_eof_diagnostic_precedes_a_trailing_line_ending() {
+    let source = "flowchart TD\nA-->\n";
+    let snapshot = Engine::new()
+        .parse_diagram_snapshot_with_type_sync("flowchart-v2", source)
+        .unwrap()
+        .expect("flowchart snapshot");
+    let DiagramParseOutcome::Failed(Error::DiagramParse { diagnostic, .. }) = snapshot.outcome()
+    else {
+        panic!("incomplete edge must return a structured parse diagnostic");
+    };
+
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(source.len() - 1, source.len() - 1))
+    );
 }
 
 #[test]

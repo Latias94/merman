@@ -2,8 +2,8 @@ use super::boxes::render_sequence_boxes;
 use super::control::render_sequence_control_frames;
 use super::control::{SequenceControlFrame, SequenceControlFrameSeparator};
 use super::events::{
-    ensure_message_actors_visible, prepare_message_rows, prepare_self_message_rows, render_message,
-    render_self_message,
+    MessageActorState, ensure_message_actors_visible, prepare_message_rows,
+    prepare_self_message_rows, render_message, render_self_message,
 };
 use super::layout::{
     LifecycleEdge, SequenceLayout, initial_visible_actors, lifecycle_actors_at, participant_left,
@@ -341,14 +341,17 @@ impl<'diagram, 'layout, 'chars> SequenceRowEmitter<'diagram, 'layout, 'chars> {
                         resources,
                     )?;
                     let reservation = self.reserve_batch(prepared.extent(), resources)?;
+                    let actor_state = MessageActorState::new(
+                        &step.active_counts,
+                        &step.visible_actors,
+                        &step.destroyed_actors,
+                    );
                     let lines = render_self_message(
                         prepared,
                         message,
                         self.layout,
                         self.chars,
-                        &step.active_counts,
-                        &step.visible_actors,
-                        &step.destroyed_actors,
+                        actor_state,
                         resources,
                     )?;
                     self.commit_lines(reservation, lines, resources)?;
@@ -360,14 +363,17 @@ impl<'diagram, 'layout, 'chars> SequenceRowEmitter<'diagram, 'layout, 'chars> {
                         resources,
                     )?;
                     let reservation = self.reserve_batch(prepared.extent(), resources)?;
+                    let actor_state = MessageActorState::new(
+                        &step.active_counts,
+                        &step.visible_actors,
+                        &step.destroyed_actors,
+                    );
                     let lines = render_message(
                         prepared,
                         message,
                         self.layout,
                         self.chars,
-                        &step.active_counts,
-                        &step.visible_actors,
-                        &step.destroyed_actors,
+                        actor_state,
                         resources,
                     )?;
                     self.commit_lines(reservation, lines, resources)?;

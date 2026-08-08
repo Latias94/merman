@@ -48,6 +48,43 @@ Do not run every matrix combination locally by habit. The central CI workflow ow
 workspace test; local work should prove the changed seam first and record any intentionally deferred
 lane. Completion criterion: baseline checks pass and deferred checks have a stated owner and reason.
 
+## Close Mermaid SVG provenance cascades
+
+When the branch changes tracked SVG bytes under `fixtures/upstream-svgs/`, treat the root residual
+catalog and its review document as downstream evidence. Run the reference verifier and the focused
+catalog contract before handoff:
+
+```text
+cargo run --locked -p xtask -- verify-mermaid-reference
+cargo nextest run --locked -p xtask -E 'test(review_document_matches_catalog_statistics)' --cargo-quiet
+```
+
+If the focused test reports an upstream SVG SHA-256 drift, generate the canonical full candidate:
+
+```text
+cargo run --locked --release -p xtask -- compare-all-svgs \
+  --check-dom --dom-mode parity-root --dom-decimals 3 \
+  --flowchart-text-measurer vendored \
+  --write-root-residual-candidate
+```
+
+Review `target/root-parity-residuals.candidate.json` against
+`fixtures/_verification/root-parity-residuals.json`. Retain inherited evidence only when the input,
+root signatures, and descendant profile still agree. Classify every `unreviewed` entry against
+`docs/alignment/ROOT_PARITY_RESIDUAL_CATALOG.md`, update that document when statistics, signatures,
+or evidence assignments change, then accept the reviewed candidate with its exact SHA-256:
+
+```text
+python3 -c 'import hashlib, pathlib; p = pathlib.Path("target/root-parity-residuals.candidate.json"); print(hashlib.sha256(p.read_bytes()).hexdigest())'
+cargo run --locked -p xtask -- accept-root-residual-candidate --sha256 <candidate-sha256>
+```
+
+Rerun the focused catalog contract after acceptance. Skip the full candidate when only provenance
+manifests or generated projections changed and no tracked upstream SVG byte changed.
+
+Completion criterion: reference verification passes, the catalog contains no `unreviewed` entries,
+the review document matches catalog statistics, and the focused catalog test passes.
+
 ## Refresh generated legal material in dependency order
 
 Run this chain whenever `Cargo.lock`, dependency declarations, artifact profiles, native binding
@@ -126,6 +163,21 @@ python3 tools/bench/test_native_memory_contracts.py
 python3 tools/bench/test_native_memory_driver_contracts.py
 python3 tools/bench/test_perf_contracts.py
 ```
+
+When the performance lane is in scope and a change touches a native-memory probe, its registered
+workload/contract, or resource/work accounting reachable from that workload, run the compiled smoke
+owner as well:
+
+```text
+CARGO_BUILD_JOBS=1 python3 tools/bench/run_native_memory.py --smoke \
+  --build-timeout-seconds 900 \
+  --json-out target/bench/native_memory_smoke.json
+python3 tools/bench/test_native_memory_driver_contracts.py \
+  --verify-smoke-report target/bench/native_memory_smoke.json
+```
+
+This gate proves that every registered boundary scale completes under the probe's explicit resource
+policy; the Python-only contracts cannot detect a compiled render being rejected mid-schedule.
 
 Keep compiled Criterion discovery and native-memory probes on the performance-labelled, main,
 scheduled, or manual lanes. When that lane is explicitly in scope, use the complete pipeline

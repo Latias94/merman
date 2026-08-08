@@ -39,7 +39,8 @@ To avoid subjective drift, we need:
   - default node/edge labels (`setDefaultNodeLabel/setDefaultEdgeLabel` equivalent)
 - `dugong::layout(graph)` is the sole Dagre-style entrypoint. It executes the complete
   source-backed rank/normalize/order/BK pipeline, mutates node positions and edge routes, and
-  publishes graph dimensions like upstream Dagre.
+  publishes graph dimensions like upstream Dagre. It returns non-exhaustive `LayoutError` and
+  updates the caller graph only after the temporary pipeline succeeds.
 - The former minimal approximation and `layout_dagreish` alternate entrypoint are removed. A
   public layout interface must not select a less-correct algorithm merely because it is smaller.
 

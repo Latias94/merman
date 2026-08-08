@@ -1,3 +1,4 @@
+use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{Bounds, ErDiagramLayout, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
 use crate::text::{
     TextMeasurer, TextMetrics, TextStyle, WrapMode, measure_mermaid_text_dimensions,
@@ -8,7 +9,8 @@ use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel};
 #[cfg(feature = "layout-elk")]
 use merman_layout_elk as elk;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 mod config;
 
@@ -537,12 +539,15 @@ pub(crate) fn layout_er_diagram_typed(
     model: &merman_core::diagrams::er::ErDiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
+    work_meter: Arc<crate::resources::OperationWorkMeter>,
 ) -> Result<ErDiagramLayout> {
+    let mut work_control = OperationLayoutWorkControl::new(work_meter);
     layout_er_diagram_typed_with_elk_authority(
         model,
         effective_config,
         measurer,
         ErElkAuthority::Raw,
+        &mut work_control,
     )
 }
 
@@ -556,12 +561,15 @@ pub(crate) fn layout_er_diagram_typed_with_elk_operation_seed(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
     operation_seed: elk::ElkOperationSeed,
+    work_meter: Arc<crate::resources::OperationWorkMeter>,
 ) -> Result<ErDiagramLayout> {
+    let mut work_control = OperationLayoutWorkControl::new(work_meter);
     layout_er_diagram_typed_with_elk_authority(
         model,
         effective_config,
         measurer,
         ErElkAuthority::Operation(operation_seed),
+        &mut work_control,
     )
 }
 
@@ -578,8 +586,12 @@ fn layout_er_diagram_typed_with_elk_authority(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
     elk_authority: ErElkAuthority,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ErDiagramLayout> {
     let settings = ErConfigView::new(effective_config).layout_settings(&model.direction);
+    let adapter_work = er_layout_adapter_work(model, work_control)?;
+    work_control.charge_adapter(adapter_work)?;
+    validate_er_relationship_endpoints(model)?;
 
     if settings.algorithm == ErLayoutAlgorithm::Elk {
         #[cfg(feature = "layout-elk")]
@@ -593,6 +605,7 @@ fn layout_er_diagram_typed_with_elk_authority(
                 measurer,
                 settings,
                 operation_seed,
+                work_control,
             );
         }
         #[cfg(not(feature = "layout-elk"))]
@@ -605,13 +618,58 @@ fn layout_er_diagram_typed_with_elk_authority(
         }
     }
 
-    layout_er_diagram_dagre_typed(model, measurer, settings)
+    layout_er_diagram_dagre_typed(model, measurer, settings, work_control)
+}
+
+fn validate_er_relationship_endpoints(
+    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+) -> Result<()> {
+    let entity_ids: HashSet<&str> = model
+        .entities
+        .values()
+        .map(|entity| entity.id.as_str())
+        .collect();
+    for relationship in &model.relationships {
+        // The render model indexes entities by source name, while relationships store the
+        // renderer-facing generated `entity-*` ids.  Validate against the entity values rather
+        // than the map keys; checking the keys would reject every ordinary parsed relationship
+        // before Dagre/ELK gets a chance to lay it out.
+        if !entity_ids.contains(relationship.entity_a.as_str())
+            || !entity_ids.contains(relationship.entity_b.as_str())
+        {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "relationship references missing entities: {} -> {}",
+                    relationship.entity_a, relationship.entity_b
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn er_layout_adapter_work(
+    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    work_control: &OperationLayoutWorkControl,
+) -> Result<usize> {
+    let attribute_count = model.entities.values().try_fold(0usize, |count, entity| {
+        work_control.checked_add(count, entity.attributes.len())
+    })?;
+    let entity_work = work_control.checked_mul(model.entities.len(), 12)?;
+    let attribute_work = work_control.checked_mul(attribute_count, 6)?;
+    let relationship_work = work_control.checked_mul(model.relationships.len(), 10)?;
+    let class_work = work_control.checked_mul(model.classes.len(), 3)?;
+    work_control.checked_add(
+        work_control.checked_add(entity_work, attribute_work)?,
+        work_control.checked_add(relationship_work, class_work)?,
+    )
 }
 
 fn layout_er_diagram_dagre_typed(
     model: &merman_core::diagrams::er::ErDiagramRenderModel,
     measurer: &dyn TextMeasurer,
     settings: ErLayoutSettings,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ErDiagramLayout> {
     let ErLayoutSettings {
         algorithm: _,
@@ -789,7 +847,8 @@ fn layout_er_diagram_dagre_typed(
         );
     }
 
-    dugong::layout(&mut g);
+    dugong::layout_controlled(&mut g, work_control)
+        .map_err(|error| work_control.map_dugong_error(error))?;
 
     let mut nodes: Vec<LayoutNode> = Vec::new();
     for id in g.node_ids() {
@@ -969,6 +1028,7 @@ fn layout_er_diagram_elk_typed(
     measurer: &dyn TextMeasurer,
     settings: ErLayoutSettings,
     operation_seed: Option<elk::ElkOperationSeed>,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ErDiagramLayout> {
     let elk_graph = er_elk_graph(model, effective_config, measurer, &settings)?;
     let source_edge_by_id = elk_graph
@@ -977,12 +1037,14 @@ fn layout_er_diagram_elk_typed(
         .map(|edge| (edge.id.as_str(), edge))
         .collect::<HashMap<_, _>>();
     let elk_layout = match operation_seed {
-        Some(operation_seed) => elk::layout_with_operation_seed(&elk_graph, operation_seed),
-        None => elk::layout(&elk_graph),
+        Some(operation_seed) => elk::layout_with_operation_seed_and_work_control(
+            &elk_graph,
+            operation_seed,
+            work_control,
+        ),
+        None => elk::layout_with_work_control(&elk_graph, work_control),
     }
-    .map_err(|err| Error::InvalidModel {
-        message: format!("ER ELK layout failed: {err}"),
-    })?;
+    .map_err(|error| work_control.map_elk_error_with_context(error, "ER ELK"))?;
 
     let mut out_nodes = elk_layout
         .nodes

@@ -1,10 +1,10 @@
 #[cfg(test)]
 use crate::common::binding_runtime_policy_from;
 use crate::common::{
-    BindingError, BindingOptions, BindingStatus, PresentationOptionsJson,
-    PresentationThemeOptionsJson, binding_resource_policy, binding_site_config,
-    css_declaration_value, finite_positive, internal_json_error, no_diagram_error,
-    normalize_option, runtime_policy_error,
+    BindingError, BindingOptions, BindingResourceLimitCause, BindingStatus,
+    PresentationOptionsJson, PresentationThemeOptionsJson, binding_resource_policy,
+    binding_site_config, css_declaration_value, finite_positive, internal_json_error,
+    no_diagram_error, normalize_option, runtime_policy_error,
 };
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use crate::common::{BindingExportResourceOptions, binding_export_resource_options};
@@ -555,7 +555,14 @@ fn classify_render_error(err: merman::svg::HeadlessError) -> BindingError {
         }
         merman::svg::HeadlessError::Render(merman::svg::RenderError::ResourceLimitExceeded(
             err,
-        )) => BindingError::resource_limit(
+        )) => BindingError::resource_limit_with_cause(
+            match err.cause {
+                merman::svg::ResourceLimitCause::Ceiling => BindingResourceLimitCause::Ceiling,
+                merman::svg::ResourceLimitCause::ArithmeticOverflow => {
+                    BindingResourceLimitCause::ArithmeticOverflow
+                }
+                _ => BindingResourceLimitCause::Unknown,
+            },
             err.phase.as_str(),
             err.limit,
             err.actual as u64,
@@ -756,6 +763,7 @@ mod tests {
         assert_eq!(details.actual, 5);
         assert_eq!(details.max, 4);
         assert_eq!(details.profile, "constrained");
+        assert_eq!(details.cause.as_str(), "ceiling");
 
         let error = classify_output_error(
             merman::svg::OutputError::Export(
@@ -772,6 +780,7 @@ mod tests {
         assert_eq!(details.actual, 5);
         assert_eq!(details.max, 4);
         assert_eq!(details.profile, "constrained");
+        assert_eq!(details.cause.as_str(), "ceiling");
     }
 
     #[test]

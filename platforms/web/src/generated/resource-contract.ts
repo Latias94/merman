@@ -105,7 +105,7 @@ const RESOURCE_PROFILE_LIMITS: Record<ResourceProfile, ResourceLimitValues> = {
     "max_model_items": 32000,
     "max_model_text_bytes": 2097152,
     "max_model_nesting_depth": 256,
-    "max_layout_work_units": 250000,
+    "max_layout_work_units": 800000,
     "max_svg_bytes": 25165824,
     "max_svg_elements": 250000,
     "max_document_diagrams": 256,

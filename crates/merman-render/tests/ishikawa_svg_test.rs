@@ -115,6 +115,33 @@ ishikawa-beta
         ]
     );
 
+    let head_layout = ishikawa_layout.head.as_ref().expect("Ishikawa head layout");
+    let head_label = diagram_group
+        .descendants()
+        .find(|node| node.is_element() && node.attribute("class") == Some("ishikawa-head-label"))
+        .expect("Ishikawa head label");
+    assert_eq!(head_label.attribute("text-anchor"), Some("start"));
+    assert_eq!(head_label.attribute("x"), Some("0"));
+    let transform = head_label
+        .attribute("transform")
+        .and_then(|value| value.strip_prefix("translate("))
+        .and_then(|value| value.strip_suffix(')'))
+        .expect("head label translate transform")
+        .split(',')
+        .map(|value| value.parse::<f64>().expect("numeric translate component"))
+        .collect::<Vec<_>>();
+    assert_eq!(transform.len(), 2);
+    let text_width = head_layout.label.bbox.max_x - head_layout.label.bbox.min_x;
+    let text_height = head_layout.label.bbox.max_y - head_layout.label.bbox.min_y;
+    let local_bbox_x = head_layout.label.bbox.min_x - head_layout.label.x;
+    let local_bbox_y = head_layout.label.bbox.min_y - head_layout.label.y;
+    let expected_x = (head_layout.width - text_width) / 2.0 - local_bbox_x + 3.0;
+    let expected_y = -local_bbox_y - text_height / 2.0;
+    assert!(
+        (transform[0] - expected_x).abs() < 1e-9 && (transform[1] - expected_y).abs() < 1e-9,
+        "head label must use Mermaid's local getBBox transform: {transform:?}"
+    );
+
     let pair_group = diagram_group
         .children()
         .find(|node| node.is_element() && node.attribute("class") == Some("ishikawa-pair"))

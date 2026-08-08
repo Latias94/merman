@@ -28,11 +28,11 @@ The practical upgrade rule is:
 | `@mermanjs/web/<subpath>` or `@mermanjs/web/pkg/**` | Replace the import with one standalone browser package. Subpaths and raw WASM files are no longer public API. |
 | Native C or Flutter bindings | Rebuild or upgrade the complete host package and migrate from ABI 2 to ABI 3. Reject an ABI mismatch during initialization. |
 | Android JNI/Kotlin | Upgrade the complete AAR and Kotlin sources together. The alpha.4 surface is direct `JNI_OnLoad`/`RegisterNatives` transport API 1, not the C ABI; do not link the old `libmerman_ffi.so` JNI path. |
-| Python or Apple bindings | Upgrade the generated UniFFI wrapper and matching native artifact together; do not mix alpha.3 and alpha.4 components. |
+| Python or Apple bindings | Upgrade the generated UniFFI API 4 wrapper and matching native artifact together; resource errors now include a required `cause` field, and ASCII capability records expose semantic coverage plus projection kind. Do not mix alpha.3 and alpha.4 components. |
 | Analysis, editor, or LSP APIs | Follow the [Rust and embedding API migration](#rust-and-embedding-api-migration) section for exact type, method, ownership, and capability replacements. |
 | `render_svg_resvg_safe{,_sync}` or `svg_resvg_safe()` | Migrate to the typed `ResvgCompatibleSvg` boundaries described under [Rendering and option contracts](#rendering-and-option-contracts). No string-returning compatibility alias is retained. |
 | `assertSafeSvgForDom()` | Choose an explicit self-contained or navigable browser capability and retain its opaque admission until the real mount document is known. |
-| Typed State render links | Replace `StateDiagramRenderLinks` and array handling with one `StateDiagramRenderLink` per state; the last click declaration wins. |
+| Typed State render links | Keep handling `StateDiagramRenderLinks::{One, Many}`. Mermaid 11.16 preserves repeated `click` declarations in source order because each parsed `idStatement` is a distinct runtime key; repeated links render as nested anchors. |
 | Node.js or SSR | Continue to invoke `merman-cli` as a subprocess. No in-process Node package is admitted for alpha.4. |
 | Typst | Treat it as an independent release track. The published `@preview/merman:0.2.0` package is not an alpha.4 artifact. |
 
@@ -177,10 +177,12 @@ owner document before replacement. Manual hosts must replace `assertSafeSvgForDo
 ## Native ABI migration
 
 Alpha.4 C and Flutter hosts use ABI 3. Android uses direct JNI transport API 1; Python and Apple
-use UniFFI API 4 from the matching native artifact. Upgrade each language package and native
-artifact together; do not mix an alpha.3 generated wrapper with an alpha.4 library. C/Flutter hosts
-validate ABI 3 and the generated runtime catalog, while Android validates its transport catalog
-handshake before requesting optional outputs, resources, or host text measurement.
+use UniFFI API 4 from the matching native artifact. Resource failures include the stable `cause`
+discriminator (`ceiling` or `arithmetic_overflow`) across these transports. Upgrade each language
+package and native artifact together; do not mix an alpha.3 generated wrapper with an alpha.4
+library. C/Flutter hosts validate ABI 3 and the generated runtime catalog, while Android validates
+its transport catalog handshake before requesting optional outputs, resources, or host text
+measurement.
 
 Follow the [ABI 3 migration guide](../bindings/ABI3_MIGRATION.md) and the surface-specific Python,
 Flutter, Android, or Apple documentation. A channel listed in the repository is not proof that the
@@ -294,9 +296,30 @@ APIs that were never part of the alpha.3 release and can be ignored by tag-only 
 
 - For an ordinary one-shot SVG, replace alpha.3 setup through `merman::render::HeadlessRenderer` or the multi-argument `merman::render::render_svg_sync` helper with `merman::render_svg(source)`. The new facade returns `Result<String, RenderSvgError>` and reports empty or non-diagram input as `RenderSvgError::NoDiagram`; use `merman::render_svg_with_id(source, id)` when multiple SVGs share one DOM. If the operation needs configuration or reuse, import `HeadlessRenderer` from `merman::svg` and keep the explicit renderer path.
 - Replace public low-level `merman-render` `layout_parsed*`, `render_layouted_svg`, raw semantic/layout SVG helpers, debug wrappers, and per-family pass-through functions with `merman::svg::HeadlessRenderer`, `prepare_render_sync`, `layout_json_sync`, or `render_svg_sync`. Direct low-level integrations can use `merman_render::family::prepare` with one `RenderSession`.
+- Treat `dugong::layout` as the canonical full Dagre pipeline and handle its new `Result<(), dugong::LayoutError>` return value. The alpha.3 minimal approximation and the alternate `layout_dagreish` entry point are removed. Low-level `dugong::rank::rank` and `dugong::rank::network_simplex::network_simplex` now return the same result type instead of panicking when a rank-tree invariant cannot be satisfied; handle `LayoutError::InvalidNetworkSimplexTree` as invalid layout input or state. `LayoutError` and `WorkError` are non-exhaustive, so downstream matches need a wildcard arm. Explicit `minlen = 0` remains meaningful: default, `network-simplex`, and unknown rankers follow Mermaid's Dagre companion, while a ranker that produces coincident edge geometry returns `LayoutError::DegenerateEdgeGeometry` transactionally. The historical non-Dagre `ranker = "none"` escape hatch is removed; unknown values now use `network-simplex`, as upstream does.
 - Replace `render_svg_resvg_safe_sync(...)` with `render_resvg_compatible_svg_sync(...)`, and replace `HeadlessRenderer::render_svg_resvg_safe_sync(...)` with `HeadlessRenderer::render_resvg_compatible_svg_sync(...)`. Both return `Option<ResvgCompatibleSvg>` rather than `Option<String>`; pass `svg.as_str()` to a read-only raster consumer or consume it with `into_string()` only when crossing the final byte/string boundary. Replace raw `svg_resvg_safe(svg)` with `finalize_resvg_svg(svg, session)`. Generic pipeline methods that return `String` do not carry the terminal capability.
-- Replace `StateDiagramRenderModel::links: HashMap<String, StateDiagramRenderLinks>` with `HashMap<String, StateDiagramRenderLink>`. Remove `StateDiagramRenderLinks::{One, Many}` matches and account for last-declaration-wins semantics; `link.tooltip` remains the upstream-compatible string value.
+- Keep `StateDiagramRenderModel::links: HashMap<String, StateDiagramRenderLinks>` and handle both `StateDiagramRenderLinks::{One, Many}` variants. The Mermaid 11.16 Jison parser creates a fresh `idStatement` object for every `click`; the runtime therefore preserves repeated declarations in source order and wraps the matching state node once per declaration. `link.tooltip` remains the upstream-compatible string value.
 - Import ELK configuration and guarded pipeline entry points from the `merman-elk-layered` crate root; phase modules are private and require operation-seed resolution.
+- Update direct ELK-layered callers for the expanded public contracts. `ElkInputEdge` carries an
+  optional source `model_order`; populate it when constructing adapter inputs whose original edge
+  order is observable. Exhaustive matches over `merman_elk_layered::ImportError` and
+  `PipelineError`, or `merman_layout_elk::Error`, must handle the added hierarchy-scope,
+  intermediate, and neutral `WorkError` variants. `WorkError` is non-exhaustive in the Dugong,
+  Manatee, and ELK public owners, so downstream matches require a wildcard arm.
+- Treat `GraphExecution` processor vectors as ordered public diagnostics. Compound execution now
+  reports source-backed DFS/postorder order rather than the historical reverse insertion order;
+  consumers that compare or display phase traces must preserve the returned order. The graphlib
+  implementation also matches JavaScript `Object.keys`: canonical decimal array-index node,
+  child, predecessor, and successor keys enumerate numerically before ordinary keys. Callers that
+  relied on incidental insertion order must migrate; `dugong_graphlib::is_javascript_array_index`
+  is available when a host needs the same classification.
+- Binding resource failures now include the stable JSON discriminator
+  `details.resource.cause` (`ceiling`, `arithmetic_overflow`, or `unknown`). Direct Rust
+  construction of non-exhaustive `BindingResourceErrorDetails` and all binding-side decoders must
+  preserve and accept this field; do not infer arithmetic overflow from the human-readable error
+  text. JavaScript `details.resource.actual` and `details.resource.max` use `number` for safe
+  integers and a canonical decimal `string` for wider `u64` values, so consumers must accept both
+  forms without rounding.
 - Configure text measurement, math, icons, clock, randomness, and resource policy through `RenderEnvironment`. Binding and Web JSON use `presentation.theme` for semantic host colors, top-level `site_config` for raw Mermaid `themeVariables`, and `environment.text_measurement` / `environment.math_renderer` for rendering services. The removed `host_theme` group and the old `layout.text_measurer` / `layout.math_renderer` fields are rejected.
 - Replace `HostThemeProfile`, `CompiledHostTheme`, `HostThemeProfileBuilder`, `with_host_theme`, `with_compiled_host_theme`, `render_svg_with_host_theme_sync`, and `render_svg_with_compiled_host_theme_sync` with one immutable `Presentation`. Build semantic colors through `HostTheme`, select `PresentationProfile::MermanModern` independently when wanted, apply Mermaid overrides through `with_site_config`, and select cleanup/background/scoped CSS through an explicit `SvgPipeline` or `SvgOutputPolicy::pipeline()`. Replace flat `supported_host_theme_presets*` calls with `theme_preset_descriptors()` in Rust or the artifact-aware `presentation-catalog` metadata payload in bindings; the old helpers are deleted rather than deprecated.
 - Replace field-based `RenderResourceLimits` with sealed `RenderResourcePolicy`. Select `interactive`, `constrained`, `trusted-native`, or `unbounded-for-trusted-input`, then apply validated overrides by stable limit id.
@@ -346,7 +369,15 @@ fresh alpha.3-versus-release A/B run.
 
 Use the [detailed evidence report](ALPHA3_TO_ALPHA4_REFACTORING_REPORT.md) for recipes and historical
 measurements. Use the [performance plan](../performance/PERF_PLAN.md) for the rolling optimization
-status.
+status and the [final hardening attribution](../performance/headless_performance_final_attribution_2026-08-08.md)
+for the completed four-lane integration boundary.
+
+That final hardening pass adds no browser host-measurement protocol break, CLI transaction-journal
+format break, semantic-token ABI break, or diagnostics-capture API break. Browser-WASM now reads the
+existing optional `handled` disposition directly before the unchanged complete result decoder, but
+the callback shape, fallback behavior, protocol version, error class, and public API are unchanged.
+The public layout, work/error, ordering, resource-cause, rendering, binding, Web, CLI, and LSP
+migrations documented above remain the complete user-facing boundary for this branch.
 
 ## What remains unproven before release
 
@@ -366,4 +397,5 @@ status.
 - [Capability guide](../FEATURES.md)
 - [Package surfaces](PACKAGE_SURFACES.md)
 - [Performance plan](../performance/PERF_PLAN.md)
+- [Final hardening attribution](../performance/headless_performance_final_attribution_2026-08-08.md)
 - [ABI 3 migration](../bindings/ABI3_MIGRATION.md)

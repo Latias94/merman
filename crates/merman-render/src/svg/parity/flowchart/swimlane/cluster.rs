@@ -1,5 +1,8 @@
 use super::super::*;
-use crate::flowchart::{FlowchartLabelMetricsRequest, flowchart_label_metrics_for_layout};
+use crate::flowchart::{
+    FlowchartLabelMetricsRequest, flowchart_label_is_empty_for_render,
+    flowchart_label_metrics_for_layout,
+};
 use crate::model::{SwimlaneDirection, SwimlaneLaneLayout};
 
 const SWIMLANE_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
@@ -111,9 +114,9 @@ fn write_swimlane_rect(
 fn lane_label_metrics(
     ctx: &FlowchartRenderCtx<'_>,
     lane: &SwimlaneLaneLayout,
-    label_type: &str,
+    render_title: &str,
 ) -> crate::text::TextMetrics {
-    if lane.title.is_empty() {
+    if flowchart_label_is_empty_for_render(render_title) {
         return crate::text::TextMetrics {
             width: 0.0,
             height: 0.0,
@@ -121,46 +124,28 @@ fn lane_label_metrics(
         };
     }
 
-    let style = if ctx.edge_html_labels {
+    let style = if ctx.swimlane_title_html_labels {
         &ctx.html_label_text_style
     } else {
         &ctx.text_style
     };
-    let wrap_mode = if ctx.edge_html_labels {
+    let wrap_mode = if ctx.swimlane_title_html_labels {
         WrapMode::HtmlLike
     } else {
         WrapMode::SvgLike
     };
-    let mut metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+    flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
         measurer: ctx.measurer,
-        raw_label: &lane.title,
-        label_type,
+        raw_label: render_title,
+        // Mermaid's dedicated Swimlane renderer omits createText's `markdown` option, so its
+        // default `true` applies independently of FlowDB's public subgraph labelType.
+        label_type: "markdown",
         style,
         max_width_px: Some(lane.width.max(1.0)),
         wrap_mode,
         config: ctx.config,
         math_renderer: ctx.math_renderer,
-    });
-
-    let plain = flowchart_label_plain_text(&lane.title, label_type, ctx.edge_html_labels);
-    if label_type != "markdown" && !lane.title.contains('<') && !lane.title.contains("$$") {
-        if ctx.edge_html_labels {
-            metrics.width = ctx
-                .measurer
-                .measure_svg_text_bounding_client_rect_width_px(&plain, style)
-                .max(0.0);
-        } else {
-            metrics.width = ctx
-                .measurer
-                .measure_svg_tspan_text_bbox_width_px(&plain, style)
-                .max(0.0);
-            metrics.height = ctx
-                .measurer
-                .measure_svg_tspan_text_bbox_height_px(&plain, style)
-                .max(0.0);
-        }
-    }
-    metrics
+    })
 }
 
 pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
@@ -177,10 +162,10 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     let compiled = flowchart_compile_styles(ctx.class_defs, class_names, styles, &[]);
     let node_style = compiled.node_style.trim();
     let label_style = compiled.label_style.trim();
-    let label_type = subgraph
-        .and_then(|subgraph| subgraph.label_type.as_deref())
-        .unwrap_or("text");
-    let label_metrics = lane_label_metrics(ctx, lane, label_type);
+    let render_title = subgraph.map_or(lane.title.as_str(), |subgraph| {
+        ctx.model.subgraph_title_for_render(subgraph)
+    });
+    let label_metrics = lane_label_metrics(ctx, lane, render_title);
     let label_width = label_metrics.width.max(0.0);
     let label_height = label_metrics.height.max(0.0);
 
@@ -304,9 +289,9 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         )
     };
 
-    if ctx.edge_html_labels {
+    if ctx.swimlane_title_html_labels {
         let title_html =
-            flowchart_label_html(&lane.title, label_type, ctx.config, ctx.math_renderer);
+            flowchart_label_html(render_title, "markdown", ctx.config, ctx.math_renderer);
         let transform = if is_lr {
             label_transform
         } else {
@@ -345,12 +330,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             r#"<g class="cluster-label swimlane-label" transform="{}"><g><rect class="background" style="stroke: none"/>"#,
             escape_xml_display(&transform),
         );
-        if label_type == "markdown" {
-            write_flowchart_svg_text_markdown(out, &lane.title, true);
-        } else {
-            let plain = flowchart_label_plain_text(&lane.title, label_type, false);
-            write_flowchart_svg_text(out, &plain, true);
-        }
+        write_flowchart_svg_text_markdown(out, render_title, true);
         out.push_str("</g></g>");
     }
     out.push_str("</g>");

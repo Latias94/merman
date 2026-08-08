@@ -27,15 +27,15 @@
             "Problem"
           ],
           "class_name": "ishikawa-head-label",
-          "x": 42.0,
+          "x": 33.0,
           "y": 250.0,
-          "anchor": "middle",
+          "anchor": "start",
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": 18.34,
+            "min_x": 9.34,
             "min_y": 242.0,
-            "max_x": 65.66,
+            "max_x": 56.66,
             "max_y": 258.0
           }
         }

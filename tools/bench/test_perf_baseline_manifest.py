@@ -211,6 +211,11 @@ class PerfBaselineManifestTest(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def _memory_lane(self) -> dict[str, object]:
+        raw_lane = self.corpus["lanes"][1]
+        assert isinstance(raw_lane, dict)
+        return raw_lane
+
     def _response(
         self,
         *,
@@ -224,12 +229,13 @@ class PerfBaselineManifestTest(unittest.TestCase):
         invocation_id = f"test:{scale}:{repeat}:{mode}"
         nonce = f"{pair_index * 2 + (1 if zero else 0) + 1:032x}"
         growth = 10 if zero else scale * 100
-        return {
-            "schema_version": 1,
-            "lane_id": "flowchart-end-to-end-memory",
-            "public_operation": "render-svg",
-            "process_lifecycle": "fresh-process",
-            "engine_lifecycle": "reused-engine",
+        memory_lane = self._memory_lane()
+        response: dict[str, object] = {
+            "schema_version": self.owner_contract["schema_version"],
+            "lane_id": memory_lane["id"],
+            "public_operation": memory_lane["public_operation"],
+            "process_lifecycle": memory_lane["process_lifecycle"],
+            "engine_lifecycle": memory_lane["engine_lifecycle"],
             "logical_operations_per_estimate": 1,
             "mode": mode,
             "scale": scale,
@@ -239,22 +245,57 @@ class PerfBaselineManifestTest(unittest.TestCase):
             "executable_sha256": executable_sha256,
             "invocation_id": invocation_id,
             "nonce": nonce,
-            "output_sha256": (
-                sha256_bytes(b"") if zero else sha256_bytes(f"svg:{scale}".encode())
-            ),
-            "output_width": 0 if zero else scale * 10,
-            "output_height": 0 if zero else scale * 5,
-            "input_nodes": scale * 3,
-            "input_edges": scale * 4,
             "snapshot_live_bytes": 100,
             "allocation_count": 1 if zero else scale * 10,
             "allocated_bytes": 10 if zero else scale * 1000,
-            "live_bytes_after": 100,
+            "live_bytes_after": 105 if zero else 100 + scale * 20,
             "peak_live_bytes": 100 + growth,
             "peak_growth_bytes": growth,
             "counter_overflowed": False,
             "counter_underflowed": False,
         }
+        if self.owner_contract["schema_version"] == 1:
+            response.update(
+                {
+                    "output_sha256": (
+                        sha256_bytes(b"")
+                        if zero
+                        else sha256_bytes(f"svg:{scale}".encode())
+                    ),
+                    "output_width": 0 if zero else scale * 10,
+                    "output_height": 0 if zero else scale * 5,
+                    "input_nodes": scale * 3,
+                    "input_edges": scale * 4,
+                }
+            )
+        else:
+            probe = self.owner_contract["probe"]
+            scale_contract = self.owner_contract["scale"]
+            semantic_contract = self.owner_contract["semantic_response"]
+            assert isinstance(probe, dict)
+            assert isinstance(scale_contract, dict)
+            assert isinstance(semantic_contract, dict)
+            response["schema_version"] = probe["protocol_schema_version"]
+            workload_units = scale * int(scale_contract["units_per_scale"])
+            fixed = semantic_contract["zero" if zero else "operation"]
+            assert isinstance(fixed, dict)
+            response.update(
+                {
+                    "output_sha256": semantic_contract[
+                        "zero_output_sha256"
+                        if zero
+                        else "operation_output_sha256"
+                    ],
+                    "workload_units": workload_units,
+                    "semantic_output": {
+                        **fixed,
+                        str(semantic_contract["scale_field"]): (
+                            0 if zero else workload_units
+                        ),
+                    },
+                }
+            )
+        return response
 
     def _write_native_memory_report(self) -> None:
         executable_sha256 = sha256_bytes(EXECUTABLE_BYTES)
@@ -262,6 +303,8 @@ class PerfBaselineManifestTest(unittest.TestCase):
             self.root,
             target_dir=self.root / "target",
             toolchain=None,
+            corpus=self.corpus_path,
+            contract=self.owner_contract,
         )
         build_command = run_native_memory.cargo_prebuild_command(native_recipe)
         schedule: list[dict[str, object]] = []
@@ -283,9 +326,10 @@ class PerfBaselineManifestTest(unittest.TestCase):
                         executable_sha256=executable_sha256,
                     )
                     request = {
-                        field: response[field]
-                        for field in (
-                            "schema_version",
+                        "schema_version": 1,
+                        **{
+                            field: response[field]
+                            for field in (
                             "lane_id",
                             "mode",
                             "scale",
@@ -293,7 +337,8 @@ class PerfBaselineManifestTest(unittest.TestCase):
                             "repeat",
                             "invocation_id",
                             "nonce",
-                        )
+                            )
+                        },
                     }
                     schedule.append(
                         {
@@ -332,9 +377,9 @@ class PerfBaselineManifestTest(unittest.TestCase):
                 "bootstrap_resamples": 10_000,
                 "subprocess_isolation": "fresh-process-per-sample",
                 "pair_order": "alternating-operation-zero",
-                "evidence_class": "infrastructure-smoke",
+                "evidence_class": self.owner_contract["evidence_class"],
             },
-            "candidate_admission": False,
+            "candidate_admission": self.owner_contract["candidate_admission"],
             "environment": {
                 "os": self.host["os"],
                 "machine": self.host["architecture"],
@@ -348,26 +393,19 @@ class PerfBaselineManifestTest(unittest.TestCase):
             "schedule": schedule,
             "analysis": analysis,
             "lane": {
-                "id": "flowchart-end-to-end-memory",
-                "public_operation": "render-svg",
-                "process_lifecycle": "fresh-process",
-                "engine_lifecycle": "reused-engine",
-                "logical_operations_per_estimate": 1,
-                "transport": "native-system-allocator-subprocess",
-                "workload": "flowchart-modular-generator-v1",
-                "size_vector": list(MEMORY_SCALES),
-                "measurement_metrics": [
-                    "allocation_count",
-                    "allocated_bytes",
-                    "peak_growth_bytes",
-                ],
-                "semantic_output_dimensions": [
-                    "input_nodes",
-                    "input_edges",
-                    "svg_sha256",
-                    "svg_viewbox_width",
-                    "svg_viewbox_height",
-                ],
+                field: self._memory_lane()[field]
+                for field in (
+                    "id",
+                    "public_operation",
+                    "process_lifecycle",
+                    "engine_lifecycle",
+                    "logical_operations_per_estimate",
+                    "transport",
+                    "workload",
+                    "size_vector",
+                    "measurement_metrics",
+                    "semantic_output_dimensions",
+                )
             },
             "inputs": {
                 "workspace_manifest": file_record(self.root / "Cargo.toml"),
@@ -421,7 +459,92 @@ class PerfBaselineManifestTest(unittest.TestCase):
                 "dirty_disposition": "clean",
             },
         }
+        if self.owner_contract["schema_version"] == 2:
+            probe = self.owner_contract["probe"]
+            assert isinstance(probe, dict)
+            raw_inputs = probe["inputs"]
+            assert isinstance(raw_inputs, list)
+            report_inputs = report["inputs"]
+            assert isinstance(report_inputs, dict)
+            report_inputs["probe_inputs"] = [
+                file_record(self.root / str(raw_input["path"]))
+                for raw_input in raw_inputs
+                if isinstance(raw_input, dict)
+            ]
         self._write_json(self.report_path, report)
+
+    def _configure_schema_v2_memory_fixture(self) -> None:
+        probe_path = self.root / "crates" / "merman" / "benches" / "schema_v2.rs"
+        probe_path.parent.mkdir()
+        probe_path.write_text("fn main() {}\n", encoding="utf-8")
+        memory_lane = self._memory_lane()
+        memory_lane.update(
+            {
+                "public_operation": "prepare-render",
+                "workload": "flowchart-prepared-render-test-v1",
+                "measurement_metrics": [
+                    "allocation_count",
+                    "allocated_bytes",
+                    "peak_growth_bytes",
+                    "retained_growth_bytes",
+                ],
+                "semantic_output_dimensions": [
+                    "kind",
+                    "prepared_state_released_after_drop",
+                    "prepared_label_count",
+                ],
+            }
+        )
+        self.owner_contract = {
+            "schema_version": 2,
+            "lane_id": memory_lane["id"],
+            "workload": memory_lane["workload"],
+            "evidence_class": "candidate-bound",
+            "candidate_admission": True,
+            "probe": {
+                "protocol_schema_version": 2,
+                "package": "merman",
+                "package_manifest": "crates/merman/Cargo.toml",
+                "bench": "schema_v2",
+                "features": ["svg"],
+                "default_features": False,
+                "inputs": [
+                    {
+                        "path": "crates/merman/benches/schema_v2.rs",
+                        "sha256": sha256_bytes(probe_path.read_bytes()),
+                    }
+                ],
+            },
+            "scale": {
+                "dimension": "prepared_label_count",
+                "units_per_scale": 1,
+            },
+            "semantic_response": {
+                "scale_field": "prepared_label_count",
+                "operation_output_sha256": sha256_bytes(b"prepared-render"),
+                "zero_output_sha256": sha256_bytes(b""),
+                "operation": {
+                    "kind": "flowchart-prepared-render-v1",
+                    "prepared_state_released_after_drop": True,
+                },
+                "zero": {
+                    "kind": "flowchart-prepared-render-v1",
+                    "prepared_state_released_after_drop": False,
+                },
+            },
+            "metrics": {
+                metric: {"slope_cap": 2.0, "max_scale_cap": 1_000_000_000}
+                for metric in (
+                    "allocation_count",
+                    "allocated_bytes",
+                    "peak_growth_bytes",
+                    "retained_growth_bytes",
+                )
+            },
+        }
+        self._write_json(self.contract_path, self.owner_contract)
+        self._write_json(self.corpus_path, self.corpus)
+        self._write_native_memory_report()
 
     def freeze(self) -> dict[str, object]:
         return baseline.freeze_baseline(
@@ -477,6 +600,39 @@ class PerfBaselineManifestTest(unittest.TestCase):
         self.assertEqual(memory["seed"], 101)
         self.assertEqual(memory["process_lifecycle"], "fresh-process")
         self.assertEqual(manifest["host"], self.host)
+
+    def test_freeze_accepts_schema_v2_retained_memory_and_rejects_tampering(
+        self,
+    ) -> None:
+        self._configure_schema_v2_memory_fixture()
+
+        manifest = self.freeze()
+
+        memory = manifest["recipes"]["native_memory"]
+        self.assertEqual(memory["bench"], "schema_v2")
+        self.assertEqual(memory["public_operation"], "prepare-render")
+        report = baseline.load_strict_json(self.report_path)
+        self.assertIn("retained_growth_bytes", report["analysis"]["metrics"])
+
+        probe_input_tamper = copy.deepcopy(report)
+        probe_input_tamper["inputs"]["probe_inputs"][0]["sha256"] = "0" * 64
+        self._write_json(self.report_path, probe_input_tamper)
+        with self.assertRaisesRegex(
+            baseline.ManifestError,
+            r"probe_inputs\[0\]\.sha256 differs",
+        ):
+            self.freeze()
+
+        semantic_tamper = copy.deepcopy(report)
+        semantic_tamper["schedule"][0]["response"]["semantic_output"][
+            "kind"
+        ] = "wrong-kind"
+        self._write_json(self.report_path, semantic_tamper)
+        with self.assertRaisesRegex(
+            baseline.ManifestError,
+            "response protocol is invalid",
+        ):
+            self.freeze()
 
     def test_freeze_collects_host_with_reported_toolchain(self) -> None:
         report = baseline.load_strict_json(self.report_path)

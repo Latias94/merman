@@ -39,6 +39,65 @@ fn render_swimlane(source: &str, diagram_id: &str) -> String {
     try_render_swimlane(source, diagram_id).expect("swimlane SVG")
 }
 
+fn swimlane_title_uses_html(svg: &str) -> bool {
+    let document = roxmltree::Document::parse(svg).expect("valid SVG XML");
+    let title = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| part == "swimlane-label")
+                })
+        })
+        .expect("swimlane title group");
+    title
+        .descendants()
+        .any(|node| node.has_tag_name("foreignObject"))
+}
+
+fn swimlane_title_text(svg: &str) -> String {
+    let document = roxmltree::Document::parse(svg).expect("valid SVG XML");
+    let title = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| part == "swimlane-label")
+                })
+        })
+        .expect("swimlane title group");
+    title
+        .descendants()
+        .filter_map(|node| node.text().filter(|_| node.is_text()))
+        .collect()
+}
+
+fn swimlane_edge_label_uses_html(svg: &str) -> bool {
+    let document = roxmltree::Document::parse(svg).expect("valid SVG XML");
+    let label = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .all(|part| matches!(part, "label" | "edgeLabel"))
+                        && class.split_ascii_whitespace().count() == 2
+                })
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.starts_with("edge-label-"))
+        })
+        .expect("swimlane edge label node");
+    label
+        .descendants()
+        .any(|node| node.has_tag_name("foreignObject"))
+}
+
 #[test]
 fn line_hop_work_budget_is_reported_by_the_headless_render_operation() {
     // The fixture's stable preflight estimate is 90 units. Probe the precise layout boundary so
@@ -196,6 +255,110 @@ fn default_swimlane_uses_the_typed_swimlane_artifact() {
         "{svg}"
     );
     assert!(svg.contains("Needs code change"), "{svg}");
+}
+
+#[test]
+fn swimlane_titles_follow_the_flowchart_local_html_labels_setting() {
+    let root_false_flowchart_true = render_swimlane(
+        r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: true
+---
+swimlane-beta LR
+subgraph Lane["&nbsp;Lane&nbsp;"]
+  A[Node]
+end
+"#,
+        "swimlane-local-html",
+    );
+    assert!(
+        swimlane_title_uses_html(&root_false_flowchart_true),
+        "flowchart.htmlLabels=true must select the upstream Swimlane HTML title path: {root_false_flowchart_true}"
+    );
+    assert_eq!(
+        swimlane_title_text(&root_false_flowchart_true),
+        "\u{00a0}Lane\u{00a0}"
+    );
+
+    let root_true_flowchart_false = render_swimlane(
+        r#"---
+config:
+  htmlLabels: true
+  flowchart:
+    htmlLabels: false
+---
+swimlane-beta LR
+subgraph Lane["&nbsp;Lane&nbsp;"]
+  A[Node]
+end
+"#,
+        "swimlane-local-svg",
+    );
+    assert!(
+        !swimlane_title_uses_html(&root_true_flowchart_false),
+        "flowchart.htmlLabels=false must select the upstream Swimlane SVG title path: {root_true_flowchart_false}"
+    );
+    assert_eq!(
+        swimlane_title_text(&root_true_flowchart_false),
+        "&nbsp;Lane&nbsp;"
+    );
+}
+
+#[test]
+fn swimlane_edge_label_nodes_follow_root_html_labels() {
+    let svg = render_swimlane(
+        r#"---
+config:
+  flowchart:
+    htmlLabels: false
+---
+swimlane-beta LR
+subgraph Lane
+  A[Node]
+end
+A -->|"&nbsp;Edge&nbsp;"| B
+"#,
+        "swimlane-edge-label-mode",
+    );
+
+    assert!(
+        swimlane_edge_label_uses_html(&svg),
+        "labelRect must follow root htmlLabels (default true), not the Flowchart fallback: {svg}"
+    );
+}
+
+#[test]
+fn swimlane_markdown_edge_labels_render_as_plain_label_rect_text() {
+    let svg = render_swimlane(
+        r#"swimlane-beta LR
+A -->|`This is **bold**`| B
+"#,
+        "swimlane-edge-label-markdown-conversion",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid SVG XML");
+    let label = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.starts_with("edge-label-"))
+        })
+        .expect("swimlane edge label node");
+    let text = label
+        .descendants()
+        .filter_map(|node| node.text().filter(|_| node.is_text()))
+        .collect::<String>();
+
+    assert!(text.contains("**bold**"), "{svg}");
+    assert!(
+        !label
+            .descendants()
+            .any(|node| node.has_tag_name("strong") || node.has_tag_name("em")),
+        "the converted labelRect must not inherit the original edge Markdown type: {svg}"
+    );
 }
 
 #[test]

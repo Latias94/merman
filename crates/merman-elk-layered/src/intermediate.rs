@@ -19,7 +19,7 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/InteractiveExternalPortPositioner.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/InvertedPortProcessor.java
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::graph::{
     EdgeLabelPlacement, HorizontalLabelAlignment, LGraph, LLabel, LNode, LNodeKind, LPoint, LSize,
@@ -271,6 +271,297 @@ pub fn reverse_edges_for_edge_and_layer_constraints(graph: &mut LGraph) {
             let layer_constraint = graph.layerless_nodes[node].layer_constraint;
             reverse_node_edges(graph, node, layer_constraint, EdgeReversalPortType::All);
         }
+    }
+}
+
+pub(crate) fn visit_edge_and_layer_constraint_reversal_candidates(
+    graph: &LGraph,
+    mut visit: impl FnMut(usize) -> bool,
+) -> bool {
+    ConstraintReversalShadow::new(graph).visit_candidates(&mut visit)
+}
+
+#[cfg(test)]
+pub(crate) fn edge_and_layer_constraint_reversal_may_mutate(graph: &LGraph) -> bool {
+    visit_edge_and_layer_constraint_reversal_candidates(graph, |_| true)
+}
+
+struct ConstraintReversalShadow<'a> {
+    graph: &'a LGraph,
+    reversed_by_processor: Vec<bool>,
+    port_flows: Vec<i128>,
+}
+
+struct ShadowCollectorSlots {
+    input: usize,
+    output: usize,
+    input_is_virtual: bool,
+    output_is_virtual: bool,
+    virtual_input_used: bool,
+    virtual_output_used: bool,
+}
+
+impl<'a> ConstraintReversalShadow<'a> {
+    fn new(graph: &'a LGraph) -> Self {
+        Self {
+            graph,
+            reversed_by_processor: vec![false; graph.edges.len()],
+            port_flows: Vec::new(),
+        }
+    }
+
+    fn visit_candidates(&mut self, visit: &mut impl FnMut(usize) -> bool) -> bool {
+        // The pinned processor completes every direct layer-constraint reversal before it walks
+        // `remainingNodes` in model order. A fixed-side decision therefore observes all direct
+        // mutations plus earlier fixed-side mutations; the shadow bitset preserves that order
+        // without cloning labels, geometry, nested graphs, or adjacency vectors.
+        for node in &self.graph.layerless_nodes {
+            let Some(target_port_type) =
+                target_port_type_for_layer_constraint(node.layer_constraint)
+            else {
+                continue;
+            };
+            for port in &node.ports {
+                let edges = match target_port_type {
+                    EdgeReversalPortType::Input => &port.outgoing_edges,
+                    EdgeReversalPortType::Output => &port.incoming_edges,
+                    EdgeReversalPortType::All => {
+                        unreachable!("direct constraints select one edge side")
+                    }
+                };
+                for &edge in edges {
+                    let may_reverse = match target_port_type {
+                        EdgeReversalPortType::Input => {
+                            can_reverse_outgoing_edge(self.graph, node.layer_constraint, edge)
+                        }
+                        EdgeReversalPortType::Output => {
+                            can_reverse_incoming_edge(self.graph, node.layer_constraint, edge)
+                        }
+                        EdgeReversalPortType::All => unreachable!(),
+                    };
+                    if may_reverse && self.mark_reversed(edge, visit) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        for node_index in 0..self.graph.layerless_nodes.len() {
+            let node = &self.graph.layerless_nodes[node_index];
+            if node.layer_constraint != LayerConstraint::None
+                || !self.fixed_side_node_should_reverse(node_index)
+            {
+                continue;
+            }
+
+            for port in &node.ports {
+                for &edge in &port.outgoing_edges {
+                    if self.mark_reversed(edge, visit) {
+                        return true;
+                    }
+                }
+                for &edge in &port.incoming_edges {
+                    if self.mark_reversed(edge, visit) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
+    fn mark_reversed(&mut self, edge_index: usize, visit: &mut impl FnMut(usize) -> bool) -> bool {
+        let Some(edge) = self.graph.edges.get(edge_index) else {
+            return false;
+        };
+        let Some(reversed_by_processor) = self.reversed_by_processor.get_mut(edge_index) else {
+            return false;
+        };
+        if edge.reversed || *reversed_by_processor {
+            return false;
+        }
+
+        *reversed_by_processor = true;
+        visit(edge_index)
+    }
+
+    fn fixed_side_node_should_reverse(&mut self, node_index: usize) -> bool {
+        let node = &self.graph.layerless_nodes[node_index];
+        if !node.port_constraints.is_side_fixed() || node.ports.is_empty() {
+            return false;
+        }
+
+        let original_port_count = node.ports.len();
+        self.port_flows.clear();
+        self.port_flows.extend(
+            node.ports
+                .iter()
+                .map(|port| port.incoming_edges.len() as i128 - port.outgoing_edges.len() as i128),
+        );
+        self.port_flows.resize(original_port_count + 2, 0);
+
+        let input_collector = node
+            .ports
+            .iter()
+            .position(|port| port.collector_type == Some(PortType::Input));
+        let output_collector = node
+            .ports
+            .iter()
+            .position(|port| port.collector_type == Some(PortType::Output));
+        let mut collectors = ShadowCollectorSlots {
+            input: input_collector.unwrap_or(original_port_count),
+            output: output_collector.unwrap_or(original_port_count + 1),
+            input_is_virtual: input_collector.is_none(),
+            output_is_virtual: output_collector.is_none(),
+            virtual_input_used: false,
+            virtual_output_used: false,
+        };
+
+        for port in &node.ports {
+            for &edge in &port.outgoing_edges {
+                self.apply_reversed_edge_flow(node_index, edge, &mut collectors);
+            }
+            for &edge in &port.incoming_edges {
+                if self
+                    .graph
+                    .edges
+                    .get(edge)
+                    .is_some_and(|edge| edge.source.node == node_index)
+                {
+                    continue;
+                }
+                self.apply_reversed_edge_flow(node_index, edge, &mut collectors);
+            }
+        }
+
+        if node
+            .ports
+            .iter()
+            .enumerate()
+            .any(|(port, data)| !port_flow_matches_side(data.side, self.port_flows[port]))
+        {
+            return false;
+        }
+        if collectors.virtual_input_used
+            && !port_flow_matches_side(PortSide::West, self.port_flows[collectors.input])
+        {
+            return false;
+        }
+        if collectors.virtual_output_used
+            && !port_flow_matches_side(PortSide::East, self.port_flows[collectors.output])
+        {
+            return false;
+        }
+
+        for port in &node.ports {
+            for &edge in &port.outgoing_edges {
+                if self.current_edge_violates_fixed_side_constraint(node_index, edge) {
+                    return false;
+                }
+            }
+            for &edge in &port.incoming_edges {
+                if self
+                    .graph
+                    .edges
+                    .get(edge)
+                    .is_some_and(|edge| edge.source.node == node_index)
+                {
+                    continue;
+                }
+                if self.current_edge_violates_fixed_side_constraint(node_index, edge) {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+
+    fn apply_reversed_edge_flow(
+        &mut self,
+        node_index: usize,
+        edge_index: usize,
+        collectors: &mut ShadowCollectorSlots,
+    ) {
+        if !self
+            .reversed_by_processor
+            .get(edge_index)
+            .copied()
+            .unwrap_or(false)
+        {
+            return;
+        }
+        let Some(edge) = self.graph.edges.get(edge_index) else {
+            return;
+        };
+
+        if edge.source.node == node_index {
+            self.port_flows[edge.source.port] += 1;
+            let source_port = &self.graph.layerless_nodes[node_index].ports[edge.source.port];
+            let new_target = if source_port.collector_type == Some(PortType::Output) {
+                if collectors.input_is_virtual {
+                    collectors.virtual_input_used = true;
+                }
+                collectors.input
+            } else {
+                edge.source.port
+            };
+            self.port_flows[new_target] += 1;
+        }
+
+        if edge.target.node == node_index {
+            self.port_flows[edge.target.port] -= 1;
+            let target_port = &self.graph.layerless_nodes[node_index].ports[edge.target.port];
+            let new_source = if target_port.collector_type == Some(PortType::Input) {
+                if collectors.output_is_virtual {
+                    collectors.virtual_output_used = true;
+                }
+                collectors.output
+            } else {
+                edge.target.port
+            };
+            self.port_flows[new_source] -= 1;
+        }
+    }
+
+    fn current_edge_violates_fixed_side_constraint(
+        &self,
+        node_index: usize,
+        edge_index: usize,
+    ) -> bool {
+        let Some(edge) = self.graph.edges.get(edge_index) else {
+            return false;
+        };
+        let reversed = self
+            .reversed_by_processor
+            .get(edge_index)
+            .copied()
+            .unwrap_or(false);
+        let (source, target) = if reversed {
+            (edge.target.node, edge.source.node)
+        } else {
+            (edge.source.node, edge.target.node)
+        };
+
+        (source == node_index
+            && matches!(
+                self.graph.layerless_nodes[target].layer_constraint,
+                LayerConstraint::Last | LayerConstraint::LastSeparate
+            ))
+            || (target == node_index
+                && matches!(
+                    self.graph.layerless_nodes[source].layer_constraint,
+                    LayerConstraint::First | LayerConstraint::FirstSeparate
+                ))
+    }
+}
+
+fn port_flow_matches_side(side: PortSide, net_flow: i128) -> bool {
+    match side {
+        PortSide::East => net_flow > 0,
+        PortSide::West => net_flow < 0,
+        PortSide::North | PortSide::South | PortSide::Undefined => false,
     }
 }
 
@@ -1263,21 +1554,148 @@ fn port_exists_in_graph(graph: &LGraph, port_ref: PortRef) -> bool {
 }
 
 pub fn join_long_edges(graph: &mut LGraph) {
-    let add_unnecessary_bendpoints = graph.options.unnecessary_bendpoints;
+    join_long_edges_observed(graph, &mut NoopLongEdgeJoinObserver);
+}
 
-    for layer_index in 0..graph.layers.len() {
-        let mut node_position = 0usize;
+trait LongEdgeJoinObserver {
+    fn visit_preflight_layer_node(&mut self) {}
 
-        while node_position < graph.layers[layer_index].nodes.len() {
-            let node_index = graph.layers[layer_index].nodes[node_position];
+    fn visit_layer_node(&mut self) {}
 
-            if graph.layerless_nodes[node_index].kind == LNodeKind::LongEdge {
-                join_long_edge_at(graph, node_index, add_unnecessary_bendpoints);
-                graph.layers[layer_index].nodes.remove(node_position);
-            } else {
-                node_position += 1;
+    fn pair_edges(&mut self) {}
+
+    fn visit_indexed_port(&mut self) {}
+
+    fn visit_indexed_incoming_edge(&mut self) {}
+
+    fn visit_fallback_incoming_edge(&mut self) {}
+
+    fn replace_target_slot(&mut self) {}
+
+    fn remove_dummy_input_edges(&mut self, _count: usize) {}
+
+    fn remove_dummy_output_edges(&mut self, _count: usize) {}
+}
+
+struct NoopLongEdgeJoinObserver;
+
+impl LongEdgeJoinObserver for NoopLongEdgeJoinObserver {}
+
+#[cfg(test)]
+#[derive(Debug, Default, PartialEq, Eq)]
+struct LongEdgeJoinWork {
+    preflight_layer_nodes_visited: usize,
+    layer_nodes_visited: usize,
+    edge_pairs: usize,
+    indexed_ports_visited: usize,
+    indexed_incoming_edges_visited: usize,
+    fallback_incoming_edges_visited: usize,
+    target_slots_replaced: usize,
+    dummy_input_edges_removed: usize,
+    dummy_output_edges_removed: usize,
+}
+
+#[cfg(test)]
+impl LongEdgeJoinObserver for LongEdgeJoinWork {
+    fn visit_preflight_layer_node(&mut self) {
+        self.preflight_layer_nodes_visited += 1;
+    }
+
+    fn visit_layer_node(&mut self) {
+        self.layer_nodes_visited += 1;
+    }
+
+    fn pair_edges(&mut self) {
+        self.edge_pairs += 1;
+    }
+
+    fn visit_indexed_port(&mut self) {
+        self.indexed_ports_visited += 1;
+    }
+
+    fn visit_indexed_incoming_edge(&mut self) {
+        self.indexed_incoming_edges_visited += 1;
+    }
+
+    fn visit_fallback_incoming_edge(&mut self) {
+        self.fallback_incoming_edges_visited += 1;
+    }
+
+    fn replace_target_slot(&mut self) {
+        self.target_slots_replaced += 1;
+    }
+
+    fn remove_dummy_input_edges(&mut self, count: usize) {
+        self.dummy_input_edges_removed += count;
+    }
+
+    fn remove_dummy_output_edges(&mut self, count: usize) {
+        self.dummy_output_edges_removed += count;
+    }
+}
+
+fn index_all_incoming_edges(
+    graph: &LGraph,
+    observer: &mut impl LongEdgeJoinObserver,
+) -> HashMap<usize, (PortRef, usize)> {
+    let mut positions = HashMap::with_capacity(graph.edges.len());
+    for (node_index, node) in graph.layerless_nodes.iter().enumerate() {
+        for (port_index, port) in node.ports.iter().enumerate() {
+            observer.visit_indexed_port();
+            let target = PortRef {
+                node: node_index,
+                port: port_index,
+            };
+            for (position, edge) in port.incoming_edges.iter().copied().enumerate() {
+                observer.visit_indexed_incoming_edge();
+                positions.insert(edge, (target, position));
             }
         }
+    }
+    positions
+}
+
+fn join_long_edges_observed(graph: &mut LGraph, observer: &mut impl LongEdgeJoinObserver) {
+    let add_unnecessary_bendpoints = graph.options.unnecessary_bendpoints;
+    let mut has_long_edge_dummy = false;
+    'preflight: for layer in &graph.layers {
+        for &node_index in &layer.nodes {
+            observer.visit_preflight_layer_node();
+            if graph.layerless_nodes[node_index].kind == LNodeKind::LongEdge {
+                has_long_edge_dummy = true;
+                break 'preflight;
+            }
+        }
+    }
+    if !has_long_edge_dummy {
+        return;
+    }
+
+    let mut incoming_edge_positions = index_all_incoming_edges(graph, observer);
+
+    for layer_index in 0..graph.layers.len() {
+        let mut layer_nodes = std::mem::take(&mut graph.layers[layer_index].nodes);
+        let mut retained_count = 0usize;
+
+        for node_position in 0..layer_nodes.len() {
+            let node_index = layer_nodes[node_position];
+            observer.visit_layer_node();
+            if graph.layerless_nodes[node_index].kind == LNodeKind::LongEdge {
+                join_long_edge_at_observed(
+                    graph,
+                    node_index,
+                    add_unnecessary_bendpoints,
+                    Some(&mut incoming_edge_positions),
+                    observer,
+                );
+            } else {
+                layer_nodes[retained_count] = node_index;
+                retained_count += 1;
+            }
+        }
+
+        layer_nodes.truncate(retained_count);
+        graph.layers[layer_index].nodes = layer_nodes;
     }
 }
 
@@ -2537,6 +2955,61 @@ pub fn join_long_edge_at(
     long_edge_dummy: usize,
     add_unnecessary_bendpoints: bool,
 ) {
+    join_long_edge_at_observed(
+        graph,
+        long_edge_dummy,
+        add_unnecessary_bendpoints,
+        None,
+        &mut NoopLongEdgeJoinObserver,
+    );
+}
+
+#[derive(Debug, Clone, Copy)]
+struct LongEdgeJoinPair {
+    surviving_edge: usize,
+    dropped_edge: usize,
+    dropped_target: PortRef,
+}
+
+fn index_join_pair_targets(
+    graph: &LGraph,
+    pairs: &[LongEdgeJoinPair],
+    observer: &mut impl LongEdgeJoinObserver,
+) -> HashMap<usize, (PortRef, usize)> {
+    let dropped_edges = pairs
+        .iter()
+        .map(|pair| pair.dropped_edge)
+        .collect::<HashSet<_>>();
+    let mut seen_target_ports = HashSet::with_capacity(pairs.len());
+    let mut positions = HashMap::with_capacity(pairs.len());
+
+    for target in pairs.iter().map(|pair| pair.dropped_target) {
+        if !seen_target_ports.insert(target) {
+            continue;
+        }
+        observer.visit_indexed_port();
+        for (position, edge) in graph.layerless_nodes[target.node].ports[target.port]
+            .incoming_edges
+            .iter()
+            .copied()
+            .enumerate()
+        {
+            observer.visit_indexed_incoming_edge();
+            if dropped_edges.contains(&edge) {
+                positions.insert(edge, (target, position));
+            }
+        }
+    }
+    positions
+}
+
+fn join_long_edge_at_observed(
+    graph: &mut LGraph,
+    long_edge_dummy: usize,
+    add_unnecessary_bendpoints: bool,
+    incoming_edge_positions: Option<&mut HashMap<usize, (PortRef, usize)>>,
+    observer: &mut impl LongEdgeJoinObserver,
+) {
     let Some(input_port) = first_port_on_side(graph, long_edge_dummy, PortSide::West) else {
         return;
     };
@@ -2544,22 +3017,121 @@ pub fn join_long_edge_at(
         return;
     };
 
-    let mut input_port_edges = graph.layerless_nodes[long_edge_dummy].ports[input_port]
+    let input_port_ref = PortRef {
+        node: long_edge_dummy,
+        port: input_port,
+    };
+    let output_port_ref = PortRef {
+        node: long_edge_dummy,
+        port: output_port,
+    };
+    let pair_count = graph.layerless_nodes[long_edge_dummy].ports[input_port]
         .incoming_edges
-        .clone();
-    let mut output_port_edges = graph.layerless_nodes[long_edge_dummy].ports[output_port]
-        .outgoing_edges
-        .clone();
+        .len()
+        .min(
+            graph.layerless_nodes[long_edge_dummy].ports[output_port]
+                .outgoing_edges
+                .len(),
+        );
+    if pair_count == 0 {
+        return;
+    }
 
-    while !input_port_edges.is_empty() && !output_port_edges.is_empty() {
-        let surviving_edge = input_port_edges.remove(0);
-        let dropped_edge = output_port_edges.remove(0);
-        join_long_edge_pair(
-            graph,
-            long_edge_dummy,
+    // ELK zips the existing input/output lists by index and keeps the input edge as the survivor.
+    // Reordering either list, or choosing the output edge as survivor, changes labels and geometry.
+    let mut pairs = Vec::with_capacity(pair_count);
+    for (&surviving_edge, &dropped_edge) in graph.layerless_nodes[long_edge_dummy].ports[input_port]
+        .incoming_edges
+        .iter()
+        .take(pair_count)
+        .zip(
+            graph.layerless_nodes[long_edge_dummy].ports[output_port]
+                .outgoing_edges
+                .iter()
+                .take(pair_count),
+        )
+    {
+        observer.pair_edges();
+        pairs.push(LongEdgeJoinPair {
             surviving_edge,
             dropped_edge,
-            add_unnecessary_bendpoints,
+            dropped_target: graph.edges[dropped_edge].target,
+        });
+    }
+
+    let mut local_incoming_edge_positions = None;
+    let incoming_edge_positions = match incoming_edge_positions {
+        Some(incoming_edge_positions) => incoming_edge_positions,
+        None => {
+            local_incoming_edge_positions.insert(index_join_pair_targets(graph, &pairs, observer))
+        }
+    };
+
+    // Replacing the dropped edge in place preserves its exact incoming-edge slot without the
+    // repeated shifts caused by insert-then-remove on the same target port.
+    for pair in &pairs {
+        let target_incoming = &mut graph.layerless_nodes[pair.dropped_target.node].ports
+            [pair.dropped_target.port]
+            .incoming_edges;
+        let dropped_target_position = incoming_edge_positions
+            .get(&pair.dropped_edge)
+            .and_then(|indexed| {
+                let (target, position) = *indexed;
+                (target == pair.dropped_target
+                    && target_incoming.get(position) == Some(&pair.dropped_edge))
+                .then_some(position)
+            })
+            .or_else(|| {
+                target_incoming.iter().position(|edge| {
+                    observer.visit_fallback_incoming_edge();
+                    *edge == pair.dropped_edge
+                })
+            })
+            .expect("long-edge output must remain attached to its recorded target port");
+        // ELK's ListIterator replacement keeps the surviving input edge in the exact slot of the
+        // paired output edge. The linear fallback repairs a stale internal index without silently
+        // appending and leaving the dropped edge attached.
+        target_incoming[dropped_target_position] = pair.surviving_edge;
+        let surviving_position = dropped_target_position;
+        incoming_edge_positions.remove(&pair.dropped_edge);
+        incoming_edge_positions.insert(
+            pair.surviving_edge,
+            (pair.dropped_target, surviving_position),
+        );
+        observer.replace_target_slot();
+    }
+
+    drop(
+        graph.layerless_nodes[input_port_ref.node].ports[input_port_ref.port]
+            .incoming_edges
+            .drain(..pair_count),
+    );
+    observer.remove_dummy_input_edges(pair_count);
+    for (position, edge) in graph.layerless_nodes[input_port_ref.node].ports[input_port_ref.port]
+        .incoming_edges
+        .iter()
+        .copied()
+        .enumerate()
+    {
+        observer.visit_indexed_incoming_edge();
+        incoming_edge_positions.insert(edge, (input_port_ref, position));
+    }
+    drop(
+        graph.layerless_nodes[output_port_ref.node].ports[output_port_ref.port]
+            .outgoing_edges
+            .drain(..pair_count),
+    );
+    observer.remove_dummy_output_edges(pair_count);
+
+    let unnecessary_bendpoint =
+        add_unnecessary_bendpoints.then(|| long_edge_dummy_anchor(graph, long_edge_dummy));
+    for pair in pairs {
+        join_long_edge_pair(
+            graph,
+            pair.surviving_edge,
+            pair.dropped_edge,
+            pair.dropped_target,
+            unnecessary_bendpoint,
         );
     }
 }
@@ -2573,25 +3145,17 @@ fn first_port_on_side(graph: &LGraph, node: usize, side: PortSide) -> Option<usi
 
 fn join_long_edge_pair(
     graph: &mut LGraph,
-    long_edge_dummy: usize,
     surviving_edge: usize,
     dropped_edge: usize,
-    add_unnecessary_bendpoints: bool,
+    dropped_target: PortRef,
+    unnecessary_bendpoint: Option<LPoint>,
 ) {
-    let dropped_target = graph.edges[dropped_edge].target;
-    let dropped_target_index = graph.layerless_nodes[dropped_target.node].ports
-        [dropped_target.port]
-        .incoming_edges
-        .iter()
-        .position(|edge| *edge == dropped_edge);
     let dropped_bend_points = graph.edges[dropped_edge].bend_points.clone();
     let dropped_labels = std::mem::take(&mut graph.edges[dropped_edge].labels);
 
-    graph.set_edge_target_at(surviving_edge, dropped_target, dropped_target_index);
-    graph.detach_edge(dropped_edge);
+    graph.edges[surviving_edge].target = dropped_target;
 
-    if add_unnecessary_bendpoints {
-        let unnecessary_bendpoint = long_edge_dummy_anchor(graph, long_edge_dummy);
+    if let Some(unnecessary_bendpoint) = unnecessary_bendpoint {
         graph.edges[surviving_edge]
             .bend_points
             .push(unnecessary_bendpoint);
@@ -3707,7 +4271,7 @@ mod tests {
     use super::*;
     use crate::graph::{InLayerConstraint, LLabel, LSize, PortType};
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, import_graph};
-    use crate::options::{ElkDirection, LayerConstraint, LayeredOptions};
+    use crate::options::{ElkDirection, LayerConstraint, LayeredOptions, PortConstraints};
     use crate::p2layers::layer_network_simplex;
 
     fn node(id: &str) -> ElkInputNode {
@@ -3734,6 +4298,7 @@ mod tests {
             label: None,
             minlen: 1,
             inside_self_loops_yo: false,
+            model_order: None,
             priority_direction: 0,
             priority_shortness: 0,
             priority_straightness: 0,
@@ -3786,6 +4351,105 @@ mod tests {
         assert_eq!(graph.edges[0].target.node, end);
         assert_eq!(graph.node_incoming_edges(end), vec![0]);
         assert!(graph.node_outgoing_edges(end).is_empty());
+    }
+
+    #[test]
+    fn constraint_reversal_candidates_follow_fixed_side_cascades() {
+        let mut graph = graph(
+            vec![node("A"), node("B"), node("C")],
+            vec![edge("B-A", "B", "A"), edge("C-B", "C", "B")],
+        );
+        for node_id in ["A", "B"] {
+            let node_index = graph
+                .layerless_nodes
+                .iter()
+                .position(|node| node.id == node_id)
+                .unwrap();
+            graph.layerless_nodes[node_index].port_constraints = PortConstraints::FixedSide;
+            for port in &mut graph.layerless_nodes[node_index].ports {
+                port.set_side(PortSide::East);
+            }
+        }
+
+        let mut candidates = Vec::new();
+        assert!(!visit_edge_and_layer_constraint_reversal_candidates(
+            &graph,
+            |edge| {
+                candidates.push(edge);
+                false
+            }
+        ));
+
+        let mut executed = graph.clone();
+        reverse_edges_for_edge_and_layer_constraints(&mut executed);
+        let reversed = executed
+            .edges
+            .iter()
+            .enumerate()
+            .filter_map(|(edge, data)| data.reversed.then_some(edge))
+            .collect::<Vec<_>>();
+
+        assert_eq!(candidates, reversed);
+        assert_eq!(
+            candidates
+                .iter()
+                .map(|&edge| graph.edges[edge].id.as_str())
+                .collect::<Vec<_>>(),
+            ["B-A", "C-B"]
+        );
+    }
+
+    #[test]
+    fn direct_reversal_does_not_admit_ineligible_fixed_collector_edges() {
+        let parallel_edge_count = 128usize;
+        let mut edges = (0..parallel_edge_count)
+            .map(|index| edge(&format!("F-U-{index}"), "F", "U"))
+            .collect::<Vec<_>>();
+        edges.push(edge("F-D", "F", "D"));
+        let mut first = node("D");
+        first.layer_constraint = Some(LayerConstraint::First);
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".to_string(),
+            options: LayeredOptions {
+                merge_edges: true,
+                ..LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down)
+            },
+            nodes: vec![node("F"), node("U"), first],
+            edges,
+        })
+        .unwrap();
+        let fixed = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "F")
+            .unwrap();
+        graph.layerless_nodes[fixed].port_constraints = PortConstraints::FixedSide;
+        for port in &mut graph.layerless_nodes[fixed].ports {
+            port.set_side(PortSide::East);
+        }
+
+        let mut candidates = Vec::new();
+        assert!(!visit_edge_and_layer_constraint_reversal_candidates(
+            &graph,
+            |edge| {
+                candidates.push(edge);
+                false
+            }
+        ));
+
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(graph.edges[candidates[0]].id, "F-D");
+
+        reverse_edges_for_edge_and_layer_constraints(&mut graph);
+        assert_eq!(graph.edges.iter().filter(|edge| edge.reversed).count(), 1);
+        assert!(
+            graph
+                .edges
+                .iter()
+                .find(|edge| edge.id == "F-D")
+                .unwrap()
+                .reversed
+        );
     }
 
     #[test]
@@ -4318,6 +4982,132 @@ mod tests {
             graph.layerless_nodes[original_target.node].ports[original_target.port].incoming_edges,
             vec![long_edge, tail_edge]
         );
+    }
+
+    #[test]
+    fn long_edge_joiner_work_and_order_are_linear_in_fanout() {
+        for pair_count in [1usize, 8, 64] {
+            let mut fixture = long_edge_join_fanout_fixture(pair_count);
+            let mut work = LongEdgeJoinWork::default();
+            let retained_layer_nodes = fixture.graph.layers[0].nodes.clone();
+
+            join_long_edges_observed(&mut fixture.graph, &mut work);
+
+            // The fixture has two ordinary source nodes per pair plus the dummy and target.
+            assert_eq!(work.preflight_layer_nodes_visited, pair_count * 2 + 1);
+            assert_eq!(work.layer_nodes_visited, pair_count * 2 + 2);
+            assert_eq!(work.edge_pairs, pair_count);
+            assert_eq!(work.indexed_ports_visited, pair_count * 2 + 3);
+            assert_eq!(work.indexed_incoming_edges_visited, pair_count * 3);
+            assert_eq!(work.fallback_incoming_edges_visited, 0);
+            assert_eq!(work.target_slots_replaced, pair_count);
+            assert_eq!(work.dummy_input_edges_removed, pair_count);
+            assert_eq!(work.dummy_output_edges_removed, pair_count);
+
+            let expected_incoming = fixture
+                .target_slot_survivors
+                .iter()
+                .zip(&fixture.guard_edges)
+                .flat_map(|(&surviving, &guard)| [surviving, guard])
+                .collect::<Vec<_>>();
+            assert_eq!(
+                fixture.graph.layerless_nodes[fixture.target.node].ports[fixture.target.port]
+                    .incoming_edges,
+                expected_incoming
+            );
+            assert!(
+                !fixture
+                    .graph
+                    .layers
+                    .iter()
+                    .any(|layer| layer.nodes.contains(&fixture.dummy))
+            );
+            assert_eq!(fixture.graph.layers[0].nodes, retained_layer_nodes);
+
+            for pair in &fixture.joined_pairs {
+                let surviving = pair.surviving_edge;
+                let dropped = pair.dropped_edge;
+                assert_eq!(fixture.graph.edges[surviving].target, fixture.target);
+                assert!(fixture.graph.edge_source_attached(surviving));
+                assert!(fixture.graph.edge_target_attached(surviving));
+                assert!(!fixture.graph.edge_source_attached(dropped));
+                assert!(!fixture.graph.edge_target_attached(dropped));
+                assert_eq!(
+                    fixture.graph.edges[surviving].bend_points,
+                    vec![
+                        LPoint {
+                            x: pair.surviving_index as f64,
+                            y: 10.0,
+                        },
+                        LPoint { x: 50.0, y: 70.0 },
+                        LPoint {
+                            x: pair.dropped_index as f64,
+                            y: 20.0,
+                        },
+                        LPoint {
+                            x: pair.dropped_index as f64,
+                            y: 30.0,
+                        },
+                    ]
+                );
+                assert_eq!(
+                    fixture.graph.edges[surviving]
+                        .labels
+                        .iter()
+                        .map(|label| label.text.clone())
+                        .collect::<Vec<_>>(),
+                    vec![
+                        format!("drop-{}-a", pair.dropped_index),
+                        format!("drop-{}-b", pair.dropped_index),
+                    ]
+                );
+                assert!(fixture.graph.edges[dropped].labels.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn long_edge_joiner_skips_global_index_when_no_dummy_exists() {
+        let mut graph = graph(vec![node("A"), node("B")], vec![edge("A-B", "A", "B")]);
+        layer_network_simplex(&mut graph);
+        let expected_layers = graph.layers.clone();
+        let mut work = LongEdgeJoinWork::default();
+
+        join_long_edges_observed(&mut graph, &mut work);
+
+        assert_eq!(work.preflight_layer_nodes_visited, 2);
+        assert_eq!(work.layer_nodes_visited, 0);
+        assert_eq!(work.indexed_ports_visited, 0);
+        assert_eq!(work.indexed_incoming_edges_visited, 0);
+        assert_eq!(work.fallback_incoming_edges_visited, 0);
+        assert_eq!(graph.layers, expected_layers);
+    }
+
+    #[test]
+    fn long_edge_joiner_recovers_exact_target_slots_from_a_stale_index() {
+        let mut fixture = long_edge_join_fanout_fixture(8);
+        let mut stale_positions = HashMap::new();
+        let mut work = LongEdgeJoinWork::default();
+
+        join_long_edge_at_observed(
+            &mut fixture.graph,
+            fixture.dummy,
+            true,
+            Some(&mut stale_positions),
+            &mut work,
+        );
+
+        let target_incoming = &fixture.graph.layerless_nodes[fixture.target.node].ports
+            [fixture.target.port]
+            .incoming_edges;
+        let expected_incoming = fixture
+            .target_slot_survivors
+            .iter()
+            .zip(&fixture.guard_edges)
+            .flat_map(|(&surviving, &guard)| [surviving, guard])
+            .collect::<Vec<_>>();
+        assert_eq!(target_incoming, &expected_incoming);
+        assert!(work.fallback_incoming_edges_visited > 0);
     }
 
     #[test]
@@ -5238,5 +6028,163 @@ mod tests {
                 compound_segment: None,
             })
             .unwrap()
+    }
+
+    struct LongEdgeJoinFanoutFixture {
+        graph: LGraph,
+        dummy: usize,
+        target: PortRef,
+        joined_pairs: Vec<ExpectedLongEdgeJoinPair>,
+        target_slot_survivors: Vec<usize>,
+        guard_edges: Vec<usize>,
+    }
+
+    struct ExpectedLongEdgeJoinPair {
+        surviving_edge: usize,
+        dropped_edge: usize,
+        surviving_index: usize,
+        dropped_index: usize,
+    }
+
+    fn long_edge_join_fanout_fixture(pair_count: usize) -> LongEdgeJoinFanoutFixture {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph.options.unnecessary_bendpoints = true;
+
+        let dummy = graph.layerless_nodes.len();
+        let mut dummy_node = LNode::new("long-edge", 0.0, 0.0, None);
+        dummy_node.kind = LNodeKind::LongEdge;
+        dummy_node.position = LPoint { x: 50.0, y: 70.0 };
+        graph.layerless_nodes.push(dummy_node);
+        let dummy_input = graph
+            .add_port(dummy, PortType::Input, PortSide::West, LPoint::default())
+            .unwrap();
+        let dummy_output = graph
+            .add_port(dummy, PortType::Output, PortSide::East, LPoint::default())
+            .unwrap();
+
+        let target_node = push_normal_node(&mut graph, "target");
+        let target = PortRef {
+            node: target_node,
+            port: 0,
+        };
+
+        let mut surviving_edges = Vec::with_capacity(pair_count);
+        let mut dropped_edges = Vec::with_capacity(pair_count);
+        let mut guard_edges = Vec::with_capacity(pair_count);
+        for pair_index in 0..pair_count {
+            let source = push_output_node(&mut graph, &format!("source-{pair_index}"));
+            let guard_source = push_output_node(&mut graph, &format!("guard-source-{pair_index}"));
+            graph.set_node_layer(source, 0);
+            graph.set_node_layer(guard_source, 0);
+
+            let surviving = add_test_edge(
+                &mut graph,
+                &format!("surviving-{pair_index}"),
+                source,
+                0,
+                dummy_input.node,
+                dummy_input.port,
+            );
+            graph.edges[surviving].bend_points.push(LPoint {
+                x: pair_index as f64,
+                y: 10.0,
+            });
+            surviving_edges.push(surviving);
+
+            let dropped = add_test_edge(
+                &mut graph,
+                &format!("dropped-{pair_index}"),
+                dummy_output.node,
+                dummy_output.port,
+                target.node,
+                target.port,
+            );
+            graph.edges[dropped].bend_points.extend([
+                LPoint {
+                    x: pair_index as f64,
+                    y: 20.0,
+                },
+                LPoint {
+                    x: pair_index as f64,
+                    y: 30.0,
+                },
+            ]);
+            graph.edges[dropped].labels.push(LLabel::new(
+                format!("drop-{pair_index}-a"),
+                10.0,
+                5.0,
+            ));
+            graph.edges[dropped].labels.push(LLabel::new(
+                format!("drop-{pair_index}-b"),
+                10.0,
+                5.0,
+            ));
+            dropped_edges.push(dropped);
+
+            let guard = add_test_edge(
+                &mut graph,
+                &format!("guard-{pair_index}"),
+                guard_source,
+                0,
+                target.node,
+                target.port,
+            );
+            guard_edges.push(guard);
+        }
+
+        let mut input_order = surviving_edges
+            .iter()
+            .copied()
+            .enumerate()
+            .collect::<Vec<_>>();
+        input_order.reverse();
+        let mut output_order = dropped_edges
+            .iter()
+            .copied()
+            .enumerate()
+            .collect::<Vec<_>>();
+        output_order.rotate_left(pair_count / 3);
+        graph.layerless_nodes[dummy_input.node].ports[dummy_input.port].incoming_edges =
+            input_order.iter().map(|(_, edge)| *edge).collect();
+        graph.layerless_nodes[dummy_output.node].ports[dummy_output.port].outgoing_edges =
+            output_order.iter().map(|(_, edge)| *edge).collect();
+
+        let mut target_slot_survivors = vec![usize::MAX; pair_count];
+        let joined_pairs = input_order
+            .into_iter()
+            .zip(output_order)
+            .map(
+                |((surviving_index, surviving_edge), (dropped_index, dropped_edge))| {
+                    target_slot_survivors[dropped_index] = surviving_edge;
+                    ExpectedLongEdgeJoinPair {
+                        surviving_edge,
+                        dropped_edge,
+                        surviving_index,
+                        dropped_index,
+                    }
+                },
+            )
+            .collect();
+
+        graph.set_node_layer(dummy, 1);
+        graph.set_node_layer(target.node, 2);
+
+        LongEdgeJoinFanoutFixture {
+            graph,
+            dummy,
+            target,
+            joined_pairs,
+            target_slot_survivors,
+            guard_edges,
+        }
+    }
+
+    fn push_output_node(graph: &mut LGraph, id: &str) -> usize {
+        let node = graph.layerless_nodes.len();
+        graph.layerless_nodes.push(LNode::new(id, 80.0, 40.0, None));
+        graph
+            .add_port(node, PortType::Output, PortSide::East, LPoint::default())
+            .unwrap();
+        node
     }
 }

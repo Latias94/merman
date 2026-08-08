@@ -1,5 +1,6 @@
 use super::activation::SequenceActivationState;
 use super::constants::SEQUENCE_MESSAGE_WRAP_PADDING_SIDES;
+use super::message_metrics::SequenceMessageBoundMetrics;
 use super::metrics::{
     SequenceDrawnTextNode, SequenceMathHeightMode, measure_drawn_svg_like_with_html_br,
     measure_sequence_label_for_layout, measure_svg_like_with_html_br,
@@ -38,6 +39,7 @@ pub(super) struct SequenceMessageHorizontalContext<'a> {
     pub(super) is_neo: bool,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) msg_text_style: &'a TextStyle,
+    pub(super) premeasured_bound: Option<SequenceMessageBoundMetrics>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -73,6 +75,8 @@ pub(super) fn sequence_message_horizontal_model(
         .actor_bounds(to_index, ctx.actor_centers_x[to_index]);
     let text_width = if msg.wrap || msg.message_text().is_empty() {
         0.0
+    } else if let Some(metrics) = ctx.premeasured_bound {
+        metrics.width()
     } else {
         measure_svg_like_with_html_br(ctx.measurer, msg.message_text(), ctx.msg_text_style)
             .0
@@ -210,6 +214,7 @@ pub(super) struct SequenceMessageLayoutContext<'a> {
     pub(super) msg_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    pub(super) premeasured_bound: Option<SequenceMessageBoundMetrics>,
     pub(super) created_actor_index: Option<usize>,
     pub(super) destroyed_from_index: Option<usize>,
     pub(super) destroyed_to_index: Option<usize>,
@@ -254,6 +259,7 @@ pub(super) fn layout_sequence_message(
             is_neo: ctx.is_neo,
             measurer: ctx.measurer,
             msg_text_style: ctx.msg_text_style,
+            premeasured_bound: ctx.premeasured_bound,
         },
     )?;
     let mut startx = horizontal.start_x;
@@ -287,7 +293,18 @@ pub(super) fn layout_sequence_message(
     );
     let effective_text = wrapped_text.as_deref().unwrap_or(text);
 
-    let vertical = message_vertical_geometry(effective_text, is_math_message, is_self, &ctx);
+    let premeasured_bound = if wrapped_text.is_none() && !is_math_message {
+        ctx.premeasured_bound
+    } else {
+        None
+    };
+    let vertical = message_vertical_geometry(
+        effective_text,
+        is_math_message,
+        is_self,
+        premeasured_bound,
+        &ctx,
+    );
 
     let x1 = startx;
     let x2 = stopx;
@@ -504,10 +521,13 @@ fn message_vertical_geometry(
     effective_text: &str,
     is_math_message: bool,
     is_self: bool,
+    premeasured_bound: Option<SequenceMessageBoundMetrics>,
     ctx: &SequenceMessageLayoutContext<'_>,
 ) -> SequenceMessageVerticalGeometry {
     let (text_width, text_height) = if effective_text.is_empty() {
         (0.0, 0.0)
+    } else if let Some(metrics) = premeasured_bound {
+        (metrics.width(), metrics.height())
     } else {
         measure_sequence_label_for_layout(
             ctx.measurer,

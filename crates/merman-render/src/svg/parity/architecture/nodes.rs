@@ -12,7 +12,7 @@ use super::icons::{
     arch_icon_needs_id_scope, write_arch_icon_svg, write_arch_icon_svg_with_registry,
 };
 use super::labels::{
-    svg_line_tspan_bbox_width_px, wrap_svg_words_to_lines, write_architecture_service_title,
+    svg_line_formatted_bbox_width_px, wrap_svg_words_to_lines, write_architecture_service_title,
     write_svg_text_lines,
 };
 use super::model::ArchitectureModelAccess;
@@ -243,7 +243,7 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
                 let title_bbox_w = lines
                     .iter()
                     .map(|line| {
-                        svg_line_tspan_bbox_width_px(line, text_measurer, &settings.text_style)
+                        svg_line_formatted_bbox_width_px(line, text_measurer, &settings.text_style)
                     })
                     .fold(0.0_f64, f64::max);
                 if title_bbox_w.is_finite() && title_bbox_w > 0.0 {

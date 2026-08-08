@@ -1,0 +1,82 @@
+{
+  "schema_version": 2,
+  "lane_id": "flowchart-svg-label-artifact-memory",
+  "workload": "flowchart-non-markdown-svg-node-label-prepare-v1",
+  "evidence_class": "candidate-bound",
+  "candidate_admission": true,
+  "probe": {
+    "protocol_schema_version": 3,
+    "package": "merman",
+    "package_manifest": "crates/merman/Cargo.toml",
+    "bench": "flowchart_svg_label_memory",
+    "features": [
+      "svg"
+    ],
+    "default_features": false,
+    "inputs": [
+      {
+        "path": "crates/merman/benches/flowchart_svg_label_memory.rs",
+        "sha256": "e23f66e6c0f240dc3a1ef043353132f5b88b528637126ed26f0619bca75daf1c"
+      },
+      {
+        "path": "crates/merman/benches/native_memory/allocator.rs",
+        "sha256": "934c9e450d67f0fced79288e02b3056791120107dcd05f7038441c2516ada650"
+      },
+      {
+        "path": "crates/merman/Cargo.toml",
+        "sha256": "095116c7a09feaa853849f73aada40ec0165de97f5af0b1c19d0beec3aca9354"
+      },
+      {
+        "path": "Cargo.lock",
+        "sha256": "8716a18c0c38734f9b9e6ea2047c5d8d35d1540e115f690df90eb97891a37cef"
+      }
+    ]
+  },
+  "scale": {
+    "dimension": "projected_node_label_count",
+    "units_per_scale": 1
+  },
+  "semantic_response": {
+    "scale_field": "projected_node_label_count",
+    "operation_output_sha256": "940be12b7e2e58603380f52bbfcec8e42baf12d985832f0c966a4eade71312ca",
+    "zero_output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "operation": {
+      "kind": "flowchart-prepared-render-v1",
+      "label_profile": "flowchart-non-markdown-svg-node-v1",
+      "metadata_diagram_type_matches": true,
+      "prepared_family_flowchart": true,
+      "html_labels_disabled": true,
+      "prepared_render_alive_at_checkpoint": true,
+      "projected_node_labels_match_workload": true,
+      "unique_projected_node_labels": true
+    },
+    "zero": {
+      "kind": "flowchart-prepared-render-v1",
+      "label_profile": "flowchart-non-markdown-svg-node-v1",
+      "metadata_diagram_type_matches": false,
+      "prepared_family_flowchart": false,
+      "html_labels_disabled": false,
+      "prepared_render_alive_at_checkpoint": false,
+      "projected_node_labels_match_workload": false,
+      "unique_projected_node_labels": false
+    }
+  },
+  "metrics": {
+    "allocation_count": {
+      "slope_cap": 1.25,
+      "max_scale_cap": 40000
+    },
+    "allocated_bytes": {
+      "slope_cap": 1.25,
+      "max_scale_cap": 5746688
+    },
+    "peak_growth_bytes": {
+      "slope_cap": 1.25,
+      "max_scale_cap": 1531904
+    },
+    "retained_growth_bytes": {
+      "slope_cap": 1.25,
+      "max_scale_cap": 524288
+    }
+  }
+}

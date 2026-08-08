@@ -71,9 +71,9 @@ pub use merman_render::resources::{
     CLI_DEFAULT_RESOURCE_PROFILE, ClassComplexity, FlowchartComplexity,
     GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, MindmapComplexity, RenderResourceLimitId,
     RenderResourcePolicy, RenderResourceProfile, RenderResourceProfileDescriptor,
-    ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId, ResourceLimitOverride,
-    ResourceLimitOverrideError, ResourceLimitPhase, resource_limit_descriptors,
-    resource_profile_descriptors,
+    ResourceLimitCause, ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId,
+    ResourceLimitOverride, ResourceLimitOverrideError, ResourceLimitPhase,
+    resource_limit_descriptors, resource_profile_descriptors,
 };
 pub use merman_render::svg::{
     CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor, IconPack,
@@ -941,6 +941,8 @@ mod svg_pipeline_tests {
 
         assert!(readable.svg().contains("data-merman-foreignobject"));
         assert!(wrapped_count(&readable) > wrapped_count(&plain));
+        assert!(plain.report().layout_work_units() > 0);
+        assert!(readable.report().layout_work_units() >= plain.report().layout_work_units());
         assert_eq!(
             readable_renderer.render_svg_sync(source).unwrap().unwrap(),
             readable.svg(),

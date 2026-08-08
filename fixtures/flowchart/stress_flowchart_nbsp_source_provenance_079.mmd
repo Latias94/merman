@@ -1,0 +1,26 @@
+%%{init: {"flowchart": {"htmlLabels": true, "wrappingWidth": 200}} }%%
+flowchart TB
+  Direct[" Direct "]
+  Entity["&nbsp;Entity&nbsp;"]
+  Mixed[" &nbsp;Mixed&nbsp; "]
+  Internal["A B"]
+  DirectOnly[" "]
+  EntityOnly["&nbsp;"]
+  Copyright["&copy; Copyright"]
+  Infinity["&infin; Infinity"]
+  MultiCodepoint["&NotEqualTilde; Multi"]
+  EscapedMarkup["&lt;b&gt; literal"]
+  Nested["&amp;lt; nested &amp;amp;"]
+  Shape@{ label: " &nbsp;Shape&nbsp; ", labelType: "string", shape: "rect" }
+
+  Direct -->|" Text edge "| Entity
+  Entity -->|"&nbsp;Entity edge&nbsp;"| Mixed
+  Mixed -->|"` Markdown edge `"| Internal
+  Internal -->|" "| DirectOnly
+  DirectOnly -->|"&nbsp;"| EntityOnly
+  EntityOnly --> Copyright --> Infinity --> MultiCodepoint --> EscapedMarkup --> Nested --> Shape
+
+  subgraph SG[" &nbsp;Group&nbsp; "]
+    SubNode["inside"]
+  end
+  Shape --> SubNode

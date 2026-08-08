@@ -522,7 +522,7 @@ function measureHtmlProbe(
   probe.style.width = styleOverride.width;
   probe.style.maxWidth = styleOverride.maxWidth;
   probe.style.whiteSpace = styleOverride.whiteSpace;
-  probe.textContent = text;
+  setHtmlProbeText(probe, text);
   const rect = probe.getBoundingClientRect();
   const lineHeight = Math.max(1, parseFloat(probe.style.lineHeight) || 1);
   const height = Math.max(lineHeight, rect.height);
@@ -532,6 +532,26 @@ function measureHtmlProbe(
     height,
     line_count: Math.max(1, Math.round(height / lineHeight)),
   };
+}
+
+function setHtmlProbeText(probe: HTMLDivElement, text: string): void {
+  const lines = splitExplicitLines(text);
+  if (lines.length === 1) {
+    probe.textContent = lines[0];
+    return;
+  }
+
+  // Mermaid 11.16 measures the sanitized HTML produced by `createText.ts:addHtmlSpan`, where
+  // explicit line breaks are real `<br>` elements. Assigning the normalized `\n` carrier to
+  // `textContent` under `white-space: nowrap` would collapse it before the natural-size check.
+  const children: Node[] = [];
+  for (const [index, line] of lines.entries()) {
+    if (index > 0) {
+      children.push(document.createElement("br"));
+    }
+    children.push(document.createTextNode(line));
+  }
+  probe.replaceChildren(...children);
 }
 
 function normalizeMeasureMaxWidth(

@@ -1,5 +1,544 @@
 use dugong::graphlib::{Graph, GraphOptions};
-use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, Point, RankDir, layout};
+use dugong::{
+    EdgeLabel, GraphLabel, LabelPos, LayoutError, NodeLabel, Point, RankDir, WorkControl,
+    WorkError, layout, layout_controlled,
+};
+
+#[derive(Default)]
+struct RecordingWorkControl {
+    charges: Vec<usize>,
+    remaining: Option<usize>,
+    reject_at_call: Option<usize>,
+}
+
+impl RecordingWorkControl {
+    fn with_limit(limit: usize) -> Self {
+        Self {
+            remaining: Some(limit),
+            ..Self::default()
+        }
+    }
+
+    fn reject_at(call: usize) -> Self {
+        Self {
+            reject_at_call: Some(call),
+            ..Self::default()
+        }
+    }
+
+    fn total(&self) -> usize {
+        self.charges.iter().copied().sum()
+    }
+}
+
+impl WorkControl for RecordingWorkControl {
+    fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+        self.charges.push(units);
+        if self.reject_at_call == Some(self.charges.len()) {
+            return Err(WorkError::Interrupted);
+        }
+        let Some(remaining) = self.remaining else {
+            return Ok(());
+        };
+        let Some(next) = remaining.checked_sub(units) else {
+            return Err(WorkError::Interrupted);
+        };
+        self.remaining = Some(next);
+        Ok(())
+    }
+}
+
+fn controlled_budget_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+    let mut graph = Graph::new(GraphOptions {
+        multigraph: true,
+        compound: true,
+        ..Default::default()
+    });
+    graph.set_graph(GraphLabel::default());
+    graph.set_default_edge_label(EdgeLabel::default);
+    for id in ["a", "b", "c"] {
+        graph.set_node(
+            id,
+            NodeLabel {
+                width: 40.0,
+                height: 20.0,
+                x: Some(-10.0),
+                y: Some(-20.0),
+                ..Default::default()
+            },
+        );
+    }
+    graph.set_edge_with_label(
+        "a",
+        "b",
+        EdgeLabel {
+            width: 12.0,
+            height: 8.0,
+            points: vec![Point { x: -1.0, y: -2.0 }],
+            ..Default::default()
+        },
+    );
+    graph.set_edge("b", "c");
+    graph.graph_mut().width = -30.0;
+    graph.graph_mut().height = -40.0;
+    graph
+}
+
+fn controlled_self_loop_graph(rankdir: RankDir) -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+    let mut graph = Graph::new(GraphOptions {
+        multigraph: true,
+        compound: true,
+        ..Default::default()
+    });
+    graph.set_graph(GraphLabel {
+        rankdir,
+        nodesep: 50.0,
+        ranksep: 50.0,
+        edgesep: 75.0,
+        ..Default::default()
+    });
+    graph.set_default_edge_label(EdgeLabel::default);
+    graph.set_node(
+        "a",
+        NodeLabel {
+            width: 100.0,
+            height: 80.0,
+            ..Default::default()
+        },
+    );
+    graph.set_edge_with_label(
+        "a",
+        "a",
+        EdgeLabel {
+            width: 50.0,
+            height: 30.0,
+            ..Default::default()
+        },
+    );
+    graph
+}
+
+fn assert_budget_graph_layout_eq(
+    left: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    right: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) {
+    let left_options = left.options();
+    let right_options = right.options();
+    assert_eq!(left_options.multigraph, right_options.multigraph);
+    assert_eq!(left_options.compound, right_options.compound);
+    assert_eq!(left_options.directed, right_options.directed);
+
+    let left_graph = left.graph();
+    let right_graph = right.graph();
+    assert_eq!(left_graph.rankdir, right_graph.rankdir);
+    assert_eq!(left_graph.nodesep, right_graph.nodesep);
+    assert_eq!(left_graph.ranksep, right_graph.ranksep);
+    assert_eq!(left_graph.edgesep, right_graph.edgesep);
+    assert_eq!(left_graph.marginx, right_graph.marginx);
+    assert_eq!(left_graph.marginy, right_graph.marginy);
+    assert_eq!(left_graph.width, right_graph.width);
+    assert_eq!(left_graph.height, right_graph.height);
+    assert_eq!(left_graph.align, right_graph.align);
+    assert_eq!(left_graph.ranker, right_graph.ranker);
+    assert_eq!(left_graph.acyclicer, right_graph.acyclicer);
+    assert_eq!(left_graph.dummy_chains, right_graph.dummy_chains);
+    assert_eq!(left_graph.nesting_root, right_graph.nesting_root);
+    assert_eq!(left_graph.node_rank_factor, right_graph.node_rank_factor);
+
+    assert_eq!(left.node_ids(), right.node_ids());
+    for id in left.node_ids() {
+        assert_eq!(left.node(&id), right.node(&id));
+        assert_eq!(left.parent(&id), right.parent(&id));
+        assert_eq!(left.children(&id), right.children(&id));
+    }
+    assert_eq!(left.edge_keys(), right.edge_keys());
+    for key in left.edge_keys() {
+        assert_eq!(left.edge_by_key(&key), right.edge_by_key(&key));
+    }
+}
+
+#[test]
+fn controlled_layout_records_work_and_matches_compatibility_output() {
+    let mut compatibility = controlled_budget_graph();
+    layout(&mut compatibility).unwrap();
+
+    let mut controlled = controlled_budget_graph();
+    let mut recorder = RecordingWorkControl::default();
+    layout_controlled(&mut controlled, &mut recorder).unwrap();
+
+    assert!(!recorder.charges.is_empty());
+    assert!(recorder.total() > 0);
+    assert_budget_graph_layout_eq(&compatibility, &controlled);
+}
+
+#[test]
+fn controlled_layout_honors_below_equal_and_above_work_boundaries() {
+    let mut measured = controlled_budget_graph();
+    let mut recorder = RecordingWorkControl::default();
+    layout_controlled(&mut measured, &mut recorder).unwrap();
+    let exact = recorder.total();
+    assert!(exact > 0);
+
+    let mut below = controlled_budget_graph();
+    let mut below_control = RecordingWorkControl::with_limit(exact - 1);
+    assert_eq!(
+        layout_controlled(&mut below, &mut below_control),
+        Err(LayoutError::Work(WorkError::Interrupted))
+    );
+    let initial = controlled_budget_graph();
+    assert_budget_graph_layout_eq(&below, &initial);
+
+    for limit in [exact, exact + 1] {
+        let mut graph = controlled_budget_graph();
+        let mut control = RecordingWorkControl::with_limit(limit);
+        layout_controlled(&mut graph, &mut control).unwrap();
+        assert_budget_graph_layout_eq(&measured, &graph);
+    }
+}
+
+#[test]
+fn controlled_self_loop_layout_is_transactional_at_the_exact_boundary() {
+    for rankdir in [RankDir::TB, RankDir::BT, RankDir::LR, RankDir::RL] {
+        let mut measured = controlled_self_loop_graph(rankdir);
+        let mut recorder = RecordingWorkControl::default();
+        layout_controlled(&mut measured, &mut recorder).unwrap();
+        let exact = recorder.total();
+        assert!(exact > 0);
+
+        let initial = controlled_self_loop_graph(rankdir);
+        let mut rejected = controlled_self_loop_graph(rankdir);
+        let mut below = RecordingWorkControl::with_limit(exact - 1);
+        assert_eq!(
+            layout_controlled(&mut rejected, &mut below),
+            Err(LayoutError::Work(WorkError::Interrupted))
+        );
+        assert_budget_graph_layout_eq(&rejected, &initial);
+
+        let mut admitted = controlled_self_loop_graph(rankdir);
+        let mut exact_control = RecordingWorkControl::with_limit(exact);
+        layout_controlled(&mut admitted, &mut exact_control).unwrap();
+        assert_eq!(exact_control.remaining, Some(0));
+        assert_budget_graph_layout_eq(&admitted, &measured);
+    }
+}
+
+#[test]
+fn controlled_layout_stops_after_the_first_rejected_tranche() {
+    let mut graph = controlled_budget_graph();
+    let mut control = RecordingWorkControl::reject_at(3);
+    assert_eq!(
+        layout_controlled(&mut graph, &mut control),
+        Err(LayoutError::Work(WorkError::Interrupted))
+    );
+    assert_eq!(control.charges.len(), 3);
+}
+
+#[test]
+fn controlled_layout_accepts_a_normal_250_node_sparse_graph() {
+    fn sparse_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        let mut graph = Graph::new(GraphOptions {
+            multigraph: true,
+            compound: true,
+            ..Default::default()
+        });
+        graph.set_graph(GraphLabel::default());
+        graph.set_default_edge_label(EdgeLabel::default);
+        for index in 0..250 {
+            graph.set_node(
+                format!("n{index}"),
+                NodeLabel {
+                    width: 40.0,
+                    height: 20.0,
+                    ..Default::default()
+                },
+            );
+            if index > 0 {
+                graph.set_edge(format!("n{}", index - 1), format!("n{index}"));
+            }
+        }
+        graph
+    }
+
+    const LIMIT: usize = 125_000;
+
+    let mut graph = sparse_graph();
+    let mut control = RecordingWorkControl::default();
+    layout_controlled(&mut graph, &mut control)
+        .expect("a normal sparse graph fits the constrained profile budget");
+
+    assert!(
+        control.total() <= LIMIT,
+        "sparse graph work was {}",
+        control.total()
+    );
+    assert!(graph.nodes().all(|id| {
+        graph
+            .node(id)
+            .is_some_and(|node| node.x.is_some() && node.y.is_some())
+    }));
+
+    let mut limited_graph = sparse_graph();
+    let mut limited = RecordingWorkControl::with_limit(LIMIT);
+    layout_controlled(&mut limited_graph, &mut limited)
+        .expect("the constrained profile must admit the measured sparse graph");
+    assert_budget_graph_layout_eq(&graph, &limited_graph);
+}
+
+#[test]
+fn controlled_layout_accepts_a_normal_250_node_compound_graph() {
+    fn compound_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        let mut graph = Graph::new(GraphOptions {
+            multigraph: true,
+            compound: true,
+            ..Default::default()
+        });
+        graph.set_graph(GraphLabel::default());
+        graph.set_default_edge_label(EdgeLabel::default);
+        for cluster in 0..10 {
+            graph.set_node(format!("cluster{cluster}"), NodeLabel::default());
+        }
+        for index in 0..240 {
+            let id = format!("n{index}");
+            graph.set_node(
+                id.clone(),
+                NodeLabel {
+                    width: 40.0,
+                    height: 20.0,
+                    ..Default::default()
+                },
+            );
+            graph.set_parent(id.clone(), format!("cluster{}", index / 24));
+            if index > 0 {
+                graph.set_edge("n0", id);
+            }
+        }
+        graph
+    }
+
+    const LIMIT: usize = 300_000;
+
+    let mut graph = compound_graph();
+    let mut control = RecordingWorkControl::default();
+    layout_controlled(&mut graph, &mut control)
+        .expect("a normal compound graph fits the default profile budget");
+
+    assert!(
+        control.total() <= LIMIT,
+        "compound graph work was {}",
+        control.total()
+    );
+    assert!(graph.nodes().all(|id| {
+        graph
+            .node(id)
+            .is_some_and(|node| node.x.is_some() && node.y.is_some())
+    }));
+
+    let mut limited_graph = compound_graph();
+    let mut limited = RecordingWorkControl::with_limit(LIMIT);
+    layout_controlled(&mut limited_graph, &mut limited)
+        .expect("the default profile must admit the measured compound graph");
+    assert_budget_graph_layout_eq(&graph, &limited_graph);
+}
+
+#[test]
+fn controlled_layout_arithmetic_failure_preserves_the_entire_caller_graph() {
+    fn overflow_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        let mut graph = Graph::new(GraphOptions {
+            multigraph: true,
+            compound: true,
+            ..Default::default()
+        });
+        graph.set_graph(GraphLabel::default());
+        graph.set_default_edge_label(EdgeLabel::default);
+        graph.set_node("cluster", NodeLabel::default());
+        graph.set_node("a", NodeLabel::default());
+        graph.set_node("b", NodeLabel::default());
+        graph.set_parent("a", "cluster");
+        graph.set_edge_with_label(
+            "a",
+            "b",
+            EdgeLabel {
+                minlen: usize::MAX,
+                ..Default::default()
+            },
+        );
+        graph
+    }
+
+    let mut graph = overflow_graph();
+    let initial = overflow_graph();
+    let mut control = RecordingWorkControl::default();
+
+    assert_eq!(
+        layout_controlled(&mut graph, &mut control),
+        Err(LayoutError::Work(WorkError::ArithmeticOverflow))
+    );
+    assert_budget_graph_layout_eq(&graph, &initial);
+
+    let mut compatibility = overflow_graph();
+    assert_eq!(
+        layout(&mut compatibility),
+        Err(LayoutError::Work(WorkError::ArithmeticOverflow))
+    );
+    assert_budget_graph_layout_eq(&compatibility, &initial);
+}
+
+#[test]
+fn controlled_layout_rejects_cumulative_rank_span_overflow_transactionally() {
+    fn overflow_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        let mut graph = Graph::new(GraphOptions {
+            multigraph: true,
+            compound: true,
+            ..Default::default()
+        });
+        graph.set_graph(GraphLabel::default());
+        graph.set_default_edge_label(EdgeLabel::default);
+        for id in ["a", "b", "c"] {
+            graph.set_node(id, NodeLabel::default());
+        }
+        for (from, to) in [("a", "b"), ("b", "c")] {
+            graph.set_edge_with_label(
+                from,
+                to,
+                EdgeLabel {
+                    // The label-spacing pass doubles each edge to 2_147_483_646. Either edge
+                    // fits i32 independently, but the complete rank path does not.
+                    minlen: 1_073_741_823,
+                    ..Default::default()
+                },
+            );
+        }
+        graph
+    }
+
+    let mut graph = overflow_graph();
+    let initial = overflow_graph();
+    let mut control = RecordingWorkControl::default();
+
+    assert_eq!(
+        layout_controlled(&mut graph, &mut control),
+        Err(LayoutError::Work(WorkError::ArithmeticOverflow))
+    );
+    assert_budget_graph_layout_eq(&graph, &initial);
+}
+
+fn zero_minlen_graph(ranker: Option<&str>) -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+    let mut graph = Graph::new(GraphOptions {
+        multigraph: true,
+        compound: true,
+        ..Default::default()
+    });
+    graph.set_graph(GraphLabel {
+        ranker: ranker.map(str::to_string),
+        ..Default::default()
+    });
+    for id in ["a", "b"] {
+        graph.set_node(
+            id,
+            NodeLabel {
+                width: 10.0,
+                height: 10.0,
+                ..Default::default()
+            },
+        );
+    }
+    graph.set_edge_named(
+        "a",
+        "b",
+        Some("zero"),
+        Some(EdgeLabel {
+            minlen: 0,
+            weight: 1.0,
+            labelpos: LabelPos::R,
+            labeloffset: 10.0,
+            ..Default::default()
+        }),
+    );
+    graph
+}
+
+#[test]
+fn full_layout_matches_mermaid_dagre_zero_minlen_network_simplex_geometry() {
+    for ranker in [None, Some("network-simplex"), Some("unknown")] {
+        let mut graph = zero_minlen_graph(ranker);
+
+        layout(&mut graph).unwrap();
+
+        assert_eq!(graph.graph().width, 10.0, "ranker={ranker:?}");
+        assert_eq!(graph.graph().height, 45.0, "ranker={ranker:?}");
+        assert_eq!(graph.node("a").and_then(|node| node.x), Some(5.0));
+        assert_eq!(graph.node("a").and_then(|node| node.y), Some(5.0));
+        assert_eq!(graph.node("b").and_then(|node| node.x), Some(5.0));
+        assert_eq!(graph.node("b").and_then(|node| node.y), Some(40.0));
+        let edge = graph.edge("a", "b", Some("zero")).unwrap();
+        assert_eq!(edge.minlen, 0);
+        assert_eq!(
+            edge.points,
+            vec![Point { x: 5.0, y: 10.0 }, Point { x: 5.0, y: 35.0 }],
+            "ranker={ranker:?}"
+        );
+    }
+}
+
+#[test]
+fn full_layout_returns_typed_degenerate_geometry_errors_transactionally() {
+    for ranker in ["longest-path", "tight-tree"] {
+        let initial = zero_minlen_graph(Some(ranker));
+        let expected_edge = initial.edge_keys()[0].clone();
+        let mut graph = zero_minlen_graph(Some(ranker));
+        let mut recorder = RecordingWorkControl::default();
+
+        let error = layout_controlled(&mut graph, &mut recorder).unwrap_err();
+        assert!(
+            matches!(
+                error,
+                LayoutError::DegenerateEdgeGeometry { ref edge, .. } if edge == &expected_edge
+            ),
+            "ranker={ranker}: {error}"
+        );
+        assert_budget_graph_layout_eq(&graph, &initial);
+
+        let mut compatibility = zero_minlen_graph(Some(ranker));
+        assert!(matches!(
+            layout(&mut compatibility),
+            Err(LayoutError::DegenerateEdgeGeometry { ref edge, .. }) if edge == &expected_edge
+        ));
+        assert_budget_graph_layout_eq(&compatibility, &initial);
+    }
+}
+
+#[test]
+fn controlled_zero_minlen_layout_still_honors_work_rejection_transactionally() {
+    fn graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        let mut graph = Graph::new(GraphOptions {
+            multigraph: true,
+            compound: true,
+            ..Default::default()
+        });
+        graph.set_graph(GraphLabel::default());
+        graph.set_node("a", NodeLabel::default());
+        graph.set_node("b", NodeLabel::default());
+        graph.set_edge_named(
+            "a",
+            "b",
+            Some("zero"),
+            Some(EdgeLabel {
+                minlen: 0,
+                ..Default::default()
+            }),
+        );
+        graph
+    }
+
+    let initial = graph();
+    let mut rejected = graph();
+    let mut limit = RecordingWorkControl::with_limit(0);
+    assert_eq!(
+        layout_controlled(&mut rejected, &mut limit),
+        Err(LayoutError::Work(WorkError::Interrupted))
+    );
+    assert_budget_graph_layout_eq(&rejected, &initial);
+}
 
 fn coords(
     g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
@@ -10,6 +549,24 @@ fn coords(
         out.insert(id.to_string(), (n.x.unwrap(), n.y.unwrap()));
     }
     out
+}
+
+#[test]
+fn layout_can_layout_an_empty_graph() {
+    let mut graph: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
+        multigraph: true,
+        compound: true,
+        ..Default::default()
+    });
+    graph.set_graph(GraphLabel::default());
+    graph.set_default_edge_label(EdgeLabel::default);
+
+    layout(&mut graph).unwrap();
+
+    assert!(graph.node_ids().is_empty());
+    assert!(graph.edge_keys().is_empty());
+    assert_eq!(graph.graph().width, 0.0);
+    assert_eq!(graph.graph().height, 0.0);
 }
 
 #[test]
@@ -31,7 +588,7 @@ fn layout_can_layout_a_single_node() {
         },
     );
 
-    layout(&mut g);
+    layout(&mut g).unwrap();
     assert_eq!(coords(&g), [("a".to_string(), (25.0, 50.0))].into());
     assert_eq!(g.node("a").unwrap().x, Some(25.0));
     assert_eq!(g.node("a").unwrap().y, Some(50.0));
@@ -65,7 +622,7 @@ fn layout_can_layout_two_nodes_on_the_same_rank() {
         },
     );
 
-    layout(&mut g);
+    layout(&mut g).unwrap();
     assert_eq!(
         coords(&g),
         [
@@ -105,7 +662,7 @@ fn layout_can_layout_two_nodes_connected_by_an_edge() {
     );
     g.set_edge("a", "b");
 
-    layout(&mut g);
+    layout(&mut g).unwrap();
     assert_eq!(
         coords(&g),
         [
@@ -154,7 +711,7 @@ fn layout_can_layout_an_edge_with_a_label() {
         },
     );
 
-    layout(&mut g);
+    layout(&mut g).unwrap();
     assert_eq!(
         coords(&g),
         [
@@ -213,7 +770,7 @@ fn layout_can_layout_a_long_edge_with_a_label() {
         },
     );
 
-    layout(&mut g);
+    layout(&mut g).unwrap();
 
     let edge = g.edge("a", "b", None).unwrap();
     assert_eq!(edge.x, Some(75.0 / 2.0));
@@ -267,9 +824,9 @@ fn layout_second_run_matches_a_fresh_graph() {
     let mut graph = build_graph();
     let mut fresh = build_graph();
 
-    layout(&mut graph);
-    layout(&mut graph);
-    layout(&mut fresh);
+    layout(&mut graph).unwrap();
+    layout(&mut graph).unwrap();
+    layout(&mut fresh).unwrap();
 
     assert_eq!(graph.graph().rankdir, fresh.graph().rankdir);
     assert_eq!(graph.graph().nodesep, fresh.graph().nodesep);
@@ -320,7 +877,7 @@ fn layout_can_layout_a_short_cycle() {
     );
     g.set_edge("b", "a");
 
-    layout(&mut g);
+    layout(&mut g).unwrap();
 
     assert_eq!(
         coords(&g),
@@ -366,7 +923,7 @@ fn layout_adds_rectangle_intersects_for_edges() {
     );
     g.set_edge("a", "b");
 
-    layout(&mut g);
+    layout(&mut g).unwrap();
     let points = &g.edge("a", "b", None).unwrap().points;
     assert_eq!(
         points.as_slice(),
@@ -420,7 +977,7 @@ fn layout_adds_rectangle_intersects_for_edges_spanning_multiple_ranks() {
         },
     );
 
-    layout(&mut g);
+    layout(&mut g).unwrap();
     let points = &g.edge("a", "b", None).unwrap().points;
     assert_eq!(
         points.as_slice(),
@@ -496,7 +1053,7 @@ fn layout_can_apply_an_offset() {
             },
         );
 
-        layout(&mut g);
+        layout(&mut g).unwrap();
 
         let e1 = g.edge("a", "b", None).unwrap();
         let e2 = g.edge("c", "d", None).unwrap();
@@ -556,7 +1113,7 @@ fn layout_can_layout_an_edge_with_a_long_label() {
             },
         );
 
-        layout(&mut g);
+        layout(&mut g).unwrap();
 
         if rankdir == RankDir::TB || rankdir == RankDir::BT {
             let p1 = g.edge("a", "c", None).unwrap();
@@ -605,7 +1162,7 @@ fn layout_can_layout_a_self_loop() {
             },
         );
 
-        layout(&mut g);
+        layout(&mut g).unwrap();
         let node_a = g.node("a").unwrap();
         let points = &g.edge("a", "a", None).unwrap().points;
         assert_eq!(points.len(), 7);
@@ -617,6 +1174,94 @@ fn layout_can_layout_a_self_loop() {
                 assert!(p.y > node_a.y.unwrap());
                 assert!((p.x - node_a.x.unwrap()).abs() <= node_a.width / 2.0);
             }
+        }
+    }
+}
+
+#[test]
+fn layout_non_square_self_loop_matches_pinned_dagre_phase_order() {
+    // Generated from repo-ref/dagre-d3-es-7.0.14 at
+    // 4b95ad0a0bca6ce4cfa4cb83dfa9be19ca740e8f. The non-square label makes an
+    // insertSelfEdges/coordinateSystem phase inversion observable for LR/RL.
+    let cases = [
+        (
+            RankDir::TB,
+            (212.5, 80.0),
+            (187.5, 40.0),
+            [
+                (100.0, 21.538_461_538_461_54),
+                (158.333_333_333_333_34, 0.0),
+                (172.916_666_666_666_69, 0.0),
+                (187.5, 40.0),
+                (172.916_666_666_666_69, 80.0),
+                (158.333_333_333_333_34, 80.0),
+                (100.0, 58.461_538_461_538_46),
+            ],
+        ),
+        (
+            RankDir::BT,
+            (212.5, 80.0),
+            (187.5, 40.0),
+            [
+                (100.0, 58.461_538_461_538_46),
+                (158.333_333_333_333_34, 80.0),
+                (172.916_666_666_666_69, 80.0),
+                (187.5, 40.0),
+                (172.916_666_666_666_69, 0.0),
+                (158.333_333_333_333_34, 0.0),
+                (100.0, 21.538_461_538_461_54),
+            ],
+        ),
+        (
+            RankDir::LR,
+            (100.0, 182.5),
+            (50.0, 157.5),
+            [
+                (28.181_818_181_818_18, 80.0),
+                (0.0, 131.666_666_666_666_66),
+                (0.0, 144.583_333_333_333_31),
+                (50.0, 157.5),
+                (100.0, 144.583_333_333_333_31),
+                (100.0, 131.666_666_666_666_66),
+                (71.818_181_818_181_81, 80.0),
+            ],
+        ),
+        (
+            RankDir::RL,
+            (100.0, 182.5),
+            (50.0, 157.5),
+            [
+                (71.818_181_818_181_81, 80.0),
+                (100.0, 131.666_666_666_666_66),
+                (100.0, 144.583_333_333_333_31),
+                (50.0, 157.5),
+                (0.0, 144.583_333_333_333_31),
+                (0.0, 131.666_666_666_666_66),
+                (28.181_818_181_818_18, 80.0),
+            ],
+        ),
+    ];
+
+    for (rankdir, graph_size, edge_center, expected_points) in cases {
+        let mut graph = controlled_self_loop_graph(rankdir);
+        layout(&mut graph).unwrap();
+
+        assert_eq!((graph.graph().width, graph.graph().height), graph_size);
+        let node = graph.node("a").unwrap();
+        assert_eq!((node.x, node.y), (Some(50.0), Some(40.0)));
+        assert_eq!((node.width, node.height), (100.0, 80.0));
+        let edge = graph.edge("a", "a", None).unwrap();
+        assert_eq!((edge.x, edge.y), (Some(edge_center.0), Some(edge_center.1)));
+        assert_eq!((edge.width, edge.height), (50.0, 30.0));
+        assert_eq!(edge.points.len(), expected_points.len());
+        for (actual, expected) in edge.points.iter().zip(expected_points) {
+            assert!(
+                (actual.x - expected.0).abs() <= f64::EPSILON
+                    && (actual.y - expected.1).abs() <= f64::EPSILON,
+                "{rankdir:?}: expected {expected:?}, got ({}, {})",
+                actual.x,
+                actual.y
+            );
         }
     }
 }
@@ -640,7 +1285,7 @@ fn layout_can_layout_a_graph_with_subgraphs() {
         },
     );
     g.set_parent("a", "sg1");
-    layout(&mut g);
+    layout(&mut g).unwrap();
 
     // The canonical Dagre pipeline derives and publishes compound-node geometry from border nodes.
     assert!(g.has_node("sg1"));
@@ -750,7 +1395,7 @@ fn layout_matches_mermaid_for_state_recursive_regions_with_implicit_parent_order
         ]
     );
 
-    layout(&mut g);
+    layout(&mut g).unwrap();
 
     assert_eq!((g.graph().width, g.graph().height), (1349.328125, 333.0));
     assert_eq!(g.node(R1).and_then(|node| node.x), Some(333.0));
@@ -804,7 +1449,7 @@ fn layout_minimizes_the_height_of_subgraphs() {
     g.set_parent("x", "sg");
     g.set_parent("y", "sg");
 
-    layout(&mut g);
+    layout(&mut g).unwrap();
     assert_eq!(g.node("x").unwrap().y, g.node("y").unwrap().y);
 }
 
@@ -833,7 +1478,7 @@ fn layout_minimizes_separation_between_nodes_not_adjacent_to_subgraphs() {
     g.ensure_node("sg");
     g.set_parent("c", "sg");
 
-    layout(&mut g);
+    layout(&mut g).unwrap();
 
     assert_eq!(
         g.node("b").unwrap().y.unwrap() - g.node("a").unwrap().y.unwrap(),
@@ -866,7 +1511,7 @@ fn layout_can_layout_subgraphs_with_different_rankdirs() {
         g.ensure_node("sg");
         g.set_parent("a", "sg");
 
-        layout(&mut g);
+        layout(&mut g).unwrap();
 
         let sg = g.node("sg").unwrap();
         assert!(sg.width > 50.0);
@@ -895,7 +1540,7 @@ fn layout_adds_dimensions_to_graph() {
         },
     );
 
-    layout(&mut g);
+    layout(&mut g).unwrap();
 
     assert_eq!(g.graph().width, 100.0);
     assert_eq!(g.graph().height, 50.0);
@@ -924,7 +1569,7 @@ fn layout_graph_dimensions_include_margins() {
         },
     );
 
-    layout(&mut g);
+    layout(&mut g).unwrap();
 
     let a = g.node("a").unwrap();
     assert_eq!(a.x, Some(50.0 + 8.0));
@@ -956,7 +1601,7 @@ fn layout_keeps_node_coordinates_in_graph_bounding_box_for_rankdirs() {
             },
         );
 
-        layout(&mut g);
+        layout(&mut g).unwrap();
 
         let a = g.node("a").unwrap();
         assert_eq!(a.x, Some(100.0 / 2.0));
@@ -1006,7 +1651,7 @@ fn layout_keeps_left_edge_label_coordinates_in_graph_bounding_box_for_rankdirs()
             },
         );
 
-        layout(&mut g);
+        layout(&mut g).unwrap();
 
         let edge = g.edge("a", "b", None).unwrap();
         if matches!(rankdir, RankDir::TB | RankDir::BT) {

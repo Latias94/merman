@@ -57,7 +57,6 @@ fn add_dummy_node(
 }
 
 pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
-    g.graph_mut().dummy_chains.clear();
     let to_normalize: Vec<_> = g
         .edges()
         .filter(|e| {
@@ -67,6 +66,18 @@ pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         })
         .cloned()
         .collect();
+    run_planned(g, to_normalize);
+}
+
+/// Applies a caller-prepared stable edge snapshot.
+///
+/// The controlled layout pipeline prepares this list behind its work boundary so the graph scan
+/// and key allocation are admitted before normalization mutates the temporary layout graph.
+pub(crate) fn run_planned(
+    g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    to_normalize: Vec<EdgeKey>,
+) {
+    g.graph_mut().dummy_chains.clear();
     let mut ids = DummyNodeIdGen::default();
     for e in to_normalize {
         normalize_edge(g, &mut ids, e);

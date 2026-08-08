@@ -1,6 +1,6 @@
 //! Backend-independent Mermaid source and semantic-model resource policy.
 
-use crate::diagram::RenderSemanticModel;
+use crate::diagram::{ParsedDiagramRender, RenderSemanticModel};
 use crate::diagrams::flowchart::FlowchartModel;
 use crate::diagrams::ishikawa::IshikawaDiagramRenderModel;
 use crate::diagrams::kanban::KanbanDiagramRenderModel;
@@ -339,11 +339,26 @@ impl InputResourcePolicy {
         )
     }
 
+    /// Checks only the public semantic-model projection.
+    ///
+    /// Use [`Self::check_parsed_render`] for a parsed built-in render operation so parser-owned
+    /// render context is included in the text budget.
     pub fn check_render_model(
         &self,
         model: &RenderSemanticModel,
     ) -> Result<(), InputResourceLimitExceeded> {
         self.check_model_complexity(ModelComplexity::from_render_model(model))
+    }
+
+    pub fn check_parsed_render(
+        &self,
+        parsed: &ParsedDiagramRender,
+    ) -> Result<(), InputResourceLimitExceeded> {
+        let mut complexity = ModelComplexity::from_render_model(parsed.model());
+        complexity.text_bytes = complexity
+            .text_bytes
+            .saturating_add(parsed.retained_render_context_bytes());
+        self.check_model_complexity(complexity)
     }
 
     pub fn check_model_complexity(
@@ -1734,11 +1749,12 @@ fn flowchart_text_bytes(model: &FlowchartModel) -> usize {
                 subtotal.saturating_add(value.len())
             });
     }
-    model.tooltips.iter().fold(total, |subtotal, (id, value)| {
+    total = model.tooltips.iter().fold(total, |subtotal, (id, value)| {
         subtotal
             .saturating_add(id.len())
             .saturating_add(value.len())
-    })
+    });
+    total
 }
 
 fn flowchart_subgraph_depth(model: &FlowchartModel) -> usize {
@@ -1978,6 +1994,32 @@ mod tests {
             .check_render_model(parsed.model())
             .unwrap_err();
         assert_eq!(model_error.limit, "max_model_items");
+    }
+
+    #[test]
+    fn parsed_render_resource_checks_include_parser_owned_flowchart_label_sources() {
+        let parsed = crate::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "flowchart LR\nA[\"&nbsp;entity&nbsp;\"] --> B\n",
+                crate::ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let model_complexity = ModelComplexity::from_render_model(parsed.model());
+        assert!(parsed.retained_render_context_bytes() > 0);
+
+        let policy = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(
+                InputResourceLimitId::MaxModelTextBytes,
+                model_complexity.text_bytes,
+            )
+            .unwrap();
+        policy
+            .check_render_model(parsed.model())
+            .expect("the public model alone fits its exact text budget");
+        let error = policy.check_parsed_render(&parsed).unwrap_err();
+        assert_eq!(error.limit, "max_model_text_bytes");
+        assert!(error.actual > model_complexity.text_bytes);
     }
 
     #[test]

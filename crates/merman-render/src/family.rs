@@ -204,14 +204,24 @@ impl<S: BuiltinRenderSemantic, L> FamilyPair<S, L> {
 }
 
 #[derive(Debug)]
-pub(crate) struct FlowchartFamilyArtifact {
-    pair: FamilyPair<diagrams::flowchart::FlowchartModel, FlowchartLayout>,
+pub(crate) struct FlowchartFamilyArtifact<L> {
+    pair: FamilyPair<diagrams::flowchart::FlowchartModel, L>,
+    label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
+    svg_label_sidecar: crate::flowchart::FlowchartSvgLabelSidecar,
     policy: Option<FlowchartPresentationPolicy>,
 }
 
-impl FlowchartFamilyArtifact {
-    pub(crate) fn pair(&self) -> &FamilyPair<diagrams::flowchart::FlowchartModel, FlowchartLayout> {
+impl<L> FlowchartFamilyArtifact<L> {
+    pub(crate) fn pair(&self) -> &FamilyPair<diagrams::flowchart::FlowchartModel, L> {
         &self.pair
+    }
+
+    pub(crate) fn label_sources(&self) -> &diagrams::flowchart::FlowchartRenderLabelSources {
+        &self.label_sources
+    }
+
+    pub(crate) fn svg_label_sidecar(&self) -> &crate::flowchart::FlowchartSvgLabelSidecar {
+        &self.svg_label_sidecar
     }
 
     pub(crate) const fn policy(&self) -> Option<FlowchartPresentationPolicy> {
@@ -225,7 +235,12 @@ pub(crate) enum BuiltinFamilyArtifact {
     Mindmap(Box<FamilyPair<diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout>>),
     State(Box<FamilyPair<diagrams::state::StateDiagramRenderModel, StateDiagramLayout>>),
     Sequence(
-        Box<FamilyPair<diagrams::sequence::SequenceDiagramRenderModel, SequenceDiagramLayout>>,
+        Box<
+            FamilyPair<
+                diagrams::sequence::SequenceDiagramRenderModel,
+                crate::sequence::SequencePreparedArtifact,
+            >,
+        >,
     ),
     Zenuml(
         Box<
@@ -235,8 +250,8 @@ pub(crate) enum BuiltinFamilyArtifact {
             >,
         >,
     ),
-    Flowchart(Box<FlowchartFamilyArtifact>),
-    Swimlane(Box<FamilyPair<diagrams::flowchart::FlowchartModel, SwimlaneLayout>>),
+    Flowchart(Box<FlowchartFamilyArtifact<FlowchartLayout>>),
+    Swimlane(Box<FlowchartFamilyArtifact<SwimlaneLayout>>),
     #[cfg(feature = "layout-cytoscape")]
     Architecture(
         Box<
@@ -457,7 +472,7 @@ impl BuiltinFamilyArtifact {
             Self::Sequence(pair) => pair.compatibility_json(metadata),
             Self::Zenuml(pair) => pair.compatibility_json(metadata),
             Self::Flowchart(artifact) => artifact.pair.compatibility_json(metadata),
-            Self::Swimlane(pair) => pair.compatibility_json(metadata),
+            Self::Swimlane(artifact) => artifact.pair.compatibility_json(metadata),
             #[cfg(feature = "layout-cytoscape")]
             Self::Architecture(pair) => pair.compatibility_json(metadata),
             Self::Class(pair) => pair.compatibility_json(metadata),
@@ -493,10 +508,10 @@ impl BuiltinFamilyArtifact {
             Self::Error(pair) => LayoutProjection::ErrorDiagram(pair.layout()),
             Self::Mindmap(pair) => LayoutProjection::MindmapDiagram(pair.layout()),
             Self::State(pair) => LayoutProjection::StateDiagram(pair.layout()),
-            Self::Sequence(pair) => LayoutProjection::SequenceDiagram(pair.layout()),
+            Self::Sequence(pair) => LayoutProjection::SequenceDiagram(pair.layout().layout()),
             Self::Zenuml(pair) => LayoutProjection::ZenumlDiagram(pair.layout()),
             Self::Flowchart(artifact) => LayoutProjection::Flowchart(artifact.pair.layout()),
-            Self::Swimlane(pair) => LayoutProjection::SwimlaneDiagram(pair.layout()),
+            Self::Swimlane(artifact) => LayoutProjection::SwimlaneDiagram(artifact.pair.layout()),
             #[cfg(feature = "layout-cytoscape")]
             Self::Architecture(pair) => LayoutProjection::ArchitectureDiagram(pair.layout()),
             Self::Class(pair) => LayoutProjection::ClassDiagram(pair.layout()),
@@ -870,19 +885,45 @@ fn prepare_pair<S, L>(
     Ok(Box::new(FamilyPair::new(semantic, layout)))
 }
 
-fn prepare_flowchart_artifact(
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FlowchartSvgLabelPreparation(bool);
+
+impl FlowchartSvgLabelPreparation {
+    const fn enabled(self) -> bool {
+        self.0
+    }
+}
+
+const DEFAULT_FLOWCHART_SVG_LABEL_PREPARATION: FlowchartSvgLabelPreparation =
+    FlowchartSvgLabelPreparation(true);
+
+fn prepare_flowchart_artifact<L>(
     semantic: diagrams::flowchart::FlowchartModel,
+    label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
     policy: Option<FlowchartPresentationPolicy>,
-    layout: impl FnOnce(&diagrams::flowchart::FlowchartModel) -> Result<FlowchartLayout>,
-) -> Result<Box<FlowchartFamilyArtifact>> {
-    let layout = layout(&semantic)?;
+    svg_label_preparation: FlowchartSvgLabelPreparation,
+    layout: impl FnOnce(
+        &diagrams::flowchart::FlowchartModel,
+        &diagrams::flowchart::FlowchartRenderLabelSources,
+        Option<&crate::flowchart::FlowchartSvgLabelSidecarBuilder>,
+    ) -> Result<L>,
+) -> Result<Box<FlowchartFamilyArtifact<L>>> {
+    let svg_label_sidecar = svg_label_preparation
+        .enabled()
+        .then(crate::flowchart::FlowchartSvgLabelSidecarBuilder::default);
+    let layout = layout(&semantic, &label_sources, svg_label_sidecar.as_ref())?;
+    let svg_label_sidecar = svg_label_sidecar
+        .map(crate::flowchart::FlowchartSvgLabelSidecarBuilder::finish)
+        .unwrap_or_default();
     Ok(Box::new(FlowchartFamilyArtifact {
         pair: FamilyPair::new(semantic, layout),
+        label_sources,
+        svg_label_sidecar,
         policy,
     }))
 }
 
-fn flowchart_requires_math(model: &diagrams::flowchart::FlowchartModel) -> bool {
+fn semantic_flowchart_requires_math(model: &diagrams::flowchart::FlowchartModel) -> bool {
     model
         .nodes
         .iter()
@@ -915,10 +956,18 @@ fn mindmap_requires_math(model: &diagrams::mindmap::MindmapDiagramRenderModel) -
         .any(crate::math::contains_delimited_math)
 }
 
-fn model_requires_math(model: &RenderSemanticModel) -> bool {
-    match model {
+fn parsed_render_requires_math(parsed: &ParsedDiagramRender) -> bool {
+    match parsed.model() {
         RenderSemanticModel::Class(model) => crate::class::class_requires_math(model),
-        RenderSemanticModel::Flowchart(model) => flowchart_requires_math(model),
+        RenderSemanticModel::Flowchart(model) => {
+            parsed.flowchart_render_label_sources().map_or_else(
+                || semantic_flowchart_requires_math(model),
+                |label_sources| {
+                    crate::flowchart::FlowchartRenderModelRef::new(model, label_sources)
+                        .requires_math()
+                },
+            )
+        }
         RenderSemanticModel::Mindmap(model) => mindmap_requires_math(model),
         RenderSemanticModel::Sequence(model) => sequence_requires_math(model),
         _ => false,
@@ -929,11 +978,10 @@ fn capability_is_available(capability: RenderCapability, session: &RenderSession
     session.supports_capability(capability)
 }
 
-fn required_capabilities(
-    meta: &ParseMetadata,
-    model: &RenderSemanticModel,
-) -> Vec<RenderCapability> {
+fn required_capabilities(parsed: &ParsedDiagramRender) -> Vec<RenderCapability> {
     let mut required = Vec::with_capacity(2);
+    let meta = parsed.metadata();
+    let model = parsed.model();
     let effective_config = &meta.effective_config;
     match model {
         RenderSemanticModel::Architecture(_) => {
@@ -955,17 +1003,15 @@ fn required_capabilities(
         _ => {}
     }
 
-    if model_requires_math(model) {
+    if parsed_render_requires_math(parsed) {
         required.push(RenderCapability::Math);
     }
     required
 }
 
-fn validate_render_input(
-    meta: &ParseMetadata,
-    model: &RenderSemanticModel,
-    session: &RenderSession,
-) -> Result<()> {
+fn validate_render_input(parsed: &ParsedDiagramRender, session: &RenderSession) -> Result<()> {
+    let meta = parsed.metadata();
+    let model = parsed.model();
     let diagram_type = meta.diagram_type.as_str();
     if let RenderSemanticModel::CustomJson(custom) = model {
         return Err(Error::NonRenderableCustomModel {
@@ -984,7 +1030,7 @@ fn validate_render_input(
         });
     }
 
-    session.resource_policy().check_render_model(model)?;
+    session.resource_policy().check_parsed_render(parsed)?;
     Ok(())
 }
 
@@ -1004,8 +1050,8 @@ pub fn plan_render_with_policy(
 ) -> Result<RenderCapabilityPlan> {
     let meta = parsed.metadata();
     let model = parsed.model();
-    validate_render_input(meta, model, session)?;
-    let required = required_capabilities(meta, model);
+    validate_render_input(parsed, session)?;
+    let required = required_capabilities(parsed);
     let missing = required
         .iter()
         .copied()
@@ -1107,13 +1153,35 @@ pub fn prepare_with_render_policy(
     session: RenderSession,
     render_policy: PresentationRenderPolicy,
 ) -> Result<FamilyRenderArtifact> {
+    prepare_with_render_policy_impl(
+        parsed,
+        options,
+        session,
+        render_policy,
+        DEFAULT_FLOWCHART_SVG_LABEL_PREPARATION,
+    )
+}
+
+fn prepare_with_render_policy_impl(
+    parsed: ParsedDiagramRender,
+    options: &LayoutOptions,
+    session: RenderSession,
+    render_policy: PresentationRenderPolicy,
+    flowchart_svg_label_preparation: FlowchartSvgLabelPreparation,
+) -> Result<FamilyRenderArtifact> {
     plan_render_with_policy(&parsed, &session, render_policy)?.ensure_available()?;
     // The heterogeneous router has one generic layout call per family. Keep its debug-build
     // caller slots out of the Class Dagre call chain, whose own phase frames are already deep.
     if matches!(parsed.model(), RenderSemanticModel::Class(_)) {
         return prepare_class_render(parsed, options, session);
     }
-    prepare_non_class_render(parsed, options, session, render_policy)
+    prepare_non_class_render(
+        parsed,
+        options,
+        session,
+        render_policy,
+        flowchart_svg_label_preparation,
+    )
 }
 
 #[inline(never)]
@@ -1122,8 +1190,10 @@ fn prepare_non_class_render(
     options: &LayoutOptions,
     session: RenderSession,
     render_policy: PresentationRenderPolicy,
+    flowchart_svg_label_preparation: FlowchartSvgLabelPreparation,
 ) -> Result<FamilyRenderArtifact> {
-    let (meta, model) = parsed.into_parts();
+    let (meta, model, render_context) = parsed.into_render_parts();
+    let flowchart_label_sources = render_context.into_flowchart_label_sources();
     let diagram_type = meta.diagram_type.as_str();
     let execution = LayoutExecution::new(options, &session);
     let effective_config = meta.effective_config.as_value();
@@ -1140,32 +1210,34 @@ fn prepare_non_class_render(
         }
         RenderSemanticModel::Mindmap(model) => {
             BuiltinFamilyArtifact::Mindmap(prepare_pair(model, |model| {
-                crate::mindmap::layout_mindmap_diagram_typed(
+                crate::mindmap::layout_mindmap_diagram_typed_with_work_meter(
                     model,
                     &meta.effective_config,
                     execution.text_measurer(),
                     execution.math_renderer(),
+                    execution.work_meter(),
                 )
             })?)
         }
         RenderSemanticModel::State(model) => {
             BuiltinFamilyArtifact::State(prepare_pair(model, |model| {
-                crate::state::layout_state_diagram_typed(
+                crate::state::layout_state_diagram_typed_with_work_meter(
                     model,
                     effective_config,
                     execution.text_measurer(),
+                    execution.work_meter(),
                 )
             })?)
         }
         RenderSemanticModel::Sequence(model) => {
             BuiltinFamilyArtifact::Sequence(prepare_pair(model, |model| {
-                crate::sequence::layout_sequence_diagram_typed_with_title_and_resource_policy(
+                crate::sequence::prepare_sequence_diagram_typed_with_title_and_work_meter(
                     model,
                     title,
                     effective_config,
                     execution.text_measurer(),
                     execution.math_renderer(),
-                    execution.resource_policy(),
+                    execution.work_meter_ref(),
                 )
             })?)
         }
@@ -1177,26 +1249,42 @@ fn prepare_non_class_render(
         RenderSemanticModel::Flowchart(model)
             if meta.effective_config.get_str("layout") == Some("swimlane") =>
         {
-            BuiltinFamilyArtifact::Swimlane(prepare_pair(model, |model| {
-                crate::swimlane::layout_swimlane_typed_with_work_meter(
-                    model,
-                    &meta.effective_config,
-                    execution.text_measurer(),
-                    execution.math_renderer(),
-                    execution.work_meter(),
-                )
-            })?)
+            BuiltinFamilyArtifact::Swimlane(prepare_flowchart_artifact(
+                model,
+                flowchart_label_sources,
+                None,
+                flowchart_svg_label_preparation,
+                |model, label_sources, svg_label_sidecar| {
+                    crate::swimlane::layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
+                        model,
+                        label_sources,
+                        &meta.effective_config,
+                        execution.text_measurer(),
+                        execution.math_renderer(),
+                        svg_label_sidecar,
+                        execution.work_meter(),
+                    )
+                },
+            )?)
         }
-        RenderSemanticModel::Flowchart(model) => BuiltinFamilyArtifact::Flowchart(
-            prepare_flowchart_artifact(model, render_policy.flowchart(), |model| {
-                crate::layout_flowchart_typed_by_engine(
-                    diagram_type,
-                    model,
-                    &meta.effective_config,
-                    &execution,
-                )
-            })?,
-        ),
+        RenderSemanticModel::Flowchart(model) => {
+            BuiltinFamilyArtifact::Flowchart(prepare_flowchart_artifact(
+                model,
+                flowchart_label_sources,
+                render_policy.flowchart(),
+                flowchart_svg_label_preparation,
+                |model, label_sources, svg_label_sidecar| {
+                    crate::layout_flowchart_typed_with_render_labels_by_engine(
+                        diagram_type,
+                        model,
+                        label_sources,
+                        &meta.effective_config,
+                        &execution,
+                        svg_label_sidecar,
+                    )
+                },
+            )?)
+        }
         #[cfg(feature = "layout-cytoscape")]
         RenderSemanticModel::Architecture(model) => {
             BuiltinFamilyArtifact::Architecture(prepare_pair(model, |model| {
@@ -1205,6 +1293,7 @@ fn prepare_non_class_render(
                     effective_config,
                     execution.text_measurer(),
                     execution.operation_seed(),
+                    execution.work_meter().as_ref(),
                 )
             })?)
         }
@@ -1261,11 +1350,11 @@ fn prepare_non_class_render(
         }
         RenderSemanticModel::Kanban(model) => {
             BuiltinFamilyArtifact::Kanban(prepare_pair(model, |model| {
-                crate::kanban::prepare_kanban_diagram_typed_with_resource_policy(
+                crate::kanban::prepare_kanban_diagram_typed_with_work_meter(
                     model,
                     &meta.effective_config,
                     execution.text_measurer(),
-                    execution.resource_policy(),
+                    execution.work_meter_ref(),
                 )
             })?)
         }
@@ -1321,31 +1410,31 @@ fn prepare_non_class_render(
         }
         RenderSemanticModel::Requirement(model) => {
             BuiltinFamilyArtifact::Requirement(prepare_pair(model, |model| {
-                crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
+                crate::requirement::layout_requirement_diagram_typed_with_work_meter(
                     model,
                     effective_config,
                     execution.text_measurer(),
-                    execution.resource_policy(),
+                    execution.work_meter_ref(),
                 )
             })?)
         }
         RenderSemanticModel::Sankey(model) => {
             BuiltinFamilyArtifact::Sankey(prepare_pair(model, |model| {
-                crate::sankey::layout_sankey_diagram_typed_with_resource_policy(
+                crate::sankey::layout_sankey_diagram_typed_with_work_meter(
                     model,
                     effective_config,
                     execution.text_measurer(),
-                    execution.resource_policy(),
+                    execution.work_meter_ref(),
                 )
             })?)
         }
         RenderSemanticModel::Radar(model) => {
             BuiltinFamilyArtifact::Radar(prepare_pair(model, |model| {
-                crate::radar::layout_radar_diagram_typed_with_resource_policy(
+                crate::radar::layout_radar_diagram_typed_with_work_meter(
                     model,
                     effective_config,
                     execution.text_measurer(),
-                    execution.resource_policy(),
+                    execution.work_meter_ref(),
                 )
             })?)
         }
@@ -1386,6 +1475,7 @@ fn prepare_non_class_render(
                         effective_config,
                         execution.text_measurer(),
                         execution.elk_operation_seed(),
+                        execution.work_meter(),
                     )
                 })?)
             }
@@ -1395,6 +1485,7 @@ fn prepare_non_class_render(
                     model,
                     effective_config,
                     execution.text_measurer(),
+                    execution.work_meter(),
                 )
             })?)
         }
@@ -1456,11 +1547,11 @@ fn prepare_non_class_render(
         }
         RenderSemanticModel::Venn(model) => {
             BuiltinFamilyArtifact::Venn(prepare_pair(model, |model| {
-                crate::venn::layout_venn_diagram_typed(
+                crate::venn::layout_venn_diagram_typed_with_work_meter(
                     model,
                     title,
                     effective_config,
-                    execution.resource_policy(),
+                    execution.work_meter_ref(),
                 )
             })?)
         }
@@ -1479,6 +1570,15 @@ fn prepare_non_class_render(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Mutex};
+
+    use crate::environment::{
+        HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
+        MeasurementProfileId, TextMeasurementOperation, TextMeasurementPhase,
+        TextMeasurementPolicy, TextMeasurementProfileIdentity, TextMeasurementReport,
+        TextMeasurementResultKind,
+    };
+    use crate::text::{TextMetrics, WrapMode};
     use merman_core::{CustomJsonProvenance, CustomJsonRenderModel, Engine, ParseOptions};
     use serde_json::{Value, json};
 
@@ -1507,6 +1607,548 @@ mod tests {
         crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
+    }
+
+    fn text_measurement_call_count(session: &RenderSession) -> u64 {
+        session
+            .text_measurement_report()
+            .entries()
+            .iter()
+            .map(crate::environment::TextMeasurementSummary::count)
+            .sum()
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    enum SidecarHostOutcome {
+        Success,
+        Missing,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct SidecarHostRequest {
+        ordinal: usize,
+        phase: TextMeasurementPhase,
+        operation: TextMeasurementOperation,
+        result_kind: TextMeasurementResultKind,
+        text: String,
+        font_size_bits: u64,
+        max_width_bits: Option<u64>,
+        wrap_mode: WrapMode,
+    }
+
+    struct SidecarRecordingHost {
+        outcome: SidecarHostOutcome,
+        requests: Mutex<Vec<SidecarHostRequest>>,
+    }
+
+    impl SidecarRecordingHost {
+        fn new(outcome: SidecarHostOutcome) -> Self {
+            Self {
+                outcome,
+                requests: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn snapshot(&self) -> Vec<SidecarHostRequest> {
+            self.requests.lock().expect("host request trace").clone()
+        }
+    }
+
+    impl HostTextMeasurer for SidecarRecordingHost {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            let ordinal = {
+                let mut requests = self.requests.lock().expect("host request trace");
+                let ordinal = requests.len();
+                requests.push(SidecarHostRequest {
+                    ordinal,
+                    phase: request.phase,
+                    operation: request.operation,
+                    result_kind: request.operation.required_result_kind(),
+                    text: request.text.to_string(),
+                    font_size_bits: request.style.font_size.to_bits(),
+                    max_width_bits: request.max_width.map(f64::to_bits),
+                    wrap_mode: request.wrap_mode,
+                });
+                ordinal
+            };
+
+            match self.outcome {
+                SidecarHostOutcome::Success => Ok(Some(sidecar_host_measurement(request, ordinal))),
+                SidecarHostOutcome::Missing => Ok(None),
+            }
+        }
+    }
+
+    fn sidecar_host_measurement(
+        request: HostTextMeasurementRequest<'_>,
+        ordinal: usize,
+    ) -> HostTextMeasurement {
+        let state_delta = (ordinal % 7) as f64 / 32.0;
+        let raw_width = request
+            .text
+            .lines()
+            .map(|line| line.chars().count() as f64 * 8.0)
+            .fold(0.0_f64, f64::max)
+            + state_delta;
+        let max_width = request
+            .max_width
+            .filter(|width| width.is_finite() && *width > 0.0);
+        let line_count = max_width
+            .map(|width| (raw_width / width).ceil() as usize)
+            .unwrap_or(1)
+            .max(request.text.lines().count())
+            .max(1)
+            .min(request.text.len().saturating_add(1));
+        let metrics = TextMetrics {
+            width: max_width.map_or(raw_width, |width| raw_width.min(width)),
+            height: line_count as f64 * 20.0 + state_delta,
+            line_count,
+        };
+
+        match request.operation.required_result_kind() {
+            TextMeasurementResultKind::Metrics => HostTextMeasurement::Metrics(metrics),
+            TextMeasurementResultKind::Length => {
+                let length = match request.operation {
+                    TextMeasurementOperation::RawBBoxHeight
+                    | TextMeasurementOperation::SimpleBBoxHeight
+                    | TextMeasurementOperation::TspanBBoxHeight => metrics.height,
+                    TextMeasurementOperation::CreateTextBBoxYOffset
+                    | TextMeasurementOperation::CreateTextMiddleBBoxYOffset => 0.0,
+                    _ => raw_width,
+                };
+                HostTextMeasurement::Length(length)
+            }
+            TextMeasurementResultKind::HorizontalExtents => {
+                HostTextMeasurement::HorizontalExtents {
+                    left: raw_width / 2.0,
+                    right: raw_width / 2.0,
+                }
+            }
+            TextMeasurementResultKind::WrappedWithRawWidth => {
+                HostTextMeasurement::WrappedWithRawWidth {
+                    metrics,
+                    raw_width: Some(raw_width),
+                }
+            }
+        }
+    }
+
+    fn render_with_sidecar_host_control(
+        preparation: FlowchartSvgLabelPreparation,
+        outcome: SidecarHostOutcome,
+    ) -> (bool, Vec<SidecarHostRequest>, TextMeasurementReport, String) {
+        let source = r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    wrappingWidth: 96
+---
+flowchart LR
+subgraph S["service words"]
+  A["alpha beta<br/>gamma"]
+end
+A traced-edge@-->|edge label words| B["delta epsilon"]
+"#;
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse flowchart")
+            .expect("detect flowchart");
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.flowchart-sidecar-control").expect("profile id"),
+            "1",
+        )
+        .expect("profile identity");
+        let host = Arc::new(SidecarRecordingHost::new(outcome));
+        let environment = crate::environment::RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                identity,
+                host.clone(),
+                TextMeasurementPhase::ALL,
+            ));
+        let session = environment.begin_session().expect("render session");
+        let artifact = prepare_with_render_policy_impl(
+            parsed,
+            &LayoutOptions::default(),
+            session,
+            PresentationRenderPolicy::default(),
+            preparation,
+        )
+        .expect("prepare flowchart artifact");
+        let indexed_sidecar = match &artifact.family {
+            BuiltinFamilyArtifact::Flowchart(flowchart) => {
+                flowchart
+                    .svg_label_sidecar()
+                    .node_owner("A", false)
+                    .is_some()
+                    && flowchart
+                        .svg_label_sidecar()
+                        .edge_owner("traced-edge", false)
+                        .is_some()
+            }
+            _ => panic!("expected Flowchart family artifact"),
+        };
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render Flowchart SVG");
+        let trace = host.snapshot();
+        let (svg, _, _, session) = rendered.into_parts();
+        (
+            indexed_sidecar,
+            trace,
+            session.text_measurement_report(),
+            svg,
+        )
+    }
+
+    #[cfg(feature = "layout-cytoscape")]
+    fn prepare_mindmap_with_host_limit(
+        max_layout_work_units: Option<usize>,
+    ) -> (Result<FamilyRenderArtifact>, Arc<SidecarRecordingHost>) {
+        let source = "mindmap\n  Root\n    First child\n    Second child\n";
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse mindmap")
+            .expect("detect mindmap");
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.mindmap-cose-budget").expect("profile id"),
+            "1",
+        )
+        .expect("profile identity");
+        let host = Arc::new(SidecarRecordingHost::new(SidecarHostOutcome::Success));
+        let mut environment = crate::environment::RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                identity,
+                host.clone(),
+                TextMeasurementPhase::ALL,
+            ));
+        if let Some(limit) = max_layout_work_units {
+            let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(crate::resources::ResourceLimitId::MaxLayoutWorkUnits, limit)
+                .expect("layout work limit");
+            environment = environment.with_resource_policy(policy);
+        }
+        let session = environment.begin_session().expect("render session");
+        (prepare(parsed, &LayoutOptions::default(), session), host)
+    }
+
+    #[test]
+    fn public_flowchart_preparation_enables_prepared_svg_label_reuse() {
+        let source = r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart LR
+A -->|control label| B
+"#;
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse flowchart")
+            .expect("detect flowchart");
+        let artifact = prepare_with_render_policy(
+            parsed,
+            &LayoutOptions::default(),
+            session(),
+            PresentationRenderPolicy::default(),
+        )
+        .expect("prepare public flowchart artifact");
+        let BuiltinFamilyArtifact::Flowchart(flowchart) = &artifact.family else {
+            panic!("expected Flowchart family artifact");
+        };
+
+        assert!(
+            flowchart
+                .svg_label_sidecar()
+                .node_owner("A", false)
+                .is_some(),
+            "the public Flowchart preparation path must build the label sidecar"
+        );
+    }
+
+    #[test]
+    fn routed_host_and_fallback_traces_match_a_no_sidecar_family_control() {
+        for outcome in [SidecarHostOutcome::Success, SidecarHostOutcome::Missing] {
+            let (control_indexed, control_trace, control_report, control_svg) =
+                render_with_sidecar_host_control(FlowchartSvgLabelPreparation(false), outcome);
+            let (sidecar_indexed, sidecar_trace, sidecar_report, sidecar_svg) =
+                render_with_sidecar_host_control(FlowchartSvgLabelPreparation(true), outcome);
+
+            assert!(
+                !control_indexed,
+                "the control must bypass sidecar preparation"
+            );
+            assert!(
+                sidecar_indexed,
+                "the candidate must prepare semantic owners"
+            );
+            assert!(!control_trace.is_empty());
+            assert_eq!(sidecar_trace, control_trace);
+            assert_eq!(sidecar_report, control_report);
+            assert_eq!(sidecar_svg, control_svg);
+        }
+    }
+
+    #[test]
+    fn prepared_self_loop_edge_label_keeps_its_semantic_owner_through_family_dispatch() {
+        let source = r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart LR
+A ordinary-edge@-->|ordinary owner sentinel| B
+A self-loop-edge@-->|self loop semantic owner keeps wrapped label rows through the logical render id alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron| A
+"#;
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse flowchart")
+            .expect("detect flowchart");
+        let artifact = prepare_with_render_policy_impl(
+            parsed,
+            &LayoutOptions::default(),
+            session(),
+            PresentationRenderPolicy::default(),
+            FlowchartSvgLabelPreparation(true),
+        )
+        .expect("prepare flowchart family artifact");
+
+        let rendered_svg = {
+            let BuiltinFamilyArtifact::Flowchart(flowchart) = &artifact.family else {
+                panic!("expected Flowchart family artifact");
+            };
+            let model = crate::flowchart::FlowchartRenderModelRef::new(
+                flowchart.pair().semantic(),
+                flowchart.label_sources(),
+            );
+            let edge = model.edges.get(1).expect("self-loop edge");
+            assert_eq!(edge.id, "self-loop-edge");
+            let label = model
+                .edge_label_for_render(edge)
+                .expect("self-loop edge label");
+            let owner = flowchart
+                .svg_label_sidecar()
+                .edge_owner(edge.id.as_str(), false)
+                .expect("semantic self-loop owner");
+            assert_eq!(owner, crate::flowchart::FlowchartSvgLabelOwner::Edge(1));
+            assert_eq!(
+                flowchart
+                    .svg_label_sidecar()
+                    .edge_owner("A-cyclic-special-mid", false),
+                None
+            );
+            assert!(
+                flowchart
+                    .pair()
+                    .layout()
+                    .edges
+                    .iter()
+                    .any(|edge| edge.id == "self-loop-edge")
+            );
+
+            let config = crate::flowchart::FlowchartConfigView::new(
+                artifact.metadata.effective_config.as_value(),
+            );
+            let font_family = config.font_family();
+            let render_style = config.render_text_style(&font_family, config.render_font_size());
+            let edge_width = config.layout_settings().edge_label_wrapping_width;
+            let render_measurer = artifact
+                .session
+                .text_measurer(crate::environment::TextMeasurementPhase::SvgBBox);
+            let calls_before = text_measurement_call_count(&artifact.session);
+            let plan = crate::flowchart::FlowchartSvgLabelRenderPlan::new(
+                Some(flowchart.svg_label_sidecar()),
+                Some(owner),
+                label,
+                &render_measurer,
+                &render_style,
+                Some(edge_width),
+                true,
+                crate::flowchart::FlowchartSvgWidthMode::Bbox,
+            );
+            assert!(matches!(
+                &plan,
+                crate::flowchart::FlowchartSvgLabelRenderPlan::Prepared { .. }
+            ));
+            let wrapped = plan.wrapped_lines();
+            assert!(matches!(&wrapped, std::borrow::Cow::Borrowed(_)));
+            assert!(wrapped.len() >= 2, "{wrapped:?}");
+            assert_eq!(
+                text_measurement_call_count(&artifact.session),
+                calls_before,
+                "a prepared self-loop label must not invoke the SVG measurer again"
+            );
+            drop(wrapped);
+            drop(plan);
+
+            let hits_before_render = flowchart.svg_label_sidecar().prepared_hit_count(owner);
+            let svg = render_family_artifact_svg(
+                &artifact,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+            )
+            .expect("render self-loop SVG");
+            assert!(
+                flowchart.svg_label_sidecar().prepared_hit_count(owner) > hits_before_render,
+                "the real Flowchart SVG renderer must consume the prepared self-loop label"
+            );
+            svg
+        };
+
+        assert!(!rendered_svg.contains("cyclic-special"), "{}", rendered_svg);
+        let document = roxmltree::Document::parse(&rendered_svg).expect("valid self-loop SVG");
+        let logical_path = document.descendants().any(|node| {
+            node.has_tag_name("path") && node.attribute("data-id") == Some("self-loop-edge")
+        });
+        assert!(logical_path, "{rendered_svg}");
+        let label_group = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g") && node.attribute("data-id") == Some("self-loop-edge")
+            })
+            .expect("logical self-loop label group");
+        let text = label_group
+            .descendants()
+            .filter_map(|node| node.text().filter(|_| node.is_text()))
+            .collect::<String>();
+        assert!(text.contains("self loop semantic owner"), "{text:?}");
+        let row_count = label_group
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("tspan")
+                    && node.attribute("class").is_some_and(|class| {
+                        class
+                            .split_ascii_whitespace()
+                            .any(|part| part == "text-outer-tspan")
+                    })
+            })
+            .count();
+        assert!(row_count >= 2, "rows={row_count}: {rendered_svg}");
+    }
+
+    #[test]
+    fn prepared_swimlane_edge_label_is_consumed_by_the_real_svg_renderer() {
+        let source = r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    wrappingWidth: 96
+---
+swimlane-beta LR
+A styled@-->|swimlane semantic owner keeps wrapped label rows through the generated labelRect| B
+linkStyle default font-size:24px,font-weight:bold
+linkStyle 0 font-size:12px,font-style:italic
+"#;
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse Swimlane")
+            .expect("detect Swimlane");
+        let artifact = prepare_with_render_policy_impl(
+            parsed,
+            &LayoutOptions::default(),
+            session(),
+            PresentationRenderPolicy::default(),
+            FlowchartSvgLabelPreparation(true),
+        )
+        .expect("prepare Swimlane family artifact");
+
+        let rendered_svg = {
+            let BuiltinFamilyArtifact::Swimlane(swimlane) = &artifact.family else {
+                panic!("expected Swimlane family artifact");
+            };
+            let model = crate::flowchart::FlowchartRenderModelRef::new(
+                swimlane.pair().semantic(),
+                swimlane.label_sources(),
+            );
+            let edge = model.edges.first().expect("styled Swimlane edge");
+            assert_eq!(edge.id, "styled");
+            let label = model
+                .edge_label_for_render(edge)
+                .expect("Swimlane edge label");
+            let owner = swimlane
+                .svg_label_sidecar()
+                .edge_owner(edge.id.as_str(), true)
+                .expect("semantic Swimlane edge owner");
+            assert_eq!(
+                owner,
+                crate::flowchart::FlowchartSvgLabelOwner::SwimlaneEdgeLabel(0)
+            );
+            assert_eq!(
+                swimlane.pair().layout().edges[0].label_node_id.as_deref(),
+                Some("edge-label-A-B-styled")
+            );
+
+            let config = crate::flowchart::FlowchartConfigView::new(
+                artifact.metadata.effective_config.as_value(),
+            );
+            let font_family = config.font_family();
+            let base_style = config.render_text_style(&font_family, config.render_font_size());
+            let default_edge_styles = model
+                .edge_defaults
+                .as_ref()
+                .map_or(&[][..], |defaults| defaults.style.as_slice());
+            let label_style = crate::flowchart::flowchart_swimlane_label_rect_text_style(
+                &base_style,
+                default_edge_styles,
+                &edge.style,
+            );
+            let render_measurer = artifact
+                .session
+                .text_measurer(crate::environment::TextMeasurementPhase::SvgBBox);
+            let plan = crate::flowchart::FlowchartSvgLabelRenderPlan::new(
+                Some(swimlane.svg_label_sidecar()),
+                Some(owner),
+                label,
+                &render_measurer,
+                label_style.as_ref(),
+                Some(config.render_wrapping_width()),
+                true,
+                crate::flowchart::FlowchartSvgWidthMode::Bbox,
+            );
+            assert!(matches!(
+                &plan,
+                crate::flowchart::FlowchartSvgLabelRenderPlan::Prepared { .. }
+            ));
+            let wrapped = plan.wrapped_lines();
+            assert!(matches!(&wrapped, std::borrow::Cow::Borrowed(_)));
+            assert!(wrapped.len() >= 2, "{wrapped:?}");
+            drop(wrapped);
+            drop(plan);
+
+            let hits_before_render = swimlane.svg_label_sidecar().prepared_hit_count(owner);
+            let svg = render_family_artifact_svg(
+                &artifact,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+            )
+            .expect("render Swimlane SVG");
+            assert!(
+                swimlane.svg_label_sidecar().prepared_hit_count(owner) > hits_before_render,
+                "the real Swimlane SVG renderer must consume the prepared labelRect"
+            );
+            svg
+        };
+
+        let document = roxmltree::Document::parse(&rendered_svg).expect("valid Swimlane SVG");
+        let label_group = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g") && node.attribute("id") == Some("edge-label-A-B-styled")
+            })
+            .expect("generated labelRect group");
+        let visible = label_group
+            .descendants()
+            .filter_map(|node| node.text().filter(|_| node.is_text()))
+            .flat_map(str::chars)
+            .filter(|ch| !ch.is_whitespace())
+            .collect::<String>();
+        assert_eq!(
+            visible,
+            "swimlanesemanticownerkeepswrappedlabelrowsthroughthegeneratedlabelRect"
+        );
     }
 
     fn prepare_with_model_item_limit(
@@ -1553,6 +2195,20 @@ mod tests {
         prepare(parsed, &LayoutOptions::default(), session)
     }
 
+    fn prepare_with_unbounded_layout_work(source: &str) -> Result<FamilyRenderArtifact> {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            )
+            .begin_session()
+            .unwrap();
+        prepare(parsed, &LayoutOptions::default(), session)
+    }
+
     fn assert_model_item_limit(error: Error, actual: usize, max: usize) {
         let Error::ResourceLimitExceeded(limit) = error else {
             panic!("expected max_model_items resource limit error")
@@ -1561,6 +2217,155 @@ mod tests {
         assert_eq!(limit.limit, "max_model_items");
         assert_eq!(limit.actual, actual);
         assert_eq!(limit.max, max);
+    }
+
+    #[test]
+    fn session_report_accounts_for_every_metered_layout_family() {
+        let cases = vec![
+            (
+                "classDiagram\nclass A\nclass B\nA --> B\n",
+                RenderFamilyKind::Class,
+            ),
+            (
+                "stateDiagram-v2\n[*] --> Idle\nIdle --> Active\n",
+                RenderFamilyKind::State,
+            ),
+            (
+                "erDiagram\nCUSTOMER ||--o{ ORDER : places\n",
+                RenderFamilyKind::Er,
+            ),
+            (
+                "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  Root\n    First child\n    Second child\n",
+                RenderFamilyKind::Mindmap,
+            ),
+            (
+                "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: hello\n",
+                RenderFamilyKind::Sequence,
+            ),
+            (
+                "kanban\n  todo[Todo]\n    task[Task]\n",
+                RenderFamilyKind::Kanban,
+            ),
+            (
+                "requirementDiagram\nrequirement req1 {\n  id: 1\n  text: Login\n  risk: high\n}\n",
+                RenderFamilyKind::Requirement,
+            ),
+            ("sankey-beta\nA,B,10\n", RenderFamilyKind::Sankey),
+            (
+                "radar-beta\naxis A,B,C\ncurve score{1,2,3}\n",
+                RenderFamilyKind::Radar,
+            ),
+            (
+                "venn-beta\nset A[\"Core\"]:20\nset B[\"Editor\"]:14\nunion A,B[\"Shared\"]:4\n",
+                RenderFamilyKind::Venn,
+            ),
+        ];
+
+        #[cfg(feature = "layout-cytoscape")]
+        let cases = {
+            let mut cases = cases;
+            cases.push((
+                "mindmap\n  Root\n    First child\n    Second child\n",
+                RenderFamilyKind::Mindmap,
+            ));
+            cases
+        };
+
+        for (source, expected_family) in cases {
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+                .unwrap()
+                .expect("the layout-work fixture should produce a render model");
+            let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+
+            assert_eq!(artifact.family_kind(), expected_family);
+            assert!(
+                artifact.session.report().layout_work_units() > 0,
+                "{expected_family} must contribute layout work to the session report"
+            );
+        }
+    }
+
+    #[test]
+    fn dagre_family_work_budgets_are_exact_and_preserve_layout_output() {
+        let cases = [
+            (
+                "classDiagram\nnamespace Outer {\n  class A\n  class B\n}\nA --> B\n",
+                RenderFamilyKind::Class,
+            ),
+            (
+                "stateDiagram-v2\nstate Parent {\n  [*] --> Idle\n  Idle --> Active\n}\nParent --> Outside\n",
+                RenderFamilyKind::State,
+            ),
+            (
+                "erDiagram\nNODE {\n  string id\n}\nNODE ||--o{ NODE : leads\n",
+                RenderFamilyKind::Er,
+            ),
+        ];
+
+        for (source, expected_family) in cases {
+            let unbounded = prepare_with_unbounded_layout_work(source).unwrap();
+            assert_eq!(unbounded.family_kind(), expected_family);
+            let exact = unbounded.session.report().layout_work_units();
+            assert!(exact > 0, "{expected_family} must report layout work");
+            let expected_layout = unbounded.layout_json().unwrap();
+
+            let bounded = prepare_with_layout_work_limit(source, exact).unwrap();
+            assert_eq!(bounded.session.report().layout_work_units(), exact);
+            assert_eq!(bounded.layout_json().unwrap(), expected_layout);
+
+            let error = match prepare_with_layout_work_limit(source, exact - 1) {
+                Ok(_) => panic!("{expected_family} exact minus one unexpectedly succeeded"),
+                Err(error) => error,
+            };
+            let Error::ResourceLimitExceeded(limit) = error else {
+                panic!("expected {expected_family} layout work rejection")
+            };
+            assert_eq!(limit.limit, "max_layout_work_units");
+            assert_eq!(limit.max, exact - 1);
+        }
+    }
+
+    #[cfg(feature = "layout-cytoscape")]
+    #[test]
+    fn default_mindmap_cose_reports_kernel_work_and_has_an_exact_resource_boundary() {
+        let (unbounded_result, unbounded_host) = prepare_mindmap_with_host_limit(None);
+        let unbounded = unbounded_result.expect("unbounded COSE mindmap");
+        let exact = unbounded.session.report().layout_work_units();
+        assert!(
+            exact > 78,
+            "kernel work must exceed the 3-node adapter estimate"
+        );
+        let unbounded_layout = unbounded.layout_json().expect("unbounded layout json");
+        let unbounded_trace = unbounded_host.snapshot();
+        assert!(!unbounded_trace.is_empty());
+
+        let (exact_result, exact_host) = prepare_mindmap_with_host_limit(Some(exact));
+        let exact_artifact = exact_result.expect("exact COSE budget");
+        assert_eq!(exact_artifact.session.report().layout_work_units(), exact);
+        assert_eq!(
+            exact_artifact.layout_json().expect("exact layout json"),
+            unbounded_layout
+        );
+        assert_eq!(exact_host.snapshot(), unbounded_trace);
+
+        let (short_result, _short_host) = prepare_mindmap_with_host_limit(Some(exact - 1));
+        let error = match short_result {
+            Ok(_) => panic!("exact minus one must reject COSE work"),
+            Err(error) => error,
+        };
+        let Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected max_layout_work_units rejection")
+        };
+        assert_eq!(limit.limit, "max_layout_work_units");
+        assert_eq!(limit.max, exact - 1);
+
+        let (early_result, early_host) = prepare_mindmap_with_host_limit(Some(1));
+        assert!(matches!(early_result, Err(Error::ResourceLimitExceeded(_))));
+        assert!(
+            early_host.snapshot().is_empty(),
+            "adapter admission must reject before the first host measurement"
+        );
     }
 
     #[test]
@@ -1679,6 +2484,49 @@ system - satisfies -> req1
         assert_eq!(limit.limit, "max_model_items");
         assert_eq!(limit.actual, 5);
         assert_eq!(limit.max, 4);
+    }
+
+    #[test]
+    fn flowchart_math_capability_uses_parser_owned_render_spelling() {
+        for source in [
+            "flowchart TD\nA[\"#36;#36;node#36;#36;\"]\n",
+            "flowchart TD\nA -->|#36;#36;edge#36;#36;| B\n",
+            "flowchart TD\nsubgraph S[\"#36;#36;group#36;#36;\"]\nA\nend\n",
+        ] {
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("Flowchart source should produce a render model");
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .without_math_renderer()
+                .begin_session()
+                .unwrap();
+
+            let plan = plan_render(&parsed, &session).unwrap();
+            assert!(
+                !plan
+                    .required_capabilities()
+                    .contains(&RenderCapability::Math),
+                "encoded dollar entities remain ordinary createText input: {source}"
+            );
+            prepare(parsed, &LayoutOptions::default(), session)
+                .expect("encoded dollar entities must not require a Math renderer");
+        }
+
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "flowchart TD\nA[\"$$x$$\"]\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("Flowchart source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .without_math_renderer()
+            .begin_session()
+            .unwrap();
+        let plan = plan_render(&parsed, &session).unwrap();
+        assert_eq!(plan.required_capabilities(), &[RenderCapability::Math]);
+        assert_eq!(plan.missing_capabilities(), &[RenderCapability::Math]);
     }
 
     #[test]

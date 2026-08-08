@@ -208,19 +208,29 @@ impl LayoutCtx<'_> {
 fn draw_head(ctx: &mut LayoutCtx<'_>, x: f64, y: f64, label: &str) -> Result<()> {
     let max_chars = (110.0 / (ctx.cfg.font_size * 0.6)).floor().max(6.0) as usize;
     let wrapped = wrap_text(label, max_chars);
-    let label_layout = text_layout(
+    let mut label_layout = text_layout(
         ctx,
         &wrapped,
-        x + 42.0,
-        y,
+        0.0,
+        0.0,
         "ishikawa-head-label",
-        TextAnchor::Middle,
+        TextAnchor::Start,
         VerticalMode::Middle,
     );
     let text_width = label_layout.bbox.max_x - label_layout.bbox.min_x;
     let text_height = label_layout.bbox.max_y - label_layout.bbox.min_y;
     let width = (text_width + 6.0).max(60.0);
     let height = (text_height * 2.0 + 40.0).max(40.0);
+    let label_transform_x = (width - text_width) / 2.0 - label_layout.bbox.min_x + 3.0;
+    let label_transform_y = -label_layout.bbox.min_y - text_height / 2.0;
+    let label_offset_x = x + label_transform_x;
+    let label_offset_y = y + label_transform_y;
+    label_layout.x += label_offset_x;
+    label_layout.y += label_offset_y;
+    label_layout.bbox.min_x += label_offset_x;
+    label_layout.bbox.max_x += label_offset_x;
+    label_layout.bbox.min_y += label_offset_y;
+    label_layout.bbox.max_y += label_offset_y;
     let path_d = format!(
         "M 0 {} L 0 {} Q {} 0 0 {} Z",
         -height / 2.0,
@@ -524,6 +534,7 @@ struct BoneInfo {
 
 #[derive(Debug, Clone, Copy)]
 enum TextAnchor {
+    Start,
     Middle,
     End,
 }
@@ -531,6 +542,7 @@ enum TextAnchor {
 impl TextAnchor {
     fn as_str(self) -> &'static str {
         match self {
+            Self::Start => "start",
             Self::Middle => "middle",
             Self::End => "end",
         }
@@ -683,6 +695,10 @@ fn ishikawa_anchored_line_bbox_x(
     let end_overhang = (center_right - half).max(0.0);
 
     match anchor {
+        TextAnchor::Start => TextHorizontalBounds {
+            left: start_overhang,
+            right: computed + end_overhang,
+        },
         TextAnchor::Middle => TextHorizontalBounds {
             left: center_left.max(0.0),
             right: center_right.max(0.0),

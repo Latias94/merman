@@ -177,6 +177,12 @@ fn fixtures() -> Vec<(&'static str, &'static str)> {
             include_str!("fixtures/flowchart_nested_clusters.mmd"),
         ),
         (
+            "flowchart_elk_nested_directions",
+            include_str!(
+                "../../../fixtures/flowchart/upstream_cypress_flowchart_elk_spec_2050_elk_handling_of_different_rendering_direction_in_subgraphs_036.mmd"
+            ),
+        ),
+        (
             "flowchart_asymmetric_components",
             include_str!("fixtures/flowchart_asymmetric_components.mmd"),
         ),
@@ -187,6 +193,10 @@ fn fixtures() -> Vec<(&'static str, &'static str)> {
         (
             "flowchart_long_edge_labels",
             include_str!("fixtures/flowchart_long_edge_labels.mmd"),
+        ),
+        (
+            "flowchart_svg_label_reuse",
+            include_str!("fixtures/flowchart_svg_label_reuse.mmd"),
         ),
         (
             "flowchart_selfloop_bidi",
@@ -216,6 +226,26 @@ fn fixtures() -> Vec<(&'static str, &'static str)> {
         (
             "sequence_medium",
             include_str!("fixtures/sequence_medium.mmd"),
+        ),
+        (
+            "sequence_actor_only_control",
+            include_str!("fixtures/sequence_actor_only_control.mmd"),
+        ),
+        (
+            "sequence_block_repeat_low",
+            include_str!("fixtures/sequence_block_repeat_low.mmd"),
+        ),
+        (
+            "sequence_block_repeat_medium",
+            include_str!("fixtures/sequence_block_repeat_medium.mmd"),
+        ),
+        (
+            "sequence_block_repeat_high",
+            include_str!("fixtures/sequence_block_repeat_high.mmd"),
+        ),
+        (
+            "sequence_block_unique_high",
+            include_str!("fixtures/sequence_block_unique_high.mmd"),
         ),
         ("er_medium", include_str!("fixtures/er_medium.mmd")),
         ("info_medium", include_str!("fixtures/info_medium.mmd")),

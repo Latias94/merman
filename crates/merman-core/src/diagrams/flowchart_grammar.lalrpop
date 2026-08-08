@@ -3,7 +3,7 @@
 grammar;
 
 use crate::diagrams::flowchart::{
-  ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
+  ArrowToken, ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
   LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken, Stmt, StyleStmt, SubgraphBlock,
   SubgraphHeader, TitleKind, Tok
 };
@@ -29,7 +29,7 @@ extern {
     DirectionStmt => Tok::DirectionStmt(<DirectionStatementToken>),
     Id => Tok::Id(<String>),
     NodeLabel => Tok::NodeLabel(<NodeLabelToken>),
-    Arrow => Tok::Arrow(<LinkToken>),
+    Arrow => Tok::Arrow(<ArrowToken>),
     EdgeLabel => Tok::EdgeLabel(<LabeledText>),
     SubgraphHeader => Tok::SubgraphHeader(<SubgraphHeader>),
 
@@ -154,7 +154,7 @@ SubgraphBlock: SubgraphBlock = {
 };
 
 EdgeSeg: (Option<String>, LinkToken, Option<LabeledText>, Vec<Node>) = {
-  <eid:EdgeId?> <a:Arrow> <l:EdgeLabel?> <n:NodeGroup> => (eid, a, l, n),
+  <eid:EdgeId?> <a:Arrow> <l:EdgeLabel?> <n:NodeGroup> => (eid, a.link, l, n),
 };
 
 NodeGroup: Vec<Node> = {

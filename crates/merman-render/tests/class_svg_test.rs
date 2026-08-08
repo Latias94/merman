@@ -817,6 +817,19 @@ fn class_svg_namespaces_use_11_15_hierarchical_labels_and_keep_relation_label() 
             && svg.contains("<p>Module</p>"),
         "expected dotted namespace labels to use Mermaid 11.15 path segments"
     );
+    let company_pos = svg
+        .find(r#"id="merman-Company""#)
+        .expect("Company namespace cluster");
+    let project_pos = svg
+        .find(r#"id="merman-Company.Project""#)
+        .expect("Project namespace cluster");
+    let module_pos = svg
+        .find(r#"id="merman-Company.Project.Module""#)
+        .expect("Module namespace cluster");
+    assert!(
+        company_pos < project_pos && project_pos < module_pos,
+        "namespace clusters must be emitted parent-first so nested frames remain visible"
+    );
     assert!(
         svg.contains("<p>manages</p>"),
         "expected relation label text to survive hierarchical namespace rendering"

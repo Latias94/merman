@@ -10,22 +10,26 @@ pub(super) mod line_hops;
 
 pub(super) use cluster::render_swimlane_cluster;
 
-pub(in crate::svg::parity) fn render_swimlane_svg_model_with_config(
-    layout: &SwimlaneLayout,
-    model: &crate::flowchart::FlowchartModel,
-    effective_config: &merman_core::MermaidConfig,
-    diagram_type: &str,
-    diagram_title: Option<&str>,
+pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
+    artifact: &crate::family::FlowchartFamilyArtifact<SwimlaneLayout>,
+    metadata: &merman_core::ParseMetadata,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
+    let layout = artifact.pair().layout();
+    let model = artifact.pair().semantic();
     let flowchart_layout = adapt_swimlane_layout(model, layout);
-    super::svg_emit::render_flowchart_svg_model_with_swimlane(
-        &flowchart_layout,
-        layout,
-        model,
-        effective_config,
-        diagram_type,
-        diagram_title,
+    super::svg_emit::render_flowchart_svg_model(
+        super::svg_emit::FlowchartSvgModelRequest {
+            layout: &flowchart_layout,
+            swimlane_layout: Some(layout),
+            model,
+            render_label_sources: artifact.label_sources(),
+            effective_config: &metadata.effective_config,
+            diagram_type: metadata.diagram_type.as_str(),
+            diagram_title: metadata.title.as_deref(),
+            presentation_policy: None,
+            svg_label_sidecar: artifact.svg_label_sidecar(),
+        },
         options,
     )
 }

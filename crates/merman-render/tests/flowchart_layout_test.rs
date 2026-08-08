@@ -1929,6 +1929,90 @@ fn flowchart_wrapping_width_increases_height_for_long_labels() {
 }
 
 #[test]
+fn flowchart_empty_subgraph_node_uses_configured_svg_wrapping_width() {
+    fn layout_for(wrapping_width: usize) -> FlowchartLayout {
+        let text = format!(
+            r#"%%{{init: {{"htmlLabels": false, "flowchart": {{"htmlLabels": false, "wrappingWidth": {wrapping_width}}}}}}}%%
+flowchart TB
+subgraph Empty["alpha beta gamma delta epsilon zeta eta theta"]
+end
+"#
+        );
+        layout_flowchart(&text)
+    }
+
+    let narrow = layout_for(60);
+    let wide = layout_for(240);
+    let narrow = narrow
+        .nodes
+        .iter()
+        .find(|node| node.id == "Empty")
+        .expect("empty subgraph node at narrow width");
+    let wide = wide
+        .nodes
+        .iter()
+        .find(|node| node.id == "Empty")
+        .expect("empty subgraph node at wide width");
+
+    assert!(!narrow.is_cluster && !wide.is_cluster);
+    assert!(
+        narrow.height > wide.height + 1e-6,
+        "narrow SVG wrapping must create more rows: narrow={narrow:?}, wide={wide:?}"
+    );
+    assert!(
+        narrow.width < wide.width,
+        "the configured width must affect the empty-subgraph node geometry: narrow={narrow:?}, wide={wide:?}"
+    );
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn flowchart_elk_subgraph_title_uses_configured_wrapping_width_for_layout() {
+    fn cluster_for(wrapping_width: usize) -> merman_render::model::LayoutCluster {
+        let text = format!(
+            r#"---
+config:
+  layout: elk
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    wrappingWidth: {wrapping_width}
+---
+flowchart TB
+subgraph Group["alpha beta gamma delta epsilon zeta eta theta"]
+  A[child]
+end
+"#
+        );
+        let engine = Engine::new();
+        let parsed = futures::executor::block_on(
+            engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
+        )
+        .expect("parse ok")
+        .expect("diagram detected");
+        layout_flowchart_render_model(
+            &parsed,
+            &LayoutOptions::default(),
+            &RenderEnvironment::deterministic()
+                .begin_session()
+                .expect("render session"),
+        )
+        .expect("ELK layout")
+        .clusters
+        .into_iter()
+        .find(|cluster| cluster.id == "Group")
+        .expect("Group cluster")
+    }
+
+    let narrow = cluster_for(60);
+    let wide = cluster_for(240);
+    assert!(
+        narrow.title_label.height > wide.title_label.height + 1e-6,
+        "ELK temporary subgraph labels must use configured wrapping width: narrow={narrow:?}, wide={wide:?}"
+    );
+}
+
+#[test]
 fn flowchart_htmllabels_long_word_preserves_min_content_overflow_without_wrapping() {
     let session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
@@ -2465,4 +2549,49 @@ fn duplicate_subgraph_membership_with_empty_later_group_still_lays_out() {
     assert!(cluster_ids.contains("A"));
     assert!(!cluster_ids.contains("X"));
     assert!(node_ids.contains("X"));
+}
+
+#[test]
+fn duplicate_subgraph_id_uses_one_first_definition_for_layout_presentation() {
+    let layout = layout_flowchart(
+        "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n    B\n  end\n",
+    );
+
+    let clusters = layout
+        .clusters
+        .iter()
+        .filter(|cluster| cluster.id == "X")
+        .collect::<Vec<_>>();
+    assert_eq!(clusters.len(), 1);
+    assert_eq!(clusters[0].title, "First title");
+}
+
+#[test]
+fn duplicate_subgraph_id_keeps_first_title_when_first_definition_is_empty() {
+    let layout = layout_flowchart(
+        "flowchart TD\n  subgraph X[First title]\n  end\n  subgraph X[Second title]\n    A\n  end\n",
+    );
+
+    let clusters = layout
+        .clusters
+        .iter()
+        .filter(|cluster| cluster.id == "X")
+        .collect::<Vec<_>>();
+    assert_eq!(clusters.len(), 1);
+    assert_eq!(clusters[0].title, "First title");
+}
+
+#[test]
+fn duplicate_subgraph_id_keeps_first_title_when_later_definition_is_empty() {
+    let layout = layout_flowchart(
+        "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n  end\n",
+    );
+
+    let clusters = layout
+        .clusters
+        .iter()
+        .filter(|cluster| cluster.id == "X")
+        .collect::<Vec<_>>();
+    assert_eq!(clusters.len(), 1);
+    assert_eq!(clusters[0].title, "First title");
 }

@@ -11,7 +11,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 - Replaced the hand-written Swift C binding with direct generated UniFFI bindings. `Merman` now owns discovery and one-shot calls, while reusable work uses the single throwing `MermanEngine(optionsJson:services:)` constructor. The obsolete `MermanReusableEngine` name and facade factories are removed.
 - Replaced split runtime-contract and capability-vocabulary discovery with one atomic `runtimeCatalogJson()` response. The generated API no longer exposes either legacy endpoint.
 - Removed all public C ABI structs, raw callback pointers, manual engine close methods, struct-size checks, and hand-maintained Swift capability/resource projections. Swift hosts now use generated UniFFI records, objects, and callback protocols only.
-- Replaced native ABI version checks with UniFFI binding API `3` and introduced runtime-contract schema `1`. The generated binding rejects a mismatched native library through its contract and API checksum checks.
+- Replaced native ABI version checks with UniFFI binding API `4` and introduced runtime-contract schema `1`. Structured resource failures include a stable `cause` field; the generated binding rejects a mismatched native library through its contract and API checksum checks.
 - Replaced the C callback text-measurement API with generated `MermanTextMeasurer`. Return `nil` for an unhandled operation rather than populating a raw result buffer.
 - Made `MermanTextMeasurer` immutable after reusable-engine construction and removed generated callback mutation methods. Callback-free engines admit concurrent operations; callback engines report typed `.busy` or `.reentrantCall` errors without waiting.
 - Changed `lintRuleCatalog()` and `configurableLintRuleCatalog()` to throwing generated methods so feature-slim artifacts report a typed `analysis` missing-capability error instead of an empty catalog.
@@ -29,7 +29,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 - Added generated `resourceOptionsJson(profile:overrides:)` so Swift callers can select
   `interactive`, `constrained`, `trusted-native`, or `unbounded-for-trusted-input` without
   duplicating limit tables.
-- Added generated `presentationCatalogJson()` without changing the UniFFI API 3 version.
+- Added generated `presentationCatalogJson()` before the later UniFFI API 4 capability-record migration.
 
 ### Changed
 

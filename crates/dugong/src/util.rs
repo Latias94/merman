@@ -35,30 +35,32 @@ where
         }
     }
 
-    // Merge multi-edges deterministically while avoiding per-edge String clones.
-    let mut merged: BTreeMap<(usize, usize), (f64, usize)> = BTreeMap::new();
+    // Pinned Dagre creates each simplified edge at the first occurrence of its endpoint pair and
+    // only updates the label for later parallel edges. Preserve that insertion order explicitly;
+    // sorting endpoint pairs changes network-simplex tie-breaking because `g.edges()` is ordered.
+    let mut merged_index: BTreeMap<(usize, usize), usize> = BTreeMap::new();
+    let mut merged: Vec<(usize, usize, f64, usize)> = Vec::new();
     g.for_each_edge_ix(|v_ix, w_ix, _key, lbl| {
-        let entry = merged.entry((v_ix, w_ix)).or_insert((0.0, 1));
-        entry.0 += lbl.weight;
-        entry.1 = entry.1.max(lbl.minlen.max(1));
+        if let Some(&merged_ix) = merged_index.get(&(v_ix, w_ix)) {
+            let entry = &mut merged[merged_ix];
+            entry.2 += lbl.weight;
+            entry.3 = entry.3.max(lbl.minlen);
+        } else {
+            merged_index.insert((v_ix, w_ix), merged.len());
+            merged.push((v_ix, w_ix, lbl.weight, lbl.minlen.max(1)));
+        }
     });
 
-    let mut merged_edges: Vec<(String, String, f64, usize)> = Vec::with_capacity(merged.len());
-    for ((v_ix, w_ix), (weight, minlen)) in merged {
+    for (v_ix, w_ix, weight, minlen) in merged {
         let Some(v) = g.node_id_by_ix(v_ix) else {
             continue;
         };
         let Some(w) = g.node_id_by_ix(w_ix) else {
             continue;
         };
-        merged_edges.push((v.to_string(), w.to_string(), weight, minlen));
-    }
-    merged_edges.sort_by(|a, b| (a.0.as_str(), a.1.as_str()).cmp(&(b.0.as_str(), b.1.as_str())));
-
-    for (v, w, weight, minlen) in merged_edges {
         simplified.set_edge_with_label(
-            v,
-            w,
+            v.to_string(),
+            w.to_string(),
             EdgeLabel {
                 weight,
                 minlen,
@@ -147,8 +149,9 @@ pub fn intersect_rect(rect: Rect, point: Point) -> Point {
     let mut w = rect.width / 2.0;
     let mut h = rect.height / 2.0;
 
-    // Upstream throws here. In headless Rust usage this can become input-reachable for degenerate
-    // edges, so return a deterministic point on the right edge instead.
+    // The canonical layout pipeline detects this source error before calling the helper and
+    // returns `LayoutError::DegenerateEdgeGeometry`. Keep this lower-level geometry utility total
+    // for direct callers that intentionally need a deterministic fallback point.
     if dx == 0.0 && dy == 0.0 {
         return Point { x: x + w, y };
     }
@@ -252,35 +255,63 @@ pub fn remove_empty_ranks(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         return;
     }
 
-    let mut max_idx: usize = 0;
-    let mut layers: BTreeMap<usize, Vec<String>> = BTreeMap::new();
+    let mut ranked_nodes: Vec<(u64, String)> = Vec::with_capacity(g.node_count());
     g.for_each_node(|id, n| {
         let Some(rank) = n.rank else {
             return;
         };
-        let idx = (rank - offset).max(0) as usize;
-        max_idx = max_idx.max(idx);
-        layers.entry(idx).or_default().push(id.to_string());
+        let idx = u64::try_from(i64::from(rank) - i64::from(offset)).unwrap_or(0);
+        ranked_nodes.push((idx, id.to_string()));
     });
+    ranked_nodes.sort_by_key(|(rank, _id)| *rank);
 
-    let mut delta: i32 = 0;
-    for i in 0..=max_idx {
-        if !layers.contains_key(&i) && i % factor != 0 {
-            delta -= 1;
-            continue;
+    fn multiples_in_range(start: u64, end: u64, factor: u64) -> u64 {
+        if start > end {
+            return 0;
         }
-        if delta == 0 {
-            continue;
+        let through_end = end / factor + 1;
+        let before_start = if start == 0 {
+            0
+        } else {
+            (start - 1) / factor + 1
+        };
+        through_end - before_start
+    }
+
+    let factor = u64::try_from(factor).unwrap_or(u64::MAX);
+    let mut delta = 0i64;
+    let mut previous_rank: Option<u64> = None;
+    let mut cursor = 0usize;
+    while cursor < ranked_nodes.len() {
+        let rank_index = ranked_nodes[cursor].0;
+        if let Some(previous_rank) = previous_rank {
+            let start = previous_rank.saturating_add(1);
+            let end = rank_index.saturating_sub(1);
+            if start <= end {
+                let empty = end - start + 1;
+                let preserved = multiples_in_range(start, end, factor);
+                delta -= i64::try_from(empty - preserved).unwrap_or(i64::MAX);
+            }
         }
-        if let Some(vs) = layers.get(&i) {
-            for v in vs {
-                if let Some(n) = g.node_mut(v)
-                    && let Some(rank) = n.rank
+
+        let mut next = cursor + 1;
+        while next < ranked_nodes.len() && ranked_nodes[next].0 == rank_index {
+            next += 1;
+        }
+        if delta != 0 {
+            for (_rank, id) in &ranked_nodes[cursor..next] {
+                if let Some(node) = g.node_mut(id)
+                    && let Some(rank) = node.rank
                 {
-                    n.rank = Some(rank + delta);
+                    let adjusted = i64::from(rank) + delta;
+                    if let Ok(adjusted) = i32::try_from(adjusted) {
+                        node.rank = Some(adjusted);
+                    }
                 }
             }
         }
+        previous_rank = Some(rank_index);
+        cursor = next;
     }
 }
 
