@@ -101,7 +101,8 @@ pub(super) struct DividerSpan {
 
 pub(super) fn layout_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> GraphLayout {
     let (mut nodes, column_widths, row_heights) = grid::layout_nodes(graph, options);
-    let (group_offset_x, group_offset_y) = groups::subgraph_offsets(graph, &nodes);
+    let (group_offset_x, group_offset_y) =
+        groups::subgraph_offsets(graph, &nodes, options.terminal_width_profile);
     for node in &mut nodes {
         node.x += group_offset_x;
         node.y += group_offset_y;
@@ -120,7 +121,7 @@ pub(super) fn layout_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
                 .saturating_sub(grid::axis_position(&row_heights, node.grid.y))
         })
         .unwrap_or_default();
-    let groups = groups::layout_groups(graph, &nodes);
+    let groups = groups::layout_groups(graph, &nodes, options.terminal_width_profile);
     GraphLayout {
         nodes,
         groups,

@@ -38,6 +38,7 @@ pub(super) fn plan_top_down_direct_route(
         edge.label.as_deref(),
         CanvasCoord { x, y: start },
         CanvasCoord { x, y: end },
+        charset,
     )
     .into_iter()
     .collect();
@@ -126,6 +127,7 @@ fn plan_top_down_side_bend_route(
             x: label_end_x,
             y: turn_y,
         },
+        charset,
     )
     .into_iter()
     .collect();
@@ -186,6 +188,7 @@ fn plan_top_down_drop_then_turn_route(
             x: source_x.max(target_x),
             y: end_y,
         },
+        charset,
     )
     .into_iter()
     .collect();
@@ -228,6 +231,7 @@ pub(super) fn plan_top_down_side_entry_route(
             edge.label.as_deref(),
             CanvasCoord { x: start, y },
             CanvasCoord { x: end, y },
+            charset,
         )
         .into_iter()
         .collect();
@@ -255,6 +259,7 @@ pub(super) fn plan_top_down_side_entry_route(
         edge.label.as_deref(),
         CanvasCoord { x: start, y },
         CanvasCoord { x: end, y },
+        charset,
     )
     .into_iter()
     .collect();
@@ -311,7 +316,7 @@ pub(super) fn plan_top_down_back_route(
         }
     }
     let labels: Vec<_> =
-        planned_top_down_back_label(edge.label.as_deref(), lane_x, target_y, source_y)
+        planned_top_down_back_label(edge.label.as_deref(), lane_x, target_y, source_y, charset)
             .into_iter()
             .collect();
 
@@ -339,9 +344,9 @@ fn planned_top_down_back_label(
     lane_x: usize,
     target_y: usize,
     source_y: usize,
+    charset: &GraphCharset,
 ) -> Option<PlannedRouteLabel> {
-    let label = label.filter(|label| !label.trim().is_empty())?;
-    let text = RoutedLabelText::new(label)?;
+    let text = RoutedLabelText::new_with_profile(label?, charset.width_profile)?;
     let placement = routed_label_right_of_vertical_route_placement_for_text(
         CanvasCoord {
             x: lane_x,

@@ -1,7 +1,8 @@
 use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
-use crate::options::AsciiRenderOptions;
-use crate::text::{StyledLine, display_width, split_label_lines};
+use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
+use crate::safe_text::normalize_terminal_text;
+use crate::text::{StyledLine, display_width_with_profile, split_label_lines};
 use crate::{AsciiError, Result};
 use std::collections::HashSet;
 mod layered;
@@ -12,7 +13,6 @@ pub(crate) use self::summary::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RelationGraphLine {
-    text: String,
     line: StyledLine,
 }
 
@@ -21,6 +21,7 @@ pub(crate) struct RelationGraphBox {
     id: String,
     lines: Vec<RelationGraphLine>,
     width: usize,
+    width_profile: TerminalWidthProfile,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,6 +42,7 @@ pub(crate) struct RelationGraphBoxStyle {
 pub(crate) struct RelationGraphLabel {
     lines: Vec<String>,
     width: usize,
+    width_profile: TerminalWidthProfile,
 }
 
 pub(crate) trait RelationComponentAdapter<R> {
@@ -98,8 +100,9 @@ pub(crate) trait RelationComponentAdapter<R> {
 }
 
 impl RelationGraphLabel {
-    pub(crate) fn new(raw: &str) -> Option<Self> {
-        let trimmed = raw.trim();
+    pub(crate) fn new(raw: &str, width_profile: TerminalWidthProfile) -> Option<Self> {
+        let normalized = normalize_terminal_text(raw);
+        let trimmed = normalized.trim();
         if trimmed.is_empty() {
             return None;
         }
@@ -107,11 +110,15 @@ impl RelationGraphLabel {
         let lines = split_label_lines(trimmed);
         let width = lines
             .iter()
-            .map(|line| display_width(line))
+            .map(|line| display_width_with_profile(line, width_profile))
             .max()
             .unwrap_or_default();
 
-        Some(Self { lines, width })
+        Some(Self {
+            lines,
+            width,
+            width_profile,
+        })
     }
 
     pub(crate) fn lines(&self) -> &[String] {
@@ -124,6 +131,10 @@ impl RelationGraphLabel {
 
     pub(crate) fn line_count(&self) -> usize {
         self.lines.len()
+    }
+
+    pub(crate) fn width_profile(&self) -> TerminalWidthProfile {
+        self.width_profile
     }
 }
 
@@ -142,8 +153,18 @@ impl<'a> RelationStackPlan<'a> {
         extra_half_widths: &[usize],
         build_rows: impl FnOnce(usize) -> Vec<RelationGraphLine>,
     ) -> Self {
+        debug_assert_eq!(
+            top.width_profile(),
+            bottom.width_profile(),
+            "stacked relation boxes must share one terminal width profile"
+        );
         let center = vertical_center(top, bottom, extra_half_widths);
         let relation_lines = build_rows(center);
+        debug_assert!(
+            relation_lines
+                .iter()
+                .all(|line| line.width_profile() == top.width_profile())
+        );
         Self {
             top,
             bottom,
@@ -180,11 +201,22 @@ impl<'a> RelationParallelPlan<'a> {
         lanes: Vec<Vec<RelationGraphLine>>,
         lane_gap: usize,
     ) -> Self {
+        debug_assert_eq!(
+            top.width_profile(),
+            bottom.width_profile(),
+            "parallel relation boxes must share one terminal width profile"
+        );
+        debug_assert!(
+            lanes
+                .iter()
+                .flatten()
+                .all(|line| { line.width_profile() == top.width_profile() })
+        );
         let lane_widths = lanes
             .iter()
             .map(|lane| {
                 lane.iter()
-                    .map(|line| display_width(line.text()))
+                    .map(RelationGraphLine::width)
                     .max()
                     .unwrap_or(1)
                     .max(1)
@@ -212,18 +244,23 @@ impl<'a> RelationParallelPlan<'a> {
         let row_count = self.lanes.iter().map(Vec::len).max().unwrap_or(0);
         for row_index in 0..row_count {
             let mut parts = Vec::new();
-            parts.push(RelationGraphLine::plain(" ".repeat(self.lane_left)));
+            parts.push(RelationGraphLine::plain(
+                " ".repeat(self.lane_left),
+                self.top.width_profile(),
+            ));
             for (lane_index, lane) in self.lanes.iter().enumerate() {
                 if lane_index > 0 {
-                    parts.push(RelationGraphLine::plain(" ".repeat(self.lane_gap)));
+                    parts.push(RelationGraphLine::plain(
+                        " ".repeat(self.lane_gap),
+                        self.top.width_profile(),
+                    ));
                 }
-                let cell = lane
-                    .get(row_index)
-                    .cloned()
-                    .unwrap_or_else(|| RelationGraphLine::plain(String::new()));
+                let cell = lane.get(row_index).cloned().unwrap_or_else(|| {
+                    RelationGraphLine::plain(String::new(), self.top.width_profile())
+                });
                 parts.push(centered_cell_line(&cell, self.lane_widths[lane_index]));
             }
-            relation_lines.push(concat_relation_lines(parts));
+            relation_lines.push(concat_relation_lines(parts, self.top.width_profile()));
         }
 
         vertical_stack_lines(self.top, self.bottom, self.center, relation_lines)
@@ -231,19 +268,18 @@ impl<'a> RelationParallelPlan<'a> {
 }
 
 impl RelationGraphLine {
-    pub(crate) fn new(text: String, roles: Vec<Option<AsciiColorRole>>) -> Self {
-        let line = StyledLine::text_with_roles(&text, roles);
-        Self { text, line }
+    pub(crate) fn plain(text: String, width_profile: TerminalWidthProfile) -> Self {
+        let line = StyledLine::plain_text_with_profile(&text, width_profile);
+        Self::from_styled(line)
     }
 
-    pub(crate) fn plain(text: String) -> Self {
-        let line = StyledLine::plain_text(&text);
-        Self { text, line }
-    }
-
-    pub(crate) fn with_role(text: String, role: AsciiColorRole) -> Self {
-        let line = StyledLine::role_text(&text, role);
-        Self { text, line }
+    pub(crate) fn with_role(
+        text: String,
+        role: AsciiColorRole,
+        width_profile: TerminalWidthProfile,
+    ) -> Self {
+        let line = StyledLine::role_text_with_profile(&text, role, width_profile);
+        Self::from_styled(line)
     }
 
     pub(crate) fn box_border(
@@ -252,8 +288,9 @@ impl RelationGraphLine {
         horizontal: char,
         content_width: usize,
         role: AsciiColorRole,
+        width_profile: TerminalWidthProfile,
     ) -> Self {
-        let mut line = StyledLine::new();
+        let mut line = StyledLine::with_width_profile(width_profile);
         line.push_role_char(left, role);
         line.push_role_repeat(horizontal, content_width, role);
         line.push_role_char(right, role);
@@ -267,11 +304,12 @@ impl RelationGraphLine {
         vertical: char,
         border_role: AsciiColorRole,
         text_role: AsciiColorRole,
+        width_profile: TerminalWidthProfile,
     ) -> Self {
-        let text_width = display_width(text);
+        let text_width = display_width_with_profile(text, width_profile);
         let trailing = content_width.saturating_sub(padding + text_width);
 
-        let mut line = StyledLine::new();
+        let mut line = StyledLine::with_width_profile(width_profile);
         line.push_role_char(vertical, border_role);
         line.push_spaces(padding);
         line.push_role_text(text, text_role);
@@ -280,37 +318,70 @@ impl RelationGraphLine {
         Self::from_styled(line)
     }
 
-    pub(crate) fn text(&self) -> &str {
-        &self.text
+    #[cfg(test)]
+    pub(crate) fn text(&self) -> String {
+        self.line.text()
     }
 
     pub(crate) fn draw_at(&self, canvas: &mut Canvas, x: usize, y: usize) {
         self.line.write_to_at(canvas, x, y);
     }
 
+    pub(crate) fn width(&self) -> usize {
+        self.line.len()
+    }
+
+    pub(crate) fn width_profile(&self) -> TerminalWidthProfile {
+        self.line.width_profile()
+    }
+
     pub(crate) fn from_styled(line: StyledLine) -> Self {
-        let text = line.text();
-        Self { text, line }
+        Self { line }
     }
 }
 
 impl RelationGraphBox {
     #[cfg(test)]
     pub(crate) fn new(id: String, lines: Vec<String>, width: usize) -> Self {
+        let width_profile = TerminalWidthProfile::Unicode;
         Self {
             id,
-            lines: lines.into_iter().map(RelationGraphLine::plain).collect(),
+            lines: lines
+                .into_iter()
+                .map(|line| RelationGraphLine::plain(line, width_profile))
+                .collect(),
             width,
+            width_profile,
         }
     }
 
-    pub(crate) fn new_with_lines(id: String, lines: Vec<RelationGraphLine>, width: usize) -> Self {
-        Self { id, lines, width }
+    pub(crate) fn new_with_lines(
+        id: String,
+        lines: Vec<RelationGraphLine>,
+        width: usize,
+        width_profile: TerminalWidthProfile,
+    ) -> Self {
+        debug_assert!(
+            lines
+                .iter()
+                .all(|line| line.width_profile() == width_profile),
+            "relation graph box lines must share one terminal width profile"
+        );
+        Self {
+            id,
+            lines,
+            width,
+            width_profile,
+        }
     }
 
-    pub(crate) fn from_rendered_lines(id: String, lines: Vec<RelationGraphLine>) -> Self {
+    pub(crate) fn from_rendered_lines(
+        id: String,
+        lines: Vec<RelationGraphLine>,
+        width_profile: TerminalWidthProfile,
+    ) -> Self {
         let width = lines.iter().map(line_char_width).max().unwrap_or(0);
-        Self::new_with_lines(id, lines, width)
+        Self::new_with_lines(id, lines, width, width_profile)
     }
 
     pub(crate) fn from_sections(
@@ -318,8 +389,9 @@ impl RelationGraphBox {
         sections: &[Vec<String>],
         padding: usize,
         style: RelationGraphBoxStyle,
+        width_profile: TerminalWidthProfile,
     ) -> Self {
-        let content_width = sectioned_box_content_width(sections, padding);
+        let content_width = sectioned_box_content_width(sections, padding, width_profile);
         let mut lines = Vec::new();
 
         lines.push(RelationGraphLine::box_border(
@@ -328,6 +400,7 @@ impl RelationGraphBox {
             style.horizontal,
             content_width,
             style.border_role,
+            width_profile,
         ));
         for (section_index, section) in sections.iter().enumerate() {
             if section_index > 0 {
@@ -337,6 +410,7 @@ impl RelationGraphBox {
                     style.horizontal,
                     content_width,
                     style.border_role,
+                    width_profile,
                 ));
             }
             for line in section {
@@ -347,6 +421,7 @@ impl RelationGraphBox {
                     style.vertical,
                     style.border_role,
                     style.text_role,
+                    width_profile,
                 ));
             }
         }
@@ -356,9 +431,10 @@ impl RelationGraphBox {
             style.horizontal,
             content_width,
             style.border_role,
+            width_profile,
         ));
 
-        Self::new_with_lines(id, lines, content_width + 2)
+        Self::new_with_lines(id, lines, content_width + 2, width_profile)
     }
 
     pub(crate) fn id(&self) -> &str {
@@ -377,6 +453,10 @@ impl RelationGraphBox {
         self.lines.len()
     }
 
+    pub(crate) fn width_profile(&self) -> TerminalWidthProfile {
+        self.width_profile
+    }
+
     pub(crate) fn draw_at(&self, canvas: &mut Canvas, x: usize, y: usize) {
         for (row_index, line) in self.lines.iter().enumerate() {
             line.draw_at(canvas, x, y + row_index);
@@ -384,11 +464,15 @@ impl RelationGraphBox {
     }
 }
 
-fn sectioned_box_content_width(sections: &[Vec<String>], padding: usize) -> usize {
+fn sectioned_box_content_width(
+    sections: &[Vec<String>],
+    padding: usize,
+    width_profile: TerminalWidthProfile,
+) -> usize {
     let max_line_width = sections
         .iter()
         .flat_map(|section| section.iter())
-        .map(|line| display_width(line))
+        .map(|line| display_width_with_profile(line, width_profile))
         .max()
         .unwrap_or(0)
         .max(1);
@@ -404,7 +488,10 @@ pub(crate) fn render_stacked_boxes_with_options(
     boxes: &[RelationGraphBox],
     options: &AsciiRenderOptions,
 ) -> String {
-    render_lines_with_options(&stacked_box_lines(boxes), options)
+    render_lines_with_options(
+        &stacked_box_lines(boxes, options.terminal_width_profile),
+        options,
+    )
 }
 
 pub(crate) fn render_stacked_boxes_with_section(
@@ -416,14 +503,20 @@ pub(crate) fn render_stacked_boxes_with_section(
     let mut lines = Vec::new();
     for (index, relation_box) in boxes.iter().enumerate() {
         if index > 0 {
-            lines.push(RelationGraphLine::plain(String::new()));
+            lines.push(RelationGraphLine::plain(
+                String::new(),
+                options.terminal_width_profile,
+            ));
         }
         lines.extend(relation_box.lines.iter().cloned());
     }
 
     if !section_lines.is_empty() {
         if !lines.is_empty() {
-            lines.push(RelationGraphLine::plain(String::new()));
+            lines.push(RelationGraphLine::plain(
+                String::new(),
+                options.terminal_width_profile,
+            ));
         }
         lines.push(section_title);
         lines.extend(section_lines.iter().cloned());
@@ -436,22 +529,28 @@ pub(crate) fn render_stacked_boxes_with_section(
     render_lines_with_options(&lines, options)
 }
 
-pub(crate) fn stacked_box_lines(boxes: &[RelationGraphBox]) -> Vec<RelationGraphLine> {
+pub(crate) fn stacked_box_lines(
+    boxes: &[RelationGraphBox],
+    width_profile: TerminalWidthProfile,
+) -> Vec<RelationGraphLine> {
     let mut lines = Vec::new();
     for (index, relation_box) in boxes.iter().enumerate() {
         if index > 0 {
-            lines.push(RelationGraphLine::plain(String::new()));
+            lines.push(RelationGraphLine::plain(String::new(), width_profile));
         }
         lines.extend(relation_box.lines.iter().cloned());
     }
     lines
 }
 
-fn join_component_line_groups(groups: Vec<Vec<RelationGraphLine>>) -> Vec<RelationGraphLine> {
+fn join_component_line_groups(
+    groups: Vec<Vec<RelationGraphLine>>,
+    width_profile: TerminalWidthProfile,
+) -> Vec<RelationGraphLine> {
     let mut joined = Vec::new();
     for group in groups {
         if !joined.is_empty() {
-            joined.push(RelationGraphLine::plain(String::new()));
+            joined.push(RelationGraphLine::plain(String::new(), width_profile));
         }
         joined.extend(group);
     }
@@ -525,7 +624,10 @@ where
         )?);
     }
 
-    Ok(Some(join_component_line_groups(rendered)))
+    Ok(Some(join_component_line_groups(
+        rendered,
+        options.terminal_width_profile,
+    )))
 }
 
 fn render_combined_relation_components<R, A>(
@@ -587,7 +689,7 @@ where
             if split_summary_fallback_is_safe(components, edges) {
                 return Ok(None);
             }
-            let mut lines = stacked_box_lines(&relation_boxes);
+            let mut lines = stacked_box_lines(&relation_boxes, options.terminal_width_profile);
             let summary_lines = relation_summary_rows_lines(
                 &component_relations,
                 options,
@@ -596,11 +698,15 @@ where
             )?;
             if !summary_lines.is_empty() {
                 if !lines.is_empty() {
-                    lines.push(RelationGraphLine::plain(String::new()));
+                    lines.push(RelationGraphLine::plain(
+                        String::new(),
+                        options.terminal_width_profile,
+                    ));
                 }
                 lines.push(RelationGraphLine::with_role(
                     "relations:".to_string(),
                     AsciiColorRole::MutedText,
+                    options.terminal_width_profile,
                 ));
                 lines.extend(summary_lines);
             }
@@ -626,7 +732,10 @@ where
         )?);
     }
 
-    Ok(Some(join_component_line_groups(rendered)))
+    Ok(Some(join_component_line_groups(
+        rendered,
+        options.terminal_width_profile,
+    )))
 }
 
 fn split_summary_fallback_is_safe(
@@ -657,7 +766,7 @@ where
     A: RelationComponentAdapter<R>,
 {
     if relations.is_empty() {
-        return Ok(stacked_box_lines(boxes));
+        return Ok(stacked_box_lines(boxes, options.terminal_width_profile));
     }
     if relations.len() > 1
         && relations
@@ -743,18 +852,22 @@ where
     )? {
         Ok(rendered) => Ok(rendered),
         Err(reason) => {
-            let mut lines = stacked_box_lines(boxes);
+            let mut lines = stacked_box_lines(boxes, options.terminal_width_profile);
             let summary_lines =
                 relation_summary_rows_lines(relations, options, Some(reason), |relation| {
                     adapter.build_summary_row(relation, reason)
                 })?;
             if !summary_lines.is_empty() {
                 if !lines.is_empty() {
-                    lines.push(RelationGraphLine::plain(String::new()));
+                    lines.push(RelationGraphLine::plain(
+                        String::new(),
+                        options.terminal_width_profile,
+                    ));
                 }
                 lines.push(RelationGraphLine::with_role(
                     "relations:".to_string(),
                     AsciiColorRole::MutedText,
+                    options.terminal_width_profile,
                 ));
                 lines.extend(summary_lines);
             }
@@ -766,7 +879,7 @@ where
 fn render_layered_relation_component_result<R, A>(
     boxes: &[RelationGraphBox],
     relations: &[R],
-    _options: &AsciiRenderOptions,
+    options: &AsciiRenderOptions,
     horizontal_gap: usize,
     max_grid_cells: usize,
     adapter: &A,
@@ -778,8 +891,14 @@ where
         .iter()
         .map(|relation| adapter.build_edges(relation))
         .collect::<Vec<_>>();
-    let scene = match plan_layered_relation_scene(boxes, edges, horizontal_gap, max_grid_cells)
-        .map_err(|error| adapter.layered_error(error))?
+    let scene = match plan_layered_relation_scene(
+        boxes,
+        edges,
+        horizontal_gap,
+        max_grid_cells,
+        options.terminal_width_profile,
+    )
+    .map_err(|error| adapter.layered_error(error))?
     {
         LayeredRelationScenePlan::Routed(scene) => scene,
         LayeredRelationScenePlan::Summary(reason) => {
@@ -896,7 +1015,7 @@ impl SelfLoopGeometry {
                     label_width,
                     loop_rows.tail_prefix.as_ref().filter(|_| loop_index > 0),
                 );
-                let bottom_marker_width = display_width(loop_rows.bottom_marker.text());
+                let bottom_marker_width = loop_rows.bottom_marker.width();
                 loop_col
                     .max(label_start.saturating_add(label_width).saturating_add(2))
                     .max(
@@ -917,7 +1036,7 @@ impl SelfLoopGeometry {
 fn max_self_loop_label_width(label_lines: &[RelationGraphLine]) -> usize {
     label_lines
         .iter()
-        .map(|line| display_width(line.text()))
+        .map(RelationGraphLine::width)
         .max()
         .unwrap_or(0)
 }
@@ -937,7 +1056,7 @@ fn self_loop_label_start(
             .saturating_add(1)
     };
     let prefix_start = prefix
-        .map(|prefix| display_width(prefix.text()).saturating_add(1))
+        .map(|prefix| prefix.width().saturating_add(1))
         .unwrap_or(0);
     centered_start.max(prefix_start)
 }
@@ -961,27 +1080,42 @@ fn first_self_loop_lines(
     let mut lines = Vec::new();
     lines.extend(relation_box.lines.clone());
     lines.resize_with(row_count, || {
-        RelationGraphLine::plain(" ".repeat(relation_box.width()))
+        RelationGraphLine::plain(
+            " ".repeat(relation_box.width()),
+            relation_box.width_profile(),
+        )
     });
 
-    lines[1] = concat_relation_lines(vec![
-        lines[1].clone(),
-        repeated_line(
-            horizontal,
-            geometry.loop_col.saturating_sub(relation_box.width()),
-            AsciiColorRole::EdgeLine,
-        ),
-        top_marker,
-    ]);
+    lines[1] = concat_relation_lines(
+        vec![
+            lines[1].clone(),
+            repeated_line(
+                horizontal,
+                geometry.loop_col.saturating_sub(relation_box.width()),
+                AsciiColorRole::EdgeLine,
+                relation_box.width_profile(),
+            ),
+            top_marker,
+        ],
+        relation_box.width_profile(),
+    );
 
     for line in lines.iter_mut().take(label_start_row).skip(2) {
-        *line = concat_relation_lines(vec![
-            line.clone(),
-            RelationGraphLine::plain(
-                " ".repeat(geometry.loop_col.saturating_sub(relation_box.width())),
-            ),
-            RelationGraphLine::with_role(vertical.to_string(), AsciiColorRole::EdgeLine),
-        ]);
+        *line = concat_relation_lines(
+            vec![
+                line.clone(),
+                RelationGraphLine::plain(
+                    " ".repeat(geometry.loop_col.saturating_sub(relation_box.width())),
+                    relation_box.width_profile(),
+                ),
+                RelationGraphLine::with_role(
+                    vertical.to_string(),
+                    AsciiColorRole::EdgeLine,
+                    relation_box.width_profile(),
+                ),
+            ],
+            relation_box.width_profile(),
+        );
     }
 
     for (label_index, label_line) in label_lines.into_iter().enumerate() {
@@ -1029,11 +1163,8 @@ fn self_loop_label_line(
     vertical: char,
     geometry: &SelfLoopGeometry,
 ) -> RelationGraphLine {
-    let label_width = display_width(label_line.text());
-    let prefix_width = prefix
-        .as_ref()
-        .map(|prefix| display_width(prefix.text()))
-        .unwrap_or(0);
+    let label_width = label_line.width();
+    let prefix_width = prefix.as_ref().map(RelationGraphLine::width).unwrap_or(0);
     let label_start = self_loop_label_start(relation_box, label_width, prefix.as_ref());
     let prefix_start = label_start.saturating_sub(prefix_width.saturating_add(1));
     let gap_after_prefix = label_start
@@ -1046,22 +1177,35 @@ fn self_loop_label_line(
     let mut segments = Vec::new();
     match prefix {
         Some(prefix) => {
-            segments.push(RelationGraphLine::plain(" ".repeat(prefix_start)));
+            segments.push(RelationGraphLine::plain(
+                " ".repeat(prefix_start),
+                relation_box.width_profile(),
+            ));
             segments.push(prefix);
-            segments.push(RelationGraphLine::plain(" ".repeat(gap_after_prefix)));
+            segments.push(RelationGraphLine::plain(
+                " ".repeat(gap_after_prefix),
+                relation_box.width_profile(),
+            ));
         }
         None => {
-            segments.push(RelationGraphLine::plain(" ".repeat(label_start)));
+            segments.push(RelationGraphLine::plain(
+                " ".repeat(label_start),
+                relation_box.width_profile(),
+            ));
         }
     }
     segments.push(label_line);
-    segments.push(RelationGraphLine::plain(" ".repeat(right_padding)));
+    segments.push(RelationGraphLine::plain(
+        " ".repeat(right_padding),
+        relation_box.width_profile(),
+    ));
     segments.push(RelationGraphLine::with_role(
         vertical.to_string(),
         AsciiColorRole::EdgeLine,
+        relation_box.width_profile(),
     ));
 
-    concat_relation_lines(segments)
+    concat_relation_lines(segments, relation_box.width_profile())
 }
 
 fn self_loop_bottom_line(
@@ -1069,23 +1213,37 @@ fn self_loop_bottom_line(
     horizontal: char,
     geometry: &SelfLoopGeometry,
 ) -> RelationGraphLine {
-    let bottom_marker_width = display_width(bottom_marker.text());
-    concat_relation_lines(vec![
-        RelationGraphLine::plain(" ".repeat(geometry.bottom_start)),
-        bottom_marker,
-        repeated_line(
-            horizontal,
-            geometry
-                .loop_col
-                .saturating_sub(geometry.bottom_start + bottom_marker_width),
-            AsciiColorRole::EdgeLine,
-        ),
-        RelationGraphLine::with_role("+".to_string(), AsciiColorRole::EdgeLine),
-    ])
+    let width_profile = bottom_marker.width_profile();
+    let bottom_marker_width = bottom_marker.width();
+    concat_relation_lines(
+        vec![
+            RelationGraphLine::plain(" ".repeat(geometry.bottom_start), width_profile),
+            bottom_marker,
+            repeated_line(
+                horizontal,
+                geometry
+                    .loop_col
+                    .saturating_sub(geometry.bottom_start + bottom_marker_width),
+                AsciiColorRole::EdgeLine,
+                width_profile,
+            ),
+            RelationGraphLine::with_role("+".to_string(), AsciiColorRole::EdgeLine, width_profile),
+        ],
+        width_profile,
+    )
 }
 
-fn repeated_line(ch: char, count: usize, role: AsciiColorRole) -> RelationGraphLine {
-    RelationGraphLine::with_role(std::iter::repeat_n(ch, count).collect(), role)
+fn repeated_line(
+    ch: char,
+    count: usize,
+    role: AsciiColorRole,
+    width_profile: TerminalWidthProfile,
+) -> RelationGraphLine {
+    RelationGraphLine::with_role(
+        std::iter::repeat_n(ch, count).collect(),
+        role,
+        width_profile,
+    )
 }
 
 pub(crate) fn find_box<'a>(
@@ -1136,12 +1294,18 @@ fn render_lines_with_options(lines: &[RelationGraphLine], options: &AsciiRenderO
         return String::new();
     }
 
+    debug_assert!(
+        lines
+            .iter()
+            .all(|line| line.width_profile() == options.terminal_width_profile)
+    );
+
     let width = lines.iter().map(line_char_width).max().unwrap_or(0);
     if width == 0 {
         return "\n".repeat(lines.len());
     }
 
-    let mut canvas = Canvas::new(width, lines.len());
+    let mut canvas = Canvas::with_width_profile(width, lines.len(), options.terminal_width_profile);
     for (y, line) in lines.iter().enumerate() {
         line.draw_at(&mut canvas, 0, y);
     }
@@ -1150,11 +1314,11 @@ fn render_lines_with_options(lines: &[RelationGraphLine], options: &AsciiRenderO
 }
 
 fn line_char_width(line: &RelationGraphLine) -> usize {
-    display_width(line.text())
+    line.width()
 }
 
 fn centered_cell_line(line: &RelationGraphLine, width: usize) -> RelationGraphLine {
-    let text_width = display_width(line.text());
+    let text_width = line.width();
     let left_padding = width.saturating_sub(text_width) / 2;
     let right_padding = width.saturating_sub(text_width + left_padding);
     padded_line(line, left_padding, right_padding)
@@ -1170,14 +1334,22 @@ fn align_box_lines(relation_box: &RelationGraphBox, center: usize) -> Vec<Relati
 }
 
 fn padded_line(line: &RelationGraphLine, left: usize, right: usize) -> RelationGraphLine {
-    let mut padded = StyledLine::blank(left);
+    let mut padded = StyledLine::blank_with_profile(left, line.width_profile());
     padded.push_line(&line.line);
     padded.push_spaces(right);
     RelationGraphLine::from_styled(padded)
 }
 
-pub(crate) fn concat_relation_lines(parts: Vec<RelationGraphLine>) -> RelationGraphLine {
-    let mut line = StyledLine::new();
+pub(crate) fn concat_relation_lines(
+    parts: Vec<RelationGraphLine>,
+    width_profile: TerminalWidthProfile,
+) -> RelationGraphLine {
+    debug_assert!(
+        parts
+            .iter()
+            .all(|part| part.width_profile() == width_profile)
+    );
+    let mut line = StyledLine::with_width_profile(width_profile);
     for part in parts {
         line.push_line(&part.line);
     }
@@ -1332,14 +1504,14 @@ mod tests {
             RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
         ];
         let section_lines = vec![
-            RelationGraphLine::plain("A --> B".to_string()),
-            RelationGraphLine::plain("B --> A".to_string()),
+            RelationGraphLine::plain("A --> B".to_string(), TerminalWidthProfile::Unicode),
+            RelationGraphLine::plain("B --> A".to_string(), TerminalWidthProfile::Unicode),
         ];
 
         assert_eq!(
             render_stacked_boxes_with_section(
                 &boxes,
-                RelationGraphLine::plain("relations:".to_string()),
+                RelationGraphLine::plain("relations:".to_string(), TerminalWidthProfile::Unicode,),
                 &section_lines,
                 &AsciiRenderOptions::ascii(),
             ),
@@ -1354,12 +1526,15 @@ mod tests {
             vec![RelationGraphLine::with_role(
                 "A".to_string(),
                 AsciiColorRole::Text,
+                TerminalWidthProfile::Unicode,
             )],
             1,
+            TerminalWidthProfile::Unicode,
         )];
         let section_lines = vec![RelationGraphLine::with_role(
             "A --> B".to_string(),
             AsciiColorRole::EdgeLabel,
+            TerminalWidthProfile::Unicode,
         )];
         let theme = AsciiColorTheme::default_light()
             .with_role(AsciiColorRole::Text, AsciiRgb::from_hex24(0x111111))
@@ -1368,7 +1543,11 @@ mod tests {
 
         let rendered = render_stacked_boxes_with_section(
             &boxes,
-            RelationGraphLine::with_role("relations:".to_string(), AsciiColorRole::MutedText),
+            RelationGraphLine::with_role(
+                "relations:".to_string(),
+                AsciiColorRole::MutedText,
+                TerminalWidthProfile::Unicode,
+            ),
             &section_lines,
             &AsciiRenderOptions::ascii()
                 .with_color_mode(AsciiColorMode::Html)
@@ -1405,6 +1584,7 @@ mod tests {
             &[vec!["A".to_string()], vec!["B".to_string()]],
             1,
             style,
+            TerminalWidthProfile::Unicode,
         );
         let mut canvas = Canvas::new(relation_box.width(), relation_box.height());
 
@@ -1550,8 +1730,17 @@ mod tests {
     fn relation_graph_box_draws_role_lines_to_trimmed_canvas() {
         let theme = AsciiColorTheme::default_light()
             .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
-        let line = RelationGraphLine::with_role("AB".to_string(), AsciiColorRole::Text);
-        let relation_box = RelationGraphBox::new_with_lines("box".to_string(), vec![line], 2);
+        let line = RelationGraphLine::with_role(
+            "AB".to_string(),
+            AsciiColorRole::Text,
+            TerminalWidthProfile::Unicode,
+        );
+        let relation_box = RelationGraphBox::new_with_lines(
+            "box".to_string(),
+            vec![line],
+            2,
+            TerminalWidthProfile::Unicode,
+        );
         let mut canvas = Canvas::new(4, 1);
         relation_box.draw_at(&mut canvas, 0, 0);
 
@@ -1576,6 +1765,7 @@ mod tests {
             '|',
             AsciiColorRole::NodeBorder,
             AsciiColorRole::Text,
+            TerminalWidthProfile::Unicode,
         );
         let mut canvas = Canvas::new(5, 1);
 
@@ -1624,7 +1814,8 @@ mod tests {
 
     #[test]
     fn relation_graph_label_splits_breaks_and_tracks_line_count() {
-        let label = RelationGraphLabel::new("north<br>south").expect("label should be present");
+        let label = RelationGraphLabel::new("north<br>south", TerminalWidthProfile::Unicode)
+            .expect("label should be present");
 
         assert_eq!(label.lines(), ["north", "south"]);
         assert_eq!(label.half_width(), 2);
@@ -1633,7 +1824,8 @@ mod tests {
 
     #[test]
     fn write_centered_relation_label_draws_each_line() {
-        let label = RelationGraphLabel::new("A<br>B").expect("label should be present");
+        let label = RelationGraphLabel::new("A<br>B", TerminalWidthProfile::Unicode)
+            .expect("label should be present");
         let mut canvas = Canvas::new(3, 3);
 
         write_centered_relation_label(&mut canvas, 1, 1, &label, AsciiColorRole::EdgeLabel);
@@ -1740,18 +1932,21 @@ mod tests {
                     geometry.source_marker_y(),
                     "T".to_string(),
                     AsciiColorRole::EdgeArrow,
+                    TerminalWidthProfile::Unicode,
                 ),
                 RelationOverlay::text(
                     (geometry.source_x() + geometry.target_x()) / 2,
                     geometry.route_y().saturating_sub(1),
                     "L".to_string(),
                     AsciiColorRole::EdgeLabel,
+                    TerminalWidthProfile::Unicode,
                 ),
                 RelationOverlay::text(
                     geometry.target_x(),
                     geometry.target_marker_y(),
                     "B".to_string(),
                     AsciiColorRole::EdgeArrow,
+                    TerminalWidthProfile::Unicode,
                 ),
             ],
         );

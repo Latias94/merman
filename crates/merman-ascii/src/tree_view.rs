@@ -1,6 +1,8 @@
-use crate::options::AsciiRenderOptions;
+use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
+use crate::safe_text::encode_text_lines;
 use crate::text::{
-    display_width, normalize_optional_text, push_wrapped_prefixed_line, trim_trailing_blank_lines,
+    display_width_with_profile, normalize_optional_text, push_wrapped_prefixed_line_with_profile,
+    trim_trailing_blank_lines,
 };
 use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
 
@@ -11,7 +13,7 @@ const TREE_CHILD_EMPTY: &str = "    ";
 
 pub fn render_tree_view_diagram(
     model: &TreeViewDiagramRenderModel,
-    _options: &AsciiRenderOptions,
+    options: &AsciiRenderOptions,
 ) -> String {
     let mut lines = Vec::new();
     if let Some(title) = normalize_optional_text(model.title.as_deref()) {
@@ -29,9 +31,10 @@ pub fn render_tree_view_diagram(
             "",
             index + 1 == model.root.children.len(),
             &mut lines,
+            options.terminal_width_profile,
         );
     }
-    trim_trailing_blank_lines(lines).join("\n")
+    encode_text_lines(trim_trailing_blank_lines(lines), options)
 }
 
 fn render_node(
@@ -39,6 +42,7 @@ fn render_node(
     prefix: &str,
     is_last: bool,
     lines: &mut Vec<String>,
+    width_profile: TerminalWidthProfile,
 ) {
     let branch = if prefix.is_empty() {
         if is_last {
@@ -51,7 +55,7 @@ fn render_node(
     } else {
         format!("{prefix}{TREE_BRANCH}")
     };
-    push_wrapped_label(lines, &branch, &node.name);
+    push_wrapped_label(lines, &branch, &node.name, width_profile);
 
     let next_prefix = if prefix.is_empty() {
         if is_last {
@@ -66,17 +70,29 @@ fn render_node(
     };
 
     for (index, child) in node.children.iter().enumerate() {
-        render_node(child, &next_prefix, index + 1 == node.children.len(), lines);
+        render_node(
+            child,
+            &next_prefix,
+            index + 1 == node.children.len(),
+            lines,
+            width_profile,
+        );
     }
 }
 
-fn push_wrapped_label(lines: &mut Vec<String>, prefix: &str, label: &str) {
-    let continuation_prefix = " ".repeat(display_width(prefix));
-    push_wrapped_prefixed_line(
+fn push_wrapped_label(
+    lines: &mut Vec<String>,
+    prefix: &str,
+    label: &str,
+    width_profile: TerminalWidthProfile,
+) {
+    let continuation_prefix = " ".repeat(display_width_with_profile(prefix, width_profile));
+    push_wrapped_prefixed_line_with_profile(
         lines,
         prefix,
         &continuation_prefix,
         label,
         SUMMARY_WRAP_WIDTH,
+        width_profile,
     );
 }

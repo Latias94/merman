@@ -117,7 +117,8 @@ pub struct BindingError {
     status: BindingStatus,
     kind: BindingErrorKind,
     capability_id: Option<&'static str>,
-    resource: Option<BindingResourceErrorDetails>,
+    resource: Option<Box<BindingResourceErrorDetails>>,
+    diagnostic: Option<Box<BindingDiagnosticErrorDetails>>,
     icon_registry: Option<Box<BindingIconRegistryErrorDetails>>,
     message: String,
 }
@@ -131,6 +132,60 @@ pub struct BindingResourceErrorDetails {
     pub actual: u64,
     pub max: u64,
     pub profile: &'static str,
+}
+
+/// Byte span carried by a structured parser or renderer diagnostic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct BindingDiagnosticSpan {
+    pub start: u64,
+    pub end: u64,
+    pub kind: &'static str,
+}
+
+/// Stable machine-readable context for parse and ASCII render failures.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct BindingDiagnosticErrorDetails {
+    pub code: String,
+    pub span: Option<BindingDiagnosticSpan>,
+    pub field: Option<String>,
+    pub diagram_type: Option<String>,
+}
+
+impl BindingDiagnosticSpan {
+    pub const fn new(start: u64, end: u64, kind: &'static str) -> Self {
+        Self { start, end, kind }
+    }
+}
+
+impl BindingDiagnosticErrorDetails {
+    pub fn new(code: impl Into<String>) -> Self {
+        Self {
+            code: code.into(),
+            span: None,
+            field: None,
+            diagram_type: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn with_span(mut self, span: BindingDiagnosticSpan) -> Self {
+        self.span = Some(span);
+        self
+    }
+
+    #[must_use]
+    pub fn with_field(mut self, field: impl Into<String>) -> Self {
+        self.field = Some(field.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_diagram_type(mut self, diagram_type: impl Into<String>) -> Self {
+        self.diagram_type = Some(diagram_type.into());
+        self
+    }
 }
 
 /// Structured failure details for transactional Iconify registry construction.
@@ -149,6 +204,7 @@ impl BindingError {
             kind: BindingErrorKind::Generic,
             capability_id: None,
             resource: None,
+            diagnostic: None,
             icon_registry: None,
             message: message.into(),
         }
@@ -175,6 +231,7 @@ impl BindingError {
             kind: BindingErrorKind::UnknownOperation,
             capability_id: None,
             resource: None,
+            diagnostic: None,
             icon_registry: None,
             message: message.into(),
         }
@@ -186,6 +243,7 @@ impl BindingError {
             kind: BindingErrorKind::MissingCapability,
             capability_id: Some(capability_id),
             resource: None,
+            diagnostic: None,
             icon_registry: None,
             message: message.into(),
         }
@@ -203,6 +261,7 @@ impl BindingError {
             kind: BindingErrorKind::ReentrantCall,
             capability_id: None,
             resource: None,
+            diagnostic: None,
             icon_registry: None,
             message: message.into(),
         }
@@ -214,6 +273,7 @@ impl BindingError {
             kind: BindingErrorKind::Busy,
             capability_id: None,
             resource: None,
+            diagnostic: None,
             icon_registry: None,
             message: message.into(),
         }
@@ -231,13 +291,14 @@ impl BindingError {
             status: BindingStatus::ResourceLimitExceeded,
             kind: BindingErrorKind::Generic,
             capability_id: None,
-            resource: Some(BindingResourceErrorDetails {
+            resource: Some(Box::new(BindingResourceErrorDetails {
                 limit_id,
                 phase,
                 actual,
                 max,
                 profile,
-            }),
+            })),
+            diagnostic: None,
             icon_registry: None,
             message: message.into(),
         }
@@ -288,7 +349,8 @@ impl BindingError {
             status: icon_registry_error_status(kind),
             kind: BindingErrorKind::Generic,
             capability_id: None,
-            resource,
+            resource: resource.map(Box::new),
+            diagnostic: None,
             icon_registry: Some(Box::new(BindingIconRegistryErrorDetails {
                 kind_id: kind.stable_id(),
                 pack_index: pack_index.and_then(|index| u64::try_from(index).ok()),
@@ -310,8 +372,17 @@ impl BindingError {
         self.capability_id
     }
 
-    pub const fn resource_details(&self) -> Option<BindingResourceErrorDetails> {
-        self.resource
+    pub fn resource_details(&self) -> Option<BindingResourceErrorDetails> {
+        self.resource.as_deref().copied()
+    }
+
+    pub fn with_diagnostic_details(mut self, details: BindingDiagnosticErrorDetails) -> Self {
+        self.diagnostic = Some(Box::new(details));
+        self
+    }
+
+    pub fn diagnostic_details(&self) -> Option<&BindingDiagnosticErrorDetails> {
+        self.diagnostic.as_deref()
     }
 
     pub fn icon_registry_details(&self) -> Option<&BindingIconRegistryErrorDetails> {
@@ -367,7 +438,8 @@ impl From<merman::svg::IconRegistryBuildError> for BindingError {
             status: icon_registry_error_status(error_kind),
             kind: BindingErrorKind::Generic,
             capability_id: None,
-            resource,
+            resource: resource.map(Box::new),
+            diagnostic: None,
             icon_registry: Some(Box::new(details)),
             message,
         }
@@ -408,6 +480,8 @@ struct ErrorPayload<'a> {
 struct ErrorDetails<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     resource: Option<&'a BindingResourceErrorDetails>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    diagnostic: Option<&'a BindingDiagnosticErrorDetails>,
     #[serde(skip_serializing_if = "Option::is_none")]
     icon_registry: Option<&'a BindingIconRegistryErrorDetails>,
 }
@@ -498,6 +572,8 @@ pub(crate) enum BindingRequestOverlay {
 #[serde(deny_unknown_fields)]
 pub(crate) struct AsciiOptionsJson {
     pub(crate) charset: Option<String>,
+    #[serde(default, alias = "widthProfile")]
+    pub(crate) width_profile: Option<String>,
     #[serde(default, alias = "defaultDirection")]
     pub(crate) default_direction: Option<String>,
     #[serde(default, alias = "colorMode")]
@@ -643,6 +719,7 @@ pub fn error_payload_json_bytes(status: BindingStatus, message: &str) -> Vec<u8>
         None,
         None,
         None,
+        None,
         message,
     )
 }
@@ -652,7 +729,8 @@ pub fn binding_error_payload_json_bytes(error: &BindingError) -> Vec<u8> {
         error.status(),
         error.kind(),
         error.capability_id(),
-        error.resource.as_ref(),
+        error.resource.as_deref(),
+        error.diagnostic.as_deref(),
         error.icon_registry.as_deref(),
         error.message(),
     )
@@ -663,6 +741,7 @@ fn error_payload_json_bytes_with_details(
     kind: BindingErrorKind,
     capability_id: Option<&str>,
     resource: Option<&BindingResourceErrorDetails>,
+    diagnostic: Option<&BindingDiagnosticErrorDetails>,
     icon_registry: Option<&BindingIconRegistryErrorDetails>,
     message: &str,
 ) -> Vec<u8> {
@@ -673,10 +752,13 @@ fn error_payload_json_bytes_with_details(
         code_name: status.code_name(),
         kind: kind.id(),
         capability_id,
-        details: (resource.is_some() || icon_registry.is_some()).then_some(ErrorDetails {
-            resource,
-            icon_registry,
-        }),
+        details: (resource.is_some() || diagnostic.is_some() || icon_registry.is_some()).then_some(
+            ErrorDetails {
+                resource,
+                diagnostic,
+                icon_registry,
+            },
+        ),
         message,
     };
     serde_json::to_vec(&payload).unwrap_or_else(|_| {

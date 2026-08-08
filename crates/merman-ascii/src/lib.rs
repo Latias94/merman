@@ -20,6 +20,7 @@ mod mindmap;
 mod options;
 mod packet;
 mod relation_graph;
+mod safe_text;
 mod sequence;
 mod state;
 mod style_color;
@@ -38,9 +39,10 @@ pub use color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb, Ascii
 pub use error::{AsciiError, Result};
 pub use options::{
     ASCII_RESOURCE_LIMIT_DESCRIPTORS, AsciiCharset, AsciiDirection, AsciiRenderOptions,
-    AsciiResourceLimitDescriptor, MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID,
+    AsciiResourceLimitDescriptor, MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID, TerminalWidthProfile,
     ascii_resource_profile_value,
 };
+pub use safe_text::{normalize_terminal_diagnostic, normalize_terminal_text};
 
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::er::ErDiagramRenderModel;
@@ -211,7 +213,7 @@ pub fn render_sequence(
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     options.validate()?;
-    let diagram = sequence::from_sequence_model(model)?;
+    let diagram = sequence::from_sequence_model(model, options.terminal_width_profile)?;
     sequence::render_sequence_diagram(&diagram, options)
 }
 
@@ -318,6 +320,10 @@ mod tests {
     fn default_options_match_initial_reference_defaults() {
         let options = AsciiRenderOptions::default();
         assert_eq!(options.charset, AsciiCharset::Unicode);
+        assert_eq!(
+            options.terminal_width_profile,
+            TerminalWidthProfile::Unicode
+        );
         assert_eq!(options.default_direction, AsciiDirection::LeftRight);
         assert_eq!(options.color_mode, AsciiColorMode::Plain);
         assert_eq!(options.color_theme, AsciiColorTheme::default_light());
@@ -356,6 +362,14 @@ mod tests {
                 .color_for(AsciiColorRole::ChartSeries(9)),
             AsciiColorTheme::default_dark().color_for(AsciiColorRole::ChartSeries(1))
         );
+    }
+
+    #[test]
+    fn options_builder_sets_terminal_width_profile() {
+        let options =
+            AsciiRenderOptions::unicode().with_terminal_width_profile(TerminalWidthProfile::Cjk);
+
+        assert_eq!(options.terminal_width_profile, TerminalWidthProfile::Cjk);
     }
 
     #[test]

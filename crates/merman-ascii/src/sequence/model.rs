@@ -1,8 +1,9 @@
 use super::{SEQUENCE_ACTOR_WRAP_TEXT_WIDTH, validate::validate_supported_sequence_model};
 use crate::color::AsciiRgb;
 use crate::error::{AsciiError, Result};
+use crate::options::TerminalWidthProfile;
 use crate::style_color::{CssColor, parse_css_color, parse_css_color_value};
-use crate::text::{display_width, split_label_lines, wrap_label_lines};
+use crate::text::{display_width_with_profile, split_label_lines, wrap_label_lines_with_profile};
 use merman_core::diagrams::sequence::{
     SequenceDiagramRenderModel, SequenceMessage as CoreSequenceMessage, SequenceMessagePayload,
 };
@@ -62,13 +63,13 @@ pub(super) struct SequenceParticipantLabel {
 }
 
 impl SequenceParticipantLabel {
-    pub(super) fn from_raw(raw: &str, wrap: bool) -> Self {
+    pub(super) fn from_raw(raw: &str, wrap: bool, width_profile: TerminalWidthProfile) -> Self {
         let lines = if wrap {
-            wrap_label_lines(raw, SEQUENCE_ACTOR_WRAP_TEXT_WIDTH)
+            wrap_label_lines_with_profile(raw, SEQUENCE_ACTOR_WRAP_TEXT_WIDTH, width_profile)
         } else {
             split_label_lines(raw)
         };
-        Self::from_lines(lines)
+        Self::from_lines(lines, width_profile)
     }
 
     pub(super) fn lines(&self) -> &[String] {
@@ -79,13 +80,13 @@ impl SequenceParticipantLabel {
         self.width
     }
 
-    fn from_lines(mut lines: Vec<String>) -> Self {
+    fn from_lines(mut lines: Vec<String>, width_profile: TerminalWidthProfile) -> Self {
         if lines.is_empty() {
             lines.push(String::new());
         }
         let width = lines
             .iter()
-            .map(|line| display_width(line))
+            .map(|line| display_width_with_profile(line, width_profile))
             .max()
             .unwrap_or_default();
         Self { lines, width }
@@ -253,10 +254,11 @@ impl SequenceNotePlacement {
 
 pub(crate) fn from_sequence_model(
     model: &SequenceDiagramRenderModel,
+    width_profile: TerminalWidthProfile,
 ) -> Result<AsciiSequenceDiagram> {
     validate_supported_sequence_model(model)?;
 
-    let participants = sequence_participants(model);
+    let participants = sequence_participants(model, width_profile);
     if participants.is_empty() {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
@@ -478,7 +480,10 @@ fn ensure_endpointless_control_message(message: &CoreSequenceMessage) -> Result<
     Ok(())
 }
 
-fn sequence_participants(model: &SequenceDiagramRenderModel) -> Vec<SequenceParticipant> {
+fn sequence_participants(
+    model: &SequenceDiagramRenderModel,
+    width_profile: TerminalWidthProfile,
+) -> Vec<SequenceParticipant> {
     let ids = if model.actor_order.is_empty() {
         model.actors.keys().cloned().collect::<Vec<_>>()
     } else {
@@ -497,7 +502,7 @@ fn sequence_participants(model: &SequenceDiagramRenderModel) -> Vec<SequencePart
             } else {
                 actor.description.clone()
             };
-            let label = SequenceParticipantLabel::from_raw(&raw_label, actor.wrap);
+            let label = SequenceParticipantLabel::from_raw(&raw_label, actor.wrap, width_profile);
             Some(SequenceParticipant { id, label })
         })
         .collect()

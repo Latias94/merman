@@ -54,10 +54,24 @@ pub enum AsciiDirection {
     TopDown,
 }
 
+/// Terminal display-width convention used by every text measurement and placement operation.
+///
+/// `Unicode` follows the non-CJK width table exposed by the pinned `unicode-width` dependency.
+/// `Cjk` additionally treats East Asian ambiguous characters as wide. Hosts should select the
+/// profile that matches the terminal in which the rendered text will be displayed.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TerminalWidthProfile {
+    #[default]
+    Unicode,
+    Cjk,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct AsciiRenderOptions {
     pub charset: AsciiCharset,
+    pub terminal_width_profile: TerminalWidthProfile,
     pub default_direction: AsciiDirection,
     pub color_mode: AsciiColorMode,
     pub color_theme: AsciiColorTheme,
@@ -79,6 +93,7 @@ impl Default for AsciiRenderOptions {
     fn default() -> Self {
         Self {
             charset: AsciiCharset::Unicode,
+            terminal_width_profile: TerminalWidthProfile::Unicode,
             default_direction: AsciiDirection::LeftRight,
             color_mode: AsciiColorMode::Plain,
             color_theme: AsciiColorTheme::default_light(),
@@ -115,6 +130,11 @@ impl AsciiRenderOptions {
         self
     }
 
+    pub fn with_terminal_width_profile(mut self, profile: TerminalWidthProfile) -> Self {
+        self.terminal_width_profile = profile;
+        self
+    }
+
     pub fn with_color_theme(mut self, color_theme: AsciiColorTheme) -> Self {
         self.color_theme = color_theme;
         self
@@ -148,6 +168,19 @@ impl AsciiRenderOptions {
     pub fn with_relation_summary_diagnostics(mut self, enabled: bool) -> Self {
         self.relation_summary_diagnostics = enabled;
         self
+    }
+
+    /// Returns the structural glyph set that can preserve one-cell grid topology.
+    ///
+    /// Unicode box-drawing and marker characters are East Asian Ambiguous. The CJK width table
+    /// assigns them two cells, while every current planner models a structural token as one cell.
+    /// Falling back to ASCII structure keeps authored CJK/ambiguous text profile-correct without
+    /// corrupting borders, routes, or alignment.
+    pub(crate) fn structural_charset(&self) -> AsciiCharset {
+        match self.terminal_width_profile {
+            TerminalWidthProfile::Unicode => self.charset,
+            TerminalWidthProfile::Cjk => AsciiCharset::Ascii,
+        }
     }
 
     pub fn validate(&self) -> Result<()> {
@@ -187,5 +220,18 @@ impl AsciiRenderOptions {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cjk_profile_uses_single_cell_ascii_structure() {
+        let options =
+            AsciiRenderOptions::unicode().with_terminal_width_profile(TerminalWidthProfile::Cjk);
+
+        assert_eq!(options.structural_charset(), AsciiCharset::Ascii);
     }
 }

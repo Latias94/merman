@@ -1,6 +1,6 @@
 use super::model::AsciiSequenceDiagram;
 use super::{BOX_BORDER_WIDTH, BOX_PADDING_LEFT_RIGHT, MIN_BOX_WIDTH};
-use crate::options::AsciiRenderOptions;
+use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SequenceLayout {
@@ -9,6 +9,7 @@ pub(super) struct SequenceLayout {
     pub(super) total_width: usize,
     pub(super) message_spacing: usize,
     pub(super) self_message_width: usize,
+    pub(super) width_profile: TerminalWidthProfile,
 }
 
 pub(super) fn calculate_layout(
@@ -44,6 +45,7 @@ pub(super) fn calculate_layout(
         total_width,
         message_spacing: options.sequence_message_spacing.max(1),
         self_message_width: options.sequence_self_message_width,
+        width_profile: options.terminal_width_profile,
     }
 }
 

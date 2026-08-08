@@ -4,8 +4,7 @@ use super::super::shape::{GraphNodeShapeSemantics, GraphNodeShapeSize};
 use super::groups;
 use super::{GridCoord, NodeLayout};
 use crate::graph::topology::GraphGroupTopology;
-use crate::options::AsciiRenderOptions;
-use crate::text::display_width;
+use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 pub(super) fn layout_nodes(
@@ -31,7 +30,7 @@ fn layout_left_right_grid_nodes(
     BTreeMap<usize, usize>,
     BTreeMap<usize, usize>,
 ) {
-    let placements = place_left_right_grid_nodes(graph);
+    let placements = place_left_right_grid_nodes(graph, options.terminal_width_profile);
     let mut column_widths = BTreeMap::new();
     let mut row_heights = BTreeMap::new();
 
@@ -88,7 +87,9 @@ fn layout_left_right_grid_nodes(
         let label_gap = edge
             .label
             .as_deref()
-            .map(|label| display_width(label) + 2)
+            .map(|label| {
+                GraphLabel::new_with_profile(label, options.terminal_width_profile).width() + 2
+            })
             .unwrap_or_default();
         set_axis_size(&mut column_widths, to.x - 1, length_gap.max(label_gap));
     }
@@ -98,7 +99,7 @@ fn layout_left_right_grid_nodes(
         .zip(graph.nodes.iter())
         .map(|(coord, node)| NodeLayout {
             id: node.id.clone(),
-            label: GraphLabel::new(&node.label),
+            label: GraphLabel::new_with_profile(&node.label, options.terminal_width_profile),
             shape: node.shape,
             style: node.style,
             grid: coord,
@@ -112,7 +113,10 @@ fn layout_left_right_grid_nodes(
     (layouts, column_widths, row_heights)
 }
 
-fn place_left_right_grid_nodes(graph: &AsciiGraph) -> Vec<GridCoord> {
+fn place_left_right_grid_nodes(
+    graph: &AsciiGraph,
+    width_profile: TerminalWidthProfile,
+) -> Vec<GridCoord> {
     let index_by_id = graph
         .nodes
         .iter()
@@ -187,7 +191,7 @@ fn place_left_right_grid_nodes(graph: &AsciiGraph) -> Vec<GridCoord> {
         .into_iter()
         .map(|coord| coord.unwrap_or(GridCoord { x: 0, y: 0 }))
         .collect::<Vec<_>>();
-    groups::apply_group_placement_adjustments(graph, &mut placements);
+    groups::apply_group_placement_adjustments(graph, &mut placements, width_profile);
     placements
 }
 
@@ -315,7 +319,7 @@ fn layout_top_down_grid_nodes(
     BTreeMap<usize, usize>,
     BTreeMap<usize, usize>,
 ) {
-    let placements = place_top_down_grid_nodes(graph);
+    let placements = place_top_down_grid_nodes(graph, options.terminal_width_profile);
     let mut column_widths = BTreeMap::new();
     let mut row_heights = BTreeMap::new();
 
@@ -368,7 +372,9 @@ fn layout_top_down_grid_nodes(
             continue;
         }
         if let Some(label) = edge.label.as_deref() {
-            set_axis_size(&mut column_widths, from.x + 1, display_width(label) + 2);
+            let label_width =
+                GraphLabel::new_with_profile(label, options.terminal_width_profile).width();
+            set_axis_size(&mut column_widths, from.x + 1, label_width + 2);
         }
     }
 
@@ -377,7 +383,7 @@ fn layout_top_down_grid_nodes(
         .zip(graph.nodes.iter())
         .map(|(coord, node)| NodeLayout {
             id: node.id.clone(),
-            label: GraphLabel::new(&node.label),
+            label: GraphLabel::new_with_profile(&node.label, options.terminal_width_profile),
             shape: node.shape,
             style: node.style,
             grid: coord,
@@ -391,7 +397,10 @@ fn layout_top_down_grid_nodes(
     (layouts, column_widths, row_heights)
 }
 
-fn place_top_down_grid_nodes(graph: &AsciiGraph) -> Vec<GridCoord> {
+fn place_top_down_grid_nodes(
+    graph: &AsciiGraph,
+    width_profile: TerminalWidthProfile,
+) -> Vec<GridCoord> {
     let index_by_id = graph
         .nodes
         .iter()
@@ -445,7 +454,7 @@ fn place_top_down_grid_nodes(graph: &AsciiGraph) -> Vec<GridCoord> {
         .into_iter()
         .map(|coord| coord.unwrap_or(GridCoord { x: 0, y: 0 }))
         .collect::<Vec<_>>();
-    groups::apply_group_placement_adjustments(graph, &mut placements);
+    groups::apply_group_placement_adjustments(graph, &mut placements, width_profile);
     placements
 }
 
@@ -494,6 +503,6 @@ fn axis_span(axis_sizes: &BTreeMap<usize, usize>, start: usize, len: usize) -> u
 }
 
 fn node_shape_size(node: &AsciiGraphNode, options: &AsciiRenderOptions) -> GraphNodeShapeSize {
-    let label = GraphLabel::new(&node.label);
+    let label = GraphLabel::new_with_profile(&node.label, options.terminal_width_profile);
     GraphNodeShapeSemantics::new(node.shape).size_for_label(&label, options)
 }

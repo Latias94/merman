@@ -1,6 +1,6 @@
 use super::charset::GraphCharset;
 use super::label::GRAPH_LABEL_LINE_GAP;
-use super::layout::{CanvasCoord, GroupLayout, NodeLayout, layout_graph};
+use super::layout::{GroupLayout, NodeLayout, layout_graph};
 use super::model::{
     AsciiGraph, GraphDirection, GraphGroupKind, GraphGroupStyle, GraphNodeShape, GraphNodeStyle,
 };
@@ -8,9 +8,7 @@ use super::routing;
 use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
-use crate::options::AsciiRenderOptions;
-use crate::terminal::char_display_width;
-use crate::text::display_width;
+use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 use std::collections::HashSet;
 
 pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> Result<String> {
@@ -57,7 +55,7 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
         });
     }
 
-    let mut canvas = Canvas::new(width, height);
+    let mut canvas = Canvas::with_width_profile(width, height, options.terminal_width_profile);
     let mut route_cells = HashSet::new();
     for group in &graph_layout.groups {
         draw_group(&mut canvas, group, &charset);
@@ -89,7 +87,8 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
         return Ok(canvas.finish_with_options(options));
     }
 
-    let mut canvas = output_transform.transform_canvas(canvas, width, height);
+    let mut canvas =
+        output_transform.transform_canvas(canvas, width, height, options.terminal_width_profile);
     redraw_transformed_node_labels(
         &mut canvas,
         &graph_layout.nodes,
@@ -128,60 +127,55 @@ impl OutputTransform {
         self == Self::Identity
     }
 
-    fn coord(self, coord: CanvasCoord, width: usize, height: usize) -> CanvasCoord {
-        match self {
-            Self::Identity => coord,
-            Self::HorizontalMirror => CanvasCoord {
-                x: width.saturating_sub(1).saturating_sub(coord.x),
-                y: coord.y,
-            },
-            Self::VerticalMirror => CanvasCoord {
-                x: coord.x,
-                y: height.saturating_sub(1).saturating_sub(coord.y),
-            },
+    fn transform_canvas(
+        self,
+        source: Canvas,
+        width: usize,
+        height: usize,
+        width_profile: TerminalWidthProfile,
+    ) -> Canvas {
+        let mut canvas = Canvas::with_width_profile(width, height, width_profile);
+        for (source_y, line) in source.into_styled_lines_trimmed().into_iter().enumerate() {
+            if line.len() == 0 {
+                continue;
+            }
+            match self {
+                Self::HorizontalMirror => {
+                    let line = line.mirrored();
+                    line.write_to_at(&mut canvas, width.saturating_sub(line.len()), source_y);
+                }
+                Self::VerticalMirror => {
+                    line.write_to(
+                        &mut canvas,
+                        height.saturating_sub(1).saturating_sub(source_y),
+                    );
+                }
+                Self::Identity => line.write_to(&mut canvas, source_y),
+            }
         }
-    }
 
-    fn transform_canvas(self, source: Canvas, width: usize, height: usize) -> Canvas {
-        let mut canvas = Canvas::new(width, height);
         for y in 0..height {
             for x in 0..width {
-                let Some(ch) = source.get(x, y) else {
+                let Some(ch) = canvas.get(x, y) else {
                     continue;
                 };
-                let coord = self.coord_for_char(CanvasCoord { x, y }, ch, width, height);
-                let ch = self.map_char(ch);
-                if let Some(style) = source.get_style(x, y) {
-                    canvas.set_style(coord.x, coord.y, ch, style);
+                let mapped = self.map_char(ch);
+                if mapped == ch {
+                    continue;
+                }
+                if let Some(style) = canvas.get_style(x, y) {
+                    canvas.set_style(x, y, mapped, style);
                 } else {
-                    canvas.set(coord.x, coord.y, ch);
+                    canvas.set(x, y, mapped);
                 }
             }
         }
         canvas
     }
 
-    fn coord_for_char(
-        self,
-        coord: CanvasCoord,
-        ch: char,
-        width: usize,
-        height: usize,
-    ) -> CanvasCoord {
+    fn text_x(self, x: usize, text_width: usize, width: usize) -> usize {
         match self {
-            Self::HorizontalMirror => CanvasCoord {
-                x: width
-                    .saturating_sub(coord.x)
-                    .saturating_sub(char_display_width(ch)),
-                y: coord.y,
-            },
-            Self::Identity | Self::VerticalMirror => self.coord(coord, width, height),
-        }
-    }
-
-    fn text_x(self, x: usize, text: &str, width: usize) -> usize {
-        match self {
-            Self::HorizontalMirror => width.saturating_sub(x).saturating_sub(display_width(text)),
+            Self::HorizontalMirror => width.saturating_sub(x).saturating_sub(text_width),
             Self::Identity | Self::VerticalMirror => x,
         }
     }
@@ -290,8 +284,8 @@ fn draw_node(
         GraphNodeShape::Asymmetric => draw_asymmetric_node(canvas, layout, charset, options),
         GraphNodeShape::Trapezoid => draw_trapezoid_node(canvas, layout, charset, options),
         GraphNodeShape::TrapezoidAlt => draw_trapezoid_alt_node(canvas, layout, charset, options),
-        GraphNodeShape::StateStart => draw_state_start_node(canvas, layout, charset),
-        GraphNodeShape::StateEnd => draw_state_end_node(canvas, layout, charset),
+        GraphNodeShape::StateStart => draw_state_start_node(canvas, layout, charset, options),
+        GraphNodeShape::StateEnd => draw_state_end_node(canvas, layout, charset, options),
         GraphNodeShape::ForkJoinHorizontal => {
             draw_fork_join_node(canvas, layout, charset, options, false)
         }
@@ -399,7 +393,7 @@ fn draw_transformed_group_title(
         };
         write_group_title(
             canvas,
-            transform.text_x(title_x, line, width),
+            transform.text_x(title_x, group.title.line_width(line), width),
             transformed_content_y + line_index * line_step,
             line,
             group.style,
@@ -412,7 +406,7 @@ fn group_title_line_position(
     line: &str,
     line_index: usize,
 ) -> Option<(usize, usize)> {
-    let title_width = display_width(line);
+    let title_width = group.title.line_width(line);
     if title_width > group.width.saturating_sub(2) {
         return None;
     }
@@ -935,27 +929,38 @@ fn draw_trapezoid_alt_node(
     );
 }
 
-fn draw_state_start_node(canvas: &mut Canvas, layout: &NodeLayout, charset: &GraphCharset) {
+fn draw_state_start_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) {
     let symbol = if charset.unicode { '●' } else { '*' };
-    draw_state_pseudo_node(canvas, layout, charset, symbol);
+    draw_state_pseudo_node(canvas, layout, charset, options, symbol);
 }
 
-fn draw_state_end_node(canvas: &mut Canvas, layout: &NodeLayout, charset: &GraphCharset) {
+fn draw_state_end_node(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) {
     let symbol = if charset.unicode { '◎' } else { '@' };
-    draw_state_pseudo_node(canvas, layout, charset, symbol);
+    draw_state_pseudo_node(canvas, layout, charset, options, symbol);
 }
 
 fn draw_state_pseudo_node(
     canvas: &mut Canvas,
     layout: &NodeLayout,
     charset: &GraphCharset,
+    options: &AsciiRenderOptions,
     symbol: char,
 ) {
     draw_node_with_corners(
         canvas,
         layout,
         charset,
-        &AsciiRenderOptions::default(),
+        options,
         RoundedCorners {
             top_left: charset.rounded_top_left,
             top_right: charset.rounded_top_right,
@@ -1030,7 +1035,7 @@ fn write_centered_label(canvas: &mut Canvas, layout: &NodeLayout, _options: &Asc
     let content_y = layout.y + 1 + inner_height.saturating_sub(content_height) / 2;
 
     for (line_index, line) in layout.label.lines().iter().enumerate() {
-        let text_width = display_width(line);
+        let text_width = layout.label.line_width(line);
         let text_x = layout.x + centered_label_offset(layout.width, text_width);
         let text_y = content_y + line_index * (GRAPH_LABEL_LINE_GAP + 1);
         write_node_text(canvas, text_x, text_y, line, layout.style);
@@ -1078,28 +1083,28 @@ fn redraw_transformed_node_label(
     };
 
     for (line_index, line) in layout.label.lines().iter().enumerate() {
-        let text_width = display_width(line);
+        let text_width = layout.label.line_width(line);
         let text_x = layout.x + centered_label_offset(layout.width, text_width);
         let text_y = content_y + line_index * line_step;
         clear_text_span(
             canvas,
-            transform.text_x(text_x, line, width),
+            transform.text_x(text_x, text_width, width),
             transform.text_y(text_y, height),
-            line,
+            text_width,
         );
     }
 
     for (line_index, line) in layout.label.lines().iter().enumerate() {
-        let text_width = display_width(line);
+        let text_width = layout.label.line_width(line);
         let text_x = layout.x + centered_label_offset(layout.width, text_width);
-        let transformed_x = transform.text_x(text_x, line, width);
+        let transformed_x = transform.text_x(text_x, text_width, width);
         let transformed_y = transformed_content_y + line_index * line_step;
         write_node_text(canvas, transformed_x, transformed_y, line, layout.style);
     }
 }
 
-fn clear_text_span(canvas: &mut Canvas, x: usize, y: usize, text: &str) {
-    for offset in 0..display_width(text) {
+fn clear_text_span(canvas: &mut Canvas, x: usize, y: usize, text_width: usize) {
+    for offset in 0..text_width {
         canvas.set(x + offset, y, ' ');
     }
 }
@@ -1107,4 +1112,94 @@ fn clear_text_span(canvas: &mut Canvas, x: usize, y: usize, text: &str) {
 fn centered_label_offset(width: usize, text_width: usize) -> usize {
     let center = width.saturating_sub(1) / 2 + 1;
     center.saturating_sub(text_width.div_ceil(2))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::TerminalWidthProfile;
+    use crate::graph::model::GraphEdgeAttrs;
+    use crate::text::display_width_with_profile;
+
+    #[test]
+    fn canvas_transform_preserves_complete_grapheme_clusters() {
+        let mut source = Canvas::with_width_profile(8, 1, TerminalWidthProfile::Unicode);
+        source.write_text_role(
+            1,
+            0,
+            "e\u{301}\u{1f469}\u{200d}\u{1f4bb}\u{1f1fa}\u{1f1f8}",
+            AsciiColorRole::Text,
+        );
+
+        let rendered = OutputTransform::HorizontalMirror
+            .transform_canvas(source, 8, 1, TerminalWidthProfile::Unicode)
+            .finish_trimmed();
+
+        assert!(rendered.contains("e\u{301}"), "{rendered:?}");
+        assert!(
+            rendered.contains("\u{1f469}\u{200d}\u{1f4bb}"),
+            "{rendered:?}"
+        );
+        assert!(rendered.contains("\u{1f1fa}\u{1f1f8}"), "{rendered:?}");
+    }
+
+    #[test]
+    fn graph_canvas_rows_match_cjk_width_with_ambiguous_node_and_edge_labels() {
+        let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+        graph.add_node("a", "A·B");
+        graph.add_node("b", "C");
+        graph.add_edge_with_attrs(
+            "a",
+            "b",
+            GraphEdgeAttrs {
+                label: Some("go·".to_string()),
+                ..GraphEdgeAttrs::default()
+            },
+        );
+        let options =
+            AsciiRenderOptions::ascii().with_terminal_width_profile(TerminalWidthProfile::Cjk);
+
+        let rendered = render_graph(&graph, &options).expect("CJK graph should render");
+        let widths = rendered
+            .lines()
+            .map(|line| display_width_with_profile(line, TerminalWidthProfile::Cjk))
+            .collect::<Vec<_>>();
+
+        assert!(rendered.contains("A·B"), "{rendered}");
+        assert!(rendered.contains("go·"), "{rendered}");
+        assert!(rendered.contains('>'), "{rendered}");
+        assert!(
+            widths.iter().all(|width| *width == widths[0]),
+            "row widths {widths:?} should match under CJK profile:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn state_graph_mirror_keeps_complex_node_and_edge_labels() {
+        let mut graph = AsciiGraph::new_for_diagram("state", GraphDirection::BottomTop);
+        graph.add_node("a", "Cafe\u{301} \u{1f469}\u{200d}\u{1f4bb}");
+        graph.add_node("b", "\u{1f1fa}\u{1f1f8} Done");
+        graph.add_edge_with_attrs(
+            "a",
+            "b",
+            GraphEdgeAttrs {
+                label: Some("go\u{301}\u{1f1fa}\u{1f1f8}".to_string()),
+                ..GraphEdgeAttrs::default()
+            },
+        );
+
+        let rendered =
+            render_graph(&graph, &AsciiRenderOptions::ascii()).expect("state graph should render");
+
+        for authored in [
+            "Cafe\u{301} \u{1f469}\u{200d}\u{1f4bb}",
+            "\u{1f1fa}\u{1f1f8} Done",
+            "go\u{301}\u{1f1fa}\u{1f1f8}",
+        ] {
+            assert!(
+                rendered.contains(authored),
+                "missing {authored:?}:\n{rendered}"
+            );
+        }
+    }
 }

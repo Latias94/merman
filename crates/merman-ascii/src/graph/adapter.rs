@@ -5,6 +5,7 @@ use super::style::{resolve_edge_style, resolve_group_style, resolve_node_style};
 use crate::AsciiDirection;
 use crate::error::{AsciiError, Result};
 use crate::options::AsciiRenderOptions;
+use crate::text::normalize_optional_text;
 use merman_core::diagrams::flowchart::FlowchartModel;
 use std::collections::HashSet;
 
@@ -41,9 +42,7 @@ pub(crate) fn from_flowchart_model(
                 label: edge
                     .label
                     .as_deref()
-                    .map(str::trim)
-                    .filter(|label| !label.is_empty())
-                    .map(ToOwned::to_owned),
+                    .and_then(|label| normalize_optional_text(Some(label))),
                 stroke: parse_edge_stroke(edge.stroke.as_deref().unwrap_or("normal"))?,
                 arrow: parse_edge_arrow(edge.edge_type.as_deref().unwrap_or("arrow_point"))?,
                 length: edge.length,

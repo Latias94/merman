@@ -23,4 +23,12 @@ default = []
 [dependencies]
 merman-core.workspace = true
 thiserror.workspace = true
-unicode-width.workspace = true
+unicode-segmentation.workspace = true
+unicode-width = { workspace = true, features = ["cjk"] }
+
+[dev-dependencies]
+criterion = "0.8.2"
+
+[[bench]]
+name = "terminal_cell_representation"
+harness = false

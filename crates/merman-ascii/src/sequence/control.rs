@@ -2,7 +2,8 @@ use super::model::SequenceControlKind;
 use super::render::SequenceChars;
 use super::text::{SequenceLine, padded_line, trim_right};
 use crate::color::{AsciiColorRole, AsciiRgb};
-use crate::text::display_width;
+use crate::options::TerminalWidthProfile;
+use crate::text::display_width_with_profile;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SequenceControlFrame {
@@ -55,7 +56,8 @@ pub(super) fn render_sequence_control_frames(
         return lines;
     }
 
-    render_control_range(&lines, frames, &tree, 0, lines.len(), chars)
+    let width_profile = lines[0].width_profile();
+    render_control_range(&lines, frames, &tree, 0, lines.len(), chars, width_profile)
 }
 
 fn render_control_range(
@@ -65,6 +67,7 @@ fn render_control_range(
     start_row: usize,
     end_row: usize,
     chars: &SequenceChars,
+    width_profile: TerminalWidthProfile,
 ) -> Vec<SequenceLine> {
     let mut rendered = Vec::new();
     let mut row = start_row;
@@ -78,7 +81,14 @@ fn render_control_range(
         if row < frame.start_row {
             rendered.extend(lines[row..frame.start_row].iter().cloned());
         }
-        rendered.extend(render_frame_node(node, frames, lines, chars, 0));
+        rendered.extend(render_frame_node(
+            node,
+            frames,
+            lines,
+            chars,
+            0,
+            width_profile,
+        ));
         row = node_end + 1;
     }
 
@@ -94,12 +104,13 @@ fn render_frame_node(
     lines: &[SequenceLine],
     chars: &SequenceChars,
     inset: usize,
+    width_profile: TerminalWidthProfile,
 ) -> Vec<SequenceLine> {
     let frame = &frames[node.frame_index];
-    let body_rows = render_frame_body(node, frames, lines, chars, inset);
-    let width = frame_width(frame, &body_rows, inset);
+    let body_rows = render_frame_body(node, frames, lines, chars, inset, width_profile);
+    let width = frame_width(frame, &body_rows, inset, width_profile);
     let mut rendered = Vec::with_capacity(body_rows.len() + 2);
-    rendered.push(render_top_border(frame, inset, width, chars));
+    rendered.push(render_top_border(frame, inset, width, chars, width_profile));
 
     for row in body_rows {
         match row {
@@ -119,12 +130,19 @@ fn render_frame_node(
                     inset,
                     width,
                     chars,
+                    width_profile,
                 ));
             }
         }
     }
 
-    rendered.push(render_bottom_border(inset, width, chars, frame.background));
+    rendered.push(render_bottom_border(
+        inset,
+        width,
+        chars,
+        frame.background,
+        width_profile,
+    ));
     rendered
 }
 
@@ -134,6 +152,7 @@ fn render_frame_body(
     lines: &[SequenceLine],
     chars: &SequenceChars,
     inset: usize,
+    width_profile: TerminalWidthProfile,
 ) -> Vec<SequenceControlBodyRow> {
     let frame = &frames[node.frame_index];
     let end_row = frame
@@ -158,7 +177,7 @@ fn render_frame_body(
             let child_frame = &frames[child.frame_index];
             if child_frame.start_row == row {
                 body_rows.extend(
-                    render_frame_node(child, frames, lines, chars, inset + 2)
+                    render_frame_node(child, frames, lines, chars, inset + 2, width_profile)
                         .into_iter()
                         .map(SequenceControlBodyRow::Content),
                 );
@@ -236,6 +255,7 @@ fn frame_width(
     frame: &SequenceControlFrame,
     rows: &[SequenceControlBodyRow],
     inset: usize,
+    width_profile: TerminalWidthProfile,
 ) -> usize {
     let max_row_width = rows
         .iter()
@@ -245,11 +265,13 @@ fn frame_width(
         })
         .max()
         .unwrap_or(0);
-    let title_width = display_width(&frame_title(frame));
+    let title_width = display_width_with_profile(&frame_title(frame), width_profile);
     let separator_width = frame
         .separators
         .iter()
-        .map(|separator| display_width(&separator_title(frame, separator)))
+        .map(|separator| {
+            display_width_with_profile(&separator_title(frame, separator), width_profile)
+        })
         .max()
         .unwrap_or(0);
 
@@ -265,6 +287,7 @@ fn render_top_border(
     inset: usize,
     width: usize,
     chars: &SequenceChars,
+    width_profile: TerminalWidthProfile,
 ) -> SequenceLine {
     render_border_row(
         chars.top_left,
@@ -274,6 +297,7 @@ fn render_top_border(
         width,
         Some(&frame_title(frame)),
         frame.background,
+        width_profile,
     )
 }
 
@@ -282,6 +306,7 @@ fn render_bottom_border(
     width: usize,
     chars: &SequenceChars,
     background: Option<AsciiRgb>,
+    width_profile: TerminalWidthProfile,
 ) -> SequenceLine {
     render_border_row(
         chars.bottom_left,
@@ -291,6 +316,7 @@ fn render_bottom_border(
         width,
         None,
         background,
+        width_profile,
     )
 }
 
@@ -300,6 +326,7 @@ fn render_separator_border(
     inset: usize,
     width: usize,
     chars: &SequenceChars,
+    width_profile: TerminalWidthProfile,
 ) -> SequenceLine {
     render_border_row(
         chars.tee_right,
@@ -309,9 +336,13 @@ fn render_separator_border(
         width,
         Some(&separator_title(frame, separator)),
         frame.background,
+        width_profile,
     )
 }
 
+// The arguments map one-to-one to the terminal border primitive: geometry, optional label,
+// background, and the selected width profile are intentionally kept explicit at call sites.
+#[allow(clippy::too_many_arguments)]
 fn render_border_row(
     left: char,
     right: char,
@@ -320,9 +351,10 @@ fn render_border_row(
     width: usize,
     label: Option<&str>,
     background: Option<AsciiRgb>,
+    width_profile: TerminalWidthProfile,
 ) -> SequenceLine {
     let total_width = inset + width;
-    let mut row = SequenceLine::blank(total_width);
+    let mut row = SequenceLine::blank_with_profile(total_width, width_profile);
     paint_row_background(&mut row, inset..total_width, background);
     for x in inset..total_width {
         row.set_role(x, horizontal, AsciiColorRole::SequenceFrame);

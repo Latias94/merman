@@ -2292,6 +2292,126 @@ public func FfiConverterTypeMermanAsciiCapabilityEvidence_lower(_ value: MermanA
 }
 
 
+public struct MermanDiagnosticErrorDetails: Equatable, Hashable {
+    public var code: String
+    public var span: MermanDiagnosticSpan?
+    public var field: String?
+    public var diagramType: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(code: String, span: MermanDiagnosticSpan?, field: String?, diagramType: String?) {
+        self.code = code
+        self.span = span
+        self.field = field
+        self.diagramType = diagramType
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension MermanDiagnosticErrorDetails: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMermanDiagnosticErrorDetails: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MermanDiagnosticErrorDetails {
+        return
+            try MermanDiagnosticErrorDetails(
+                code: FfiConverterString.read(from: &buf),
+                span: FfiConverterOptionTypeMermanDiagnosticSpan.read(from: &buf),
+                field: FfiConverterOptionString.read(from: &buf),
+                diagramType: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MermanDiagnosticErrorDetails, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.code, into: &buf)
+        FfiConverterOptionTypeMermanDiagnosticSpan.write(value.span, into: &buf)
+        FfiConverterOptionString.write(value.field, into: &buf)
+        FfiConverterOptionString.write(value.diagramType, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMermanDiagnosticErrorDetails_lift(_ buf: RustBuffer) throws -> MermanDiagnosticErrorDetails {
+    return try FfiConverterTypeMermanDiagnosticErrorDetails.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMermanDiagnosticErrorDetails_lower(_ value: MermanDiagnosticErrorDetails) -> RustBuffer {
+    return FfiConverterTypeMermanDiagnosticErrorDetails.lower(value)
+}
+
+
+public struct MermanDiagnosticSpan: Equatable, Hashable {
+    public var start: UInt64
+    public var end: UInt64
+    public var kind: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(start: UInt64, end: UInt64, kind: String) {
+        self.start = start
+        self.end = end
+        self.kind = kind
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension MermanDiagnosticSpan: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMermanDiagnosticSpan: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MermanDiagnosticSpan {
+        return
+            try MermanDiagnosticSpan(
+                start: FfiConverterUInt64.read(from: &buf),
+                end: FfiConverterUInt64.read(from: &buf),
+                kind: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MermanDiagnosticSpan, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.start, into: &buf)
+        FfiConverterUInt64.write(value.end, into: &buf)
+        FfiConverterString.write(value.kind, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMermanDiagnosticSpan_lift(_ buf: RustBuffer) throws -> MermanDiagnosticSpan {
+    return try FfiConverterTypeMermanDiagnosticSpan.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMermanDiagnosticSpan_lower(_ value: MermanDiagnosticSpan) -> RustBuffer {
+    return FfiConverterTypeMermanDiagnosticSpan.lower(value)
+}
+
+
 public struct MermanDiagramFamilyCapability: Equatable, Hashable {
     public var diagramType: String
     public var logicalFamilyKind: String
@@ -3313,7 +3433,7 @@ enum MermanError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
 
 
-    case Binding(code: Int32, codeName: String, kind: MermanErrorKind, capabilityId: String?, resource: MermanResourceErrorDetails?, iconRegistry: MermanIconRegistryErrorDetails?, message: String
+    case Binding(code: Int32, codeName: String, kind: MermanErrorKind, capabilityId: String?, resource: MermanResourceErrorDetails?, diagnostic: MermanDiagnosticErrorDetails?, iconRegistry: MermanIconRegistryErrorDetails?, message: String
     )
 
 
@@ -3350,6 +3470,7 @@ public struct FfiConverterTypeMermanError: FfiConverterRustBuffer {
             kind: try FfiConverterTypeMermanErrorKind.read(from: &buf),
             capabilityId: try FfiConverterOptionString.read(from: &buf),
             resource: try FfiConverterOptionTypeMermanResourceErrorDetails.read(from: &buf),
+            diagnostic: try FfiConverterOptionTypeMermanDiagnosticErrorDetails.read(from: &buf),
             iconRegistry: try FfiConverterOptionTypeMermanIconRegistryErrorDetails.read(from: &buf),
             message: try FfiConverterString.read(from: &buf)
             )
@@ -3365,13 +3486,14 @@ public struct FfiConverterTypeMermanError: FfiConverterRustBuffer {
 
 
 
-        case let .Binding(code,codeName,kind,capabilityId,resource,iconRegistry,message):
+        case let .Binding(code,codeName,kind,capabilityId,resource,diagnostic,iconRegistry,message):
             writeInt(&buf, Int32(1))
             FfiConverterInt32.write(code, into: &buf)
             FfiConverterString.write(codeName, into: &buf)
             FfiConverterTypeMermanErrorKind.write(kind, into: &buf)
             FfiConverterOptionString.write(capabilityId, into: &buf)
             FfiConverterOptionTypeMermanResourceErrorDetails.write(resource, into: &buf)
+            FfiConverterOptionTypeMermanDiagnosticErrorDetails.write(diagnostic, into: &buf)
             FfiConverterOptionTypeMermanIconRegistryErrorDetails.write(iconRegistry, into: &buf)
             FfiConverterString.write(message, into: &buf)
 
@@ -4373,6 +4495,54 @@ fileprivate struct FfiConverterOptionTypeMermanEngineServices: FfiConverterRustB
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeMermanEngineServices.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeMermanDiagnosticErrorDetails: FfiConverterRustBuffer {
+    typealias SwiftType = MermanDiagnosticErrorDetails?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMermanDiagnosticErrorDetails.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMermanDiagnosticErrorDetails.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeMermanDiagnosticSpan: FfiConverterRustBuffer {
+    typealias SwiftType = MermanDiagnosticSpan?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMermanDiagnosticSpan.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMermanDiagnosticSpan.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }

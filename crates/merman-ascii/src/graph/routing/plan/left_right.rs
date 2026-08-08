@@ -170,6 +170,7 @@ pub(super) fn plan_left_right_reverse_over_self_loop_route(
             x: from.x.saturating_sub(1),
             y,
         },
+        charset,
     )
     .into_iter()
     .collect();

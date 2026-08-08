@@ -1,7 +1,8 @@
-use super::super::{RelationGraphLabel, RelationGraphLine};
+use super::super::{RelationGraphLabel, RelationGraphLine, concat_relation_lines};
 use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
-use crate::text::display_width;
+use crate::options::TerminalWidthProfile;
+use crate::text::display_width_with_profile;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RelationLineChars {
@@ -61,29 +62,32 @@ pub(crate) fn marker_line_with_role(
     marker: char,
     center: usize,
     role: AsciiColorRole,
+    width_profile: TerminalWidthProfile,
 ) -> RelationGraphLine {
-    let mut line = String::new();
-    line.extend(std::iter::repeat_n(' ', center));
-    line.push(marker);
-    let mut roles = vec![None; center];
-    roles.push(Some(role));
-    RelationGraphLine::new(line, roles)
+    concat_relation_lines(
+        vec![
+            RelationGraphLine::plain(" ".repeat(center), width_profile),
+            RelationGraphLine::with_role(marker.to_string(), role, width_profile),
+        ],
+        width_profile,
+    )
 }
 
 pub(crate) fn centered_text_line_with_role(
     text: &str,
     center: usize,
     role: AsciiColorRole,
+    width_profile: TerminalWidthProfile,
 ) -> RelationGraphLine {
-    let mut line = String::new();
-    let half_width = display_width(text) / 2;
+    let half_width = display_width_with_profile(text, width_profile) / 2;
     let left_padding = center.saturating_sub(half_width);
-    line.extend(std::iter::repeat_n(' ', left_padding));
-    line.push_str(text);
-
-    let mut roles = vec![None; left_padding];
-    roles.extend(std::iter::repeat_n(Some(role), text.chars().count()));
-    RelationGraphLine::new(line, roles)
+    concat_relation_lines(
+        vec![
+            RelationGraphLine::plain(" ".repeat(left_padding), width_profile),
+            RelationGraphLine::with_role(text.to_string(), role, width_profile),
+        ],
+        width_profile,
+    )
 }
 
 pub(crate) fn centered_label_lines_with_role(
@@ -94,7 +98,7 @@ pub(crate) fn centered_label_lines_with_role(
     label
         .lines()
         .iter()
-        .map(|line| centered_text_line_with_role(line, center, role))
+        .map(|line| centered_text_line_with_role(line, center, role, label.width_profile()))
         .collect()
 }
 
@@ -105,7 +109,7 @@ pub(crate) fn label_lines_with_role(
     label
         .lines()
         .iter()
-        .map(|line| RelationGraphLine::with_role(line.clone(), role))
+        .map(|line| RelationGraphLine::with_role(line.clone(), role, label.width_profile()))
         .collect()
 }
 
@@ -135,8 +139,9 @@ pub(crate) fn write_centered_relation_text(
     y: usize,
     text: &str,
     role: AsciiColorRole,
+    width_profile: TerminalWidthProfile,
 ) {
-    let text_half_width = display_width(text) / 2;
+    let text_half_width = display_width_with_profile(text, width_profile) / 2;
     canvas.write_text_role(center_x.saturating_sub(text_half_width), y, text, role);
 }
 
@@ -148,6 +153,13 @@ pub(crate) fn write_centered_relation_label(
     role: AsciiColorRole,
 ) {
     for (offset, line) in label.lines().iter().enumerate() {
-        write_centered_relation_text(canvas, center_x, start_y + offset, line, role);
+        write_centered_relation_text(
+            canvas,
+            center_x,
+            start_y + offset,
+            line,
+            role,
+            label.width_profile(),
+        );
     }
 }

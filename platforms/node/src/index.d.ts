@@ -206,12 +206,26 @@ export interface MermanResourceErrorDetails {
   readonly profile: string;
 }
 
+export interface MermanDiagnosticSpan {
+  readonly start: number;
+  readonly end: number;
+  readonly kind: "exact" | "insertion-point" | "fallback" | string;
+}
+
+export interface MermanDiagnosticErrorDetails {
+  readonly code: string;
+  readonly span: MermanDiagnosticSpan | null;
+  readonly field: string | null;
+  readonly diagram_type: string | null;
+}
+
 export declare class MermanOperationError extends MermanError {
   readonly status: number | null;
   readonly codeName: string | null;
   readonly kind: "generic" | "unknown-operation" | "missing-capability" | string;
   readonly capabilityId: string | null;
   readonly resourceDetails: MermanResourceErrorDetails | null;
+  readonly diagnosticDetails: MermanDiagnosticErrorDetails | null;
 }
 
 export declare class MermanQueueSaturatedError extends MermanError {

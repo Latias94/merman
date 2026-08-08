@@ -2,15 +2,21 @@ use super::super::super::label::GraphLabel;
 use super::super::super::model::{AsciiGraph, AsciiGraphGroup, GraphGroupKind};
 use super::super::super::topology::GraphGroupTopology;
 use super::super::{DividerSpan, GroupLayout, NodeLayout};
+use crate::options::TerminalWidthProfile;
 use std::collections::{HashMap, HashSet};
 
-pub(super) fn subgraph_offsets(graph: &AsciiGraph, layouts: &[NodeLayout]) -> (usize, usize) {
+pub(super) fn subgraph_offsets(
+    graph: &AsciiGraph,
+    layouts: &[NodeLayout],
+    width_profile: TerminalWidthProfile,
+) -> (usize, usize) {
     let mut min_x = 0isize;
     let mut min_y = 0isize;
     let topology = GraphGroupTopology::new(graph);
 
     for group_index in 0..graph.groups.len() {
-        let Some(bounds) = raw_group_bounds(graph, layouts, group_index, &topology) else {
+        let Some(bounds) = raw_group_bounds(graph, layouts, group_index, &topology, width_profile)
+        else {
             continue;
         };
         min_x = min_x.min(bounds.x);
@@ -23,7 +29,11 @@ pub(super) fn subgraph_offsets(graph: &AsciiGraph, layouts: &[NodeLayout]) -> (u
     )
 }
 
-pub(super) fn layout_groups(graph: &AsciiGraph, layouts: &[NodeLayout]) -> Vec<GroupLayout> {
+pub(super) fn layout_groups(
+    graph: &AsciiGraph,
+    layouts: &[NodeLayout],
+    width_profile: TerminalWidthProfile,
+) -> Vec<GroupLayout> {
     let mut groups = Vec::new();
 
     for group in &graph.groups {
@@ -63,7 +73,7 @@ pub(super) fn layout_groups(graph: &AsciiGraph, layouts: &[NodeLayout]) -> Vec<G
             .chain(child_members.iter().map(|layout| layout.bottom()))
             .max()
             .unwrap_or(0);
-        let title = group_title_for_layout(group, min_x, max_right);
+        let title = group_title_for_layout(group, min_x, max_right, width_profile);
         let bounds =
             group_layout_bounds_for_members(group, &title, min_x, min_y, max_right, max_bottom);
         let width = bounds.right - bounds.x + 1;
@@ -106,6 +116,7 @@ impl RawBounds {
 pub(super) fn raw_group_bounds_for_members(
     group: &AsciiGraphGroup,
     member_bounds: RawBounds,
+    width_profile: TerminalWidthProfile,
 ) -> RawBounds {
     let x = member_bounds.x - 2;
     let right = member_bounds.right + 2;
@@ -113,7 +124,7 @@ pub(super) fn raw_group_bounds_for_members(
     match group.kind {
         GraphGroupKind::Container => {
             let title_width = (member_bounds.right - member_bounds.x + 3).max(1) as usize;
-            let title = GraphLabel::wrapped(&group.title, title_width);
+            let title = GraphLabel::wrapped_with_profile(&group.title, title_width, width_profile);
             let title_space = title.content_height() + 3;
             RawBounds {
                 x,
@@ -136,6 +147,7 @@ fn raw_group_bounds(
     layouts: &[NodeLayout],
     group_index: usize,
     topology: &GraphGroupTopology<'_>,
+    width_profile: TerminalWidthProfile,
 ) -> Option<RawBounds> {
     graph.groups.get(group_index)?;
 
@@ -173,6 +185,7 @@ fn raw_group_bounds(
                     &layout_bounds_by_id,
                     topology,
                     &completed,
+                    width_profile,
                 ),
             );
             continue;
@@ -205,6 +218,7 @@ fn raw_group_bounds_from_completed_children(
     layout_bounds_by_id: &HashMap<&str, RawBounds>,
     topology: &GraphGroupTopology<'_>,
     completed: &HashMap<usize, Option<RawBounds>>,
+    width_profile: TerminalWidthProfile,
 ) -> Option<RawBounds> {
     let mut member_bounds = None::<RawBounds>;
 
@@ -230,7 +244,11 @@ fn raw_group_bounds_from_completed_children(
         };
     }
 
-    Some(raw_group_bounds_for_members(group, member_bounds?))
+    Some(raw_group_bounds_for_members(
+        group,
+        member_bounds?,
+        width_profile,
+    ))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -241,12 +259,19 @@ struct GroupLayoutBounds {
     bottom: usize,
 }
 
-fn group_title_for_layout(group: &AsciiGraphGroup, min_x: usize, max_right: usize) -> GraphLabel {
+fn group_title_for_layout(
+    group: &AsciiGraphGroup,
+    min_x: usize,
+    max_right: usize,
+    width_profile: TerminalWidthProfile,
+) -> GraphLabel {
     match group.kind {
-        GraphGroupKind::Container => {
-            GraphLabel::wrapped(&group.title, (max_right.saturating_sub(min_x) + 3).max(1))
-        }
-        GraphGroupKind::Divider => GraphLabel::new(""),
+        GraphGroupKind::Container => GraphLabel::wrapped_with_profile(
+            &group.title,
+            (max_right.saturating_sub(min_x) + 3).max(1),
+            width_profile,
+        ),
+        GraphGroupKind::Divider => GraphLabel::new_with_profile("", width_profile),
     }
 }
 

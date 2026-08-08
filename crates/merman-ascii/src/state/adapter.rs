@@ -7,6 +7,7 @@ use crate::graph::{
     AsciiGraph, GraphDirection, GraphEdgeArrow, GraphEdgeAttrs, GraphGroupKind, GraphGroupStyle,
     GraphNodeShape, GraphNodeStyle,
 };
+use crate::text::normalize_optional_text;
 use merman_core::diagrams::state::{
     StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
 };
@@ -321,15 +322,13 @@ fn is_state_pseudo_shape(shape: &str) -> bool {
 }
 
 fn push_nonempty_label_line(lines: &mut Vec<String>, line: &str) {
-    let line = line.trim();
-    if !line.is_empty() {
-        lines.push(line.to_string());
+    if let Some(line) = normalize_optional_text(Some(line)) {
+        lines.push(line);
     }
 }
 
 fn edge_label(label: &str) -> Option<String> {
-    let label = label.trim();
-    (!label.is_empty()).then(|| label.to_string())
+    normalize_optional_text(Some(label))
 }
 
 fn edge_arrow(edge: &StateDiagramRenderEdge) -> GraphEdgeArrow {

@@ -1,5 +1,8 @@
-use crate::options::AsciiRenderOptions;
-use crate::text::{normalize_optional_text, push_wrapped_prefixed_line, trim_trailing_blank_lines};
+use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
+use crate::safe_text::encode_text_lines;
+use crate::text::{
+    normalize_optional_text, push_wrapped_prefixed_line_with_profile, trim_trailing_blank_lines,
+};
 use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyRenderTask};
 use std::collections::BTreeSet;
 
@@ -7,7 +10,7 @@ const SUMMARY_WRAP_WIDTH: usize = 80;
 
 pub fn render_journey_diagram(
     model: &JourneyDiagramRenderModel,
-    _options: &AsciiRenderOptions,
+    options: &AsciiRenderOptions,
 ) -> String {
     let mut lines = Vec::new();
 
@@ -34,7 +37,7 @@ pub fn render_journey_diagram(
         for section in &model.sections {
             lines.push(format!("section: {section}"));
             for task in model.tasks.iter().filter(|task| task.section == *section) {
-                push_task(&mut lines, task);
+                push_task(&mut lines, task, options.terminal_width_profile);
             }
         }
         for task in model.tasks.iter().filter(|task| {
@@ -43,15 +46,15 @@ pub fn render_journey_diagram(
                 .iter()
                 .any(|section| section == &task.section)
         }) {
-            push_task(&mut lines, task);
+            push_task(&mut lines, task, options.terminal_width_profile);
         }
     } else {
         for task in &model.tasks {
-            push_task(&mut lines, task);
+            push_task(&mut lines, task, options.terminal_width_profile);
         }
     }
 
-    trim_trailing_blank_lines(lines).join("\n")
+    encode_text_lines(trim_trailing_blank_lines(lines), options)
 }
 
 fn collect_actors(tasks: &[JourneyRenderTask]) -> Vec<String> {
@@ -66,7 +69,11 @@ fn collect_actors(tasks: &[JourneyRenderTask]) -> Vec<String> {
     set.into_iter().collect()
 }
 
-fn push_task(lines: &mut Vec<String>, task: &JourneyRenderTask) {
+fn push_task(
+    lines: &mut Vec<String>,
+    task: &JourneyRenderTask,
+    width_profile: TerminalWidthProfile,
+) {
     let score = if task.score_is_nan {
         "NaN".to_string()
     } else {
@@ -77,11 +84,12 @@ fn push_task(lines: &mut Vec<String>, task: &JourneyRenderTask) {
     } else {
         format!(" ({})", task.people.join(", "))
     };
-    push_wrapped_prefixed_line(
+    push_wrapped_prefixed_line_with_profile(
         lines,
         "  - ",
         "    ",
         &format!("{} [score {}]{}", task.task, score, people),
         SUMMARY_WRAP_WIDTH,
+        width_profile,
     );
 }

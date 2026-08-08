@@ -1,12 +1,15 @@
 use crate::options::AsciiRenderOptions;
-use crate::text::{normalize_optional_text, push_wrapped_prefixed_line, trim_trailing_blank_lines};
+use crate::safe_text::encode_text_lines;
+use crate::text::{
+    normalize_optional_text, push_wrapped_prefixed_line_with_profile, trim_trailing_blank_lines,
+};
 use merman_core::diagrams::git_graph::{GitGraphCommitRenderModel, GitGraphRenderModel};
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
 pub fn render_git_graph_diagram(
     model: &GitGraphRenderModel,
-    _options: &AsciiRenderOptions,
+    options: &AsciiRenderOptions,
 ) -> String {
     let mut lines = Vec::new();
 
@@ -36,29 +39,31 @@ pub fn render_git_graph_diagram(
     }
 
     for commit in &model.commits {
-        push_wrapped_prefixed_line(
+        push_wrapped_prefixed_line_with_profile(
             &mut lines,
             "  - ",
             "    ",
             &render_commit_text(commit),
             SUMMARY_WRAP_WIDTH,
+            options.terminal_width_profile,
         );
     }
 
     if !model.warning_facts.is_empty() {
         lines.push("warnings:".to_string());
         for warning in &model.warning_facts {
-            push_wrapped_prefixed_line(
+            push_wrapped_prefixed_line_with_profile(
                 &mut lines,
                 "  - ",
                 "    ",
                 &warning.message,
                 SUMMARY_WRAP_WIDTH,
+                options.terminal_width_profile,
             );
         }
     }
 
-    trim_trailing_blank_lines(lines).join("\n")
+    encode_text_lines(trim_trailing_blank_lines(lines), options)
 }
 
 fn render_commit_text(commit: &GitGraphCommitRenderModel) -> String {

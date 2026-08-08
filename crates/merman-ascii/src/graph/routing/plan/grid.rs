@@ -123,6 +123,7 @@ pub(super) fn plan_left_right_grid_path_route_with_options(
         &lines_drawn,
         &line_dirs,
         options.label_mode,
+        charset,
     )
     .into_iter()
     .collect();
@@ -135,9 +136,9 @@ fn planned_grid_label(
     lines: &[Vec<CanvasCoord>],
     directions: &[StepDirection],
     mode: GridRouteLabelMode,
+    charset: &GraphCharset,
 ) -> Option<PlannedRouteLabel> {
-    let label = label.filter(|label| !label.trim().is_empty())?;
-    let text = RoutedLabelText::new(label)?;
+    let text = RoutedLabelText::new_with_profile(label?, charset.width_profile)?;
     let (line, direction) = grid_label_line(lines, directions, mode)?;
     let first = line.first().copied()?;
     let last = line.last().copied()?;

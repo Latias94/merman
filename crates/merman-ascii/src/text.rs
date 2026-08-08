@@ -1,9 +1,13 @@
 use crate::canvas::Canvas;
 use crate::color::{AsciiColorRole, AsciiRgb};
+use crate::options::TerminalWidthProfile;
+use crate::safe_text::{
+    SafeLine, SafeText, terminal_char_display_width, terminal_line_display_width,
+};
 use crate::terminal::{
-    CanvasColor, CanvasStyle, TerminalCell, char_display_width,
-    display_width as terminal_display_width, push_primary_cell, write_primary_cell_from_cell,
-    write_primary_cell_style,
+    CanvasColor, CanvasStyle, GlyphArena, TerminalCell, mirror_cells, owner_index, primary_width,
+    push_primary_grapheme_style, style_at, write_primary_cell_from_cell,
+    write_primary_grapheme_style,
 };
 
 pub(crate) type StyledCell = TerminalCell;
@@ -11,46 +15,52 @@ pub(crate) type StyledCell = TerminalCell;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct StyledLine {
     cells: Vec<StyledCell>,
+    arena: GlyphArena,
+    width_profile: TerminalWidthProfile,
 }
 
 impl StyledLine {
-    pub(crate) fn new() -> Self {
-        Self { cells: Vec::new() }
-    }
-
-    pub(crate) fn from_cells(cells: Vec<StyledCell>) -> Self {
-        Self { cells }
-    }
-
-    pub(crate) fn blank(width: usize) -> Self {
+    pub(crate) fn with_width_profile(width_profile: TerminalWidthProfile) -> Self {
         Self {
-            cells: vec![StyledCell::blank(); width],
+            cells: Vec::new(),
+            arena: GlyphArena::default(),
+            width_profile,
         }
     }
 
-    pub(crate) fn role_text(text: &str, role: AsciiColorRole) -> Self {
-        let mut line = Self::new();
+    pub(crate) fn from_surface_cells(
+        cells: Vec<StyledCell>,
+        arena: GlyphArena,
+        width_profile: TerminalWidthProfile,
+    ) -> Self {
+        Self {
+            cells,
+            arena,
+            width_profile,
+        }
+    }
+
+    pub(crate) fn blank_with_profile(width: usize, width_profile: TerminalWidthProfile) -> Self {
+        Self {
+            cells: vec![StyledCell::blank(); width],
+            arena: GlyphArena::default(),
+            width_profile,
+        }
+    }
+
+    pub(crate) fn role_text_with_profile(
+        text: &str,
+        role: AsciiColorRole,
+        width_profile: TerminalWidthProfile,
+    ) -> Self {
+        let mut line = Self::with_width_profile(width_profile);
         line.push_role_text(text, role);
         line
     }
 
-    pub(crate) fn plain_text(text: &str) -> Self {
-        let mut line = Self::new();
-        for ch in text.chars() {
-            line.push_plain_char(ch);
-        }
-        line
-    }
-
-    pub(crate) fn text_with_roles(text: &str, roles: Vec<Option<AsciiColorRole>>) -> Self {
-        assert_eq!(text.chars().count(), roles.len());
-        let mut line = Self::new();
-        for (ch, role) in text.chars().zip(roles) {
-            match role {
-                Some(role) => line.push_role_char(ch, role),
-                None => line.push_plain_char(ch),
-            }
-        }
+    pub(crate) fn plain_text_with_profile(text: &str, width_profile: TerminalWidthProfile) -> Self {
+        let mut line = Self::with_width_profile(width_profile);
+        line.push_plain_text(text);
         line
     }
 
@@ -58,22 +68,26 @@ impl StyledLine {
         self.cells.len()
     }
 
+    pub(crate) fn width_profile(&self) -> TerminalWidthProfile {
+        self.width_profile
+    }
+
     pub(crate) fn get(&self, index: usize) -> Option<char> {
         self.cells.get(index).and_then(|cell| cell.output_char())
     }
 
     pub(crate) fn text(&self) -> String {
-        self.cells
-            .iter()
-            .filter_map(|cell| cell.output_char())
-            .collect()
+        let mut output = String::new();
+        for cell in &self.cells {
+            if let Some(text) = cell.output_text(&self.arena) {
+                text.push_to(&mut output);
+            }
+        }
+        output
     }
 
     pub(crate) fn into_text(self) -> String {
-        self.cells
-            .into_iter()
-            .filter_map(|cell| cell.output_char())
-            .collect()
+        self.text()
     }
 
     pub(crate) fn pad_to(&mut self, width: usize) {
@@ -83,7 +97,14 @@ impl StyledLine {
     }
 
     pub(crate) fn push_plain_char(&mut self, ch: char) {
-        push_primary_cell(&mut self.cells, ch, None);
+        self.push_char_style(ch, CanvasStyle::default());
+    }
+
+    fn push_plain_text(&mut self, text: &str) {
+        let text = SafeLine::new(text);
+        for grapheme in text.graphemes(self.width_profile) {
+            self.push_measured_grapheme(grapheme.text(), grapheme.width(), CanvasStyle::default());
+        }
     }
 
     pub(crate) fn push_spaces(&mut self, count: usize) {
@@ -92,16 +113,28 @@ impl StyledLine {
     }
 
     pub(crate) fn push_line(&mut self, line: &StyledLine) {
-        self.cells.extend(line.cells.iter().copied());
+        assert_eq!(
+            self.width_profile, line.width_profile,
+            "cannot compose terminal surfaces with different width profiles"
+        );
+        let remap = self.arena.import_all(&line.arena);
+        self.cells.extend(
+            line.cells
+                .iter()
+                .copied()
+                .map(|cell| cell.remap_arena(remap)),
+        );
     }
 
     pub(crate) fn push_role_char(&mut self, ch: char, role: AsciiColorRole) {
-        push_primary_cell(&mut self.cells, ch, Some(CanvasColor::Role(role)));
+        self.push_char_style(ch, CanvasStyle::foreground(CanvasColor::Role(role)));
     }
 
     pub(crate) fn push_role_text(&mut self, text: &str, role: AsciiColorRole) {
-        for ch in text.chars() {
-            self.push_role_char(ch, role);
+        let text = SafeLine::new(text);
+        let style = CanvasStyle::foreground(CanvasColor::Role(role));
+        for grapheme in text.graphemes(self.width_profile) {
+            self.push_measured_grapheme(grapheme.text(), grapheme.width(), style);
         }
     }
 
@@ -110,9 +143,11 @@ impl StyledLine {
         text: &str,
         role: AsciiColorRole,
     ) {
+        let normalized = SafeLine::new(text);
+        let text = normalized.as_str();
         let trimmed = text.trim_end_matches(' ');
         self.push_role_text(trimmed, role);
-        self.push_spaces(text.chars().count() - trimmed.chars().count());
+        self.push_spaces(text.len() - trimmed.len());
     }
 
     pub(crate) fn push_role_repeat(&mut self, ch: char, count: usize, role: AsciiColorRole) {
@@ -127,25 +162,29 @@ impl StyledLine {
         width: usize,
         role: AsciiColorRole,
     ) {
-        let len = display_width(text);
+        let len = display_width_with_profile(text, self.width_profile);
         self.push_spaces(width.saturating_sub(len));
         self.push_role_text(text, role);
     }
 
-    pub(crate) fn push_cells(&mut self, cells: &[StyledCell]) {
-        self.cells.extend(cells.iter().copied());
-    }
-
     pub(crate) fn set_role(&mut self, index: usize, ch: char, role: AsciiColorRole) {
-        let background = self
-            .cells
-            .get(index)
-            .map(|cell| cell.raw_style().background)
-            .unwrap_or_default();
-        write_primary_cell_style(
+        let width = terminal_char_display_width(ch, self.width_profile);
+        debug_assert_eq!(
+            width, 1,
+            "renderer-owned structural glyphs must occupy one terminal cell"
+        );
+        if width != 1 {
+            return;
+        }
+        let background = style_at(&self.cells, index).background;
+        let mut buffer = [0; 4];
+        let grapheme = ch.encode_utf8(&mut buffer);
+        write_primary_grapheme_style(
             &mut self.cells,
+            &mut self.arena,
             index,
-            ch,
+            grapheme,
+            1,
             CanvasStyle {
                 foreground: Some(CanvasColor::Role(role)),
                 background,
@@ -154,13 +193,18 @@ impl StyledLine {
     }
 
     pub(crate) fn set_background_color(&mut self, index: usize, color: AsciiRgb) {
-        if let Some(cell) = self.cells.get_mut(index) {
+        if let Some(owner) = owner_index(&self.cells, index)
+            && let Some(cell) = self.cells.get_mut(owner)
+        {
             cell.set_background(CanvasColor::Direct(color));
         }
     }
 
     pub(crate) fn set_background_color_if_unset(&mut self, index: usize, color: AsciiRgb) {
-        let Some(cell) = self.cells.get_mut(index) else {
+        let Some(owner) = owner_index(&self.cells, index) else {
+            return;
+        };
+        let Some(cell) = self.cells.get_mut(owner) else {
             return;
         };
         if cell.raw_style().background.is_none() {
@@ -170,15 +214,47 @@ impl StyledLine {
 
     pub(crate) fn write_text_role(&mut self, start: usize, text: &str, role: AsciiColorRole) {
         let mut offset = 0;
-        for ch in text.chars() {
-            self.set_role(start + offset, ch, role);
-            offset += char_display_width(ch);
+        let text = SafeLine::new(text);
+        for grapheme in text.graphemes(self.width_profile) {
+            let index = start.saturating_add(offset);
+            let background = style_at(&self.cells, index).background;
+            write_primary_grapheme_style(
+                &mut self.cells,
+                &mut self.arena,
+                index,
+                grapheme.text(),
+                grapheme.width(),
+                CanvasStyle {
+                    foreground: Some(CanvasColor::Role(role)),
+                    background,
+                },
+            );
+            offset = offset.saturating_add(grapheme.width());
         }
     }
 
     pub(crate) fn write_line(&mut self, start: usize, line: &StyledLine) {
-        for (offset, cell) in line.cells.iter().copied().enumerate() {
-            write_primary_cell_from_cell(&mut self.cells, start + offset, cell);
+        assert_eq!(
+            self.width_profile, line.width_profile,
+            "cannot compose terminal surfaces with different width profiles"
+        );
+        let remap = self.arena.import_all(&line.arena);
+        let mut offset = 0;
+        while offset < line.cells.len() {
+            let cell = line.cells[offset];
+            if cell.is_continuation() {
+                offset += 1;
+                continue;
+            }
+            let width = primary_width(&line.cells, offset).max(1);
+            write_primary_cell_from_cell(
+                &mut self.cells,
+                start.saturating_add(offset),
+                cell,
+                width,
+                remap,
+            );
+            offset += width;
         }
     }
 
@@ -186,7 +262,7 @@ impl StyledLine {
         while self
             .cells
             .last()
-            .is_some_and(|cell| cell.output_char() == Some(' '))
+            .is_some_and(|cell| cell.is_trimmable_blank(false))
         {
             self.cells.pop();
         }
@@ -198,54 +274,86 @@ impl StyledLine {
     }
 
     pub(crate) fn write_to_at(&self, canvas: &mut Canvas, x_offset: usize, y: usize) {
-        for (x, cell) in self.cells.iter().enumerate() {
-            if cell.is_continuation() {
-                continue;
-            }
-            if let Some(style) = cell.style() {
-                canvas.set_style(x_offset + x, y, cell.output_char().unwrap_or(' '), style);
-            } else {
-                canvas.set(x_offset + x, y, cell.output_char().unwrap_or(' '));
-            }
+        assert!(canvas.write_cells_from_surface(
+            x_offset,
+            y,
+            &self.cells,
+            &self.arena,
+            self.width_profile,
+        ));
+    }
+
+    pub(crate) fn mirrored(&self) -> Self {
+        Self {
+            cells: mirror_cells(&self.cells),
+            arena: self.arena.clone(),
+            width_profile: self.width_profile,
         }
+    }
+
+    fn push_char_style(&mut self, ch: char, style: CanvasStyle) {
+        let width = terminal_char_display_width(ch, self.width_profile);
+        debug_assert_eq!(
+            width, 1,
+            "renderer-owned structural glyphs must occupy one terminal cell"
+        );
+        if width != 1 {
+            return;
+        }
+        let mut buffer = [0; 4];
+        let grapheme = ch.encode_utf8(&mut buffer);
+        self.push_measured_grapheme(grapheme, 1, style);
+    }
+
+    fn push_measured_grapheme(&mut self, grapheme: &str, width: usize, style: CanvasStyle) {
+        push_primary_grapheme_style(&mut self.cells, &mut self.arena, grapheme, width, style);
     }
 }
 
-pub(crate) fn display_width(text: &str) -> usize {
-    terminal_display_width(text)
+pub(crate) fn display_width_with_profile(text: &str, width_profile: TerminalWidthProfile) -> usize {
+    terminal_line_display_width(text, width_profile)
 }
 
-pub(crate) fn truncate_display_width(value: &str, width: usize) -> String {
+pub(crate) fn truncate_display_width_with_profile(
+    value: &str,
+    width: usize,
+    width_profile: TerminalWidthProfile,
+) -> String {
     let mut out = String::new();
     let mut used = 0;
 
-    for ch in value.chars() {
-        let ch_width = char_display_width(ch);
-        if used + ch_width > width {
+    let value = SafeLine::new(value);
+    for grapheme in value.graphemes(width_profile) {
+        if used + grapheme.width() > width {
             break;
         }
-        out.push(ch);
-        used += ch_width;
+        out.push_str(grapheme.text());
+        used += grapheme.width();
     }
 
     out
 }
 
-pub(crate) fn wrap_display_lines(text: &str, max_width: usize) -> Vec<String> {
+pub(crate) fn wrap_display_lines_with_profile(
+    text: &str,
+    max_width: usize,
+    width_profile: TerminalWidthProfile,
+) -> Vec<String> {
     let max_width = max_width.max(1);
     let mut lines = Vec::new();
+    let normalized = SafeText::new(text);
 
-    for paragraph in text.split('\n') {
-        wrap_display_paragraph(paragraph, max_width, &mut lines);
+    for paragraph in normalized.lines() {
+        wrap_display_paragraph(paragraph, max_width, width_profile, &mut lines);
     }
 
     lines
 }
 
 pub(crate) fn normalize_optional_text(text: Option<&str>) -> Option<String> {
-    text.map(str::trim)
-        .filter(|text| !text.is_empty())
-        .map(str::to_string)
+    let normalized = SafeText::new(text?);
+    let trimmed = normalized.as_str().trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_owned())
 }
 
 pub(crate) fn trim_trailing_blank_lines(mut lines: Vec<String>) -> Vec<String> {
@@ -255,18 +363,22 @@ pub(crate) fn trim_trailing_blank_lines(mut lines: Vec<String>) -> Vec<String> {
     lines
 }
 
-pub(crate) fn push_wrapped_prefixed_line(
+pub(crate) fn push_wrapped_prefixed_line_with_profile(
     lines: &mut Vec<String>,
     first_prefix: &str,
     continuation_prefix: &str,
     text: &str,
     max_width: usize,
+    width_profile: TerminalWidthProfile,
 ) {
     let available = max_width
-        .saturating_sub(display_width(first_prefix))
-        .min(max_width.saturating_sub(display_width(continuation_prefix)))
+        .saturating_sub(display_width_with_profile(first_prefix, width_profile))
+        .min(max_width.saturating_sub(display_width_with_profile(
+            continuation_prefix,
+            width_profile,
+        )))
         .max(1);
-    let wrapped = wrap_display_lines(text, available);
+    let wrapped = wrap_display_lines_with_profile(text, available, width_profile);
     if wrapped.is_empty() {
         lines.push(first_prefix.to_string());
         return;
@@ -282,20 +394,30 @@ pub(crate) fn push_wrapped_prefixed_line(
 }
 
 pub(crate) fn split_label_lines(raw: &str) -> Vec<String> {
-    normalize_label_breaks(raw)
+    let normalized = normalize_label_breaks(raw);
+    SafeText::new(&normalized)
+        .as_str()
         .split('\n')
         .map(ToOwned::to_owned)
         .collect()
 }
 
-pub(crate) fn wrap_label_lines(raw: &str, max_width: usize) -> Vec<String> {
+pub(crate) fn wrap_label_lines_with_profile(
+    raw: &str,
+    max_width: usize,
+    width_profile: TerminalWidthProfile,
+) -> Vec<String> {
     let normalized = normalize_label_breaks(raw);
     let mut lines = Vec::new();
     for paragraph in normalized.split('\n') {
         if paragraph.is_empty() {
             lines.push(String::new());
         } else {
-            lines.extend(wrap_display_lines(paragraph, max_width));
+            lines.extend(wrap_display_lines_with_profile(
+                paragraph,
+                max_width,
+                width_profile,
+            ));
         }
     }
     lines
@@ -317,6 +439,7 @@ fn normalize_label_breaks(raw: &str) -> String {
             continue;
         }
 
+        // This scalar advances the UTF-8 syntax scanner; text layout remains grapheme-based.
         let Some(ch) = raw[index..].chars().next() else {
             break;
         };
@@ -358,18 +481,23 @@ fn byte_eq_ignore_ascii_case(left: u8, right: u8) -> bool {
     left.eq_ignore_ascii_case(&right)
 }
 
-fn wrap_display_paragraph(text: &str, max_width: usize, lines: &mut Vec<String>) {
+fn wrap_display_paragraph(
+    text: &str,
+    max_width: usize,
+    width_profile: TerminalWidthProfile,
+    lines: &mut Vec<String>,
+) {
     let mut current = String::new();
     let mut current_width = 0;
 
     for word in text.split_whitespace() {
-        let word_width = display_width(word);
+        let word_width = display_width_with_profile(word, width_profile);
         if word_width > max_width {
             if !current.is_empty() {
                 lines.push(std::mem::take(&mut current));
                 current_width = 0;
             }
-            push_wrapped_word(word, max_width, lines);
+            push_wrapped_word(word, max_width, width_profile, lines);
             continue;
         }
 
@@ -392,18 +520,23 @@ fn wrap_display_paragraph(text: &str, max_width: usize, lines: &mut Vec<String>)
     }
 }
 
-fn push_wrapped_word(word: &str, max_width: usize, lines: &mut Vec<String>) {
+fn push_wrapped_word(
+    word: &str,
+    max_width: usize,
+    width_profile: TerminalWidthProfile,
+    lines: &mut Vec<String>,
+) {
     let mut current = String::new();
     let mut current_width = 0;
 
-    for ch in word.chars() {
-        let ch_width = char_display_width(ch);
-        if current_width + ch_width > max_width && !current.is_empty() {
+    let word = SafeLine::new(word);
+    for grapheme in word.graphemes(width_profile) {
+        if current_width + grapheme.width() > max_width && !current.is_empty() {
             lines.push(std::mem::take(&mut current));
             current_width = 0;
         }
-        current.push(ch);
-        current_width += ch_width;
+        current.push_str(grapheme.text());
+        current_width += grapheme.width();
     }
 
     if !current.is_empty() {
@@ -420,7 +553,7 @@ mod tests {
     fn styled_line_writes_role_runs_to_canvas() {
         let theme = AsciiColorTheme::default_light()
             .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
-        let mut line = StyledLine::new();
+        let mut line = StyledLine::with_width_profile(TerminalWidthProfile::Unicode);
         line.push_role_text("AB", AsciiColorRole::Text);
         line.push_plain_char('!');
         let mut canvas = Canvas::new(3, 1);
@@ -439,7 +572,7 @@ mod tests {
     fn styled_line_counts_wide_chars_by_display_width() {
         let theme = AsciiColorTheme::default_light()
             .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
-        let mut line = StyledLine::new();
+        let mut line = StyledLine::with_width_profile(TerminalWidthProfile::Unicode);
         line.push_role_text("中A", AsciiColorRole::Text);
         let mut canvas = Canvas::new(3, 1);
 
@@ -462,7 +595,12 @@ mod tests {
     fn styled_line_trim_and_pad_use_unstyled_spaces() {
         let theme = AsciiColorTheme::default_light()
             .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
-        let mut line = StyledLine::role_text("A ", AsciiColorRole::Text).trim_right();
+        let mut line = StyledLine::role_text_with_profile(
+            "A ",
+            AsciiColorRole::Text,
+            TerminalWidthProfile::Unicode,
+        )
+        .trim_right();
         line.pad_to(3);
         let mut canvas = Canvas::new(3, 1);
 
@@ -478,8 +616,8 @@ mod tests {
 
     #[test]
     fn styled_line_write_line_preserves_wide_cell_invariants() {
-        let mut target = StyledLine::plain_text("abcd");
-        let source = StyledLine::plain_text("中");
+        let mut target = StyledLine::plain_text_with_profile("abcd", TerminalWidthProfile::Unicode);
+        let source = StyledLine::plain_text_with_profile("中", TerminalWidthProfile::Unicode);
 
         target.write_line(1, &source);
 
@@ -492,8 +630,8 @@ mod tests {
 
     #[test]
     fn styled_line_write_line_rejects_wide_cell_at_final_column() {
-        let mut target = StyledLine::plain_text("ab");
-        let source = StyledLine::plain_text("中");
+        let mut target = StyledLine::plain_text_with_profile("ab", TerminalWidthProfile::Unicode);
+        let source = StyledLine::plain_text_with_profile("中", TerminalWidthProfile::Unicode);
 
         target.write_line(1, &source);
 
@@ -503,7 +641,7 @@ mod tests {
 
     #[test]
     fn styled_line_write_text_role_rejects_wide_cell_at_final_column() {
-        let mut target = StyledLine::plain_text("ab");
+        let mut target = StyledLine::plain_text_with_profile("ab", TerminalWidthProfile::Unicode);
 
         target.write_text_role(1, "🚀", AsciiColorRole::Text);
 
@@ -513,8 +651,8 @@ mod tests {
 
     #[test]
     fn styled_line_write_line_ignores_source_continuation_cells() {
-        let mut target = StyledLine::plain_text("abcd");
-        let source = StyledLine::plain_text("中Z");
+        let mut target = StyledLine::plain_text_with_profile("abcd", TerminalWidthProfile::Unicode);
+        let source = StyledLine::plain_text_with_profile("中Z", TerminalWidthProfile::Unicode);
 
         target.write_line(1, &source);
 
@@ -528,8 +666,8 @@ mod tests {
     fn styled_line_write_line_preserves_wide_cell_style() {
         let theme = AsciiColorTheme::default_light()
             .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
-        let mut target = StyledLine::plain_text("abcd");
-        let mut source = StyledLine::new();
+        let mut target = StyledLine::plain_text_with_profile("abcd", TerminalWidthProfile::Unicode);
+        let mut source = StyledLine::with_width_profile(TerminalWidthProfile::Unicode);
         source.push_role_text("中", AsciiColorRole::Text);
         source.set_background_color(0, AsciiRgb::new(4, 5, 6));
 
@@ -549,10 +687,64 @@ mod tests {
     }
 
     #[test]
+    fn styled_line_composition_remaps_complex_grapheme_ownership() {
+        let mut target = StyledLine::blank_with_profile(5, TerminalWidthProfile::Unicode);
+        let source = StyledLine::role_text_with_profile(
+            "👩‍💻",
+            AsciiColorRole::Text,
+            TerminalWidthProfile::Unicode,
+        );
+
+        target.write_line(1, &source);
+
+        assert_eq!(target.text(), " 👩‍💻  ");
+        let mut canvas = Canvas::new(5, 1);
+        target.write_to(&mut canvas, 0);
+        let output = canvas.finish_with_options(&AsciiRenderOptions::unicode());
+        assert_eq!(output, " 👩‍💻  \n");
+    }
+
+    #[test]
+    fn cjk_profile_controls_wrap_and_truncation_at_ambiguous_graphemes() {
+        assert_eq!(
+            display_width_with_profile("A·B", TerminalWidthProfile::Unicode),
+            3
+        );
+        assert_eq!(
+            display_width_with_profile("A·B", TerminalWidthProfile::Cjk),
+            4
+        );
+        assert_eq!(
+            truncate_display_width_with_profile("A·B", 2, TerminalWidthProfile::Unicode),
+            "A·"
+        );
+        assert_eq!(
+            truncate_display_width_with_profile("A·B", 2, TerminalWidthProfile::Cjk),
+            "A"
+        );
+        assert_eq!(
+            wrap_display_lines_with_profile("A·B", 2, TerminalWidthProfile::Cjk),
+            ["A", "·", "B"]
+        );
+    }
+
+    #[test]
     fn truncate_display_width_preserves_terminal_cell_boundaries() {
-        assert_eq!(truncate_display_width("中国A", 1), "");
-        assert_eq!(truncate_display_width("中国A", 2), "中");
-        assert_eq!(truncate_display_width("中国A", 4), "中国");
-        assert_eq!(truncate_display_width("中国A", 5), "中国A");
+        assert_eq!(
+            truncate_display_width_with_profile("中国A", 1, TerminalWidthProfile::Unicode),
+            ""
+        );
+        assert_eq!(
+            truncate_display_width_with_profile("中国A", 2, TerminalWidthProfile::Unicode),
+            "中"
+        );
+        assert_eq!(
+            truncate_display_width_with_profile("中国A", 4, TerminalWidthProfile::Unicode),
+            "中国"
+        );
+        assert_eq!(
+            truncate_display_width_with_profile("中国A", 5, TerminalWidthProfile::Unicode),
+            "中国A"
+        );
     }
 }

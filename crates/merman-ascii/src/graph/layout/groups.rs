@@ -4,28 +4,44 @@ use super::super::model::{
 };
 use super::super::topology::GraphGroupTopology;
 use super::{GridCoord, GroupLayout, NodeLayout};
-use crate::options::AsciiRenderOptions;
+use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 mod bounds;
 
 use self::bounds::{RawBounds, raw_group_bounds_for_members};
 
-pub(super) fn apply_group_placement_adjustments(graph: &AsciiGraph, placements: &mut [GridCoord]) {
-    apply_subgraph_direction_overrides(graph, placements);
+pub(super) fn apply_group_placement_adjustments(
+    graph: &AsciiGraph,
+    placements: &mut [GridCoord],
+    width_profile: TerminalWidthProfile,
+) {
+    apply_subgraph_direction_overrides(graph, placements, width_profile);
     stack_divider_sections(graph, placements);
-    separate_external_nodes_from_groups(graph, placements);
+    separate_external_nodes_from_groups(graph, placements, width_profile);
 }
 
-pub(super) fn subgraph_offsets(graph: &AsciiGraph, layouts: &[NodeLayout]) -> (usize, usize) {
-    bounds::subgraph_offsets(graph, layouts)
+pub(super) fn subgraph_offsets(
+    graph: &AsciiGraph,
+    layouts: &[NodeLayout],
+    width_profile: TerminalWidthProfile,
+) -> (usize, usize) {
+    bounds::subgraph_offsets(graph, layouts, width_profile)
 }
 
-pub(super) fn layout_groups(graph: &AsciiGraph, layouts: &[NodeLayout]) -> Vec<GroupLayout> {
-    bounds::layout_groups(graph, layouts)
+pub(super) fn layout_groups(
+    graph: &AsciiGraph,
+    layouts: &[NodeLayout],
+    width_profile: TerminalWidthProfile,
+) -> Vec<GroupLayout> {
+    bounds::layout_groups(graph, layouts, width_profile)
 }
 
-fn apply_subgraph_direction_overrides(graph: &AsciiGraph, placements: &mut [GridCoord]) {
+fn apply_subgraph_direction_overrides(
+    graph: &AsciiGraph,
+    placements: &mut [GridCoord],
+    width_profile: TerminalWidthProfile,
+) {
     let topology = GraphGroupTopology::new(graph);
     for group_index in 0..graph.groups.len() {
         let Some(group) = graph.groups.get(group_index) else {
@@ -82,15 +98,23 @@ fn apply_subgraph_direction_overrides(graph: &AsciiGraph, placements: &mut [Grid
         if group_member_indices.len() < 2 {
             continue;
         }
-        if let Some(bounds) =
-            group_bounds_for_placements(graph, group_index, &group_member_indices, placements)
-        {
+        if let Some(bounds) = group_bounds_for_placements(
+            graph,
+            group_index,
+            &group_member_indices,
+            placements,
+            width_profile,
+        ) {
             shift_external_nodes_away_from_group(graph, &group_member_indices, bounds, placements);
         }
     }
 }
 
-fn separate_external_nodes_from_groups(graph: &AsciiGraph, placements: &mut [GridCoord]) {
+fn separate_external_nodes_from_groups(
+    graph: &AsciiGraph,
+    placements: &mut [GridCoord],
+    width_profile: TerminalWidthProfile,
+) {
     if graph.groups.is_empty() || placements.is_empty() {
         return;
     }
@@ -111,9 +135,13 @@ fn separate_external_nodes_from_groups(graph: &AsciiGraph, placements: &mut [Gri
             if member_indices.is_empty() {
                 continue;
             }
-            let Some(group_bounds) =
-                group_bounds_for_placements(graph, group_index, &member_indices, placements)
-            else {
+            let Some(group_bounds) = group_bounds_for_placements(
+                graph,
+                group_index,
+                &member_indices,
+                placements,
+                width_profile,
+            ) else {
                 continue;
             };
             changed |= shift_external_nodes_away_from_group(
@@ -285,6 +313,7 @@ fn group_bounds_for_placements(
     group_index: usize,
     member_indices: &[usize],
     placements: &[GridCoord],
+    width_profile: TerminalWidthProfile,
 ) -> Option<RawBounds> {
     let group = graph.groups.get(group_index)?;
     let mut member_bounds = None::<RawBounds>;
@@ -298,7 +327,11 @@ fn group_bounds_for_placements(
         }
     }
 
-    Some(raw_group_bounds_for_members(group, member_bounds?))
+    Some(raw_group_bounds_for_members(
+        group,
+        member_bounds?,
+        width_profile,
+    ))
 }
 
 #[derive(Debug, Clone)]

@@ -167,6 +167,25 @@ test("operation errors preserve structured resource details", () => {
   assert.deepEqual(error.resourceDetails, resource);
 });
 
+test("operation errors preserve structured diagnostic details", () => {
+  const diagnostic = {
+    code: "merman.test",
+    span: { start: 3, end: 8, kind: "exact" },
+    field: null,
+    diagram_type: "flowchart-v2",
+  };
+  const error = new MermanOperationError({
+    code: 5,
+    code_name: "MERMAN_PARSE_ERROR",
+    kind: "generic",
+    capability_id: null,
+    details: { diagnostic },
+    message: "invalid flowchart",
+  });
+
+  assert.deepEqual(error.diagnosticDetails, diagnostic);
+});
+
 test("runtime catalog lossless integer scanning covers every known numeric path", () => {
   const unsafe = "9007199254740991.1";
   const catalogs = [

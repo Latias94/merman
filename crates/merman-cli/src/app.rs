@@ -452,6 +452,7 @@ fn removed_root_render_flag(kind: ErrorKind, args: &[OsString]) -> Option<&str> 
         "--suppress-errors",
         "--sequence-mirror-actors",
         "--ascii-charset",
+        "--ascii-width-profile",
         "--ascii-direction",
         "--ascii-color",
         "--xychart-vertical-plot-height",

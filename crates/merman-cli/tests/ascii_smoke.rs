@@ -83,6 +83,31 @@ fn cli_renders_unicode_ascii_output_to_stdout() {
 }
 
 #[test]
+fn cli_ascii_diagnostic_does_not_echo_source_or_terminal_controls() {
+    let source = "not-a-diagram\u{1b}]8;;https://example.invalid\u{7}link\u{202e}";
+
+    let output = run_with_stdin(&["render", "--format", "ascii", "-"], source);
+
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty(), "failure must not write a payload");
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("No Mermaid diagram type detected"),
+        "unexpected stderr:\n{stderr}"
+    );
+    assert!(
+        !stderr.contains(source),
+        "source leaked into stderr: {stderr:?}"
+    );
+    for control in ['\u{1b}', '\u{7}', '\u{202e}'] {
+        assert!(
+            !stderr.contains(control),
+            "raw control {control:?} leaked into stderr: {stderr:?}"
+        );
+    }
+}
+
+#[test]
 fn cli_renders_sequence_mirrored_actors_when_requested() {
     let output = run_with_stdin(
         &[

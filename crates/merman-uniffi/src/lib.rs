@@ -65,6 +65,21 @@ pub struct MermanResourceErrorDetails {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct MermanDiagnosticSpan {
+    pub start: u64,
+    pub end: u64,
+    pub kind: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct MermanDiagnosticErrorDetails {
+    pub code: String,
+    pub span: Option<MermanDiagnosticSpan>,
+    pub field: Option<String>,
+    pub diagram_type: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct MermanIconRegistryErrorDetails {
     pub kind_id: String,
     pub pack_index: Option<u64>,
@@ -80,6 +95,7 @@ pub enum MermanError {
         kind: MermanErrorKind,
         capability_id: Option<String>,
         resource: Option<MermanResourceErrorDetails>,
+        diagnostic: Option<MermanDiagnosticErrorDetails>,
         icon_registry: Option<MermanIconRegistryErrorDetails>,
         message: String,
     },
@@ -97,6 +113,18 @@ impl MermanError {
                 max: details.max,
                 profile: details.profile.to_string(),
             });
+        let diagnostic = error
+            .diagnostic_details()
+            .map(|details| MermanDiagnosticErrorDetails {
+                code: details.code.clone(),
+                span: details.span.map(|span| MermanDiagnosticSpan {
+                    start: span.start,
+                    end: span.end,
+                    kind: span.kind.to_string(),
+                }),
+                field: details.field.clone(),
+                diagram_type: details.diagram_type.clone(),
+            });
         let icon_registry =
             error
                 .icon_registry_details()
@@ -111,6 +139,7 @@ impl MermanError {
             kind: error.kind().into(),
             capability_id: error.capability_id().map(str::to_string),
             resource,
+            diagnostic,
             icon_registry,
             message: error.message().to_string(),
         }
@@ -124,6 +153,7 @@ impl MermanError {
             kind: MermanErrorKind::Generic,
             capability_id: None,
             resource: None,
+            diagnostic: None,
             icon_registry: None,
             message: message.into(),
         }
@@ -3539,6 +3569,35 @@ A@{ icon: "test:rocket", label: "A" }"#
                 actual: 5,
                 max: 4,
                 profile: "constrained".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn uniffi_error_preserves_structured_diagnostic_details() {
+        use merman_bindings_core::{BindingDiagnosticErrorDetails, BindingDiagnosticSpan};
+
+        let error = MermanError::from_binding(
+            BindingError::new(BindingStatus::ParseError, "invalid edge").with_diagnostic_details(
+                BindingDiagnosticErrorDetails::new("flowchart.edge.invalid")
+                    .with_span(BindingDiagnosticSpan::new(3, 8, "exact"))
+                    .with_field("edge")
+                    .with_diagram_type("flowchart"),
+            ),
+        );
+        let MermanError::Binding { diagnostic, .. } = error;
+
+        assert_eq!(
+            diagnostic,
+            Some(MermanDiagnosticErrorDetails {
+                code: "flowchart.edge.invalid".to_string(),
+                span: Some(MermanDiagnosticSpan {
+                    start: 3,
+                    end: 8,
+                    kind: "exact".to_string(),
+                }),
+                field: Some("edge".to_string()),
+                diagram_type: Some("flowchart".to_string()),
             })
         );
     }

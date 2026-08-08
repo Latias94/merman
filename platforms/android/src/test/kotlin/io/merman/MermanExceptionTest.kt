@@ -36,6 +36,23 @@ class MermanExceptionTest {
     }
 
     @Test
+    fun parsesStructuredDiagnosticFailureDetails() {
+        val error = MermanException(
+            """{"version":1,"ok":false,"code":5,"code_name":"MERMAN_PARSE_ERROR","kind":"generic","capability_id":null,"details":{"diagnostic":{"code":"merman.test","span":{"start":3,"end":8,"kind":"exact"},"field":null,"diagram_type":"flowchart-v2"}},"message":"invalid flowchart"}""",
+        )
+
+        assertEquals(
+            MermanDiagnosticErrorDetails(
+                code = "merman.test",
+                span = MermanDiagnosticSpan(start = 3, end = 8, kind = "exact"),
+                field = null,
+                diagramType = "flowchart-v2",
+            ),
+            error.diagnosticDetails,
+        )
+    }
+
+    @Test
     fun iconPackSetFactoryHasNoNativeLifecycle() {
         val iconPackSet = MermanIconPackSet.fromPacks(
             listOf(MermanIconPack("""{"prefix":"test","icons":{}}""")),

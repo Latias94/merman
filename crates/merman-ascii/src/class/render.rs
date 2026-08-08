@@ -1,7 +1,7 @@
 use crate::AsciiError;
 use crate::Result;
 use crate::color::AsciiColorRole;
-use crate::options::{AsciiCharset, AsciiRenderOptions};
+use crate::options::{AsciiCharset, AsciiRenderOptions, TerminalWidthProfile};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
 use crate::relation_graph::{
@@ -9,6 +9,7 @@ use crate::relation_graph::{
     RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
     RelationOverlay, RelationParallelPlan, RelationStackPlan,
 };
+use crate::safe_text::normalize_terminal_text;
 use merman_core::entities::decode_html_entities_to_unicode;
 use merman_core::models::class_diagram::{
     ClassDiagram, ClassInterface, ClassMember, ClassNode, ClassNote, ClassRelation, Namespace,
@@ -43,7 +44,7 @@ struct ClassCharset {
 
 impl ClassCharset {
     fn for_options(options: &AsciiRenderOptions) -> Self {
-        match options.charset {
+        match options.structural_charset() {
             AsciiCharset::Ascii => Self {
                 top_left: '+',
                 top_right: '+',
@@ -96,6 +97,7 @@ type RenderedClassBox = RelationGraphBox;
 
 struct ClassRelationComponentAdapter {
     charset: ClassCharset,
+    width_profile: TerminalWidthProfile,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -156,7 +158,14 @@ pub(crate) fn render_class_diagram(
     let mut layouts = model
         .relations
         .iter()
-        .map(|relation| relation_layout(model, relation, &namespace_facade_aliases))
+        .map(|relation| {
+            relation_layout(
+                model,
+                relation,
+                &namespace_facade_aliases,
+                options.terminal_width_profile,
+            )
+        })
         .collect::<Result<Vec<_>>>()?;
     layouts.extend(note_relation_layouts(
         model,
@@ -197,7 +206,14 @@ fn render_namespaced_class_diagram(
         .filter(|relation| {
             relation_explicit_namespace_id(model, relation, namespace_facade_aliases).is_none()
         })
-        .map(|relation| relation_layout(model, relation, namespace_facade_aliases))
+        .map(|relation| {
+            relation_layout(
+                model,
+                relation,
+                namespace_facade_aliases,
+                options.terminal_width_profile,
+            )
+        })
         .collect::<Result<Vec<_>>>()?;
     let mut summary_rows = external_layouts
         .iter()
@@ -373,7 +389,14 @@ fn render_namespace_box(
             relation_explicit_namespace_id(model, relation, namespace_facade_aliases)
                 == Some(namespace.id.as_str())
         })
-        .map(|relation| relation_layout(model, relation, namespace_facade_aliases))
+        .map(|relation| {
+            relation_layout(
+                model,
+                relation,
+                namespace_facade_aliases,
+                options.terminal_width_profile,
+            )
+        })
         .collect::<Result<Vec<_>>>()?;
 
     direct_layouts.extend(note_relation_layouts_for_notes(
@@ -392,6 +415,7 @@ fn render_namespace_box(
         children.push(RelationGraphBox::from_rendered_lines(
             format!("{}::relations", namespace.id),
             component_lines,
+            options.terminal_width_profile,
         ));
     }
 
@@ -412,8 +436,13 @@ fn render_namespace_container_box(
         .iter()
         .map(RelationGraphBox::width)
         .max()
-        .unwrap_or_else(|| crate::text::display_width(&title))
-        .max(crate::text::display_width(&title))
+        .unwrap_or_else(|| {
+            crate::text::display_width_with_profile(&title, options.terminal_width_profile)
+        })
+        .max(crate::text::display_width_with_profile(
+            &title,
+            options.terminal_width_profile,
+        ))
         .saturating_add(options.box_border_padding.saturating_mul(2));
     let style = RelationGraphBoxStyle {
         top_left: charset.top_left,
@@ -434,6 +463,7 @@ fn render_namespace_container_box(
         style.horizontal,
         content_width,
         style.border_role,
+        options.terminal_width_profile,
     ));
     lines.push(RelationGraphLine::box_content(
         &title,
@@ -442,6 +472,7 @@ fn render_namespace_container_box(
         style.vertical,
         style.border_role,
         style.text_role,
+        options.terminal_width_profile,
     ));
     lines.push(RelationGraphLine::box_border(
         style.separator_left,
@@ -449,6 +480,7 @@ fn render_namespace_container_box(
         style.horizontal,
         content_width,
         style.border_role,
+        options.terminal_width_profile,
     ));
 
     for (child_index, child) in children.iter().enumerate() {
@@ -457,6 +489,7 @@ fn render_namespace_container_box(
                 content_width,
                 style.vertical,
                 style.border_role,
+                options.terminal_width_profile,
             ));
         }
         lines.extend(namespace_child_lines(
@@ -473,6 +506,7 @@ fn render_namespace_container_box(
             content_width,
             style.vertical,
             style.border_role,
+            options.terminal_width_profile,
         ));
     }
 
@@ -482,9 +516,15 @@ fn render_namespace_container_box(
         style.horizontal,
         content_width,
         style.border_role,
+        options.terminal_width_profile,
     ));
 
-    RelationGraphBox::new_with_lines(namespace.id.clone(), lines, content_width + 2)
+    RelationGraphBox::new_with_lines(
+        namespace.id.clone(),
+        lines,
+        content_width + 2,
+        options.terminal_width_profile,
+    )
 }
 
 fn namespace_child_lines(
@@ -499,13 +539,24 @@ fn namespace_child_lines(
         .lines()
         .iter()
         .map(|line| {
-            relation_graph::concat_relation_lines(vec![
-                RelationGraphLine::with_role(vertical.to_string(), border_role),
-                RelationGraphLine::plain(" ".repeat(inner_gap)),
-                line.clone(),
-                RelationGraphLine::plain(" ".repeat(trailing)),
-                RelationGraphLine::with_role(vertical.to_string(), border_role),
-            ])
+            relation_graph::concat_relation_lines(
+                vec![
+                    RelationGraphLine::with_role(
+                        vertical.to_string(),
+                        border_role,
+                        child.width_profile(),
+                    ),
+                    RelationGraphLine::plain(" ".repeat(inner_gap), child.width_profile()),
+                    line.clone(),
+                    RelationGraphLine::plain(" ".repeat(trailing), child.width_profile()),
+                    RelationGraphLine::with_role(
+                        vertical.to_string(),
+                        border_role,
+                        child.width_profile(),
+                    ),
+                ],
+                child.width_profile(),
+            )
         })
         .collect()
 }
@@ -514,15 +565,24 @@ fn namespace_empty_content_line(
     content_width: usize,
     vertical: char,
     border_role: AsciiColorRole,
+    width_profile: TerminalWidthProfile,
 ) -> RelationGraphLine {
-    RelationGraphLine::box_border(vertical, vertical, ' ', content_width, border_role)
+    RelationGraphLine::box_border(
+        vertical,
+        vertical,
+        ' ',
+        content_width,
+        border_role,
+        width_profile,
+    )
 }
 
 fn namespace_title(namespace: &Namespace) -> String {
-    let raw = if namespace.label.trim().is_empty() {
+    let normalized_label = normalize_terminal_text(&namespace.label);
+    let raw = if normalized_label.trim().is_empty() {
         namespace.id.as_str()
     } else {
-        namespace.label.as_str()
+        normalized_label.as_ref()
     };
     decode_html_entities_to_unicode(raw).into_owned()
 }
@@ -575,7 +635,10 @@ fn render_class_components(
     options: &AsciiRenderOptions,
     charset: ClassCharset,
 ) -> Result<String> {
-    let adapter = ClassRelationComponentAdapter { charset };
+    let adapter = ClassRelationComponentAdapter {
+        charset,
+        width_profile: options.terminal_width_profile,
+    };
     relation_graph::render_relation_components(boxes, layouts, options, &adapter)
 }
 
@@ -585,7 +648,10 @@ fn render_class_component_lines(
     options: &AsciiRenderOptions,
     charset: ClassCharset,
 ) -> Result<Vec<RelationGraphLine>> {
-    let adapter = ClassRelationComponentAdapter { charset };
+    let adapter = ClassRelationComponentAdapter {
+        charset,
+        width_profile: options.terminal_width_profile,
+    };
     Ok(
         relation_graph::render_relation_component_lines(boxes, layouts, options, &adapter)?
             .unwrap_or_default(),
@@ -619,7 +685,7 @@ fn render_note_box(
     charset: ClassCharset,
 ) -> RenderedClassBox {
     let mut lines = vec!["note".to_string()];
-    if let Some(label) = RelationGraphLabel::new(&note.text) {
+    if let Some(label) = RelationGraphLabel::new(&note.text, options.terminal_width_profile) {
         lines.extend(label.lines().iter().cloned());
     }
 
@@ -649,6 +715,7 @@ fn render_box_sections(
         &sections,
         options.box_border_padding,
         style,
+        options.terminal_width_profile,
     )
 }
 
@@ -700,6 +767,7 @@ fn relation_layout<'a>(
     model: &'a ClassDiagram,
     relation: &'a ClassRelation,
     namespace_facade_aliases: &'a HashMap<String, String>,
+    width_profile: TerminalWidthProfile,
 ) -> Result<RelationLayout<'a>> {
     let line = if relation.relation.line_type == model.constants.line_type.line {
         RelationLine::Solid
@@ -734,9 +802,9 @@ fn relation_layout<'a>(
         }
     };
 
-    let label = RelationGraphLabel::new(&relation.title);
-    let left_endpoint_label = relation_endpoint_label(&relation.relation_title_1);
-    let right_endpoint_label = relation_endpoint_label(&relation.relation_title_2);
+    let label = RelationGraphLabel::new(&relation.title, width_profile);
+    let left_endpoint_label = relation_endpoint_label(&relation.relation_title_1, width_profile);
+    let right_endpoint_label = relation_endpoint_label(&relation.relation_title_2, width_profile);
 
     if let Some(marker) =
         endpoint_marker.filter(|marker| marker.marker == RelationMarker::Extension)
@@ -910,13 +978,17 @@ fn external_namespace_note_summary_rows(
         .collect()
 }
 
-fn relation_endpoint_label(label: &str) -> Option<RelationGraphLabel> {
-    let trimmed = label.trim();
+fn relation_endpoint_label(
+    label: &str,
+    width_profile: TerminalWidthProfile,
+) -> Option<RelationGraphLabel> {
+    let normalized = normalize_terminal_text(label);
+    let trimmed = normalized.trim();
     if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("none") {
         return None;
     }
 
-    RelationGraphLabel::new(trimmed)
+    RelationGraphLabel::new(trimmed, width_profile)
 }
 
 fn find_box<'a>(boxes: &'a [RenderedClassBox], id: &str) -> Result<&'a RenderedClassBox> {
@@ -950,7 +1022,7 @@ fn render_vertical_relation(
             .unwrap_or(0),
     ];
     let plan = RelationStackPlan::from_centered_rows(top, bottom, &label_half_widths, |center| {
-        class_relation_rows(layout, center, charset)
+        class_relation_rows(layout, center, charset, top.width_profile())
     });
 
     plan.render_lines()
@@ -974,6 +1046,7 @@ fn class_relation_rows(
     layout: &RelationLayout<'_>,
     center: usize,
     charset: ClassCharset,
+    width_profile: TerminalWidthProfile,
 ) -> Vec<RelationGraphLine> {
     let mut relation_lines = Vec::new();
     push_centered_endpoint_label(
@@ -987,6 +1060,7 @@ fn class_relation_rows(
                 line_char(layout.line, charset),
                 center,
                 AsciiColorRole::EdgeLine,
+                width_profile,
             ));
             if let Some(label) = layout.label.as_ref() {
                 relation_lines.extend(relation_graph::centered_label_lines_with_role(
@@ -998,6 +1072,7 @@ fn class_relation_rows(
                     line_char(layout.line, charset),
                     center,
                     AsciiColorRole::EdgeLine,
+                    width_profile,
                 ));
             }
         }
@@ -1007,6 +1082,7 @@ fn class_relation_rows(
                     marker_char(endpoint_marker.marker, MarkerSide::Top, charset),
                     center,
                     AsciiColorRole::EdgeArrow,
+                    width_profile,
                 ));
                 if let Some(label) = layout.label.as_ref() {
                     relation_lines.extend(relation_graph::centered_label_lines_with_role(
@@ -1019,6 +1095,7 @@ fn class_relation_rows(
                     line_char(layout.line, charset),
                     center,
                     AsciiColorRole::EdgeLine,
+                    width_profile,
                 ));
             }
             MarkerSide::Bottom => {
@@ -1026,6 +1103,7 @@ fn class_relation_rows(
                     line_char(layout.line, charset),
                     center,
                     AsciiColorRole::EdgeLine,
+                    width_profile,
                 ));
                 if let Some(label) = layout.label.as_ref() {
                     relation_lines.extend(relation_graph::centered_label_lines_with_role(
@@ -1038,6 +1116,7 @@ fn class_relation_rows(
                     marker_char(endpoint_marker.marker, MarkerSide::Bottom, charset),
                     center,
                     AsciiColorRole::EdgeArrow,
+                    width_profile,
                 ));
             }
         },
@@ -1064,6 +1143,7 @@ fn render_parallel_vertical_relations(
     boxes: &[RenderedClassBox],
     layouts: &[RelationLayout<'_>],
     charset: ClassCharset,
+    width_profile: TerminalWidthProfile,
 ) -> Result<Vec<RelationGraphLine>> {
     let first = &layouts[0];
     let top = find_box(boxes, first.top_id)?;
@@ -1082,6 +1162,7 @@ fn render_parallel_vertical_relations(
                 charset,
                 reserve_top_endpoint_label,
                 reserve_bottom_endpoint_label,
+                width_profile,
             )
         })
         .collect::<Vec<_>>();
@@ -1093,6 +1174,7 @@ fn render_parallel_vertical_relations(
 fn endpoint_label_lines_or_empty(
     label: Option<&RelationGraphLabel>,
     reserve_empty: bool,
+    width_profile: TerminalWidthProfile,
 ) -> Vec<RelationGraphLine> {
     match label {
         Some(label) => relation_graph::label_lines_with_role(label, AsciiColorRole::EdgeLabel),
@@ -1100,19 +1182,24 @@ fn endpoint_label_lines_or_empty(
             vec![RelationGraphLine::with_role(
                 String::new(),
                 AsciiColorRole::EdgeLabel,
+                width_profile,
             )]
         }
         None => Vec::new(),
     }
 }
 
-fn central_label_lines_or_empty(label: Option<&RelationGraphLabel>) -> Vec<RelationGraphLine> {
+fn central_label_lines_or_empty(
+    label: Option<&RelationGraphLabel>,
+    width_profile: TerminalWidthProfile,
+) -> Vec<RelationGraphLine> {
     label
         .map(|label| relation_graph::label_lines_with_role(label, AsciiColorRole::EdgeLabel))
         .unwrap_or_else(|| {
             vec![RelationGraphLine::with_role(
                 String::new(),
                 AsciiColorRole::EdgeLabel,
+                width_profile,
             )]
         })
 }
@@ -1122,16 +1209,19 @@ fn parallel_class_lane_rows(
     charset: ClassCharset,
     reserve_top_endpoint_label: bool,
     reserve_bottom_endpoint_label: bool,
+    width_profile: TerminalWidthProfile,
 ) -> Vec<RelationGraphLine> {
     let line = RelationGraphLine::with_role(
         line_char(layout.line, charset).to_string(),
         AsciiColorRole::EdgeLine,
+        width_profile,
     );
     let mut rows = endpoint_label_lines_or_empty(
         layout.top_endpoint_label.as_ref(),
         reserve_top_endpoint_label,
+        width_profile,
     );
-    let label_lines = central_label_lines_or_empty(layout.label.as_ref());
+    let label_lines = central_label_lines_or_empty(layout.label.as_ref(), width_profile);
     let relation_rows = match layout.endpoint_marker {
         None => {
             let mut rows = vec![line.clone()];
@@ -1143,6 +1233,7 @@ fn parallel_class_lane_rows(
             let marker = RelationGraphLine::with_role(
                 marker_char(endpoint_marker.marker, endpoint_marker.side, charset).to_string(),
                 AsciiColorRole::EdgeArrow,
+                width_profile,
             );
             match endpoint_marker.side {
                 MarkerSide::Top => {
@@ -1164,6 +1255,7 @@ fn parallel_class_lane_rows(
     rows.extend(endpoint_label_lines_or_empty(
         layout.bottom_endpoint_label.as_ref(),
         reserve_bottom_endpoint_label,
+        width_profile,
     ));
     rows
 }
@@ -1291,7 +1383,7 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
         layout: &RelationLayout<'a>,
         options: &AsciiRenderOptions,
     ) -> Result<Vec<RelationGraphLine>> {
-        let rows = self_loop_rows_for_class_layout(layout, self.charset);
+        let rows = self_loop_rows_for_class_layout(layout, self.charset, self.width_profile);
 
         let _ = options;
         Ok(relation_graph::render_parallel_self_loops(
@@ -1308,7 +1400,7 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
     ) -> Result<Vec<RelationGraphLine>> {
         let loops = layouts
             .iter()
-            .map(|layout| self_loop_rows_for_class_layout(layout, self.charset))
+            .map(|layout| self_loop_rows_for_class_layout(layout, self.charset, self.width_profile))
             .collect::<Vec<_>>();
 
         let _ = options;
@@ -1411,7 +1503,7 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
         options: &AsciiRenderOptions,
     ) -> Result<Vec<RelationGraphLine>> {
         let _ = options;
-        render_parallel_vertical_relations(boxes, layouts, self.charset)
+        render_parallel_vertical_relations(boxes, layouts, self.charset, self.width_profile)
     }
 
     fn build_summary_row(
@@ -1430,8 +1522,10 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
 fn self_loop_rows_for_class_layout(
     layout: &RelationLayout<'_>,
     charset: ClassCharset,
+    width_profile: TerminalWidthProfile,
 ) -> relation_graph::RelationSelfLoopRows {
-    let top_marker = RelationGraphLine::with_role("+".to_string(), AsciiColorRole::EdgeLine);
+    let top_marker =
+        RelationGraphLine::with_role("+".to_string(), AsciiColorRole::EdgeLine, width_profile);
     let bottom_marker = RelationGraphLine::with_role(
         layout
             .endpoint_marker
@@ -1439,6 +1533,7 @@ fn self_loop_rows_for_class_layout(
             .unwrap_or_else(|| line_char(layout.line, charset))
             .to_string(),
         AsciiColorRole::EdgeArrow,
+        width_profile,
     );
     let label_lines = layout
         .label

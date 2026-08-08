@@ -1,6 +1,6 @@
 use crate::color::AsciiColorRole;
-use crate::terminal::{CanvasColor, CanvasStyle, char_display_width, write_primary_cell_style};
-use crate::text::{StyledCell, display_width, truncate_display_width};
+use crate::options::TerminalWidthProfile;
+use crate::text::{StyledLine, display_width_with_profile, truncate_display_width_with_profile};
 use crate::{AsciiCharset, AsciiRenderOptions};
 use merman_core::diagrams::xychart::{
     XyChartDiagramRenderModel, XyChartPlotRenderModel, XyChartPlotType,
@@ -9,13 +9,12 @@ use merman_core::diagrams::xychart::{
 const BAND_GAP: usize = 1;
 const BAND_GAP_LABEL: &str = " ";
 
-pub(super) type ChartCell = StyledCell;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct XyChartPlotArea {
     pub(super) vertical_height: usize,
     pub(super) category_band_width: usize,
     pub(super) horizontal_width: usize,
+    pub(super) width_profile: TerminalWidthProfile,
 }
 
 impl XyChartPlotArea {
@@ -24,6 +23,7 @@ impl XyChartPlotArea {
             vertical_height: options.xychart_vertical_plot_height,
             category_band_width: options.xychart_category_band_width,
             horizontal_width: options.xychart_horizontal_plot_width,
+            width_profile: options.terminal_width_profile,
         }
     }
 
@@ -41,6 +41,11 @@ impl XyChartPlotArea {
         idx.saturating_mul(self.category_band_width.saturating_add(BAND_GAP))
     }
 
+    pub(super) fn vertical_band_center(self, idx: usize) -> usize {
+        self.vertical_band_start(idx)
+            .saturating_add(self.category_band_width / 2)
+    }
+
     pub(super) fn vertical_cell_count(self, category_count: usize) -> usize {
         self.vertical_plot_width(category_count)
             .saturating_mul(self.vertical_height)
@@ -53,7 +58,7 @@ impl XyChartPlotArea {
     pub(super) fn band_labels(self, labels: &[String]) -> String {
         labels
             .iter()
-            .map(|label| fit_centered(label, self.category_band_width))
+            .map(|label| fit_centered(label, self.category_band_width, self.width_profile))
             .collect::<Vec<_>>()
             .join(BAND_GAP_LABEL)
     }
@@ -78,7 +83,7 @@ pub(super) struct ChartChars {
 
 impl ChartChars {
     pub(super) fn from_options(options: &AsciiRenderOptions) -> Self {
-        match options.charset {
+        match options.structural_charset() {
             AsciiCharset::Ascii => Self {
                 horizontal_axis: '-',
                 vertical_axis: '|',
@@ -134,13 +139,13 @@ impl ValueRange {
 
 #[derive(Debug, Clone)]
 pub(super) struct VerticalPlot {
-    pub(super) rows: Vec<Vec<ChartCell>>,
+    pub(super) rows: Vec<StyledLine>,
     pub(super) width: usize,
 }
 
 #[derive(Debug, Clone)]
 pub(super) struct HorizontalPlotRow {
-    pub(super) cells: Vec<ChartCell>,
+    pub(super) line: StyledLine,
     pub(super) bar_value: Option<f64>,
     pub(super) bar_label: Option<String>,
 }
@@ -153,7 +158,10 @@ pub(super) fn build_vertical_plot(
     plot_area: XyChartPlotArea,
 ) -> VerticalPlot {
     let width = plot_area.vertical_plot_width(category_count);
-    let mut rows = vec![vec![ChartCell::blank(); width]; plot_area.vertical_height];
+    let mut rows = vec![
+        StyledLine::blank_with_profile(width, plot_area.width_profile);
+        plot_area.vertical_height
+    ];
 
     for (series_index, plot) in model.plots.iter().enumerate() {
         if plot.plot_type == XyChartPlotType::Bar {
@@ -185,7 +193,8 @@ pub(super) fn build_horizontal_plot_rows(
 
     (0..category_count)
         .map(|idx| {
-            let mut cells = vec![ChartCell::blank(); plot_area.horizontal_width];
+            let mut line =
+                StyledLine::blank_with_profile(plot_area.horizontal_width, plot_area.width_profile);
 
             for (series_index, plot) in model.plots.iter().enumerate() {
                 let Some(value) = plot.values.get(idx).copied() else {
@@ -194,7 +203,7 @@ pub(super) fn build_horizontal_plot_rows(
 
                 match plot.plot_type {
                     XyChartPlotType::Bar => draw_horizontal_bar_value(
-                        &mut cells,
+                        &mut line,
                         value,
                         series_index,
                         y_range,
@@ -202,7 +211,7 @@ pub(super) fn build_horizontal_plot_rows(
                         plot_area,
                     ),
                     XyChartPlotType::Line => draw_horizontal_line_value(
-                        &mut cells,
+                        &mut line,
                         value,
                         series_index,
                         y_range,
@@ -216,7 +225,7 @@ pub(super) fn build_horizontal_plot_rows(
             let bar_label = bar_value.map(format_number);
 
             HorizontalPlotRow {
-                cells,
+                line,
                 bar_value,
                 bar_label,
             }
@@ -259,7 +268,7 @@ pub(super) fn apply_vertical_bar_data_labels(
 }
 
 fn draw_vertical_bar_plot(
-    rows: &mut [Vec<ChartCell>],
+    rows: &mut [StyledLine],
     plot: &XyChartPlotRenderModel,
     series_index: usize,
     y_range: ValueRange,
@@ -290,7 +299,7 @@ fn draw_vertical_bar_plot(
 }
 
 fn draw_vertical_line_plot(
-    rows: &mut [Vec<ChartCell>],
+    rows: &mut [StyledLine],
     plot: &XyChartPlotRenderModel,
     series_index: usize,
     y_range: ValueRange,
@@ -306,7 +315,7 @@ fn draw_vertical_line_plot(
         .map(|(idx, value)| {
             let level = line_level(value, y_range, plot_area.vertical_height);
             let row = plot_area.vertical_height - level;
-            let col = plot_area.vertical_band_start(idx) + (plot_area.category_band_width / 2);
+            let col = plot_area.vertical_band_center(idx);
             (row, col)
         })
         .collect::<Vec<_>>();
@@ -323,7 +332,7 @@ fn draw_vertical_line_plot(
 }
 
 fn draw_vertical_line_segment(
-    rows: &mut [Vec<ChartCell>],
+    rows: &mut [StyledLine],
     from_row: usize,
     from_col: usize,
     to_row: usize,
@@ -362,7 +371,7 @@ fn draw_vertical_line_segment(
 }
 
 fn draw_horizontal_bar_value(
-    row: &mut [ChartCell],
+    row: &mut StyledLine,
     value: f64,
     series_index: usize,
     y_range: ValueRange,
@@ -371,8 +380,8 @@ fn draw_horizontal_bar_value(
 ) {
     let role = AsciiColorRole::ChartSeries(series_index);
     let width = bar_height(value, y_range, plot_area.horizontal_width);
-    for cell in row.iter_mut().take(width) {
-        *cell = ChartCell::with_role(chars.bar, role);
+    for col in 0..width {
+        row.set_role(col, chars.bar, role);
     }
 }
 
@@ -385,7 +394,7 @@ pub(super) fn horizontal_bar_width(
 }
 
 fn draw_horizontal_line_value(
-    row: &mut [ChartCell],
+    row: &mut StyledLine,
     value: f64,
     series_index: usize,
     y_range: ValueRange,
@@ -394,13 +403,11 @@ fn draw_horizontal_line_value(
 ) {
     let role = AsciiColorRole::ChartSeries(series_index);
     let col = line_level(value, y_range, plot_area.horizontal_width).saturating_sub(1);
-    if let Some(cell) = row.get_mut(col) {
-        *cell = ChartCell::with_role(chars.line_point, role);
-    }
+    row.set_role(col, chars.line_point, role);
 }
 
 fn draw_row(
-    rows: &mut [Vec<ChartCell>],
+    rows: &mut [StyledLine],
     row_idx: usize,
     from_col: usize,
     to_col: usize,
@@ -411,15 +418,13 @@ fn draw_row(
     let end = from_col.max(to_col);
     if let Some(row) = rows.get_mut(row_idx) {
         for col in start..=end {
-            if let Some(cell) = row.get_mut(col) {
-                *cell = ChartCell::with_role(value, role);
-            }
+            row.set_role(col, value, role);
         }
     }
 }
 
 fn draw_column(
-    rows: &mut [Vec<ChartCell>],
+    rows: &mut [StyledLine],
     col: usize,
     from_row: usize,
     to_row: usize,
@@ -433,54 +438,38 @@ fn draw_column(
     }
 }
 
-fn set_cell(
-    rows: &mut [Vec<ChartCell>],
-    row: usize,
-    col: usize,
-    value: char,
-    role: AsciiColorRole,
-) {
-    if let Some(cell) = rows.get_mut(row).and_then(|r| r.get_mut(col)) {
-        *cell = ChartCell::with_role(value, role);
+fn set_cell(rows: &mut [StyledLine], row: usize, col: usize, value: char, role: AsciiColorRole) {
+    if let Some(row) = rows.get_mut(row) {
+        row.set_role(col, value, role);
     }
 }
 
 fn fill_band(
-    row: &mut [ChartCell],
+    row: &mut StyledLine,
     band_start: usize,
     band_width: usize,
     value: char,
     role: AsciiColorRole,
 ) {
     for offset in 0..band_width {
-        if let Some(cell) = row.get_mut(band_start + offset) {
-            *cell = ChartCell::with_role(value, role);
-        }
+        row.set_role(band_start + offset, value, role);
     }
 }
 
 fn write_band_text(
-    row: &mut [ChartCell],
+    row: &mut StyledLine,
     band_start: usize,
     band_width: usize,
     value: &str,
     role: AsciiColorRole,
 ) {
-    let fitted = fit_centered(value, band_width);
-    let mut offset = 0;
-    let style = CanvasStyle::foreground(CanvasColor::Role(role));
-    for ch in fitted.chars() {
-        if offset >= band_width {
-            break;
-        }
-        write_primary_cell_style(row, band_start + offset, ch, style);
-        offset += char_display_width(ch);
-    }
+    let fitted = fit_centered(value, band_width, row.width_profile());
+    row.write_text_role(band_start, &fitted, role);
 }
 
-fn fit_centered(value: &str, width: usize) -> String {
-    let value = truncate_display_width(value, width);
-    let value_width = display_width(&value);
+fn fit_centered(value: &str, width: usize, width_profile: TerminalWidthProfile) -> String {
+    let value = truncate_display_width_with_profile(value, width, width_profile);
+    let value_width = display_width_with_profile(&value, width_profile);
     let left = (width - value_width) / 2;
     let right = width - value_width - left;
     format!("{}{}{}", " ".repeat(left), value, " ".repeat(right))
@@ -516,17 +505,79 @@ mod tests {
 
     #[test]
     fn write_band_text_preserves_wide_glyph_continuation_cells() {
-        let mut row = vec![ChartCell::blank(); 5];
+        let mut row = StyledLine::blank_with_profile(5, TerminalWidthProfile::Unicode);
 
         write_band_text(&mut row, 1, 3, "中", AsciiColorRole::Text);
 
-        assert_eq!(row[1].output_char(), Some('中'));
-        assert!(row[2].is_continuation());
-        assert_eq!(row[3].output_char(), Some(' '));
+        assert_eq!(row.len(), 5);
+        assert_eq!(row.text(), " 中  ");
+        assert_eq!(row.get(1), Some('中'));
+        assert_eq!(row.get(2), None);
+        assert_eq!(row.get(3), Some(' '));
+        assert_eq!(row.get(4), Some(' '));
+    }
+
+    #[test]
+    fn write_band_text_preserves_complex_grapheme_arena_entries() {
+        let mut row = StyledLine::blank_with_profile(6, TerminalWidthProfile::Unicode);
+
+        write_band_text(&mut row, 1, 4, "👩‍💻", AsciiColorRole::Text);
+
+        assert_eq!(row.len(), 6);
+        assert_eq!(row.text(), "  👩‍💻  ");
         assert_eq!(
-            row[1].color(),
-            Some(CanvasColor::Role(AsciiColorRole::Text))
+            display_width_with_profile(&row.text(), TerminalWidthProfile::Unicode),
+            6
         );
-        assert_eq!(row[4].output_char(), Some(' '));
+    }
+
+    #[test]
+    fn fit_centered_obeys_cjk_ambiguous_width() {
+        assert_eq!(fit_centered("·", 3, TerminalWidthProfile::Unicode), " · ");
+        assert_eq!(fit_centered("·", 3, TerminalWidthProfile::Cjk), "· ");
+    }
+
+    #[test]
+    fn fit_centered_escapes_terminal_controls_before_measurement() {
+        let fitted = fit_centered("A\u{1b}B", 10, TerminalWidthProfile::Unicode);
+
+        assert!(fitted.contains("A\\u{1B}B"));
+        assert!(!fitted.contains('\u{1b}'));
+        assert_eq!(
+            display_width_with_profile(&fitted, TerminalWidthProfile::Unicode),
+            10
+        );
+    }
+
+    #[test]
+    fn cjk_profile_uses_single_cell_ascii_plot_structure() {
+        let options =
+            AsciiRenderOptions::unicode().with_terminal_width_profile(TerminalWidthProfile::Cjk);
+        let chars = ChartChars::from_options(&options);
+        let plot_area = XyChartPlotArea::from_options(&options);
+        let mut row =
+            StyledLine::blank_with_profile(plot_area.horizontal_width, TerminalWidthProfile::Cjk);
+
+        draw_horizontal_bar_value(
+            &mut row,
+            5.0,
+            0,
+            ValueRange {
+                min: 0.0,
+                max: 10.0,
+            },
+            chars,
+            plot_area,
+        );
+
+        assert_eq!(chars.bar, '#');
+        assert_eq!(row.len(), 10);
+        assert_eq!(row.text().chars().filter(|ch| *ch == '#').count(), 5);
+        assert_eq!(row.get(0), Some('#'));
+        assert_eq!(row.get(1), Some('#'));
+        assert_eq!(
+            display_width_with_profile(&row.text(), TerminalWidthProfile::Cjk),
+            10
+        );
     }
 }

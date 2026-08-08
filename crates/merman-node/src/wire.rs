@@ -4,11 +4,11 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::LazyLock;
 
 use merman_bindings_core::{
-    ArtifactContractSpec, BINDING_OPERATION_SCHEMA_VERSION, BindingEngine, BindingError,
-    BindingErrorKind, BindingIconRegistryErrorDetails, BindingOperationRequest,
-    BindingPayloadSchemaKey, BindingResourceErrorDetails, BindingStatus, BindingTransportKey,
-    CAPABILITY_DESCRIPTOR_DIGEST, CapabilityKey, OperationKey, RUNTIME_CATALOG_SCHEMA_VERSION,
-    RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
+    ArtifactContractSpec, BINDING_OPERATION_SCHEMA_VERSION, BindingDiagnosticErrorDetails,
+    BindingEngine, BindingError, BindingErrorKind, BindingIconRegistryErrorDetails,
+    BindingOperationRequest, BindingPayloadSchemaKey, BindingResourceErrorDetails, BindingStatus,
+    BindingTransportKey, CAPABILITY_DESCRIPTOR_DIGEST, CapabilityKey, OperationKey,
+    RUNTIME_CATALOG_SCHEMA_VERSION, RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -149,7 +149,9 @@ impl NodeArtifactProfile {
                 .iter()
                 .any(|id| id.len() > fields.capability_id_utf8_bytes)
             {
-                return Err(format!("{label} contains an ID beyond the Node field limit"));
+                return Err(format!(
+                    "{label} contains an ID beyond the Node field limit"
+                ));
             }
         }
         if self.output_contracts.len() != self.output_ids.len()
@@ -382,6 +384,8 @@ struct ErrorDetails<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     resource: Option<BindingResourceErrorDetails>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    diagnostic: Option<&'a BindingDiagnosticErrorDetails>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     icon_registry: Option<&'a BindingIconRegistryErrorDetails>,
 }
 
@@ -493,10 +497,7 @@ pub(crate) fn execute_wire(engine: &BindingEngine, request_json: &str) -> String
     }
 }
 
-fn execute_wire_inner(
-    engine: &BindingEngine,
-    request_json: &str,
-) -> Result<String, BindingError> {
+fn execute_wire_inner(engine: &BindingEngine, request_json: &str) -> Result<String, BindingError> {
     let request = parse_operation_request(request_json)?;
 
     let result = engine.execute(
@@ -677,17 +678,26 @@ fn try_error_envelope(error: &BindingError) -> Result<String, String> {
         )?;
     }
     let resource = error.resource_details();
+    let diagnostic = error.diagnostic_details();
     if resource.is_some_and(|details| {
         details.actual > JSON_SAFE_INTEGER_MAX || details.max > JSON_SAFE_INTEGER_MAX
     }) {
         return Err("error resource details exceed the JSON-safe integer range".to_owned());
     }
+    if diagnostic
+        .and_then(|details| details.span)
+        .is_some_and(|span| span.start > JSON_SAFE_INTEGER_MAX || span.end > JSON_SAFE_INTEGER_MAX)
+    {
+        return Err("error diagnostic span exceeds the JSON-safe integer range".to_owned());
+    }
     let message = bounded_text(error.message(), fields.error_message_utf8_bytes);
     let details =
-        (resource.is_some() || error.icon_registry_details().is_some()).then_some(ErrorDetails {
-            resource,
-            icon_registry: error.icon_registry_details(),
-        });
+        (resource.is_some() || diagnostic.is_some() || error.icon_registry_details().is_some())
+            .then_some(ErrorDetails {
+                resource,
+                diagnostic,
+                icon_registry: error.icon_registry_details(),
+            });
     let envelope = ErrorEnvelope {
         version: NODE_BINDING_RESULT_PAYLOAD_VERSION,
         ok: false,
@@ -827,10 +837,7 @@ fn validate_runtime_catalog(catalog: &Value) -> Result<(), String> {
         &expected.text_measurement_provider_ids,
         "capabilities.text_measurement.provider_ids",
     )?;
-    ensure_output_contract_array(
-        catalog.get("output_contracts"),
-        &expected.output_contracts,
-    )?;
+    ensure_output_contract_array(catalog.get("output_contracts"), &expected.output_contracts)?;
     ensure_object_id_array(
         catalog.get("constructor_service_contracts"),
         &expected.constructor_service_ids,
@@ -1253,7 +1260,10 @@ mod tests {
             capabilities["text_measurement"]["provider_ids"],
             serde_json::json!(&expected.text_measurement_provider_ids)
         );
-        assert_eq!(catalog["metadata_ids"], serde_json::json!(&expected.metadata_ids));
+        assert_eq!(
+            catalog["metadata_ids"],
+            serde_json::json!(&expected.metadata_ids)
+        );
         assert_eq!(
             catalog["option_group_ids"],
             serde_json::json!(&expected.option_group_ids)
@@ -1357,10 +1367,11 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn native_panic_boundary_returns_the_stable_panic_envelope() {
-        let error = super::binding_boundary(|| -> Result<(), merman_bindings_core::BindingError> {
-            panic!("synthetic Node transport panic")
-        })
-        .expect_err("native panic must become a binding error");
+        let error =
+            super::binding_boundary(|| -> Result<(), merman_bindings_core::BindingError> {
+                panic!("synthetic Node transport panic")
+            })
+            .expect_err("native panic must become a binding error");
         assert_eq!(error.status(), merman_bindings_core::BindingStatus::Panic);
         let envelope: serde_json::Value =
             serde_json::from_str(&error_envelope(&error)).expect("panic envelope");
@@ -1515,6 +1526,31 @@ mod tests {
             payload["error"]["details"]["resource"]["profile"],
             "constrained"
         );
+    }
+
+    #[test]
+    fn error_wire_preserves_structured_diagnostic_details() {
+        use merman_bindings_core::{
+            BindingDiagnosticErrorDetails, BindingDiagnosticSpan, BindingError, BindingStatus,
+        };
+
+        let error = BindingError::new(BindingStatus::ParseError, "invalid edge")
+            .with_diagnostic_details(
+                BindingDiagnosticErrorDetails::new("flowchart.edge.invalid")
+                    .with_span(BindingDiagnosticSpan::new(3, 8, "exact"))
+                    .with_field("edge")
+                    .with_diagram_type("flowchart"),
+            );
+        let payload: serde_json::Value =
+            serde_json::from_str(&error_envelope(&error)).expect("Node error envelope");
+
+        let diagnostic = &payload["error"]["details"]["diagnostic"];
+        assert_eq!(diagnostic["code"], "flowchart.edge.invalid");
+        assert_eq!(diagnostic["span"]["start"], 3);
+        assert_eq!(diagnostic["span"]["end"], 8);
+        assert_eq!(diagnostic["span"]["kind"], "exact");
+        assert_eq!(diagnostic["field"], "edge");
+        assert_eq!(diagnostic["diagram_type"], "flowchart");
     }
 
     #[test]

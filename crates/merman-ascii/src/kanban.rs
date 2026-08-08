@@ -1,5 +1,6 @@
 use crate::options::AsciiRenderOptions;
-use crate::text::{push_wrapped_prefixed_line, trim_trailing_blank_lines};
+use crate::safe_text::encode_text_lines;
+use crate::text::{push_wrapped_prefixed_line_with_profile, trim_trailing_blank_lines};
 use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
 use std::collections::HashMap;
 
@@ -7,7 +8,7 @@ const SUMMARY_WRAP_WIDTH: usize = 80;
 
 pub fn render_kanban_diagram(
     model: &KanbanDiagramRenderModel,
-    _options: &AsciiRenderOptions,
+    options: &AsciiRenderOptions,
 ) -> String {
     let mut lines = Vec::new();
     let groups: Vec<&KanbanRenderNode> = model.nodes.iter().filter(|node| node.is_group).collect();
@@ -22,12 +23,13 @@ pub fn render_kanban_diagram(
         lines.push(group.label.clone());
         if let Some(children) = children_by_parent.get(group.id.as_str()) {
             for child in children {
-                push_wrapped_prefixed_line(
+                push_wrapped_prefixed_line_with_profile(
                     &mut lines,
                     "  - ",
                     "    ",
                     &format!("{}{}", child.label, render_metadata(child)),
                     SUMMARY_WRAP_WIDTH,
+                    options.terminal_width_profile,
                 );
             }
         }
@@ -36,18 +38,19 @@ pub fn render_kanban_diagram(
     if lines.is_empty() {
         for node in &model.nodes {
             if !node.is_group {
-                push_wrapped_prefixed_line(
+                push_wrapped_prefixed_line_with_profile(
                     &mut lines,
                     "- ",
                     "  ",
                     &format!("{}{}", node.label, render_metadata(node)),
                     SUMMARY_WRAP_WIDTH,
+                    options.terminal_width_profile,
                 );
             }
         }
     }
 
-    trim_trailing_blank_lines(lines).join("\n")
+    encode_text_lines(trim_trailing_blank_lines(lines), options)
 }
 
 fn render_metadata(node: &KanbanRenderNode) -> String {

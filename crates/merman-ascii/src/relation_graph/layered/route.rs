@@ -7,6 +7,7 @@ use super::draw::{
 use crate::Result;
 use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
+use crate::options::TerminalWidthProfile;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RelationOverlay {
@@ -21,6 +22,7 @@ pub(crate) enum RelationOverlay {
         y: usize,
         text: String,
         role: AsciiColorRole,
+        width_profile: TerminalWidthProfile,
     },
     Label {
         center_x: usize,
@@ -35,12 +37,19 @@ impl RelationOverlay {
         Self::Glyph { x, y, ch, role }
     }
 
-    pub(crate) fn text(center_x: usize, y: usize, text: String, role: AsciiColorRole) -> Self {
+    pub(crate) fn text(
+        center_x: usize,
+        y: usize,
+        text: String,
+        role: AsciiColorRole,
+        width_profile: TerminalWidthProfile,
+    ) -> Self {
         Self::Text {
             center_x,
             y,
             text,
             role,
+            width_profile,
         }
     }
 
@@ -66,7 +75,8 @@ impl RelationOverlay {
                 y,
                 text,
                 role,
-            } => write_centered_relation_text(canvas, *center_x, *y, text, *role),
+                width_profile,
+            } => write_centered_relation_text(canvas, *center_x, *y, text, *role, *width_profile),
             RelationOverlay::Label {
                 center_x,
                 y,

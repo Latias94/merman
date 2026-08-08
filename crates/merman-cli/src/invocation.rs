@@ -32,7 +32,7 @@ use crate::cli::{LayoutArgs, MmdcArgs, MmdcOutputFormat, RenderCliArgs};
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use crate::cli::{NativeRenderOptions, RenderArgs, RenderFormat};
 #[cfg(feature = "ascii")]
-use crate::cli::{TextCharset, TextColorMode, TextDirection, TextOutputCliArgs};
+use crate::cli::{TextCharset, TextColorMode, TextDirection, TextOutputCliArgs, TextWidthProfile};
 use crate::error::CliError;
 use crate::resources::ResolvedResourcePolicy;
 use merman::runtime::RuntimePolicy;
@@ -1155,6 +1155,12 @@ fn resolve_text_output_options(
             TextCharset::Unicode => merman::ascii::AsciiCharset::Unicode,
         };
     }
+    if let Some(profile) = args.ascii_width_profile {
+        options.terminal_width_profile = match profile {
+            TextWidthProfile::Unicode => merman::ascii::TerminalWidthProfile::Unicode,
+            TextWidthProfile::Cjk => merman::ascii::TerminalWidthProfile::Cjk,
+        };
+    }
     if let Some(direction) = args.ascii_direction {
         options.default_direction = match direction {
             TextDirection::LeftRight => merman::ascii::AsciiDirection::LeftRight,
@@ -1731,6 +1737,7 @@ fn runtime_options_are_configured(options: &RuntimeCliArgs) -> bool {
 fn text_options_are_configured(options: &TextOutputCliArgs) -> bool {
     options.sequence_mirror_actors
         || options.ascii_charset.is_some()
+        || options.ascii_width_profile.is_some()
         || options.ascii_direction.is_some()
         || options.ascii_color.is_some()
         || options.xychart_vertical_plot_height.is_some()
@@ -1973,6 +1980,28 @@ mod tests {
         .expect("resolve text options");
 
         assert_eq!(resolved.color_mode, merman::ascii::AsciiColorMode::Ansi16);
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn text_output_options_resolve_cjk_width_profile() {
+        let args = TextOutputCliArgs {
+            ascii_width_profile: Some(crate::cli::TextWidthProfile::Cjk),
+            ..TextOutputCliArgs::default()
+        };
+
+        let resolved = resolve_text_output_options(
+            RenderFormat::Unicode,
+            &args,
+            &ResolvedDestination::Stdout,
+            &facts(false),
+        )
+        .expect("resolve text options");
+
+        assert_eq!(
+            resolved.terminal_width_profile,
+            merman::ascii::TerminalWidthProfile::Cjk
+        );
     }
 
     #[test]

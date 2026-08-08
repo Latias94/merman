@@ -3,7 +3,7 @@ use super::{
 };
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
-use crate::text::{display_width, split_label_lines, wrap_label_lines};
+use crate::text::{display_width_with_profile, split_label_lines, wrap_label_lines_with_profile};
 
 use super::layout::SequenceLayout;
 use super::model::{SequenceNote, SequenceNotePlacement};
@@ -36,7 +36,7 @@ pub(super) fn render_note(
     let label_lines = note_label_lines(note, layout);
     let label_width = label_lines
         .iter()
-        .map(|line| display_width(line))
+        .map(|line| display_width_with_profile(line, layout.width_profile))
         .max()
         .unwrap_or(0);
     let mut inner_width = (label_width + BOX_PADDING_LEFT_RIGHT).max(MIN_BOX_WIDTH);
@@ -68,11 +68,13 @@ pub(super) fn render_note(
         chars.top_right,
         chars.horizontal,
         inner_width,
+        layout.width_profile,
     ));
     for line in label_lines {
-        let line_width = display_width(&line);
+        let line_width = display_width_with_profile(&line, layout.width_profile);
         let left_padding = (inner_width - line_width) / 2;
-        let mut row = SequenceLine::blank(inner_width + BOX_BORDER_WIDTH);
+        let mut row =
+            SequenceLine::blank_with_profile(inner_width + BOX_BORDER_WIDTH, layout.width_profile);
         row.set_role(0, chars.vertical, AsciiColorRole::SequenceFrame);
         row.write_text_role(1 + left_padding, &line, AsciiColorRole::Text);
         row.set_role(
@@ -87,6 +89,7 @@ pub(super) fn render_note(
         chars.bottom_right,
         chars.horizontal,
         inner_width,
+        layout.width_profile,
     ));
 
     rows.into_iter()
@@ -94,8 +97,14 @@ pub(super) fn render_note(
         .collect()
 }
 
-fn note_border_row(left: char, right: char, horizontal: char, inner_width: usize) -> SequenceLine {
-    let mut row = SequenceLine::blank(inner_width + BOX_BORDER_WIDTH);
+fn note_border_row(
+    left: char,
+    right: char,
+    horizontal: char,
+    inner_width: usize,
+    width_profile: crate::options::TerminalWidthProfile,
+) -> SequenceLine {
+    let mut row = SequenceLine::blank_with_profile(inner_width + BOX_BORDER_WIDTH, width_profile);
     row.set_role(0, left, AsciiColorRole::SequenceFrame);
     for x in 1..=inner_width {
         row.set_role(x, horizontal, AsciiColorRole::SequenceFrame);
@@ -111,5 +120,9 @@ fn note_label_lines(note: &SequenceNote, layout: &SequenceLayout) -> Vec<String>
 
     let span_width =
         layout.participant_centers[note.from].abs_diff(layout.participant_centers[note.to]);
-    wrap_label_lines(&note.label, span_width.max(NOTE_WRAP_TEXT_WIDTH))
+    wrap_label_lines_with_profile(
+        &note.label,
+        span_width.max(NOTE_WRAP_TEXT_WIDTH),
+        layout.width_profile,
+    )
 }

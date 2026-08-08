@@ -55,7 +55,7 @@ pub(super) fn plan_same_rank_direct_route(
         }
     }
 
-    let labels = planned_direct_labels(edge, start, end, y, points_right)?;
+    let labels = planned_direct_labels(edge, start, end, y, points_right, charset)?;
 
     Some(RoutePlan::new(cells, labels))
 }
@@ -119,6 +119,7 @@ pub(super) fn plan_same_rank_bottom_lane_route(
             x: max_x,
             y: bottom_y,
         },
+        charset,
     )
     .into_iter()
     .collect();
@@ -153,11 +154,13 @@ fn planned_direct_labels(
     end: usize,
     y: usize,
     points_right: bool,
+    charset: &GraphCharset,
 ) -> Option<Vec<PlannedRouteLabel>> {
     let Some(mut label) = planned_label(
         edge.label.as_deref(),
         CanvasCoord { x: start, y },
         CanvasCoord { x: end, y },
+        charset,
     ) else {
         return Some(Vec::new());
     };

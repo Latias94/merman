@@ -1,12 +1,15 @@
-use crate::options::AsciiRenderOptions;
-use crate::text::{normalize_optional_text, push_wrapped_prefixed_line, trim_trailing_blank_lines};
+use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
+use crate::safe_text::encode_text_lines;
+use crate::text::{
+    normalize_optional_text, push_wrapped_prefixed_line_with_profile, trim_trailing_blank_lines,
+};
 use merman_core::diagrams::timeline::{TimelineDiagramRenderModel, TimelineRenderTask};
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
 pub fn render_timeline_diagram(
     model: &TimelineDiagramRenderModel,
-    _options: &AsciiRenderOptions,
+    options: &AsciiRenderOptions,
 ) -> String {
     let mut lines = Vec::new();
 
@@ -24,7 +27,7 @@ pub fn render_timeline_diagram(
         for section in &model.sections {
             lines.push(format!("section: {section}"));
             for task in model.tasks.iter().filter(|task| task.section == *section) {
-                push_task(&mut lines, task);
+                push_task(&mut lines, task, options.terminal_width_profile);
             }
         }
 
@@ -34,31 +37,43 @@ pub fn render_timeline_diagram(
                 .iter()
                 .any(|section| section == &task.section)
         }) {
-            push_task(&mut lines, task);
+            push_task(&mut lines, task, options.terminal_width_profile);
         }
     } else {
         for task in &model.tasks {
-            push_task(&mut lines, task);
+            push_task(&mut lines, task, options.terminal_width_profile);
         }
     }
 
-    trim_trailing_blank_lines(lines).join("\n")
+    encode_text_lines(trim_trailing_blank_lines(lines), options)
 }
 
-fn push_task(lines: &mut Vec<String>, task: &TimelineRenderTask) {
+fn push_task(
+    lines: &mut Vec<String>,
+    task: &TimelineRenderTask,
+    width_profile: TerminalWidthProfile,
+) {
     let score = if task.score == 0 {
         String::new()
     } else {
         format!(" (score {})", task.score)
     };
-    push_wrapped_prefixed_line(
+    push_wrapped_prefixed_line_with_profile(
         lines,
         "  - ",
         "    ",
         &format!("{}{score}", task.task),
         SUMMARY_WRAP_WIDTH,
+        width_profile,
     );
     for event in &task.events {
-        push_wrapped_prefixed_line(lines, "    * ", "      ", event, SUMMARY_WRAP_WIDTH);
+        push_wrapped_prefixed_line_with_profile(
+            lines,
+            "    * ",
+            "      ",
+            event,
+            SUMMARY_WRAP_WIDTH,
+            width_profile,
+        );
     }
 }

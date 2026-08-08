@@ -1,6 +1,6 @@
 use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions, AsciiRgb,
-    render_model,
+    TerminalWidthProfile, render_model,
 };
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::models::class_diagram::ClassDiagram;
@@ -251,6 +251,51 @@ fn class_parser_single_class_renders_unicode_box() {
         .expect("class diagram should render");
 
     assert_eq!(rendered, "┌────────┐\n│ Animal │\n└────────┘\n");
+}
+
+#[test]
+fn class_terminal_width_profile_preserves_complex_graphemes_and_ambiguous_width() {
+    let mut model = parse_class_model("classDiagram\nclass A");
+    model
+        .classes
+        .get_mut("A")
+        .expect("class A should exist")
+        .text = "👩‍💻·".to_string();
+
+    let unicode = merman_ascii::render_class(
+        &model,
+        &AsciiRenderOptions::ascii().with_terminal_width_profile(TerminalWidthProfile::Unicode),
+    )
+    .expect("class should render with Unicode terminal widths");
+    let cjk = merman_ascii::render_class(
+        &model,
+        &AsciiRenderOptions::unicode().with_terminal_width_profile(TerminalWidthProfile::Cjk),
+    )
+    .expect("class should render with CJK terminal widths");
+
+    assert_eq!(unicode, "+-----+\n| 👩‍💻· |\n+-----+\n");
+    assert_eq!(cjk, "+------+\n| 👩‍💻· |\n+------+\n");
+    assert!(
+        !cjk.contains(['┌', '─', '┐', '│', '└', '┘']),
+        "CJK width profiles must use single-cell structural glyphs: {cjk}"
+    );
+}
+
+#[test]
+fn class_relationship_labels_preserve_complex_graphemes() {
+    let mut model = parse_class_model("classDiagram\nclass A\nclass B\nA --> B : owns");
+    model
+        .classes
+        .get_mut("A")
+        .expect("class A should exist")
+        .text = "Client 👩‍💻".to_string();
+    model.relations[0].title = "owns 👩‍💻".to_string();
+    let rendered = merman_ascii::render_class(&model, &AsciiRenderOptions::ascii())
+        .expect("class relationship should render");
+
+    assert!(rendered.contains("Client 👩‍💻"), "{rendered}");
+    assert!(rendered.contains("owns 👩‍💻"), "{rendered}");
+    assert!(!rendered.contains("relations:"), "{rendered}");
 }
 
 #[test]

@@ -239,6 +239,7 @@ export interface CommonBindingOptions extends AnalysisBindingOptions {
 }
 
 export type AsciiCharsetOption = "ascii" | "unicode";
+export type AsciiWidthProfileOption = "unicode" | "cjk";
 export type AsciiDirectionOption =
   | "lr"
   | "leftRight"
@@ -277,6 +278,8 @@ export interface AsciiThemeOptions {
 
 export interface AsciiRenderOptions {
   charset?: AsciiCharsetOption;
+  width_profile?: AsciiWidthProfileOption;
+  widthProfile?: AsciiWidthProfileOption;
   default_direction?: AsciiDirectionOption;
   defaultDirection?: AsciiDirectionOption;
   color_mode?: AsciiColorModeOption;

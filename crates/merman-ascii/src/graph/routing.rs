@@ -115,13 +115,13 @@ pub(super) fn prepare_route_scene(
     let mut height = 0;
 
     for (edge_index, edge) in edges.iter().enumerate() {
-        let Some(from) = endpoint_layout(graph_layout, &edge.from) else {
+        let Some(from) = endpoint_layout(graph_layout, &edge.from, charset) else {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: graph.diagram_type(),
                 feature: "edges with missing endpoint layouts",
             });
         };
-        let Some(to) = endpoint_layout(graph_layout, &edge.to) else {
+        let Some(to) = endpoint_layout(graph_layout, &edge.to, charset) else {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: graph.diagram_type(),
                 feature: "edges with missing endpoint layouts",
@@ -159,7 +159,11 @@ pub(super) fn prepare_route_scene(
     })
 }
 
-fn endpoint_layout(graph_layout: &GraphLayout, endpoint_id: &str) -> Option<NodeLayout> {
+fn endpoint_layout(
+    graph_layout: &GraphLayout,
+    endpoint_id: &str,
+    charset: &GraphCharset,
+) -> Option<NodeLayout> {
     graph_layout
         .nodes
         .iter()
@@ -170,14 +174,14 @@ fn endpoint_layout(graph_layout: &GraphLayout, endpoint_id: &str) -> Option<Node
                 .groups
                 .iter()
                 .find(|layout| layout.id == endpoint_id)
-                .map(group_endpoint_layout)
+                .map(|group| group_endpoint_layout(group, charset))
         })
 }
 
-fn group_endpoint_layout(group: &GroupLayout) -> NodeLayout {
+fn group_endpoint_layout(group: &GroupLayout, charset: &GraphCharset) -> NodeLayout {
     NodeLayout {
         id: group.id.clone(),
-        label: GraphLabel::new(""),
+        label: GraphLabel::new_with_profile("", charset.width_profile),
         shape: GraphNodeShape::Rect,
         style: GraphNodeStyle::default(),
         grid: GridCoord { x: 0, y: 0 },
@@ -218,13 +222,13 @@ mod tests {
         PlannedRouteCell, PlannedRouteLabel, PlannedRoutePaint, PlannedRouteSegment,
     };
     use super::*;
-    use crate::AsciiRenderOptions;
     use crate::canvas::CanvasColor;
     use crate::color::{AsciiColorRole, AsciiRgb};
     use crate::graph::layout::CanvasCoord;
     use crate::graph::layout::layout_graph;
     use crate::graph::model::{GraphDirection, GraphEdgeAttrs, GraphEdgeStyle};
     use crate::graph::routing::label::{RoutedLabelPlacement, RoutedLabelText};
+    use crate::{AsciiRenderOptions, TerminalWidthProfile};
 
     #[test]
     fn edge_style_is_applied_to_route_plan_cells_and_labels() {
@@ -243,7 +247,7 @@ mod tests {
             )],
         );
 
-        let mut canvas = Canvas::new(5, 1);
+        let mut canvas = Canvas::with_width_profile(5, 1, TerminalWidthProfile::Unicode);
         let mut route_cells = RouteCells::new();
         let mut drawing = RouteDrawing::new(&mut canvas, &mut route_cells);
         let plan = plan.with_style(GraphEdgeStyle {
@@ -312,7 +316,7 @@ mod tests {
             Vec::new(),
         );
 
-        let mut canvas = Canvas::new(1, 1);
+        let mut canvas = Canvas::with_width_profile(1, 1, TerminalWidthProfile::Unicode);
         let mut route_cells = RouteCells::new();
         let mut drawing = RouteDrawing::new(&mut canvas, &mut route_cells);
 
@@ -357,8 +361,10 @@ mod tests {
         );
         let graph_layout = layout_graph(&graph, &options);
         let edge = &graph.edges[1];
-        let from = endpoint_layout(&graph_layout, &edge.from).expect("source layout should exist");
-        let to = endpoint_layout(&graph_layout, &edge.to).expect("target layout should exist");
+        let from = endpoint_layout(&graph_layout, &edge.from, &charset)
+            .expect("source layout should exist");
+        let to =
+            endpoint_layout(&graph_layout, &edge.to, &charset).expect("target layout should exist");
         let plan = plan_edge_route(EdgeRouteRequest {
             graph: &graph,
             graph_layout: &graph_layout,
@@ -432,9 +438,10 @@ mod tests {
         let mut expected_width = 0;
         let mut expected_height = 0;
         for (edge_index, edge) in graph.edges.iter().enumerate() {
-            let from =
-                endpoint_layout(&graph_layout, &edge.from).expect("source layout should exist");
-            let to = endpoint_layout(&graph_layout, &edge.to).expect("target layout should exist");
+            let from = endpoint_layout(&graph_layout, &edge.from, &charset)
+                .expect("source layout should exist");
+            let to = endpoint_layout(&graph_layout, &edge.to, &charset)
+                .expect("target layout should exist");
             let plan = plan_edge_route(EdgeRouteRequest {
                 graph: &graph,
                 graph_layout: &graph_layout,

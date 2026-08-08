@@ -32,7 +32,7 @@ pub(super) struct SequenceChars {
 
 impl SequenceChars {
     fn for_options(options: &AsciiRenderOptions) -> Self {
-        match options.charset {
+        match options.structural_charset() {
             AsciiCharset::Ascii => Self {
                 top_left: '+',
                 top_right: '+',
@@ -122,7 +122,7 @@ pub(super) fn build_lifeline_line(
     active_counts: &[usize],
     visible_actors: &[bool],
 ) -> SequenceLine {
-    let mut line = SequenceLine::blank(layout.total_width + 1);
+    let mut line = SequenceLine::blank_with_profile(layout.total_width + 1, layout.width_profile);
     for (index, center) in layout.participant_centers.iter().enumerate() {
         if !visible_actors.get(index).copied().unwrap_or(true) {
             continue;

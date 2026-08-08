@@ -1,6 +1,6 @@
 use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions, AsciiRgb,
-    render_model,
+    TerminalWidthProfile, render_model,
 };
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::er::ErDiagramRenderModel;
@@ -233,6 +233,51 @@ fn er_parser_single_entity_renders_unicode_box() {
         render_er("erDiagram\nCUSTOMER", &AsciiRenderOptions::unicode()).expect("ER should render");
 
     assert_eq!(rendered, "┌──────────┐\n│ CUSTOMER │\n└──────────┘\n");
+}
+
+#[test]
+fn er_terminal_width_profile_preserves_complex_graphemes_and_ambiguous_width() {
+    let mut model = parse_er_model("erDiagram\nA");
+    model
+        .entities
+        .get_mut("A")
+        .expect("entity A should exist")
+        .alias = "👩‍💻·".to_string();
+
+    let unicode = merman_ascii::render_er(
+        &model,
+        &AsciiRenderOptions::ascii().with_terminal_width_profile(TerminalWidthProfile::Unicode),
+    )
+    .expect("ER entity should render with Unicode terminal widths");
+    let cjk = merman_ascii::render_er(
+        &model,
+        &AsciiRenderOptions::unicode().with_terminal_width_profile(TerminalWidthProfile::Cjk),
+    )
+    .expect("ER entity should render with CJK terminal widths");
+
+    assert_eq!(unicode, "+-----+\n| 👩‍💻· |\n+-----+\n");
+    assert_eq!(cjk, "+------+\n| 👩‍💻· |\n+------+\n");
+    assert!(
+        !cjk.contains(['┌', '─', '┐', '│', '└', '┘']),
+        "CJK width profiles must use single-cell structural glyphs: {cjk}"
+    );
+}
+
+#[test]
+fn er_relationship_labels_preserve_complex_graphemes() {
+    let mut model = parse_er_model("erDiagram\nA ||--|| B : owns");
+    model
+        .entities
+        .get_mut("A")
+        .expect("entity A should exist")
+        .alias = "Client 👩‍💻".to_string();
+    model.relationships[0].role_a = "owns 👩‍💻".to_string();
+    let rendered = merman_ascii::render_er(&model, &AsciiRenderOptions::ascii())
+        .expect("ER relationship should render");
+
+    assert!(rendered.contains("Client 👩‍💻"), "{rendered}");
+    assert!(rendered.contains("owns 👩‍💻"), "{rendered}");
+    assert!(!rendered.contains("relations:"), "{rendered}");
 }
 
 #[test]

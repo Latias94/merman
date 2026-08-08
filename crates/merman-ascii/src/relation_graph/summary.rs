@@ -3,8 +3,9 @@ use super::{
     RelationGraphBox, RelationGraphLabel, RelationGraphLine, render_stacked_boxes_with_section,
 };
 use crate::color::AsciiColorRole;
-use crate::options::AsciiRenderOptions;
-use crate::text::display_width;
+use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
+use crate::safe_text::SafeLine;
+use crate::text::display_width_with_profile;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RelationGraphSummaryRow {
@@ -20,10 +21,13 @@ impl RelationGraphSummaryRow {
         connector: impl Into<String>,
         target: impl Into<String>,
     ) -> Self {
+        let source = source.into();
+        let connector = connector.into();
+        let target = target.into();
         Self {
-            source: source.into(),
-            connector: connector.into(),
-            target: target.into(),
+            source: SafeLine::new(&source).as_str().to_owned(),
+            connector: SafeLine::new(&connector).as_str().to_owned(),
+            target: SafeLine::new(&target).as_str().to_owned(),
             label: None,
         }
     }
@@ -43,7 +47,11 @@ pub(crate) fn render_stacked_boxes_with_relation_summary(
     let lines = relation_summary_lines(rows, reason, options);
     render_stacked_boxes_with_section(
         boxes,
-        RelationGraphLine::with_role("relations:".to_string(), AsciiColorRole::MutedText),
+        RelationGraphLine::with_role(
+            "relations:".to_string(),
+            AsciiColorRole::MutedText,
+            options.terminal_width_profile,
+        ),
         &lines,
         options,
     )
@@ -74,17 +82,17 @@ fn relation_summary_lines(
 
     let source_width = rows
         .iter()
-        .map(|row| display_width(&row.source))
+        .map(|row| display_width_with_profile(&row.source, options.terminal_width_profile))
         .max()
         .unwrap_or(0);
     let connector_width = rows
         .iter()
-        .map(|row| display_width(&row.connector))
+        .map(|row| display_width_with_profile(&row.connector, options.terminal_width_profile))
         .max()
         .unwrap_or(0);
     let target_width = rows
         .iter()
-        .map(|row| display_width(&row.target))
+        .map(|row| display_width_with_profile(&row.target, options.terminal_width_profile))
         .max()
         .unwrap_or(0);
     let label_prefix_width = source_width + connector_width + target_width + 5;
@@ -96,16 +104,29 @@ fn relation_summary_lines(
         lines.push(RelationGraphLine::with_role(
             format!("reason: {}", relation_summary_reason_text(reason)),
             AsciiColorRole::MutedText,
+            options.terminal_width_profile,
         ));
     }
 
     for row in rows {
         let mut line = String::new();
-        line.push_str(&pad_right(&row.source, source_width));
+        line.push_str(&pad_right(
+            &row.source,
+            source_width,
+            options.terminal_width_profile,
+        ));
         line.push(' ');
-        line.push_str(&pad_right(&row.connector, connector_width));
+        line.push_str(&pad_right(
+            &row.connector,
+            connector_width,
+            options.terminal_width_profile,
+        ));
         line.push(' ');
-        line.push_str(&pad_right(&row.target, target_width));
+        line.push_str(&pad_right(
+            &row.target,
+            target_width,
+            options.terminal_width_profile,
+        ));
 
         match row.label.as_ref() {
             Some(label) if !label.lines().is_empty() => {
@@ -115,17 +136,20 @@ fn relation_summary_lines(
                 lines.push(RelationGraphLine::with_role(
                     line,
                     AsciiColorRole::EdgeLabel,
+                    options.terminal_width_profile,
                 ));
                 for continuation in label_lines.iter().skip(1) {
                     lines.push(RelationGraphLine::with_role(
                         format!("{}{}", " ".repeat(label_prefix_width), continuation),
                         AsciiColorRole::EdgeLabel,
+                        options.terminal_width_profile,
                     ));
                 }
             }
             _ => lines.push(RelationGraphLine::with_role(
                 line,
                 AsciiColorRole::EdgeLabel,
+                options.terminal_width_profile,
             )),
         }
     }
@@ -144,8 +168,8 @@ fn relation_summary_reason_text(reason: LayeredRelationSummaryReason) -> String 
     }
 }
 
-fn pad_right(text: &str, width: usize) -> String {
-    let text_width = display_width(text);
+fn pad_right(text: &str, width: usize, width_profile: TerminalWidthProfile) -> String {
+    let text_width = display_width_with_profile(text, width_profile);
     let mut padded = String::from(text);
     padded.extend(std::iter::repeat_n(' ', width.saturating_sub(text_width)));
     padded
@@ -160,8 +184,10 @@ mod tests {
     #[test]
     fn render_stacked_boxes_with_relation_summary_aligns_columns_and_wraps_labels() {
         let rows = vec![
-            RelationGraphSummaryRow::new("Gateway", "-->", "Service")
-                .with_label(RelationGraphLabel::new("receives<br>request").as_ref()),
+            RelationGraphSummaryRow::new("Gateway", "-->", "Service").with_label(
+                RelationGraphLabel::new("receives<br>request", TerminalWidthProfile::Unicode)
+                    .as_ref(),
+            ),
             RelationGraphSummaryRow::new("Svc", "-->", "Repo"),
         ];
 
@@ -189,8 +215,9 @@ mod tests {
     #[test]
     fn render_stacked_boxes_with_relation_summary_aligns_wide_text_by_display_width() {
         let rows = vec![
-            RelationGraphSummaryRow::new("服务", "-->", "Repo")
-                .with_label(RelationGraphLabel::new("处理🚀<br>完成").as_ref()),
+            RelationGraphSummaryRow::new("服务", "-->", "Repo").with_label(
+                RelationGraphLabel::new("处理🚀<br>完成", TerminalWidthProfile::Unicode).as_ref(),
+            ),
             RelationGraphSummaryRow::new("API", "-->", "数据"),
         ];
 
@@ -217,10 +244,9 @@ mod tests {
 
     #[test]
     fn render_stacked_boxes_with_relation_summary_colors_title_and_rows() {
-        let rows = vec![
-            RelationGraphSummaryRow::new("A", "-->", "B")
-                .with_label(RelationGraphLabel::new("one<br>two").as_ref()),
-        ];
+        let rows = vec![RelationGraphSummaryRow::new("A", "-->", "B").with_label(
+            RelationGraphLabel::new("one<br>two", TerminalWidthProfile::Unicode).as_ref(),
+        )];
         let theme = AsciiColorTheme::default_light()
             .with_role(AsciiColorRole::MutedText, AsciiRgb::from_hex24(0x222222))
             .with_role(AsciiColorRole::EdgeLabel, AsciiRgb::from_hex24(0x333333));

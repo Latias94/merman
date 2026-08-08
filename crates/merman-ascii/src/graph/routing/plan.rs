@@ -216,9 +216,9 @@ fn planned_label(
     label: Option<&str>,
     start: CanvasCoord,
     end: CanvasCoord,
+    charset: &GraphCharset,
 ) -> Option<PlannedRouteLabel> {
-    let label = label.filter(|label| !label.trim().is_empty())?;
-    let text = RoutedLabelText::new(label)?;
+    let text = RoutedLabelText::new_with_profile(label?, charset.width_profile)?;
     let placement = routed_label_placement_for_text(start, end, &text)?;
     Some(PlannedRouteLabel::new(text, placement))
 }

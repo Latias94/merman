@@ -122,6 +122,19 @@ export interface BindingResourceErrorDetails {
   profile: string;
 }
 
+export interface BindingDiagnosticSpan {
+  start: number;
+  end: number;
+  kind: "exact" | "insertion-point" | "fallback" | string;
+}
+
+export interface BindingDiagnosticErrorDetails {
+  code: string;
+  span: BindingDiagnosticSpan | null;
+  field: string | null;
+  diagram_type: string | null;
+}
+
 export interface BindingErrorPayload {
   version: number;
   ok: false;
@@ -130,7 +143,9 @@ export interface BindingErrorPayload {
   kind: BindingErrorKind | string;
   capability_id: RuntimeCapabilityId | string | null;
   details?: {
-    resource: BindingResourceErrorDetails;
+    resource?: BindingResourceErrorDetails;
+    diagnostic?: BindingDiagnosticErrorDetails;
+    icon_registry?: Record<string, unknown>;
   };
   message: string;
 }
@@ -287,12 +302,15 @@ export function isBindingErrorPayload(error: unknown): error is BindingErrorPayl
     return false;
   }
   const payload = error as Record<string, unknown>;
-  const resource =
+  const details =
     payload.details && typeof payload.details === "object"
-      ? (payload.details as Record<string, unknown>).resource
+      ? (payload.details as Record<string, unknown>)
       : undefined;
-  const hasValidDetails =
-    payload.details === undefined ||
+  const resource = details?.resource;
+  const diagnostic = details?.diagnostic;
+  const iconRegistry = details?.icon_registry;
+  const validResource =
+    resource === undefined ||
     (!!resource &&
       typeof resource === "object" &&
       typeof (resource as Record<string, unknown>).limit_id === "string" &&
@@ -300,6 +318,41 @@ export function isBindingErrorPayload(error: unknown): error is BindingErrorPayl
       typeof (resource as Record<string, unknown>).actual === "number" &&
       typeof (resource as Record<string, unknown>).max === "number" &&
       typeof (resource as Record<string, unknown>).profile === "string");
+  const diagnosticRecord =
+    diagnostic && typeof diagnostic === "object"
+      ? (diagnostic as Record<string, unknown>)
+      : undefined;
+  const diagnosticSpan = diagnosticRecord?.span;
+  const validDiagnosticSpan =
+    diagnosticSpan === null ||
+    (!!diagnosticSpan &&
+      typeof diagnosticSpan === "object" &&
+      typeof (diagnosticSpan as Record<string, unknown>).start === "number" &&
+      typeof (diagnosticSpan as Record<string, unknown>).end === "number" &&
+      Number((diagnosticSpan as Record<string, unknown>).end) >=
+        Number((diagnosticSpan as Record<string, unknown>).start) &&
+      ["exact", "insertion-point", "fallback"].includes(
+        (diagnosticSpan as Record<string, unknown>).kind as string
+      ));
+  const validDiagnostic =
+    diagnostic === undefined ||
+    (!!diagnosticRecord &&
+      typeof diagnosticRecord.code === "string" &&
+      validDiagnosticSpan &&
+      (diagnosticRecord.field === null ||
+        typeof diagnosticRecord.field === "string") &&
+      (diagnosticRecord.diagram_type === null ||
+        typeof diagnosticRecord.diagram_type === "string"));
+  const hasValidDetails =
+    payload.details === undefined ||
+    (!!details &&
+      (resource !== undefined ||
+        diagnostic !== undefined ||
+        iconRegistry !== undefined) &&
+      validResource &&
+      validDiagnostic &&
+      (iconRegistry === undefined ||
+        (!!iconRegistry && typeof iconRegistry === "object")));
   return (
     payload.ok === false &&
     typeof payload.version === "number" &&

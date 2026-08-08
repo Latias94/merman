@@ -1,8 +1,9 @@
-use crate::options::{AsciiCharset, AsciiRenderOptions};
+use crate::options::{AsciiCharset, AsciiRenderOptions, TerminalWidthProfile};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct GraphCharset {
     pub(super) unicode: bool,
+    pub(super) width_profile: TerminalWidthProfile,
     pub(super) top_left: char,
     pub(super) top_right: char,
     pub(super) bottom_left: char,
@@ -32,9 +33,10 @@ pub(super) struct GraphCharset {
 
 impl GraphCharset {
     pub(super) fn for_options(options: &AsciiRenderOptions) -> Self {
-        match options.charset {
+        match options.structural_charset() {
             AsciiCharset::Ascii => Self {
                 unicode: false,
+                width_profile: options.terminal_width_profile,
                 top_left: '+',
                 top_right: '+',
                 bottom_left: '+',
@@ -63,6 +65,7 @@ impl GraphCharset {
             },
             AsciiCharset::Unicode => Self {
                 unicode: true,
+                width_profile: options.terminal_width_profile,
                 top_left: '┌',
                 top_right: '┐',
                 bottom_left: '└',

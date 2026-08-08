@@ -65,6 +65,8 @@ const RESPONSE_EXACT_SAFE_INTEGER_PATHS = Object.freeze([
   ["error", "code"],
   ["error", "details", "resource", "actual"],
   ["error", "details", "resource", "max"],
+  ["error", "details", "diagnostic", "span", "start"],
+  ["error", "details", "diagnostic", "span", "end"],
   ["error", "details", "icon_registry", "pack_index"],
 ]);
 const OPERATION_METADATA_EXACT_SAFE_INTEGER_PATHS = Object.freeze([
@@ -94,6 +96,7 @@ export class MermanOperationError extends MermanError {
     this.kind = payload.kind ?? "generic";
     this.capabilityId = payload.capability_id ?? null;
     this.resourceDetails = payload.details?.resource ?? null;
+    this.diagnosticDetails = payload.details?.diagnostic ?? null;
   }
 }
 
@@ -1127,6 +1130,28 @@ function validateResourceDetails(details) {
     ) {
       throw new MermanInvalidTransportError(
         "Merman transport returned invalid resource error details.",
+      );
+    }
+  }
+  if (details.diagnostic !== undefined) {
+    const diagnostic = details.diagnostic;
+    const span = diagnostic?.span;
+    if (
+      !isPlainJsonObject(diagnostic) ||
+      typeof diagnostic.code !== "string" ||
+      diagnostic.code.length === 0 ||
+      (diagnostic.field !== null && typeof diagnostic.field !== "string") ||
+      (diagnostic.diagram_type !== null && typeof diagnostic.diagram_type !== "string") ||
+      (span !== null &&
+        (!isPlainJsonObject(span) ||
+          !Number.isSafeInteger(span.start) ||
+          span.start < 0 ||
+          !Number.isSafeInteger(span.end) ||
+          span.end < span.start ||
+          !["exact", "insertion-point", "fallback"].includes(span.kind)))
+    ) {
+      throw new MermanInvalidTransportError(
+        "Merman transport returned invalid diagnostic error details.",
       );
     }
   }

@@ -1,7 +1,9 @@
 use crate::color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb};
-use crate::options::AsciiRenderOptions;
+use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
+use crate::safe_text::{SafeLine, terminal_char_display_width};
 use crate::terminal::{
-    CanvasStyle, ResolvedCanvasStyle, TerminalCell, char_display_width, write_primary_cell_style,
+    CanvasStyle, GlyphArena, ResolvedCanvasStyle, TerminalCell, TerminalCellText, owner_index,
+    primary_width, style_at, write_primary_cell_from_cell, write_primary_grapheme_style,
 };
 use std::fmt::Write as _;
 
@@ -12,22 +14,35 @@ pub(crate) struct Canvas {
     width: usize,
     height: usize,
     cells: Vec<TerminalCell>,
+    arena: GlyphArena,
+    width_profile: TerminalWidthProfile,
 }
 
 impl Canvas {
+    #[cfg(test)]
     pub(crate) fn new(width: usize, height: usize) -> Self {
+        Self::with_width_profile(width, height, TerminalWidthProfile::Unicode)
+    }
+
+    pub(crate) fn with_width_profile(
+        width: usize,
+        height: usize,
+        width_profile: TerminalWidthProfile,
+    ) -> Self {
         let cell_count = width.saturating_mul(height);
         Self {
             width,
             height,
             cells: vec![TerminalCell::blank(); cell_count],
+            arena: GlyphArena::default(),
+            width_profile,
         }
     }
 
     pub(crate) fn set(&mut self, x: usize, y: usize, ch: char) {
-        if let Some(index) = self.index_for_char(x, y, ch) {
-            let style = self.cells[index].raw_style().with_foreground(None);
-            write_primary_cell_style(&mut self.cells, index, ch, style);
+        if let Some(index) = self.index_for_structural_char(x, y, ch) {
+            let style = style_at(&self.cells, index).with_foreground(None);
+            self.write_structural_char(index, ch, style);
         }
     }
 
@@ -40,15 +55,15 @@ impl Canvas {
     }
 
     pub(crate) fn set_canvas_color(&mut self, x: usize, y: usize, ch: char, color: CanvasColor) {
-        if let Some(index) = self.index_for_char(x, y, ch) {
-            let style = self.cells[index].raw_style().with_foreground(Some(color));
-            write_primary_cell_style(&mut self.cells, index, ch, style);
+        if let Some(index) = self.index_for_structural_char(x, y, ch) {
+            let style = style_at(&self.cells, index).with_foreground(Some(color));
+            self.write_structural_char(index, ch, style);
         }
     }
 
     pub(crate) fn set_style(&mut self, x: usize, y: usize, ch: char, style: CanvasStyle) {
-        if let Some(index) = self.index_for_char(x, y, ch) {
-            write_primary_cell_style(&mut self.cells, index, ch, style);
+        if let Some(index) = self.index_for_structural_char(x, y, ch) {
+            self.write_structural_char(index, ch, style);
         }
     }
 
@@ -58,13 +73,20 @@ impl Canvas {
 
     pub(crate) fn set_background_canvas_color(&mut self, x: usize, y: usize, color: CanvasColor) {
         if let Some(index) = self.index(x, y) {
-            self.cells[index].set_background(color);
+            let owner = owner_index(&self.cells, index).unwrap_or(index);
+            self.cells[owner].set_background(color);
         }
     }
 
     pub(crate) fn get(&self, x: usize, y: usize) -> Option<char> {
         self.index(x, y)
             .and_then(|index| self.cells[index].output_char())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn get_text(&self, x: usize, y: usize) -> Option<TerminalCellText<'_>> {
+        self.index(x, y)
+            .and_then(|index| self.cells[index].output_text(&self.arena))
     }
 
     #[cfg(test)]
@@ -78,26 +100,42 @@ impl Canvas {
 
     #[cfg(test)]
     pub(crate) fn write_text(&mut self, x: usize, y: usize, text: &str) {
-        let mut offset = 0;
-        for ch in text.chars() {
-            self.set(x + offset, y, ch);
-            offset += char_display_width(ch);
-        }
+        self.write_text_style(x, y, text, CanvasStyle::default());
     }
 
     pub(crate) fn write_text_role(&mut self, x: usize, y: usize, text: &str, role: AsciiColorRole) {
-        let mut offset = 0;
-        for ch in text.chars() {
-            self.set_role(x + offset, y, ch, role);
-            offset += char_display_width(ch);
-        }
+        self.write_text_style(x, y, text, CanvasStyle::foreground(CanvasColor::Role(role)));
     }
 
     pub(crate) fn write_text_color(&mut self, x: usize, y: usize, text: &str, color: AsciiRgb) {
+        self.write_text_style(
+            x,
+            y,
+            text,
+            CanvasStyle::foreground(CanvasColor::Direct(color)),
+        );
+    }
+
+    fn write_text_style(&mut self, x: usize, y: usize, text: &str, style: CanvasStyle) {
         let mut offset = 0;
-        for ch in text.chars() {
-            self.set_color(x + offset, y, ch, color);
-            offset += char_display_width(ch);
+        let text = SafeLine::new(text);
+        for grapheme in text.graphemes(self.width_profile) {
+            let target_x = x.saturating_add(offset);
+            if target_x.saturating_add(grapheme.width()) > self.width {
+                break;
+            }
+            let Some(index) = self.index(target_x, y) else {
+                break;
+            };
+            write_primary_grapheme_style(
+                &mut self.cells,
+                &mut self.arena,
+                index,
+                grapheme.text(),
+                grapheme.width(),
+                style,
+            );
+            offset = offset.saturating_add(grapheme.width());
         }
     }
 
@@ -119,6 +157,41 @@ impl Canvas {
         self.finish_with_options_internal(options, true)
     }
 
+    pub(crate) fn write_cells_from_surface(
+        &mut self,
+        x: usize,
+        y: usize,
+        cells: &[TerminalCell],
+        arena: &GlyphArena,
+        width_profile: TerminalWidthProfile,
+    ) -> bool {
+        if width_profile != self.width_profile || x >= self.width || y >= self.height {
+            return false;
+        }
+
+        let remap = self.arena.import_all(arena);
+        let row_start = y * self.width;
+        let mut offset = 0;
+        while offset < cells.len() {
+            let cell = cells[offset];
+            if cell.is_continuation() {
+                offset += 1;
+                continue;
+            }
+
+            let width = primary_width(cells, offset).max(1);
+            let Some(target_x) = x.checked_add(offset) else {
+                break;
+            };
+            if target_x.saturating_add(width) > self.width {
+                break;
+            }
+            write_primary_cell_from_cell(&mut self.cells, row_start + target_x, cell, width, remap);
+            offset += width;
+        }
+        true
+    }
+
     pub(crate) fn into_styled_lines_trimmed(self) -> Vec<crate::text::StyledLine> {
         if self.width == 0 || self.height == 0 {
             return Vec::new();
@@ -127,8 +200,10 @@ impl Canvas {
         let mut lines = Vec::new();
         for row_start in (0..self.cells.len()).step_by(self.width) {
             let row_end = self.trimmed_row_end(row_start, row_start + self.width, true);
-            lines.push(crate::text::StyledLine::from_cells(
+            lines.push(crate::text::StyledLine::from_surface_cells(
                 self.cells[row_start..row_end].to_vec(),
+                self.arena.clone(),
+                self.width_profile,
             ));
         }
         lines
@@ -147,8 +222,8 @@ impl Canvas {
                 row_start + self.width
             };
             for cell in &self.cells[row_start..row_end] {
-                if let Some(ch) = cell.output_char() {
-                    out.push(ch);
+                if let Some(text) = cell.output_text(&self.arena) {
+                    text.push_to(&mut out);
                 }
             }
             out.push('\n');
@@ -179,11 +254,30 @@ impl Canvas {
         Some(y * self.width + x)
     }
 
-    fn index_for_char(&self, x: usize, y: usize, ch: char) -> Option<usize> {
-        if x.saturating_add(char_display_width(ch)) > self.width {
+    fn index_for_structural_char(&self, x: usize, y: usize, ch: char) -> Option<usize> {
+        let width = terminal_char_display_width(ch, self.width_profile);
+        debug_assert_eq!(
+            width, 1,
+            "renderer-owned structural glyphs must occupy one terminal cell"
+        );
+        if width != 1 {
             return None;
         }
         self.index(x, y)
+    }
+
+    fn write_structural_char(&mut self, index: usize, ch: char, style: CanvasStyle) {
+        let mut buffer = [0; 4];
+        let grapheme = ch.encode_utf8(&mut buffer);
+        let wrote = write_primary_grapheme_style(
+            &mut self.cells,
+            &mut self.arena,
+            index,
+            grapheme,
+            1,
+            style,
+        );
+        debug_assert!(wrote, "validated structural cell write must fit");
     }
 
     fn finish_ansi(self, theme: AsciiColorTheme, mode: AsciiColorMode, trim: bool) -> String {
@@ -200,7 +294,7 @@ impl Canvas {
             };
             let mut active_style = ResolvedCanvasStyle::default();
             for cell in &self.cells[row_start..row_end] {
-                let Some(ch) = cell.output_char() else {
+                let Some(text) = cell.output_text(&self.arena) else {
                     continue;
                 };
                 let desired_style = cell.raw_style().resolve(theme);
@@ -213,7 +307,7 @@ impl Canvas {
                     }
                     active_style = desired_style;
                 }
-                out.push(ch);
+                text.push_to(&mut out);
             }
             if !active_style.is_plain() {
                 out.push_str("\u{1b}[0m");
@@ -237,7 +331,7 @@ impl Canvas {
             };
             let mut active_style = ResolvedCanvasStyle::default();
             for cell in &self.cells[row_start..row_end] {
-                let Some(ch) = cell.output_char() else {
+                let Some(text) = cell.output_text(&self.arena) else {
                     continue;
                 };
                 let desired_style = cell.raw_style().resolve(theme);
@@ -250,7 +344,7 @@ impl Canvas {
                     }
                     active_style = desired_style;
                 }
-                push_html_escaped_char(&mut out, ch);
+                push_html_escaped_text(&mut out, text);
             }
             if !active_style.is_plain() {
                 out.push_str("</span>");
@@ -376,6 +470,18 @@ fn push_html_span_start(out: &mut String, style: ResolvedCanvasStyle) {
     out.push_str("\">");
 }
 
+fn push_html_escaped_text(out: &mut String, text: TerminalCellText<'_>) {
+    match text {
+        TerminalCellText::Scalar(ch) => push_html_escaped_char(out, ch),
+        TerminalCellText::Grapheme(grapheme) => {
+            // HTML escaping classifies syntax scalars and never measures or splits terminal cells.
+            for ch in grapheme.chars() {
+                push_html_escaped_char(out, ch);
+            }
+        }
+    }
+}
+
 fn push_html_escaped_char(out: &mut String, ch: char) {
     match ch {
         '&' => out.push_str("&amp;"),
@@ -419,7 +525,6 @@ mod tests {
     fn wide_text_reserves_continuation_cells() {
         let mut canvas = Canvas::new(4, 1);
         canvas.write_text_role(0, 0, "中A", AsciiColorRole::Text);
-        canvas.set_role(1, 0, 'X', AsciiColorRole::EdgeLine);
 
         assert_eq!(canvas.get(0, 0), Some('中'));
         assert_eq!(canvas.get(1, 0), None);
@@ -428,9 +533,56 @@ mod tests {
     }
 
     #[test]
+    fn cjk_profile_reserves_a_continuation_for_ambiguous_width_text() {
+        let mut unicode = Canvas::with_width_profile(2, 1, TerminalWidthProfile::Unicode);
+        unicode.write_text(0, 0, "·A");
+        assert_eq!(unicode.get(0, 0), Some('·'));
+        assert_eq!(unicode.get(1, 0), Some('A'));
+
+        let mut cjk = Canvas::with_width_profile(3, 1, TerminalWidthProfile::Cjk);
+        cjk.write_text(0, 0, "·A");
+        assert_eq!(cjk.get(0, 0), Some('·'));
+        assert_eq!(cjk.get(1, 0), None);
+        assert_eq!(cjk.get(2, 0), Some('A'));
+
+        assert_eq!(unicode.finish(), "·A\n");
+        assert_eq!(cjk.finish(), "·A\n");
+    }
+
+    #[test]
+    fn complex_grapheme_survives_plain_ansi_and_html_encoding() {
+        let text = "Cafe\u{301} 👩‍💻 🇺🇸";
+        let mut canvas = Canvas::new(13, 1);
+        canvas.write_text_role(0, 0, text, AsciiColorRole::Text);
+
+        for mode in [
+            AsciiColorMode::Plain,
+            AsciiColorMode::Ansi16,
+            AsciiColorMode::Ansi256,
+            AsciiColorMode::TrueColor,
+            AsciiColorMode::Html,
+        ] {
+            let output = canvas
+                .clone()
+                .finish_trimmed_with_options(&AsciiRenderOptions::unicode().with_color_mode(mode));
+            assert!(output.contains(text), "mode={mode:?}: {output:?}");
+        }
+    }
+
+    #[test]
+    fn overwriting_a_complex_grapheme_continuation_clears_its_owner() {
+        let mut canvas = Canvas::new(4, 1);
+        canvas.write_text(0, 0, "🇺🇸");
+
+        canvas.set(1, 0, 'X');
+
+        assert_eq!(canvas.finish(), " X  \n");
+    }
+
+    #[test]
     fn wide_text_does_not_cross_canvas_row_boundary() {
         let mut canvas = Canvas::new(2, 2);
-        canvas.set(1, 0, '中');
+        canvas.write_text(1, 0, "中");
         canvas.set(0, 1, 'B');
 
         assert_eq!(canvas.get(1, 0), Some(' '));
@@ -441,7 +593,7 @@ mod tests {
     #[test]
     fn emoji_text_does_not_cross_canvas_row_boundary() {
         let mut canvas = Canvas::new(2, 2);
-        canvas.set(1, 0, '🚀');
+        canvas.write_text(1, 0, "🚀");
         canvas.set(0, 1, 'B');
 
         assert_eq!(canvas.get(1, 0), Some(' '));
@@ -452,10 +604,10 @@ mod tests {
     #[test]
     fn styled_wide_text_does_not_cross_canvas_row_boundary() {
         let mut canvas = Canvas::new(2, 2);
-        canvas.set_style(
+        canvas.write_text_style(
             1,
             0,
-            '中',
+            "中",
             CanvasStyle::foreground(CanvasColor::Role(AsciiColorRole::Text)),
         );
         canvas.set_role(0, 1, 'B', AsciiColorRole::EdgeLine);

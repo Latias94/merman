@@ -1,5 +1,8 @@
-use crate::options::AsciiRenderOptions;
-use crate::text::{push_wrapped_prefixed_line, trim_trailing_blank_lines};
+use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
+use crate::safe_text::encode_text_lines;
+use crate::text::{
+    display_width_with_profile, push_wrapped_prefixed_line_with_profile, trim_trailing_blank_lines,
+};
 use merman_core::diagrams::mindmap::{
     MindmapDiagramRenderEdge, MindmapDiagramRenderModel, MindmapDiagramRenderNode,
 };
@@ -13,7 +16,7 @@ const EMPTY: &str = "    ";
 
 pub fn render_mindmap_diagram(
     model: &MindmapDiagramRenderModel,
-    _options: &AsciiRenderOptions,
+    options: &AsciiRenderOptions,
 ) -> String {
     let mut lines = Vec::new();
     let nodes_by_id = index_nodes(&model.nodes);
@@ -25,7 +28,7 @@ pub fn render_mindmap_diagram(
             lines.push(String::new());
         }
         if let Some(root) = nodes_by_id.get(root_id.as_str()) {
-            push_wrapped_label(&mut lines, "", &root.label);
+            push_wrapped_label(&mut lines, "", &root.label, options.terminal_width_profile);
             let mut visiting = HashSet::from([root.id.as_str()]);
             render_children(
                 root,
@@ -34,11 +37,12 @@ pub fn render_mindmap_diagram(
                 &nodes_by_id,
                 &mut visiting,
                 &mut lines,
+                options.terminal_width_profile,
             );
         }
     }
 
-    trim_trailing_blank_lines(lines).join("\n")
+    encode_text_lines(trim_trailing_blank_lines(lines), options)
 }
 
 fn index_nodes(nodes: &[MindmapDiagramRenderNode]) -> HashMap<&str, &MindmapDiagramRenderNode> {
@@ -89,6 +93,7 @@ fn render_children<'a>(
     nodes_by_id: &HashMap<&'a str, &'a MindmapDiagramRenderNode>,
     visiting: &mut HashSet<&'a str>,
     lines: &mut Vec<String>,
+    width_profile: TerminalWidthProfile,
 ) {
     let Some(children) = children_by_id.get(node.id.as_str()) else {
         return;
@@ -116,7 +121,7 @@ fn render_children<'a>(
         } else {
             Cow::Borrowed(child.label.as_str())
         };
-        push_wrapped_label(lines, &branch, &label);
+        push_wrapped_label(lines, &branch, &label, width_profile);
 
         let next_prefix = if prefix.is_empty() {
             if is_last {
@@ -142,18 +147,25 @@ fn render_children<'a>(
             nodes_by_id,
             visiting,
             lines,
+            width_profile,
         );
         visiting.remove(child.id.as_str());
     }
 }
 
-fn push_wrapped_label(lines: &mut Vec<String>, prefix: &str, label: &str) {
-    let continuation_prefix = " ".repeat(crate::text::display_width(prefix));
-    push_wrapped_prefixed_line(
+fn push_wrapped_label(
+    lines: &mut Vec<String>,
+    prefix: &str,
+    label: &str,
+    width_profile: TerminalWidthProfile,
+) {
+    let continuation_prefix = " ".repeat(display_width_with_profile(prefix, width_profile));
+    push_wrapped_prefixed_line_with_profile(
         lines,
         prefix,
         &continuation_prefix,
         label,
         SUMMARY_WRAP_WIDTH,
+        width_profile,
     );
 }

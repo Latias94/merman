@@ -1,6 +1,7 @@
 use crate::common::{
-    BindingError, BindingStatus, binding_ascii_grid_cells, binding_input_resource_policy,
-    binding_site_config, no_diagram_error, source_text,
+    BindingDiagnosticErrorDetails, BindingDiagnosticSpan, BindingError, BindingStatus,
+    binding_ascii_grid_cells, binding_input_resource_policy, binding_site_config, no_diagram_error,
+    source_text,
 };
 
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
@@ -79,6 +80,9 @@ fn ascii_options_from_json(
     let mut render_options = merman::ascii::AsciiRenderOptions::unicode();
     if let Some(charset) = ascii.charset.as_deref() {
         render_options.charset = ascii_charset(charset)?;
+    }
+    if let Some(profile) = ascii.width_profile.as_deref() {
+        render_options.terminal_width_profile = ascii_width_profile(profile)?;
     }
     if let Some(direction) = ascii.default_direction.as_deref() {
         render_options.default_direction = ascii_direction(direction)?;
@@ -209,6 +213,17 @@ fn ascii_charset(value: &str) -> Result<merman::ascii::AsciiCharset, BindingErro
     }
 }
 
+fn ascii_width_profile(value: &str) -> Result<merman::ascii::TerminalWidthProfile, BindingError> {
+    match option_key(value).as_str() {
+        "unicode" => Ok(merman::ascii::TerminalWidthProfile::Unicode),
+        "cjk" => Ok(merman::ascii::TerminalWidthProfile::Cjk),
+        _ => Err(invalid_ascii_option(
+            "ascii.width_profile",
+            "expected `unicode` or `cjk`",
+        )),
+    }
+}
+
 fn ascii_direction(value: &str) -> Result<merman::ascii::AsciiDirection, BindingError> {
     match option_key(value).as_str() {
         "lr" | "leftright" | "left-right" | "left_right" => {
@@ -263,23 +278,27 @@ fn classify_ascii_error(
     err: merman::ascii::HeadlessAsciiError,
     resource_profile: merman::resources::ResourceProfile,
 ) -> BindingError {
-    match err {
+    let safe_message = err.terminal_safe_message();
+    let diagnostic = err
+        .terminal_diagnostic_details()
+        .map(binding_diagnostic_details);
+    let error = match err {
         merman::ascii::HeadlessAsciiError::RuntimePolicy(err) => {
             crate::common::runtime_policy_error(err)
         }
-        merman::ascii::HeadlessAsciiError::Parse(err) => {
-            BindingError::new(BindingStatus::ParseError, err.to_string())
+        merman::ascii::HeadlessAsciiError::Parse(_) => {
+            BindingError::new(BindingStatus::ParseError, safe_message)
         }
         merman::ascii::HeadlessAsciiError::Resource(err) => {
             crate::common::input_resource_limit_error(err)
         }
         merman::ascii::HeadlessAsciiError::Ascii(err) => match err {
             merman::ascii::AsciiError::InvalidOption { .. } => {
-                BindingError::new(BindingStatus::InvalidArgument, err.to_string())
+                BindingError::new(BindingStatus::InvalidArgument, safe_message)
             }
             merman::ascii::AsciiError::UnsupportedDiagram { .. }
             | merman::ascii::AsciiError::UnsupportedFeature { .. } => {
-                BindingError::new(BindingStatus::UnsupportedOperation, err.to_string())
+                BindingError::new(BindingStatus::UnsupportedOperation, safe_message)
             }
             merman::ascii::AsciiError::RenderLimitExceeded { actual, limit } => {
                 BindingError::resource_limit(
@@ -293,8 +312,34 @@ fn classify_ascii_error(
                     ),
                 )
             }
-            _ => BindingError::new(BindingStatus::RenderError, err.to_string()),
+            _ => BindingError::new(BindingStatus::RenderError, safe_message),
         },
+    };
+    match diagnostic {
+        Some(diagnostic) => error.with_diagnostic_details(diagnostic),
+        None => error,
+    }
+}
+
+fn binding_diagnostic_details(
+    details: merman::ascii::HeadlessAsciiDiagnosticDetails,
+) -> BindingDiagnosticErrorDetails {
+    let span = details.span.and_then(|span| {
+        Some(BindingDiagnosticSpan {
+            start: u64::try_from(span.start).ok()?,
+            end: u64::try_from(span.end).ok()?,
+            kind: match details.span_kind? {
+                merman::ParseDiagnosticSpanKind::Exact => "exact",
+                merman::ParseDiagnosticSpanKind::InsertionPoint => "insertion-point",
+                merman::ParseDiagnosticSpanKind::Fallback => "fallback",
+            },
+        })
+    });
+    BindingDiagnosticErrorDetails {
+        code: details.code,
+        span,
+        field: details.field,
+        diagram_type: details.diagram_type,
     }
 }
 
@@ -310,6 +355,66 @@ mod tests {
 
         assert!(text.contains("Hello"));
         assert!(text.contains("World"));
+    }
+
+    #[test]
+    fn render_ascii_parse_error_does_not_echo_source_or_controls() {
+        let source = b"not-a-diagram\x1b]8;;https://example.invalid\x07link";
+
+        let error = render_ascii(source, b"").expect_err("source should not detect as Mermaid");
+
+        assert_eq!(error.status(), BindingStatus::ParseError);
+        assert_eq!(error.message(), "No Mermaid diagram type detected");
+        assert!(!error.message().as_bytes().contains(&0x1b));
+        assert!(!error.message().as_bytes().contains(&0x07));
+        let diagnostic = error
+            .diagnostic_details()
+            .expect("detect failure should preserve diagnostic details");
+        assert_eq!(diagnostic.code, "merman.ascii.no_diagram_detected");
+        assert_eq!(diagnostic.span, None);
+    }
+
+    #[test]
+    fn ascii_parse_error_preserves_code_span_and_safe_context_in_binding_payload() {
+        let span = merman::SourceSpan::new(3, 8);
+        let diagnostic = merman::ParseDiagnostic::new("bad input")
+            .with_span(span, merman::ParseDiagnosticSpanKind::InsertionPoint)
+            .with_code("merman.test");
+        let error = classify_ascii_error(
+            merman::ascii::HeadlessAsciiError::from(merman::Error::diagram_parse_diagnostic(
+                "flow\u{1b}",
+                diagnostic,
+            )),
+            merman::resources::ResourceProfile::Constrained,
+        );
+
+        let details = error
+            .diagnostic_details()
+            .expect("parse failure should preserve diagnostic details");
+        assert_eq!(details.code, "merman.test");
+        assert_eq!(
+            details.span,
+            Some(BindingDiagnosticSpan {
+                start: 3,
+                end: 8,
+                kind: "insertion-point",
+            })
+        );
+        assert_eq!(details.diagram_type.as_deref(), Some("flow\\u{1B}"));
+
+        let payload: serde_json::Value =
+            serde_json::from_slice(&crate::binding_error_payload_json_bytes(&error))
+                .expect("binding error payload should be JSON");
+        assert_eq!(payload["details"]["diagnostic"]["code"], "merman.test");
+        assert_eq!(payload["details"]["diagnostic"]["span"]["start"], 3);
+        assert_eq!(
+            payload["details"]["diagnostic"]["span"]["kind"],
+            "insertion-point"
+        );
+        assert_eq!(
+            payload["details"]["diagnostic"]["diagram_type"],
+            "flow\\u{1B}"
+        );
     }
 
     #[test]
@@ -357,6 +462,35 @@ mod tests {
             text.contains("┌─┴─┐     ┌─┴─┐"),
             "expected mirrored bottom participant boxes:\n{text}"
         );
+    }
+
+    #[test]
+    fn ascii_width_profile_compiles_from_snake_and_camel_case_json() {
+        for options_json in [
+            br#"{ "ascii": { "width_profile": "cjk" } }"#.as_slice(),
+            br#"{ "ascii": { "widthProfile": "cjk" } }"#.as_slice(),
+        ] {
+            let options = crate::common::parse_options(options_json).expect("valid ASCII options");
+            let compiled = ascii_options_from_json(&options).expect("ASCII options compile");
+
+            assert_eq!(
+                compiled.terminal_width_profile,
+                merman::ascii::TerminalWidthProfile::Cjk
+            );
+        }
+    }
+
+    #[test]
+    fn ascii_width_profile_rejects_unknown_values() {
+        let options = crate::common::parse_options(
+            br#"{ "ascii": { "width_profile": "terminal-default" } }"#,
+        )
+        .expect("JSON shape parses");
+
+        let error = ascii_options_from_json(&options).expect_err("unknown profile is rejected");
+
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(error.message().contains("ascii.width_profile"), "{error:?}");
     }
 
     #[test]

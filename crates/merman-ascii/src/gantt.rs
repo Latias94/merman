@@ -1,12 +1,15 @@
 use crate::options::AsciiRenderOptions;
-use crate::text::{normalize_optional_text, push_wrapped_prefixed_line, trim_trailing_blank_lines};
+use crate::safe_text::encode_text_lines;
+use crate::text::{
+    normalize_optional_text, push_wrapped_prefixed_line_with_profile, trim_trailing_blank_lines,
+};
 use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
 pub fn render_gantt_diagram(
     model: &GanttDiagramRenderModel,
-    _options: &AsciiRenderOptions,
+    options: &AsciiRenderOptions,
     local_time_zone: &merman_core::time::LocalTimeZone,
 ) -> String {
     let mut lines = Vec::new();
@@ -33,16 +36,17 @@ pub fn render_gantt_diagram(
             current_section = Some(task.section.as_str());
             lines.push(format!("section: {}", task.section));
         }
-        push_wrapped_prefixed_line(
+        push_wrapped_prefixed_line_with_profile(
             &mut lines,
             "  - ",
             "    ",
             &render_task_text(task, local_time_zone),
             SUMMARY_WRAP_WIDTH,
+            options.terminal_width_profile,
         );
     }
 
-    trim_trailing_blank_lines(lines).join("\n")
+    encode_text_lines(trim_trailing_blank_lines(lines), options)
 }
 
 fn render_task_text(

@@ -1,7 +1,8 @@
 use super::{LABEL_BUFFER_SPACE, LABEL_LEFT_MARGIN};
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
-use crate::text::{display_width, wrap_display_lines};
+use crate::options::TerminalWidthProfile;
+use crate::text::{display_width_with_profile, wrap_display_lines_with_profile};
 
 use super::layout::SequenceLayout;
 use super::model::{SequenceArrowHead, SequenceLineStyle, SequenceMessage};
@@ -24,11 +25,15 @@ pub(super) fn ensure_message_actors_visible(
     })
 }
 
-fn message_label_lines(message: &SequenceMessage, max_width: usize) -> Vec<String> {
+fn message_label_lines(
+    message: &SequenceMessage,
+    max_width: usize,
+    width_profile: TerminalWidthProfile,
+) -> Vec<String> {
     if message.label.is_empty() {
         Vec::new()
     } else if message.wrap {
-        wrap_display_lines(&message.label, max_width)
+        wrap_display_lines_with_profile(&message.label, max_width, width_profile)
     } else {
         vec![message.label.clone()]
     }
@@ -46,9 +51,13 @@ pub(super) fn render_message(
     let from = layout.participant_centers[message.from];
     let to = layout.participant_centers[message.to];
 
-    for label in message_label_lines(message, from.abs_diff(to).saturating_sub(LABEL_LEFT_MARGIN)) {
+    for label in message_label_lines(
+        message,
+        from.abs_diff(to).saturating_sub(LABEL_LEFT_MARGIN),
+        layout.width_profile,
+    ) {
         let start = from.min(to) + LABEL_LEFT_MARGIN;
-        let label_width = display_width(&label);
+        let label_width = display_width_with_profile(&label, layout.width_profile);
         let width = layout
             .total_width
             .max(start + label_width)
@@ -138,9 +147,14 @@ pub(super) fn render_self_message(
     let center = layout.participant_centers[message.from];
     let width = layout.self_message_width;
 
-    for label in message_label_lines(message, layout.self_message_width + LABEL_BUFFER_SPACE) {
+    for label in message_label_lines(
+        message,
+        layout.self_message_width + LABEL_BUFFER_SPACE,
+        layout.width_profile,
+    ) {
         let start = center + LABEL_LEFT_MARGIN;
-        let needed = start + display_width(&label) + LABEL_BUFFER_SPACE;
+        let needed =
+            start + display_width_with_profile(&label, layout.width_profile) + LABEL_BUFFER_SPACE;
         let mut line = ensure_self_width(
             build_lifeline_line(layout, chars, active_counts, visible_actors),
             layout,

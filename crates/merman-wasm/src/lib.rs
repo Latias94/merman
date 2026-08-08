@@ -984,6 +984,29 @@ mod tests {
             "max_embedded_image_bytes"
         );
         assert_eq!(json["details"]["resource"]["actual"], 5);
+
+        let err = BindingError::new(
+            merman_bindings_core::BindingStatus::ParseError,
+            "invalid edge",
+        )
+        .with_diagnostic_details(
+            merman_bindings_core::BindingDiagnosticErrorDetails::new("flowchart.edge.invalid")
+                .with_span(merman_bindings_core::BindingDiagnosticSpan::new(
+                    3, 8, "exact",
+                ))
+                .with_field("edge")
+                .with_diagram_type("flowchart"),
+        );
+        let json = binding_error_payload_value(&err).unwrap();
+        assert_eq!(
+            json["details"]["diagnostic"]["code"],
+            "flowchart.edge.invalid"
+        );
+        assert_eq!(json["details"]["diagnostic"]["span"]["start"], 3);
+        assert_eq!(json["details"]["diagnostic"]["span"]["end"], 8);
+        assert_eq!(json["details"]["diagnostic"]["span"]["kind"], "exact");
+        assert_eq!(json["details"]["diagnostic"]["field"], "edge");
+        assert_eq!(json["details"]["diagnostic"]["diagram_type"], "flowchart");
     }
 
     #[test]

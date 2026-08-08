@@ -6,6 +6,15 @@
 
 This crate is intentionally model-driven. It consumes typed models from `merman-core`; it does not parse Mermaid syntax itself.
 
+Terminal geometry uses `TerminalWidthProfile::Unicode` by default. Select
+`TerminalWidthProfile::Cjk` when the target terminal renders East Asian ambiguous characters as
+wide. Measurement, wrapping, truncation, placement, and output use the selected profile together;
+the character set only selects structural glyphs and does not change authored-text width policy.
+Because Unicode box-drawing and marker glyphs are East Asian Ambiguous, the CJK profile uses
+single-cell ASCII structure even when `AsciiCharset::Unicode` was requested. Authored Unicode text
+is preserved. This deterministic fallback prevents borders and routes from occupying two grid
+cells per structural token.
+
 `merman-ascii` has no optional Cargo features. Mermaid language semantics are unconditional in `merman-core`; system clock, time-zone, random, and timing adapters do not change which typed models this crate can render.
 
 > **Implementation crate:** applications should select the `ascii` feature on the [`merman`](https://crates.io/crates/merman) facade. Depend on `merman-ascii` directly only when the host already owns a typed `merman-core::RenderSemanticModel`.

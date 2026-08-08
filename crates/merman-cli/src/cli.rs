@@ -1348,6 +1348,15 @@ pub(crate) struct TextOutputCliArgs {
     )]
     pub(crate) ascii_charset: Option<TextCharset>,
 
+    /// Display-width convention used for terminal text measurement.
+    #[arg(
+        long = "ascii-width-profile",
+        value_enum,
+        help_heading = "Text output",
+        hide_short_help = true
+    )]
+    pub(crate) ascii_width_profile: Option<TextWidthProfile>,
+
     /// Override the default graph direction when Mermaid input omits one.
     #[arg(
         long = "ascii-direction",
@@ -1408,6 +1417,13 @@ pub(crate) struct TextOutputCliArgs {
 pub(crate) enum TextCharset {
     Ascii,
     Unicode,
+}
+
+#[cfg(feature = "ascii")]
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub(crate) enum TextWidthProfile {
+    Unicode,
+    Cjk,
 }
 
 #[cfg(feature = "ascii")]

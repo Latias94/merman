@@ -678,6 +678,11 @@ fn native_render_rejects_each_irrelevant_output_option_before_input_acquisition(
             &["--ascii-charset", "unicode"],
         ),
         (
+            "ASCII width profile on SVG",
+            "svg",
+            &["--ascii-width-profile", "cjk"],
+        ),
+        (
             "ASCII direction on SVG",
             "svg",
             &["--ascii-direction", "left-right"],

@@ -3,8 +3,10 @@ use super::{
     SEQUENCE_BOX_WRAP_TEXT_WIDTH,
 };
 use crate::color::{AsciiColorRole, AsciiRgb};
-use crate::terminal::char_display_width;
-use crate::text::{display_width, split_label_lines, wrap_label_lines};
+use crate::text::{
+    display_width_with_profile, split_label_lines, truncate_display_width_with_profile,
+    wrap_label_lines_with_profile,
+};
 
 use super::layout::SequenceLayout;
 use super::model::{AsciiSequenceDiagram, SequenceGroupBox};
@@ -53,19 +55,28 @@ pub(super) fn render_sequence_boxes(
     let width = content_width.max(box_width);
 
     let mut canvas = Vec::with_capacity(lines.len() + label_extra_rows + 2);
-    canvas.push(SequenceLine::blank(width));
+    canvas.push(SequenceLine::blank_with_profile(
+        width,
+        layout.width_profile,
+    ));
     for _ in 0..label_extra_rows {
-        canvas.push(SequenceLine::blank(width));
+        canvas.push(SequenceLine::blank_with_profile(
+            width,
+            layout.width_profile,
+        ));
     }
     for line in lines {
-        let mut row = SequenceLine::blank(0);
+        let mut row = SequenceLine::blank_with_profile(0, layout.width_profile);
         row.push_spaces(SEQUENCE_BOX_CONTENT_OFFSET);
         row.push_line(&line);
         row.push_spaces(SEQUENCE_BOX_CONTENT_OFFSET);
         row.pad_to(width);
         canvas.push(row);
     }
-    canvas.push(SequenceLine::blank(width));
+    canvas.push(SequenceLine::blank_with_profile(
+        width,
+        layout.width_profile,
+    ));
 
     for sequence_box in boxes {
         draw_sequence_box(&mut canvas, sequence_box, chars);
@@ -84,9 +95,13 @@ fn prepare_sequence_box(
         .right
         .saturating_sub(bounds.left + 2 * SEQUENCE_BOX_LABEL_MARGIN)
         .max(1);
-    let label_lines = sequence_box_label_lines(sequence_box, label_width);
+    let label_lines = sequence_box_label_lines(sequence_box, label_width, layout.width_profile);
 
-    if let Some(max_label_width) = label_lines.iter().map(|line| display_width(line)).max() {
+    if let Some(max_label_width) = label_lines
+        .iter()
+        .map(|line| display_width_with_profile(line, layout.width_profile))
+        .max()
+    {
         let label_right = bounds.left + max_label_width + 2 * SEQUENCE_BOX_LABEL_MARGIN;
         bounds.right = bounds.right.max(label_right);
     }
@@ -104,7 +119,7 @@ fn sequence_box_bounds(
     content_width: usize,
 ) -> SequenceGroupBoxBounds {
     if sequence_box.actor_indices.is_empty() {
-        return sequence_box_full_width_bounds(content_width, sequence_box);
+        return sequence_box_full_width_bounds(content_width, sequence_box, layout.width_profile);
     }
 
     sequence_box_actor_bounds(sequence_box, layout, content_width)
@@ -113,11 +128,14 @@ fn sequence_box_bounds(
 fn sequence_box_full_width_bounds(
     content_width: usize,
     sequence_box: &SequenceGroupBox,
+    width_profile: crate::options::TerminalWidthProfile,
 ) -> SequenceGroupBoxBounds {
     let label_width = sequence_box
         .label
         .as_ref()
-        .map(|label| display_width(label) + 2 * SEQUENCE_BOX_LABEL_MARGIN)
+        .map(|label| {
+            display_width_with_profile(label, width_profile) + 2 * SEQUENCE_BOX_LABEL_MARGIN
+        })
         .unwrap_or(0);
     let right = content_width
         .max(label_width)
@@ -149,13 +167,21 @@ fn sequence_box_actor_bounds(
     SequenceGroupBoxBounds { left, right }
 }
 
-fn sequence_box_label_lines(sequence_box: &SequenceGroupBox, label_width: usize) -> Vec<String> {
+fn sequence_box_label_lines(
+    sequence_box: &SequenceGroupBox,
+    label_width: usize,
+    width_profile: crate::options::TerminalWidthProfile,
+) -> Vec<String> {
     let Some(label) = &sequence_box.label else {
         return Vec::new();
     };
 
     if sequence_box.wrap {
-        wrap_label_lines(label, label_width.max(SEQUENCE_BOX_WRAP_TEXT_WIDTH))
+        wrap_label_lines_with_profile(
+            label,
+            label_width.max(SEQUENCE_BOX_WRAP_TEXT_WIDTH),
+            width_profile,
+        )
     } else {
         split_label_lines(label)
     }
@@ -226,14 +252,10 @@ fn paint_sequence_box_background(
 
 fn draw_sequence_box_label(row: &mut SequenceLine, label: &str, bounds: SequenceGroupBoxBounds) {
     let label = format!(" {label} ");
-    let mut index = bounds.left + SEQUENCE_BOX_LABEL_MARGIN;
-    for ch in label.chars() {
-        let ch_width = char_display_width(ch);
-        if index + ch_width <= bounds.right {
-            row.set_role(index, ch, AsciiColorRole::Text);
-        }
-        index += ch_width;
-    }
+    let index = bounds.left + SEQUENCE_BOX_LABEL_MARGIN;
+    let available = bounds.right.saturating_sub(index);
+    let label = truncate_display_width_with_profile(&label, available, row.width_profile());
+    row.write_text_role(index, &label, AsciiColorRole::Text);
 }
 
 fn draw_background_vertical(row: &mut SequenceLine, index: usize, vertical: char) {

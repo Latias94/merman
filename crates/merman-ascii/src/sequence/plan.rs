@@ -13,8 +13,8 @@ use crate::canvas::Canvas;
 use crate::color::AsciiColorMode;
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
-use crate::options::AsciiRenderOptions;
-use crate::text::display_width;
+use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
+use crate::text::display_width_with_profile;
 
 #[derive(Debug, Clone)]
 struct SequenceRowStep<'event> {
@@ -411,7 +411,7 @@ fn build_participant_line(
     visible_actors: &[bool],
     draw: impl Fn(usize) -> SequenceLine,
 ) -> SequenceLine {
-    let mut line = SequenceLine::blank(0);
+    let mut line = SequenceLine::blank_with_profile(0, layout.width_profile);
     for index in 0..diagram.participants.len() {
         if !visible_actors.get(index).copied().unwrap_or(true) {
             continue;
@@ -442,7 +442,7 @@ fn build_participant_box_row(
 ) -> SequenceLine {
     let width = layout.participant_widths[index];
     let total_width = width + super::BOX_BORDER_WIDTH;
-    let mut line = SequenceLine::blank(total_width);
+    let mut line = SequenceLine::blank_with_profile(total_width, layout.width_profile);
     match row {
         ParticipantBoxRow::Top | ParticipantBoxRow::MirrorTop => {
             line.set_role(0, chars.top_left, AsciiColorRole::SequenceFrame);
@@ -464,7 +464,9 @@ fn build_participant_box_row(
             let row_label = label_row
                 .checked_sub(top_padding)
                 .and_then(|index| label_lines.get(index));
-            let label_width = row_label.map(|line| display_width(line)).unwrap_or(0);
+            let label_width = row_label
+                .map(|line| display_width_with_profile(line, layout.width_profile))
+                .unwrap_or(0);
             let left_padding = (width - label_width) / 2;
             line.set_role(0, chars.vertical, AsciiColorRole::SequenceFrame);
             if let Some(label) = row_label {
@@ -540,7 +542,7 @@ fn finish_sequence_lines(lines: Vec<SequenceLine>, options: &AsciiRenderOptions)
         return "\n".repeat(lines.len());
     }
 
-    let mut canvas = Canvas::new(width, lines.len());
+    let mut canvas = Canvas::with_width_profile(width, lines.len(), options.terminal_width_profile);
     for (y, line) in lines.iter().enumerate() {
         line.write_to(&mut canvas, y);
     }
@@ -550,13 +552,21 @@ fn finish_sequence_lines(lines: Vec<SequenceLine>, options: &AsciiRenderOptions)
 
 fn prepend_title_line(lines: &mut Vec<SequenceLine>, title: &str) {
     let width = lines.iter().map(SequenceLine::len).max().unwrap_or(0);
-    lines.insert(0, render_title_line(title, width));
+    let width_profile = lines
+        .first()
+        .map(SequenceLine::width_profile)
+        .unwrap_or(TerminalWidthProfile::Unicode);
+    lines.insert(0, render_title_line(title, width, width_profile));
 }
 
-fn render_title_line(title: &str, width: usize) -> SequenceLine {
-    let title_width = display_width(title);
+fn render_title_line(
+    title: &str,
+    width: usize,
+    width_profile: TerminalWidthProfile,
+) -> SequenceLine {
+    let title_width = display_width_with_profile(title, width_profile);
     let left = width.saturating_sub(title_width) / 2;
-    let mut line = SequenceLine::blank(left);
+    let mut line = SequenceLine::blank_with_profile(left, width_profile);
     line.push_role_text(title, AsciiColorRole::Text);
     trim_right(line)
 }
@@ -807,7 +817,11 @@ mod tests {
             participants: (0..participant_count)
                 .map(|index| SequenceParticipant {
                     id: format!("p{index}"),
-                    label: SequenceParticipantLabel::from_raw(&format!("P{index}"), false),
+                    label: SequenceParticipantLabel::from_raw(
+                        &format!("P{index}"),
+                        false,
+                        TerminalWidthProfile::Unicode,
+                    ),
                 })
                 .collect(),
             lifecycles: vec![SequenceActorLifecycle::default(); participant_count],

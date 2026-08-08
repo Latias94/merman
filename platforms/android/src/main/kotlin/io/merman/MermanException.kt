@@ -10,6 +10,19 @@ data class MermanResourceErrorDetails(
     val profile: String,
 )
 
+data class MermanDiagnosticSpan(
+    val start: Long,
+    val end: Long,
+    val kind: String,
+)
+
+data class MermanDiagnosticErrorDetails(
+    val code: String,
+    val span: MermanDiagnosticSpan?,
+    val field: String?,
+    val diagramType: String?,
+)
+
 data class MermanIconRegistryErrorDetails(
     val kindId: String,
     val packIndex: Long?,
@@ -22,9 +35,10 @@ class MermanException private constructor(
     localCode: Int?,
     localCodeName: String?,
     localResourceDetails: MermanResourceErrorDetails?,
+    localDiagnosticDetails: MermanDiagnosticErrorDetails?,
     localIconRegistryDetails: MermanIconRegistryErrorDetails?,
 ) : RuntimeException(payload?.optString("message")?.takeIf(String::isNotEmpty) ?: rawMessage) {
-    constructor(message: String) : this(message, parsePayload(message), null, null, null, null)
+    constructor(message: String) : this(message, parsePayload(message), null, null, null, null, null)
 
     val code: Int? = payload
         ?.takeIf { it.has("code") && !it.isNull("code") }
@@ -41,6 +55,8 @@ class MermanException private constructor(
         ?.takeIf(String::isNotEmpty)
     val resourceDetails: MermanResourceErrorDetails? =
         payload?.let(::parseResourceDetails) ?: localResourceDetails
+    val diagnosticDetails: MermanDiagnosticErrorDetails? =
+        payload?.let(::parseDiagnosticDetails) ?: localDiagnosticDetails
     val iconRegistryDetails: MermanIconRegistryErrorDetails? =
         payload?.let(::parseIconRegistryDetails) ?: localIconRegistryDetails
 
@@ -65,6 +81,7 @@ class MermanException private constructor(
                 max = limit.value,
                 profile = "constructor-fixed",
             ),
+            localDiagnosticDetails = null,
             localIconRegistryDetails = MermanIconRegistryErrorDetails(
                 kindId = "resource_limit_exceeded",
                 packIndex = null,
@@ -78,6 +95,7 @@ class MermanException private constructor(
             localCode = INTERNAL_ERROR_CODE,
             localCodeName = INTERNAL_ERROR_CODE_NAME,
             localResourceDetails = null,
+            localDiagnosticDetails = null,
             localIconRegistryDetails = null,
         )
 
@@ -94,6 +112,34 @@ class MermanException private constructor(
             val profile = resource.getString("profile").takeIf(String::isNotEmpty) ?: return null
             MermanResourceErrorDetails(limitId, phase, actual, max, profile)
         }.getOrNull()
+
+        private fun parseDiagnosticDetails(payload: JSONObject): MermanDiagnosticErrorDetails? =
+            runCatching {
+                val diagnostic = payload.optJSONObject("details")?.optJSONObject("diagnostic")
+                    ?: return null
+                val code = diagnostic.getString("code").takeIf(String::isNotEmpty) ?: return null
+                val span = diagnostic.optJSONObject("span")?.let { value ->
+                    val start = value.getLong("start").takeIf { it >= 0 } ?: return null
+                    val end = value.getLong("end").takeIf { it >= start } ?: return null
+                    val kind = value.getString("kind").takeIf {
+                        it == "exact" || it == "insertion-point" || it == "fallback"
+                    } ?: return null
+                    MermanDiagnosticSpan(start, end, kind)
+                }
+                val field = if (diagnostic.has("field") && !diagnostic.isNull("field")) {
+                    diagnostic.getString("field")
+                } else {
+                    null
+                }
+                val diagramType = if (
+                    diagnostic.has("diagram_type") && !diagnostic.isNull("diagram_type")
+                ) {
+                    diagnostic.getString("diagram_type")
+                } else {
+                    null
+                }
+                MermanDiagnosticErrorDetails(code, span, field, diagramType)
+            }.getOrNull()
 
         private fun parseIconRegistryDetails(payload: JSONObject): MermanIconRegistryErrorDetails? =
             runCatching {
