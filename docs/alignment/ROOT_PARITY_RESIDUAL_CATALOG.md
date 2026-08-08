@@ -176,6 +176,21 @@ The catalog therefore increases from 1,563 to 1,566 observations, with Flowchart
 production rendering override changed. The reviewed candidate was accepted with SHA-256
 `242f60ef17145489803de85f63f1fac72927d226fc620de388f068bd16c8fc90`.
 
+## 2026-08-08 Reference CLI Provenance Review
+
+The full candidate was regenerated after the reference CLI workspace lock changed and the required
+fresh-render provenance workflow refreshed every upstream SVG family. It still contains 1,566
+observations across 25 family ids. Twenty Block and State entries changed only their upstream SVG
+digests: their inputs, root signatures, descendant profiles, and reviewed evidence classes are
+unchanged.
+
+The external-image Flowchart fixture changed its upstream root from `413.734 × 198` back to
+`671.344 × 630` because the remote Mermaid logo now loaded with square intrinsic dimensions. Its
+input is unchanged, its local root remains `671.359 × 630`, and its complete descendants still pass
+`parity`. The observation therefore retains the existing `external-resource-layout` classification;
+no tolerance, normalization, or production override was added. The reviewed candidate was accepted
+with SHA-256 `46e8c8652393462f8fc7974998ac2a1bbd7bb474e6f51fda3efaa59d64fcc045`.
+
 ## Production Boundary
 
 No entry is a runtime override. The correct closure paths remain:
