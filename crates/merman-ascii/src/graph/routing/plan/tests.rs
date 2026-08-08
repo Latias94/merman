@@ -2,10 +2,11 @@ use super::grid::{
     GridRouteOptions, plan_left_right_grid_path_route, plan_left_right_grid_path_route_with_options,
 };
 use super::left_right::{
-    plan_left_right_bottom_lane_route, plan_left_right_direct_route, plan_left_right_down_route,
-    plan_left_right_down_then_right_route, plan_left_right_reverse_over_self_loop_route,
-    plan_left_right_right_then_up_route, plan_left_right_self_loop_route,
+    plan_left_right_down_route, plan_left_right_down_then_right_route,
+    plan_left_right_reverse_over_self_loop_route, plan_left_right_right_then_up_route,
+    plan_left_right_self_loop_route,
 };
+use super::same_rank::{plan_same_rank_bottom_lane_route, plan_same_rank_direct_route};
 use super::top_down::{
     plan_top_down_back_route, plan_top_down_bent_route, plan_top_down_direct_route,
     plan_top_down_side_entry_route,
@@ -51,7 +52,7 @@ fn edge_route_selects_left_right_parallel_bottom_lane() {
         charset: &charset,
     })
     .unwrap();
-    let expected = plan_left_right_bottom_lane_route(from, to, &edges[1], &charset).unwrap();
+    let expected = plan_same_rank_bottom_lane_route(from, to, &edges[1], &charset).unwrap();
 
     assert_eq!(selected, expected);
 }
@@ -103,7 +104,86 @@ fn edge_route_selects_top_down_same_rank_direct_route() {
     })
     .unwrap();
     let expected =
-        plan_left_right_direct_route(&graph_layout.nodes, from, to, &edge, &charset).unwrap();
+        plan_same_rank_direct_route(&graph_layout.nodes, from, to, &edge, &charset).unwrap();
+
+    assert_eq!(selected, expected);
+}
+
+#[test]
+fn edge_route_selects_top_down_same_rank_left_direct_route() {
+    let options = AsciiRenderOptions::unicode();
+    let graph_layout = left_right_layout(&[("a", "b")], &options);
+    let from = layout_node(&graph_layout, "b");
+    let to = layout_node(&graph_layout, "a");
+    let edge = edge_between("b", "a", None, GraphEdgeArrow::Point);
+    let edges = vec![edge.clone()];
+    let charset = GraphCharset::for_options(&options);
+
+    let selected = plan_edge_route(EdgeRouteRequest {
+        graph: &AsciiGraph::new(GraphDirection::TopDown),
+        graph_layout: &graph_layout,
+        edges: &edges,
+        from,
+        to,
+        edge_index: 0,
+        edge: &edge,
+        charset: &charset,
+    })
+    .unwrap();
+    let expected =
+        plan_same_rank_direct_route(&graph_layout.nodes, from, to, &edge, &charset).unwrap();
+
+    assert_eq!(selected, expected);
+}
+
+#[test]
+fn edge_route_selects_top_down_bottom_lane_when_label_would_cover_arrow() {
+    let options = AsciiRenderOptions::unicode();
+    let graph_layout = left_right_layout(&[("a", "b")], &options);
+    let from = layout_node(&graph_layout, "b");
+    let to = layout_node(&graph_layout, "a");
+    let edge = edge_between("b", "a", Some("label"), GraphEdgeArrow::Point);
+    let edges = vec![edge.clone()];
+    let charset = GraphCharset::for_options(&options);
+
+    let selected = plan_edge_route(EdgeRouteRequest {
+        graph: &AsciiGraph::new(GraphDirection::TopDown),
+        graph_layout: &graph_layout,
+        edges: &edges,
+        from,
+        to,
+        edge_index: 0,
+        edge: &edge,
+        charset: &charset,
+    })
+    .unwrap();
+    let expected = plan_same_rank_bottom_lane_route(from, to, &edge, &charset).unwrap();
+
+    assert_eq!(selected, expected);
+}
+
+#[test]
+fn edge_route_selects_top_down_blocked_same_rank_bottom_lane() {
+    let options = AsciiRenderOptions::ascii();
+    let graph_layout = left_right_layout(&[("a", "b"), ("b", "c")], &options);
+    let from = layout_node(&graph_layout, "a");
+    let to = layout_node(&graph_layout, "c");
+    let edge = edge_between("a", "c", None, GraphEdgeArrow::Point);
+    let edges = vec![edge.clone()];
+    let charset = GraphCharset::for_options(&options);
+
+    let selected = plan_edge_route(EdgeRouteRequest {
+        graph: &AsciiGraph::new(GraphDirection::TopDown),
+        graph_layout: &graph_layout,
+        edges: &edges,
+        from,
+        to,
+        edge_index: 0,
+        edge: &edge,
+        charset: &charset,
+    })
+    .unwrap();
+    let expected = plan_same_rank_bottom_lane_route(from, to, &edge, &charset).unwrap();
 
     assert_eq!(selected, expected);
 }
@@ -150,14 +230,24 @@ fn edge_route_reports_unsupported_boundary_direction() {
 }
 
 #[test]
-fn route_plan_canvas_extent_accounts_for_left_right_back_lane() {
+fn route_plan_canvas_extent_accounts_for_same_rank_bottom_lane() {
     let from = node("a", 10, 0, 3, 3);
     let to = node("b", 0, 0, 3, 3);
     let edge = edge_between("a", "b", None, GraphEdgeArrow::Point);
     let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
-    let plan = plan_left_right_bottom_lane_route(&from, &to, &edge, &charset).unwrap();
+    let plan = plan_same_rank_bottom_lane_route(&from, &to, &edge, &charset).unwrap();
 
     assert_eq!(plan.canvas_extent(), (14, 5));
+}
+
+#[test]
+fn same_rank_bottom_lane_route_rejects_different_rows() {
+    let from = node("a", 10, 0, 3, 3);
+    let to = node("b", 0, 6, 3, 3);
+    let edge = edge_between("a", "b", None, GraphEdgeArrow::Point);
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+
+    assert!(plan_same_rank_bottom_lane_route(&from, &to, &edge, &charset).is_none());
 }
 
 #[test]
@@ -496,14 +586,14 @@ fn direct_grid_route_cells_keep_direct_segment_marker() {
 }
 
 #[test]
-fn left_right_direct_route_plans_ascii_line_arrow_and_label_without_connector() {
+fn same_rank_direct_route_plans_ascii_right_arrow_and_label_without_connector() {
     let from = node("a", 0, 0, 5, 3);
-    let to = node("b", 10, 0, 5, 3);
+    let to = node("b", 11, 0, 5, 3);
     let layouts = vec![from.clone(), to.clone()];
     let edge = edge(Some("label"), GraphEdgeArrow::Point);
     let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
 
-    let plan = plan_left_right_direct_route(&layouts, &from, &to, &edge, &charset).unwrap();
+    let plan = plan_same_rank_direct_route(&layouts, &from, &to, &edge, &charset).unwrap();
 
     assert_eq!(
         plan.cells,
@@ -512,7 +602,8 @@ fn left_right_direct_route_plans_ascii_line_arrow_and_label_without_connector() 
             cell(6, 1, '-', PlannedRouteCellKind::RouteCell),
             cell(7, 1, '-', PlannedRouteCellKind::RouteCell),
             cell(8, 1, '-', PlannedRouteCellKind::RouteCell),
-            cell(9, 1, '>', PlannedRouteCellKind::EdgeArrow),
+            cell(9, 1, '-', PlannedRouteCellKind::RouteCell),
+            cell(10, 1, '>', PlannedRouteCellKind::EdgeArrow),
         ]
     );
     assert_eq!(
@@ -525,14 +616,14 @@ fn left_right_direct_route_plans_ascii_line_arrow_and_label_without_connector() 
 }
 
 #[test]
-fn left_right_direct_route_plans_unicode_connector() {
+fn same_rank_direct_route_plans_unicode_right_connector() {
     let from = node("a", 0, 0, 5, 3);
     let to = node("b", 10, 0, 5, 3);
     let layouts = vec![from.clone(), to.clone()];
     let edge = edge(None, GraphEdgeArrow::Point);
     let charset = GraphCharset::for_options(&AsciiRenderOptions::unicode());
 
-    let plan = plan_left_right_direct_route(&layouts, &from, &to, &edge, &charset).unwrap();
+    let plan = plan_same_rank_direct_route(&layouts, &from, &to, &edge, &charset).unwrap();
 
     assert_eq!(
         plan.cells,
@@ -549,14 +640,44 @@ fn left_right_direct_route_plans_unicode_connector() {
 }
 
 #[test]
-fn left_right_direct_open_route_plans_line_endpoint_without_arrow() {
+fn same_rank_direct_route_plans_unicode_left_connector_arrow_and_label() {
+    let from = node("a", 10, 0, 5, 3);
+    let to = node("b", 0, 0, 5, 3);
+    let layouts = vec![from.clone(), to.clone()];
+    let edge = edge(Some("back"), GraphEdgeArrow::Point);
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::unicode());
+
+    let plan = plan_same_rank_direct_route(&layouts, &from, &to, &edge, &charset).unwrap();
+
+    assert_eq!(
+        plan.cells,
+        vec![
+            cell(10, 1, '┤', PlannedRouteCellKind::EdgeLine),
+            cell(5, 1, '◄', PlannedRouteCellKind::EdgeArrow),
+            cell(6, 1, '─', PlannedRouteCellKind::RouteCell),
+            cell(7, 1, '─', PlannedRouteCellKind::RouteCell),
+            cell(8, 1, '─', PlannedRouteCellKind::RouteCell),
+            cell(9, 1, '─', PlannedRouteCellKind::RouteCell),
+        ]
+    );
+    assert_eq!(
+        plan.labels,
+        vec![PlannedRouteLabel::new(
+            RoutedLabelText::new("back").expect("single-line label should exist"),
+            RoutedLabelPlacement::new(6, 1, 4),
+        )]
+    );
+}
+
+#[test]
+fn same_rank_direct_open_route_plans_line_endpoint_without_arrow() {
     let from = node("a", 0, 0, 3, 3);
     let to = node("b", 6, 0, 3, 3);
     let layouts = vec![from.clone(), to.clone()];
     let edge = edge(None, GraphEdgeArrow::Open);
     let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
 
-    let plan = plan_left_right_direct_route(&layouts, &from, &to, &edge, &charset).unwrap();
+    let plan = plan_same_rank_direct_route(&layouts, &from, &to, &edge, &charset).unwrap();
 
     assert_eq!(
         plan.cells.last(),
@@ -565,7 +686,7 @@ fn left_right_direct_open_route_plans_line_endpoint_without_arrow() {
 }
 
 #[test]
-fn left_right_direct_route_rejects_blocked_same_row_path() {
+fn same_rank_direct_route_rejects_blocked_path() {
     let from = node("a", 0, 0, 3, 3);
     let blocker = node("blocker", 5, 0, 3, 3);
     let to = node("b", 10, 0, 3, 3);
@@ -573,7 +694,7 @@ fn left_right_direct_route_rejects_blocked_same_row_path() {
     let edge = edge(None, GraphEdgeArrow::Point);
     let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
 
-    assert!(plan_left_right_direct_route(&layouts, &from, &to, &edge, &charset).is_none());
+    assert!(plan_same_rank_direct_route(&layouts, &from, &to, &edge, &charset).is_none());
 }
 
 #[test]
@@ -773,13 +894,13 @@ fn left_right_down_then_right_route_plans_crossing_lane() {
 }
 
 #[test]
-fn left_right_bottom_lane_route_plans_reverse_lane_and_label() {
+fn same_rank_bottom_lane_route_plans_reverse_lane_and_label() {
     let from = node("a", 10, 0, 3, 3);
     let to = node("b", 0, 0, 3, 3);
     let edge = edge(Some("back"), GraphEdgeArrow::Point);
     let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
 
-    let plan = plan_left_right_bottom_lane_route(&from, &to, &edge, &charset).unwrap();
+    let plan = plan_same_rank_bottom_lane_route(&from, &to, &edge, &charset).unwrap();
 
     assert_eq!(
         plan.cells,

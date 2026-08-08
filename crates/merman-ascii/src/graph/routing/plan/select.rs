@@ -10,10 +10,11 @@ use super::grid::{
     GridRouteOptions, plan_left_right_grid_path_route, plan_left_right_grid_path_route_with_options,
 };
 use super::left_right::{
-    plan_left_right_bottom_lane_route, plan_left_right_direct_route, plan_left_right_down_route,
-    plan_left_right_down_then_right_route, plan_left_right_reverse_over_self_loop_route,
-    plan_left_right_right_then_up_route, plan_left_right_self_loop_route,
+    plan_left_right_down_route, plan_left_right_down_then_right_route,
+    plan_left_right_reverse_over_self_loop_route, plan_left_right_right_then_up_route,
+    plan_left_right_self_loop_route,
 };
+use super::same_rank::{plan_same_rank_bottom_lane_route, plan_same_rank_direct_route};
 use super::top_down::{
     plan_top_down_back_route, plan_top_down_bent_route, plan_top_down_direct_route,
     plan_top_down_side_entry_route,
@@ -120,7 +121,7 @@ fn plan_left_right_route(request: EdgeRouteRequest<'_>) -> Option<RoutePlan> {
 
     let parallel_index = parallel_edge_index(request.edges, request.edge_index);
     if from.center_y() == to.center_y() && from.x < to.x && parallel_index > 0 {
-        return plan_left_right_bottom_lane_route(from, to, edge, charset);
+        return plan_same_rank_bottom_lane_route(from, to, edge, charset);
     }
 
     if from.center_y() == to.center_y() && from.x > to.x {
@@ -133,13 +134,13 @@ fn plan_left_right_route(request: EdgeRouteRequest<'_>) -> Option<RoutePlan> {
                 charset,
             );
         }
-        return plan_left_right_bottom_lane_route(from, to, edge, charset);
+        return plan_same_rank_bottom_lane_route(from, to, edge, charset);
     }
 
     if from.center_y() == to.center_y()
         && from.x < to.x
         && let Some(plan) =
-            plan_left_right_direct_route(&graph_layout.nodes, from, to, edge, charset)
+            plan_same_rank_direct_route(&graph_layout.nodes, from, to, edge, charset)
     {
         return Some(plan);
     }
@@ -187,11 +188,17 @@ fn plan_top_down_route(request: EdgeRouteRequest<'_>) -> Option<RoutePlan> {
         return plan_top_down_back_route(from, to, edge, charset);
     }
 
-    if from.center_y() == to.center_y()
-        && let Some(plan) =
-            plan_left_right_direct_route(&request.graph_layout.nodes, from, to, edge, charset)
-    {
-        return Some(plan);
+    if from.center_y() == to.center_y() {
+        if let Some(plan) =
+            plan_same_rank_direct_route(&request.graph_layout.nodes, from, to, edge, charset)
+        {
+            return Some(plan);
+        }
+
+        // Same-rank edges use their natural horizontal ports when the span is clear. If another
+        // node blocks that span, reuse the shared bottom lane instead of reporting the edge as
+        // unroutable.
+        return plan_same_rank_bottom_lane_route(from, to, edge, charset);
     }
 
     if from.center_x() != to.center_x() {
