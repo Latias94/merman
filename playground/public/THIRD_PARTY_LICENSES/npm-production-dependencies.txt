@@ -1,7 +1,7 @@
 Merman npm production dependency licenses
 Package: merman-playground
 Generator: generate-license-file 4.2.1
-package-lock.json SHA-256: 4cfb2dcd9f90f3cbd496e31bd06ee79662f4735179742f8b1c1b53d0a84c9e69
+package-lock.json SHA-256: 000725b9f079d682ba5c296747185499016c20ac45a3295232e08449efb22c8d
 
 This file was generated with the generate-license-file npm package!
 https://www.npmjs.com/package/generate-license-file
@@ -37,7 +37,7 @@ SOFTWARE.
 The following npm packages may be included in this product:
 
  - @chevrotain/types@11.1.2
- - dompurify@3.4.12
+ - dompurify@3.4.13
 
 These packages each contain the following license:
 
