@@ -328,6 +328,7 @@ pub(crate) fn render_radar_diagram_svg_model(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::family::RenderFamilyKind;
     use crate::model::RadarAxisLayout;
 
     #[test]
@@ -441,7 +442,7 @@ mod tests {
             ..SvgRenderOptions::default()
         };
 
-        let svg = with_test_svg_execution(&options, |options| {
+        let svg = with_test_svg_execution(RenderFamilyKind::Radar, &options, |options| {
             render_radar_diagram_svg_model(
                 &layout,
                 &RadarDiagramRenderModel::default(),
@@ -487,7 +488,7 @@ mod tests {
             ..SvgRenderOptions::default()
         };
 
-        let svg = with_test_svg_execution(&options, |options| {
+        let svg = with_test_svg_execution(RenderFamilyKind::Radar, &options, |options| {
             render_radar_diagram_svg_model(
                 &layout,
                 &RadarDiagramRenderModel::default(),
@@ -545,7 +546,8 @@ mod tests {
             legend_items: Vec::new(),
         };
 
-        let svg = with_test_svg_execution(&SvgRenderOptions::default(), |options| {
+        let request = SvgRenderOptions::default();
+        let svg = with_test_svg_execution(RenderFamilyKind::Radar, &request, |options| {
             render_radar_diagram_svg_model(
                 &layout,
                 &RadarDiagramRenderModel::default(),

@@ -1293,6 +1293,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::family::RenderFamilyKind;
     use serde_json::json;
 
     fn lr_merge_layout(commit_y: f64) -> crate::model::GitGraphDiagramLayout {
@@ -1340,7 +1341,8 @@ mod tests {
         layout: &crate::model::GitGraphDiagramLayout,
         config: &serde_json::Value,
     ) -> String {
-        with_test_svg_execution(&SvgRenderOptions::default(), |options| {
+        let request = SvgRenderOptions::default();
+        with_test_svg_execution(RenderFamilyKind::GitGraph, &request, |options| {
             render_gitgraph_diagram_svg_with_accessibility(
                 layout,
                 None,
@@ -1352,7 +1354,7 @@ mod tests {
             )
         })
         .expect("render gitGraph SVG")
-        .into_string_for(crate::family::RenderFamilyKind::GitGraph)
+        .into_string_for(RenderFamilyKind::GitGraph)
         .expect("gitGraph root provenance")
     }
 
@@ -1446,7 +1448,8 @@ mod tests {
             warning_facts: Vec::new(),
         };
 
-        let svg = with_test_svg_execution(&SvgRenderOptions::default(), |options| {
+        let request = SvgRenderOptions::default();
+        let svg = with_test_svg_execution(RenderFamilyKind::GitGraph, &request, |options| {
             render_gitgraph_diagram_svg_model(
                 &lr_merge_layout(-2.0),
                 &model,
@@ -1680,7 +1683,8 @@ mod tests {
             commits: Vec::new(),
             arrows: Vec::new(),
         };
-        let svg = with_test_svg_execution(&SvgRenderOptions::default(), |options| {
+        let request = SvgRenderOptions::default();
+        let svg = with_test_svg_execution(RenderFamilyKind::GitGraph, &request, |options| {
             render_gitgraph_diagram_svg_with_accessibility(
                 &layout,
                 None,

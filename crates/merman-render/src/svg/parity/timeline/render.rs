@@ -456,6 +456,7 @@ fn render_timeline_diagram_svg_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::family::RenderFamilyKind;
     use crate::model::{Bounds, TimelineDiagramLayout, TimelineLineLayout};
 
     #[test]
@@ -494,7 +495,9 @@ mod tests {
             .begin_session()
             .expect("render session");
         let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::new(&options, &debug, &session, None).expect("SVG execution");
+        let execution =
+            SvgExecution::unthemed_for_test(&options, &debug, &session, RenderFamilyKind::Timeline)
+                .expect("SVG execution");
 
         let svg = render_timeline_diagram_svg_inner(
             &layout,

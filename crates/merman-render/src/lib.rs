@@ -158,7 +158,9 @@ impl std::fmt::Display for RenderCapability {
     }
 }
 
-use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
+#[cfg(test)]
+use crate::environment::RenderSession;
+use crate::environment::{RoutedTextMeasurer, TextMeasurementPhase};
 use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::models::class_diagram::ClassDiagram;
 
@@ -297,35 +299,36 @@ impl LayoutOptions {
 
 pub(crate) struct LayoutExecution<'a> {
     request: &'a LayoutOptions,
-    session: &'a RenderSession,
-    resolved_theme: Option<&'a crate::diagram_theme::ResolvedDiagramTheme>,
+    family: crate::family::FamilyExecutionView<'a>,
     text_measurer: RoutedTextMeasurer<'a>,
 }
 
 impl<'a> LayoutExecution<'a> {
     pub(crate) fn new(
         request: &'a LayoutOptions,
-        session: &'a RenderSession,
-        resolved_theme: Option<&'a crate::diagram_theme::ResolvedDiagramTheme>,
+        family: crate::family::FamilyExecutionView<'a>,
     ) -> Self {
-        let execution = Self {
+        Self {
             request,
-            session,
-            resolved_theme,
-            text_measurer: session.text_measurer(TextMeasurementPhase::Layout),
-        };
-        debug_assert_eq!(
-            execution.resolved_theme().is_some(),
-            session.theme_fingerprint().is_some(),
-            "layout theme plan presence must match the render session"
-        );
-        execution
+            family,
+            text_measurer: family.session().text_measurer(TextMeasurementPhase::Layout),
+        }
     }
 
-    pub(crate) const fn resolved_theme(
-        &self,
-    ) -> Option<&crate::diagram_theme::ResolvedDiagramTheme> {
-        self.resolved_theme
+    #[cfg(test)]
+    pub(crate) fn unthemed_for_test(
+        request: &'a LayoutOptions,
+        session: &'a RenderSession,
+        family_kind: RenderFamilyKind,
+    ) -> Self {
+        Self::new(
+            request,
+            crate::family::FamilyExecutionView::for_test(session, family_kind),
+        )
+    }
+
+    pub(crate) const fn family_kind(&self) -> RenderFamilyKind {
+        self.family.family_kind()
     }
 
     pub(crate) fn text_measurer(&self) -> &dyn crate::text::TextMeasurer {
@@ -333,28 +336,28 @@ impl<'a> LayoutExecution<'a> {
     }
 
     pub(crate) fn math_renderer(&self) -> Option<&(dyn crate::math::MathRenderer + Send + Sync)> {
-        self.session.math_renderer()
+        self.family.session().math_renderer()
     }
 
     pub(crate) const fn resource_policy(&self) -> RenderResourcePolicy {
-        self.session.resource_policy()
+        self.family.session().resource_policy()
     }
 
     pub(crate) fn work_meter(&self) -> std::sync::Arc<crate::resources::OperationWorkMeter> {
-        std::sync::Arc::clone(self.session.work_meter())
+        std::sync::Arc::clone(self.family.session().work_meter())
     }
 
     pub(crate) fn work_meter_ref(&self) -> &crate::resources::OperationWorkMeter {
-        self.session.work_meter().as_ref()
+        self.family.session().work_meter().as_ref()
     }
 
     pub(crate) fn local_time_zone(&self) -> &merman_core::time::LocalTimeZone {
-        self.session.local_time_zone()
+        self.family.session().local_time_zone()
     }
 
     #[cfg(feature = "layout-cytoscape")]
     pub(crate) fn operation_seed(&self) -> u64 {
-        self.session.render_seed().get()
+        self.family.session().render_seed().get()
     }
 
     #[cfg(feature = "layout-elk")]
@@ -362,7 +365,9 @@ impl<'a> LayoutExecution<'a> {
         // The ELK source port applies its own stable ELK-specific domain and graph-path
         // derivation. This token merely keeps every ELK random boundary tied to one immutable
         // render operation.
-        merman_layout_elk::ElkOperationSeed::from_operation_seed(self.session.render_seed())
+        merman_layout_elk::ElkOperationSeed::from_operation_seed(
+            self.family.session().render_seed(),
+        )
     }
 }
 
@@ -584,7 +589,7 @@ mod tests {
             &parsed.metadata().diagram_type,
             model,
             &parsed.metadata().effective_config,
-            &LayoutExecution::new(options, session, None),
+            &LayoutExecution::unthemed_for_test(options, session, RenderFamilyKind::Flowchart),
         )
         .expect("flowchart layout")
     }
@@ -602,7 +607,7 @@ mod tests {
             &parsed.metadata().diagram_type,
             model,
             &parsed.metadata().effective_config,
-            &LayoutExecution::new(options, session, None),
+            &LayoutExecution::unthemed_for_test(options, session, RenderFamilyKind::Class),
         )
         .expect("class layout")
     }
@@ -637,7 +642,12 @@ mod tests {
                 )
                 .begin_session()
                 .expect("render session");
-            LayoutExecution::new(&LayoutOptions::default(), &session, None).elk_operation_seed()
+            LayoutExecution::unthemed_for_test(
+                &LayoutOptions::default(),
+                &session,
+                RenderFamilyKind::Error,
+            )
+            .elk_operation_seed()
         }
 
         assert_eq!(capture(17), capture(17));

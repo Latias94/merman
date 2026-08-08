@@ -311,6 +311,7 @@ pub(crate) fn render_pie_diagram_svg_model(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::family::RenderFamilyKind;
     use merman_core::diagrams::pie::PieDiagramRenderModel;
 
     #[test]
@@ -387,7 +388,9 @@ mod tests {
             .begin_session()
             .expect("render session");
         let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::new(&options, &debug, &session, None).expect("SVG execution");
+        let execution =
+            SvgExecution::unthemed_for_test(&options, &debug, &session, RenderFamilyKind::Pie)
+                .expect("SVG execution");
 
         let svg = render_pie_diagram_svg_model(
             &layout,

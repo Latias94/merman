@@ -111,19 +111,60 @@ struct FamilyRenderContext {
     session: RenderSession,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct FamilyExecutionView<'a> {
+    family_kind: RenderFamilyKind,
+    session: &'a RenderSession,
+    resolved_theme: Option<&'a ResolvedDiagramTheme>,
+}
+
+impl<'a> FamilyExecutionView<'a> {
+    fn new(
+        session: &'a RenderSession,
+        family_kind: RenderFamilyKind,
+        resolved_theme: Option<&'a ResolvedDiagramTheme>,
+    ) -> Self {
+        let execution = Self {
+            family_kind,
+            session,
+            resolved_theme,
+        };
+        debug_assert_eq!(
+            execution.resolved_theme().is_some(),
+            session.theme_fingerprint().is_some(),
+            "family theme plan presence must match the render session"
+        );
+        debug_assert_eq!(
+            execution.resolved_theme().map(ResolvedDiagramTheme::family),
+            session.theme_fingerprint().map(|_| family_kind),
+            "family theme plan must match the planned render family"
+        );
+        execution
+    }
+
+    pub(crate) const fn family_kind(self) -> RenderFamilyKind {
+        self.family_kind
+    }
+
+    pub(crate) const fn session(self) -> &'a RenderSession {
+        self.session
+    }
+
+    pub(crate) const fn resolved_theme(self) -> Option<&'a ResolvedDiagramTheme> {
+        self.resolved_theme
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(session: &'a RenderSession, family_kind: RenderFamilyKind) -> Self {
+        Self::new(session, family_kind, None)
+    }
+}
+
 impl FamilyRenderContext {
     fn resolve(session: RenderSession, family_kind: RenderFamilyKind) -> Self {
         let resolved_theme = session
             .theme()
             .map(|theme| Box::new(theme.resolve(family_kind)));
-        debug_assert_eq!(
-            resolved_theme.is_some(),
-            session.theme_fingerprint().is_some()
-        );
-        debug_assert_eq!(
-            resolved_theme.as_deref().map(ResolvedDiagramTheme::family),
-            session.theme_fingerprint().map(|_| family_kind)
-        );
         Self {
             family_kind,
             resolved_theme,
@@ -141,6 +182,10 @@ impl FamilyRenderContext {
 
     const fn session(&self) -> &RenderSession {
         &self.session
+    }
+
+    fn execution(&self) -> FamilyExecutionView<'_> {
+        FamilyExecutionView::new(&self.session, self.family_kind, self.resolved_theme())
     }
 
     fn into_session_and_family(self) -> (RenderSession, RenderFamilyKind) {
@@ -765,7 +810,7 @@ impl FamilyRenderArtifact {
         if actual_family != expected_family {
             return Err(Error::InvalidModel {
                 message: format!(
-                    "detected render family {expected_family} produced {actual_family} artifact"
+                    "planned render family {expected_family} produced {actual_family} artifact"
                 ),
             });
         }
@@ -879,13 +924,13 @@ fn render_family_artifact_svg(
     debug: &SvgDebugOptions,
 ) -> Result<String> {
     let options = request.normalized();
+    let execution = artifact.context.execution();
     #[cfg(feature = "layout-cytoscape")]
     if let BuiltinFamilyArtifact::Architecture(pair) = &artifact.family {
         return crate::svg::render_architecture_family_artifact(
             pair,
             &artifact.metadata.effective_config,
-            artifact.context.session(),
-            artifact.context.resolved_theme(),
+            execution,
             &options,
             debug,
         );
@@ -893,8 +938,7 @@ fn render_family_artifact_svg(
     crate::svg::render_builtin_family_artifact(
         &artifact.family,
         &artifact.metadata,
-        artifact.context.session(),
-        artifact.context.resolved_theme(),
+        execution,
         &options,
         debug,
     )
@@ -1143,7 +1187,7 @@ fn prepare_class_render(
         unreachable!("Class render dispatch requires a Class semantic model")
     };
     let diagram_type = meta.diagram_type.as_str();
-    let execution = LayoutExecution::new(options, context.session(), context.resolved_theme());
+    let execution = LayoutExecution::new(options, context.execution());
     let family = prepare_class_family(model, &meta, diagram_type, &execution)?;
     FamilyRenderArtifact::new(meta, family, context)
 }
@@ -1176,7 +1220,7 @@ pub fn prepare(
     let context = FamilyRenderContext::resolve(session, expected_family);
     // The heterogeneous router has one generic layout call per family. Keep its debug-build
     // caller slots out of the Class Dagre call chain, whose own phase frames are already deep.
-    if matches!(parsed.model(), RenderSemanticModel::Class(_)) {
+    if expected_family == RenderFamilyKind::Class {
         prepare_class_render(parsed, options, context)
     } else {
         prepare_non_class_render(parsed, options, context)
@@ -1192,7 +1236,7 @@ fn prepare_non_class_render(
     let (meta, model, render_context) = parsed.into_render_parts();
     let flowchart_label_sources = render_context.into_flowchart_label_sources();
     let diagram_type = meta.diagram_type.as_str();
-    let execution = LayoutExecution::new(options, context.session(), context.resolved_theme());
+    let execution = LayoutExecution::new(options, context.execution());
     let effective_config = meta.effective_config.as_value();
     let title = meta.title.as_deref();
     let family = match model {
@@ -1241,41 +1285,48 @@ fn prepare_non_class_render(
                 crate::zenuml::layout_zenuml_diagram_typed(model, execution.text_measurer())
             })?)
         }
-        RenderSemanticModel::Flowchart(model)
-            if meta.effective_config.get_str("layout") == Some("swimlane") =>
-        {
-            BuiltinFamilyArtifact::Swimlane(prepare_flowchart_artifact(
-                model,
-                flowchart_label_sources,
-                |model, label_sources, svg_label_sidecar| {
-                    crate::swimlane::layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
-                        model,
-                        label_sources,
-                        &meta.effective_config,
-                        execution.text_measurer(),
-                        execution.math_renderer(),
-                        Some(svg_label_sidecar),
-                        execution.work_meter(),
-                    )
-                },
-            )?)
-        }
-        RenderSemanticModel::Flowchart(model) => {
-            BuiltinFamilyArtifact::Flowchart(prepare_flowchart_artifact(
-                model,
-                flowchart_label_sources,
-                |model, label_sources, svg_label_sidecar| {
-                    crate::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_by_engine(
-                        diagram_type,
-                        model,
-                        label_sources,
-                        &meta.effective_config,
-                        &execution,
-                        Some(svg_label_sidecar),
-                    )
-                },
-            )?)
-        }
+        RenderSemanticModel::Flowchart(model) => match execution.family_kind() {
+            RenderFamilyKind::Swimlane => {
+                BuiltinFamilyArtifact::Swimlane(prepare_flowchart_artifact(
+                    model,
+                    flowchart_label_sources,
+                    |model, label_sources, svg_label_sidecar| {
+                        crate::swimlane::layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
+                            model,
+                            label_sources,
+                            &meta.effective_config,
+                            execution.text_measurer(),
+                            execution.math_renderer(),
+                            Some(svg_label_sidecar),
+                            execution.work_meter(),
+                        )
+                    },
+                )?)
+            }
+            RenderFamilyKind::Flowchart => {
+                BuiltinFamilyArtifact::Flowchart(prepare_flowchart_artifact(
+                    model,
+                    flowchart_label_sources,
+                    |model, label_sources, svg_label_sidecar| {
+                        crate::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_by_engine(
+                            diagram_type,
+                            model,
+                            label_sources,
+                            &meta.effective_config,
+                            &execution,
+                            Some(svg_label_sidecar),
+                        )
+                    },
+                )?)
+            }
+            planned_family => {
+                return Err(Error::InvalidModel {
+                    message: format!(
+                        "planned render family {planned_family} cannot consume a Flowchart model"
+                    ),
+                });
+            }
+        },
         #[cfg(feature = "layout-cytoscape")]
         RenderSemanticModel::Architecture(model) => {
             BuiltinFamilyArtifact::Architecture(prepare_pair(model, |model| {
@@ -1724,7 +1775,62 @@ mod tests {
     }
 
     #[test]
-    fn family_artifact_rejects_theme_family_drift() {
+    fn planned_family_drives_flowchart_router_before_layout() {
+        let engine = Engine::new();
+        let options = LayoutOptions::default();
+
+        let flowchart = engine
+            .parse_diagram_for_render_model_sync("flowchart TD\nA --> B\n", ParseOptions::strict())
+            .unwrap()
+            .expect("flowchart source should produce a render model");
+        let swimlane = prepare_non_class_render(
+            flowchart,
+            &options,
+            FamilyRenderContext::resolve(session(), RenderFamilyKind::Swimlane),
+        )
+        .expect("planned Swimlane family should drive layout");
+        assert_eq!(swimlane.family_kind(), RenderFamilyKind::Swimlane);
+
+        let configured_swimlane = engine
+            .parse_diagram_for_render_model_sync(
+                "---\nconfig:\n  layout: swimlane\n---\nflowchart TD\nA --> B\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("configured Swimlane source should produce a render model");
+        let flowchart = prepare_non_class_render(
+            configured_swimlane,
+            &options,
+            FamilyRenderContext::resolve(session(), RenderFamilyKind::Flowchart),
+        )
+        .expect("planned Flowchart family should drive layout");
+        assert_eq!(flowchart.family_kind(), RenderFamilyKind::Flowchart);
+    }
+
+    #[test]
+    fn flowchart_router_rejects_an_incompatible_planned_family() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("flowchart TD\nA --> B\n", ParseOptions::strict())
+            .unwrap()
+            .expect("flowchart source should produce a render model");
+
+        let error = match prepare_non_class_render(
+            parsed,
+            &LayoutOptions::default(),
+            FamilyRenderContext::resolve(session(), RenderFamilyKind::State),
+        ) {
+            Ok(_) => panic!("State cannot consume a Flowchart semantic model"),
+            Err(error) => error,
+        };
+        let Error::InvalidModel { message } = error else {
+            panic!("expected invalid model error")
+        };
+        assert!(message.contains("state"));
+        assert!(message.contains("Flowchart"));
+    }
+
+    #[test]
+    fn family_artifact_rejects_planned_family_drift() {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync("flowchart TD\nA --> B\n", ParseOptions::strict())
             .unwrap()
@@ -1733,23 +1839,20 @@ mod tests {
         let FamilyRenderArtifact {
             metadata, family, ..
         } = artifact;
-        let theme = DiagramThemeCompiler::new()
-            .compile(DiagramThemeSpec::new())
-            .expect("compile test theme");
-        let session = crate::environment::RenderEnvironment::deterministic()
-            .begin_session_with_theme(&theme)
-            .expect("begin themed render session");
-        let state_context = FamilyRenderContext::resolve(session, RenderFamilyKind::State);
 
-        let error = match FamilyRenderArtifact::new(metadata, family, state_context) {
+        let error = match FamilyRenderArtifact::new(
+            metadata,
+            family,
+            FamilyRenderContext::resolve(session(), RenderFamilyKind::State),
+        ) {
             Ok(_) => panic!("family drift must be rejected"),
             Err(error) => error,
         };
         let Error::InvalidModel { message } = error else {
             panic!("expected invalid model error")
         };
-        assert!(message.contains("flowchart"));
         assert!(message.contains("state"));
+        assert!(message.contains("flowchart"));
     }
 
     #[test]

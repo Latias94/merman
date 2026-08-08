@@ -1499,6 +1499,7 @@ fn er_unified_marker_id(diagram_id: &str, diagram_type: &str, upstream_marker: &
 
 #[cfg(test)]
 mod tests {
+    use crate::family::RenderFamilyKind;
     use crate::model::{Bounds, ErDiagramLayout, LayoutNode};
     use crate::svg::{SvgRenderOptions, with_test_svg_execution};
     use merman_core::diagrams::er::{ErDiagramRenderModel, ErEntityRenderModel};
@@ -1642,10 +1643,10 @@ mod tests {
             diagram_id: Some("er-colors".to_string()),
             ..SvgRenderOptions::default()
         };
-        let svg = with_test_svg_execution(&options, |options| {
+        let svg = with_test_svg_execution(RenderFamilyKind::Er, &options, |options| {
             super::render_er_diagram_svg_model(&layout, &model, &config, None, &measurer, options)
         })
-        .and_then(|svg| svg.into_string_for(crate::family::RenderFamilyKind::Er))
+        .and_then(|svg| svg.into_string_for(RenderFamilyKind::Er))
         .unwrap();
 
         let zeta_dom = r#"<g id="er-colors-entity-ZETA-0" class="node default" data-look="classic" data-color-id="color-0""#;

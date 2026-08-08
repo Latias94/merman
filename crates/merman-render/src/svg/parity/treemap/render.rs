@@ -873,6 +873,7 @@ pub(crate) fn render_treemap_diagram_svg(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::family::RenderFamilyKind;
     use crate::model::{TreemapDiagramLayout, TreemapLeafLayout, TreemapSectionLayout};
 
     fn leaf(name: impl Into<String>, value: f64, x0: f64, x1: f64, y1: f64) -> TreemapLeafLayout {
@@ -958,7 +959,9 @@ mod tests {
             .unwrap();
         let request = SvgRenderOptions::default();
         let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::new(&request, &debug, &session, None).expect("SVG execution");
+        let execution =
+            SvgExecution::unthemed_for_test(&request, &debug, &session, RenderFamilyKind::Treemap)
+                .expect("SVG execution");
         let svg = render_treemap_diagram_svg(&layout, &serde_json::json!({}), &execution).unwrap();
 
         let section_label = opening_tag_by_class(&svg, "treemapSectionLabel");

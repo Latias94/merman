@@ -1,6 +1,6 @@
 use super::pipeline::{ScopedCssPostprocessor, SvgPipeline, SvgPostprocessMetadata};
-use crate::diagram_theme::ResolvedDiagramTheme;
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
+use crate::family::FamilyExecutionView;
 #[cfg(feature = "layout-cytoscape")]
 use crate::model::ArchitectureDiagramLayout;
 use crate::model::{
@@ -303,8 +303,7 @@ impl SvgDebugOptions {
 
 pub(crate) struct SvgExecution<'a> {
     request: &'a SvgRenderOptions,
-    session: &'a RenderSession,
-    resolved_theme: Option<&'a ResolvedDiagramTheme>,
+    family: FamilyExecutionView<'a>,
     text_measurer: RoutedTextMeasurer<'a>,
     timing: timing::RenderTiming,
     pub(crate) debug: &'a SvgDebugOptions,
@@ -314,9 +313,9 @@ impl<'a> SvgExecution<'a> {
     fn new(
         request: &'a SvgRenderOptions,
         debug: &'a SvgDebugOptions,
-        session: &'a RenderSession,
-        resolved_theme: Option<&'a ResolvedDiagramTheme>,
+        family: FamilyExecutionView<'a>,
     ) -> Result<Self> {
+        let session = family.session();
         let timing = if debug.include_timing_diagnostics {
             timing::RenderTiming::enabled(
                 session
@@ -329,50 +328,58 @@ impl<'a> SvgExecution<'a> {
         };
         let execution = Self {
             request,
-            session,
-            resolved_theme,
+            family,
             text_measurer: session.text_measurer(TextMeasurementPhase::SvgBBox),
             timing,
             debug,
         };
-        debug_assert_eq!(
-            execution.resolved_theme().is_some(),
-            session.theme_fingerprint().is_some(),
-            "SVG theme plan presence must match the render session"
-        );
         Ok(execution)
+    }
+
+    #[cfg(test)]
+    fn unthemed_for_test(
+        request: &'a SvgRenderOptions,
+        debug: &'a SvgDebugOptions,
+        session: &'a RenderSession,
+        family_kind: crate::family::RenderFamilyKind,
+    ) -> Result<Self> {
+        Self::new(
+            request,
+            debug,
+            FamilyExecutionView::for_test(session, family_kind),
+        )
     }
 
     pub(crate) fn text_measurer(&self) -> &dyn TextMeasurer {
         &self.text_measurer
     }
 
-    pub(crate) const fn resolved_theme(&self) -> Option<&ResolvedDiagramTheme> {
-        self.resolved_theme
+    pub(crate) const fn family_kind(&self) -> crate::family::RenderFamilyKind {
+        self.family.family_kind()
     }
 
     pub(crate) fn text_measurer_for(&self, phase: TextMeasurementPhase) -> RoutedTextMeasurer<'_> {
-        self.session.text_measurer(phase)
+        self.family.session().text_measurer(phase)
     }
 
     pub(crate) fn math_renderer(&self) -> Option<&(dyn crate::math::MathRenderer + Send + Sync)> {
-        self.session.math_renderer()
+        self.family.session().math_renderer()
     }
 
     pub(crate) fn icon_registry(&self) -> Option<&super::icon_registry::IconRegistry> {
-        self.session.icon_registry()
+        self.family.session().icon_registry()
     }
 
     pub(crate) fn unix_ms(&self) -> i64 {
-        self.session.unix_millis()
+        self.family.session().unix_millis()
     }
 
     pub(crate) fn local_time_zone(&self) -> &merman_core::time::LocalTimeZone {
-        self.session.local_time_zone()
+        self.family.session().local_time_zone()
     }
 
     pub(crate) fn seed(&self) -> u64 {
-        self.session.render_seed().get()
+        self.family.session().render_seed().get()
     }
 
     pub(crate) fn rough_randomness(
@@ -385,7 +392,7 @@ impl<'a> SvgExecution<'a> {
         } else {
             configured_seed
         };
-        let operation = self.session.operation_context();
+        let operation = self.family.session().operation_context();
         roughr::core::RoughRandomness::new(
             roughr::core::RoughJsSeed::new(resolved_seed),
             roughr::core::RoughMathRandom::new(operation.derive_u64(owner_domain, 0)),
@@ -397,7 +404,7 @@ impl<'a> SvgExecution<'a> {
     }
 
     pub(crate) fn work_meter(&self) -> &crate::resources::OperationWorkMeter {
-        self.session.work_meter().as_ref()
+        self.family.session().work_meter().as_ref()
     }
 }
 
@@ -411,6 +418,7 @@ impl std::ops::Deref for SvgExecution<'_> {
 
 #[cfg(test)]
 pub(crate) fn with_test_svg_execution<T>(
+    family_kind: crate::family::RenderFamilyKind,
     request: &SvgRenderOptions,
     run: impl FnOnce(&SvgExecution<'_>) -> T,
 ) -> T {
@@ -418,7 +426,7 @@ pub(crate) fn with_test_svg_execution<T>(
         .begin_session()
         .expect("create test render session");
     let debug = SvgDebugOptions::default();
-    let execution = SvgExecution::new(request, &debug, &session, None)
+    let execution = SvgExecution::unthemed_for_test(request, &debug, &session, family_kind)
         .expect("default test SVG execution does not request timing");
     run(&execution)
 }
@@ -426,15 +434,18 @@ pub(crate) fn with_test_svg_execution<T>(
 pub(crate) fn render_builtin_family_artifact(
     family: &crate::family::BuiltinFamilyArtifact,
     metadata: &merman_core::ParseMetadata,
-    session: &RenderSession,
-    resolved_theme: Option<&ResolvedDiagramTheme>,
+    family_execution: FamilyExecutionView<'_>,
     options: &SvgRenderOptions,
     debug: &SvgDebugOptions,
 ) -> Result<String> {
-    let execution = SvgExecution::new(options, debug, session, resolved_theme)?;
+    let execution = SvgExecution::new(options, debug, family_execution)?;
     let rooted_svg = render_builtin_family_artifact_raw(family, metadata, &execution)?;
-    let svg = rooted_svg.into_string_for(family.kind())?;
-    apply_theme_css(svg, metadata.effective_config.as_value(), session)
+    let svg = rooted_svg.into_string_for(execution.family_kind())?;
+    apply_theme_css(
+        svg,
+        metadata.effective_config.as_value(),
+        family_execution.session(),
+    )
 }
 
 #[cfg(feature = "layout-cytoscape")]
@@ -445,22 +456,21 @@ pub(crate) fn render_architecture_family_artifact(
         ArchitectureDiagramLayout,
     >,
     effective_config: &merman_core::MermaidConfig,
-    session: &RenderSession,
-    resolved_theme: Option<&ResolvedDiagramTheme>,
+    family_execution: FamilyExecutionView<'_>,
     options: &SvgRenderOptions,
     debug: &SvgDebugOptions,
 ) -> Result<String> {
     // Keep the deep-group Architecture path out of the heterogeneous dispatcher so it fits in
     // the renderer's supported low-stack worker budget.
-    let execution = SvgExecution::new(options, debug, session, resolved_theme)?;
+    let execution = SvgExecution::new(options, debug, family_execution)?;
     let rooted_svg = architecture::render_architecture_diagram_svg_typed_with_config(
         pair.layout(),
         pair.semantic(),
         effective_config,
         &execution,
     )?;
-    let svg = rooted_svg.into_string_for(crate::family::RenderFamilyKind::Architecture)?;
-    apply_theme_css(svg, effective_config.as_value(), session)
+    let svg = rooted_svg.into_string_for(execution.family_kind())?;
+    apply_theme_css(svg, effective_config.as_value(), family_execution.session())
 }
 
 fn render_builtin_family_artifact_raw(
@@ -742,7 +752,13 @@ mod operation_time_tests {
             .expect("begin render session");
         let request = SvgRenderOptions::default();
         let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::new(&request, &debug, &session, None).expect("SVG execution");
+        let execution = SvgExecution::unthemed_for_test(
+            &request,
+            &debug,
+            &session,
+            crate::family::RenderFamilyKind::Error,
+        )
+        .expect("SVG execution");
 
         assert_eq!(execution.unix_ms(), session.unix_millis());
     }
@@ -754,7 +770,13 @@ mod operation_time_tests {
             .expect("begin render session");
         let request = SvgRenderOptions::default();
         let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::new(&request, &debug, &session, None).expect("SVG execution");
+        let execution = SvgExecution::unthemed_for_test(
+            &request,
+            &debug,
+            &session,
+            crate::family::RenderFamilyKind::Error,
+        )
+        .expect("SVG execution");
 
         for seed in [
             serde_json::json!(-1),
@@ -779,7 +801,13 @@ mod operation_time_tests {
             .expect("begin render session");
         let request = SvgRenderOptions::default();
         let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::new(&request, &debug, &session, None).expect("SVG execution");
+        let execution = SvgExecution::unthemed_for_test(
+            &request,
+            &debug,
+            &session,
+            crate::family::RenderFamilyKind::Error,
+        )
+        .expect("SVG execution");
 
         for seed in [0.0, -0.0] {
             assert_eq!(

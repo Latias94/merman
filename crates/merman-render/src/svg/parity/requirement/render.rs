@@ -962,6 +962,7 @@ fn push_requirement_shadow_defs(
 #[cfg(test)]
 mod tests {
     use super::super::*;
+    use crate::family::RenderFamilyKind;
     use crate::svg::{SvgRenderOptions, with_test_svg_execution};
     use crate::text::{
         TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
@@ -1223,7 +1224,7 @@ mod tests {
         measurer: &dyn TextMeasurer,
         request: &SvgRenderOptions,
     ) -> crate::Result<String> {
-        with_test_svg_execution(request, |options| {
+        with_test_svg_execution(RenderFamilyKind::Requirement, request, |options| {
             render_requirement_diagram_svg_model(
                 prepared,
                 model,
@@ -1233,7 +1234,7 @@ mod tests {
                 options,
             )
         })
-        .and_then(|svg| svg.into_string_for(crate::family::RenderFamilyKind::Requirement))
+        .and_then(|svg| svg.into_string_for(RenderFamilyKind::Requirement))
     }
 
     #[test]

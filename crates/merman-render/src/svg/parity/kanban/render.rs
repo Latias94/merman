@@ -459,6 +459,7 @@ mod tests {
         MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
         TextMeasurementPolicy, TextMeasurementProfileIdentity, TextMeasurementSource,
     };
+    use crate::family::RenderFamilyKind;
     use crate::kanban::{
         KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX, prepare_kanban_artifact_from_layout_for_test,
     };
@@ -492,10 +493,10 @@ mod tests {
         let effective_config = merman_core::MermaidConfig::from_value(effective_config.clone());
         let prepared =
             prepare_kanban_artifact_from_layout_for_test(layout, &effective_config, &measurer);
-        with_test_svg_execution(options, |options| {
+        with_test_svg_execution(RenderFamilyKind::Kanban, options, |options| {
             render_kanban_diagram_svg(&prepared, &effective_config, options)
         })
-        .and_then(|svg| svg.into_string_for(crate::family::RenderFamilyKind::Kanban))
+        .and_then(|svg| svg.into_string_for(RenderFamilyKind::Kanban))
     }
 
     fn attr_f64(tag: &str, name: &str) -> f64 {
@@ -1053,7 +1054,9 @@ mod tests {
         let measurer = session.text_measurer(TextMeasurementPhase::Wrap);
         let request = SvgRenderOptions::default();
         let debug = SvgDebugOptions::default();
-        let options = SvgExecution::new(&request, &debug, &session, None).expect("SVG execution");
+        let options =
+            SvgExecution::unthemed_for_test(&request, &debug, &session, RenderFamilyKind::Kanban)
+                .expect("SVG execution");
 
         let config = merman_core::MermaidConfig::default();
         let prepared = prepare_kanban_artifact_from_layout_for_test(&layout, &config, &measurer);

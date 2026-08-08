@@ -559,6 +559,7 @@ pub(crate) fn render_journey_diagram_svg_model(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::family::RenderFamilyKind;
     use crate::model::{
         Bounds, JourneyLineLayout, JourneyMouthKind, JourneySectionLayout, JourneyTaskLayout,
     };
@@ -674,7 +675,7 @@ mod tests {
             ..Default::default()
         };
 
-        let svg = with_test_svg_execution(&options, |options| {
+        let svg = with_test_svg_execution(RenderFamilyKind::Journey, &options, |options| {
             render_journey_diagram_svg_model(
                 &layout,
                 &JourneyDiagramRenderModel::default(),
@@ -726,7 +727,7 @@ mod tests {
             ..Default::default()
         };
 
-        let svg = with_test_svg_execution(&options, |options| {
+        let svg = with_test_svg_execution(RenderFamilyKind::Journey, &options, |options| {
             render_journey_diagram_svg_model(
                 &layout,
                 &JourneyDiagramRenderModel::default(),
