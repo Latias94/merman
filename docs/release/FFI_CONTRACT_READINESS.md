@@ -9,12 +9,12 @@ when its transport checks are green.
 
 | Lane | Status | Contract boundary | Evidence |
 | --- | --- | --- | --- |
-| `public-native` | green | C ABI 3, Android JNI transport API 1, UniFFI API 3, and the one full native SDK SKU | current artifact-profile dependency claims and the platform verification script |
+| `public-native` | green | C ABI 3, Android JNI transport API 1, UniFFI API 4, and the one full native SDK SKU | current artifact-profile dependency claims and the platform verification script |
 | `private-node` | green, private | deterministic, static-SVG, text-only candidate; not an admitted or publishable native SDK surface | current artifact-profile dependency claims and the Node package contract tests |
 
 The public-native lane does not claim that Android uses C ABI 3: Android consumes its direct JNI
 transport API 1. C ABI 3 retains size-tagged discovery and its current wire layout, but historical
-partial-table consumers are no longer a supported SDK target. UniFFI remains API 3. Source SDK
+partial-table consumers are no longer a supported SDK target. UniFFI uses API 4. Source SDK
 breaks do not retain compatibility aliases.
 
 ## Dependency boundary

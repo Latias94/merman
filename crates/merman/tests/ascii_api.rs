@@ -3,7 +3,7 @@
 use merman::RenderSemanticModel;
 use merman::ascii::{
     AsciiRenderOptions, HeadlessAsciiRenderer, render_ascii_sync, render_class, render_er,
-    render_model, render_xychart,
+    render_model, render_state, render_xychart,
 };
 
 fn render_model_for(source: &str) -> RenderSemanticModel {
@@ -95,6 +95,14 @@ fn direct_ascii_exports_render_shipped_typed_models() {
     };
     let rendered = render_er(&er_model, &options).unwrap();
     assert!(rendered.contains("CUSTOMER"));
+
+    let RenderSemanticModel::State(state_model) =
+        render_model_for("stateDiagram-v2\n[*] --> Ready")
+    else {
+        panic!("expected State render model");
+    };
+    let rendered = render_state(&state_model, &options).unwrap();
+    assert!(rendered.contains("Ready"));
 
     let RenderSemanticModel::XyChart(xychart_model) = render_model_for(
         r#"xychart

@@ -26,7 +26,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 /// This version belongs to the generated UniFFI surface only. It is intentionally independent
 /// from both the C ABI and the text-measurement protocol, whose versions are owned by their
 /// respective descriptors.
-pub const UNIFFI_BINDING_API_VERSION: u32 = 3;
+pub const UNIFFI_BINDING_API_VERSION: u32 = 4;
 
 static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
@@ -286,8 +286,11 @@ pub struct MermanAsciiCapabilityEvidence {
 pub struct MermanAsciiCapability {
     pub diagram_type: String,
     pub display_name: String,
+    pub semantic_coverage: Option<String>,
+    pub primary_projection: String,
+    pub structured_text_fallback: bool,
+    /// Compatibility view derived from semantic coverage and the primary projection.
     pub support_level: String,
-    pub summary_fallback: bool,
     pub supported_semantics: Vec<String>,
     pub limits: Vec<String>,
     pub evidence: Vec<MermanAsciiCapabilityEvidence>,
@@ -813,8 +816,10 @@ impl Merman {
                     .map(|capability| MermanAsciiCapability {
                         diagram_type: capability.diagram_type.to_string(),
                         display_name: capability.display_name.to_string(),
+                        semantic_coverage: capability.semantic_coverage.map(str::to_string),
+                        primary_projection: capability.primary_projection.to_string(),
+                        structured_text_fallback: capability.structured_text_fallback,
                         support_level: capability.support_level.to_string(),
-                        summary_fallback: capability.summary_fallback,
                         supported_semantics: capability
                             .supported_semantics
                             .iter()
@@ -2687,21 +2692,34 @@ mod tests {
                 .iter()
                 .find(|capability| capability.diagram_type == "sequence")
                 .expect("expected UniFFI ASCII capabilities to include sequence");
-            assert_eq!(sequence.support_level, "full");
+            assert_eq!(sequence.semantic_coverage.as_deref(), Some("partial"));
+            assert_eq!(sequence.primary_projection, "diagrammatic");
+            assert_eq!(sequence.support_level, "partial");
 
             let gantt = ascii_capabilities
                 .iter()
                 .find(|capability| capability.diagram_type == "gantt")
                 .expect("expected UniFFI ASCII capabilities to include gantt");
             assert_eq!(gantt.support_level, "summary");
-            assert!(!gantt.summary_fallback);
+            assert_eq!(gantt.semantic_coverage.as_deref(), Some("partial"));
+            assert_eq!(gantt.primary_projection, "structured_text");
+            assert!(!gantt.structured_text_fallback);
 
             let class = ascii_capabilities
                 .iter()
                 .find(|capability| capability.diagram_type == "class")
                 .expect("expected UniFFI ASCII capabilities to include class");
             assert_eq!(class.support_level, "partial");
-            assert!(class.summary_fallback);
+            assert!(class.structured_text_fallback);
+
+            assert_eq!(ascii_capabilities.len(), 31);
+            let zenuml = ascii_capabilities
+                .iter()
+                .find(|capability| capability.diagram_type == "zenuml")
+                .expect("expected UniFFI ASCII capabilities to include ZenUML");
+            assert_eq!(zenuml.semantic_coverage, None);
+            assert_eq!(zenuml.primary_projection, "none");
+            assert_eq!(zenuml.support_level, "unsupported");
         } else {
             assert!(ascii_capabilities.is_empty());
         }

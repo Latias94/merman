@@ -241,6 +241,17 @@ pub struct DiagramFamilyCapability {
     pub config_namespace: Option<&'static str>,
 }
 
+/// Canonical public identity for one concrete built-in typed render family.
+///
+/// Parser aliases that share a render model contribute exactly one entry. Error and custom JSON
+/// models are infrastructure variants rather than concrete Mermaid families and are excluded.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct BuiltInTypedRenderFamily {
+    pub diagram_type: &'static str,
+    pub render_model_kind: &'static str,
+}
+
 /// Closed, catalog-owned identity for one logical Mermaid diagram family.
 ///
 /// The inner value is private so editor facts cannot invent family ownership from an arbitrary
@@ -264,6 +275,7 @@ struct FamilyCatalogProjection {
     supported_diagram_metadata_ids: Vec<&'static str>,
     diagram_header_facts: Vec<DiagramHeaderFact>,
     diagram_family_capabilities: Vec<DiagramFamilyCapability>,
+    built_in_typed_render_families: Vec<BuiltInTypedRenderFamily>,
 }
 
 impl FamilyCatalogProjection {
@@ -365,7 +377,23 @@ impl FamilyCatalogProjection {
                     .iter()
                     .any(|fact| fact.metadata_id == Some(*metadata_id))
             })
-            .collect();
+            .collect::<Vec<&'static str>>();
+        let mut built_in_typed_render_families = Vec::<BuiltInTypedRenderFamily>::new();
+        for metadata_id in &supported_diagram_metadata_ids {
+            let fact = render_parser_facts
+                .iter()
+                .find(|fact| fact.metadata_id == Some(*metadata_id))
+                .expect("supported metadata is backed by a typed render parser");
+            if !built_in_typed_render_families
+                .iter()
+                .any(|family| family.render_model_kind == fact.model_kind)
+            {
+                built_in_typed_render_families.push(BuiltInTypedRenderFamily {
+                    diagram_type: metadata_id,
+                    render_model_kind: fact.model_kind,
+                });
+            }
+        }
 
         Self {
             detector_facts,
@@ -375,6 +403,7 @@ impl FamilyCatalogProjection {
             supported_diagram_metadata_ids,
             diagram_header_facts,
             diagram_family_capabilities,
+            built_in_typed_render_families,
         }
     }
 }
@@ -424,6 +453,12 @@ pub(crate) fn diagram_header_facts() -> &'static [DiagramHeaderFact] {
 pub(crate) fn diagram_family_capabilities() -> &'static [DiagramFamilyCapability] {
     family_catalog_projection()
         .diagram_family_capabilities
+        .as_slice()
+}
+
+pub(crate) fn built_in_typed_render_families() -> &'static [BuiltInTypedRenderFamily] {
+    family_catalog_projection()
+        .built_in_typed_render_families
         .as_slice()
 }
 

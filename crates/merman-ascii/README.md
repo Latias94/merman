@@ -41,13 +41,15 @@ Depend on `merman-ascii` directly only when the application already owns a typed
 
 ASCII support describes the quality of the terminal projection, not whether Merman can parse the Mermaid family. Query the runtime capability records when an application needs to populate an output picker.
 
-| Support level | Families | Output contract |
-| --- | --- | --- |
-| Full | Flowchart, Sequence, Packet, TreeView | Structured terminal diagrams for common topology and text semantics. |
-| Partial | State, Class, ER, XYChart | Core semantics render, with advanced geometry or presentation approximated; Class and ER can fall back to a relation summary. |
-| Summary | Gantt, GitGraph, Journey, Kanban, Mindmap, Timeline | Ordered, readable structured text instead of the browser-oriented chart geometry. |
+| Semantic coverage | Primary projection | Families | Output contract |
+| --- | --- | --- | --- |
+| Partial | Diagrammatic | Flowchart, Sequence, State, Class, ER, TreeView, XYChart | Core semantics render with documented limits; Class and ER can independently fall back to structured relation text. TreeView still needs a complete typed-field and terminal-usefulness review. |
+| Partial | Structured text | Gantt, GitGraph, Journey, Kanban, Mindmap, Packet, Timeline | Ordered, readable reports or outlines instead of browser-oriented chart geometry. Packet currently reports ranges in rows rather than preserving spatial bit widths. |
 
-Other Mermaid families return `AsciiError::UnsupportedDiagram` through the typed model path. The generated [ASCII/Unicode support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md) is the user-facing source of truth for exact limits. Family-specific engineering detail lives in [Flowchart](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/FLOWCHART_SUPPORT.md), [Sequence](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/SEQUENCE_SUPPORT.md), and [State](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/STATE_SUPPORT.md) support notes.
+Every concrete built-in typed family has one capability record. `semantic_coverage`,
+`primary_projection`, and `structured_text_fallback` are independent; legacy `support_level` is
+derived from them. Other Mermaid families return `AsciiError::UnsupportedDiagram` through the typed
+model path. The generated [ASCII/Unicode support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md) is the user-facing source of truth for exact limits. Family-specific engineering detail lives in [Flowchart](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/FLOWCHART_SUPPORT.md), [Sequence](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/SEQUENCE_SUPPORT.md), and [State](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/STATE_SUPPORT.md) support notes.
 
 ## Terminal Theme API
 

@@ -1,12 +1,14 @@
 pub use merman_ascii::{
     ASCII_RESOURCE_LIMIT_DESCRIPTORS, AsciiCapability, AsciiCapabilityEvidence, AsciiCharset,
     AsciiColorMode, AsciiColorTheme, AsciiDirection, AsciiError, AsciiEvidenceKind,
-    AsciiRenderOptions, AsciiRenderer, AsciiResourceLimitDescriptor, AsciiRgb, AsciiSupportLevel,
-    AsciiTerminalPalette, MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID, ascii_capabilities,
+    AsciiPrimaryProjection, AsciiRenderOptions, AsciiRenderer, AsciiResourceLimitDescriptor,
+    AsciiRgb, AsciiSemanticCoverage, AsciiSupportLevel, AsciiTerminalPalette,
+    MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID, ascii_capabilities, ascii_diagrammatic_diagram_types,
     ascii_resource_profile_value, ascii_supported_diagram_types, render_class, render_er,
     render_flowchart, render_gantt, render_gantt_with_local_time_zone, render_git_graph,
     render_journey, render_kanban, render_mindmap, render_model, render_model_with_local_time_zone,
-    render_packet, render_sequence, render_timeline, render_tree_view, render_xychart,
+    render_packet, render_sequence, render_state, render_timeline, render_tree_view,
+    render_xychart,
 };
 
 #[derive(Debug, thiserror::Error)]

@@ -307,6 +307,23 @@ fn gantt_render_model_renders_sections_tasks_and_flags() {
 }
 
 #[test]
+#[ignore = "A-GANTT-010: dependency source disclosure belongs to Gantt semantic deepening (owned by U26)"]
+fn gantt_structured_text_discloses_dependency_source_expressions() {
+    let rendered = render_parsed(concat!(
+        "gantt\n",
+        "dateFormat YYYY-MM-DD\n",
+        "section Build\n",
+        "Design: design, 2026-01-01, 1d\n",
+        "Implement: implementation, after design, 1d\n",
+    ));
+
+    assert!(
+        rendered.contains("after design"),
+        "structured Gantt output should disclose the dependency source expression:\n{rendered}"
+    );
+}
+
+#[test]
 fn journey_render_model_renders_actors_sections_and_scores() {
     let mut model = JourneyDiagramRenderModel::default();
     model.title = Some("Journey".to_string());

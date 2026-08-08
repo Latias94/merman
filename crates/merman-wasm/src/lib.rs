@@ -36,7 +36,7 @@ use serde::Deserialize;
 ///
 /// This is independent from the native C ABI and the Typst plugin ABI. It changes when the
 /// JavaScript/WASM export or runtime-contract wire shape becomes incompatible.
-pub const WASM_TRANSPORT_API_VERSION: u32 = 3;
+pub const WASM_TRANSPORT_API_VERSION: u32 = 4;
 const WASM_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "analysis")]
     OperationKey::AnalysisFactsJson,
@@ -561,7 +561,7 @@ fn wasm_white_space(max_width: Option<f64>, wrap_mode: WrapMode) -> &'static str
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(feature = "analysis")]
+    #[cfg(any(feature = "analysis", feature = "ascii"))]
     use serde_json::Value;
 
     #[test]
@@ -572,7 +572,35 @@ mod tests {
     #[test]
     fn transport_api_version_is_independent_from_host_measurement_protocol() {
         assert_eq!(transport_api_version(), WASM_TRANSPORT_API_VERSION);
-        assert_eq!(WASM_TRANSPORT_API_VERSION, 3);
+        assert_eq!(WASM_TRANSPORT_API_VERSION, 4);
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn ascii_metadata_exposes_the_total_capability_contract() {
+        let bytes = wasm_artifact_contract()
+            .metadata_json("ascii-capabilities")
+            .unwrap();
+        let capabilities: Value = serde_json::from_slice(&bytes).unwrap();
+        let capabilities = capabilities.as_array().unwrap();
+
+        assert_eq!(capabilities.len(), 31);
+        let flowchart = capabilities
+            .iter()
+            .find(|capability| capability["diagram_type"] == "flowchart")
+            .unwrap();
+        assert_eq!(flowchart["semantic_coverage"], "partial");
+        assert_eq!(flowchart["primary_projection"], "diagrammatic");
+        assert_eq!(flowchart["support_level"], "partial");
+        assert!(flowchart.get("summary_fallback").is_none());
+
+        let zenuml = capabilities
+            .iter()
+            .find(|capability| capability["diagram_type"] == "zenuml")
+            .unwrap();
+        assert!(zenuml["semantic_coverage"].is_null());
+        assert_eq!(zenuml["primary_projection"], "none");
+        assert_eq!(zenuml["support_level"], "unsupported");
     }
 
     #[cfg(feature = "svg")]

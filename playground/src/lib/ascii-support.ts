@@ -1,140 +1,219 @@
 import {
+  DIAGRAMMATIC_ASCII_DIAGRAMS,
   SUPPORTED_ASCII_DIAGRAMS,
   type AsciiCapability,
+  type AsciiPrimaryProjection,
+  type AsciiSemanticCoverage,
   type AsciiSupportLevel,
 } from "@mermanjs/web";
 
 export const FALLBACK_ASCII_SUPPORTED_TYPES = SUPPORTED_ASCII_DIAGRAMS;
+export const FALLBACK_ASCII_DIAGRAMMATIC_TYPES = DIAGRAMMATIC_ASCII_DIAGRAMS;
 
 export type AsciiSupportedType =
   (typeof FALLBACK_ASCII_SUPPORTED_TYPES)[number];
-export type { AsciiCapability, AsciiSupportLevel };
+export type {
+  AsciiCapability,
+  AsciiPrimaryProjection,
+  AsciiSemanticCoverage,
+  AsciiSupportLevel,
+};
 
 type FallbackCapabilityInput = {
-  diagramType: AsciiSupportedType;
   displayName: string;
-  supportLevel: AsciiSupportLevel;
-  summaryFallback?: boolean;
+  semanticCoverage: Exclude<AsciiSemanticCoverage, null>;
+  primaryProjection: Exclude<AsciiPrimaryProjection, "none">;
+  structuredTextFallback?: boolean;
+  supportedSemantics?: string[];
   limits: string[];
 };
 
-const FALLBACK_ASCII_CAPABILITY_INPUTS: readonly FallbackCapabilityInput[] = [
-  {
-    diagramType: "class",
+const BUILT_IN_TYPED_FAMILIES = [
+  "architecture",
+  "block",
+  "c4",
+  "class",
+  "cynefin",
+  "er",
+  "eventmodeling",
+  "flowchart",
+  "gantt",
+  "gitgraph",
+  "info",
+  "ishikawa",
+  "journey",
+  "kanban",
+  "mindmap",
+  "packet",
+  "pie",
+  "quadrantchart",
+  "radar",
+  "railroad",
+  "requirement",
+  "sankey",
+  "sequence",
+  "state",
+  "timeline",
+  "treeView",
+  "treemap",
+  "venn",
+  "wardley",
+  "xychart",
+  "zenuml",
+] as const;
+
+const FALLBACK_ASCII_CAPABILITY_INPUTS: Partial<
+  Record<(typeof BUILT_IN_TYPED_FAMILIES)[number], FallbackCapabilityInput>
+> = {
+  class: {
     displayName: "Class",
-    supportLevel: "partial",
-    summaryFallback: true,
+    semanticCoverage: "partial",
+    primaryProjection: "diagrammatic",
+    structuredTextFallback: true,
     limits: [
       "namespace containers are not drawn as nested boxes",
       "dense or grid-budgeted relation scenes can summarize",
     ],
   },
-  {
-    diagramType: "er",
+  er: {
     displayName: "ER",
-    supportLevel: "partial",
-    summaryFallback: true,
+    semanticCoverage: "partial",
+    primaryProjection: "diagrammatic",
+    structuredTextFallback: true,
     limits: [
       "complex cyclic topology can summarize",
       "unknown cardinality or relationship kinds are unsupported",
     ],
   },
-  {
-    diagramType: "flowchart",
+  flowchart: {
     displayName: "Flowchart / graph",
-    supportLevel: "full",
+    semanticCoverage: "partial",
+    primaryProjection: "diagrammatic",
     limits: [
       "icons, images, callbacks, and links are not terminal output",
       "some uncommon route shapes are approximate",
     ],
   },
-  {
-    diagramType: "gantt",
+  gantt: {
     displayName: "Gantt",
-    supportLevel: "summary",
-    limits: ["output is a readable task summary, not terminal timeline geometry"],
+    semanticCoverage: "partial",
+    primaryProjection: "structured_text",
+    supportedSemantics: [
+      "titles",
+      "sections",
+      "tasks",
+      "dates",
+      "tags",
+      "deterministic date formatting",
+    ],
+    limits: [
+      "output is a readable task summary, not terminal timeline geometry",
+      "dependency source expressions are not disclosed",
+    ],
   },
-  {
-    diagramType: "gitgraph",
+  gitgraph: {
     displayName: "GitGraph",
-    supportLevel: "summary",
+    semanticCoverage: "partial",
+    primaryProjection: "structured_text",
     limits: ["does not draw a full Git lane graph"],
   },
-  {
-    diagramType: "journey",
+  journey: {
     displayName: "Journey",
-    supportLevel: "summary",
+    semanticCoverage: "partial",
+    primaryProjection: "structured_text",
     limits: ["does not draw Mermaid journey chart geometry"],
   },
-  {
-    diagramType: "kanban",
+  kanban: {
     displayName: "Kanban",
-    supportLevel: "summary",
+    semanticCoverage: "partial",
+    primaryProjection: "structured_text",
     limits: ["drag and board presentation metadata are not terminal output"],
   },
-  {
-    diagramType: "mindmap",
+  mindmap: {
     displayName: "Mindmap",
-    supportLevel: "summary",
+    semanticCoverage: "partial",
+    primaryProjection: "structured_text",
     limits: ["icons, images, and rich browser node shapes are omitted or approximated"],
   },
-  {
-    diagramType: "packet",
+  packet: {
     displayName: "Packet",
-    supportLevel: "full",
-    limits: ["visual styling beyond terminal borders is not represented"],
+    semanticCoverage: "partial",
+    primaryProjection: "structured_text",
+    limits: [
+      "output is an ordered row report rather than a spatial bit-width grid",
+      "visual styling beyond terminal borders is not represented",
+    ],
   },
-  {
-    diagramType: "sequence",
+  sequence: {
     displayName: "Sequence",
-    supportLevel: "full",
+    semanticCoverage: "partial",
+    primaryProjection: "diagrammatic",
     limits: ["actor presentation metadata and links are omitted"],
   },
-  {
-    diagramType: "state",
+  state: {
     displayName: "State",
-    supportLevel: "partial",
+    semanticCoverage: "partial",
+    primaryProjection: "diagrammatic",
     limits: ["some presentation metadata is omitted"],
   },
-  {
-    diagramType: "timeline",
+  timeline: {
     displayName: "Timeline",
-    supportLevel: "summary",
+    semanticCoverage: "partial",
+    primaryProjection: "structured_text",
     limits: ["does not draw Mermaid timeline geometry"],
   },
-  {
-    diagramType: "treeView",
+  treeView: {
     displayName: "TreeView",
-    supportLevel: "full",
-    limits: ["browser tree styling is not represented"],
+    semanticCoverage: "partial",
+    primaryProjection: "diagrammatic",
+    limits: [
+      "typed-field and terminal-usefulness review is not yet complete",
+      "browser tree styling is not represented",
+    ],
   },
-  {
-    diagramType: "xychart",
+  xychart: {
     displayName: "XYChart",
-    supportLevel: "partial",
+    semanticCoverage: "partial",
+    primaryProjection: "diagrammatic",
     limits: [
       "browser hover tooltips and SVG-coordinate precision are not represented",
       "dense data uses terminal-compact layout",
     ],
   },
-] as const;
+};
 
 export const FALLBACK_ASCII_CAPABILITIES: readonly AsciiCapability[] =
-  FALLBACK_ASCII_CAPABILITY_INPUTS.map((capability) => ({
-    diagram_type: capability.diagramType,
-    display_name: capability.displayName,
-    support_level: capability.supportLevel,
-    summary_fallback: capability.summaryFallback ?? false,
-    supported_semantics: [],
-    limits: capability.limits,
-    evidence: [
-      {
-        kind: "support_matrix",
-        source: "docs/rendering/ASCII_SUPPORT_MATRIX.md",
-        note: "playground fallback capability synthesized from tracked support matrix",
-      },
-    ],
-  }));
+  BUILT_IN_TYPED_FAMILIES.map((diagramType) => {
+    const capability = FALLBACK_ASCII_CAPABILITY_INPUTS[diagramType];
+    const semanticCoverage = capability?.semanticCoverage ?? null;
+    const primaryProjection = capability?.primaryProjection ?? "none";
+    return {
+      diagram_type: diagramType,
+      display_name: capability?.displayName ?? diagramType,
+      semantic_coverage: semanticCoverage,
+      primary_projection: primaryProjection,
+      structured_text_fallback: capability?.structuredTextFallback ?? false,
+      support_level: deriveSupportLevel(semanticCoverage, primaryProjection),
+      supported_semantics: capability?.supportedSemantics ?? [],
+      limits: capability?.limits ?? ["no terminal projection is available"],
+      evidence: [
+        {
+          kind: "support_matrix",
+          source: "docs/rendering/ASCII_SUPPORT_MATRIX.md",
+          note: "playground fallback capability synthesized from tracked support matrix",
+        },
+      ],
+    };
+  });
+
+function deriveSupportLevel(
+  coverage: AsciiSemanticCoverage,
+  projection: AsciiPrimaryProjection
+): AsciiSupportLevel {
+  if (coverage === null || projection === "none") return "unsupported";
+  if (projection === "structured_text") return "summary";
+  return coverage;
+}
 
 export function isAsciiSupported(
   diagramType: string,
@@ -144,15 +223,18 @@ export function isAsciiSupported(
 }
 
 export function asciiSupportLabelKey(
-  capability: Pick<AsciiCapability, "support_level" | "summary_fallback"> | null
+  capability: Pick<
+    AsciiCapability,
+    "semantic_coverage" | "primary_projection"
+  > | null
 ): string {
-  if (!capability) {
+  if (!capability || capability.primary_projection === "none") {
     return "asciiSupport.unsupported";
   }
-  if (capability.support_level === "summary" || capability.summary_fallback) {
+  if (capability.primary_projection === "structured_text") {
     return "asciiSupport.summary";
   }
-  return `asciiSupport.levels.${capability.support_level}`;
+  return `asciiSupport.levels.${capability.semantic_coverage}`;
 }
 
 export function asciiSupportDescription(

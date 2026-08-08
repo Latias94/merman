@@ -26,6 +26,40 @@ impl AsciiSupportLevel {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
+pub enum AsciiSemanticCoverage {
+    Full,
+    Partial,
+}
+
+impl AsciiSemanticCoverage {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Full => "full",
+            Self::Partial => "partial",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum AsciiPrimaryProjection {
+    Diagrammatic,
+    StructuredText,
+    None,
+}
+
+impl AsciiPrimaryProjection {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Diagrammatic => "diagrammatic",
+            Self::StructuredText => "structured_text",
+            Self::None => "none",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum AsciiEvidenceKind {
     MermaidAsciiOracle,
     BeautifulMermaidPriorArt,
@@ -56,28 +90,98 @@ pub struct AsciiCapabilityEvidence {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct AsciiCapability {
     pub diagram_type: &'static str,
     pub display_name: &'static str,
+    pub semantic_coverage: Option<AsciiSemanticCoverage>,
+    pub primary_projection: AsciiPrimaryProjection,
+    pub structured_text_fallback: bool,
+    /// Compatibility view derived from semantic coverage and the primary projection.
     pub support_level: AsciiSupportLevel,
-    pub summary_fallback: bool,
     pub supported_semantics: &'static [&'static str],
     pub limits: &'static [&'static str],
     pub evidence: &'static [AsciiCapabilityEvidence],
 }
 
 impl AsciiCapability {
+    const fn from_definition(definition: AsciiCapabilityDefinition) -> Self {
+        let support_level =
+            derive_support_level(definition.semantic_coverage, definition.primary_projection);
+        Self {
+            diagram_type: definition.diagram_type,
+            display_name: definition.display_name,
+            semantic_coverage: definition.semantic_coverage,
+            primary_projection: definition.primary_projection,
+            structured_text_fallback: definition.structured_text_fallback,
+            support_level,
+            supported_semantics: definition.supported_semantics,
+            limits: definition.limits,
+            evidence: definition.evidence,
+        }
+    }
+
+    const fn unsupported(diagram_type: &'static str) -> Self {
+        Self::from_definition(AsciiCapabilityDefinition {
+            diagram_type,
+            display_name: diagram_type,
+            semantic_coverage: None,
+            primary_projection: AsciiPrimaryProjection::None,
+            structured_text_fallback: false,
+            supported_semantics: &[],
+            limits: &["no terminal projection is available"],
+            evidence: &[AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::SupportMatrix,
+                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#unsupported-families",
+                note: "the total capability matrix records this typed family as unsupported",
+            }],
+        })
+    }
+
+    pub const fn derived_support_level(self) -> AsciiSupportLevel {
+        derive_support_level(self.semantic_coverage, self.primary_projection)
+    }
+
     pub const fn is_supported(self) -> bool {
-        self.support_level.is_supported()
+        self.semantic_coverage.is_some()
     }
 }
 
-pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
-    AsciiCapability {
+const fn derive_support_level(
+    semantic_coverage: Option<AsciiSemanticCoverage>,
+    primary_projection: AsciiPrimaryProjection,
+) -> AsciiSupportLevel {
+    match (semantic_coverage, primary_projection) {
+        (Some(_), AsciiPrimaryProjection::StructuredText) => AsciiSupportLevel::Summary,
+        (Some(AsciiSemanticCoverage::Full), AsciiPrimaryProjection::Diagrammatic) => {
+            AsciiSupportLevel::Full
+        }
+        (Some(AsciiSemanticCoverage::Partial), AsciiPrimaryProjection::Diagrammatic) => {
+            AsciiSupportLevel::Partial
+        }
+        _ => AsciiSupportLevel::Unsupported,
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct AsciiCapabilityDefinition {
+    diagram_type: &'static str,
+    display_name: &'static str,
+    semantic_coverage: Option<AsciiSemanticCoverage>,
+    primary_projection: AsciiPrimaryProjection,
+    structured_text_fallback: bool,
+    supported_semantics: &'static [&'static str],
+    limits: &'static [&'static str],
+    evidence: &'static [AsciiCapabilityEvidence],
+}
+
+const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
+    AsciiCapabilityDefinition {
         diagram_type: "class",
         display_name: "Class",
-        support_level: AsciiSupportLevel::Partial,
-        summary_fallback: true,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
+        structured_text_fallback: true,
         supported_semantics: &[
             "class boxes",
             "members and methods",
@@ -117,11 +221,12 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "er",
         display_name: "ER",
-        support_level: AsciiSupportLevel::Partial,
-        summary_fallback: true,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
+        structured_text_fallback: true,
         supported_semantics: &[
             "entity boxes",
             "attributes and key tokens",
@@ -158,11 +263,12 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "flowchart",
         display_name: "Flowchart / graph",
-        support_level: AsciiSupportLevel::Full,
-        summary_fallback: false,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
+        structured_text_fallback: false,
         supported_semantics: &[
             "root directions",
             "boxed nodes and common shapes",
@@ -195,23 +301,24 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "gantt",
         display_name: "Gantt",
-        support_level: AsciiSupportLevel::Summary,
-        summary_fallback: false,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::StructuredText,
+        structured_text_fallback: false,
         supported_semantics: &[
             "titles",
             "sections",
             "tasks",
             "dates",
             "tags",
-            "dependencies",
             "deterministic date formatting",
         ],
         limits: &[
             "no terminal timeline geometry",
             "output is a readable task summary",
+            "dependency source expressions are not disclosed",
         ],
         evidence: &[
             AsciiCapabilityEvidence {
@@ -226,11 +333,12 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "gitgraph",
         display_name: "GitGraph",
-        support_level: AsciiSupportLevel::Summary,
-        summary_fallback: false,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::StructuredText,
+        structured_text_fallback: false,
         supported_semantics: &[
             "commits",
             "branches",
@@ -253,11 +361,12 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "journey",
         display_name: "Journey",
-        support_level: AsciiSupportLevel::Summary,
-        summary_fallback: false,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::StructuredText,
+        structured_text_fallback: false,
         supported_semantics: &["sections", "tasks", "actors", "scores"],
         limits: &["does not draw Mermaid journey chart geometry"],
         evidence: &[
@@ -273,11 +382,12 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "kanban",
         display_name: "Kanban",
-        support_level: AsciiSupportLevel::Summary,
-        summary_fallback: false,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::StructuredText,
+        structured_text_fallback: false,
         supported_semantics: &["columns", "cards", "assignments", "metadata"],
         limits: &["drag and board presentation metadata are not terminal output"],
         evidence: &[
@@ -293,11 +403,12 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "mindmap",
         display_name: "Mindmap",
-        support_level: AsciiSupportLevel::Summary,
-        summary_fallback: false,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::StructuredText,
+        structured_text_fallback: false,
         supported_semantics: &["hierarchical nodes", "labels", "nesting", "wrapped text"],
         limits: &["icons images and rich browser node shapes are omitted or approximated"],
         evidence: &[
@@ -313,13 +424,17 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "packet",
         display_name: "Packet",
-        support_level: AsciiSupportLevel::Full,
-        summary_fallback: false,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::StructuredText,
+        structured_text_fallback: false,
         supported_semantics: &["bit ranges", "labels", "row splitting", "multi-row packets"],
-        limits: &["visual styling beyond terminal borders is not represented"],
+        limits: &[
+            "output is an ordered row report rather than a spatial bit-width grid",
+            "visual styling beyond terminal borders is not represented",
+        ],
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalAdvantage,
@@ -329,15 +444,16 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
                 source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#supported-families",
-                note: "support matrix classifies Packet as full output",
+                note: "support matrix classifies Packet as partial structured text",
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "sequence",
         display_name: "Sequence",
-        support_level: AsciiSupportLevel::Full,
-        summary_fallback: false,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
+        structured_text_fallback: false,
         supported_semantics: &[
             "participants",
             "messages",
@@ -370,11 +486,12 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "state",
         display_name: "State",
-        support_level: AsciiSupportLevel::Partial,
-        summary_fallback: false,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
+        structured_text_fallback: false,
         supported_semantics: &[
             "states",
             "start and end nodes",
@@ -406,11 +523,12 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "timeline",
         display_name: "Timeline",
-        support_level: AsciiSupportLevel::Summary,
-        summary_fallback: false,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::StructuredText,
+        structured_text_fallback: false,
         supported_semantics: &["sections", "events", "ordered grouped text"],
         limits: &["does not draw Mermaid timeline geometry"],
         evidence: &[
@@ -426,18 +544,22 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "treeView",
         display_name: "TreeView",
-        support_level: AsciiSupportLevel::Full,
-        summary_fallback: false,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
+        structured_text_fallback: false,
         supported_semantics: &[
             "tree nodes",
             "folders and leaves",
             "indentation",
             "tree connectors",
         ],
-        limits: &["browser tree styling is not represented"],
+        limits: &[
+            "typed-field and terminal-usefulness review is not yet complete",
+            "browser tree styling is not represented",
+        ],
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalAdvantage,
@@ -447,15 +569,16 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
                 source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#supported-families",
-                note: "support matrix classifies TreeView as full output",
+                note: "support matrix classifies TreeView as partial diagrammatic output",
             },
         ],
     },
-    AsciiCapability {
+    AsciiCapabilityDefinition {
         diagram_type: "xychart",
         display_name: "XYChart",
-        support_level: AsciiSupportLevel::Partial,
-        summary_fallback: false,
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
+        structured_text_fallback: false,
         supported_semantics: &[
             "compact bar and line plots",
             "mixed plots",
@@ -491,7 +614,22 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
 ];
 
 pub fn ascii_capabilities() -> &'static [AsciiCapability] {
-    ASCII_CAPABILITIES
+    static CAPABILITIES: OnceLock<Vec<AsciiCapability>> = OnceLock::new();
+    CAPABILITIES
+        .get_or_init(|| {
+            merman_core::built_in_typed_render_families()
+                .iter()
+                .map(|family| {
+                    ASCII_CAPABILITY_DEFINITIONS
+                        .iter()
+                        .find(|definition| definition.diagram_type == family.diagram_type)
+                        .copied()
+                        .map(AsciiCapability::from_definition)
+                        .unwrap_or_else(|| AsciiCapability::unsupported(family.diagram_type))
+                })
+                .collect()
+        })
+        .as_slice()
 }
 
 pub fn ascii_supported_diagram_types() -> &'static [&'static str] {
@@ -507,19 +645,51 @@ pub fn ascii_supported_diagram_types() -> &'static [&'static str] {
         .as_slice()
 }
 
+pub fn ascii_diagrammatic_diagram_types() -> &'static [&'static str] {
+    static DIAGRAMMATIC: OnceLock<Vec<&'static str>> = OnceLock::new();
+    DIAGRAMMATIC
+        .get_or_init(|| {
+            ascii_capabilities()
+                .iter()
+                .filter(|capability| {
+                    matches!(
+                        capability.primary_projection,
+                        AsciiPrimaryProjection::Diagrammatic
+                    )
+                })
+                .map(|capability| capability.diagram_type)
+                .collect()
+        })
+        .as_slice()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
 
     #[test]
-    fn supported_diagram_types_are_derived_from_capabilities() {
-        let derived: Vec<_> = ascii_capabilities()
+    fn capabilities_cover_each_concrete_built_in_typed_family_once() {
+        let capabilities = ascii_capabilities();
+        let core_families = merman_core::built_in_typed_render_families();
+        let capability_types = capabilities
             .iter()
-            .filter(|capability| capability.is_supported())
             .map(|capability| capability.diagram_type)
-            .collect();
+            .collect::<BTreeSet<_>>();
+        let core_types = core_families
+            .iter()
+            .map(|family| family.diagram_type)
+            .collect::<BTreeSet<_>>();
 
-        assert_eq!(ascii_supported_diagram_types(), derived.as_slice());
+        assert_eq!(capabilities.len(), 31);
+        assert_eq!(capability_types.len(), capabilities.len());
+        assert_eq!(capability_types, core_types);
+        assert!(!capability_types.contains("error"));
+        assert!(!capability_types.contains("custom-json"));
+    }
+
+    #[test]
+    fn output_available_and_diagrammatic_lists_are_distinct_projections() {
         assert_eq!(
             ascii_supported_diagram_types(),
             &[
@@ -539,24 +709,75 @@ mod tests {
                 "xychart",
             ]
         );
+        assert_eq!(
+            ascii_diagrammatic_diagram_types(),
+            &[
+                "class",
+                "er",
+                "flowchart",
+                "sequence",
+                "state",
+                "treeView",
+                "xychart",
+            ]
+        );
     }
 
     #[test]
-    fn support_levels_match_public_matrix_boundary() {
+    fn semantic_coverage_projection_and_fallback_are_independent() {
         let class = find("class");
+        assert_eq!(
+            class.semantic_coverage,
+            Some(AsciiSemanticCoverage::Partial)
+        );
+        assert_eq!(
+            class.primary_projection,
+            AsciiPrimaryProjection::Diagrammatic
+        );
         assert_eq!(class.support_level, AsciiSupportLevel::Partial);
-        assert!(class.summary_fallback);
+        assert!(class.structured_text_fallback);
 
         let er = find("er");
+        assert_eq!(er.semantic_coverage, Some(AsciiSemanticCoverage::Partial));
+        assert_eq!(er.primary_projection, AsciiPrimaryProjection::Diagrammatic);
         assert_eq!(er.support_level, AsciiSupportLevel::Partial);
-        assert!(er.summary_fallback);
+        assert!(er.structured_text_fallback);
 
-        assert_eq!(find("flowchart").support_level, AsciiSupportLevel::Full);
-        assert_eq!(find("sequence").support_level, AsciiSupportLevel::Full);
-        assert_eq!(find("packet").support_level, AsciiSupportLevel::Full);
-        assert_eq!(find("treeView").support_level, AsciiSupportLevel::Full);
+        assert_eq!(find("flowchart").support_level, AsciiSupportLevel::Partial);
+        assert_eq!(find("sequence").support_level, AsciiSupportLevel::Partial);
+        assert_eq!(find("packet").support_level, AsciiSupportLevel::Summary);
+        assert_eq!(find("treeView").support_level, AsciiSupportLevel::Partial);
         assert_eq!(find("gantt").support_level, AsciiSupportLevel::Summary);
         assert_eq!(find("xychart").support_level, AsciiSupportLevel::Partial);
+
+        for diagram_type in [
+            "gantt", "gitgraph", "journey", "kanban", "mindmap", "packet", "timeline",
+        ] {
+            let capability = find(diagram_type);
+            assert_eq!(
+                capability.primary_projection,
+                AsciiPrimaryProjection::StructuredText
+            );
+            assert_eq!(
+                capability.semantic_coverage,
+                Some(AsciiSemanticCoverage::Partial)
+            );
+        }
+
+        let zenuml = find("zenuml");
+        assert_eq!(zenuml.semantic_coverage, None);
+        assert_eq!(zenuml.primary_projection, AsciiPrimaryProjection::None);
+        assert_eq!(zenuml.support_level, AsciiSupportLevel::Unsupported);
+
+        for capability in ascii_capabilities() {
+            assert_eq!(capability.support_level, capability.derived_support_level());
+            assert_eq!(
+                capability.semantic_coverage.is_some(),
+                !matches!(capability.primary_projection, AsciiPrimaryProjection::None),
+                "{} has an invalid availability/coverage combination",
+                capability.diagram_type
+            );
+        }
     }
 
     #[test]
@@ -582,11 +803,13 @@ mod tests {
     #[test]
     fn every_capability_has_limits_and_evidence() {
         for capability in ascii_capabilities() {
-            assert!(
-                !capability.supported_semantics.is_empty(),
-                "{} should document supported semantics",
-                capability.diagram_type
-            );
+            if capability.is_supported() {
+                assert!(
+                    !capability.supported_semantics.is_empty(),
+                    "{} should document supported semantics",
+                    capability.diagram_type
+                );
+            }
             assert!(
                 !capability.limits.is_empty(),
                 "{} should document important limits",
@@ -598,6 +821,19 @@ mod tests {
                 capability.diagram_type
             );
         }
+    }
+
+    #[test]
+    fn gantt_capability_does_not_claim_undisclosed_dependencies() {
+        let gantt = find("gantt");
+
+        assert!(!gantt.supported_semantics.contains(&"dependencies"));
+        assert!(
+            gantt
+                .limits
+                .iter()
+                .any(|limit| limit.contains("dependency source expressions"))
+        );
     }
 
     fn find(diagram_type: &str) -> AsciiCapability {

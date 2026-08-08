@@ -381,8 +381,10 @@ class MermanAsciiCapability {
   const MermanAsciiCapability({
     required this.diagramType,
     required this.displayName,
+    required this.semanticCoverage,
+    required this.primaryProjection,
+    required this.structuredTextFallback,
     required this.supportLevel,
-    required this.summaryFallback,
     required this.supportedSemantics,
     required this.limits,
     required this.evidence,
@@ -390,13 +392,23 @@ class MermanAsciiCapability {
 
   final String diagramType;
   final String displayName;
+  final String? semanticCoverage;
+  final String primaryProjection;
+  final bool structuredTextFallback;
+
+  /// Compatibility view derived from [semanticCoverage] and [primaryProjection].
   final String supportLevel;
-  final bool summaryFallback;
   final List<String> supportedSemantics;
   final List<String> limits;
   final List<MermanAsciiCapabilityEvidence> evidence;
 
   factory MermanAsciiCapability.fromJson(Map<String, Object?> json) {
+    final semanticCoverage = json['semantic_coverage'];
+    if (semanticCoverage != null && semanticCoverage is! String) {
+      throw MermanException.contract(
+        'ASCII capability.semantic_coverage must be a string or null',
+      );
+    }
     final rawEvidence = json['evidence'];
     if (rawEvidence is! List) {
       throw MermanException.contract(
@@ -406,9 +418,15 @@ class MermanAsciiCapability {
     return MermanAsciiCapability(
       diagramType: _requiredString(json, 'diagram_type', 'ASCII capability'),
       displayName: _requiredString(json, 'display_name', 'ASCII capability'),
+      semanticCoverage: semanticCoverage as String?,
+      primaryProjection:
+          _requiredString(json, 'primary_projection', 'ASCII capability'),
+      structuredTextFallback: _requiredBool(
+        json,
+        'structured_text_fallback',
+        'ASCII capability',
+      ),
       supportLevel: _requiredString(json, 'support_level', 'ASCII capability'),
-      summaryFallback:
-          _requiredBool(json, 'summary_fallback', 'ASCII capability'),
       supportedSemantics: List.unmodifiable(
         _requiredStringList(
           json,

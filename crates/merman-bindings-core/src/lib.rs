@@ -63,11 +63,11 @@ pub use metadata::{
     RuntimeResourceLimit, RuntimeResourceProfile, RuntimeSystemFontContract,
     TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK, TEXT_MEASUREMENT_PROVIDER_VENDORED,
     TextMeasurementCapabilities, ascii_capabilities, ascii_capabilities_json,
-    ascii_supported_diagrams, ascii_supported_diagrams_json, configurable_lint_rule_catalog,
-    configurable_lint_rule_catalog_json, diagram_family_capabilities,
-    diagram_family_capabilities_json, lint_rule_catalog, lint_rule_catalog_json,
-    runtime_constructor_resource_limits, supported_diagrams, supported_diagrams_json,
-    supported_themes, supported_themes_json,
+    ascii_diagrammatic_diagrams, ascii_supported_diagrams, ascii_supported_diagrams_json,
+    configurable_lint_rule_catalog, configurable_lint_rule_catalog_json,
+    diagram_family_capabilities, diagram_family_capabilities_json, lint_rule_catalog,
+    lint_rule_catalog_json, runtime_constructor_resource_limits, supported_diagrams,
+    supported_diagrams_json, supported_themes, supported_themes_json,
 };
 pub use metadata_registry::{MetadataKey, MetadataSpec};
 pub use operation::{

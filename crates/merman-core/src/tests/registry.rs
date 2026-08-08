@@ -1,6 +1,7 @@
 use crate::{
-    DetectorRegistry, DiagramRegistry, Engine, RenderDiagramRegistry, diagram_family_capabilities,
-    diagram_header_facts, supported_diagrams,
+    DetectorRegistry, DiagramRegistry, Engine, RenderDiagramRegistry,
+    built_in_typed_render_families, diagram_family_capabilities, diagram_header_facts,
+    supported_diagrams,
 };
 use std::collections::BTreeSet;
 
@@ -744,6 +745,63 @@ fn canonical_supported_diagrams_are_backed_by_typed_render_parsers() {
             );
         }
     }
+}
+
+#[test]
+fn built_in_typed_render_family_catalog_is_canonical_and_concrete() {
+    let families = built_in_typed_render_families();
+    let diagram_types = families
+        .iter()
+        .map(|family| family.diagram_type)
+        .collect::<Vec<_>>();
+    let model_kinds = families
+        .iter()
+        .map(|family| family.render_model_kind)
+        .collect::<BTreeSet<_>>();
+
+    assert_eq!(families.len(), 31);
+    assert_eq!(model_kinds.len(), families.len());
+    assert_eq!(
+        diagram_types,
+        vec![
+            "architecture",
+            "block",
+            "c4",
+            "class",
+            "cynefin",
+            "er",
+            "eventmodeling",
+            "flowchart",
+            "gantt",
+            "gitgraph",
+            "info",
+            "ishikawa",
+            "journey",
+            "kanban",
+            "mindmap",
+            "packet",
+            "pie",
+            "quadrantchart",
+            "radar",
+            "railroad",
+            "requirement",
+            "sankey",
+            "sequence",
+            "state",
+            "timeline",
+            "treeView",
+            "treemap",
+            "venn",
+            "wardley",
+            "xychart",
+            "zenuml",
+        ]
+    );
+    assert!(
+        families
+            .iter()
+            .all(|family| family.render_model_kind != "error")
+    );
 }
 
 #[test]

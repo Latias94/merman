@@ -20,7 +20,7 @@ class Measurer(merman.MermanTextMeasurer):
 
 def main() -> None:
     api = merman.Merman()
-    require(api.binding_api_version() == 3, "unexpected UniFFI binding API version")
+    require(api.binding_api_version() == 4, "unexpected UniFFI binding API version")
 
     registry = merman.MermanIconRegistry.from_packs(
         [

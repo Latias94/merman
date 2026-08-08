@@ -30,8 +30,9 @@ mod tree_view;
 mod xychart;
 
 pub use capability::{
-    AsciiCapability, AsciiCapabilityEvidence, AsciiEvidenceKind, AsciiSupportLevel,
-    ascii_capabilities, ascii_supported_diagram_types,
+    AsciiCapability, AsciiCapabilityEvidence, AsciiEvidenceKind, AsciiPrimaryProjection,
+    AsciiSemanticCoverage, AsciiSupportLevel, ascii_capabilities, ascii_diagrammatic_diagram_types,
+    ascii_supported_diagram_types,
 };
 pub use color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb, AsciiTerminalPalette};
 pub use error::{AsciiError, Result};
@@ -109,8 +110,26 @@ pub fn render_model_with_local_time_zone(
         RenderSemanticModel::Timeline(model) => render_timeline(model, options),
         RenderSemanticModel::XyChart(model) => render_xychart(model, options),
         RenderSemanticModel::TreeView(model) => render_tree_view(model, options),
-        other => Err(AsciiError::UnsupportedDiagram {
-            diagram_type: other.kind().to_string(),
+        unsupported @ (RenderSemanticModel::Error(_)
+        | RenderSemanticModel::CustomJson(_)
+        | RenderSemanticModel::Zenuml(_)
+        | RenderSemanticModel::Architecture(_)
+        | RenderSemanticModel::C4(_)
+        | RenderSemanticModel::Cynefin(_)
+        | RenderSemanticModel::Railroad(_)
+        | RenderSemanticModel::Pie(_)
+        | RenderSemanticModel::Requirement(_)
+        | RenderSemanticModel::Sankey(_)
+        | RenderSemanticModel::Radar(_)
+        | RenderSemanticModel::Info(_)
+        | RenderSemanticModel::Treemap(_)
+        | RenderSemanticModel::Block(_)
+        | RenderSemanticModel::QuadrantChart(_)
+        | RenderSemanticModel::Ishikawa(_)
+        | RenderSemanticModel::EventModeling(_)
+        | RenderSemanticModel::Venn(_)
+        | RenderSemanticModel::Wardley(_)) => Err(AsciiError::UnsupportedDiagram {
+            diagram_type: unsupported.kind().to_string(),
         }),
     }
 }

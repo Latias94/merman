@@ -320,8 +320,10 @@ void decodesTypedMetadataCatalogs() {
   final ascii = MermanAsciiCapability.fromJson({
     'diagram_type': 'flowchart-v2',
     'display_name': 'Flowchart',
-    'support_level': 'full',
-    'summary_fallback': false,
+    'semantic_coverage': 'partial',
+    'primary_projection': 'diagrammatic',
+    'structured_text_fallback': false,
+    'support_level': 'partial',
     'supported_semantics': ['nodes', 'edges'],
     'limits': ['html-labels'],
     'evidence': [
@@ -384,6 +386,9 @@ void decodesTypedMetadataCatalogs() {
   _expect(
     ascii.evidence.single.note == 'typed evidence' &&
         ascii.supportedSemantics.length == 2 &&
+        ascii.semanticCoverage == 'partial' &&
+        ascii.primaryProjection == 'diagrammatic' &&
+        !ascii.structuredTextFallback &&
         family.metadataId == 'flowchart' &&
         family.logicalFamilyKind == 'flowchart' &&
         family.renderModelKind == 'flowchart' &&
@@ -408,8 +413,10 @@ void acceptsAdditiveTypedMetadataFields() {
   final ascii = MermanAsciiCapability.fromJson({
     'diagram_type': 'flowchart-v2',
     'display_name': 'Flowchart',
-    'support_level': 'full',
-    'summary_fallback': false,
+    'semantic_coverage': 'partial',
+    'primary_projection': 'diagrammatic',
+    'structured_text_fallback': false,
+    'support_level': 'partial',
     'supported_semantics': <String>[],
     'limits': <String>[],
     'evidence': <Object?>[],

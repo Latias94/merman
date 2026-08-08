@@ -5,43 +5,48 @@ stricter than "the parser accepts this Mermaid family": ASCII output is terminal
 only styling, rich geometry, and some SVG container semantics may be approximated, summarized, or
 omitted.
 
-## Status Levels
+## Capability Dimensions
 
-| Status | Meaning |
-| --- | --- |
-| Full | The common Mermaid semantics for this family render as structured terminal diagrams. Styling is still terminal-limited. |
-| Partial | Core text/topology semantics render, but important Mermaid presentation or advanced syntax is approximated or omitted. |
-| Summary | The renderer intentionally emits readable structured text instead of drawing the full topology. |
-| Unsupported | ASCII/Unicode output is not currently exposed for this family. |
+| Field | Values | Meaning |
+| --- | --- | --- |
+| `semantic_coverage` | `full`, `partial`, or `null` | How much of the family's typed semantics the terminal output preserves. `null` means no output is available. |
+| `primary_projection` | `diagrammatic`, `structured_text`, or `none` | Whether the primary output is box-and-line terminal geometry, a readable report/outline, or unavailable. |
+| `structured_text_fallback` | Boolean | Whether a diagrammatic family can intentionally fall back to structured text for cases that exceed its readable geometry boundary. |
 
-`Summary` is still supported output: it is meant for dense or terminal-hostile diagrams where a
-faithful box-and-line drawing would be less readable than an explicit relation list.
+The legacy `support_level` / `supportLevel` field remains a derived compatibility view:
+`none` maps to `unsupported`, `structured_text` maps to `summary`, and `diagrammatic` maps to its
+`full` or `partial` semantic coverage. Structured text is supported output, but it is excluded from
+diagrammatic-family counts.
 
 ## Runtime Capability Metadata
 
-The same support story is exposed to bindings through `merman-ascii` capability records
+The same support story is exposed to bindings through 31 total `merman-ascii` capability records
 (`crates/merman-ascii/src/capability.rs`) and the `ascii_capabilities_json` binding helper. The
-runtime metadata intentionally uses the same status vocabulary as this document and keeps the
-legacy `ascii_supported_diagrams` list derived from the richer records.
+legacy `ascii_supported_diagrams` list is derived from records with available output. Product counts
+and diagram-only filters use the separate diagrammatic projection.
+
+Binding migration: consumers must replace `summary_fallback` with `structured_text_fallback`, read
+`semantic_coverage` and `primary_projection` as the source fields, and treat `support_level` only as
+a compatibility view.
 
 ## Supported Families
 
-| Mermaid family | ASCII status | What renders well | Important limits |
-| --- | --- | --- | --- |
-| Flowchart / graph | Full | Root directions, boxed nodes, common node shapes, labels, edge labels, open/dotted/thick edges, subgraphs, nested groups, and many Mermaid v11 shape aliases. | Icons, images, callbacks, links, and some browser-only metadata are omitted or unsupported. Some uncommon route shapes are approximate. |
-| Sequence | Full | Participants, messages, notes, lifecycle rows, actor boxes, diagram-wide empty boxes, sequence boxes with inner padding, all-participant boxes around dynamic lifecycle content, and Mermaid control blocks including `loop`, `opt`, `break`, `rect`, `alt`, `par`, `par_over`, and `critical`. | Actor presentation metadata and links are omitted. Mirrored bottom participants are opt-in with `--sequence-mirror-actors`; actors destroyed before the footer remain hidden there. |
-| State | Partial | States, start/end, transitions, notes, choice/fork/join-like graph nodes, composite groups, class/style colors in ANSI/HTML output. | Some presentation metadata and future state shape variants are terminal approximations. |
-| Class | Partial + Summary | Class boxes, members, methods, annotations, notes, namespace containers, namespace-qualified endpoint aliases, interface/lollipop nodes, endpoint labels, common relation markers, self-relation loops, routed chains/stars, bounded iterative relation-layer sweeps, parallel lanes, independent relation components, disconnected standalone components, and dense summary fallback. | Relationships in namespace container scenes currently render as `relations:` summaries. Dense/cyclic/collision-prone layouts can also use `relations:` summary. Multiple relation markers are unsupported. |
-| ER | Partial + Summary | Entity boxes, aliases, attributes, PK/UK/FK tokens, comments, identifying/non-identifying relationships, cardinalities, self-relationship loops, routed chains/stars, bounded iterative relation-layer sweeps, parallel lanes, independent relation components, disconnected standalone components, and dense summary fallback. | Complex cyclic/collision-prone topology may use `relations:` summary. Mermaid CSS styling is preserved in semantic models but only safe terminal colors are represented. Unknown cardinality/relationship kinds are unsupported. |
-| XYChart | Partial | Compact bar/line/mixed plots, titles, axes, legends, series labels, terminal value disclosure for data labels, negative values, horizontal/vertical variants, and configurable compact plot areas. | Browser hover tooltips and SVG-coordinate precision are not represented. Dense data is terminal-compact, not pixel-faithful. |
-| Gantt | Summary | Titles, sections, tasks, dates, tags, dependencies, and deterministic date formatting. | No terminal timeline geometry; output is a readable task table/summary. |
-| GitGraph | Summary | Commits, branches, merges, tags, cherry-picks, and ordering in textual form. | Does not draw a full Git lane graph. |
-| Journey | Summary | Sections, tasks, actors, and scores. | Does not draw the Mermaid journey chart geometry. |
-| Kanban | Summary | Columns, cards, assignments, and metadata as grouped text. | Drag/drop or board-specific presentation is not represented. |
-| Mindmap | Summary | Hierarchical nodes, labels, and nesting as terminal outline/tree text. | Icons, images, and rich node shapes are omitted or approximated. |
-| Packet | Full | Bit ranges, labels, row splitting, and multi-row packets. | Visual styling beyond terminal borders is not represented. |
-| Timeline | Summary | Sections and events in ordered grouped text. | Does not draw Mermaid timeline geometry. |
-| TreeView | Full | Tree nodes, folders/leaves, indentation, and Unicode/ASCII tree connectors. | Browser tree styling is not represented. |
+| Mermaid family | Semantic coverage | Primary projection | Structured-text fallback | What renders well | Important limits |
+| --- | --- | --- | --- | --- | --- |
+| Flowchart / graph | Partial | Diagrammatic | No | Root directions, boxed nodes, common node shapes, labels, edges, subgraphs, and nested groups. | Icons, images, callbacks, links, and some uncommon routes are omitted or approximate. |
+| Sequence | Partial | Diagrammatic | No | Participants, messages, notes, lifecycles, boxes, and Mermaid control blocks. | Actor presentation metadata and links are omitted; mirrored actors are opt-in. |
+| State | Partial | Diagrammatic | No | States, transitions, notes, graph-like pseudostates, groups, and terminal colors. | Some presentation metadata and future shape variants are approximated. |
+| Class | Partial | Diagrammatic | Yes | Class structure, notes, namespaces, common relations, routed components, and explicit relation summaries. | Namespace-crossing and dense/collision-prone relationships can use `relations:` output. |
+| ER | Partial | Diagrammatic | Yes | Entities, attributes, keys, relationship labels/cardinalities, routed components, and explicit relation summaries. | Dense/collision-prone topology can use `relations:` output. |
+| XYChart | Partial | Diagrammatic | No | Compact plots, titles, axes, legends, labels, values, and horizontal/vertical variants. | Browser tooltips and SVG coordinate precision are not represented. |
+| TreeView | Partial | Diagrammatic | No | Tree nodes, folders/leaves, indentation, and terminal tree connectors. | Typed-field and terminal-usefulness review is incomplete; browser tree styling is not represented. |
+| Gantt | Partial | Structured text | No | Titles, sections, tasks, resolved dates, tags, and deterministic date formatting. | No timeline geometry; dependency source expressions such as `after task` are not disclosed (A-GANTT-010). |
+| GitGraph | Partial | Structured text | No | Commits, branches, merges, tags, cherry-picks, and ordering. | Does not draw a full Git lane graph. |
+| Journey | Partial | Structured text | No | Sections, tasks, actors, and scores. | Does not draw Mermaid journey geometry. |
+| Kanban | Partial | Structured text | No | Columns, cards, assignments, and metadata. | Drag/drop and board presentation are not represented. |
+| Mindmap | Partial | Structured text | No | Hierarchical nodes and labels as an outline. | Icons, images, and rich node shapes are omitted or approximated. |
+| Packet | Partial | Structured text | No | Bit ranges and labels in ordered terminal rows. | Output does not preserve spatial bit widths; browser-oriented styling is not represented. |
+| Timeline | Partial | Structured text | No | Sections and events in ordered grouped text. | Does not draw Mermaid timeline geometry. |
 
 ## Unsupported Families
 
@@ -53,23 +58,29 @@ as ASCII/Unicode render targets:
 | Architecture | Unsupported | Rich grouped architecture geometry is SVG-focused. |
 | Block | Unsupported | Block layout is SVG-focused. |
 | C4 | Unsupported | C4 views remain SVG/headless-render output. |
+| Cynefin | Unsupported | No terminal projection has been admitted. |
+| Event Modeling | Unsupported | No terminal projection has been admitted. |
 | Info | Unsupported | Not useful as terminal diagram output today. |
+| Ishikawa | Unsupported | No terminal fishbone projection has been admitted. |
 | Pie | Unsupported | No terminal pie/chart approximation yet. |
 | Quadrant | Unsupported | No terminal quadrant chart yet. |
 | Radar | Unsupported | No terminal radar approximation yet. |
+| Railroad | Unsupported | No terminal grammar-diagram projection has been admitted. |
 | Requirement | Unsupported | Requirement diagrams are SVG-focused today. |
 | Sankey | Unsupported | Flow widths are SVG-specific. |
 | Treemap | Unsupported | Rectangle packing is SVG-specific. |
+| Venn | Unsupported | No terminal set-overlap projection has been admitted. |
+| Wardley | Unsupported | No terminal map projection has been admitted. |
 | ZenUML | Unsupported | The family has a dedicated typed semantic model and SVG renderer, but no family-owned terminal projection has been admitted. It must not be translated through Sequence as an ASCII shortcut. |
 
 ## Playground Filtering
 
 The playground "ASCII supported" filter uses the runtime capability metadata when WASM is ready and
-a tracked fallback copy of the same support levels before WASM finishes loading. It still respects
+a tracked total fallback copy before WASM finishes loading. It still respects
 example-level readiness: a family can be generally supported while a specific example is hidden from
 the filter if the current ASCII renderer would omit important semantics. For example, basic
 `classDiagram` output is supported, including nested namespace containers. The preview and export
-UI show the same full, partial, or summary support label plus a concise limit for the active diagram
+UI show the derived full, partial, or summary label plus a concise limit for the active diagram
 type; namespace relationship scenes are still flagged as partial because their relationships render
 through an explicit `relations:` summary instead of routed lines through container boxes.
 

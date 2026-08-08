@@ -76,10 +76,22 @@ export const SUPPORTED_ASCII_DIAGRAMS = [
   "timeline",
   "treeView",
   "xychart",
-  "zenuml",
 ] as const;
 
 export type AsciiDiagramType = (typeof SUPPORTED_ASCII_DIAGRAMS)[number];
+
+export const DIAGRAMMATIC_ASCII_DIAGRAMS = [
+  "class",
+  "er",
+  "flowchart",
+  "sequence",
+  "state",
+  "treeView",
+  "xychart",
+] as const satisfies readonly AsciiDiagramType[];
+
+export type DiagrammaticAsciiDiagramType =
+  (typeof DIAGRAMMATIC_ASCII_DIAGRAMS)[number];
 
 export const BINDING_STATUS_CODE_NAMES = [
   "MERMAN_OK",
@@ -211,6 +223,11 @@ export interface LintBindingOptions {
 }
 
 export type AsciiSupportLevel = "full" | "partial" | "summary" | "unsupported";
+export type AsciiSemanticCoverage = "full" | "partial" | null;
+export type AsciiPrimaryProjection =
+  | "diagrammatic"
+  | "structured_text"
+  | "none";
 
 export type AsciiEvidenceKind =
   | "mermaid_ascii_oracle"
@@ -229,8 +246,11 @@ export interface AsciiCapabilityEvidence {
 export interface AsciiCapability {
   diagram_type: AsciiDiagramType | string;
   display_name: string;
+  semantic_coverage: AsciiSemanticCoverage;
+  primary_projection: AsciiPrimaryProjection;
+  structured_text_fallback: boolean;
+  /** Compatibility view derived from semantic coverage and the primary projection. */
   support_level: AsciiSupportLevel;
-  summary_fallback: boolean;
   supported_semantics: string[];
   limits: string[];
   evidence: AsciiCapabilityEvidence[];

@@ -9,7 +9,7 @@ Alpha.4 is a broad prerelease upgrade, not a drop-in patch. It expands the Merma
 11.16, admits all 35 diagram families, replaces implementation-oriented feature bundles with
 observable capabilities, splits the browser SDK into standalone packages, and finalizes separate
 native transport contracts: C/Flutter use ABI 3, Android uses direct JNI transport API 1, and
-Apple/Python use UniFFI API 3.
+Apple/Python use UniFFI API 4.
 
 The practical upgrade rule is:
 
@@ -160,6 +160,10 @@ deliberately wants two independent WASM runtimes. See the
 [browser package guide](../../platforms/web/README.md) for initialization, Worker, and packaging
 details.
 
+The matching alpha.4 browser wrapper and WASM artifact report transport API `4`. This revision
+replaces the ASCII capability field `summary_fallback` with `structured_text_fallback` and adds
+`semantic_coverage` plus `primary_projection`; upgrade the package and its artifact together.
+
 `renderSvg()` still returns the Mermaid-parity SVG string. For direct insertion, prefer
 `renderSvgToElement(target, source)`, which uses the navigable policy and checks the target's actual
 owner document before replacement. Manual hosts must replace `assertSafeSvgForDom()` as follows:
@@ -173,7 +177,7 @@ owner document before replacement. Manual hosts must replace `assertSafeSvgForDo
 ## Native ABI migration
 
 Alpha.4 C and Flutter hosts use ABI 3. Android uses direct JNI transport API 1; Python and Apple
-use UniFFI API 3 from the matching native artifact. Upgrade each language package and native
+use UniFFI API 4 from the matching native artifact. Upgrade each language package and native
 artifact together; do not mix an alpha.3 generated wrapper with an alpha.4 library. C/Flutter hosts
 validate ABI 3 and the generated runtime catalog, while Android validates its transport catalog
 handshake before requesting optional outputs, resources, or host text measurement.
@@ -198,6 +202,9 @@ different wire boundary:
   during each engine constructor and return after the engine owns parsed state.
 - UniFFI services now use a zero-argument immutable builder. Replace positional optional service
   arguments with `MermanEngineServices().with_*` chains. Each builder call returns a new bundle.
+- UniFFI API 4 replaces `MermanAsciiCapability.summary_fallback` with
+  `structured_text_fallback` and adds `semantic_coverage` plus `primary_projection`. Use those two
+  dimensions for product filtering; `support_level` is only their derived compatibility label.
 - Use generic `execute` for the complete operation envelope, or the named helpers and `*Result`
   binary helpers when convenient. UniFFI output plans are open records: switch on `kind`, use the
   optional known payload, and preserve `raw_json`/`rawJson` for future kinds.

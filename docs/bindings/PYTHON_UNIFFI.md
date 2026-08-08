@@ -67,7 +67,7 @@ merman.require_text_measurement_protocol_version(
     merman.TEXT_MEASUREMENT_PROTOCOL_VERSION
 )
 print(api.package_version())
-assert api.binding_api_version() == 3
+assert api.binding_api_version() == 4
 catalog = merman.get_runtime_catalog(api)
 capabilities = catalog["capabilities"]
 assert catalog["schema_version"] == 1
@@ -133,11 +133,16 @@ The optional `options_json` argument uses the shared contract documented in
 `Merman.lint_rule_catalog()` returns structured analyzer rule metadata, including evidence
 references, for editor settings, diagnostic explanations, or LSP rule configuration.
 
-The direct UniFFI binding API is `3`, independently versioned from the native C ABI and the
+The direct UniFFI binding API is `4`, independently versioned from the native C ABI and the
 text-measurement protocol. `get_runtime_catalog()` reads one atomic catalog, validates
 flat schema `1`, artifact identity, sorted stable IDs, and local output/operation and
 adapter/capability relations before returning it. Do not infer availability from Cargo feature
 names or copy an ID table into Python; inspect the loaded catalog instead.
+
+When migrating from API 3, regenerate the Python projection and replace
+`MermanAsciiCapability.summary_fallback` with `structured_text_fallback`. Use
+`semantic_coverage` and `primary_projection` for product logic; `support_level` remains only a
+derived compatibility label.
 
 ## Text Measurement
 

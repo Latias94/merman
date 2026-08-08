@@ -76,6 +76,7 @@ const asciiRuntimeExportNames = [
   "renderAscii",
   "asciiSupportedDiagrams",
   "asciiCapabilities",
+  "asciiDiagrammaticDiagrams",
 ];
 
 const asciiWasmExportNames = [
@@ -148,6 +149,7 @@ export const packageStableValueExportNames = [
   "SUPPORTED_THEMES",
   "SUPPORTED_DIAGRAMS",
   "SUPPORTED_ASCII_DIAGRAMS",
+  "DIAGRAMMATIC_ASCII_DIAGRAMS",
   "BINDING_STATUS_CODE_NAMES",
   "isThemeName",
   "isDiagramType",

@@ -13,6 +13,7 @@ import {
 import {
   EDITOR_SCHEMA_VERSION,
   EDITOR_WORKER_PROTOCOL,
+  MERMAN_WEB_TRANSPORT_API_VERSION,
 } from "../src/editor/protocol";
 import {
   monitorBrowserErrors,
@@ -138,6 +139,7 @@ test("the generated editor worker returns identity-bound packed tokens for all 3
       recordWidth,
       tokenEquivalenceEvidence,
       tokenTypeNames,
+      transportApiVersion,
       workerUrl,
     }) => {
       interface ResponseMessage {
@@ -205,7 +207,7 @@ test("the generated editor worker returns identity-bound packed tokens for all 3
       const ready = await request("initialize");
       if (
         ready.type !== "ready" ||
-        ready.transportApiVersion !== 3 ||
+        ready.transportApiVersion !== transportApiVersion ||
         ready.editorSchema !== editorSchema ||
         ready.legendDigest !== digest
       ) {
@@ -474,6 +476,7 @@ test("the generated editor worker returns identity-bound packed tokens for all 3
       recordWidth: SEMANTIC_TOKEN_RECORD_WIDTH,
       tokenTypeNames: [...SEMANTIC_TOKEN_TYPE_LSP_NAMES],
       tokenEquivalenceEvidence,
+      transportApiVersion: MERMAN_WEB_TRANSPORT_API_VERSION,
       workerUrl: languageWorkerUrl,
     },
   );

@@ -2149,19 +2149,29 @@ public func FfiConverterTypeMermanTextMeasurer_lower(_ value: MermanTextMeasurer
 public struct MermanAsciiCapability: Equatable, Hashable {
     public var diagramType: String
     public var displayName: String
+    public var semanticCoverage: String?
+    public var primaryProjection: String
+    public var structuredTextFallback: Bool
+    /**
+     * Compatibility view derived from semantic coverage and the primary projection.
+     */
     public var supportLevel: String
-    public var summaryFallback: Bool
     public var supportedSemantics: [String]
     public var limits: [String]
     public var evidence: [MermanAsciiCapabilityEvidence]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(diagramType: String, displayName: String, supportLevel: String, summaryFallback: Bool, supportedSemantics: [String], limits: [String], evidence: [MermanAsciiCapabilityEvidence]) {
+    public init(diagramType: String, displayName: String, semanticCoverage: String?, primaryProjection: String, structuredTextFallback: Bool,
+        /**
+         * Compatibility view derived from semantic coverage and the primary projection.
+         */supportLevel: String, supportedSemantics: [String], limits: [String], evidence: [MermanAsciiCapabilityEvidence]) {
         self.diagramType = diagramType
         self.displayName = displayName
+        self.semanticCoverage = semanticCoverage
+        self.primaryProjection = primaryProjection
+        self.structuredTextFallback = structuredTextFallback
         self.supportLevel = supportLevel
-        self.summaryFallback = summaryFallback
         self.supportedSemantics = supportedSemantics
         self.limits = limits
         self.evidence = evidence
@@ -2185,8 +2195,10 @@ public struct FfiConverterTypeMermanAsciiCapability: FfiConverterRustBuffer {
             try MermanAsciiCapability(
                 diagramType: FfiConverterString.read(from: &buf),
                 displayName: FfiConverterString.read(from: &buf),
+                semanticCoverage: FfiConverterOptionString.read(from: &buf),
+                primaryProjection: FfiConverterString.read(from: &buf),
+                structuredTextFallback: FfiConverterBool.read(from: &buf),
                 supportLevel: FfiConverterString.read(from: &buf),
-                summaryFallback: FfiConverterBool.read(from: &buf),
                 supportedSemantics: FfiConverterSequenceString.read(from: &buf),
                 limits: FfiConverterSequenceString.read(from: &buf),
                 evidence: FfiConverterSequenceTypeMermanAsciiCapabilityEvidence.read(from: &buf)
@@ -2196,8 +2208,10 @@ public struct FfiConverterTypeMermanAsciiCapability: FfiConverterRustBuffer {
     public static func write(_ value: MermanAsciiCapability, into buf: inout [UInt8]) {
         FfiConverterString.write(value.diagramType, into: &buf)
         FfiConverterString.write(value.displayName, into: &buf)
+        FfiConverterOptionString.write(value.semanticCoverage, into: &buf)
+        FfiConverterString.write(value.primaryProjection, into: &buf)
+        FfiConverterBool.write(value.structuredTextFallback, into: &buf)
         FfiConverterString.write(value.supportLevel, into: &buf)
-        FfiConverterBool.write(value.summaryFallback, into: &buf)
         FfiConverterSequenceString.write(value.supportedSemantics, into: &buf)
         FfiConverterSequenceString.write(value.limits, into: &buf)
         FfiConverterSequenceTypeMermanAsciiCapabilityEvidence.write(value.evidence, into: &buf)
