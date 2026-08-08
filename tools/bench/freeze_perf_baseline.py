@@ -22,13 +22,20 @@ from typing import Any, Protocol
 
 from compare_mermaid_renderers import best_effort_cpu_model
 from compare_self import cargo_prebuild_command
+from corpus_utils import load_corpus as load_typed_corpus
+from corpus_utils import resolve_lane_selector
 from native_memory import (
     MemoryContractError,
     suite_exit_code,
     validate_response,
     validate_sample_matrix,
 )
-from run_native_memory import DriverContractError, analyze_samples, memory_recipe
+from run_native_memory import (
+    DriverContractError,
+    analyze_samples,
+    load_owner_contract,
+    memory_recipe,
+)
 
 
 SCHEMA_VERSION = 1
@@ -45,6 +52,7 @@ DEFAULT_SOURCE_PATHS = (
     "crates/merman/benches/pipeline.rs",
     "crates/merman/benches/native_memory.rs",
     "crates/merman/benches/native_memory/allocator.rs",
+    "crates/merman/benches/flowchart_svg_label_memory.rs",
     "tools/bench/compare_mermaid_renderers.py",
     "tools/bench/compare_self.py",
     "tools/bench/corpus_utils.py",
@@ -57,9 +65,10 @@ DEFAULT_MANIFEST_PATHS = ("Cargo.toml", "crates/merman/Cargo.toml")
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _GIT_OBJECT_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
-_MEMORY_METRICS = frozenset(
+_REQUIRED_MEMORY_METRICS = frozenset(
     {"allocation_count", "allocated_bytes", "peak_growth_bytes"}
 )
+_SUPPORTED_MEMORY_METRICS = _REQUIRED_MEMORY_METRICS | {"retained_growth_bytes"}
 _PROCESS_LIFECYCLES = frozenset({"fresh-process", "reused-process"})
 _ENGINE_LIFECYCLES = frozenset(
     {"cold-engine", "reused-engine", "not-applicable"}
@@ -229,7 +238,7 @@ _REPORT_LANE_FIELDS = frozenset(
         "semantic_output_dimensions",
     }
 )
-_REPORT_INPUT_FIELDS = frozenset(
+_REPORT_INPUT_BASE_FIELDS = frozenset(
     {
         "workspace_manifest",
         "package_manifest",
@@ -238,6 +247,7 @@ _REPORT_INPUT_FIELDS = frozenset(
         "owner_contract",
     }
 )
+_REPORT_INPUT_V2_FIELDS = _REPORT_INPUT_BASE_FIELDS | {"probe_inputs"}
 _REPORT_OWNER_CONTRACT_FIELDS = frozenset({"path", "bytes", "sha256", "value"})
 _REPORT_RECIPE_FIELDS = frozenset(
     {
@@ -284,19 +294,6 @@ _REPORT_MATRIX_FIELDS = frozenset(
         "executable_sha256",
     }
 )
-_OWNER_CONTRACT_FIELDS = frozenset(
-    {
-        "schema_version",
-        "lane_id",
-        "workload",
-        "evidence_class",
-        "candidate_admission",
-        "generator",
-        "metrics",
-    }
-)
-
-
 class ManifestError(ValueError):
     """A baseline manifest or one of its evidence inputs is untrustworthy."""
 
@@ -1178,50 +1175,11 @@ def _validate_report_source(
         raise ManifestError("native-memory report clean status digest is not empty")
 
 
-def _validate_owner_contract(value: object, lane: Mapping[str, object]) -> None:
-    contract = _object(value, "native-memory owner contract")
-    _fields(contract, _OWNER_CONTRACT_FIELDS, "native-memory owner contract")
-    if contract["schema_version"] != 1:
-        raise ManifestError("native-memory owner contract schema_version must be 1")
-    if contract["lane_id"] != lane["id"] or contract["workload"] != lane["workload"]:
-        raise ManifestError("native-memory owner contract identity differs from the corpus lane")
-    evidence_class = contract["evidence_class"]
-    candidate_admission = contract["candidate_admission"]
-    valid_evidence_identity = (
-        evidence_class == "infrastructure-smoke" and candidate_admission is False
-    ) or (evidence_class == "candidate-bound" and candidate_admission is True)
-    if not valid_evidence_identity:
-        raise ManifestError(
-            "native-memory owner evidence class and candidate-admission flag disagree"
-        )
-    generator = _object(contract["generator"], "native-memory owner contract.generator")
-    _fields(
-        generator,
-        frozenset({"id", "nodes_per_scale", "edges_per_scale"}),
-        "native-memory owner contract.generator",
-    )
-    if generator["id"] != lane["workload"]:
-        raise ManifestError("native-memory generator id differs from the corpus workload")
-    _integer(generator["nodes_per_scale"], "generator.nodes_per_scale", minimum=1)
-    _integer(generator["edges_per_scale"], "generator.edges_per_scale", minimum=1)
-    metrics = _object(contract["metrics"], "native-memory owner contract.metrics")
-    if frozenset(metrics) != _MEMORY_METRICS:
-        raise ManifestError("native-memory owner contract metrics differ")
-    for metric, raw_bounds in metrics.items():
-        bounds = _object(raw_bounds, f"native-memory owner contract.metrics.{metric}")
-        _fields(
-            bounds,
-            frozenset({"slope_cap", "max_scale_cap"}),
-            f"native-memory owner contract.metrics.{metric}",
-        )
-        _number(bounds["slope_cap"], f"{metric}.slope_cap", positive=True)
-        _number(bounds["max_scale_cap"], f"{metric}.max_scale_cap", positive=True)
-
-
 def _validate_report_schedule(
     report: Mapping[str, object],
     method: Mapping[str, object],
     lane: Mapping[str, object],
+    owner_contract: Mapping[str, object],
     executable_sha256: str,
 ) -> tuple[dict[str, object], list[Mapping[str, object]]]:
     schedule = _list(report["schedule"], "native-memory report.schedule")
@@ -1262,8 +1220,29 @@ def _validate_report_schedule(
                 _string(request["invocation_id"], f"{context}.request.invocation_id")
                 _sha256(str(request["nonce"]) * 2, f"{context}.request.nonce-expanded")
                 response = _object(entry["response"], f"{context}.response")
+                expected_response_schema = 1
+                semantic_contract = None
+                workload_units_per_scale = None
+                if owner_contract["schema_version"] == 2:
+                    probe = _object(
+                        owner_contract["probe"],
+                        "native-memory owner contract.probe",
+                    )
+                    expected_response_schema = int(probe["protocol_schema_version"])
+                    semantic_contract = _object(
+                        owner_contract["semantic_response"],
+                        "native-memory owner contract.semantic_response",
+                    )
+                    scale_contract = _object(
+                        owner_contract["scale"],
+                        "native-memory owner contract.scale",
+                    )
+                    workload_units_per_scale = int(
+                        scale_contract["units_per_scale"]
+                    )
+                if response.get("schema_version") != expected_response_schema:
+                    raise ManifestError(f"{context}.response schema_version drift")
                 for field in (
-                    "schema_version",
                     "lane_id",
                     "mode",
                     "scale",
@@ -1306,6 +1285,8 @@ def _validate_report_schedule(
                         + "\n",
                         "",
                         expected=expected_echo,
+                        semantic_contract=semantic_contract,
+                        workload_units_per_scale=workload_units_per_scale,
                     )
                 except (MemoryContractError, TypeError, ValueError) as error:
                     raise ManifestError(
@@ -1412,6 +1393,13 @@ def _inspect_native_memory_report(
     report_lane = _object(report["lane"], "native-memory report.lane")
     _fields(report_lane, _REPORT_LANE_FIELDS, "native-memory report.lane")
     lane = _find_lane(corpus, str(report_lane["id"]))
+    try:
+        typed_corpus = load_typed_corpus(corpus_path)
+        typed_lane = resolve_lane_selector(typed_corpus, str(report_lane["id"]))
+    except (OSError, TypeError, ValueError) as error:
+        raise ManifestError(
+            f"native-memory corpus lane cannot be validated by the driver: {error}"
+        ) from error
     lane_fields = (
         "id",
         "public_operation",
@@ -1433,11 +1421,20 @@ def _inspect_native_memory_report(
         raise ManifestError("native-memory corpus lane uses the wrong transport")
     if tuple(lane["size_vector"]) != MEMORY_SCALES:
         raise ManifestError("native-memory corpus lane uses the wrong size vector")
-    if frozenset(lane["measurement_metrics"]) != _MEMORY_METRICS:
-        raise ManifestError("native-memory corpus lane uses the wrong allocator metrics")
+    lane_metrics = frozenset(lane["measurement_metrics"])
+    if not _REQUIRED_MEMORY_METRICS.issubset(
+        lane_metrics
+    ) or not lane_metrics.issubset(_SUPPORTED_MEMORY_METRICS):
+        raise ManifestError(
+            "native-memory corpus lane uses unsupported allocator metrics"
+        )
 
     inputs = _object(report["inputs"], "native-memory report.inputs")
-    _fields(inputs, _REPORT_INPUT_FIELDS, "native-memory report.inputs")
+    input_fields = frozenset(inputs)
+    if not _REPORT_INPUT_BASE_FIELDS.issubset(
+        input_fields
+    ) or not input_fields.issubset(_REPORT_INPUT_V2_FIELDS):
+        raise ManifestError("native-memory report.inputs fields differ")
     frozen_cargo_inputs = (
         ("workspace_manifest", workspace_manifest_record),
         ("package_manifest", package_manifest_record),
@@ -1485,10 +1482,20 @@ def _inspect_native_memory_report(
         str(owner_input["path"]),
         "native-memory report.inputs.owner_contract.path",
     )
-    owner_value = load_strict_json(owner_path)
+    try:
+        owner_value = load_owner_contract(owner_path, lane=typed_lane)
+    except (DriverContractError, OSError, TypeError, ValueError) as error:
+        raise ManifestError(
+            f"native-memory owner contract is invalid: {error}"
+        ) from error
     if owner_value != owner_input["value"]:
         raise ManifestError("native-memory report embedded owner contract differs from its file")
-    _validate_owner_contract(owner_value, lane)
+    expected_input_fields = (
+        _REPORT_INPUT_V2_FIELDS
+        if owner_value["schema_version"] == 2
+        else _REPORT_INPUT_BASE_FIELDS
+    )
+    _fields(inputs, expected_input_fields, "native-memory report.inputs")
     if owner_value["evidence_class"] != evidence_class:
         raise ManifestError(
             "native-memory report evidence_class differs from the owner contract"
@@ -1510,6 +1517,64 @@ def _inspect_native_memory_report(
     )
     if expected_owner != owner_path:
         raise ManifestError("native-memory report used a different owner contract")
+
+    probe_input_records: list[Mapping[str, object]] = []
+    if owner_value["schema_version"] == 2:
+        probe = _object(
+            owner_value["probe"], "native-memory owner contract.probe"
+        )
+        probe_manifest, _ = _resolve_repo_file(
+            root,
+            str(probe["package_manifest"]),
+            "native-memory owner contract.probe.package_manifest",
+        )
+        package_input = _validate_report_file_record(
+            inputs["package_manifest"], "native-memory report.inputs.package_manifest"
+        )
+        _same_resolved_path(
+            root,
+            package_input["path"],
+            probe_manifest,
+            "native-memory report.inputs.package_manifest",
+        )
+
+        expected_probe_inputs = _list(
+            probe["inputs"], "native-memory owner contract.probe.inputs"
+        )
+        reported_probe_inputs = _list(
+            inputs["probe_inputs"], "native-memory report.inputs.probe_inputs"
+        )
+        if len(reported_probe_inputs) != len(expected_probe_inputs):
+            raise ManifestError(
+                "native-memory report probe input count differs from the owner contract"
+            )
+        for index, (raw_expected, raw_reported) in enumerate(
+            zip(expected_probe_inputs, reported_probe_inputs, strict=True)
+        ):
+            context = f"native-memory report.inputs.probe_inputs[{index}]"
+            expected = _object(
+                raw_expected,
+                f"native-memory owner contract.probe.inputs[{index}]",
+            )
+            reported = _validate_report_file_record(raw_reported, context)
+            expected_path, _ = _resolve_repo_file(
+                root,
+                str(expected["path"]),
+                f"native-memory owner contract.probe.inputs[{index}].path",
+            )
+            observed = _record_file(root, expected_path, context)
+            if observed["sha256"] != expected["sha256"]:
+                raise ManifestError(
+                    f"{context}.sha256 differs from the owner contract"
+                )
+            _record_matches_report_input(
+                root,
+                reported,
+                expected_path,
+                observed,
+                context,
+            )
+            probe_input_records.append(observed)
 
     for field in ("package", "bench", "target_dir"):
         _string(recipe[field], f"native-memory report.recipe.{field}")
@@ -1543,6 +1608,8 @@ def _inspect_native_memory_report(
         root,
         target_dir=target_dir,
         toolchain=requested_toolchain,
+        corpus=corpus_path,
+        contract=owner_value,
     )
     canonical_fields = {
         "package": canonical_recipe.package,
@@ -1643,7 +1710,11 @@ def _inspect_native_memory_report(
         raise ManifestError("native-memory executable digest differs from the report")
 
     matrix, responses = _validate_report_schedule(
-        report, method, lane, str(executable["sha256"])
+        report,
+        method,
+        lane,
+        owner_value,
+        str(executable["sha256"]),
     )
     analysis = _object(report["analysis"], "native-memory report.analysis")
     _fields(analysis, _REPORT_ANALYSIS_FIELDS, "native-memory report.analysis")
@@ -1718,6 +1789,7 @@ def _inspect_native_memory_report(
         "executable_record": executable_record,
         "recipe": native_recipe,
         "lane": lane,
+        "probe_input_records": probe_input_records,
         "host": host,
     }
 
@@ -1977,6 +2049,15 @@ def freeze_baseline(
         corpus_record,
         *fixtures,
         _object(report_evidence["owner_contract_record"], "owner contract record"),
+        *[
+            _object(record, f"native-memory probe input[{index}]")
+            for index, record in enumerate(
+                _list(
+                    report_evidence["probe_input_records"],
+                    "native-memory probe inputs",
+                )
+            )
+        ],
     ]
     _require_tracked(
         probe,
@@ -2215,6 +2296,20 @@ def _verify_manifest_artifacts(
         expected_commit=str(repository["commit"]),
         expected_tree=str(repository["tree"]),
         host=expected_host,
+    )
+    _require_tracked(
+        probe,
+        [
+            _object(record, f"native-memory probe input[{index}]")
+            for index, record in enumerate(
+                _list(
+                    evidence["probe_input_records"],
+                    "native-memory probe inputs",
+                )
+            )
+        ],
+        commit=str(repository["commit"]),
+        context="native-memory probe input",
     )
     comparisons = (
         (

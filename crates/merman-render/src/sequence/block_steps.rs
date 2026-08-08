@@ -1,6 +1,7 @@
 use super::activation::SequenceActivationState;
+use super::message_metrics::{SequenceMessageMetricView, SequenceMessageOwner};
 use super::messages::{
-    SequenceMessageBoundMetrics, SequenceMessageHorizontalContext, SequenceMessageHorizontalModel,
+    SequenceMessageHorizontalContext, SequenceMessageHorizontalModel,
     sequence_message_horizontal_model,
 };
 use super::metrics::{
@@ -38,7 +39,7 @@ pub(super) struct BlockStepPlanContext<'a> {
     pub(super) note_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
-    pub(super) message_bound_metrics: &'a [Option<SequenceMessageBoundMetrics>],
+    pub(super) message_metrics: SequenceMessageMetricView<'a>,
 }
 
 pub(super) struct SequenceBlockPlan {
@@ -153,7 +154,7 @@ struct BlockFrameWidthContext<'a> {
     note_text_style: &'a TextStyle,
     math_config: &'a MermaidConfig,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
-    message_bound_metrics: &'a [Option<SequenceMessageBoundMetrics>],
+    message_metrics: SequenceMessageMetricView<'a>,
 }
 
 #[derive(Clone, Copy)]
@@ -181,7 +182,7 @@ impl<'a> BlockStepPlanContext<'a> {
             note_text_style: self.note_text_style,
             math_config: self.math_config,
             math_renderer: self.math_renderer,
-            message_bound_metrics: self.message_bound_metrics,
+            message_metrics: self.message_metrics,
         }
     }
 }
@@ -415,10 +416,8 @@ fn calculate_sequence_block_bounds(
                 measurer: ctx.measurer,
                 msg_text_style: ctx.msg_text_style,
                 premeasured_bound: ctx
-                    .message_bound_metrics
-                    .get(message_index)
-                    .copied()
-                    .flatten(),
+                    .message_metrics
+                    .get(SequenceMessageOwner::from_model_index(message_index), msg),
             },
         ) else {
             continue;
@@ -435,7 +434,7 @@ fn calculate_sequence_block_bounds(
 mod tests {
     use super::{
         BlockBoundsSummary, BlockFrameWidthContext, BlockHorizontalBounds, BlockStepContext,
-        block_label_step, calculate_sequence_block_bounds,
+        SequenceMessageMetricView, block_label_step, calculate_sequence_block_bounds,
     };
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
     use merman_core::MermaidConfig;
@@ -502,7 +501,7 @@ mod tests {
                 note_text_style: &note_style,
                 math_config: &math_config,
                 math_renderer: None,
-                message_bound_metrics: &[],
+                message_metrics: SequenceMessageMetricView::empty(),
             },
         )
     }
@@ -665,7 +664,7 @@ mod tests {
                 note_text_style: &text_style,
                 math_config: &math_config,
                 math_renderer: None,
-                message_bound_metrics: &[],
+                message_metrics: SequenceMessageMetricView::empty(),
             },
             BlockStepContext {
                 block_base_step_empty: 0.0,

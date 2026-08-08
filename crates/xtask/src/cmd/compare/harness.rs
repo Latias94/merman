@@ -2337,8 +2337,10 @@ mod tests {
 
     #[test]
     fn semantic_label_evidence_counts_remain_orthogonal_to_dom_evidence() {
-        let mut evidence = CompareEvidence::default();
-        evidence.semantic_label_expected_fixture_comparisons = 1;
+        let mut evidence = CompareEvidence {
+            semantic_label_expected_fixture_comparisons: 1,
+            ..CompareEvidence::default()
+        };
 
         evidence.record_comparison(FixtureComparisonEvidence {
             raw_source: RawSourceComparison::SvgDom,

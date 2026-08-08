@@ -4,6 +4,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.merman.examples.runMermanSmoke
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.json.JSONArray
+import org.json.JSONObject
 
 @RunWith(AndroidJUnit4::class)
 class MermanInstrumentedSmokeTest {
@@ -14,10 +16,11 @@ class MermanInstrumentedSmokeTest {
     @Test
     fun parsesStructuredResourceFailureDetails() {
         val error = MermanException(
-            """{"version":1,"ok":false,"code":10,"code_name":"MERMAN_RESOURCE_LIMIT_EXCEEDED","kind":"generic","capability_id":null,"details":{"resource":{"limit_id":"max_embedded_image_bytes","phase":"embedded_image_decode","actual":5,"max":4,"profile":"constrained"}},"message":"embedded image is too large"}""",
+            """{"version":1,"ok":false,"code":10,"code_name":"MERMAN_RESOURCE_LIMIT_EXCEEDED","kind":"generic","capability_id":null,"details":{"resource":{"cause":"ceiling","limit_id":"max_embedded_image_bytes","phase":"embedded_image_decode","actual":5,"max":4,"profile":"constrained"}},"message":"embedded image is too large"}""",
         )
 
         check(error.resourceDetails == MermanResourceErrorDetails(
+            cause = "ceiling",
             limitId = "max_embedded_image_bytes",
             phase = "embedded_image_decode",
             actual = 5,

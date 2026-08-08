@@ -1,6 +1,6 @@
 use crate::MermaidConfig;
 use crate::generated::dompurify_defaults;
-use lol_html::{HtmlRewriter, RewriteStrSettings, Settings, element};
+use lol_html::{HtmlRewriter, RewriteStrSettings, Settings, doc_comments, doc_text, element};
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::sync::OnceLock;
@@ -656,10 +656,33 @@ fn ascii_case_insensitive_starts_with(haystack: &[u8], start: usize, needle: &[u
         })
 }
 
+fn escape_html_text_chunk_greater_than<S: SanitizeOutputSink>(
+    input: &str,
+    sink: &S,
+) -> Result<Option<String>, S::Error> {
+    let greater_than_count = input.bytes().filter(|byte| *byte == b'>').count();
+    if greater_than_count == 0 {
+        return Ok(None);
+    }
+
+    let growth = greater_than_count.saturating_mul("&gt;".len() - 1);
+    let output_len = sink.checked_output_len(input.len(), growth)?;
+    let mut output = sink.string_with_capacity(output_len)?;
+    let mut remaining = input;
+    while let Some(pos) = remaining.find('>') {
+        output.push_str(&remaining[..pos]);
+        output.push_str("&gt;");
+        remaining = &remaining[pos + 1..];
+    }
+    output.push_str(remaining);
+    Ok(Some(output))
+}
+
 fn dompurify_like_sanitize_html<S: SanitizeOutputSink>(
     text: &str,
     cfg: &DompurifyEffectiveConfig,
     sink: &S,
+    escape_text_node_greater_than: bool,
 ) -> Result<String, SanitizeFailure<S::Error>> {
     if text.is_empty() {
         return Ok(String::new());
@@ -725,7 +748,31 @@ fn dompurify_like_sanitize_html<S: SanitizeOutputSink>(
 
     let text = escape_stray_lt(text, sink)?;
 
-    let rewrite_str_settings = RewriteStrSettings::new()
+    let mut text_output_error = None;
+    let mut rewrite_str_settings =
+        RewriteStrSettings::new().append_document_content_handler(doc_comments!(|comment| {
+            comment.remove();
+            Ok(())
+        }));
+    if escape_text_node_greater_than {
+        rewrite_str_settings =
+            rewrite_str_settings.append_document_content_handler(doc_text!(|text| {
+                if text_output_error.is_some() {
+                    text.remove();
+                    return Ok(());
+                }
+                match escape_html_text_chunk_greater_than(text.as_str(), sink) {
+                    Ok(Some(escaped)) => text.set_str(escaped),
+                    Ok(None) => {}
+                    Err(error) => {
+                        text_output_error = Some(error);
+                        text.remove();
+                    }
+                }
+                Ok(())
+            }));
+    }
+    let rewrite_str_settings = rewrite_str_settings
         .append_element_content_handler(element!("script", |el| {
             el.remove();
             Ok(())
@@ -816,6 +863,9 @@ fn dompurify_like_sanitize_html<S: SanitizeOutputSink>(
     if let Some(error) = sink_error {
         return Err(SanitizeFailure::Output(error));
     }
+    if let Some(error) = text_output_error {
+        return Err(SanitizeFailure::Output(error));
+    }
     String::from_utf8(output).map_err(|_| SanitizeFailure::InvalidUtf8Output)
 }
 
@@ -834,7 +884,7 @@ fn try_remove_script<S: SanitizeOutputSink>(
         &MermaidConfig::from_value(serde_json::Value::Object(serde_json::Map::new())),
         false,
     );
-    dompurify_like_sanitize_html(text, &cfg, sink)
+    dompurify_like_sanitize_html(text, &cfg, sink, false)
 }
 
 fn effective_html_labels(config: &MermaidConfig) -> bool {
@@ -918,6 +968,24 @@ pub fn sanitize_text(text: &str, config: &MermaidConfig) -> String {
     sanitize_text_with_sink(text, config, &StringOutputSink).unwrap_or_default()
 }
 
+/// Runs Mermaid's DOMPurify serialization phase even when the input has no literal tag.
+///
+/// Flowchart shape rendering calls `sanitizeText(decodeEntities(label), config)` after FlowDB has
+/// already sanitized the label. Entity-authored text therefore still passes through a DOM, whose
+/// serialization preserves comparison delimiters as entities before SVG word tokenization.
+pub(crate) fn sanitize_text_as_html_fragment(text: &str, config: &MermaidConfig) -> String {
+    if text.is_empty() {
+        return String::new();
+    }
+
+    let sink = StringOutputSink;
+    let Ok(text) = sanitize_more(text, config, &sink) else {
+        return String::new();
+    };
+    let cfg = dompurify_effective_config(config, true);
+    dompurify_like_sanitize_html(&text, &cfg, &sink, true).unwrap_or_default()
+}
+
 /// Sanitizes text through a caller-owned output sink.
 ///
 /// Parser ambiguity always fails closed. Resource-aware callers should implement a sink that
@@ -947,7 +1015,7 @@ pub fn sanitize_text_with_sink<S: SanitizeOutputSink>(
     }
 
     let cfg = dompurify_effective_config(config, true);
-    dompurify_like_sanitize_html(&t, &cfg, sink)
+    dompurify_like_sanitize_html(&t, &cfg, sink, false)
 }
 
 pub fn sanitize_text_or_array(
@@ -1401,6 +1469,41 @@ mod tests {
         assert!(out.contains(">B<br"));
         assert!(out.ends_with(">C"));
         assert!(!out.contains("&lt;br"));
+    }
+
+    #[test]
+    fn html_fragment_sanitization_serializes_entity_authored_angle_text() {
+        let cfg = MermaidConfig::from_value(json!({
+            "htmlLabels": false,
+            "flowchart": { "htmlLabels": false }
+        }));
+        let source = "x &lt; y and y > z";
+
+        assert_eq!(sanitize_text(source, &cfg), source);
+        assert_eq!(
+            sanitize_text_as_html_fragment(source, &cfg),
+            "x &lt; y and y &gt; z"
+        );
+        assert_eq!(
+            sanitize_text_as_html_fragment(r#"<span title="a > b">x > y</span>"#, &cfg),
+            r#"<span title="a > b">x &gt; y</span>"#
+        );
+    }
+
+    #[test]
+    fn html_fragment_sanitization_removes_comments_without_losing_following_text() {
+        let cfg = MermaidConfig::from_value(json!({
+            "htmlLabels": false,
+            "flowchart": { "htmlLabels": false }
+        }));
+
+        assert_eq!(
+            sanitize_text_as_html_fragment(
+                r#"<span title="a > b">a > c</span><!-- x > y --><span>b</span>"#,
+                &cfg,
+            ),
+            r#"<span title="a > b">a &gt; c</span><span>b</span>"#
+        );
     }
 
     #[test]

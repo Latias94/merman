@@ -13,9 +13,9 @@
         },
         {
           "id": "frequency",
-          "x": 414.08,
+          "x": 414.078,
           "y": 83.0,
-          "width": 192.16,
+          "width": 192.156,
           "height": 102.0,
           "is_cluster": false
         }
@@ -25,7 +25,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 510.16,
+        "max_x": 510.156,
         "max_y": 158.0
       }
     }

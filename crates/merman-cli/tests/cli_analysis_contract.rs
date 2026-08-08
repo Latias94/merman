@@ -428,6 +428,8 @@ fn cli_lint_reports_markdown_fence_path_from_stdin_file_name() {
         "lint should fail on invalid markdown"
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    // Flowchart keeps an incomplete edge's EOF insertion point before the diagram body's trailing
+    // newline, so the fenced-document projection remains at the end of the edge line.
     assert!(
         stdout.contains("notes.md:4:6"),
         "unexpected lint output:\n{stdout}"

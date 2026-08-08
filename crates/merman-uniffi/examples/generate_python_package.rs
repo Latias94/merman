@@ -249,7 +249,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ensure_init_file_creates_stable_managed_shim() {
+    fn ensure_init_file_refreshes_owned_files() {
         let temp = tempfile::tempdir().expect("create tempdir");
         let module_dir = temp.path().join("merman");
         fs::create_dir_all(&module_dir).expect("create module dir");

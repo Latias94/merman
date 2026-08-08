@@ -2265,8 +2265,10 @@ fn collect_element_presentation(
 ) -> Result<(), SemanticLabelError> {
     for attribute in element.attributes() {
         let is_unqualified = attribute.namespace().is_none();
-        if (is_unqualified && matches!(attribute.name(), "style" | "class"))
-            || (is_unqualified && excluded_attributes.contains(&attribute.name()))
+        let is_excluded_unqualified_attribute = is_unqualified
+            && (matches!(attribute.name(), "style" | "class")
+                || excluded_attributes.contains(&attribute.name()));
+        if is_excluded_unqualified_attribute
             || (presentation_attributes_only
                 && !is_inherited_presentation_attribute(attribute.name()))
         {

@@ -118,14 +118,16 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         let owner = ctx.svg_label_sidecar.and_then(|sidecar| {
             sidecar.edge_owner(edge.id.as_str(), ctx.swimlane_direction.is_some())
         });
-        crate::flowchart::FlowchartSvgLabelRenderPlan::new(
+        crate::flowchart::FlowchartSvgLabelRenderPlan::new_with_metrics_style(
             ctx.svg_label_sidecar,
             owner,
             label_text,
             ctx.measurer,
             &ctx.text_style,
+            edge_metrics_style.as_ref(),
             Some(FLOWCHART_EDGE_LABEL_WRAP_WIDTH),
             true,
+            crate::flowchart::FlowchartSvgWidthMode::Bbox,
         )
     });
     let label_text_plain: Cow<'_, str> = prepared_svg_label.as_ref().map_or_else(
@@ -509,8 +511,9 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     if ctx.node_html_labels {
         let label_html =
             flowchart_label_html(label_text, label_type, ctx.config, ctx.math_renderer);
-        // `createText` maps only the first literal `fill:` occurrence to `color:` before the copied
-        // label style is applied to the synthetic node's HTML span and div.
+        // `createText` maps only the first literal `fill:` occurrence to `color:` before applying
+        // the copied label style to the HTML span and div. Later fixed declarations override the
+        // corresponding inline properties exactly as Mermaid's chained D3 `.style()` calls do.
         let html_label_style = first_label_style.replacen("fill:", "color:", 1);
         let mut div_style = String::new();
         if !html_label_style.trim().is_empty() {
@@ -546,6 +549,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         label_text_style.as_ref(),
         Some(ctx.wrapping_width),
         true,
+        crate::flowchart::FlowchartSvgWidthMode::Bbox,
     );
     let wrapped = prepared.wrapped_lines();
     write_flowchart_svg_source_word_lines(out, &wrapped, true);

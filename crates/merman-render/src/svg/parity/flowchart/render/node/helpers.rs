@@ -263,7 +263,7 @@ pub(super) fn resolve_node_render_info<'a>(
     node_id: &str,
 ) -> Option<ResolvedNodeRenderInfo<'a>> {
     if let Some(sg) = ctx.subgraphs_by_id.get(node_id)
-        && sg.nodes.is_empty()
+        && !ctx.subgraph_has_children(node_id)
     {
         let subgraph_index = ctx.subgraph_index_by_id.get(node_id).copied()?;
         return Some(ResolvedNodeRenderInfo {

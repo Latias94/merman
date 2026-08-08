@@ -1228,7 +1228,9 @@ fn token_equivalence_artifact(
         family_cases.push(case);
     }
 
-    let recovery_source = "flowchart TD\n  Before -->\n  After --> Done\n".to_string();
+    // Keep the incomplete edge at EOF. Flowchart line endings are whitespace, so a following
+    // node statement can legally become the edge target under Mermaid-compatible semantics.
+    let recovery_source = "flowchart TD\n  Before -->\n".to_string();
     let recovery = token_equivalence_case(
         &analyzer,
         "flowchart-incomplete-edge".to_string(),

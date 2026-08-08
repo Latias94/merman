@@ -858,6 +858,7 @@ dependencies = [
 name = "merman-bindings-core"
 version = "0.8.0-alpha.4"
 dependencies = [
+ "base64",
  "merman",
  "serde",
  "serde_json",

@@ -44,6 +44,12 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
             node_text_style.as_ref(),
             Some(ctx.wrapping_width),
             true,
+            crate::flowchart::flowchart_node_svg_width_mode(
+                label.text,
+                label.label_type,
+                ctx.node_wrap_mode,
+                common.shape,
+            ),
         )
     });
     let label_text_plain = prepared_svg_label.as_ref().map_or_else(

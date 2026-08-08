@@ -156,8 +156,9 @@ pub(crate) fn flowchart_effective_text_style_for_classes<'a>(
     )
 }
 
-/// Mermaid applies edge classes first, followed by the concatenated default and per-edge styles.
-/// Wrapping still uses the temporary base style, while this resolved style owns the final bbox.
+/// Mermaid first compiles edge classes and then applies the concatenated `linkStyle default`
+/// and per-edge declarations. The resulting style is applied after SVG line wrapping, but it owns
+/// the final text bbox used by the layout graph.
 pub(crate) fn flowchart_effective_edge_label_text_style<'a>(
     base: &'a TextStyle,
     class_defs: &IndexMap<String, Vec<String>>,
@@ -186,8 +187,9 @@ pub(crate) fn flowchart_effective_edge_label_text_style<'a>(
     style
 }
 
-/// Mermaid's Swimlane adapter copies only the first concatenated edge label style onto the
-/// synthetic `labelRect` node. Classes and later style entries remain on the original edge.
+/// Mermaid's Swimlane adapter moves an edge label onto a fresh `labelRect` node and copies only
+/// the first entry from the already-concatenated default/edge `labelStyle` array. Classes and later
+/// style entries remain on the original edge and must not affect the label node's measurement.
 pub(crate) fn flowchart_swimlane_label_rect_text_style<'a>(
     base: &'a TextStyle,
     default_edge_styles: &[String],

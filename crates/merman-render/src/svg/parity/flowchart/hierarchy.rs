@@ -54,9 +54,9 @@ pub(in crate::svg::parity) fn flowchart_cluster_root_offsets(
     let title_y_shift = title_total_margin / 2.0;
 
     let my_parent = flowchart_effective_parent(ctx, cid);
-    let has_empty_sibling = ctx.subgraphs_by_id.iter().any(|(id, sg)| {
+    let has_empty_sibling = ctx.subgraphs_by_id.keys().any(|id| {
         *id != cid
-            && sg.nodes.is_empty()
+            && !ctx.subgraph_has_children(id)
             && ctx.layout_clusters_by_id.contains_key(id)
             && flowchart_effective_parent(ctx, id) == my_parent
     });
@@ -164,7 +164,7 @@ pub(in crate::svg::parity) fn flowchart_root_children_nodes<'a>(
     let cluster_ids: std::collections::HashSet<&str> = ctx
         .subgraphs_by_id
         .iter()
-        .filter(|(_, sg)| !sg.nodes.is_empty())
+        .filter(|(id, _)| ctx.subgraph_has_children(id))
         .map(|(k, _)| *k)
         .collect();
     let mut out = Vec::new();
@@ -177,8 +177,8 @@ pub(in crate::svg::parity) fn flowchart_root_children_nodes<'a>(
             out.push(n.id.as_str());
         }
     }
-    for (id, sg) in &ctx.subgraphs_by_id {
-        if !sg.nodes.is_empty() {
+    for id in ctx.subgraphs_by_id.keys() {
+        if ctx.subgraph_has_children(id) {
             continue;
         }
         let parent = flowchart_effective_parent(ctx, id);
@@ -230,9 +230,7 @@ pub(in crate::svg::parity) fn flowchart_root_children_nodes<'a>(
         let mut cur = ctx.parent.get(id).copied();
         while let Some(p) = cur {
             let keep = if parent_cluster.is_some() {
-                ctx.subgraphs_by_id
-                    .get(p)
-                    .is_some_and(|sg| !sg.nodes.is_empty())
+                ctx.subgraphs_by_id.contains_key(p) && ctx.subgraph_has_children(p)
             } else {
                 ctx.recursive_clusters.contains(p)
             };

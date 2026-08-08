@@ -245,6 +245,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
                 title_text_style.as_ref(),
                 None,
                 true,
+                crate::flowchart::FlowchartSvgWidthMode::Bbox,
             );
             let source_lines = prepared.wrapped_lines();
             write_flowchart_svg_source_word_lines(out, &source_lines, true);

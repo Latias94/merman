@@ -63,6 +63,31 @@ pub enum ResourceLimitPhase {
     SvgPostprocess,
 }
 
+/// Stable reason why a resource check failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ResourceLimitCause {
+    /// The requested work exceeded the configured policy ceiling.
+    Ceiling,
+    /// Computing cumulative work overflowed the platform counter.
+    ArithmeticOverflow,
+}
+
+impl ResourceLimitCause {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Ceiling => "ceiling",
+            Self::ArithmeticOverflow => "arithmetic_overflow",
+        }
+    }
+}
+
+impl std::fmt::Display for ResourceLimitCause {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
 impl ResourceLimitPhase {
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -483,6 +508,7 @@ impl RenderResourcePolicy {
         }
         let limit = ResourceLimitId::Render(id);
         Err(ResourceLimitExceeded {
+            cause: ResourceLimitCause::Ceiling,
             phase,
             limit: limit.as_str(),
             actual,
@@ -533,6 +559,7 @@ impl RenderResourcePolicy {
         ) && complexity.nesting_depth > MAX_RECURSIVE_MODEL_TREE_DEPTH
         {
             return Err(ResourceLimitExceeded {
+                cause: ResourceLimitCause::Ceiling,
                 phase: ResourceLimitPhase::LayoutModel,
                 limit: "typed_model_tree_depth",
                 actual: complexity.nesting_depth,
@@ -585,6 +612,7 @@ impl RenderResourcePolicy {
         )?;
         if elements > MAX_RESVG_TREE_NODES {
             return Err(ResourceLimitExceeded {
+                cause: ResourceLimitCause::Ceiling,
                 phase: ResourceLimitPhase::SvgPostprocess,
                 limit: SVG_BACKEND_TREE_NODES_HARD_CAP_ID,
                 actual: elements,
@@ -600,6 +628,7 @@ impl RenderResourcePolicy {
             return Ok(());
         }
         Err(ResourceLimitExceeded {
+            cause: ResourceLimitCause::Ceiling,
             phase: ResourceLimitPhase::SvgPostprocess,
             limit: SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID,
             actual: tree_depth,
@@ -888,10 +917,11 @@ fn accumulation_overflow(
 ) -> ResourceLimitExceeded {
     let limit = ResourceLimitId::Render(id);
     ResourceLimitExceeded {
+        cause: ResourceLimitCause::ArithmeticOverflow,
         phase,
         limit: limit.as_str(),
         actual: usize::MAX,
-        max: policy.value(limit).unwrap_or(usize::MAX - 1),
+        max: policy.value(limit).unwrap_or(usize::MAX),
         profile: policy.profile(),
         explicit_overrides: policy
             .explicit_overrides()
@@ -902,6 +932,7 @@ fn accumulation_overflow(
 
 fn svg_byte_limit_error(policy: RenderResourcePolicy, maximum: usize) -> ResourceLimitExceeded {
     ResourceLimitExceeded {
+        cause: ResourceLimitCause::Ceiling,
         phase: ResourceLimitPhase::SvgOutput,
         limit: ResourceLimitId::MaxSvgBytes.as_str(),
         actual: maximum.saturating_add(1),
@@ -914,10 +945,10 @@ fn svg_byte_limit_error(policy: RenderResourcePolicy, maximum: usize) -> Resourc
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("resource limit exceeded during {phase}: {limit} actual={actual} max={max}")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ResourceLimitExceeded {
+    pub cause: ResourceLimitCause,
     pub phase: ResourceLimitPhase,
     pub limit: &'static str,
     pub actual: usize,
@@ -926,9 +957,26 @@ pub struct ResourceLimitExceeded {
     pub explicit_overrides: Vec<ResourceLimitOverride>,
 }
 
+impl std::fmt::Display for ResourceLimitExceeded {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "resource limit exceeded during {}: {}",
+            self.phase, self.limit
+        )?;
+        if self.cause == ResourceLimitCause::ArithmeticOverflow {
+            write!(formatter, " cause={}", self.cause)?;
+        }
+        write!(formatter, " actual={} max={}", self.actual, self.max)
+    }
+}
+
+impl std::error::Error for ResourceLimitExceeded {}
+
 impl ResourceLimitExceeded {
     fn from_input(policy: &RenderResourcePolicy, error: InputResourceLimitExceeded) -> Self {
         Self {
+            cause: ResourceLimitCause::Ceiling,
             phase: match error.phase {
                 InputResourceLimitPhase::Source => ResourceLimitPhase::Source,
                 InputResourceLimitPhase::Model => ResourceLimitPhase::LayoutModel,

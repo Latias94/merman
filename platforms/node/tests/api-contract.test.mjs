@@ -151,7 +151,7 @@ test("operation errors preserve structured resource details", () => {
   const resource = {
     limit_id: "max_embedded_image_bytes",
     phase: "embedded_image_decode",
-    actual: 5,
+    actual: "18446744073709551615",
     max: 4,
     profile: "constrained",
   };
@@ -1453,6 +1453,9 @@ test("public TypeScript declarations cover the generic operation API", () => {
   );
   assert.doesNotMatch(declarations, /"deterministic"\s*\|\s*"native"/);
   assert.match(declarations, /class MermanInvalidTransportError extends MermanError/);
+  assert.match(declarations, /type MermanResourceCount\s*=\s*number\s*\|\s*string/);
+  assert.match(declarations, /readonly actual:\s*MermanResourceCount/);
+  assert.match(declarations, /readonly max:\s*MermanResourceCount/);
   assert.match(declarations, /\breadonly runtimeCatalog:/);
   assert.match(declarations, /\boptionsJson\?: string;/);
   assert.match(declarations, /provider_ids:\s*string\[\]/);

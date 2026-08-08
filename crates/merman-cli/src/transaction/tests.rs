@@ -180,7 +180,7 @@ fn transaction_plan_indexes_every_target_across_representative_cardinalities() {
     for artifact_count in [0, 1, 16, 64, 256] {
         let mut entries = (0..artifact_count)
             .map(|index| {
-                let target = relative(temp.path(), &format!("artifact-{index:03}.svg"));
+                let target = relative(temp.path(), format!("artifact-{index:03}.svg"));
                 if index % 2 == 0 {
                     TransactionEntryPlan::write(TransactionRole::Artifact, target)
                 } else {
@@ -207,7 +207,7 @@ fn stage_target_lookup_count_is_one_per_request_at_scale() {
     for target_count in [1_usize, 16, 64, 256] {
         let temp = tempfile::tempdir().unwrap();
         let mut targets = (0..target_count.saturating_sub(1))
-            .map(|index| relative(temp.path(), &format!("artifact-{index:03}.svg")))
+            .map(|index| relative(temp.path(), format!("artifact-{index:03}.svg")))
             .collect::<Vec<_>>();
         targets.push(relative(temp.path(), ".merman-manifest.json"));
 

@@ -193,8 +193,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 532.438px; background-color: white;",
-        "view_box": "-224.343 -107 532.438 345",
+        "style": "max-width: 532.563px; background-color: white;",
+        "view_box": "-224.343 -107 532.563 345",
         "width": "100%",
         "height": null
       },
@@ -333,8 +333,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 480.063px; background-color: white;",
-        "view_box": "-182.963 -165.963 480.063 462.926",
+        "style": "max-width: 481.359px; background-color: white;",
+        "view_box": "-182.963 -165.963 481.359 462.926",
         "width": "100%",
         "height": null
       },
@@ -845,7 +845,7 @@
       "fixture": "upstream_composites",
       "descendants": "parity",
       "input_sha256": "23bd1112adeff625409491c02d0d520ace9a4fc1e10988bdca47587aa11497dd",
-      "upstream_svg_sha256": "8ae76842706ad520242ed011fd6c98c6f22f67d44c897c2e212dd430c5da5a08",
+      "upstream_svg_sha256": "b94a3d5bec4420435d7a42dce6ae6615b4f211ab715270ae602bbb58304bf4de",
       "upstream": {
         "style": "max-width: 145.594px; background-color: white;",
         "view_box": "-5 -29 145.594 58",
@@ -865,7 +865,7 @@
       "fixture": "upstream_composites_2",
       "descendants": "parity",
       "input_sha256": "ba2944fc213ae7ce76064b995b0298582efab26b3196d9339392b4f62fd816ee",
-      "upstream_svg_sha256": "b2f96c1794b3f3a3ab13b20a8d6c005afb6db3e019ed2dc3acd422ff077bc3e9",
+      "upstream_svg_sha256": "9b5eaada3e2ff31c2ca321ffb4ad338ddb67026995dbd7e83795061ab1db8210",
       "upstream": {
         "style": "max-width: 176.812px; background-color: white;",
         "view_box": "-5 -37 176.813 74",
@@ -905,7 +905,7 @@
       "fixture": "upstream_composites_4",
       "descendants": "parity",
       "input_sha256": "ce8fe59dc70e2515cb9fba2d15a54c1b9b9ba85b5fd63e0305f1f1cfd1001540",
-      "upstream_svg_sha256": "4671a85bec5b8447f7a7bd32a7509d7af73159cbf780df95f191b851ac9f2101",
+      "upstream_svg_sha256": "c06b965b865cae3eda62a9d7330e933bd0da5eec2d32f02a392b13dd56ec0f70",
       "upstream": {
         "style": "max-width: 153.125px; background-color: white;",
         "view_box": "-5 -57 153.125 114",
@@ -1085,7 +1085,7 @@
       "fixture": "upstream_docs_block_nested_blocks_009",
       "descendants": "parity",
       "input_sha256": "bd54fe8aea77a0c8cac4f1c6390ea744f26b3e7eab1142d5c8cb238ead92a7d4",
-      "upstream_svg_sha256": "67ab1450ee36059148811b9a26ca826af6898b07d60bf557e8a16cccbf8039db",
+      "upstream_svg_sha256": "dcfb210df49d0f643f84e459989d3795a20a6dbf9e7a152276c25b7106b38734",
       "upstream": {
         "style": "max-width: 302.25px; background-color: white;",
         "view_box": "-5 -29 302.25 58",
@@ -1385,7 +1385,7 @@
       "fixture": "upstream_pkgtests_block_spec_013",
       "descendants": "parity",
       "input_sha256": "51f0b471f773d3cce2bbeaca66d40f2bf1a403e3b1455d1ebf3156500f02b1f8",
-      "upstream_svg_sha256": "1951c0db7d6a3a80926f61eb2516355191e4958dc76d787e0fb560a3ddcc0103",
+      "upstream_svg_sha256": "cb9bdc32d7e0b67c9ccd9c5f272ed97af7e375268a10e710717c9e80b385ba70",
       "upstream": {
         "style": "max-width: 145.594px; background-color: white;",
         "view_box": "-5 -29 145.594 58",
@@ -1405,7 +1405,7 @@
       "fixture": "upstream_pkgtests_block_spec_014",
       "descendants": "parity",
       "input_sha256": "60db2c95fdf469943bbd9185d44c9b61fd54adfc88f4fbe4ad5ea0f88715ab29",
-      "upstream_svg_sha256": "9e79a9c2c820bec8f812ef9913cdfa38877a1f5a8f4c08646e33d6ae324ab5b6",
+      "upstream_svg_sha256": "e7b178b441e327a93d3701e04deb1d646bd75e186031af303a7242e3b4ba82d9",
       "upstream": {
         "style": "max-width: 176.812px; background-color: white;",
         "view_box": "-5 -37 176.813 74",
@@ -1445,7 +1445,7 @@
       "fixture": "upstream_pkgtests_block_spec_016",
       "descendants": "parity",
       "input_sha256": "eedbf989d18839cb49ab2e40124263cceba7f1d330189ebd209ce01b5e59ecad",
-      "upstream_svg_sha256": "fc6608ec4c304b9a734cf94d9217a1909bd00fb3e846b50b88dc29f30c95406f",
+      "upstream_svg_sha256": "4994f98c24064bf37c65ae538772c7f804f5dee439ea1cc4b0631e044c7b78b3",
       "upstream": {
         "style": "max-width: 153.125px; background-color: white;",
         "view_box": "-5 -57 153.125 114",
@@ -8342,6 +8342,26 @@
     },
     {
       "diagram": "flowchart",
+      "fixture": "stress_flowchart_nbsp_source_provenance_079",
+      "descendants": "parity",
+      "input_sha256": "0becf0e6ed97d506099f5d59c9676af62c9d3dfc16518471d83553fbf8b49625",
+      "upstream_svg_sha256": "af5c17457598d20820d0798e194dbe7486f2b466148c5fd973e2e49d4388c44d",
+      "upstream": {
+        "style": "max-width: 209.578px; background-color: white;",
+        "view_box": "0 0 209.578 1440",
+        "width": "100%",
+        "height": null
+      },
+      "local": {
+        "style": "max-width: 209.562px; background-color: white;",
+        "view_box": "0 0 209.563 1440",
+        "width": "100%",
+        "height": null
+      },
+      "evidence_id": "browser-root-bbox"
+    },
+    {
+      "diagram": "flowchart",
       "fixture": "stress_flowchart_nested_subgraphs_titles_001",
       "descendants": "parity",
       "input_sha256": "9ec03eb59b9bcbbaba1ebf2e5b17fb6386b6f26c590253b438c1d17db4cad6f0",
@@ -8562,6 +8582,46 @@
     },
     {
       "diagram": "flowchart",
+      "fixture": "stress_flowchart_subgraph_title_with_br_like_text_049",
+      "descendants": "parity",
+      "input_sha256": "09971d12879b54852c3c5052ee8bc07b582b887c44428bab03664e739ae14404",
+      "upstream_svg_sha256": "01580016219678cfe20fbcaa11a0c543812f0d921dd9f6aedb779e79345fcc26",
+      "upstream": {
+        "style": "max-width: 167.812px; background-color: white;",
+        "view_box": "0 0 167.813 274",
+        "width": "100%",
+        "height": null
+      },
+      "local": {
+        "style": "max-width: 172.641px; background-color: white;",
+        "view_box": "0 0 172.641 274",
+        "width": "100%",
+        "height": null
+      },
+      "evidence_id": "browser-root-bbox"
+    },
+    {
+      "diagram": "flowchart",
+      "fixture": "stress_flowchart_svg_label_entity_provenance_080",
+      "descendants": "parity",
+      "input_sha256": "97f50a262a6d0a4ad2abd210f5669eda8f99751e2030239c3b3ce28d09ee44fc",
+      "upstream_svg_sha256": "d7f52e48e5824f649af9bd4f656311a643ea3f56c772da85cad1a8b8c4d2494a",
+      "upstream": {
+        "style": "max-width: 499.023px; background-color: white;",
+        "view_box": "0 0 499.023 2571.8",
+        "width": "100%",
+        "height": null
+      },
+      "local": {
+        "style": "max-width: 498.98px; background-color: white;",
+        "view_box": "0 0 498.98 2571.8",
+        "width": "100%",
+        "height": null
+      },
+      "evidence_id": "browser-root-bbox"
+    },
+    {
+      "diagram": "flowchart",
       "fixture": "stress_flowchart_svglike_escaped_tags_025",
       "descendants": "parity",
       "input_sha256": "4ba55d5793d9470302ffb39389f8d2f66b52cfbfc0bf81182948f4e9ceb4554d",
@@ -8593,8 +8653,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 792.246px; background-color: white;",
-        "view_box": "0 0 792.246 244",
+        "style": "max-width: 797.074px; background-color: white;",
+        "view_box": "0 0 797.074 244",
         "width": "100%",
         "height": null
       },
@@ -11385,10 +11445,10 @@
       "fixture": "upstream_cypress_flowchart_v2_spec_4023_should_render_html_labels_with_images_and_or_text_correctly_042",
       "descendants": "parity",
       "input_sha256": "4023a2758e3a3ba0df67ab1f06dba896aa25d28ae11dc7dc9bb16effef819e50",
-      "upstream_svg_sha256": "e4e5d6efa35595046817fd49b70c0429de3ce3403aec94c640358d6be855ded2",
+      "upstream_svg_sha256": "dc882b10b42e41ba1cb4677c0ea696ad21cac8105bd5e4085fff6835111dc4d3",
       "upstream": {
-        "style": "max-width: 413.734px; background-color: white;",
-        "view_box": "0 0 413.734 198",
+        "style": "max-width: 671.344px; background-color: white;",
+        "view_box": "0 0 671.344 630",
         "width": "100%",
         "height": null
       },
@@ -13933,8 +13993,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 1447.75px; background-color: white;",
-        "view_box": "0 0 1447.746 582.488",
+        "style": "max-width: 1452.57px; background-color: white;",
+        "view_box": "0 0 1452.574 586.109",
         "width": "100%",
         "height": null
       },
@@ -14993,8 +15053,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 1391.86px; background-color: white;",
-        "view_box": "0 -50 1391.859 448",
+        "style": "max-width: 1396.69px; background-color: white;",
+        "view_box": "0 -50 1396.688 448",
         "width": "100%",
         "height": null
       },
@@ -18213,8 +18273,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 216.734px; background-color: white;",
-        "view_box": "0 0 216.734 198",
+        "style": "max-width: 221.562px; background-color: white;",
+        "view_box": "0 0 221.563 198",
         "width": "100%",
         "height": null
       },
@@ -18533,8 +18593,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 1554.78px; background-color: white;",
-        "view_box": "0 0 1554.781 156.297",
+        "style": "max-width: 1564.44px; background-color: white;",
+        "view_box": "0 0 1564.438 161.125",
         "width": "100%",
         "height": null
       },
@@ -23193,8 +23253,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 627.852px; background-color: white;",
-        "view_box": "5 5 627.852 363.492",
+        "style": "max-width: 623.038px; background-color: white;",
+        "view_box": "5 5 623.038 363.42",
         "width": "100%",
         "height": null
       },
@@ -23753,8 +23813,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 383.434px; background-color: white;",
-        "view_box": "5 5 383.434 546.614",
+        "style": "max-width: 412.418px; background-color: white;",
+        "view_box": "5 5 412.418 545.757",
         "width": "100%",
         "height": null
       },
@@ -23773,8 +23833,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 645.854px; background-color: white;",
-        "view_box": "5 5 645.854 485.216",
+        "style": "max-width: 638.221px; background-color: white;",
+        "view_box": "5 5 638.221 489.946",
         "width": "100%",
         "height": null
       },
@@ -24013,8 +24073,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 496.166px; background-color: white;",
-        "view_box": "5 5 496.166 112",
+        "style": "max-width: 553.494px; background-color: white;",
+        "view_box": "5 5 553.494 112",
         "width": "100%",
         "height": null
       },
@@ -27213,8 +27273,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 350.906px; background-color: white;",
-        "view_box": "0 0 350.906 412",
+        "style": "max-width: 346.078px; background-color: white;",
+        "view_box": "0 0 346.078 412",
         "width": "100%",
         "height": null
       },
@@ -27305,7 +27365,7 @@
       "fixture": "stress_state_comments_and_weird_spacing_018",
       "descendants": "parity",
       "input_sha256": "b4a217698bab2386ec1028bef33745979b49cb2202f528978b32a22576760ce9",
-      "upstream_svg_sha256": "9192a3757821738f5ca1a546aee9f92fe35efafdaef6864b48db9ba2c9814201",
+      "upstream_svg_sha256": "1de4c098f74215ecd0c5f1f0346316ccc8333594ea50fc0c8c1791b418f873d1",
       "upstream": {
         "style": "max-width: 262.539px; background-color: white;",
         "view_box": "0 0 262.539 1506",
@@ -27745,7 +27805,7 @@
       "fixture": "stress_state_nested_composite_concurrency_001",
       "descendants": "parity",
       "input_sha256": "c1cce900de81950a5ae2843134c921109beeb64ffe8d8263fa4a938f482b4fa6",
-      "upstream_svg_sha256": "80cdd1a973cbb7f5d06962800a8fb538ec80e7e6036dc7ba5ec496254602d920",
+      "upstream_svg_sha256": "dac8bba02abad1d4b217226ba7947571f785681564014faaeed913965004489c",
       "upstream": {
         "style": "max-width: 273.297px; background-color: white;",
         "view_box": "0 0 273.297 1622",
@@ -27965,7 +28025,7 @@
       "fixture": "stress_state_three_way_concurrency_013",
       "descendants": "parity",
       "input_sha256": "3bcf2c6f2ddc8af35c586651138f92add10a1d66dcb9db88b3125b60f1c78758",
-      "upstream_svg_sha256": "9826de027652a4e407f02e8e7358244012d3f21199a1459dbd70858b99373e91",
+      "upstream_svg_sha256": "4aa645f45cbe5e3e78bc120e140c8e46d929c4b02a6a5b53cc94bcb63fbbffbb",
       "upstream": {
         "style": "max-width: 573.277px; background-color: white;",
         "view_box": "0 0 573.277 1657",
@@ -28185,7 +28245,7 @@
       "fixture": "upstream_cypress_statediagram_spec_should_render_concurrency_states_019",
       "descendants": "parity",
       "input_sha256": "9f89077abf2d4b9012fc7ea76028ca784b69b9d13d232a5f3bdd234f4a13c547",
-      "upstream_svg_sha256": "86c720ca5f4fa54a273207f966baba245108da7b26b62918f6e1f50b061ff9aa",
+      "upstream_svg_sha256": "9b56fb1023aa654fbb2b22a3352f3bcf9921d2bc02641937bc5131f745cf46d8",
       "upstream": {
         "style": "max-width: 1183.24px; background-color: white;",
         "view_box": "0 0 1183.242 573",
@@ -28685,7 +28745,7 @@
       "fixture": "upstream_cypress_statediagram_v2_spec_v2_should_render_concurrency_states_020",
       "descendants": "parity",
       "input_sha256": "0f823c07d492e2e9246b228c40aaa636e2883da17270f7a258de1823193db7e9",
-      "upstream_svg_sha256": "778dac650016c8445b25bccd3c33fd86fb5b4afa7a342713d4221c532db91bf9",
+      "upstream_svg_sha256": "355f0b8c9296dd22703ac5ec794f855856d54ec75cca919c15536ce06dd9bb63",
       "upstream": {
         "style": "max-width: 1183.24px; background-color: white;",
         "view_box": "0 0 1183.242 573",
@@ -28885,7 +28945,7 @@
       "fixture": "upstream_docs_statediagram_concurrency_030",
       "descendants": "parity",
       "input_sha256": "17d68bbfe39896a12f203e29a754680b1a71aab56d3644f705e46edffee2fdbb",
-      "upstream_svg_sha256": "cd6bad130336dae7c1da74c9b67d9ee18cf24eaf1ebae2a1d7df0ff7b30dadb1",
+      "upstream_svg_sha256": "64c51a3cf21d676e7afdd3d1f6488043c12c7b5d479cc626e24165504b47b99f",
       "upstream": {
         "style": "max-width: 1193.72px; background-color: white;",
         "view_box": "0 0 1193.719 573",
@@ -29565,7 +29625,7 @@
       "fixture": "upstream_pkgtests_statediagram_spec_022",
       "descendants": "parity",
       "input_sha256": "ec222ca4739d2ecd7e6db0fcda2c6231b2f0865507d124df3ef85f677daae601",
-      "upstream_svg_sha256": "9ef5e692149639cf5a7b83ff8be865aaaed9c4ab95c8a2f933cb80151bc82db9",
+      "upstream_svg_sha256": "6d1ba0cc5c9d813f8e1f9f82e41a7682ec465870e6fc516aab63f45e068ab85d",
       "upstream": {
         "style": "max-width: 1183.24px; background-color: white;",
         "view_box": "0 0 1183.242 573",
@@ -29585,7 +29645,7 @@
       "fixture": "upstream_pkgtests_statediagram_spec_023",
       "descendants": "parity",
       "input_sha256": "e95f0da71e585eea7b36dd21497e267b917002c47017b49bbc263b71c4da2c21",
-      "upstream_svg_sha256": "434f92aad69f67be62d1577b81417aedf6e84746d80f846e78f7be79cf0da5ae",
+      "upstream_svg_sha256": "d2ef606eb299f7680b3452421d12234e67ba02a19685928ff337ab0ea165c033",
       "upstream": {
         "style": "max-width: 715.344px; background-color: white;",
         "view_box": "0 0 715.344 409",
@@ -29945,7 +30005,7 @@
       "fixture": "upstream_pkgtests_statediagram_v2_spec_022",
       "descendants": "parity",
       "input_sha256": "123c2ba2cac6a749e14b023acc2bd8fab2a051f8c84922734076eebe4e5b09e6",
-      "upstream_svg_sha256": "865c0f233d9befcc5b57a0705583772ae083d932b32747c0db5e6cf79533ec36",
+      "upstream_svg_sha256": "d2494e78a4c6d1f03024f05b5a4ebf65266601efe52dbc0cf5c3a5cc799a578c",
       "upstream": {
         "style": "max-width: 1183.24px; background-color: white;",
         "view_box": "0 0 1183.242 573",
@@ -29965,7 +30025,7 @@
       "fixture": "upstream_pkgtests_statediagram_v2_spec_023",
       "descendants": "parity",
       "input_sha256": "a4b17bc451d573dbad7c7636388ce555071565ce71158831623dbd844d70c468",
-      "upstream_svg_sha256": "69ec03b358d1b761a97e321284750f95e83b9235bff79effde7d2d27d405261e",
+      "upstream_svg_sha256": "db4753a0d9d2e5fca6f03bda9c297985e7f8eb68e424f65e2acdbe234b70535a",
       "upstream": {
         "style": "max-width: 715.344px; background-color: white;",
         "view_box": "0 0 715.344 409",
@@ -30105,7 +30165,7 @@
       "fixture": "upstream_stateDiagram_concurrent_state_minimal_spec",
       "descendants": "parity",
       "input_sha256": "4feab66e91540a6eb9060a9168f475afda0b48967c39945ab4f6129e17a8bab4",
-      "upstream_svg_sha256": "7e4de58ce4dbdcbab616bbc0a8c39010e1e86db9e13bcc639c369aab7b8d7a6b",
+      "upstream_svg_sha256": "acc47dcd7074cd2255a473a2003e2fb8359c3bd0f45cd2a4b105c0a7e7e7eaff",
       "upstream": {
         "style": "max-width: 715.344px; background-color: white;",
         "view_box": "0 0 715.344 409",
@@ -30125,7 +30185,7 @@
       "fixture": "upstream_stateDiagram_concurrent_state_spec",
       "descendants": "parity",
       "input_sha256": "e51115f5c87d6fb6ca7defd7656b62e6057a5bb8418b01c6987121c505487e14",
-      "upstream_svg_sha256": "9de94665f038af322f7b2e44d6d6a29acf9f3930fdef14adb108c0c5ff4f25db",
+      "upstream_svg_sha256": "0ad7f0c9f6781e5564f1cd7a2556bf4247d3131400732514ecffc13e34e4ab9a",
       "upstream": {
         "style": "max-width: 1183.24px; background-color: white;",
         "view_box": "0 0 1183.242 573",
@@ -30485,7 +30545,7 @@
       "fixture": "upstream_stateDiagram_v2_concurrent_state_spec",
       "descendants": "parity",
       "input_sha256": "ae25c53cc9432b727aaf5730153a8b3d9545da9c235127fd00d9021ca1cdc269",
-      "upstream_svg_sha256": "f624660e27fe341b9b00fd5ddef03140cb6fc595d3dbe1f1ba006ba58edcd993",
+      "upstream_svg_sha256": "341329fe9862897141b679d68f5dc5ee09e28d152b3ec42e8d0f5510c8e1c3b1",
       "upstream": {
         "style": "max-width: 1183.24px; background-color: white;",
         "view_box": "0 0 1183.242 573",

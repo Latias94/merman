@@ -10,6 +10,7 @@ mod boundary;
 mod edges;
 mod grid;
 mod left_right;
+mod same_rank;
 mod select;
 mod top_down;
 

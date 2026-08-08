@@ -109,7 +109,8 @@ fn valid_measurement(
     request: HostTextMeasurementRequest<'_>,
     ordinal: usize,
 ) -> HostTextMeasurement {
-    // Make callback order observable without materially changing the fixture geometry.
+    // Make callback order observable without materially changing the fixture geometry. If a
+    // cache ever suppresses or reorders host requests, every subsequent result will diverge.
     let state_delta = (ordinal % 7) as f64 / 32.0;
     let raw_width = request
         .text

@@ -190,19 +190,36 @@ The canonical signed metrics are:
 Positive values mean regression. The report retains every raw pair and computes deterministic
 paired-bootstrap bounds with suite-level 95% simultaneous coverage. For `R` comparable rows, the
 confidence family contains `2R` components: relative and absolute movement for every row. A
-Bonferroni adjustment gives each component confidence `1 - 0.05 / (2R)`. The ordinary end-to-end
-regression threshold is relative movement greater than 10 percent **and** absolute movement greater
-than 50 us.
-`--absolute-threshold-us 50` is an equivalent convenience form of
-`--absolute-threshold-ns 50000`.
+Bonferroni adjustment gives each component confidence `1 - 0.05 / (2R)`.
+
+The comparator's default screening budget is relative movement greater than 10 percent **and**
+absolute movement greater than 50 us. `--absolute-threshold-us 50` is an equivalent convenience
+form of `--absolute-threshold-ns 50000`. This default keeps unattended reports comparable; it is
+not a universal admission or rejection rule.
+
+Every decision-grade latency or throughput candidate must preregister one materiality contract
+before confirmation samples are collected:
+
+- the default joint `10% AND 50 us` budget when it represents the public operation;
+- the noise-derived low-latency formula below;
+- a documented interactive, throughput, or high-volume integration objective converted into
+  operation-level or workload-level bounds; or
+- a separate structural or memory claim whose public latency lane is explicitly a non-regression
+  control rather than the claimed benefit.
+
+A scenario-specific contract must name the public operation, expected call volume or user-visible
+budget, relative and absolute A/A noise floors, and the exact confirmation statistic. Thresholds
+must dominate the registered noise floor and cannot be selected or relaxed after looking at
+confirmation. A large ratio on a tiny private stage remains attribution evidence, not a public
+latency claim.
 
 #### Low-latency public operations
 
-The ordinary absolute threshold is structurally unreachable when the complete public-operation
-baseline is below 50 us and dominates the relative threshold for every baseline below 500 us. A
-candidate with a frozen baseline below 500 us may preregister this alternative only before
-collecting confirmation samples and only for a complete public operation with frozen base/head
-revisions and inputs. Private stages remain attribution evidence.
+The default absolute threshold is structurally unreachable when the complete public-operation
+baseline is below 50 us and can dominate the relative threshold for every baseline below 500 us. A
+candidate with a frozen baseline below 500 us may preregister this noise-derived alternative only
+before collecting confirmation samples and only for a complete public operation with frozen
+base/head revisions and inputs. Private stages remain attribution evidence.
 
 Let `B` be the frozen baseline estimate in nanoseconds per logical operation. Let `e_r` and `e_d` be
 the maximum absolute endpoints from the independent base and head A/A simultaneous 95% intervals
@@ -226,6 +243,13 @@ that adds persistent state or a large owner implementation must also preregister
 memory, throughput, or documented integration objective, keep cold and unaffected paths within
 their noise budgets, and remove the superseded production path and temporary oracle before
 acceptance.
+
+Conversely, an owner-local change may be accepted under a structural or memory claim without a
+latency label when it removes reachable repeated work, improves a user-controlled complexity bound,
+or reduces allocation/retained state with exact counters and semantic parity. The smaller and more
+obvious the implementation, the less additional machinery it should require. New caches, protocol
+machinery, persistent state, or broad abstractions require correspondingly stronger public
+latency, throughput, or memory evidence.
 
 Confirmation fixes `--bootstrap-resamples` at a decision-grade minimum of 10,000. Smaller values
 are permitted only for diagnostic exploration and can never produce a confirmation outcome;
@@ -287,6 +311,33 @@ unless a separate public-operation timing confirmation passes.
 Prefer existing correctness suites plus one combined adversarial scale test over a permanent
 fixture-specific benchmark. Delete candidate-only counters, lanes, contracts, and generators after
 rejection; retain infrastructure only when it serves a stable recurring contract.
+
+### Layout-work policy calibration
+
+A public layout-work ceiling is a host-safety policy, not a latency benchmark and not a Mermaid
+semantic constant. Calibrate it from a closed, hashed corpus plus a rule registered before the
+decision. The rule must state its absolute headroom, relative headroom, and rounding quantum so the
+selected ceiling is reproducible rather than chosen after observing the maximum fixture.
+
+The release probe and wrapper must establish all of the following:
+
+- a clean source revision, exact release feature closure, toolchain, executable hash, corpus
+  manifest hash, and aggregate member hash;
+- multiple fresh full-process runs with byte-identical reports;
+- the maximum corpus member, its source/output hashes, and the calculated headroom;
+- exact adjacent `W/W-1` admission behavior with a structured rejection payload;
+- a preregistered model-cardinality curve whose first rejection is established either by a
+  complete sequential accepted-prefix scan or by a reviewed monotonicity proof, scoped only to
+  that curve;
+- isolated semantic, layout, SVG, end-to-end, and failure probes, each in a fresh timeout-bound
+  managed process group with exit status and peak RSS; cleanup must not infer group exit from the
+  leader or inherited pipe state, and its regression suite must run in the performance-contract CI;
+- a committed evidence manifest that binds ignored raw reports and timing output by byte length and
+  SHA-256.
+
+These observations can admit an `accepted-structural` resource-policy decision. They do not admit a
+speedup, memory improvement, portable memory limit, or host SLO without a separate candidate-local
+A/B or memory contract.
 
 ### Report schema
 

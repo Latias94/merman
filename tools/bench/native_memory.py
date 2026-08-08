@@ -54,6 +54,8 @@ _PROTOCOL_FIELDS_BY_SCHEMA = {
         }
     ),
     2: _COMMON_PROTOCOL_FIELDS | frozenset({"workload_units", "semantic_output"}),
+    3: _COMMON_PROTOCOL_FIELDS
+    | frozenset({"workload_units", "semantic_output", "live_bytes_after_drop"}),
 }
 _ECHO_FIELDS = (
     "lane_id",
@@ -78,7 +80,12 @@ _COUNTER_FIELDS = (
     "peak_growth_bytes",
 )
 _ADJUSTED_METRICS = frozenset(
-    {"allocation_count", "allocated_bytes", "peak_growth_bytes"}
+    {
+        "allocation_count",
+        "allocated_bytes",
+        "peak_growth_bytes",
+        "retained_growth_bytes",
+    }
 )
 _OUTCOMES = frozenset(
     {"pass", "inconclusive", "failed_bound", "contract_failure"}
@@ -358,7 +365,7 @@ def _validate_payload(
         if semantic_contract is None or workload_units_per_scale is None:
             if require_semantic_contract:
                 raise MemoryContractError(
-                    "schema version 2 requires an owner semantic response contract"
+                    "semantic native-memory schemas require an owner response contract"
                 )
         else:
             _validate_semantic_output(
@@ -368,6 +375,8 @@ def _validate_payload(
             )
     for field in _COUNTER_FIELDS:
         _require_int(payload, field, minimum=0)
+    if schema_version >= 3:
+        _require_int(payload, "live_bytes_after_drop", minimum=0)
 
     _require_lowercase_hex(
         payload["executable_sha256"],
@@ -411,6 +420,16 @@ def _validate_payload(
             raise MemoryContractError(
                 "peak_growth_bytes does not match the live-byte snapshot"
             )
+        if schema_version >= 3:
+            live_after_drop = int(payload["live_bytes_after_drop"])
+            if live_after_drop > live_after:
+                raise MemoryContractError(
+                    "live_bytes_after_drop exceeds the measured live-byte checkpoint"
+                )
+            if live_after_drop > snapshot:
+                raise MemoryContractError(
+                    "live_bytes_after_drop exceeds the pre-operation snapshot"
+                )
 
     if expected is not None:
         expected_fields = frozenset(expected)
@@ -647,8 +666,23 @@ def paired_adjustments(
 
     values: dict[int, list[tuple[int, int, int]]] = {}
     for (scale, seed, repeat), pair in pairs.items():
-        operation = int(pair["operation"][metric])
-        zero = int(pair["zero"][metric])
+        if metric == "retained_growth_bytes":
+            retained_by_mode: dict[str, int] = {}
+            for mode in ("operation", "zero"):
+                snapshot = int(pair[mode]["snapshot_live_bytes"])
+                live_after = int(pair[mode]["live_bytes_after"])
+                if live_after < snapshot:
+                    raise MemoryContractError(
+                        "retained_growth_bytes cannot be derived when "
+                        f"{mode} live_bytes_after is below snapshot_live_bytes "
+                        f"at scale={scale}, seed={seed}, repeat={repeat}"
+                    )
+                retained_by_mode[mode] = live_after - snapshot
+            operation = retained_by_mode["operation"]
+            zero = retained_by_mode["zero"]
+        else:
+            operation = int(pair["operation"][metric])
+            zero = int(pair["zero"][metric])
         values.setdefault(scale, []).append((repeat, seed, operation - zero))
 
     return {

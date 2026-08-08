@@ -189,7 +189,7 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
             )?;
             let error = Error::diagram_parse_diagnostic(
                 meta.diagram_type.clone(),
-                lalrpop_parse_diagnostic(error.as_ref(), code.len()),
+                flowchart_parse_diagnostic(error.as_ref(), &code, &facts),
             );
             Err(crate::family::CombinedSemanticFailure::new(error, facts))
         }
@@ -721,9 +721,11 @@ fn flowchart_recovery_facts(
     error: &FlowchartAstParseError,
     control: &ParseControl,
 ) -> ParseControlResult<EditorSemanticFacts> {
-    let span = lalrpop_recovery_span(error, parser_code.len());
     let mut facts = recover_flowchart_editor_facts_from_tokens(parser_code, trace, control)?;
     collect_accessibility_directive_prefixes(accessibility_statements, &mut facts, control)?;
+    let span = flowchart_eof_recovery_insertion(error, parser_code, &facts)
+        .map(|insertion| SourceSpan::new(insertion, insertion))
+        .unwrap_or_else(|| lalrpop_recovery_span(error, parser_code.len()));
     facts.mark_recovered_from_parse_error(
         format!(
             "flowchart parser recovered after parse error: {}",
@@ -733,6 +735,37 @@ fn flowchart_recovery_facts(
     );
     control.checkpoint()?;
     Ok(facts)
+}
+
+fn flowchart_parse_diagnostic(
+    error: &FlowchartAstParseError,
+    code: &str,
+    facts: &EditorSemanticFacts,
+) -> crate::ParseDiagnostic {
+    let diagnostic = lalrpop_parse_diagnostic(error, code.len());
+    match flowchart_eof_recovery_insertion(error, code, facts) {
+        Some(insertion) => diagnostic.map_span(|_| SourceSpan::new(insertion, insertion)),
+        None => diagnostic,
+    }
+}
+
+fn flowchart_eof_recovery_insertion(
+    error: &FlowchartAstParseError,
+    code: &str,
+    facts: &EditorSemanticFacts,
+) -> Option<usize> {
+    if !matches!(error, lalrpop_util::ParseError::UnrecognizedEof { .. }) {
+        return None;
+    }
+    let insertion = code.trim_end_matches(['\r', '\n']).len();
+    (insertion < code.len()
+        && facts.expected_syntax.iter().any(|expected| {
+            matches!(
+                expected.kind,
+                EditorExpectedSyntaxKind::NodeIdentifier | EditorExpectedSyntaxKind::Operator
+            ) && expected.span.end == code.len()
+        }))
+    .then_some(insertion)
 }
 
 fn collect_expected_syntax_from_tokens<'a>(
@@ -1735,12 +1768,13 @@ fn sanitized_label(raw: &str, config: &MermaidConfig) -> String {
 }
 
 fn sanitized_render_label_source(raw: &str, config: &MermaidConfig) -> String {
-    let sanitized = sanitize_text(raw, config);
-    crate::entities::restore_mermaid_entity_spelling(&sanitized).into_owned()
+    let flow_db_label = sanitize_text(raw, config);
+    let decoded = crate::entities::restore_mermaid_entity_spelling(&flow_db_label);
+    crate::sanitize::sanitize_text_as_html_fragment(decoded.as_ref(), config)
 }
 
 fn render_label_source_needs_provenance(raw: &str) -> bool {
-    raw.contains('&') || raw.contains('#') || raw.contains('ﬂ') || raw.contains('¶')
+    raw.contains(['&', '#', 'ﬂ', '¶', '<', '>'])
 }
 
 fn decode_mermaid_hash_entities(input: &str) -> std::borrow::Cow<'_, str> {
@@ -1757,7 +1791,7 @@ fn flow_subgraph_to_model(
     let sanitized_title = sanitize_text(&sg.title, config);
     let title = decode_mermaid_hash_entities(&sanitized_title).into_owned();
     let render_title_source = render_label_source_needs_provenance(&sg.title)
-        .then(|| crate::entities::restore_mermaid_entity_spelling(&sanitized_title).into_owned())
+        .then(|| sanitized_render_label_source(&sg.title, config))
         .filter(|source| *source != title);
     let subgraph = FlowSubgraph {
         id: sg.id,
@@ -1981,6 +2015,46 @@ F -- "&nbsp;" --> G
         assert_eq!(roundtrip.edges.len(), model.edges.len());
         assert_eq!(roundtrip.nodes[0].label, model.nodes[0].label);
         assert_eq!(roundtrip.edges[0].label, model.edges[0].label);
+    }
+
+    #[test]
+    fn flowchart_render_label_context_applies_shape_sanitization_to_angle_text() {
+        let parsed = crate::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                include_str!(
+                    "../../../../fixtures/flowchart/stress_flowchart_svglike_escaped_tags_025.mmd"
+                ),
+                crate::ParseOptions::strict(),
+            )
+            .expect("parse flowchart")
+            .expect("detect flowchart");
+        let render_label_sources = parsed
+            .flowchart_render_label_sources()
+            .expect("flowchart render label sources");
+        let crate::RenderSemanticModel::Flowchart(model) = parsed.model() else {
+            panic!("expected Flowchart model");
+        };
+
+        let comparison = model
+            .nodes
+            .iter()
+            .find(|node| node.id == "C")
+            .expect("comparison node");
+        assert_eq!(comparison.label.as_deref(), Some("x &lt; y and y > z"));
+        assert_eq!(
+            render_label_sources.node_label_for_render(comparison),
+            Some("x &lt; y and y &gt; z")
+        );
+
+        let formatted = model
+            .nodes
+            .iter()
+            .find(|node| node.id == "D")
+            .expect("formatted node");
+        assert_eq!(
+            render_label_sources.node_label_for_render(formatted),
+            Some("<u>under</u> and <i>italic</i>")
+        );
     }
 
     #[test]

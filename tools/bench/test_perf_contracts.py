@@ -1103,9 +1103,19 @@ class CompareSelfContractsTest(unittest.TestCase):
             "bootstrap_resamples": 100,
         }
 
-        ratio_only = compare_self._comparison_row(
+        relative_only = compare_self._comparison_row(
             common.pop("contract"),
             pairs=self._pairs(100.0, 112.0),
+            **common,
+        )
+        absolute_only = compare_self._comparison_row(
+            self._contract(),
+            pairs=self._pairs(1_000_000.0, 1_080_000.0),
+            **common,
+        )
+        both_bounds = compare_self._comparison_row(
+            self._contract(),
+            pairs=self._pairs(1_000_000.0, 1_040_000.0),
             **common,
         )
         regression = compare_self._comparison_row(
@@ -1114,7 +1124,9 @@ class CompareSelfContractsTest(unittest.TestCase):
             **common,
         )
 
-        self.assertEqual(ratio_only["outcome"], "confirmed_non_regression")
+        self.assertEqual(relative_only["outcome"], "inconclusive")
+        self.assertEqual(absolute_only["outcome"], "inconclusive")
+        self.assertEqual(both_bounds["outcome"], "confirmed_non_regression")
         self.assertEqual(regression["outcome"], "confirmed_regression")
         self.assertEqual(regression["pair_count"], 8)
         self.assertGreater(regression["bounds"]["relative_percent"]["lower"], 10.0)
@@ -2131,6 +2143,43 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 " ".join(compare_self._discovery_reuse_verification_errors(method)),
             )
 
+    def test_reusable_discovery_ignores_unselected_output_drift(self) -> None:
+        selected = "end_to_end/flowchart_medium"
+        unselected = "end_to_end/state_medium"
+        origin = {
+            "bench_count": 2,
+            "benches": [selected, unselected],
+            "skipped": {},
+            "preflight_receipts": {
+                selected: CompareSelfContractsTest._preflight_receipt(selected),
+                unselected: CompareSelfContractsTest._preflight_receipt(
+                    unselected, output_sha256="b" * 64
+                ),
+            },
+            "output_sha256": "c" * 64,
+        }
+        current = copy.deepcopy(origin)
+        current["preflight_receipts"][unselected]["output_sha256"] = "d" * 64
+        current["output_sha256"] = "e" * 64
+
+        compare_self._require_reusable_discovery_match(
+            label="base",
+            current=current,
+            origin=origin,
+            required_benchmarks=frozenset({selected}),
+        )
+
+        current["preflight_receipts"][selected]["output_sha256"] = "f" * 64
+        with self.assertRaisesRegex(
+            compare_self.ContractViolation, "selected preflight receipt"
+        ):
+            compare_self._require_reusable_discovery_match(
+                label="base",
+                current=current,
+                origin=origin,
+                required_benchmarks=frozenset({selected}),
+            )
+
     def test_reusable_discovery_requires_successful_post_verified_frozen_evidence(
         self,
     ) -> None:
@@ -2334,7 +2383,10 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                     "source_executable": source_executable,
                     "frozen_executable": frozen_description,
                 },
-                "discovery_command": compare_self.criterion_list_command(executable),
+                "discovery_command": compare_self.criterion_list_command(
+                    executable,
+                    exact_benchmark="end_to_end/flowchart_medium",
+                ),
                 "discovery": discovery,
                 "post_sampling_verification": {
                     "status": "verified",
@@ -2384,6 +2436,9 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                     recipe,
                     origin=origin,
                     source_report={"path": "/tmp/discovery.json", "sha256": "c" * 64},
+                    required_benchmarks=frozenset(
+                        {"end_to_end/flowchart_medium"}
+                    ),
                     timeout_seconds=1,
                 )
 
@@ -2446,6 +2501,9 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                                 "path": "/tmp/discovery.json",
                                 "sha256": "c" * 64,
                             },
+                            required_benchmarks=frozenset(
+                                {"end_to_end/flowchart_medium"}
+                            ),
                             timeout_seconds=1,
                         )
                     )
@@ -2476,7 +2534,9 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 "origin verification": lambda value: value[
                     "post_sampling_verification"
                 ]["files"].__setitem__("lockfile", "0" * 64),
-                "Criterion discovery": lambda value: value["discovery"].__setitem__(
+                "selected preflight receipt": lambda value: value["discovery"][
+                    "preflight_receipts"
+                ]["end_to_end/flowchart_medium"].__setitem__(
                     "output_sha256", "0" * 64
                 ),
             }
@@ -2508,6 +2568,9 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                                 "path": "/tmp/discovery.json",
                                 "sha256": "c" * 64,
                             },
+                            required_benchmarks=frozenset(
+                                {"end_to_end/flowchart_medium"}
+                            ),
                             timeout_seconds=1,
                         )
                     )
@@ -2556,6 +2619,9 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                             "path": "/tmp/discovery.json",
                             "sha256": "c" * 64,
                         },
+                        required_benchmarks=frozenset(
+                            {"end_to_end/flowchart_medium"}
+                        ),
                         timeout_seconds=1,
                     )
                 )
@@ -2568,7 +2634,7 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 ["cargo", "+1.95.0", "metadata"],
             )
 
-    def test_reuse_comparison_contract_rejects_every_sampling_identity_drift(
+    def test_reuse_comparison_contract_allows_new_selection_but_rejects_runner_drift(
         self,
     ) -> None:
         root = Path("/tmp/reuse-contract")
@@ -2649,8 +2715,17 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             source=source,
             report=report,
             recipes=recipes,
-            selection=selection,
-            contracts=contracts,
+        )
+
+        changed_selection = copy.deepcopy(source)
+        changed_selection["selection"]["groups"]["head"] = "render"
+        changed_selection["fixtures"][0]["bytes"]["head"]["sha256"] = "b" * 64
+        changed_selection["method"]["bootstrap_seed"] = 20260806
+        changed_selection["method"]["bootstrap_resamples"] = 20_000
+        compare_self._validate_reuse_comparison_contract(
+            source=changed_selection,
+            report=report,
+            recipes=recipes,
         )
 
         mutations = {
@@ -2664,12 +2739,6 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             "recipes": lambda value: value["recipes"]["head"].__setitem__(
                 "bench", "other"
             ),
-            "selection": lambda value: value["selection"]["groups"].__setitem__(
-                "head", "other"
-            ),
-            "fixture": lambda value: value["fixtures"][0]["bytes"]["head"].__setitem__(
-                "sha256", "b" * 64
-            ),
         }
         for label, mutate in mutations.items():
             changed = copy.deepcopy(source)
@@ -2681,8 +2750,6 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                     source=changed,
                     report=report,
                     recipes=recipes,
-                    selection=selection,
-                    contracts=contracts,
                 )
 
     def test_runner_recipes_build_each_side_with_its_own_cargo_contract(self) -> None:
@@ -3591,7 +3658,21 @@ class CompareSelfStatisticsContractsTest(unittest.TestCase):
                 "confirmed_non_regression",
                 self._bounds(
                     relative=(0.08, 0.07, 0.09),
+                    absolute=(35_000.0, 25_000.0, 45_000.0),
+                ),
+            ),
+            (
+                "inconclusive",
+                self._bounds(
+                    relative=(0.08, 0.07, 0.09),
                     absolute=(65_000.0, 55_000.0, 75_000.0),
+                ),
+            ),
+            (
+                "inconclusive",
+                self._bounds(
+                    relative=(0.12, 0.11, 0.13),
+                    absolute=(35_000.0, 25_000.0, 45_000.0),
                 ),
             ),
             (
@@ -3635,6 +3716,45 @@ class CompareSelfStatisticsContractsTest(unittest.TestCase):
             ),
             "confirmed_improvement",
         )
+
+        threshold = math.log1p(0.10)
+        cases = [
+            (
+                "confirmed_non_improvement",
+                self._bounds(
+                    relative=(-0.08, -0.09, -0.07),
+                    absolute=(-35_000.0, -45_000.0, -25_000.0),
+                ),
+            ),
+            (
+                "inconclusive",
+                self._bounds(
+                    relative=(-0.08, -0.09, -0.07),
+                    absolute=(-65_000.0, -75_000.0, -55_000.0),
+                ),
+            ),
+            (
+                "inconclusive",
+                self._bounds(
+                    relative=(-0.12, -0.13, -0.11),
+                    absolute=(-35_000.0, -45_000.0, -25_000.0),
+                ),
+            ),
+        ]
+        for expected, case_bounds in cases:
+            with self.subTest(expected=expected, bounds=case_bounds):
+                self.assertEqual(
+                    compare_self.classify_confirmation(
+                        case_bounds,
+                        relative_threshold=threshold,
+                        absolute_threshold_ns=50_000.0,
+                        direction="improvement",
+                        evidence_mode="confirmation",
+                        pair_count=8,
+                        required_pairs=8,
+                    ),
+                    expected,
+                )
 
     def test_power_derived_pair_count_has_floor_even_rounding_and_cap_signal(self) -> None:
         floor = compare_self.required_pair_count(

@@ -1,11 +1,12 @@
 use crate::dagre::self_loop::compact_self_loop_geometry;
+use crate::layout_work::DugongOperationWorkControl as DagreOperationWorkControl;
 use crate::math::MathRenderer;
 use crate::model::{
     FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
 };
+use crate::resources::OperationWorkMeter;
 #[cfg(test)]
 use crate::resources::RenderResourcePolicy;
-use crate::resources::{OperationWorkMeter, ResourceLimitExceeded};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions, is_javascript_array_index};
@@ -32,80 +33,6 @@ use super::{
 };
 
 type FlowSubgraphIndex<'a> = HashMap<&'a str, &'a FlowSubgraph>;
-
-struct DagreOperationWorkControl {
-    meter: Arc<OperationWorkMeter>,
-    rejection: std::cell::RefCell<Option<ResourceLimitExceeded>>,
-}
-
-impl DagreOperationWorkControl {
-    // This work budget is a Merman headless resource policy, not Mermaid rendering behavior.
-    // Charge exact visited items where the adapter owns the loop. When a lower API has no work
-    // hook, use a documented checked upper bound before calling it; near-limit early rejection is
-    // preferable to performing unadmitted work and retroactively charging it.
-    fn new(meter: Arc<OperationWorkMeter>) -> Self {
-        Self {
-            meter,
-            rejection: std::cell::RefCell::new(None),
-        }
-    }
-
-    fn charge_adapter(&mut self, units: usize) -> Result<()> {
-        if let Some(error) = self.rejection.borrow().clone() {
-            return Err(error.into());
-        }
-        self.meter.charge(units).map_err(|error| {
-            *self.rejection.borrow_mut() = Some(error.clone());
-            error.into()
-        })
-    }
-
-    fn checked_add(&self, left: usize, right: usize) -> Result<usize> {
-        left.checked_add(right)
-            .ok_or_else(|| self.record_arithmetic_overflow().into())
-    }
-
-    fn checked_mul(&self, left: usize, right: usize) -> Result<usize> {
-        left.checked_mul(right)
-            .ok_or_else(|| self.record_arithmetic_overflow().into())
-    }
-
-    fn record_arithmetic_overflow(&self) -> ResourceLimitExceeded {
-        if let Some(error) = self.rejection.borrow().clone() {
-            return error;
-        }
-        let error = self.meter.arithmetic_overflow();
-        *self.rejection.borrow_mut() = Some(error.clone());
-        error
-    }
-
-    fn map_dugong_error(&mut self, error: impl Into<dugong::LayoutError>) -> Error {
-        match error.into() {
-            dugong::LayoutError::Work(dugong::WorkError::Interrupted) => {
-                let rejection = self.rejection.borrow().clone();
-                rejection
-                    .unwrap_or_else(|| self.record_arithmetic_overflow())
-                    .into()
-            }
-            dugong::LayoutError::Work(dugong::WorkError::ArithmeticOverflow) => {
-                self.record_arithmetic_overflow().into()
-            }
-            error => error.into(),
-        }
-    }
-}
-
-impl dugong::WorkControl for DagreOperationWorkControl {
-    fn charge(&mut self, units: usize) -> std::result::Result<(), dugong::WorkError> {
-        if self.rejection.borrow().is_some() {
-            return Err(dugong::WorkError::Interrupted);
-        }
-        self.meter.charge(units).map_err(|error| {
-            *self.rejection.borrow_mut() = Some(error);
-            dugong::WorkError::Interrupted
-        })
-    }
-}
 
 fn rank_dir_from_flow(direction: &str) -> RankDir {
     match direction.trim().to_uppercase().as_str() {
@@ -1636,10 +1563,10 @@ fn layout_flowchart_with_model(
     let diagram_direction = normalize_dir(model.direction.as_deref().unwrap_or("TB"));
     let has_subgraphs = !model.subgraphs.is_empty();
     work_control.charge_adapter(model.subgraphs.len())?;
-    // FlowDB can retain multiple semantic definitions for one subgraph id. It emits those
-    // definitions in reverse source order, and Graphlib overwrites repeated node labels, so the
-    // first source definition owns presentation. Memberships from every definition still
-    // participate in the compound graph. Model those two facts independently.
+    // Mermaid's FlowDB emits duplicate subgraph ids in reverse order and Graphlib's repeated
+    // `setNode` calls leave the earliest semantic definition's label/style as the winner. Keep a
+    // first-definition index for all presentation lookups while retaining the full source list
+    // for reverse membership assignment below.
     let mut subgraphs_by_id: FlowSubgraphIndex<'_> = HashMap::with_capacity(model.subgraphs.len());
     let mut subgraph_index_by_id: HashMap<&str, usize> =
         HashMap::with_capacity(model.subgraphs.len());
@@ -1789,9 +1716,10 @@ fn layout_flowchart_with_model(
             &sg.styles,
         );
         let title = model.subgraph_title_for_render(subgraph_index, sg);
-        // Empty subgraphs use Mermaid's ordinary node `labelHelper`: wrapping probes use
-        // `flowchart.wrappingWidth`, then the final SVG text is sized through `getBBox()`.
-        // A per-line computed-length pass here would add measurements absent upstream.
+        // Mermaid renders an empty subgraph through the ordinary node `labelHelper`: wrapping
+        // probes use `flowchart.wrappingWidth` and `getComputedTextLength()`, while the final label
+        // dimensions come from `getBBox()`. Selecting `ComputedLength` here would add a post-wrap
+        // per-line measurement pass that is absent upstream.
         let mut metrics = measure_flowchart_svg_label_for_layout(
             svg_label_sidecar,
             Some(FlowchartSvgLabelOwner::EmptySubgraphNode(subgraph_index)),
@@ -2092,7 +2020,7 @@ fn layout_flowchart_with_model(
                         measurer,
                         raw_label: label_text,
                         label_type,
-                        // Mermaid wraps temporary SVG text before applying `labelStyle`.
+                        // Mermaid wraps the temporary SVG text before applying `labelStyle`.
                         style: edge_label_base_style,
                         max_width_px: Some(edge_label_wrapping_width),
                         wrap_mode: edge_wrap_mode,
@@ -4030,6 +3958,47 @@ mod tests {
             .expect("node A");
 
         assert_eq!(node.label_width, Some(NON_LATTICE_COMPUTED_LENGTH_PX));
+    }
+
+    #[test]
+    fn dagre_nonempty_subgraph_title_reuses_its_prepared_layout_measurement() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nsubgraph S[service title]\n  A\nend\n",
+                ParseOptions::default(),
+            )
+            .expect("parse ok")
+            .expect("diagram detected");
+        let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+            panic!("expected Flowchart render model");
+        };
+        let labels = FlowchartRenderLabelSources::default();
+        let builder = FlowchartSvgLabelSidecarBuilder::default();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("render session");
+        let measurer = session.text_measurer(crate::environment::TextMeasurementPhase::Layout);
+        let meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let mut work_control = DagreOperationWorkControl::new(meter);
+
+        layout_flowchart_with_model(
+            model,
+            &labels,
+            &parsed.metadata().effective_config,
+            &measurer,
+            None,
+            Some(&builder),
+            &mut work_control,
+        )
+        .expect("layout ok");
+
+        assert!(builder.prepared_count() > 0);
+        assert!(
+            builder.prepared_hit_count() > 0,
+            "the cluster rect/title stages must reuse the same built-in measurement"
+        );
     }
 
     #[test]

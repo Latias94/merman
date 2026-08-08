@@ -62,7 +62,7 @@ pub(crate) use style_plan::{
     StateCompatibilityStyle, StateEdgeStylePlan, StateNodeStylePlan, StateStylePlan,
 };
 
-pub(crate) use layout::layout_state_diagram_typed;
+pub(crate) use layout::layout_state_diagram_typed_with_work_meter;
 pub use layout::{
     debug_build_state_diagram_dagre_graph, debug_extract_state_diagram_cluster_graph,
 };

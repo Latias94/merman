@@ -111,7 +111,9 @@ export function buildWasm({
 
     const releaseBuildLock = acquireWorkspaceWasmBuildLock(repositoryRoot);
     try {
-      run("wasm-pack", wasmPackArgs(profile, stageRoot));
+      run("wasm-pack", wasmPackArgs(profile, stageRoot), {
+        env: wasmPackEnvironment(lockedRepositoryMetadata),
+      });
     } finally {
       releaseBuildLock();
     }
@@ -196,6 +198,16 @@ export function wasmArtifactProfileManifest(descriptor) {
   };
 }
 
+export function wasmPackEnvironment(metadata, environment = process.env) {
+  if (typeof metadata?.target_directory !== "string" || metadata.target_directory.length === 0) {
+    throw new Error("cargo metadata is missing target_directory.");
+  }
+  return {
+    ...environment,
+    CARGO_TARGET_DIR: path.resolve(metadata.target_directory),
+  };
+}
+
 function parseCli(args) {
   assertKnownArgs(args, {
     valueArgs: ["--package"],
@@ -277,8 +289,12 @@ function writePackageMetadata(metadata, outputRoot) {
   writeFileSync(path.join(outputRoot, "package.json"), `${JSON.stringify(packageJson, null, 2)}\n`);
 }
 
-function run(command, args) {
-  const result = spawnSync(command, args, { cwd: webPackageRoot, stdio: "inherit" });
+function run(command, args, { env = process.env } = {}) {
+  const result = spawnSync(command, args, {
+    cwd: webPackageRoot,
+    env,
+    stdio: "inherit",
+  });
   if (result.error) throw new Error(`Failed to run ${command}: ${result.error.message}`);
   if (result.status !== 0) {
     const error = new Error(`${command} exited with status ${result.status ?? 1}`);

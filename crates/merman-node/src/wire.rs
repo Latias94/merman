@@ -6,9 +6,9 @@ use std::sync::LazyLock;
 use merman_bindings_core::{
     ArtifactContractSpec, BINDING_OPERATION_SCHEMA_VERSION, BindingEngine, BindingError,
     BindingErrorKind, BindingIconRegistryErrorDetails, BindingOperationRequest,
-    BindingPayloadSchemaKey, BindingResourceErrorDetails, BindingStatus, BindingTransportKey,
-    CAPABILITY_DESCRIPTOR_DIGEST, CapabilityKey, OperationKey, RUNTIME_CATALOG_SCHEMA_VERSION,
-    RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
+    BindingJsSafeResourceErrorDetails, BindingPayloadSchemaKey, BindingStatus,
+    BindingTransportKey, CAPABILITY_DESCRIPTOR_DIGEST, CapabilityKey, OperationKey,
+    RUNTIME_CATALOG_SCHEMA_VERSION, RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -18,7 +18,6 @@ const NODE_WIRE_CONTRACT_JSON: &str =
     include_str!("../../../platforms/node/src/generated/node-wire-contract.json");
 const NODE_TRANSPORT_API_VERSION: u32 = 1;
 const NODE_BINDING_RESULT_PAYLOAD_VERSION: u32 = BindingPayloadSchemaKey::BindingResult.version();
-const JSON_SAFE_INTEGER_MAX: u64 = 9_007_199_254_740_991;
 const NODE_TARGET: TargetKey = if cfg!(target_arch = "wasm32") {
     TargetKey::Web
 } else {
@@ -380,7 +379,7 @@ struct ErrorPayload<'a> {
 #[derive(Debug, Serialize)]
 struct ErrorDetails<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
-    resource: Option<BindingResourceErrorDetails>,
+    resource: Option<BindingJsSafeResourceErrorDetails>,
     #[serde(skip_serializing_if = "Option::is_none")]
     icon_registry: Option<&'a BindingIconRegistryErrorDetails>,
 }
@@ -676,12 +675,7 @@ fn try_error_envelope(error: &BindingError) -> Result<String, String> {
             fields.capability_id_utf8_bytes,
         )?;
     }
-    let resource = error.resource_details();
-    if resource.is_some_and(|details| {
-        details.actual > JSON_SAFE_INTEGER_MAX || details.max > JSON_SAFE_INTEGER_MAX
-    }) {
-        return Err("error resource details exceed the JSON-safe integer range".to_owned());
-    }
+    let resource = error.resource_details().map(|details| details.js_safe_json());
     let message = bounded_text(error.message(), fields.error_message_utf8_bytes);
     let details =
         (resource.is_some() || error.icon_registry_details().is_some()).then_some(ErrorDetails {
@@ -1514,6 +1508,46 @@ mod tests {
         assert_eq!(
             payload["error"]["details"]["resource"]["profile"],
             "constrained"
+        );
+        assert_eq!(payload["error"]["details"]["resource"]["cause"], "ceiling");
+        assert_eq!(payload["error"]["details"]["resource"]["actual"], 5);
+        assert_eq!(payload["error"]["details"]["resource"]["max"], 4);
+
+        let error = merman_bindings_core::BindingError::resource_limit_with_cause(
+            merman_bindings_core::BindingResourceLimitCause::ArithmeticOverflow,
+            "layout_model",
+            "max_layout_work_units",
+            u64::MAX,
+            800_000,
+            "interactive",
+            "layout work accounting overflowed",
+        );
+        let payload: serde_json::Value =
+            serde_json::from_str(&error_envelope(&error)).expect("Node error envelope");
+        assert_eq!(
+            payload["error"]["code_name"],
+            "MERMAN_RESOURCE_LIMIT_EXCEEDED"
+        );
+        assert_eq!(
+            payload["error"]["details"]["resource"]["cause"],
+            "arithmetic_overflow"
+        );
+        assert_eq!(
+            payload["error"]["details"]["resource"]["limit_id"],
+            "max_layout_work_units"
+        );
+        assert_eq!(
+            payload["error"]["details"]["resource"]["phase"],
+            "layout_model"
+        );
+        assert_eq!(
+            payload["error"]["details"]["resource"]["actual"],
+            "18446744073709551615"
+        );
+        assert_eq!(payload["error"]["details"]["resource"]["max"], 800_000);
+        assert_eq!(
+            payload["error"]["details"]["resource"]["profile"],
+            "interactive"
         );
     }
 

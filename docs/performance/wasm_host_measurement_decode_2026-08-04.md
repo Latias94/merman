@@ -1,5 +1,9 @@
 # WASM host-measurement single-decode decision — 2026-08-04
 
+> Historical boundary: this custom-visitor candidate remains rejected. A different, smaller direct
+> disposition-read implementation was accepted as structural work on 2026-08-08; see
+> [the follow-up receipt](wasm_host_measurement_disposition_2026-08-08.md).
+
 ## Decision
 
 Status: **rejected**.

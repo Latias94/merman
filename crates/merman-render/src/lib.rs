@@ -32,6 +32,7 @@ pub mod info;
 pub mod ishikawa;
 pub mod journey;
 pub mod kanban;
+mod layout_work;
 pub mod math;
 mod mermaid_style;
 pub mod mindmap;
@@ -168,9 +169,10 @@ pub use resources::{
     CLI_DEFAULT_RESOURCE_PROFILE, ClassComplexity, FlowchartComplexity,
     GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, MindmapComplexity, RenderResourceLimitId,
     RenderResourcePolicy, RenderResourceProfile, RenderResourceProfileDescriptor,
-    ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId, ResourceLimitOverride,
-    ResourceLimitOverrideError, ResourceLimitPhase, ResourcePolicyRestrictionError,
-    ZenumlComplexity, resource_limit_descriptors, resource_profile_descriptors,
+    ResourceLimitCause, ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId,
+    ResourceLimitOverride, ResourceLimitOverrideError, ResourceLimitPhase,
+    ResourcePolicyRestrictionError, ZenumlComplexity, resource_limit_descriptors,
+    resource_profile_descriptors,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -419,14 +421,15 @@ pub(crate) fn layout_class_typed_by_engine(
     }
 
     options.resource_policy().check_class_complexity(model)?;
-    options
-        .work_meter_ref()
-        .charge(class::class_layout_work_units(model))?;
+    let mut work_control = layout_work::OperationLayoutWorkControl::new(options.work_meter());
+    let preparation_work = class::class_layout_work_units(model, &work_control)?;
+    work_control.charge_adapter(preparation_work)?;
     class::layout_class_diagram_typed_with_config(
         model,
         effective_config,
         options.text_measurer(),
         options.math_renderer(),
+        &mut work_control,
     )
 }
 
@@ -438,15 +441,16 @@ fn layout_class_elk_typed_by_feature(
     options: &LayoutExecution<'_>,
 ) -> Result<model::ClassDiagramLayout> {
     options.resource_policy().check_class_complexity(model)?;
-    options
-        .work_meter_ref()
-        .charge(class::class_layout_work_units(model))?;
+    let mut work_control = layout_work::OperationLayoutWorkControl::new(options.work_meter());
+    let preparation_work = class::class_layout_work_units(model, &work_control)?;
+    work_control.charge_adapter(preparation_work)?;
     class::layout_class_diagram_elk_typed_with_config_and_operation_seed(
         model,
         effective_config,
         options.text_measurer(),
         options.math_renderer(),
         options.elk_operation_seed(),
+        &mut work_control,
     )
 }
 
@@ -523,11 +527,13 @@ fn layout_flowchart_elk_typed_by_feature(
         model,
         render_label_sources,
         effective_config,
-        options.text_measurer(),
-        options.math_renderer(),
-        options.elk_operation_seed(),
-        svg_label_sidecar,
-        options.work_meter(),
+        flowchart::elk::FlowchartElkLayoutExecution::new(
+            options.text_measurer(),
+            options.math_renderer(),
+            options.elk_operation_seed(),
+            svg_label_sidecar,
+            options.work_meter(),
+        ),
     )
 }
 

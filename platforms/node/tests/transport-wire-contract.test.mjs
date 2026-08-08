@@ -485,6 +485,69 @@ test("error envelopes enforce discriminants, known relations, and capability ide
     /exact JSON-safe integers/i,
   );
 
+  const losslessResourceEnvelope = errorEnvelope({
+    code: 10,
+    codeName: "MERMAN_RESOURCE_LIMIT_EXCEEDED",
+    kind: "generic",
+    capabilityId: null,
+    details: {
+      resource: {
+        cause: "arithmetic_overflow",
+        limit_id: "max_layout_work_units",
+        phase: "layout_model",
+        actual: "18446744073709551615",
+        max: 800_000,
+        profile: "interactive",
+      },
+    },
+  });
+  assert.throws(
+    () => decodeWireResponse(losslessResourceEnvelope, SVG_EXPECTATION),
+    (error) => {
+      assert.ok(error instanceof MermanOperationError);
+      assert.deepEqual(error.resourceDetails, {
+        cause: "arithmetic_overflow",
+        limit_id: "max_layout_work_units",
+        phase: "layout_model",
+        actual: "18446744073709551615",
+        max: 800_000,
+        profile: "interactive",
+      });
+      return true;
+    },
+  );
+
+  for (const actual of [
+    "5",
+    "09007199254740992",
+    "18446744073709551616",
+    "-9007199254740992",
+  ]) {
+    assert.throws(
+      () =>
+        decodeWireResponse(
+          errorEnvelope({
+            code: 10,
+            codeName: "MERMAN_RESOURCE_LIMIT_EXCEEDED",
+            kind: "generic",
+            capabilityId: null,
+            details: {
+              resource: {
+                cause: "arithmetic_overflow",
+                limit_id: "max_layout_work_units",
+                phase: "layout_model",
+                actual,
+                max: 800_000,
+                profile: "interactive",
+              },
+            },
+          }),
+          SVG_EXPECTATION,
+        ),
+      /invalid resource error details/i,
+    );
+  }
+
   const maxMessage = "x".repeat(NODE_TRANSPORT_FIELD_LIMITS.error_message_utf8_bytes);
   assert.throws(
     () =>

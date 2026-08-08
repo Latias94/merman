@@ -376,11 +376,11 @@
     {
       "id": "dompurify",
       "name": "DOMPurify",
-      "version": "3.4.12",
+      "version": "3.4.13",
       "source": {
         "repository": "https://github.com/cure53/DOMPurify.git",
-        "ref": "3.4.12",
-        "commit": "a9ca1e537422319a557a9a2aa61f003b23b4a197",
+        "ref": "3.4.13",
+        "commit": "3067f774676975de12306effd6db6ad7a9a8c17f",
         "path": "."
       },
       "relationships": ["generated", "translated"],
@@ -391,7 +391,7 @@
         {
           "path": "THIRD_PARTY_LICENSES/dompurify/LICENSE",
           "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
-          "source_url": "https://raw.githubusercontent.com/Cure53/DOMPurify/a9ca1e537422319a557a9a2aa61f003b23b4a197/LICENSE",
+          "source_url": "https://raw.githubusercontent.com/Cure53/DOMPurify/3067f774676975de12306effd6db6ad7a9a8c17f/LICENSE",
           "source_path": "LICENSE",
           "role": "license"
         }

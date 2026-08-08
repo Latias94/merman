@@ -337,8 +337,7 @@ pub(crate) fn flowchart_wrap_svg_source_word_lines(
                 probe.reset();
                 let mut split_index = start_index + 1;
                 let mut previous_end = boundaries[start_index];
-                for end_index in start_index + 1..boundaries.len() {
-                    let end = boundaries[end_index];
+                for (end_index, &end) in boundaries.iter().enumerate().skip(start_index + 1) {
                     probe.push_visible(&word[previous_end..end]);
                     if probe.width_px() <= max_width_px {
                         split_index = end_index;
@@ -369,8 +368,7 @@ pub(crate) fn flowchart_wrap_svg_source_word_lines(
             first_tail_already_measured = false;
 
             let mut split_index = start_index + 1;
-            for end_index in start_index + 1..boundaries.len() {
-                let end = boundaries[end_index];
+            for (end_index, &end) in boundaries.iter().enumerate().skip(start_index + 1) {
                 if probe.measure_source(&word[start..end]) <= max_width_px {
                     split_index = end_index;
                 } else {
@@ -450,12 +448,8 @@ pub(crate) fn flowchart_trim_html_collapsible_whitespace(input: &str) -> &str {
     trim_html_collapsible_ascii_whitespace(input)
 }
 
-pub(crate) fn flowchart_label_text_is_empty_for_mode(text: &str, html_labels: bool) -> bool {
-    if html_labels {
-        flowchart_trim_html_collapsible_whitespace(text).is_empty()
-    } else {
-        flowchart_trim_html_collapsible_whitespace(text).is_empty()
-    }
+pub(crate) fn flowchart_label_text_is_empty_for_mode(text: &str, _html_labels: bool) -> bool {
+    flowchart_trim_html_collapsible_whitespace(text).is_empty()
 }
 
 pub(crate) fn flowchart_label_is_empty_for_render(label: &str) -> bool {
@@ -1216,6 +1210,26 @@ mod tests {
     }
 
     #[test]
+    fn html_plain_text_discards_only_synthetic_terminal_block_breaks() {
+        assert_eq!(
+            flowchart_label_plain_text_for_layout("<p>approval</p>", "html", true),
+            "approval"
+        );
+        assert_eq!(
+            flowchart_label_plain_text_for_layout("<p>&nbsp;Edge&nbsp;</p>", "html", true,),
+            "\u{00A0}Edge\u{00A0}"
+        );
+        assert_eq!(
+            flowchart_label_plain_text_for_layout("<p>A<br>&nbsp;</p>", "html", true),
+            "A\n\u{00A0}"
+        );
+        assert_eq!(
+            flowchart_label_plain_text_for_layout("<p>A<br></p>", "html", true),
+            "A\n"
+        );
+    }
+
+    #[test]
     fn mixed_math_metrics_preserve_fragment_precision() {
         let config = MermaidConfig::default();
         let style = TextStyle::default();
@@ -1263,26 +1277,6 @@ mod tests {
                 "{raw_label:?}: {metrics:?}"
             );
         }
-    }
-
-    #[test]
-    fn html_plain_text_discards_only_synthetic_terminal_block_breaks() {
-        assert_eq!(
-            flowchart_label_plain_text_for_layout("<p>approval</p>", "html", true),
-            "approval"
-        );
-        assert_eq!(
-            flowchart_label_plain_text_for_layout("<p>&nbsp;Edge&nbsp;</p>", "html", true),
-            "\u{00A0}Edge\u{00A0}"
-        );
-        assert_eq!(
-            flowchart_label_plain_text_for_layout("<p>A<br>&nbsp;</p>", "html", true),
-            "A\n\u{00A0}"
-        );
-        assert_eq!(
-            flowchart_label_plain_text_for_layout("<p>A<br></p>", "html", true),
-            "A\n"
-        );
     }
 
     #[test]

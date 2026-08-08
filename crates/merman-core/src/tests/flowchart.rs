@@ -3397,6 +3397,24 @@ fn parse_flowchart_editor_facts_recovers_from_incomplete_input() {
 }
 
 #[test]
+fn parse_flowchart_eof_diagnostic_precedes_a_trailing_line_ending() {
+    let source = "flowchart TD\nA-->\n";
+    let snapshot = Engine::new()
+        .parse_diagram_snapshot_with_type_sync("flowchart-v2", source)
+        .unwrap()
+        .expect("flowchart snapshot");
+    let DiagramParseOutcome::Failed(Error::DiagramParse { diagnostic, .. }) = snapshot.outcome()
+    else {
+        panic!("incomplete edge must return a structured parse diagnostic");
+    };
+
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(source.len() - 1, source.len() - 1))
+    );
+}
+
+#[test]
 fn parse_flowchart_editor_facts_recovers_from_malformed_label_without_hanging() {
     let engine = Engine::new();
     let text = "flowchart TD\nA[bad (label)]\nB-->C\n";

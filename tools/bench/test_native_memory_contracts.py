@@ -356,6 +356,45 @@ class NativeMemoryProtocolContractsTest(unittest.TestCase):
             BINDING_DATA_SHA256,
         )
 
+    def test_schema_v3_records_and_bounds_post_drop_live_bytes(self) -> None:
+        validate = self.api("validate_response")
+        error = self.contract_error()
+        baseline = binding_protocol_response(scale=10)
+        baseline["schema_version"] = 3
+        baseline["live_bytes_after_drop"] = baseline["snapshot_live_bytes"]
+
+        sample = validate(
+            json.dumps(baseline) + "\n",
+            "",
+            expected=expected_echo(baseline),
+            semantic_contract=binding_semantic_contract(),
+            workload_units_per_scale=1,
+        )
+        self.assertEqual(sample["live_bytes_after_drop"], 400)
+
+        missing = dict(baseline)
+        del missing["live_bytes_after_drop"]
+        with self.assertRaises(error):
+            validate(
+                json.dumps(missing) + "\n",
+                "",
+                expected=expected_echo(baseline),
+                semantic_contract=binding_semantic_contract(),
+                workload_units_per_scale=1,
+            )
+
+        leaked = dict(baseline)
+        leaked["live_bytes_after"] = 450
+        leaked["live_bytes_after_drop"] = 401
+        with self.assertRaisesRegex(error, "pre-operation snapshot"):
+            validate(
+                json.dumps(leaked) + "\n",
+                "",
+                expected=expected_echo(baseline),
+                semantic_contract=binding_semantic_contract(),
+                workload_units_per_scale=1,
+            )
+
     def test_schema_v2_rejects_semantic_drift_and_type_confusion(self) -> None:
         validate = self.api("validate_response")
         error = self.contract_error()
@@ -702,6 +741,8 @@ class NativeMemoryMatrixContractsTest(unittest.TestCase):
             mode="operation",
             allocation_count=5,
             allocated_bytes=50,
+            snapshot_live_bytes=400,
+            live_bytes_after=470,
             peak_growth_bytes=7,
             pid=30_000,
         )
@@ -709,6 +750,8 @@ class NativeMemoryMatrixContractsTest(unittest.TestCase):
             mode="zero",
             allocation_count=8,
             allocated_bytes=80,
+            snapshot_live_bytes=500,
+            live_bytes_after=520,
             peak_growth_bytes=9,
             pid=30_001,
         )
@@ -725,6 +768,30 @@ class NativeMemoryMatrixContractsTest(unittest.TestCase):
             adjust([operation, control], metric="peak_growth_bytes"),
             {1: (-2,)},
         )
+        self.assertEqual(
+            adjust([operation, control], metric="retained_growth_bytes"),
+            {1: (50,)},
+        )
+
+    def test_retained_adjustment_rejects_live_bytes_below_the_snapshot(self) -> None:
+        adjust = self.api("paired_adjustments")
+        operation = protocol_response(
+            mode="operation",
+            snapshot_live_bytes=400,
+            live_bytes_after=399,
+            pid=30_000,
+        )
+        control = protocol_response(
+            mode="zero",
+            snapshot_live_bytes=500,
+            live_bytes_after=500,
+            pid=30_001,
+        )
+
+        with self.assertRaisesRegex(
+            self.contract_error(), "live_bytes_after is below snapshot_live_bytes"
+        ):
+            adjust([operation, control], metric="retained_growth_bytes")
 
     def test_median_by_scale_uses_adjusted_repeats(self) -> None:
         summarize = self.api("median_by_scale")
@@ -1009,6 +1076,25 @@ class LaneRegistryContractsTest(unittest.TestCase):
         self.assertEqual(lane.measurement_metrics, ("latency_ns",))
         self.assertEqual(
             lane.semantic_output_dimensions, ("compatibility_json_bytes",)
+        )
+
+    def test_memory_lane_accepts_the_optional_retained_metric(self) -> None:
+        registry = self.registry()
+        memory_lane = registry["lanes"][1]  # type: ignore[index]
+        memory_lane["measurement_metrics"].append(  # type: ignore[index]
+            "retained_growth_bytes"
+        )
+
+        corpus = self.load(registry)
+
+        self.assertEqual(
+            corpus.lanes[1].measurement_metrics,
+            (
+                "allocation_count",
+                "allocated_bytes",
+                "peak_growth_bytes",
+                "retained_growth_bytes",
+            ),
         )
 
     def test_schema_v1_remains_read_compatible_without_lanes(self) -> None:

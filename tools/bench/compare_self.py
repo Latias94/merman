@@ -383,13 +383,13 @@ def classify_confirmation(
     if direction == "regression":
         if relative["lower"] > relative_threshold and absolute["lower"] > absolute_threshold_ns:
             return "confirmed_regression"
-        if relative["upper"] <= relative_threshold or absolute["upper"] <= absolute_threshold_ns:
+        if relative["upper"] <= relative_threshold and absolute["upper"] <= absolute_threshold_ns:
             return "confirmed_non_regression"
         return "inconclusive"
     if direction == "improvement":
         if relative["upper"] < -relative_threshold and absolute["upper"] < -absolute_threshold_ns:
             return "confirmed_improvement"
-        if relative["lower"] >= -relative_threshold or absolute["lower"] >= -absolute_threshold_ns:
+        if relative["lower"] >= -relative_threshold and absolute["lower"] >= -absolute_threshold_ns:
             return "confirmed_non_improvement"
         return "inconclusive"
     raise ValueError(f"unknown confirmation direction: {direction}")
@@ -721,8 +721,12 @@ def _binary_independence_error(
     return None
 
 
-def criterion_list_command(executable: Path) -> list[str]:
-    return [
+def criterion_list_command(
+    executable: Path,
+    *,
+    exact_benchmark: str | None = None,
+) -> list[str]:
+    command = [
         str(executable),
         "--bench",
         "--color",
@@ -731,6 +735,9 @@ def criterion_list_command(executable: Path) -> list[str]:
         "--format",
         "terse",
     ]
+    if exact_benchmark is not None:
+        command.extend(("--exact", exact_benchmark))
+    return command
 
 
 def _command_text(command: Sequence[str]) -> str:
@@ -1081,6 +1088,7 @@ def _prepare_runner(
     *,
     allow_dirty: bool,
     timeout_seconds: int,
+    discovery_benchmark: str | None = None,
     freeze_plan: SharedTargetFreezePlan | None = None,
     build_sequence: int | None = None,
 ) -> tuple[PreparedRunner | None, dict[str, Any], list[str]]:
@@ -1204,7 +1212,10 @@ def _prepare_runner(
             "role": "frozen" if freeze_plan is not None else "cargo-artifact",
         }
 
-        list_command = criterion_list_command(executable)
+        list_command = criterion_list_command(
+            executable,
+            exact_benchmark=discovery_benchmark,
+        )
         provenance["discovery_command"] = list_command
         print(f"[discover] {recipe.label}: {_command_text(list_command)}", flush=True)
         listed = _run_process(
@@ -1281,8 +1292,6 @@ _REUSABLE_DISCOVERY_METHOD_FIELDS = (
     "absolute_threshold_ns",
     "absolute_threshold_us",
     "confidence_level",
-    "bootstrap_seed",
-    "bootstrap_resamples",
     "interval_contract",
 )
 
@@ -1525,19 +1534,33 @@ def _validate_reusable_discovery_report(source: dict[str, Any]) -> None:
             )
 
 
-def _fixture_reuse_identity(contract: dict[str, Any]) -> dict[str, Any]:
-    return {
-        key: contract.get(key)
-        for key in (
-            "name",
-            "family",
-            "base_benchmark",
-            "head_benchmark",
-            "selected",
-            "metadata",
-            "bytes",
+def _require_reusable_discovery_match(
+    *,
+    label: str,
+    current: dict[str, Any],
+    origin: dict[str, Any],
+    required_benchmarks: frozenset[str],
+) -> None:
+    for field in ("bench_count", "benches", "skipped"):
+        _require_equal_reuse_value(
+            f"{label} Criterion discovery {field}",
+            current.get(field),
+            origin.get(field),
         )
-    }
+    if not required_benchmarks:
+        raise ContractViolation(f"reusable discovery {label} has no selected benchmarks")
+    current_receipts = current.get("preflight_receipts")
+    origin_receipts = origin.get("preflight_receipts")
+    if not isinstance(current_receipts, dict) or not isinstance(origin_receipts, dict):
+        raise ContractViolation(
+            f"reusable discovery {label} preflight receipts are missing"
+        )
+    for benchmark in sorted(required_benchmarks):
+        _require_equal_reuse_value(
+            f"{label} selected preflight receipt for {benchmark}",
+            current_receipts.get(benchmark),
+            origin_receipts.get(benchmark),
+        )
 
 
 def _validate_reuse_comparison_contract(
@@ -1545,8 +1568,6 @@ def _validate_reuse_comparison_contract(
     source: dict[str, Any],
     report: dict[str, Any],
     recipes: dict[str, RunnerRecipe],
-    selection: dict[str, Any],
-    contracts: Sequence[dict[str, Any]],
 ) -> None:
     _require_equal_reuse_value("comparison labels", report["comparison"], source.get("comparison"))
     _require_equal_reuse_value("environment", report["environment"], source.get("environment"))
@@ -1557,13 +1578,6 @@ def _validate_reuse_comparison_contract(
         )
     expected_recipes = {side: _recipe_report(recipe) for side, recipe in recipes.items()}
     _require_equal_reuse_value("recipes", expected_recipes, source.get("recipes"))
-    _require_equal_reuse_value("selection", selection, source.get("selection"))
-    current_fixtures = [_fixture_reuse_identity(item) for item in contracts]
-    origin_fixtures = [
-        _fixture_reuse_identity(item)
-        for item in source["fixtures"]
-    ]
-    _require_equal_reuse_value("fixture identities", current_fixtures, origin_fixtures)
 
 
 def _prepare_reused_runner(
@@ -1571,6 +1585,7 @@ def _prepare_reused_runner(
     *,
     origin: dict[str, Any],
     source_report: dict[str, Any],
+    required_benchmarks: frozenset[str],
     timeout_seconds: int,
 ) -> tuple[PreparedRunner | None, dict[str, Any], list[str]]:
     provenance = copy.deepcopy(origin)
@@ -1829,7 +1844,13 @@ def _prepare_reused_runner(
             "CARGO_PROFILE_BENCH_DEBUG": "0",
             "CARGO_BUILD_JOBS": "1",
         }
-        list_command = criterion_list_command(executable)
+        discovery_benchmark = (
+            next(iter(required_benchmarks)) if len(required_benchmarks) == 1 else None
+        )
+        list_command = criterion_list_command(
+            executable,
+            exact_benchmark=discovery_benchmark,
+        )
         _require_equal_reuse_value(
             f"{recipe.label} original discovery command",
             list_command,
@@ -1866,10 +1887,16 @@ def _prepare_reused_runner(
             "preflight_receipts": preflight_receipts,
             "output_sha256": hashlib.sha256(combined.encode("utf-8")).hexdigest(),
         }
-        _require_equal_reuse_value(
-            f"{recipe.label} Criterion discovery",
-            current_discovery,
-            origin.get("discovery"),
+        origin_discovery = origin.get("discovery")
+        if not isinstance(origin_discovery, dict):
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} Criterion discovery is missing"
+            )
+        _require_reusable_discovery_match(
+            label=recipe.label,
+            current=current_discovery,
+            origin=origin_discovery,
+            required_benchmarks=required_benchmarks,
         )
         provenance["reuse_discovery_command"] = list_command
         provenance["reuse_discovery"] = current_discovery
@@ -3476,8 +3503,6 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
             source=reuse_source,
             report=report,
             recipes={"base": base_recipe, "head": head_recipe},
-            selection=selection,
-            contracts=contracts,
         )
     if not contracts:
         raise ContractViolation("no benchmark fixtures were selected")
@@ -3509,6 +3534,9 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
                 recipe,
                 origin=reuse_source["runners"][recipe.label],
                 source_report=reuse_source_report,
+                required_benchmarks=frozenset(
+                    contract[f"{recipe.label}_benchmark"] for contract in contracts
+                ),
                 timeout_seconds=args.timeout_seconds,
             )
         else:
@@ -3516,6 +3544,15 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
                 recipe,
                 allow_dirty=args.allow_dirty,
                 timeout_seconds=args.timeout_seconds,
+                discovery_benchmark=(
+                    next(
+                        contract[f"{recipe.label}_benchmark"]
+                        for contract in contracts
+                        if contract[f"{recipe.label}_benchmark"]
+                    )
+                    if len(contracts) == 1
+                    else None
+                ),
                 freeze_plan=freeze_plan,
                 build_sequence=build_sequence if freeze_plan is not None else None,
             )
@@ -3563,11 +3600,6 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
         "components": "two metrics per comparable benchmark",
     }
     if reuse_source is not None:
-        _require_equal_reuse_value(
-            "method.confidence_contract",
-            report["method"]["confidence_contract"],
-            reuse_source["method"].get("confidence_contract"),
-        )
         report["method"]["discovery_reuse"]["status"] = "verified"
     if not comparable:
         _append_contract_error(report, "coverage", "no comparable benchmark rows")
