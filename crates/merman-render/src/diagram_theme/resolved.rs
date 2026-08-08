@@ -1,8 +1,11 @@
 use crate::render_family::RenderFamilyKind;
+use std::collections::BTreeMap;
 
 use super::canvas::{CanvasPaint, InsetsPx, ThemeColorValue};
 use super::compiler::ThemeCapabilityReport;
-use super::semantic::{StrokeLineCap, StrokeLineJoin, ThemeStylePatch, ThemeTarget, ThemeVariant};
+use super::semantic::{
+    StrokeLineCap, StrokeLineJoin, ThemeRule, ThemeStylePatch, ThemeTarget, ThemeVariant,
+};
 use super::typography::{Specified, TextStyle};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -117,23 +120,46 @@ impl ResolvedThemeStyle {
 pub struct ResolvedDiagramTheme {
     theme: super::DiagramTheme,
     family: RenderFamilyKind,
+    base_typography: TextStyle,
+    rule_indices: BTreeMap<ThemeTarget, Vec<usize>>,
+    ordinal_palette_indices: BTreeMap<ThemeTarget, usize>,
 }
 
 impl ResolvedDiagramTheme {
     pub(crate) fn new(theme: super::DiagramTheme, family: RenderFamilyKind) -> Self {
-        Self { theme, family }
+        let spec = theme.spec();
+        let base_typography = spec.typography().family_style(family).clone();
+        let mut rule_indices = BTreeMap::<ThemeTarget, Vec<usize>>::new();
+        for (index, rule) in spec.styles().rules().iter().enumerate() {
+            if rule.target().valid_for(family)
+                && rule.family().is_none_or(|expected| expected == family)
+            {
+                rule_indices.entry(rule.target()).or_default().push(index);
+            }
+        }
+        let ordinal_palette_indices = spec
+            .styles()
+            .ordinal_palettes()
+            .iter()
+            .enumerate()
+            .filter_map(|(index, (target, _))| target.valid_for(family).then_some((*target, index)))
+            .collect();
+
+        Self {
+            theme,
+            family,
+            base_typography,
+            rule_indices,
+            ordinal_palette_indices,
+        }
     }
 
     pub const fn family(&self) -> RenderFamilyKind {
         self.family
     }
 
-    pub const fn theme(&self) -> &super::DiagramTheme {
-        &self.theme
-    }
-
-    pub fn typography(&self) -> &TextStyle {
-        self.theme.spec().typography().family_style(self.family)
+    pub const fn typography(&self) -> &TextStyle {
+        &self.base_typography
     }
 
     pub fn style(
@@ -142,7 +168,17 @@ impl ResolvedDiagramTheme {
         variant: ThemeVariant,
         ordinal: Option<usize>,
     ) -> ResolvedThemeStyle {
-        resolve_style(self.theme.spec(), self.family, target, variant, ordinal)
+        let Some(indices) = self.rule_indices.get(&target) else {
+            return ResolvedThemeStyle::new(self.base_typography.clone());
+        };
+        let rules = self.theme.spec().styles().rules();
+        resolve_matching_rules(
+            &self.base_typography,
+            indices
+                .iter()
+                .map(|index| &rules[*index])
+                .filter(|rule| rule.applies_to(self.family, variant, ordinal)),
+        )
     }
 
     pub fn series_color(
@@ -150,27 +186,18 @@ impl ResolvedDiagramTheme {
         target: ThemeTarget,
         one_based_index: usize,
     ) -> Option<&ThemeColorValue> {
-        if !target.valid_for(self.family) {
-            return None;
-        }
-        self.theme
-            .spec()
-            .styles()
-            .ordinal_palettes()
-            .iter()
-            .find(|(palette_target, _)| *palette_target == target)
-            .and_then(|(_, palette)| palette.color_for(one_based_index))
+        let index = *self.ordinal_palette_indices.get(&target)?;
+        self.theme.spec().styles().ordinal_palettes()[index]
+            .1
+            .color_for(one_based_index)
     }
 
     pub fn capabilities(&self) -> &ThemeCapabilityReport {
         self.theme.capabilities()
     }
-
-    pub fn into_theme(self) -> super::DiagramTheme {
-        self.theme
-    }
 }
 
+/// Resolves directly from an uncompiled spec for Mermaid compatibility projection.
 pub(crate) fn resolve_style(
     spec: &super::DiagramThemeSpec,
     family: RenderFamilyKind,
@@ -179,12 +206,20 @@ pub(crate) fn resolve_style(
     ordinal: Option<usize>,
 ) -> ResolvedThemeStyle {
     let base_typography = spec.typography().family_style(family).clone();
+    resolve_matching_rules(
+        &base_typography,
+        spec.styles()
+            .matching_rules(family, target, variant, ordinal),
+    )
+}
+
+fn resolve_matching_rules<'a>(
+    base_typography: &TextStyle,
+    rules: impl Iterator<Item = &'a ThemeRule>,
+) -> ResolvedThemeStyle {
     let mut style = ResolvedThemeStyle::new(base_typography.clone());
-    for rule in spec
-        .styles()
-        .matching_rules(family, target, variant, ordinal)
-    {
-        style.apply(rule.style(), &base_typography);
+    for rule in rules {
+        style.apply(rule.style(), base_typography);
     }
     style
 }
@@ -194,5 +229,148 @@ fn apply_optional<T: Clone>(value: &Specified<T>, target: &mut Option<T>) {
         Specified::Unspecified => {}
         Specified::Clear => *target = None,
         Specified::Value(value) => *target = Some(value.clone()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagram_theme::{
+        DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, OrdinalSelector, ThemeRule,
+        ThemeRuleSet,
+    };
+
+    #[test]
+    fn family_resolution_indexes_only_applicable_rules_and_palettes() {
+        let node_fill = CanvasPaint::solid("#ef4444").expect("valid fill");
+        let node_stroke = CanvasPaint::solid("#2563eb").expect("valid stroke");
+        let state_fill = CanvasPaint::solid("#22c55e").expect("valid state fill");
+        let state_text_fill = CanvasPaint::solid("#a855f7").expect("valid text fill");
+        let palette_a = ThemeColorValue::parse("#f8fafc").expect("valid palette color");
+        let palette_b = ThemeColorValue::parse("#94a3b8").expect("valid palette color");
+        let rules = ThemeRuleSet::default()
+            .with_rule(ThemeRule::new(
+                ThemeTarget::Node,
+                ThemeStylePatch::default().with_fill(node_fill.clone()),
+            ))
+            .with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default().with_stroke(node_stroke.clone()),
+                )
+                .for_family(RenderFamilyKind::Flowchart),
+            )
+            .with_rule(ThemeRule::new(
+                ThemeTarget::State,
+                ThemeStylePatch::default().with_fill(state_fill),
+            ))
+            .with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Text,
+                    ThemeStylePatch::default().with_fill(state_text_fill),
+                )
+                .for_family(RenderFamilyKind::State),
+            )
+            .with_ordinal_palette(
+                ThemeTarget::ChartSeries,
+                OrdinalPalette::new([ThemeColorValue::parse("#0f172a").unwrap()]).unwrap(),
+            )
+            .with_ordinal_palette(
+                ThemeTarget::Node,
+                OrdinalPalette::new([palette_a.clone(), palette_b.clone()]).unwrap(),
+            );
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .unwrap();
+        let resolved = theme.resolve(RenderFamilyKind::Flowchart);
+
+        let node = resolved.style(ThemeTarget::Node, ThemeVariant::Default, None);
+        assert_eq!(node.fill(), Some(&node_fill));
+        assert_eq!(node.stroke(), Some(&node_stroke));
+        assert_eq!(
+            resolved
+                .style(ThemeTarget::State, ThemeVariant::Default, None)
+                .fill(),
+            None
+        );
+        assert_eq!(
+            resolved
+                .style(ThemeTarget::Text, ThemeVariant::Default, None)
+                .fill(),
+            None
+        );
+        assert_eq!(resolved.series_color(ThemeTarget::Node, 0), None);
+        assert_eq!(
+            resolved.series_color(ThemeTarget::Node, 1),
+            Some(&palette_a)
+        );
+        assert_eq!(
+            resolved.series_color(ThemeTarget::Node, 2),
+            Some(&palette_b)
+        );
+        assert_eq!(
+            resolved.series_color(ThemeTarget::Node, 3),
+            Some(&palette_a)
+        );
+        assert_eq!(resolved.series_color(ThemeTarget::Edge, 1), None);
+        assert_eq!(resolved.series_color(ThemeTarget::ChartSeries, 1), None);
+    }
+
+    #[test]
+    fn indexed_style_resolution_matches_the_compiled_spec_order() {
+        let base_fill = CanvasPaint::solid("#ef4444").expect("valid base fill");
+        let variant_stroke = CanvasPaint::solid("#2563eb").expect("valid variant stroke");
+        let ordinal_fill = CanvasPaint::solid("#22c55e").expect("valid ordinal fill");
+        let base = ThemeStylePatch::default().with_fill(base_fill.clone());
+        let variant = ThemeStylePatch::default().with_stroke(variant_stroke.clone());
+        let ordinal = ThemeStylePatch::default().with_fill(ordinal_fill.clone());
+        let rules = ThemeRuleSet::default()
+            .with_rule(ThemeRule::new(ThemeTarget::Node, base))
+            .with_rule(
+                ThemeRule::new(ThemeTarget::Node, variant).with_variant(ThemeVariant::Active),
+            )
+            .with_rule(
+                ThemeRule::new(ThemeTarget::Node, ordinal)
+                    .with_ordinal(OrdinalSelector::exact(2).unwrap()),
+            );
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .unwrap();
+        let resolved = theme.resolve(RenderFamilyKind::Flowchart);
+
+        for variant in ThemeVariant::ALL {
+            for ordinal in [None, Some(0), Some(1), Some(2), Some(3)] {
+                assert_eq!(
+                    resolved.style(ThemeTarget::Node, variant, ordinal),
+                    resolve_style(
+                        theme.spec(),
+                        RenderFamilyKind::Flowchart,
+                        ThemeTarget::Node,
+                        variant,
+                        ordinal,
+                    )
+                );
+            }
+        }
+
+        let default = resolved.style(ThemeTarget::Node, ThemeVariant::Default, None);
+        assert_eq!(default.fill(), Some(&base_fill));
+        assert_eq!(default.stroke(), None);
+
+        let active = resolved.style(ThemeTarget::Node, ThemeVariant::Active, None);
+        assert_eq!(active.fill(), Some(&base_fill));
+        assert_eq!(active.stroke(), Some(&variant_stroke));
+
+        let default_second = resolved.style(ThemeTarget::Node, ThemeVariant::Default, Some(2));
+        assert_eq!(default_second.fill(), Some(&ordinal_fill));
+        assert_eq!(default_second.stroke(), None);
+
+        let active_first = resolved.style(ThemeTarget::Node, ThemeVariant::Active, Some(1));
+        assert_eq!(active_first.fill(), Some(&base_fill));
+        assert_eq!(active_first.stroke(), Some(&variant_stroke));
+
+        let active_second = resolved.style(ThemeTarget::Node, ThemeVariant::Active, Some(2));
+        assert_eq!(active_second.fill(), Some(&ordinal_fill));
+        assert_eq!(active_second.stroke(), Some(&variant_stroke));
     }
 }
