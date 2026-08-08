@@ -2,20 +2,37 @@
 
 ## Decision
 
-Status: **accepted-structural**.
+Status: **accepted-structural — cumulative U8 closure**.
 
-The opaque rich-inline planner now indexes source-backed style-group ends once and keeps every
-opaque measurement request on a borrowed slice of one operation-local logical source string. The
-change removes repeated all-fragment style discovery and growing scratch-payload construction
-without reducing host/fallback callback count, order, request text, style, or failure position.
+The U8 program is closed as a structural refactor across five production slices: indexed
+break/run planning, the built-in carrier and streaming width route, the carrier-phase semantic
+fix, no-wrap inactive-path elimination, and opaque style-group completion. The final opaque slice
+is the adjacent `e7f03f8b → da1378b` experiment documented below. Together the slices remove the
+registered repeated scans and growing transient payloads while preserving Mermaid-backed wrapping
+semantics and the host/fallback callback contract.
 
 This receipt claims a structural Rust-planning bound only. It makes no end-to-end latency or peak
 memory claim, and it does not treat the extra `usize` side index as a measured memory win.
 
+### Cumulative production slices
+
+| Slice | Direct parent → candidate | Structural disposition |
+|---|---|---|
+| indexed break/run planning | `764a9e01 → 156eb88b` | Accepted; one source-backed walk and compact line-plan references replace repeated run rescans and growing clones. |
+| built-in carrier and streaming width | `28539199 → 9f6af184` | Accepted; operation-owned built-in route is selected once and streams width planning. |
+| carrier-phase semantic correction | `9f6af184 → 54a7d7890e66b7df26915ad290a14f6fcd95e158` | Accepted; restores the source-backed phase/measurement boundary required for behavior parity. |
+| no-wrap inactive path | `bd8ea8c3 → 685dd3ce` | Accepted; skips work that cannot affect a no-wrap result. |
+| opaque completion | `e7f03f8b → da1378b` | Accepted; final adjacent experiment boundary, detailed below. |
+
+`e99fc346` is test-only wiring and is not counted as a production slice. The slices are not one
+adjacent historical chain because unrelated parity fixes landed between them; the cumulative
+decision therefore records each owner boundary instead of inventing a synthetic all-U8 A/B.
+
 ## Reference and revision boundary
 
-The semantic reference is Mermaid 11.16.0's
-`repo-ref/mermaid/packages/mermaid/src/rendering-util/createText.ts`. Its HTML path measures a
+The semantic reference is Mermaid 11.16.1 (`7ecca0cd7f1658ef74f4e7e91f925724ef403bbf`)'s
+`repo-ref/mermaid/packages/mermaid/src/rendering-util/createText.ts` (SHA-256
+`2badd6b025eeaf75a159f4474c1afb71c0fc195af17b629ec90c96df40f5db13`). Its HTML path measures a
 nowrap label first and switches to `break-spaces` at the width boundary. The Rust implementation
 keeps that staged behavior; the opaque host callback trace is an additional Merman observability
 contract and therefore is tested independently rather than optimized away.
@@ -24,7 +41,7 @@ contract and therefore is tested independently rather than optimized away.
 |---|---|---|
 | `A` | `e7f03f8bf15f907bd4a3dab97ea8f3f695884742` | Direct parent with the prior built-in planner and opaque all-run scan/scratch path. |
 | `B` | `da1378b70f12987e5ca5aba7e584a61f1fb556fd` | Candidate that adds source offsets, one opaque style-group index, borrowed request slices, and counter-backed regression coverage. |
-| prior U8 context | `156eb88b2243e99e6761bec1aa3af1c398b5fd20`, `9f6af1843919104defa01be1acfdcb46813c2b2e`, `685dd3ce1f6d37c85e24a572063ccae7b2926633` | Earlier U8 planner, built-in route, and inactive-path milestones already present on `A`. |
+| prior U8 context | `156eb88b2243e99e6761bec1aa3af1c398b5fd20`, `9f6af1843919104defa01be1acfdcb46813c2b2e`, `54a7d7890e66b7df26915ad290a14f6fcd95e158`, `685dd3ce1f6d37c85e24a572063ccae7b2926633` | Earlier U8 planner, built-in route, carrier correction, and inactive-path milestones represented in the cumulative decision. |
 
 `B` is a direct child of `A`; the focused tests and this receipt are the decision evidence for the
 opaque completion slice.

@@ -50,7 +50,9 @@ The 303-byte fixture has SHA-256
 `2cb57e51813ecf06fbc53962849a62930dbe50b31977bec5aef7de4897db99cb` and exercises nested
 `flowchart-elk` subgraphs with explicit direction changes and `SEPARATE_CHILDREN` behavior.
 Commit `a110f37a3465dd86f3cda17622a6f504c39f741d` retains the same neutral lane in the active
-performance branch so the decision remains reproducible without checking out the synthetic pair.
+performance branch for future controls. The decision-level evidence remains bound to the
+source-equivalent synthetic pair above; reproducing that exact adjacent A/B still requires
+checking out those snapshots (or an independently verified equivalent pair).
 
 ## Variables and claim boundary
 
