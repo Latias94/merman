@@ -122,13 +122,15 @@ fn execute_encoded_svg(
         #[cfg(feature = "png")]
         PreparedGraphicalOutput::Png { options } => {
             let prepared_raster = merman::svg::export::prepare_raster(&svg, options)?;
+            let report =
+                prepared_raster.report_for_output(merman::svg::export::RasterOutputKind::Png);
             let actual_weight = super::admission::actual_raster_weight(
-                prepared_raster.plan(),
-                prepared_raster.embedded_image_plan(),
+                report.raster(),
+                report.embedded_images(),
                 8,
             )?;
             prepared.admission.ensure_actual_weight(actual_weight)?;
-            report_raster_plan(prepared.quiet, prepared_raster.plan(), stderr);
+            report_raster_plan(prepared.quiet, report.raster(), stderr);
             Ok(ExecutedArtifact {
                 bytes: prepared_raster.encode_png()?,
                 _permit: Some(permit),
@@ -141,13 +143,15 @@ fn execute_encoded_svg(
         #[cfg(feature = "jpeg")]
         PreparedGraphicalOutput::Jpeg { options } => {
             let prepared_raster = merman::svg::export::prepare_raster(&svg, options)?;
+            let report =
+                prepared_raster.report_for_output(merman::svg::export::RasterOutputKind::Jpeg);
             let actual_weight = super::admission::actual_raster_weight(
-                prepared_raster.plan(),
-                prepared_raster.embedded_image_plan(),
+                report.raster(),
+                report.embedded_images(),
                 10,
             )?;
             prepared.admission.ensure_actual_weight(actual_weight)?;
-            report_raster_plan(prepared.quiet, prepared_raster.plan(), stderr);
+            report_raster_plan(prepared.quiet, report.raster(), stderr);
             Ok(ExecutedArtifact {
                 bytes: prepared_raster.encode_jpeg()?,
                 _permit: Some(permit),
@@ -160,12 +164,11 @@ fn execute_encoded_svg(
         #[cfg(feature = "pdf")]
         PreparedGraphicalOutput::Pdf { options } => {
             let prepared_pdf = merman::svg::export::prepare_pdf(&svg, options)?;
-            let actual_weight = super::admission::actual_pdf_weight(
-                prepared_pdf.filter_plan(),
-                prepared_pdf.embedded_image_plan(),
-            )?;
+            let report = prepared_pdf.report();
+            let actual_weight =
+                super::admission::actual_pdf_weight(report.filters(), report.embedded_images())?;
             prepared.admission.ensure_actual_weight(actual_weight)?;
-            report_pdf_filter_plan(prepared.quiet, prepared_pdf.filter_plan(), stderr);
+            report_pdf_filter_plan(prepared.quiet, report.filters(), stderr);
             Ok(ExecutedArtifact {
                 bytes: prepared_pdf.encode()?,
                 _permit: Some(permit),

@@ -585,12 +585,12 @@ fn conversion_limits(
 fn raster_options(
     raster: crate::invocation::ResolvedRasterOptions,
     embedded_images: crate::invocation::ResolvedEmbeddedImageOptions,
-    background: Option<String>,
+    matte: Option<String>,
     resources: &ResolvedResourcePolicy,
 ) -> merman::svg::export::RasterOptions {
     let mut options = merman::svg::export::RasterOptions {
         scale: raster.scale,
-        background,
+        matte,
         ..Default::default()
     };
     if raster.fit_width.is_some() || raster.fit_height.is_some() {
@@ -621,7 +621,7 @@ fn raster_options(
 fn pdf_options(
     pdf: crate::invocation::ResolvedPdfOptions,
     embedded_images: crate::invocation::ResolvedEmbeddedImageOptions,
-    background: Option<String>,
+    page_paint: Option<String>,
     common: &ResolvedRenderCommon,
     mmdc_compat: bool,
     mmdc_fit_width_px: Option<f32>,
@@ -646,7 +646,7 @@ fn pdf_options(
         options.filter_image_limit =
             merman::svg::export::PdfFilterImageLimit::new(Some(max_pixels));
     }
-    options.background = background;
+    options.page_paint = page_paint;
     options.embedded_image_limit = embedded_image_limit(embedded_images);
     options.conversion_limits = conversion_limits(&common.resources);
     options

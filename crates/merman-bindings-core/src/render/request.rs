@@ -82,12 +82,14 @@ impl RenderRequestPlan {
         &self,
         source: &str,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
-        let (data, plan) = self
+        let (data, report) = self
             .renderer
-            .render_png_with_plan_sync(source, &self.raster_options)
+            .render_png_with_report_sync(source, &self.raster_options)
             .map_err(|error| classify_output_error(error, self.export_resource_profile))?
             .ok_or_else(no_diagram_error)?;
-        Ok(crate::operation::BindingOperationOutput::raster(data, plan))
+        Ok(crate::operation::BindingOperationOutput::raster(
+            data, report,
+        ))
     }
 
     #[cfg(feature = "jpeg")]
@@ -95,12 +97,14 @@ impl RenderRequestPlan {
         &self,
         source: &str,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
-        let (data, plan) = self
+        let (data, report) = self
             .renderer
-            .render_jpeg_with_plan_sync(source, &self.raster_options)
+            .render_jpeg_with_report_sync(source, &self.raster_options)
             .map_err(|error| classify_output_error(error, self.export_resource_profile))?
             .ok_or_else(no_diagram_error)?;
-        Ok(crate::operation::BindingOperationOutput::raster(data, plan))
+        Ok(crate::operation::BindingOperationOutput::raster(
+            data, report,
+        ))
     }
 
     #[cfg(feature = "pdf")]
@@ -108,12 +112,12 @@ impl RenderRequestPlan {
         &self,
         source: &str,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
-        let (data, plan) = self
+        let (data, report) = self
             .renderer
-            .render_pdf_with_plan_sync(source, &self.pdf_options)
+            .render_pdf_with_report_sync(source, &self.pdf_options)
             .map_err(|error| classify_output_error(error, self.export_resource_profile))?
             .ok_or_else(no_diagram_error)?;
-        Ok(crate::operation::BindingOperationOutput::pdf(data, plan))
+        Ok(crate::operation::BindingOperationOutput::pdf(data, report))
     }
 }
 
@@ -354,15 +358,15 @@ fn binding_raster_options(
         if let Some(scale) = raster.scale {
             compiled.scale = finite_positive_f32(scale, "raster.scale")?;
         }
-        if let Some(background) = raster.background.as_deref() {
-            let background = css_declaration_value(background, "raster.background")?;
-            if !merman::svg::export::is_valid_export_background_color(&background) {
+        if let Some(matte) = raster.matte.as_deref() {
+            let matte = css_declaration_value(matte, "raster.matte")?;
+            if !merman::svg::export::is_valid_export_color(&matte) {
                 return Err(BindingError::new(
                     BindingStatus::InvalidArgument,
-                    "raster.background is not supported by the native exporter",
+                    "raster.matte is not supported by the native exporter",
                 ));
             }
-            compiled.background = Some(background);
+            compiled.matte = Some(matte);
         }
         if let Some(fit) = raster.fit_to.as_ref() {
             if fit.width.is_none() && fit.height.is_none() {
@@ -432,15 +436,15 @@ fn binding_pdf_options(
     if let Some(filter_scale) = pdf.filter_scale {
         compiled.filter_scale = finite_positive_f32(filter_scale, "pdf.filter_scale")?;
     }
-    if let Some(background) = pdf.background.as_deref() {
-        let background = css_declaration_value(background, "pdf.background")?;
-        if !merman::svg::export::is_valid_export_background_color(&background) {
+    if let Some(page_paint) = pdf.page_paint.as_deref() {
+        let page_paint = css_declaration_value(page_paint, "pdf.page_paint")?;
+        if !merman::svg::export::is_valid_export_color(&page_paint) {
             return Err(BindingError::new(
                 BindingStatus::InvalidArgument,
-                "pdf.background is not supported by the native exporter",
+                "pdf.page_paint is not supported by the native exporter",
             ));
         }
-        compiled.background = Some(background);
+        compiled.page_paint = Some(page_paint);
     }
     Ok(compiled)
 }
@@ -628,12 +632,12 @@ mod tests {
             br##"{
                 "raster": {
                     "scale": 1.5,
-                    "background": "#ffffff",
+                    "matte": "#ffffff",
                     "fit_to": {"width": 640}
                 },
                 "jpeg": {"quality": 82},
                 "pdf": {
-                    "background": "transparent",
+                    "page_paint": "transparent",
                     "filter_scale": 2.5,
                     "page_policy": {"kind": "fixed", "width_pt": 612, "height_pt": 792}
                 },
@@ -698,13 +702,13 @@ mod tests {
     #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
     #[test]
     fn export_options_reject_backend_colors_that_would_be_ignored() {
-        let options = crate::common::parse_options(br#"{"raster":{"background":"not-a-color"}}"#)
+        let options = crate::common::parse_options(br#"{"raster":{"matte":"not-a-color"}}"#)
             .expect("JSON shape is valid");
         let error = compile_for_test(&options, merman::runtime::RuntimePolicy::deterministic())
             .err()
             .expect("unsupported backend color");
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
-        assert!(error.message().contains("raster.background"));
+        assert!(error.message().contains("raster.matte"));
     }
 
     #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -728,7 +732,7 @@ mod tests {
                 br#"{"pdf":{"page_policy":{"kind":"fit-css-width","max_width_px":0}}}"#,
                 "pdf.page_policy.max_width_px",
             ),
-            (br#"{"pdf":{"background":"not-a-color"}}"#, "pdf.background"),
+            (br#"{"pdf":{"page_paint":"not-a-color"}}"#, "pdf.page_paint"),
         ];
 
         for &(options_json, expected_field) in cases {

@@ -914,7 +914,8 @@ mod tests {
         let fingerprint = catalog.fingerprint();
         let svg = sealed_sized_svg(catalog, FontSourcePolicy::embedded_only());
         let prepared = crate::prepare_raster(&svg, &crate::RasterOptions::default()).unwrap();
-        let plan = prepared.font_plan();
+        let (png, report) = prepared.encode_png_with_report().unwrap();
+        let plan = report.fonts();
 
         assert_eq!(plan.catalog_fingerprint(), fingerprint);
         assert_eq!(plan.source_mode(), ExportFontMode::EmbeddedOnly);
@@ -925,7 +926,6 @@ mod tests {
         assert!(!plan.unresolved_font_request());
         assert!(!plan.is_host_dependent());
 
-        let png = prepared.encode_png().unwrap();
         assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
     }
 
@@ -941,7 +941,8 @@ mod tests {
         );
 
         let prepared = crate::prepare_raster(&svg, &crate::RasterOptions::default()).unwrap();
-        let plan = prepared.font_plan();
+        let (_, report) = prepared.encode_png_with_report().unwrap();
+        let plan = report.fonts();
 
         assert!(plan.used_embedded_fonts());
         assert!(plan.family_fallback_used());
@@ -956,7 +957,8 @@ mod tests {
         let fingerprint = catalog.fingerprint();
         let svg = sealed_sized_svg(catalog, FontSourcePolicy::embedded_only());
         let prepared = crate::prepare_pdf(&svg, &crate::PdfOptions::default()).unwrap();
-        let plan = prepared.font_plan();
+        let report = prepared.report();
+        let plan = report.fonts();
 
         assert_eq!(plan.catalog_fingerprint(), fingerprint);
         assert_eq!(plan.source_mode(), ExportFontMode::EmbeddedOnly);

@@ -596,11 +596,11 @@ diagram canvas to match the host surface. The value must be a single CSS declara
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `raster.scale` | positive finite number | `1` | Device-pixel scaling applied before the output resource ceiling. |
-| `raster.background` | supported color string | transparent | `transparent`, `white`, `black`, or 3/4/6/8-digit hex. JPEG requires an opaque result. |
+| `raster.matte` | supported color string | transparent | Solid output compositing color: `transparent`, `white`, `black`, or 3/4/6/8-digit hex. JPEG requires an opaque result. This is separate from the diagram theme canvas. |
 | `raster.fit_to.width` | positive integer | none | Optional target width in pixels. At least one fit dimension is required. |
 | `raster.fit_to.height` | positive integer | none | Optional target height in pixels. At least one fit dimension is required. |
 | `jpeg.quality` | integer from `1` to `100` | exporter default | JPEG encoder quality. |
-| `pdf.background` | supported color string | transparent | Optional PDF page background using the same supported color vocabulary. |
+| `pdf.page_paint` | supported color string | transparent | Optional solid paint behind SVG content on the PDF page, using the same supported color vocabulary. This is separate from the diagram theme canvas. |
 | `pdf.filter_scale` / `pdf.filterScale` | positive finite number | `4` | Requested sampling scale for localized SVG filter images. The exporter may reduce it to satisfy `max_pdf_filter_image_pixels`. |
 | `pdf.page_policy.kind` | string | `fit-svg` | `fit-svg`, `fixed`, or `fit-css-width`. |
 | `pdf.page_policy.width_pt` / `height_pt` | positive finite number | required by `fixed` | Fixed PDF page dimensions in points. |

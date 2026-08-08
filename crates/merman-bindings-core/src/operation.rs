@@ -591,7 +591,8 @@ impl BindingOperationOutput {
     }
 
     #[cfg(any(feature = "png", feature = "jpeg"))]
-    pub(crate) fn raster(data: Vec<u8>, plan: merman::svg::export::RasterPlan) -> Self {
+    pub(crate) fn raster(data: Vec<u8>, report: merman::svg::export::RasterExportReport) -> Self {
+        let plan = report.raster();
         Self {
             data,
             output_plan: Some(BindingOutputPlan::Raster(BindingRasterOutputPlan {
@@ -607,7 +608,8 @@ impl BindingOperationOutput {
     }
 
     #[cfg(feature = "pdf")]
-    pub(crate) fn pdf(data: Vec<u8>, plan: merman::svg::export::PdfFilterImagePlan) -> Self {
+    pub(crate) fn pdf(data: Vec<u8>, report: merman::svg::export::PdfExportReport) -> Self {
+        let plan = report.filters();
         Self {
             data,
             output_plan: Some(BindingOutputPlan::PdfFilterImages(
@@ -1622,7 +1624,7 @@ mod tests {
     #[test]
     fn output_options_are_artifact_wide_at_construction_and_operation_scoped_per_request() {
         let engine = BindingEngine::from_options(
-            br#"{"raster":{"scale":2},"jpeg":{"quality":85},"pdf":{"background":"white"}}"#,
+            br#"{"raster":{"scale":2},"jpeg":{"quality":85},"pdf":{"page_paint":"white"}}"#,
         )
         .expect("constructor accepts the compiled artifact option union");
         engine

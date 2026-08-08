@@ -531,7 +531,7 @@ fn custom_raster_size_limit_caps_actual_png_dimensions() {
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30000 20000"><rect width="30000" height="20000" fill="black"/></svg>"#;
     let options = RasterOptions::default()
         .with_size_limit(RasterSizeLimit::new(Some(128), Some(128), Some(16_384)))
-        .with_background("white");
+        .with_matte("white");
 
     let svg = finalize_raster_input(svg);
     let plan = svg_raster_plan(&svg, &options).unwrap();

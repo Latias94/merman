@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let raster = RasterOptions::default()
         .with_fit_to(RasterFitBox::contain(960, 540))
         .with_scale(2.0)
-        .with_background("white");
+        .with_matte("white");
     let renderer = HeadlessRenderer::new()
         .with_strict_parsing()
         .with_diagram_id("png-example");

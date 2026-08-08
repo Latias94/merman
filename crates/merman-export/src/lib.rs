@@ -17,7 +17,6 @@ use cssparser::{Delimiter, Parser, ParserInput, Token};
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use merman_render::svg::ResvgCompatibleSvg;
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[derive(Debug, thiserror::Error)]
 pub enum ExportError {
     #[error("failed to parse SVG")]
@@ -32,16 +31,18 @@ pub enum ExportError {
     InvalidSizing(&'static str),
     #[error("failed to encode PNG")]
     PngEncode,
-    #[error("invalid background color for JPG rendering")]
-    JpegBackground,
-    #[error("JPG rendering requires an opaque background color (e.g. white)")]
-    JpegOpaqueBackgroundRequired,
+    #[error("invalid raster matte color")]
+    InvalidRasterMatte,
+    #[error("JPG rendering requires an opaque matte color (e.g. white)")]
+    JpegOpaqueMatteRequired,
     #[error("failed to encode JPG")]
     JpegEncode,
     #[error("JPG dimensions exceed the 65535-pixel encoder limit")]
     JpegDimensionLimit,
     #[error("failed to convert SVG to PDF")]
     PdfConvert,
+    #[error("invalid PDF page paint color")]
+    InvalidPdfPagePaint,
     #[error("retained font catalog and host font-source policy have no usable source")]
     FontSourceUnavailable,
     #[error("failed to load the retained font catalog into the native exporter")]
@@ -592,7 +593,8 @@ impl Default for RasterSizeLimit {
 #[derive(Debug, Clone)]
 pub struct RasterOptions {
     pub scale: f32,
-    pub background: Option<String>,
+    /// Optional solid color composited behind SVG pixels. This is not the diagram theme canvas.
+    pub matte: Option<String>,
     pub jpeg_quality: u8,
     pub fit_to: Option<RasterFitBox>,
     pub size_limit: RasterSizeLimit,
@@ -818,8 +820,8 @@ impl Default for PdfFilterImageLimit {
 pub struct PdfOptions {
     /// PDF page sizing and content placement policy.
     pub page_policy: PdfPagePolicy,
-    /// Optional page background color.
-    pub background: Option<String>,
+    /// Optional solid paint behind SVG content on the PDF page.
+    pub page_paint: Option<String>,
     /// Requested sampling scale for SVG filters embedded in the PDF.
     pub filter_scale: f32,
     /// Aggregate budget for localized filter images retained in the PDF.
@@ -835,7 +837,7 @@ impl Default for PdfOptions {
     fn default() -> Self {
         Self {
             page_policy: PdfPagePolicy::FitSvg,
-            background: None,
+            page_paint: None,
             filter_scale: 4.0,
             filter_image_limit: PdfFilterImageLimit::default(),
             embedded_image_limit: EmbeddedImageLimit::default(),
@@ -851,8 +853,8 @@ impl PdfOptions {
         self
     }
 
-    pub fn with_background(mut self, background: impl Into<String>) -> Self {
-        self.background = Some(background.into());
+    pub fn with_page_paint(mut self, page_paint: impl Into<String>) -> Self {
+        self.page_paint = Some(page_paint.into());
         self
     }
 
@@ -887,7 +889,7 @@ impl Default for RasterOptions {
     fn default() -> Self {
         Self {
             scale: 1.0,
-            background: None,
+            matte: None,
             jpeg_quality: 90,
             fit_to: None,
             size_limit: RasterSizeLimit::default(),
@@ -904,8 +906,8 @@ impl RasterOptions {
         self
     }
 
-    pub fn with_background(mut self, background: impl Into<String>) -> Self {
-        self.background = Some(background.into());
+    pub fn with_matte(mut self, matte: impl Into<String>) -> Self {
+        self.matte = Some(matte.into());
         self
     }
 
@@ -986,83 +988,302 @@ pub struct SvgConversionPlan {
     pub nested_svg_images: usize,
 }
 
+/// Solid RGBA color accepted by native export compositing.
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExportRgbaColor {
+    red: u8,
+    green: u8,
+    blue: u8,
+    alpha: u8,
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+impl ExportRgbaColor {
+    pub const WHITE: Self = Self {
+        red: 255,
+        green: 255,
+        blue: 255,
+        alpha: 255,
+    };
+
+    pub const fn red(self) -> u8 {
+        self.red
+    }
+
+    pub const fn green(self) -> u8 {
+        self.green
+    }
+
+    pub const fn blue(self) -> u8 {
+        self.blue
+    }
+
+    pub const fn alpha(self) -> u8 {
+        self.alpha
+    }
+
+    pub const fn is_opaque(self) -> bool {
+        self.alpha == 255
+    }
+}
+
+/// Concrete pixel output selected from one prepared raster tree.
+#[cfg(any(feature = "png", feature = "jpeg"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RasterOutputKind {
+    Png,
+    Jpeg,
+}
+
+/// Frozen resource, allocation, font, and compositing evidence for one raster export.
+#[cfg(any(feature = "png", feature = "jpeg"))]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RasterExportReport {
+    resource_fingerprint: merman_render::svg::SvgResourceFingerprint,
+    output: RasterOutputKind,
+    raster: RasterPlan,
+    embedded_images: EmbeddedImagePlan,
+    conversion: SvgConversionPlan,
+    fonts: ExportFontPlan,
+    matte: Option<ExportRgbaColor>,
+    matte_defaulted: bool,
+}
+
+#[cfg(any(feature = "png", feature = "jpeg"))]
+impl RasterExportReport {
+    pub const fn resource_fingerprint(self) -> merman_render::svg::SvgResourceFingerprint {
+        self.resource_fingerprint
+    }
+
+    pub const fn output(self) -> RasterOutputKind {
+        self.output
+    }
+
+    pub const fn raster(self) -> RasterPlan {
+        self.raster
+    }
+
+    pub const fn embedded_images(self) -> EmbeddedImagePlan {
+        self.embedded_images
+    }
+
+    pub const fn conversion(self) -> SvgConversionPlan {
+        self.conversion
+    }
+
+    pub const fn fonts(self) -> ExportFontPlan {
+        self.fonts
+    }
+
+    /// Returns the effective output matte. JPEG always reports an opaque value.
+    pub const fn matte(self) -> Option<ExportRgbaColor> {
+        self.matte
+    }
+
+    /// Returns whether the output format supplied the matte rather than the caller.
+    pub const fn matte_defaulted(self) -> bool {
+        self.matte_defaulted
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg"))]
+#[derive(Debug, Clone, Copy)]
+struct RasterReportSeed {
+    resource_fingerprint: merman_render::svg::SvgResourceFingerprint,
+    raster: RasterPlan,
+    embedded_images: EmbeddedImagePlan,
+    conversion: SvgConversionPlan,
+    fonts: ExportFontPlan,
+}
+
+/// PDF page geometry frozen before filter planning and encoding.
+#[cfg(feature = "pdf")]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PdfPagePlan {
+    page_width_pt: f32,
+    page_height_pt: f32,
+    drawing_width_pt: f32,
+    drawing_height_pt: f32,
+    offset_x_pt: f32,
+    offset_y_pt: f32,
+}
+
+#[cfg(feature = "pdf")]
+impl PdfPagePlan {
+    pub const fn page_width_pt(self) -> f32 {
+        self.page_width_pt
+    }
+
+    pub const fn page_height_pt(self) -> f32 {
+        self.page_height_pt
+    }
+
+    pub const fn drawing_width_pt(self) -> f32 {
+        self.drawing_width_pt
+    }
+
+    pub const fn drawing_height_pt(self) -> f32 {
+        self.drawing_height_pt
+    }
+
+    pub const fn offset_x_pt(self) -> f32 {
+        self.offset_x_pt
+    }
+
+    pub const fn offset_y_pt(self) -> f32 {
+        self.offset_y_pt
+    }
+}
+
+/// Frozen resource, page, filter, font, and compositing evidence for one PDF export.
+#[cfg(feature = "pdf")]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PdfExportReport {
+    resource_fingerprint: merman_render::svg::SvgResourceFingerprint,
+    page: PdfPagePlan,
+    filters: PdfFilterImagePlan,
+    embedded_images: EmbeddedImagePlan,
+    conversion: SvgConversionPlan,
+    fonts: ExportFontPlan,
+    page_paint: Option<ExportRgbaColor>,
+}
+
+#[cfg(feature = "pdf")]
+impl PdfExportReport {
+    pub const fn resource_fingerprint(self) -> merman_render::svg::SvgResourceFingerprint {
+        self.resource_fingerprint
+    }
+
+    pub const fn page(self) -> PdfPagePlan {
+        self.page
+    }
+
+    pub const fn filters(self) -> PdfFilterImagePlan {
+        self.filters
+    }
+
+    pub const fn embedded_images(self) -> EmbeddedImagePlan {
+        self.embedded_images
+    }
+
+    pub const fn conversion(self) -> SvgConversionPlan {
+        self.conversion
+    }
+
+    pub const fn fonts(self) -> ExportFontPlan {
+        self.fonts
+    }
+
+    pub const fn page_paint(self) -> Option<ExportRgbaColor> {
+        self.page_paint
+    }
+}
+
 /// Parsed raster input shared by sizing, memory scheduling, and image encoding.
 #[cfg(any(feature = "png", feature = "jpeg"))]
 pub struct PreparedRaster {
     tree: usvg::Tree,
     geometry: RasterGeometry,
     translate_min_to_origin: bool,
-    plan: RasterPlan,
-    embedded_image_plan: EmbeddedImagePlan,
-    conversion_plan: SvgConversionPlan,
-    font_plan: ExportFontPlan,
-    options: RasterOptions,
+    report: RasterReportSeed,
+    matte: Option<ExportRgbaColor>,
+    jpeg_quality: u8,
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
 impl PreparedRaster {
-    /// Returns the allocation plan computed before any output pixmap is created.
-    pub const fn plan(&self) -> RasterPlan {
-        self.plan
+    /// Returns the complete report that would be used for the selected raster output.
+    ///
+    /// The report is frozen during preparation. JPEG's implicit white matte is reflected here;
+    /// the encoder still performs its format-specific dimension and opacity checks before bytes
+    /// are emitted.
+    pub fn report_for_output(&self, output: RasterOutputKind) -> RasterExportReport {
+        let matte_defaulted = matches!(output, RasterOutputKind::Jpeg) && self.matte.is_none();
+        let matte = if matte_defaulted {
+            Some(ExportRgbaColor::WHITE)
+        } else {
+            self.matte
+        };
+        self.report_for(output, matte, matte_defaulted)
     }
 
-    /// Returns the embedded raster image plan computed from image headers.
-    pub const fn embedded_image_plan(&self) -> EmbeddedImagePlan {
-        self.embedded_image_plan
-    }
-
-    pub const fn conversion_plan(&self) -> SvgConversionPlan {
-        self.conversion_plan
-    }
-
-    /// Returns frozen font-source and fallback evidence from usvg parsing.
-    pub const fn font_plan(&self) -> ExportFontPlan {
-        self.font_plan
+    fn report_for(
+        &self,
+        output: RasterOutputKind,
+        matte: Option<ExportRgbaColor>,
+        matte_defaulted: bool,
+    ) -> RasterExportReport {
+        RasterExportReport {
+            resource_fingerprint: self.report.resource_fingerprint,
+            output,
+            raster: self.report.raster,
+            embedded_images: self.report.embedded_images,
+            conversion: self.report.conversion,
+            fonts: self.report.fonts,
+            matte,
+            matte_defaulted,
+        }
     }
 
     /// Returns an advisory weight for scheduling parallel PNG jobs.
     ///
     /// This is not a hard memory bound for resvg internals.
     pub fn png_scheduling_weight_bytes(&self) -> u64 {
-        encoding_scheduling_weight_bytes(self.plan, self.embedded_image_plan, 8)
+        encoding_scheduling_weight_bytes(self.report.raster, self.report.embedded_images, 8)
     }
 
     /// Returns an advisory weight for scheduling parallel JPEG jobs.
     ///
     /// This is not a hard memory bound for resvg internals.
     pub fn jpeg_scheduling_weight_bytes(&self) -> u64 {
-        encoding_scheduling_weight_bytes(self.plan, self.embedded_image_plan, 10)
+        encoding_scheduling_weight_bytes(self.report.raster, self.report.embedded_images, 10)
     }
 
     /// Allocates and encodes the prepared image as PNG.
     #[cfg(feature = "png")]
     pub fn encode_png(self) -> Result<Vec<u8>> {
+        self.encode_png_with_report().map(|(bytes, _)| bytes)
+    }
+
+    /// Allocates and encodes PNG together with the exact resources and compositing evidence used.
+    #[cfg(feature = "png")]
+    pub fn encode_png_with_report(self) -> Result<(Vec<u8>, RasterExportReport)> {
         run_recursive_svg_backend(move || {
-            self.into_pixmap()?
+            let matte = self.matte;
+            let report = self.report_for_output(RasterOutputKind::Png);
+            let bytes = self
+                .into_pixmap(matte)?
                 .encode_png()
-                .map_err(|_| ExportError::PngEncode)
+                .map_err(|_| ExportError::PngEncode)?;
+            Ok((bytes, report))
         })
     }
 
     /// Allocates and encodes the prepared image as JPEG.
     #[cfg(feature = "jpeg")]
-    pub fn encode_jpeg(mut self) -> Result<Vec<u8>> {
+    pub fn encode_jpeg(self) -> Result<Vec<u8>> {
+        self.encode_jpeg_with_report().map(|(bytes, _)| bytes)
+    }
+
+    /// Allocates and encodes JPEG together with the exact resources and compositing evidence used.
+    #[cfg(feature = "jpeg")]
+    pub fn encode_jpeg_with_report(self) -> Result<(Vec<u8>, RasterExportReport)> {
         run_recursive_svg_backend(move || {
-            if self.plan.width_px > u32::from(u16::MAX) || self.plan.height_px > u32::from(u16::MAX)
+            if self.report.raster.width_px > u32::from(u16::MAX)
+                || self.report.raster.height_px > u32::from(u16::MAX)
             {
                 return Err(ExportError::JpegDimensionLimit);
             }
-            let bg = self.options.background.as_deref().unwrap_or("white");
-            let Some(color) = parse_tiny_skia_color(bg) else {
-                return Err(ExportError::JpegBackground);
-            };
-            if color.alpha() != 1.0 {
-                return Err(ExportError::JpegOpaqueBackgroundRequired);
+            let matte = self.matte.unwrap_or(ExportRgbaColor::WHITE);
+            if !matte.is_opaque() {
+                return Err(ExportError::JpegOpaqueMatteRequired);
             }
 
-            self.options.background = Some(bg.to_string());
-            let quality = self.options.jpeg_quality;
-            let pixmap = self.into_pixmap()?;
+            let report = self.report_for_output(RasterOutputKind::Jpeg);
+            let quality = self.jpeg_quality;
+            let pixmap = self.into_pixmap(Some(matte))?;
             let (w, h) = (pixmap.width(), pixmap.height());
             let rgba = pixmap.data();
             let mut rgb = vec![0u8; (w as usize) * (h as usize) * 3];
@@ -1076,21 +1297,20 @@ impl PreparedRaster {
             let mut enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, quality);
             enc.encode(&rgb, w, h, image::ExtendedColorType::Rgb8)
                 .map_err(|_| ExportError::JpegEncode)?;
-            Ok(out)
+            Ok((out, report))
         })
     }
 
-    fn into_pixmap(self) -> Result<tiny_skia::Pixmap> {
-        let mut pixmap = tiny_skia::Pixmap::new(self.plan.width_px, self.plan.height_px)
-            .ok_or(ExportError::PixmapAlloc)?;
+    fn into_pixmap(self, matte: Option<ExportRgbaColor>) -> Result<tiny_skia::Pixmap> {
+        let mut pixmap =
+            tiny_skia::Pixmap::new(self.report.raster.width_px, self.report.raster.height_px)
+                .ok_or(ExportError::PixmapAlloc)?;
 
-        if let Some(bg) = self.options.background.as_deref()
-            && let Some(color) = parse_tiny_skia_color(bg)
-        {
-            pixmap.fill(color);
+        if let Some(matte) = matte {
+            pixmap.fill(tiny_skia_color(matte));
         }
 
-        let scale = self.plan.effective_scale as f32;
+        let scale = self.report.raster.effective_scale as f32;
         let transform = if self.translate_min_to_origin {
             tiny_skia::Transform::from_row(
                 scale,
@@ -1113,32 +1333,17 @@ impl PreparedRaster {
 #[cfg(feature = "pdf")]
 pub struct PreparedPdf {
     tree: usvg::Tree,
-    options: PdfOptions,
-    filter_plan: PdfFilterImagePlan,
-    embedded_image_plan: EmbeddedImagePlan,
-    conversion_plan: SvgConversionPlan,
-    font_plan: ExportFontPlan,
+    layout: PdfPageLayout,
+    filter_scale: f32,
+    page_paint: Option<ExportRgbaColor>,
+    report: PdfExportReport,
 }
 
 #[cfg(feature = "pdf")]
 impl PreparedPdf {
-    /// Returns the localized filter allocation plan computed before PDF encoding.
-    pub const fn filter_plan(&self) -> PdfFilterImagePlan {
-        self.filter_plan
-    }
-
-    /// Returns the embedded raster image plan computed from image headers.
-    pub const fn embedded_image_plan(&self) -> EmbeddedImagePlan {
-        self.embedded_image_plan
-    }
-
-    pub const fn conversion_plan(&self) -> SvgConversionPlan {
-        self.conversion_plan
-    }
-
-    /// Returns frozen font-source and fallback evidence from usvg parsing.
-    pub const fn font_plan(&self) -> ExportFontPlan {
-        self.font_plan
+    /// Returns the complete report frozen before PDF encoding.
+    pub const fn report(&self) -> PdfExportReport {
+        self.report
     }
 
     /// Returns an advisory weight for scheduling parallel PDF jobs.
@@ -1146,17 +1351,27 @@ impl PreparedPdf {
     /// This is not a hard memory bound for krilla-svg or resvg internals.
     pub fn scheduling_weight_bytes(&self) -> u64 {
         const PDF_ENCODER_OVERHEAD_BYTES: u64 = 1024 * 1024;
-        self.filter_plan
+        self.report
+            .filters
             .effective_image_pixels
             .saturating_mul(8)
-            .saturating_add(self.embedded_image_plan.total_pixels.saturating_mul(8))
+            .saturating_add(self.report.embedded_images.total_pixels.saturating_mul(8))
             .saturating_add(PDF_ENCODER_OVERHEAD_BYTES)
             .saturating_add(RECURSIVE_SVG_BACKEND_STACK_BYTES as u64)
     }
 
     /// Encodes the prepared tree as vector PDF, rasterizing only SVG filter regions.
     pub fn encode(self) -> Result<Vec<u8>> {
-        run_recursive_svg_backend(move || svg_tree_to_pdf(&self.tree, &self.options))
+        self.encode_with_report().map(|(bytes, _)| bytes)
+    }
+
+    /// Encodes PDF together with the exact resources, page, and filter evidence used.
+    pub fn encode_with_report(self) -> Result<(Vec<u8>, PdfExportReport)> {
+        run_recursive_svg_backend(move || {
+            let bytes =
+                svg_tree_to_pdf(&self.tree, self.layout, self.filter_scale, self.page_paint)?;
+            Ok((bytes, self.report))
+        })
     }
 }
 
@@ -1174,6 +1389,12 @@ fn prepare_raster_on_backend_stack(
     options: &RasterOptions,
 ) -> Result<PreparedRaster> {
     let source = svg.as_str();
+    let matte = options
+        .matte
+        .as_deref()
+        .map(parse_export_color)
+        .transpose()
+        .map_err(|_| ExportError::InvalidRasterMatte)?;
     let root_metadata = parse_root_svg_metadata(source)?;
     let mut usvg_options = usvg::Options::default();
     let font_plan = configure_usvg_options_for_raster(&mut usvg_options, root_metadata, svg)?;
@@ -1193,11 +1414,15 @@ fn prepare_raster_on_backend_stack(
         tree,
         geometry,
         translate_min_to_origin,
-        plan,
-        embedded_image_plan,
-        conversion_plan,
-        font_plan,
-        options: options.clone(),
+        report: RasterReportSeed {
+            resource_fingerprint: svg.resource_fingerprint(),
+            raster: plan,
+            embedded_images: embedded_image_plan,
+            conversion: conversion_plan,
+            fonts: font_plan,
+        },
+        matte,
+        jpeg_quality: options.jpeg_quality,
     })
 }
 
@@ -1216,6 +1441,12 @@ fn prepare_pdf_on_backend_stack(
 ) -> Result<PreparedPdf> {
     let source = svg.as_str();
     validate_pdf_options(options)?;
+    let page_paint = options
+        .page_paint
+        .as_deref()
+        .map(parse_export_color)
+        .transpose()
+        .map_err(|_| ExportError::InvalidPdfPagePaint)?;
     let data_plan = plan_embedded_data_resources_with_occurrences(
         source,
         svg.reference_plan().raw_element_occurrences(),
@@ -1232,16 +1463,22 @@ fn prepare_pdf_on_backend_stack(
         options.filter_scale,
         options.filter_image_limit,
     )?;
-    let mut effective_options = options.clone();
-    effective_options.filter_scale = filter_plan.effective_scale;
+    let report = PdfExportReport {
+        resource_fingerprint: svg.resource_fingerprint(),
+        page: layout.plan(),
+        filters: filter_plan,
+        embedded_images: embedded_image_plan,
+        conversion: conversion_plan,
+        fonts: font_plan,
+        page_paint,
+    };
 
     Ok(PreparedPdf {
         tree,
-        options: effective_options,
-        filter_plan,
-        embedded_image_plan,
-        conversion_plan,
-        font_plan,
+        layout,
+        filter_scale: filter_plan.effective_scale,
+        page_paint,
+        report,
     })
 }
 
@@ -1281,14 +1518,30 @@ pub fn svg_to_png(svg: &ResvgCompatibleSvg, options: &RasterOptions) -> Result<V
     prepare_raster(svg, options)?.encode_png()
 }
 
+#[cfg(feature = "png")]
+pub fn svg_to_png_with_report(
+    svg: &ResvgCompatibleSvg,
+    options: &RasterOptions,
+) -> Result<(Vec<u8>, RasterExportReport)> {
+    prepare_raster(svg, options)?.encode_png_with_report()
+}
+
 #[cfg(feature = "jpeg")]
 pub fn svg_to_jpeg(svg: &ResvgCompatibleSvg, options: &RasterOptions) -> Result<Vec<u8>> {
     prepare_raster(svg, options)?.encode_jpeg()
 }
 
+#[cfg(feature = "jpeg")]
+pub fn svg_to_jpeg_with_report(
+    svg: &ResvgCompatibleSvg,
+    options: &RasterOptions,
+) -> Result<(Vec<u8>, RasterExportReport)> {
+    prepare_raster(svg, options)?.encode_jpeg_with_report()
+}
+
 #[cfg(any(feature = "png", feature = "jpeg"))]
 pub fn svg_raster_plan(svg: &ResvgCompatibleSvg, options: &RasterOptions) -> Result<RasterPlan> {
-    Ok(prepare_raster(svg, options)?.plan())
+    Ok(prepare_raster(svg, options)?.report.raster)
 }
 
 #[cfg(feature = "pdf")]
@@ -1302,6 +1555,14 @@ pub fn svg_to_pdf_with_options(svg: &ResvgCompatibleSvg, options: &PdfOptions) -
 }
 
 #[cfg(feature = "pdf")]
+pub fn svg_to_pdf_with_report(
+    svg: &ResvgCompatibleSvg,
+    options: &PdfOptions,
+) -> Result<(Vec<u8>, PdfExportReport)> {
+    prepare_pdf(svg, options)?.encode_with_report()
+}
+
+#[cfg(feature = "pdf")]
 fn parse_pdf_tree(svg: &ResvgCompatibleSvg) -> Result<(usvg::Tree, ExportFontPlan)> {
     let mut opts = usvg::Options::default();
     let font_plan = configure_usvg_options_for_pdf(&mut opts, svg)?;
@@ -1310,20 +1571,18 @@ fn parse_pdf_tree(svg: &ResvgCompatibleSvg) -> Result<(usvg::Tree, ExportFontPla
 }
 
 #[cfg(feature = "pdf")]
-fn svg_tree_to_pdf(svg_tree: &usvg::Tree, options: &PdfOptions) -> Result<Vec<u8>> {
+fn svg_tree_to_pdf(
+    svg_tree: &usvg::Tree,
+    layout: PdfPageLayout,
+    filter_scale: f32,
+    page_paint: Option<ExportRgbaColor>,
+) -> Result<Vec<u8>> {
     use krilla_svg::SurfaceExt;
-
-    let svg_size = pdf_svg_size(svg_tree)?;
-    let layout = pdf_page_layout(svg_size, options.page_policy)?;
 
     let mut document = krilla::Document::new();
     let mut page = document.start_page_with(krilla::page::PageSettings::new(layout.page_size));
     let mut surface = page.surface();
-    draw_pdf_background(
-        &mut surface,
-        layout.page_size,
-        options.background.as_deref(),
-    );
+    draw_pdf_page_paint(&mut surface, layout.page_size, page_paint);
     if layout.offset.0 != 0.0 || layout.offset.1 != 0.0 {
         surface.push_transform(&krilla::geom::Transform::from_translate(
             layout.offset.0,
@@ -1334,7 +1593,7 @@ fn svg_tree_to_pdf(svg_tree: &usvg::Tree, options: &PdfOptions) -> Result<Vec<u8
         svg_tree,
         layout.drawing_size,
         krilla_svg::SvgSettings {
-            filter_scale: options.filter_scale,
+            filter_scale,
             ..krilla_svg::SvgSettings::default()
         },
     );
@@ -1361,6 +1620,20 @@ struct PdfPageLayout {
     page_size: krilla::geom::Size,
     drawing_size: krilla::geom::Size,
     offset: (f32, f32),
+}
+
+#[cfg(feature = "pdf")]
+impl PdfPageLayout {
+    fn plan(self) -> PdfPagePlan {
+        PdfPagePlan {
+            page_width_pt: self.page_size.width(),
+            page_height_pt: self.page_size.height(),
+            drawing_width_pt: self.drawing_size.width(),
+            drawing_height_pt: self.drawing_size.height(),
+            offset_x_pt: self.offset.0,
+            offset_y_pt: self.offset.1,
+        }
+    }
 }
 
 #[cfg(feature = "pdf")]
@@ -1879,19 +2152,15 @@ fn validate_embedded_image_limit(limit: EmbeddedImageLimit) -> Result<()> {
 }
 
 #[cfg(feature = "pdf")]
-fn draw_pdf_background(
+fn draw_pdf_page_paint(
     surface: &mut krilla::surface::Surface<'_>,
     page_size: krilla::geom::Size,
-    background: Option<&str>,
+    page_paint: Option<ExportRgbaColor>,
 ) {
-    let Some(background) = background.filter(|value| !value.eq_ignore_ascii_case("transparent"))
-    else {
+    let Some(color) = page_paint.filter(|color| color.alpha() != 0) else {
         return;
     };
-    let Some(color) = parse_rgba_color(background) else {
-        return;
-    };
-    let Some(opacity) = krilla::num::NormalizedF32::new(f32::from(color.alpha) / 255.0) else {
+    let Some(opacity) = krilla::num::NormalizedF32::new(f32::from(color.alpha()) / 255.0) else {
         return;
     };
     let mut path = krilla::geom::PathBuilder::new();
@@ -1904,7 +2173,7 @@ fn draw_pdf_background(
         return;
     };
     surface.set_fill(Some(krilla::paint::Fill {
-        paint: krilla::color::rgb::Color::new(color.red, color.green, color.blue).into(),
+        paint: krilla::color::rgb::Color::new(color.red(), color.green(), color.blue()).into(),
         opacity,
         rule: Default::default(),
     }));
@@ -2316,28 +2585,19 @@ fn data_url_only_image_href_resolver() -> usvg::ImageHrefResolver<'static> {
     }
 }
 
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-#[derive(Debug, Clone, Copy)]
-struct RgbaColor {
-    red: u8,
-    green: u8,
-    blue: u8,
-    alpha: u8,
-}
-
-/// Returns whether the native exporters can interpret a background color.
+/// Returns whether native output compositing can interpret a solid color.
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[must_use]
-pub fn is_valid_export_background_color(text: &str) -> bool {
-    parse_rgba_color(text).is_some()
+pub fn is_valid_export_color(text: &str) -> bool {
+    parse_export_color(text).is_ok()
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn parse_rgba_color(text: &str) -> Option<RgbaColor> {
+fn parse_export_color(text: &str) -> std::result::Result<ExportRgbaColor, ()> {
     let s = text.trim().to_ascii_lowercase();
     match s.as_str() {
         "transparent" => {
-            return Some(RgbaColor {
+            return Ok(ExportRgbaColor {
                 red: 0,
                 green: 0,
                 blue: 0,
@@ -2345,7 +2605,7 @@ fn parse_rgba_color(text: &str) -> Option<RgbaColor> {
             });
         }
         "white" => {
-            return Some(RgbaColor {
+            return Ok(ExportRgbaColor {
                 red: 255,
                 green: 255,
                 blue: 255,
@@ -2353,7 +2613,7 @@ fn parse_rgba_color(text: &str) -> Option<RgbaColor> {
             });
         }
         "black" => {
-            return Some(RgbaColor {
+            return Ok(ExportRgbaColor {
                 red: 0,
                 green: 0,
                 blue: 0,
@@ -2363,56 +2623,50 @@ fn parse_rgba_color(text: &str) -> Option<RgbaColor> {
         _ => {}
     }
 
-    let hex = s.strip_prefix('#')?;
-    fn hex2(b: &[u8]) -> Option<u8> {
-        let hi = (*b.first()? as char).to_digit(16)? as u8;
-        let lo = (*b.get(1)? as char).to_digit(16)? as u8;
-        Some((hi << 4) | lo)
+    let hex = s.strip_prefix('#').ok_or(())?;
+    fn hex2(b: &[u8]) -> std::result::Result<u8, ()> {
+        let hi = (*b.first().ok_or(())? as char).to_digit(16).ok_or(())? as u8;
+        let lo = (*b.get(1).ok_or(())? as char).to_digit(16).ok_or(())? as u8;
+        Ok((hi << 4) | lo)
     }
-    fn hex1(c: u8) -> Option<u8> {
-        let v = (c as char).to_digit(16)? as u8;
-        Some((v << 4) | v)
+    fn hex1(c: u8) -> std::result::Result<u8, ()> {
+        let v = (c as char).to_digit(16).ok_or(())? as u8;
+        Ok((v << 4) | v)
     }
 
     let bytes = hex.as_bytes();
     match bytes.len() {
-        3 => Some(RgbaColor {
+        3 => Ok(ExportRgbaColor {
             red: hex1(bytes[0])?,
             green: hex1(bytes[1])?,
             blue: hex1(bytes[2])?,
             alpha: 255,
         }),
-        4 => Some(RgbaColor {
+        4 => Ok(ExportRgbaColor {
             red: hex1(bytes[0])?,
             green: hex1(bytes[1])?,
             blue: hex1(bytes[2])?,
             alpha: hex1(bytes[3])?,
         }),
-        6 => Some(RgbaColor {
+        6 => Ok(ExportRgbaColor {
             red: hex2(&bytes[0..2])?,
             green: hex2(&bytes[2..4])?,
             blue: hex2(&bytes[4..6])?,
             alpha: 255,
         }),
-        8 => Some(RgbaColor {
+        8 => Ok(ExportRgbaColor {
             red: hex2(&bytes[0..2])?,
             green: hex2(&bytes[2..4])?,
             blue: hex2(&bytes[4..6])?,
             alpha: hex2(&bytes[6..8])?,
         }),
-        _ => None,
+        _ => Err(()),
     }
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
-fn parse_tiny_skia_color(text: &str) -> Option<tiny_skia::Color> {
-    let color = parse_rgba_color(text)?;
-    Some(tiny_skia::Color::from_rgba8(
-        color.red,
-        color.green,
-        color.blue,
-        color.alpha,
-    ))
+fn tiny_skia_color(color: ExportRgbaColor) -> tiny_skia::Color {
+    tiny_skia::Color::from_rgba8(color.red(), color.green(), color.blue(), color.alpha())
 }
 
 #[cfg(all(test, feature = "png"))]
@@ -2600,8 +2854,22 @@ mod tests {
         super::svg_to_png(&compatible_svg(svg), options)
     }
 
+    fn svg_to_png_with_report(
+        svg: &str,
+        options: &RasterOptions,
+    ) -> Result<(Vec<u8>, RasterExportReport)> {
+        super::svg_to_png_with_report(&compatible_svg(svg), options)
+    }
+
     fn svg_to_jpeg(svg: &str, options: &RasterOptions) -> Result<Vec<u8>> {
         super::svg_to_jpeg(&compatible_svg(svg), options)
+    }
+
+    fn svg_to_jpeg_with_report(
+        svg: &str,
+        options: &RasterOptions,
+    ) -> Result<(Vec<u8>, RasterExportReport)> {
+        super::svg_to_jpeg_with_report(&compatible_svg(svg), options)
     }
 
     fn svg_to_pdf(svg: &str) -> Result<Vec<u8>> {
@@ -2661,6 +2929,13 @@ mod tests {
         super::svg_to_pdf_with_options(&compatible_svg(svg), options)
     }
 
+    fn svg_to_pdf_with_report(
+        svg: &str,
+        options: &PdfOptions,
+    ) -> Result<(Vec<u8>, PdfExportReport)> {
+        super::svg_to_pdf_with_report(&compatible_svg(svg), options)
+    }
+
     fn prepare_pdf(svg: &str, options: &PdfOptions) -> Result<PreparedPdf> {
         super::prepare_pdf(&compatible_svg(svg), options)
     }
@@ -2678,6 +2953,104 @@ mod tests {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="black"/></svg>"#;
         let bytes = svg_to_png(svg, &RasterOptions::default()).unwrap();
         assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+    }
+
+    #[test]
+    fn invalid_output_compositing_colors_fail_during_preparation() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"/>"#;
+
+        let raster_error = prepare_raster(
+            svg,
+            &RasterOptions::default().with_matte("not-a-solid-color"),
+        )
+        .err()
+        .expect("invalid raster matte should fail during preparation");
+        let pdf_error = prepare_pdf(
+            svg,
+            &PdfOptions::default().with_page_paint("not-a-solid-color"),
+        )
+        .err()
+        .expect("invalid PDF page paint should fail during preparation");
+
+        assert!(matches!(raster_error, ExportError::InvalidRasterMatte));
+        assert!(matches!(pdf_error, ExportError::InvalidPdfPagePaint));
+    }
+
+    #[test]
+    fn png_report_correlates_resources_and_requested_matte() {
+        let source = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="black"/></svg>"#;
+        let expected_fingerprint = compatible_svg(source).resource_fingerprint();
+        let (bytes, report) =
+            svg_to_png_with_report(source, &RasterOptions::default().with_matte("#12345678"))
+                .unwrap();
+
+        assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+        assert_eq!(report.resource_fingerprint(), expected_fingerprint);
+        assert_eq!(report.output(), RasterOutputKind::Png);
+        assert_eq!(
+            report.matte(),
+            Some(ExportRgbaColor {
+                red: 0x12,
+                green: 0x34,
+                blue: 0x56,
+                alpha: 0x78,
+            })
+        );
+        assert!(!report.matte_defaulted());
+        assert_eq!(
+            (report.raster().width_px, report.raster().height_px),
+            (10, 10)
+        );
+    }
+
+    #[test]
+    fn jpeg_report_exposes_its_effective_default_or_requested_matte() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"/>"#;
+        let (_, default_report) = svg_to_jpeg_with_report(svg, &RasterOptions::default()).unwrap();
+        let (_, requested_report) =
+            svg_to_jpeg_with_report(svg, &RasterOptions::default().with_matte("#010203")).unwrap();
+
+        assert_eq!(default_report.output(), RasterOutputKind::Jpeg);
+        assert_eq!(default_report.matte(), Some(ExportRgbaColor::WHITE));
+        assert!(default_report.matte_defaulted());
+        assert_eq!(
+            requested_report.matte(),
+            Some(ExportRgbaColor {
+                red: 1,
+                green: 2,
+                blue: 3,
+                alpha: 255,
+            })
+        );
+        assert!(!requested_report.matte_defaulted());
+    }
+
+    #[test]
+    fn pdf_report_correlates_page_filter_resources_and_page_paint() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 20"><rect width="10" height="20" fill="black"/></svg>"#;
+        let expected_fingerprint = compatible_svg(svg).resource_fingerprint();
+        let options = PdfOptions::default()
+            .with_page_policy(PdfPagePolicy::Fixed {
+                width_pt: 612.0,
+                height_pt: 792.0,
+            })
+            .with_page_paint("#01020380");
+        let (bytes, report) = svg_to_pdf_with_report(svg, &options).unwrap();
+
+        assert!(bytes.starts_with(b"%PDF-"));
+        assert_eq!(report.resource_fingerprint(), expected_fingerprint);
+        assert_eq!(report.page().page_width_pt(), 612.0);
+        assert_eq!(report.page().page_height_pt(), 792.0);
+        assert_eq!(report.filters().filtered_groups, 0);
+        assert_eq!(
+            report.page_paint(),
+            Some(ExportRgbaColor {
+                red: 1,
+                green: 2,
+                blue: 3,
+                alpha: 128,
+            })
+        );
     }
 
     #[test]
@@ -2757,7 +3130,7 @@ mod tests {
         let options =
             RasterOptions::default().with_conversion_limits(SvgConversionLimits::unbounded());
         let prepared = super::prepare_raster(&svg, &options).unwrap();
-        assert_eq!(prepared.conversion_plan().max_tree_depth, depth - 1);
+        assert_eq!(prepared.report.conversion.max_tree_depth, depth - 1);
 
         let bytes = prepared.encode_png().unwrap();
         assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
@@ -2770,7 +3143,7 @@ mod tests {
         let options =
             PdfOptions::default().with_conversion_limits(SvgConversionLimits::unbounded());
         let prepared = super::prepare_pdf(&svg, &options).unwrap();
-        assert_eq!(prepared.conversion_plan().max_tree_depth, depth - 1);
+        assert_eq!(prepared.report().conversion().max_tree_depth, depth - 1);
 
         let bytes = prepared.encode().unwrap();
         assert!(bytes.starts_with(b"%PDF-"));
@@ -2930,7 +3303,7 @@ mod tests {
         let prepared = prepare_raster(&svg, &RasterOptions::default()).unwrap();
 
         assert_eq!(
-            prepared.embedded_image_plan(),
+            prepared.report.embedded_images,
             EmbeddedImagePlan {
                 data_resources: 1,
                 raster_images: 1,
@@ -3103,7 +3476,7 @@ mod tests {
         let bytes = svg_to_pdf_with_options(
             svg,
             &PdfOptions::default()
-                .with_background("white")
+                .with_page_paint("white")
                 .with_page_policy(PdfPagePolicy::Fixed {
                     width_pt: 612.0,
                     height_pt: 792.0,
@@ -3207,7 +3580,7 @@ mod tests {
           <g filter="url(#blur)"><rect width="10000" height="10000" fill="white"/></g>
         </svg>"##;
         let prepared = prepare_pdf(svg, &PdfOptions::default()).unwrap();
-        let plan = prepared.filter_plan();
+        let plan = prepared.report().filters();
 
         assert_eq!(plan.filtered_groups, 2);
         assert_eq!(plan.requested_image_pixels, 50_000_000);
@@ -3228,7 +3601,7 @@ mod tests {
         </svg>"##;
         let prepared =
             prepare_pdf(svg, &PdfOptions::default().with_unbounded_filter_images()).unwrap();
-        let plan = prepared.filter_plan();
+        let plan = prepared.report().filters();
 
         assert_eq!(plan.requested_image_pixels, 50_000_000);
         assert_eq!(plan.effective_image_pixels, 50_000_000);
@@ -3285,10 +3658,11 @@ mod tests {
         </svg>"##;
 
         let prepared = prepare_pdf(svg, &PdfOptions::default()).unwrap();
+        let report = prepared.report();
 
-        assert_eq!(prepared.filter_plan().filtered_groups, 1);
-        assert_eq!(prepared.conversion_plan().filtered_groups, 2);
-        assert_eq!(prepared.conversion_plan().filter_primitives, 2);
+        assert_eq!(report.filters().filtered_groups, 1);
+        assert_eq!(report.conversion().filtered_groups, 2);
+        assert_eq!(report.conversion().filter_primitives, 2);
     }
 
     #[test]
@@ -3357,7 +3731,7 @@ mod tests {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500"><rect width="1000" height="500" fill="black"/></svg>"#;
         let options = RasterOptions::default()
             .with_size_limit(RasterSizeLimit::max_side_length(128))
-            .with_background("white");
+            .with_matte("white");
         let bytes = svg_to_png(svg, &options).unwrap();
         let (width, height) = png_size(&bytes);
 

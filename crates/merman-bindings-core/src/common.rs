@@ -578,7 +578,7 @@ pub(crate) struct SvgOptionsJson {
 #[serde(deny_unknown_fields)]
 pub(crate) struct RasterOptionsJson {
     pub(crate) scale: Option<f64>,
-    pub(crate) background: Option<String>,
+    pub(crate) matte: Option<String>,
     pub(crate) fit_to: Option<RasterFitOptionsJson>,
 }
 
@@ -601,7 +601,7 @@ pub(crate) struct JpegOptionsJson {
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PdfOptionsJson {
-    pub(crate) background: Option<String>,
+    pub(crate) page_paint: Option<String>,
     #[serde(default, alias = "filterScale")]
     pub(crate) filter_scale: Option<f64>,
     pub(crate) page_policy: Option<PdfPageOptionsJson>,
