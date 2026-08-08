@@ -48,6 +48,43 @@ Do not run every matrix combination locally by habit. The central CI workflow ow
 workspace test; local work should prove the changed seam first and record any intentionally deferred
 lane. Completion criterion: baseline checks pass and deferred checks have a stated owner and reason.
 
+## Close Mermaid SVG provenance cascades
+
+When the branch changes tracked SVG bytes under `fixtures/upstream-svgs/`, treat the root residual
+catalog and its review document as downstream evidence. Run the reference verifier and the focused
+catalog contract before handoff:
+
+```text
+cargo run --locked -p xtask -- verify-mermaid-reference
+cargo nextest run --locked -p xtask -E 'test(review_document_matches_catalog_statistics)' --cargo-quiet
+```
+
+If the focused test reports an upstream SVG SHA-256 drift, generate the canonical full candidate:
+
+```text
+cargo run --locked --release -p xtask -- compare-all-svgs \
+  --check-dom --dom-mode parity-root --dom-decimals 3 \
+  --flowchart-text-measurer vendored \
+  --write-root-residual-candidate
+```
+
+Review `target/root-parity-residuals.candidate.json` against
+`fixtures/_verification/root-parity-residuals.json`. Retain inherited evidence only when the input,
+root signatures, and descendant profile still agree. Classify every `unreviewed` entry against
+`docs/alignment/ROOT_PARITY_RESIDUAL_CATALOG.md`, update that document when statistics, signatures,
+or evidence assignments change, then accept the reviewed candidate with its exact SHA-256:
+
+```text
+python3 -c 'import hashlib, pathlib; p = pathlib.Path("target/root-parity-residuals.candidate.json"); print(hashlib.sha256(p.read_bytes()).hexdigest())'
+cargo run --locked -p xtask -- accept-root-residual-candidate --sha256 <candidate-sha256>
+```
+
+Rerun the focused catalog contract after acceptance. Skip the full candidate when only provenance
+manifests or generated projections changed and no tracked upstream SVG byte changed.
+
+Completion criterion: reference verification passes, the catalog contains no `unreviewed` entries,
+the review document matches catalog statistics, and the focused catalog test passes.
+
 ## Refresh generated legal material in dependency order
 
 Run this chain whenever `Cargo.lock`, dependency declarations, artifact profiles, native binding
