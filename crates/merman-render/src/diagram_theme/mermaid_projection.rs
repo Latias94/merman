@@ -2,7 +2,7 @@ use merman_core::MermaidConfig;
 use merman_core::theme_color::{ColorChannel, ThemeColor};
 use serde_json::{Map, Value};
 
-use crate::family::RenderFamilyKind;
+use crate::render_family::RenderFamilyKind;
 
 use super::canvas::CanvasPaint;
 use super::resolved::resolve_style;

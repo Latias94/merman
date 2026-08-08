@@ -154,7 +154,7 @@ impl DiagramTheme {
         &self.0.report
     }
 
-    pub fn resolve(&self, family: crate::family::RenderFamilyKind) -> ResolvedDiagramTheme {
+    pub fn resolve(&self, family: crate::render_family::RenderFamilyKind) -> ResolvedDiagramTheme {
         ResolvedDiagramTheme::new(self.clone(), family)
     }
 
@@ -219,7 +219,7 @@ pub enum ThemeCompileValidationError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::family::RenderFamilyKind;
+    use crate::render_family::RenderFamilyKind;
 
     #[test]
     fn tokens_compile_into_one_reusable_typed_theme() {

@@ -41,6 +41,7 @@ pub mod pie;
 pub mod quadrantchart;
 pub mod radar;
 pub mod railroad;
+pub mod render_family;
 pub mod requirement;
 pub mod resources;
 pub mod sankey;
@@ -59,6 +60,8 @@ pub mod wardley;
 mod xml;
 pub mod xychart;
 pub mod zenuml;
+
+pub use render_family::RenderFamilyKind;
 
 /// Reports whether the Cytoscape-derived layout backend is present in this compiled renderer.
 pub const fn layout_cytoscape_available() -> bool {

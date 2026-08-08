@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use super::ThemeCompileValidationError;
-use crate::family::RenderFamilyKind;
+use crate::render_family::RenderFamilyKind;
 
 const MAX_FONT_STACK_ENTRIES: usize = 32;
 const MAX_FONT_FAMILY_BYTES: usize = 256;
