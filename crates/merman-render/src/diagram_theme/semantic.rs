@@ -492,17 +492,20 @@ pub enum StrokeLineJoin {
 pub struct ThemeRule {
     target: ThemeTarget,
     family: Option<RenderFamilyKind>,
-    variant: ThemeVariant,
+    variant: Option<ThemeVariant>,
     ordinal: Option<OrdinalSelector>,
     style: ThemeStylePatch,
 }
 
 impl ThemeRule {
+    /// Creates a base rule that applies to every variant of the target.
+    ///
+    /// Use [`Self::with_variant`] to restrict the rule to one named variant.
     pub fn new(target: ThemeTarget, style: ThemeStylePatch) -> Self {
         Self {
             target,
             family: None,
-            variant: ThemeVariant::Default,
+            variant: None,
             ordinal: None,
             style,
         }
@@ -513,8 +516,9 @@ impl ThemeRule {
         self
     }
 
+    /// Restricts this rule to one named semantic variant.
     pub fn with_variant(mut self, variant: ThemeVariant) -> Self {
-        self.variant = variant;
+        self.variant = Some(variant);
         self
     }
 
@@ -531,7 +535,7 @@ impl ThemeRule {
         self.family
     }
 
-    pub const fn variant(&self) -> ThemeVariant {
+    pub const fn variant(&self) -> Option<ThemeVariant> {
         self.variant
     }
 
@@ -567,7 +571,7 @@ impl ThemeRule {
         ordinal: Option<usize>,
     ) -> bool {
         self.family.is_none_or(|expected| expected == family)
-            && self.variant == variant
+            && self.variant.is_none_or(|expected| expected == variant)
             && self
                 .ordinal
                 .is_none_or(|selector| ordinal.is_some_and(|index| selector.matches(index)))

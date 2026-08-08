@@ -327,6 +327,38 @@ mod tests {
     }
 
     #[test]
+    fn base_rules_inherit_into_named_variants_before_specific_overrides() {
+        let mut base = ThemeStylePatch::default();
+        base.paint.fill = Specified::Value(CanvasPaint::solid("#ef4444").expect("valid base fill"));
+        base.typography.font_size_px = Specified::Value(22.0);
+        let specific = ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2563eb").unwrap());
+        let rules = ThemeRuleSet::default()
+            .with_rule(ThemeRule::new(ThemeTarget::SpecialState, base))
+            .with_rule(
+                ThemeRule::new(ThemeTarget::SpecialState, specific)
+                    .with_variant(ThemeVariant::Start),
+            );
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .unwrap();
+        let resolved = theme.resolve(RenderFamilyKind::State);
+
+        let default_style = resolved.style(ThemeTarget::SpecialState, ThemeVariant::Default, None);
+        assert_eq!(
+            default_style.fill().and_then(solid_color),
+            Some("#ef4444".to_string())
+        );
+        assert_eq!(default_style.typography().font_size_px(), 22.0);
+
+        let start_style = resolved.style(ThemeTarget::SpecialState, ThemeVariant::Start, None);
+        assert_eq!(
+            start_style.fill().and_then(solid_color),
+            Some("#2563eb".to_string())
+        );
+        assert_eq!(start_style.typography().font_size_px(), 22.0);
+    }
+
+    #[test]
     fn invalid_family_target_and_unknown_effect_binding_fail_compilation() {
         let invalid_target = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default().with_rule(
