@@ -1,6 +1,9 @@
 //! Operation-owned render services and deterministic policy.
 
-use crate::diagram_theme::{FontCatalog, FontCatalogFingerprint, FontSourcePolicy};
+use crate::diagram_theme::{
+    DiagramTheme, FontCatalog, FontCatalogFingerprint, FontSourcePolicy, ThemeFingerprint,
+    ThemeResolutionReport,
+};
 use crate::math::MathRenderer;
 use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
 use crate::svg::IconRegistry;
@@ -1616,6 +1619,27 @@ impl RenderEnvironment {
 
     /// Captures time, timezone rules, random seed, and provenance exactly once.
     pub fn begin_session(&self) -> Result<RenderSession, RuntimePolicyError> {
+        self.begin_session_with_theme_resources(SessionThemeResources::Environment {
+            font_catalog: self.font_catalog.clone(),
+            font_source_policy: self.font_source_policy.clone(),
+        })
+    }
+
+    /// Captures one operation while atomically binding the selected compiled theme.
+    ///
+    /// The theme is the sole source of its catalog, font-source policy, and fingerprint evidence.
+    /// Environment font setters continue to own only sessions that have no selected theme.
+    pub fn begin_session_with_theme(
+        &self,
+        theme: &DiagramTheme,
+    ) -> Result<RenderSession, RuntimePolicyError> {
+        self.begin_session_with_theme_resources(SessionThemeResources::Theme(theme.clone()))
+    }
+
+    fn begin_session_with_theme_resources(
+        &self,
+        theme_resources: SessionThemeResources,
+    ) -> Result<RenderSession, RuntimePolicyError> {
         let operation_context = self.runtime_policy.begin_operation()?;
         Ok(RenderSession {
             text_measurement: self.text_measurement.clone(),
@@ -1626,8 +1650,7 @@ impl RenderEnvironment {
             operation_context,
             resource_policy: self.resource_policy,
             work_meter: Arc::new(OperationWorkMeter::new(self.resource_policy)),
-            font_catalog: self.font_catalog.clone(),
-            font_source_policy: self.font_source_policy.clone(),
+            theme_resources,
         })
     }
 }
@@ -1635,6 +1658,43 @@ impl RenderEnvironment {
 impl Default for RenderEnvironment {
     fn default() -> Self {
         Self::deterministic()
+    }
+}
+
+enum SessionThemeResources {
+    Environment {
+        font_catalog: FontCatalog,
+        font_source_policy: FontSourcePolicy,
+    },
+    Theme(DiagramTheme),
+}
+
+impl SessionThemeResources {
+    fn theme(&self) -> Option<&DiagramTheme> {
+        match self {
+            Self::Environment { .. } => None,
+            Self::Theme(theme) => Some(theme),
+        }
+    }
+
+    fn font_catalog(&self) -> &FontCatalog {
+        match self {
+            Self::Environment { font_catalog, .. } => font_catalog,
+            Self::Theme(theme) => theme.font_catalog(),
+        }
+    }
+
+    fn font_source_policy(&self) -> &FontSourcePolicy {
+        match self {
+            Self::Environment {
+                font_source_policy, ..
+            } => font_source_policy,
+            Self::Theme(theme) => theme.font_source_policy(),
+        }
+    }
+
+    fn theme_resolution_report(&self) -> Option<&ThemeResolutionReport> {
+        self.theme().map(DiagramTheme::report)
     }
 }
 
@@ -1649,8 +1709,7 @@ pub struct RenderSession {
     operation_context: OperationContext,
     resource_policy: RenderResourcePolicy,
     work_meter: Arc<OperationWorkMeter>,
-    font_catalog: FontCatalog,
-    font_source_policy: FontSourcePolicy,
+    theme_resources: SessionThemeResources,
 }
 
 impl RenderSession {
@@ -1698,12 +1757,24 @@ impl RenderSession {
         self.resource_policy
     }
 
-    pub const fn font_catalog(&self) -> &FontCatalog {
-        &self.font_catalog
+    pub fn theme(&self) -> Option<&DiagramTheme> {
+        self.theme_resources.theme()
     }
 
-    pub const fn font_source_policy(&self) -> &FontSourcePolicy {
-        &self.font_source_policy
+    pub fn theme_fingerprint(&self) -> Option<ThemeFingerprint> {
+        self.theme().map(DiagramTheme::fingerprint)
+    }
+
+    pub fn theme_resolution_report(&self) -> Option<&ThemeResolutionReport> {
+        self.theme_resources.theme_resolution_report()
+    }
+
+    pub fn font_catalog(&self) -> &FontCatalog {
+        self.theme_resources.font_catalog()
+    }
+
+    pub fn font_source_policy(&self) -> &FontSourcePolicy {
+        self.theme_resources.font_source_policy()
     }
 
     /// Reports effective operation availability after policy and backend/service resolution.
@@ -1747,8 +1818,9 @@ impl RenderSession {
                 .clone(),
             resource_policy: self.resource_policy,
             layout_work_units: self.work_meter.used(),
-            font_catalog_fingerprint: self.font_catalog.fingerprint(),
-            font_source_policy: self.font_source_policy.clone(),
+            theme_resolution_report: self.theme_resolution_report().cloned(),
+            font_catalog_fingerprint: self.font_catalog().fingerprint(),
+            font_source_policy: self.font_source_policy().clone(),
         }
     }
 }
@@ -1762,6 +1834,7 @@ pub struct RenderSessionReport {
     local_time_zone: LocalTimeZoneProvenance,
     resource_policy: RenderResourcePolicy,
     layout_work_units: usize,
+    theme_resolution_report: Option<ThemeResolutionReport>,
     font_catalog_fingerprint: FontCatalogFingerprint,
     font_source_policy: FontSourcePolicy,
 }
@@ -1797,6 +1870,16 @@ impl RenderSessionReport {
 
     pub const fn resource_policy(&self) -> RenderResourcePolicy {
         self.resource_policy
+    }
+
+    pub fn theme_fingerprint(&self) -> Option<ThemeFingerprint> {
+        self.theme_resolution_report
+            .as_ref()
+            .map(ThemeResolutionReport::theme_fingerprint)
+    }
+
+    pub const fn theme_resolution_report(&self) -> Option<&ThemeResolutionReport> {
+        self.theme_resolution_report.as_ref()
     }
 
     pub const fn font_catalog_fingerprint(&self) -> FontCatalogFingerprint {
@@ -3026,6 +3109,78 @@ mod tests {
         assert!(session.math_renderer().is_some());
         assert!(session.icon_registry().is_some());
         assert_eq!(session.report().operation_context().seed(), 0);
+    }
+
+    fn embedded_font_theme() -> DiagramTheme {
+        let bytes = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
+        ));
+        let catalog =
+            crate::diagram_theme::FontCatalogSpec::new([crate::diagram_theme::FontAssetSpec::new(
+                "excalifont",
+                bytes,
+            )]);
+        let spec = crate::diagram_theme::DiagramThemeSpec::new()
+            .with_assets(crate::diagram_theme::ThemeAssets::default().with_font_catalog(catalog));
+
+        crate::diagram_theme::DiagramThemeCompiler::new()
+            .with_font_source_policy(FontSourcePolicy::embedded_only())
+            .compile(spec)
+            .expect("embedded font theme should compile")
+    }
+
+    #[test]
+    fn themed_session_atomically_overrides_environment_font_resources() {
+        let environment_theme = embedded_font_theme();
+        let theme = crate::diagram_theme::DiagramThemeCompiler::new()
+            .compile_preset(crate::diagram_theme::ThemePreset::OneDark)
+            .expect("one-dark theme should compile");
+        let environment = RenderEnvironment::deterministic()
+            .with_font_catalog(environment_theme.font_catalog().clone())
+            .with_font_source_policy(FontSourcePolicy::embedded_only());
+
+        let session = environment
+            .begin_session_with_theme(&theme)
+            .expect("begin themed render session");
+        assert_eq!(session.theme_fingerprint(), Some(theme.fingerprint()));
+        assert_eq!(session.theme_resolution_report(), Some(theme.report()));
+        assert_eq!(
+            session.font_catalog().fingerprint(),
+            theme.font_catalog().fingerprint()
+        );
+        assert_eq!(session.font_source_policy(), theme.font_source_policy());
+
+        let report = session.report();
+        assert_eq!(report.theme_fingerprint(), Some(theme.fingerprint()));
+        assert_eq!(report.theme_resolution_report(), Some(theme.report()));
+        assert_eq!(
+            report.font_catalog_fingerprint(),
+            theme.font_catalog().fingerprint()
+        );
+        assert_eq!(report.font_source_policy(), theme.font_source_policy());
+    }
+
+    #[test]
+    fn unthemed_session_preserves_environment_font_resources() {
+        let environment_theme = embedded_font_theme();
+        let catalog = environment_theme.font_catalog().clone();
+        let policy = FontSourcePolicy::embedded_only();
+        let environment = RenderEnvironment::deterministic()
+            .with_font_catalog(catalog.clone())
+            .with_font_source_policy(policy.clone());
+
+        let session = environment.begin_session().expect("begin render session");
+        assert_eq!(session.theme_fingerprint(), None);
+        assert_eq!(session.theme_resolution_report(), None);
+        assert_eq!(session.font_catalog().fingerprint(), catalog.fingerprint());
+        assert_eq!(session.font_source_policy(), &policy);
+
+        let report = session.report();
+        assert_eq!(report.theme_fingerprint(), None);
+        assert_eq!(report.theme_resolution_report(), None);
+        assert_eq!(report.font_catalog_fingerprint(), catalog.fingerprint());
+        assert_eq!(report.font_source_policy(), &policy);
     }
 
     #[cfg(feature = "math")]

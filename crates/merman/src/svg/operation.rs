@@ -72,6 +72,16 @@ impl RenderOperationReport {
         self.session.layout_work_units()
     }
 
+    /// Returns the compiled theme identity frozen for this completed operation.
+    pub fn theme_fingerprint(&self) -> Option<super::ThemeFingerprint> {
+        self.session.theme_fingerprint()
+    }
+
+    /// Returns output-independent theme resolution evidence without retaining runtime services.
+    pub const fn theme_resolution_report(&self) -> Option<&super::ThemeResolutionReport> {
+        self.session.theme_resolution_report()
+    }
+
     /// Returns the catalog identity retained by the completed render operation.
     pub const fn font_catalog_fingerprint(&self) -> super::FontCatalogFingerprint {
         self.session.font_catalog_fingerprint()
@@ -187,6 +197,14 @@ impl RenderedDocument {
 
     pub const fn report(&self) -> &RenderOperationReport {
         &self.report
+    }
+
+    pub fn theme_fingerprint(&self) -> Option<super::ThemeFingerprint> {
+        self.report.theme_fingerprint()
+    }
+
+    pub const fn theme_resolution_report(&self) -> Option<&super::ThemeResolutionReport> {
+        self.report.theme_resolution_report()
     }
 
     pub const fn resource_closure(&self) -> &super::SvgResourceClosure {
@@ -374,7 +392,25 @@ impl<'a> HeadlessOperation<'a> {
         layout_options: &'a LayoutOptions,
         environment: &RenderEnvironment,
     ) -> Result<Self> {
-        let session = environment.begin_session()?;
+        Self::new_with_theme(
+            engine,
+            text,
+            parse_options,
+            layout_options,
+            environment,
+            None,
+        )
+    }
+
+    pub(super) fn new_with_theme(
+        engine: &merman_core::Engine,
+        text: &'a str,
+        parse_options: merman_core::ParseOptions,
+        layout_options: &'a LayoutOptions,
+        environment: &RenderEnvironment,
+        theme: Option<&super::DiagramTheme>,
+    ) -> Result<Self> {
+        let session = begin_session(environment, theme)?;
         let engine = super::engine_with_session_context(engine, &session);
         Ok(Self {
             engine,
@@ -490,8 +526,30 @@ impl RenderedSvgParts {
             report.font_source_policy(),
             "sealed SVG and operation report must retain the same font-source policy"
         );
+        if let Some(theme_report) = report.theme_resolution_report() {
+            debug_assert_eq!(
+                theme_report.font_catalog_fingerprint(),
+                report.font_catalog_fingerprint(),
+                "theme and operation report must retain the same catalog"
+            );
+            debug_assert_eq!(
+                theme_report.font_catalog_fingerprint(),
+                svg.font_catalog().fingerprint(),
+                "theme and sealed SVG must retain the same catalog"
+            );
+        }
         Ok(RenderedDocument { svg, report })
     }
+}
+
+pub(super) fn begin_session(
+    environment: &RenderEnvironment,
+    theme: Option<&super::DiagramTheme>,
+) -> Result<RenderSession> {
+    Ok(match theme {
+        Some(theme) => environment.begin_session_with_theme(theme)?,
+        None => environment.begin_session()?,
+    })
 }
 
 pub(super) fn resource_limit_error(err: ResourceLimitExceeded) -> super::HeadlessError {

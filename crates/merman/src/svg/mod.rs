@@ -1647,6 +1647,10 @@ impl HeadlessRenderer {
         engine_with_session_context(self.materialized_engine(), session)
     }
 
+    fn begin_session(&self) -> Result<merman_render::environment::RenderSession> {
+        operation::begin_session(&self.environment, self.theme.as_ref())
+    }
+
     fn materialized_engine(&self) -> &merman_core::Engine {
         self.materialized_engine.get_or_init(|| {
             let mut engine = self.base_engine.clone();
@@ -1673,11 +1677,18 @@ impl HeadlessRenderer {
         engine: &merman_core::Engine,
         text: &'a str,
     ) -> Result<operation::HeadlessOperation<'a>> {
-        operation::HeadlessOperation::new(engine, text, self.parse, &self.layout, &self.environment)
+        operation::HeadlessOperation::new_with_theme(
+            engine,
+            text,
+            self.parse,
+            &self.layout,
+            &self.environment,
+            self.theme.as_ref(),
+        )
     }
 
     pub fn parse_metadata_sync(&self, text: &str) -> Result<merman_core::ParseMetadata> {
-        let session = self.environment.begin_session()?;
+        let session = self.begin_session()?;
         session
             .resource_policy()
             .check_source_bytes(text)
@@ -1688,7 +1699,7 @@ impl HeadlessRenderer {
     }
 
     pub fn parse_diagram_sync(&self, text: &str) -> Result<Option<merman_core::ParsedDiagram>> {
-        let session = self.environment.begin_session()?;
+        let session = self.begin_session()?;
         session
             .resource_policy()
             .check_source_bytes(text)
