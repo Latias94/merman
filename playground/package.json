@@ -93,6 +93,7 @@
     "dompurify": "3.4.13",
     "ip-address": "10.4.0",
     "minimatch": "10.2.6",
+    "nanoid": "3.3.17",
     "tar": "7.5.22",
     "undici": "6.28.0"
   },

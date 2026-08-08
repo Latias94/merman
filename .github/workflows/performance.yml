@@ -166,6 +166,7 @@ jobs:
         run: |
           cargo test --locked -p merman --test native_memory_allocator
           python3 tools/bench/run_native_memory.py --smoke \
+            --build-timeout-seconds 900 \
             --json-out target/bench/native_memory_smoke.json
           python3 tools/bench/test_native_memory_driver_contracts.py \
             --verify-smoke-report target/bench/native_memory_smoke.json

@@ -12,7 +12,7 @@ import sys
 import tempfile
 import unittest
 from collections.abc import Mapping
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -334,6 +334,7 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
             "seed": run_native_memory.DEFAULT_SEED,
             "bootstrap_resamples": 10_000,
             "timeout_seconds": 30,
+            "build_timeout_seconds": 90,
             "run_id": "test-run",
             "json_out": "target/bench/native-memory-test.json",
             "allow_dirty": True,
@@ -997,6 +998,7 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
             ("--seed", "-1", "fit the native u64"),
             ("--bootstrap-resamples", "9999", "at least 10000"),
             ("--timeout-seconds", "0", "must be positive"),
+            ("--build-timeout-seconds", "0", "build timeout seconds must be positive"),
         )
         for option, value, message in cases:
             with self.subTest(option=option), redirect_stdout(io.StringIO()):
@@ -1214,21 +1216,24 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
     def test_main_writes_contract_failure_report_before_returning_two(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             output = Path(raw) / "failure.json"
-            result = run_native_memory.main(
-                [
-                    "--contract",
-                    str(Path(raw) / "missing.json"),
-                    "--allow-dirty",
-                    "--json-out",
-                    str(output),
-                ]
-            )
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                result = run_native_memory.main(
+                    [
+                        "--contract",
+                        str(Path(raw) / "missing.json"),
+                        "--allow-dirty",
+                        "--json-out",
+                        str(output),
+                    ]
+                )
             report = json.loads(output.read_text(encoding="utf-8"))
 
         self.assertEqual(result, 2)
         self.assertEqual(report["exit_code"], 2)
         self.assertEqual(report["outcome"], "contract_failure")
         self.assertTrue(report["contract_errors"])
+        self.assertIn("contract failure:", stderr.getvalue())
 
     def test_decision_evidence_rejects_dirty_source_by_default(self) -> None:
         dirty = {

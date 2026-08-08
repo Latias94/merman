@@ -47,6 +47,7 @@ DEFAULT_REPEATS = 5
 DEFAULT_SEED = 0x4D45524D414E
 DEFAULT_BOOTSTRAP_RESAMPLES = 10_000
 DEFAULT_TIMEOUT_SECONDS = 300
+DEFAULT_BUILD_TIMEOUT_SECONDS = 900
 _REQUIRED_METRICS = ("allocation_count", "allocated_bytes", "peak_growth_bytes")
 _OPTIONAL_METRICS = ("retained_growth_bytes",)
 _OWNER_CONTRACT_COMMON_FIELDS = frozenset(
@@ -605,6 +606,8 @@ def _validate_driver_parameters(args: argparse.Namespace) -> None:
         )
     if args.timeout_seconds <= 0:
         raise DriverContractError("timeout seconds must be positive")
+    if args.build_timeout_seconds <= 0:
+        raise DriverContractError("build timeout seconds must be positive")
 
 
 def _validate_executable_admission(
@@ -799,6 +802,8 @@ def _base_report(args: argparse.Namespace, *, output: Path) -> dict[str, object]
             "repeats": args.repeats,
             "seed": args.seed,
             "bootstrap_resamples": args.bootstrap_resamples,
+            "build_timeout_seconds": args.build_timeout_seconds,
+            "probe_timeout_seconds": args.timeout_seconds,
             "subprocess_isolation": "fresh-process-per-sample",
             "pair_order": "alternating-operation-zero",
             "evidence_class": "protocol-smoke" if args.smoke else None,
@@ -971,7 +976,7 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
             build_provenance: dict[str, object] = {"skipped": "explicit executable"}
         else:
             executable, build_provenance = discover_executable(
-                recipe, timeout_seconds=args.timeout_seconds
+                recipe, timeout_seconds=args.build_timeout_seconds
             )
         if not executable.is_file() or not os.access(executable, os.X_OK):
             raise DriverContractError(f"native-memory executable is unusable: {executable}")
@@ -1089,6 +1094,9 @@ def main(argv: list[str]) -> int:
         "--bootstrap-resamples", type=int, default=DEFAULT_BOOTSTRAP_RESAMPLES
     )
     parser.add_argument("--timeout-seconds", type=int, default=DEFAULT_TIMEOUT_SECONDS)
+    parser.add_argument(
+        "--build-timeout-seconds", type=int, default=DEFAULT_BUILD_TIMEOUT_SECONDS
+    )
     parser.add_argument("--run-id", default="")
     parser.add_argument("--json-out", default=str(DEFAULT_REPORT))
     parser.add_argument(
@@ -1132,6 +1140,9 @@ def main(argv: list[str]) -> int:
         return 2
     print(f"Wrote: {output}")
     print(f"Outcome: {report['outcome']} (exit {exit_code})")
+    if exit_code == 2:
+        for error in report.get("contract_errors", []):
+            print(f"contract failure: {error}", file=sys.stderr)
     return exit_code
 
 
