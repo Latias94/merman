@@ -1,7 +1,7 @@
 {
   "generated_by": "cargo run -p xtask -- gen-editor-token-descriptor",
   "source_manifest": "playground/examples/manifest.json",
-  "evidence_digest": "sha256:9188a78e2770f19545d441ece50c8234a62628d3b6f1e1480371bb880902aef3",
+  "evidence_digest": "sha256:04b2615129c71ea6d2a4dc6c452cab8259a309909dca3bc38f99b7892babdee8",
   "schema_version": 1,
   "descriptor_digest": "sha256:f72e872bc49ba658c0c3cd249995c8817bd76fb1e5f7ee56d9e024b733f14399",
   "packed_encoding": "lsp_relative_utf16",
@@ -5248,8 +5248,8 @@
       "id": "flowchart-incomplete-edge",
       "family": "flowchart",
       "fixture": null,
-      "source": "flowchart TD\n  Before -->\n  After --> Done\n",
-      "source_sha256": "sha256:6725e687f05e859a8a5c93fee6b259844f756396d97d007311715f1f9977b288",
+      "source": "flowchart TD\n  Before -->\n",
+      "source_sha256": "sha256:a8ba471e2b975a73ad96415229509e798911dfe0368d106841166ed4ad4424f4",
       "detection_validity": "recoverable-invalid",
       "syntax_id": "flowchart-v2",
       "effective_layout_id": "dagre",
@@ -5273,24 +5273,9 @@
         7,
         3,
         2,
-        0,
-        1,
-        2,
-        5,
-        15,
-        64,
-        0,
-        6,
-        3,
-        2,
-        0,
-        0,
-        4,
-        4,
-        15,
-        64
+        0
       ],
-      "packed_sha256": "sha256:37dffe28f7168db815dd5bfc1c7c2240d3a7006eee92f60549c9459d7082bec2"
+      "packed_sha256": "sha256:fc5e32d181ea4ae8f9bbaad1b57a3590fd3171591783534f93aa63f792d0338c"
     }
   ]
 }

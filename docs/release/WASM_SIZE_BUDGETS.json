@@ -1,14 +1,14 @@
 {
   "schema_version": 2,
-  "updated": "2026-08-03",
+  "updated": "2026-08-08",
   "compression_source": "stripped",
-  "notes": "Budgets are regression guards for the final capability-driven artifact graph, including math in web-full and the published complete-SVG web-render artifact. Web measurements use the final wasm-pack artifacts copied into the npm packages; Gzip and Brotli are measured after wasm-tools strip --all. Typst measurements use the release post-link pipeline: Binaryen 131 wasm-opt -Oz followed by wasm-tools strip --all. Limits retain roughly three percent headroom above accepted measurements. Web profiles were remeasured at source 0f264982b with Rust 1.95.0 on 2026-08-03 (raw/stripped/gzip/Brotli): analysis 3,483,213/3,482,990/1,324,861/1,014,154; ASCII 3,594,557/3,594,334/1,370,343/1,050,043; editor 3,648,593/3,648,370/1,386,870/1,057,419; full 12,584,849/12,584,626/4,787,991/3,406,733; render 11,844,334/11,844,111/4,500,248/3,195,427. The Typst profile was remeasured with Rust 1.95.0 and Binaryen 131 on 2026-08-03: raw 13,917,020; optimized and stripped 9,511,850; gzip 3,636,454; Brotli 2,562,392. Analysis, ASCII, and editor remain material slim artifacts; complete-SVG web-render is admitted for its distinct capability contract rather than the slim-workflow threshold.",
+  "notes": "Budgets are regression guards for the final capability-driven artifact graph, including math in web-full and the published complete-SVG web-render artifact. Web measurements use the final wasm-pack artifacts copied into the npm packages; Gzip and Brotli are measured after wasm-tools strip --all. Typst measurements use the release post-link pipeline: Binaryen 131 wasm-opt -Oz followed by wasm-tools strip --all. Limits retain roughly three percent headroom above accepted measurements. The slim Web profiles were remeasured at source 0f264982b with Rust 1.95.0 on 2026-08-03 (raw/stripped/gzip/Brotli): analysis 3,483,213/3,482,990/1,324,861/1,014,154; ASCII 3,594,557/3,594,334/1,370,343/1,050,043; editor 3,648,593/3,648,370/1,386,870/1,057,419. The complete Web profiles were remeasured at source 8bf09dcd9 with Rust 1.95.0 after the accepted shared-render and grapheme-safe label changes: full 13,003,063/13,002,828/4,945,322/3,528,255; render 12,253,150/12,252,915/4,656,406/3,312,121. The Typst profile was remeasured at the same source with Rust 1.95.0 and Binaryen 131: raw 14,531,074; optimized and stripped 9,893,522; gzip 3,791,109; Brotli 2,664,760. Analysis, ASCII, and editor remain material slim artifacts; complete-SVG web-render is admitted for its distinct capability contract rather than the slim-workflow threshold.",
   "artifact_profiles": {
     "typst-wasm": {
-      "max_raw_bytes": 14300000,
-      "max_stripped_bytes": 9800000,
-      "max_gzip_bytes": 3750000,
-      "max_brotli_bytes": 2650000
+      "max_raw_bytes": 15000000,
+      "max_stripped_bytes": 10200000,
+      "max_gzip_bytes": 3925000,
+      "max_brotli_bytes": 2750000
     },
     "web-analysis": {
       "max_raw_bytes": 3600000,
@@ -29,16 +29,16 @@
       "max_brotli_bytes": 1100000
     },
     "web-full": {
-      "max_raw_bytes": 13000000,
-      "max_stripped_bytes": 13000000,
-      "max_gzip_bytes": 4950000,
-      "max_brotli_bytes": 3525000
+      "max_raw_bytes": 13400000,
+      "max_stripped_bytes": 13400000,
+      "max_gzip_bytes": 5100000,
+      "max_brotli_bytes": 3650000
     },
     "web-render": {
-      "max_raw_bytes": 12225000,
-      "max_stripped_bytes": 12225000,
-      "max_gzip_bytes": 4650000,
-      "max_brotli_bytes": 3300000
+      "max_raw_bytes": 12625000,
+      "max_stripped_bytes": 12625000,
+      "max_gzip_bytes": 4800000,
+      "max_brotli_bytes": 3425000
     }
   }
 }

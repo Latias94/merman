@@ -81,7 +81,7 @@ pub fn enter_edge(
         ((v_low, v_lim), false)
     };
 
-    let mut best: Option<(i32, EdgeKey)> = None;
+    let mut best: Option<(i128, EdgeKey)> = None;
     g.for_each_edge_ix(|g_v_ix, g_w_ix, key, lbl| {
         if !t_has_by_gix.get(g_v_ix).copied().unwrap_or(false) {
             return;
@@ -97,8 +97,8 @@ pub fn enter_edge(
         if flip == v_desc && flip != w_desc {
             let v_rank = rank_by_ix.get(g_v_ix).copied().unwrap_or(0);
             let w_rank = rank_by_ix.get(g_w_ix).copied().unwrap_or(0);
-            let minlen: i32 = (lbl.minlen.max(1)) as i32;
-            let slack = w_rank - v_rank - minlen;
+            let minlen = lbl.minlen as i128;
+            let slack = i128::from(w_rank) - i128::from(v_rank) - minlen;
 
             match &best {
                 Some((best_slack, _)) if slack >= *best_slack => {}
@@ -121,20 +121,21 @@ pub fn exchange_edges(
     t.set_edge(f.v.clone(), f.w.clone());
     super::init_low_lim_values(t, None);
     super::init_cut_values(t, g);
-    update_ranks(t, g, rank_by_ix);
+    update_ranks(t, g, rank_by_ix)
+        .expect("rank arithmetic must fit the public edge-exchange compatibility API");
 }
 
 fn update_ranks(
     t: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
     g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     rank_by_ix: &mut Vec<i32>,
-) {
+) -> Result<(), crate::WorkError> {
     let Some(root) = t
         .nodes()
         .find(|v| t.node(v).map(|lbl| lbl.parent.is_none()).unwrap_or(false))
         .or_else(|| t.nodes().next())
     else {
-        return;
+        return Ok(());
     };
 
     let vs = alg::preorder(t, &[root]);
@@ -150,19 +151,20 @@ fn update_ranks(
             continue;
         };
         let (minlen, flipped) = if let Some(e) = g.edge_by_endpoints_ix(v_ix, parent_ix) {
-            (e.minlen as i32, false)
+            (e.minlen as i128, false)
         } else if let Some(e) = g.edge_by_endpoints_ix(parent_ix, v_ix) {
-            (e.minlen as i32, true)
+            (e.minlen as i128, true)
         } else {
             continue;
         };
 
-        let parent_rank = rank_by_ix.get(parent_ix).copied().unwrap_or(0);
+        let parent_rank = i128::from(rank_by_ix.get(parent_ix).copied().unwrap_or(0));
         let rank = if flipped {
             parent_rank + minlen
         } else {
             parent_rank - minlen
         };
+        let rank = i32::try_from(rank).map_err(|_| crate::WorkError::ArithmeticOverflow)?;
         if let Some(node) = g.node_mut(&v) {
             node.rank = Some(rank);
         }
@@ -173,4 +175,5 @@ fn update_ranks(
             rank_by_ix[ix] = rank;
         }
     }
+    Ok(())
 }

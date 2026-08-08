@@ -1841,16 +1841,10 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
     .ok_or_else(|| {
         XtaskError::DebugSvgFailed(format!("no diagram detected in {}", fixture_path.display()))
     })?;
-    let model = flowchart_model(&parsed)?;
-
     let measurer = merman_render::text::VendoredFontMetricsTextMeasurer::default();
-    let elk_graph = merman_render::flowchart::elk::build_flowchart_elk_graph(
-        model,
-        &parsed.metadata().effective_config,
-        &measurer,
-        None,
-    )
-    .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
+    let elk_graph =
+        merman_render::flowchart::elk::build_flowchart_elk_graph(&parsed, &measurer, None)
+            .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
     let mut source_diagnostics = merman_layout_elk::SourcePhaseDiagnostics::from_graph(&elk_graph)
         .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
 

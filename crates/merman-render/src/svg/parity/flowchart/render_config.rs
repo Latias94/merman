@@ -11,6 +11,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderConfig {
     pub wrapping_width: f64,
     pub node_html_labels: bool,
     pub edge_html_labels: bool,
+    pub swimlane_title_html_labels: bool,
     pub node_wrap_mode: WrapMode,
     pub edge_wrap_mode: WrapMode,
     pub diagram_padding: f64,
@@ -41,6 +42,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
     let wrapping_width = config.render_wrapping_width();
     let node_html_labels = config.node_html_labels();
     let edge_html_labels = config.effective_html_labels();
+    let swimlane_title_html_labels = config.swimlane_title_html_labels();
     let node_wrap_mode = config.node_wrap_mode();
     let edge_wrap_mode = config.edge_wrap_mode();
     let diagram_padding = config.render_diagram_padding();
@@ -92,6 +94,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
         wrapping_width,
         node_html_labels,
         edge_html_labels,
+        swimlane_title_html_labels,
         node_wrap_mode,
         edge_wrap_mode,
         diagram_padding,

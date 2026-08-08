@@ -69,9 +69,12 @@ mod text;
 mod tokens;
 
 use text::{
-    parse_edge_label_text, parse_label_text, strip_wrapping_backticks, title_kind_str, unquote,
+    is_ecmascript_trim_char, parse_edge_label_text, parse_label_text, strip_wrapping_backticks,
+    title_kind_str, trim_flowdb_label_text, unquote,
 };
 
+#[doc(hidden)]
+pub use model::FlowchartRenderLabelSources;
 pub use model::{FlowEdge, FlowEdgeDefaults, FlowNode, FlowSubgraph, FlowchartModel};
 
 pub(crate) use model::{
@@ -84,7 +87,7 @@ pub(crate) use ast::{
 };
 
 pub(crate) use lexeme::FlowchartLexemeComponent;
-pub(crate) use tokens::{DirectionStatementToken, LexError, NodeLabelToken, Tok};
+pub(crate) use tokens::{ArrowToken, DirectionStatementToken, LexError, NodeLabelToken, Tok};
 
 use accessibility::{
     FlowchartAccessibilityScan, FlowchartAccessibilityStatement, scan_flowchart_accessibility,
@@ -186,7 +189,7 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
             )?;
             let error = Error::diagram_parse_diagnostic(
                 meta.diagram_type.clone(),
-                lalrpop_parse_diagnostic(error.as_ref(), code.len()),
+                flowchart_parse_diagnostic(error.as_ref(), &code, &facts),
             );
             Err(crate::family::CombinedSemanticFailure::new(error, facts))
         }
@@ -200,11 +203,19 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
     Ok(parsed)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_flowchart_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<FlowchartModel> {
     parse_flowchart_semantic_source(code, meta)?.into_render_model(meta)
+}
+
+pub(crate) fn parse_flowchart_model_with_render_context(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<(FlowchartModel, FlowchartRenderLabelSources)> {
+    parse_flowchart_semantic_source(code, meta)?.into_render_model_parts(meta)
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -518,6 +529,7 @@ fn construct_flowchart_token_trace(
                 let strict_error = match &mut token.1 {
                     Tok::NodeLabel(label) => label.recovery_error.take(),
                     Tok::DirectionStmt(direction) => direction.recovery_error.take(),
+                    Tok::Arrow(arrow) => arrow.recovery_error.take(),
                     _ => None,
                 };
                 items.push(match strict_error {
@@ -560,6 +572,9 @@ fn record_flowchart_lexeme(
     let components = match token {
         Tok::DirectionStmt(token) => Some(token.lexeme_components.as_slice()),
         Tok::NodeLabel(token) => Some(token.lexeme_components.as_slice()),
+        Tok::Arrow(arrow) if !arrow.lexeme_components.is_empty() => {
+            Some(arrow.lexeme_components.as_slice())
+        }
         Tok::EdgeLabel(label) => Some(label.lexeme_components.as_slice()),
         Tok::SubgraphHeader(header) => Some(header.lexeme_components.as_slice()),
         Tok::StyleStmt(stmt) => Some(stmt.lexeme_components.as_slice()),
@@ -706,9 +721,11 @@ fn flowchart_recovery_facts(
     error: &FlowchartAstParseError,
     control: &ParseControl,
 ) -> ParseControlResult<EditorSemanticFacts> {
-    let span = lalrpop_recovery_span(error, parser_code.len());
     let mut facts = recover_flowchart_editor_facts_from_tokens(parser_code, trace, control)?;
     collect_accessibility_directive_prefixes(accessibility_statements, &mut facts, control)?;
+    let span = flowchart_eof_recovery_insertion(error, parser_code, &facts)
+        .map(|insertion| SourceSpan::new(insertion, insertion))
+        .unwrap_or_else(|| lalrpop_recovery_span(error, parser_code.len()));
     facts.mark_recovered_from_parse_error(
         format!(
             "flowchart parser recovered after parse error: {}",
@@ -718,6 +735,37 @@ fn flowchart_recovery_facts(
     );
     control.checkpoint()?;
     Ok(facts)
+}
+
+fn flowchart_parse_diagnostic(
+    error: &FlowchartAstParseError,
+    code: &str,
+    facts: &EditorSemanticFacts,
+) -> crate::ParseDiagnostic {
+    let diagnostic = lalrpop_parse_diagnostic(error, code.len());
+    match flowchart_eof_recovery_insertion(error, code, facts) {
+        Some(insertion) => diagnostic.map_span(|_| SourceSpan::new(insertion, insertion)),
+        None => diagnostic,
+    }
+}
+
+fn flowchart_eof_recovery_insertion(
+    error: &FlowchartAstParseError,
+    code: &str,
+    facts: &EditorSemanticFacts,
+) -> Option<usize> {
+    if !matches!(error, lalrpop_util::ParseError::UnrecognizedEof { .. }) {
+        return None;
+    }
+    let insertion = code.trim_end_matches(['\r', '\n']).len();
+    (insertion < code.len()
+        && facts.expected_syntax.iter().any(|expected| {
+            matches!(
+                expected.kind,
+                EditorExpectedSyntaxKind::NodeIdentifier | EditorExpectedSyntaxKind::Operator
+            ) && expected.span.end == code.len()
+        }))
+    .then_some(insertion)
 }
 
 fn collect_expected_syntax_from_tokens<'a>(
@@ -1360,23 +1408,62 @@ fn push_flowchart_subgraph_symbol(facts: &mut EditorSemanticFacts, subgraph: &Su
 }
 
 fn push_flowchart_header_symbol(facts: &mut EditorSemanticFacts, header: &SubgraphHeader) {
-    if let Some(span) = header.header_span.or(header.raw_id_span) {
-        let name = header.raw_id.trim();
-        if name.is_empty() {
-            return;
-        }
-        let selection = header.raw_id_span.unwrap_or(span);
-        facts.push_symbol(
-            EditorSemanticSymbol::new(
-                name.to_string(),
-                Some("subgraph".to_string()),
-                EditorSemanticKind::Namespace,
-                span,
-                selection,
-            )
-            .with_rename_policy(EditorRenamePolicy::FlowchartNodeId),
-        );
+    let Some(span) = header.header_span.or(header.raw_id_span) else {
+        return;
+    };
+    let Some((name, selection)) = flowchart_subgraph_symbol_id(header) else {
+        return;
+    };
+    facts.push_symbol(
+        EditorSemanticSymbol::new(
+            name,
+            Some("subgraph".to_string()),
+            EditorSemanticKind::Namespace,
+            span,
+            selection,
+        )
+        .with_rename_policy(EditorRenamePolicy::FlowchartNodeId),
+    );
+}
+
+fn flowchart_subgraph_symbol_id(header: &SubgraphHeader) -> Option<(String, SourceSpan)> {
+    if header.id_equals_title && header.raw_title.chars().any(is_ecmascript_trim_char) {
+        // FlowDB replaces this authored title/id with `subGraphN`; exposing the raw title as a
+        // renameable id would point editor operations at a symbol that does not exist in the model.
+        return None;
     }
+
+    let raw_span = header.raw_id_span?;
+    let raw = header.raw_id.as_str();
+    let mut start = 0usize;
+    let mut end = raw.len();
+
+    if raw.starts_with('"') && raw.ends_with('"') && raw.len() >= 2 {
+        start += 1;
+        end -= 1;
+        let unquoted = &raw[start..end];
+        if unquoted.starts_with('`') && unquoted.ends_with('`') && unquoted.len() >= 2 {
+            start += 1;
+            end -= 1;
+        }
+    }
+
+    let candidate = &raw[start..end];
+    let leading = candidate
+        .len()
+        .saturating_sub(candidate.trim_start_matches(is_ecmascript_trim_char).len());
+    start += leading;
+    let trimmed = &raw[start..end];
+    end = start + trimmed.trim_end_matches(is_ecmascript_trim_char).len();
+
+    let name = raw[start..end].to_string();
+    if name.is_empty() {
+        return None;
+    }
+    Some((
+        name,
+        SourceSpan::new(raw_span.start + start, raw_span.start + end),
+    ))
 }
 
 fn push_flowchart_token_symbol(
@@ -1403,8 +1490,15 @@ fn push_flowchart_token_symbol(
 
 impl FlowchartSemanticSource {
     fn into_render_model(self, meta: &ParseMetadata) -> Result<FlowchartModel> {
+        self.into_render_model_parts(meta).map(|(model, _)| model)
+    }
+
+    fn into_render_model_parts(
+        self,
+        meta: &ParseMetadata,
+    ) -> Result<(FlowchartModel, FlowchartRenderLabelSources)> {
         let control = ParseControl::new();
-        self.into_render_model_controlled(meta, &control)
+        self.into_render_model_parts_controlled(meta, &control)
             .expect("a private parse control cannot be cancelled")
     }
 
@@ -1413,6 +1507,16 @@ impl FlowchartSemanticSource {
         meta: &ParseMetadata,
         control: &ParseControl,
     ) -> ParseControlResult<Result<FlowchartModel>> {
+        Ok(self
+            .into_render_model_parts_controlled(meta, control)?
+            .map(|(model, _)| model))
+    }
+
+    fn into_render_model_parts_controlled(
+        self,
+        meta: &ParseMetadata,
+        control: &ParseControl,
+    ) -> ParseControlResult<Result<(FlowchartModel, FlowchartRenderLabelSources)>> {
         control.checkpoint()?;
         let FlowchartSemanticSource {
             acc_descr,
@@ -1434,11 +1538,16 @@ impl FlowchartSemanticSource {
         }
 
         let mut render_nodes = Vec::with_capacity(nodes.len());
+        let mut render_label_sources = FlowchartRenderLabelSources::default();
         for (index, node) in nodes.into_iter().enumerate() {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            render_nodes.push(flow_node_to_model(node, &meta.effective_config));
+            let (node, render_label_source) = flow_node_to_model(node, &meta.effective_config);
+            if let Some(source) = render_label_source {
+                render_label_sources.insert_node(node.id.clone(), source);
+            }
+            render_nodes.push(node);
         }
         let mut render_edges = Vec::with_capacity(edges.len());
         for (index, edge) in edges.into_iter().enumerate() {
@@ -1446,7 +1555,12 @@ impl FlowchartSemanticSource {
                 control.checkpoint()?;
             }
             match flow_edge_to_model(edge, meta) {
-                Ok(edge) => render_edges.push(edge),
+                Ok((edge, render_label_source)) => {
+                    if let Some(source) = render_label_source {
+                        render_label_sources.insert_edge(edge.id.clone(), source);
+                    }
+                    render_edges.push(edge);
+                }
                 Err(error) => return Ok(Err(error)),
             }
         }
@@ -1455,7 +1569,10 @@ impl FlowchartSemanticSource {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            render_subgraphs.push(flow_subgraph_to_model(subgraph));
+            let (subgraph, render_title_source) =
+                flow_subgraph_to_model(subgraph, &meta.effective_config);
+            render_label_sources.set_subgraph(subgraph.id.clone(), render_title_source);
+            render_subgraphs.push(subgraph);
         }
         let mut render_tooltips = rustc_hash::FxHashMap::default();
         render_tooltips.reserve(tooltips.len());
@@ -1467,7 +1584,7 @@ impl FlowchartSemanticSource {
         }
 
         control.checkpoint()?;
-        Ok(Ok(FlowchartModel {
+        let model = FlowchartModel {
             keyword,
             acc_descr,
             acc_title,
@@ -1483,7 +1600,8 @@ impl FlowchartSemanticSource {
             subgraphs: render_subgraphs,
             tooltips: render_tooltips,
             warning_facts,
-        }))
+        };
+        Ok(Ok((model, render_label_sources)))
     }
 }
 
@@ -1531,11 +1649,15 @@ fn append_missing_subgraph_nodes(
     control.checkpoint()
 }
 
-fn flow_node_to_model(n: Node, config: &MermaidConfig) -> FlowNode {
+fn flow_node_to_model(n: Node, config: &MermaidConfig) -> (FlowNode, Option<String>) {
     let layout_shape = layout_shape_for_node(&n);
     let label = sanitized_node_label(&n, config);
+    let label_raw = n.label.as_deref().unwrap_or(&n.id);
+    let render_label_source = render_label_source_needs_provenance(label_raw)
+        .then(|| sanitized_node_render_label_source(&n, config))
+        .filter(|source| *source != label);
 
-    FlowNode {
+    let node = FlowNode {
         id: n.id,
         label: Some(label),
         label_type: Some(title_kind_str(&n.label_type).to_string()),
@@ -1553,11 +1675,21 @@ fn flow_node_to_model(n: Node, config: &MermaidConfig) -> FlowNode {
         link: n.link,
         link_target: n.link_target,
         have_callback: n.have_callback,
-    }
+    };
+    (node, render_label_source)
 }
 
-fn flow_edge_to_model(e: Edge, meta: &ParseMetadata) -> Result<FlowEdge> {
+fn flow_edge_to_model(e: Edge, meta: &ParseMetadata) -> Result<(FlowEdge, Option<String>)> {
     let label = sanitized_optional_label(e.label.as_deref(), &meta.effective_config);
+    let render_label_source = e
+        .label
+        .as_deref()
+        .filter(|raw| render_label_source_needs_provenance(raw))
+        .map(|raw| sanitized_render_label_source(raw, &meta.effective_config));
+    let render_label_source = match (&label, render_label_source) {
+        (Some(label), Some(source)) if *label != source => Some(source),
+        _ => None,
+    };
     let id = e.id.ok_or_else(|| {
         Error::diagram_parse_fallback(
             meta.diagram_type.clone(),
@@ -1565,23 +1697,26 @@ fn flow_edge_to_model(e: Edge, meta: &ParseMetadata) -> Result<FlowEdge> {
         )
     })?;
 
-    Ok(FlowEdge {
-        id,
-        from: e.from,
-        to: e.to,
-        label,
-        label_type: Some(title_kind_str(&e.label_type).to_string()),
-        edge_type: Some(e.link.edge_type),
-        arrow: e.link.end,
-        is_user_defined_id: e.is_user_defined_id,
-        stroke: Some(e.link.stroke),
-        length: e.link.length,
-        style: e.style,
-        classes: e.classes,
-        interpolate: e.interpolate,
-        animate: e.animate,
-        animation: e.animation,
-    })
+    Ok((
+        FlowEdge {
+            id,
+            from: e.from,
+            to: e.to,
+            label,
+            label_type: Some(title_kind_str(&e.label_type).to_string()),
+            edge_type: Some(e.link.edge_type),
+            arrow: e.link.end,
+            is_user_defined_id: e.is_user_defined_id,
+            stroke: Some(e.link.stroke),
+            length: e.link.length,
+            style: e.style,
+            classes: e.classes,
+            interpolate: e.interpolate,
+            animate: e.animate,
+            animation: e.animation,
+        },
+        render_label_source,
+    ))
 }
 
 fn layout_shape_for_node(n: &Node) -> String {
@@ -1614,6 +1749,15 @@ fn sanitized_node_label(n: &Node, config: &MermaidConfig) -> String {
     label
 }
 
+fn sanitized_node_render_label_source(n: &Node, config: &MermaidConfig) -> String {
+    let label_raw = n.label.as_ref().unwrap_or(&n.id);
+    let mut label = sanitized_render_label_source(label_raw, config);
+    if label.len() >= 2 && label.starts_with('"') && label.ends_with('"') {
+        label = label[1..label.len() - 1].to_string();
+    }
+    label
+}
+
 fn sanitized_optional_label(label: Option<&str>, config: &MermaidConfig) -> Option<String> {
     label.map(|s| sanitized_label(s, config))
 }
@@ -1623,6 +1767,16 @@ fn sanitized_label(raw: &str, config: &MermaidConfig) -> String {
     sanitize_text(&decoded, config)
 }
 
+fn sanitized_render_label_source(raw: &str, config: &MermaidConfig) -> String {
+    let flow_db_label = sanitize_text(raw, config);
+    let decoded = crate::entities::restore_mermaid_entity_spelling(&flow_db_label);
+    crate::sanitize::sanitize_text_as_html_fragment(decoded.as_ref(), config)
+}
+
+fn render_label_source_needs_provenance(raw: &str) -> bool {
+    raw.contains(['&', '#', 'ﬂ', '¶', '<', '>'])
+}
+
 fn decode_mermaid_hash_entities(input: &str) -> std::borrow::Cow<'_, str> {
     // Mermaid runs `encodeEntities(...)` before parsing and later decodes with browser
     // `entityDecode(...)`. In our headless pipeline we decode into Unicode during parsing so
@@ -1630,22 +1784,260 @@ fn decode_mermaid_hash_entities(input: &str) -> std::borrow::Cow<'_, str> {
     crate::entities::decode_mermaid_entities_to_unicode(input)
 }
 
-fn flow_subgraph_to_model(sg: FlowSubGraph) -> FlowSubgraph {
-    FlowSubgraph {
+fn flow_subgraph_to_model(
+    sg: FlowSubGraph,
+    config: &MermaidConfig,
+) -> (FlowSubgraph, Option<String>) {
+    let sanitized_title = sanitize_text(&sg.title, config);
+    let title = decode_mermaid_hash_entities(&sanitized_title).into_owned();
+    let render_title_source = render_label_source_needs_provenance(&sg.title)
+        .then(|| sanitized_render_label_source(&sg.title, config))
+        .filter(|source| *source != title);
+    let subgraph = FlowSubgraph {
         id: sg.id,
         nodes: sg.nodes,
-        title: crate::entities::decode_mermaid_entities_to_unicode(&sg.title).into_owned(),
+        title,
         classes: sg.classes,
         styles: sg.styles,
         dir: sg.dir,
         has_explicit_dir: sg.has_explicit_dir,
         label_type: Some(sg.label_type),
-    }
+    };
+    (subgraph, render_title_source)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn flowchart_model_trims_parser_labels_before_entity_decode() {
+        let nbsp = '\u{00a0}';
+        let source = format!(
+            r#"flowchart LR
+Direct["{nbsp}Direct{nbsp}"]
+Entity["&nbsp;Entity&nbsp;"]
+Mixed["{nbsp}&nbsp;Mixed&nbsp;{nbsp}"]
+Internal["A{nbsp}B"]
+DirectOnly["{nbsp}"]
+EntityOnly["&nbsp;"]
+Shape@{{ label: "{nbsp}&nbsp;Shape&nbsp;{nbsp}", labelType: "string", shape: "rect" }}
+A -->|{nbsp}Text{nbsp}| B
+B -- "{nbsp}String{nbsp}" --> C
+C -- "`{nbsp}Markdown{nbsp}`" --> D
+D -- "{nbsp}&nbsp;MixedEdge&nbsp;{nbsp}" --> E
+E -- "{nbsp}" --> F
+F -- "&nbsp;" --> G
+"#
+        );
+        let meta = ParseMetadata {
+            diagram_type: "flowchart-v2".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        };
+        let (model, render_label_sources) =
+            parse_flowchart_model_with_render_context(&source, &meta).expect("flowchart model");
+        let node_label = |id: &str| {
+            model
+                .nodes
+                .iter()
+                .find(|node| node.id == id)
+                .and_then(|node| node.label.as_deref())
+                .unwrap_or_else(|| panic!("missing node label for {id}"))
+        };
+        let node_render_label = |id: &str| {
+            let node = model
+                .nodes
+                .iter()
+                .find(|node| node.id == id)
+                .unwrap_or_else(|| panic!("missing node for {id}"));
+            render_label_sources
+                .node_label_for_render(node)
+                .unwrap_or_else(|| panic!("missing render label for {id}"))
+        };
+        let edge_label = |from: &str| {
+            model
+                .edges
+                .iter()
+                .find(|edge| edge.from == from)
+                .unwrap_or_else(|| panic!("missing edge from {from}"))
+                .label
+                .as_deref()
+        };
+        let edge_render_label = |from: &str| {
+            let edge = model
+                .edges
+                .iter()
+                .find(|edge| edge.from == from)
+                .unwrap_or_else(|| panic!("missing edge from {from}"));
+            render_label_sources.edge_label_for_render(edge)
+        };
+
+        assert_eq!(node_label("Direct"), "Direct");
+        assert_eq!(node_label("Entity"), format!("{nbsp}Entity{nbsp}"));
+        assert_eq!(node_label("Mixed"), format!("{nbsp}Mixed{nbsp}"));
+        assert_eq!(node_label("Internal"), format!("A{nbsp}B"));
+        assert_eq!(node_label("DirectOnly"), "");
+        assert_eq!(node_label("EntityOnly"), nbsp.to_string());
+        assert_eq!(
+            node_label("Shape"),
+            format!("{nbsp}{nbsp}Shape{nbsp}{nbsp}")
+        );
+
+        assert_eq!(edge_label("A"), Some("Text"));
+        assert_eq!(edge_label("B"), Some("String"));
+        assert_eq!(edge_label("C"), Some("Markdown"));
+        let mixed_edge_label = format!("{nbsp}MixedEdge{nbsp}");
+        assert_eq!(edge_label("D"), Some(mixed_edge_label.as_str()));
+        assert_eq!(edge_label("E"), Some(""));
+        let nbsp_label = nbsp.to_string();
+        assert_eq!(edge_label("F"), Some(nbsp_label.as_str()));
+
+        assert_eq!(node_render_label("Direct"), "Direct");
+        assert_eq!(node_render_label("Entity"), "&nbsp;Entity&nbsp;");
+        assert_eq!(node_render_label("Mixed"), "&nbsp;Mixed&nbsp;");
+        assert_eq!(node_render_label("DirectOnly"), "");
+        assert_eq!(node_render_label("EntityOnly"), "&nbsp;");
+        assert_eq!(
+            node_render_label("Shape"),
+            format!("{nbsp}&nbsp;Shape&nbsp;{nbsp}")
+        );
+        assert_eq!(edge_render_label("A"), Some("Text"));
+        assert_eq!(edge_render_label("D"), Some("&nbsp;MixedEdge&nbsp;"));
+        assert_eq!(edge_render_label("E"), Some(""));
+        assert_eq!(edge_render_label("F"), Some("&nbsp;"));
+
+        let subgraph_source =
+            format!("flowchart LR\nsubgraph SG[\"{nbsp}&nbsp;Group&nbsp;{nbsp}\"]\n  H\nend\n");
+        let (subgraph_model, subgraph_render_label_sources) =
+            parse_flowchart_model_with_render_context(&subgraph_source, &meta)
+                .expect("subgraph model");
+        let subgraph = subgraph_model
+            .subgraphs
+            .iter()
+            .find(|subgraph| subgraph.id == "SG")
+            .expect("subgraph SG");
+        assert_eq!(subgraph.title, format!("{nbsp}Group{nbsp}"));
+        assert_eq!(
+            subgraph_render_label_sources.subgraph_title_for_render(subgraph),
+            "&nbsp;Group&nbsp;"
+        );
+
+        let entity_subgraph_source =
+            "flowchart LR\nsubgraph Entity[\"A &amp; &lt; >\"]\n  Inside\nend\n";
+        let (entity_subgraph_model, entity_subgraph_render_label_sources) =
+            parse_flowchart_model_with_render_context(entity_subgraph_source, &meta)
+                .expect("entity subgraph model");
+        let entity_subgraph = entity_subgraph_model
+            .subgraphs
+            .iter()
+            .find(|subgraph| subgraph.id == "Entity")
+            .expect("entity subgraph");
+        assert_eq!(entity_subgraph.title, "A & < >");
+        assert_eq!(
+            entity_subgraph_render_label_sources.subgraph_title_for_render(entity_subgraph),
+            "A &amp; &lt; &gt;"
+        );
+
+        let duplicate_subgraph_source =
+            "flowchart LR\nsubgraph X[\"&nbsp;First\"]\n  A\nend\nsubgraph X[Second]\n  B\nend\n";
+        let (duplicate_model, duplicate_sources) =
+            parse_flowchart_model_with_render_context(duplicate_subgraph_source, &meta)
+                .expect("duplicate subgraph model");
+        assert_eq!(duplicate_model.subgraphs.len(), 2);
+        assert_eq!(
+            duplicate_sources.subgraph_title_for_render(&duplicate_model.subgraphs[1]),
+            "Second"
+        );
+
+        let punctuation_source = "flowchart LR\nsubgraph \"A;B\"\n  Bare\nend\nsubgraph \"`M;D`\"\n  Markdown\nend\nsubgraph SG[\"A]B\"]\n  Bracket\nend\n";
+        let punctuation_model = parse_flowchart_model_for_render(punctuation_source, &meta)
+            .expect("punctuation subgraph model");
+        assert!(
+            punctuation_model
+                .subgraphs
+                .iter()
+                .any(|subgraph| subgraph.id == "A;B" && subgraph.title == "A;B")
+        );
+        assert!(punctuation_model.subgraphs.iter().any(|subgraph| {
+            subgraph.id == "M;D"
+                && subgraph.title == "M;D"
+                && subgraph.label_type.as_deref() == Some("markdown")
+        }));
+        assert!(
+            punctuation_model
+                .subgraphs
+                .iter()
+                .any(|subgraph| subgraph.id == "SG" && subgraph.title == "A]B")
+        );
+    }
+
+    #[test]
+    fn flowchart_render_label_context_stays_out_of_the_public_model_contract() {
+        let parsed = crate::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "flowchart LR\nA[\"&nbsp;A&nbsp;\"] -->|\"&nbsp;E&nbsp;\"| B\n",
+                crate::ParseOptions::strict(),
+            )
+            .expect("parse flowchart")
+            .expect("detect flowchart");
+        assert!(parsed.retained_render_context_bytes() > 0);
+
+        let (_, crate::RenderSemanticModel::Flowchart(model)) = parsed.into_parts() else {
+            panic!("expected Flowchart model");
+        };
+        let json = serde_json::to_value(&model).expect("serialize Flowchart model");
+        assert!(json.get("renderLabelSources").is_none());
+        assert!(json.get("render_label_sources").is_none());
+
+        let roundtrip: FlowchartModel =
+            serde_json::from_value(json).expect("deserialize Flowchart model");
+        assert_eq!(roundtrip.nodes.len(), model.nodes.len());
+        assert_eq!(roundtrip.edges.len(), model.edges.len());
+        assert_eq!(roundtrip.nodes[0].label, model.nodes[0].label);
+        assert_eq!(roundtrip.edges[0].label, model.edges[0].label);
+    }
+
+    #[test]
+    fn flowchart_render_label_context_applies_shape_sanitization_to_angle_text() {
+        let parsed = crate::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                include_str!(
+                    "../../../../fixtures/flowchart/stress_flowchart_svglike_escaped_tags_025.mmd"
+                ),
+                crate::ParseOptions::strict(),
+            )
+            .expect("parse flowchart")
+            .expect("detect flowchart");
+        let render_label_sources = parsed
+            .flowchart_render_label_sources()
+            .expect("flowchart render label sources");
+        let crate::RenderSemanticModel::Flowchart(model) = parsed.model() else {
+            panic!("expected Flowchart model");
+        };
+
+        let comparison = model
+            .nodes
+            .iter()
+            .find(|node| node.id == "C")
+            .expect("comparison node");
+        assert_eq!(comparison.label.as_deref(), Some("x &lt; y and y > z"));
+        assert_eq!(
+            render_label_sources.node_label_for_render(comparison),
+            Some("x &lt; y and y &gt; z")
+        );
+
+        let formatted = model
+            .nodes
+            .iter()
+            .find(|node| node.id == "D")
+            .expect("formatted node");
+        assert_eq!(
+            render_label_sources.node_label_for_render(formatted),
+            Some("<u>under</u> and <i>italic</i>")
+        );
+    }
 
     #[test]
     fn completion_vocabulary_contains_only_parser_accepted_flowchart_syntax() {

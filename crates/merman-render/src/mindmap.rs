@@ -1,5 +1,6 @@
 use crate::config::{config_f64_css_px, config_string};
 use crate::flowchart::{FlowchartLabelMetricsRequest, flowchart_label_metrics_for_layout};
+use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
 use crate::model::{Bounds, LayoutEdge, LayoutNode, LayoutPoint, MindmapDiagramLayout};
 use crate::text::WrapMode;
@@ -7,6 +8,7 @@ use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use merman_core::MermaidConfig;
 use serde_json::Value;
+use std::sync::Arc;
 
 mod tidy_tree;
 
@@ -247,13 +249,48 @@ fn shift_nodes_to_positive_bounds(nodes: &mut [LayoutNode], content_min: f64) {
     }
 }
 
-pub(crate) fn layout_mindmap_diagram_typed(
+fn mindmap_layout_adapter_work(
+    model: &MindmapModel,
+    use_tidy_tree: bool,
+    work_control: &OperationLayoutWorkControl,
+) -> Result<usize> {
+    let node_work = work_control.checked_mul(model.nodes.len(), 12)?;
+    let edge_work = work_control.checked_mul(model.edges.len(), 8)?;
+    let backend_work = if use_tidy_tree {
+        work_control.checked_add(
+            work_control.checked_mul(model.nodes.len(), 16)?,
+            work_control.checked_mul(model.edges.len(), 12)?,
+        )?
+    } else {
+        work_control.checked_add(
+            work_control.checked_mul(model.nodes.len(), 6)?,
+            work_control.checked_mul(model.edges.len(), 4)?,
+        )?
+    };
+    work_control.checked_add(
+        node_work,
+        work_control.checked_add(edge_work, backend_work)?,
+    )
+}
+
+pub(crate) fn layout_mindmap_diagram_typed_with_work_meter(
     model: &MindmapModel,
     config: &MermaidConfig,
     text_measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    work_meter: Arc<crate::resources::OperationWorkMeter>,
 ) -> Result<MindmapDiagramLayout> {
-    layout_mindmap_diagram_model(model, config, text_measurer, math_renderer)
+    let mut work_control = OperationLayoutWorkControl::new(work_meter);
+    let use_tidy_tree = uses_tidy_tree_layout(config.as_value());
+    let adapter_work = mindmap_layout_adapter_work(model, use_tidy_tree, &work_control)?;
+    work_control.charge_adapter(adapter_work)?;
+    layout_mindmap_diagram_model(
+        model,
+        config,
+        text_measurer,
+        math_renderer,
+        &mut work_control,
+    )
 }
 
 fn layout_mindmap_diagram_model(
@@ -261,20 +298,17 @@ fn layout_mindmap_diagram_model(
     config: &MermaidConfig,
     text_measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    _work_control: &mut OperationLayoutWorkControl,
 ) -> Result<MindmapDiagramLayout> {
     let effective_config = config.as_value();
     let text_style = mindmap_text_style(effective_config);
     let max_node_width_px = mindmap_max_node_width_px(effective_config);
 
-    let mut nodes_sorted: Vec<(i64, &MindmapNodeModel)> = model
-        .nodes
-        .iter()
-        .map(|n| (n.id.parse::<i64>().unwrap_or(i64::MAX), n))
-        .collect();
-    nodes_sorted.sort_by(|(na, a), (nb, b)| na.cmp(nb).then_with(|| a.id.cmp(&b.id)));
-
     let mut nodes: Vec<LayoutNode> = Vec::with_capacity(model.nodes.len());
-    for (_id_num, n) in nodes_sorted {
+    // Mermaid's Mindmap DB emits nodes in parser preorder, and Cytoscape consumes that order
+    // directly. The typed model already preserves it; re-sorting numeric-looking ids here added
+    // O(N log N) work and changed the geometry of manually constructed source-order models.
+    for n in &model.nodes {
         let (label_width, label_height) = mindmap_label_bbox_px_with_math(
             &n.label,
             text_measurer,
@@ -353,11 +387,12 @@ fn layout_mindmap_diagram_model(
                 let _ = edge_idx;
             }
 
-            let positions =
-                manatee::algo::cose_bilkent::layout_indexed(&indexed_nodes, &indexed_edges)
-                    .map_err(|e| Error::InvalidModel {
-                        message: format!("manatee layout failed: {e}"),
-                    })?;
+            let positions = manatee::algo::cose_bilkent::layout_indexed_with_work_control(
+                &indexed_nodes,
+                &indexed_edges,
+                _work_control,
+            )
+            .map_err(|error| _work_control.map_manatee_error(error))?;
 
             for (n, p) in nodes.iter_mut().zip(positions) {
                 n.x = p.x;
@@ -520,6 +555,21 @@ mod tests {
             &style,
             200.0,
         );
+
+        assert_eq!(width, 200.0);
+        assert_eq!(height, 72.0);
+    }
+
+    #[test]
+    fn mindmap_break_spaces_preserves_trailing_indentation_line_box() {
+        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let style = super::mindmap_text_style(&serde_json::json!({}));
+        let source = "\n    Multi-line root\n    with three lines\n  ";
+        assert_eq!(
+            crate::text::mermaid_markdown_to_html_label_fragment(source, true),
+            "    Multi-line root\n    with three lines\n  "
+        );
+        let (width, height) = super::mindmap_label_bbox_px(source, &measurer, &style, 200.0);
 
         assert_eq!(width, 200.0);
         assert_eq!(height, 72.0);

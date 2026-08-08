@@ -118,6 +118,21 @@ harness = false
 required-features = ["svg"]
 
 [[bench]]
+name = "flowchart_svg_label_memory"
+harness = false
+required-features = ["svg"]
+
+[[bench]]
+name = "sequence_message_memory"
+harness = false
+required-features = ["svg"]
+
+[[bench]]
+name = "elk_hierarchy_memory"
+harness = false
+required-features = ["layout-elk"]
+
+[[bench]]
 name = "flowchart_stress"
 harness = false
 required-features = ["svg"]
@@ -195,3 +210,7 @@ required-features = ["svg"]
 [[example]]
 name = "icon_registry_calibration"
 required-features = ["svg"]
+
+[[example]]
+name = "layout_work_calibration"
+required-features = ["complete-svg"]

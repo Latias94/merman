@@ -718,6 +718,19 @@ User Testing    :c2, after c1, 5d`;
   assert.ok(measureCallCount > 0);
   assert.ok(measurementOperations.has("wrapped"));
 
+  let explicitHandledCallCount = 0;
+  const explicitHandledSvg = api.renderSvgWithTextMeasurer(
+    source,
+    (request) => {
+      explicitHandledCallCount += 1;
+      const result = hostTextMeasurementResult(request);
+      return result === undefined ? undefined : { handled: true, ...result };
+    },
+    hostTextMeasurementOptions
+  );
+  assert.equal(explicitHandledSvg, measuredSvg);
+  assert.equal(explicitHandledCallCount, measureCallCount);
+
   if (completeCytoscapeRenderSurface) {
     const architectureOperations = new Map();
     const architectureSvg = api.renderSvgWithTextMeasurer(
@@ -745,7 +758,19 @@ User Testing    :c2, after c1, 5d`;
     hostTextMeasurementOptions
   );
   assert.equal(typeof JSON.parse(measuredLayout), "object");
+  const explicitHandledLayout = api.layoutJsonWithTextMeasurer(
+    source,
+    (request) => {
+      const result = hostTextMeasurementResult(request);
+      return result === undefined ? undefined : { handled: true, ...result };
+    },
+    hostTextMeasurementOptions
+  );
+  assert.equal(explicitHandledLayout, measuredLayout);
+
+  let fallbackReferenceSvg;
   for (const fallbackResult of [
+    null,
     undefined,
     { handled: false },
   ]) {
@@ -760,8 +785,70 @@ User Testing    :c2, after c1, 5d`;
     );
     assert.match(fallbackSvg, /<svg/);
     assert.ok(fallbackCallCount > 0);
+    fallbackReferenceSvg ??= fallbackSvg;
+    assert.equal(fallbackSvg, fallbackReferenceSvg);
   }
+
+  const resultFields = [
+    "handled",
+    "kind",
+    "width",
+    "height",
+    "length",
+    "line_count",
+    "bbox_left",
+    "bbox_right",
+    "raw_width",
+  ];
+  const unhandledAccesses = [];
+  const unhandledProxy = new Proxy(
+    { handled: false },
+    {
+      get(target, property, receiver) {
+        if (typeof property === "string" && resultFields.includes(property)) {
+          unhandledAccesses.push(property);
+          if (property !== "handled") {
+            throw new Error(`fallback result unexpectedly read ${property}`);
+          }
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    }
+  );
+  const proxyFallbackSvg = api.renderSvgWithTextMeasurer(
+    source,
+    () => unhandledProxy,
+    hostTextMeasurementOptions
+  );
+  assert.equal(proxyFallbackSvg, fallbackReferenceSvg);
+  assert.ok(unhandledAccesses.length > 0);
+  assert.deepEqual(unhandledAccesses, Array(unhandledAccesses.length).fill("handled"));
+
+  const handledAccesses = [];
+  const proxyMeasuredSvg = api.renderSvgWithTextMeasurer(
+    source,
+    (request) => {
+      const accesses = [];
+      handledAccesses.push(accesses);
+      return new Proxy(hostTextMeasurementResult(request), {
+        get(target, property, receiver) {
+          if (typeof property === "string" && resultFields.includes(property)) {
+            accesses.push(property);
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      });
+    },
+    hostTextMeasurementOptions
+  );
+  assert.equal(proxyMeasuredSvg, measuredSvg);
+  assert.ok(handledAccesses.length > 0);
+  for (const accesses of handledAccesses) {
+    assert.deepEqual(accesses, resultFields);
+  }
+
   for (const invalidResult of [
+    { handled: "false", width: 1, height: 1 },
     { width: Number.POSITIVE_INFINITY, height: 1 },
     { width: -1, height: 1 },
     { width: 1, height: 1, line_count: 0 },
@@ -1206,6 +1293,67 @@ function assertEditorLanguageSurface(enabled) {
     assert.ok(api.isBindingErrorPayload(error), "expected structured rename binding error");
     assert.equal(error.code_name, "MERMAN_INVALID_ARGUMENT");
     assert.match(error.message, messagePattern);
+  }
+
+  const resourceError = {
+    version: 1,
+    ok: false,
+    code: 10,
+    code_name: "MERMAN_RESOURCE_LIMIT_EXCEEDED",
+    kind: "generic",
+    capability_id: null,
+    details: {
+      resource: {
+        cause: "arithmetic_overflow",
+        limit_id: "max_layout_work_units",
+        phase: "layout_model",
+        actual: "18446744073709551615",
+        max: 800_000,
+        profile: "interactive",
+      },
+    },
+    message: "layout work accounting overflowed",
+  };
+  assert.ok(
+    api.isBindingErrorPayload(resourceError),
+    "expected structured resource cause to satisfy the binding error contract"
+  );
+  assert.equal(resourceError.details.resource.cause, "arithmetic_overflow");
+  assert.equal(resourceError.details.resource.actual, "18446744073709551615");
+  assert.equal(resourceError.details.resource.max, 800_000);
+  assert.equal(
+    api.isBindingErrorPayload({
+      ...resourceError,
+      details: {
+        resource: {
+          ...resourceError.details.resource,
+          cause: undefined,
+        },
+      },
+    }),
+    false,
+    "resource details without a cause must not satisfy the binding error contract"
+  );
+  for (const actual of [
+    "5",
+    "09007199254740992",
+    "18446744073709551616",
+    "-9007199254740992",
+    Number.MAX_SAFE_INTEGER + 1,
+  ]) {
+    assert.equal(
+      api.isBindingErrorPayload({
+        ...resourceError,
+        details: {
+          resource: {
+            ...resourceError.details.resource,
+            actual,
+          },
+        },
+      }),
+      false,
+      `invalid resource count ${actual} must not satisfy the binding error contract`
+    );
   }
 
   assert.deepEqual(

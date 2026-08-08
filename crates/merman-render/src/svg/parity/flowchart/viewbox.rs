@@ -407,9 +407,9 @@ fn extra_recursive_root_y(ctx: &FlowchartRenderCtx<'_>) -> f64 {
             &ctx.recursive_clusters,
             cid,
         );
-        let has_empty_sibling = ctx.subgraphs_by_id.iter().any(|(&id, &sg)| {
+        let has_empty_sibling = ctx.subgraphs_by_id.keys().any(|&id| {
             id != cid
-                && sg.nodes.is_empty()
+                && !ctx.subgraph_has_children(id)
                 && ctx.layout_clusters_by_id.contains_key(id)
                 && effective_parent(
                     &ctx.parent,

@@ -1,6 +1,7 @@
 //! State diagram layout implementation (stateDiagram-v2).
 
 use crate::dagre::self_loop::compact_self_loop_geometry;
+use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{
     Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, StateDiagramLayout,
 };
@@ -11,6 +12,7 @@ use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use merman_core::geom::Size;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::Arc;
 
 use super::config::*;
 use super::{StateDiagramModel, StateNode};
@@ -19,6 +21,36 @@ struct PreparedGraph {
     graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
     extracted: BTreeMap<String, PreparedGraph>,
     root_cluster_id: Option<String>,
+}
+
+trait StatePreparationWorkControl {
+    fn charge(&mut self, units: usize) -> Result<()>;
+    fn checked_mul(&self, left: usize, right: usize) -> Result<usize>;
+}
+
+impl StatePreparationWorkControl for OperationLayoutWorkControl {
+    fn charge(&mut self, units: usize) -> Result<()> {
+        self.charge_adapter(units)
+    }
+
+    fn checked_mul(&self, left: usize, right: usize) -> Result<usize> {
+        OperationLayoutWorkControl::checked_mul(self, left, right)
+    }
+}
+
+#[derive(Default)]
+struct NoopStatePreparationWorkControl;
+
+impl StatePreparationWorkControl for NoopStatePreparationWorkControl {
+    fn charge(&mut self, _units: usize) -> Result<()> {
+        Ok(())
+    }
+
+    fn checked_mul(&self, left: usize, right: usize) -> Result<usize> {
+        left.checked_mul(right).ok_or_else(|| Error::InvalidModel {
+            message: "state preparation work overflowed".to_string(),
+        })
+    }
 }
 
 impl Drop for PreparedGraph {
@@ -33,6 +65,56 @@ impl Drop for PreparedGraph {
 }
 
 type Rect = merman_core::geom::Box2;
+
+#[derive(Default)]
+struct HiddenPrefixTrieNode {
+    children: HashMap<char, usize>,
+    terminal: bool,
+}
+
+#[derive(Default)]
+struct HiddenPrefixMatcher {
+    nodes: Vec<HiddenPrefixTrieNode>,
+}
+
+impl HiddenPrefixMatcher {
+    fn from_prefixes(prefixes: impl IntoIterator<Item = String>) -> Self {
+        let mut matcher = Self {
+            nodes: vec![HiddenPrefixTrieNode::default()],
+        };
+        for prefix in prefixes {
+            let mut node_idx = 0usize;
+            for ch in prefix.chars() {
+                let next = if let Some(&next) = matcher.nodes[node_idx].children.get(&ch) {
+                    next
+                } else {
+                    let next = matcher.nodes.len();
+                    matcher.nodes.push(HiddenPrefixTrieNode::default());
+                    matcher.nodes[node_idx].children.insert(ch, next);
+                    next
+                };
+                node_idx = next;
+            }
+            matcher.nodes[node_idx].terminal = true;
+        }
+        matcher
+    }
+
+    fn is_hidden(&self, id: &str) -> bool {
+        let mut node_idx = 0usize;
+        for (byte_idx, ch) in id.char_indices() {
+            let Some(&next) = self.nodes[node_idx].children.get(&ch) else {
+                return false;
+            };
+            node_idx = next;
+            let rest = &id[byte_idx + ch.len_utf8()..];
+            if self.nodes[node_idx].terminal && (rest.is_empty() || rest.starts_with("----")) {
+                return true;
+            }
+        }
+        self.nodes[node_idx].terminal
+    }
+}
 
 #[derive(Debug, Clone)]
 struct EdgeSegment {
@@ -56,7 +138,7 @@ struct LayoutFragments {
 struct StateDagreInput {
     graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
     rankdir: RankDir,
-    hidden_prefixes: Vec<String>,
+    hidden_prefixes: HiddenPrefixMatcher,
     dagre_id_by_semantic_id: HashMap<String, String>,
     dir_by_dagre_id: HashMap<String, Option<String>>,
     explicit_dir_ids: HashSet<String>,
@@ -258,11 +340,14 @@ fn is_descendant(descendants: &HashMap<String, HashSet<String>>, id: &str, ances
         .is_some_and(|set| set.contains(id))
 }
 
-fn find_common_edges(
+fn find_common_edges<W: StatePreparationWorkControl>(
     graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     id1: &str,
     id2: &str,
-) -> Vec<(String, String)> {
+    work_control: &mut W,
+) -> Result<Vec<(String, String)>> {
+    let edge_scan_work = work_control.checked_mul(graph.edge_slot_count(), 2)?;
+    work_control.charge(edge_scan_work)?;
     let edges1: Vec<(String, String)> = graph
         .edge_keys()
         .into_iter()
@@ -294,17 +379,18 @@ fn find_common_edges(
             out.push(e1);
         }
     }
-    out
+    Ok(out)
 }
 
-fn find_non_cluster_child(
+fn find_non_cluster_child<W: StatePreparationWorkControl>(
     graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     id: &str,
     cluster_id: &str,
-) -> Option<String> {
+    work_control: &mut W,
+) -> Result<Option<String>> {
     let children = graph.children(id);
     if children.is_empty() {
-        return Some(id.to_string());
+        return Ok(Some(id.to_string()));
     }
     let mut reserve: Option<String> = None;
     let mut visited: HashSet<String> = HashSet::new();
@@ -320,14 +406,14 @@ fn find_non_cluster_child(
             }
             continue;
         }
-        let common_edges = find_common_edges(graph, cluster_id, &node);
+        let common_edges = find_common_edges(graph, cluster_id, &node, work_control)?;
         if !common_edges.is_empty() {
             reserve = Some(node);
         } else {
-            return Some(node);
+            return Ok(Some(node));
         }
     }
-    reserve
+    Ok(reserve)
 }
 
 fn state_is_node_in_extractable_cluster(
@@ -352,33 +438,37 @@ fn state_is_node_in_extractable_cluster(
     false
 }
 
-fn state_find_safe_anchor_node(
+fn state_find_safe_anchor_node<W: StatePreparationWorkControl>(
     graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     cluster_id: &str,
     excluded_cluster: &str,
     descendants: &HashMap<String, HashSet<String>>,
     external: &HashMap<String, bool>,
-) -> Option<String> {
+    work_control: &mut W,
+) -> Result<Option<String>> {
+    work_control.charge(graph.node_slot_count())?;
     for child in graph.children(cluster_id) {
         if child == excluded_cluster || is_descendant(descendants, child, excluded_cluster) {
             continue;
         }
 
-        let Some(candidate) = find_non_cluster_child(graph, child, cluster_id) else {
+        let Some(candidate) = find_non_cluster_child(graph, child, cluster_id, work_control)?
+        else {
             continue;
         };
         if !state_is_node_in_extractable_cluster(graph, &candidate, cluster_id, external) {
-            return Some(candidate);
+            return Ok(Some(candidate));
         }
     }
-    None
+    Ok(None)
 }
 
-fn prepare_graph(
+fn prepare_graph<W: StatePreparationWorkControl>(
     graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
     cluster_dir: &impl Fn(&str) -> Option<String>,
     cluster_has_explicit_dir: &impl Fn(&str) -> bool,
     root_cluster_id: Option<String>,
+    work_control: &mut W,
 ) -> Result<PreparedGraph> {
     let mut root = PreparedGraph {
         graph,
@@ -389,8 +479,12 @@ fn prepare_graph(
     let mut stack: Vec<Vec<String>> = vec![Vec::new()];
     while let Some(path) = stack.pop() {
         let prepared = prepared_graph_at_path_mut(&mut root, &path)?;
-        let mut child_ids =
-            prepare_graph_one_level(prepared, cluster_dir, cluster_has_explicit_dir)?;
+        let mut child_ids = prepare_graph_one_level(
+            prepared,
+            cluster_dir,
+            cluster_has_explicit_dir,
+            work_control,
+        )?;
         child_ids.reverse();
         for child_id in child_ids {
             let mut child_path = path.clone();
@@ -418,10 +512,11 @@ fn prepared_graph_at_path_mut<'a>(
     Ok(current)
 }
 
-fn prepare_graph_one_level(
+fn prepare_graph_one_level<W: StatePreparationWorkControl>(
     prepared: &mut PreparedGraph,
     cluster_dir: &impl Fn(&str) -> Option<String>,
     cluster_has_explicit_dir: &impl Fn(&str) -> bool,
+    work_control: &mut W,
 ) -> Result<Vec<String>> {
     let graph = &mut prepared.graph;
     let cluster_ids: Vec<String> = graph
@@ -434,15 +529,18 @@ fn prepare_graph_one_level(
     let mut external: HashMap<String, bool> =
         cluster_ids.iter().map(|id| (id.clone(), false)).collect();
 
+    work_control.charge(graph.edge_slot_count())?;
     let edge_keys = graph.edge_keys();
     if !edge_keys.is_empty() {
         for id in &cluster_ids {
             let mut vec: Vec<String> = Vec::new();
+            work_control.charge(graph.node_slot_count())?;
             extract_descendants(graph, id, &mut vec);
             descendants.insert(id.clone(), vec.into_iter().collect());
         }
 
         for id in &cluster_ids {
+            work_control.charge(edge_keys.len())?;
             for e in &edge_keys {
                 let d1 = is_descendant(&descendants, &e.v, id);
                 let d2 = is_descendant(&descendants, &e.w, id);
@@ -457,7 +555,7 @@ fn prepare_graph_one_level(
     let mut anchor: HashMap<String, String> = HashMap::new();
     if !edge_keys.is_empty() {
         for id in &cluster_ids {
-            let Some(a) = find_non_cluster_child(graph, id, id) else {
+            let Some(a) = find_non_cluster_child(graph, id, id, work_control)? else {
                 continue;
             };
             anchor.insert(id.clone(), a);
@@ -482,14 +580,21 @@ fn prepare_graph_one_level(
             anchor.insert(id.clone(), parent);
         }
 
+        work_control.charge(edge_keys.len())?;
         let has_direct_outgoing_edge = edge_keys.iter().any(|edge| edge.v == *id);
         let needs_safe_anchor = external.get(id).copied().unwrap_or(false)
             && has_direct_outgoing_edge
             && state_is_node_in_extractable_cluster(graph, &non_cluster_child, id, &external);
         if needs_safe_anchor
             && let Some(excluded_cluster) = graph.parent(&non_cluster_child).map(str::to_string)
-            && let Some(safe_anchor) =
-                state_find_safe_anchor_node(graph, id, &excluded_cluster, &descendants, &external)
+            && let Some(safe_anchor) = state_find_safe_anchor_node(
+                graph,
+                id,
+                &excluded_cluster,
+                &descendants,
+                &external,
+                work_control,
+            )?
         {
             anchor.insert(id.clone(), safe_anchor);
         }
@@ -594,7 +699,7 @@ fn prepare_graph_one_level(
         let marginx = graph.graph().marginx;
         let marginy = graph.graph().marginy;
 
-        let mut subgraph = extract_cluster_graph(&cluster_id, graph)?;
+        let mut subgraph = extract_cluster_graph(&cluster_id, graph, work_control)?;
         subgraph.graph_mut().rankdir = dir;
         subgraph.graph_mut().nodesep = nodesep;
         subgraph.graph_mut().ranksep = ranksep;
@@ -615,9 +720,10 @@ fn prepare_graph_one_level(
     Ok(child_ids)
 }
 
-fn extract_cluster_graph(
+fn extract_cluster_graph<W: StatePreparationWorkControl>(
     cluster_id: &str,
     graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    work_control: &mut W,
 ) -> Result<Graph<NodeLabel, EdgeLabel, GraphLabel>> {
     if graph.children(cluster_id).is_empty() {
         return Err(Error::InvalidModel {
@@ -634,6 +740,7 @@ fn extract_cluster_graph(
     // breaking tie-breakers (notably for cyclic-special self-loop expansions). Mirror that
     // behavior for parity.
     let mut descendants: Vec<String> = Vec::new();
+    work_control.charge(graph.node_slot_count())?;
     extract_descendants(graph, cluster_id, &mut descendants);
     let descendants_set: HashSet<String> = descendants.iter().cloned().collect();
 
@@ -698,6 +805,7 @@ fn extract_cluster_graph(
         }
 
         let data = graph.node(&node).cloned().unwrap_or_default();
+        work_control.charge(1)?;
         sub.set_node(node.clone(), data);
 
         if let Some(parent) = graph.parent(&node)
@@ -711,6 +819,7 @@ fn extract_cluster_graph(
 
         // NOTE: Mermaid uses `graph.edges(node)` but Graphlib ignores the argument and
         // returns all edges. Mirror that by iterating the full edge set each time.
+        work_control.charge(graph.edge_slot_count())?;
         let edge_keys = graph.edge_keys();
         for ek in edge_keys {
             if ek.v == cluster_id || ek.w == cluster_id {
@@ -757,7 +866,8 @@ pub fn debug_extract_state_diagram_cluster_graph(
     graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     cluster_id: &str,
 ) -> Result<Graph<NodeLabel, EdgeLabel, GraphLabel>> {
-    extract_cluster_graph(cluster_id, graph)
+    let mut work_control = NoopStatePreparationWorkControl;
+    extract_cluster_graph(cluster_id, graph, &mut work_control)
 }
 
 fn inject_root_cluster_node(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, root_id: &str) {
@@ -783,7 +893,10 @@ fn inject_root_cluster_node(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, roo
     }
 }
 
-fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rect)> {
+fn layout_prepared(
+    prepared: &mut PreparedGraph,
+    work_control: &mut OperationLayoutWorkControl,
+) -> Result<(LayoutFragments, Rect)> {
     let mut stack: Vec<(Vec<String>, bool)> = vec![(Vec::new(), false)];
     let mut completed: HashMap<Vec<String>, (LayoutFragments, Rect)> = HashMap::new();
 
@@ -807,7 +920,7 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
             }
 
             let node = prepared_graph_at_path_mut(prepared, &path)?;
-            let result = layout_prepared_node(node, extracted_fragments)?;
+            let result = layout_prepared_node(node, extracted_fragments, work_control)?;
             completed.insert(path, result);
             continue;
         }
@@ -830,6 +943,7 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
 fn layout_prepared_node(
     prepared: &mut PreparedGraph,
     extracted_fragments: HashMap<String, (LayoutFragments, Rect)>,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<(LayoutFragments, Rect)> {
     if let Some(root_id) = prepared.root_cluster_id.clone() {
         // Mermaid's dagre-wrapper nested render pass injects the parent cluster node into the
@@ -856,7 +970,8 @@ fn layout_prepared_node(
 
     // State diagrams use Mermaid's unified Dagre renderer, so use Dugong's canonical pipeline
     // here (edge label proxies, BK positioning, etc.).
-    dugong::layout(&mut prepared.graph);
+    dugong::layout_controlled(&mut prepared.graph, work_control)
+        .map_err(|error| work_control.map_dugong_error(error))?;
 
     for id in prepared.graph.node_ids() {
         let Some(n) = prepared.graph.node(&id) else {
@@ -1232,15 +1347,77 @@ fn compact_self_loop_edges(
     edges
 }
 
-pub(crate) fn layout_state_diagram_typed(
+fn state_layout_adapter_work(
+    model: &StateDiagramModel,
+    work_control: &OperationLayoutWorkControl,
+) -> Result<usize> {
+    let node_work = work_control.checked_mul(model.nodes.len(), 12)?;
+    let edge_work = work_control.checked_mul(model.edges.len(), 8)?;
+    let state_work = work_control.checked_mul(model.states.len(), 4)?;
+    let relation_work = work_control.checked_mul(model.relations.len(), 2)?;
+    let link_work = work_control.checked_mul(model.links.len(), 2)?;
+    let style_work = work_control.checked_mul(model.style_classes.len(), 2)?;
+    let hidden_prefix_bytes = model.states.iter().try_fold(0usize, |work, (id, state)| {
+        if state
+            .note
+            .as_ref()
+            .is_some_and(|note| !note.text.trim().is_empty() && note.position.is_none())
+        {
+            work_control.checked_add(work, id.len())
+        } else {
+            Ok(work)
+        }
+    })?;
+    let hidden_candidate_bytes = model.nodes.iter().try_fold(0usize, |work, node| {
+        work_control.checked_add(
+            work,
+            node.id
+                .len()
+                .checked_add(node.parent_id.as_deref().map_or(0, str::len))
+                .ok_or_else(|| work_control.record_arithmetic_overflow())?,
+        )
+    })?;
+    let hidden_edge_bytes = model.edges.iter().try_fold(0usize, |work, edge| {
+        let edge_bytes = edge
+            .id
+            .len()
+            .checked_add(edge.start.len())
+            .and_then(|units| units.checked_add(edge.end.len()))
+            .ok_or_else(|| work_control.record_arithmetic_overflow())?;
+        work_control.checked_add(work, edge_bytes)
+    })?;
+    let hidden_filter_work = work_control.checked_mul(
+        work_control.checked_add(
+            hidden_prefix_bytes,
+            work_control.checked_add(hidden_candidate_bytes, hidden_edge_bytes)?,
+        )?,
+        4,
+    )?;
+    work_control.checked_add(
+        work_control.checked_add(node_work, edge_work)?,
+        work_control.checked_add(
+            work_control.checked_add(state_work, relation_work)?,
+            work_control.checked_add(
+                work_control.checked_add(link_work, style_work)?,
+                hidden_filter_work,
+            )?,
+        )?,
+    )
+}
+
+pub(crate) fn layout_state_diagram_typed_with_work_meter(
     model: &StateDiagramModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
+    work_meter: Arc<crate::resources::OperationWorkMeter>,
 ) -> Result<StateDiagramLayout> {
-    layout_state_diagram_inner(model, effective_config, measurer)
+    let mut work_control = OperationLayoutWorkControl::new(work_meter);
+    let adapter_work = state_layout_adapter_work(model, &work_control)?;
+    work_control.charge_adapter(adapter_work)?;
+    layout_state_diagram_inner(model, effective_config, measurer, &mut work_control)
 }
 
-fn state_hidden_prefixes(model: &StateDiagramModel) -> Vec<String> {
+fn state_hidden_prefixes(model: &StateDiagramModel) -> HiddenPrefixMatcher {
     let mut hidden_prefixes: Vec<String> = Vec::new();
     for (id, st) in &model.states {
         let Some(note) = st.note.as_ref() else {
@@ -1253,17 +1430,7 @@ fn state_hidden_prefixes(model: &StateDiagramModel) -> Vec<String> {
             hidden_prefixes.push(id.clone());
         }
     }
-    hidden_prefixes
-}
-
-fn state_is_hidden_id(prefixes: &[String], id: &str) -> bool {
-    prefixes.iter().any(|p| {
-        if id == p {
-            return true;
-        }
-        id.strip_prefix(p)
-            .is_some_and(|rest| rest.starts_with("----"))
-    })
+    HiddenPrefixMatcher::from_prefixes(hidden_prefixes)
 }
 
 fn dagre_id_for_node(n: &StateNode) -> String {
@@ -1319,7 +1486,7 @@ fn build_state_diagram_dagre_input(
     // parent that has not been seen yet when `setParent` runs, so preserving this operation order
     // is observable in Dagre's insertion-order tie breaking.
     for n in &model.nodes {
-        if state_is_hidden_id(&hidden_prefixes, n.id.as_str()) {
+        if hidden_prefixes.is_hidden(n.id.as_str()) {
             continue;
         }
         let dagre_id = dagre_id_by_semantic_id
@@ -1417,7 +1584,7 @@ fn build_state_diagram_dagre_input(
         if let Some(parent) = n
             .parent_id
             .as_ref()
-            .filter(|parent| !state_is_hidden_id(&hidden_prefixes, parent))
+            .filter(|parent| !hidden_prefixes.is_hidden(parent))
         {
             let parent_id = dagre_id_by_semantic_id
                 .get(parent)
@@ -1430,9 +1597,9 @@ fn build_state_diagram_dagre_input(
     // Add edges. For self-loops, split into 3 edges with 2 tiny dummy nodes (Mermaid wrapper
     // behavior).
     for e in &model.edges {
-        if state_is_hidden_id(&hidden_prefixes, e.id.as_str())
-            || state_is_hidden_id(&hidden_prefixes, e.start.as_str())
-            || state_is_hidden_id(&hidden_prefixes, e.end.as_str())
+        if hidden_prefixes.is_hidden(e.id.as_str())
+            || hidden_prefixes.is_hidden(e.start.as_str())
+            || hidden_prefixes.is_hidden(e.end.as_str())
         {
             continue;
         }
@@ -1560,6 +1727,7 @@ fn layout_state_diagram_inner(
     model: &StateDiagramModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<StateDiagramLayout> {
     validate_state_parent_cycles(model)?;
     let StateDagreInput {
@@ -1579,20 +1747,26 @@ fn layout_state_diagram_inner(
         |id: &str| -> Option<String> { dir_by_dagre_id.get(id).and_then(|v| v.clone()) };
     let cluster_has_explicit_dir = |id: &str| explicit_dir_ids.contains(id);
 
-    let mut prepared = prepare_graph(graph, &cluster_dir, &cluster_has_explicit_dir, None)?;
-    let (fragments, _layout_bounds) = layout_prepared(&mut prepared)?;
+    let mut prepared = prepare_graph(
+        graph,
+        &cluster_dir,
+        &cluster_has_explicit_dir,
+        None,
+        work_control,
+    )?;
+    let (fragments, _layout_bounds) = layout_prepared(&mut prepared, work_control)?;
 
     let semantic_ids: HashSet<&str> = model
         .nodes
         .iter()
-        .filter(|n| !state_is_hidden_id(&hidden_prefixes, n.id.as_str()))
+        .filter(|n| !hidden_prefixes.is_hidden(n.id.as_str()))
         .map(|n| n.id.as_str())
         .collect();
 
     // Build output nodes from semantic nodes only.
     let mut out_nodes: Vec<LayoutNode> = Vec::new();
     for n in &model.nodes {
-        if state_is_hidden_id(&hidden_prefixes, n.id.as_str()) {
+        if hidden_prefixes.is_hidden(n.id.as_str()) {
             continue;
         }
         let dagre_id = dagre_id_by_semantic_id
@@ -1626,9 +1800,9 @@ fn layout_state_diagram_inner(
     // rects which can affect `svg.getBBox()` and therefore the root `viewBox/max-width`.
     let mut helper_ids: HashSet<String> = HashSet::new();
     for e in &model.edges {
-        if state_is_hidden_id(&hidden_prefixes, e.id.as_str())
-            || state_is_hidden_id(&hidden_prefixes, e.start.as_str())
-            || state_is_hidden_id(&hidden_prefixes, e.end.as_str())
+        if hidden_prefixes.is_hidden(e.id.as_str())
+            || hidden_prefixes.is_hidden(e.start.as_str())
+            || hidden_prefixes.is_hidden(e.end.as_str())
         {
             continue;
         }
@@ -1657,7 +1831,7 @@ fn layout_state_diagram_inner(
 
     let mut clusters: Vec<LayoutCluster> = Vec::new();
     for n in &model.nodes {
-        if state_is_hidden_id(&hidden_prefixes, n.id.as_str()) {
+        if hidden_prefixes.is_hidden(n.id.as_str()) {
             continue;
         }
         if !state_node_is_effective_group(n) {
@@ -2375,6 +2549,23 @@ mod tests {
     }
 
     #[test]
+    fn hidden_prefix_matcher_preserves_note_boundary_semantics() {
+        let matcher = HiddenPrefixMatcher::from_prefixes([
+            "note-root".to_string(),
+            "分组".to_string(),
+            "note-root".to_string(),
+        ]);
+
+        assert!(matcher.is_hidden("note-root"));
+        assert!(matcher.is_hidden("note-root----edge"));
+        assert!(matcher.is_hidden("分组----节点"));
+        assert!(!matcher.is_hidden("note-root---edge"));
+        assert!(!matcher.is_hidden("note-root-child"));
+        assert!(!matcher.is_hidden("分组节点"));
+        assert!(!matcher.is_hidden("other"));
+    }
+
+    #[test]
     fn safe_anchor_avoids_extractable_sibling_cluster() {
         let mut graph: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
             multigraph: true,
@@ -2398,12 +2589,21 @@ mod tests {
             ("I".to_string(), HashSet::from(["a".to_string()])),
         ]);
         let external = HashMap::from([("P".to_string(), true), ("I".to_string(), false)]);
+        let mut work_control = NoopStatePreparationWorkControl;
 
         assert!(state_is_node_in_extractable_cluster(
             &graph, "a", "P", &external
         ));
         assert_eq!(
-            state_find_safe_anchor_node(&graph, "P", "I", &descendants, &external),
+            state_find_safe_anchor_node(
+                &graph,
+                "P",
+                "I",
+                &descendants,
+                &external,
+                &mut work_control,
+            )
+            .expect("unbounded anchor search"),
             Some("b".to_string())
         );
     }

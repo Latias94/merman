@@ -556,16 +556,30 @@ fn captured_excluded_by_stem<'a>(
     Ok(captured)
 }
 
-fn build_complete_generated_manifest_with_source(
-    diagram: &str,
-    fixtures_dir: &Path,
-    upstream_dir: &Path,
-    generated_fixtures: &[CapturedUpstreamSvgFixture],
-    excluded_fixtures: &[CapturedUpstreamSvgExclusion],
+struct CompleteGeneratedManifestRequest<'a> {
+    diagram: &'a str,
+    fixtures_dir: &'a Path,
+    upstream_dir: &'a Path,
+    generated_fixtures: &'a [CapturedUpstreamSvgFixture],
+    excluded_fixtures: &'a [CapturedUpstreamSvgExclusion],
     source: UpstreamSvgSource,
     attestation: UpstreamSvgAttestation,
-    render_contexts: &RenderContextCatalog,
+    render_contexts: &'a RenderContextCatalog,
+}
+
+fn build_complete_generated_manifest_with_source(
+    request: CompleteGeneratedManifestRequest<'_>,
 ) -> Result<UpstreamSvgManifest, XtaskError> {
+    let CompleteGeneratedManifestRequest {
+        diagram,
+        fixtures_dir,
+        upstream_dir,
+        generated_fixtures,
+        excluded_fixtures,
+        source,
+        attestation,
+        render_contexts,
+    } = request;
     attestation.validate()?;
     let CompleteCorpus {
         fixtures,
@@ -958,16 +972,17 @@ where
     render_environment.validate()?;
     let source = current_source()?;
     if full_generation {
-        let manifest = build_complete_generated_manifest_with_source(
-            diagram,
-            fixtures_dir,
-            out_dir,
-            generated_fixtures,
-            excluded_fixtures,
-            source,
-            UpstreamSvgAttestation::generated(render_environment),
-            render_contexts.catalog(),
-        )?;
+        let manifest =
+            build_complete_generated_manifest_with_source(CompleteGeneratedManifestRequest {
+                diagram,
+                fixtures_dir,
+                upstream_dir: out_dir,
+                generated_fixtures,
+                excluded_fixtures,
+                source,
+                attestation: UpstreamSvgAttestation::generated(render_environment),
+                render_contexts: render_contexts.catalog(),
+            })?;
         return write_manifest_from_render_context_snapshot(
             out_dir,
             &manifest,

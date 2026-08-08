@@ -10,7 +10,9 @@ use super::options::{
     Alignment, ElkDirection, LayerConstraint, LayeredOptions, NodeLabelPlacement, PortAlignment,
     PortConstraints,
 };
-use crate::random::{JavaRandom, RandomSeedAuthority, RandomSeedError, RandomSeedPhase};
+use crate::random::{
+    GraphSeedScope, JavaRandom, RandomSeedAuthority, RandomSeedError, RandomSeedPhase,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LGraph {
@@ -38,7 +40,7 @@ pub struct LGraph {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct GraphRandomSeedContext {
     authority: RandomSeedAuthority,
-    graph_path: Vec<String>,
+    graph_scope: GraphSeedScope,
     configuration_invocations: u64,
 }
 
@@ -59,8 +61,23 @@ impl LGraph {
         random_seed_authority: RandomSeedAuthority,
         graph_path: Vec<String>,
     ) -> Self {
+        let graph_path = graph_path.iter().map(String::as_str).collect::<Vec<_>>();
+        let graph_scope = GraphSeedScope::from_components(&graph_path);
+        Self::new_with_random_seed_authority_at_scope(
+            id,
+            options,
+            random_seed_authority,
+            graph_scope,
+        )
+    }
+
+    pub(crate) fn new_with_random_seed_authority_at_scope(
+        id: impl Into<String>,
+        options: LayeredOptions,
+        random_seed_authority: RandomSeedAuthority,
+        graph_scope: GraphSeedScope,
+    ) -> Self {
         let id = id.into();
-        debug_assert!(!graph_path.is_empty());
         Self {
             id,
             options,
@@ -84,23 +101,17 @@ impl LGraph {
             in_layer_successor_constraints_between_non_dummies: false,
             random_seed_context: GraphRandomSeedContext {
                 authority: random_seed_authority,
-                graph_path,
+                graph_scope,
                 configuration_invocations: 0,
             },
         }
     }
 
     pub(crate) fn resolve_random_seed_for_configuration(&mut self) -> Result<i64, RandomSeedError> {
-        let graph_path = self
-            .random_seed_context
-            .graph_path
-            .iter()
-            .map(String::as_str)
-            .collect::<Vec<_>>();
         let invocation = self.random_seed_context.configuration_invocations;
-        let seed = self.random_seed_context.authority.resolve(
+        let seed = self.random_seed_context.authority.resolve_scope(
             self.options.random_seed,
-            &graph_path,
+            &self.random_seed_context.graph_scope,
             RandomSeedPhase::GraphConfigurator,
             invocation,
         )?;
@@ -112,12 +123,91 @@ impl LGraph {
     }
 
     pub fn sync_graph_properties_to_options(&mut self) {
-        self.graph_properties.apply_to_options(&mut self.options);
-        for node in &mut self.layerless_nodes {
-            if let Some(nested_graph) = node.nested_graph.as_mut() {
-                nested_graph.sync_graph_properties_to_options();
+        let result = self.try_for_each_graph_mut(|graph| {
+            graph.graph_properties.apply_to_options(&mut graph.options);
+            Ok::<(), std::convert::Infallible>(())
+        });
+        result.expect("infallible graph property synchronization");
+    }
+
+    pub(crate) fn try_for_each_graph_mut<E>(
+        &mut self,
+        mut visit: impl FnMut(&mut LGraph) -> Result<(), E>,
+    ) -> Result<(), E> {
+        struct DetachedGraph {
+            graph: Box<LGraph>,
+            parent: Option<usize>,
+            parent_node: usize,
+        }
+
+        fn take_nested_graphs(graph: &mut LGraph) -> Vec<(usize, Box<LGraph>)> {
+            graph
+                .layerless_nodes
+                .iter_mut()
+                .enumerate()
+                .filter_map(|(node, data)| data.nested_graph.take().map(|graph| (node, graph)))
+                .collect()
+        }
+
+        let mut detached = take_nested_graphs(self)
+            .into_iter()
+            .map(|(parent_node, graph)| DetachedGraph {
+                graph,
+                parent: None,
+                parent_node,
+            })
+            .collect::<Vec<_>>();
+        let mut cursor = 0usize;
+        while cursor < detached.len() {
+            let children = take_nested_graphs(&mut detached[cursor].graph);
+            detached.extend(
+                children
+                    .into_iter()
+                    .map(|(parent_node, graph)| DetachedGraph {
+                        graph,
+                        parent: Some(cursor),
+                        parent_node,
+                    }),
+            );
+            cursor += 1;
+        }
+
+        let mut root_children = Vec::new();
+        let mut children_by_parent = vec![Vec::new(); detached.len()];
+        for (index, detached_graph) in detached.iter().enumerate() {
+            if let Some(parent) = detached_graph.parent {
+                children_by_parent[parent].push(index);
+            } else {
+                root_children.push(index);
             }
         }
+        let mut traversal = Vec::with_capacity(detached.len());
+        let mut stack = root_children.into_iter().rev().collect::<Vec<_>>();
+        while let Some(index) = stack.pop() {
+            traversal.push(index);
+            stack.extend(children_by_parent[index].iter().rev().copied());
+        }
+
+        let mut result = visit(self);
+        if result.is_ok() {
+            for index in traversal {
+                if let Err(error) = visit(&mut detached[index].graph) {
+                    result = Err(error);
+                    break;
+                }
+            }
+        }
+
+        while let Some(detached_graph) = detached.pop() {
+            let parent_node = detached_graph.parent_node;
+            if let Some(parent) = detached_graph.parent {
+                detached[parent].graph.layerless_nodes[parent_node].nested_graph =
+                    Some(detached_graph.graph);
+            } else {
+                self.layerless_nodes[parent_node].nested_graph = Some(detached_graph.graph);
+            }
+        }
+        result
     }
 }
 
@@ -526,6 +616,13 @@ pub enum PortType {
     Output,
 }
 
+pub(crate) const fn collector_port_id_suffix(port_type: PortType) -> &'static str {
+    match port_type {
+        PortType::Input => ":collector:Input",
+        PortType::Output => ":collector:Output",
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PortSide {
     #[default]
@@ -759,7 +856,7 @@ impl LGraph {
 
         let port_index = node.ports.len();
         let mut port = LPort::new(
-            format!("{}:collector:{port_type:?}", node.id),
+            format!("{}{}", node.id, collector_port_id_suffix(port_type)),
             node_index,
             port_type,
         );
@@ -971,12 +1068,15 @@ impl LGraph {
         }
 
         let old_ports = std::mem::take(&mut self.layerless_nodes[node_index].ports);
-        let mut old_to_new = vec![0usize; old_ports.len()];
-        let mut reordered = Vec::with_capacity(old_ports.len());
+        let mut movable_ports = old_ports.into_iter().map(Some).collect::<Vec<_>>();
+        let mut old_to_new = vec![0usize; movable_ports.len()];
+        let mut reordered = Vec::with_capacity(movable_ports.len());
 
         for (new_index, old_index) in new_order.into_iter().enumerate() {
             old_to_new[old_index] = new_index;
-            let mut port = old_ports[old_index].clone();
+            let mut port = movable_ports[old_index]
+                .take()
+                .expect("validated port order visits each port exactly once");
             port.node = node_index;
             reordered.push(port);
         }

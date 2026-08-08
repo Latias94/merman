@@ -4,9 +4,14 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/GraphConfigurator.java
 //! - OpenJDK `java.util.Random` seed scrambling and `nextInt(int)` semantics.
 
+use std::sync::Arc;
+
 const MULTIPLIER: u64 = 0x5DEECE66D;
 const ADDEND: u64 = 0xB;
 const MASK: u64 = (1u64 << 48) - 1;
+const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+const FNV_PRIME: u64 = 0x0000_0100_0000_01B3;
+const RANDOM_SCOPE_DOMAIN: &str = "merman-elk-layered.random-seed.v2";
 
 /// A nonzero seed captured once by the owner of a layout operation.
 ///
@@ -29,6 +34,90 @@ impl OperationSeed {
 
     const fn value(self) -> u64 {
         self.0.get()
+    }
+}
+
+/// A persistent graph path used to derive stable per-scope random streams.
+///
+/// Child scopes extend the path in constant time and share their immutable prefix. Formatting the
+/// full path is deferred until an unresolved zero-seed error actually needs it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GraphSeedScope(Option<Arc<GraphSeedScopeNode>>);
+
+#[derive(Debug, PartialEq, Eq)]
+struct GraphSeedScopeNode {
+    parent: Option<Arc<GraphSeedScopeNode>>,
+    component: Box<str>,
+    graph_configurator_hash: u64,
+}
+
+impl GraphSeedScope {
+    pub fn root(component: impl Into<Box<str>>) -> Self {
+        let component = component.into();
+        let hash = graph_configurator_scope_prefix();
+        Self(Some(Arc::new(GraphSeedScopeNode {
+            parent: None,
+            graph_configurator_hash: hash_component(hash, component.as_ref()),
+            component,
+        })))
+    }
+
+    pub fn child(&self, component: impl Into<Box<str>>) -> Self {
+        let component = component.into();
+        let parent = self.node();
+        Self(Some(Arc::new(GraphSeedScopeNode {
+            parent: Some(Arc::clone(
+                self.0.as_ref().expect("live graph seed scope has a node"),
+            )),
+            graph_configurator_hash: hash_component(
+                parent.graph_configurator_hash,
+                component.as_ref(),
+            ),
+            component,
+        })))
+    }
+
+    pub(crate) fn from_components(components: &[&str]) -> Self {
+        let mut components = components.iter().copied();
+        let root = components
+            .next()
+            .expect("ELK random seed graph scope must not be empty");
+        components.fold(Self::root(root), |scope, component| scope.child(component))
+    }
+
+    fn path_string(&self) -> String {
+        let mut components = Vec::new();
+        let mut current = Some(self.node());
+        while let Some(node) = current {
+            components.push(node.component.as_ref());
+            current = node.parent.as_deref();
+        }
+        components.reverse();
+        components.join("/")
+    }
+
+    fn node(&self) -> &GraphSeedScopeNode {
+        self.0
+            .as_deref()
+            .expect("graph seed scope node is only taken during drop")
+    }
+}
+
+impl Drop for GraphSeedScope {
+    fn drop(&mut self) {
+        // A uniquely owned Arc parent chain otherwise drops recursively. Budget rejection may
+        // release a very deep scope arena at once, so peel unique nodes iteratively; shared
+        // prefixes stop immediately and remain owned by their other scope handles.
+        let mut current = self.0.take();
+        while let Some(node) = current {
+            match Arc::try_unwrap(node) {
+                Ok(mut node) => current = node.parent.take(),
+                Err(shared) => {
+                    drop(shared);
+                    break;
+                }
+            }
+        }
     }
 }
 
@@ -83,6 +172,7 @@ impl RandomSeedAuthority {
     /// configured values preserve ELK's exact signed `i32 -> i64` conversion. The upstream zero
     /// sentinel is derived from the owning operation, stable graph path, random boundary, and
     /// invocation without truncating the operation seed to `i32`.
+    #[cfg(test)]
     pub(crate) fn resolve(
         self,
         configured_seed: i32,
@@ -93,23 +183,42 @@ impl RandomSeedAuthority {
         if configured_seed != 0 {
             return Ok(i64::from(configured_seed));
         }
+        let graph_scope = GraphSeedScope::from_components(graph_path);
+        self.resolve_scope(
+            configured_seed,
+            &graph_scope,
+            phase,
+            configuration_invocation,
+        )
+    }
+
+    pub(crate) fn resolve_scope(
+        self,
+        configured_seed: i32,
+        graph_scope: &GraphSeedScope,
+        phase: RandomSeedPhase,
+        configuration_invocation: u64,
+    ) -> Result<i64, RandomSeedError> {
+        if configured_seed != 0 {
+            return Ok(i64::from(configured_seed));
+        }
         let Self::Operation(operation_seed) = self else {
             return Err(RandomSeedError::Unresolved {
-                graph_path: graph_path.join("/"),
+                graph_path: graph_scope.path_string(),
             });
         };
-        Ok(derive_java_seed(
+        Ok(derive_java_seed_from_scope(
             operation_seed,
-            graph_path,
+            graph_scope,
             phase,
             configuration_invocation,
         ))
     }
 }
 
-fn derive_java_seed(
+fn derive_java_seed_from_scope(
     operation_seed: OperationSeed,
-    graph_path: &[&str],
+    graph_scope: &GraphSeedScope,
     phase: RandomSeedPhase,
     configuration_invocation: u64,
 ) -> i64 {
@@ -117,18 +226,8 @@ fn derive_java_seed(
     // used to replace ELK's unseeded sentinel; configured nonzero values pass through untouched.
     // The phase and invocation components mirror ELK constructing fresh Java random streams at
     // distinct source boundaries while retaining replayable operation ownership.
-    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
-    for component in std::iter::once("merman-elk-layered.random-seed.v2")
-        .chain(std::iter::once(phase.domain_label()))
-        .chain(graph_path.iter().copied())
-    {
-        for byte in component.as_bytes() {
-            hash ^= u64::from(*byte);
-            hash = hash.wrapping_mul(0x0000_0100_0000_01B3);
-        }
-        hash ^= 0xff;
-        hash = hash.wrapping_mul(0x0000_0100_0000_01B3);
-    }
+    debug_assert_eq!(phase, RandomSeedPhase::GraphConfigurator);
+    let mut hash = graph_scope.node().graph_configurator_hash;
     for byte in operation_seed
         .value()
         .to_le_bytes()
@@ -136,7 +235,7 @@ fn derive_java_seed(
         .chain(configuration_invocation.to_le_bytes())
     {
         hash ^= u64::from(byte);
-        hash = hash.wrapping_mul(0x0000_0100_0000_01B3);
+        hash = hash.wrapping_mul(FNV_PRIME);
     }
     hash ^= hash >> 30;
     hash = hash.wrapping_mul(0xbf58_476d_1ce4_e5b9);
@@ -145,6 +244,22 @@ fn derive_java_seed(
     hash ^= hash >> 31;
 
     hash as i64
+}
+
+fn graph_configurator_scope_prefix() -> u64 {
+    hash_component(
+        hash_component(FNV_OFFSET, RANDOM_SCOPE_DOMAIN),
+        RandomSeedPhase::GraphConfigurator.domain_label(),
+    )
+}
+
+fn hash_component(mut hash: u64, component: &str) -> u64 {
+    for byte in component.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash ^= 0xff;
+    hash.wrapping_mul(FNV_PRIME)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -298,6 +413,49 @@ mod tests {
             root,
             authority.resolve(0, &["root"], RandomSeedPhase::GraphConfigurator, 1)
         );
+    }
+
+    #[test]
+    fn persistent_graph_seed_scope_preserves_slice_seed_and_error_path_semantics() {
+        let authority = RandomSeedAuthority::operation(operation_seed());
+        let scope = GraphSeedScope::root("root").child("outer").child("inner");
+        assert_eq!(
+            authority.resolve(
+                0,
+                &["root", "outer", "inner"],
+                RandomSeedPhase::GraphConfigurator,
+                0,
+            ),
+            authority.resolve_scope(0, &scope, RandomSeedPhase::GraphConfigurator, 0)
+        );
+        assert_eq!(
+            RandomSeedAuthority::require_explicit().resolve_scope(
+                0,
+                &scope,
+                RandomSeedPhase::GraphConfigurator,
+                0,
+            ),
+            Err(RandomSeedError::Unresolved {
+                graph_path: "root/outer/inner".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn persistent_graph_seed_scope_drop_is_small_stack_safe() {
+        std::thread::Builder::new()
+            .name("elk-graph-seed-scope-drop".to_string())
+            .stack_size(64 * 1024)
+            .spawn(|| {
+                let mut scope = GraphSeedScope::root("root");
+                for index in 0..50_000 {
+                    scope = scope.child(index.to_string());
+                }
+                drop(scope);
+            })
+            .unwrap()
+            .join()
+            .expect("persistent graph seed scopes must drop iteratively");
     }
 
     fn operation_seed() -> OperationSeed {

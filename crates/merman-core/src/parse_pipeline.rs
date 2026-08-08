@@ -11,7 +11,7 @@ use crate::{
 use diagram::{
     CustomJsonRenderModel, DiagramParseOutcome, DiagramParseSnapshot, DiagramWarningFact,
     ParsedDiagram, ParsedDiagramRender, ParsedEditorFacts, RegistryOwner, RenderSemanticModel,
-    ResolvedRenderParser, ResolvedSemanticParser,
+    RenderSemanticParseOutput, ResolvedRenderParser, ResolvedSemanticParser,
 };
 use serde_json::Value;
 
@@ -396,15 +396,15 @@ impl<'a> ParsePipeline<'a> {
             ParseTiming::Render,
             PreprocessPath::Render,
             Self::parse_render_semantic_model,
-            RenderSemanticModel::sanitize_common_db_fields,
+            |output, config| output.model_mut().sanitize_common_db_fields(config),
             error_diagram::suppressed_error_render_diagram,
-            ParsedDiagramRender::new,
-            |model, source_map| {
-                model.remap_warning_fact_spans(|fact| {
+            ParsedDiagramRender::from_parse_output,
+            |output, source_map| {
+                output.model_mut().remap_warning_fact_spans(|fact| {
                     Self::remap_warning_fact_spans(fact, source_map);
                 });
             },
-            |model| Some(model.kind()),
+            |output| Some(output.model().kind()),
         )
     }
 
@@ -570,7 +570,7 @@ impl<'a> ParsePipeline<'a> {
         &self,
         code: &str,
         meta: &ParseMetadata,
-    ) -> Result<RenderSemanticModel> {
+    ) -> Result<RenderSemanticParseOutput> {
         let semantic = self.engine.diagram_registry.resolve(&meta.diagram_type);
         let render = self
             .engine
@@ -578,7 +578,9 @@ impl<'a> ParsePipeline<'a> {
             .resolve(&meta.diagram_type);
 
         if let Some(ResolvedRenderParser::Custom(parser)) = render {
-            return parser(code, meta).map(RenderSemanticModel::CustomJson);
+            return parser(code, meta)
+                .map(RenderSemanticModel::CustomJson)
+                .map(RenderSemanticParseOutput::new);
         }
 
         if let Some(ResolvedSemanticParser::Custom(_)) = semantic {
@@ -593,7 +595,8 @@ impl<'a> ParsePipeline<'a> {
                     meta.diagram_type.clone(),
                     value,
                 ))
-            });
+            })
+            .map(RenderSemanticParseOutput::new);
         }
 
         if let Some(ResolvedRenderParser::BuiltIn(parser)) = render {

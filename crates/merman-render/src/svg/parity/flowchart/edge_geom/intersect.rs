@@ -727,11 +727,11 @@ fn compute_node_label_metrics_for_intersection(
     node_id: &str,
 ) -> Option<crate::text::TextMetrics> {
     let flow_node = ctx.nodes_by_id.get(node_id)?;
-    let label_text = flow_node.label.clone().unwrap_or_default();
-    let label_type = flow_node
-        .label_type
-        .clone()
-        .unwrap_or_else(|| "text".to_string());
+    let label_text = ctx
+        .model
+        .node_label_for_render(flow_node)
+        .unwrap_or_default();
+    let label_type = flow_node.label_type.as_deref().unwrap_or("text");
 
     let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
         &ctx.html_label_text_style
@@ -744,11 +744,25 @@ fn compute_node_label_metrics_for_intersection(
         &flow_node.classes,
         &flow_node.styles,
     );
+    if let Some(metrics) = ctx.svg_label_sidecar.and_then(|sidecar| {
+        let owner = sidecar.node_owner(node_id, ctx.swimlane_direction.is_some())?;
+        sidecar.prepared_metrics(
+            owner,
+            label_text,
+            ctx.measurer,
+            node_text_style.as_ref(),
+            Some(ctx.wrapping_width),
+            true,
+            crate::flowchart::FlowchartSvgWidthMode::Bbox,
+        )
+    }) {
+        return Some(metrics);
+    }
     let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
         crate::flowchart::FlowchartLabelMetricsRequest {
             measurer: ctx.measurer,
-            raw_label: &label_text,
-            label_type: &label_type,
+            raw_label: label_text,
+            label_type,
             style: &node_text_style,
             max_width_px: Some(ctx.wrapping_width),
             wrap_mode: ctx.node_wrap_mode,
@@ -896,39 +910,9 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
             pts
         }
 
-        let Some(flow_node) = ctx.nodes_by_id.get(node_id) else {
+        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
             return intersect_rect(node, point);
         };
-
-        let label_text = flow_node.label.clone().unwrap_or_default();
-        let label_type = flow_node
-            .label_type
-            .clone()
-            .unwrap_or_else(|| "text".to_string());
-
-        let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
-            &ctx.html_label_text_style
-        } else {
-            &ctx.text_style
-        };
-        let node_text_style = crate::flowchart::flowchart_effective_text_style_for_node_classes(
-            label_base_style,
-            ctx.class_defs,
-            &flow_node.classes,
-            &flow_node.styles,
-        );
-        let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-            crate::flowchart::FlowchartLabelMetricsRequest {
-                measurer: ctx.measurer,
-                raw_label: &label_text,
-                label_type: &label_type,
-                style: &node_text_style,
-                max_width_px: Some(ctx.wrapping_width),
-                wrap_mode: ctx.node_wrap_mode,
-                config: ctx.config,
-                math_renderer: ctx.math_renderer,
-            },
-        );
 
         let (render_w, render_h) = crate::flowchart::flowchart_node_render_dimensions(
             Some("stadium"),
@@ -978,39 +962,9 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         // Port of Mermaid@11.12.2 `hexagon.ts` intersection behavior:
         // - `points` are generated from the theoretical render dimensions,
         // - `node.width/height` used by `intersect.polygon(...)` come from `updateNodeBounds(...)`.
-        let Some(flow_node) = ctx.nodes_by_id.get(node_id) else {
+        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
             return intersect_rect(node, point);
         };
-
-        let label_text = flow_node.label.clone().unwrap_or_default();
-        let label_type = flow_node
-            .label_type
-            .clone()
-            .unwrap_or_else(|| "text".to_string());
-
-        let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
-            &ctx.html_label_text_style
-        } else {
-            &ctx.text_style
-        };
-        let node_text_style = crate::flowchart::flowchart_effective_text_style_for_node_classes(
-            label_base_style,
-            ctx.class_defs,
-            &flow_node.classes,
-            &flow_node.styles,
-        );
-        let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-            crate::flowchart::FlowchartLabelMetricsRequest {
-                measurer: ctx.measurer,
-                raw_label: &label_text,
-                label_type: &label_type,
-                style: &node_text_style,
-                max_width_px: Some(ctx.wrapping_width),
-                wrap_mode: ctx.node_wrap_mode,
-                config: ctx.config,
-                math_renderer: ctx.math_renderer,
-            },
-        );
 
         let (render_w, render_h) = crate::flowchart::flowchart_node_render_dimensions(
             Some("hexagon"),

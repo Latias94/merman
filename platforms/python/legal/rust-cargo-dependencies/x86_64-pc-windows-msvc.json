@@ -60,7 +60,7 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-target",
     "offline": true,
-    "cargo_lock_sha256": "a26ff38860d27888969b7cc33a51254e150e5f1daa080da64718a84e858bfae8",
+    "cargo_lock_sha256": "4eb38cee29796405570fa3172fffd049429fdef5692f868fd6be02e45ee93a71",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "f6e61163f2e315ece005234bd11b608eae31cee53e84ac9eb6337e6daed6a339"
   },
@@ -68,13 +68,13 @@
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "x86_64-pc-windows-msvc",
-      "package_count": 243,
-      "packages_sha256": "ad22170bb0addae04372b032638f537e00a6003f71c01615e0c51200b7f1f5f4"
+      "package_count": 244,
+      "packages_sha256": "329ea72a13a34c52934a02e4ce5fe4011b886002dfdb6c7b3315b496312a247e"
     }
   ],
   "dependency_closure": {
-    "package_count": 243,
-    "packages_sha256": "ad22170bb0addae04372b032638f537e00a6003f71c01615e0c51200b7f1f5f4"
+    "package_count": 244,
+    "packages_sha256": "329ea72a13a34c52934a02e4ce5fe4011b886002dfdb6c7b3315b496312a247e"
   },
   "licenses": [
     {
@@ -1249,6 +1249,17 @@
             "Manish Goregaokar <manishsmail@gmail.com>"
           ],
           "repository": "https://github.com/unicode-rs/unicode-properties"
+        },
+        {
+          "name": "unicode-segmentation",
+          "version": "1.13.3",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Manish Goregaokar <manishsmail@gmail.com>",
+            "kwantam <kwantam@gmail.com>"
+          ],
+          "repository": "https://github.com/unicode-rs/unicode-segmentation"
         },
         {
           "name": "unicode-vo",

@@ -233,10 +233,10 @@ fn zed_deeply_nested_flowchart_respects_the_selected_resource_profile() {
         "{error}"
     );
 
-    let svg = renderer("zed-deep-flowchart-trusted")
-        .with_resource_profile(RenderResourceProfile::TrustedNative)
+    let svg = renderer("zed-deep-flowchart-unbounded")
+        .with_resource_profile(RenderResourceProfile::UnboundedForTrustedInput)
         .render_svg_sync(&source)
-        .expect("trusted raw vector rendering should accept the deep SVG tree")
+        .expect("unbounded trusted rendering should accept the deep SVG tree")
         .expect("flowchart should be detected");
 
     assert!(svg.contains("<svg"));
@@ -248,7 +248,7 @@ fn zed_deeply_nested_flowchart_respects_the_selected_resource_profile() {
 fn zed_deeply_nested_flowchart_is_rejected_before_recursive_raster_backend() {
     let source = deeply_nested_flowchart(MAX_DIAGRAM_NESTING_DEPTH + 2);
     let error = renderer("zed-deep-flowchart-png")
-        .with_resource_profile(RenderResourceProfile::TrustedNative)
+        .with_resource_profile(RenderResourceProfile::UnboundedForTrustedInput)
         .render_png_sync(&source, &merman::svg::export::RasterOptions::default())
         .expect_err("rasterization must reject a tree deeper than the backend capability");
 

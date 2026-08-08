@@ -698,9 +698,10 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             let html_out = merman_core::sanitize::sanitize_text(&html_out, config);
             let html_out = html_out
                 .replace("<br>", "<br />")
-                .replace("<br/>", "<br />")
-                .trim()
-                .to_string();
+                .replace("<br/>", "<br />");
+            // Mermaid inserts the sanitized fragment without trimming it. This is observable for
+            // indented-code labels once the 200px container switches to `break-spaces`: a trailing
+            // indentation-only source line still owns a browser line box.
             single_image_paragraph_inner(&html_out)
                 .map(str::to_string)
                 .unwrap_or(html_out)

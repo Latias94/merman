@@ -207,7 +207,11 @@ pub(super) fn flowchart_compute_edge_path_geom(
     let is_cluster_edge = le.to_cluster.is_some() || le.from_cluster.is_some();
     // `positionEdgeLabel` consumes the polyline held by `points`; `fixCorners`, marker offsets,
     // and the D3 curve generator operate on the separate `lineData` copy below.
-    let label_path_points = if edge.label.as_deref().is_some_and(|label| !label.is_empty()) {
+    let label_path_points = if ctx
+        .model
+        .edge_label_for_render(edge)
+        .is_some_and(|label| !label.is_empty())
+    {
         points_for_render.clone()
     } else {
         Vec::new()

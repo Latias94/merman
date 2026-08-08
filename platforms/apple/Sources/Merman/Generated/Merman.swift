@@ -2933,6 +2933,7 @@ public func FfiConverterTypeMermanRasterOutputPlan_lower(_ value: MermanRasterOu
 
 
 public struct MermanResourceErrorDetails: Equatable, Hashable {
+    public var cause: String
     public var limitId: String
     public var phase: String
     public var actual: UInt64
@@ -2941,7 +2942,8 @@ public struct MermanResourceErrorDetails: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(limitId: String, phase: String, actual: UInt64, max: UInt64, profile: String) {
+    public init(cause: String, limitId: String, phase: String, actual: UInt64, max: UInt64, profile: String) {
+        self.cause = cause
         self.limitId = limitId
         self.phase = phase
         self.actual = actual
@@ -2965,6 +2967,7 @@ public struct FfiConverterTypeMermanResourceErrorDetails: FfiConverterRustBuffer
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MermanResourceErrorDetails {
         return
             try MermanResourceErrorDetails(
+                cause: FfiConverterString.read(from: &buf),
                 limitId: FfiConverterString.read(from: &buf),
                 phase: FfiConverterString.read(from: &buf),
                 actual: FfiConverterUInt64.read(from: &buf),
@@ -2974,6 +2977,7 @@ public struct FfiConverterTypeMermanResourceErrorDetails: FfiConverterRustBuffer
     }
 
     public static func write(_ value: MermanResourceErrorDetails, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.cause, into: &buf)
         FfiConverterString.write(value.limitId, into: &buf)
         FfiConverterString.write(value.phase, into: &buf)
         FfiConverterUInt64.write(value.actual, into: &buf)

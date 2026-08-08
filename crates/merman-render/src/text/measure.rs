@@ -28,6 +28,33 @@ pub(crate) const MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX: f64 = 200.0;
 /// A host-provided measurer can instead use platform text APIs, a UI toolkit text system, or an
 /// optional font engine while preserving the rest of merman's parser/layout/render pipeline.
 pub trait TextMeasurer {
+    /// Returns crate-private authority for reusing a measurement within the same routed operation.
+    ///
+    /// This hook is deliberately unnameable outside `merman-render`: external custom measurers use
+    /// the default `None`, while the operation-owned routed facade can validate an exact built-in
+    /// profile, phase, and operation without exposing a replayable public token.
+    #[doc(hidden)]
+    #[allow(private_interfaces)]
+    fn builtin_operation_carrier(
+        &self,
+        _operation: crate::environment::TextMeasurementOperation,
+    ) -> Option<crate::environment::BuiltinTextMeasurementOperationCarrier> {
+        None
+    }
+
+    /// Starts an exact streaming computed-length probe when this measurer is a built-in profile.
+    ///
+    /// The return type is crate-private so external measurers cannot bypass their observable host
+    /// callback order. They use the default `None` and continue receiving every complete request.
+    #[doc(hidden)]
+    #[allow(private_interfaces)]
+    fn begin_svg_text_computed_length(
+        &self,
+        _style: &TextStyle,
+    ) -> Option<crate::environment::BuiltinSvgComputedLength> {
+        None
+    }
+
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics;
 
     /// Measures SVG `<tspan>.getComputedTextLength()`-like widths (advance length along the

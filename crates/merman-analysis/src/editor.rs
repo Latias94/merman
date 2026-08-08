@@ -683,7 +683,10 @@ impl FenceTextIndex {
             prefix.trim_start().starts_with("%%") || directive_prefix.is_some();
         let mut completion_kinds = Vec::new();
         let source_start = is_source_start_context(text, prefix_start);
-        let expected_syntax = self.expected_syntax_at_offset(cursor).copied();
+        let expected_syntax = self
+            .expected_syntax_at_offset(cursor)
+            .or_else(|| self.expected_syntax_after_immediate_line_ending(text, cursor))
+            .copied();
         let expected_syntax_kind = expected_syntax.map(|expected| expected.kind);
         let expected_syntax_span = expected_syntax.map(|expected| expected.span);
 
@@ -729,6 +732,22 @@ impl FenceTextIndex {
                     right.span.end,
                 ))
             })
+    }
+
+    fn expected_syntax_after_immediate_line_ending(
+        &self,
+        text: &str,
+        cursor: usize,
+    ) -> Option<&FenceExpectedSyntax> {
+        let bytes = text.as_bytes();
+        let line_ending_len = match bytes.get(cursor).copied() {
+            Some(b'\r') if bytes.get(cursor + 1) == Some(&b'\n') => 2,
+            Some(b'\r' | b'\n') => 1,
+            _ => return None,
+        };
+        let insertion = cursor.checked_add(line_ending_len)?;
+        self.expected_syntax_at_offset(insertion)
+            .filter(|expected| expected.span.start == insertion && expected.span.end == insertion)
     }
 
     fn semantic_item_id_at_offset_indexed(&self, offset: usize) -> (Option<usize>, usize) {

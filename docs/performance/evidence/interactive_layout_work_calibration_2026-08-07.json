@@ -1,0 +1,344 @@
+{
+  "schema_version": 1,
+  "evidence_class": "resource-policy-calibration",
+  "claim_scope": "interactive-layout-work-ceiling-800000",
+  "decision": "accepted-structural",
+  "authoritative_date": "2026-08-07",
+  "source_revision": {
+    "commit": "08c01654c0cf22347bf4f3879cc3a2c564e1cef2",
+    "tree": "5c991300a94a7cc997ab45ff5a7e141d3681594d",
+    "tracked_worktree_clean": true
+  },
+  "source_disposition": {
+    "excluded_pre_existing_untracked_paths": [
+      "fixtures/flowchart/probe_flowchart_edge_markdown_html_false_982.svg",
+      "fixtures/mindmap/stress_multiline_nodes_006.svg",
+      "in95p",
+      "ireframep",
+      "rust_out",
+      "test-results/"
+    ],
+    "chronology_rule": "The authoritative date and Git ancestry establish chronology; future-skewed host filesystem or commit timestamps are not evidence."
+  },
+  "inputs": {
+    "build_profile": "release",
+    "feature_closure": [
+      "svg",
+      "layout-cytoscape",
+      "layout-elk",
+      "math",
+      "complete-svg"
+    ],
+    "cargo_lock_sha256": "4eb38cee29796405570fa3172fffd049429fdef5692f868fd6be02e45ee93a71",
+    "cargo_manifest_sha256": "0b7687ad2a989792fcbe78eab7bf95d7d63018b460ba85c097e8235718cb2959",
+    "corpus_manifest_sha256": "cb7cca600d3980e77180832bff599f7f79608c4a41ff1116a2d4f4fd8cf52e02",
+    "fixture_members_sha256": "54a5e69af77e60fd545018db53336b1dd1f9c3d6a229aa7a47e4090e6060180c",
+    "calibration_source_sha256": "d722e583aef5fcceaefe58761fa598ada60909b5344dd0afef970247351660b9",
+    "runner_sha256": "c567ff6993c28bb66bc914619a9f5a5fc445de955209e506b2f84c7632b7b746",
+    "runner_test_sha256": "fa64238a454b8652ccc27e00a6480a821bee471cda7cf0da00373efe23fa2474",
+    "executable_sha256": "5338ef68b5e14cfb1688ae6dff2c0ad5216363e4eb50bfa9e268a01aa0e354b7",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+    "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)"
+  },
+  "host": {
+    "chip": "Apple M4 Pro",
+    "model": "Mac16,7",
+    "memory_bytes": 51539607552,
+    "system": "Darwin 25.5.0 arm64",
+    "platform": "macOS 26.5.1",
+    "timeout_seconds_per_process": 300
+  },
+  "runner": {
+    "command": "python3 tools/bench/run_layout_work_calibration.py --authoritative-date 2026-08-07 --binary /Users/frankorz/Documents/projects/rust/merman/target/release/examples/layout_work_calibration --out-dir target/bench/layout-work-calibration-2026-08-07-final-v3 --timeout-seconds 300 --full-repeats 5",
+    "raw_root": "target/bench/layout-work-calibration-2026-08-07-final-v3",
+    "raw_committed": false,
+    "raw_summary_bytes": 19707,
+    "raw_summary_sha256": "d8ef23bc814b43af8019cb2c61dfdcea16068533e6b6327937196b46d528fad8",
+    "stderr_index_sha256": "d9154c6f346cc98e29e0e009e0f27af968d59a37e83a8ce5575e1190d85590f2",
+    "full_reports_byte_identical": true,
+    "full_report_bytes": 38787,
+    "full_report_sha256": "336945827300491eb2c71a0a253b965d9ff7783151ac4519ee366840a18d06d2",
+    "output_directory_was_empty": true,
+    "final_source_tree_revalidated": true,
+    "runner_and_executable_revalidated": true,
+    "isolated_outcomes_reconciled_to_full_report": true,
+    "timeout_terminates_managed_process_group": true,
+    "timeout_regression": {
+      "command": "PYTHONWARNINGS=error::ResourceWarning python3 -m unittest tools.bench.test_layout_work_calibration",
+      "raw_path": "target/bench/layout-work-calibration-2026-08-07-final-v3-runner-tests.txt",
+      "raw_committed": false,
+      "exit_code": 0,
+      "test_count": 4,
+      "raw_bytes": 102,
+      "raw_sha256": "6ac2ad615dc6e0e4f04087a91e0db928c731e875f8743d4504ee570e279b5afe",
+      "ci_workflow": ".github/workflows/performance.yml"
+    }
+  },
+  "processes": [
+    {
+      "name": "full-1",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 32.361542500089854,
+      "peak_rss_bytes": 119816192,
+      "report_bytes": 38787,
+      "report_sha256": "336945827300491eb2c71a0a253b965d9ff7783151ac4519ee366840a18d06d2",
+      "stdout_bytes": 155,
+      "stderr_bytes": 777,
+      "stderr_sha256": "dc748400650788be06195592a26416ee5a6446ebcb1c34ef2a746a6d960882f6"
+    },
+    {
+      "name": "full-2",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 32.91997837508097,
+      "peak_rss_bytes": 122830848,
+      "report_bytes": 38787,
+      "report_sha256": "336945827300491eb2c71a0a253b965d9ff7783151ac4519ee366840a18d06d2",
+      "stdout_bytes": 155,
+      "stderr_bytes": 777,
+      "stderr_sha256": "588e48b46a2d599586c2652016339ec41d002b60751f0516540baeef8dc91f68"
+    },
+    {
+      "name": "full-3",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 33.014127833303064,
+      "peak_rss_bytes": 119521280,
+      "report_bytes": 38787,
+      "report_sha256": "336945827300491eb2c71a0a253b965d9ff7783151ac4519ee366840a18d06d2",
+      "stdout_bytes": 155,
+      "stderr_bytes": 777,
+      "stderr_sha256": "dd9713d38cd434593146f8b6ba748de93017d52e2dad80d408156cafbff8498c"
+    },
+    {
+      "name": "full-4",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 32.891634750179946,
+      "peak_rss_bytes": 119750656,
+      "report_bytes": 38787,
+      "report_sha256": "336945827300491eb2c71a0a253b965d9ff7783151ac4519ee366840a18d06d2",
+      "stdout_bytes": 155,
+      "stderr_bytes": 777,
+      "stderr_sha256": "778ec072b65b7748b48f032abf417784418c4418ef8cb368df82be0aad304a15"
+    },
+    {
+      "name": "full-5",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 32.81461520912126,
+      "peak_rss_bytes": 120438784,
+      "report_bytes": 38787,
+      "report_sha256": "336945827300491eb2c71a0a253b965d9ff7783151ac4519ee366840a18d06d2",
+      "stdout_bytes": 155,
+      "stderr_bytes": 777,
+      "stderr_sha256": "419d1df4c509f4e1cc396dbf88e0dc4ef68e3c380b046ee9d9eeade6064a71bf"
+    },
+    {
+      "name": "max-semantic",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 1.3041758751496673,
+      "peak_rss_bytes": 45563904,
+      "report_bytes": 1793,
+      "report_sha256": "7ab3d9ddde885edca88a80df4ee67be036b1240fed3ec9b115c9b9d627b8c7e5",
+      "stdout_bytes": 161,
+      "stderr_bytes": 777,
+      "stderr_sha256": "e2e5a383caf5de262705caf1f183d6e7fdee3cf2d7bb090a2cc8d8b4ef692cbe"
+    },
+    {
+      "name": "max-layout",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 1.3600193341262639,
+      "peak_rss_bytes": 56786944,
+      "report_bytes": 1847,
+      "report_sha256": "a9429f3adb4e3107b77f4595dfb29f40485ba19250a0a331b54edde8e06e6653",
+      "stdout_bytes": 159,
+      "stderr_bytes": 777,
+      "stderr_sha256": "5f90ac005211d3c7c0efc9490ae850afb52395f4e9a55bff80ee32f4d2a06353"
+    },
+    {
+      "name": "max-svg",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 1.3531420417129993,
+      "peak_rss_bytes": 54460416,
+      "report_bytes": 1884,
+      "report_sha256": "6ea452f3d57ef8e608795aefa7fe4ae88cdd2d03cb475131b2227f6feb945cb9",
+      "stdout_bytes": 156,
+      "stderr_bytes": 777,
+      "stderr_sha256": "b04e66584b521a0fd66a61b623c0eb14a6438b6a4d53b4800e8a38930291af53"
+    },
+    {
+      "name": "max-end-to-end",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 1.3750992910936475,
+      "peak_rss_bytes": 54689792,
+      "report_bytes": 1892,
+      "report_sha256": "16a41d07609c634be95c0011284d025d294899c40cfdf47e46431d07f3c5ded8",
+      "stdout_bytes": 163,
+      "stderr_bytes": 777,
+      "stderr_sha256": "ab96868f4273273f9729653517948310ffe71826ffb41ee6f93a132a535fc978"
+    },
+    {
+      "name": "cardinality-1643",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 1.3754103747196496,
+      "peak_rss_bytes": 86327296,
+      "report_bytes": 1862,
+      "report_sha256": "2bf57b76cfd0d8adc6db2c2e9eb4c40f3cd35533cc41c64e06c313d3e201fdca",
+      "stdout_bytes": 165,
+      "stderr_bytes": 777,
+      "stderr_sha256": "31fe91bb1750500beed2c30696f5b015cc8e609c9b472aa4c5c4a0da78966bfa"
+    },
+    {
+      "name": "cardinality-1644",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 1.3966573751531541,
+      "peak_rss_bytes": 78987264,
+      "report_bytes": 1917,
+      "report_sha256": "bf369ac52f96f547d2bba195da3aa22723c3d7e6c1d24d1346083d1f81d4d384",
+      "stdout_bytes": 165,
+      "stderr_bytes": 777,
+      "stderr_sha256": "a6ac881f98d83a2756e5fbfaf2ab06d9b735398fc8ab0d1e11fb5181782a0152"
+    },
+    {
+      "name": "max-w-minus-one",
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 1.3166639162227511,
+      "peak_rss_bytes": 54067200,
+      "report_bytes": 2126,
+      "report_sha256": "32a4434c6651ae6fdaf30052de3f5564e363e0802613535d5d3e1bb27ba2ba25",
+      "stdout_bytes": 164,
+      "stderr_bytes": 777,
+      "stderr_sha256": "ff46472ef12206206b347b2a80eab97ea64a956c8e9b72d5cb89a8782579085d"
+    }
+  ],
+  "policy": {
+    "profile": "interactive",
+    "max_layout_work_units": 800000,
+    "headroom_rule": {
+      "minimum_absolute_units": 100000,
+      "minimum_percent_over_corpus_max": 10.0,
+      "rounding_quantum": 100000,
+      "calculated_minimum_ceiling": 800000
+    }
+  },
+  "corpus_result": {
+    "manifest_member_count": 68,
+    "maximum_fixture": "flowchart_large",
+    "source_path": "crates/merman/benches/fixtures/flowchart_large.mmd",
+    "source_bytes": 6419,
+    "source_sha256": "edba73dc4c0a12417e052ec3c98ada82b5d773c4346b5c735df5dfa354f5b161",
+    "layout_work_units": 697752,
+    "headroom_units": 102248,
+    "headroom_percent_over_corpus_max": 14.653917151079467,
+    "svg_bytes": 307649,
+    "svg_elements": 2902,
+    "svg_sha256": "1a43732507bd36e0c26776bc7a768cb5400a70bb429acfeb47d1077f57a315fe"
+  },
+  "exact_threshold": {
+    "accepted_limit": 697752,
+    "accepted_work_units": 697752,
+    "accepted_svg_sha256": "1a43732507bd36e0c26776bc7a768cb5400a70bb429acfeb47d1077f57a315fe",
+    "rejected_limit": 697751,
+    "rejection": {
+      "cause": "ceiling",
+      "phase": "layout_model",
+      "limit": "max_layout_work_units",
+      "actual": 697752,
+      "max": 697751,
+      "profile": "interactive"
+    }
+  },
+  "cardinality_boundary": {
+    "curve": "flowchart-linear-chain-v1",
+    "scope": "This sequential result applies only to the registered deterministic linear chain, not every Flowchart topology.",
+    "scan_start_nodes": 1,
+    "scanned_through_nodes": 1644,
+    "accepted_prefix_count": 1643,
+    "accepted_prefix_digest_encoding": "repeated u64-le(nodes) || u64-le(layout_work_units)",
+    "accepted_prefix_observations_sha256": "d1868aab150183b9d01cf66654602013d195814bd801d759e00c23eec3542b22",
+    "accepted_prefix_work_units_non_decreasing": true,
+    "first_rejected_nodes": 1644,
+    "accepted": {
+      "nodes": 1643,
+      "edges": 1642,
+      "source_sha256": "6f99bafbcd37fec43852f59ee0bc448b8998248b257f4374458e49f09ffe60b9",
+      "layout_work_units": 799995,
+      "svg_sha256": "ee77bc6284e187bb3c8b1f410c1843bdc22fb7fc88bf75501bc3b8b5ee9a6242"
+    },
+    "rejected": {
+      "nodes": 1644,
+      "edges": 1643,
+      "source_sha256": "797b423414a134ef4917e58814f0b5328ff8888bd0360917c71f6fb5a2ffed2c",
+      "actual_work_units": 800002
+    },
+    "next_rejected": {
+      "nodes": 1645,
+      "edges": 1644,
+      "source_sha256": "7f52983bdfd8ccd5cbcc03e5665e1b25c171bcb0b6cd5eae721fc35fbf61d609",
+      "actual_work_units": 800001
+    }
+  },
+  "configuration_boundary": {
+    "curve": "architecture-num-iter-v1",
+    "fixed_nodes": 32,
+    "fixed_edges": 31,
+    "accepted_iterations": 3140,
+    "accepted_consumed_work_units": 48589,
+    "first_rejected_iterations": 3141,
+    "first_rejected_actual_work_units": 800131,
+    "next_rejected_iterations": 3142,
+    "next_rejected_actual_work_units": 800385
+  },
+  "isolated_stage_results": [
+    {
+      "stage": "semantic",
+      "internal_elapsed_ns": 875417,
+      "outcome": "accepted_semantic",
+      "output": "flowchart-v2"
+    },
+    {
+      "stage": "layout",
+      "internal_elapsed_ns": 9221208,
+      "outcome": "accepted_layout",
+      "output_sha256": "1080294a3c2c7169a17c62b9df55870f0eace63f130a098af05d1301614b55cc"
+    },
+    {
+      "stage": "svg",
+      "internal_elapsed_ns": 1371833,
+      "outcome": "accepted_svg",
+      "output_sha256": "1a43732507bd36e0c26776bc7a768cb5400a70bb429acfeb47d1077f57a315fe"
+    },
+    {
+      "stage": "end_to_end",
+      "internal_elapsed_ns": 10135416,
+      "outcome": "accepted_svg",
+      "output_sha256": "1a43732507bd36e0c26776bc7a768cb5400a70bb429acfeb47d1077f57a315fe"
+    },
+    {
+      "stage": "cardinality_rejection",
+      "internal_elapsed_ns": 36667500,
+      "outcome": "typed_ceiling_rejection"
+    },
+    {
+      "stage": "exact_w_minus_one_rejection",
+      "internal_elapsed_ns": 8732541,
+      "outcome": "typed_ceiling_rejection"
+    }
+  ],
+  "claim_limits": {
+    "latency_claim": false,
+    "memory_claim": false,
+    "host_slo_claim": false,
+    "mermaid_semantic_constant": false,
+    "accepted_statement": "The 800000-unit interactive ceiling satisfies the registered headroom rule for the closed 68-member corpus and produces deterministic typed rejection at the exact fixture threshold and the first rejection of the fully scanned registered cardinality curve on the recorded host."
+  }
+}

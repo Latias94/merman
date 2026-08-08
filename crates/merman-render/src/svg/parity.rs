@@ -457,7 +457,6 @@ fn render_builtin_family_artifact_raw(
     let measurer = options.text_measurer();
     let effective_config = &metadata.effective_config;
     let effective_config_value = effective_config.as_value();
-    let diagram_type = metadata.diagram_type.as_str();
     let title = metadata.title.as_deref();
 
     match family {
@@ -477,24 +476,11 @@ fn render_builtin_family_artifact_raw(
             )
         }
         BuiltinFamilyArtifact::Flowchart(artifact) => {
-            flowchart::render_flowchart_svg_model_with_config(
-                artifact.pair().layout(),
-                artifact.pair().semantic(),
-                effective_config,
-                diagram_type,
-                title,
-                artifact.policy(),
-                options,
-            )
+            flowchart::render_flowchart_svg_artifact(artifact, metadata, options)
         }
-        BuiltinFamilyArtifact::Swimlane(pair) => flowchart::render_swimlane_svg_model_with_config(
-            pair.layout(),
-            pair.semantic(),
-            effective_config,
-            diagram_type,
-            title,
-            options,
-        ),
+        BuiltinFamilyArtifact::Swimlane(artifact) => {
+            flowchart::render_swimlane_svg_artifact(artifact, metadata, options)
+        }
         BuiltinFamilyArtifact::Cynefin(pair) => cynefin::render_cynefin_diagram_svg_model(
             pair.layout(),
             pair.semantic(),

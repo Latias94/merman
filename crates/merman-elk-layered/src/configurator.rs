@@ -29,25 +29,21 @@ impl Default for LayeredSpacings {
 /// keep discovered graph properties synchronized with options, normalize undefined direction, enforce
 /// minimum edge-edge spacing, and set the default straight-edge preference based on edge routing.
 pub fn configure_graph_properties(graph: &mut LGraph) -> Result<(), RandomSeedError> {
-    graph.sync_graph_properties_to_options();
-    if graph.options.direction == ElkDirection::Undefined {
-        graph.options.direction = ElkDirection::Right;
-    }
-    if graph.options.spacing.edge_edge < MIN_EDGE_SPACING {
-        graph.options.spacing.edge_edge = MIN_EDGE_SPACING;
-    }
-    if graph.options.node_placement_favor_straight_edges.is_none() {
-        graph.options.node_placement_favor_straight_edges =
-            Some(graph.options.edge_routing == EdgeRouting::Orthogonal);
-    }
-    graph.random = JavaRandom::new(graph.resolve_random_seed_for_configuration()?);
-
-    for node in &mut graph.layerless_nodes {
-        if let Some(nested_graph) = node.nested_graph.as_mut() {
-            configure_graph_properties(nested_graph)?;
+    graph.try_for_each_graph_mut(|graph| {
+        graph.graph_properties.apply_to_options(&mut graph.options);
+        if graph.options.direction == ElkDirection::Undefined {
+            graph.options.direction = ElkDirection::Right;
         }
-    }
-    Ok(())
+        if graph.options.spacing.edge_edge < MIN_EDGE_SPACING {
+            graph.options.spacing.edge_edge = MIN_EDGE_SPACING;
+        }
+        if graph.options.node_placement_favor_straight_edges.is_none() {
+            graph.options.node_placement_favor_straight_edges =
+                Some(graph.options.edge_routing == EdgeRouting::Orthogonal);
+        }
+        graph.random = JavaRandom::new(graph.resolve_random_seed_for_configuration()?);
+        Ok(())
+    })
 }
 
 pub fn configured_options(graph: &LGraph) -> LayeredOptions {

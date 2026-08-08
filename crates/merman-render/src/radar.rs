@@ -1,11 +1,13 @@
+#[cfg(test)]
+use crate::RenderResourcePolicy;
+use crate::Result;
 use crate::config::json_f64;
 use crate::model::{
     Bounds, LayoutPoint, RadarAxisLayout, RadarCurveLayout, RadarDiagramLayout,
     RadarGraticuleShapeLayout, RadarLegendItemLayout,
 };
-use crate::resources::ModelComplexity;
+use crate::resources::{ModelComplexity, OperationWorkMeter};
 use crate::text::TextMeasurer;
-use crate::{RenderResourcePolicy, Result};
 use merman_core::diagrams::radar::RadarDiagramRenderModel;
 use serde_json::Value;
 
@@ -148,22 +150,32 @@ pub(crate) fn layout_radar_diagram_typed(
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<RadarDiagramLayout> {
-    layout_radar_diagram_typed_with_resource_policy(
-        model,
-        effective_config,
-        measurer,
-        RenderResourcePolicy::interactive(),
-    )
+    let work_meter = OperationWorkMeter::new(RenderResourcePolicy::interactive());
+    layout_radar_diagram_typed_with_work_meter(model, effective_config, measurer, &work_meter)
 }
 
 /// Lays out a Radar model under the resource policy owned by the render operation.
+#[cfg(test)]
 pub(crate) fn layout_radar_diagram_typed_with_resource_policy(
     model: &RadarDiagramRenderModel,
     effective_config: &serde_json::Value,
     _measurer: &dyn TextMeasurer,
     resource_limits: RenderResourcePolicy,
 ) -> Result<RadarDiagramLayout> {
-    resource_limits.check_model_complexity(ModelComplexity::from_radar(model))?;
+    let work_meter = OperationWorkMeter::new(resource_limits);
+    layout_radar_diagram_typed_with_work_meter(model, effective_config, _measurer, &work_meter)
+}
+
+/// Lays out a Radar model under the cumulative work meter owned by the render operation.
+pub(crate) fn layout_radar_diagram_typed_with_work_meter(
+    model: &RadarDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    _measurer: &dyn TextMeasurer,
+    work_meter: &OperationWorkMeter,
+) -> Result<RadarDiagramLayout> {
+    work_meter
+        .policy()
+        .check_model_complexity(ModelComplexity::from_radar(model))?;
     let _ = (
         model.acc_title.as_deref(),
         model.acc_descr.as_deref(),
@@ -194,7 +206,7 @@ pub(crate) fn layout_radar_diagram_typed_with_resource_policy(
     let axis_count = model.axes.len();
     let ticks = nonnegative_usize(&model.options.ticks);
     let layout_work = RadarLayoutWork::from_model(model, ticks);
-    resource_limits.check_layout_work_units(layout_work.total())?;
+    work_meter.charge(layout_work.total())?;
     let mut axes: Vec<RadarAxisLayout> = Vec::new();
     if axis_count > 0 {
         for (i, axis) in model.axes.iter().enumerate() {

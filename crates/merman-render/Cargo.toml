@@ -68,8 +68,10 @@ roughr = { workspace = true, default-features = false }
 ryu-js.workspace = true
 unicode-width.workspace = true
 unicode-linebreak.workspace = true
+unicode-segmentation.workspace = true
 
 [dev-dependencies]
 futures = { workspace = true, features = ["executor"] }
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
 regex.workspace = true
+sha2.workspace = true

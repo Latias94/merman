@@ -67,6 +67,240 @@ fn flowchart_html_text_extraction_preserves_bare_comparison_symbols() {
 }
 
 #[test]
+fn flowchart_html_text_extraction_decodes_html5_entities_once_after_tag_removal() {
+    let plain = crate::flowchart::flowchart_label_plain_text_for_layout(
+        "&copy; &infin; &NotEqualTilde; &lt;b&gt; &amp;lt;",
+        "text",
+        true,
+    );
+
+    assert_eq!(plain, "© ∞ ≂̸ <b> &lt;");
+
+    let split_entity = crate::flowchart::flowchart_label_plain_text_for_layout(
+        "&cop<strong>y;</strong>",
+        "text",
+        true,
+    );
+    assert_eq!(split_entity, "&copy;");
+
+    for input in ["X&#10;Y", "X&NewLine;Y"] {
+        assert_eq!(
+            crate::flowchart::flowchart_label_plain_text_for_layout(input, "text", true),
+            "X Y",
+            "{input:?}",
+        );
+    }
+}
+
+#[test]
+fn html_inline_measurement_uses_full_named_entity_decoding() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+        font_style: None,
+    };
+
+    let entities = measure_html_with_inline_styles(
+        &measurer,
+        "<span>&copy;&infin;&NotEqualTilde;</span>",
+        &style,
+        None,
+        WrapMode::HtmlLike,
+    );
+    let unicode = measure_html_with_inline_styles(
+        &measurer,
+        "<span>©∞≂̸</span>",
+        &style,
+        None,
+        WrapMode::HtmlLike,
+    );
+
+    assert_same_metrics(entities, unicode);
+
+    for input in ["&copy test", "&#169 test", "&#xA9 test"] {
+        let decoded =
+            measure_html_with_inline_styles(&measurer, input, &style, None, WrapMode::HtmlLike);
+        let unicode =
+            measure_html_with_inline_styles(&measurer, "© test", &style, None, WrapMode::HtmlLike);
+        assert_same_metrics(decoded, unicode);
+    }
+
+    for input in ["X&#10;Y", "X&NewLine;Y"] {
+        let decoded =
+            measure_html_with_inline_styles(&measurer, input, &style, None, WrapMode::HtmlLike);
+        let collapsed =
+            measure_html_with_inline_styles(&measurer, "X Y", &style, None, WrapMode::HtmlLike);
+        assert_same_metrics(decoded, collapsed);
+        assert_eq!(decoded.line_count, 1, "{input:?}: {decoded:?}");
+    }
+}
+
+#[test]
+fn html_break_spaces_uses_decoded_entity_whitespace() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+        font_style: None,
+    };
+    let measure = |html: &str| {
+        measure_html_with_inline_styles(&measurer, html, &style, Some(39.0), WrapMode::HtmlLike)
+    };
+
+    let spaces = measure("A  AA AAA");
+    assert_eq!(spaces.line_count, 3, "{spaces:?}");
+    assert_same_metrics(measure("A&#32;&#32;AA AAA"), spaces);
+    assert_same_metrics(measure("A&#x20;&#x20;AA AAA"), spaces);
+    assert_same_metrics(
+        measure("A&#32;<strong>&#32;AA</strong> AAA"),
+        measure("A <strong> AA</strong> AAA"),
+    );
+
+    for (physical, entities) in [
+        ("A\tAA AAA", "A&Tab;AA AAA"),
+        ("A\tAA AAA", "A&#9;AA AAA"),
+        ("A\tAA AAA", "A&#x9;AA AAA"),
+        ("A\nAA AAA", "A&NewLine;AA AAA"),
+        ("A\nAA AAA", "A&#10;AA AAA"),
+        ("A\nAA AAA", "A&#xA;AA AAA"),
+    ] {
+        assert_same_metrics(measure(entities), measure(physical));
+    }
+}
+
+#[test]
+fn ecmascript_and_html_whitespace_helpers_preserve_next_line_control() {
+    let nel = '\u{0085}';
+    assert!(!is_ecmascript_whitespace(nel));
+    assert!(!is_html_collapsible_ascii_whitespace(nel));
+    assert_eq!(
+        trim_ecmascript_whitespace("\u{0085}A\u{0085}"),
+        "\u{0085}A\u{0085}"
+    );
+    assert_eq!(
+        trim_html_collapsible_ascii_whitespace(" \u{0085} "),
+        "\u{0085}"
+    );
+
+    let html = crate::flowchart::flowchart_label_plain_text_for_layout(" \u{0085} ", "text", true);
+    let svg = crate::flowchart::flowchart_label_plain_text_for_layout(" \u{0085} ", "text", false);
+    assert_eq!(html, "\u{0085}");
+    assert_eq!(svg, "\u{0085}");
+    assert!(!crate::flowchart::flowchart_label_text_is_empty_for_mode(
+        &html, true,
+    ));
+    assert!(!crate::flowchart::flowchart_label_text_is_empty_for_mode(
+        &svg, false,
+    ));
+}
+
+#[test]
+fn flowchart_html_text_extraction_preserves_nbsp_boundaries() {
+    let cases = [
+        ("&nbsp;A", "\u{00A0}A"),
+        ("A&nbsp;", "A\u{00A0}"),
+        ("&nbsp;", "\u{00A0}"),
+        ("\u{00A0}A", "\u{00A0}A"),
+        ("A\u{00A0}", "A\u{00A0}"),
+        ("\u{00A0}", "\u{00A0}"),
+        ("A<br>&nbsp;", "A\n\u{00A0}"),
+    ];
+
+    for label_type in ["text", "string", "markdown"] {
+        for (input, expected) in cases {
+            assert_eq!(
+                crate::flowchart::flowchart_label_plain_text_for_layout(input, label_type, true,),
+                expected,
+                "label_type={label_type}, input={input:?}",
+            );
+        }
+    }
+}
+
+#[test]
+fn flowchart_html_text_extraction_preserves_nbsp_and_collapses_ascii_space_runs() {
+    assert_eq!(
+        crate::flowchart::flowchart_label_plain_text_for_layout(
+            "A&nbsp;&nbsp;B  C   D",
+            "string",
+            true,
+        ),
+        "A\u{00A0}\u{00A0}B C D",
+    );
+}
+
+#[test]
+fn deterministic_html_wrapping_preserves_nbsp_width() {
+    let measurer = DeterministicTextMeasurer::default();
+    let style = TextStyle {
+        font_family: None,
+        font_size: 16.0,
+        font_weight: None,
+        font_style: None,
+    };
+
+    let plain_a = measurer.measure_wrapped("A", &style, Some(200.0), WrapMode::HtmlLike);
+    let trailing_ascii_space =
+        measurer.measure_wrapped("A ", &style, Some(200.0), WrapMode::HtmlLike);
+    let trailing_nbsp =
+        measurer.measure_wrapped("A\u{00A0}", &style, Some(200.0), WrapMode::HtmlLike);
+    let pure_nbsp = measurer.measure_wrapped("\u{00A0}", &style, Some(200.0), WrapMode::HtmlLike);
+    let svg_nbsp = measurer.measure_wrapped("\u{00A0}", &style, Some(200.0), WrapMode::SvgLike);
+
+    assert_same_metrics(trailing_ascii_space, plain_a);
+    assert!(trailing_nbsp.width > plain_a.width, "{trailing_nbsp:?}");
+    assert_finite_positive_metrics(pure_nbsp);
+    assert_finite_positive_metrics(svg_nbsp);
+}
+
+#[test]
+fn flowchart_svg_text_extraction_matches_create_text_entity_and_whitespace_semantics() {
+    assert_eq!(
+        crate::flowchart::flowchart_label_plain_text_for_layout("\u{00A0}A\u{00A0}", "text", false,),
+        "A",
+    );
+    assert_eq!(
+        crate::flowchart::flowchart_label_plain_text_for_layout(
+            "A\u{00A0}\u{FEFF}B",
+            "text",
+            false,
+        ),
+        "A B",
+    );
+    assert_eq!(
+        crate::flowchart::flowchart_label_plain_text_for_layout("\u{0085}A\u{0085}", "text", false,),
+        "\u{0085}A\u{0085}",
+    );
+    assert_eq!(
+        crate::flowchart::flowchart_label_plain_text_for_layout(
+            "&amp;A&lt;B&gt;&nbsp;&#160;",
+            "text",
+            false,
+        ),
+        "&A<B>&nbsp;&#160;",
+    );
+    assert_eq!(
+        crate::flowchart::flowchart_label_plain_text_for_layout("\u{00A0}", "markdown", false,),
+        "\u{00A0}",
+    );
+    assert_eq!(
+        crate::flowchart::flowchart_label_plain_text_for_layout("A\\nB", "text", false),
+        "A\nB",
+    );
+    assert_eq!(
+        crate::flowchart::flowchart_label_plain_text_for_layout("A<BR\u{00A0}/>B", "text", false,),
+        "A\nB",
+    );
+    assert!(crate::flowchart::flowchart_label_is_empty_for_render(""));
+    assert!(!crate::flowchart::flowchart_label_is_empty_for_render(
+        "<img src='x'>"
+    ));
+}
+
+#[test]
 fn flowchart_html_unicode_entities_use_finite_fallback_metrics() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
@@ -250,6 +484,74 @@ fn html_inline_styles_delegate_to_the_matching_font_variant() {
             .measure_wrapped("Italic", &italic, None, WrapMode::HtmlLike)
             .width;
     assert_eq!(mixed.width, mixed_expected);
+}
+
+#[test]
+fn html_inline_metrics_preserve_entity_and_direct_nbsp_boundaries() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+        font_style: None,
+    };
+
+    for (entity, direct) in [
+        ("&nbsp;A", "\u{00A0}A"),
+        ("A&nbsp;", "A\u{00A0}"),
+        ("&nbsp;", "\u{00A0}"),
+    ] {
+        let entity_metrics =
+            measure_html_with_inline_styles(&measurer, entity, &style, None, WrapMode::HtmlLike);
+        let direct_metrics =
+            measure_html_with_inline_styles(&measurer, direct, &style, None, WrapMode::HtmlLike);
+        assert_same_metrics(entity_metrics, direct_metrics);
+        assert_finite_positive_metrics(entity_metrics);
+
+        let entity_markdown = measure_markdown_with_inline_styles(
+            &measurer,
+            entity,
+            &style,
+            None,
+            WrapMode::HtmlLike,
+        );
+        let direct_markdown = measure_markdown_with_inline_styles(
+            &measurer,
+            direct,
+            &style,
+            None,
+            WrapMode::HtmlLike,
+        );
+        assert_same_metrics(entity_markdown, direct_markdown);
+        assert_finite_positive_metrics(entity_markdown);
+    }
+
+    let plain_a = measurer.measure_wrapped("A", &style, None, WrapMode::HtmlLike);
+    let trailing_nbsp =
+        measure_html_with_inline_styles(&measurer, "A&nbsp;", &style, None, WrapMode::HtmlLike);
+    assert!(trailing_nbsp.width > plain_a.width);
+
+    let styled_nbsp_tail = measure_html_with_inline_styles(
+        &measurer,
+        "<p>A<br /><strong>&nbsp;</strong></p>",
+        &style,
+        None,
+        WrapMode::HtmlLike,
+    );
+    assert_eq!(styled_nbsp_tail.line_count, 2, "{styled_nbsp_tail:?}");
+    assert!(styled_nbsp_tail.height > trailing_nbsp.height);
+
+    let plain_nbsp_tail = measurer.measure_wrapped("A\n\u{00A0}", &style, None, WrapMode::HtmlLike);
+    assert_eq!(plain_nbsp_tail.line_count, 2, "{plain_nbsp_tail:?}");
+    assert!(
+        plain_nbsp_tail.height > plain_a.height,
+        "{plain_nbsp_tail:?}"
+    );
+
+    let svg_a = measurer.measure_wrapped("A", &style, None, WrapMode::SvgLike);
+    let svg_nbsp_tail = measurer.measure_wrapped("A\n\u{00A0}", &style, None, WrapMode::SvgLike);
+    assert_eq!(svg_nbsp_tail.line_count, 2, "{svg_nbsp_tail:?}");
+    assert!(svg_nbsp_tail.height > svg_a.height, "{svg_nbsp_tail:?}");
 }
 
 #[test]
@@ -1912,6 +2214,21 @@ fn markdown_svg_wrapping_keeps_raw_html_tags_literal_but_wraps_like_mermaid() {
                 ("strong".to_string(), Normal),
             ],
             vec![("</strong>".to_string(), Normal)],
+        ]
+    );
+
+    let entity_lines = mermaid_markdown_to_wrapped_word_lines(
+        &measurer,
+        "&nbsp;Edge markdown&nbsp;",
+        &style,
+        Some(200.0),
+        WrapMode::SvgLike,
+    );
+    assert_eq!(
+        entity_lines,
+        vec![
+            vec![("&nbsp;Edge".to_string(), Normal)],
+            vec![("markdown&nbsp;".to_string(), Normal)],
         ]
     );
 }

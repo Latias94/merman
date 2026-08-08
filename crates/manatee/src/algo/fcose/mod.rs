@@ -1,14 +1,464 @@
 #![allow(clippy::needless_range_loop)]
 
 use crate::algo::FcoseOptions;
-use crate::error::{Error, Result};
+use crate::error::{Error, Result, WorkFailure};
 use crate::graph::{Anchor, BoundsExtras, Graph, LayoutRect, LayoutResult, Point};
+use crate::work::admit_dynamic_work;
 use indexmap::{IndexMap, IndexSet};
 use rustc_hash::FxHashMap;
 
 mod spectral;
 
+pub use crate::work::{NoopWorkControl, WorkControl};
+
 const GEOMETRY_EPSILON: f64 = 1e-9;
+const DEFAULT_FCOSE_ITERATIONS: usize = 2500;
+
+/// Checked execution schedule for one FCoSE invocation.
+///
+/// The schedule preserves the existing CoSE loop contract: every run has an effective maximum of
+/// `max(configured, nodes * 5)`, while the loop body executes at most `maximum - 1` times because
+/// the historical termination check happens before the first tranche at `total == maximum`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FcoseIterationSchedule {
+    configured_iterations: usize,
+    effective_max_iterations: usize,
+    run_count: usize,
+    setup_work_units: usize,
+    iteration_work_units: usize,
+    maximum_work_units: usize,
+}
+
+impl FcoseIterationSchedule {
+    /// Normalize a JavaScript-style numeric `numIter` and construct a checked graph schedule.
+    ///
+    /// Finite positive values are rounded. Missing, non-finite, and values below one retain the
+    /// established 2500-iteration fallback. Values outside `usize` and any derived arithmetic
+    /// overflow fail closed.
+    pub fn from_configured_number(
+        configured: Option<f64>,
+        node_count: usize,
+        edge_count: usize,
+        rerun: bool,
+    ) -> std::result::Result<Self, WorkFailure> {
+        let configured_iterations = Self::normalize_configured_number(configured)?;
+        Self::from_normalized_counts(configured_iterations, node_count, edge_count, rerun)
+    }
+
+    pub fn normalize_configured_number(
+        configured: Option<f64>,
+    ) -> std::result::Result<usize, WorkFailure> {
+        let Some(configured) = configured.filter(|value| value.is_finite() && *value >= 1.0) else {
+            return Ok(DEFAULT_FCOSE_ITERATIONS);
+        };
+        let rounded = configured.round();
+        if rounded >= usize::MAX as f64 {
+            return Err(WorkFailure::ArithmeticOverflow);
+        }
+        Ok(rounded as usize)
+    }
+
+    pub fn from_indexed_graph(
+        configured: Option<usize>,
+        graph: &IndexedGraph,
+        rerun: bool,
+    ) -> std::result::Result<Self, WorkFailure> {
+        Self::from_options(
+            configured,
+            graph.nodes.len(),
+            graph.compounds.len(),
+            graph.edges.len(),
+            rerun,
+        )
+    }
+
+    fn from_options(
+        configured: Option<usize>,
+        leaf_count: usize,
+        compound_count: usize,
+        edge_count: usize,
+        rerun: bool,
+    ) -> std::result::Result<Self, WorkFailure> {
+        Self::from_normalized_graph_counts(
+            configured
+                .filter(|value| *value > 0)
+                .unwrap_or(DEFAULT_FCOSE_ITERATIONS),
+            leaf_count,
+            compound_count,
+            edge_count,
+            rerun,
+        )
+    }
+
+    /// Builds a checked schedule from an already-normalized iteration count and graph cardinality.
+    ///
+    /// Adapters can use this before materializing an [`IndexedGraph`] when their source counts are
+    /// a conservative upper bound of the eventual indexed graph.
+    pub fn from_normalized_counts(
+        configured_iterations: usize,
+        node_count: usize,
+        edge_count: usize,
+        rerun: bool,
+    ) -> std::result::Result<Self, WorkFailure> {
+        Self::from_normalized_shape(
+            configured_iterations,
+            node_count,
+            node_count,
+            edge_count,
+            rerun,
+        )
+    }
+
+    /// Builds a checked schedule when leaf and compound cardinalities are both known.
+    ///
+    /// Unlike [`Self::from_normalized_counts`], this avoids reserving a deep ancestry table for a
+    /// flat graph. The bound remains conservative because an inclusion chain can contain at most
+    /// every compound plus one leaf.
+    pub fn from_normalized_graph_counts(
+        configured_iterations: usize,
+        leaf_count: usize,
+        compound_count: usize,
+        edge_count: usize,
+        rerun: bool,
+    ) -> std::result::Result<Self, WorkFailure> {
+        let node_count = leaf_count
+            .checked_add(compound_count)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        Self::from_normalized_shape(
+            configured_iterations,
+            node_count,
+            compound_count,
+            edge_count,
+            rerun,
+        )
+    }
+
+    fn from_normalized_shape(
+        configured_iterations: usize,
+        node_count: usize,
+        compound_count: usize,
+        edge_count: usize,
+        rerun: bool,
+    ) -> std::result::Result<Self, WorkFailure> {
+        let configured_iterations = if configured_iterations == 0 {
+            DEFAULT_FCOSE_ITERATIONS
+        } else {
+            configured_iterations
+        };
+        let node_iteration_floor = node_count
+            .checked_mul(5)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let effective_max_iterations = configured_iterations.max(node_iteration_floor);
+        let run_count = if rerun { 2 } else { 1 };
+        let graph_work_units = node_count
+            .checked_add(edge_count)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let setup_work_units = graph_work_units
+            .checked_add(CompoundTopology::work_units_with_compound_count(
+                node_count,
+                edge_count,
+                compound_count,
+            )?)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        if node_count == 0 {
+            return Ok(Self {
+                configured_iterations,
+                effective_max_iterations,
+                run_count,
+                setup_work_units,
+                iteration_work_units: 0,
+                maximum_work_units: setup_work_units,
+            });
+        }
+        let iteration_work_units = graph_work_units.max(1);
+        let executed_iterations_per_run = effective_max_iterations
+            .checked_sub(1)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let iteration_maximum = executed_iterations_per_run
+            .checked_mul(run_count)
+            .and_then(|iterations| iterations.checked_mul(iteration_work_units))
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let maximum_work_units = setup_work_units
+            .checked_add(iteration_maximum)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+
+        Ok(Self {
+            configured_iterations,
+            effective_max_iterations,
+            run_count,
+            setup_work_units,
+            iteration_work_units,
+            maximum_work_units,
+        })
+    }
+
+    pub const fn configured_iterations(self) -> usize {
+        self.configured_iterations
+    }
+
+    pub const fn effective_max_iterations(self) -> usize {
+        self.effective_max_iterations
+    }
+
+    pub const fn run_count(self) -> usize {
+        self.run_count
+    }
+
+    pub const fn setup_work_units(self) -> usize {
+        self.setup_work_units
+    }
+
+    pub const fn iteration_work_units(self) -> usize {
+        self.iteration_work_units
+    }
+
+    pub const fn maximum_work_units(self) -> usize {
+        self.maximum_work_units
+    }
+}
+
+/// Cardinalities that distinguish raw constraint input from the filtered runtime projection.
+///
+/// Mermaid/Cytoscape preserves alignment order and duplicates, so both remain part of the work
+/// shape even when they refer to the same node repeatedly.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct FcoseConstraintWorkShape {
+    input_group_count: usize,
+    input_member_count: usize,
+    input_relative_count: usize,
+    retained_group_count: usize,
+    retained_member_count: usize,
+    valid_axis_pair_count: usize,
+}
+
+impl FcoseConstraintWorkShape {
+    const fn from_counts(
+        input_group_count: usize,
+        input_member_count: usize,
+        input_relative_count: usize,
+        retained_group_count: usize,
+        retained_member_count: usize,
+        valid_axis_pair_count: usize,
+    ) -> Self {
+        Self {
+            input_group_count,
+            input_member_count,
+            input_relative_count,
+            retained_group_count,
+            retained_member_count,
+            valid_axis_pair_count,
+        }
+    }
+
+    fn input_headers(
+        opts: &IndexedFcoseOptions,
+    ) -> std::result::Result<(usize, usize), WorkFailure> {
+        let (horizontal, vertical) = opts
+            .alignment_constraint
+            .as_ref()
+            .map(|alignment| (alignment.horizontal.len(), alignment.vertical.len()))
+            .unwrap_or_default();
+        let groups = horizontal
+            .checked_add(vertical)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        Ok((groups, opts.relative_placement_constraint.len()))
+    }
+
+    fn input_member_count(opts: &IndexedFcoseOptions) -> std::result::Result<usize, WorkFailure> {
+        opts.alignment_constraint
+            .as_ref()
+            .map(|alignment| {
+                alignment
+                    .horizontal
+                    .iter()
+                    .chain(&alignment.vertical)
+                    .try_fold(0usize, |members, group| members.checked_add(group.len()))
+                    .ok_or(WorkFailure::ArithmeticOverflow)
+            })
+            .transpose()
+            .map(|members| members.unwrap_or_default())
+    }
+
+    fn from_indexed_options(
+        opts: &IndexedFcoseOptions,
+        node_count: usize,
+        input_group_count: usize,
+        input_member_count: usize,
+    ) -> std::result::Result<Self, WorkFailure> {
+        let mut retained_group_count = 0usize;
+        let mut retained_member_count = 0usize;
+        if let Some(alignment) = opts.alignment_constraint.as_ref() {
+            for group in alignment.horizontal.iter().chain(&alignment.vertical) {
+                let valid_members = group.iter().filter(|idx| **idx < node_count).count();
+                if valid_members > 1 {
+                    retained_group_count = retained_group_count
+                        .checked_add(1)
+                        .ok_or(WorkFailure::ArithmeticOverflow)?;
+                    retained_member_count = retained_member_count
+                        .checked_add(valid_members)
+                        .ok_or(WorkFailure::ArithmeticOverflow)?;
+                }
+            }
+        }
+
+        let mut valid_axis_pair_count = 0usize;
+        for relative in &opts.relative_placement_constraint {
+            if relative
+                .left
+                .zip(relative.right)
+                .is_some_and(|(left, right)| left < node_count && right < node_count)
+            {
+                valid_axis_pair_count = valid_axis_pair_count
+                    .checked_add(1)
+                    .ok_or(WorkFailure::ArithmeticOverflow)?;
+            }
+            if relative
+                .top
+                .zip(relative.bottom)
+                .is_some_and(|(top, bottom)| top < node_count && bottom < node_count)
+            {
+                valid_axis_pair_count = valid_axis_pair_count
+                    .checked_add(1)
+                    .ok_or(WorkFailure::ArithmeticOverflow)?;
+            }
+        }
+
+        Ok(Self::from_counts(
+            input_group_count,
+            input_member_count,
+            opts.relative_placement_constraint.len(),
+            retained_group_count,
+            retained_member_count,
+            valid_axis_pair_count,
+        ))
+    }
+
+    fn input_work_units(self) -> std::result::Result<usize, WorkFailure> {
+        self.input_group_count
+            .checked_add(self.input_member_count)
+            .and_then(|units| units.checked_add(self.input_relative_count))
+            .ok_or(WorkFailure::ArithmeticOverflow)
+    }
+
+    fn run_work_units(self) -> std::result::Result<usize, WorkFailure> {
+        self.retained_group_count
+            .checked_add(self.retained_member_count)
+            .and_then(|units| units.checked_add(self.input_relative_count))
+            .ok_or(WorkFailure::ArithmeticOverflow)
+    }
+
+    fn iteration_work_units(self) -> std::result::Result<usize, WorkFailure> {
+        self.retained_group_count
+            .checked_add(self.retained_member_count)
+            .and_then(|units| units.checked_add(self.valid_axis_pair_count))
+            .ok_or(WorkFailure::ArithmeticOverflow)
+    }
+}
+
+/// Complete predictable FCoSE work admitted before simulation allocation.
+///
+/// Relative-placement ancestry clones are convergence/data-shape dependent and are charged
+/// exactly at their allocation sites, like spectral convergence tranches; they are deliberately
+/// excluded from this predictable maximum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FcoseWorkPlan {
+    schedule: FcoseIterationSchedule,
+    setup_work_units: usize,
+    run_setup_work_units: usize,
+    iteration_work_units: usize,
+    random_seed_offset_work_units: usize,
+    maximum_work_units: usize,
+}
+
+impl FcoseWorkPlan {
+    fn from_schedule(
+        schedule: FcoseIterationSchedule,
+        node_count: usize,
+        shape: FcoseConstraintWorkShape,
+        random_seed_offset: usize,
+        reset_seed_each_run: bool,
+    ) -> std::result::Result<Self, WorkFailure> {
+        let setup_work_units = schedule
+            .setup_work_units()
+            .checked_add(shape.input_work_units()?)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let constraint_run_work_units = shape.run_work_units()?;
+        let run_setup_work_units = if node_count > 0 && constraint_run_work_units > 0 {
+            constraint_run_work_units
+        } else {
+            0
+        };
+        let iteration_work_units = if node_count > 0 {
+            schedule
+                .iteration_work_units()
+                .checked_add(shape.iteration_work_units()?)
+                .ok_or(WorkFailure::ArithmeticOverflow)?
+        } else {
+            0
+        };
+        let executed_iterations_per_run = if node_count > 0 {
+            schedule
+                .effective_max_iterations()
+                .checked_sub(1)
+                .ok_or(WorkFailure::ArithmeticOverflow)?
+        } else {
+            0
+        };
+        let iteration_maximum = executed_iterations_per_run
+            .checked_mul(schedule.run_count())
+            .and_then(|iterations| iterations.checked_mul(iteration_work_units))
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let run_setup_maximum = run_setup_work_units
+            .checked_mul(schedule.run_count())
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let random_reset_count = if reset_seed_each_run {
+            schedule.run_count()
+        } else {
+            1
+        };
+        let random_maximum = random_seed_offset
+            .checked_mul(random_reset_count)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let maximum_work_units = setup_work_units
+            .checked_add(run_setup_maximum)
+            .and_then(|units| units.checked_add(iteration_maximum))
+            .and_then(|units| units.checked_add(random_maximum))
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+
+        Ok(Self {
+            schedule,
+            setup_work_units,
+            run_setup_work_units,
+            iteration_work_units,
+            random_seed_offset_work_units: random_seed_offset,
+            maximum_work_units,
+        })
+    }
+
+    const fn schedule(self) -> FcoseIterationSchedule {
+        self.schedule
+    }
+
+    const fn setup_work_units(self) -> usize {
+        self.setup_work_units
+    }
+
+    const fn run_setup_work_units(self) -> usize {
+        self.run_setup_work_units
+    }
+
+    const fn iteration_work_units(self) -> usize {
+        self.iteration_work_units
+    }
+
+    const fn random_seed_offset_work_units(self) -> usize {
+        self.random_seed_offset_work_units
+    }
+
+    const fn maximum_work_units(self) -> usize {
+        self.maximum_work_units
+    }
+}
 
 // FCoSE only needs these two-dimensional operations. Keep their scalar evaluation order explicit:
 // the covariance and transform checkpoints are sensitive to floating-point accumulation drift.
@@ -182,6 +632,38 @@ impl IndexedGraph {
             }
         }
 
+        // Reject cyclic compound ownership before SimGraph or spectral hierarchy materialization.
+        // Public IndexedGraph callers can otherwise construct a self/indirect parent cycle that
+        // makes every parent-chain walk non-terminating despite a finite work budget.
+        let mut state = vec![0u8; self.compounds.len()];
+        let mut path: Vec<usize> = Vec::new();
+        for start in 0..self.compounds.len() {
+            if state[start] != 0 {
+                continue;
+            }
+
+            path.clear();
+            let mut current = Some(start);
+            while let Some(compound) = current {
+                match state[compound] {
+                    0 => {
+                        state[compound] = 1;
+                        path.push(compound);
+                        current = self.compounds[compound].parent;
+                    }
+                    1 => {
+                        return Err(crate::error::Error::MissingEndpoint {
+                            edge_id: format!("compound-parent-cycle:#{compound}"),
+                        });
+                    }
+                    _ => break,
+                }
+            }
+            for compound in path.drain(..) {
+                state[compound] = 2;
+            }
+        }
+
         for (idx, e) in self.edges.iter().enumerate() {
             if e.source >= self.nodes.len() || e.target >= self.nodes.len() {
                 return Err(crate::error::Error::MissingEndpoint {
@@ -333,24 +815,109 @@ pub fn layout_indexed_with_random_policy(
     opts: &IndexedFcoseOptions,
     random_policy: FcoseRandomPolicy,
 ) -> Result<IndexedLayoutResult> {
+    let mut work_control = NoopWorkControl;
+    layout_indexed_with_random_policy_and_work_control(
+        graph,
+        opts,
+        random_policy,
+        &mut work_control,
+    )
+}
+
+/// Lay out an indexed graph with explicit randomness and caller-owned work accounting.
+pub fn layout_indexed_with_random_policy_and_work_control<W: WorkControl + ?Sized>(
+    graph: &IndexedGraph,
+    opts: &IndexedFcoseOptions,
+    random_policy: FcoseRandomPolicy,
+    work_control: &mut W,
+) -> Result<IndexedLayoutResult> {
+    let node_count = graph
+        .nodes
+        .len()
+        .checked_add(graph.compounds.len())
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    let edge_count = graph.edges.len();
+    let (input_group_count, input_relative_count) = FcoseConstraintWorkShape::input_headers(opts)?;
+
+    // Check 1 protects graph validation and the group-header scan without inspecting any node,
+    // edge, alignment member, or relative endpoint. Checks are non-consuming by contract.
+    let header_scan_bound = node_count
+        .checked_add(edge_count)
+        .and_then(|units| units.checked_add(input_group_count))
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    work_control.check(header_scan_bound)?;
+
     graph.validate()?;
 
+    let input_member_count = FcoseConstraintWorkShape::input_member_count(opts)?;
+    // Check 2 protects the member/endpoint projection used to derive retained runtime shape.
+    let input_scan_bound = header_scan_bound
+        .checked_add(input_member_count)
+        .and_then(|units| units.checked_add(input_relative_count))
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    work_control.check(input_scan_bound)?;
+
+    let shape = FcoseConstraintWorkShape::from_indexed_options(
+        opts,
+        node_count,
+        input_group_count,
+        input_member_count,
+    )?;
+    let schedule = FcoseIterationSchedule::from_options(
+        opts.num_iter,
+        graph.nodes.len(),
+        graph.compounds.len(),
+        edge_count,
+        opts.rerun,
+    )?;
+    let random_seed_offset = random_policy
+        .seed_offset
+        .or(opts.random_seed_offset)
+        .unwrap_or(usize::from(opts.randomize));
+    let work_plan = FcoseWorkPlan::from_schedule(
+        schedule,
+        node_count,
+        shape,
+        random_seed_offset,
+        random_policy.reset_seed_each_run,
+    )?;
+    // Check 3 admits the complete predictable schedule, including compound-topology construction,
+    // before SimGraph/Constraints allocation. Spectral convergence and relative-projection clone
+    // work remain exact dynamic charges.
+    work_control.check(work_plan.maximum_work_units())?;
+    work_control.charge(work_plan.setup_work_units())?;
     let mut sim = SimGraph::from_indexed(graph);
 
     let constraints = Constraints::from_indexed_opts(&sim, opts);
     constraints.validate(sim.nodes.len())?;
 
-    let random_seed_offset = random_policy
-        .seed_offset
-        .or(opts.random_seed_offset)
-        .unwrap_or(usize::from(opts.randomize));
+    let spectral_topology = if opts.randomize && sim.leaf_count > 0 {
+        Some(spectral::SpectralTopology::build(
+            &sim.nodes[..sim.leaf_count],
+            &sim.edges,
+            &sim.compound_parent,
+            work_control,
+        )?)
+    } else {
+        None
+    };
+
     let mut rng = new_fcose_random(random_policy);
-    advance_random(&mut rng, random_seed_offset);
-    let run_count = if opts.rerun { 2 } else { 1 };
+    advance_random_with_work_control(
+        &mut rng,
+        work_plan.random_seed_offset_work_units(),
+        work_control,
+    )?;
     let mut owner_bounds = OwnerBounds::new(sim.nodes.len() + 1);
 
-    for run_idx in 0..run_count {
-        reset_fcose_random_for_run(&mut rng, random_policy, random_seed_offset, run_idx);
+    for run_idx in 0..schedule.run_count() {
+        reset_fcose_random_for_run(
+            &mut rng,
+            random_policy,
+            run_idx,
+            work_plan.random_seed_offset_work_units(),
+            work_control,
+        )?;
         // Mirror upstream component center bookkeeping (`eles.boundingBox()` before layout) by
         // ensuring compound rects wrap their current children before we compute `orig_center`.
         let compound_padding = opts.compound_padding.unwrap_or(0.0).max(0.0);
@@ -386,7 +953,15 @@ pub fn layout_indexed_with_random_policy(
             .relocate_center
             .or_else(|| sim.bounding_box_center_eles(run_idx))
             .unwrap_or((0.0, 0.0));
-        sim.run_spring_embedder(&constraints, opts, &mut rng, &mut owner_bounds);
+        sim.run_spring_embedder(SpringEmbedderContext {
+            constraints: &constraints,
+            options: opts,
+            work_plan,
+            rng: &mut rng,
+            owner_bounds: &mut owner_bounds,
+            spectral_topology: spectral_topology.as_ref(),
+            work_control,
+        })?;
 
         // Ensure compound node rectangles reflect the final child placements before we compute the
         // "current" component bounding box for relocation (`aux.relocateComponent(...)` parity).
@@ -397,7 +972,7 @@ pub fn layout_indexed_with_random_policy(
         let dy = orig_center.1 - new_center.1;
         sim.translate(dx, dy);
 
-        if run_idx + 1 < run_count {
+        if run_idx + 1 < schedule.run_count() {
             sim.update_bounds(&mut owner_bounds);
         }
     }
@@ -623,10 +1198,10 @@ struct SimNode {
 
     // layout-base FR-grid repulsion caches a per-node "surrounding" list, refreshed periodically.
     surrounding: Vec<usize>,
-    grid_start_x: i32,
-    grid_finish_x: i32,
-    grid_start_y: i32,
-    grid_finish_y: i32,
+    grid_start_x: i64,
+    grid_finish_x: i64,
+    grid_start_y: i64,
+    grid_finish_y: i64,
 }
 
 impl SimNode {
@@ -687,79 +1262,10 @@ fn imath_sign(value: f64) -> f64 {
     }
 }
 
-fn lca_owner_idx(nodes: &[SimNode], root_owner_idx: usize, a: usize, b: usize) -> usize {
-    let mut seen: Vec<bool> = vec![false; nodes.len() + 1];
-
-    let mut cur = nodes.get(a).map(|n| n.owner_idx).unwrap_or(root_owner_idx);
-    loop {
-        if cur >= seen.len() {
-            break;
-        }
-        seen[cur] = true;
-        if cur == root_owner_idx {
-            break;
-        }
-        cur = nodes
-            .get(cur)
-            .map(|n| n.owner_idx)
-            .unwrap_or(root_owner_idx);
-    }
-
-    let mut cur = nodes.get(b).map(|n| n.owner_idx).unwrap_or(root_owner_idx);
-    loop {
-        if cur < seen.len() && seen[cur] {
-            return cur;
-        }
-        if cur == root_owner_idx {
-            break;
-        }
-        cur = nodes
-            .get(cur)
-            .map(|n| n.owner_idx)
-            .unwrap_or(root_owner_idx);
-    }
-
-    root_owner_idx
-}
-
-fn node_in_lca_idx(
-    nodes: &[SimNode],
-    root_owner_idx: usize,
-    node_idx: usize,
-    lca_owner: usize,
-) -> usize {
-    let Some(node) = nodes.get(node_idx) else {
-        return node_idx;
-    };
-    if node.owner_idx == lca_owner {
-        return node_idx;
-    }
-
-    let mut owner = node.owner_idx;
-    while owner != root_owner_idx {
-        let Some(parent_owner) = nodes.get(owner).map(|n| n.owner_idx) else {
-            break;
-        };
-        if parent_owner == lca_owner {
-            return owner;
-        }
-        owner = parent_owner;
-    }
-
-    node_idx
-}
-
 #[derive(Debug, Clone, Copy)]
 struct SimEdge {
     a: usize,
     b: usize,
-    // Cache LCA-lifted endpoints for spring forces (layout-base `LEdge.getSourceInLca/getTargetInLca`).
-    //
-    // For inter-graph edges, CoSE applies spring forces between the *immediate children* of the
-    // edge's lowest common ancestor owner graph (often compound nodes), rather than pulling the
-    // original leaf endpoints across compound boundaries.
-    a_in_lca: usize,
-    b_in_lca: usize,
     a_anchor: Option<Anchor>,
     b_anchor: Option<Anchor>,
     curve_style_segments: bool,
@@ -768,6 +1274,378 @@ struct SimEdge {
     elasticity: f64,
     label_width: Option<f64>,
     label_height: Option<f64>,
+}
+
+/// The static compound graph projection used by the CoSE kernel.
+///
+/// Cytoscape/layout-base computes each edge's lowest common ancestor and the two immediate
+/// children below that ancestor before the spring embedder starts.  The previous Rust path
+/// rebuilt a temporary mark array for every edge on every rerun and independently rescanned all
+/// owner graphs to decide where gravity applies.  Keep those source-backed facts together so the
+/// hierarchy is built once and reused by both runs and every iteration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct EdgeProjection {
+    lca_owner_idx: usize,
+    source_in_lca: usize,
+    target_in_lca: usize,
+}
+
+#[derive(Debug, Clone)]
+struct CompoundTopology {
+    edge_projections: Vec<EdgeProjection>,
+    owner_connected: Vec<bool>,
+}
+
+impl CompoundTopology {
+    /// Return a conservative setup tranche for the temporary binary-lifting table, edge
+    /// projections, and one global connectivity union-find.
+    ///
+    /// This count-only entry point assumes the deepest possible compound chain. Callers that know
+    /// the compound cardinality should use [`Self::work_units_with_compound_count`] to avoid
+    /// charging a flat graph for a `log V` ancestry table.
+    #[cfg(test)]
+    fn work_units(node_count: usize, edge_count: usize) -> std::result::Result<usize, WorkFailure> {
+        Self::work_units_with_compound_count(node_count, edge_count, node_count)
+    }
+
+    /// Return a conservative topology tranche for a known compound cardinality.
+    ///
+    /// Ancestry projection is O((V + E) log D), where `D <= compounds + 1`, while union-find
+    /// parent scans retain an independent O((V + E) log V) worst-case bound. Peak temporary space
+    /// is O(V log D + E), and retained topology is O(V + E) after the ancestry table is dropped.
+    fn work_units_with_compound_count(
+        node_count: usize,
+        edge_count: usize,
+        compound_count: usize,
+    ) -> std::result::Result<usize, WorkFailure> {
+        if node_count == 0 {
+            return Ok(0);
+        }
+
+        let owner_count = node_count
+            .checked_add(1)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let max_inclusion_depth = if compound_count >= node_count {
+            node_count
+        } else {
+            compound_count + 1
+        };
+        let ancestry_levels = Self::lifting_level_count(max_inclusion_depth);
+        let lifting_slots = owner_count
+            .checked_mul(ancestry_levels)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let edge_projection_units = edge_count
+            .checked_mul(
+                ancestry_levels
+                    .checked_mul(4)
+                    .and_then(|units| units.checked_add(4))
+                    .ok_or(WorkFailure::ArithmeticOverflow)?,
+            )
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let find_work_units = Self::dsu_find_work_units(node_count, edge_count)?;
+        let connectivity_units = owner_count
+            .checked_add(node_count)
+            .and_then(|units| units.checked_add(find_work_units))
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+
+        // Parent/depth initialization and the lifting table itself are both charged.  The
+        // connectivity term covers DSU initialization, owner scans, and `levels(V)` parent-slot
+        // visits for each of at most `2E + V` find calls. Union-by-size bounds the uncompressed
+        // parent height; path halving can only reduce the executed work.
+        owner_count
+            .checked_mul(2)
+            .and_then(|units| units.checked_add(lifting_slots))
+            .and_then(|units| units.checked_add(edge_projection_units))
+            .and_then(|units| units.checked_add(connectivity_units))
+            .ok_or(WorkFailure::ArithmeticOverflow)
+    }
+
+    fn dsu_find_work_units(
+        node_count: usize,
+        edge_count: usize,
+    ) -> std::result::Result<usize, WorkFailure> {
+        let find_call_count = edge_count
+            .checked_mul(2)
+            .and_then(|calls| calls.checked_add(node_count))
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        find_call_count
+            .checked_mul(Self::lifting_level_count(node_count))
+            .ok_or(WorkFailure::ArithmeticOverflow)
+    }
+
+    fn lifting_level_count(cardinality: usize) -> usize {
+        if cardinality <= 1 {
+            1
+        } else {
+            (usize::BITS - cardinality.leading_zeros()) as usize
+        }
+    }
+
+    fn build(
+        nodes: &[SimNode],
+        edges: &[SimEdge],
+        root_owner_idx: usize,
+        children_by_owner: &[Vec<usize>],
+        inclusion_depth: &[usize],
+    ) -> Self {
+        let node_count = nodes.len();
+        if node_count == 0 {
+            return Self {
+                edge_projections: Vec::new(),
+                owner_connected: vec![true; children_by_owner.len()],
+            };
+        }
+
+        let max_inclusion_depth = inclusion_depth.iter().copied().max().unwrap_or(1);
+        let levels = Self::lifting_level_count(max_inclusion_depth);
+        let owner_count = node_count + 1;
+        let mut depth = vec![0usize; owner_count];
+        for (idx, value) in inclusion_depth.iter().copied().enumerate().take(node_count) {
+            depth[idx] = value;
+        }
+
+        let mut first_ancestor = vec![root_owner_idx; owner_count];
+        for (idx, node) in nodes.iter().enumerate() {
+            first_ancestor[idx] = node.owner_idx.min(root_owner_idx);
+        }
+        first_ancestor[root_owner_idx] = root_owner_idx;
+        let mut ancestors = Vec::with_capacity(levels);
+        ancestors.push(first_ancestor);
+        for level in 1..levels {
+            let previous = &ancestors[level - 1];
+            let mut current = vec![root_owner_idx; owner_count];
+            for idx in 0..owner_count {
+                let parent = previous[idx];
+                current[idx] = previous.get(parent).copied().unwrap_or(root_owner_idx);
+            }
+            ancestors.push(current);
+        }
+
+        let ancestry = CompoundAncestry {
+            root_owner_idx,
+            depth,
+            ancestors,
+        };
+        let edge_projections = edges
+            .iter()
+            .map(|edge| ancestry.project_edge(edge.a, edge.b))
+            .collect::<Vec<_>>();
+        let owner_connected = Self::connected_owners(nodes, &edge_projections, children_by_owner);
+
+        Self {
+            edge_projections,
+            owner_connected,
+        }
+    }
+
+    fn connected_owners(
+        nodes: &[SimNode],
+        edge_projections: &[EdgeProjection],
+        children_by_owner: &[Vec<usize>],
+    ) -> Vec<bool> {
+        let mut dsu = DisjointSet::new(nodes.len());
+        for projection in edge_projections {
+            let source = projection.source_in_lca;
+            let target = projection.target_in_lca;
+            if source >= nodes.len() || target >= nodes.len() || source == target {
+                continue;
+            }
+            // An LCA projection is always made of immediate children of that owner graph.  The
+            // guard keeps malformed private test fixtures fail-closed without changing public
+            // graph validation behavior.
+            if nodes[source].owner_idx == projection.lca_owner_idx
+                && nodes[target].owner_idx == projection.lca_owner_idx
+            {
+                dsu.union(source, target);
+            }
+        }
+
+        let mut connected = vec![true; children_by_owner.len()];
+        for (owner, children) in children_by_owner.iter().enumerate() {
+            let Some((&first, rest)) = children.split_first() else {
+                continue;
+            };
+            let representative = dsu.find(first);
+            for &child in rest {
+                if dsu.find(child) != representative {
+                    connected[owner] = false;
+                    break;
+                }
+            }
+        }
+        connected
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CompoundAncestry {
+    root_owner_idx: usize,
+    depth: Vec<usize>,
+    ancestors: Vec<Vec<usize>>,
+}
+
+impl CompoundAncestry {
+    fn parent_of(&self, node_idx: usize) -> usize {
+        self.ancestors
+            .first()
+            .and_then(|level| level.get(node_idx).copied())
+            .unwrap_or(self.root_owner_idx)
+    }
+
+    fn lift(&self, mut node_idx: usize, mut distance: usize) -> usize {
+        let mut level = 0usize;
+        while distance != 0 {
+            if distance & 1 == 1 {
+                node_idx = self
+                    .ancestors
+                    .get(level)
+                    .and_then(|table| table.get(node_idx).copied())
+                    .unwrap_or(self.root_owner_idx);
+            }
+            distance >>= 1;
+            level = level.saturating_add(1);
+        }
+        node_idx
+    }
+
+    fn lca(&self, mut first: usize, mut second: usize) -> usize {
+        first = first.min(self.root_owner_idx);
+        second = second.min(self.root_owner_idx);
+        if self.depth[first] < self.depth[second] {
+            std::mem::swap(&mut first, &mut second);
+        }
+        first = self.lift(first, self.depth[first].saturating_sub(self.depth[second]));
+        if first == second {
+            return first;
+        }
+        for table in self.ancestors.iter().rev() {
+            let first_parent = table.get(first).copied().unwrap_or(self.root_owner_idx);
+            let second_parent = table.get(second).copied().unwrap_or(self.root_owner_idx);
+            if first_parent != second_parent {
+                first = first_parent;
+                second = second_parent;
+            }
+        }
+        self.parent_of(first)
+    }
+
+    fn child_below(&self, node_idx: usize, ancestor: usize) -> usize {
+        let node_idx = node_idx.min(self.root_owner_idx);
+        if self.parent_of(node_idx) == ancestor {
+            return node_idx;
+        }
+        let desired_depth = self.depth[ancestor].saturating_add(1);
+        let distance = self.depth[node_idx].saturating_sub(desired_depth);
+        self.lift(node_idx, distance)
+    }
+
+    fn project_edge(&self, source: usize, target: usize) -> EdgeProjection {
+        let source = source.min(self.root_owner_idx);
+        let target = target.min(self.root_owner_idx);
+        let source_owner = self.parent_of(source);
+        let target_owner = self.parent_of(target);
+        let lca_owner_idx = self.lca(source_owner, target_owner);
+        let source_in_lca = if source_owner == lca_owner_idx {
+            source
+        } else {
+            self.child_below(source, lca_owner_idx)
+        };
+        let target_in_lca = if target_owner == lca_owner_idx {
+            target
+        } else {
+            self.child_below(target, lca_owner_idx)
+        };
+        EdgeProjection {
+            lca_owner_idx,
+            source_in_lca,
+            target_in_lca,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct DisjointSet {
+    parent: Vec<usize>,
+    size: Vec<usize>,
+}
+
+impl DisjointSet {
+    fn new(len: usize) -> Self {
+        Self {
+            parent: (0..len).collect(),
+            size: vec![1; len],
+        }
+    }
+
+    fn find(&mut self, mut node: usize) -> usize {
+        while self.parent.get(node).copied().unwrap_or(node) != node {
+            let parent = self.parent[node];
+            let grandparent = self.parent.get(parent).copied().unwrap_or(parent);
+            self.parent[node] = grandparent;
+            node = grandparent;
+        }
+        node
+    }
+
+    fn union(&mut self, first: usize, second: usize) {
+        if first >= self.parent.len() || second >= self.parent.len() {
+            return;
+        }
+        let mut first_root = self.find(first);
+        let mut second_root = self.find(second);
+        if first_root == second_root {
+            return;
+        }
+        if self.size[first_root] < self.size[second_root] {
+            std::mem::swap(&mut first_root, &mut second_root);
+        }
+        self.parent[second_root] = first_root;
+        self.size[first_root] = self.size[first_root].saturating_add(self.size[second_root]);
+    }
+
+    #[cfg(test)]
+    fn parent_depth(&self, mut node: usize) -> usize {
+        let mut depth = 0usize;
+        while self
+            .parent
+            .get(node)
+            .copied()
+            .is_some_and(|parent| parent != node)
+        {
+            node = self.parent[node];
+            depth += 1;
+            assert!(depth <= self.parent.len(), "disjoint-set parent cycle");
+        }
+        depth
+    }
+}
+
+fn owner_local_pair_work(
+    children_by_owner: &[Vec<usize>],
+) -> std::result::Result<usize, WorkFailure> {
+    children_by_owner
+        .iter()
+        .try_fold(0usize, |work, children| {
+            let pairs = children
+                .len()
+                .checked_mul(children.len().saturating_sub(1))?
+                / 2;
+            work.checked_add(pairs)
+        })
+        .ok_or(WorkFailure::ArithmeticOverflow)
+}
+
+fn for_each_owner_local_pair(
+    children_by_owner: &[Vec<usize>],
+    mut visit: impl FnMut(usize, usize),
+) {
+    for children in children_by_owner {
+        for (offset, &first) in children.iter().enumerate() {
+            for &second in &children[offset + 1..] {
+                visit(first, second);
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1270,8 +2148,8 @@ fn map_indexed_align_lists(groups: &[Vec<usize>], node_count: usize) -> Vec<Vec<
 struct SimGraph {
     nodes: Vec<SimNode>,
     edges: Vec<SimEdge>,
+    compound_topology: CompoundTopology,
     compound_parent: Vec<Option<usize>>,
-    compound_ids_in_order: Vec<usize>,
     leaf_count: usize,
     // Owner graph identity for repulsion/gravity: each node belongs to the child graph of its
     // parent compound, or the root graph.
@@ -1283,8 +2161,6 @@ struct SimGraph {
     surrounding_seen: Vec<u32>,
     // Compound node indices in descending inclusion depth (deepest first), for updateBounds.
     compounds_deep_first: Vec<usize>,
-    // Descendant leaf indices for each node (empty for leaves).
-    descendant_leaves: Vec<Vec<usize>>,
     // Estimated size for each owner graph (static; computed from node sizes).
     owner_estimated_size: Vec<f64>,
     // layout-base `LNode.inclusionTreeDepth` (root-level nodes depth=1).
@@ -1297,6 +2173,16 @@ struct OwnerBounds {
     right: Vec<f64>,
     top: Vec<f64>,
     bottom: Vec<f64>,
+}
+
+struct SpringEmbedderContext<'a, W: WorkControl + ?Sized> {
+    constraints: &'a Constraints,
+    options: &'a IndexedFcoseOptions,
+    work_plan: FcoseWorkPlan,
+    rng: &'a mut FcoseRandom,
+    owner_bounds: &'a mut OwnerBounds,
+    spectral_topology: Option<&'a spectral::SpectralTopology>,
+    work_control: &'a mut W,
 }
 
 impl OwnerBounds {
@@ -1341,7 +2227,6 @@ impl SimGraph {
     const FINAL_TEMPERATURE: f64 = 0.04; // cose-base `CoSELayout.initSpringEmbedder()`
     const GRID_CALCULATION_CHECK_PERIOD: usize = 10; // layout-base `FDLayoutConstants.GRID_CALCULATION_CHECK_PERIOD`
 
-    const MAX_ITERATIONS: usize = 2500;
     const CONVERGENCE_CHECK_PERIOD: usize = 100;
     const MAX_NODE_DISPLACEMENT_INCREMENTAL: f64 = 100.0; // layout-base `FDLayoutConstants.MAX_NODE_DISPLACEMENT_INCREMENTAL`
 
@@ -1381,7 +2266,6 @@ impl SimGraph {
 
         let compound_parent: Vec<Option<usize>> =
             graph.compounds.iter().map(|c| c.parent).collect();
-        let compound_ids_in_order: Vec<usize> = (0..compound_count).collect();
 
         // Materialize compound nodes as layout nodes (Cytoscape parent nodes).
         for c in &graph.compounds {
@@ -1430,8 +2314,6 @@ impl SimGraph {
             edges.push(SimEdge {
                 a: e.source,
                 b: e.target,
-                a_in_lca: e.source,
-                b_in_lca: e.target,
                 a_anchor: e.source_anchor,
                 b_anchor: e.target_anchor,
                 curve_style_segments: e.curve_style_segments,
@@ -1535,34 +2417,18 @@ impl SimGraph {
             .collect();
         compounds_deep_first.sort_by_key(|&idx| std::cmp::Reverse(inclusion_depth[idx]));
 
-        // Compute `no_of_children` weights and descendant leaf lists.
-        let mut descendant_leaves: Vec<Vec<usize>> = vec![Vec::new(); nodes.len()];
-        let mut no_of_children: Vec<f64> = vec![1.0; nodes.len()];
-
-        // Initialize leaf descendants for leaves.
-        for idx in 0..nodes.len() {
-            if !nodes[idx].is_compound {
-                descendant_leaves[idx] = vec![idx];
-                no_of_children[idx] = 1.0;
-            }
-        }
-
-        // For compounds, aggregate descendant leaves from immediate children (postorder).
+        // `LNode.getNoOfChildren()` is a scalar subtree weight: leaves and empty compounds count
+        // as one, while non-empty compounds sum the weights of their immediate children. Keep the
+        // postorder scalar only; materializing every compound-to-leaf relation turns a deep
+        // compound chain into quadratic setup memory and per-iteration displacement work.
+        let mut no_of_children: Vec<usize> = vec![1; nodes.len()];
         for &cidx in &compounds_deep_first {
             let children = &children_by_owner[cidx];
-            let mut leaves: Vec<usize> = Vec::new();
-            for &child in children {
-                leaves.extend(descendant_leaves[child].iter().copied());
-            }
-            leaves.sort_unstable();
-            leaves.dedup();
-            if leaves.is_empty() {
-                descendant_leaves[cidx] = Vec::new();
-                no_of_children[cidx] = 1.0;
-            } else {
-                no_of_children[cidx] = leaves.len() as f64;
-                descendant_leaves[cidx] = leaves;
-            }
+            no_of_children[cidx] = children
+                .iter()
+                .map(|&child| no_of_children[child])
+                .sum::<usize>()
+                .max(1);
         }
 
         // Compute estimated sizes (used for gravity ranges, and to match layout-base defaults).
@@ -1614,20 +2480,27 @@ impl SimGraph {
         }
 
         for (idx, n) in nodes.iter_mut().enumerate() {
-            n.no_of_children = no_of_children[idx].max(1.0);
+            n.no_of_children = no_of_children[idx] as f64;
         }
+
+        let compound_topology = CompoundTopology::build(
+            &nodes,
+            &edges,
+            root_owner_idx,
+            &children_by_owner,
+            &inclusion_depth,
+        );
 
         Self {
             nodes,
             edges,
+            compound_topology,
             compound_parent,
-            compound_ids_in_order,
             leaf_count,
             root_owner_idx,
             children_by_owner,
             surrounding_seen: vec![0; leaf_count + compound_count],
             compounds_deep_first,
-            descendant_leaves,
             owner_estimated_size,
             inclusion_depth,
         }
@@ -2085,20 +2958,96 @@ impl SimGraph {
         out
     }
 
-    fn run_spring_embedder(
-        &mut self,
-        constraints: &Constraints,
-        opts: &IndexedFcoseOptions,
-        rng: &mut FcoseRandom,
-        owner_bounds: &mut OwnerBounds,
+    fn calculate_displacements(
+        &self,
+        all_nodes_in_layout_order: &[usize],
+        cooling_factor: f64,
+        max_displacement: f64,
+        displacements: &mut [(f64, f64)],
+        propagated_by_owner: &mut [(f64, f64)],
     ) {
+        displacements.fill((0.0, 0.0));
+        propagated_by_owner.fill((0.0, 0.0));
+
+        // Port `CoSELayout.moveNodes()` and `CoSENode.calculateDisplacement()` without
+        // materializing every compound-to-leaf relationship. Upstream processes owner graphs in
+        // pre-order: a compound propagates its clamped displacement recursively to leaf
+        // descendants, while nested compounds do not inherit that displacement themselves.
+        // `propagated_by_owner` stores the ordered sum of ancestor compound displacements for the
+        // leaves in each child graph, reducing propagation from O(sum(descendant leaves)) to O(N).
+        for &idx in all_nodes_in_layout_order {
+            let Some(node) = self.nodes.get(idx) else {
+                continue;
+            };
+
+            let is_non_empty_compound = node.is_compound
+                && self
+                    .children_by_owner
+                    .get(idx)
+                    .is_some_and(|children| !children.is_empty());
+            let inherited = if is_non_empty_compound {
+                (0.0, 0.0)
+            } else {
+                propagated_by_owner
+                    .get(node.owner_idx)
+                    .copied()
+                    .unwrap_or((0.0, 0.0))
+            };
+            let denominator = node.no_of_children.max(1.0);
+            let mut dx = inherited.0
+                + cooling_factor * (node.spring_fx + node.repulsion_fx + node.gravitation_fx)
+                    / denominator;
+            let mut dy = inherited.1
+                + cooling_factor * (node.spring_fy + node.repulsion_fy + node.gravitation_fy)
+                    / denominator;
+
+            if dx.abs() > max_displacement {
+                dx = max_displacement * imath_sign(dx);
+            }
+            if dy.abs() > max_displacement {
+                dy = max_displacement * imath_sign(dy);
+            }
+            if let Some(slot) = displacements.get_mut(idx) {
+                *slot = (dx, dy);
+            }
+
+            if !is_non_empty_compound {
+                continue;
+            }
+
+            let ancestor_displacement = propagated_by_owner
+                .get(node.owner_idx)
+                .copied()
+                .unwrap_or((0.0, 0.0));
+            if let Some(slot) = propagated_by_owner.get_mut(idx) {
+                slot.0 = ancestor_displacement.0 + dx;
+                slot.1 = ancestor_displacement.1 + dy;
+            }
+        }
+    }
+
+    fn run_spring_embedder<W: WorkControl + ?Sized>(
+        &mut self,
+        context: SpringEmbedderContext<'_, W>,
+    ) -> std::result::Result<(), WorkFailure> {
+        let SpringEmbedderContext {
+            constraints,
+            options: opts,
+            work_plan,
+            rng,
+            owner_bounds,
+            spectral_topology,
+            work_control,
+        } = context;
+        let schedule = work_plan.schedule();
+
         // `cytoscape-fcose` constructs a fresh CoSELayout for every `layout.run()`. Keep the
         // generation-based FR-grid deduplication scratch run-local as well; reusing markers while
         // restarting the generation counter can silently drop repulsion pairs on the second run.
         self.surrounding_seen.fill(0);
 
         if self.nodes.is_empty() {
-            return;
+            return Ok(());
         }
 
         // Recompute per-edge ideal lengths (layout-base `FDLayout.calcIdealEdgeLengths`).
@@ -2143,25 +3092,19 @@ impl SimGraph {
         // FCoSE performs a spectral initialization when `randomize=true`. Mermaid 11.15 sets
         // Architecture's default to `false`, while cytoscape-fcose's library default is `true`.
         let mut spectral_applied = false;
-        if opts.randomize {
+        if let Some(spectral_topology) = spectral_topology {
             let node_separation = opts
                 .node_separation
                 .filter(|v| v.is_finite() && *v > 0.0)
                 .unwrap_or(75.0);
-            let spectral_edges: Vec<SimEdge> = self
-                .edges
-                .iter()
-                .copied()
-                .filter(|e| e.a < self.leaf_count && e.b < self.leaf_count)
-                .collect();
             spectral_applied = spectral::apply_spectral_start_positions(
                 &mut self.nodes[..self.leaf_count],
-                &spectral_edges,
-                &self.compound_parent,
-                &self.compound_ids_in_order,
+                &self.edges,
+                spectral_topology,
                 node_separation,
                 rng,
-            );
+                work_control,
+            )?;
         }
 
         let gravity_constant = Self::DEFAULT_GRAVITY_STRENGTH;
@@ -2174,8 +3117,6 @@ impl SimGraph {
         // Applying gravity to all nodes (a common simplification) makes sparse cross-compound
         // Architecture graphs significantly more compact than Mermaid/Cytoscape, which in turn
         // changes the root `viewBox/max-width` in parity-root comparisons.
-        let apply_gravity = self.nodes_apply_gravity_mask();
-
         // Match `cose-base` repulsion cutoff (`CoSELayout.calcRepulsionRange()`):
         //
         // `repulsionRange = 2 * (level + 1) * idealEdgeLength`
@@ -2201,7 +3142,12 @@ impl SimGraph {
             || !constraints.align_vertical.is_empty()
             || !constraints.relative.is_empty();
         if has_constraints {
-            handle_constraints_pre_layout(&mut self.nodes[..self.leaf_count], constraints);
+            work_control.charge(work_plan.run_setup_work_units())?;
+            handle_constraints_pre_layout(
+                &mut self.nodes[..self.leaf_count],
+                constraints,
+                work_control,
+            )?;
         }
 
         let mut constraint_rt = ConstraintRuntime::new(&self.nodes, constraints);
@@ -2219,11 +3165,7 @@ impl SimGraph {
         let initial_cooling_factor = Self::DEFAULT_COOLING_FACTOR_INCREMENTAL;
         let mut cooling_factor = initial_cooling_factor;
         let max_node_displacement = Self::MAX_NODE_DISPLACEMENT_INCREMENTAL;
-        let configured_max_iterations = opts
-            .num_iter
-            .filter(|v| *v > 0)
-            .unwrap_or(Self::MAX_ITERATIONS);
-        let max_iterations = configured_max_iterations.max(self.nodes.len() * 5);
+        let max_iterations = schedule.effective_max_iterations();
         let max_cooling_cycle = (max_iterations as f64) / (Self::CONVERGENCE_CHECK_PERIOD as f64);
         let final_temperature = Self::FINAL_TEMPERATURE;
         let mut cooling_cycle = 0.0f64;
@@ -2234,6 +3176,7 @@ impl SimGraph {
 
         let mut processed_generation: Vec<u32> = vec![0; self.nodes.len()];
         let mut disps: Vec<(f64, f64)> = vec![(0.0, 0.0); self.nodes.len()];
+        let mut propagated_displacements: Vec<(f64, f64)> = vec![(0.0, 0.0); self.nodes.len() + 1];
         let all_nodes_in_layout_order = self.all_nodes_layout_order();
         let mut current_processed_generation: u32 = 0;
         let mut surrounding_seen_generation: u32 = 1;
@@ -2259,9 +3202,12 @@ impl SimGraph {
                 let numerator = (100.0 * (initial_cooling_factor - final_temperature)).ln();
                 let denominator = max_cooling_cycle.ln().max(1e-9);
                 let power = numerator / denominator;
-                let schedule = cooling_cycle.powf(power) / 100.0;
-                cooling_factor = (initial_cooling_factor - schedule).max(final_temperature);
+                let cooling_adjustment = cooling_cycle.powf(power) / 100.0;
+                cooling_factor =
+                    (initial_cooling_factor - cooling_adjustment).max(final_temperature);
             }
+
+            work_control.charge(work_plan.iteration_work_units())?;
 
             let mut total_displacement = 0.0f64;
 
@@ -2339,13 +3285,14 @@ impl SimGraph {
                     &mut self.nodes,
                     repulsion_range,
                     &all_nodes_in_layout_order,
-                );
+                    work_control,
+                )?;
             }
 
             if repulsion_range.is_finite() && repulsion_range > 0.0 {
-                for &i in &all_nodes_in_layout_order {
-                    if refresh_surrounding {
-                        if let Some(g) = &repulsion_grid {
+                if refresh_surrounding {
+                    for &i in &all_nodes_in_layout_order {
+                        if let Some(g) = &mut repulsion_grid {
                             g.refresh_node_surrounding(
                                 i,
                                 &mut self.nodes,
@@ -2354,12 +3301,29 @@ impl SimGraph {
                                 repulsion_range,
                                 &mut self.surrounding_seen,
                                 &mut surrounding_seen_generation,
-                            );
+                                work_control,
+                            )?;
                         } else {
                             self.nodes[i].surrounding.clear();
                         }
+                        processed_generation[i] = current_processed_generation;
                     }
+                }
 
+                let surrounding_pair_work = all_nodes_in_layout_order
+                    .iter()
+                    .try_fold(0usize, |work, &idx| {
+                        work.checked_add(
+                            self.nodes
+                                .get(idx)
+                                .map(|node| node.surrounding.len())
+                                .unwrap_or_default(),
+                        )
+                    })
+                    .ok_or(WorkFailure::ArithmeticOverflow)?;
+                admit_dynamic_work(work_control, surrounding_pair_work)?;
+
+                for &i in &all_nodes_in_layout_order {
                     let surrounding = std::mem::take(&mut self.nodes[i].surrounding);
                     let node_i_center_x = self.nodes[i].center_x();
                     let node_i_center_y = self.nodes[i].center_y();
@@ -2387,42 +3351,42 @@ impl SimGraph {
                         self.nodes[j].repulsion_fy -= rfy;
                     }
                     self.nodes[i].surrounding = surrounding;
-                    processed_generation[i] = current_processed_generation;
                 }
             } else {
-                // Fallback: unbounded repulsion (all pairs).
-                for i in 0..self.nodes.len() {
-                    let node_i_center_x = self.nodes[i].center_x();
-                    let node_i_center_y = self.nodes[i].center_y();
-                    for j in (i + 1)..self.nodes.len() {
-                        if self.nodes[i].owner_idx != self.nodes[j].owner_idx {
-                            continue;
-                        }
-                        let node_j_center_x = self.nodes[j].center_x();
-                        let node_j_center_y = self.nodes[j].center_y();
-                        let (rfx, rfy) = calc_repulsion_force(
-                            &self.nodes[i],
-                            &self.nodes[j],
-                            min_repulsion_dist,
-                            half_default_edge_length,
-                            node_i_center_x,
-                            node_i_center_y,
-                            node_j_center_x,
-                            node_j_center_y,
-                        );
-                        self.nodes[i].repulsion_fx += rfx;
-                        self.nodes[i].repulsion_fy += rfy;
-                        self.nodes[j].repulsion_fx -= rfx;
-                        self.nodes[j].repulsion_fy -= rfy;
-                    }
-                }
+                // Fallback: unbounded repulsion for every same-owner pair. layout-base scans the
+                // flat `getAllNodes()` list and discards cross-owner pairs; grouping by owner keeps
+                // the same within-owner insertion order while avoiding those discarded scans.
+                let pair_work = owner_local_pair_work(&self.children_by_owner)?;
+                admit_dynamic_work(work_control, pair_work)?;
+                let (nodes, children_by_owner) = (&mut self.nodes, &self.children_by_owner);
+                for_each_owner_local_pair(children_by_owner, |i, j| {
+                    let node_i_center_x = nodes[i].center_x();
+                    let node_i_center_y = nodes[i].center_y();
+                    let node_j_center_x = nodes[j].center_x();
+                    let node_j_center_y = nodes[j].center_y();
+                    let (rfx, rfy) = calc_repulsion_force(
+                        &nodes[i],
+                        &nodes[j],
+                        min_repulsion_dist,
+                        half_default_edge_length,
+                        node_i_center_x,
+                        node_i_center_y,
+                        node_j_center_x,
+                        node_j_center_y,
+                    );
+                    nodes[i].repulsion_fx += rfx;
+                    nodes[i].repulsion_fy += rfy;
+                    nodes[j].repulsion_fx -= rfx;
+                    nodes[j].repulsion_fy -= rfy;
+                });
             }
 
             // Gravity forces (layout-base `FDLayout.calcGravitationalForce`), per owner graph.
-            for (idx, n) in self.nodes.iter_mut().enumerate() {
+            let owner_connected = &self.compound_topology.owner_connected;
+            for n in &mut self.nodes {
                 n.gravitation_fx = 0.0;
                 n.gravitation_fy = 0.0;
-                if !apply_gravity.get(idx).copied().unwrap_or(false) {
+                if owner_connected.get(n.owner_idx).copied().unwrap_or(true) {
                     continue;
                 }
 
@@ -2470,53 +3434,13 @@ impl SimGraph {
             // positions after the move). Hard projection tends to over-separate constrained nodes
             // and can noticeably inflate root viewBox/max-width in parity-root mode.
             let max_d = cooling_factor * max_node_displacement;
-            disps.fill((0.0, 0.0));
-            // Port of `CoSELayout.moveNodes()`:
-            // - displacements are calculated in `getAllNodes()` order
-            // - compound displacements are propagated to (leaf) descendants before those leaves
-            //   compute/clamp their own displacement
-            for &idx in &all_nodes_in_layout_order {
-                let Some(n) = self.nodes.get(idx) else {
-                    continue;
-                };
-
-                let denom = n.no_of_children.max(1.0);
-                let dx = cooling_factor * (n.spring_fx + n.repulsion_fx + n.gravitation_fx) / denom;
-                let dy = cooling_factor * (n.spring_fy + n.repulsion_fy + n.gravitation_fy) / denom;
-
-                if let Some(slot) = disps.get_mut(idx) {
-                    slot.0 += dx;
-                    slot.1 += dy;
-
-                    if slot.0.abs() > max_d {
-                        slot.0 = max_d * imath_sign(slot.0);
-                    }
-                    if slot.1.abs() > max_d {
-                        slot.1 = max_d * imath_sign(slot.1);
-                    }
-                }
-
-                let is_non_empty_compound = n.is_compound
-                    && self
-                        .children_by_owner
-                        .get(idx)
-                        .is_some_and(|v| !v.is_empty());
-                if !is_non_empty_compound {
-                    continue;
-                }
-
-                let (pdx, pdy) = disps.get(idx).copied().unwrap_or((0.0, 0.0));
-                if pdx == 0.0 && pdy == 0.0 {
-                    continue;
-                }
-                for &leaf in self.descendant_leaves.get(idx).into_iter().flatten() {
-                    if leaf >= disps.len() {
-                        continue;
-                    }
-                    disps[leaf].0 += pdx;
-                    disps[leaf].1 += pdy;
-                }
-            }
+            self.calculate_displacements(
+                &all_nodes_in_layout_order,
+                cooling_factor,
+                max_d,
+                &mut disps,
+                &mut propagated_displacements,
+            );
 
             if let Some(rt) = constraint_rt.as_mut() {
                 rt.update_displacements(
@@ -2557,117 +3481,7 @@ impl SimGraph {
         // Ensure compound rectangles reflect the final leaf positions before callers compute
         // component bbox/centering (e.g. `aux.relocateComponent(...)` parity).
         self.update_bounds(owner_bounds);
-    }
-
-    fn nodes_apply_gravity_mask(&self) -> Vec<bool> {
-        let owner_connected = self.owner_graph_connected_mask();
-        self.nodes
-            .iter()
-            .map(|n| !owner_connected.get(n.owner_idx).copied().unwrap_or(true))
-            .collect()
-    }
-
-    fn owner_graph_connected_mask(&self) -> Vec<bool> {
-        let owner_count = self.nodes.len() + 1;
-        let mut edges_by_node: Vec<Vec<usize>> = vec![Vec::new(); self.nodes.len()];
-        for (eidx, e) in self.edges.iter().enumerate() {
-            if e.a < self.nodes.len() {
-                edges_by_node[e.a].push(eidx);
-            }
-            if e.b < self.nodes.len() {
-                edges_by_node[e.b].push(eidx);
-            }
-        }
-
-        let mut connected: Vec<bool> = vec![true; owner_count];
-        for owner in 0..owner_count {
-            let nodes_in_graph = self
-                .children_by_owner
-                .get(owner)
-                .map(|v| v.as_slice())
-                .unwrap_or(&[]);
-            if nodes_in_graph.is_empty() {
-                connected[owner] = true;
-                continue;
-            }
-
-            let mut visited: Vec<bool> = vec![false; self.nodes.len()];
-            let mut queue: std::collections::VecDeque<usize> = std::collections::VecDeque::new();
-
-            let push_with_children =
-                |start: usize,
-                 visited: &mut [bool],
-                 queue: &mut std::collections::VecDeque<usize>| {
-                    let mut stack: Vec<usize> = vec![start];
-                    while let Some(cur) = stack.pop() {
-                        if cur >= visited.len() {
-                            continue;
-                        }
-                        if visited[cur] {
-                            continue;
-                        }
-                        visited[cur] = true;
-                        queue.push_back(cur);
-                        if let Some(ch) = self.children_by_owner.get(cur) {
-                            for &kid in ch {
-                                stack.push(kid);
-                            }
-                        }
-                    }
-                };
-
-            push_with_children(nodes_in_graph[0], &mut visited, &mut queue);
-
-            while let Some(cur) = queue.pop_front() {
-                if cur >= self.nodes.len() {
-                    continue;
-                }
-                for &eidx in edges_by_node.get(cur).map(|v| v.as_slice()).unwrap_or(&[]) {
-                    let e = &self.edges[eidx];
-                    let other = if e.a == cur {
-                        e.b
-                    } else if e.b == cur {
-                        e.a
-                    } else {
-                        continue;
-                    };
-                    let Some(mapped) = self.map_node_to_owner_graph(other, owner) else {
-                        continue;
-                    };
-                    if !visited.get(mapped).copied().unwrap_or(false) {
-                        push_with_children(mapped, &mut visited, &mut queue);
-                    }
-                }
-            }
-
-            connected[owner] = nodes_in_graph
-                .iter()
-                .all(|&nidx| visited.get(nidx).copied().unwrap_or(false));
-        }
-
-        connected
-    }
-
-    fn map_node_to_owner_graph(
-        &self,
-        mut node_idx: usize,
-        owner_graph_idx: usize,
-    ) -> Option<usize> {
-        let root_owner_idx = self.root_owner_idx;
-        loop {
-            if node_idx >= self.nodes.len() {
-                return None;
-            }
-            if self.nodes[node_idx].owner_idx == owner_graph_idx {
-                return Some(node_idx);
-            }
-            let owner = self.nodes[node_idx].owner_idx;
-            if owner == root_owner_idx {
-                break;
-            }
-            node_idx = owner;
-        }
-        None
+        Ok(())
     }
 
     fn reset_edge_ideal_lengths(&mut self) {
@@ -2685,13 +3499,14 @@ impl SimGraph {
         let inclusion_depth: &[usize] = &self.inclusion_depth;
         let root_owner_idx = self.root_owner_idx;
 
-        for e in &mut self.edges {
-            // Cache LCA-lifted endpoints for spring forces.
-            let lca_owner = lca_owner_idx(nodes, root_owner_idx, e.a, e.b);
-            let src_in_lca = node_in_lca_idx(nodes, root_owner_idx, e.a, lca_owner);
-            let tgt_in_lca = node_in_lca_idx(nodes, root_owner_idx, e.b, lca_owner);
-            e.a_in_lca = src_in_lca;
-            e.b_in_lca = tgt_in_lca;
+        for (e, projection) in self
+            .edges
+            .iter_mut()
+            .zip(&self.compound_topology.edge_projections)
+        {
+            let lca_owner = projection.lca_owner_idx;
+            let src_in_lca = projection.source_in_lca;
+            let tgt_in_lca = projection.target_in_lca;
 
             if nodes[e.a].owner_idx == nodes[e.b].owner_idx {
                 continue;
@@ -2742,9 +3557,13 @@ impl SimGraph {
     }
 }
 
-fn handle_constraints_pre_layout(nodes: &mut [SimNode], c: &Constraints) {
+fn handle_constraints_pre_layout<W: WorkControl + ?Sized>(
+    nodes: &mut [SimNode],
+    c: &Constraints,
+    work_control: &mut W,
+) -> std::result::Result<(), WorkFailure> {
     if nodes.is_empty() {
-        return;
+        return Ok(());
     }
 
     let mut x: Vec<f64> = nodes.iter().map(|n| n.center_x()).collect();
@@ -2804,13 +3623,28 @@ fn handle_constraints_pre_layout(nodes: &mut [SimNode], c: &Constraints) {
 
     // Enforce relative placement constraints in position space.
     if !c.relative.is_empty() {
-        enforce_relative_placement(&mut x, &mut y, c);
+        enforce_relative_placement(&mut x, &mut y, c, work_control)?;
     }
 
     for (i, n) in nodes.iter_mut().enumerate() {
         n.left = x[i] - n.width / 2.0;
         n.top = y[i] - n.height / 2.0;
     }
+    Ok(())
+}
+
+fn charge_relative_projection_work<W: WorkControl + ?Sized>(
+    work_control: &mut W,
+    left: usize,
+    right: usize,
+) -> std::result::Result<(), WorkFailure> {
+    let units = left
+        .checked_add(right)
+        .ok_or(WorkFailure::ArithmeticOverflow)?;
+    if units > 0 {
+        work_control.charge(units)?;
+    }
+    Ok(())
 }
 
 fn handle_relative_only_transform(x: &mut [f64], y: &mut [f64], rel: &[RelConstraint]) {
@@ -3182,7 +4016,12 @@ fn apply_reflection_for_relative_placement(x: &mut [f64], y: &mut [f64], rel: &[
     }
 }
 
-fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
+fn enforce_relative_placement<W: WorkControl + ?Sized>(
+    x: &mut [f64],
+    y: &mut [f64],
+    c: &Constraints,
+    work_control: &mut W,
+) -> std::result::Result<(), WorkFailure> {
     #[derive(Debug, Clone, Copy)]
     struct Neighbor {
         id: usize,
@@ -3191,15 +4030,16 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
 
     let n = x.len().min(y.len());
     if n == 0 {
-        return;
+        return Ok(());
     }
 
-    fn enforce_relative_placement_no_align_small(
+    fn enforce_relative_placement_no_align_small<W: WorkControl + ?Sized>(
         x: &mut [f64],
         y: &mut [f64],
         rel: &[RelConstraint],
         n: usize,
-    ) {
+        work_control: &mut W,
+    ) -> std::result::Result<(), WorkFailure> {
         use std::collections::VecDeque;
 
         fn build_axis_dag_keys(
@@ -3336,15 +4176,29 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
             out
         }
 
-        fn find_appropriate_positions(
-            keys: &[usize],
-            dag: &[Vec<Neighbor>],
+        struct SmallAxisProjection<'a> {
+            keys: &'a [usize],
+            dag: &'a [Vec<Neighbor>],
             axis: Axis,
-            n: usize,
-            x: &[f64],
-            y: &[f64],
-            sources: &[Vec<usize>],
-        ) -> Vec<f64> {
+            node_count: usize,
+            x: &'a [f64],
+            y: &'a [f64],
+            sources: &'a [Vec<usize>],
+        }
+
+        fn find_appropriate_positions<W: WorkControl + ?Sized>(
+            projection: SmallAxisProjection<'_>,
+            work_control: &mut W,
+        ) -> std::result::Result<Vec<f64>, WorkFailure> {
+            let SmallAxisProjection {
+                keys,
+                dag,
+                axis,
+                node_count: n,
+                x,
+                y,
+                sources,
+            } = projection;
             let mut in_deg: Vec<usize> = vec![0; n];
             for &src in keys {
                 for e in &dag[src] {
@@ -3392,6 +4246,11 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
                         q.push_back(neigh.id);
                     }
 
+                    charge_relative_projection_work(
+                        work_control,
+                        past_order[cur].len(),
+                        past_order[neigh.id].len(),
+                    )?;
                     let mut merged_bits = past_bits[cur];
                     let mut merged_order: Vec<usize> = past_order[cur].clone();
                     for &v in &past_order[neigh.id] {
@@ -3421,7 +4280,15 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
                 }
                 let first = past_order[k][0];
                 let first_bit = 1u64 << (first as u64);
+                if !comp_bits.is_empty() {
+                    work_control.charge(comp_bits.len())?;
+                }
                 if let Some(idx) = comp_bits.iter().position(|b| (*b & first_bit) != 0) {
+                    charge_relative_projection_work(
+                        work_control,
+                        comp_order[idx].len(),
+                        past_order[k].len(),
+                    )?;
                     let mut bits = comp_bits[idx];
                     let mut order = comp_order[idx].clone();
                     for &v in &past_order[k] {
@@ -3434,6 +4301,7 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
                     comp_bits[idx] = bits;
                     comp_order[idx] = order;
                 } else {
+                    charge_relative_projection_work(work_control, past_order[k].len(), 0)?;
                     comp_bits.push(past_bits[k]);
                     comp_order.push(past_order[k].clone());
                 }
@@ -3458,15 +4326,25 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
                 }
             }
 
-            position
+            Ok(position)
         }
 
         let (keys_h, dag_h) = build_axis_dag_keys(Axis::Horizontal, rel, n);
         if !keys_h.is_empty() {
             let rev_h = build_rev(&keys_h, &dag_h, n);
             let sources = component_sources(&keys_h, &dag_h, &rev_h, n);
-            let pos =
-                find_appropriate_positions(&keys_h, &dag_h, Axis::Horizontal, n, x, y, &sources);
+            let pos = find_appropriate_positions(
+                SmallAxisProjection {
+                    keys: &keys_h,
+                    dag: &dag_h,
+                    axis: Axis::Horizontal,
+                    node_count: n,
+                    x,
+                    y,
+                    sources: &sources,
+                },
+                work_control,
+            )?;
             for &k in &keys_h {
                 x[k] = pos[k];
             }
@@ -3476,17 +4354,28 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
         if !keys_v.is_empty() {
             let rev_v = build_rev(&keys_v, &dag_v, n);
             let sources = component_sources(&keys_v, &dag_v, &rev_v, n);
-            let pos =
-                find_appropriate_positions(&keys_v, &dag_v, Axis::Vertical, n, x, y, &sources);
+            let pos = find_appropriate_positions(
+                SmallAxisProjection {
+                    keys: &keys_v,
+                    dag: &dag_v,
+                    axis: Axis::Vertical,
+                    node_count: n,
+                    x,
+                    y,
+                    sources: &sources,
+                },
+                work_control,
+            )?;
             for &k in &keys_v {
                 y[k] = pos[k];
             }
         }
+        Ok(())
     }
 
     if c.align_vertical.is_empty() && c.align_horizontal.is_empty() && n <= 64 {
-        enforce_relative_placement_no_align_small(x, y, &c.relative, n);
-        return;
+        enforce_relative_placement_no_align_small(x, y, &c.relative, n, work_control)?;
+        return Ok(());
     }
 
     // Dummy mappings for alignment constraints (per-axis, matching `ConstraintHandler`).
@@ -3630,16 +4519,31 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
         }
     }
 
-    fn find_appropriate_positions(
-        dag: &IndexMap<usize, Vec<Neighbor>>,
+    struct AxisProjection<'a> {
+        dag: &'a IndexMap<usize, Vec<Neighbor>>,
         axis: Axis,
-        n: usize,
-        x: &[f64],
-        y: &[f64],
-        dummy_pos: &[f64],
-        component_sources: &[Vec<usize>],
-    ) -> IndexMap<usize, f64> {
+        node_count: usize,
+        x: &'a [f64],
+        y: &'a [f64],
+        dummy_pos: &'a [f64],
+        component_sources: &'a [Vec<usize>],
+    }
+
+    fn find_appropriate_positions<W: WorkControl + ?Sized>(
+        projection: AxisProjection<'_>,
+        work_control: &mut W,
+    ) -> std::result::Result<IndexMap<usize, f64>, WorkFailure> {
         use std::collections::VecDeque;
+
+        let AxisProjection {
+            dag,
+            axis,
+            node_count: n,
+            x,
+            y,
+            dummy_pos,
+            component_sources,
+        } = projection;
 
         let mut in_deg: IndexMap<usize, usize> = IndexMap::new();
         for (&k, _) in dag.iter() {
@@ -3690,6 +4594,11 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
                 if *deg == 0 {
                     q.push_back(neigh.id);
                 }
+                charge_relative_projection_work(
+                    work_control,
+                    past[&cur].len(),
+                    past[&neigh.id].len(),
+                )?;
                 let mut merged: IndexSet<usize> = past[&cur].clone();
                 for v in past[&neigh.id].iter().copied() {
                     merged.insert(v);
@@ -3714,13 +4623,18 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
             let Some(&first) = set.iter().next() else {
                 continue;
             };
+            if !components.is_empty() {
+                work_control.charge(components.len())?;
+            }
             if let Some(idx) = components.iter().position(|c| c.contains(&first)) {
+                charge_relative_projection_work(work_control, components[idx].len(), set.len())?;
                 let mut merged = components[idx].clone();
                 for v in set.iter().copied() {
                     merged.insert(v);
                 }
                 components[idx] = merged;
             } else {
+                charge_relative_projection_work(work_control, set.len(), 0)?;
                 components.push(set.clone());
             }
         }
@@ -3744,21 +4658,24 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
             }
         }
 
-        position
+        Ok(position)
     }
 
     if !dag_h.is_empty() {
         let rev = dag_to_reversed(&dag_h);
         let sources = component_sources(&dag_h, &rev);
         let pos = find_appropriate_positions(
-            &dag_h,
-            Axis::Horizontal,
-            n,
-            x,
-            y,
-            &dummy_pos_for_vertical_alignment,
-            &sources,
-        );
+            AxisProjection {
+                dag: &dag_h,
+                axis: Axis::Horizontal,
+                node_count: n,
+                x,
+                y,
+                dummy_pos: &dummy_pos_for_vertical_alignment,
+                component_sources: &sources,
+            },
+            work_control,
+        )?;
         for (&key, &v) in pos.iter() {
             if key < n {
                 x[key] = v;
@@ -3776,14 +4693,17 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
         let rev = dag_to_reversed(&dag_v);
         let sources = component_sources(&dag_v, &rev);
         let pos = find_appropriate_positions(
-            &dag_v,
-            Axis::Vertical,
-            n,
-            x,
-            y,
-            &dummy_pos_for_horizontal_alignment,
-            &sources,
-        );
+            AxisProjection {
+                dag: &dag_v,
+                axis: Axis::Vertical,
+                node_count: n,
+                x,
+                y,
+                dummy_pos: &dummy_pos_for_horizontal_alignment,
+                component_sources: &sources,
+            },
+            work_control,
+        )?;
         for (&key, &v) in pos.iter() {
             if key < n {
                 y[key] = v;
@@ -3796,6 +4716,7 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
             }
         }
     }
+    Ok(())
 }
 
 fn apply_constraints_to_displacements(
@@ -3928,17 +4849,36 @@ fn advance_random(rng: &mut FcoseRandom, count: usize) {
     }
 }
 
-fn reset_fcose_random_for_run(
+fn advance_random_with_work_control<W: WorkControl + ?Sized>(
+    rng: &mut FcoseRandom,
+    count: usize,
+    work_control: &mut W,
+) -> std::result::Result<(), WorkFailure> {
+    if count > 0 {
+        work_control.charge(count)?;
+    }
+    advance_random(rng, count);
+    Ok(())
+}
+
+fn reset_fcose_random_for_run<W: WorkControl + ?Sized>(
     rng: &mut FcoseRandom,
     policy: FcoseRandomPolicy,
-    seed_offset: usize,
     run_idx: usize,
-) {
+    seed_offset: usize,
+    work_control: &mut W,
+) -> std::result::Result<bool, WorkFailure> {
     if run_idx == 0 || !policy.reset_seed_each_run {
-        return;
+        return Ok(false);
+    }
+    // Admission precedes both resetting the stream and consuming the configured offset, so a
+    // rejected rerun cannot partially mutate caller-observable deterministic state.
+    if seed_offset > 0 {
+        work_control.charge(seed_offset)?;
     }
     *rng = new_fcose_random(policy);
     advance_random(rng, seed_offset);
+    Ok(true)
 }
 
 #[derive(Debug, Clone)]
@@ -3990,15 +4930,93 @@ impl Mulberry32 {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoundsExtras, Constraints, FcoseRandom, FcoseRandomPolicy, FcoseRandomSource,
+        BoundsExtras, CompoundTopology, Constraints, DisjointSet, FcoseConstraintWorkShape,
+        FcoseIterationSchedule, FcoseRandom, FcoseRandomPolicy, FcoseRandomSource, FcoseWorkPlan,
         IndexedAlignmentConstraint, IndexedCompound, IndexedEdge, IndexedFcoseOptions,
-        IndexedGraph, IndexedNode, IndexedRelativePlacementConstraint, Mulberry32, RelConstraint,
-        RepulsionGrid, SimGraph, SimNode, Vec2, XorShift64Star,
-        apply_reflection_for_relative_placement, layout, layout_indexed, new_fcose_random,
-        procrustes_transform_for_alignments, reset_fcose_random_for_run,
+        IndexedGraph, IndexedNode, IndexedRelativePlacementConstraint, Mulberry32, NoopWorkControl,
+        RelConstraint, RepulsionGrid, RepulsionGridPlan, RepulsionGridStorageKind, SimGraph,
+        SimNode, Vec2, WorkControl, XorShift64Star, admit_dynamic_work,
+        apply_reflection_for_relative_placement, for_each_owner_local_pair, layout, layout_indexed,
+        layout_indexed_with_random_policy_and_work_control, new_fcose_random,
+        owner_local_pair_work, procrustes_transform_for_alignments, reset_fcose_random_for_run,
     };
     use crate::algo::{AlignmentConstraint, FcoseOptions, RelativePlacementConstraint};
+    use crate::error::{Error, WorkFailure};
     use crate::graph::{Anchor, Compound, Edge, Graph, Node, Point};
+
+    #[derive(Default)]
+    struct RecordingWorkControl {
+        charges: Vec<usize>,
+        reject_after: Option<usize>,
+    }
+
+    impl WorkControl for RecordingWorkControl {
+        fn charge(&mut self, units: usize) -> std::result::Result<(), WorkFailure> {
+            if self
+                .reject_after
+                .is_some_and(|accepted| self.charges.len() >= accepted)
+            {
+                return Err(WorkFailure::Interrupted);
+            }
+            self.charges.push(units);
+            Ok(())
+        }
+    }
+
+    struct RejectingPreflight {
+        checks: Vec<usize>,
+        charges: Vec<usize>,
+        reject_on_check: usize,
+    }
+
+    impl Default for RejectingPreflight {
+        fn default() -> Self {
+            Self {
+                checks: Vec::new(),
+                charges: Vec::new(),
+                reject_on_check: 1,
+            }
+        }
+    }
+
+    impl WorkControl for RejectingPreflight {
+        fn check(&mut self, units: usize) -> std::result::Result<(), WorkFailure> {
+            self.checks.push(units);
+            if self.checks.len() == self.reject_on_check {
+                Err(WorkFailure::Interrupted)
+            } else {
+                Ok(())
+            }
+        }
+
+        fn charge(&mut self, units: usize) -> std::result::Result<(), WorkFailure> {
+            self.charges.push(units);
+            Ok(())
+        }
+    }
+
+    #[derive(Default)]
+    struct CheckOnlyBudget {
+        max_units: usize,
+        checks: Vec<usize>,
+        charges: Vec<usize>,
+    }
+
+    impl WorkControl for CheckOnlyBudget {
+        fn check(&mut self, units: usize) -> std::result::Result<(), WorkFailure> {
+            self.checks.push(units);
+            if units > self.max_units {
+                Err(WorkFailure::Interrupted)
+            } else {
+                Ok(())
+            }
+        }
+
+        fn charge(&mut self, units: usize) -> std::result::Result<(), WorkFailure> {
+            self.charges.push(units);
+            Ok(())
+        }
+    }
 
     fn node_at(left: f64, top: f64, w: f64, h: f64) -> SimNode {
         SimNode {
@@ -4040,6 +5058,1060 @@ mod tests {
             dx,
             dy
         );
+    }
+
+    #[test]
+    fn iteration_schedule_normalizes_numbers_and_preserves_loop_boundary() {
+        let empty = FcoseIterationSchedule::from_configured_number(None, 0, 0, true).unwrap();
+        assert_eq!(empty.setup_work_units(), 0);
+        assert_eq!(empty.iteration_work_units(), 0);
+        assert_eq!(empty.maximum_work_units(), 0);
+
+        let fallback = FcoseIterationSchedule::from_configured_number(None, 2, 1, true).unwrap();
+        assert_eq!(fallback.configured_iterations(), 2500);
+        assert_eq!(fallback.effective_max_iterations(), 2500);
+        assert_eq!(fallback.run_count(), 2);
+        assert_eq!(fallback.setup_work_units(), 40);
+        assert_eq!(fallback.iteration_work_units(), 3);
+        assert_eq!(fallback.maximum_work_units(), 40 + 2 * 2499 * 3);
+
+        let node_floor =
+            FcoseIterationSchedule::from_configured_number(Some(1.0), 2, 0, false).unwrap();
+        assert_eq!(node_floor.configured_iterations(), 1);
+        assert_eq!(node_floor.effective_max_iterations(), 10);
+        assert_eq!(node_floor.setup_work_units(), 23);
+        assert_eq!(node_floor.maximum_work_units(), 41);
+
+        for configured in [Some(f64::NAN), Some(f64::INFINITY), Some(0.0), Some(0.9)] {
+            assert_eq!(
+                FcoseIterationSchedule::from_configured_number(configured, 1, 0, false)
+                    .unwrap()
+                    .configured_iterations(),
+                2500,
+            );
+        }
+
+        assert_eq!(
+            FcoseIterationSchedule::from_configured_number(Some(1.49), 0, 0, false)
+                .unwrap()
+                .configured_iterations(),
+            1,
+        );
+        assert_eq!(
+            FcoseIterationSchedule::from_configured_number(Some(1.5), 0, 0, false)
+                .unwrap()
+                .configured_iterations(),
+            2,
+        );
+    }
+
+    #[test]
+    fn graph_cardinality_schedule_avoids_flat_log_ancestry_work() {
+        const LEAF_COUNT: usize = 1_024;
+        const EDGE_COUNT: usize = 1_024;
+
+        let flat = FcoseIterationSchedule::from_normalized_graph_counts(
+            5, LEAF_COUNT, 0, EDGE_COUNT, false,
+        )
+        .expect("flat schedule");
+        let count_only =
+            FcoseIterationSchedule::from_normalized_counts(5, LEAF_COUNT, EDGE_COUNT, false)
+                .expect("count-only conservative schedule");
+        let flat_topology =
+            CompoundTopology::work_units_with_compound_count(LEAF_COUNT, EDGE_COUNT, 0)
+                .expect("flat topology work");
+
+        assert_eq!(flat.iteration_work_units(), LEAF_COUNT + EDGE_COUNT);
+        assert_eq!(
+            flat.setup_work_units(),
+            LEAF_COUNT + EDGE_COUNT + flat_topology
+        );
+        assert!(flat.setup_work_units() < count_only.setup_work_units());
+    }
+
+    #[test]
+    fn fcose_work_plan_uses_raw_input_and_filtered_runtime_cardinality() {
+        let schedule = FcoseIterationSchedule::from_normalized_counts(5, 2, 1, true).unwrap();
+        let shape = FcoseConstraintWorkShape::from_counts(2, 5, 3, 1, 3, 4);
+        let plan = FcoseWorkPlan::from_schedule(schedule, 2, shape, 7, true).unwrap();
+
+        assert_eq!(plan.setup_work_units(), 50);
+        assert_eq!(plan.run_setup_work_units(), 7);
+        assert_eq!(plan.iteration_work_units(), 11);
+        assert_eq!(plan.maximum_work_units(), 276);
+    }
+
+    #[test]
+    fn constraint_work_shape_preserves_duplicates_and_counts_both_axes() {
+        let options = IndexedFcoseOptions {
+            alignment_constraint: Some(IndexedAlignmentConstraint {
+                horizontal: vec![vec![0, 0, 1, 99], vec![2, 99], vec![99, 99]],
+                vertical: vec![vec![1, 1]],
+            }),
+            relative_placement_constraint: vec![
+                IndexedRelativePlacementConstraint {
+                    left: Some(0),
+                    right: Some(1),
+                    top: Some(0),
+                    bottom: Some(1),
+                    gap: 10.0,
+                },
+                IndexedRelativePlacementConstraint {
+                    left: Some(0),
+                    right: Some(99),
+                    top: Some(99),
+                    bottom: Some(1),
+                    gap: 10.0,
+                },
+                IndexedRelativePlacementConstraint {
+                    left: Some(0),
+                    right: Some(1),
+                    top: None,
+                    bottom: None,
+                    gap: 10.0,
+                },
+            ],
+            ..IndexedFcoseOptions::default()
+        };
+        let (groups, _) = FcoseConstraintWorkShape::input_headers(&options).unwrap();
+        let members = FcoseConstraintWorkShape::input_member_count(&options).unwrap();
+
+        assert_eq!(
+            FcoseConstraintWorkShape::from_indexed_options(&options, 3, groups, members).unwrap(),
+            FcoseConstraintWorkShape::from_counts(4, 10, 3, 2, 5, 3),
+        );
+    }
+
+    #[test]
+    fn iteration_schedule_fails_closed_on_numeric_and_derived_overflow() {
+        assert_eq!(
+            FcoseIterationSchedule::from_configured_number(Some(f64::MAX), 1, 0, false),
+            Err(WorkFailure::ArithmeticOverflow),
+        );
+        assert_eq!(
+            FcoseIterationSchedule::from_configured_number(Some(1.0), usize::MAX / 5 + 1, 0, false,),
+            Err(WorkFailure::ArithmeticOverflow),
+        );
+        assert_eq!(
+            FcoseIterationSchedule::from_normalized_counts(usize::MAX, 1, 0, true),
+            Err(WorkFailure::ArithmeticOverflow),
+        );
+        assert_eq!(
+            FcoseIterationSchedule::from_normalized_graph_counts(1, 2, 0, usize::MAX - 2, false,),
+            Err(WorkFailure::ArithmeticOverflow),
+        );
+        assert_eq!(
+            CompoundTopology::work_units(usize::MAX, 0),
+            Err(WorkFailure::ArithmeticOverflow),
+        );
+        assert_eq!(
+            CompoundTopology::work_units(1, usize::MAX),
+            Err(WorkFailure::ArithmeticOverflow),
+        );
+        let schedule = FcoseIterationSchedule::from_normalized_counts(5, 1, 0, false).unwrap();
+        assert_eq!(
+            FcoseWorkPlan::from_schedule(
+                schedule,
+                1,
+                FcoseConstraintWorkShape::from_counts(usize::MAX, 1, 0, 0, 0, 0),
+                0,
+                false,
+            ),
+            Err(WorkFailure::ArithmeticOverflow),
+        );
+        let rerun_schedule = FcoseIterationSchedule::from_normalized_counts(5, 1, 0, true).unwrap();
+        assert_eq!(
+            FcoseWorkPlan::from_schedule(
+                rerun_schedule,
+                1,
+                FcoseConstraintWorkShape::default(),
+                usize::MAX,
+                true,
+            ),
+            Err(WorkFailure::ArithmeticOverflow),
+        );
+    }
+
+    #[test]
+    fn work_plan_counts_seed_offset_for_each_rng_reset() {
+        let schedule = FcoseIterationSchedule::from_normalized_counts(5, 1, 0, true).unwrap();
+        let continuous = FcoseWorkPlan::from_schedule(
+            schedule,
+            1,
+            FcoseConstraintWorkShape::default(),
+            7,
+            false,
+        )
+        .unwrap();
+        let reset =
+            FcoseWorkPlan::from_schedule(schedule, 1, FcoseConstraintWorkShape::default(), 7, true)
+                .unwrap();
+
+        assert_eq!(continuous.maximum_work_units(), 26);
+        assert_eq!(reset.maximum_work_units(), 33);
+    }
+
+    #[test]
+    fn controlled_layout_charges_each_iteration_and_grid_refresh_once() {
+        let graph = IndexedGraph {
+            nodes: vec![IndexedNode {
+                parent: None,
+                width: 40.0,
+                height: 40.0,
+                x: 0.0,
+                y: 0.0,
+                bounds_extras: BoundsExtras::default(),
+            }],
+            edges: Vec::new(),
+            compounds: Vec::new(),
+        };
+        let options = IndexedFcoseOptions {
+            randomize: false,
+            num_iter: Some(5),
+            rerun: true,
+            ..IndexedFcoseOptions::default()
+        };
+        let mut control = RecordingWorkControl::default();
+
+        layout_indexed_with_random_policy_and_work_control(
+            &graph,
+            &options,
+            FcoseRandomPolicy::xorshift(1),
+            &mut control,
+        )
+        .unwrap();
+
+        assert_eq!(
+            control.charges,
+            vec![11, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1]
+        );
+    }
+
+    #[test]
+    fn controlled_layout_runs_three_non_consuming_preflight_checks() {
+        let graph = IndexedGraph {
+            nodes: vec![IndexedNode {
+                parent: None,
+                width: 40.0,
+                height: 40.0,
+                x: 0.0,
+                y: 0.0,
+                bounds_extras: BoundsExtras::default(),
+            }],
+            edges: Vec::new(),
+            compounds: Vec::new(),
+        };
+        let options = IndexedFcoseOptions {
+            randomize: false,
+            num_iter: Some(5),
+            ..IndexedFcoseOptions::default()
+        };
+        let mut control = RejectingPreflight {
+            reject_on_check: 3,
+            ..RejectingPreflight::default()
+        };
+
+        let error = layout_indexed_with_random_policy_and_work_control(
+            &graph,
+            &options,
+            FcoseRandomPolicy::xorshift(1),
+            &mut control,
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::WorkFailure(WorkFailure::Interrupted)
+        ));
+        assert_eq!(control.checks, vec![1, 1, 15]);
+        assert!(control.charges.is_empty());
+    }
+
+    #[test]
+    fn controlled_layout_rejects_before_graph_validation() {
+        let graph = IndexedGraph {
+            nodes: vec![IndexedNode {
+                parent: None,
+                width: 40.0,
+                height: 40.0,
+                x: 0.0,
+                y: 0.0,
+                bounds_extras: BoundsExtras::default(),
+            }],
+            edges: vec![IndexedEdge {
+                source: 0,
+                target: 99,
+                label_width: None,
+                label_height: None,
+                source_anchor: None,
+                target_anchor: None,
+                curve_style_segments: false,
+                ideal_length: 50.0,
+                elasticity: 0.45,
+            }],
+            compounds: Vec::new(),
+        };
+        let mut control = RejectingPreflight::default();
+
+        let error = layout_indexed_with_random_policy_and_work_control(
+            &graph,
+            &IndexedFcoseOptions::default(),
+            FcoseRandomPolicy::xorshift(1),
+            &mut control,
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::WorkFailure(WorkFailure::Interrupted)
+        ));
+        assert_eq!(control.checks, vec![2]);
+        assert!(control.charges.is_empty());
+    }
+
+    #[test]
+    fn controlled_layout_preflight_includes_constraint_cardinality() {
+        let graph = IndexedGraph {
+            nodes: (0..2)
+                .map(|index| IndexedNode {
+                    parent: None,
+                    width: 40.0,
+                    height: 40.0,
+                    x: index as f64 * 50.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                })
+                .collect(),
+            edges: Vec::new(),
+            compounds: Vec::new(),
+        };
+        let options = IndexedFcoseOptions {
+            randomize: false,
+            num_iter: Some(5),
+            alignment_constraint: Some(IndexedAlignmentConstraint {
+                horizontal: vec![vec![0, 1]; 8],
+                vertical: Vec::new(),
+            }),
+            relative_placement_constraint: vec![
+                IndexedRelativePlacementConstraint {
+                    left: Some(0),
+                    right: Some(1),
+                    top: None,
+                    bottom: None,
+                    gap: 50.0,
+                };
+                8
+            ],
+            ..IndexedFcoseOptions::default()
+        };
+        let mut control = RejectingPreflight {
+            reject_on_check: 3,
+            ..RejectingPreflight::default()
+        };
+
+        let error = layout_indexed_with_random_policy_and_work_control(
+            &graph,
+            &options,
+            FcoseRandomPolicy::xorshift(1),
+            &mut control,
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::WorkFailure(WorkFailure::Interrupted)
+        ));
+        assert_eq!(control.checks, vec![10, 34, 390]);
+        assert!(control.charges.is_empty());
+    }
+
+    #[test]
+    fn controlled_layout_preflight_includes_random_seed_offset() {
+        let graph = IndexedGraph {
+            nodes: vec![IndexedNode {
+                parent: None,
+                width: 40.0,
+                height: 40.0,
+                x: 0.0,
+                y: 0.0,
+                bounds_extras: BoundsExtras::default(),
+            }],
+            edges: Vec::new(),
+            compounds: Vec::new(),
+        };
+        let options = IndexedFcoseOptions {
+            randomize: false,
+            num_iter: Some(5),
+            ..IndexedFcoseOptions::default()
+        };
+        let seed_offset = 7;
+        let mut control = RejectingPreflight {
+            reject_on_check: 3,
+            ..RejectingPreflight::default()
+        };
+
+        let error = layout_indexed_with_random_policy_and_work_control(
+            &graph,
+            &options,
+            FcoseRandomPolicy::xorshift(1).with_seed_offset(seed_offset),
+            &mut control,
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::WorkFailure(WorkFailure::Interrupted)
+        ));
+        assert_eq!(control.checks, vec![1, 1, 22]);
+        assert!(control.charges.is_empty());
+    }
+
+    #[test]
+    fn indexed_graph_schedule_charges_every_edge_slot() {
+        let graph = IndexedGraph {
+            nodes: vec![IndexedNode {
+                parent: None,
+                width: 40.0,
+                height: 40.0,
+                x: 0.0,
+                y: 0.0,
+                bounds_extras: BoundsExtras::default(),
+            }],
+            edges: vec![IndexedEdge {
+                source: 0,
+                target: 0,
+                label_width: None,
+                label_height: None,
+                source_anchor: None,
+                target_anchor: None,
+                curve_style_segments: false,
+                ideal_length: 50.0,
+                elasticity: 0.45,
+            }],
+            compounds: Vec::new(),
+        };
+
+        let schedule = FcoseIterationSchedule::from_indexed_graph(Some(5), &graph, false).unwrap();
+
+        assert_eq!(schedule.iteration_work_units(), 2);
+        assert_eq!(schedule.setup_work_units(), 22);
+        assert_eq!(schedule.maximum_work_units(), 30);
+    }
+
+    #[test]
+    fn controlled_layout_stops_before_a_rejected_iteration_tranche() {
+        let graph = IndexedGraph {
+            nodes: vec![IndexedNode {
+                parent: None,
+                width: 40.0,
+                height: 40.0,
+                x: 0.0,
+                y: 0.0,
+                bounds_extras: BoundsExtras::default(),
+            }],
+            edges: Vec::new(),
+            compounds: Vec::new(),
+        };
+        let options = IndexedFcoseOptions {
+            randomize: false,
+            num_iter: Some(5),
+            ..IndexedFcoseOptions::default()
+        };
+        let mut control = RecordingWorkControl {
+            charges: Vec::new(),
+            reject_after: Some(0),
+        };
+
+        let error = layout_indexed_with_random_policy_and_work_control(
+            &graph,
+            &options,
+            FcoseRandomPolicy::xorshift(1),
+            &mut control,
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::WorkFailure(WorkFailure::Interrupted)
+        ));
+        assert!(control.charges.is_empty());
+    }
+
+    #[test]
+    fn relative_projection_clone_work_is_charged_before_allocation() {
+        let graph = IndexedGraph {
+            nodes: (0..3)
+                .map(|index| IndexedNode {
+                    parent: None,
+                    width: 40.0,
+                    height: 40.0,
+                    x: index as f64 * 50.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                })
+                .collect(),
+            edges: Vec::new(),
+            compounds: Vec::new(),
+        };
+        let options = IndexedFcoseOptions {
+            randomize: false,
+            num_iter: Some(5),
+            relative_placement_constraint: vec![
+                IndexedRelativePlacementConstraint {
+                    left: Some(0),
+                    right: Some(1),
+                    top: None,
+                    bottom: None,
+                    gap: 50.0,
+                },
+                IndexedRelativePlacementConstraint {
+                    left: Some(1),
+                    right: Some(2),
+                    top: None,
+                    bottom: None,
+                    gap: 50.0,
+                },
+            ],
+            ..IndexedFcoseOptions::default()
+        };
+        let mut control = RecordingWorkControl {
+            charges: Vec::new(),
+            reject_after: Some(2),
+        };
+
+        let error = layout_indexed_with_random_policy_and_work_control(
+            &graph,
+            &options,
+            FcoseRandomPolicy::xorshift(1),
+            &mut control,
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::WorkFailure(WorkFailure::Interrupted)
+        ));
+        assert_eq!(control.charges, vec![30, 2]);
+    }
+
+    #[test]
+    fn controlled_randomized_layout_charges_spectral_setup_before_execution() {
+        let graph = IndexedGraph {
+            nodes: (0..3)
+                .map(|index| IndexedNode {
+                    parent: None,
+                    width: 40.0,
+                    height: 40.0,
+                    x: index as f64 * 10.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                })
+                .collect(),
+            edges: vec![
+                IndexedEdge {
+                    source: 0,
+                    target: 1,
+                    label_width: None,
+                    label_height: None,
+                    source_anchor: None,
+                    target_anchor: None,
+                    curve_style_segments: false,
+                    ideal_length: 50.0,
+                    elasticity: 0.45,
+                },
+                IndexedEdge {
+                    source: 1,
+                    target: 2,
+                    label_width: None,
+                    label_height: None,
+                    source_anchor: None,
+                    target_anchor: None,
+                    curve_style_segments: false,
+                    ideal_length: 50.0,
+                    elasticity: 0.45,
+                },
+            ],
+            compounds: Vec::new(),
+        };
+        let options = IndexedFcoseOptions {
+            randomize: true,
+            num_iter: Some(5),
+            ..IndexedFcoseOptions::default()
+        };
+        let mut control = RecordingWorkControl {
+            charges: Vec::new(),
+            reject_after: Some(1),
+        };
+
+        let error = layout_indexed_with_random_policy_and_work_control(
+            &graph,
+            &options,
+            FcoseRandomPolicy::xorshift(1),
+            &mut control,
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::WorkFailure(WorkFailure::Interrupted)
+        ));
+        assert_eq!(control.charges, vec![54]);
+    }
+
+    #[test]
+    fn randomized_rerun_reuses_one_spectral_topology() {
+        let graph = IndexedGraph {
+            nodes: (0..5)
+                .map(|index| IndexedNode {
+                    parent: match index {
+                        0 | 1 => Some(1),
+                        2 => Some(0),
+                        _ => None,
+                    },
+                    width: 40.0,
+                    height: 40.0,
+                    x: index as f64 * 50.0,
+                    y: (index % 2) as f64 * 30.0,
+                    bounds_extras: BoundsExtras::default(),
+                })
+                .collect(),
+            edges: [(0, 1), (0, 2), (1, 3), (2, 4), (3, 4)]
+                .into_iter()
+                .map(|(source, target)| IndexedEdge {
+                    source,
+                    target,
+                    label_width: None,
+                    label_height: None,
+                    source_anchor: None,
+                    target_anchor: None,
+                    curve_style_segments: false,
+                    ideal_length: 50.0,
+                    elasticity: 0.45,
+                })
+                .collect(),
+            compounds: vec![
+                IndexedCompound { parent: None },
+                IndexedCompound { parent: Some(0) },
+            ],
+        };
+        let options = IndexedFcoseOptions {
+            randomize: true,
+            rerun: true,
+            num_iter: Some(1),
+            ..IndexedFcoseOptions::default()
+        };
+
+        super::spectral::reset_topology_build_count();
+        let first = layout_indexed(&graph, &options).expect("randomized rerun layout");
+
+        assert_eq!(super::spectral::topology_build_count(), 1);
+        assert_eq!(first.node_positions.len(), graph.nodes.len());
+        assert!(
+            first
+                .node_positions
+                .iter()
+                .all(|point| point.x.is_finite() && point.y.is_finite())
+        );
+
+        super::spectral::reset_topology_build_count();
+        let replay = layout_indexed(&graph, &options).expect("deterministic rerun replay");
+        assert_eq!(super::spectral::topology_build_count(), 1);
+        assert_eq!(first.node_positions.len(), replay.node_positions.len());
+        for (left, right) in first.node_positions.iter().zip(&replay.node_positions) {
+            assert_eq!(left.x.to_bits(), right.x.to_bits());
+            assert_eq!(left.y.to_bits(), right.y.to_bits());
+        }
+    }
+
+    #[test]
+    fn indexed_layout_rejects_compound_parent_cycles_before_work() {
+        let cases = [
+            vec![IndexedCompound { parent: Some(0) }],
+            vec![
+                IndexedCompound { parent: Some(1) },
+                IndexedCompound { parent: Some(0) },
+            ],
+        ];
+
+        for compounds in cases {
+            let graph = IndexedGraph {
+                nodes: vec![IndexedNode {
+                    parent: Some(0),
+                    width: 40.0,
+                    height: 40.0,
+                    x: 0.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                }],
+                edges: Vec::new(),
+                compounds,
+            };
+            let mut control = RecordingWorkControl::default();
+
+            let error = layout_indexed_with_random_policy_and_work_control(
+                &graph,
+                &IndexedFcoseOptions {
+                    randomize: true,
+                    num_iter: Some(1),
+                    ..IndexedFcoseOptions::default()
+                },
+                FcoseRandomPolicy::xorshift(1),
+                &mut control,
+            )
+            .expect_err("compound parent cycle must fail before layout work");
+
+            assert!(matches!(
+                error,
+                Error::MissingEndpoint { edge_id }
+                    if edge_id.starts_with("compound-parent-cycle:#")
+            ));
+            assert!(control.charges.is_empty());
+        }
+    }
+
+    #[test]
+    fn compound_topology_matches_layout_base_edge_projection_and_connectivity() {
+        fn reference_projection(
+            sim: &SimGraph,
+            source: usize,
+            target: usize,
+        ) -> super::EdgeProjection {
+            let root = sim.root_owner_idx;
+            let mut seen = vec![false; sim.nodes.len() + 1];
+            let mut owner = sim.nodes[source].owner_idx;
+            loop {
+                seen[owner] = true;
+                if owner == root {
+                    break;
+                }
+                owner = sim.nodes[owner].owner_idx;
+            }
+
+            let mut lca_owner_idx = sim.nodes[target].owner_idx;
+            while !seen[lca_owner_idx] {
+                lca_owner_idx = sim.nodes[lca_owner_idx].owner_idx;
+            }
+
+            let child_below = |mut node_idx: usize| {
+                while sim.nodes[node_idx].owner_idx != lca_owner_idx {
+                    node_idx = sim.nodes[node_idx].owner_idx;
+                }
+                node_idx
+            };
+            super::EdgeProjection {
+                lca_owner_idx,
+                source_in_lca: child_below(source),
+                target_in_lca: child_below(target),
+            }
+        }
+
+        fn reference_connected_owners(sim: &SimGraph) -> Vec<bool> {
+            fn map_to_owner(sim: &SimGraph, mut node_idx: usize, owner: usize) -> Option<usize> {
+                loop {
+                    if sim.nodes[node_idx].owner_idx == owner {
+                        return Some(node_idx);
+                    }
+                    let parent = sim.nodes[node_idx].owner_idx;
+                    if parent == sim.root_owner_idx {
+                        return None;
+                    }
+                    node_idx = parent;
+                }
+            }
+
+            fn push_with_children(
+                sim: &SimGraph,
+                start: usize,
+                visited: &mut [bool],
+                queue: &mut std::collections::VecDeque<usize>,
+            ) {
+                let mut stack = vec![start];
+                while let Some(node_idx) = stack.pop() {
+                    if std::mem::replace(&mut visited[node_idx], true) {
+                        continue;
+                    }
+                    queue.push_back(node_idx);
+                    if let Some(children) = sim.children_by_owner.get(node_idx) {
+                        stack.extend(children.iter().copied());
+                    }
+                }
+            }
+
+            let mut edges_by_node = vec![Vec::new(); sim.nodes.len()];
+            for (edge_idx, edge) in sim.edges.iter().enumerate() {
+                edges_by_node[edge.a].push(edge_idx);
+                edges_by_node[edge.b].push(edge_idx);
+            }
+
+            let mut connected = vec![true; sim.nodes.len() + 1];
+            for (owner, children) in sim.children_by_owner.iter().enumerate() {
+                let Some(&first) = children.first() else {
+                    continue;
+                };
+                let mut visited = vec![false; sim.nodes.len()];
+                let mut queue = std::collections::VecDeque::new();
+                push_with_children(sim, first, &mut visited, &mut queue);
+                while let Some(node_idx) = queue.pop_front() {
+                    for &edge_idx in &edges_by_node[node_idx] {
+                        let edge = &sim.edges[edge_idx];
+                        let other = if edge.a == node_idx { edge.b } else { edge.a };
+                        let Some(mapped) = map_to_owner(sim, other, owner) else {
+                            continue;
+                        };
+                        if !visited[mapped] {
+                            push_with_children(sim, mapped, &mut visited, &mut queue);
+                        }
+                    }
+                }
+                connected[owner] = children.iter().all(|&node_idx| visited[node_idx]);
+            }
+            connected
+        }
+
+        let edge = |source, target| IndexedEdge {
+            source,
+            target,
+            label_width: None,
+            label_height: None,
+            source_anchor: None,
+            target_anchor: None,
+            curve_style_segments: false,
+            ideal_length: 50.0,
+            elasticity: 0.45,
+        };
+        let graph = IndexedGraph {
+            nodes: vec![
+                IndexedNode {
+                    parent: Some(1),
+                    width: 40.0,
+                    height: 40.0,
+                    x: 0.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+                IndexedNode {
+                    parent: Some(1),
+                    width: 40.0,
+                    height: 40.0,
+                    x: 50.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+                IndexedNode {
+                    parent: Some(0),
+                    width: 40.0,
+                    height: 40.0,
+                    x: 100.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+                IndexedNode {
+                    parent: Some(2),
+                    width: 40.0,
+                    height: 40.0,
+                    x: 150.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+                IndexedNode {
+                    parent: None,
+                    width: 40.0,
+                    height: 40.0,
+                    x: 200.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+                IndexedNode {
+                    parent: None,
+                    width: 40.0,
+                    height: 40.0,
+                    x: 250.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+            ],
+            edges: vec![edge(0, 1), edge(0, 2), edge(1, 3), edge(2, 4), edge(3, 5)],
+            compounds: vec![
+                IndexedCompound { parent: None },
+                IndexedCompound { parent: Some(0) },
+                IndexedCompound { parent: None },
+            ],
+        };
+
+        for edge_count in [graph.edges.len(), graph.edges.len() - 1] {
+            let mut case = graph.clone();
+            case.edges.truncate(edge_count);
+            let sim = SimGraph::from_indexed(&case);
+            let expected_projections = sim
+                .edges
+                .iter()
+                .map(|edge| reference_projection(&sim, edge.a, edge.b))
+                .collect::<Vec<_>>();
+
+            assert_eq!(sim.compound_topology.edge_projections, expected_projections);
+            assert_eq!(
+                sim.compound_topology.owner_connected,
+                reference_connected_owners(&sim)
+            );
+        }
+    }
+
+    #[test]
+    fn compound_topology_is_preflighted_once_across_reruns() {
+        let one_run_schedule = FcoseIterationSchedule::from_normalized_counts(5, 64, 96, false)
+            .expect("one-run schedule");
+        let rerun_schedule = FcoseIterationSchedule::from_normalized_counts(5, 64, 96, true)
+            .expect("rerun schedule");
+        let topology_work = CompoundTopology::work_units(64, 96).expect("topology work");
+        let one_run = FcoseWorkPlan::from_schedule(
+            one_run_schedule,
+            64,
+            FcoseConstraintWorkShape::default(),
+            0,
+            false,
+        )
+        .expect("one-run work plan");
+        let rerun = FcoseWorkPlan::from_schedule(
+            rerun_schedule,
+            64,
+            FcoseConstraintWorkShape::default(),
+            0,
+            false,
+        )
+        .expect("rerun work plan");
+
+        assert_eq!(one_run_schedule.setup_work_units(), 64 + 96 + topology_work);
+        assert_eq!(
+            one_run.setup_work_units(),
+            one_run_schedule.setup_work_units()
+        );
+        assert_eq!(rerun.setup_work_units(), one_run.setup_work_units());
+    }
+
+    #[test]
+    fn compound_topology_dsu_bound_covers_balanced_parent_chains() {
+        const NODE_COUNT: usize = 16;
+        const EDGE_COUNT: usize = NODE_COUNT - 1;
+
+        let mut dsu = DisjointSet::new(NODE_COUNT);
+        let mut subtree_size = 1usize;
+        while subtree_size < NODE_COUNT {
+            for first in (0..NODE_COUNT).step_by(subtree_size * 2) {
+                dsu.union(first, first + subtree_size);
+            }
+            subtree_size *= 2;
+        }
+
+        let deepest_parent_chain = dsu.parent_depth(NODE_COUNT - 1);
+        let per_find_bound = CompoundTopology::lifting_level_count(NODE_COUNT);
+        let find_call_count = EDGE_COUNT * 2 + NODE_COUNT;
+
+        assert_eq!(deepest_parent_chain, 4);
+        assert!(deepest_parent_chain < per_find_bound);
+        assert_eq!(
+            CompoundTopology::dsu_find_work_units(NODE_COUNT, EDGE_COUNT).unwrap(),
+            find_call_count * per_find_bound
+        );
+    }
+
+    #[test]
+    fn compound_topology_preflight_accepts_equal_budget_and_rejects_below() {
+        let graph = IndexedGraph {
+            nodes: vec![IndexedNode {
+                parent: Some(0),
+                width: 40.0,
+                height: 40.0,
+                x: 0.0,
+                y: 0.0,
+                bounds_extras: BoundsExtras::default(),
+            }],
+            edges: Vec::new(),
+            compounds: vec![IndexedCompound { parent: None }],
+        };
+        let options = IndexedFcoseOptions {
+            randomize: false,
+            num_iter: Some(1),
+            ..IndexedFcoseOptions::default()
+        };
+        let node_count = graph.nodes.len() + graph.compounds.len();
+        let schedule =
+            FcoseIterationSchedule::from_indexed_graph(options.num_iter, &graph, options.rerun)
+                .expect("schedule");
+        let plan = FcoseWorkPlan::from_schedule(
+            schedule,
+            node_count,
+            FcoseConstraintWorkShape::default(),
+            0,
+            false,
+        )
+        .expect("work plan");
+
+        let mut below = CheckOnlyBudget {
+            max_units: plan.maximum_work_units() - 1,
+            ..CheckOnlyBudget::default()
+        };
+        let error = layout_indexed_with_random_policy_and_work_control(
+            &graph,
+            &options,
+            FcoseRandomPolicy::xorshift(1),
+            &mut below,
+        )
+        .expect_err("below-bound budget must fail the predictable preflight");
+        assert!(matches!(
+            error,
+            Error::WorkFailure(WorkFailure::Interrupted)
+        ));
+        assert!(below.charges.is_empty());
+
+        let mut equal = CheckOnlyBudget {
+            max_units: plan.maximum_work_units(),
+            ..CheckOnlyBudget::default()
+        };
+        layout_indexed_with_random_policy_and_work_control(
+            &graph,
+            &options,
+            FcoseRandomPolicy::xorshift(1),
+            &mut equal,
+        )
+        .expect("equal predictable budget should pass preflight");
+        assert_eq!(equal.checks[2], plan.maximum_work_units());
+        assert_eq!(
+            equal.charges.first().copied(),
+            Some(plan.setup_work_units())
+        );
+    }
+
+    #[test]
+    fn owner_local_fallback_pairs_charge_dense_work_and_preserve_order() {
+        let children_by_owner = vec![vec![100, 101, 102], (0..64).collect::<Vec<_>>()];
+        let pair_work = owner_local_pair_work(&children_by_owner).expect("pair work");
+        assert_eq!(pair_work, 3 + (64 * 63 / 2));
+
+        let mut below = CheckOnlyBudget {
+            max_units: pair_work - 1,
+            ..CheckOnlyBudget::default()
+        };
+        assert_eq!(
+            admit_dynamic_work(&mut below, pair_work),
+            Err(WorkFailure::Interrupted)
+        );
+        assert!(below.charges.is_empty());
+
+        let mut equal = CheckOnlyBudget {
+            max_units: pair_work,
+            ..CheckOnlyBudget::default()
+        };
+        admit_dynamic_work(&mut equal, pair_work).expect("equal dense-pair budget");
+        assert_eq!(equal.charges, vec![pair_work]);
+
+        let mut pairs = Vec::with_capacity(pair_work);
+        for_each_owner_local_pair(&children_by_owner, |first, second| {
+            pairs.push((first, second));
+        });
+        assert_eq!(pairs.len(), pair_work);
+        assert_eq!(&pairs[..3], &[(100, 101), (100, 102), (101, 102)]);
+        assert_eq!(pairs[3], (0, 1));
+        assert_eq!(pairs.last().copied(), Some((62, 63)));
     }
 
     #[test]
@@ -4093,6 +6165,268 @@ mod tests {
         handle
             .join()
             .expect("deep compound SimGraph construction should not overflow");
+    }
+
+    #[test]
+    fn compound_topology_projects_deep_edges_with_subquadratic_work_curve() {
+        const DEPTH: usize = 256;
+        let graph = IndexedGraph {
+            nodes: vec![
+                IndexedNode {
+                    parent: Some(DEPTH - 1),
+                    width: 40.0,
+                    height: 40.0,
+                    x: 0.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+                IndexedNode {
+                    parent: None,
+                    width: 40.0,
+                    height: 40.0,
+                    x: 50.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+            ],
+            edges: vec![IndexedEdge {
+                source: 0,
+                target: 1,
+                label_width: None,
+                label_height: None,
+                source_anchor: None,
+                target_anchor: None,
+                curve_style_segments: false,
+                ideal_length: 50.0,
+                elasticity: 0.45,
+            }],
+            compounds: (0..DEPTH)
+                .map(|idx| IndexedCompound {
+                    parent: (idx > 0).then(|| idx - 1),
+                })
+                .collect(),
+        };
+        let sim = SimGraph::from_indexed(&graph);
+        let projection = sim.compound_topology.edge_projections[0];
+
+        assert_eq!(projection.lca_owner_idx, sim.root_owner_idx);
+        assert_eq!(projection.source_in_lca, graph.nodes.len());
+        assert_eq!(projection.target_in_lca, 1);
+
+        let curve = [8usize, 16, 32, 64, 128, 256, 512, 1_024].map(|depth| {
+            CompoundTopology::work_units_with_compound_count(depth + graph.nodes.len(), 1, depth)
+                .expect("deep topology work")
+        });
+        for window in curve.windows(2) {
+            let [half, full] = window else {
+                unreachable!("two-point curve window")
+            };
+            assert!(full > half);
+            assert!(
+                *full < *half * 3,
+                "binary-lifting setup should remain subquadratic: half={half}, full={full}"
+            );
+        }
+    }
+
+    #[test]
+    fn compound_child_weights_count_empty_compounds_like_layout_base() {
+        let graph = IndexedGraph {
+            nodes: vec![
+                IndexedNode {
+                    parent: Some(0),
+                    width: 10.0,
+                    height: 10.0,
+                    x: 0.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+                IndexedNode {
+                    parent: Some(2),
+                    width: 10.0,
+                    height: 10.0,
+                    x: 20.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+            ],
+            edges: Vec::new(),
+            compounds: vec![
+                IndexedCompound { parent: None },
+                IndexedCompound { parent: Some(0) },
+                IndexedCompound { parent: Some(0) },
+            ],
+        };
+
+        let sim = SimGraph::from_indexed(&graph);
+        let root = graph.nodes.len();
+        let empty = root + 1;
+        let non_empty = root + 2;
+
+        assert_eq!(sim.nodes[root].no_of_children, 3.0);
+        assert_eq!(sim.nodes[empty].no_of_children, 1.0);
+        assert_eq!(sim.nodes[non_empty].no_of_children, 1.0);
+    }
+
+    #[test]
+    fn linear_compound_displacement_matches_recursive_upstream_propagation() {
+        fn propagate_to_leaf_descendants(
+            sim: &SimGraph,
+            owner: usize,
+            dx: f64,
+            dy: f64,
+            displacements: &mut [(f64, f64)],
+        ) {
+            for &child in sim
+                .children_by_owner
+                .get(owner)
+                .map(Vec::as_slice)
+                .unwrap_or(&[])
+            {
+                let Some(node) = sim.nodes.get(child) else {
+                    continue;
+                };
+                let is_non_empty_compound = node.is_compound
+                    && sim
+                        .children_by_owner
+                        .get(child)
+                        .is_some_and(|children| !children.is_empty());
+                if is_non_empty_compound {
+                    propagate_to_leaf_descendants(sim, child, dx, dy, displacements);
+                } else if let Some(slot) = displacements.get_mut(child) {
+                    slot.0 += dx;
+                    slot.1 += dy;
+                }
+            }
+        }
+
+        fn recursive_upstream_displacements(
+            sim: &SimGraph,
+            order: &[usize],
+            cooling_factor: f64,
+            max_displacement: f64,
+        ) -> Vec<(f64, f64)> {
+            let mut displacements = vec![(0.0, 0.0); sim.nodes.len()];
+            for &idx in order {
+                let Some(node) = sim.nodes.get(idx) else {
+                    continue;
+                };
+                let denominator = node.no_of_children.max(1.0);
+                let slot = &mut displacements[idx];
+                slot.0 += cooling_factor
+                    * (node.spring_fx + node.repulsion_fx + node.gravitation_fx)
+                    / denominator;
+                slot.1 += cooling_factor
+                    * (node.spring_fy + node.repulsion_fy + node.gravitation_fy)
+                    / denominator;
+                if slot.0.abs() > max_displacement {
+                    slot.0 = max_displacement * super::imath_sign(slot.0);
+                }
+                if slot.1.abs() > max_displacement {
+                    slot.1 = max_displacement * super::imath_sign(slot.1);
+                }
+
+                if node.is_compound
+                    && sim
+                        .children_by_owner
+                        .get(idx)
+                        .is_some_and(|children| !children.is_empty())
+                {
+                    let (dx, dy) = *slot;
+                    propagate_to_leaf_descendants(sim, idx, dx, dy, &mut displacements);
+                }
+            }
+            displacements
+        }
+
+        let graph = IndexedGraph {
+            nodes: vec![
+                IndexedNode {
+                    parent: Some(1),
+                    width: 10.0,
+                    height: 10.0,
+                    x: 0.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+                IndexedNode {
+                    parent: Some(0),
+                    width: 10.0,
+                    height: 10.0,
+                    x: 20.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+                IndexedNode {
+                    parent: None,
+                    width: 10.0,
+                    height: 10.0,
+                    x: 40.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+            ],
+            edges: Vec::new(),
+            compounds: vec![
+                IndexedCompound { parent: None },
+                IndexedCompound { parent: Some(0) },
+                IndexedCompound { parent: Some(0) },
+            ],
+        };
+        let mut sim = SimGraph::from_indexed(&graph);
+        for (idx, node) in sim.nodes.iter_mut().enumerate() {
+            let scale = idx as f64 + 1.0;
+            node.spring_fx = 1.25 * scale;
+            node.spring_fy = -0.75 * scale;
+            node.repulsion_fx = 0.5 * scale;
+            node.repulsion_fy = 0.25 * scale;
+            node.gravitation_fx = -0.125 * scale;
+            node.gravitation_fy = 0.375 * scale;
+        }
+
+        let order = sim.all_nodes_layout_order();
+        let mut wide_actual = Vec::new();
+        for max_displacement in [100.0, 0.75] {
+            let expected = recursive_upstream_displacements(&sim, &order, 0.5, max_displacement);
+            let mut actual = vec![(0.0, 0.0); sim.nodes.len()];
+            let mut propagated = vec![(0.0, 0.0); sim.nodes.len() + 1];
+            sim.calculate_displacements(
+                &order,
+                0.5,
+                max_displacement,
+                &mut actual,
+                &mut propagated,
+            );
+
+            assert_eq!(
+                actual
+                    .iter()
+                    .map(|(x, y)| (x.to_bits(), y.to_bits()))
+                    .collect::<Vec<_>>(),
+                expected
+                    .iter()
+                    .map(|(x, y)| (x.to_bits(), y.to_bits()))
+                    .collect::<Vec<_>>()
+            );
+            if max_displacement == 100.0 {
+                wide_actual = actual;
+            }
+        }
+
+        let root_compound = graph.nodes.len();
+        let nested_compound = root_compound + 1;
+        let empty_compound = root_compound + 2;
+        assert_ne!(wide_actual[nested_compound], (0.0, 0.0));
+        assert_ne!(wide_actual[empty_compound], (0.0, 0.0));
+        assert_ne!(wide_actual[0], wide_actual[nested_compound]);
+
+        let empty = &sim.nodes[empty_compound];
+        let empty_own_dx = 0.5 * (empty.spring_fx + empty.repulsion_fx + empty.gravitation_fx)
+            / empty.no_of_children;
+        assert_eq!(
+            wide_actual[empty_compound].0.to_bits(),
+            (wide_actual[root_compound].0 + empty_own_dx).to_bits()
+        );
     }
 
     #[test]
@@ -4526,15 +6860,40 @@ mod tests {
         super::advance_random(&mut rng, policy.seed_offset().unwrap_or_default());
         let first_run = [rng.next_f64_unit(), rng.next_f64_unit()];
 
-        reset_fcose_random_for_run(
-            &mut rng,
-            policy,
-            policy.seed_offset().unwrap_or_default(),
-            1,
+        let mut work_control = super::NoopWorkControl;
+        assert!(
+            reset_fcose_random_for_run(
+                &mut rng,
+                policy,
+                1,
+                policy.seed_offset().unwrap_or_default(),
+                &mut work_control,
+            )
+            .unwrap()
         );
         let second_run = [rng.next_f64_unit(), rng.next_f64_unit()];
 
         assert_eq!(second_run, first_run);
+    }
+
+    #[test]
+    fn rejected_seed_offset_charge_does_not_mutate_the_random_stream() {
+        let policy = FcoseRandomPolicy::seeded(FcoseRandomSource::Mulberry32, 42)
+            .with_seed_offset(3)
+            .with_reset_seed_each_run(true);
+        let mut rng = new_fcose_random(policy);
+        let mut expected = rng.clone();
+        let mut control = RecordingWorkControl {
+            charges: Vec::new(),
+            reject_after: Some(0),
+        };
+
+        assert_eq!(
+            reset_fcose_random_for_run(&mut rng, policy, 1, 3, &mut control),
+            Err(WorkFailure::Interrupted),
+        );
+        assert_eq!(rng.next_f64_unit(), expected.next_f64_unit());
+        assert!(control.charges.is_empty());
     }
 
     #[test]
@@ -4560,7 +6919,8 @@ mod tests {
             bottom = bottom.max(n.top + n.height);
         }
         let node_order = [0usize, 1, 2];
-        let grid = RepulsionGrid::build_or_reuse(
+        let mut work_control = NoopWorkControl;
+        let mut grid = RepulsionGrid::build_or_reuse(
             None,
             left,
             top,
@@ -4569,7 +6929,9 @@ mod tests {
             &mut nodes,
             repulsion_range,
             &node_order,
+            &mut work_control,
         )
+        .unwrap()
         .expect("grid");
 
         let mut processed_generation = vec![0u32; nodes.len()];
@@ -4584,7 +6946,9 @@ mod tests {
             repulsion_range,
             &mut surrounding_seen,
             &mut surrounding_seen_generation,
-        );
+            &mut work_control,
+        )
+        .unwrap();
         assert_eq!(nodes[0].surrounding, vec![1]);
 
         processed_generation[0] = current_processed_generation;
@@ -4596,11 +6960,440 @@ mod tests {
             repulsion_range,
             &mut surrounding_seen,
             &mut surrounding_seen_generation,
-        );
+            &mut work_control,
+        )
+        .unwrap();
         assert!(
             !nodes[1].surrounding.contains(&0),
             "node1 should not include already-processed node0"
         );
+    }
+
+    #[test]
+    fn repulsion_grid_plan_prefers_sparse_storage_for_large_coordinate_span() {
+        let repulsion_range = 100.0;
+        let mut nodes = vec![
+            node_at(0.0, 0.0, 10.0, 10.0),
+            node_at(100_000_000_000.0, 100_000_000_000.0, 10.0, 10.0),
+        ];
+        let node_order = [0usize, 1];
+
+        let plan = RepulsionGridPlan::from_geometry(
+            0.0,
+            0.0,
+            100_000_000_010.0,
+            100_000_000_010.0,
+            &nodes,
+            repulsion_range,
+            &node_order,
+        )
+        .unwrap()
+        .expect("grid plan");
+
+        assert_eq!(plan.storage_kind(), RepulsionGridStorageKind::Sparse);
+        assert_eq!(plan.cell_reference_count(), 2);
+        assert_eq!(plan.total_cell_count(), 1_000_000_002_000_000_001);
+
+        let mut control = RecordingWorkControl::default();
+        let grid = RepulsionGrid::build_or_reuse(
+            None,
+            0.0,
+            0.0,
+            100_000_000_010.0,
+            100_000_000_010.0,
+            &mut nodes,
+            repulsion_range,
+            &node_order,
+            &mut control,
+        )
+        .unwrap()
+        .expect("sparse grid");
+        assert!(matches!(
+            grid.cells,
+            super::RepulsionGridCells::Implicit { .. }
+        ));
+        assert_eq!(control.charges, vec![4, 6]);
+    }
+
+    #[test]
+    fn repulsion_grid_plan_prefers_dense_storage_when_costs_are_equal() {
+        let nodes = vec![node_at(0.0, 0.0, 1.0, 1.0)];
+        let plan = RepulsionGridPlan::from_geometry(0.0, 0.0, 1.0, 1.0, &nodes, 10.0, &[0])
+            .unwrap()
+            .expect("single-cell plan");
+
+        assert_eq!(plan.storage_kind(), RepulsionGridStorageKind::Dense);
+        assert_eq!(plan.work_units(), 2);
+    }
+
+    #[test]
+    fn repulsion_grid_plan_rejects_overflowing_finite_coordinate_span() {
+        let nodes = vec![node_at(0.0, 0.0, 1.0, 1.0)];
+        let error =
+            RepulsionGridPlan::from_geometry(-f64::MAX, 0.0, f64::MAX, 1.0, &nodes, 10.0, &[0])
+                .unwrap_err();
+
+        assert_eq!(error, WorkFailure::ArithmeticOverflow);
+    }
+
+    #[test]
+    fn repulsion_grid_plan_prefers_implicit_storage_for_a_huge_node_rect() {
+        let repulsion_range = 100.0;
+        let mut nodes = vec![node_at(0.0, 0.0, 100_000_000_000.0, 100_000_000_000.0)];
+        let node_order = [0usize];
+
+        let plan = RepulsionGridPlan::from_geometry(
+            0.0,
+            0.0,
+            100_000_000_000.0,
+            100_000_000_000.0,
+            &nodes,
+            repulsion_range,
+            &node_order,
+        )
+        .unwrap()
+        .expect("grid plan");
+
+        assert_eq!(plan.storage_kind(), RepulsionGridStorageKind::Implicit);
+        assert_eq!(plan.work_units(), 2);
+
+        let mut control = RecordingWorkControl::default();
+        let mut grid = RepulsionGrid::build_or_reuse(
+            None,
+            0.0,
+            0.0,
+            100_000_000_000.0,
+            100_000_000_000.0,
+            &mut nodes,
+            repulsion_range,
+            &node_order,
+            &mut control,
+        )
+        .unwrap()
+        .expect("implicit grid");
+        assert!(matches!(
+            grid.cells,
+            super::RepulsionGridCells::Implicit { .. }
+        ));
+        assert_eq!(control.charges, vec![2]);
+
+        let mut surrounding_seen = [0u32];
+        let mut surrounding_seen_generation = 1u32;
+        grid.refresh_node_surrounding(
+            0,
+            &mut nodes,
+            &[0],
+            1,
+            repulsion_range,
+            &mut surrounding_seen,
+            &mut surrounding_seen_generation,
+            &mut control,
+        )
+        .unwrap();
+        assert!(nodes[0].surrounding.is_empty());
+    }
+
+    #[test]
+    fn repulsion_grid_plan_ignores_overflowed_unselected_storage_costs() {
+        let extent = 8_000_000_000_000_000_000.0;
+        let nodes = vec![
+            node_at(0.0, 0.0, extent, extent),
+            node_at(0.0, 0.0, extent, extent),
+            node_at(0.0, 0.0, extent, extent),
+        ];
+
+        let plan =
+            RepulsionGridPlan::from_geometry(0.0, 0.0, extent, extent, &nodes, 1.0, &[0, 1, 2])
+                .unwrap()
+                .expect("implicit grid plan");
+
+        assert_eq!(plan.storage_kind(), RepulsionGridStorageKind::Implicit);
+        assert_eq!(plan.work_units(), 21);
+    }
+
+    #[test]
+    fn repulsion_grid_plan_saturates_reference_count_for_implicit_storage() {
+        let extent = 8_500_000_000_000_000_000.0;
+        let nodes = vec![
+            node_at(0.0, 0.0, extent, extent),
+            node_at(0.0, 0.0, extent, extent),
+            node_at(0.0, 0.0, extent, extent),
+            node_at(0.0, 0.0, extent, extent),
+            node_at(0.0, 0.0, extent, extent),
+        ];
+
+        let plan = RepulsionGridPlan::from_geometry(
+            0.0,
+            0.0,
+            extent,
+            extent,
+            &nodes,
+            1.0,
+            &[0, 1, 2, 3, 4],
+        )
+        .unwrap()
+        .expect("implicit grid plan");
+
+        assert_eq!(plan.storage_kind(), RepulsionGridStorageKind::Implicit);
+        assert_eq!(plan.work_units(), 80);
+    }
+
+    #[test]
+    fn rejected_repulsion_grid_plan_does_not_mutate_node_grid_bounds() {
+        let repulsion_range = 10.0;
+        let mut nodes = vec![node_at(0.0, 0.0, 10.0, 10.0)];
+        nodes[0].grid_start_x = -7;
+        nodes[0].grid_finish_x = -6;
+        nodes[0].grid_start_y = -5;
+        nodes[0].grid_finish_y = -4;
+        let mut control = RejectingPreflight::default();
+
+        let result = RepulsionGrid::build_or_reuse(
+            None,
+            0.0,
+            0.0,
+            10.0,
+            10.0,
+            &mut nodes,
+            repulsion_range,
+            &[0],
+            &mut control,
+        );
+
+        assert!(matches!(result, Err(WorkFailure::Interrupted)));
+        assert_eq!(
+            (
+                nodes[0].grid_start_x,
+                nodes[0].grid_finish_x,
+                nodes[0].grid_start_y,
+                nodes[0].grid_finish_y,
+            ),
+            (-7, -6, -5, -4)
+        );
+        assert!(control.charges.is_empty());
+    }
+
+    #[test]
+    fn repulsion_grid_storage_variants_preserve_surrounding_order() {
+        fn surroundings_for(
+            storage_kind: RepulsionGridStorageKind,
+            source_nodes: &[SimNode],
+            node_order: &[usize],
+            repulsion_range: f64,
+        ) -> Vec<Vec<usize>> {
+            let mut nodes = source_nodes.to_vec();
+            let mut plan = RepulsionGridPlan::from_geometry(
+                0.0,
+                0.0,
+                25.0,
+                25.0,
+                &nodes,
+                repulsion_range,
+                node_order,
+            )
+            .unwrap()
+            .expect("grid plan");
+            plan.storage_kind = storage_kind;
+            let mut grid = RepulsionGrid::build_from_plan(
+                None,
+                plan,
+                0.0,
+                0.0,
+                &mut nodes,
+                repulsion_range,
+                node_order,
+            )
+            .unwrap();
+            let mut work_control = NoopWorkControl;
+            grid.prepare_refresh(&nodes, node_order, false, &mut work_control)
+                .unwrap();
+            let mut processed_generation = vec![0u32; nodes.len()];
+            let mut surrounding_seen = vec![0u32; nodes.len()];
+            let mut surrounding_seen_generation = 1u32;
+            for &idx in node_order {
+                grid.refresh_node_surrounding(
+                    idx,
+                    &mut nodes,
+                    &processed_generation,
+                    1,
+                    repulsion_range,
+                    &mut surrounding_seen,
+                    &mut surrounding_seen_generation,
+                    &mut work_control,
+                )
+                .unwrap();
+                processed_generation[idx] = 1;
+            }
+            nodes.into_iter().map(|node| node.surrounding).collect()
+        }
+
+        let nodes = vec![
+            node_at(0.0, 0.0, 15.0, 15.0),
+            node_at(15.0, 0.0, 10.0, 10.0),
+            node_at(0.0, 15.0, 10.0, 10.0),
+            node_at(15.0, 15.0, 10.0, 10.0),
+        ];
+        let node_order = [0usize, 2, 1, 3];
+        let dense = surroundings_for(RepulsionGridStorageKind::Dense, &nodes, &node_order, 10.0);
+        let sparse = surroundings_for(RepulsionGridStorageKind::Sparse, &nodes, &node_order, 10.0);
+        let implicit = surroundings_for(
+            RepulsionGridStorageKind::Implicit,
+            &nodes,
+            &node_order,
+            10.0,
+        );
+
+        assert_eq!(sparse, dense);
+        assert_eq!(implicit, dense);
+    }
+
+    #[test]
+    fn repulsion_grid_promotes_cubic_materialized_queries_to_implicit() {
+        fn assert_promoted(node_count: usize) {
+            let repulsion_range = 10.0;
+            let extent = node_count as f64 * repulsion_range;
+            let mut nodes = (0..node_count)
+                .map(|_| node_at(0.0, 0.0, extent, repulsion_range))
+                .collect::<Vec<_>>();
+            let node_order = (0..node_count).collect::<Vec<_>>();
+            let plan = RepulsionGridPlan::from_geometry(
+                0.0,
+                0.0,
+                extent,
+                repulsion_range,
+                &nodes,
+                repulsion_range,
+                &node_order,
+            )
+            .unwrap()
+            .expect("dense preliminary plan");
+            assert_eq!(plan.storage_kind(), RepulsionGridStorageKind::Dense);
+
+            let implicit_work = usize::try_from(
+                super::implicit_grid_work_units(node_count as u128).expect("implicit work"),
+            )
+            .unwrap();
+            let scan_work = node_count * node_count;
+            let mut control = RecordingWorkControl::default();
+            let grid = RepulsionGrid::build_or_reuse(
+                None,
+                0.0,
+                0.0,
+                extent,
+                repulsion_range,
+                &mut nodes,
+                repulsion_range,
+                &node_order,
+                &mut control,
+            )
+            .unwrap()
+            .expect("promoted grid");
+
+            assert!(matches!(
+                grid.cells,
+                super::RepulsionGridCells::Implicit { .. }
+            ));
+            assert_eq!(
+                control.charges.iter().copied().sum::<usize>(),
+                plan.work_units() + scan_work + implicit_work
+            );
+        }
+
+        assert_promoted(32);
+        assert_promoted(64);
+    }
+
+    #[test]
+    fn sparse_repulsion_grid_charges_cluster_candidate_visits_before_refresh() {
+        let repulsion_range = 10.0;
+        let mut nodes = (0..31)
+            .map(|_| node_at(0.0, 0.0, 1.0, 1.0))
+            .collect::<Vec<_>>();
+        nodes.push(node_at(1_000_000_000.0, 0.0, 1.0, 1.0));
+        let node_order = (0..nodes.len()).collect::<Vec<_>>();
+        let mut control = RecordingWorkControl::default();
+        let mut grid = RepulsionGrid::build_or_reuse(
+            None,
+            0.0,
+            0.0,
+            1_000_000_001.0,
+            1.0,
+            &mut nodes,
+            repulsion_range,
+            &node_order,
+            &mut control,
+        )
+        .unwrap()
+        .expect("sparse grid");
+        assert!(matches!(grid.cells, super::RepulsionGridCells::Sparse(_)));
+
+        let charges_before_refresh = control.charges.len();
+        let processed_generation = vec![0u32; nodes.len()];
+        let mut surrounding_seen = vec![0u32; nodes.len()];
+        let mut surrounding_seen_generation = 1u32;
+        grid.refresh_node_surrounding(
+            0,
+            &mut nodes,
+            &processed_generation,
+            1,
+            repulsion_range,
+            &mut surrounding_seen,
+            &mut surrounding_seen_generation,
+            &mut control,
+        )
+        .unwrap();
+
+        assert_eq!(control.charges[charges_before_refresh..], [31]);
+        assert_eq!(nodes[0].surrounding.len(), 30);
+    }
+
+    #[test]
+    fn rejected_materialized_refresh_preserves_existing_surrounding() {
+        let repulsion_range = 10.0;
+        let mut nodes = (0..31)
+            .map(|_| node_at(0.0, 0.0, 1.0, 1.0))
+            .collect::<Vec<_>>();
+        nodes.push(node_at(1_000_000_000.0, 0.0, 1.0, 1.0));
+        let node_order = (0..nodes.len()).collect::<Vec<_>>();
+        let mut build_control = RecordingWorkControl::default();
+        let mut grid = RepulsionGrid::build_or_reuse(
+            None,
+            0.0,
+            0.0,
+            1_000_000_001.0,
+            1.0,
+            &mut nodes,
+            repulsion_range,
+            &node_order,
+            &mut build_control,
+        )
+        .unwrap()
+        .expect("sparse grid");
+        assert!(matches!(grid.cells, super::RepulsionGridCells::Sparse(_)));
+
+        let sentinel = nodes.len() - 1;
+        nodes[0].surrounding = vec![sentinel];
+        let processed_generation = vec![0u32; nodes.len()];
+        let mut surrounding_seen = vec![0u32; nodes.len()];
+        let mut surrounding_seen_generation = 1u32;
+        let mut rejecting = RejectingPreflight::default();
+        let error = grid
+            .refresh_node_surrounding(
+                0,
+                &mut nodes,
+                &processed_generation,
+                1,
+                repulsion_range,
+                &mut surrounding_seen,
+                &mut surrounding_seen_generation,
+                &mut rejecting,
+            )
+            .unwrap_err();
+
+        assert_eq!(error, WorkFailure::Interrupted);
+        assert_eq!(rejecting.checks, [31]);
+        assert!(rejecting.charges.is_empty());
+        assert_eq!(nodes[0].surrounding, [sentinel]);
     }
 
     #[test]
@@ -4737,7 +7530,8 @@ mod tests {
             "expected negative JS-compatible Procrustes skew, got {t:?}"
         );
 
-        super::handle_constraints_pre_layout(&mut nodes, &constraints);
+        let mut work_control = super::NoopWorkControl;
+        super::handle_constraints_pre_layout(&mut nodes, &constraints, &mut work_control).unwrap();
 
         let inner_top_after_update_bounds = nodes[0].top.min(nodes[1].top) - 40.0;
         let out1_bottom = nodes[2].top + nodes[2].height;
@@ -5248,35 +8042,556 @@ fn calc_repulsion_force_with_centers(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RepulsionGridStorageKind {
+    Dense,
+    Sparse,
+    Implicit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct GridNodeBounds {
+    start_x: i64,
+    finish_x: i64,
+    start_y: i64,
+    finish_y: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct GridScanBounds {
+    start_x: i64,
+    finish_x: i64,
+    start_y: i64,
+    finish_y: i64,
+}
+
+impl GridScanBounds {
+    fn cell_count(self) -> u128 {
+        let width = (self.finish_x as i128 - self.start_x as i128 + 1) as u128;
+        let height = (self.finish_y as i128 - self.start_y as i128 + 1) as u128;
+        width * height
+    }
+}
+
+impl GridNodeBounds {
+    fn from_node(
+        node: &SimNode,
+        left: f64,
+        top: f64,
+        repulsion_range: f64,
+    ) -> std::result::Result<Self, WorkFailure> {
+        Ok(Self {
+            start_x: grid_coordinate((node.left - left) / repulsion_range)?,
+            finish_x: grid_coordinate((node.right() - left) / repulsion_range)?,
+            start_y: grid_coordinate((node.top - top) / repulsion_range)?,
+            finish_y: grid_coordinate((node.bottom() - top) / repulsion_range)?,
+        })
+    }
+
+    fn clipped_axis(start: i64, finish: i64, size: i64) -> Option<(i64, i64)> {
+        let first = start.max(0);
+        let last = finish.min(size.saturating_sub(1));
+        (first <= last).then_some((first, last))
+    }
+
+    fn clipped_x(self, size_x: i64) -> Option<(i64, i64)> {
+        Self::clipped_axis(self.start_x, self.finish_x, size_x)
+    }
+
+    fn clipped_y(self, size_y: i64) -> Option<(i64, i64)> {
+        Self::clipped_axis(self.start_y, self.finish_y, size_y)
+    }
+
+    fn cell_reference_count(self, size_x: i64, size_y: i64) -> u128 {
+        let Some((start_x, finish_x)) = self.clipped_x(size_x) else {
+            return 0;
+        };
+        let Some((start_y, finish_y)) = self.clipped_y(size_y) else {
+            return 0;
+        };
+        let width = (finish_x as i128 - start_x as i128 + 1) as u128;
+        let height = (finish_y as i128 - start_y as i128 + 1) as u128;
+        width * height
+    }
+}
+
+fn grid_dimension(span: f64, repulsion_range: f64) -> std::result::Result<i64, WorkFailure> {
+    let cells = (span / repulsion_range).ceil().max(1.0);
+    if !cells.is_finite() || cells >= i64::MAX as f64 {
+        return Err(WorkFailure::ArithmeticOverflow);
+    }
+    Ok(cells as i64)
+}
+
+fn grid_coordinate(value: f64) -> std::result::Result<i64, WorkFailure> {
+    let coordinate = value.floor();
+    if !coordinate.is_finite() || coordinate < i64::MIN as f64 || coordinate >= i64::MAX as f64 {
+        return Err(WorkFailure::ArithmeticOverflow);
+    }
+    Ok(coordinate as i64)
+}
+
+fn implicit_grid_work_units(node_entry_count: u128) -> Option<u128> {
+    if node_entry_count == 0 {
+        return Some(0);
+    }
+    let comparison_levels = if node_entry_count <= 1 {
+        1
+    } else {
+        128u128.checked_sub((node_entry_count - 1).leading_zeros() as u128)?
+    };
+    node_entry_count
+        .checked_mul(node_entry_count)?
+        .checked_mul(comparison_levels)?
+        .checked_add(node_entry_count)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RepulsionGridPlan {
+    size_x: i64,
+    size_y: i64,
+    total_cell_count: u128,
+    cell_reference_count: u128,
+    storage_kind: RepulsionGridStorageKind,
+    work_units: usize,
+}
+
+impl RepulsionGridPlan {
+    #[allow(clippy::too_many_arguments)]
+    fn from_geometry(
+        left: f64,
+        top: f64,
+        right: f64,
+        bottom: f64,
+        nodes: &[SimNode],
+        repulsion_range: f64,
+        node_order: &[usize],
+    ) -> std::result::Result<Option<Self>, WorkFailure> {
+        if nodes.is_empty() || !repulsion_range.is_finite() || repulsion_range <= 0.0 {
+            return Ok(None);
+        }
+        if !(left.is_finite() && top.is_finite() && right.is_finite() && bottom.is_finite()) {
+            return Ok(None);
+        }
+
+        let width = right - left;
+        let height = bottom - top;
+        if !(width.is_finite() && height.is_finite()) {
+            return Err(WorkFailure::ArithmeticOverflow);
+        }
+        let width = width.max(1.0);
+        let height = height.max(1.0);
+
+        let size_x = grid_dimension(width, repulsion_range)?;
+        let size_y = grid_dimension(height, repulsion_range)?;
+        let total_cell_count = (size_x as u128)
+            .checked_mul(size_y as u128)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        let mut cell_reference_count = 0u128;
+        let mut node_entry_count = 0u128;
+        for &idx in node_order {
+            node_entry_count = node_entry_count
+                .checked_add(1)
+                .ok_or(WorkFailure::ArithmeticOverflow)?;
+            let Some(node) = nodes.get(idx) else {
+                continue;
+            };
+            let bounds = GridNodeBounds::from_node(node, left, top, repulsion_range)?;
+            // Saturation marks Dense/Sparse as unavailable while leaving the independent
+            // implicit representation eligible. The selected concrete cost is still required to
+            // fit `usize` below.
+            cell_reference_count =
+                cell_reference_count.saturating_add(bounds.cell_reference_count(size_x, size_y));
+        }
+
+        // Dense storage preserves the upstream shape for compact graphs. Sparse storage omits
+        // empty cells but keeps each cell's insertion order. When a single large rectangle would
+        // itself touch more cells than an exact all-node candidate pass, the implicit form derives
+        // the same first-hit `(x, y, insertion-order)` sequence without materializing those cells.
+        let candidates = [
+            (
+                RepulsionGridStorageKind::Dense,
+                total_cell_count.checked_add(cell_reference_count),
+            ),
+            (
+                RepulsionGridStorageKind::Sparse,
+                cell_reference_count.checked_mul(2),
+            ),
+            (
+                RepulsionGridStorageKind::Implicit,
+                implicit_grid_work_units(node_entry_count),
+            ),
+        ];
+        let (storage_kind, selected_work) = candidates
+            .into_iter()
+            .filter_map(|(kind, work)| work.map(|work| (kind, work)))
+            .min_by_key(|(_, work)| *work)
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+
+        let work_units =
+            usize::try_from(selected_work).map_err(|_| WorkFailure::ArithmeticOverflow)?;
+        Ok(Some(Self {
+            size_x,
+            size_y,
+            total_cell_count,
+            cell_reference_count,
+            storage_kind,
+            work_units,
+        }))
+    }
+
+    #[cfg(test)]
+    const fn storage_kind(self) -> RepulsionGridStorageKind {
+        self.storage_kind
+    }
+
+    #[cfg(test)]
+    const fn total_cell_count(self) -> u128 {
+        self.total_cell_count
+    }
+
+    #[cfg(test)]
+    const fn cell_reference_count(self) -> u128 {
+        self.cell_reference_count
+    }
+
+    const fn work_units(self) -> usize {
+        self.work_units
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ImplicitGridCandidate {
+    first_x: i64,
+    first_y: i64,
+    insertion_order: usize,
+    node_idx: usize,
+}
+
+#[derive(Debug, Clone)]
+enum RepulsionGridCells {
+    Dense(Vec<Vec<usize>>),
+    Sparse(FxHashMap<(i64, i64), Vec<usize>>),
+    Implicit {
+        node_order: Vec<usize>,
+        candidates: Vec<ImplicitGridCandidate>,
+    },
+}
+
 #[derive(Debug, Clone)]
 struct RepulsionGrid {
-    size_x: i32,
-    size_y: i32,
-    // Flat grid: cells[x * size_y + y] contains node indices.
-    cells: Vec<Vec<usize>>,
+    size_x: i64,
+    size_y: i64,
+    cells: RepulsionGridCells,
+    candidate_visit_counts: Vec<usize>,
+    materialized_refresh_prepared: bool,
 }
 
 impl RepulsionGrid {
-    fn idx(&self, x: i32, y: i32) -> usize {
-        (x as usize) * (self.size_y as usize) + (y as usize)
-    }
-
-    fn cell(&self, x: i32, y: i32) -> &[usize] {
-        &self.cells[self.idx(x, y)]
-    }
-
-    fn reset(&mut self, size_x: i32, size_y: i32) {
-        self.size_x = size_x;
-        self.size_y = size_y;
-        let target = (size_x as usize) * (size_y as usize);
-        self.cells.resize_with(target, Vec::new);
-        for cell in &mut self.cells {
-            cell.clear();
+    fn new(storage_kind: RepulsionGridStorageKind) -> Self {
+        let cells = match storage_kind {
+            RepulsionGridStorageKind::Dense => RepulsionGridCells::Dense(Vec::new()),
+            RepulsionGridStorageKind::Sparse => RepulsionGridCells::Sparse(FxHashMap::default()),
+            RepulsionGridStorageKind::Implicit => RepulsionGridCells::Implicit {
+                node_order: Vec::new(),
+                candidates: Vec::new(),
+            },
+        };
+        Self {
+            size_x: 1,
+            size_y: 1,
+            cells,
+            candidate_visit_counts: Vec::new(),
+            materialized_refresh_prepared: false,
         }
     }
 
+    fn reset(
+        &mut self,
+        plan: RepulsionGridPlan,
+        node_order: &[usize],
+    ) -> std::result::Result<(), WorkFailure> {
+        self.size_x = plan.size_x;
+        self.size_y = plan.size_y;
+        self.candidate_visit_counts.clear();
+        self.materialized_refresh_prepared = false;
+        match plan.storage_kind {
+            RepulsionGridStorageKind::Dense => {
+                if !matches!(self.cells, RepulsionGridCells::Dense(_)) {
+                    self.cells = RepulsionGridCells::Dense(Vec::new());
+                }
+                let RepulsionGridCells::Dense(cells) = &mut self.cells else {
+                    unreachable!("dense storage selected above")
+                };
+                let target = usize::try_from(plan.total_cell_count)
+                    .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+                if target > cells.len() {
+                    cells
+                        .try_reserve_exact(target - cells.len())
+                        .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+                    cells.resize_with(target, Vec::new);
+                } else {
+                    cells.truncate(target);
+                }
+                for cell in cells {
+                    cell.clear();
+                }
+            }
+            RepulsionGridStorageKind::Sparse => {
+                if !matches!(self.cells, RepulsionGridCells::Sparse(_)) {
+                    self.cells = RepulsionGridCells::Sparse(FxHashMap::default());
+                }
+                let RepulsionGridCells::Sparse(cells) = &mut self.cells else {
+                    unreachable!("sparse storage selected above")
+                };
+                cells.clear();
+                let reserve = usize::try_from(plan.cell_reference_count.min(plan.total_cell_count))
+                    .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+                cells
+                    .try_reserve(reserve)
+                    .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+            }
+            RepulsionGridStorageKind::Implicit => {
+                if !matches!(self.cells, RepulsionGridCells::Implicit { .. }) {
+                    self.cells = RepulsionGridCells::Implicit {
+                        node_order: Vec::new(),
+                        candidates: Vec::new(),
+                    };
+                }
+                let RepulsionGridCells::Implicit {
+                    node_order: stored_order,
+                    candidates,
+                } = &mut self.cells
+                else {
+                    unreachable!("implicit storage selected above")
+                };
+                stored_order.clear();
+                stored_order
+                    .try_reserve_exact(node_order.len())
+                    .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+                stored_order.extend_from_slice(node_order);
+                candidates.clear();
+                candidates
+                    .try_reserve_exact(node_order.len())
+                    .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn cell(&self, x: i64, y: i64) -> &[usize] {
+        match &self.cells {
+            RepulsionGridCells::Dense(cells) => {
+                let Some(index) = self.dense_index(x, y) else {
+                    return &[];
+                };
+                cells.get(index).map(Vec::as_slice).unwrap_or(&[])
+            }
+            RepulsionGridCells::Sparse(cells) => {
+                cells.get(&(x, y)).map(Vec::as_slice).unwrap_or(&[])
+            }
+            RepulsionGridCells::Implicit { .. } => &[],
+        }
+    }
+
+    fn dense_index(&self, x: i64, y: i64) -> Option<usize> {
+        if x < 0 || x >= self.size_x || y < 0 || y >= self.size_y {
+            return None;
+        }
+        let x = usize::try_from(x).ok()?;
+        let y = usize::try_from(y).ok()?;
+        let size_y = usize::try_from(self.size_y).ok()?;
+        x.checked_mul(size_y)?.checked_add(y)
+    }
+
+    fn scan_bounds(&self, node: &SimNode) -> Option<GridScanBounds> {
+        let start_x = node.grid_start_x.saturating_sub(1).max(0);
+        let finish_x = node
+            .grid_finish_x
+            .saturating_add(1)
+            .min(self.size_x.saturating_sub(1));
+        if start_x > finish_x {
+            return None;
+        }
+        let start_y = node.grid_start_y.saturating_sub(1).max(0);
+        let finish_y = node
+            .grid_finish_y
+            .saturating_add(1)
+            .min(self.size_y.saturating_sub(1));
+        (start_y <= finish_y).then_some(GridScanBounds {
+            start_x,
+            finish_x,
+            start_y,
+            finish_y,
+        })
+    }
+
+    fn switch_to_implicit(&mut self, node_order: &[usize]) -> std::result::Result<(), WorkFailure> {
+        let mut stored_order = Vec::new();
+        stored_order
+            .try_reserve_exact(node_order.len())
+            .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+        stored_order.extend_from_slice(node_order);
+        let mut candidates = Vec::new();
+        candidates
+            .try_reserve_exact(node_order.len())
+            .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+        self.cells = RepulsionGridCells::Implicit {
+            node_order: stored_order,
+            candidates,
+        };
+        self.candidate_visit_counts.clear();
+        self.materialized_refresh_prepared = false;
+        Ok(())
+    }
+
+    fn prepare_refresh<W: WorkControl + ?Sized>(
+        &mut self,
+        nodes: &[SimNode],
+        node_order: &[usize],
+        allow_implicit_promotion: bool,
+        work_control: &mut W,
+    ) -> std::result::Result<(), WorkFailure> {
+        if matches!(self.cells, RepulsionGridCells::Implicit { .. }) {
+            return Ok(());
+        }
+
+        let implicit_work = allow_implicit_promotion
+            .then(|| implicit_grid_work_units(node_order.len() as u128))
+            .flatten()
+            .and_then(|work| usize::try_from(work).ok());
+        let mut scan_cell_counts = Vec::new();
+        scan_cell_counts
+            .try_reserve_exact(node_order.len())
+            .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+        let mut total_scan_cell_work = 0u128;
+        for &idx in node_order {
+            let count = nodes
+                .get(idx)
+                .and_then(|node| self.scan_bounds(node))
+                .map(GridScanBounds::cell_count)
+                .unwrap_or_default();
+            scan_cell_counts.push(count);
+            total_scan_cell_work = total_scan_cell_work.saturating_add(count);
+        }
+        if implicit_work.is_some_and(|work| total_scan_cell_work > work as u128) {
+            let implicit_work = implicit_work.expect("checked by is_some_and");
+            admit_dynamic_work(work_control, implicit_work)?;
+            return self.switch_to_implicit(node_order);
+        }
+
+        let mut candidate_visit_counts_u128 = Vec::new();
+        candidate_visit_counts_u128
+            .try_reserve_exact(nodes.len())
+            .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+        candidate_visit_counts_u128.resize(nodes.len(), 0u128);
+        let mut total_candidate_visits = 0u128;
+        for (&idx, &scan_cell_count) in node_order.iter().zip(&scan_cell_counts) {
+            let Some(node) = nodes.get(idx) else {
+                continue;
+            };
+            let Some(bounds) = self.scan_bounds(node) else {
+                continue;
+            };
+            let scan_cell_count =
+                usize::try_from(scan_cell_count).map_err(|_| WorkFailure::ArithmeticOverflow)?;
+            admit_dynamic_work(work_control, scan_cell_count)?;
+
+            let mut visits = 0u128;
+            for gx in bounds.start_x..=bounds.finish_x {
+                for gy in bounds.start_y..=bounds.finish_y {
+                    visits = visits.saturating_add(self.cell(gx, gy).len() as u128);
+                }
+            }
+            candidate_visit_counts_u128[idx] = visits;
+            total_candidate_visits = total_candidate_visits.saturating_add(visits);
+        }
+
+        if implicit_work.is_some_and(|work| total_candidate_visits > work as u128) {
+            let implicit_work = implicit_work.expect("checked by is_some_and");
+            admit_dynamic_work(work_control, implicit_work)?;
+            return self.switch_to_implicit(node_order);
+        }
+
+        self.candidate_visit_counts = candidate_visit_counts_u128
+            .into_iter()
+            .map(|visits| usize::try_from(visits).map_err(|_| WorkFailure::ArithmeticOverflow))
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        self.materialized_refresh_prepared = true;
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
-    fn build_or_reuse(
+    fn build_from_plan(
+        grid: Option<Self>,
+        plan: RepulsionGridPlan,
+        left: f64,
+        top: f64,
+        nodes: &mut [SimNode],
+        repulsion_range: f64,
+        node_order: &[usize],
+    ) -> std::result::Result<Self, WorkFailure> {
+        let mut grid = grid.unwrap_or_else(|| Self::new(plan.storage_kind));
+        grid.reset(plan, node_order)?;
+
+        // Mirror layout-base `addNodeToGrid`: visit nodes in `getAllNodes()` order and preserve
+        // insertion order within every materialized cell. The implicit representation stores only
+        // the bounds; its query path reconstructs the same first-hit cell order.
+        for &idx in node_order {
+            let Some(node) = nodes.get(idx) else {
+                continue;
+            };
+            let bounds = GridNodeBounds::from_node(node, left, top, repulsion_range)?;
+            if let Some(node) = nodes.get_mut(idx) {
+                node.grid_start_x = bounds.start_x;
+                node.grid_finish_x = bounds.finish_x;
+                node.grid_start_y = bounds.start_y;
+                node.grid_finish_y = bounds.finish_y;
+            }
+
+            let Some((start_x, finish_x)) = bounds.clipped_x(grid.size_x) else {
+                continue;
+            };
+            let Some((start_y, finish_y)) = bounds.clipped_y(grid.size_y) else {
+                continue;
+            };
+            match &mut grid.cells {
+                RepulsionGridCells::Dense(cells) => {
+                    let size_y = usize::try_from(grid.size_y)
+                        .map_err(|_| WorkFailure::ArithmeticOverflow)?;
+                    for gx in start_x..=finish_x {
+                        let gx =
+                            usize::try_from(gx).map_err(|_| WorkFailure::ArithmeticOverflow)?;
+                        for gy in start_y..=finish_y {
+                            let gy =
+                                usize::try_from(gy).map_err(|_| WorkFailure::ArithmeticOverflow)?;
+                            let cell_idx = gx
+                                .checked_mul(size_y)
+                                .and_then(|base| base.checked_add(gy))
+                                .ok_or(WorkFailure::ArithmeticOverflow)?;
+                            cells
+                                .get_mut(cell_idx)
+                                .ok_or(WorkFailure::ArithmeticOverflow)?
+                                .push(idx);
+                        }
+                    }
+                }
+                RepulsionGridCells::Sparse(cells) => {
+                    for gx in start_x..=finish_x {
+                        for gy in start_y..=finish_y {
+                            cells.entry((gx, gy)).or_default().push(idx);
+                        }
+                    }
+                }
+                RepulsionGridCells::Implicit { .. } => {}
+            }
+        }
+
+        Ok(grid)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn build_or_reuse<W: WorkControl + ?Sized>(
         grid: Option<Self>,
         left: f64,
         top: f64,
@@ -5285,74 +8600,33 @@ impl RepulsionGrid {
         nodes: &mut [SimNode],
         repulsion_range: f64,
         node_order: &[usize],
-    ) -> Option<Self> {
-        if nodes.is_empty() {
-            return None;
-        }
-        if !repulsion_range.is_finite() || repulsion_range <= 0.0 {
-            return None;
-        }
-        if !(left.is_finite() && top.is_finite() && right.is_finite() && bottom.is_finite()) {
-            return None;
-        }
+        work_control: &mut W,
+    ) -> std::result::Result<Option<Self>, WorkFailure> {
+        let Some(plan) = RepulsionGridPlan::from_geometry(
+            left,
+            top,
+            right,
+            bottom,
+            nodes,
+            repulsion_range,
+            node_order,
+        )?
+        else {
+            return Ok(None);
+        };
 
-        let w = (right - left).max(1.0);
-        let h = (bottom - top).max(1.0);
-        if !(w.is_finite() && h.is_finite()) {
-            return None;
-        }
-
-        // layout-base `FDLayout.calcGrid`: size = ceil((graph.right - graph.left) / repulsionRange).
-        let size_x = ((w / repulsion_range).ceil() as i32).max(1);
-        let size_y = ((h / repulsion_range).ceil() as i32).max(1);
-        let mut grid = grid.unwrap_or_else(|| Self {
-            size_x,
-            size_y,
-            cells: Vec::new(),
-        });
-        grid.reset(size_x, size_y);
-
-        // Mirror layout-base `addNodeToGrid`: push the node into every cell that intersects the
-        // node's rect, using top-left anchored coordinates.
-        //
-        // Important: layout-base inserts nodes into the grid in `getAllNodes()` order (see
-        // `FDLayout.updateGrid()`), which is observable because the surrounding list is built
-        // by iterating over the grid cells and preserving insertion order. Matching this order
-        // reduces floating-point accumulation drift in parity tests.
-        for &idx in node_order {
-            let Some(n) = nodes.get_mut(idx) else {
-                continue;
-            };
-            let start_x = ((n.left - left) / repulsion_range).floor() as i32;
-            let finish_x = ((n.right() - left) / repulsion_range).floor() as i32;
-            let start_y = ((n.top - top) / repulsion_range).floor() as i32;
-            let finish_y = ((n.bottom() - top) / repulsion_range).floor() as i32;
-
-            n.grid_start_x = start_x;
-            n.grid_finish_x = finish_x;
-            n.grid_start_y = start_y;
-            n.grid_finish_y = finish_y;
-
-            for gx in start_x..=finish_x {
-                if gx < 0 || gx >= size_x {
-                    continue;
-                }
-                for gy in start_y..=finish_y {
-                    if gy < 0 || gy >= size_y {
-                        continue;
-                    }
-                    let cell_idx = (gx as usize) * (size_y as usize) + (gy as usize);
-                    grid.cells[cell_idx].push(idx);
-                }
-            }
-        }
-
-        Some(grid)
+        // The plan is computed without mutating node grid coordinates. Reject before allocating
+        // the selected representation or populating any cell.
+        admit_dynamic_work(work_control, plan.work_units())?;
+        let mut grid =
+            Self::build_from_plan(grid, plan, left, top, nodes, repulsion_range, node_order)?;
+        grid.prepare_refresh(nodes, node_order, true, work_control)?;
+        Ok(Some(grid))
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn refresh_node_surrounding(
-        &self,
+    fn refresh_node_surrounding<W: WorkControl + ?Sized>(
+        &mut self,
         node_idx: usize,
         nodes: &mut [SimNode],
         processed_generation: &[u32],
@@ -5360,19 +8634,72 @@ impl RepulsionGrid {
         repulsion_range: f64,
         surrounding_seen: &mut [u32],
         surrounding_seen_generation: &mut u32,
-    ) {
+        work_control: &mut W,
+    ) -> std::result::Result<(), WorkFailure> {
         if node_idx >= nodes.len() {
-            return;
+            return Ok(());
         }
-        let start_x = nodes[node_idx].grid_start_x;
-        let finish_x = nodes[node_idx].grid_finish_x;
-        let start_y = nodes[node_idx].grid_start_y;
-        let finish_y = nodes[node_idx].grid_finish_y;
+        let Some(scan_bounds) = self.scan_bounds(&nodes[node_idx]) else {
+            nodes[node_idx].surrounding.clear();
+            return Ok(());
+        };
+        let GridScanBounds {
+            start_x: scan_start_x,
+            finish_x: scan_finish_x,
+            start_y: scan_start_y,
+            finish_y: scan_finish_y,
+        } = scan_bounds;
+
+        if !matches!(self.cells, RepulsionGridCells::Implicit { .. }) {
+            if !self.materialized_refresh_prepared {
+                return Err(WorkFailure::ArithmeticOverflow);
+            }
+            let candidate_visit_count = self
+                .candidate_visit_counts
+                .get(node_idx)
+                .copied()
+                .ok_or(WorkFailure::ArithmeticOverflow)?;
+            admit_dynamic_work(work_control, candidate_visit_count)?;
+        }
+
+        if let RepulsionGridCells::Implicit {
+            node_order,
+            candidates,
+        } = &mut self.cells
+        {
+            candidates.clear();
+            for (insertion_order, &other) in node_order.iter().enumerate() {
+                let Some(other_node) = nodes.get(other) else {
+                    continue;
+                };
+                let first_x = other_node.grid_start_x.max(scan_start_x);
+                let last_x = other_node.grid_finish_x.min(scan_finish_x);
+                let first_y = other_node.grid_start_y.max(scan_start_y);
+                let last_y = other_node.grid_finish_y.min(scan_finish_y);
+                if first_x <= last_x && first_y <= last_y {
+                    candidates.push(ImplicitGridCandidate {
+                        first_x,
+                        first_y,
+                        insertion_order,
+                        node_idx: other,
+                    });
+                }
+            }
+            candidates.sort_unstable_by_key(|candidate| {
+                (
+                    candidate.first_x,
+                    candidate.first_y,
+                    candidate.insertion_order,
+                )
+            });
+        }
+
         let node_owner_idx = nodes[node_idx].owner_idx;
         let node_center_x = nodes[node_idx].center_x();
         let node_center_y = nodes[node_idx].center_y();
         let node_half_w = nodes[node_idx].half_w();
         let node_half_h = nodes[node_idx].half_h();
+        let node_count = nodes.len();
         let (left, rest) = nodes.split_at_mut(node_idx);
         let (node, right) = rest
             .split_first_mut()
@@ -5387,47 +8714,52 @@ impl RepulsionGrid {
             *surrounding_seen_generation = 1;
         }
         let generation = *surrounding_seen_generation;
-        for gx in (start_x - 1)..=(finish_x + 1) {
-            if gx < 0 || gx >= self.size_x {
-                continue;
+        let mut consider = |other: usize| {
+            if other == node_idx
+                || other >= node_count
+                || other >= processed_generation.len()
+                || other >= surrounding_seen.len()
+                || processed_generation[other] == current_processed_generation
+                || surrounding_seen[other] == generation
+            {
+                return;
             }
-            for gy in (start_y - 1)..=(finish_y + 1) {
-                if gy < 0 || gy >= self.size_y {
-                    continue;
+            let other_node = if other < node_idx {
+                &left[other]
+            } else {
+                &right[other - node_idx - 1]
+            };
+            if node_owner_idx != other_node.owner_idx {
+                return;
+            }
+
+            let dx =
+                (node_center_x - other_node.center_x()).abs() - (node_half_w + other_node.half_w());
+            let dy =
+                (node_center_y - other_node.center_y()).abs() - (node_half_h + other_node.half_h());
+            if dx <= repulsion_range && dy <= repulsion_range {
+                surrounding_seen[other] = generation;
+                surrounding.push(other);
+            }
+        };
+
+        match &self.cells {
+            RepulsionGridCells::Dense(_) | RepulsionGridCells::Sparse(_) => {
+                for gx in scan_start_x..=scan_finish_x {
+                    for gy in scan_start_y..=scan_finish_y {
+                        for &other in self.cell(gx, gy) {
+                            consider(other);
+                        }
+                    }
                 }
-                for &other in self.cell(gx, gy) {
-                    if other == node_idx {
-                        continue;
-                    }
-                    if processed_generation[other] == current_processed_generation {
-                        continue;
-                    }
-                    if surrounding_seen[other] == generation {
-                        continue;
-                    }
-                    let other_node = if other < node_idx {
-                        &left[other]
-                    } else {
-                        &right[other - node_idx - 1]
-                    };
-                    if node_owner_idx != other_node.owner_idx {
-                        continue;
-                    }
-
-                    let other_center_x = other_node.center_x();
-                    let other_center_y = other_node.center_y();
-                    let other_half_w = other_node.half_w();
-                    let other_half_h = other_node.half_h();
-
-                    let dx = (node_center_x - other_center_x).abs() - (node_half_w + other_half_w);
-                    let dy = (node_center_y - other_center_y).abs() - (node_half_h + other_half_h);
-                    if dx <= repulsion_range && dy <= repulsion_range {
-                        surrounding_seen[other] = generation;
-                        surrounding.push(other);
-                    }
+            }
+            RepulsionGridCells::Implicit { candidates, .. } => {
+                for candidate in candidates {
+                    consider(candidate.node_idx);
                 }
             }
         }
+        Ok(())
     }
 }
 

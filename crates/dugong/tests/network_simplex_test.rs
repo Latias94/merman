@@ -46,7 +46,7 @@ fn gansner_tree() -> Graph<TreeNodeLabel, TreeEdgeLabel, ()> {
 }
 
 fn ns(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
-    rank::network_simplex::network_simplex(g);
+    rank::network_simplex::network_simplex(g).expect("network simplex succeeds");
     util::normalize_ranks(g);
 }
 

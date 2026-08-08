@@ -76,6 +76,89 @@ fn util_simplify_collapses_multi_edges() {
 }
 
 #[test]
+fn util_simplify_keeps_dagres_default_minlen_floor() {
+    let mut g: Graph<serde_json::Value, EdgeLabel, serde_json::Value> = Graph::new(GraphOptions {
+        multigraph: true,
+        compound: false,
+        ..Default::default()
+    });
+    g.set_edge_with_label(
+        "a",
+        "b",
+        EdgeLabel {
+            minlen: 0,
+            ..Default::default()
+        },
+    );
+
+    let simplified = util::simplify(&g);
+
+    assert_eq!(simplified.edge("a", "b", None).unwrap().minlen, 1);
+}
+
+#[test]
+fn util_simplify_preserves_first_endpoint_pair_occurrence_order() {
+    let mut g: Graph<serde_json::Value, EdgeLabel, serde_json::Value> = Graph::new(GraphOptions {
+        multigraph: true,
+        compound: false,
+        ..Default::default()
+    });
+    g.set_edge_named(
+        "z",
+        "a",
+        Some("first"),
+        Some(EdgeLabel {
+            weight: 1.0,
+            minlen: 0,
+            ..Default::default()
+        }),
+    );
+    g.set_edge_named(
+        "b",
+        "c",
+        Some("middle"),
+        Some(EdgeLabel {
+            weight: 2.0,
+            minlen: 2,
+            ..Default::default()
+        }),
+    );
+    g.set_edge_named(
+        "a",
+        "z",
+        Some("last-pair"),
+        Some(EdgeLabel {
+            weight: 3.0,
+            minlen: 3,
+            ..Default::default()
+        }),
+    );
+    g.set_edge_named(
+        "z",
+        "a",
+        Some("parallel"),
+        Some(EdgeLabel {
+            weight: 4.0,
+            minlen: 4,
+            ..Default::default()
+        }),
+    );
+
+    let simplified = util::simplify(&g);
+    let endpoint_order: Vec<_> = simplified
+        .edges()
+        .map(|edge| (edge.v.as_str(), edge.w.as_str()))
+        .collect();
+    assert_eq!(endpoint_order, [("z", "a"), ("b", "c"), ("a", "z")]);
+    assert_eq!(
+        simplified
+            .edge("z", "a", None)
+            .map(|edge| (edge.weight, edge.minlen)),
+        Some((5.0, 4))
+    );
+}
+
+#[test]
 fn util_simplify_copies_the_graph_object() {
     let mut g: Graph<serde_json::Value, EdgeLabel, serde_json::Value> = Graph::new(GraphOptions {
         multigraph: true,
@@ -556,6 +639,38 @@ fn util_remove_empty_ranks_handles_parents_with_undefined_ranks() {
     assert_eq!(g.node("a").unwrap().rank, Some(0));
     assert_eq!(g.node("b").unwrap().rank, Some(2));
     assert_eq!(g.node("sg").unwrap().rank, None);
+}
+
+#[test]
+fn util_remove_empty_ranks_skips_extreme_empty_rank_spans() {
+    let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
+        multigraph: false,
+        compound: false,
+        ..Default::default()
+    });
+    g.set_graph(GraphLabel {
+        node_rank_factor: Some(2),
+        ..Default::default()
+    });
+    g.set_node(
+        "low",
+        NodeLabel {
+            rank: Some(i32::MIN),
+            ..Default::default()
+        },
+    );
+    g.set_node(
+        "high",
+        NodeLabel {
+            rank: Some(i32::MAX),
+            ..Default::default()
+        },
+    );
+
+    util::remove_empty_ranks(&mut g);
+
+    assert_eq!(g.node("low").unwrap().rank, Some(i32::MIN));
+    assert_eq!(g.node("high").unwrap().rank, Some(0));
 }
 
 #[test]

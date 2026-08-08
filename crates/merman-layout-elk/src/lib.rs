@@ -14,7 +14,7 @@
 //! The crate exposes one Mermaid adapter and one source-backed layered implementation. New layout
 //! behavior must carry a pinned Mermaid or Eclipse ELK source reference.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Write as _;
 use std::num::NonZeroU64;
 
@@ -22,7 +22,8 @@ mod model;
 use merman_elk_layered as source_port;
 pub use model::*;
 pub use source_port::{
-    GraphExecution, HierarchySweepDebugTrace, HierarchySweepNodeDebug, LayeredPhase, ProcessorKind,
+    GraphExecution, HierarchySweepDebugTrace, HierarchySweepNodeDebug, LayeredPhase,
+    NoopWorkControl, ProcessorKind, WorkControl, WorkError,
 };
 
 /// The nonzero random seed captured by the owner of one render/layout operation.
@@ -63,6 +64,12 @@ use source_port::{
 /// ```
 pub struct SourcePhaseDiagnostics {
     graph: LGraph,
+}
+
+impl Drop for SourcePhaseDiagnostics {
+    fn drop(&mut self) {
+        detach_source_graph_hierarchy_for_drop(&mut self.graph);
+    }
 }
 
 impl SourcePhaseDiagnostics {
@@ -159,14 +166,35 @@ pub enum Error {
     SourceImport(#[from] merman_elk_layered::ImportError),
     #[error(transparent)]
     SourcePipeline(#[from] merman_elk_layered::PipelineError),
+    #[error(transparent)]
+    Work(#[from] WorkError),
+}
+
+impl Error {
+    pub const fn work_error(&self) -> Option<WorkError> {
+        match self {
+            Self::Work(error) => Some(*error),
+            Self::SourceImport(source_port::ImportError::Work(error))
+            | Self::SourcePipeline(source_port::PipelineError::Work(error)) => Some(*error),
+            _ => None,
+        }
+    }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Execute Mermaid's ELK adapter over the source-backed Eclipse ELK layered pipeline.
 pub fn layout(graph: &Graph) -> Result<LayoutResult> {
-    let root_scope = vec![graph.id.clone()];
-    Ok(layout_layered_recursive(graph, None, &root_scope, None, None)?.layout)
+    let mut work_control = NoopWorkControl;
+    layout_with_work_control(graph, &mut work_control)
+}
+
+/// Executes Mermaid's ELK adapter with caller-owned checked work control.
+pub fn layout_with_work_control(
+    graph: &Graph,
+    work_control: &mut dyn WorkControl,
+) -> Result<LayoutResult> {
+    layout_scopes(graph, None, work_control)
 }
 
 /// Executes Mermaid's ELK adapter using the seed captured by its owning operation.
@@ -179,61 +207,17 @@ pub fn layout_with_operation_seed(
     graph: &Graph,
     operation_seed: ElkOperationSeed,
 ) -> Result<LayoutResult> {
-    let root_scope = vec![graph.id.clone()];
-    Ok(layout_layered_recursive(
-        graph,
-        Some(operation_seed.source_port_seed()),
-        &root_scope,
-        None,
-        None,
-    )?
-    .layout)
+    let mut work_control = NoopWorkControl;
+    layout_with_operation_seed_and_work_control(graph, operation_seed, &mut work_control)
 }
 
-#[derive(Debug, Clone)]
-struct RecursiveSourceLayout {
-    layout: LayoutResult,
-    size: source_port::LSize,
-}
-
-/// Execute the source-backed layered layout with ELK core's recursive hierarchy wrapper.
-///
-/// Source:
-/// https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.core/src/org/eclipse/elk/core/RecursiveGraphLayoutEngine.java
-fn layout_layered_recursive(
+/// Executes Mermaid's ELK adapter with one operation-owned seed and checked work control.
+pub fn layout_with_operation_seed_and_work_control(
     graph: &Graph,
-    operation_seed: Option<source_port::OperationSeed>,
-    graph_scope: &[String],
-    root_spacing_base: Option<f64>,
-    root_label: Option<Label>,
-) -> Result<RecursiveSourceLayout> {
-    let mut layout_graph = graph.clone();
-    let nested_layouts =
-        prelayout_separate_children(&mut layout_graph, operation_seed, graph_scope)?;
-
-    let input =
-        graph_to_source_input_with_root_context(&layout_graph, root_spacing_base, root_label);
-    let scope = graph_scope.iter().map(String::as_str).collect::<Vec<_>>();
-    let mut lgraph = match operation_seed {
-        Some(operation_seed) => {
-            source_port::import_graph_with_operation_seed_at_scope(&input, operation_seed, &scope)
-        }
-        None => source_port::import_graph(&input),
-    }
-    .map_err(Error::SourceImport)?;
-    if source_graph_has_nested_graphs(&lgraph) {
-        source_port::execute_ported_compound_processors(&mut lgraph)
-            .map_err(Error::SourcePipeline)?;
-    } else {
-        source_port::execute_ported_processors(&mut lgraph).map_err(Error::SourcePipeline)?;
-    }
-    let mut layout = source_graph_to_layout_result(&lgraph);
-    merge_nested_source_layouts(&mut layout, &nested_layouts);
-
-    Ok(RecursiveSourceLayout {
-        layout,
-        size: actual_source_graph_size(&lgraph),
-    })
+    operation_seed: ElkOperationSeed,
+    work_control: &mut dyn WorkControl,
+) -> Result<LayoutResult> {
+    layout_scopes(graph, Some(operation_seed.source_port_seed()), work_control)
 }
 
 fn graph_to_source_input(graph: &Graph) -> ElkInputGraph {
@@ -314,6 +298,7 @@ fn graph_to_source_input_with_root_context(
                     .map(|label| ElkInputLabel::center("", label.width, label.height)),
                 minlen: edge.minlen,
                 inside_self_loops_yo: edge.inside_self_loops_yo,
+                model_order: None,
                 priority_direction: 0,
                 priority_shortness: 0,
                 priority_straightness: 0,
@@ -322,234 +307,1073 @@ fn graph_to_source_input_with_root_context(
     }
 }
 
-fn prelayout_separate_children(
-    graph: &mut Graph,
-    operation_seed: Option<source_port::OperationSeed>,
-    graph_scope: &[String],
-) -> Result<HashMap<String, RecursiveSourceLayout>> {
-    let mut nested_layouts = HashMap::new();
-    let root_handling = graph.options.layered.hierarchy_handling;
-    let root_direction = graph.direction;
-    prelayout_separate_children_under(
-        graph,
-        None,
-        root_handling,
-        root_direction,
-        operation_seed,
-        graph_scope,
-        &mut nested_layouts,
-    )?;
-    Ok(nested_layouts)
-}
-
-fn prelayout_separate_children_under(
-    graph: &mut Graph,
-    parent: Option<&str>,
-    parent_handling: HierarchyHandling,
-    parent_direction: Direction,
-    operation_seed: Option<source_port::OperationSeed>,
-    graph_scope: &[String],
-    nested_layouts: &mut HashMap<String, RecursiveSourceLayout>,
-) -> Result<()> {
-    let child_ids = direct_child_group_ids_with_children(graph, parent);
-    for child_id in child_ids {
-        let Some(child) = graph.nodes.iter().find(|node| node.id == child_id).cloned() else {
-            continue;
-        };
-        let child_handling = child.hierarchy_handling.unwrap_or(parent_handling);
-        let child_direction = child.direction.unwrap_or(parent_direction);
-        let parent_separates_children = parent_handling == HierarchyHandling::SeparateChildren;
-        let child_stops_hierarchy = child_handling == HierarchyHandling::SeparateChildren;
-
-        if parent_separates_children || child_stops_hierarchy {
-            let child_graph =
-                graph_for_recursive_child(graph, &child, child_handling, child_direction);
-            let mut child_scope = graph_scope.to_vec();
-            child_scope.push(child.id.clone());
-            let child_layout = layout_layered_recursive(
-                &child_graph,
-                operation_seed,
-                &child_scope,
-                Some(30.0),
-                child.label,
-            )?;
-            if let Some(node) = graph.nodes.iter_mut().find(|node| node.id == child.id) {
-                node.width = node.width.max(child_layout.size.width);
-                node.height = node.height.max(child_layout.size.height);
-            }
-            nested_layouts.insert(child.id, child_layout);
-        } else {
-            prelayout_separate_children_under(
-                graph,
-                Some(child.id.as_str()),
-                child_handling,
-                child_direction,
-                operation_seed,
-                graph_scope,
-                nested_layouts,
-            )?;
-        }
-    }
-
-    Ok(())
-}
-
 fn apply_root_inside_top_center_label_padding(options: &mut SourceLayeredOptions, label: Label) {
     if label.height > 0.0 {
         options.padding.top += label.height + options.node_labels_padding.top;
     }
 }
 
-fn direct_child_group_ids_with_children(graph: &Graph, parent: Option<&str>) -> Vec<String> {
-    graph
-        .nodes
-        .iter()
-        .filter(|node| {
-            node.kind == NodeKind::Group
-                && node.parent.as_deref() == parent
-                && node_has_direct_children(graph, &node.id)
-        })
-        .map(|node| node.id.clone())
-        .collect()
+#[derive(Debug)]
+struct HierarchyIndex<'a> {
+    graph: &'a Graph,
+    parent: Vec<Option<usize>>,
+    children: Vec<Vec<usize>>,
+    node_scope: Vec<usize>,
+    edge_model_order: Vec<usize>,
+    child_scope_by_anchor: Vec<Option<usize>>,
+    scopes: Vec<ScopePlan>,
+    postorder: Vec<usize>,
 }
 
-fn node_has_direct_children(graph: &Graph, node_id: &str) -> bool {
-    graph
-        .nodes
-        .iter()
-        .any(|candidate| candidate.parent.as_deref() == Some(node_id))
-}
-
-fn graph_for_recursive_child(
-    graph: &Graph,
-    child: &Node,
-    hierarchy_handling: HierarchyHandling,
+#[derive(Debug)]
+struct ScopePlan {
+    parent: Option<usize>,
+    anchor: Option<usize>,
+    depth: usize,
+    seed_scope: source_port::GraphSeedScope,
     direction: Direction,
-) -> Graph {
-    let descendant_ids = descendant_node_ids(graph, child.id.as_str());
-    let nodes = graph
-        .nodes
-        .iter()
-        .filter(|node| descendant_ids.contains(node.id.as_str()))
-        .cloned()
-        .map(|mut node| {
-            if node.parent.as_deref() == Some(child.id.as_str()) {
-                node.parent = None;
-            }
-            node
-        })
-        .collect();
-    let edges = graph
-        .edges
-        .iter()
-        .filter(|edge| {
-            descendant_ids.contains(edge.source.as_str())
-                && descendant_ids.contains(edge.target.as_str())
-        })
-        .cloned()
-        .collect();
-    let mut options = graph.options.clone();
-    options.layered.hierarchy_handling = hierarchy_handling;
+    handling: HierarchyHandling,
+    nodes: Vec<usize>,
+    children: Vec<usize>,
+    edges: Vec<ScopedEdge>,
+    owned_edges: Vec<usize>,
+}
 
-    Graph {
-        id: child.id.clone(),
-        direction,
-        nodes,
-        edges,
-        spacing: graph.spacing,
-        options,
+#[derive(Debug, Clone, Copy)]
+enum ScopedEndpoint {
+    Node(usize),
+    ParentBoundary { scope: usize, connects_node: bool },
+}
+
+type ScopeEdgePiece = (
+    usize,
+    ScopedEndpoint,
+    ScopedEndpoint,
+    source_port::CompoundEdgeSegment,
+);
+
+#[derive(Debug)]
+struct ScopedEdge {
+    original: usize,
+    source: ScopedEndpoint,
+    target: ScopedEndpoint,
+    segment: Option<source_port::CompoundEdgeSegment>,
+    segment_order: Option<usize>,
+    segment_count: usize,
+    carries_label: bool,
+}
+
+#[derive(Debug)]
+struct ScopeLayout {
+    layout: LayoutResult,
+    size: source_port::LSize,
+    edge_metadata: HashMap<String, ScopeEdgeMetadata>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ScopeEdgeMetadata {
+    original: usize,
+    segment: Option<SegmentedEdgeMetadata>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SegmentedEdgeMetadata {
+    segment: source_port::CompoundEdgeSegment,
+    model_order: Option<usize>,
+    order: usize,
+    count: usize,
+}
+
+fn layout_scopes(
+    graph: &Graph,
+    operation_seed: Option<source_port::OperationSeed>,
+    work_control: &mut dyn WorkControl,
+) -> Result<LayoutResult> {
+    let index = HierarchyIndex::build(graph, work_control)?;
+    work_control.check(index.scopes.len())?;
+    work_control.charge(index.scopes.len())?;
+    let mut arena = std::iter::repeat_with(|| None)
+        .take(index.scopes.len())
+        .collect::<Vec<Option<ScopeLayout>>>();
+
+    for &scope in &index.postorder {
+        let (input, segments, edge_metadata) =
+            index.materialize_scope(scope, &arena, work_control)?;
+        let mut lgraph = match operation_seed {
+            Some(operation_seed) => {
+                source_port::import_graph_with_operation_seed_at_seed_scope_and_segments_with_work_control(
+                    &input,
+                    operation_seed,
+                    &index.scopes[scope].seed_scope,
+                    &segments,
+                    work_control,
+                )
+            }
+            None => source_port::import_graph_at_seed_scope_and_segments_with_work_control(
+                &input,
+                &index.scopes[scope].seed_scope,
+                &segments,
+                work_control,
+            ),
+        }
+        .map_err(Error::SourceImport)?;
+        if source_graph_requires_compound_pipeline(&lgraph) {
+            source_port::execute_ported_compound_processors_with_work_control(
+                &mut lgraph,
+                work_control,
+            )
+            .map_err(Error::SourcePipeline)?;
+        } else {
+            source_port::execute_ported_processors_with_work_control(&mut lgraph, work_control)
+                .map_err(Error::SourcePipeline)?;
+        }
+        let export_work = source_graph_output_work_units(&lgraph)?;
+        work_control.check(export_work)?;
+        work_control.charge(export_work)?;
+        arena[scope] = Some(ScopeLayout {
+            layout: source_graph_to_layout_result(&lgraph),
+            size: actual_source_graph_size(&lgraph),
+            edge_metadata,
+        });
+    }
+
+    flatten_scope_layouts(&index, arena, work_control)
+}
+
+impl<'a> HierarchyIndex<'a> {
+    fn build(graph: &'a Graph, work_control: &mut dyn WorkControl) -> Result<Self> {
+        let unique_items = graph
+            .nodes
+            .len()
+            .checked_add(graph.edges.len())
+            .ok_or(WorkError::ArithmeticOverflow)?;
+        work_control.check(unique_items)?;
+        work_control.charge(unique_items)?;
+
+        let mut node_by_id = HashMap::with_capacity(graph.nodes.len());
+        for (index, node) in graph.nodes.iter().enumerate() {
+            if node_by_id.insert(node.id.as_str(), index).is_some() {
+                return Err(source_port::ImportError::DuplicateNode {
+                    id: node.id.clone(),
+                }
+                .into());
+            }
+        }
+
+        // FlowDB normalizes every edge ID before invoking Mermaid's ELK adapter: duplicate
+        // user-provided IDs receive unique generated identities. Scope metadata may key by that
+        // identity, but non-canonical duplicate input must not silently alias original edges.
+        work_control.check(graph.edges.len())?;
+        work_control.charge(graph.edges.len())?;
+        let mut edge_ids = HashSet::with_capacity(graph.edges.len());
+        for edge in &graph.edges {
+            if !edge_ids.insert(edge.id.as_str()) {
+                return Err(source_port::ImportError::DuplicateEdge {
+                    id: edge.id.clone(),
+                }
+                .into());
+            }
+        }
+
+        let mut parent = vec![None; graph.nodes.len()];
+        let mut children = vec![Vec::new(); graph.nodes.len()];
+        let mut roots = Vec::new();
+        for (index, node) in graph.nodes.iter().enumerate() {
+            if let Some(parent_id) = node.parent.as_deref() {
+                let Some(&parent_index) = node_by_id.get(parent_id) else {
+                    return Err(source_port::ImportError::MissingParent {
+                        node_id: node.id.clone(),
+                        parent_id: parent_id.to_string(),
+                    }
+                    .into());
+                };
+                parent[index] = Some(parent_index);
+                children[parent_index].push(index);
+            } else {
+                roots.push(index);
+            }
+        }
+        detect_parent_cycles(graph, &parent)?;
+
+        work_control.check(1)?;
+        work_control.charge(1)?;
+        let mut scopes = vec![ScopePlan {
+            parent: None,
+            anchor: None,
+            depth: 0,
+            seed_scope: source_port::GraphSeedScope::root(graph.id.as_str()),
+            direction: graph.direction,
+            handling: graph.options.layered.hierarchy_handling,
+            nodes: Vec::new(),
+            children: Vec::new(),
+            edges: Vec::new(),
+            owned_edges: Vec::new(),
+        }];
+        let mut node_scope = vec![0usize; graph.nodes.len()];
+        let mut resolved_handling =
+            vec![graph.options.layered.hierarchy_handling; graph.nodes.len()];
+        let mut child_scope_by_anchor = vec![None; graph.nodes.len()];
+        let mut hierarchy_preorder = Vec::with_capacity(graph.nodes.len());
+        let mut preorder_position = vec![0usize; graph.nodes.len()];
+        let mut search = roots
+            .into_iter()
+            .rev()
+            .map(|node| {
+                (
+                    node,
+                    0usize,
+                    graph.options.layered.hierarchy_handling,
+                    graph.direction,
+                )
+            })
+            .collect::<Vec<_>>();
+        while let Some((node_index, scope, parent_handling, parent_direction)) = search.pop() {
+            let node = &graph.nodes[node_index];
+            let handling = if node.kind == NodeKind::Group {
+                node.hierarchy_handling.unwrap_or(parent_handling)
+            } else {
+                parent_handling
+            };
+            let direction = node.direction.unwrap_or(parent_direction);
+            resolved_handling[node_index] = handling;
+            node_scope[node_index] = scope;
+            preorder_position[node_index] = hierarchy_preorder.len();
+            hierarchy_preorder.push(node_index);
+
+            let separates = node.kind == NodeKind::Group
+                && !children[node_index].is_empty()
+                && (parent_handling == HierarchyHandling::SeparateChildren
+                    || handling == HierarchyHandling::SeparateChildren);
+            let child_scope = if separates {
+                work_control.check(1)?;
+                work_control.charge(1)?;
+                let child_scope = scopes.len();
+                let seed_scope = scopes[scope].seed_scope.child(node.id.as_str());
+                scopes.push(ScopePlan {
+                    parent: Some(scope),
+                    anchor: Some(node_index),
+                    depth: scopes[scope].depth + 1,
+                    seed_scope,
+                    direction,
+                    handling,
+                    nodes: Vec::new(),
+                    children: Vec::new(),
+                    edges: Vec::new(),
+                    owned_edges: Vec::new(),
+                });
+                scopes[scope].children.push(child_scope);
+                child_scope_by_anchor[node_index] = Some(child_scope);
+                child_scope
+            } else {
+                scope
+            };
+            search.extend(
+                children[node_index]
+                    .iter()
+                    .rev()
+                    .map(|child| (*child, child_scope, handling, direction)),
+            );
+        }
+        for node in 0..graph.nodes.len() {
+            scopes[node_scope[node]].nodes.push(node);
+        }
+
+        let mut edge_owner_scope = vec![0usize; graph.edges.len()];
+        let mut edge_model_order = vec![0usize; graph.edges.len()];
+        for (edge_index, edge) in graph.edges.iter().enumerate() {
+            let Some(&source) = node_by_id.get(edge.source.as_str()) else {
+                return Err(source_port::ImportError::MissingEndpoint {
+                    edge_id: edge.id.clone(),
+                    node_id: edge.source.clone(),
+                }
+                .into());
+            };
+            let Some(&target) = node_by_id.get(edge.target.as_str()) else {
+                return Err(source_port::ImportError::MissingEndpoint {
+                    edge_id: edge.id.clone(),
+                    node_id: edge.target.clone(),
+                }
+                .into());
+            };
+            let source_scope = node_scope[source];
+            let target_scope = node_scope[target];
+            if source_scope == target_scope {
+                let owner = source_scope;
+                edge_owner_scope[edge_index] = owner;
+                edge_model_order[edge_index] = scopes[owner].owned_edges.len();
+                scopes[owner].owned_edges.push(edge_index);
+                scopes[owner].edges.push(ScopedEdge {
+                    original: edge_index,
+                    source: ScopedEndpoint::Node(source),
+                    target: ScopedEndpoint::Node(target),
+                    segment: None,
+                    segment_order: None,
+                    segment_count: 0,
+                    carries_label: true,
+                });
+                continue;
+            }
+
+            // Mermaid owns a cross-scope edge at the endpoint-inclusive common ancestor. Build
+            // that owner and ELK's required boundary sections in one parent-chain pass.
+            let (owner, mut pieces) = scope_edge_segments(
+                &scopes,
+                source,
+                target,
+                source_scope,
+                target_scope,
+                work_control,
+            )?;
+            edge_owner_scope[edge_index] = owner;
+            edge_model_order[edge_index] = scopes[owner].owned_edges.len();
+            scopes[owner].owned_edges.push(edge_index);
+            let label_piece = edge.label.map(|_| compound_center_segment(&pieces));
+            let segment_count = pieces.len();
+            for (piece_index, (scope, source, target, segment)) in pieces.drain(..).enumerate() {
+                scopes[scope].edges.push(ScopedEdge {
+                    original: edge_index,
+                    source,
+                    target,
+                    segment: Some(segment),
+                    segment_order: Some(piece_index),
+                    segment_count,
+                    carries_label: label_piece == Some(piece_index),
+                });
+            }
+        }
+
+        let include_order_work = scopes
+            .iter()
+            .filter(|scope| {
+                scope.handling == HierarchyHandling::IncludeChildren && scope.edges.len() >= 2
+            })
+            .try_fold(graph.nodes.len(), |work, scope| {
+                let edge_work = scope
+                    .edges
+                    .len()
+                    .checked_mul(3)
+                    .ok_or(WorkError::ArithmeticOverflow)?;
+                work.checked_add(scope.nodes.len())
+                    .and_then(|work| work.checked_add(scope.owned_edges.len()))
+                    .and_then(|work| work.checked_add(edge_work))
+                    .ok_or(WorkError::ArithmeticOverflow)
+            })?;
+        if scopes.iter().any(|scope| {
+            scope.handling == HierarchyHandling::IncludeChildren && scope.edges.len() >= 2
+        }) {
+            work_control.check(include_order_work)?;
+            work_control.charge(include_order_work)?;
+
+            let mut subtree_size = vec![1usize; graph.nodes.len()];
+            for node in hierarchy_preorder.iter().rev().copied() {
+                if let Some(parent) = parent[node] {
+                    subtree_size[parent] = subtree_size[parent]
+                        .checked_add(subtree_size[node])
+                        .ok_or(WorkError::ArithmeticOverflow)?;
+                }
+            }
+            for (scope_index, scope) in scopes.iter_mut().enumerate() {
+                if scope.handling != HierarchyHandling::IncludeChildren || scope.edges.len() < 2 {
+                    continue;
+                }
+                order_scope_edges_like_elk_importer(
+                    scope,
+                    scope_index,
+                    &parent,
+                    &children,
+                    &node_scope,
+                    &resolved_handling,
+                    &preorder_position,
+                    &subtree_size,
+                );
+                let previous_owned = std::mem::take(&mut scope.owned_edges);
+                for &original in &previous_owned {
+                    edge_model_order[original] = usize::MAX;
+                }
+                for scoped in &scope.edges {
+                    if edge_owner_scope[scoped.original] == scope_index
+                        && edge_model_order[scoped.original] == usize::MAX
+                    {
+                        edge_model_order[scoped.original] = scope.owned_edges.len();
+                        scope.owned_edges.push(scoped.original);
+                    }
+                }
+                for original in previous_owned {
+                    if edge_model_order[original] == usize::MAX {
+                        edge_model_order[original] = scope.owned_edges.len();
+                        scope.owned_edges.push(original);
+                    }
+                }
+            }
+        }
+
+        let mut postorder = Vec::with_capacity(scopes.len());
+        let mut frames = vec![(0usize, false)];
+        while let Some((scope, expanded)) = frames.pop() {
+            if expanded {
+                postorder.push(scope);
+                continue;
+            }
+            frames.push((scope, true));
+            frames.extend(
+                scopes[scope]
+                    .children
+                    .iter()
+                    .rev()
+                    .map(|child| (*child, false)),
+            );
+        }
+
+        Ok(Self {
+            graph,
+            parent,
+            children,
+            node_scope,
+            edge_model_order,
+            child_scope_by_anchor,
+            scopes,
+            postorder,
+        })
+    }
+
+    fn materialize_scope(
+        &self,
+        scope_index: usize,
+        arena: &[Option<ScopeLayout>],
+        work_control: &mut dyn WorkControl,
+    ) -> Result<(
+        ElkInputGraph,
+        Vec<source_port::ElkInputEdgeSegment>,
+        HashMap<String, ScopeEdgeMetadata>,
+    )> {
+        let scope = &self.scopes[scope_index];
+        let materialized = scope
+            .nodes
+            .len()
+            .checked_add(scope.edges.len())
+            .ok_or(WorkError::ArithmeticOverflow)?;
+        work_control.check(materialized)?;
+        work_control.charge(materialized)?;
+
+        let mut options =
+            layered_options_to_source_for(self.graph, scope.direction, scope.handling);
+        if scope.anchor.is_some() {
+            options.spacing = source_port::SpacingOptions::layered_base_value(30.0);
+        }
+        if let Some(label) = scope.anchor.and_then(|node| self.graph.nodes[node].label) {
+            apply_root_inside_top_center_label_padding(&mut options, label);
+        }
+
+        let nodes = scope
+            .nodes
+            .iter()
+            .map(|node_index| {
+                let source = &self.graph.nodes[*node_index];
+                let child_size = self.child_scope_by_anchor[*node_index]
+                    .and_then(|child| arena[child].as_ref())
+                    .map(|layout| layout.size);
+                // Mermaid removes a non-empty group's explicit size before ELK layout. A parent
+                // scope must therefore consume the completed child extent, not the input size.
+                let width = child_size
+                    .map(|size| source.width.max(size.width))
+                    .unwrap_or(source.width);
+                let height = child_size
+                    .map(|size| source.height.max(size.height))
+                    .unwrap_or(source.height);
+                ElkInputNode {
+                    id: source.id.clone(),
+                    width,
+                    height,
+                    parent: self.parent[*node_index]
+                        .filter(|parent| self.node_scope[*parent] == scope_index)
+                        .map(|parent| self.graph.nodes[parent].id.clone()),
+                    direction: source.direction.map(direction_to_source),
+                    hierarchy_handling: match (source.kind, source.hierarchy_handling) {
+                        (NodeKind::Group, Some(handling)) => {
+                            Some(hierarchy_handling_to_source(handling))
+                        }
+                        (NodeKind::Group, None) => {
+                            Some(hierarchy_handling_to_source(scope.handling))
+                        }
+                        (NodeKind::Leaf, _) => None,
+                    },
+                    layer_constraint: source.layer_constraint.map(layer_constraint_to_source),
+                    port_constraints: None,
+                    node_label_placement: match source.kind {
+                        NodeKind::Group => NodeLabelPlacement::InsideTopCenter,
+                        NodeKind::Leaf => NodeLabelPlacement::Fixed,
+                    },
+                    nested_spacing_base: (source.kind == NodeKind::Group).then_some(30.0),
+                    // Mermaid attaches an ELK label only when childrenById contains the group.
+                    // Empty-group titles remain available to SVG rendering without layout margin.
+                    label: if source.kind == NodeKind::Leaf
+                        || !self.children[*node_index].is_empty()
+                    {
+                        source
+                            .label
+                            .map(|label| ElkInputLabel::center("", label.width, label.height))
+                    } else {
+                        None
+                    },
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let mut edges = Vec::new();
+        let mut segments = Vec::new();
+        let mut edge_metadata = HashMap::new();
+        let uses_edge_model_order = layout_uses_edge_model_order(self.graph);
+        for (scope_edge_order, scoped) in scope.edges.iter().enumerate() {
+            let source = &self.graph.edges[scoped.original];
+            let model_order = uses_edge_model_order.then_some(if scoped.segment.is_some() {
+                // A boundary segment inherits its original edge owner's ordinal even when this
+                // particular piece is materialized in a descendant scope.
+                self.edge_model_order[scoped.original]
+            } else {
+                // Ordinary edges follow the importer-visible order of this materialized scope.
+                scope_edge_order
+            });
+            let input_edge = ElkInputEdge {
+                id: source.id.clone(),
+                source: source.source.clone(),
+                target: source.target.clone(),
+                label: if scoped.carries_label {
+                    source
+                        .label
+                        .map(|label| ElkInputLabel::center("", label.width, label.height))
+                } else {
+                    None
+                },
+                minlen: source.minlen,
+                inside_self_loops_yo: source.inside_self_loops_yo,
+                model_order,
+                priority_direction: 0,
+                priority_shortness: 0,
+                priority_straightness: 0,
+            };
+            let segment_metadata = scoped.segment.map(|segment| SegmentedEdgeMetadata {
+                segment,
+                model_order,
+                order: scoped
+                    .segment_order
+                    .expect("segmented edge must carry its original path order"),
+                count: scoped.segment_count,
+            });
+            edge_metadata.insert(
+                source.id.clone(),
+                ScopeEdgeMetadata {
+                    original: scoped.original,
+                    segment: segment_metadata,
+                },
+            );
+            if let Some(segment) = scoped.segment {
+                segments.push(source_port::ElkInputEdgeSegment {
+                    edge: input_edge,
+                    source: self.segment_endpoint(scoped.source),
+                    target: self.segment_endpoint(scoped.target),
+                    segment,
+                    // Model order is local to the owning scope, while external-port identity must
+                    // be unique among every segment materialized in this scope. Conflating the two
+                    // lets edges with different owners accidentally reuse the same hierarchy port.
+                    edge_order: scope_edge_order,
+                });
+            } else {
+                edges.push(input_edge);
+            }
+        }
+
+        Ok((
+            ElkInputGraph {
+                id: scope
+                    .anchor
+                    .map(|node| self.graph.nodes[node].id.clone())
+                    .unwrap_or_else(|| self.graph.id.clone()),
+                options,
+                nodes,
+                edges,
+            },
+            segments,
+            edge_metadata,
+        ))
+    }
+
+    fn segment_endpoint(
+        &self,
+        endpoint: ScopedEndpoint,
+    ) -> source_port::ElkInputEdgeSegmentEndpoint {
+        match endpoint {
+            ScopedEndpoint::Node(node) => source_port::ElkInputEdgeSegmentEndpoint::Node {
+                id: self.graph.nodes[node].id.clone(),
+            },
+            ScopedEndpoint::ParentBoundary {
+                scope,
+                connects_node,
+            } => {
+                let anchor = self.scopes[scope]
+                    .anchor
+                    .expect("non-root scope boundary must have an anchor");
+                source_port::ElkInputEdgeSegmentEndpoint::ParentBoundary {
+                    id: self.graph.nodes[anchor].id.clone(),
+                    connects_node,
+                }
+            }
+        }
     }
 }
 
-fn descendant_node_ids(graph: &Graph, root: &str) -> std::collections::HashSet<String> {
-    let mut descendants = std::collections::HashSet::new();
-    let mut stack = graph
-        .nodes
-        .iter()
-        .filter(|node| node.parent.as_deref() == Some(root))
-        .map(|node| node.id.clone())
-        .collect::<Vec<_>>();
+#[allow(clippy::too_many_arguments)]
+fn order_scope_edges_like_elk_importer(
+    scope: &mut ScopePlan,
+    scope_index: usize,
+    parent: &[Option<usize>],
+    children: &[Vec<usize>],
+    node_scope: &[usize],
+    resolved_handling: &[HierarchyHandling],
+    preorder_position: &[usize],
+    subtree_size: &[usize],
+) {
+    if scope.edges.len() < 2 {
+        return;
+    }
 
-    while let Some(id) = stack.pop() {
-        if !descendants.insert(id.clone()) {
-            continue;
+    let local_parent =
+        |node: usize| parent[node].filter(|parent| node_scope[*parent] == scope_index);
+    let is_ancestor = |ancestor: usize, node: usize| {
+        let start = preorder_position[ancestor];
+        let end = start + subtree_size[ancestor];
+        start <= preorder_position[node] && preorder_position[node] < end
+    };
+    let containing_parent = |edge: &ScopedEdge| {
+        let (ScopedEndpoint::Node(source), ScopedEndpoint::Node(target)) =
+            (edge.source, edge.target)
+        else {
+            return None;
+        };
+        let source_parent = local_parent(source);
+        let target_parent = local_parent(target);
+        if source_parent == target_parent {
+            source_parent
+        } else if is_ancestor(source, target) {
+            Some(source)
+        } else if is_ancestor(target, source) {
+            Some(target)
+        } else {
+            None
         }
-        stack.extend(
-            graph
-                .nodes
+    };
+
+    let mut edges_by_parent: HashMap<Option<usize>, Vec<usize>> = HashMap::new();
+    for (edge, scoped) in scope.edges.iter().enumerate() {
+        edges_by_parent
+            .entry(containing_parent(scoped))
+            .or_default()
+            .push(edge);
+    }
+
+    // ElkGraphImporter visits the root graph first, then IncludeChildren graphs in stable BFS
+    // child order. Preserve that model-order stream before scope-local kernel import.
+    let mut order = Vec::with_capacity(scope.edges.len());
+    let mut graph_queue = VecDeque::from([None]);
+    while let Some(graph_parent) = graph_queue.pop_front() {
+        if let Some(edges) = edges_by_parent.remove(&graph_parent) {
+            order.extend(edges);
+        }
+        let graph_children: &[usize] = match graph_parent {
+            Some(parent) => &children[parent],
+            None => &scope.nodes,
+        };
+        graph_queue.extend(
+            graph_children
                 .iter()
-                .filter(|node| node.parent.as_deref() == Some(id.as_str()))
-                .map(|node| node.id.clone()),
+                .copied()
+                .filter(|child| {
+                    node_scope[*child] == scope_index
+                        && local_parent(*child) == graph_parent
+                        && resolved_handling[*child] == HierarchyHandling::IncludeChildren
+                })
+                .map(Some),
         );
     }
 
-    descendants
+    let mut slots = std::mem::take(&mut scope.edges)
+        .into_iter()
+        .map(Some)
+        .collect::<Vec<_>>();
+    scope.edges.reserve(slots.len());
+    for edge in order {
+        scope.edges.push(
+            slots[edge]
+                .take()
+                .expect("ELK scope edge order must visit each edge at most once"),
+        );
+    }
+    scope.edges.extend(slots.into_iter().flatten());
 }
 
-fn merge_nested_source_layouts(
-    layout: &mut LayoutResult,
-    nested_layouts: &HashMap<String, RecursiveSourceLayout>,
-) {
-    let parent_nodes = layout
-        .nodes
-        .iter()
-        .filter(|node| nested_layouts.contains_key(node.id.as_str()))
-        .cloned()
-        .collect::<Vec<_>>();
+fn detect_parent_cycles(graph: &Graph, parent: &[Option<usize>]) -> Result<()> {
+    let mut state = vec![0u8; graph.nodes.len()];
+    for start in 0..graph.nodes.len() {
+        if state[start] == 2 {
+            continue;
+        }
+        let mut path = Vec::new();
+        let mut current = Some(start);
+        while let Some(node) = current {
+            match state[node] {
+                2 => break,
+                1 => {
+                    return Err(source_port::ImportError::ParentCycle {
+                        node_id: graph.nodes[node].id.clone(),
+                    }
+                    .into());
+                }
+                _ => {
+                    state[node] = 1;
+                    path.push(node);
+                    current = parent[node];
+                }
+            }
+        }
+        for node in path {
+            state[node] = 2;
+        }
+    }
+    Ok(())
+}
 
-    for parent in parent_nodes {
-        let Some(nested) = nested_layouts.get(parent.id.as_str()) else {
+fn scope_edge_segments(
+    scopes: &[ScopePlan],
+    source: usize,
+    target: usize,
+    source_scope: usize,
+    target_scope: usize,
+    work_control: &mut dyn WorkControl,
+) -> Result<(usize, Vec<ScopeEdgePiece>)> {
+    let mut pieces = Vec::new();
+    let mut target_pieces = Vec::new();
+    let mut current_source_scope = source_scope;
+    let mut current_target_scope = target_scope;
+    let mut current_source = ScopedEndpoint::Node(source);
+    let mut current_target = ScopedEndpoint::Node(target);
+
+    while scopes[current_source_scope].depth > scopes[current_target_scope].depth {
+        ascend_source_scope(
+            scopes,
+            target,
+            &mut current_source_scope,
+            &mut current_source,
+            &mut pieces,
+            work_control,
+        )?;
+    }
+    while scopes[current_target_scope].depth > scopes[current_source_scope].depth {
+        ascend_target_scope(
+            scopes,
+            source,
+            &mut current_target_scope,
+            &mut current_target,
+            &mut target_pieces,
+            work_control,
+        )?;
+    }
+    while current_source_scope != current_target_scope {
+        ascend_source_scope(
+            scopes,
+            target,
+            &mut current_source_scope,
+            &mut current_source,
+            &mut pieces,
+            work_control,
+        )?;
+        ascend_target_scope(
+            scopes,
+            source,
+            &mut current_target_scope,
+            &mut current_target,
+            &mut target_pieces,
+            work_control,
+        )?;
+    }
+    let owner = current_source_scope;
+
+    if !matches!(
+        (current_source, current_target),
+        (ScopedEndpoint::Node(left), ScopedEndpoint::Node(right)) if left == right
+    ) {
+        work_control.check(1)?;
+        work_control.charge(1)?;
+        pieces.push((
+            owner,
+            current_source,
+            current_target,
+            if source_scope != owner {
+                source_port::CompoundEdgeSegment::Output {
+                    depth: scopes[owner].depth,
+                }
+            } else {
+                source_port::CompoundEdgeSegment::Input {
+                    depth: scopes[owner].depth,
+                }
+            },
+        ));
+    }
+    pieces.extend(target_pieces.into_iter().rev());
+    Ok((owner, pieces))
+}
+
+fn ascend_source_scope(
+    scopes: &[ScopePlan],
+    target: usize,
+    current_scope: &mut usize,
+    current_source: &mut ScopedEndpoint,
+    pieces: &mut Vec<ScopeEdgePiece>,
+    work_control: &mut dyn WorkControl,
+) -> Result<()> {
+    let anchor = scopes[*current_scope]
+        .anchor
+        .expect("non-root scope must have an anchor");
+    work_control.check(1)?;
+    work_control.charge(1)?;
+    pieces.push((
+        *current_scope,
+        *current_source,
+        ScopedEndpoint::ParentBoundary {
+            scope: *current_scope,
+            connects_node: target == anchor,
+        },
+        source_port::CompoundEdgeSegment::Output {
+            depth: scopes[*current_scope].depth,
+        },
+    ));
+    *current_source = ScopedEndpoint::Node(anchor);
+    *current_scope = scopes[*current_scope]
+        .parent
+        .expect("source scope path must reach owner");
+    Ok(())
+}
+
+fn ascend_target_scope(
+    scopes: &[ScopePlan],
+    source: usize,
+    current_scope: &mut usize,
+    current_target: &mut ScopedEndpoint,
+    pieces: &mut Vec<ScopeEdgePiece>,
+    work_control: &mut dyn WorkControl,
+) -> Result<()> {
+    let anchor = scopes[*current_scope]
+        .anchor
+        .expect("non-root scope must have an anchor");
+    work_control.check(1)?;
+    work_control.charge(1)?;
+    pieces.push((
+        *current_scope,
+        ScopedEndpoint::ParentBoundary {
+            scope: *current_scope,
+            connects_node: source == anchor,
+        },
+        *current_target,
+        source_port::CompoundEdgeSegment::Input {
+            depth: scopes[*current_scope].depth,
+        },
+    ));
+    *current_target = ScopedEndpoint::Node(anchor);
+    *current_scope = scopes[*current_scope]
+        .parent
+        .expect("target scope path must reach owner");
+    Ok(())
+}
+
+fn compound_center_segment(pieces: &[ScopeEdgePiece]) -> usize {
+    pieces
+        .iter()
+        .position(|(_, _, _, segment)| {
+            matches!(segment, source_port::CompoundEdgeSegment::Input { .. })
+        })
+        .map(|index| index.saturating_sub(1))
+        .or_else(|| pieces.len().checked_sub(1))
+        .unwrap_or(0)
+}
+
+fn flatten_scope_layouts(
+    index: &HierarchyIndex<'_>,
+    mut arena: Vec<Option<ScopeLayout>>,
+    work_control: &mut dyn WorkControl,
+) -> Result<LayoutResult> {
+    // Charge the planning scan before reading per-scope output geometry. The detailed tranche is
+    // then charged before translation and compound-segment merging touch those points and labels.
+    work_control.check(index.scopes.len())?;
+    work_control.charge(index.scopes.len())?;
+    let scoped_edge_count = index.scopes.iter().try_fold(0usize, |total, scope| {
+        total
+            .checked_add(scope.edges.len())
+            .ok_or(WorkError::ArithmeticOverflow)
+    })?;
+    let flatten_work = index
+        .scopes
+        .len()
+        .checked_mul(3)
+        .and_then(|scope_work| scope_work.checked_add(index.graph.nodes.len()))
+        .and_then(|work| work.checked_add(scoped_edge_count))
+        .and_then(|work| work.checked_add(index.graph.edges.len().checked_mul(3)?))
+        .ok_or(WorkError::ArithmeticOverflow)?;
+
+    work_control.check(scoped_edge_count)?;
+    work_control.charge(scoped_edge_count)?;
+    let geometry_items = arena.iter().try_fold(0usize, |total, layout| {
+        let layout = layout.as_ref().expect("postorder fills every scope result");
+        layout.layout.edges.iter().try_fold(total, |total, edge| {
+            total
+                .checked_add(edge.points.len())
+                .and_then(|total| total.checked_add(edge.labels.len()))
+                .and_then(|total| total.checked_add(1))
+                .ok_or(WorkError::ArithmeticOverflow)
+        })
+    })?;
+    let geometry_work = geometry_items
+        .checked_mul(2)
+        .ok_or(WorkError::ArithmeticOverflow)?;
+    let execution_work = flatten_work
+        .checked_add(geometry_work)
+        .ok_or(WorkError::ArithmeticOverflow)?;
+    work_control.check(execution_work)?;
+    work_control.charge(execution_work)?;
+
+    let mut offsets = vec![Point { x: 0.0, y: 0.0 }; index.scopes.len()];
+    let mut order = Vec::with_capacity(index.scopes.len());
+    let mut stack = vec![0usize];
+    while let Some(scope) = stack.pop() {
+        order.push(scope);
+        let layout = &arena[scope]
+            .as_ref()
+            .expect("scope layout exists before flatten")
+            .layout;
+        let child_by_id = index.scopes[scope]
+            .children
+            .iter()
+            .map(|child| {
+                let anchor = index.scopes[*child]
+                    .anchor
+                    .expect("child scope must have an anchor");
+                (index.graph.nodes[anchor].id.as_str(), *child)
+            })
+            .collect::<HashMap<_, _>>();
+        let mut children = Vec::new();
+        for node in &layout.nodes {
+            let Some(&child) = child_by_id.get(node.id.as_str()) else {
+                continue;
+            };
+            offsets[child] = Point {
+                // Mermaid accumulates nested coordinates from group top-left positions, while the
+                // public Merman node layout is center-based.
+                x: offsets[scope].x + node.x - node.width / 2.0,
+                y: offsets[scope].y + node.y - node.height / 2.0,
+            };
+            children.push(child);
+        }
+        stack.extend(children.into_iter().rev());
+    }
+    let node_capacity = arena.iter().try_fold(0usize, |total, layout| {
+        total
+            .checked_add(
+                layout
+                    .as_ref()
+                    .expect("postorder fills every scope result")
+                    .layout
+                    .nodes
+                    .len(),
+            )
+            .ok_or(WorkError::ArithmeticOverflow)
+    })?;
+    let mut nodes = Vec::with_capacity(node_capacity);
+    let mut edge_slots = std::iter::repeat_with(|| None)
+        .take(index.graph.edges.len())
+        .collect::<Vec<Option<EdgeLayout>>>();
+    let mut compound_edges = std::iter::repeat_with(|| None)
+        .take(index.graph.edges.len())
+        .collect::<Vec<Option<Vec<Option<CompoundEdgeLayoutSegment>>>>>();
+    for &scope in &order {
+        let offset = offsets[scope];
+        let mut scope_layout = arena[scope].take().expect("each scope is flattened once");
+        for node in &mut scope_layout.layout.nodes {
+            node.x += offset.x;
+            node.y += offset.y;
+        }
+        nodes.append(&mut scope_layout.layout.nodes);
+        for mut edge in scope_layout.layout.edges {
+            translate_edge_layout(&mut edge, offset);
+            let metadata = scope_layout
+                .edge_metadata
+                .get(edge.id.as_str())
+                .copied()
+                .expect("scope output edge must retain its source edge metadata");
+            if let Some(segment) = metadata.segment {
+                let entry = compound_edges[metadata.original]
+                    .get_or_insert_with(|| vec![None; segment.count]);
+                debug_assert_eq!(entry.len(), segment.count);
+                entry[segment.order] = Some(CompoundEdgeLayoutSegment {
+                    original_edge_id: edge.id.clone(),
+                    segment: segment.segment,
+                    model_order: segment.model_order,
+                    edge,
+                });
+            } else {
+                debug_assert!(edge_slots[metadata.original].is_none());
+                edge_slots[metadata.original] = Some(edge);
+            }
+        }
+    }
+
+    for (original, segments) in compound_edges.into_iter().enumerate() {
+        let Some(segments) = segments else {
             continue;
         };
-        let offset = Point {
-            x: parent.x - parent.width / 2.0,
-            y: parent.y - parent.height / 2.0,
-        };
-        append_translated_layout(layout, &nested.layout, offset);
+        let segments = segments.into_iter().flatten().collect::<Vec<_>>();
+        if let Some(edge) = merge_compound_edge_segments(
+            &segments,
+            index.graph.options.layered.unnecessary_bendpoints,
+        ) {
+            debug_assert!(edge_slots[original].is_none());
+            edge_slots[original] = Some(edge);
+        }
+    }
+
+    // ELK derives importer/model order from an edge's containing graph before moving an
+    // ancestor-descendant edge into that endpoint's inner graph. A direct parent-child edge can
+    // therefore be owned by the parent scope without materializing a segment there. Emit from
+    // `owned_edges`, not first-seen segment order; the nested iteration also avoids an O(E) copy.
+    let mut edges = Vec::with_capacity(index.graph.edges.len());
+    for &scope in &order {
+        for &original in &index.scopes[scope].owned_edges {
+            if let Some(edge) = edge_slots[original].take() {
+                edges.push(edge);
+            }
+        }
+    }
+    // Valid adapter inputs should have announced every rendered edge from its owner scope. Keep a
+    // deterministic tail in release builds if a future source processor suppresses that marker.
+    edges.extend(edge_slots.into_iter().flatten());
+    Ok(LayoutResult { nodes, edges })
+}
+
+fn translate_edge_layout(edge: &mut EdgeLayout, offset: Point) {
+    for point in &mut edge.points {
+        point.x += offset.x;
+        point.y += offset.y;
+    }
+    for label in &mut edge.labels {
+        label.x += offset.x;
+        label.y += offset.y;
     }
 }
 
-fn append_translated_layout(layout: &mut LayoutResult, nested: &LayoutResult, offset: Point) {
-    layout
-        .nodes
-        .extend(nested.nodes.iter().map(|node| NodeLayout {
-            id: node.id.clone(),
-            x: node.x + offset.x,
-            y: node.y + offset.y,
-            width: node.width,
-            height: node.height,
-        }));
-
-    layout.edges.extend(nested.edges.iter().map(|edge| {
-        EdgeLayout {
-            id: edge.id.clone(),
-            points: edge
-                .points
-                .iter()
-                .map(|point| Point {
-                    x: point.x + offset.x,
-                    y: point.y + offset.y,
-                })
-                .collect(),
-            labels: edge
-                .labels
-                .iter()
-                .map(|label| EdgeLabelLayout {
-                    x: label.x + offset.x,
-                    y: label.y + offset.y,
-                    width: label.width,
-                    height: label.height,
-                })
-                .collect(),
-        }
-    }));
-}
-
-fn source_graph_has_nested_graphs(graph: &LGraph) -> bool {
-    graph
-        .layerless_nodes
-        .iter()
-        .any(|node| node.nested_graph.is_some())
+fn source_graph_requires_compound_pipeline(graph: &LGraph) -> bool {
+    graph.graph_properties.external_ports
+        || !graph.hierarchy_edges.is_empty()
+        || !graph.cross_hierarchy_edges.is_empty()
+        || graph
+            .layerless_nodes
+            .iter()
+            .any(|node| node.nested_graph.is_some())
 }
 
 fn actual_source_graph_size(graph: &LGraph) -> source_port::LSize {
@@ -559,7 +1383,120 @@ fn actual_source_graph_size(graph: &LGraph) -> source_port::LSize {
     }
 }
 
+fn source_graph_output_work_units(graph: &LGraph) -> std::result::Result<usize, WorkError> {
+    let mut total = 0usize;
+    let mut output_edge_upper_bound = 0usize;
+    let mut stack = vec![graph];
+    while let Some(current) = stack.pop() {
+        // A merged hierarchy edge may expand back into several original rendered edges. Source
+        // edges plus explicit cross-hierarchy records conservatively bound the final stable sort.
+        output_edge_upper_bound = output_edge_upper_bound
+            .checked_add(current.edges.len())
+            .and_then(|total| total.checked_add(current.cross_hierarchy_edges.len()))
+            .ok_or(WorkError::ArithmeticOverflow)?;
+        total = total
+            .checked_add(current.layerless_nodes.len())
+            .and_then(|total| total.checked_add(current.edges.len()))
+            .and_then(|total| total.checked_add(current.cross_hierarchy_edges.len()))
+            .ok_or(WorkError::ArithmeticOverflow)?;
+        for edge in &current.edges {
+            let geometry = edge
+                .bend_points
+                .len()
+                .checked_add(edge.labels.len())
+                .and_then(|geometry| geometry.checked_add(3))
+                .ok_or(WorkError::ArithmeticOverflow)?;
+            total = total
+                .checked_add(geometry)
+                .ok_or(WorkError::ArithmeticOverflow)?;
+            if edge.compound_segment.is_some() {
+                total = total
+                    .checked_add(
+                        geometry
+                            .checked_mul(2)
+                            .ok_or(WorkError::ArithmeticOverflow)?,
+                    )
+                    .ok_or(WorkError::ArithmeticOverflow)?;
+            }
+        }
+        for segment in &current.cross_hierarchy_edges {
+            let edge = current
+                .edges
+                .get(segment.edge)
+                .expect("compound segment must reference a graph edge");
+            let geometry = edge
+                .bend_points
+                .len()
+                .checked_add(edge.labels.len())
+                .and_then(|geometry| geometry.checked_add(3))
+                .and_then(|geometry| geometry.checked_mul(2))
+                .ok_or(WorkError::ArithmeticOverflow)?;
+            total = total
+                .checked_add(geometry)
+                .ok_or(WorkError::ArithmeticOverflow)?;
+        }
+        stack.extend(
+            current
+                .layerless_nodes
+                .iter()
+                .filter_map(|node| node.nested_graph.as_deref()),
+        );
+    }
+    total = total
+        .checked_add(comparison_sort_work_units(output_edge_upper_bound)?)
+        .ok_or(WorkError::ArithmeticOverflow)?;
+    Ok(total.max(1))
+}
+
+fn comparison_sort_work_units(items: usize) -> std::result::Result<usize, WorkError> {
+    if items < 2 {
+        return Ok(0);
+    }
+    let levels = usize::BITS as usize - (items - 1).leading_zeros() as usize;
+    items
+        .checked_mul(levels)
+        .ok_or(WorkError::ArithmeticOverflow)
+}
+
 fn write_source_graph_dump(output: &mut String, graph: &LGraph, depth: usize) -> std::fmt::Result {
+    let mut stack = vec![(graph, depth)];
+    while let Some((current, current_depth)) = stack.pop() {
+        write_source_graph_dump_frame(output, current, current_depth)?;
+        stack.extend(
+            current
+                .layerless_nodes
+                .iter()
+                .rev()
+                .filter_map(|node| node.nested_graph.as_deref())
+                .map(|nested| (nested, current_depth + 1)),
+        );
+    }
+    Ok(())
+}
+
+/// Detaches nested graphs before their owners are dropped so deeply nested diagnostics do not
+/// recurse through `Box<LGraph>` destruction on small worker stacks.
+fn detach_source_graph_hierarchy_for_drop(graph: &mut LGraph) {
+    let mut pending = graph
+        .layerless_nodes
+        .iter_mut()
+        .filter_map(|node| node.nested_graph.take())
+        .collect::<Vec<_>>();
+    while let Some(mut nested) = pending.pop() {
+        pending.extend(
+            nested
+                .layerless_nodes
+                .iter_mut()
+                .filter_map(|node| node.nested_graph.take()),
+        );
+    }
+}
+
+fn write_source_graph_dump_frame(
+    output: &mut String,
+    graph: &LGraph,
+    depth: usize,
+) -> std::fmt::Result {
     let indent = "  ".repeat(depth);
     writeln!(
         output,
@@ -699,20 +1636,26 @@ fn write_source_graph_dump(output: &mut String, graph: &LGraph, depth: usize) ->
     }
     writeln!(output)?;
 
-    for node in &graph.layerless_nodes {
-        if let Some(nested) = node.nested_graph.as_deref() {
-            write_source_graph_dump(output, nested, depth + 1)?;
-        }
-    }
     Ok(())
 }
 
 fn layered_options_to_source(graph: &Graph) -> SourceLayeredOptions {
+    layered_options_to_source_for(
+        graph,
+        graph.direction,
+        graph.options.layered.hierarchy_handling,
+    )
+}
+
+fn layered_options_to_source_for(
+    graph: &Graph,
+    direction: Direction,
+    hierarchy_handling: HierarchyHandling,
+) -> SourceLayeredOptions {
     let mut options =
-        SourceLayeredOptions::mermaid_flowchart_defaults(direction_to_source(graph.direction));
+        SourceLayeredOptions::mermaid_flowchart_defaults(direction_to_source(direction));
     options.random_seed = graph.options.layered.random_seed;
-    options.hierarchy_handling =
-        hierarchy_handling_to_source(graph.options.layered.hierarchy_handling);
+    options.hierarchy_handling = hierarchy_handling_to_source(hierarchy_handling);
     options.edge_routing = edge_routing_to_source(graph.options.layered.edge_routing);
     options.cycle_breaking_strategy =
         cycle_breaking_to_source(graph.options.layered.cycle_breaking);
@@ -735,6 +1678,15 @@ fn layered_options_to_source(graph: &Graph) -> SourceLayeredOptions {
     options.self_loop_ordering =
         self_loop_ordering_to_source(graph.options.layered.self_loop_ordering);
     options
+}
+
+fn layout_uses_edge_model_order(graph: &Graph) -> bool {
+    graph.options.layered.consider_model_order
+        || graph.options.layered.force_node_model_order
+        || matches!(
+            graph.options.layered.cycle_breaking,
+            CycleBreakingStrategy::ModelOrder | CycleBreakingStrategy::GreedyModelOrder
+        )
 }
 
 fn direction_to_source(direction: Direction) -> ElkDirection {
@@ -843,26 +1795,31 @@ fn self_loop_ordering_to_source(
 }
 
 fn source_graph_to_layout_result(graph: &LGraph) -> LayoutResult {
+    source_graph_to_layout_result_with_ordering(graph, true)
+}
+
+fn source_graph_to_layout_result_with_ordering(graph: &LGraph, order_edges: bool) -> LayoutResult {
     let mut result = SourceLayoutAccumulator {
         add_unnecessary_bendpoints: graph.options.unnecessary_bendpoints,
         ..Default::default()
     };
-    append_source_graph_layout(graph, LPoint::default(), 0, &mut result);
-    result.into_layout_result()
+    append_source_graph_layout(graph, LPoint::default(), &mut result);
+    result.into_layout_result(order_edges)
 }
 
 #[derive(Debug, Default)]
 struct SourceLayoutAccumulator {
     nodes: Vec<NodeLayout>,
+    node_ids: HashSet<String>,
     edges: Vec<OrderedEdgeLayout>,
     compound_edges: HashMap<String, Vec<CompoundEdgeLayoutSegment>>,
     add_unnecessary_bendpoints: bool,
 }
 
 impl SourceLayoutAccumulator {
-    fn into_layout_result(mut self) -> LayoutResult {
+    fn into_layout_result(mut self, order_edges: bool) -> LayoutResult {
         for segments in self.compound_edges.values_mut() {
-            segments.sort_by(compare_compound_layout_segments);
+            order_compound_layout_segments(segments);
             if let Some(edge) =
                 merge_compound_edge_segments(segments, self.add_unnecessary_bendpoints)
             {
@@ -875,18 +1832,89 @@ impl SourceLayoutAccumulator {
                 });
             }
         }
-        self.edges.sort_by(|left, right| {
-            left.model_order
-                .unwrap_or(usize::MAX)
-                .cmp(&right.model_order.unwrap_or(usize::MAX))
-                .then_with(|| left.edge.id.cmp(&right.edge.id))
-        });
+        if order_edges {
+            self.edges.sort_by(|left, right| {
+                left.model_order
+                    .unwrap_or(usize::MAX)
+                    .cmp(&right.model_order.unwrap_or(usize::MAX))
+                    .then_with(|| left.edge.id.cmp(&right.edge.id))
+            });
+        }
 
         LayoutResult {
             nodes: self.nodes,
             edges: self.edges.into_iter().map(|ordered| ordered.edge).collect(),
         }
     }
+}
+
+fn order_compound_layout_segments(segments: &mut Vec<CompoundEdgeLayoutSegment>) {
+    if segments.len() < 2 {
+        return;
+    }
+
+    // ELK's compound postprocessor orders Output segments by descending hierarchy depth, then
+    // Input segments by ascending depth before concatenation. Imported paths make each side's
+    // depths unique and contiguous, so direct placement preserves that order without O(n log n)
+    // comparison sorting.
+    let mut output_min = usize::MAX;
+    let mut output_max = 0usize;
+    let mut output_count = 0usize;
+    let mut input_min = usize::MAX;
+    let mut input_max = 0usize;
+    let mut input_count = 0usize;
+    for segment in segments.iter() {
+        match segment.segment {
+            source_port::CompoundEdgeSegment::Output { depth } => {
+                output_min = output_min.min(depth);
+                output_max = output_max.max(depth);
+                output_count += 1;
+            }
+            source_port::CompoundEdgeSegment::Input { depth } => {
+                input_min = input_min.min(depth);
+                input_max = input_max.max(depth);
+                input_count += 1;
+            }
+        }
+    }
+
+    let output_span = if output_count == 0 {
+        0
+    } else {
+        output_max - output_min + 1
+    };
+    let input_span = if input_count == 0 {
+        0
+    } else {
+        input_max - input_min + 1
+    };
+    assert_eq!(
+        output_span, output_count,
+        "compound output segments must have unique contiguous depths"
+    );
+    assert_eq!(
+        input_span, input_count,
+        "compound input segments must have unique contiguous depths"
+    );
+
+    let mut ordered = std::iter::repeat_with(|| None)
+        .take(segments.len())
+        .collect::<Vec<Option<CompoundEdgeLayoutSegment>>>();
+    for segment in std::mem::take(segments) {
+        let position = match segment.segment {
+            source_port::CompoundEdgeSegment::Output { depth } => output_max - depth,
+            source_port::CompoundEdgeSegment::Input { depth } => output_count + depth - input_min,
+        };
+        assert!(
+            ordered[position].replace(segment).is_none(),
+            "compound segment path position must be unique"
+        );
+    }
+    segments.extend(
+        ordered
+            .into_iter()
+            .map(|segment| segment.expect("compound segment path must be contiguous")),
+    );
 }
 
 #[derive(Debug, Clone)]
@@ -898,45 +1926,103 @@ struct OrderedEdgeLayout {
 fn append_source_graph_layout(
     graph: &LGraph,
     parent_origin: LPoint,
-    graph_depth: usize,
     result: &mut SourceLayoutAccumulator,
 ) {
-    let graph_origin = LPoint {
-        x: parent_origin.x + graph.offset.x + graph.padding.left,
-        y: parent_origin.y + graph.offset.y + graph.padding.top,
-    };
+    enum Frame<'a> {
+        Enter {
+            graph: &'a LGraph,
+            parent_origin: LPoint,
+        },
+        Exit {
+            graph: &'a LGraph,
+            graph_origin: LPoint,
+        },
+    }
 
-    result.nodes.extend(
-        graph
+    let mut frames = vec![Frame::Enter {
+        graph,
+        parent_origin,
+    }];
+    while let Some(frame) = frames.pop() {
+        let (graph, parent_origin) = match frame {
+            Frame::Enter {
+                graph,
+                parent_origin,
+            } => (graph, parent_origin),
+            Frame::Exit {
+                graph,
+                graph_origin,
+            } => {
+                append_source_graph_edges(graph, graph_origin, result);
+                continue;
+            }
+        };
+        let graph_origin = LPoint {
+            x: parent_origin.x + graph.offset.x + graph.padding.left,
+            y: parent_origin.y + graph.offset.y + graph.padding.top,
+        };
+        for node in graph
             .layerless_nodes
             .iter()
             .filter(|node| node.kind == LNodeKind::Normal)
-            .map(|node| NodeLayout {
+        {
+            result.node_ids.insert(node.id.clone());
+            result.nodes.push(NodeLayout {
                 id: node.id.clone(),
                 x: graph_origin.x + node.position.x + node.size.width / 2.0,
                 y: graph_origin.y + node.position.y + node.size.height / 2.0,
                 width: node.size.width,
                 height: node.size.height,
-            }),
-    );
+            });
+        }
+        frames.push(Frame::Exit {
+            graph,
+            graph_origin,
+        });
+        frames.extend(graph.layerless_nodes.iter().rev().filter_map(|node| {
+            node.nested_graph
+                .as_deref()
+                .map(|nested_graph| Frame::Enter {
+                    graph: nested_graph,
+                    parent_origin: LPoint {
+                        x: graph_origin.x + node.position.x,
+                        y: graph_origin.y + node.position.y,
+                    },
+                })
+        }));
+    }
+}
 
-    for node in &graph.layerless_nodes {
-        let Some(nested_graph) = node.nested_graph.as_deref() else {
-            continue;
-        };
-        append_source_graph_layout(
-            nested_graph,
-            LPoint {
-                x: graph_origin.x + node.position.x,
-                y: graph_origin.y + node.position.y,
-            },
-            graph_depth + 1,
-            result,
-        );
+fn append_source_graph_edges(
+    graph: &LGraph,
+    graph_origin: LPoint,
+    result: &mut SourceLayoutAccumulator,
+) {
+    let mut compound_segments_by_edge: HashMap<usize, Vec<CompoundLayoutSegment>> = HashMap::new();
+    for segment in &graph.cross_hierarchy_edges {
+        compound_segments_by_edge
+            .entry(segment.edge)
+            .or_default()
+            .push(CompoundLayoutSegment {
+                original_edge_id: segment.original_edge_id.clone(),
+                model_order: segment.original_model_order,
+                segment: segment.segment,
+            });
     }
 
     for (edge_index, edge) in graph.edges.iter().enumerate() {
-        let compound_segments = compound_layout_segments_for_edge(graph, edge_index);
+        let compound_segments = compound_segments_by_edge
+            .remove(&edge_index)
+            .or_else(|| {
+                edge.compound_segment.map(|segment| {
+                    vec![CompoundLayoutSegment {
+                        original_edge_id: edge.id.clone(),
+                        model_order: edge.model_order,
+                        segment,
+                    }]
+                })
+            })
+            .unwrap_or_default();
         if compound_segments.is_empty() {
             if !edge_has_layout_endpoints(graph, result, edge_index, edge) {
                 continue;
@@ -974,7 +2060,6 @@ fn append_source_graph_layout(
                     .push(CompoundEdgeLayoutSegment {
                         original_edge_id: segment.original_edge_id,
                         segment: segment.segment,
-                        graph_depth,
                         model_order: segment.model_order.or(edge.model_order),
                         edge: edge_layout,
                     });
@@ -1023,37 +2108,6 @@ fn edge_labels_for_original_edge(
         .collect()
 }
 
-fn compound_layout_segments_for_edge(
-    graph: &LGraph,
-    edge_index: usize,
-) -> Vec<CompoundLayoutSegment> {
-    let segments = graph
-        .cross_hierarchy_edges
-        .iter()
-        .filter(|segment| segment.edge == edge_index)
-        .map(|segment| CompoundLayoutSegment {
-            original_edge_id: segment.original_edge_id.clone(),
-            model_order: segment.original_model_order,
-            segment: segment.segment,
-        })
-        .collect::<Vec<_>>();
-
-    if !segments.is_empty() {
-        return segments;
-    }
-
-    graph.edges[edge_index]
-        .compound_segment
-        .map(|segment| {
-            vec![CompoundLayoutSegment {
-                original_edge_id: graph.edges[edge_index].id.clone(),
-                model_order: graph.edges[edge_index].model_order,
-                segment,
-            }]
-        })
-        .unwrap_or_default()
-}
-
 #[derive(Debug, Clone)]
 struct CompoundLayoutSegment {
     original_edge_id: String,
@@ -1065,7 +2119,6 @@ struct CompoundLayoutSegment {
 struct CompoundEdgeLayoutSegment {
     original_edge_id: String,
     segment: source_port::CompoundEdgeSegment,
-    graph_depth: usize,
     model_order: Option<usize>,
     edge: EdgeLayout,
 }
@@ -1155,38 +2208,6 @@ fn push_distinct_point(points: &mut Vec<Point>, point: Point) {
     points.push(point);
 }
 
-fn compare_compound_layout_segments(
-    left: &CompoundEdgeLayoutSegment,
-    right: &CompoundEdgeLayoutSegment,
-) -> std::cmp::Ordering {
-    compare_compound_segments(left.segment, right.segment)
-        .then_with(|| left.graph_depth.cmp(&right.graph_depth))
-}
-
-fn compare_compound_segments(
-    left: source_port::CompoundEdgeSegment,
-    right: source_port::CompoundEdgeSegment,
-) -> std::cmp::Ordering {
-    match (left, right) {
-        (
-            source_port::CompoundEdgeSegment::Output { .. },
-            source_port::CompoundEdgeSegment::Input { .. },
-        ) => std::cmp::Ordering::Less,
-        (
-            source_port::CompoundEdgeSegment::Input { .. },
-            source_port::CompoundEdgeSegment::Output { .. },
-        ) => std::cmp::Ordering::Greater,
-        (
-            source_port::CompoundEdgeSegment::Output { depth: left },
-            source_port::CompoundEdgeSegment::Output { depth: right },
-        ) => right.cmp(&left),
-        (
-            source_port::CompoundEdgeSegment::Input { depth: left },
-            source_port::CompoundEdgeSegment::Input { depth: right },
-        ) => left.cmp(&right),
-    }
-}
-
 fn edge_has_layout_endpoints(
     graph: &LGraph,
     result: &SourceLayoutAccumulator,
@@ -1211,7 +2232,7 @@ fn endpoint_has_layout(
         .layerless_nodes
         .get(endpoint.node)
         .is_some_and(|node| node.kind == LNodeKind::Normal)
-        || result.nodes.iter().any(|node| node.id == original_node_id)
+        || result.node_ids.contains(original_node_id)
 }
 
 fn edge_points(graph: &LGraph, edge: &source_port::LayeredEdge) -> Vec<source_port::LPoint> {
@@ -1280,6 +2301,766 @@ mod tests {
             edges,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn parent_cycle_reports_the_revisited_cycle_member_after_a_stem() {
+        let graph = flat_graph(vec![leaf("stem"), leaf("A"), leaf("B")], vec![]);
+        let parent = [Some(1), Some(2), Some(1)];
+
+        assert!(matches!(
+            detect_parent_cycles(&graph, &parent),
+            Err(Error::SourceImport(source_port::ImportError::ParentCycle { node_id }))
+                if node_id == "A"
+        ));
+    }
+
+    fn group(id: &str, parent: Option<&str>, handling: HierarchyHandling) -> Node {
+        Node {
+            id: id.to_string(),
+            kind: NodeKind::Group,
+            width: 0.0,
+            height: 0.0,
+            parent: parent.map(str::to_string),
+            direction: None,
+            hierarchy_handling: Some(handling),
+            layer_constraint: None,
+            label: Some(Label {
+                width: 24.0,
+                height: 18.0,
+            }),
+        }
+    }
+
+    fn deep_separate_graph(depth: usize) -> Graph {
+        let mut nodes = Vec::with_capacity(depth + 1);
+        for index in 0..depth {
+            nodes.push(group(
+                format!("group-{index}").as_str(),
+                index
+                    .checked_sub(1)
+                    .map(|parent| format!("group-{parent}"))
+                    .as_deref(),
+                HierarchyHandling::SeparateChildren,
+            ));
+        }
+        let mut terminal = leaf("terminal");
+        terminal.parent = depth.checked_sub(1).map(|parent| format!("group-{parent}"));
+        nodes.push(terminal);
+
+        flat_graph(nodes, Vec::new())
+    }
+
+    fn deep_include_graph(depth: usize) -> Graph {
+        let mut graph = deep_separate_graph(depth);
+        graph.options.layered.hierarchy_handling = HierarchyHandling::IncludeChildren;
+        for node in &mut graph.nodes {
+            if node.kind == NodeKind::Group {
+                node.hierarchy_handling = Some(HierarchyHandling::IncludeChildren);
+            }
+        }
+        graph
+    }
+
+    fn repeated_cross_scope_graph(edge_count: usize) -> Graph {
+        let mut child = leaf("child");
+        child.parent = Some("group".to_string());
+        let edges = (0..edge_count)
+            .map(|index| {
+                let mut edge = edge(format!("cross-{index}").as_str(), "child", "outer");
+                edge.label = Some(Label {
+                    width: 20.0,
+                    height: 10.0,
+                });
+                edge
+            })
+            .collect();
+        flat_graph(
+            vec![
+                group("group", None, HierarchyHandling::SeparateChildren),
+                child,
+                leaf("outer"),
+            ],
+            edges,
+        )
+    }
+
+    fn deep_cross_scope_graph(depth: usize, edge_count: usize) -> Graph {
+        let mut graph = deep_separate_graph(depth);
+        graph.options.layered.hierarchy_handling = HierarchyHandling::SeparateChildren;
+        graph.nodes.push(leaf("outer"));
+        graph.edges = (0..edge_count)
+            .map(|index| edge(format!("deep-cross-{index}").as_str(), "terminal", "outer"))
+            .collect();
+        graph
+    }
+
+    fn synthetic_scope_arena(
+        index: &HierarchyIndex<'_>,
+        points_per_segment: usize,
+    ) -> Vec<Option<ScopeLayout>> {
+        index
+            .scopes
+            .iter()
+            .map(|scope| {
+                let nodes = scope
+                    .nodes
+                    .iter()
+                    .map(|node| {
+                        let node = &index.graph.nodes[*node];
+                        NodeLayout {
+                            id: node.id.clone(),
+                            x: 50.0,
+                            y: 50.0,
+                            width: node.width.max(1.0),
+                            height: node.height.max(1.0),
+                        }
+                    })
+                    .collect();
+                let mut edge_metadata = HashMap::with_capacity(scope.edges.len());
+                let edges = scope
+                    .edges
+                    .iter()
+                    .map(|scoped| {
+                        let source = &index.graph.edges[scoped.original];
+                        let segment = scoped.segment.map(|segment| SegmentedEdgeMetadata {
+                            segment,
+                            model_order: Some(index.edge_model_order[scoped.original]),
+                            order: scoped
+                                .segment_order
+                                .expect("synthetic segmented edge keeps path order"),
+                            count: scoped.segment_count,
+                        });
+                        edge_metadata.insert(
+                            source.id.clone(),
+                            ScopeEdgeMetadata {
+                                original: scoped.original,
+                                segment,
+                            },
+                        );
+                        EdgeLayout {
+                            id: source.id.clone(),
+                            points: (0..points_per_segment)
+                                .map(|point| Point {
+                                    x: point as f64,
+                                    y: point as f64,
+                                })
+                                .collect(),
+                            labels: scoped
+                                .carries_label
+                                .then_some(EdgeLabelLayout {
+                                    x: 1.0,
+                                    y: 1.0,
+                                    width: 20.0,
+                                    height: 10.0,
+                                })
+                                .into_iter()
+                                .collect(),
+                        }
+                    })
+                    .collect();
+                Some(ScopeLayout {
+                    layout: LayoutResult { nodes, edges },
+                    size: source_port::LSize {
+                        width: 100.0,
+                        height: 100.0,
+                    },
+                    edge_metadata,
+                })
+            })
+            .collect()
+    }
+
+    #[derive(Debug)]
+    struct RecordingWorkControl {
+        remaining: usize,
+        checked: usize,
+        charged: usize,
+    }
+
+    impl RecordingWorkControl {
+        fn unlimited() -> Self {
+            Self {
+                remaining: usize::MAX,
+                checked: 0,
+                charged: 0,
+            }
+        }
+    }
+
+    impl WorkControl for RecordingWorkControl {
+        fn check(&mut self, units: usize) -> std::result::Result<(), WorkError> {
+            self.checked = self
+                .checked
+                .checked_add(units)
+                .ok_or(WorkError::ArithmeticOverflow)?;
+            if units > self.remaining {
+                return Err(WorkError::Interrupted);
+            }
+            Ok(())
+        }
+
+        fn charge(&mut self, units: usize) -> std::result::Result<(), WorkError> {
+            if units > self.remaining {
+                return Err(WorkError::Interrupted);
+            }
+            self.remaining -= units;
+            self.charged = self
+                .charged
+                .checked_add(units)
+                .ok_or(WorkError::ArithmeticOverflow)?;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn separate_children_hierarchy_index_has_unique_linear_ownership() {
+        for depth in [8, 16, 32, 64, 128, 256] {
+            let graph = deep_separate_graph(depth);
+            let mut work_control = RecordingWorkControl::unlimited();
+            let index = HierarchyIndex::build(&graph, &mut work_control).unwrap();
+
+            assert_eq!(index.scopes.len(), depth + 1);
+            assert_eq!(index.postorder.len(), index.scopes.len());
+            assert_eq!(index.postorder.last(), Some(&0));
+            assert_eq!(
+                index
+                    .scopes
+                    .iter()
+                    .map(|scope| scope.nodes.len())
+                    .sum::<usize>(),
+                graph.nodes.len()
+            );
+            let mut node_owners = vec![0usize; graph.nodes.len()];
+            for scope in &index.scopes {
+                for node in &scope.nodes {
+                    node_owners[*node] += 1;
+                }
+            }
+            assert!(node_owners.into_iter().all(|owners| owners == 1));
+            assert_eq!(work_control.checked, work_control.charged);
+        }
+    }
+
+    #[test]
+    fn separate_children_wrapper_work_is_linear_in_unique_items() {
+        for depth in [8, 16, 32, 64, 128, 256] {
+            let graph = deep_separate_graph(depth);
+            let mut work_control = RecordingWorkControl::unlimited();
+            let index = HierarchyIndex::build(&graph, &mut work_control).unwrap();
+            let arena = std::iter::repeat_with(|| None)
+                .take(index.scopes.len())
+                .collect::<Vec<Option<ScopeLayout>>>();
+            for scope in index.postorder.iter().copied() {
+                index
+                    .materialize_scope(scope, &arena, &mut work_control)
+                    .unwrap();
+            }
+
+            assert_eq!(work_control.charged, graph.nodes.len() * 3);
+            assert_eq!(work_control.checked, work_control.charged);
+        }
+    }
+
+    #[test]
+    fn hierarchy_index_work_is_linear_in_emitted_boundary_segments() {
+        for depth in [4usize, 8, 16] {
+            let mut baseline_work = RecordingWorkControl::unlimited();
+            HierarchyIndex::build(&deep_cross_scope_graph(depth, 0), &mut baseline_work).unwrap();
+
+            for edge_count in [1usize, 4, 16] {
+                let graph = deep_cross_scope_graph(depth, edge_count);
+                let mut work_control = RecordingWorkControl::unlimited();
+                let index = HierarchyIndex::build(&graph, &mut work_control).unwrap();
+                let segment_count = index
+                    .scopes
+                    .iter()
+                    .map(|scope| scope.edges.len())
+                    .sum::<usize>();
+
+                assert_eq!(segment_count, edge_count * (depth + 1));
+                // Each edge contributes two indexed descriptor visits. The combined owner/section
+                // walk then charges exactly once for every hierarchy-local section it emits.
+                assert_eq!(
+                    work_control.charged - baseline_work.charged,
+                    2 * edge_count + segment_count
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn elk_wrapper_export_and_flatten_work_is_linear_in_cross_scope_geometry() {
+        const POINTS_PER_SEGMENT: usize = 5;
+
+        for edge_count in [1usize, 8, 32, 128] {
+            let graph = repeated_cross_scope_graph(edge_count);
+            let mut index_work = RecordingWorkControl::unlimited();
+            let index = HierarchyIndex::build(&graph, &mut index_work).unwrap();
+            assert_eq!(index.scopes.len(), 2);
+            assert_eq!(
+                index
+                    .scopes
+                    .iter()
+                    .map(|scope| scope.edges.len())
+                    .sum::<usize>(),
+                edge_count * 2
+            );
+
+            let mut flatten_work = RecordingWorkControl::unlimited();
+            let result = flatten_scope_layouts(
+                &index,
+                synthetic_scope_arena(&index, POINTS_PER_SEGMENT),
+                &mut flatten_work,
+            )
+            .unwrap();
+
+            // 2 scope-scan units + 2E geometry-scan units + (9 + 5E) structural units
+            // + 2 * (10E points + E labels + 2E edge records) geometry units.
+            assert_eq!(flatten_work.charged, 11 + 33 * edge_count);
+            assert_eq!(flatten_work.checked, flatten_work.charged);
+            assert_eq!(result.nodes.len(), graph.nodes.len());
+            assert_eq!(result.edges.len(), edge_count);
+
+            let flat = flat_graph(
+                vec![leaf("source"), leaf("target")],
+                (0..edge_count)
+                    .map(|index| {
+                        let mut edge = edge(format!("flat-{index}").as_str(), "source", "target");
+                        edge.label = Some(Label {
+                            width: 20.0,
+                            height: 10.0,
+                        });
+                        edge
+                    })
+                    .collect(),
+            );
+            let imported = source_port::import_graph(&graph_to_source_input(&flat)).unwrap();
+            let sort_work = match edge_count {
+                1 => 0,
+                8 => 24,
+                32 => 160,
+                128 => 896,
+                _ => unreachable!("test matrix is fixed"),
+            };
+            // Two nodes, five linear export units per labelled straight edge, and the independent
+            // E*ceil(log2(E)) comparison-sort bound used by the final Mermaid model-order pass.
+            assert_eq!(
+                source_graph_output_work_units(&imported),
+                Ok(2 + 5 * edge_count + sort_work)
+            );
+        }
+    }
+
+    #[test]
+    fn output_sort_work_is_checked_and_superlinear() {
+        assert_eq!(comparison_sort_work_units(0), Ok(0));
+        assert_eq!(comparison_sort_work_units(1), Ok(0));
+        assert_eq!(comparison_sort_work_units(2), Ok(2));
+        assert_eq!(comparison_sort_work_units(3), Ok(6));
+        assert_eq!(comparison_sort_work_units(8), Ok(24));
+        assert_eq!(
+            comparison_sort_work_units(usize::MAX),
+            Err(WorkError::ArithmeticOverflow)
+        );
+    }
+
+    #[test]
+    fn flatten_work_is_linear_in_points_at_fixed_cross_scope_cardinality() {
+        const EDGE_COUNT: usize = 8;
+        let graph = repeated_cross_scope_graph(EDGE_COUNT);
+        let mut index_work = RecordingWorkControl::unlimited();
+        let index = HierarchyIndex::build(&graph, &mut index_work).unwrap();
+        let segment_count = index
+            .scopes
+            .iter()
+            .map(|scope| scope.edges.len())
+            .sum::<usize>();
+        assert_eq!(segment_count, EDGE_COUNT * 2);
+
+        let measured = [1usize, 8, 64].map(|points_per_segment| {
+            let mut work_control = RecordingWorkControl::unlimited();
+            flatten_scope_layouts(
+                &index,
+                synthetic_scope_arena(&index, points_per_segment),
+                &mut work_control,
+            )
+            .unwrap();
+            (points_per_segment, work_control.charged)
+        });
+
+        for pair in measured.windows(2) {
+            let (before_points, before_work) = pair[0];
+            let (after_points, after_work) = pair[1];
+            assert_eq!(
+                after_work - before_work,
+                2 * segment_count * (after_points - before_points)
+            );
+        }
+    }
+
+    #[test]
+    fn flatten_geometry_execution_budget_is_atomic() {
+        const EDGE_COUNT: usize = 4;
+        const POINTS_PER_SEGMENT: usize = 5;
+        // 2 scope-scan + 8 geometry-scan planning units, then one 29 structural + 104 geometry
+        // execution tranche. A failed execution check must retain only the completed planning work.
+        const PLANNING_WORK: usize = 10;
+        const EXECUTION_WORK: usize = 133;
+        const REQUIRED: usize = PLANNING_WORK + EXECUTION_WORK;
+
+        let graph = repeated_cross_scope_graph(EDGE_COUNT);
+        let mut index_work = RecordingWorkControl::unlimited();
+        let index = HierarchyIndex::build(&graph, &mut index_work).unwrap();
+
+        let mut below = RecordingWorkControl {
+            remaining: REQUIRED - 1,
+            checked: 0,
+            charged: 0,
+        };
+        let error = flatten_scope_layouts(
+            &index,
+            synthetic_scope_arena(&index, POINTS_PER_SEGMENT),
+            &mut below,
+        )
+        .unwrap_err();
+        assert_eq!(error.work_error(), Some(WorkError::Interrupted));
+        assert_eq!(below.charged, PLANNING_WORK);
+        assert_eq!(below.remaining, EXECUTION_WORK - 1);
+
+        for extra in [0usize, 1] {
+            let mut accepted = RecordingWorkControl {
+                remaining: REQUIRED + extra,
+                checked: 0,
+                charged: 0,
+            };
+            let result = flatten_scope_layouts(
+                &index,
+                synthetic_scope_arena(&index, POINTS_PER_SEGMENT),
+                &mut accepted,
+            )
+            .unwrap();
+            assert_eq!(result.edges.len(), EDGE_COUNT);
+            assert_eq!(accepted.charged, REQUIRED);
+            assert_eq!(accepted.remaining, extra);
+        }
+    }
+
+    #[test]
+    fn separate_children_edges_have_one_owner_and_output_sensitive_segments() {
+        let mut a = leaf("a");
+        a.parent = Some("left".to_string());
+        let mut a2 = leaf("a2");
+        a2.parent = Some("left".to_string());
+        let mut b = leaf("b");
+        b.parent = Some("right".to_string());
+        let graph = flat_graph(
+            vec![
+                group("left", None, HierarchyHandling::SeparateChildren),
+                a,
+                a2,
+                group("right", None, HierarchyHandling::SeparateChildren),
+                b,
+                leaf("outer"),
+            ],
+            vec![
+                edge("a-a2", "a", "a2"),
+                edge("a-outer", "a", "outer"),
+                edge("a-b", "a", "b"),
+                edge("left-a", "left", "a"),
+            ],
+        );
+        let mut work_control = RecordingWorkControl::unlimited();
+        let index = HierarchyIndex::build(&graph, &mut work_control).unwrap();
+
+        let mut owners = vec![0usize; graph.edges.len()];
+        let mut segments = vec![0usize; graph.edges.len()];
+        for scope in &index.scopes {
+            for edge in &scope.owned_edges {
+                owners[*edge] += 1;
+            }
+            for edge in &scope.edges {
+                segments[edge.original] += 1;
+            }
+        }
+        assert_eq!(owners, vec![1, 1, 1, 1]);
+        assert_eq!(segments, vec![1, 2, 3, 1]);
+    }
+
+    #[test]
+    fn hierarchy_index_rejects_duplicate_edge_ids_before_scope_metadata_can_alias() {
+        let graph = flat_graph(
+            vec![leaf("a"), leaf("b"), leaf("c")],
+            vec![edge("duplicate", "a", "b"), edge("duplicate", "a", "c")],
+        );
+        let mut work_control = RecordingWorkControl::unlimited();
+
+        let error = HierarchyIndex::build(&graph, &mut work_control).unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::SourceImport(source_port::ImportError::DuplicateEdge { id })
+                if id == "duplicate"
+        ));
+    }
+
+    #[test]
+    fn separate_children_segment_edge_order_is_unique_within_materialized_scope() {
+        let mut nested_group = group("nested", Some("group"), HierarchyHandling::SeparateChildren);
+        nested_group.label = None;
+        let mut source = leaf("source");
+        source.parent = Some("nested".to_string());
+        let mut sibling = leaf("sibling");
+        sibling.parent = Some("group".to_string());
+        let graph = flat_graph(
+            vec![
+                group("group", None, HierarchyHandling::SeparateChildren),
+                nested_group,
+                source,
+                sibling,
+                leaf("root-target"),
+            ],
+            vec![
+                edge("to-sibling", "source", "sibling"),
+                edge("to-root", "source", "root-target"),
+            ],
+        );
+        let mut work_control = RecordingWorkControl::unlimited();
+        let index = HierarchyIndex::build(&graph, &mut work_control).unwrap();
+        let nested_scope = index.child_scope_by_anchor[1].unwrap();
+        let arena = std::iter::repeat_with(|| None)
+            .take(index.scopes.len())
+            .collect::<Vec<Option<ScopeLayout>>>();
+
+        let (_, segments, _) = index
+            .materialize_scope(nested_scope, &arena, &mut work_control)
+            .unwrap();
+
+        assert_eq!(
+            segments
+                .iter()
+                .map(|segment| segment.edge.model_order)
+                .collect::<Vec<_>>(),
+            vec![Some(0), Some(0)]
+        );
+        assert_eq!(
+            segments
+                .iter()
+                .map(|segment| segment.edge_order)
+                .collect::<Vec<_>>(),
+            vec![0, 1]
+        );
+    }
+
+    #[test]
+    fn separate_children_layout_is_small_stack_safe_and_deterministic() {
+        let graph = deep_separate_graph(256);
+        let first = std::thread::Builder::new()
+            .name("elk-separate-children-small-stack".to_string())
+            .stack_size(128 * 1024)
+            .spawn(move || layout(&graph))
+            .unwrap()
+            .join()
+            .expect("separate-children layout must not overflow the worker stack")
+            .unwrap();
+        assert_eq!(first.nodes.len(), 257);
+
+        let replay_graph = deep_separate_graph(256);
+        let replayed = layout(&replay_graph).unwrap();
+        assert_eq!(first, replayed);
+    }
+
+    #[test]
+    fn source_graph_dump_is_small_stack_safe_for_deep_hierarchy() {
+        let depth = 256;
+        let graph = deep_include_graph(depth);
+        let dump = std::thread::Builder::new()
+            .name("elk-source-dump-small-stack".to_string())
+            .stack_size(128 * 1024)
+            .spawn(move || {
+                SourcePhaseDiagnostics::from_graph(&graph)
+                    .unwrap()
+                    .graph_dump()
+            })
+            .unwrap()
+            .join()
+            .expect("source graph dump must not overflow the worker stack");
+
+        assert_eq!(
+            dump.lines()
+                .filter(|line| line.trim_start().starts_with("graph "))
+                .count(),
+            depth + 1
+        );
+    }
+
+    #[test]
+    fn separate_children_cross_boundary_edges_merge_once_with_one_label() {
+        let mut a = leaf("a");
+        a.parent = Some("left".to_string());
+        let mut b = leaf("b");
+        b.parent = Some("right".to_string());
+        let mut descendant_to_outer = edge("a-outer", "a", "outer");
+        descendant_to_outer.label = Some(Label {
+            width: 36.0,
+            height: 14.0,
+        });
+        let graph = flat_graph(
+            vec![
+                group("left", None, HierarchyHandling::SeparateChildren),
+                a,
+                group("right", None, HierarchyHandling::SeparateChildren),
+                b,
+                leaf("outer"),
+            ],
+            vec![descendant_to_outer, edge("a-b", "a", "b")],
+        );
+
+        let result = layout(&graph).unwrap();
+        for edge_id in ["a-outer", "a-b"] {
+            let matches = result
+                .edges
+                .iter()
+                .filter(|edge| edge.id == edge_id)
+                .collect::<Vec<_>>();
+            assert_eq!(matches.len(), 1, "edge {edge_id} must be flattened once");
+            assert!(matches[0].points.len() >= 2);
+            assert!(
+                matches[0]
+                    .points
+                    .iter()
+                    .all(|point| point.x.is_finite() && point.y.is_finite())
+            );
+        }
+        assert_eq!(
+            result
+                .edges
+                .iter()
+                .find(|edge| edge.id == "a-outer")
+                .unwrap()
+                .labels
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn separate_children_cross_boundary_edges_keep_owner_model_order() {
+        let mut left = leaf("left");
+        left.parent = Some("group".to_string());
+        let mut right = leaf("right");
+        right.parent = Some("group".to_string());
+        let mut graph = flat_graph(
+            vec![
+                group("group", None, HierarchyHandling::SeparateChildren),
+                left,
+                right,
+                leaf("outer-a"),
+                leaf("outer-b"),
+            ],
+            vec![
+                edge("child-local", "left", "right"),
+                edge("cross-boundary", "left", "outer-a"),
+                edge("root-local", "outer-a", "outer-b"),
+            ],
+        );
+        graph.options.layered.consider_model_order = true;
+
+        let mut work_control = RecordingWorkControl::unlimited();
+        let index = HierarchyIndex::build(&graph, &mut work_control).unwrap();
+        let arena = std::iter::repeat_with(|| None)
+            .take(index.scopes.len())
+            .collect::<Vec<Option<ScopeLayout>>>();
+        let (input, segments, _) = index
+            .materialize_scope(0, &arena, &mut work_control)
+            .unwrap();
+        let imported = source_port::import_graph_at_seed_scope_and_segments_with_work_control(
+            &input,
+            &index.scopes[0].seed_scope,
+            &segments,
+            &mut work_control,
+        )
+        .unwrap();
+
+        let model_order = |edge_id: &str| {
+            imported
+                .edges
+                .iter()
+                .find(|edge| edge.id == edge_id)
+                .unwrap_or_else(|| panic!("missing imported edge {edge_id}"))
+                .model_order
+        };
+        assert_eq!(model_order("cross-boundary"), Some(0));
+        assert_eq!(model_order("root-local"), Some(1));
+
+        let result = layout(&graph).unwrap();
+        assert_eq!(
+            result
+                .edges
+                .iter()
+                .map(|edge| edge.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["cross-boundary", "root-local", "child-local"]
+        );
+    }
+
+    fn assert_direct_parent_child_edge_precedes_later_root_edge(source: &str, target: &str) {
+        let mut child = leaf("child");
+        child.parent = Some("group".to_string());
+        let graph = flat_graph(
+            vec![
+                group("group", None, HierarchyHandling::SeparateChildren),
+                child,
+                leaf("root-a"),
+                leaf("root-b"),
+            ],
+            vec![
+                edge("parent-child", source, target),
+                edge("root-local", "root-a", "root-b"),
+            ],
+        );
+        let mut work_control = RecordingWorkControl::unlimited();
+        let index = HierarchyIndex::build(&graph, &mut work_control).unwrap();
+
+        let result =
+            flatten_scope_layouts(&index, synthetic_scope_arena(&index, 2), &mut work_control)
+                .unwrap();
+
+        assert_eq!(
+            result
+                .edges
+                .iter()
+                .map(|edge| edge.id.as_str())
+                .collect::<Vec<_>>(),
+            ["parent-child", "root-local"]
+        );
+    }
+
+    #[test]
+    fn parent_to_direct_child_edge_keeps_owner_scope_order_when_flattened() {
+        assert_direct_parent_child_edge_precedes_later_root_edge("group", "child");
+    }
+
+    #[test]
+    fn direct_child_to_parent_edge_keeps_owner_scope_order_when_flattened() {
+        assert_direct_parent_child_edge_precedes_later_root_edge("child", "group");
+    }
+
+    #[test]
+    fn elk_work_control_interrupts_before_hierarchy_index_allocation() {
+        let graph = deep_separate_graph(8);
+        let initial_budget = graph.nodes.len() - 1;
+        let mut work_control = RecordingWorkControl {
+            remaining: initial_budget,
+            checked: 0,
+            charged: 0,
+        };
+
+        let error = layout_with_work_control(&graph, &mut work_control).unwrap_err();
+
+        assert_eq!(error.work_error(), Some(WorkError::Interrupted));
+        assert_eq!(work_control.remaining, initial_budget);
+        assert_eq!(work_control.charged, 0);
     }
 
     #[test]
@@ -1766,6 +3547,45 @@ mod tests {
 
         assert!(result.edges.iter().any(|edge| edge.id == "A-B"));
         assert!(!result.edges.iter().any(|edge| edge.id == "merged-segment"));
+    }
+
+    #[test]
+    fn compound_segment_counting_order_matches_elk_cross_hierarchy_order() {
+        let segment = |segment| CompoundEdgeLayoutSegment {
+            original_edge_id: "edge".to_string(),
+            segment,
+            model_order: None,
+            edge: EdgeLayout {
+                id: "edge".to_string(),
+                points: Vec::new(),
+                labels: Vec::new(),
+            },
+        };
+        let mut segments = vec![
+            segment(source_port::CompoundEdgeSegment::Input { depth: 4 }),
+            segment(source_port::CompoundEdgeSegment::Output { depth: 5 }),
+            segment(source_port::CompoundEdgeSegment::Input { depth: 2 }),
+            segment(source_port::CompoundEdgeSegment::Output { depth: 3 }),
+            segment(source_port::CompoundEdgeSegment::Output { depth: 4 }),
+            segment(source_port::CompoundEdgeSegment::Input { depth: 3 }),
+        ];
+
+        order_compound_layout_segments(&mut segments);
+
+        assert_eq!(
+            segments
+                .into_iter()
+                .map(|segment| segment.segment)
+                .collect::<Vec<_>>(),
+            vec![
+                source_port::CompoundEdgeSegment::Output { depth: 5 },
+                source_port::CompoundEdgeSegment::Output { depth: 4 },
+                source_port::CompoundEdgeSegment::Output { depth: 3 },
+                source_port::CompoundEdgeSegment::Input { depth: 2 },
+                source_port::CompoundEdgeSegment::Input { depth: 3 },
+                source_port::CompoundEdgeSegment::Input { depth: 4 },
+            ]
+        );
     }
 
     #[test]

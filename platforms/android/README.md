@@ -67,6 +67,8 @@ val bytes = result.data
 
 `Merman` is the discovery and one-shot facade. Convenience methods cover SVG, ASCII, PNG, JPEG, PDF, semantic JSON, layout JSON, analysis facts, SVG planning, validation, and document analysis. `metadataJson(id)` is the generic metadata path for every ID advertised by `runtimeCatalogJson()`. Calls are blocking; invoke substantial work from a background dispatcher. Native failures throw `MermanException` with a structured Merman error payload. Use `kind` to distinguish `UNKNOWN_OPERATION`, `MISSING_CAPABILITY`, `BUSY`, and `REENTRANT_CALL`; `capabilityId` is non-null only for `MISSING_CAPABILITY` and is the stable descriptor ID. Resource failures expose optional typed `resourceDetails` with the stable limit ID, phase, actual value, effective maximum, and selected profile.
 
+Resource failures also expose the stable `cause` discriminator (`ceiling` or `arithmetic_overflow`).
+
 Binary helpers retain both ergonomic forms. `renderPng`, `renderJpeg`, and `renderPdf` return bytes; their corresponding `*Result` methods retain the complete envelope and typed effective output plan. Unknown future output-plan kinds are preserved as `MermanUnknownOutputPlan` together with their raw JSON.
 
 ## Options And Capabilities

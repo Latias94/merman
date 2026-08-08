@@ -17,7 +17,12 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from compare_self import RunnerRecipe, cargo_prebuild_command, parse_bench_executable
+from compare_self import (
+    RunnerRecipe,
+    cargo_clean_bench_profile_command,
+    cargo_prebuild_command,
+    parse_bench_executable,
+)
 from compare_mermaid_renderers import best_effort_cpu_model
 from corpus_utils import LaneMetadata, load_corpus, resolve_lane_selector
 from native_memory import (
@@ -42,7 +47,9 @@ DEFAULT_REPEATS = 5
 DEFAULT_SEED = 0x4D45524D414E
 DEFAULT_BOOTSTRAP_RESAMPLES = 10_000
 DEFAULT_TIMEOUT_SECONDS = 300
-_METRICS = ("allocation_count", "allocated_bytes", "peak_growth_bytes")
+DEFAULT_BUILD_TIMEOUT_SECONDS = 900
+_REQUIRED_METRICS = ("allocation_count", "allocated_bytes", "peak_growth_bytes")
+_OPTIONAL_METRICS = ("retained_growth_bytes",)
 _OWNER_CONTRACT_COMMON_FIELDS = frozenset(
     {
         "schema_version",
@@ -58,7 +65,7 @@ _OWNER_CONTRACT_V2_FIELDS = _OWNER_CONTRACT_COMMON_FIELDS | frozenset(
     {"probe", "scale", "semantic_response"}
 )
 _GENERATOR_FIELDS = frozenset({"id", "nodes_per_scale", "edges_per_scale"})
-_PROBE_FIELDS = frozenset(
+_PROBE_REQUIRED_FIELDS = frozenset(
     {
         "protocol_schema_version",
         "package",
@@ -68,6 +75,8 @@ _PROBE_FIELDS = frozenset(
         "default_features",
     }
 )
+_PROBE_OPTIONAL_FIELDS = frozenset({"inputs"})
+_PROBE_INPUT_FIELDS = frozenset({"path", "sha256"})
 _SCALE_FIELDS = frozenset({"dimension", "units_per_scale"})
 _BOUND_FIELDS = frozenset({"slope_cap", "max_scale_cap"})
 _BUILD_ENVIRONMENT_OVERRIDES = {
@@ -83,6 +92,11 @@ class DriverContractError(ValueError):
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
+
+
+def requested_repo_root(args: argparse.Namespace) -> Path:
+    value = getattr(args, "repo_root", "")
+    return Path(value).resolve() if value else repo_root()
 
 
 def _sha256_path(path: Path) -> str:
@@ -254,9 +268,18 @@ def _resolve_repo_file(root: Path, relative: str, *, field: str) -> Path:
 
 def _validate_metrics_contract(contract: Mapping[str, object]) -> None:
     metrics = contract["metrics"]
-    if not isinstance(metrics, dict) or frozenset(metrics) != frozenset(_METRICS):
-        raise DriverContractError("owner contract must define exactly three allocator metrics")
-    for metric in _METRICS:
+    if not isinstance(metrics, dict):
+        raise DriverContractError("owner contract metrics must be an object")
+    metric_names = frozenset(metrics)
+    required = frozenset(_REQUIRED_METRICS)
+    allowed = required | frozenset(_OPTIONAL_METRICS)
+    if not required.issubset(metric_names) or not metric_names.issubset(allowed):
+        raise DriverContractError(
+            "owner contract must define the three allocator metrics and only supported optional metrics"
+        )
+    for metric in (*_REQUIRED_METRICS, *_OPTIONAL_METRICS):
+        if metric not in metrics:
+            continue
         bounds = metrics[metric]
         if not isinstance(bounds, dict) or frozenset(bounds) != _BOUND_FIELDS:
             raise DriverContractError(f"owner contract bounds differ for {metric}")
@@ -289,6 +312,18 @@ def load_owner_contract(path: Path, *, lane: LaneMetadata) -> dict[str, object]:
         raise DriverContractError(
             "owner contract evidence class and candidate-admission flag disagree"
         )
+    if (
+        schema_version == 2
+        and contract["workload"] == "flowchart-elk-separate-children-depth-v2"
+        and (
+            evidence_class != "infrastructure-smoke"
+            or candidate_admission is not False
+        )
+    ):
+        raise DriverContractError(
+            "flowchart ELK hierarchy memory v2 is permanently non-admission; "
+            "use a calibrated candidate schema with platform scope"
+        )
 
     if schema_version == 1:
         generator = contract["generator"]
@@ -300,10 +335,18 @@ def load_owner_contract(path: Path, *, lane: LaneMetadata) -> dict[str, object]:
         _positive_int(generator["edges_per_scale"], field="generator.edges_per_scale")
     else:
         probe = contract["probe"]
-        if not isinstance(probe, dict) or frozenset(probe) != _PROBE_FIELDS:
+        if not isinstance(probe, dict):
+            raise DriverContractError("owner contract probe must be an object")
+        probe_fields = frozenset(probe)
+        if (
+            not _PROBE_REQUIRED_FIELDS.issubset(probe_fields)
+            or probe_fields - _PROBE_REQUIRED_FIELDS - _PROBE_OPTIONAL_FIELDS
+        ):
             raise DriverContractError("owner contract probe fields differ")
-        if probe["protocol_schema_version"] != 2:
-            raise DriverContractError("schema-v2 owner probe must use protocol schema 2")
+        if probe["protocol_schema_version"] not in (2, 3):
+            raise DriverContractError(
+                "schema-v2 owner probe must use semantic protocol schema 2 or 3"
+            )
         package = _nonempty_string(probe["package"], field="probe.package")
         if package != lane.owner:
             raise DriverContractError("owner contract probe package differs from lane owner")
@@ -321,6 +364,30 @@ def load_owner_contract(path: Path, *, lane: LaneMetadata) -> dict[str, object]:
             raise DriverContractError(
                 "owner contract probe features differ from lane required_features"
             )
+        if "inputs" in probe:
+            inputs = probe["inputs"]
+            if not isinstance(inputs, list) or not inputs:
+                raise DriverContractError(
+                    "owner contract probe inputs must be a non-empty list"
+                )
+            seen_paths: set[str] = set()
+            for index, raw_input in enumerate(inputs):
+                if (
+                    not isinstance(raw_input, dict)
+                    or frozenset(raw_input) != _PROBE_INPUT_FIELDS
+                ):
+                    raise DriverContractError(f"probe.inputs[{index}] fields differ")
+                input_path = _repo_relative_path(
+                    raw_input["path"], field=f"probe.inputs[{index}].path"
+                )
+                if input_path in seen_paths:
+                    raise DriverContractError(
+                        "owner contract probe inputs contain duplicate paths"
+                    )
+                seen_paths.add(input_path)
+                _lowercase_sha256(
+                    raw_input["sha256"], field=f"probe.inputs[{index}].sha256"
+                )
         scale = contract["scale"]
         if not isinstance(scale, dict) or frozenset(scale) != _SCALE_FIELDS:
             raise DriverContractError("owner contract scale fields differ")
@@ -342,6 +409,12 @@ def load_owner_contract(path: Path, *, lane: LaneMetadata) -> dict[str, object]:
             )
 
     _validate_metrics_contract(contract)
+    metrics = contract["metrics"]
+    assert isinstance(metrics, Mapping)
+    if frozenset(metrics) != frozenset(lane.measurement_metrics):
+        raise DriverContractError(
+            "owner contract metrics differ from lane measurement_metrics"
+        )
     return contract
 
 
@@ -384,9 +457,28 @@ def discover_executable(
     *,
     timeout_seconds: int,
 ) -> tuple[Path, dict[str, object]]:
+    reset_command = cargo_clean_bench_profile_command(recipe)
     command = cargo_prebuild_command(recipe)
     environment = os.environ.copy()
     environment.update(_BUILD_ENVIRONMENT_OVERRIDES)
+    try:
+        reset = subprocess.run(
+            reset_command,
+            cwd=recipe.checkout,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise DriverContractError(
+            "native-memory bench profile reset timed out"
+        ) from error
+    if reset.returncode != 0:
+        raise DriverContractError(
+            "native-memory bench profile reset failed: " + reset.stderr[-2_000:]
+        )
     try:
         result = subprocess.run(
             command,
@@ -413,6 +505,11 @@ def discover_executable(
         raise DriverContractError(f"Cargo reported an unusable executable: {executable}")
     return executable, {
         "command": command,
+        "profile_reset": {
+            "command": reset_command,
+            "stdout_sha256": hashlib.sha256(reset.stdout.encode("utf-8")).hexdigest(),
+            "stderr_sha256": hashlib.sha256(reset.stderr.encode("utf-8")).hexdigest(),
+        },
         "stdout_sha256": hashlib.sha256(result.stdout.encode("utf-8")).hexdigest(),
         "stderr_sha256": hashlib.sha256(result.stderr.encode("utf-8")).hexdigest(),
     }
@@ -509,6 +606,18 @@ def _validate_driver_parameters(args: argparse.Namespace) -> None:
         )
     if args.timeout_seconds <= 0:
         raise DriverContractError("timeout seconds must be positive")
+    if args.build_timeout_seconds <= 0:
+        raise DriverContractError("build timeout seconds must be positive")
+
+
+def _validate_executable_admission(
+    args: argparse.Namespace, contract: Mapping[str, object]
+) -> None:
+    if args.executable and not args.smoke and contract["candidate_admission"] is True:
+        raise DriverContractError(
+            "candidate-bound native-memory evidence cannot use --executable; "
+            "build the contract-owned probe or use --smoke for non-admission diagnostics"
+        )
 
 
 def _expected_echo(
@@ -630,7 +739,12 @@ def analyze_samples(
     assert isinstance(metric_contracts, Mapping)
     metrics: dict[str, object] = {}
     outcomes: list[str] = []
-    for metric in _METRICS:
+    metric_names = tuple(
+        metric
+        for metric in (*_REQUIRED_METRICS, *_OPTIONAL_METRICS)
+        if metric in metric_contracts
+    )
+    for metric in metric_names:
         bounds = metric_contracts[metric]
         assert isinstance(bounds, Mapping)
         try:
@@ -688,6 +802,8 @@ def _base_report(args: argparse.Namespace, *, output: Path) -> dict[str, object]
             "repeats": args.repeats,
             "seed": args.seed,
             "bootstrap_resamples": args.bootstrap_resamples,
+            "build_timeout_seconds": args.build_timeout_seconds,
+            "probe_timeout_seconds": args.timeout_seconds,
             "subprocess_isolation": "fresh-process-per-sample",
             "pair_order": "alternating-operation-zero",
             "evidence_class": "protocol-smoke" if args.smoke else None,
@@ -707,12 +823,14 @@ def _base_report(args: argparse.Namespace, *, output: Path) -> dict[str, object]
 
 
 def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
-    root = repo_root()
+    root = requested_repo_root(args)
     output = Path(args.json_out)
     if not output.is_absolute():
         output = root / output
     report = _base_report(args, output=output)
     try:
+        if not root.is_dir():
+            raise DriverContractError(f"repository root is not a directory: {root}")
         _validate_driver_parameters(args)
         source = _git_provenance(root)
         report["source"] = source
@@ -741,6 +859,7 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
         if not contract_path.is_absolute():
             contract_path = root / contract_path
         contract = load_owner_contract(contract_path, lane=lane)
+        _validate_executable_admission(args, contract)
         if contract["schema_version"] == 1:
             if (
                 lane.id != DEFAULT_LANE
@@ -794,8 +913,25 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
                 str(probe["package_manifest"]),
                 field="probe.package_manifest",
             )
+            probe_inputs: list[dict[str, object]] = []
+            raw_inputs = probe.get("inputs", [])
+            assert isinstance(raw_inputs, list)
+            for index, raw_input in enumerate(raw_inputs):
+                assert isinstance(raw_input, Mapping)
+                input_path = _resolve_repo_file(
+                    root,
+                    str(raw_input["path"]),
+                    field=f"probe.inputs[{index}].path",
+                )
+                record = _describe_file(input_path, root=root)
+                if record["sha256"] != raw_input["sha256"]:
+                    raise DriverContractError(
+                        f"owner contract probe input digest differs at index {index}"
+                    )
+                probe_inputs.append(record)
         else:
             package_manifest_path = root / "crates" / "merman" / "Cargo.toml"
+            probe_inputs = []
 
         report_inputs: dict[str, object] = {
             "workspace_manifest": _describe_file(root / "Cargo.toml", root=root),
@@ -813,8 +949,11 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
                 "value": contract,
             },
         }
+        if probe_inputs:
+            report_inputs["probe_inputs"] = probe_inputs
         report["inputs"] = report_inputs
         build_command = cargo_prebuild_command(recipe)
+        profile_reset_command = cargo_clean_bench_profile_command(recipe)
         report["recipe"] = {
             "package": recipe.package,
             "bench": recipe.bench,
@@ -822,6 +961,7 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
             "default_features": recipe.default_features,
             "locked": recipe.locked,
             "target_dir": str(recipe.target_dir),
+            "profile_reset_command": profile_reset_command,
             "build_command": build_command,
             "build_environment": _build_environment(),
             "requested_toolchain": args.toolchain,
@@ -836,7 +976,7 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
             build_provenance: dict[str, object] = {"skipped": "explicit executable"}
         else:
             executable, build_provenance = discover_executable(
-                recipe, timeout_seconds=args.timeout_seconds
+                recipe, timeout_seconds=args.build_timeout_seconds
             )
         if not executable.is_file() or not os.access(executable, os.X_OK):
             raise DriverContractError(f"native-memory executable is unusable: {executable}")
@@ -941,6 +1081,11 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--lane", default=DEFAULT_LANE)
     parser.add_argument("--contract", default="")
     parser.add_argument("--executable", default="")
+    parser.add_argument(
+        "--repo-root",
+        default="",
+        help="Repository checkout to build and attribute; defaults to the driver checkout.",
+    )
     parser.add_argument("--target-dir", default="target")
     parser.add_argument("--toolchain", default=None)
     parser.add_argument("--repeats", type=int, default=DEFAULT_REPEATS)
@@ -949,6 +1094,9 @@ def main(argv: list[str]) -> int:
         "--bootstrap-resamples", type=int, default=DEFAULT_BOOTSTRAP_RESAMPLES
     )
     parser.add_argument("--timeout-seconds", type=int, default=DEFAULT_TIMEOUT_SECONDS)
+    parser.add_argument(
+        "--build-timeout-seconds", type=int, default=DEFAULT_BUILD_TIMEOUT_SECONDS
+    )
     parser.add_argument("--run-id", default="")
     parser.add_argument("--json-out", default=str(DEFAULT_REPORT))
     parser.add_argument(
@@ -968,7 +1116,12 @@ def main(argv: list[str]) -> int:
     report, exit_code = execute(args)
     if args.dry_run:
         recipe = report.get("recipe", {})
+        reset_command = (
+            recipe.get("profile_reset_command", []) if isinstance(recipe, dict) else []
+        )
         command = recipe.get("build_command", []) if isinstance(recipe, dict) else []
+        if reset_command:
+            print("$ " + " ".join(str(part) for part in reset_command))
         if command:
             print("$ " + " ".join(str(part) for part in command))
         print(f"planned fresh subprocesses: {report.get('planned_subprocesses', 0)}")
@@ -979,7 +1132,7 @@ def main(argv: list[str]) -> int:
 
     output = Path(args.json_out)
     if not output.is_absolute():
-        output = repo_root() / output
+        output = requested_repo_root(args) / output
     try:
         _atomic_json(output, report)
     except (OSError, TypeError, ValueError) as error:
@@ -987,6 +1140,9 @@ def main(argv: list[str]) -> int:
         return 2
     print(f"Wrote: {output}")
     print(f"Outcome: {report['outcome']} (exit {exit_code})")
+    if exit_code == 2:
+        for error in report.get("contract_errors", []):
+            print(f"contract failure: {error}", file=sys.stderr)
     return exit_code
 
 

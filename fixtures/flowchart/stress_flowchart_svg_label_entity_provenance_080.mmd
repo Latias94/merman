@@ -1,0 +1,44 @@
+%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": false, "wrappingWidth": 240}} }%%
+flowchart TB
+  Text[A B]
+  String["A B"]
+  Markdown["`A B`"]
+  DirectOnly[" "]
+  Entity["&nbsp;Entity&nbsp;"]
+  EntityOnly["&nbsp;"]
+  Hash["#nbsp;Hash#nbsp;"]
+  Numeric["#160;Numeric#160;"]
+  Amp["&amp;Amp&amp;"]
+  Less["&lt;Less&lt;"]
+  NestedLess["&amp;lt;Nested&amp;gt;"]
+  NestedAmp["&amp;amp;Nested&amp;amp;"]
+  Unknown["&notanentity;Unknown&notanentity;"]
+  NelOnly[""]
+  NelBound["A"]
+  NelMultiline["A\n"]
+  ShapeText@{ label: " Shape text ", labelType: "text", shape: "rect" }
+  ShapeString@{ label: " Shape string ", labelType: "string", shape: "rect" }
+  ShapeMarkdown@{ label: " Shape markdown ", labelType: "markdown", shape: "rect" }
+  ShapeEntity@{ label: "&nbsp;Shape entity&nbsp;", labelType: "string", shape: "rect" }
+  ShapeTextOnly@{ label: " ", labelType: "text", shape: "rect" }
+  ShapeMarkdownOnly@{ label: " ", labelType: "markdown", shape: "rect" }
+
+  Text -->|&nbsp;Edge text&nbsp;| String
+  String -->|"&nbsp;Edge string&nbsp;"| Markdown
+  Markdown -->|"`&nbsp;Edge markdown&nbsp;`"| Entity
+  Entity -->| | DirectOnly
+  DirectOnly -->|&nbsp;| EntityOnly
+  EntityOnly --> Hash --> Numeric --> Amp --> Less --> NestedLess --> NestedAmp --> Unknown
+  Unknown -->|"Edge"| NelOnly --> NelBound --> NelMultiline
+  NelMultiline --> ShapeText --> ShapeString --> ShapeMarkdown --> ShapeEntity --> ShapeTextOnly --> ShapeMarkdownOnly
+
+  Self -->|&nbsp;Self edge&nbsp;| Self
+
+  subgraph SG["&nbsp;Group&nbsp;"]
+    Child["&nbsp;Child&nbsp;"]
+  end
+  subgraph NelGroup["Group"]
+    NelChild["Child"]
+  end
+  ShapeMarkdownOnly --> Child
+  Child --> NelChild

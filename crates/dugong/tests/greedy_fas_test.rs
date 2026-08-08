@@ -130,6 +130,23 @@ fn greedy_fas_works_with_arbitrarily_weighted_edges() {
 }
 
 #[test]
+fn greedy_fas_large_weights_do_not_allocate_weight_sized_buckets() {
+    let mut g: Graph<(), i64, ()> = Graph::new(GraphOptions {
+        multigraph: false,
+        compound: false,
+        ..Default::default()
+    });
+    g.set_edge_with_label("a", "b", i64::MAX);
+    g.set_edge_with_label("b", "c", i64::MAX);
+    g.set_edge_with_label("c", "a", 1);
+
+    let fas = greedy_fas::greedy_fas_with_weight(&g, |weight: &i64| *weight);
+
+    assert_eq!(fas.len(), 1);
+    assert_eq!((fas[0].v.as_str(), fas[0].w.as_str()), ("c", "a"));
+}
+
+#[test]
 fn greedy_fas_works_for_multigraphs() {
     let mut g: Graph<(), i64, ()> = Graph::new(GraphOptions {
         multigraph: true,

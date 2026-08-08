@@ -198,11 +198,18 @@ export declare class MermanError extends Error {
   readonly code: string;
 }
 
+/**
+ * A lossless unsigned resource count. Safe integers use `number`; wider `u64` values use a
+ * canonical decimal `string`.
+ */
+export type MermanResourceCount = number | string;
+
 export interface MermanResourceErrorDetails {
+  readonly cause: string;
   readonly limit_id: string;
   readonly phase: string;
-  readonly actual: number;
-  readonly max: number;
+  readonly actual: MermanResourceCount;
+  readonly max: MermanResourceCount;
   readonly profile: string;
 }
 

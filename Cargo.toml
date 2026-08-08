@@ -116,6 +116,7 @@ krilla = { version = "0.8", default-features = false }
 krilla-svg = { version = "0.8", default-features = false }
 unicode-width = { version = "0.2.2", default-features = false }
 unicode-linebreak = "0.1.5"
+unicode-segmentation = { version = "1.13.3", default-features = false }
 unicode-general-category = "1.1.0"
 unicode-normalization = "0.1.25"
 wasm-bindgen = "0.2"

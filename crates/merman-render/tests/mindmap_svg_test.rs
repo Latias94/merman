@@ -89,6 +89,31 @@ fn mindmap_svg_emits_mermaid_11_15_classic_dom_surface() {
 }
 
 #[test]
+fn mindmap_break_spaces_keeps_the_trailing_indentation_line_box() {
+    let svg = render_mindmap_svg_from_text(
+        "mindmap\n  root[\n    Multi-line root\n    with three lines\n  ]\n",
+        "mindmap-break-spaces",
+    );
+
+    assert!(
+        svg.contains(
+            r#"<rect class="basic label-container" style="" x="-120" y="-46" width="240" height="92"/>"#
+        ),
+        "expected the fixed-width Mindmap node to include three 24px line boxes: {svg}"
+    );
+    assert!(
+        svg.contains(r#"<foreignObject width="200" height="72">"#),
+        "expected the label foreignObject to preserve the trailing indentation row: {svg}"
+    );
+    assert!(
+        svg.contains(
+            "<span class=\"nodeLabel markdown-node-label\">    Multi-line root\n    with three lines\n  </span>"
+        ),
+        "expected SVG emission to preserve the source whitespace used by break-spaces: {svg}"
+    );
+}
+
+#[test]
 fn mindmap_hex_entity_placeholders_remain_literal_well_formed_xml() {
     for (source, expected) in [
         ("mindmap\n  root[&#x41;]\n", "<p>&amp;&amp;x41;</p>"),

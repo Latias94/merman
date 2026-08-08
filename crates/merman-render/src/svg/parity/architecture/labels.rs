@@ -69,7 +69,7 @@ fn svg_line_computed_length_px(
         .sum()
 }
 
-pub(super) fn svg_line_tspan_bbox_width_px(
+pub(super) fn svg_line_formatted_bbox_width_px(
     line: &[SvgWord],
     measurer: &dyn crate::text::TextMeasurer,
     style: &crate::text::TextStyle,
@@ -87,7 +87,8 @@ pub(super) fn svg_line_tspan_bbox_width_px(
     {
         measured_style = svg_word_style(style, word_type);
     }
-    measurer.measure_svg_tspan_text_bbox_width_px(&text, &measured_style)
+    let (left, right) = measurer.measure_svg_text_bbox_x(&text, &measured_style);
+    (left + right).max(0.0)
 }
 
 pub(super) fn wrap_svg_words_to_lines(
@@ -466,13 +467,17 @@ mod tests {
             text.chars().count() as f64 * scale
         }
 
-        fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        fn measure_svg_text_bbox_x(&self, text: &str, style: &TextStyle) -> (f64, f64) {
             self.bbox_calls.borrow_mut().push((
                 text.to_string(),
                 style.font_weight.clone(),
                 style.font_style.clone(),
             ));
-            211.0
+            (100.0, 111.0)
+        }
+
+        fn measure_svg_tspan_text_bbox_width_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+            panic!("Architecture formatted rows must not use the single-tspan operation")
         }
     }
 
@@ -547,14 +552,17 @@ mod tests {
     }
 
     #[test]
-    fn emitted_line_bbox_uses_tspan_operation_and_homogeneous_run_style() {
+    fn emitted_line_bbox_uses_formatted_operation_and_homogeneous_run_style() {
         let measurer = ExactPrimitiveProbe::default();
         let style = text_style();
         let lines = wrap_svg_words_to_lines("**Bold words**", 1_000.0, &measurer, &style);
         let line = lines.first().expect("one bold line");
 
         assert_eq!(svg_line_computed_length_px(line, &measurer, &style), 200.0);
-        assert_eq!(svg_line_tspan_bbox_width_px(line, &measurer, &style), 211.0);
+        assert_eq!(
+            svg_line_formatted_bbox_width_px(line, &measurer, &style),
+            211.0
+        );
         assert_eq!(
             measurer.bbox_calls.borrow().as_slice(),
             &[(

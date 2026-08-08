@@ -33,6 +33,8 @@ const BINDING_STATUS_NAME_BY_CODE = new Map([
 const JSON_NUMBER_TOKEN = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
 const JSON_NUMBER_PARTS = /^-?(0|[1-9]\d*)(?:\.(\d+))?(?:[eE]([+-]?)(\d+))?$/;
 const MAX_SAFE_INTEGER_DECIMAL = String(RUNTIME_CATALOG_MAX_SAFE_INTEGER);
+const U64_MAX_DECIMAL = "18446744073709551615";
+const CANONICAL_WIDE_UNSIGNED_DECIMAL = /^[1-9]\d*$/;
 const RUNTIME_CATALOG_EXACT_SAFE_INTEGER_PATHS = Object.freeze([
   ["schema_version"],
   ["transport_api_version"],
@@ -1114,16 +1116,16 @@ function validateResourceDetails(details) {
     const resource = details.resource;
     if (
       !isPlainJsonObject(resource) ||
+      typeof resource.cause !== "string" ||
+      resource.cause.length === 0 ||
       typeof resource.limit_id !== "string" ||
       resource.limit_id.length === 0 ||
       typeof resource.phase !== "string" ||
       resource.phase.length === 0 ||
       typeof resource.profile !== "string" ||
       resource.profile.length === 0 ||
-      !Number.isSafeInteger(resource.actual) ||
-      resource.actual < 0 ||
-      !Number.isSafeInteger(resource.max) ||
-      resource.max < 0
+      !isBindingResourceCount(resource.actual) ||
+      !isBindingResourceCount(resource.max)
     ) {
       throw new MermanInvalidTransportError(
         "Merman transport returned invalid resource error details.",
@@ -1146,6 +1148,23 @@ function validateResourceDetails(details) {
       );
     }
   }
+}
+
+function isBindingResourceCount(value) {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value >= 0;
+  }
+  if (typeof value !== "string" || !CANONICAL_WIDE_UNSIGNED_DECIMAL.test(value)) {
+    return false;
+  }
+  return compareCanonicalUnsignedDecimals(value, MAX_SAFE_INTEGER_DECIMAL) > 0 &&
+    compareCanonicalUnsignedDecimals(value, U64_MAX_DECIMAL) <= 0;
+}
+
+function compareCanonicalUnsignedDecimals(left, right) {
+  if (left.length !== right.length) return left.length < right.length ? -1 : 1;
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
 }
 
 function isPlainJsonObject(value) {

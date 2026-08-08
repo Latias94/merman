@@ -171,6 +171,219 @@ fn flowchart_html_labels_serialize_unknown_html_entities_as_well_formed_xml() {
 }
 
 #[test]
+fn flowchart_html_labels_trim_direct_nbsp_before_decoding_entities() {
+    let nbsp = '\u{00A0}';
+    let source = format!(
+        r#"flowchart LR
+EntityLead["&nbsp;A"] -- "A&nbsp;" --> EntityTail["A&nbsp;"]
+DirectLead["{nbsp}D"] -- "{nbsp}" --> DirectOnly["{nbsp}"]
+EntityOnly["&nbsp;"] -- "&nbsp;" --> EntityTarget
+Internal["A{nbsp}B"] --> InternalTarget
+MarkdownLead["`&nbsp;M`"] -- "`M<br>&nbsp;`" --> MarkdownTail["`A<br>&nbsp;`"]
+"#
+    );
+    let svg = render_flowchart_svg_from_text(&source);
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let text_content = |node: roxmltree::Node<'_, '_>| {
+        node.descendants()
+            .filter_map(|descendant| descendant.text().filter(|_| descendant.is_text()))
+            .collect::<String>()
+    };
+
+    let node_labels = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("span")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| part == "nodeLabel")
+                })
+        })
+        .map(text_content)
+        .collect::<Vec<_>>();
+    let edge_labels = document
+        .descendants()
+        .filter(|node| node.has_tag_name("span") && node.attribute("class") == Some("edgeLabel"))
+        .map(text_content)
+        .collect::<Vec<_>>();
+
+    for expected in [
+        format!("{nbsp}A"),
+        format!("A{nbsp}"),
+        nbsp.to_string(),
+        "D".to_string(),
+        format!("A{nbsp}B"),
+    ] {
+        assert!(
+            node_labels.contains(&expected),
+            "missing {expected:?}: {svg}"
+        );
+    }
+    for expected in [format!("A{nbsp}"), nbsp.to_string(), format!("M{nbsp}")] {
+        assert!(
+            edge_labels.contains(&expected),
+            "missing {expected:?}: {svg}"
+        );
+    }
+    assert!(!node_labels.contains(&format!("{nbsp}D")), "{svg}");
+    assert!(
+        svg.contains(&format!("<p>A<br />{nbsp}</p>")),
+        "expected a visible NBSP-only trailing line: {svg}",
+    );
+
+    let pure_nbsp_node_labels = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("span")
+                && text_content(*node) == nbsp.to_string()
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| part == "nodeLabel")
+                })
+        })
+        .collect::<Vec<_>>();
+    let pure_nbsp_edge_labels = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("span")
+                && text_content(*node) == nbsp.to_string()
+                && node.attribute("class") == Some("edgeLabel")
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        pure_nbsp_node_labels.len() == 1,
+        "only the entity-authored node label should remain: {svg}",
+    );
+    assert!(
+        pure_nbsp_edge_labels.len() == 1,
+        "only the entity-authored edge label should remain: {svg}",
+    );
+    for label in pure_nbsp_node_labels
+        .into_iter()
+        .chain(pure_nbsp_edge_labels)
+    {
+        let foreign_object = label
+            .ancestors()
+            .find(|ancestor| ancestor.has_tag_name("foreignObject"))
+            .expect("NBSP label foreignObject");
+        assert_ne!(foreign_object.attribute("width"), Some("0"), "{svg}");
+        assert_ne!(foreign_object.attribute("height"), Some("0"), "{svg}");
+    }
+}
+
+#[test]
+fn flowchart_svg_labels_preserve_entity_spelling_when_html_labels_are_disabled() {
+    let nbsp = '\u{00A0}';
+    let nel = '\u{0085}';
+    let source = format!(
+        r##"%%{{init: {{"htmlLabels": false, "flowchart": {{"htmlLabels": false}}}}}}%%
+flowchart LR
+Direct["{nbsp}Direct{nbsp}"] --> Entity["&nbsp;Entity&nbsp;"]
+Entity --> Hash["#nbsp;Hash#nbsp;"]
+Numeric["#160;Numeric#160;"]
+Amp["&amp;Amp&amp;"]
+Less["&lt;Less&lt;"]
+NestedLess["&amp;lt;Nested&amp;gt;"]
+NestedAmp["&amp;amp;Nested&amp;amp;"]
+NelOnly["{nel}"]
+DirectOnly["{nbsp}"] --> EntityOnly["&nbsp;"]
+EntityOnly -->|"&nbsp;Edge&nbsp;"| Tail
+MarkdownSource -->|"`&nbsp;Edge markdown&nbsp;`"| MarkdownTarget
+ShapeTextOnly@{{ label: "{nbsp}", labelType: "text", shape: "rect" }}
+ShapeMarkdownOnly@{{ label: "{nbsp}", labelType: "markdown", shape: "rect" }}
+subgraph SG["&nbsp;Group&nbsp;"]
+  Child
+end
+"##
+    );
+    let svg = render_flowchart_svg_from_text(&source);
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let text_content = |node: roxmltree::Node<'_, '_>| {
+        node.descendants()
+            .filter_map(|descendant| descendant.text().filter(|_| descendant.is_text()))
+            .collect::<String>()
+    };
+
+    assert!(!svg.contains("<foreignObject "), "{svg}");
+
+    let rendered_text = document
+        .descendants()
+        .filter(|node| node.has_tag_name("text"))
+        .map(|node| {
+            node.descendants()
+                .filter_map(|descendant| descendant.text().filter(|_| descendant.is_text()))
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>();
+
+    for expected in [
+        "Direct",
+        "&nbsp;Entity&nbsp;",
+        "&nbsp;Hash&nbsp;",
+        "&#160;Numeric&#160;",
+        "&Amp&",
+        "<Less<",
+        "&lt;Nested&gt;",
+        "&amp;Nested&amp;",
+        "&nbsp;",
+        "&nbsp;Edge&nbsp;",
+        "&nbsp;Group&nbsp;",
+    ] {
+        assert!(
+            rendered_text.iter().any(|text| text == expected),
+            "missing literal SVG label {expected:?}: {rendered_text:?}\n{svg}",
+        );
+    }
+    assert!(rendered_text.iter().any(|text| text == &nel.to_string()));
+
+    assert!(
+        rendered_text.iter().any(String::is_empty),
+        "the direct-NBSP-only node must keep a zero-size empty SVG label: {svg}",
+    );
+
+    let markdown_edge = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("data-id") == Some("L_MarkdownSource_MarkdownTarget_0")
+        })
+        .expect("markdown edge label group");
+    let markdown_rows = markdown_edge
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("tspan")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| part == "text-outer-tspan")
+                })
+        })
+        .map(text_content)
+        .collect::<Vec<_>>();
+    assert_eq!(markdown_rows, ["&nbsp;Edge", "markdown&nbsp;"], "{svg}");
+
+    let node_text = |id: &str| {
+        let id_fragment = format!("-flowchart-{id}-");
+        let node = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node
+                        .attribute("id")
+                        .is_some_and(|value| value.contains(&id_fragment))
+            })
+            .unwrap_or_else(|| panic!("missing node {id}"));
+        node.descendants()
+            .filter_map(|descendant| descendant.text().filter(|_| descendant.is_text()))
+            .collect::<String>()
+    };
+    assert_eq!(node_text("ShapeTextOnly"), "");
+    assert_eq!(node_text("ShapeMarkdownOnly"), nbsp.to_string());
+}
+
+#[test]
 fn flowchart_missing_icon_uses_mermaid_unknown_icon_at_requested_size() {
     let svg = render_flowchart_svg_from_text(
         "flowchart TD\nA@{ icon: \"missing:icon\", label: \"Missing\" }\n",
@@ -1514,6 +1727,137 @@ end
 }
 
 #[test]
+fn duplicate_subgraph_ids_render_one_cluster_with_the_first_title() {
+    for source in [
+        "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n    B\n  end\n",
+        "flowchart TD\n  subgraph X[First title]\n  end\n  subgraph X[Second title]\n    A\n  end\n",
+        "flowchart TD\n  subgraph X[First title]\n    A\n  end\n  subgraph X[Second title]\n  end\n",
+    ] {
+        let svg = render_flowchart_svg_from_text(source);
+        let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+        let clusters = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("id").is_some_and(|id| id.ends_with("-X"))
+                    && node.attribute("class").is_some_and(|class| {
+                        class.split_ascii_whitespace().any(|part| part == "cluster")
+                    })
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(clusters.len(), 1, "{svg}");
+        let visible_text = clusters[0]
+            .descendants()
+            .filter_map(|node| node.text().filter(|_| node.is_text()))
+            .collect::<String>();
+        assert!(visible_text.contains("First title"), "{svg}");
+        assert!(!visible_text.contains("Second title"), "{svg}");
+    }
+}
+
+#[test]
+fn flowchart_svg_edge_label_wraps_with_inherited_style_before_link_style_bbox() {
+    fn source(extra: &str) -> String {
+        format!(
+            r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart LR
+A -->|alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu| B
+{extra}
+"#
+        )
+    }
+
+    fn render_and_layout(source: &str) -> (FlowchartLayout, String) {
+        let session = RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin render session");
+        let parsed =
+            block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
+                .expect("parse ok")
+                .expect("diagram detected");
+        let layout =
+            layout_flowchart_render_model(parsed.clone(), &LayoutOptions::default(), session)
+                .expect("layout ok");
+        let session = RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin svg session");
+        let svg = render_flowchart_artifact(
+            parsed,
+            &LayoutOptions::default(),
+            session,
+            &SvgRenderOptions::default(),
+        )
+        .expect("render svg");
+        (layout, svg)
+    }
+
+    let (base_layout, base_svg) = render_and_layout(&source(""));
+    let (styled_layout, styled_svg) = render_and_layout(&source(
+        "linkStyle default font-size:32px\nlinkStyle 0 font-size:24px",
+    ));
+
+    let base_label = base_layout
+        .edges
+        .iter()
+        .find_map(|edge| edge.label.as_ref())
+        .expect("base edge label");
+    let styled_label = styled_layout
+        .edges
+        .iter()
+        .find_map(|edge| edge.label.as_ref())
+        .expect("styled edge label");
+    assert!(styled_label.height > base_label.height + 1e-6);
+
+    fn edge_label_rows(svg: &str) -> usize {
+        let document = roxmltree::Document::parse(svg).expect("valid SVG");
+        let group = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("class") == Some("label")
+                    && node.attribute("data-id").is_some()
+            })
+            .expect("edge label group");
+        group
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("tspan")
+                    && node
+                        .attribute("class")
+                        .is_some_and(|class| class.split_ascii_whitespace().any(|c| c == "row"))
+            })
+            .count()
+    }
+
+    let base_rows = edge_label_rows(&base_svg);
+    let styled_rows = edge_label_rows(&styled_svg);
+    assert!(base_rows > 1, "fixture must wrap: {base_svg}");
+    assert_eq!(
+        styled_rows, base_rows,
+        "linkStyle must not change wrapping: {styled_svg}"
+    );
+    let styled_document = roxmltree::Document::parse(&styled_svg).expect("valid styled SVG");
+    let edge_text_style = styled_document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.attribute("style").is_some())
+        .and_then(|node| node.attribute("style"))
+        .expect("styled edge text");
+    assert!(
+        edge_text_style.contains("font-size:24px !important"),
+        "expected per-edge style to override default style: {styled_svg}"
+    );
+    assert!(
+        !edge_text_style.contains("font-size:32px !important"),
+        "default style must not override the per-edge style: {styled_svg}"
+    );
+}
+
+#[test]
 fn flowchart_html_labels_treat_decoded_backslash_n_as_line_break() {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
@@ -1568,6 +1912,116 @@ B[<img src='https://mermaid.js.org/mermaid-logo.svg'>]
         svg.contains(r#"<span class="nodeLabel"><p><img "#),
         "expected Mermaid 11.16 non-markdown image labels to keep the nonMarkdownToHTML paragraph wrapper: {svg}"
     );
+}
+
+#[test]
+fn flowchart_html_single_image_edge_label_is_not_dropped_as_empty() {
+    let text = r#"flowchart LR
+A -->|"<img src='https://mermaid.js.org/mermaid-logo.svg'>"| B
+"#;
+    let svg = render_flowchart_svg_from_text(text);
+
+    assert!(
+        svg.contains(r#"<span class="edgeLabel"><p><img "#),
+        "expected Mermaid 11.16 to keep image-only edge label DOM content: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_svg_plain_labels_split_literal_backslash_n() {
+    let text = r#"%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": false}}}%%
+flowchart TB
+A["line1\nline2"]
+"#;
+    let svg = render_flowchart_svg_from_text(text);
+
+    assert_eq!(
+        svg.matches("text-outer-tspan").count(),
+        2,
+        "expected one SVG tspan row per nonMarkdownToLines row: {svg}"
+    );
+    assert!(!svg.contains(r#"line1\nline2"#), "{svg}");
+}
+
+#[test]
+fn flowchart_svg_plain_label_tokens_preserve_raw_tag_provenance() {
+    let text = r#"%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": false, "wrappingWidth": 1000}}}%%
+flowchart TB
+Raw["<span class='foo bar'>X</span>"]
+Encoded["&lt;span class='foo bar'&gt;X&lt;/span&gt;"]
+Angle["&lt;Less&lt;"]
+"#;
+    let svg = render_flowchart_svg_from_text(text);
+    let document = roxmltree::Document::parse(&svg).expect("valid svg");
+    let words_for = |id: &str| {
+        let id_fragment = format!("-flowchart-{id}-");
+        let node = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node
+                        .attribute("id")
+                        .is_some_and(|value| value.contains(&id_fragment))
+            })
+            .unwrap_or_else(|| panic!("missing node {id}: {svg}"));
+        node.descendants()
+            .filter(|node| {
+                node.has_tag_name("tspan") && node.attribute("class") == Some("text-inner-tspan")
+            })
+            .map(|node| node.text().unwrap_or_default().to_string())
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(
+        words_for("Raw"),
+        ["<span class='foo bar'>", " X", " </span>"],
+        "raw tag must remain three source words: {svg}"
+    );
+    assert_eq!(
+        words_for("Encoded"),
+        ["<span", " class='foo", " bar'>X</span>"],
+        "entity-authored angle text must keep ordinary source spaces: {svg}"
+    );
+    assert_eq!(
+        words_for("Angle"),
+        ["<Less<"],
+        "decoded angle text must remain one source word: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_svg_break_only_edge_labels_preserve_create_text_rows() {
+    let svg = render_flowchart_svg_from_text(
+        r#"---
+config:
+  htmlLabels: false
+---
+flowchart LR
+  A -->|<br><br>| B
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid SVG XML");
+    let label = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("data-id") == Some("L_A_B_0")
+                && node
+                    .attribute("class")
+                    .is_some_and(|class| class.split_ascii_whitespace().any(|part| part == "label"))
+        })
+        .expect("edge label group");
+    let rows = label
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("tspan")
+                && node
+                    .attribute("class")
+                    .is_some_and(|class| class.split_ascii_whitespace().any(|part| part == "row"))
+        })
+        .count();
+
+    assert_eq!(rows, 3, "{svg}");
 }
 
 #[test]
@@ -1650,7 +2104,7 @@ A@{
 }
 
 #[test]
-fn flowchart_html_plain_multiline_labels_trim_source_indentation() {
+fn flowchart_html_plain_multiline_labels_preserve_source_indentation() {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
@@ -1669,12 +2123,8 @@ fn flowchart_html_plain_multiline_labels_trim_source_indentation() {
     )
     .expect("render svg");
     assert!(
-        svg.contains("<p>First<br />Second</p>"),
-        "expected plain multiline HTML label to trim indentation: {svg}"
-    );
-    assert!(
-        !svg.contains("<br />      Second"),
-        "expected no source indentation after HTML line break"
+        svg.contains("<p>First<br />      Second</p>"),
+        "expected Mermaid nonMarkdownToHTML to preserve source whitespace for browser collapse: {svg}"
     );
 }
 
@@ -1688,8 +2138,8 @@ fn flowchart_html_plain_node_labels_can_span_indented_lines() {
     );
 
     assert!(
-        svg.contains("<p>Multiline<br />bar</p>"),
-        "expected indented multiline node label to render as an HTML line break: {svg}"
+        svg.contains("<p>Multiline<br />     bar</p>"),
+        "expected indented multiline node label to preserve source whitespace after its HTML line break: {svg}"
     );
     assert!(
         svg.contains("<p>**Bold Foo**</p>"),
@@ -1957,6 +2407,218 @@ fn flowchart_empty_subgraph_node_applies_inline_style() {
 }
 
 #[test]
+fn flowchart_empty_subgraph_svg_uses_configured_wrapping_width() {
+    fn render(wrapping_width: usize) -> String {
+        render_flowchart_svg_from_text(&format!(
+            r#"%%{{init: {{"htmlLabels": false, "flowchart": {{"htmlLabels": false, "wrappingWidth": {wrapping_width}}}}}}}%%
+flowchart TB
+subgraph Empty["alpha beta gamma delta epsilon zeta eta theta"]
+end
+"#
+        ))
+    }
+
+    fn rows_and_text(svg: &str) -> (usize, String) {
+        let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
+        let node = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("id") == Some("merman-Empty")
+                    && node.attribute("class").is_some_and(|class| {
+                        class.split_ascii_whitespace().any(|part| part == "node")
+                    })
+            })
+            .expect("empty subgraph node");
+        let rows = node
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("tspan")
+                    && node.attribute("class").is_some_and(|class| {
+                        class
+                            .split_ascii_whitespace()
+                            .any(|part| part == "text-outer-tspan")
+                    })
+            })
+            .count();
+        let text = node
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("tspan")
+                    && node.attribute("class").is_some_and(|class| {
+                        class
+                            .split_ascii_whitespace()
+                            .any(|part| part == "text-inner-tspan")
+                    })
+            })
+            .filter_map(|node| node.text())
+            .map(str::trim)
+            .collect::<Vec<_>>()
+            .join(" ");
+        (rows, text)
+    }
+
+    let narrow_svg = render(60);
+    let wide_svg = render(240);
+    let (narrow_rows, narrow_text) = rows_and_text(&narrow_svg);
+    let (wide_rows, wide_text) = rows_and_text(&wide_svg);
+    assert!(
+        narrow_rows > wide_rows,
+        "configured width must reach final empty-subgraph SVG wrapping: narrow={narrow_rows}, wide={wide_rows}"
+    );
+    assert_eq!(narrow_text, "alpha beta gamma delta epsilon zeta eta theta");
+    assert_eq!(wide_text, narrow_text);
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn flowchart_elk_final_subgraph_title_remains_unbounded_after_temporary_layout_wrapping() {
+    fn render(wrapping_width: usize) -> String {
+        render_flowchart_svg_from_text(&format!(
+            r#"---
+config:
+  layout: elk
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    wrappingWidth: {wrapping_width}
+---
+flowchart TB
+subgraph Group["alpha beta gamma delta epsilon zeta eta theta"]
+  A[child]
+end
+"#
+        ))
+    }
+
+    fn rows_and_text(svg: &str) -> (usize, String) {
+        let document = roxmltree::Document::parse(svg).expect("valid ELK Flowchart SVG");
+        let label = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("class").is_some_and(|class| {
+                        class
+                            .split_ascii_whitespace()
+                            .any(|part| part == "cluster-label")
+                    })
+            })
+            .expect("ELK cluster label");
+        let rows = label
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("tspan")
+                    && node.attribute("class").is_some_and(|class| {
+                        class
+                            .split_ascii_whitespace()
+                            .any(|part| part == "text-outer-tspan")
+                    })
+            })
+            .count();
+        let text = label
+            .descendants()
+            .filter_map(|node| node.text().filter(|_| node.is_text()))
+            .collect::<String>();
+        (rows, text)
+    }
+
+    for wrapping_width in [60, 240] {
+        let svg = render(wrapping_width);
+        let (rows, text) = rows_and_text(&svg);
+        assert_eq!(rows, 1, "wrappingWidth={wrapping_width}: {svg}");
+        assert_eq!(text, "alpha beta gamma delta epsilon zeta eta theta");
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn flowchart_elk_parallel_edge_labels_remain_bound_to_explicit_ids() {
+    let svg = render_flowchart_svg_from_text(
+        r#"---
+config:
+  layout: elk
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart LR
+A e1@-->|first owner sentinel| B
+A e2@-->|second owner sentinel| B
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid ELK Flowchart SVG");
+
+    for (edge_id, expected) in [
+        ("e1", "first owner sentinel"),
+        ("e2", "second owner sentinel"),
+    ] {
+        let labels = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("data-id") == Some(edge_id)
+                    && node.attribute("class").is_some_and(|class| {
+                        class.split_ascii_whitespace().any(|part| part == "label")
+                    })
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(labels.len(), 1, "edge={edge_id}: {svg}");
+        let text = labels[0]
+            .descendants()
+            .filter_map(|node| node.text().filter(|_| node.is_text()))
+            .collect::<String>();
+        assert_eq!(text, expected, "edge={edge_id}: {svg}");
+    }
+}
+
+#[test]
+fn swimlane_svg_edge_label_uses_only_the_first_concatenated_mermaid_style() {
+    let svg = render_flowchart_svg_from_text(
+        r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+swimlane-beta LR
+A styled@-->|styled edge label| B
+linkStyle default font-size:24px,font-weight:bold
+linkStyle 0 font-size:12px,font-style:italic
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Swimlane SVG");
+    let label = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("id") == Some("edge-label-A-B-styled")
+                && node.attribute("class").is_some_and(|class| {
+                    let classes = class.split_ascii_whitespace().collect::<Vec<_>>();
+                    classes.contains(&"label") && classes.contains(&"edgeLabel")
+                })
+        })
+        .unwrap_or_else(|| panic!("Swimlane edge label group: {svg}"));
+    let styles = std::iter::once(label)
+        .chain(label.descendants())
+        .filter_map(|node| node.attribute("style"))
+        .collect::<Vec<_>>();
+
+    assert!(
+        styles.iter().any(|style| style.contains("font-size:24px")),
+        "the first default style must reach the generated labelRect DOM: styles={styles:?}, svg={svg}"
+    );
+    assert!(
+        styles.iter().all(|style| {
+            !style.contains("font-weight:bold")
+                && !style.contains("font-size:12px")
+                && !style.contains("font-style:italic")
+                && !style.contains("!important")
+        }),
+        "later edge styles must not override the generated labelRect label style: styles={styles:?}, svg={svg}"
+    );
+}
+
+#[test]
 fn flowchart_crossed_circle_aliases_use_source_symmetric_root_bounds() {
     let _session = RenderEnvironment::deterministic().begin_session().unwrap();
     let text = r#"flowchart
@@ -2194,7 +2856,7 @@ A["$$x^2$$"] -->|$$x^2$$| B[Done]
 fn flowchart_svg_renders_ratex_mixed_math_labels_end_to_end() {
     let text = r#"%%{init: {"flowchart": {"htmlLabels": true}}}%%
 flowchart LR
-A["value: $$x^2$$"] -->|Solve: $$\sqrt{2+2}$$| B[Done]
+A["value: $$x^2$$"] -->|"Solve: $$\sqrt{2+2}$$"| B[Done]
 "#;
     let engine = Engine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))

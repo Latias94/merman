@@ -5,9 +5,8 @@ use super::{
 use crate::{EditorLexemeKind, SourceSpan};
 
 pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledText, LexError> {
-    let trimmed = raw.trim();
-    let quoted = trimmed.starts_with('"') && trimmed.ends_with('"');
-    let quote_char = trimmed.as_bytes().first().copied();
+    let quoted = raw.starts_with('"') && raw.ends_with('"');
+    let quote_char = raw.as_bytes().first().copied();
 
     let (text, kind) = super::parse_label_text(raw);
 
@@ -22,6 +21,7 @@ pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledTex
                 || text.contains(']')
                 || text.contains('{')
                 || text.contains('}')
+                || text.contains('|')
             {
                 return Err(LexError::new(
                     "Invalid text label: contains structural characters; quote it to use them",
@@ -32,7 +32,7 @@ pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledTex
             // Mermaid allows escaped quotes inside string labels (e.g. `["He said: \\\"hi\\\""]`).
             // Reject only unescaped nested quotes.
             if quoted && let Some(q) = quote_char {
-                let inner = &trimmed[1..trimmed.len().saturating_sub(1)];
+                let inner = &raw[1..raw.len().saturating_sub(1)];
                 let q = q as char;
                 let bytes = inner.as_bytes();
                 let q = q as u8;
@@ -71,22 +71,69 @@ pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledTex
     })
 }
 
+pub(super) fn parse_edge_text(raw: &str) -> std::result::Result<LabeledText, LexError> {
+    if raw.is_empty() {
+        return Err(LexError::new(
+            "Flowchart edge label payload cannot be empty",
+        ));
+    }
+
+    if raw.starts_with("\"`") {
+        if raw.len() < 4 || !raw.ends_with("`\"") {
+            return Err(LexError::new(
+                "Invalid Markdown string in flowchart edge label",
+            ));
+        }
+        let inner = &raw[2..raw.len() - 2];
+        if inner.is_empty() || inner.contains(['`', '"']) {
+            return Err(LexError::new(
+                "Invalid Markdown string in flowchart edge label",
+            ));
+        }
+    } else if raw.starts_with('"') {
+        if raw.len() < 2 || !raw.ends_with('"') {
+            return Err(LexError::new(
+                "Invalid edge label: quoted strings cannot be mixed with unquoted text",
+            ));
+        }
+        let inner = &raw[1..raw.len() - 1];
+        if inner.is_empty() || inner.contains('"') {
+            return Err(LexError::new(
+                "Invalid edge label: expected exactly one quoted string token",
+            ));
+        }
+    } else if raw.contains('"') {
+        return Err(LexError::new(
+            "Invalid edge label: quoted strings cannot be mixed with unquoted text",
+        ));
+    }
+
+    let (text, kind) = super::parse_edge_label_text(raw);
+
+    Ok(LabeledText {
+        text,
+        kind,
+        span: None,
+        selection: None,
+        lexeme_components: Vec::new(),
+    })
+}
+
 pub(super) fn parse_rect_border_label(raw: &str) -> (&'static str, &str, usize) {
     // Mermaid supports a special "rect" variant via `[|borders:...|Label]`.
-    // We only need the shape name and the actual label payload here.
-    let leading = raw.len().saturating_sub(raw.trim_start().len());
-    let trimmed = raw.trim();
-    let Some(rest) = trimmed.strip_prefix('|') else {
-        return ("square", trimmed, leading);
+    // The `[|` token is recognized lexically before FlowDB trim. Leading whitespace therefore
+    // keeps this on the ordinary square-label path and is not allowed to synthesize a rect.
+    let Some(rest) = raw.strip_prefix('|') else {
+        return ("square", raw, 0);
     };
     let Some((prefix, label)) = rest.split_once('|') else {
-        return ("square", trimmed, leading);
+        return ("square", raw, 0);
     };
-    if prefix.trim_start().starts_with("borders:") {
-        let offset = leading + 1 + prefix.len() + 1;
+    if prefix.starts_with("borders:") {
+        let offset = 1 + prefix.len() + 1;
         return ("rect", label, offset);
     }
-    ("square", trimmed, leading)
+    ("square", raw, 0)
 }
 
 pub(super) fn find_unquoted_delim(input: &str, start: usize, delim: &str) -> Option<usize> {

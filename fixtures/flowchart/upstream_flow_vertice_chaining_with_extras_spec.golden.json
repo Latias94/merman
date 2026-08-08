@@ -45,7 +45,7 @@
       },
       {
         "id": "B",
-        "label": " test ",
+        "label": "test",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",

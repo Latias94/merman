@@ -5,6 +5,10 @@
 
 mod types;
 
+// Mermaid's pinned Dagre builds layer matrices by writing nodes directly at `node.order`.
+// Sparse slots are observable in crossing positions and final order assignment.
+const EMPTY_LAYER_SLOT: usize = usize::MAX;
+
 pub use types::{
     LayerGraphLabel, OrderEdgeWeight, OrderNodeLabel, OrderNodeRange, Relationship, WeightLabel,
 };
@@ -27,6 +31,9 @@ mod cross_count;
 pub use cross_count::cross_count;
 
 mod ordering;
+pub(crate) use ordering::{
+    IndexedLayerMatrix, build_current_layer_matrix_ix_controlled, order_with_layering_controlled,
+};
 pub use ordering::{OrderOptions, order};
 
 mod workspace;

@@ -21,7 +21,7 @@ pub(crate) enum Tok {
     Direction(String),
     DirectionStmt(DirectionStatementToken),
     Id(String),
-    Arrow(LinkToken),
+    Arrow(ArrowToken),
     EdgeLabel(LabeledText),
     SubgraphHeader(SubgraphHeader),
 
@@ -33,6 +33,13 @@ pub(crate) enum Tok {
 
     EdgeId(String),
     ShapeData(String),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ArrowToken {
+    pub link: LinkToken,
+    pub lexeme_components: Vec<FlowchartLexemeComponent>,
+    pub recovery_error: Option<LexError>,
 }
 
 #[derive(Debug, Clone)]

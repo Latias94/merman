@@ -1,6 +1,7 @@
 #[cfg(feature = "layout-elk")]
 use crate::config::{config_bool, config_string};
 use crate::entities::decode_entities_minimal;
+use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
 use crate::model::{
     Bounds, ClassDiagramLayout, ClassNodeLabelPlan, ClassNodeRowMetrics, ClassPreparedHtmlLabel,
@@ -78,25 +79,29 @@ pub(crate) fn class_requires_math(model: &ClassDiagramModel) -> bool {
 /// Both backends build the same compound graph before dispatch. Namespace extraction walks the
 /// edge set while copying nested descendants, so charge that amplification in addition to the
 /// linear graph-construction baseline.
-pub(crate) fn class_layout_work_units(model: &ClassDiagramModel) -> usize {
+pub(crate) fn class_layout_work_units(
+    model: &ClassDiagramModel,
+    work_control: &OperationLayoutWorkControl,
+) -> Result<usize> {
     let complexity = merman_core::resources::ClassComplexity::from_model(model);
-    let baseline = complexity
-        .nodes
-        .saturating_add(complexity.edges)
-        .saturating_mul(4);
+    let baseline = work_control.checked_mul(
+        work_control.checked_add(complexity.nodes, complexity.edges)?,
+        4,
+    )?;
     if complexity.namespaces == 0 || complexity.edges == 0 {
-        return baseline;
+        return Ok(baseline);
     }
 
     let depth = complexity.namespace_depth.max(1);
-    let namespace_edge_scans = complexity
-        .namespaces
-        .saturating_mul(complexity.edges)
-        .saturating_mul(depth);
-    let extraction_edge_scans = complexity.nodes.saturating_mul(complexity.edges);
-    baseline
-        .saturating_add(namespace_edge_scans)
-        .saturating_add(extraction_edge_scans)
+    let namespace_edge_scans = work_control.checked_mul(
+        work_control.checked_mul(complexity.namespaces, complexity.edges)?,
+        depth,
+    )?;
+    let extraction_edge_scans = work_control.checked_mul(complexity.nodes, complexity.edges)?;
+    work_control.checked_add(
+        work_control.checked_add(baseline, namespace_edge_scans)?,
+        extraction_edge_scans,
+    )
 }
 
 pub(crate) fn class_member_create_text_input(
@@ -375,6 +380,19 @@ fn class_cluster_candidates(graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> 
         })
         .map(|(_, id)| id.to_string())
         .collect()
+}
+
+fn class_nodes_in_hierarchy_order(graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<&str> {
+    // Mermaid's Dagre renderer inserts cluster elements using a hierarchy preorder. Parent
+    // clusters must therefore precede their descendants so an opaque parent fill cannot cover
+    // the child cluster's frame and label.
+    let mut ordered = Vec::with_capacity(graph.node_count());
+    let mut stack = graph.children_root().into_iter().rev().collect::<Vec<_>>();
+    while let Some(id) = stack.pop() {
+        ordered.push(id);
+        stack.extend(graph.children(id).into_iter().rev());
+    }
+    ordered
 }
 
 fn prepare_graph(
@@ -788,6 +806,7 @@ fn layout_prepared(
     arena: &mut PreparedGraphArena,
     node_label_metrics_by_id: &HashMap<String, (f64, f64)>,
     render_roots: &mut Vec<ClassRenderRoot>,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<(LayoutFragments, Rect)> {
     if arena.top.0 >= arena.graphs.len() {
         return Err(Error::InvalidModel {
@@ -896,6 +915,7 @@ fn layout_prepared(
             node_label_metrics_by_id,
             render_roots,
             extracted_fragments,
+            work_control,
         )?;
         results[graph_id.0] = Some(result);
     }
@@ -913,6 +933,7 @@ fn layout_prepared_node(
     node_label_metrics_by_id: &HashMap<String, (f64, f64)>,
     render_roots: &mut Vec<ClassRenderRoot>,
     extracted_fragments: BTreeMap<String, (LayoutFragments, Rect)>,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<(LayoutFragments, Rect)> {
     let root_namespace_id = prepared.injected_cluster_root_id.clone();
     let render_root_id = ClassRenderRootId(render_roots.len());
@@ -956,7 +977,8 @@ fn layout_prepared_node(
     // Mermaid's dagre wrapper always sets `compound: true`, and Dagre's ranker expects a connected
     // graph. `dugong::layout` mirrors Dagre's full pipeline (including `nestingGraph`)
     // and should be used for class diagrams even when there are no explicit clusters.
-    dugong::layout(&mut prepared.graph);
+    dugong::layout_controlled(&mut prepared.graph, work_control)
+        .map_err(|error| work_control.map_dugong_error(error))?;
 
     // Mermaid does not render Dagre's internal dummy nodes/edges (border nodes, edge label nodes,
     // nesting artifacts). Filter them out before computing bounds and before merging extracted
@@ -1064,14 +1086,14 @@ fn layout_prepared_node(
         .iter()
         .map(|(edge, _)| edge.id.clone())
         .collect();
-    let cluster_ids = current_node_ids
-        .iter()
+    let cluster_ids = class_nodes_in_hierarchy_order(&prepared.graph)
+        .into_iter()
         .filter(|id| {
-            !dummy_nodes.contains(id.as_str())
-                && !prepared.graph.children(id).is_empty()
-                && !prepared.extracted.contains_key(id.as_str())
+            !dummy_nodes.contains(*id)
+                && prepared.graph.child_count(id) > 0
+                && !prepared.extracted.contains_key(*id)
         })
-        .cloned()
+        .map(str::to_owned)
         .collect();
     let mut items = Vec::new();
     for id in current_node_ids {
@@ -1799,7 +1821,18 @@ pub(crate) fn class_svg_single_line_plain_label_width_px(
         return None;
     }
 
-    let width = measurer.measure_svg_tspan_text_bbox_width_px(trimmed, text_style);
+    let canonical_line = analysis.lines.into_iter().next()?.into_iter().fold(
+        String::new(),
+        |mut line, (word, _)| {
+            if !line.is_empty() {
+                line.push(' ');
+            }
+            line.push_str(&word);
+            line
+        },
+    );
+    let (left, right) = measurer.measure_svg_text_bbox_x(&canonical_line, text_style);
+    let width = left + right;
     (width.is_finite() && width > 0.0).then_some(width)
 }
 
@@ -1922,6 +1955,7 @@ pub(crate) fn layout_class_diagram_typed_with_config(
     effective_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ClassDiagramLayout> {
     match layout_class_diagram_typed_inner(
         model,
@@ -1930,6 +1964,7 @@ pub(crate) fn layout_class_diagram_typed_with_config(
         measurer,
         math_renderer,
         ClassLayoutEngine::Dagre,
+        Some(work_control),
     )? {
         ClassLayoutResult::Layout(layout) => Ok(layout),
         ClassLayoutResult::DagreInput(_) => unreachable!("Dagre layout returned its input graph"),
@@ -1947,6 +1982,7 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     operation_seed: elk::ElkOperationSeed,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ClassDiagramLayout> {
     match layout_class_diagram_typed_inner(
         model,
@@ -1955,6 +1991,7 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
         measurer,
         math_renderer,
         ClassLayoutEngine::Elk(Some(operation_seed)),
+        Some(work_control),
     )? {
         ClassLayoutResult::Layout(layout) => Ok(layout),
         ClassLayoutResult::DagreInput(_) => unreachable!("ELK layout returned a Dagre input graph"),
@@ -1968,6 +2005,7 @@ fn layout_class_diagram_typed_inner(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     engine: ClassLayoutEngine,
+    work_control: Option<&mut OperationLayoutWorkControl>,
 ) -> Result<ClassLayoutResult> {
     validate_class_namespace_hierarchy(model)?;
     let diagram_dir = rank_dir_from(&model.direction);
@@ -2264,9 +2302,11 @@ fn layout_class_diagram_typed_inner(
 
     #[cfg(feature = "layout-elk")]
     if let ClassLayoutEngine::Elk(operation_seed) = engine {
+        let work_control = work_control.ok_or_else(|| Error::InvalidModel {
+            message: "Class ELK layout requires an operation work control".to_string(),
+        })?;
         return layout_class_diagram_elk_from_graph(
             model,
-            effective_config,
             *g,
             namespace_ids,
             class_label_plans_by_id,
@@ -2274,6 +2314,7 @@ fn layout_class_diagram_typed_inner(
                 namespace_padding,
                 title_margin_top,
                 title_margin_bottom,
+                effective_config,
                 text_style: &text_style,
                 wrap_mode_label,
                 mermaid_config,
@@ -2281,15 +2322,23 @@ fn layout_class_diagram_typed_inner(
                 operation_seed,
             },
             measurer,
+            work_control,
         )
         .map(ClassLayoutResult::Layout);
     }
 
     let _ = engine;
+    let work_control = work_control.ok_or_else(|| Error::InvalidModel {
+        message: "Class Dagre layout requires an operation work control".to_string(),
+    })?;
     let mut prepared = prepare_graph(g)?;
     let mut render_roots = Vec::new();
-    let (mut fragments, _bounds) =
-        layout_prepared(&mut prepared, &node_label_metrics_by_id, &mut render_roots)?;
+    let (mut fragments, _bounds) = layout_prepared(
+        &mut prepared,
+        &node_label_metrics_by_id,
+        &mut render_roots,
+        work_control,
+    )?;
 
     let mut node_rect_by_id: HashMap<String, Rect> = HashMap::new();
     for n in fragments.nodes.values() {
@@ -2475,6 +2524,7 @@ pub fn debug_build_class_diagram_dagre_graph(
         measurer,
         None,
         ClassLayoutEngine::CaptureDagreInput,
+        None,
     )? {
         ClassLayoutResult::DagreInput(graph) => Ok(*graph),
         ClassLayoutResult::Layout(_) => unreachable!("Class Dagre input capture ran layout"),
@@ -2561,6 +2611,7 @@ struct ClassElkLayoutSettings<'a> {
     namespace_padding: f64,
     title_margin_top: f64,
     title_margin_bottom: f64,
+    effective_config: &'a Value,
     text_style: &'a TextStyle,
     wrap_mode_label: WrapMode,
     mermaid_config: &'a merman_core::MermaidConfig,
@@ -2571,28 +2622,23 @@ struct ClassElkLayoutSettings<'a> {
 #[cfg(feature = "layout-elk")]
 fn layout_class_diagram_elk_from_graph(
     model: &ClassDiagramModel,
-    effective_config: &Value,
     graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
     namespace_ids: Vec<&str>,
     class_label_plans_by_id: FxHashMap<String, Arc<ClassNodeLabelPlan>>,
     settings: ClassElkLayoutSettings<'_>,
     measurer: &dyn TextMeasurer,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<ClassDiagramLayout> {
-    let elk_graph = class_graph_to_elk_graph(
-        model,
-        effective_config,
-        &graph,
-        &namespace_ids,
-        &settings,
-        measurer,
-    );
+    let elk_graph = class_graph_to_elk_graph(model, &graph, &namespace_ids, &settings, measurer);
     let layout = match settings.operation_seed {
-        Some(operation_seed) => elk::layout_with_operation_seed(&elk_graph, operation_seed),
-        None => elk::layout(&elk_graph),
+        Some(operation_seed) => elk::layout_with_operation_seed_and_work_control(
+            &elk_graph,
+            operation_seed,
+            work_control,
+        ),
+        None => elk::layout_with_work_control(&elk_graph, work_control),
     }
-    .map_err(|err| Error::InvalidModel {
-        message: format!("Class ELK layout failed: {err}"),
-    })?;
+    .map_err(|error| work_control.map_elk_error_with_context(error, "Class ELK"))?;
     class_layout_from_elk(
         model,
         &graph,
@@ -2608,7 +2654,6 @@ fn layout_class_diagram_elk_from_graph(
 #[cfg(feature = "layout-elk")]
 fn class_graph_to_elk_graph(
     model: &ClassDiagramModel,
-    effective_config: &Value,
     graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     namespace_ids: &[&str],
     settings: &ClassElkLayoutSettings<'_>,
@@ -2688,7 +2733,7 @@ fn class_graph_to_elk_graph(
             group_padding_y: settings.namespace_padding,
             ..Default::default()
         },
-        options: class_elk_layout_options(effective_config),
+        options: class_elk_layout_options(settings.effective_config),
     }
 }
 
@@ -3217,6 +3262,7 @@ mod tests {
             namespace_padding: 8.0,
             title_margin_top: 0.0,
             title_margin_bottom: 0.0,
+            effective_config: &serde_json::Value::Null,
             text_style: &text_style,
             wrap_mode_label: WrapMode::default(),
             mermaid_config: &mermaid_config,
@@ -3225,7 +3271,6 @@ mod tests {
         };
         let mut graph = super::class_graph_to_elk_graph(
             &model,
-            &serde_json::Value::Null,
             &class_graph,
             &[],
             &settings,
@@ -3284,6 +3329,14 @@ mod tests {
                 height: 17.25,
                 line_count: 1,
             }
+        }
+
+        fn measure_svg_text_bbox_x(&self, _text: &str, _style: &TextStyle) -> (f64, f64) {
+            (31.0, 42.123_456_789)
+        }
+
+        fn measure_svg_tspan_text_bbox_width_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+            panic!("formatted Class labels must not use the single-tspan operation")
         }
     }
 
@@ -3590,7 +3643,7 @@ mod tests {
     }
 
     #[test]
-    fn class_svg_plain_underscore_uses_single_tspan_bbox_precision() {
+    fn class_svg_plain_underscore_uses_formatted_text_bbox_precision() {
         assert_eq!(
             super::class_svg_single_line_plain_label_width_px(
                 "driver_license",
@@ -3602,7 +3655,7 @@ mod tests {
     }
 
     #[test]
-    fn class_svg_single_tspan_bbox_uses_semantic_markdown_analysis() {
+    fn class_svg_formatted_bbox_uses_semantic_markdown_analysis() {
         let style = default_style();
         for literal in [
             "driver_license",

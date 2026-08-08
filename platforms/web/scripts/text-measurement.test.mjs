@@ -145,14 +145,40 @@ class FakeMeasureElement {
   getBoundingClientRect() {
     const fontSize = this.fontSize();
     const lineHeight = parseFloat(this.style.lineHeight) || fontSize;
-    const naturalWidth = (this.textContent || "").length * fontSize * 0.5;
+    const explicitLines = [[]];
+    if (this.children.length > 0) {
+      for (const child of this.children) {
+        if (child.tagName === "br") {
+          explicitLines.push([]);
+        } else {
+          explicitLines.at(-1).push(child.textContent || "");
+        }
+      }
+    } else {
+      const text = this.textContent || "";
+      const preservesNewlines = ["pre", "pre-wrap", "break-spaces"].includes(
+        this.style.whiteSpace
+      );
+      const lines = preservesNewlines ? text.split(/\r?\n/) : [text.replace(/\s+/gu, " ")];
+      explicitLines.splice(0, 1, ...lines.map((line) => [line]));
+    }
+    const naturalWidths = explicitLines.map(
+      (parts) => parts.join("").length * fontSize * 0.5
+    );
+    const naturalWidth = Math.max(...naturalWidths, 0);
     const fixedWidth =
       typeof this.style.width === "string" && this.style.width.endsWith("px")
         ? parseFloat(this.style.width)
         : null;
     const width = fixedWidth !== null && Number.isFinite(fixedWidth) ? fixedWidth : naturalWidth;
-    const lineCount =
-      fixedWidth !== null && fixedWidth > 0 ? Math.max(1, Math.ceil(naturalWidth / fixedWidth)) : 1;
+    const lineCount = naturalWidths.reduce(
+      (count, lineWidth) =>
+        count +
+        (fixedWidth !== null && fixedWidth > 0
+          ? Math.max(1, Math.ceil(lineWidth / fixedWidth))
+          : 1),
+      0
+    );
     return { width, height: lineHeight * lineCount };
   }
 }
@@ -182,11 +208,16 @@ test("browser text measurement session routes exact operations to their DOM prim
   globalThis.document = {
     body,
     createElement(tagName) {
-      assert.ok(tagName === "div" || tagName === "canvas");
+      assert.ok(tagName === "div" || tagName === "canvas" || tagName === "br");
       if (tagName === "canvas") {
         canvasCreates += 1;
       }
       return new FakeMeasureElement(tagName, tagName === "canvas" ? canvasContext : null);
+    },
+    createTextNode(text) {
+      const node = new FakeMeasureElement("#text");
+      node.textContent = text;
+      return node;
     },
     createElementNS(namespace, tagName) {
       assert.equal(namespace, "http://www.w3.org/2000/svg");
@@ -264,6 +295,26 @@ test("browser text measurement session routes exact operations to their DOM prim
     assert.equal(wrapped.width, 200);
     assert.ok(wrapped.line_count > 1);
     assert.ok(wrapped.raw_width > wrapped.width);
+
+    const explicitHtmlLines = measure(
+      request("supervisor.sh\nPID 1", null, "wrapped", "html-like")
+    );
+    assert.deepEqual(explicitHtmlLines, {
+      kind: "metrics",
+      width: "supervisor.sh".length * 16 * 0.5,
+      height: 48,
+      line_count: 2,
+    });
+    const explicitHtmlBreak = measure(
+      request("line one<br/>line two", null, "wrapped-with-raw-width", "html-like")
+    );
+    assert.deepEqual(explicitHtmlBreak, {
+      kind: "wrapped-with-raw-width",
+      width: "line two".length * 16 * 0.5,
+      height: 48,
+      line_count: 2,
+      raw_width: "line two".length * 16 * 0.5,
+    });
 
     const svgWrapped = measure(request("one two three four five", 60, "wrapped", "svg-like"));
     assert.equal(svgWrapped.kind, "metrics");

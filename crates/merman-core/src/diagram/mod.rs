@@ -69,7 +69,7 @@ pub(crate) type BuiltInDiagramSemanticParser =
 
 /// Parser used by the built-in typed render-model path for one Mermaid diagram family.
 pub(crate) type BuiltInRenderSemanticParser =
-    fn(code: &str, meta: &ParseMetadata) -> Result<RenderSemanticModel>;
+    fn(code: &str, meta: &ParseMetadata) -> Result<RenderSemanticParseOutput>;
 
 /// Parser used by a custom render-model registry overlay.
 ///
@@ -348,6 +348,85 @@ pub enum RenderSemanticModel {
     EventModeling(crate::diagrams::eventmodeling::EventModelingDiagramRenderModel),
     Venn(crate::diagrams::venn::VennDiagramRenderModel),
     Wardley(crate::diagrams::wardley::WardleyDiagramRenderModel),
+}
+
+/// Parser-owned data needed only while rendering a typed semantic model.
+///
+/// This context is intentionally separate from [`RenderSemanticModel`] so family models retain
+/// their public construction and serialization contracts.
+#[doc(hidden)]
+#[derive(Debug, Clone, Default)]
+pub struct RenderSemanticContext {
+    flowchart_label_sources: Option<crate::diagrams::flowchart::FlowchartRenderLabelSources>,
+}
+
+impl RenderSemanticContext {
+    fn for_flowchart(
+        label_sources: crate::diagrams::flowchart::FlowchartRenderLabelSources,
+    ) -> Self {
+        Self {
+            flowchart_label_sources: Some(label_sources),
+        }
+    }
+
+    /// Consumes the context and returns Flowchart's parser-owned render label sources.
+    #[doc(hidden)]
+    pub fn into_flowchart_label_sources(
+        self,
+    ) -> crate::diagrams::flowchart::FlowchartRenderLabelSources {
+        self.flowchart_label_sources.unwrap_or_default()
+    }
+
+    /// Borrows Flowchart's parser-owned render label sources when this context owns them.
+    #[doc(hidden)]
+    pub fn flowchart_label_sources(
+        &self,
+    ) -> Option<&crate::diagrams::flowchart::FlowchartRenderLabelSources> {
+        self.flowchart_label_sources.as_ref()
+    }
+
+    pub(crate) fn retained_text_bytes(&self) -> usize {
+        self.flowchart_label_sources
+            .as_ref()
+            .map_or(0, |sources| sources.retained_bytes())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RenderSemanticParseOutput {
+    model: RenderSemanticModel,
+    context: RenderSemanticContext,
+}
+
+impl RenderSemanticParseOutput {
+    pub(crate) fn new(model: RenderSemanticModel) -> Self {
+        Self {
+            model,
+            context: RenderSemanticContext::default(),
+        }
+    }
+
+    pub(crate) fn flowchart(
+        model: crate::diagrams::flowchart::FlowchartModel,
+        label_sources: crate::diagrams::flowchart::FlowchartRenderLabelSources,
+    ) -> Self {
+        Self {
+            model: RenderSemanticModel::Flowchart(model),
+            context: RenderSemanticContext::for_flowchart(label_sources),
+        }
+    }
+
+    pub(crate) fn model(&self) -> &RenderSemanticModel {
+        &self.model
+    }
+
+    pub(crate) fn model_mut(&mut self) -> &mut RenderSemanticModel {
+        &mut self.model
+    }
+
+    fn into_parts(self) -> (RenderSemanticModel, RenderSemanticContext) {
+        (self.model, self.context)
+    }
 }
 
 mod builtin_render_semantic_private {
@@ -784,11 +863,29 @@ pub struct ParsedDiagramRender {
     meta: ParseMetadata,
     /// Typed model consumed by layout and SVG renderers.
     model: RenderSemanticModel,
+    /// Parser-owned render-only data paired with the typed model.
+    context: RenderSemanticContext,
 }
 
 impl ParsedDiagramRender {
     pub(crate) fn new(meta: ParseMetadata, model: RenderSemanticModel) -> Self {
-        Self { meta, model }
+        Self {
+            meta,
+            model,
+            context: RenderSemanticContext::default(),
+        }
+    }
+
+    pub(crate) fn from_parse_output(
+        meta: ParseMetadata,
+        output: RenderSemanticParseOutput,
+    ) -> Self {
+        let (model, context) = output.into_parts();
+        Self {
+            meta,
+            model,
+            context,
+        }
     }
 
     /// Returns the metadata paired with this render model by the core parse pipeline.
@@ -801,9 +898,31 @@ impl ParsedDiagramRender {
         &self.model
     }
 
-    /// Consumes the parsed diagram and returns its canonical metadata/model pair.
+    /// Consumes the parsed diagram and returns its canonical metadata/model projection.
+    ///
+    /// This intentionally omits parser-owned render context. Renderer integrations that need the
+    /// complete built-in render state should consume [`Self::into_render_parts`] instead.
     pub fn into_parts(self) -> (ParseMetadata, RenderSemanticModel) {
         (self.meta, self.model)
+    }
+
+    /// Consumes the parsed diagram and includes parser-owned render context for renderer crates.
+    #[doc(hidden)]
+    pub fn into_render_parts(self) -> (ParseMetadata, RenderSemanticModel, RenderSemanticContext) {
+        (self.meta, self.model, self.context)
+    }
+
+    #[doc(hidden)]
+    pub fn retained_render_context_bytes(&self) -> usize {
+        self.context.retained_text_bytes()
+    }
+
+    /// Borrows parser-owned Flowchart render label sources without consuming the parsed model.
+    #[doc(hidden)]
+    pub fn flowchart_render_label_sources(
+        &self,
+    ) -> Option<&crate::diagrams::flowchart::FlowchartRenderLabelSources> {
+        self.context.flowchart_label_sources()
     }
 }
 

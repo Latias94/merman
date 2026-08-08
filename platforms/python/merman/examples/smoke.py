@@ -39,13 +39,34 @@ def main() -> None:
         .with_icon_registry(registry)
         .with_text_measurer(measurer)
     )
-    engine = merman.MermanEngine(None, services)
+    engine = merman.MermanEngine(
+        '{"resources":{"profile":"constrained"}}', services
+    )
     svg = engine.render_svg(SOURCE, None)
     require("<svg" in svg and "Hello" in svg, "SVG smoke failed")
     require('data-icon="python-smoke"' in svg, "icon service smoke failed")
     require(measurer.calls > 0, "host text measurer was not called")
-    engine.close()
 
+    try:
+        engine.render_svg(
+            SOURCE,
+            '{"version":2,"resources":{"profile":"constrained","limits":{"max_source_bytes":8}}}',
+        )
+    except merman.MermanError.Binding as error:
+        require(
+            error.code_name == "MERMAN_RESOURCE_LIMIT_EXCEEDED"
+            and error.resource is not None
+            and error.resource.cause == "ceiling"
+            and error.resource.limit_id == "max_source_bytes"
+            and error.resource.phase == "source"
+            and error.resource.actual > error.resource.max
+            and error.resource.profile == "constrained",
+            "resource failure lost its structured details",
+        )
+    else:
+        raise RuntimeError("resource failure did not return a binding error")
+
+    engine.close()
     print("merman Python UniFFI smoke passed")
 
 

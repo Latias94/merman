@@ -1,0 +1,1035 @@
+{
+  "diagramType": "flowchart-v2",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "Text",
+          "x": 156.48,
+          "y": 31.8,
+          "width": 84.48,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "String",
+          "x": 156.48,
+          "y": 151.0,
+          "width": 84.48,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "Markdown",
+          "x": 156.48,
+          "y": 270.2,
+          "width": 84.484,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "DirectOnly",
+          "x": 156.48,
+          "y": 478.2,
+          "width": 60.0,
+          "height": 30.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Entity",
+          "x": 156.48,
+          "y": 389.4,
+          "width": 186.72,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "EntityOnly",
+          "x": 156.48,
+          "y": 588.6,
+          "width": 101.6,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "Hash",
+          "x": 156.48,
+          "y": 686.2,
+          "width": 173.44,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "Numeric",
+          "x": 156.48,
+          "y": 783.8,
+          "width": 215.2,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "Amp",
+          "x": 156.48,
+          "y": 881.4,
+          "width": 108.16,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "Less",
+          "x": 156.48,
+          "y": 979.0,
+          "width": 109.44,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "NestedLess",
+          "x": 156.48,
+          "y": 1076.6,
+          "width": 157.28,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "NestedAmp",
+          "x": 156.48,
+          "y": 1174.2,
+          "width": 184.64,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "Unknown",
+          "x": 156.48,
+          "y": 1271.8,
+          "width": 296.96,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "NelOnly",
+          "x": 156.48,
+          "y": 1391.0,
+          "width": 69.6,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "NelBound",
+          "x": 156.48,
+          "y": 1488.6,
+          "width": 88.8,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "NelMultiline",
+          "x": 156.48,
+          "y": 1595.0,
+          "width": 69.6,
+          "height": 65.2,
+          "is_cluster": false
+        },
+        {
+          "id": "ShapeText",
+          "x": 156.48,
+          "y": 1701.4,
+          "width": 129.92,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "ShapeString",
+          "x": 156.48,
+          "y": 1799.0,
+          "width": 141.28,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "ShapeMarkdown",
+          "x": 156.48,
+          "y": 1896.6,
+          "width": 181.125,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "ShapeEntity",
+          "x": 156.48,
+          "y": 1994.2,
+          "width": 226.4,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "ShapeTextOnly",
+          "x": 156.48,
+          "y": 2083.0,
+          "width": 60.0,
+          "height": 30.0,
+          "is_cluster": false
+        },
+        {
+          "id": "ShapeMarkdownOnly",
+          "x": 156.48,
+          "y": 2171.8,
+          "width": 65.281,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "Self",
+          "x": 378.16,
+          "y": 31.8,
+          "width": 87.84,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "Child",
+          "x": 156.48,
+          "y": 2294.4,
+          "width": 175.52,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "NelChild",
+          "x": 156.48,
+          "y": 2442.0,
+          "width": 111.52,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "Self---Self---1",
+          "x": 331.2,
+          "y": 151.0,
+          "width": 0.1,
+          "height": 0.1,
+          "is_cluster": false
+        },
+        {
+          "id": "Self---Self---2",
+          "x": 378.16,
+          "y": 270.2,
+          "width": 0.1,
+          "height": 0.1,
+          "is_cluster": false
+        },
+        {
+          "id": "SG",
+          "x": 156.48,
+          "y": 2294.4,
+          "width": 245.52,
+          "height": 97.6,
+          "is_cluster": true
+        },
+        {
+          "id": "NelGroup",
+          "x": 156.48,
+          "y": 2442.0,
+          "width": 181.52,
+          "height": 97.6,
+          "is_cluster": true
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_Text_String_0",
+          "from": "Text",
+          "to": "String",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 55.6
+            },
+            {
+              "x": 156.48,
+              "y": 91.4
+            },
+            {
+              "x": 156.48,
+              "y": 127.2
+            }
+          ],
+          "label": {
+            "x": 156.48,
+            "y": 91.4,
+            "width": 150.24,
+            "height": 21.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_String_Markdown_0",
+          "from": "String",
+          "to": "Markdown",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 174.8
+            },
+            {
+              "x": 156.48,
+              "y": 210.6
+            },
+            {
+              "x": 156.48,
+              "y": 246.4
+            }
+          ],
+          "label": {
+            "x": 156.48,
+            "y": 210.6,
+            "width": 161.6,
+            "height": 21.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_Markdown_Entity_0",
+          "from": "Markdown",
+          "to": "Entity",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 294.0
+            },
+            {
+              "x": 156.48,
+              "y": 329.8
+            },
+            {
+              "x": 156.48,
+              "y": 365.6
+            }
+          ],
+          "label": {
+            "x": 156.48,
+            "y": 329.8,
+            "width": 190.875,
+            "height": 21.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_Entity_DirectOnly_0",
+          "from": "Entity",
+          "to": "DirectOnly",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 413.2
+            },
+            {
+              "x": 156.48,
+              "y": 438.2
+            },
+            {
+              "x": 156.48,
+              "y": 463.2
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_DirectOnly_EntityOnly_0",
+          "from": "DirectOnly",
+          "to": "EntityOnly",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 493.2
+            },
+            {
+              "x": 156.48,
+              "y": 529.0
+            },
+            {
+              "x": 156.48,
+              "y": 564.8
+            }
+          ],
+          "label": {
+            "x": 156.48,
+            "y": 529.0,
+            "width": 45.6,
+            "height": 21.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_EntityOnly_Hash_0",
+          "from": "EntityOnly",
+          "to": "Hash",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 612.4
+            },
+            {
+              "x": 156.48,
+              "y": 637.4
+            },
+            {
+              "x": 156.48,
+              "y": 662.4
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_Hash_Numeric_0",
+          "from": "Hash",
+          "to": "Numeric",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 710.0
+            },
+            {
+              "x": 156.48,
+              "y": 735.0
+            },
+            {
+              "x": 156.48,
+              "y": 760.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_Numeric_Amp_0",
+          "from": "Numeric",
+          "to": "Amp",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 807.6
+            },
+            {
+              "x": 156.48,
+              "y": 832.6
+            },
+            {
+              "x": 156.48,
+              "y": 857.6
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_Amp_Less_0",
+          "from": "Amp",
+          "to": "Less",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 905.2
+            },
+            {
+              "x": 156.48,
+              "y": 930.2
+            },
+            {
+              "x": 156.48,
+              "y": 955.2
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_Less_NestedLess_0",
+          "from": "Less",
+          "to": "NestedLess",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 1002.8
+            },
+            {
+              "x": 156.48,
+              "y": 1027.8
+            },
+            {
+              "x": 156.48,
+              "y": 1052.8
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_NestedLess_NestedAmp_0",
+          "from": "NestedLess",
+          "to": "NestedAmp",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 1100.4
+            },
+            {
+              "x": 156.48,
+              "y": 1125.4
+            },
+            {
+              "x": 156.48,
+              "y": 1150.4
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_NestedAmp_Unknown_0",
+          "from": "NestedAmp",
+          "to": "Unknown",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 1198.0
+            },
+            {
+              "x": 156.48,
+              "y": 1223.0
+            },
+            {
+              "x": 156.48,
+              "y": 1248.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_Unknown_NelOnly_0",
+          "from": "Unknown",
+          "to": "NelOnly",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 1295.6
+            },
+            {
+              "x": 156.48,
+              "y": 1331.4
+            },
+            {
+              "x": 156.48,
+              "y": 1367.2
+            }
+          ],
+          "label": {
+            "x": 156.48,
+            "y": 1331.4,
+            "width": 53.44,
+            "height": 21.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_NelOnly_NelBound_0",
+          "from": "NelOnly",
+          "to": "NelBound",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 1414.8
+            },
+            {
+              "x": 156.48,
+              "y": 1439.8
+            },
+            {
+              "x": 156.48,
+              "y": 1464.8
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_NelBound_NelMultiline_0",
+          "from": "NelBound",
+          "to": "NelMultiline",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 1512.4
+            },
+            {
+              "x": 156.48,
+              "y": 1537.4
+            },
+            {
+              "x": 156.48,
+              "y": 1562.4
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_NelMultiline_ShapeText_0",
+          "from": "NelMultiline",
+          "to": "ShapeText",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 1627.6
+            },
+            {
+              "x": 156.48,
+              "y": 1652.6
+            },
+            {
+              "x": 156.48,
+              "y": 1677.6
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_ShapeText_ShapeString_0",
+          "from": "ShapeText",
+          "to": "ShapeString",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 1725.2
+            },
+            {
+              "x": 156.48,
+              "y": 1750.2
+            },
+            {
+              "x": 156.48,
+              "y": 1775.2
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_ShapeString_ShapeMarkdown_0",
+          "from": "ShapeString",
+          "to": "ShapeMarkdown",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 1822.8
+            },
+            {
+              "x": 156.48,
+              "y": 1847.8
+            },
+            {
+              "x": 156.48,
+              "y": 1872.8
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_ShapeMarkdown_ShapeEntity_0",
+          "from": "ShapeMarkdown",
+          "to": "ShapeEntity",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 1920.4
+            },
+            {
+              "x": 156.48,
+              "y": 1945.4
+            },
+            {
+              "x": 156.48,
+              "y": 1970.4
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_ShapeEntity_ShapeTextOnly_0",
+          "from": "ShapeEntity",
+          "to": "ShapeTextOnly",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 2018.0
+            },
+            {
+              "x": 156.48,
+              "y": 2043.0
+            },
+            {
+              "x": 156.48,
+              "y": 2068.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_ShapeTextOnly_ShapeMarkdownOnly_0",
+          "from": "ShapeTextOnly",
+          "to": "ShapeMarkdownOnly",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 2098.0
+            },
+            {
+              "x": 156.48,
+              "y": 2123.0
+            },
+            {
+              "x": 156.48,
+              "y": 2148.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_ShapeMarkdownOnly_Child_0",
+          "from": "ShapeMarkdownOnly",
+          "to": "Child",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 2195.6
+            },
+            {
+              "x": 156.48,
+              "y": 2220.6
+            },
+            {
+              "x": 156.48,
+              "y": 2245.6
+            },
+            {
+              "x": 156.48,
+              "y": 2270.6
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_Child_NelChild_0",
+          "from": "Child",
+          "to": "NelChild",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 156.48,
+              "y": 2318.2
+            },
+            {
+              "x": 156.48,
+              "y": 2343.2
+            },
+            {
+              "x": 156.48,
+              "y": 2368.2
+            },
+            {
+              "x": 156.48,
+              "y": 2393.2
+            },
+            {
+              "x": 156.48,
+              "y": 2418.2
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_Self_Self_0",
+          "from": "Self",
+          "to": "Self",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 343.024,
+              "y": 55.6
+            },
+            {
+              "x": 343.024,
+              "y": 79.6
+            },
+            {
+              "x": 413.296,
+              "y": 79.6
+            },
+            {
+              "x": 413.296,
+              "y": 55.6
+            }
+          ],
+          "label": {
+            "x": 378.16,
+            "y": 94.4,
+            "width": 147.84,
+            "height": 21.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "NelGroup",
+          "x": 156.48,
+          "y": 2442.0,
+          "width": 181.52,
+          "height": 97.6,
+          "diff": -4.0,
+          "offset_y": 13.6,
+          "title": "Group",
+          "title_label": {
+            "x": 156.48,
+            "y": 2402.0,
+            "width": 56.32,
+            "height": 17.6
+          },
+          "requested_dir": null,
+          "effective_dir": "LR",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "SG",
+          "x": 156.48,
+          "y": 2294.4,
+          "width": 245.52,
+          "height": 97.6,
+          "diff": -4.0,
+          "offset_y": 13.6,
+          "title": " Group ",
+          "title_label": {
+            "x": 156.48,
+            "y": 2254.4,
+            "width": 120.32,
+            "height": 17.6
+          },
+          "requested_dir": null,
+          "effective_dir": "LR",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 452.08,
+        "max_y": 2490.8
+      }
+    }
+  }
+}

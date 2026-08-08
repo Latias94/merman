@@ -1,7 +1,7 @@
 //! Core graph container implementation.
 
 use rustc_hash::FxBuildHasher;
-use std::{cell::RefCell, error::Error, fmt};
+use std::{cell::RefCell, collections::BTreeMap, error::Error, fmt};
 
 use super::adj_cache::{DirectedEdgeAdjCache, DirectedNodeAdjacency, UndirectedAdjCache};
 use super::edge_key::{EdgeKey, EdgeKeyView};
@@ -13,9 +13,178 @@ type HashSet<T> = hashbrown::HashSet<T, FxBuildHasher>;
 type DefaultNodeLabel<N> = Box<dyn Fn(&str) -> N + Send + Sync>;
 type DefaultEdgeLabel<E> = Box<dyn Fn(&str, &str, Option<&str>) -> E + Send + Sync>;
 
+fn javascript_array_index(value: &str) -> Option<u32> {
+    let bytes = value.as_bytes();
+    if bytes.is_empty() || (bytes.len() > 1 && bytes[0] == b'0') {
+        return None;
+    }
+
+    let mut parsed = 0u32;
+    for &byte in bytes {
+        if !byte.is_ascii_digit() {
+            return None;
+        }
+        parsed = parsed
+            .checked_mul(10)?
+            .checked_add(u32::from(byte - b'0'))?;
+    }
+    (parsed != u32::MAX).then_some(parsed)
+}
+
+/// Returns whether `value` is an ECMAScript array-index property key.
+///
+/// Pinned Graphlib stores nodes and compound children in ordinary JavaScript objects, so
+/// `Object.keys` enumerates canonical decimal keys in `0..=2^32 - 2` numerically before ordinary
+/// strings. Keeping the classifier here gives layout owners one source of truth when they meter
+/// the ordered-map work required by those keys.
+pub fn is_javascript_array_index(value: &str) -> bool {
+    javascript_array_index(value).is_some()
+}
+
+const ORDINARY_KEY_TOMBSTONE: usize = usize::MAX;
+const ORDINARY_KEY_COMPACT_MIN_SLOTS: usize = 16;
+
+#[derive(Default)]
+struct ObjectKeyOrder {
+    // Every compound node owns one child bucket, while most buckets never see an array-index ID.
+    // Boxing keeps the empty per-node bucket footprint small and pays the extra allocation only
+    // for buckets that need numeric ordering.
+    #[allow(clippy::box_collection)]
+    numeric: Option<Box<BTreeMap<u32, usize>>>,
+    ordinary: Vec<usize>,
+    ordinary_len: usize,
+}
+
+impl ObjectKeyOrder {
+    fn len(&self) -> usize {
+        self.numeric.as_deref().map_or(0, BTreeMap::len) + self.ordinary_len
+    }
+
+    fn numeric_len(&self) -> usize {
+        self.numeric.as_deref().map_or(0, BTreeMap::len)
+    }
+
+    fn iteration_slot_count(&self) -> usize {
+        self.numeric_len() + self.ordinary.len()
+    }
+
+    fn reserve_ordinary(&mut self, additional: usize) {
+        self.ordinary.reserve(additional);
+    }
+
+    fn iter(&self) -> impl Iterator<Item = usize> + '_ {
+        self.numeric
+            .as_deref()
+            .into_iter()
+            .flat_map(|numeric| numeric.values().copied())
+            .chain(
+                self.ordinary
+                    .iter()
+                    .copied()
+                    .filter(|&child_ix| child_ix != ORDINARY_KEY_TOMBSTONE),
+            )
+    }
+
+    fn insert(
+        &mut self,
+        child_ix: usize,
+        array_index: Option<u32>,
+        ordinary_positions: &mut [usize],
+    ) {
+        if let Some(array_index) = array_index {
+            let previous = self
+                .numeric
+                .get_or_insert_with(|| Box::new(BTreeMap::new()))
+                .insert(array_index, child_ix);
+            debug_assert!(previous.is_none(), "node IDs are unique graph keys");
+            return;
+        }
+
+        let position = self.ordinary.len();
+        self.ordinary.push(child_ix);
+        self.ordinary_len += 1;
+        ordinary_positions[child_ix] = position;
+    }
+
+    fn remove(
+        &mut self,
+        child_ix: usize,
+        array_index: Option<u32>,
+        ordinary_positions: &mut [usize],
+    ) -> bool {
+        if let Some(array_index) = array_index {
+            let Some(numeric) = self.numeric.as_deref_mut() else {
+                return false;
+            };
+            let removed = numeric.remove(&array_index).is_some();
+            if numeric.is_empty() {
+                self.numeric = None;
+            }
+            return removed;
+        }
+
+        let Some(position) = ordinary_positions.get_mut(child_ix) else {
+            return false;
+        };
+        if *position == ORDINARY_KEY_TOMBSTONE
+            || self.ordinary.get(*position).copied() != Some(child_ix)
+        {
+            return false;
+        }
+        self.ordinary[*position] = ORDINARY_KEY_TOMBSTONE;
+        *position = ORDINARY_KEY_TOMBSTONE;
+        self.ordinary_len -= 1;
+        self.compact_ordinary_if_sparse(ordinary_positions);
+        true
+    }
+
+    fn take_ordered(&mut self, ordinary_positions: &mut [usize]) -> Vec<usize> {
+        let mut ordered = Vec::with_capacity(self.len());
+        if let Some(numeric) = self.numeric.take() {
+            ordered.extend(numeric.into_values());
+        }
+        for child_ix in self.ordinary.drain(..) {
+            if child_ix == ORDINARY_KEY_TOMBSTONE {
+                continue;
+            }
+            ordinary_positions[child_ix] = ORDINARY_KEY_TOMBSTONE;
+            ordered.push(child_ix);
+        }
+        self.ordinary_len = 0;
+        ordered
+    }
+
+    fn compact_ordinary_if_sparse(&mut self, ordinary_positions: &mut [usize]) {
+        if self.ordinary.len() < ORDINARY_KEY_COMPACT_MIN_SLOTS
+            || self.ordinary.len() <= self.ordinary_len.saturating_mul(2)
+        {
+            return;
+        }
+        if self.ordinary_len == 0 {
+            self.ordinary.clear();
+            return;
+        }
+
+        let mut write = 0usize;
+        for read in 0..self.ordinary.len() {
+            let child_ix = self.ordinary[read];
+            if child_ix == ORDINARY_KEY_TOMBSTONE {
+                continue;
+            }
+            self.ordinary[write] = child_ix;
+            ordinary_positions[child_ix] = write;
+            write += 1;
+        }
+        self.ordinary.truncate(write);
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GraphError {
     NamedEdgeInNonMultigraph,
+    ParentCycle { child_ix: usize, parent_ix: usize },
+    ParentBatchRequiresUnparentedChild { child_ix: usize },
+    ParentBatchRequiresIndependentLeaf { child_ix: usize },
 }
 
 impl fmt::Display for GraphError {
@@ -24,6 +193,21 @@ impl fmt::Display for GraphError {
             Self::NamedEdgeInNonMultigraph => {
                 f.write_str("Cannot set a named edge when is_multigraph = false")
             }
+            Self::ParentCycle {
+                child_ix,
+                parent_ix,
+            } => write!(
+                f,
+                "Setting node index {parent_ix} as parent of node index {child_ix} would create a cycle"
+            ),
+            Self::ParentBatchRequiresUnparentedChild { child_ix } => write!(
+                f,
+                "Batch parent assignment requires node index {child_ix} to be unparented and assigned only once"
+            ),
+            Self::ParentBatchRequiresIndependentLeaf { child_ix } => write!(
+                f,
+                "Leaf parent assignment requires node index {child_ix} to be an unparented leaf, assigned only once, and never used as another batch parent"
+            ),
         }
     }
 }
@@ -45,6 +229,8 @@ where
     nodes: Vec<Option<NodeEntry<N>>>,
     node_len: usize,
     node_index: HashMap<String, usize>,
+    node_order: ObjectKeyOrder,
+    node_ordinary_positions: Vec<usize>,
 
     edges: Vec<Option<EdgeEntry<E>>>,
     edge_len: usize,
@@ -56,16 +242,19 @@ where
     // these relationships by node index avoids repeated string hashing and avoids allocating
     // duplicate `String`s when setting parent links between already-present nodes.
     parent_ix: Vec<Option<usize>>,
-    children_ix: Vec<Vec<usize>>,
+    children_ix: Vec<ObjectKeyOrder>,
+    root_children: ObjectKeyOrder,
+    child_ordinary_positions: Vec<usize>,
 
-    // Many Dagre algorithms call `predecessors` / `successors` / `in_edges` / `out_edges`
-    // repeatedly. Scanning `self.edges` each time is O(E) per query and dominates runtime
-    // for large graphs. We keep a lazily rebuilt adjacency cache for directed graphs.
+    // Graphlib stores predecessor/successor endpoint counts for every graph, including undirected
+    // graphs whose endpoints are canonicalized first. Maintaining the same counted Object.keys
+    // state preserves neighbor order across parallel-edge removal without rescanning edge slots.
+    // Directed in/out edge enumeration still uses the lazy CSR cache below.
     //
     // Note: This uses interior mutability to keep query APIs on `&self`.
     directed_adj_gen: u64,
     directed_edge_adj_cache: RefCell<Option<DirectedEdgeAdjCache>>,
-    directed_node_adj: DirectedNodeAdjacency,
+    endpoint_key_adj: DirectedNodeAdjacency,
 
     // Some Dagre helpers (especially `network-simplex`) use undirected trees. Make adjacency
     // queries for undirected graphs fast as well.
@@ -82,28 +271,77 @@ where
     fn insert_node_entry(&mut self, id: String, label: N) -> usize {
         self.invalidate_adj();
         let idx = self.nodes.len();
+        let array_index = javascript_array_index(&id);
         self.nodes.push(Some(NodeEntry {
             id: id.clone(),
             label,
         }));
         self.node_len += 1;
         self.node_index.insert(id, idx);
+        self.node_ordinary_positions.push(ORDINARY_KEY_TOMBSTONE);
+        self.node_order
+            .insert(idx, array_index, &mut self.node_ordinary_positions);
         self.parent_ix.push(None);
-        self.children_ix.push(Vec::new());
-        if self.options.directed {
-            self.directed_node_adj.add_node();
+        self.children_ix.push(ObjectKeyOrder::default());
+        self.child_ordinary_positions.push(ORDINARY_KEY_TOMBSTONE);
+        if self.options.compound {
+            self.insert_child_in_object_key_order(None, idx);
         }
+        self.endpoint_key_adj.add_node();
         idx
+    }
+
+    fn remove_node_from_object_key_order(&mut self, node_ix: usize) {
+        let array_index = self
+            .nodes
+            .get(node_ix)
+            .and_then(Option::as_ref)
+            .and_then(|node| javascript_array_index(&node.id));
+        self.node_order
+            .remove(node_ix, array_index, &mut self.node_ordinary_positions);
+    }
+
+    fn child_array_index(&self, child_ix: usize) -> Option<u32> {
+        self.node_id_by_ix(child_ix)
+            .and_then(javascript_array_index)
+    }
+
+    fn insert_child_in_object_key_order(&mut self, parent_ix: Option<usize>, child_ix: usize) {
+        let array_index = self.child_array_index(child_ix);
+        let positions = &mut self.child_ordinary_positions;
+        match parent_ix {
+            Some(parent_ix) => {
+                self.children_ix[parent_ix].insert(child_ix, array_index, positions);
+            }
+            None => self.root_children.insert(child_ix, array_index, positions),
+        }
+    }
+
+    fn remove_child_from_object(&mut self, parent_ix: Option<usize>, child_ix: usize) {
+        let array_index = self.child_array_index(child_ix);
+        let positions = &mut self.child_ordinary_positions;
+        match parent_ix {
+            Some(parent_ix) => {
+                self.children_ix[parent_ix].remove(child_ix, array_index, positions);
+            }
+            None => {
+                self.root_children.remove(child_ix, array_index, positions);
+            }
+        }
+    }
+
+    fn take_children_in_object_key_order(&mut self, parent_ix: usize) -> Vec<usize> {
+        self.children_ix[parent_ix].take_ordered(&mut self.child_ordinary_positions)
     }
 
     fn trim_trailing_node_tombstones(&mut self) {
         while matches!(self.nodes.last(), Some(None)) {
             self.nodes.pop();
+            self.node_ordinary_positions.pop();
             self.parent_ix.pop();
             self.children_ix.pop();
-            if self.options.directed {
-                self.directed_node_adj.truncate_nodes(self.nodes.len());
-            }
+            self.child_ordinary_positions.pop();
+            self.endpoint_key_adj.truncate_nodes(self.nodes.len());
         }
     }
 
@@ -145,6 +383,8 @@ where
         if self.node_len == 0 {
             self.nodes.clear();
             self.node_index.clear();
+            self.node_order = ObjectKeyOrder::default();
+            self.node_ordinary_positions.clear();
             self.node_len = 0;
 
             self.edges.clear();
@@ -153,77 +393,71 @@ where
 
             self.parent_ix.clear();
             self.children_ix.clear();
-            self.directed_node_adj.clear();
+            self.root_children = ObjectKeyOrder::default();
+            self.child_ordinary_positions.clear();
+            self.endpoint_key_adj.clear();
             return;
         }
 
         let old_nodes = std::mem::take(&mut self.nodes);
-        let old_parent_ix = std::mem::take(&mut self.parent_ix);
-        let old_children_ix = std::mem::take(&mut self.children_ix);
+        let mut old_children_ix = std::mem::take(&mut self.children_ix);
+        let mut old_root_children = std::mem::take(&mut self.root_children);
+        let mut old_child_ordinary_positions = std::mem::take(&mut self.child_ordinary_positions);
+        let old_root_order = old_root_children.take_ordered(&mut old_child_ordinary_positions);
+        let old_child_orders = old_children_ix
+            .iter_mut()
+            .map(|children| children.take_ordered(&mut old_child_ordinary_positions))
+            .collect::<Vec<_>>();
         let mut node_remap: Vec<Option<usize>> = vec![None; old_nodes.len()];
 
         let mut new_nodes: Vec<Option<NodeEntry<N>>> = Vec::with_capacity(self.node_len);
         let mut new_node_index: HashMap<String, usize> = HashMap::default();
+        let mut new_node_order = ObjectKeyOrder::default();
+        new_node_order.reserve_ordinary(self.node_len);
+        let mut new_node_ordinary_positions = Vec::with_capacity(self.node_len);
         for (old_ix, slot) in old_nodes.into_iter().enumerate() {
             let Some(node) = slot else {
                 continue;
             };
             let new_ix = new_nodes.len();
             new_node_index.insert(node.id.clone(), new_ix);
+            let array_index = javascript_array_index(&node.id);
+            new_node_ordinary_positions.push(ORDINARY_KEY_TOMBSTONE);
+            new_node_order.insert(new_ix, array_index, &mut new_node_ordinary_positions);
             node_remap[old_ix] = Some(new_ix);
             new_nodes.push(Some(node));
         }
 
         self.nodes = new_nodes;
         self.node_index = new_node_index;
+        self.node_order = new_node_order;
+        self.node_ordinary_positions = new_node_ordinary_positions;
         self.node_len = self.nodes.len();
-        if self.options.directed {
-            self.directed_node_adj.remap(&node_remap, self.nodes.len());
-        }
+        self.endpoint_key_adj.remap(&node_remap, self.nodes.len());
 
         self.parent_ix = vec![None; self.nodes.len()];
-        self.children_ix = vec![Vec::new(); self.nodes.len()];
+        self.children_ix = (0..self.nodes.len())
+            .map(|_| ObjectKeyOrder::default())
+            .collect();
+        self.root_children = ObjectKeyOrder::default();
+        self.child_ordinary_positions = vec![ORDINARY_KEY_TOMBSTONE; self.nodes.len()];
         if self.options.compound {
-            for (old_parent, old_children) in old_children_ix.into_iter().enumerate() {
-                let Some(new_parent) = node_remap.get(old_parent).copied().flatten() else {
+            for old_child in old_root_order {
+                let Some(new_child) = node_remap.get(old_child).copied().flatten() else {
                     continue;
                 };
-                let Some(new_children_vec) = self.children_ix.get_mut(new_parent) else {
+                self.insert_child_in_object_key_order(None, new_child);
+            }
+            for (old_parent, old_children) in old_child_orders.into_iter().enumerate() {
+                let Some(new_parent) = node_remap.get(old_parent).copied().flatten() else {
                     continue;
                 };
                 for old_child in old_children {
                     let Some(new_child) = node_remap.get(old_child).copied().flatten() else {
                         continue;
                     };
-                    new_children_vec.push(new_child);
-                    if let Some(slot) = self.parent_ix.get_mut(new_child) {
-                        *slot = Some(new_parent);
-                    }
-                }
-            }
-
-            // If the old representation had stray `parent_ix` links without a corresponding child
-            // entry, keep the best-effort behavior by remapping those as well.
-            for (old_child, old_parent) in old_parent_ix.into_iter().enumerate() {
-                let Some(old_parent) = old_parent else {
-                    continue;
-                };
-                let Some(new_child) = node_remap.get(old_child).copied().flatten() else {
-                    continue;
-                };
-                let Some(new_parent) = node_remap.get(old_parent).copied().flatten() else {
-                    continue;
-                };
-                if self.parent_ix.get(new_child).copied().flatten().is_some() {
-                    continue;
-                }
-                if let Some(slot) = self.parent_ix.get_mut(new_child) {
-                    *slot = Some(new_parent);
-                }
-                if let Some(ch) = self.children_ix.get_mut(new_parent)
-                    && !ch.contains(&new_child)
-                {
-                    ch.push(new_child);
+                    self.parent_ix[new_child] = Some(new_parent);
+                    self.insert_child_in_object_key_order(Some(new_parent), new_child);
                 }
             }
         }
@@ -447,14 +681,18 @@ where
             nodes: Vec::new(),
             node_len: 0,
             node_index: HashMap::default(),
+            node_order: ObjectKeyOrder::default(),
+            node_ordinary_positions: Vec::new(),
             edges: Vec::new(),
             edge_len: 0,
             edge_index: HashMap::default(),
             parent_ix: Vec::new(),
             children_ix: Vec::new(),
+            root_children: ObjectKeyOrder::default(),
+            child_ordinary_positions: Vec::new(),
             directed_adj_gen: 0,
             directed_edge_adj_cache: RefCell::new(None),
-            directed_node_adj: DirectedNodeAdjacency::default(),
+            endpoint_key_adj: DirectedNodeAdjacency::default(),
             undirected_adj_gen: 0,
             undirected_adj_cache: RefCell::new(None),
         }
@@ -469,13 +707,17 @@ where
         g.nodes.reserve(node_capacity);
         g.edges.reserve(edge_capacity);
         g.node_index.reserve(node_capacity);
+        g.node_order.reserve_ordinary(node_capacity);
+        g.node_ordinary_positions.reserve(node_capacity);
         g.edge_index.reserve(edge_capacity);
         g.parent_ix.reserve(node_capacity);
         g.children_ix.reserve(node_capacity);
-        if options.directed {
-            g.directed_node_adj.reserve_nodes(node_capacity);
-            g.directed_node_adj.reserve_edges(edge_capacity);
+        if options.compound {
+            g.root_children.reserve_ordinary(node_capacity);
         }
+        g.child_ordinary_positions.reserve(node_capacity);
+        g.endpoint_key_adj.reserve_nodes(node_capacity);
+        g.endpoint_key_adj.reserve_edges(edge_capacity);
         g
     }
 
@@ -662,21 +904,113 @@ where
         self.node_len
     }
 
+    /// Returns the number of index-addressable node slots, including tombstones.
+    ///
+    /// Unlike [`Self::node_count`], this includes interior tombstones left by removals. Algorithms
+    /// that scan index-backed state such as parent arrays should meter this value. Iteration through
+    /// [`Self::nodes`] uses the separate object-key order and is metered by
+    /// [`Self::node_order_slot_count`].
+    pub fn node_slot_count(&self) -> usize {
+        self.nodes.len()
+    }
+
+    /// Returns the exact number of ordered entries inspected by one `nodes()` traversal.
+    ///
+    /// Numeric keys occupy the ordered-map prefix. Ordinary keys use a compacting creation-order
+    /// vector whose tombstones remain visible to the iterator until a bounded compaction. This
+    /// count lets layout owners charge the actual traversal representation instead of assuming
+    /// that live-node or index-slot cardinality is equivalent.
+    pub fn node_order_slot_count(&self) -> usize {
+        self.node_order.iteration_slot_count()
+    }
+
+    /// Returns the number of live node IDs classified as JavaScript array-index keys.
+    pub fn array_index_node_count(&self) -> usize {
+        self.node_order.numeric_len()
+    }
+
+    /// Returns the parsed ECMAScript array-index value for one live node slot.
+    #[doc(hidden)]
+    pub fn javascript_array_index_by_node_ix(&self, node_ix: usize) -> Option<u32> {
+        self.node_id_by_ix(node_ix).and_then(javascript_array_index)
+    }
+
+    /// Returns the number of directed neighbor entries stored in numeric `Object.keys` order.
+    ///
+    /// A unique directed endpoint pair contributes once when its successor key is a JavaScript
+    /// array index and once when its predecessor key is one. Parallel edges share those entries.
+    /// Layout owners use this exact count to precharge the ordered-map work required when copying
+    /// the graph into another Graphlib-compatible directed graph.
+    pub fn directed_array_index_adjacency_entry_count(&self) -> usize {
+        if self.options.directed {
+            self.endpoint_key_adj.numeric_ordered_entry_count()
+        } else {
+            0
+        }
+    }
+
+    /// Returns the exact numeric Object.keys entries in the canonical predecessor/successor
+    /// endpoint index. Unlike the directed-only public metric, this also covers undirected graphs.
+    #[doc(hidden)]
+    pub fn pinned_array_index_adjacency_entry_count(&self) -> usize {
+        self.endpoint_key_adj.numeric_ordered_entry_count()
+    }
+
+    fn node_indices_in_object_key_order(&self) -> impl Iterator<Item = usize> + '_ {
+        self.node_order.iter()
+    }
+
     pub fn nodes(&self) -> impl Iterator<Item = &str> {
-        self.nodes
-            .iter()
-            .filter_map(|n| n.as_ref().map(|n| n.id.as_str()))
+        self.node_indices_in_object_key_order()
+            .filter_map(|node_ix| self.node_id_by_ix(node_ix))
     }
 
     pub fn node_ids(&self) -> Vec<String> {
-        self.nodes
-            .iter()
-            .filter_map(|n| n.as_ref().map(|n| n.id.clone()))
-            .collect()
+        self.nodes().map(str::to_owned).collect()
     }
 
     pub fn edge_count(&self) -> usize {
         self.edge_len
+    }
+
+    /// Returns the number of indexed edge slots visited by graph-wide edge scans.
+    ///
+    /// Unlike [`Self::edge_count`], this includes interior tombstones left by removals. Callers
+    /// that meter `edge_keys`, `edges`, or another slot-backed traversal should charge this value
+    /// rather than the number of live edges.
+    pub fn edge_slot_count(&self) -> usize {
+        self.edges.len()
+    }
+
+    /// Reports whether the lazy adjacency index already represents the current graph generation.
+    ///
+    /// This hidden cross-crate hook lets a resource owner admit a possible slot-backed rebuild
+    /// before the first adjacency query triggers it through interior mutability.
+    #[doc(hidden)]
+    pub fn is_adjacency_cache_current(&self) -> bool {
+        if self.options.directed {
+            let generation = self.directed_adj_gen;
+            self.directed_edge_adj_cache
+                .borrow()
+                .as_ref()
+                .is_some_and(|cache| cache.generation == generation)
+        } else {
+            let generation = self.undirected_adj_gen;
+            self.undirected_adj_cache
+                .borrow()
+                .as_ref()
+                .is_some_and(|cache| cache.generation == generation)
+        }
+    }
+
+    /// Materializes the current lazy adjacency index at an owner-selected admitted boundary.
+    #[doc(hidden)]
+    pub fn prepare_adjacency_cache(&self) {
+        if self.options.directed {
+            drop(self.ensure_directed_edge_adj());
+        } else {
+            drop(self.ensure_undirected_adj());
+        }
     }
 
     pub fn edge_key_by_ix(&self, edge_ix: usize) -> Option<&EdgeKey> {
@@ -742,11 +1076,11 @@ where
     where
         F: FnMut(&str, &N),
     {
-        for n in &self.nodes {
-            let Some(n) = n.as_ref() else {
+        for node_ix in self.node_indices_in_object_key_order() {
+            let Some(node) = self.nodes.get(node_ix).and_then(Option::as_ref) else {
                 continue;
             };
-            f(&n.id, &n.label);
+            f(&node.id, &node.label);
         }
     }
 
@@ -754,11 +1088,11 @@ where
     where
         F: FnMut(usize, &str, &N),
     {
-        for (idx, n) in self.nodes.iter().enumerate() {
-            let Some(n) = n.as_ref() else {
+        for node_ix in self.node_indices_in_object_key_order() {
+            let Some(node) = self.nodes.get(node_ix).and_then(Option::as_ref) else {
                 continue;
             };
-            f(idx, &n.id, &n.label);
+            f(node_ix, &node.id, &node.label);
         }
     }
 
@@ -766,11 +1100,13 @@ where
     where
         F: FnMut(&str, &mut N),
     {
-        for n in &mut self.nodes {
-            let Some(n) = n.as_mut() else {
+        let node_order = &self.node_order;
+        let nodes = &mut self.nodes;
+        for node_ix in node_order.iter() {
+            let Some(node) = nodes.get_mut(node_ix).and_then(Option::as_mut) else {
                 continue;
             };
-            f(&n.id, &mut n.label);
+            f(&node.id, &mut node.label);
         }
     }
 
@@ -791,7 +1127,10 @@ where
         let mut copy = Self::new(self.options);
         copy.set_graph(self.graph_label.clone());
 
-        for node in self.nodes.iter().filter_map(|n| n.as_ref()) {
+        for node_ix in self.node_indices_in_object_key_order() {
+            let node = self.nodes[node_ix]
+                .as_ref()
+                .expect("the node order contains only live nodes");
             if filter(&node.id) {
                 copy.set_node(node.id.clone(), node.label.clone());
             }
@@ -809,7 +1148,7 @@ where
         }
 
         if self.options.compound {
-            let copied_ids = copy.node_ids();
+            let copied_ids = copy.nodes().map(str::to_owned).collect::<Vec<_>>();
             for id in copied_ids {
                 let mut parent = self.parent(&id);
                 while let Some(parent_id) = parent {
@@ -884,14 +1223,15 @@ where
         let Some(&w_ix) = self.node_index.get(&key.w) else {
             return self;
         };
+        let v_array_index = javascript_array_index(&key.v);
+        let w_array_index = javascript_array_index(&key.w);
 
         let edge_label = label.unwrap_or_else(|| {
             (self.default_edge_label)(key.v.as_str(), key.w.as_str(), key.name.as_deref())
         });
         self.invalidate_adj();
-        if self.options.directed {
-            self.directed_node_adj.add_edge(v_ix, w_ix);
-        }
+        self.endpoint_key_adj
+            .add_edge(v_ix, w_ix, v_array_index, w_array_index);
         let idx = self.edges.len();
         self.edges.push(Some(EdgeEntry {
             key: key.clone(),
@@ -979,9 +1319,7 @@ where
         let key = edge.key.clone();
         let (v_ix, w_ix) = (edge.v_ix, edge.w_ix);
         self.invalidate_adj();
-        if self.options.directed {
-            self.directed_node_adj.remove_edge(v_ix, w_ix);
-        }
+        self.endpoint_key_adj.remove_edge(v_ix, w_ix);
         let _ = self.edge_index.remove_entry(&key);
         self.edges[idx] = None;
         self.edge_len = self.edge_len.saturating_sub(1);
@@ -1028,6 +1366,21 @@ where
             incident_edges.dedup();
         }
 
+        if self.options.compound {
+            let previous_parent = self.parent_ix.get(idx).copied().flatten();
+            self.remove_child_from_object(previous_parent, idx);
+
+            let promoted_children = self.take_children_in_object_key_order(idx);
+            for &child_ix in &promoted_children {
+                if self.parent_ix.get(child_ix).copied().flatten() == Some(idx) {
+                    self.parent_ix[child_ix] = None;
+                }
+                self.insert_child_in_object_key_order(None, child_ix);
+            }
+            self.parent_ix[idx] = None;
+        }
+
+        self.remove_node_from_object_key_order(idx);
         let _ = self.node_index.remove(id);
         self.invalidate_adj();
         if let Some(slot) = self.nodes.get_mut(idx)
@@ -1044,33 +1397,10 @@ where
             };
             let key = edge.key.clone();
             let (v_ix, w_ix) = (edge.v_ix, edge.w_ix);
-            if self.options.directed {
-                self.directed_node_adj.remove_edge(v_ix, w_ix);
-            }
+            self.endpoint_key_adj.remove_edge(v_ix, w_ix);
             let _ = self.edge_index.remove_entry(&key);
             self.edges[edge_idx] = None;
             self.edge_len = self.edge_len.saturating_sub(1);
-        }
-
-        if self.options.compound {
-            // Remove parent link.
-            if let Some(prev_parent_ix) = self.parent_ix.get_mut(idx).and_then(|p| p.take())
-                && let Some(ch) = self.children_ix.get_mut(prev_parent_ix)
-            {
-                ch.retain(|&c| c != idx);
-            }
-
-            // Remove children links.
-            if let Some(ch) = self.children_ix.get_mut(idx) {
-                for &child_ix in ch.iter() {
-                    if let Some(slot) = self.parent_ix.get_mut(child_ix)
-                        && *slot == Some(idx)
-                    {
-                        *slot = None;
-                    }
-                }
-                ch.clear();
-            }
         }
 
         self.trim_trailing_edge_tombstones();
@@ -1086,11 +1416,12 @@ where
     /// surviving children of a removed parent become roots. The target iterator is consumed before
     /// the mutation is committed, so an iterator panic cannot leave a partially updated graph.
     ///
-    /// For `T` requested IDs, this operation takes `O(T + V + E)` time and `O(V)` temporary space.
-    /// It does not allocate graph-sized storage when no live target exists. Sequential `remove_node`
-    /// calls remain preferable for isolated mutations because they use the adjacency cache to touch
-    /// only incident edges after at most one cache build. Layout phases that retire many temporary
-    /// nodes should use this method to avoid rebuilding that cache between removals.
+    /// For `T` requested IDs, this operation takes amortized `O(T + V + E)` work for ordinary
+    /// string IDs and `O((T + V) log V + E)` in the all-array-index case, with `O(V)` temporary
+    /// space. It does not allocate graph-sized storage when no live target exists. Sequential
+    /// `remove_node` calls remain preferable for isolated mutations because they use the adjacency
+    /// cache to touch only incident edges after at most one cache build. Layout phases that retire
+    /// many temporary nodes should use this method to avoid rebuilding that cache between removals.
     pub fn remove_nodes<'a, I>(&mut self, ids: I) -> usize
     where
         I: IntoIterator<Item = &'a str>,
@@ -1100,11 +1431,14 @@ where
         }
 
         let mut removed_indices: HashSet<usize> = HashSet::default();
+        let mut removed_order = Vec::new();
         for id in ids {
             let Some(&idx) = self.node_index.get(id) else {
                 continue;
             };
-            removed_indices.insert(idx);
+            if removed_indices.insert(idx) {
+                removed_order.push(idx);
+            }
         }
         let removed_count = removed_indices.len();
         if removed_count == 0 {
@@ -1116,6 +1450,24 @@ where
             removed_by_ix[idx] = true;
         }
 
+        if self.options.compound {
+            // Replay the requested removal order at the compound-object boundary. This matches
+            // graphlib's observable ordinary-key recreation order while each bucket mutation is
+            // O(1) amortized for ordinary IDs and O(log V) for array-index IDs.
+            for &node_ix in &removed_order {
+                let previous_parent = self.parent_ix[node_ix];
+                self.remove_child_from_object(previous_parent, node_ix);
+                let promoted_children = self.take_children_in_object_key_order(node_ix);
+                self.parent_ix[node_ix] = None;
+                for child_ix in promoted_children {
+                    if self.parent_ix[child_ix] == Some(node_ix) {
+                        self.parent_ix[child_ix] = None;
+                    }
+                    self.insert_child_in_object_key_order(None, child_ix);
+                }
+            }
+        }
+
         // Consume the caller's iterator completely before committing any mutation. This keeps the
         // graph internally consistent even if a custom iterator panics and the caller catches it.
         self.node_index.retain(|_, idx| !removed_by_ix[*idx]);
@@ -1124,11 +1476,13 @@ where
             if !removed {
                 continue;
             }
+            self.remove_node_from_object_key_order(idx);
             if self.nodes.get_mut(idx).and_then(Option::take).is_some() {
                 self.node_len = self.node_len.saturating_sub(1);
             }
         }
 
+        self.endpoint_key_adj.remove_incident_edges(&removed_by_ix);
         for edge_ix in 0..self.edges.len() {
             let should_remove = self.edges[edge_ix]
                 .as_ref()
@@ -1139,31 +1493,8 @@ where
             let Some(edge) = self.edges[edge_ix].take() else {
                 continue;
             };
-            if self.options.directed {
-                self.directed_node_adj.remove_edge(edge.v_ix, edge.w_ix);
-            }
             let _ = self.edge_index.remove_entry(&edge.key);
             self.edge_len = self.edge_len.saturating_sub(1);
-        }
-
-        if self.options.compound {
-            for (child_ix, parent) in self.parent_ix.iter_mut().enumerate() {
-                if removed_by_ix[child_ix]
-                    || parent.is_some_and(|parent_ix| {
-                        removed_by_ix.get(parent_ix).copied().unwrap_or(true)
-                    })
-                {
-                    *parent = None;
-                }
-            }
-            for (parent_ix, children) in self.children_ix.iter_mut().enumerate() {
-                if removed_by_ix[parent_ix] {
-                    children.clear();
-                } else {
-                    children
-                        .retain(|&child_ix| !removed_by_ix.get(child_ix).copied().unwrap_or(true));
-                }
-            }
         }
 
         self.trim_trailing_edge_tombstones();
@@ -1178,7 +1509,7 @@ where
         let Some(&v_idx) = self.node_index.get(v) else {
             return Vec::new();
         };
-        self.directed_node_adj
+        self.endpoint_key_adj
             .successors(v_idx)
             .filter_map(|node_ix| self.node_id_by_ix(node_ix))
             .collect()
@@ -1191,7 +1522,7 @@ where
         let Some(&v_idx) = self.node_index.get(v) else {
             return Vec::new();
         };
-        self.directed_node_adj
+        self.endpoint_key_adj
             .predecessors(v_idx)
             .filter_map(|node_ix| self.node_id_by_ix(node_ix))
             .collect()
@@ -1202,7 +1533,7 @@ where
             return self.adjacent_nodes(v).into_iter().next();
         }
         let &v_idx = self.node_index.get(v)?;
-        let node_ix = self.directed_node_adj.first_successor(v_idx)?;
+        let node_ix = self.endpoint_key_adj.first_successor(v_idx)?;
         self.node_id_by_ix(node_ix)
     }
 
@@ -1211,7 +1542,7 @@ where
             return self.adjacent_nodes(v).into_iter().next();
         }
         let &v_idx = self.node_index.get(v)?;
-        let node_ix = self.directed_node_adj.first_predecessor(v_idx)?;
+        let node_ix = self.endpoint_key_adj.first_predecessor(v_idx)?;
         self.node_id_by_ix(node_ix)
     }
 
@@ -1223,8 +1554,8 @@ where
         let Some(&v_idx) = self.node_index.get(v) else {
             return;
         };
-        out.reserve(self.directed_node_adj.successor_count(v_idx));
-        for node_ix in self.directed_node_adj.successors(v_idx) {
+        out.reserve(self.endpoint_key_adj.successor_count(v_idx));
+        for node_ix in self.endpoint_key_adj.successors(v_idx) {
             if let Some(node) = self.node_id_by_ix(node_ix) {
                 out.push(node);
             }
@@ -1239,8 +1570,8 @@ where
         let Some(&v_idx) = self.node_index.get(v) else {
             return;
         };
-        out.reserve(self.directed_node_adj.predecessor_count(v_idx));
-        for node_ix in self.directed_node_adj.predecessors(v_idx) {
+        out.reserve(self.endpoint_key_adj.predecessor_count(v_idx));
+        for node_ix in self.endpoint_key_adj.predecessors(v_idx) {
             if let Some(node) = self.node_id_by_ix(node_ix) {
                 out.push(node);
             }
@@ -1260,7 +1591,7 @@ where
         let Some(&v_idx) = self.node_index.get(v) else {
             return;
         };
-        for node_ix in self.directed_node_adj.successors(v_idx) {
+        for node_ix in self.endpoint_key_adj.successors(v_idx) {
             if let Some(node) = self.node_id_by_ix(node_ix) {
                 f(node);
             }
@@ -1280,7 +1611,7 @@ where
         let Some(&v_idx) = self.node_index.get(v) else {
             return;
         };
-        for node_ix in self.directed_node_adj.predecessors(v_idx) {
+        for node_ix in self.endpoint_key_adj.predecessors(v_idx) {
             if let Some(node) = self.node_id_by_ix(node_ix) {
                 f(node);
             }
@@ -1288,20 +1619,27 @@ where
     }
 
     pub fn neighbors(&self, v: &str) -> Vec<&str> {
-        if !self.options.directed {
-            return self.adjacent_nodes(v);
-        }
+        let Some(&v_idx) = self.node_index.get(v) else {
+            return Vec::new();
+        };
         let mut out: Vec<&str> = Vec::new();
-        self.for_each_successor(v, |w| {
-            if !out.iter().any(|x| x == &w) {
-                out.push(w);
+        let mut seen: HashSet<usize> = HashSet::default();
+        // Pinned Graphlib implements `neighbors` with a Set seeded by predecessors and then
+        // successors, so a node reachable in both directions keeps its predecessor-side position.
+        for node_ix in self.endpoint_key_adj.predecessors(v_idx) {
+            if seen.insert(node_ix)
+                && let Some(node) = self.node_id_by_ix(node_ix)
+            {
+                out.push(node);
             }
-        });
-        self.for_each_predecessor(v, |u| {
-            if !out.iter().any(|x| x == &u) {
-                out.push(u);
+        }
+        for node_ix in self.endpoint_key_adj.successors(v_idx) {
+            if seen.insert(node_ix)
+                && let Some(node) = self.node_id_by_ix(node_ix)
+            {
+                out.push(node);
             }
-        });
+        }
         out
     }
 
@@ -1481,6 +1819,92 @@ where
         }
     }
 
+    /// Returns the number of directed outgoing edge entries for an indexed node.
+    ///
+    /// This is an allocation-free cardinality query over the shared adjacency cache. It is useful
+    /// to budget an owner-local edge scan before executing that scan.
+    pub fn out_edge_count_ix(&self, v_ix: usize) -> usize {
+        if !self.options.directed {
+            return 0;
+        }
+        self.ensure_directed_edge_adj().out_edges(v_ix).len()
+    }
+
+    /// Returns one directed outgoing edge by its owner-local adjacency position.
+    ///
+    /// This hidden cursor hook lets iterative graph algorithms retain only a node-sized frame stack
+    /// while reusing the shared CSR cache instead of copying every incident edge into scratch Vecs.
+    #[doc(hidden)]
+    pub fn out_edge_entry_ix_at(
+        &self,
+        v_ix: usize,
+        position: usize,
+    ) -> Option<(usize, usize, &EdgeKey, &E)> {
+        if !self.options.directed {
+            return None;
+        }
+        let edge_ix = {
+            let cache = self.ensure_directed_edge_adj();
+            *cache.out_edges(v_ix).get(position)?
+        };
+        let edge = self.edges.get(edge_ix)?.as_ref()?;
+        Some((edge.v_ix, edge.w_ix, &edge.key, &edge.label))
+    }
+
+    /// Visits every undirected edge incident to an indexed node without allocating edge keys.
+    ///
+    /// The callback receives the queried node first and the opposite endpoint second. Parallel
+    /// edges retain graph insertion order. Directed graphs expose no entries through this method.
+    pub fn for_each_undirected_edge_ix<F>(&self, v_ix: usize, mut f: F)
+    where
+        F: FnMut(usize, usize, &EdgeKey, &E),
+    {
+        if self.options.directed {
+            return;
+        }
+        let cache = self.ensure_undirected_adj();
+        for &edge_ix in cache.edges(v_ix) {
+            let Some(edge) = self.edges.get(edge_ix).and_then(|edge| edge.as_ref()) else {
+                continue;
+            };
+            let other_ix = if edge.v_ix == v_ix {
+                edge.w_ix
+            } else {
+                edge.v_ix
+            };
+            f(v_ix, other_ix, &edge.key, &edge.label);
+        }
+    }
+
+    /// Returns the number of undirected incident-edge entries for an indexed node.
+    ///
+    /// This is the exact traversal cardinality of [`Self::for_each_undirected_edge_ix`]. Directed
+    /// graphs return zero.
+    pub fn undirected_edge_count_ix(&self, v_ix: usize) -> usize {
+        if self.options.directed {
+            return 0;
+        }
+        self.ensure_undirected_adj().edges(v_ix).len()
+    }
+
+    /// Returns one canonical undirected edge by its owner-local incident position.
+    #[doc(hidden)]
+    pub fn undirected_edge_entry_ix_at(
+        &self,
+        v_ix: usize,
+        position: usize,
+    ) -> Option<(usize, usize, &EdgeKey, &E)> {
+        if self.options.directed {
+            return None;
+        }
+        let edge_ix = {
+            let cache = self.ensure_undirected_adj();
+            *cache.edges(v_ix).get(position)?
+        };
+        let edge = self.edges.get(edge_ix)?.as_ref()?;
+        Some((edge.v_ix, edge.w_ix, &edge.key, &edge.label))
+    }
+
     pub fn for_each_out_edge_entry_ix<F>(&self, v_ix: usize, w_ix: Option<usize>, mut f: F)
     where
         F: FnMut(usize, usize, usize, &EdgeKey, &E),
@@ -1533,6 +1957,31 @@ where
         }
     }
 
+    /// Iterates canonical predecessor properties in pinned JavaScript Object.keys order.
+    ///
+    /// This hidden hook is valid for both directed graphs and endpoint-canonicalized undirected
+    /// graphs. Parallel edges contribute one property until the final edge is removed.
+    #[doc(hidden)]
+    pub fn for_each_pinned_predecessor_ix<F>(&self, v_ix: usize, mut f: F)
+    where
+        F: FnMut(usize),
+    {
+        for node_ix in self.endpoint_key_adj.predecessors(v_ix) {
+            f(node_ix);
+        }
+    }
+
+    /// Iterates canonical successor properties in pinned JavaScript Object.keys order.
+    #[doc(hidden)]
+    pub fn for_each_pinned_successor_ix<F>(&self, v_ix: usize, mut f: F)
+    where
+        F: FnMut(usize),
+    {
+        for node_ix in self.endpoint_key_adj.successors(v_ix) {
+            f(node_ix);
+        }
+    }
+
     pub fn for_each_in_edge_ix<F>(&self, v_ix: usize, w_ix: Option<usize>, mut f: F)
     where
         F: FnMut(usize, usize, &EdgeKey, &E),
@@ -1550,6 +1999,32 @@ where
                 f(e.v_ix, e.w_ix, &e.key, &e.label);
             }
         }
+    }
+
+    /// Returns the number of directed incoming edge entries for an indexed node.
+    pub fn in_edge_count_ix(&self, v_ix: usize) -> usize {
+        if !self.options.directed {
+            return 0;
+        }
+        self.ensure_directed_edge_adj().in_edges(v_ix).len()
+    }
+
+    /// Returns one directed incoming edge by its owner-local adjacency position.
+    #[doc(hidden)]
+    pub fn in_edge_entry_ix_at(
+        &self,
+        v_ix: usize,
+        position: usize,
+    ) -> Option<(usize, usize, &EdgeKey, &E)> {
+        if !self.options.directed {
+            return None;
+        }
+        let edge_ix = {
+            let cache = self.ensure_directed_edge_adj();
+            *cache.in_edges(v_ix).get(position)?
+        };
+        let edge = self.edges.get(edge_ix)?.as_ref()?;
+        Some((edge.v_ix, edge.w_ix, &edge.key, &edge.label))
     }
 
     pub fn for_each_in_edge_entry_ix<F>(&self, v_ix: usize, w_ix: Option<usize>, mut f: F)
@@ -1620,25 +2095,214 @@ where
         );
 
         let prev = self.parent_ix.get(child_ix).copied().flatten();
-        if prev == Some(parent_ix) {
+        if prev == Some(parent_ix) && self.child_array_index(child_ix).is_some() {
+            // Graphlib deletes and recreates the property in its `_children` object. JavaScript
+            // still enumerates array-index keys numerically, so that mutation cannot change this
+            // child's observable position. Preserve the visible result without a sibling scan.
             return self;
         }
-
-        if let Some(prev_parent_ix) = prev
-            && let Some(ch) = self.children_ix.get_mut(prev_parent_ix)
-        {
-            ch.retain(|&c| c != child_ix);
-        }
+        self.remove_child_from_object(prev, child_ix);
 
         if let Some(slot) = self.parent_ix.get_mut(child_ix) {
             *slot = Some(parent_ix);
         }
-        if let Some(ch) = self.children_ix.get_mut(parent_ix)
-            && !ch.contains(&child_ix)
-        {
-            ch.push(child_ix);
-        }
+        // For ordinary string keys, dagre-d3-es deletes and recreates the property even when the
+        // parent is unchanged, moving it to the end of the ordinary-key segment. Array-index keys
+        // remain in numeric order regardless of property creation time.
+        self.insert_child_in_object_key_order(Some(parent_ix), child_ix);
         self
+    }
+
+    /// Atomically assigns parents to independent, currently unparented leaf children.
+    ///
+    /// This is the bounded construction primitive for layout-generated dummy nodes. Removed or
+    /// out-of-range slots are ignored, matching [`Self::set_parent_ix`]. Every live child must be
+    /// an unparented leaf, occur once, and never appear as a parent in the same batch. Contract
+    /// violations return [`GraphError::ParentBatchRequiresIndependentLeaf`] without mutation.
+    ///
+    /// Because those conditions make a parent cycle impossible, the method validates and applies
+    /// the batch in `O(P)` expected time for ordinary string IDs, where `P = assignments.len()`.
+    /// Array-index IDs additionally preserve JavaScript `Object.keys` ordering through the same
+    /// ordered-map updates as [`Self::set_parent_ix`]. There is deliberately no fallback to a
+    /// graph-wide forest scan: callers may meter this narrow contract independently.
+    #[doc(hidden)]
+    pub fn try_set_unparented_leaf_parents_ix(
+        &mut self,
+        assignments: &[(usize, usize)],
+    ) -> Result<&mut Self, GraphError> {
+        if !self.options.compound || assignments.is_empty() {
+            return Ok(self);
+        }
+
+        let mut leaf_children: HashSet<usize> = HashSet::with_capacity_and_hasher(
+            assignments.len().min(self.nodes.len()),
+            FxBuildHasher,
+        );
+        let mut leaf_parents: HashSet<usize> = HashSet::with_capacity_and_hasher(
+            assignments.len().min(self.nodes.len()),
+            FxBuildHasher,
+        );
+        let mut valid_assignments = Vec::with_capacity(assignments.len().min(self.nodes.len()));
+        for &(child_ix, parent_ix) in assignments {
+            if self.nodes.get(child_ix).and_then(Option::as_ref).is_none()
+                || self.nodes.get(parent_ix).and_then(Option::as_ref).is_none()
+            {
+                continue;
+            }
+            if self.parent_ix[child_ix].is_some()
+                || self.children_ix[child_ix].len() != 0
+                || leaf_children.contains(&child_ix)
+            {
+                return Err(GraphError::ParentBatchRequiresIndependentLeaf { child_ix });
+            }
+            if child_ix == parent_ix || leaf_parents.contains(&child_ix) {
+                return Err(GraphError::ParentBatchRequiresIndependentLeaf { child_ix });
+            }
+            if leaf_children.contains(&parent_ix) {
+                return Err(GraphError::ParentBatchRequiresIndependentLeaf {
+                    child_ix: parent_ix,
+                });
+            }
+            leaf_children.insert(child_ix);
+            leaf_parents.insert(parent_ix);
+            valid_assignments.push((child_ix, parent_ix));
+        }
+
+        self.apply_unparented_parent_assignments(&valid_assignments);
+        Ok(self)
+    }
+
+    /// Atomically assigns parents to currently unparented children in caller order.
+    ///
+    /// Each pair is `(child_ix, parent_ix)`. Removed or out-of-range node slots are ignored, as in
+    /// [`Self::set_parent_ix`]. Every live child must have no current parent and may occur at most
+    /// once in the batch. Violating that narrow construction-only contract returns
+    /// [`GraphError::ParentBatchRequiresUnparentedChild`] without mutation; reparenting and repeated
+    /// assignments must use [`Self::set_parent_ix`] so dagre-d3-es deletion/reinsertion order stays
+    /// observable.
+    ///
+    /// Existing forest links seed an incremental union-find check. New links are checked in caller
+    /// order, so [`GraphError::ParentCycle`] identifies the same first cycle-closing assignment as
+    /// sequential dagre-d3-es `setParent` for this unparented-child domain. Validation completes
+    /// before mutation, so an error leaves the graph unchanged.
+    ///
+    /// For `S = node_slot_count()` and `P = assignments.len()`, this takes amortized
+    /// `O((S + P) * alpha(S))` time for ordinary string IDs and
+    /// `O((S + P) * alpha(S) + P log S)` in the all-array-index case, with `O(S)` temporary space.
+    /// In particular, it performs neither one ancestor walk nor one sibling scan per assignment.
+    /// Ordinary-key creation order is updated in amortized constant time, while the comparatively
+    /// rare array-index keys use the same ordered map semantics as JavaScript `Object.keys`.
+    pub fn try_set_unparented_parents_ix(
+        &mut self,
+        assignments: &[(usize, usize)],
+    ) -> Result<&mut Self, GraphError> {
+        if !self.options.compound || assignments.is_empty() {
+            return Ok(self);
+        }
+
+        fn find(parents: &mut [usize], mut index: usize) -> usize {
+            let mut root = index;
+            while parents[root] != root {
+                root = parents[root];
+            }
+            while parents[index] != index {
+                let next = parents[index];
+                parents[index] = root;
+                index = next;
+            }
+            root
+        }
+
+        fn union_roots(
+            parents: &mut [usize],
+            ranks: &mut [u8],
+            left_root: usize,
+            right_root: usize,
+        ) {
+            if left_root == right_root {
+                return;
+            }
+            if ranks[left_root] < ranks[right_root] {
+                parents[left_root] = right_root;
+            } else {
+                parents[right_root] = left_root;
+                if ranks[left_root] == ranks[right_root] {
+                    ranks[left_root] = ranks[left_root].saturating_add(1);
+                }
+            }
+        }
+
+        fn union(parents: &mut [usize], ranks: &mut [u8], left: usize, right: usize) {
+            let left_root = find(parents, left);
+            let right_root = find(parents, right);
+            union_roots(parents, ranks, left_root, right_root);
+        }
+
+        let slot_count = self.nodes.len();
+        let mut component_parents = (0..slot_count).collect::<Vec<_>>();
+        let mut component_ranks = vec![0u8; slot_count];
+        for (child_ix, parent_ix) in self.parent_ix.iter().copied().enumerate() {
+            let Some(parent_ix) = parent_ix else {
+                continue;
+            };
+            if self.nodes.get(child_ix).and_then(Option::as_ref).is_some()
+                && self.nodes.get(parent_ix).and_then(Option::as_ref).is_some()
+            {
+                union(
+                    &mut component_parents,
+                    &mut component_ranks,
+                    child_ix,
+                    parent_ix,
+                );
+            }
+        }
+
+        let mut assigned = vec![false; slot_count];
+        let mut valid_assignments = Vec::with_capacity(assignments.len().min(slot_count));
+        for &(child_ix, parent_ix) in assignments {
+            if self.nodes.get(child_ix).and_then(Option::as_ref).is_none()
+                || self.nodes.get(parent_ix).and_then(Option::as_ref).is_none()
+            {
+                continue;
+            }
+            if self.parent_ix[child_ix].is_some() || assigned[child_ix] {
+                return Err(GraphError::ParentBatchRequiresUnparentedChild { child_ix });
+            }
+
+            let child_root = find(&mut component_parents, child_ix);
+            let parent_root = find(&mut component_parents, parent_ix);
+            if child_root == parent_root {
+                return Err(GraphError::ParentCycle {
+                    child_ix,
+                    parent_ix,
+                });
+            }
+            // The cycle check already resolved both component roots. Merge those roots directly
+            // instead of repeating two zero-depth `find` calls for every accepted assignment.
+            union_roots(
+                &mut component_parents,
+                &mut component_ranks,
+                child_root,
+                parent_root,
+            );
+            assigned[child_ix] = true;
+            valid_assignments.push((child_ix, parent_ix));
+        }
+
+        if valid_assignments.is_empty() {
+            return Ok(self);
+        }
+
+        self.apply_unparented_parent_assignments(&valid_assignments);
+        Ok(self)
+    }
+
+    fn apply_unparented_parent_assignments(&mut self, assignments: &[(usize, usize)]) {
+        for &(child_ix, parent_ix) in assignments {
+            self.remove_child_from_object(None, child_ix);
+            self.parent_ix[child_ix] = Some(parent_ix);
+            self.insert_child_in_object_key_order(Some(parent_ix), child_ix);
+        }
     }
 
     fn would_create_parent_cycle(&self, child_ix: usize, parent_ix: usize) -> bool {
@@ -1663,15 +2327,26 @@ where
         let Some(&child_ix) = self.node_index.get(child) else {
             return self;
         };
-        let Some(prev_parent_ix) = self.parent_ix.get(child_ix).copied().flatten() else {
+        self.clear_parent_ix(child_ix)
+    }
+
+    /// Clears a parent by node index while preserving Graphlib's property recreation semantics.
+    ///
+    /// Replaying an already-root ordinary string key moves it to the end of the ordinary-key
+    /// segment. Replaying an already-root JavaScript array-index key is observably a no-op because
+    /// `Object.keys` continues to enumerate it numerically, so avoid the redundant ordered-map
+    /// removal and insertion in that case.
+    pub fn clear_parent_ix(&mut self, child_ix: usize) -> &mut Self {
+        if !self.options.compound || self.nodes.get(child_ix).and_then(Option::as_ref).is_none() {
             return self;
-        };
-        if let Some(slot) = self.parent_ix.get_mut(child_ix) {
-            *slot = None;
         }
-        if let Some(ch) = self.children_ix.get_mut(prev_parent_ix) {
-            ch.retain(|&c| c != child_ix);
+        let prev_parent_ix = self.parent_ix.get(child_ix).copied().flatten();
+        if prev_parent_ix.is_none() && self.child_array_index(child_ix).is_some() {
+            return self;
         }
+        self.remove_child_from_object(prev_parent_ix, child_ix);
+        self.parent_ix[child_ix] = None;
+        self.insert_child_in_object_key_order(None, child_ix);
         self
     }
 
@@ -1689,22 +2364,68 @@ where
             self.node_index
                 .get(parent)
                 .and_then(|&p_ix| self.children_ix.get(p_ix))
-                .map(|v| v.as_slice())
-                .unwrap_or(&[])
         } else {
-            &[]
-        };
-        let mut i = 0usize;
-        std::iter::from_fn(move || {
-            while i < children.len() {
-                let child_ix = children[i];
-                i += 1;
-                if let Some(id) = self.node_id_by_ix(child_ix) {
-                    return Some(id);
-                }
-            }
             None
-        })
+        };
+        children
+            .into_iter()
+            .flat_map(ObjectKeyOrder::iter)
+            .filter_map(|child_ix| self.node_id_by_ix(child_ix))
+    }
+
+    /// Returns the number of direct compound children without allocating a snapshot.
+    ///
+    /// Missing nodes and non-compound graphs have no direct compound children. Public graph
+    /// mutations keep the indexed child list free of removed or duplicate entries, so this is an
+    /// `O(1)` query equivalent to `children(parent).len()`.
+    pub fn child_count(&self, parent: &str) -> usize {
+        if !self.options.compound {
+            return 0;
+        }
+        self.node_index
+            .get(parent)
+            .and_then(|&parent_ix| self.children_ix.get(parent_ix))
+            .map_or(0, ObjectKeyOrder::len)
+    }
+
+    /// Returns the exact number of ordered entries inspected by `children_iter(parent)`.
+    pub fn child_order_slot_count(&self, parent: &str) -> usize {
+        if !self.options.compound {
+            return 0;
+        }
+        self.node_index
+            .get(parent)
+            .and_then(|&parent_ix| self.children_ix.get(parent_ix))
+            .map_or(0, ObjectKeyOrder::iteration_slot_count)
+    }
+
+    /// Returns the number of direct children whose IDs are JavaScript array-index keys.
+    pub fn array_index_child_count(&self, parent: &str) -> usize {
+        if !self.options.compound {
+            return 0;
+        }
+        self.node_index
+            .get(parent)
+            .and_then(|&parent_ix| self.children_ix.get(parent_ix))
+            .map_or(0, ObjectKeyOrder::numeric_len)
+    }
+
+    /// Returns the exact number of ordered entries inspected by `children_root()`.
+    pub fn root_child_order_slot_count(&self) -> usize {
+        if self.options.compound {
+            self.root_children.iteration_slot_count()
+        } else {
+            self.node_order_slot_count()
+        }
+    }
+
+    /// Returns the number of root children whose IDs are JavaScript array-index keys.
+    pub fn root_array_index_child_count(&self) -> usize {
+        if self.options.compound {
+            self.root_children.numeric_len()
+        } else {
+            self.array_index_node_count()
+        }
     }
 
     pub fn children(&self, parent: &str) -> Vec<&str> {
@@ -1719,7 +2440,7 @@ where
         let &parent_ix = self.node_index.get(parent)?;
         let children = self.children_ix.get(parent_ix)?;
         let mut out = Vec::with_capacity(children.len());
-        for &child_ix in children {
+        for child_ix in children.iter() {
             if let Some(id) = self.node_id_by_ix(child_ix) {
                 out.push(id);
             }
@@ -1731,27 +2452,19 @@ where
         if !self.options.compound {
             return self.nodes().collect();
         }
-        let mut out: Vec<&str> = Vec::new();
-        for (ix, n) in self.nodes.iter().enumerate() {
-            let Some(n) = n.as_ref() else {
-                continue;
-            };
-            if self.parent_ix.get(ix).copied().flatten().is_none() {
-                out.push(n.id.as_str());
-            }
-        }
-        out
+        self.root_children
+            .iter()
+            .filter_map(|child_ix| self.node_id_by_ix(child_ix))
+            .collect()
     }
 
     pub fn sources(&self) -> Vec<&str> {
         if !self.options.directed {
             return self.nodes().collect();
         }
-        self.nodes
-            .iter()
-            .filter_map(|n| n.as_ref())
-            .filter(|n| self.first_predecessor(&n.id).is_none())
-            .map(|n| n.id.as_str())
+        self.node_indices_in_object_key_order()
+            .filter(|&node_ix| self.endpoint_key_adj.predecessor_count(node_ix) == 0)
+            .filter_map(|node_ix| self.node_id_by_ix(node_ix))
             .collect()
     }
 
@@ -1759,11 +2472,9 @@ where
         if !self.options.directed {
             return self.nodes().collect();
         }
-        self.nodes
-            .iter()
-            .filter_map(|n| n.as_ref())
-            .filter(|n| self.first_successor(&n.id).is_none())
-            .map(|n| n.id.as_str())
+        self.node_indices_in_object_key_order()
+            .filter(|&node_ix| self.endpoint_key_adj.successor_count(node_ix) == 0)
+            .filter_map(|node_ix| self.node_id_by_ix(node_ix))
             .collect()
     }
 

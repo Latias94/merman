@@ -7,7 +7,9 @@ fn bundle_exports_expected_symbols() {
     let _ =
         dugong::graphlib::Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions::default());
     let _ = dugong::util::range(0);
-    let _layout: fn(&mut Graph<NodeLabel, EdgeLabel, GraphLabel>) = dugong::layout;
+    let _layout: fn(
+        &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    ) -> Result<(), dugong::LayoutError> = dugong::layout;
 }
 
 #[test]
@@ -41,7 +43,7 @@ fn bundle_can_do_trivial_layout() {
         },
     );
 
-    dugong::layout(&mut g);
+    dugong::layout(&mut g).unwrap();
 
     let a = g.node("a").expect("node a must exist");
     let b = g.node("b").expect("node b must exist");

@@ -1,5 +1,6 @@
 use serde::Deserialize;
 use serde::Serialize;
+use serde::Serializer;
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use std::str::FromStr;
@@ -20,6 +21,7 @@ use crate::resource_contract::{
 /// callers; durable SDK integrations should send this explicit version.
 pub const BINDING_OPTIONS_SCHEMA_VERSION: u32 = 2;
 pub const BINDING_RESULT_PAYLOAD_VERSION: u32 = 1;
+const BINDING_JSON_SAFE_INTEGER_MAX: u64 = crate::RUNTIME_CATALOG_MAX_SAFE_INTEGER;
 const BINDING_ANALYSIS_OPTION_KEYS: [&str; 5] = [
     "fixed_today",
     "fixed_local_offset_minutes",
@@ -72,6 +74,30 @@ impl BindingErrorKind {
     }
 }
 
+/// Stable machine-readable reason for a resource-limit failure.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum BindingResourceLimitCause {
+    #[default]
+    Ceiling,
+    ArithmeticOverflow,
+    /// A cause added by a newer engine that this binding layer does not yet classify.
+    Unknown,
+}
+
+impl BindingResourceLimitCause {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Ceiling => "ceiling",
+            Self::ArithmeticOverflow => "arithmetic_overflow",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BindingStatus {
@@ -119,18 +145,65 @@ pub struct BindingError {
     capability_id: Option<&'static str>,
     resource: Option<BindingResourceErrorDetails>,
     icon_registry: Option<Box<BindingIconRegistryErrorDetails>>,
-    message: String,
+    message: Box<str>,
 }
 
 /// Structured resource failure details carried by the additive error JSON payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub struct BindingResourceErrorDetails {
+    /// Stable reason for the failure: `ceiling` or `arithmetic_overflow`.
+    pub cause: BindingResourceLimitCause,
     pub limit_id: &'static str,
     pub phase: &'static str,
     pub actual: u64,
     pub max: u64,
     pub profile: &'static str,
+}
+
+impl BindingResourceErrorDetails {
+    /// Projects exact resource counts into the lossless JSON representation used by JavaScript
+    /// transports without changing the native binding payload contract.
+    #[doc(hidden)]
+    #[must_use]
+    pub const fn js_safe_json(self) -> BindingJsSafeResourceErrorDetails {
+        BindingJsSafeResourceErrorDetails {
+            cause: self.cause,
+            limit_id: self.limit_id,
+            phase: self.phase,
+            actual: self.actual,
+            max: self.max,
+            profile: self.profile,
+        }
+    }
+}
+
+/// JavaScript-safe serialization projection for [`BindingResourceErrorDetails`].
+///
+/// Values through `Number.MAX_SAFE_INTEGER` remain JSON numbers. Wider `u64` values serialize as
+/// canonical decimal strings so Node and WebAssembly hosts retain the exact count.
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct BindingJsSafeResourceErrorDetails {
+    cause: BindingResourceLimitCause,
+    limit_id: &'static str,
+    phase: &'static str,
+    #[serde(serialize_with = "serialize_binding_resource_count")]
+    actual: u64,
+    #[serde(serialize_with = "serialize_binding_resource_count")]
+    max: u64,
+    profile: &'static str,
+}
+
+fn serialize_binding_resource_count<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    if *value <= BINDING_JSON_SAFE_INTEGER_MAX {
+        serializer.serialize_u64(*value)
+    } else {
+        serializer.collect_str(value)
+    }
 }
 
 /// Structured failure details for transactional Iconify registry construction.
@@ -150,7 +223,7 @@ impl BindingError {
             capability_id: None,
             resource: None,
             icon_registry: None,
-            message: message.into(),
+            message: message.into().into_boxed_str(),
         }
     }
 
@@ -176,7 +249,7 @@ impl BindingError {
             capability_id: None,
             resource: None,
             icon_registry: None,
-            message: message.into(),
+            message: message.into().into_boxed_str(),
         }
     }
 
@@ -187,7 +260,7 @@ impl BindingError {
             capability_id: Some(capability_id),
             resource: None,
             icon_registry: None,
-            message: message.into(),
+            message: message.into().into_boxed_str(),
         }
     }
 
@@ -204,7 +277,7 @@ impl BindingError {
             capability_id: None,
             resource: None,
             icon_registry: None,
-            message: message.into(),
+            message: message.into().into_boxed_str(),
         }
     }
 
@@ -215,11 +288,32 @@ impl BindingError {
             capability_id: None,
             resource: None,
             icon_registry: None,
-            message: message.into(),
+            message: message.into().into_boxed_str(),
         }
     }
 
     pub fn resource_limit(
+        phase: &'static str,
+        limit_id: &'static str,
+        actual: u64,
+        max: u64,
+        profile: &'static str,
+        message: impl Into<String>,
+    ) -> Self {
+        Self::resource_limit_with_cause(
+            BindingResourceLimitCause::Ceiling,
+            phase,
+            limit_id,
+            actual,
+            max,
+            profile,
+            message,
+        )
+    }
+
+    /// Constructs a resource-limit error with an explicit stable failure cause.
+    pub fn resource_limit_with_cause(
+        cause: BindingResourceLimitCause,
         phase: &'static str,
         limit_id: &'static str,
         actual: u64,
@@ -232,6 +326,7 @@ impl BindingError {
             kind: BindingErrorKind::Generic,
             capability_id: None,
             resource: Some(BindingResourceErrorDetails {
+                cause,
                 limit_id,
                 phase,
                 actual,
@@ -239,7 +334,7 @@ impl BindingError {
                 profile,
             }),
             icon_registry: None,
-            message: message.into(),
+            message: message.into().into_boxed_str(),
         }
     }
 
@@ -267,6 +362,7 @@ impl BindingError {
             merman::svg::IconRegistryBuildErrorKind::ResourceLimitExceeded,
             pack_index,
             Some(BindingResourceErrorDetails {
+                cause: BindingResourceLimitCause::Ceiling,
                 limit_id: descriptor.stable_id,
                 phase: descriptor.phase,
                 actual,
@@ -294,7 +390,7 @@ impl BindingError {
                 pack_index: pack_index.and_then(|index| u64::try_from(index).ok()),
                 registration_name: None,
             })),
-            message: message.into(),
+            message: message.into().into_boxed_str(),
         }
     }
 
@@ -354,6 +450,12 @@ impl From<merman::svg::IconRegistryBuildError> for BindingError {
             (Some(limit), Some(actual), Some(max)) => {
                 let descriptor = limit.descriptor();
                 Some(BindingResourceErrorDetails {
+                    cause: match error_kind {
+                        merman::svg::IconRegistryBuildErrorKind::ArithmeticOverflow => {
+                            BindingResourceLimitCause::ArithmeticOverflow
+                        }
+                        _ => BindingResourceLimitCause::Ceiling,
+                    },
                     limit_id: descriptor.stable_id,
                     phase: descriptor.phase,
                     actual,
@@ -369,7 +471,7 @@ impl From<merman::svg::IconRegistryBuildError> for BindingError {
             capability_id: None,
             resource,
             icon_registry: Some(Box::new(details)),
-            message,
+            message: message.into_boxed_str(),
         }
     }
 }
@@ -392,7 +494,7 @@ pub(crate) fn icon_registry_error_status(
 }
 
 #[derive(Debug, Serialize)]
-struct ErrorPayload<'a> {
+struct ErrorPayload<'a, R> {
     version: u32,
     ok: bool,
     code: i32,
@@ -400,14 +502,14 @@ struct ErrorPayload<'a> {
     kind: &'a str,
     capability_id: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    details: Option<ErrorDetails<'a>>,
+    details: Option<ErrorDetails<'a, R>>,
     message: &'a str,
 }
 
 #[derive(Debug, Serialize)]
-struct ErrorDetails<'a> {
+struct ErrorDetails<'a, R> {
     #[serde(skip_serializing_if = "Option::is_none")]
-    resource: Option<&'a BindingResourceErrorDetails>,
+    resource: Option<R>,
     #[serde(skip_serializing_if = "Option::is_none")]
     icon_registry: Option<&'a BindingIconRegistryErrorDetails>,
 }
@@ -637,7 +739,7 @@ pub(crate) struct PresentationThemeOptionsJson {
 }
 
 pub fn error_payload_json_bytes(status: BindingStatus, message: &str) -> Vec<u8> {
-    error_payload_json_bytes_with_details(
+    error_payload_json_bytes_with_details::<&BindingResourceErrorDetails>(
         status,
         BindingErrorKind::Generic,
         None,
@@ -658,14 +760,32 @@ pub fn binding_error_payload_json_bytes(error: &BindingError) -> Vec<u8> {
     )
 }
 
-fn error_payload_json_bytes_with_details(
+/// Serializes a binding error for JavaScript transports without losing wide resource counts.
+#[doc(hidden)]
+pub fn binding_error_js_payload_json_bytes(error: &BindingError) -> Vec<u8> {
+    error_payload_json_bytes_with_details(
+        error.status(),
+        error.kind(),
+        error.capability_id(),
+        error
+            .resource_details()
+            .map(BindingResourceErrorDetails::js_safe_json),
+        error.icon_registry.as_deref(),
+        error.message(),
+    )
+}
+
+fn error_payload_json_bytes_with_details<R>(
     status: BindingStatus,
     kind: BindingErrorKind,
     capability_id: Option<&str>,
-    resource: Option<&BindingResourceErrorDetails>,
+    resource: Option<R>,
     icon_registry: Option<&BindingIconRegistryErrorDetails>,
     message: &str,
-) -> Vec<u8> {
+) -> Vec<u8>
+where
+    R: Serialize,
+{
     let payload = ErrorPayload {
         version: BINDING_RESULT_PAYLOAD_VERSION,
         ok: false,
@@ -2176,6 +2296,40 @@ mod tests {
         assert_eq!(json["details"]["resource"]["actual"], 5);
         assert_eq!(json["details"]["resource"]["max"], 4);
         assert_eq!(json["details"]["resource"]["profile"], "constrained");
+        assert_eq!(json["details"]["resource"]["cause"], "ceiling");
+        let payload = binding_error_js_payload_json_bytes(&error);
+        let json: Value = serde_json::from_slice(&payload).unwrap();
+        assert_eq!(json["details"]["resource"]["actual"], 5);
+        assert_eq!(json["details"]["resource"]["max"], 4);
+
+        let error = BindingError::resource_limit_with_cause(
+            BindingResourceLimitCause::ArithmeticOverflow,
+            "layout_model",
+            "max_layout_work_units",
+            u64::MAX,
+            800_000,
+            "interactive",
+            "layout work accounting overflowed",
+        );
+        let payload = binding_error_payload_json_bytes(&error);
+        let json: Value = serde_json::from_slice(&payload).unwrap();
+        assert_eq!(json["details"]["resource"]["cause"], "arithmetic_overflow");
+        assert_eq!(
+            json["details"]["resource"]["actual"].as_u64(),
+            Some(u64::MAX)
+        );
+        assert_eq!(json["details"]["resource"]["max"], 800_000);
+
+        let payload = binding_error_js_payload_json_bytes(&error);
+        let json: Value = serde_json::from_slice(&payload).unwrap();
+        assert_eq!(json["details"]["resource"]["cause"], "arithmetic_overflow");
+        assert_eq!(
+            json["details"]["resource"]["actual"],
+            "18446744073709551615"
+        );
+        assert_eq!(json["details"]["resource"]["max"], 800_000);
+        assert_eq!(std::mem::size_of::<BindingResourceLimitCause>(), 1);
+        assert!(std::mem::size_of::<BindingError>() < 128);
     }
 
     #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]

@@ -232,6 +232,26 @@ fn cursor_context_uses_parser_expected_node_identifier_to_override_generic_compl
 }
 
 #[test]
+fn cursor_context_projects_eof_insertions_before_trailing_line_endings() {
+    for line_ending in ["\n", "\r\n", "\r"] {
+        let text = format!("flowchart TD\nA-->{line_ending}");
+        let insertion = text.len();
+        let index = FenceTextIndex::from_core_facts(facts_expecting(
+            EditorExpectedSyntaxKind::NodeIdentifier,
+            SourceSpan::new(insertion, insertion),
+        ));
+        let context = index.cursor_context(&text, insertion - line_ending.len());
+
+        assert_eq!(
+            context.expected_syntax(),
+            Some(FenceExpectedSyntaxKind::NodeIdentifier),
+            "line ending {line_ending:?}"
+        );
+        assert!(context.offers(FenceCursorCompletionKind::NodeIdentifier));
+    }
+}
+
+#[test]
 fn cursor_context_uses_parser_expected_shape_value_to_override_generic_completion() {
     let mut facts = EditorSemanticFacts::new();
     let text = "flowchart TD\nA@{\n  shape: rou\n}\n";

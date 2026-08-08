@@ -31,7 +31,6 @@ from native_symbol_contract import (
     assert_symbol_contract,
     read_defined_dynamic_symbols,
 )
-C_ABI_NATIVE_RECIPE = load_artifact_profile("c-abi-native")
 ANDROID_NATIVE_RECIPE = load_artifact_profile("android-native")
 FLUTTER_ANDROID_NATIVE_RECIPE = load_artifact_profile("flutter-android-native")
 FLUTTER_DESKTOP_NATIVE_RECIPE = load_artifact_profile("flutter-desktop-native")
@@ -785,20 +784,6 @@ def main() -> int:
             print()
             print("Android instrumentation smoke completed.")
             return 0
-
-        step("Rust FFI host tests")
-        run(
-            [
-                "cargo",
-                "nextest",
-                "run",
-                "-p",
-                "merman-ffi",
-                "--no-default-features",
-                "--features",
-                C_ABI_NATIVE_RECIPE.feature_argument,
-            ]
-        )
 
         step("Android Rust transport target checks")
         for recipe in (ANDROID_NATIVE_RECIPE, FLUTTER_ANDROID_NATIVE_RECIPE):

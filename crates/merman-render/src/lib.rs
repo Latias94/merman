@@ -31,6 +31,7 @@ pub mod info;
 pub mod ishikawa;
 pub mod journey;
 pub mod kanban;
+mod layout_work;
 pub mod math;
 mod mermaid_style;
 pub mod mindmap;
@@ -163,9 +164,9 @@ pub use resources::{
     CLI_DEFAULT_RESOURCE_PROFILE, ClassComplexity, FlowchartComplexity,
     GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, MindmapComplexity, RenderResourceLimitId,
     RenderResourcePolicy, RenderResourceProfile, RenderResourceProfileDescriptor,
-    ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId, ResourceLimitOverride,
-    ResourceLimitOverrideError, ResourceLimitPhase, ZenumlComplexity, resource_limit_descriptors,
-    resource_profile_descriptors,
+    ResourceLimitCause, ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId,
+    ResourceLimitOverride, ResourceLimitOverrideError, ResourceLimitPhase, ZenumlComplexity,
+    resource_limit_descriptors, resource_profile_descriptors,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -205,6 +206,14 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl From<dugong::LayoutError> for Error {
+    fn from(error: dugong::LayoutError) -> Self {
+        Self::InvalidModel {
+            message: error.to_string(),
+        }
+    }
+}
 
 impl Error {
     pub fn svg_postprocess(pass: impl Into<String>, message: impl Into<String>) -> Self {
@@ -315,6 +324,10 @@ impl<'a> LayoutExecution<'a> {
         std::sync::Arc::clone(self.session.work_meter())
     }
 
+    pub(crate) fn work_meter_ref(&self) -> &crate::resources::OperationWorkMeter {
+        self.session.work_meter().as_ref()
+    }
+
     pub(crate) fn local_time_zone(&self) -> &merman_core::time::LocalTimeZone {
         self.session.local_time_zone()
     }
@@ -356,14 +369,15 @@ pub(crate) fn layout_class_typed_by_engine(
     }
 
     options.resource_policy().check_class_complexity(model)?;
-    options
-        .resource_policy()
-        .check_layout_work_units(class::class_layout_work_units(model))?;
+    let mut work_control = layout_work::OperationLayoutWorkControl::new(options.work_meter());
+    let preparation_work = class::class_layout_work_units(model, &work_control)?;
+    work_control.charge_adapter(preparation_work)?;
     class::layout_class_diagram_typed_with_config(
         model,
         effective_config,
         options.text_measurer(),
         options.math_renderer(),
+        &mut work_control,
     )
 }
 
@@ -375,15 +389,16 @@ fn layout_class_elk_typed_by_feature(
     options: &LayoutExecution<'_>,
 ) -> Result<model::ClassDiagramLayout> {
     options.resource_policy().check_class_complexity(model)?;
-    options
-        .resource_policy()
-        .check_layout_work_units(class::class_layout_work_units(model))?;
+    let mut work_control = layout_work::OperationLayoutWorkControl::new(options.work_meter());
+    let preparation_work = class::class_layout_work_units(model, &work_control)?;
+    work_control.charge_adapter(preparation_work)?;
     class::layout_class_diagram_elk_typed_with_config_and_operation_seed(
         model,
         effective_config,
         options.text_measurer(),
         options.math_renderer(),
         options.elk_operation_seed(),
+        &mut work_control,
     )
 }
 
@@ -400,29 +415,50 @@ fn layout_class_elk_typed_by_feature(
     })
 }
 
+#[cfg(all(test, feature = "layout-elk"))]
 pub(crate) fn layout_flowchart_typed_by_engine(
     diagram_type: &str,
     model: &FlowchartModel,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
 ) -> Result<model::FlowchartLayout> {
+    layout_flowchart_typed_with_render_labels_by_engine(
+        diagram_type,
+        model,
+        &merman_core::diagrams::flowchart::FlowchartRenderLabelSources::default(),
+        effective_config,
+        options,
+        None,
+    )
+}
+
+pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
+    diagram_type: &str,
+    model: &FlowchartModel,
+    render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderLabelSources,
+    effective_config: &merman_core::MermaidConfig,
+    options: &LayoutExecution<'_>,
+    svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
+) -> Result<model::FlowchartLayout> {
     if uses_elk_layout(effective_config) {
         return layout_flowchart_elk_typed_by_feature(
             diagram_type,
             model,
+            render_label_sources,
             effective_config,
             options,
+            svg_label_sidecar,
         );
     }
 
-    options
-        .resource_policy()
-        .check_layout_work_units(flowchart::flowchart_layout_work_units(model))?;
-    flowchart::layout_flowchart_typed(
+    flowchart::layout_flowchart_typed_with_render_labels_and_work_meter_and_svg_label_sidecar(
         model,
+        render_label_sources,
         effective_config,
         options.text_measurer(),
         options.math_renderer(),
+        svg_label_sidecar,
+        options.work_meter(),
     )
 }
 
@@ -430,18 +466,22 @@ pub(crate) fn layout_flowchart_typed_by_engine(
 fn layout_flowchart_elk_typed_by_feature(
     _diagram_type: &str,
     model: &FlowchartModel,
+    render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderLabelSources,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
+    svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
 ) -> Result<model::FlowchartLayout> {
-    options
-        .resource_policy()
-        .check_layout_work_units(flowchart::flowchart_layout_work_units(model))?;
-    flowchart::elk::layout_flowchart_elk_typed_with_operation_seed(
+    flowchart::elk::layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
         model,
+        render_label_sources,
         effective_config,
-        options.text_measurer(),
-        options.math_renderer(),
-        options.elk_operation_seed(),
+        flowchart::elk::FlowchartElkLayoutExecution::new(
+            options.text_measurer(),
+            options.math_renderer(),
+            options.elk_operation_seed(),
+            svg_label_sidecar,
+            options.work_meter(),
+        ),
     )
 }
 
@@ -449,8 +489,10 @@ fn layout_flowchart_elk_typed_by_feature(
 fn layout_flowchart_elk_typed_by_feature(
     diagram_type: &str,
     _model: &FlowchartModel,
+    _render_label_sources: &merman_core::diagrams::flowchart::FlowchartRenderLabelSources,
     _effective_config: &merman_core::MermaidConfig,
     _options: &LayoutExecution<'_>,
+    _svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
 ) -> Result<model::FlowchartLayout> {
     Err(Error::MissingCapability {
         capability: RenderCapability::LayoutElk,
@@ -463,7 +505,9 @@ mod tests {
     use super::*;
     #[cfg(feature = "layout-elk")]
     use merman_core::ParsedDiagramRender;
-    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+    #[cfg(feature = "layout-elk")]
+    use merman_core::RenderSemanticModel;
+    use merman_core::{Engine, ParseOptions};
 
     #[test]
     fn render_capability_ids_and_error_accessor_are_stable() {
@@ -668,7 +712,7 @@ A-->B
     }
 
     #[test]
-    fn render_model_dispatch_rejects_flowchart_cluster_work_before_layout() {
+    fn render_model_dispatch_rejects_flowchart_dagre_work_during_its_first_owner_phase() {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(
                 "flowchart TD\nsubgraph Cluster\nA\nend\nA-->B",
@@ -676,15 +720,10 @@ A-->B
             )
             .unwrap()
             .unwrap();
-        let RenderSemanticModel::Flowchart(model) = parsed.model() else {
-            panic!("expected flowchart render model");
-        };
-        let work = flowchart::flowchart_layout_work_units(model);
-        assert!(work > 1);
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_resource_policy(
                 RenderResourcePolicy::unbounded_for_trusted_input()
-                    .with_limit(ResourceLimitId::MaxLayoutWorkUnits, work - 1)
+                    .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
                     .unwrap(),
             )
             .begin_session()
@@ -700,7 +739,7 @@ A-->B
         };
         assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
         assert_eq!(limit.limit, "max_layout_work_units");
-        assert_eq!(limit.actual, work);
+        assert!(limit.actual > 1);
     }
 
     fn assert_class_layout_work_limit(source: &str) {

@@ -1,0 +1,80 @@
+{
+  "schema_version": 2,
+  "lane_id": "flowchart-elk-separate-children-memory",
+  "workload": "flowchart-elk-separate-children-depth-v2",
+  "evidence_class": "infrastructure-smoke",
+  "candidate_admission": false,
+  "probe": {
+    "protocol_schema_version": 2,
+    "package": "merman",
+    "package_manifest": "crates/merman/Cargo.toml",
+    "bench": "elk_hierarchy_memory",
+    "features": [
+      "layout-elk"
+    ],
+    "default_features": false,
+    "inputs": [
+      {
+        "path": "crates/merman/benches/elk_hierarchy_memory.rs",
+        "sha256": "9dccd915ab120629e971beef0deaebfcd7d6789baefe531b90c57832a33482ae"
+      },
+      {
+        "path": "crates/merman/benches/native_memory/allocator.rs",
+        "sha256": "934c9e450d67f0fced79288e02b3056791120107dcd05f7038441c2516ada650"
+      }
+    ]
+  },
+  "scale": {
+    "dimension": "scope_cluster_count",
+    "units_per_scale": 2
+  },
+  "semantic_response": {
+    "scale_field": "scope_cluster_count",
+    "operation_output_sha256": "30d91e9ca3384155ebe26a4b4315d740c9746cb899a77eb513b1f966d6adb901",
+    "zero_output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "operation": {
+      "kind": "flowchart-elk-hierarchy-render-v2",
+      "metadata_diagram_type_matches": true,
+      "metadata_layout_elk": true,
+      "semantic_kind_flowchart": true,
+      "prepared_family_flowchart": true,
+      "svg_role_matches": true,
+      "svg_contains_no_nan": true,
+      "terminal_node_count": 1,
+      "scope_cluster_ids_unique": true,
+      "scope_cluster_ids_complete": true,
+      "view_box_finite_positive": true,
+      "strict_nested_geometry": true,
+      "rendered_edge_count": 0
+    },
+    "zero": {
+      "kind": "flowchart-elk-hierarchy-render-v2",
+      "metadata_diagram_type_matches": false,
+      "metadata_layout_elk": false,
+      "semantic_kind_flowchart": false,
+      "prepared_family_flowchart": false,
+      "svg_role_matches": false,
+      "svg_contains_no_nan": false,
+      "terminal_node_count": 0,
+      "scope_cluster_ids_unique": false,
+      "scope_cluster_ids_complete": false,
+      "view_box_finite_positive": false,
+      "strict_nested_geometry": false,
+      "rendered_edge_count": 0
+    }
+  },
+  "metrics": {
+    "allocation_count": {
+      "slope_cap": 2.0,
+      "max_scale_cap": 10000000
+    },
+    "allocated_bytes": {
+      "slope_cap": 2.0,
+      "max_scale_cap": 8589934592
+    },
+    "peak_growth_bytes": {
+      "slope_cap": 2.0,
+      "max_scale_cap": 2147483648
+    }
+  }
+}

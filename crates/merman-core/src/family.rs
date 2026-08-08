@@ -6,6 +6,7 @@
 use crate::detect::DetectorFn;
 use crate::diagram::{
     BuiltInDiagramSemanticParser, BuiltInRenderSemanticParser, RenderSemanticModel,
+    RenderSemanticParseOutput,
 };
 use crate::{
     EditorSemanticFacts, Error, MermaidConfig, ParseControl, ParseControlResult, ParseMetadata,
@@ -487,8 +488,10 @@ pub(crate) fn apply_diagram_type_config_effects(
 
 macro_rules! render_parser {
     ($fn_name:ident, $parser:path, $variant:path) => {
-        fn $fn_name(code: &str, meta: &ParseMetadata) -> Result<RenderSemanticModel> {
-            $parser(code, meta).map($variant)
+        fn $fn_name(code: &str, meta: &ParseMetadata) -> Result<RenderSemanticParseOutput> {
+            $parser(code, meta)
+                .map($variant)
+                .map(RenderSemanticParseOutput::new)
         }
     };
 }
@@ -518,11 +521,11 @@ render_parser!(
     crate::diagrams::sequence::parse_sequence_model_for_render,
     RenderSemanticModel::Sequence
 );
-render_parser!(
-    render_flowchart,
-    crate::diagrams::flowchart::parse_flowchart_model_for_render,
-    RenderSemanticModel::Flowchart
-);
+fn render_flowchart(code: &str, meta: &ParseMetadata) -> Result<RenderSemanticParseOutput> {
+    let (model, label_sources) =
+        crate::diagrams::flowchart::parse_flowchart_model_with_render_context(code, meta)?;
+    Ok(RenderSemanticParseOutput::flowchart(model, label_sources))
+}
 render_parser!(
     render_class,
     crate::diagrams::class::parse_class_typed,

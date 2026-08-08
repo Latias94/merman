@@ -17,7 +17,7 @@ fn flowchart_label_html_impl(
     config: &merman_core::MermaidConfig,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
 ) -> String {
-    if label.trim().is_empty() {
+    if crate::flowchart::flowchart_label_text_is_empty_for_mode(label, true) {
         return String::new();
     }
 
@@ -92,7 +92,7 @@ fn flowchart_label_html_impl(
     }
 
     fn is_single_img_label(label: &str) -> bool {
-        let t = label.trim();
+        let t = crate::flowchart::flowchart_trim_html_collapsible_whitespace(label);
         let lower = t.to_ascii_lowercase();
         if !lower.starts_with("<img") {
             return false;
@@ -100,7 +100,7 @@ fn flowchart_label_html_impl(
         let Some(end) = t.find('>') else {
             return false;
         };
-        t[end + 1..].trim().is_empty()
+        crate::flowchart::flowchart_trim_html_collapsible_whitespace(&t[end + 1..]).is_empty()
     }
 
     fn trim_markdown_trailing_newlines(
@@ -110,14 +110,6 @@ fn flowchart_label_html_impl(
             std::borrow::Cow::Owned(input.trim_end_matches('\n').to_string())
         } else {
             input
-        }
-    }
-
-    fn replace_non_markdown_html_line_breaks(input: &str) -> String {
-        if input.contains("\\n") || input.contains('\n') {
-            input.replace("\\n", "<br />").replace('\n', "<br />")
-        } else {
-            input.to_string()
         }
     }
 
@@ -141,7 +133,7 @@ fn flowchart_label_html_impl(
         }
 
         fn is_punctuation(ch: char) -> bool {
-            !ch.is_whitespace() && !ch.is_alphanumeric()
+            !crate::text::is_ecmascript_whitespace(ch) && !ch.is_alphanumeric()
         }
 
         fn mermaid_delim_can_open_close(
@@ -149,8 +141,8 @@ fn flowchart_label_html_impl(
             prev: Option<char>,
             next: Option<char>,
         ) -> (bool, bool) {
-            let prev_is_ws = prev.is_none_or(|c| c.is_whitespace());
-            let next_is_ws = next.is_none_or(|c| c.is_whitespace());
+            let prev_is_ws = prev.is_none_or(crate::text::is_ecmascript_whitespace);
+            let next_is_ws = next.is_none_or(crate::text::is_ecmascript_whitespace);
             let prev_is_punct = prev.is_some_and(is_punctuation);
             let next_is_punct = next.is_some_and(is_punctuation);
 
@@ -337,44 +329,30 @@ fn flowchart_label_html_impl(
                 let wants_p = crate::text::mermaid_markdown_wants_paragraph_wrap(decoded.as_ref());
                 mermaid_markdown_to_html_minimal(decoded.as_ref(), markdown_auto_wrap, wants_p)
             };
-            let html_out = html_out.trim().to_string();
+            let html_out =
+                crate::flowchart::flowchart_trim_html_collapsible_whitespace(&html_out).to_string();
             let html_out = crate::text::replace_fontawesome_icons(&html_out);
             crate::xml::normalize_html_fragment_for_xhtml(&merman_core::sanitize::sanitize_text(
                 &html_out, config,
             ))
         }
         _ => {
-            let label = if label.contains("\r\n") {
-                label.replace("\r\n", "\n")
-            } else {
-                label.to_string()
-            };
-            let label = crate::flowchart::flowchart_decode_label_escapes(&label);
-            let label = if label_type == "string" {
-                label.trim().to_string()
-            } else {
-                label
-            };
-            let label = label.trim_end_matches('\n');
-            let label = crate::flowchart::flowchart_normalize_plain_multiline_label_for_html(label);
-            let label = label.as_ref();
+            let can_skip_sanitizer = !label.contains('<')
+                && !label.contains('>')
+                && !label.contains('&')
+                && !label.contains(":fa-");
+            let label = crate::flowchart::flowchart_non_markdown_label_for_html(label, label_type);
 
             // Fast path for the overwhelmingly common case: plain text labels (no HTML, no
             // entities, no Mermaid icon syntax). In upstream Mermaid, these go through
             // `sanitizeText(...)` but the output is unchanged; skipping the HTML sanitizer here is
             // a large win in flowcharts with many nodes.
-            if !label.contains('<')
-                && !label.contains('>')
-                && !label.contains('&')
-                && !label.contains(":fa-")
-            {
-                let inner = replace_non_markdown_html_line_breaks(label);
-                return format!("<p>{inner}</p>");
+            if can_skip_sanitizer {
+                return format!("<p>{label}</p>");
             }
 
             // Mermaid's nonMarkdownToHTML() wraps every non-empty label in one paragraph.
             // Markdown block classification must not leak into this branch.
-            let label = replace_non_markdown_html_line_breaks(label);
             let fixed_img_width = is_single_img_label(&label);
             let label = normalize_flowchart_img_tags(&label, fixed_img_width);
             let wrapped = format!("<p>{}</p>", label);
@@ -398,20 +376,61 @@ pub(in crate::svg::parity) fn flowchart_label_plain_text(
     crate::flowchart::flowchart_label_plain_text_for_layout(label, label_type, html_labels)
 }
 
-pub(in crate::svg::parity) fn write_flowchart_svg_text(
-    out: &mut String,
-    text: &str,
-    include_style: bool,
-) {
-    crate::svg::parity::label::write_svg_text(out, text, include_style);
-}
-
 pub(in crate::svg::parity) fn write_flowchart_svg_text_centered(
     out: &mut String,
     text: &str,
     include_style: bool,
 ) {
-    crate::svg::parity::label::write_svg_text_centered(out, text, include_style);
+    crate::svg::parity::label::write_svg_text_centered_from_create_text_source(
+        out,
+        text,
+        include_style,
+    );
+}
+
+pub(in crate::svg::parity) fn write_flowchart_empty_svg_text_centered(
+    out: &mut String,
+    include_style: bool,
+) {
+    crate::svg::parity::label::write_svg_text_source_word_lines(
+        out,
+        &[Vec::new()],
+        include_style,
+        true,
+    );
+}
+
+pub(in crate::svg::parity) fn write_flowchart_svg_source_word_lines(
+    out: &mut String,
+    lines: &[Vec<String>],
+    include_style: bool,
+) {
+    crate::svg::parity::label::write_svg_text_source_word_lines(out, lines, include_style, false);
+}
+
+pub(in crate::svg::parity) fn write_flowchart_svg_source_word_lines_centered_with_style(
+    out: &mut String,
+    lines: &[Vec<String>],
+    style: &str,
+) {
+    crate::svg::parity::label::write_svg_text_source_word_lines_with_style(out, lines, style, true);
+}
+
+#[cfg(test)]
+pub(in crate::svg::parity) fn wrap_flowchart_svg_source_word_lines(
+    measurer: &dyn crate::text::TextMeasurer,
+    lines: &[Vec<String>],
+    style: &crate::text::TextStyle,
+    max_width_px: Option<f64>,
+    break_long_words: bool,
+) -> Vec<Vec<String>> {
+    crate::flowchart::flowchart_wrap_svg_source_word_lines(
+        measurer,
+        lines,
+        style,
+        max_width_px,
+        break_long_words,
+    )
 }
 
 pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown(
@@ -419,7 +438,11 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown(
     markdown: &str,
     include_style: bool,
 ) {
-    crate::svg::parity::label::write_svg_text_markdown(out, markdown, include_style);
+    crate::svg::parity::label::write_svg_text_markdown_from_create_text_source(
+        out,
+        markdown,
+        include_style,
+    );
 }
 
 pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped_centered(
@@ -430,7 +453,7 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped_centered
     style: &crate::text::TextStyle,
     max_width_px: Option<f64>,
 ) {
-    crate::svg::parity::label::write_svg_text_markdown_wrapped_centered(
+    crate::svg::parity::label::write_svg_text_markdown_wrapped_centered_from_create_text_source(
         out,
         markdown,
         include_style,
@@ -448,7 +471,7 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped(
     style: &crate::text::TextStyle,
     max_width_px: Option<f64>,
 ) {
-    crate::svg::parity::label::write_svg_text_markdown_wrapped(
+    crate::svg::parity::label::write_svg_text_markdown_wrapped_from_create_text_source(
         out,
         markdown,
         include_style,
@@ -456,4 +479,62 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped(
         style,
         max_width_px,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        flowchart_label_html_impl, wrap_flowchart_svg_source_word_lines,
+        write_flowchart_svg_source_word_lines,
+    };
+
+    #[test]
+    fn html_label_output_preserves_entity_and_direct_nbsp_boundaries() {
+        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": true,
+            "securityLevel": "loose"
+        }));
+        let cases = [
+            ("&nbsp;A", "<p>\u{00A0}A</p>"),
+            ("A&nbsp;", "<p>A\u{00A0}</p>"),
+            ("&nbsp;", "<p>\u{00A0}</p>"),
+            ("\u{00A0}A", "<p>\u{00A0}A</p>"),
+            ("A\u{00A0}", "<p>A\u{00A0}</p>"),
+            ("\u{00A0}", "<p>\u{00A0}</p>"),
+            ("A<br>&nbsp;", "<p>A<br />\u{00A0}</p>"),
+        ];
+
+        for label_type in ["string", "markdown"] {
+            for (input, expected) in cases {
+                assert_eq!(
+                    flowchart_label_html_impl(input, label_type, &config, None),
+                    expected,
+                    "label_type={label_type}, input={input:?}",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn svg_source_word_wrapping_keeps_attribute_spaces_inside_the_tag_word() {
+        let source = crate::flowchart::flowchart_non_markdown_svg_source_word_lines(
+            "<span class='foo bar'>X</span>",
+        );
+        let wrapped = wrap_flowchart_svg_source_word_lines(
+            &crate::text::VendoredFontMetricsTextMeasurer::default(),
+            &source,
+            &crate::text::TextStyle::default(),
+            Some(1_000.0),
+            true,
+        );
+        assert_eq!(wrapped, source);
+
+        let mut svg = String::new();
+        write_flowchart_svg_source_word_lines(&mut svg, &wrapped, false);
+        assert_eq!(svg.matches("text-inner-tspan").count(), 3, "{svg}");
+        assert!(
+            svg.contains(">&lt;span class=&#39;foo bar&#39;></tspan>"),
+            "{svg}"
+        );
+    }
 }

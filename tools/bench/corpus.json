@@ -184,6 +184,181 @@
         "svg_viewbox_width",
         "svg_viewbox_height"
       ]
+    },
+    {
+      "id": "flowchart-svg-label-artifact-memory",
+      "kind": "public",
+      "owner": "merman",
+      "public_operation": "prepare-render",
+      "diagnostic_stage": null,
+      "parent_public_lane": null,
+      "process_lifecycle": "fresh-process",
+      "engine_lifecycle": "reused-engine",
+      "logical_operations_per_estimate": 1,
+      "transport": "native-system-allocator-subprocess",
+      "required_features": ["svg"],
+      "selector": "memory/flowchart_svg_label_artifact/{fixture}",
+      "history_aliases": [],
+      "size_vector": [1, 2, 4, 10, 32, 100],
+      "workload": "flowchart-non-markdown-svg-node-label-prepare-v1",
+      "evidence_contract": "docs/performance/contracts/flowchart-svg-label-artifact-memory-v1.json",
+      "measurement_metrics": [
+        "allocation_count",
+        "allocated_bytes",
+        "peak_growth_bytes",
+        "retained_growth_bytes"
+      ],
+      "semantic_output_dimensions": [
+        "kind",
+        "label_profile",
+        "metadata_diagram_type_matches",
+        "prepared_family_flowchart",
+        "html_labels_disabled",
+        "prepared_render_alive_at_checkpoint",
+        "projected_node_labels_match_workload",
+        "unique_projected_node_labels",
+        "projected_node_label_count"
+      ]
+    },
+    {
+      "id": "flowchart-elk-separate-children-memory",
+      "kind": "public",
+      "owner": "merman",
+      "public_operation": "render-flowchart-elk-hierarchy-svg",
+      "diagnostic_stage": null,
+      "parent_public_lane": null,
+      "process_lifecycle": "fresh-process",
+      "engine_lifecycle": "reused-engine",
+      "logical_operations_per_estimate": 1,
+      "transport": "native-system-allocator-subprocess",
+      "required_features": ["layout-elk"],
+      "selector": "memory/flowchart_elk_separate_children/{fixture}",
+      "history_aliases": [],
+      "size_vector": [1, 2, 4, 10, 32, 100],
+      "workload": "flowchart-elk-separate-children-depth-v2",
+      "evidence_contract": "docs/performance/contracts/flowchart-elk-separate-children-memory-v2.json",
+      "measurement_metrics": [
+        "allocation_count",
+        "allocated_bytes",
+        "peak_growth_bytes"
+      ],
+      "semantic_output_dimensions": [
+        "kind",
+        "metadata_diagram_type_matches",
+        "metadata_layout_elk",
+        "semantic_kind_flowchart",
+        "prepared_family_flowchart",
+        "svg_role_matches",
+        "svg_contains_no_nan",
+        "terminal_node_count",
+        "scope_cluster_ids_unique",
+        "scope_cluster_ids_complete",
+        "view_box_finite_positive",
+        "strict_nested_geometry",
+        "rendered_edge_count",
+        "scope_cluster_count"
+      ]
+    },
+    {
+      "id": "sequence-message-repeated-memory",
+      "kind": "public",
+      "owner": "merman",
+      "public_operation": "prepare-render",
+      "diagnostic_stage": null,
+      "parent_public_lane": null,
+      "process_lifecycle": "fresh-process",
+      "engine_lifecycle": "reused-engine",
+      "logical_operations_per_estimate": 1,
+      "transport": "native-system-allocator-subprocess",
+      "required_features": ["svg"],
+      "selector": "memory/sequence_message_repeated/{fixture}",
+      "history_aliases": [],
+      "size_vector": [1, 2, 4, 10, 32, 100],
+      "workload": "sequence-outer-loop-repeated-message-prepare-v1",
+      "evidence_contract": "docs/performance/contracts/sequence-message-repeated-memory-v1.json",
+      "measurement_metrics": [
+        "allocation_count",
+        "allocated_bytes",
+        "peak_growth_bytes",
+        "retained_growth_bytes"
+      ],
+      "semantic_output_dimensions": [
+        "kind",
+        "label_profile",
+        "message_profile",
+        "metadata_diagram_type_matches",
+        "prepared_family_sequence",
+        "prepared_render_alive_at_checkpoint",
+        "projected_message_count_matches",
+        "equal_length_message_labels",
+        "message_count"
+      ]
+    },
+    {
+      "id": "sequence-message-unique-memory",
+      "kind": "public",
+      "owner": "merman",
+      "public_operation": "prepare-render",
+      "diagnostic_stage": null,
+      "parent_public_lane": null,
+      "process_lifecycle": "fresh-process",
+      "engine_lifecycle": "reused-engine",
+      "logical_operations_per_estimate": 1,
+      "transport": "native-system-allocator-subprocess",
+      "required_features": ["svg"],
+      "selector": "memory/sequence_message_unique/{fixture}",
+      "history_aliases": [],
+      "size_vector": [1, 2, 4, 10, 32, 100],
+      "workload": "sequence-outer-loop-unique-message-prepare-v1",
+      "evidence_contract": "docs/performance/contracts/sequence-message-unique-memory-v1.json",
+      "measurement_metrics": [
+        "allocation_count",
+        "allocated_bytes",
+        "peak_growth_bytes",
+        "retained_growth_bytes"
+      ],
+      "semantic_output_dimensions": [
+        "kind",
+        "label_profile",
+        "message_profile",
+        "metadata_diagram_type_matches",
+        "prepared_family_sequence",
+        "prepared_render_alive_at_checkpoint",
+        "projected_message_count_matches",
+        "equal_length_message_labels",
+        "message_count"
+      ]
+    },
+    {
+      "id": "state-rough-retained-lifecycle",
+      "kind": "public",
+      "owner": "merman-render",
+      "public_operation": "render-svg",
+      "diagnostic_stage": null,
+      "parent_public_lane": null,
+      "process_lifecycle": "reused-process",
+      "engine_lifecycle": "reused-engine",
+      "logical_operations_per_estimate": 2057,
+      "transport": "native-library-test-probe",
+      "required_features": [],
+      "selector": "state_rough_lifecycle/{fixture}",
+      "history_aliases": [],
+      "size_vector": [1, 16, 64, 256, 1024, 2048],
+      "workload": "state-rough-seeded-long-lived-v1",
+      "evidence_contract": "docs/performance/contracts/state-rough-lifecycle-v2.json",
+      "measurement_metrics": [
+        "operation_cache_hits",
+        "cross_operation_cache_hits",
+        "post_operation_retained_entries",
+        "post_operation_retained_owned_bytes"
+      ],
+      "semantic_output_dimensions": [
+        "svg_sha256",
+        "svg_bytes",
+        "svg_elements",
+        "configured_zero_seed_resolution",
+        "fallback_bypass"
+      ]
     }
   ],
   "fixtures": [
@@ -318,6 +493,16 @@
       "quality": ["svg_sanity", "dom_compare", "raster_compare"]
     },
     {
+      "name": "flowchart_elk_nested_directions",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "fixtures/flowchart/upstream_cypress_flowchart_elk_spec_2050_elk_handling_of_different_rendering_direction_in_subgraphs_036.mmd",
+      "suites": ["flowchart", "stress"],
+      "features": ["elk", "subgraphs", "nested_directions"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
       "name": "flowchart_asymmetric_components",
       "family": "flowchart",
       "size": "medium",
@@ -346,6 +531,16 @@
       "suites": ["standard", "flowchart", "stress"],
       "features": ["long_labels", "edge_labels"],
       "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "flowchart_svg_label_reuse",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_svg_label_reuse.mmd",
+      "suites": ["standard", "flowchart", "stress"],
+      "features": ["svg_labels", "node_labels", "edge_labels", "subgraph_titles", "wrapping"],
+      "quality": ["svg_sanity", "dom_compare"]
     },
     {
       "name": "flowchart_selfloop_bidi",
@@ -456,6 +651,56 @@
       "suites": ["quick", "standard", "cross_family"],
       "features": ["actors", "messages", "notes"],
       "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "sequence_actor_only_control",
+      "family": "sequence",
+      "size": "tiny",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/sequence_actor_only_control.mmd",
+      "suites": ["stress"],
+      "features": ["actors", "no_messages"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "sequence_block_repeat_low",
+      "family": "sequence",
+      "size": "tiny",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/sequence_block_repeat_low.mmd",
+      "suites": ["stress"],
+      "features": ["actors", "control_blocks", "messages", "repeated_text"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "sequence_block_repeat_medium",
+      "family": "sequence",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/sequence_block_repeat_medium.mmd",
+      "suites": ["stress"],
+      "features": ["actors", "control_blocks", "messages", "repeated_text"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "sequence_block_repeat_high",
+      "family": "sequence",
+      "size": "large",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/sequence_block_repeat_high.mmd",
+      "suites": ["stress"],
+      "features": ["actors", "control_blocks", "messages", "repeated_text"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "sequence_block_unique_high",
+      "family": "sequence",
+      "size": "large",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/sequence_block_unique_high.mmd",
+      "suites": ["stress"],
+      "features": ["actors", "control_blocks", "messages", "unique_text"],
+      "quality": ["svg_sanity", "dom_compare"]
     },
     {
       "name": "er_medium",

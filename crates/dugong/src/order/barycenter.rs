@@ -74,7 +74,8 @@ struct ConflictEntry {
     indegree: usize,
     ins: Vec<usize>,
     outs: Vec<usize>,
-    vs: Vec<usize>,
+    head: Option<usize>,
+    tail: Option<usize>,
     i: usize,
     barycenter: Option<f64>,
     weight: Option<f64>,
@@ -92,13 +93,15 @@ where
 {
     let mut id_to_ix: HashMap<&str, usize> = HashMap::default();
     let mut conflicts: Vec<ConflictEntry> = Vec::with_capacity(entries.len());
+    let mut next_in_group = vec![None; entries.len()];
     for (ix, entry) in entries.iter().enumerate() {
         id_to_ix.insert(entry.v.as_str(), ix);
         conflicts.push(ConflictEntry {
             indegree: 0,
             ins: Vec::new(),
             outs: Vec::new(),
-            vs: vec![ix],
+            head: Some(ix),
+            tail: Some(ix),
             i: ix,
             barycenter: entry.barycenter,
             weight: entry.weight,
@@ -148,7 +151,7 @@ where
                 (Some(ub), Some(vb)) => ub >= vb,
             };
             if should_merge {
-                merge_conflict_entries(&mut conflicts, v_ix, u);
+                merge_conflict_entries(&mut conflicts, &mut next_in_group, v_ix, u);
             }
         }
 
@@ -168,9 +171,11 @@ where
         if entry.merged {
             continue;
         }
-        let mut vs: Vec<String> = Vec::with_capacity(entry.vs.len());
-        for &ix in &entry.vs {
-            vs.push(entries[ix].v.clone());
+        let mut vs = Vec::new();
+        let mut current = entry.head;
+        while let Some(entry_ix) = current {
+            vs.push(entries[entry_ix].v.clone());
+            current = next_in_group[entry_ix];
         }
         out.push(SortEntry {
             vs,
@@ -184,7 +189,12 @@ where
 
 // The conflict resolution algorithm needs a helper that can mutate two entries in-place.
 // We keep it as a standalone function to make the port easy to review.
-fn merge_conflict_entries(mapped: &mut [ConflictEntry], target: usize, source: usize) {
+fn merge_conflict_entries(
+    mapped: &mut [ConflictEntry],
+    next_in_group: &mut [Option<usize>],
+    target: usize,
+    source: usize,
+) {
     if target == source {
         return;
     }
@@ -218,9 +228,17 @@ fn merge_conflict_entries(mapped: &mut [ConflictEntry], target: usize, source: u
         weight += w;
     }
 
-    let mut merged_vs = std::mem::take(&mut s.vs);
-    merged_vs.extend(std::mem::take(&mut t.vs));
-    t.vs = merged_vs;
+    if let Some(source_tail) = s.tail
+        && source_tail < next_in_group.len()
+    {
+        next_in_group[source_tail] = t.head;
+    }
+    t.head = s.head.or(t.head);
+    if t.tail.is_none() {
+        t.tail = s.tail;
+    }
+    s.head = None;
+    s.tail = None;
 
     if weight != 0.0 {
         t.barycenter = Some(sum / weight);
