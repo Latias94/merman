@@ -1220,7 +1220,7 @@ function assertEditorLanguageSurface(enabled) {
         cause: "arithmetic_overflow",
         limit_id: "max_layout_work_units",
         phase: "layout_model",
-        actual: Number.MAX_SAFE_INTEGER,
+        actual: "18446744073709551615",
         max: 800_000,
         profile: "interactive",
       },
@@ -1232,6 +1232,8 @@ function assertEditorLanguageSurface(enabled) {
     "expected structured resource cause to satisfy the binding error contract"
   );
   assert.equal(resourceError.details.resource.cause, "arithmetic_overflow");
+  assert.equal(resourceError.details.resource.actual, "18446744073709551615");
+  assert.equal(resourceError.details.resource.max, 800_000);
   assert.equal(
     api.isBindingErrorPayload({
       ...resourceError,
@@ -1245,6 +1247,27 @@ function assertEditorLanguageSurface(enabled) {
     false,
     "resource details without a cause must not satisfy the binding error contract"
   );
+  for (const actual of [
+    "5",
+    "09007199254740992",
+    "18446744073709551616",
+    "-9007199254740992",
+    Number.MAX_SAFE_INTEGER + 1,
+  ]) {
+    assert.equal(
+      api.isBindingErrorPayload({
+        ...resourceError,
+        details: {
+          resource: {
+            ...resourceError.details.resource,
+            actual,
+          },
+        },
+      }),
+      false,
+      `invalid resource count ${actual} must not satisfy the binding error contract`
+    );
+  }
 
   assert.deepEqual(
     api.editorDiagramDetection(

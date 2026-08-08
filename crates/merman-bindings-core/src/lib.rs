@@ -49,6 +49,8 @@ pub use common::{
     binding_error_payload_json_bytes, error_payload_json_bytes, render_payload_json_bytes,
     render_resource_options_unavailable, resource_options_json,
 };
+#[doc(hidden)]
+pub use common::{BindingJsSafeResourceErrorDetails, binding_error_js_payload_json_bytes};
 pub use engine::BindingEngine;
 pub use lifecycle::{
     BindingCallbackAdmission, BindingEngineAdmission, BindingEngineAdmissionError,

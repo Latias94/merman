@@ -42,7 +42,7 @@ struct NativeFailure {
     capability_id: Option<&'static str>,
     resource: Option<BindingResourceErrorDetails>,
     icon_registry: Option<Box<BindingIconRegistryErrorDetails>>,
-    message: String,
+    message: Box<str>,
 }
 
 impl NativeFailure {
@@ -78,7 +78,7 @@ impl NativeFailure {
             capability_id,
             resource,
             icon_registry: None,
-            message: message.into(),
+            message: message.into().into_boxed_str(),
         }
     }
 
@@ -302,7 +302,7 @@ fn native_error_json(failure: &NativeFailure) -> Vec<u8> {
         "status_name": merman_native_status_name(failure.status),
         "kind": merman_native_error_kind_name(failure.kind),
         "capability_id": failure.capability_id,
-        "message": failure.message.as_str(),
+        "message": failure.message.as_ref(),
     });
     if failure.resource.is_some() || failure.icon_registry.is_some() {
         let mut details = serde_json::Map::new();
@@ -2411,6 +2411,11 @@ mod tests {
     }
 
     #[test]
+    fn native_failure_stays_below_large_result_threshold() {
+        assert!(size_of::<NativeFailure>() < 128);
+    }
+
+    #[test]
     fn native_error_json_preserves_structured_resource_details() {
         let failure = native_failure_from_binding(BindingError::resource_limit(
             "embedded_image_decode",
@@ -2968,7 +2973,7 @@ mod tests {
             .expect_err("oversized native slices must fail before constructing a Rust slice");
         assert_eq!(failure.status, MERMAN_NATIVE_STATUS_INVALID_ARGUMENT);
         assert_eq!(
-            failure.message,
+            failure.message.as_ref(),
             "request.source.len must not exceed isize::MAX"
         );
 
@@ -2984,7 +2989,10 @@ mod tests {
         let failure = unsafe { native_slice_bytes(overflowing_native_slice(), "test.slice") }
             .expect_err("wrapping native slice address ranges must be rejected");
         assert_eq!(failure.status, MERMAN_NATIVE_STATUS_INVALID_ARGUMENT);
-        assert_eq!(failure.message, "test.slice address range overflows usize");
+        assert_eq!(
+            failure.message.as_ref(),
+            "test.slice address range overflows usize"
+        );
 
         let discovery_request = MermanNativeApiRequest {
             struct_size: native_struct_size::<MermanNativeApiRequest>(),

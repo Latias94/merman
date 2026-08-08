@@ -355,8 +355,10 @@ pub(crate) fn binding_error_to_js(err: BindingError) -> JsValue {
 }
 
 fn binding_error_payload_value(err: &BindingError) -> Result<serde_json::Value, String> {
-    serde_json::from_slice(&merman_bindings_core::binding_error_payload_json_bytes(err))
-        .map_err(|err| err.to_string())
+    serde_json::from_slice(&merman_bindings_core::binding_error_js_payload_json_bytes(
+        err,
+    ))
+    .map_err(|err| err.to_string())
 }
 
 #[cfg(all(feature = "svg", target_arch = "wasm32"))]
@@ -968,7 +970,19 @@ mod tests {
             "layout work accounting overflowed",
         );
         let json = binding_error_payload_value(&err).unwrap();
+        assert_eq!(json["code_name"], "MERMAN_RESOURCE_LIMIT_EXCEEDED");
         assert_eq!(json["details"]["resource"]["cause"], "arithmetic_overflow");
+        assert_eq!(
+            json["details"]["resource"]["limit_id"],
+            "max_layout_work_units"
+        );
+        assert_eq!(json["details"]["resource"]["phase"], "layout_model");
+        assert_eq!(
+            json["details"]["resource"]["actual"],
+            "18446744073709551615"
+        );
+        assert_eq!(json["details"]["resource"]["max"], 800_000);
+        assert_eq!(json["details"]["resource"]["profile"], "interactive");
     }
 
     #[test]

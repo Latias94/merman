@@ -754,7 +754,7 @@ Invalid options produce binding errors:
 | Feature-gated operation disabled | `MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION` |
 | Resource budget exceeded | `MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED` |
 
-Resource failures add an optional `details.resource` object to the existing error JSON. It contains `cause`, `limit_id`, `phase`, `actual`, `max`, and `profile`. The stable `cause` is `ceiling` when an effective maximum was exceeded and `arithmetic_overflow` when safe work accounting could not represent the required amount. Consumers that understand payload schema `1` should tolerate this additive object; non-resource errors omit `details`, preserving the previous shape.
+Resource failures add an optional `details.resource` object to the existing error JSON. It contains `cause`, `limit_id`, `phase`, `actual`, `max`, and `profile`. The stable `cause` is `ceiling` when an effective maximum was exceeded and `arithmetic_overflow` when safe work accounting could not represent the required amount. Node and Web/WASM project `actual` and `max` into a lossless JavaScript representation: values through `9007199254740991` (`Number.MAX_SAFE_INTEGER`) are numbers, while larger `u64` values are canonical unsigned decimal strings without leading zeroes, up to `18446744073709551615`. JavaScript consumers must accept both forms and must not coerce the string form through a `number`. The shared non-JavaScript payload and native ABI error JSON retain their existing unsigned-integer representation. Consumers that understand payload schema `1` should tolerate this additive object; non-resource errors omit `details`, preserving the previous shape.
 
 Platform wrappers surface those errors through their native exception type:
 

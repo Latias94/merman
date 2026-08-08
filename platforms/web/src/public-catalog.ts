@@ -1,4 +1,5 @@
 import { SUPPORTED_DIAGRAMS } from "./generated/diagram-catalog.js";
+import { RUNTIME_CATALOG_MAX_SAFE_INTEGER } from "./generated/binding-contract.js";
 import {
   SYSTEM_ADAPTER_IDS,
   WEB_CAPABILITIES,
@@ -102,12 +103,18 @@ export type BindingErrorKind =
   | "unknown-operation"
   | "missing-capability";
 
+/**
+ * A lossless unsigned resource count. Safe integers use `number`; wider `u64` values use a
+ * canonical decimal `string`.
+ */
+export type BindingResourceCount = number | string;
+
 export interface BindingResourceErrorDetails {
   cause: string;
   limit_id: string;
   phase: string;
-  actual: number;
-  max: number;
+  actual: BindingResourceCount;
+  max: BindingResourceCount;
   profile: string;
 }
 
@@ -263,6 +270,27 @@ export function isBindingStatusCodeName(
   return (BINDING_STATUS_CODE_NAMES as readonly string[]).includes(codeName);
 }
 
+const MAX_SAFE_RESOURCE_COUNT_DECIMAL = String(RUNTIME_CATALOG_MAX_SAFE_INTEGER);
+const U64_MAX_DECIMAL = "18446744073709551615";
+const CANONICAL_WIDE_UNSIGNED_DECIMAL = /^[1-9]\d*$/;
+
+function isBindingResourceCount(value: unknown): value is BindingResourceCount {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value >= 0;
+  }
+  if (typeof value !== "string" || !CANONICAL_WIDE_UNSIGNED_DECIMAL.test(value)) {
+    return false;
+  }
+  return compareCanonicalUnsignedDecimals(value, MAX_SAFE_RESOURCE_COUNT_DECIMAL) > 0 &&
+    compareCanonicalUnsignedDecimals(value, U64_MAX_DECIMAL) <= 0;
+}
+
+function compareCanonicalUnsignedDecimals(left: string, right: string): number {
+  if (left.length !== right.length) return left.length < right.length ? -1 : 1;
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
+}
+
 export function isBindingErrorPayload(error: unknown): error is BindingErrorPayload {
   if (!error || typeof error !== "object") {
     return false;
@@ -279,8 +307,8 @@ export function isBindingErrorPayload(error: unknown): error is BindingErrorPayl
       typeof (resource as Record<string, unknown>).cause === "string" &&
       typeof (resource as Record<string, unknown>).limit_id === "string" &&
       typeof (resource as Record<string, unknown>).phase === "string" &&
-      typeof (resource as Record<string, unknown>).actual === "number" &&
-      typeof (resource as Record<string, unknown>).max === "number" &&
+      isBindingResourceCount((resource as Record<string, unknown>).actual) &&
+      isBindingResourceCount((resource as Record<string, unknown>).max) &&
       typeof (resource as Record<string, unknown>).profile === "string");
   return (
     payload.ok === false &&
