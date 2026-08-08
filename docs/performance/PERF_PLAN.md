@@ -121,6 +121,9 @@ runners use the same fixture.
 | U9 Sequence operation metrics | `accepted-latency`, `accepted-memory` | Reuse is private to the exact built-in carrier and semantic owner; host/custom callbacks remain unchanged. |
 | U9 Requirement Markdown width | `rejected-as-written`, `rejected-upper-bound` | The old shared change reduced opaque callbacks; a compliant owner-local variant could save at most 13.249 us / 7.379%, below admission. |
 | U9 Mindmap inline metrics | `rejected-superseded` | U8 already removed every admissible discarded built-in request; the remaining opaque callbacks are observable behavior. |
+| U10 CLI transaction metadata | `accepted-structural` + `rejected-not-admitted` | The mandatory target-to-index map removes the stage-slot `O(N^2)` lookup term. The optional sealed-manifest/compact-frontier topology was not admitted because no adjacent candidate or three-platform durability matrix exists; the baseline journal remains unchanged. See [the U10 receipt](cli_transaction_metadata_2026-08-08.md). |
+| U11 semantic-token reducer | `accepted-structural` | One active scan removes the per-interval finalists vector and redundant precedence/narrowness passes while preserving packed output and conflict semantics. Public latency/memory claims are not admitted without the required current LSP/WASM lanes; see [the U11 receipt](semantic_token_reducer_2026-08-08.md). |
+| U12 diagnostics-only capture | `rejected-not-admitted` | The existing narrow `DiagnosticsOnly` retained-object split is kept, but deeper parser/Flowchart projection elimination was not admitted: it lacks a current allocation/public gate and would risk observable projection diagnostics. See [the U12 receipt](diagnostics_capture_specialization_2026-08-08.md). |
 
 No failed U9 production path or global text cache remains. The old Requirement and Mindmap
 experiment branches are historical hypotheses only.

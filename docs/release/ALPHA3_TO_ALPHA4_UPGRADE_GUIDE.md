@@ -293,6 +293,24 @@ APIs that were never part of the alpha.3 release and can be ignored by tag-only 
 - Replace `render_svg_resvg_safe_sync(...)` with `render_resvg_compatible_svg_sync(...)`, and replace `HeadlessRenderer::render_svg_resvg_safe_sync(...)` with `HeadlessRenderer::render_resvg_compatible_svg_sync(...)`. Both return `Option<ResvgCompatibleSvg>` rather than `Option<String>`; pass `svg.as_str()` to a read-only raster consumer or consume it with `into_string()` only when crossing the final byte/string boundary. Replace raw `svg_resvg_safe(svg)` with `finalize_resvg_svg(svg, session)`. Generic pipeline methods that return `String` do not carry the terminal capability.
 - Keep `StateDiagramRenderModel::links: HashMap<String, StateDiagramRenderLinks>` and handle both `StateDiagramRenderLinks::{One, Many}` variants. The Mermaid 11.16 Jison parser creates a fresh `idStatement` object for every `click`; the runtime therefore preserves repeated declarations in source order and wraps the matching state node once per declaration. `link.tooltip` remains the upstream-compatible string value.
 - Import ELK configuration and guarded pipeline entry points from the `merman-elk-layered` crate root; phase modules are private and require operation-seed resolution.
+- Update direct ELK-layered callers for the expanded public contracts. `ElkInputEdge` carries an
+  optional source `model_order`; populate it when constructing adapter inputs whose original edge
+  order is observable. Exhaustive matches over `merman_elk_layered::ImportError` and
+  `PipelineError`, or `merman_layout_elk::Error`, must handle the added hierarchy-scope,
+  intermediate, and neutral `WorkError` variants. `WorkError` is non-exhaustive in the Dugong,
+  Manatee, and ELK public owners, so downstream matches require a wildcard arm.
+- Treat `GraphExecution` processor vectors as ordered public diagnostics. Compound execution now
+  reports source-backed DFS/postorder order rather than the historical reverse insertion order;
+  consumers that compare or display phase traces must preserve the returned order. The graphlib
+  implementation also matches JavaScript `Object.keys`: canonical decimal array-index node,
+  child, predecessor, and successor keys enumerate numerically before ordinary keys. Callers that
+  relied on incidental insertion order must migrate; `dugong_graphlib::is_javascript_array_index`
+  is available when a host needs the same classification.
+- Binding resource failures now include the stable JSON discriminator
+  `details.resource.cause` (`ceiling`, `arithmetic_overflow`, or `unknown`). Direct Rust
+  construction of non-exhaustive `BindingResourceErrorDetails` and all binding-side decoders must
+  preserve and accept this field; do not infer arithmetic overflow from the human-readable error
+  text.
 - Configure text measurement, math, icons, clock, randomness, and resource policy through `RenderEnvironment`. Binding and Web JSON use `presentation.theme` for semantic host colors, top-level `site_config` for raw Mermaid `themeVariables`, and `environment.text_measurement` / `environment.math_renderer` for rendering services. The removed `host_theme` group and the old `layout.text_measurer` / `layout.math_renderer` fields are rejected.
 - Replace `HostThemeProfile`, `CompiledHostTheme`, `HostThemeProfileBuilder`, `with_host_theme`, `with_compiled_host_theme`, `render_svg_with_host_theme_sync`, and `render_svg_with_compiled_host_theme_sync` with one immutable `Presentation`. Build semantic colors through `HostTheme`, select `PresentationProfile::MermanModern` independently when wanted, apply Mermaid overrides through `with_site_config`, and select cleanup/background/scoped CSS through an explicit `SvgPipeline` or `SvgOutputPolicy::pipeline()`. Replace flat `supported_host_theme_presets*` calls with `theme_preset_descriptors()` in Rust or the artifact-aware `presentation-catalog` metadata payload in bindings; the old helpers are deleted rather than deprecated.
 - Replace field-based `RenderResourceLimits` with sealed `RenderResourcePolicy`. Select `interactive`, `constrained`, `trusted-native`, or `unbounded-for-trusted-input`, then apply validated overrides by stable limit id.
