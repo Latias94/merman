@@ -186,7 +186,7 @@ fn push_tree_view_node(
 }
 
 fn tree_view_css(effective_config: &serde_json::Value) -> String {
-    let theme = PresentationTheme::new(effective_config).tree_view();
+    let theme = MermaidThemeAdapter::new(effective_config).tree_view();
 
     format!(
         ".treeView-node-label {{ font-size: {}; fill: {}; white-space: pre; }} .treeView-node-dir {{ font-weight: {}; }} .treeView-node-line {{ stroke: {}; }} .treeView-node-icon {{ color: {}; }} .treeView-node-description {{ font-size: {}; fill: {}; font-style: {}; white-space: pre; }} .treeView-highlight-bg {{ fill: {}; stroke: {}; stroke-width: 1; }}",

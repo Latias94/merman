@@ -5,7 +5,7 @@ use crate::model::{
 };
 use crate::svg::render_theme::EventModelingTheme;
 use crate::text::{TextMeasurer, TextStyle, split_html_br_lines, wrap_label_like_mermaid_lines};
-use crate::theme::PresentationTheme;
+use crate::theme::MermaidThemeAdapter;
 use merman_core::diagrams::eventmodeling::{
     EventModelingDataEntityRenderModel, EventModelingDiagramRenderModel,
     EventModelingFrameRenderModel,
@@ -38,7 +38,7 @@ pub(crate) fn layout_eventmodeling_diagram_typed(
     measurer: &dyn TextMeasurer,
 ) -> Result<EventModelingDiagramLayout> {
     let cfg = EventModelingConfigView::new(effective_config).layout_settings();
-    let theme = PresentationTheme::new(effective_config).eventmodeling();
+    let theme = MermaidThemeAdapter::new(effective_config).eventmodeling();
     let data_entities: HashMap<&str, &EventModelingDataEntityRenderModel> = model
         .data_entities
         .iter()

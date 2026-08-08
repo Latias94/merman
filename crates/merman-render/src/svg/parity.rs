@@ -77,7 +77,7 @@ pub use emitted_bounds::{
 use emitted_bounds::{svg_emitted_bounds_from_svg, svg_emitted_bounds_from_svg_inner};
 use state::{roughjs_ops_to_svg_path_d, roughjs_parse_hex_color_to_srgba, roughjs_paths_for_rect};
 use style::{is_rect_style_key, is_text_style_key, parse_style_decl};
-use theme::PresentationTheme;
+use theme::MermaidThemeAdapter;
 use util::{
     SvgTheme, config_bool, config_diagram_look, config_f64, config_f64_css_px, config_string,
     css_rgba_fade, decode_mermaid_entities_for_render_text, escape_attr, escape_attr_display,

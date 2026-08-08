@@ -4,7 +4,6 @@ use super::{
 use merman_render::{
     ResourceLimitExceeded,
     environment::{RenderEnvironment, RenderSession, RenderSessionReport},
-    presentation::PresentationRenderPolicy,
 };
 
 /// Stable identity of the operation that produced a retained render result.
@@ -107,7 +106,6 @@ pub(super) struct HeadlessOperation<'a> {
     parse_options: merman_core::ParseOptions,
     layout_options: &'a LayoutOptions,
     session: RenderSession,
-    render_policy: PresentationRenderPolicy,
 }
 
 /// A canonical typed parse that has not started layout yet.
@@ -118,7 +116,6 @@ pub struct PreparedSemantic {
     parsed: merman_core::ParsedDiagramRender,
     layout_options: LayoutOptions,
     session: RenderSession,
-    render_policy: PresentationRenderPolicy,
 }
 
 impl PreparedSemantic {
@@ -134,10 +131,9 @@ impl PreparedSemantic {
 
     /// Reports required and missing renderer capabilities without starting layout.
     pub fn render_plan(&self) -> Result<merman_render::family::RenderCapabilityPlan> {
-        Ok(merman_render::family::plan_render_with_policy(
+        Ok(merman_render::family::plan_render(
             &self.parsed,
             &self.session,
-            self.render_policy,
         )?)
     }
 
@@ -147,14 +143,8 @@ impl PreparedSemantic {
             parsed,
             layout_options,
             session,
-            render_policy,
         } = self;
-        let artifact = merman_render::family::prepare_with_render_policy(
-            parsed,
-            &layout_options,
-            session,
-            render_policy,
-        )?;
+        let artifact = merman_render::family::prepare(parsed, &layout_options, session)?;
         Ok(PreparedRender { artifact })
     }
 }
@@ -384,24 +374,6 @@ impl<'a> HeadlessOperation<'a> {
         layout_options: &'a LayoutOptions,
         environment: &RenderEnvironment,
     ) -> Result<Self> {
-        Self::new_with_render_policy(
-            engine,
-            text,
-            parse_options,
-            layout_options,
-            environment,
-            PresentationRenderPolicy::default(),
-        )
-    }
-
-    pub(super) fn new_with_render_policy(
-        engine: &merman_core::Engine,
-        text: &'a str,
-        parse_options: merman_core::ParseOptions,
-        layout_options: &'a LayoutOptions,
-        environment: &RenderEnvironment,
-        render_policy: PresentationRenderPolicy,
-    ) -> Result<Self> {
         let session = environment.begin_session()?;
         let engine = super::engine_with_session_context(engine, &session);
         Ok(Self {
@@ -410,7 +382,6 @@ impl<'a> HeadlessOperation<'a> {
             parse_options,
             layout_options,
             session,
-            render_policy,
         })
     }
 
@@ -452,7 +423,6 @@ impl<'a> HeadlessOperation<'a> {
             parsed,
             layout_options: self.layout_options.clone(),
             session: self.session,
-            render_policy: self.render_policy,
         }))
     }
 

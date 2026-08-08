@@ -20,7 +20,7 @@ pub(super) struct StateThemeDefaults {
 
 impl StateThemeDefaults {
     pub(super) fn from_config(effective_config: &serde_json::Value) -> Self {
-        let theme = PresentationTheme::new(effective_config).state_diagram();
+        let theme = MermaidThemeAdapter::new(effective_config).state_diagram();
 
         Self {
             background: theme.background,
@@ -42,7 +42,7 @@ impl StateThemeDefaults {
 }
 
 fn state_shadow_defs(out: &mut String, diagram_id: &str, effective_config: &serde_json::Value) {
-    let flood_color = if PresentationTheme::new(effective_config)
+    let flood_color = if MermaidThemeAdapter::new(effective_config)
         .common()
         .is_dark_theme()
     {
@@ -95,7 +95,7 @@ pub(super) fn state_markers(
     diagram_id: &str,
     effective_config: &serde_json::Value,
 ) {
-    let theme = PresentationTheme::new(effective_config).state_diagram();
+    let theme = MermaidThemeAdapter::new(effective_config).state_diagram();
     let diagram_id = escape_xml(diagram_id);
     let transition_color = theme.transition_color.as_str();
 
@@ -168,7 +168,7 @@ pub(super) fn state_css(
         out
     }
 
-    let theme = PresentationTheme::new(effective_config).state_diagram();
+    let theme = MermaidThemeAdapter::new(effective_config).state_diagram();
     let ff = theme.common.font_family_css.as_str();
     let font_size = theme.common.font_size_px;
     let id = escape_xml(diagram_id);
@@ -853,6 +853,31 @@ mod tests {
         )));
         assert_eq!(css.matches("#st .hot&gt;*").count(), 1);
         assert!(!css.contains("color:rgb(34, 34, 34)!important;fill:rgb(34, 34, 34)!important"));
+    }
+
+    #[test]
+    fn state_shadow_uses_explicit_typed_theme_dark_mode() {
+        let mut dark = String::new();
+        state_shadow_defs(
+            &mut dark,
+            "st",
+            &json!({
+                "theme": "base",
+                "themeVariables": { "darkMode": true }
+            }),
+        );
+        assert!(dark.contains(r##"flood-color="#FFFFFF""##));
+
+        let mut light = String::new();
+        state_shadow_defs(
+            &mut light,
+            "st",
+            &json!({
+                "theme": "dark",
+                "darkMode": false
+            }),
+        );
+        assert!(light.contains(r##"flood-color="#000000""##));
     }
 
     #[test]

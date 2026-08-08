@@ -1,8 +1,8 @@
 #![cfg(feature = "svg")]
 
 use merman::svg::{
-    CssOverridePolicy, HeadlessRenderer, HostTheme, HostThemePreset, PresentationProfile,
-    SvgOutputPolicy, SvgPipelinePreset, ThemeRole,
+    CanvasPaint, CssOverridePolicy, DiagramThemeCompiler, HeadlessRenderer, SvgOutputPolicy,
+    SvgPipelinePreset, ThemePreset,
 };
 
 const USER_GITGRAPH_THEME_REGRESSION: &str = r#"gitGraph
@@ -58,46 +58,34 @@ const USER_ER_GRUVBOX_LABEL_REGRESSION: &str = r#"erDiagram
     }
 "#;
 
-fn themed_renderer(preset: HostThemePreset, name: &str) -> HeadlessRenderer {
-    let theme = HostTheme::from_preset(preset);
-    let background = theme
-        .role(ThemeRole::Canvas)
-        .expect("bundled themes must define a canvas color")
-        .to_string();
+fn themed_renderer(preset: ThemePreset, name: &str) -> HeadlessRenderer {
+    let theme = DiagramThemeCompiler::new()
+        .compile_preset(preset)
+        .expect("built-in theme preset should compile");
+    let CanvasPaint::Solid(background) = theme.spec().canvas().base() else {
+        panic!("built-in theme presets must define a solid canvas")
+    };
     let pipeline = SvgOutputPolicy {
         preset: SvgPipelinePreset::ResvgSafe,
         css_override_policy: CssOverridePolicy::StripExistingImportant,
-        root_background_color: Some(background),
+        root_background_color: Some(background.as_css()),
         drop_native_duplicate_fallbacks: false,
         scoped_css: None,
     }
     .pipeline();
 
     HeadlessRenderer::new()
-        .with_host_theme(theme)
+        .with_theme(theme)
         .with_svg_pipeline(pipeline)
         .with_vendored_text_measurer()
         .with_diagram_id(name)
 }
 
 fn render_with_editor_dark_theme(name: &str, source: &str) -> String {
-    themed_renderer(HostThemePreset::EditorDark, name)
+    themed_renderer(ThemePreset::EditorDark, name)
         .render_svg_sync(source)
         .unwrap_or_else(|err| panic!("{name}: render failed: {err}"))
         .unwrap_or_else(|| panic!("{name}: no diagram detected"))
-}
-
-#[test]
-fn merman_modern_profile_renders_non_flowchart_without_elk() {
-    let source = "sequenceDiagram\nAlice->>Bob: Hello";
-    let svg = HeadlessRenderer::new()
-        .with_presentation_profile(PresentationProfile::MermanModern)
-        .with_diagram_id("modern-non-flowchart")
-        .render_svg_sync(source)
-        .expect("modern profile should not require ELK for sequence diagrams")
-        .expect("sequence diagram should be detected");
-
-    assert!(svg.contains(r#"aria-roledescription="sequence""#), "{svg}");
 }
 
 fn assert_contains_all(name: &str, svg: &str, expected: &[&str]) {
@@ -267,7 +255,7 @@ fn assert_er_edge_label_fallbacks_are_readable(name: &str, svg: &str, labels: &[
             text.attribute("style").is_some_and(
                 |style| style.contains("font-size:14px") || style.contains("font-size: 14px")
             ),
-            "{name}: ER fallback label should inherit presentation theme font size: {svg}"
+            "{name}: ER fallback label should inherit diagram theme font size: {svg}"
         );
         assert!(
             text.attribute("class")
@@ -278,40 +266,40 @@ fn assert_er_edge_label_fallbacks_are_readable(name: &str, svg: &str, labels: &[
 }
 
 #[test]
-fn presentation_theme_covers_core_diagram_roles() {
+fn diagram_theme_covers_core_diagram_roles() {
     let cases: &[(&str, &str, &[&str])] = &[
         (
-            "presentation-theme-flowchart",
+            "diagram-theme-flowchart",
             "flowchart TD\n  A[Host] -->|Edge| B[Theme]",
             &["#111827", "#e5e7eb", "#475569", "#94a3b8"],
         ),
         (
-            "presentation-theme-sequence",
+            "diagram-theme-sequence",
             "sequenceDiagram\n  participant A as Alpha\n  participant B as Beta\n  A->>B: Hello\n  Note over A,B: Profile note",
             &["#1f2937", "#e5e7eb", "#94a3b8", "#422006", "#f59e0b"],
         ),
         (
-            "presentation-theme-class",
+            "diagram-theme-class",
             "classDiagram\n  Animal <|-- Dog\n  class Animal {\n    +bark()\n  }\n  note for Animal \"Profile note\"",
             &["#111827", "#e5e7eb", "#475569", "#422006", "#f59e0b"],
         ),
         (
-            "presentation-theme-state",
+            "diagram-theme-state",
             "stateDiagram-v2\n  [*] --> Idle: start\n  Idle --> Done: finish",
             &["#111827", "#e5e7eb", "#94a3b8"],
         ),
         (
-            "presentation-theme-xychart",
+            "diagram-theme-xychart",
             "xychart-beta\n  title Profile\n  x-axis [\"A\", \"B\"]\n  y-axis \"Value\" 0 --> 10\n  bar [4, 7]",
             &["#60a5fa", "#e5e7eb"],
         ),
         (
-            "presentation-theme-pie",
+            "diagram-theme-pie",
             "pie title Profile Pie\n  \"A\" : 4\n  \"B\" : 7",
             &["#60a5fa", "#34d399", "#e5e7eb"],
         ),
         (
-            "presentation-theme-quadrant",
+            "diagram-theme-quadrant",
             "quadrantChart\n  title Profile Matrix\n  x-axis Low --> High\n  y-axis Low --> High\n  quadrant-1 Invest\n  A: [0.7, 0.8]",
             &["#111827", "#1f2937", "#e5e7eb", "#94a3b8"],
         ),
@@ -325,30 +313,30 @@ fn presentation_theme_covers_core_diagram_roles() {
 
 #[test]
 #[cfg(feature = "layout-cytoscape")]
-fn presentation_theme_series_palette_reaches_ordinal_diagrams() {
+fn diagram_theme_series_palette_reaches_ordinal_diagrams() {
     let cases: &[(&str, &str, &[&str])] = &[
         (
-            "presentation-theme-mindmap",
+            "diagram-theme-mindmap",
             "mindmap\n  Root\n    Child",
             &["#60a5fa", "#34d399"],
         ),
         (
-            "presentation-theme-gitgraph",
+            "diagram-theme-gitgraph",
             "gitGraph\n  commit id: \"A\"\n  branch dev\n  checkout dev\n  commit id: \"B\"",
             &["#60a5fa", "#34d399"],
         ),
         (
-            "presentation-theme-journey",
+            "diagram-theme-journey",
             "journey\n  title Profile Journey\n  section Checkout\n    Sign Up: 5: Alice\n    Pay: 3: Bob",
             &["#60a5fa", "#34d399"],
         ),
         (
-            "presentation-theme-timeline",
+            "diagram-theme-timeline",
             "timeline\n  title Profile Timeline\n  section 2026\n    Alpha : Start\n    Beta : Ship",
             &["#60a5fa", "#34d399"],
         ),
         (
-            "presentation-theme-venn",
+            "diagram-theme-venn",
             "venn-beta\n  set A[\"Core\"]:10\n  set B[\"Editor\"]:8\n  union A,B[\"Shared\"]:3",
             &["#60a5fa", "#34d399"],
         ),
@@ -361,8 +349,8 @@ fn presentation_theme_series_palette_reaches_ordinal_diagrams() {
 }
 
 #[test]
-fn gruvbox_presentation_theme_keeps_er_relationship_label_fallbacks_readable() {
-    let svg = themed_renderer(HostThemePreset::GruvboxDark, "gruvbox-er-labels")
+fn gruvbox_diagram_theme_keeps_er_relationship_label_fallbacks_readable() {
+    let svg = themed_renderer(ThemePreset::GruvboxDark, "gruvbox-er-labels")
         .render_svg_sync(USER_ER_GRUVBOX_LABEL_REGRESSION)
         .unwrap_or_else(|err| panic!("gruvbox ER render failed: {err}"))
         .unwrap_or_else(|| panic!("gruvbox ER render produced no diagram"));
@@ -386,7 +374,7 @@ fn gruvbox_presentation_theme_keeps_er_relationship_label_fallbacks_readable() {
 }
 
 #[test]
-fn presentation_theme_centers_gitgraph_branch_labels_with_editor_fonts() {
+fn diagram_theme_centers_gitgraph_branch_labels_with_editor_fonts() {
     let plain = HeadlessRenderer::new()
         .with_vendored_text_measurer()
         .with_diagram_id("gitgraph-plain-baseline")
@@ -395,7 +383,7 @@ fn presentation_theme_centers_gitgraph_branch_labels_with_editor_fonts() {
         .unwrap_or_else(|| panic!("plain gitGraph render produced no diagram"));
     assert_gitgraph_branch_labels_keep_mermaid_parity_baseline("plain-gitgraph", &plain);
 
-    let themed = themed_renderer(HostThemePreset::OneDark, "gitgraph-one-dark-baseline")
+    let themed = themed_renderer(ThemePreset::OneDark, "gitgraph-one-dark-baseline")
         .render_svg_sync(USER_GITGRAPH_THEME_REGRESSION)
         .unwrap_or_else(|err| panic!("one-dark gitGraph render failed: {err}"))
         .unwrap_or_else(|| panic!("one-dark gitGraph render produced no diagram"));
@@ -405,7 +393,7 @@ fn presentation_theme_centers_gitgraph_branch_labels_with_editor_fonts() {
         &["main", "develop", "feature"],
     );
 
-    let cherry_pick = themed_renderer(HostThemePreset::OneDark, "gitgraph-one-dark-cherry-pick")
+    let cherry_pick = themed_renderer(ThemePreset::OneDark, "gitgraph-one-dark-cherry-pick")
         .render_svg_sync(USER_GITGRAPH_CHERRYPICK_TAG_THEME_REGRESSION)
         .unwrap_or_else(|err| panic!("one-dark cherry-pick gitGraph render failed: {err}"))
         .unwrap_or_else(|| panic!("one-dark cherry-pick gitGraph render produced no diagram"));
@@ -418,10 +406,10 @@ fn presentation_theme_centers_gitgraph_branch_labels_with_editor_fonts() {
 
 #[test]
 #[cfg(feature = "layout-cytoscape")]
-fn presentation_theme_covers_additional_current_diagram_surfaces() {
+fn diagram_theme_covers_additional_current_diagram_surfaces() {
     let cases: &[(&str, &str, &[&str], &[&str])] = &[
         (
-            "presentation-theme-er",
+            "diagram-theme-er",
             "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n  CUSTOMER {\n    string name\n  }",
             &["#111827", "#e5e7eb", "#94a3b8", "#475569"],
             &[
@@ -430,7 +418,7 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "presentation-theme-requirement",
+            "diagram-theme-requirement",
             "requirementDiagram\n  requirement req1 {\n    id: 1\n    text: Host requirement\n    risk: high\n    verifymethod: analysis\n  }\n  element sys {\n    type: system\n  }\n  sys - satisfies -> req1",
             &["#111827", "#e5e7eb", "#475569", "#94a3b8"],
             &[
@@ -440,21 +428,21 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "presentation-theme-gantt",
+            "diagram-theme-gantt",
             "gantt\n  title Profile Plan\n  dateFormat YYYY-MM-DD\n  section Core\n  Build : 2026-01-01, 15d\n  Critical :crit, 2026-01-16, 2d\n  Ship :done, 2026-01-18, 3d",
             &[
                 "#e5e7eb", "#1f2937", "#475569", "#34d399", "#f87171", "#fbbf24",
             ],
             &[
                 ".grid .tick{stroke:#475569;",
-                ".done0,#presentation-theme-gantt .done1",
+                ".done0,#diagram-theme-gantt .done1",
                 "{stroke:#34d399;fill:#1f2937;",
-                ".crit0,#presentation-theme-gantt .crit1",
+                ".crit0,#diagram-theme-gantt .crit1",
                 "{stroke:#f87171;fill:#1f2937;",
             ],
         ),
         (
-            "presentation-theme-architecture",
+            "diagram-theme-architecture",
             "architecture-beta\n  group core(cloud)[Core]\n  service api(server)[API] in core\n  service db(database)[DB] in core\n  api:R --> L:db",
             &["#94a3b8", "#475569", "#e5e7eb"],
             &[
@@ -463,7 +451,7 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "presentation-theme-block",
+            "diagram-theme-block",
             "block\n  block:Core\n    A[\"Alpha\"]\n    B[\"Beta\"]\n  end\n  A --> B",
             &["#e5e7eb", "rgba(30, 41, 59, 0.5)", "#475569", "#94a3b8"],
             &[
@@ -472,16 +460,16 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "presentation-theme-kanban",
+            "diagram-theme-kanban",
             "kanban\n  todo[Todo]\n    card[Dark Card]@{ assigned: \"Core\", priority: \"High\" }",
             &["#60a5fa", "#34d399", "#e5e7eb", "#475569"],
             &[
-                ".section-root rect,#presentation-theme-kanban .section-root path",
-                ".node rect,#presentation-theme-kanban .node circle",
+                ".section-root rect,#diagram-theme-kanban .section-root path",
+                ".node rect,#diagram-theme-kanban .node circle",
             ],
         ),
         (
-            "presentation-theme-packet",
+            "diagram-theme-packet",
             "packet\ntitle Profile Packet\n+8: \"Byte\"\n+16: \"Word\"",
             &["#94a3b8", "#475569", "#e5e7eb", "#111827"],
             &[
@@ -490,7 +478,7 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "presentation-theme-sankey",
+            "diagram-theme-sankey",
             "sankey\nSource,Target,10\nTarget,Done,2",
             &["#e5e7eb", "#111827"],
             &[
@@ -499,7 +487,7 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "presentation-theme-radar",
+            "diagram-theme-radar",
             "radar-beta\n  title Profile Radar\n  axis Speed, Quality, Cost\n  curve Team{8, 7, 4}",
             &["#e5e7eb", "#60a5fa", "#94a3b8", "#475569"],
             &[
@@ -509,7 +497,7 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "presentation-theme-treemap",
+            "diagram-theme-treemap",
             "treemap-beta\n  \"Profile Section\"\n    \"Profile Leaf\": 42",
             &["#e5e7eb", "#cbd5e1", "#475569", "#1f2937", "#111827"],
             &[
@@ -518,7 +506,7 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "presentation-theme-c4",
+            "diagram-theme-c4",
             "C4Component\nComponentDb(db, \"Database\", \"Postgres\", \"Stores data\")\nComponentQueue(queue, \"Queue\", \"NATS\", \"Events\")",
             &["#111827", "#475569"],
             &[
@@ -527,7 +515,7 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "presentation-theme-tree-view",
+            "diagram-theme-tree-view",
             include_str!("../../../fixtures/treeView/upstream_docs_treeview_basic.mmd"),
             &["#e5e7eb", "#94a3b8"],
             &[
@@ -536,7 +524,7 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "presentation-theme-ishikawa",
+            "diagram-theme-ishikawa",
             include_str!(
                 "../../../fixtures/ishikawa/upstream_cypress_ishikawa_spec_1_should_render_a_simple_ishikawa_diagram_001.mmd"
             ),
@@ -547,7 +535,7 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
-            "presentation-theme-eventmodeling",
+            "diagram-theme-eventmodeling",
             include_str!("../../../fixtures/eventmodeling/upstream_docs_eventmodeling_minimum.mmd"),
             &[
                 "#e5e7eb", "#111827", "#1e293b", "#475569", "#34d399", "#60a5fa", "#f59e0b",

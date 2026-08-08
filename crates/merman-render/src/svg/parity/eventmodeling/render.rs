@@ -24,7 +24,7 @@ pub(crate) fn render_eventmodeling_diagram_svg(
         .filter(|description| !description.trim().is_empty());
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
-    let theme = PresentationTheme::new(effective_config).eventmodeling();
+    let theme = MermaidThemeAdapter::new(effective_config).eventmodeling();
     let mut out = String::new();
     let root_bounds = root_svg::DiagramBounds::from_view_box(
         layout.viewbox_x,

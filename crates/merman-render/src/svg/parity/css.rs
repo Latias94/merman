@@ -673,7 +673,7 @@ pub(super) fn treemap_css(
     // `:root` last to match upstream SVG baselines.
     let id = escape_xml(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
-    let theme = PresentationTheme::new(effective_config).treemap()?;
+    let theme = MermaidThemeAdapter::new(effective_config).treemap()?;
     let mut out = parts.css_prefix;
 
     let _ = write!(
@@ -711,7 +711,7 @@ pub(super) fn push_xychart_css(out: &mut String, diagram_id: &str) {
 pub(super) fn gantt_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let id = escape_xml(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
-    let theme = PresentationTheme::new(effective_config).gantt();
+    let theme = MermaidThemeAdapter::new(effective_config).gantt();
     let mut out = parts.css_prefix;
     let font = &theme.font_family;
     let text_color = &theme.text_color;

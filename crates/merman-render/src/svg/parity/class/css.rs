@@ -34,7 +34,7 @@ pub(super) fn class_css(
     // separate legacy precedence and must not replace the CSS font-size spelling.
     let parts =
         super::super::css::info_css_parts_with_raw_theme_font_size(diagram_id, effective_config);
-    let theme = PresentationTheme::new(effective_config).class_diagram();
+    let theme = MermaidThemeAdapter::new(effective_config).class_diagram();
     let mut out = parts.css_prefix;
     let fallback_font_family = normalize_css_font_family(render_font_family);
     let font_family = if parts.font_family.is_empty() {

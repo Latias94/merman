@@ -4,7 +4,7 @@ use crate::model::{
     QuadrantChartPointData, QuadrantChartQuadrantData, QuadrantChartTextData,
 };
 use crate::text::TextMeasurer;
-use crate::theme::PresentationTheme;
+use crate::theme::MermaidThemeAdapter;
 use merman_core::diagrams::quadrant_chart::QuadrantChartRenderModel;
 use serde_json::Value;
 
@@ -13,7 +13,7 @@ mod config;
 pub(crate) use config::QuadrantChartConfigView;
 
 fn default_quadrant_theme(effective_config: &Value) -> crate::theme::QuadrantChartTheme {
-    PresentationTheme::new(effective_config).quadrantchart()
+    MermaidThemeAdapter::new(effective_config).quadrantchart()
 }
 
 fn scale_linear(domain: (f64, f64), range: (f64, f64), v: f64) -> f64 {

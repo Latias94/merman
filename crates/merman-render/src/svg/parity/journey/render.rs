@@ -346,7 +346,7 @@ pub(crate) fn render_journey_diagram_svg_model(
         );
     }
 
-    let theme = PresentationTheme::new(effective_config).journey();
+    let theme = MermaidThemeAdapter::new(effective_config).journey();
     let css = journey_css(diagram_id, effective_config, &theme);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str(r#"<g/>"#);
@@ -587,7 +587,7 @@ mod tests {
             }
         });
 
-        let theme = PresentationTheme::new(&cfg).journey();
+        let theme = MermaidThemeAdapter::new(&cfg).journey();
         let css = journey_css("journey", &cfg, &theme);
 
         assert!(css.contains(r#"#journey line{stroke:#101010;}"#));

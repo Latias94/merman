@@ -189,7 +189,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     let title_padding_y = if is_lr { 4.0 } else { 0.0 };
     let desired_title_size = label_height + 2.0 * title_padding_y;
 
-    let theme = PresentationTheme::new(ctx.config.as_value()).node_diagram();
+    let theme = MermaidThemeAdapter::new(ctx.config.as_value()).node_diagram();
     let mut classes = String::from("cluster swimlane");
     for class in class_names {
         let class = class.trim();

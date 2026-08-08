@@ -1,18 +1,17 @@
-use merman::svg::{HeadlessRenderer, HostTheme, HostThemePreset, PresentationProfile, SvgPipeline};
+use merman::svg::{DiagramThemeCompiler, HeadlessRenderer, SvgPipeline, ThemePreset};
 
 const SOURCE: &str = r#"flowchart LR
-    Source[Mermaid source] --> Profile[Merman Modern]
-    Profile --> Theme[One Dark]
+    Source[Mermaid source] --> Theme[One Dark]
     Theme --> Preview[Editor preview]
 "#;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let theme = DiagramThemeCompiler::new().compile_preset(ThemePreset::OneDark)?;
     let renderer = HeadlessRenderer::new()
-        .with_presentation_profile(PresentationProfile::MermanModern)
-        .with_host_theme(HostTheme::from_preset(HostThemePreset::OneDark))
+        .with_theme(theme)
         .with_svg_pipeline(SvgPipeline::resvg_safe())
         .with_vendored_text_measurer()
-        .with_diagram_id("presentation-profile-example");
+        .with_diagram_id("theme-preset-example");
     let Some(svg) = renderer.render_svg_sync(SOURCE)? else {
         return Err("no Mermaid diagram detected".into());
     };

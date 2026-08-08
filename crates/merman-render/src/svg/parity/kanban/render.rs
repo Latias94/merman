@@ -7,7 +7,7 @@ use crate::kanban::{
 fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> Result<String> {
     let id = escape_xml(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
-    let theme = PresentationTheme::new(effective_config).kanban()?;
+    let theme = MermaidThemeAdapter::new(effective_config).kanban()?;
     let mut out = parts.css_prefix;
     let root_rule = parts.root_rule;
 

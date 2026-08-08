@@ -22,7 +22,6 @@ pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
             effective_config: &metadata.effective_config,
             diagram_type: metadata.diagram_type.as_str(),
             diagram_title: metadata.title.as_deref(),
-            presentation_policy: artifact.policy(),
             svg_label_sidecar: artifact.svg_label_sidecar(),
         },
         options,
@@ -37,7 +36,6 @@ pub(super) struct FlowchartSvgModelRequest<'a> {
     pub(super) effective_config: &'a merman_core::MermaidConfig,
     pub(super) diagram_type: &'a str,
     pub(super) diagram_title: Option<&'a str>,
-    pub(super) presentation_policy: Option<crate::presentation::FlowchartPresentationPolicy>,
     pub(super) svg_label_sidecar: &'a crate::flowchart::FlowchartSvgLabelSidecar,
 }
 
@@ -53,7 +51,6 @@ pub(super) fn render_flowchart_svg_model(
         effective_config,
         diagram_type,
         diagram_title,
-        presentation_policy,
         svg_label_sidecar,
     } = request;
     let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_label_sources);
@@ -116,12 +113,7 @@ pub(super) fn render_flowchart_svg_model(
         edge_corner_radius,
         edge_label_padding,
         compact_edge_corners,
-    } = prepare_flowchart_render_config(
-        model,
-        effective_config_value,
-        diagram_type,
-        presentation_policy,
-    );
+    } = prepare_flowchart_render_config(model, effective_config_value, diagram_type);
 
     let mut nodes_by_id: FxHashMap<&str, &crate::flowchart::FlowNode> =
         FxHashMap::with_capacity_and_hasher(

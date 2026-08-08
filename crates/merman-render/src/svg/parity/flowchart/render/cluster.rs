@@ -83,7 +83,7 @@ fn write_flowchart_cluster_shape(
     rect_h: f64,
 ) {
     if flowchart_config_look(ctx.config) == "handDrawn" {
-        let theme = PresentationTheme::new(ctx.config.as_value()).node_diagram();
+        let theme = MermaidThemeAdapter::new(ctx.config.as_value()).node_diagram();
         let fill = theme.cluster_bkg.as_str();
         let stroke = theme.cluster_border.as_str();
         let stroke_width = parse_css_px_f32(compiled_styles.stroke_width.as_ref(), 1.3);

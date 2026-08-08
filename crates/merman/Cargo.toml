@@ -182,11 +182,11 @@ required-features = ["svg"]
 name = "deterministic_gantt"
 
 [[example]]
-name = "presentation_profile"
-required-features = ["layout-elk"]
+name = "theme_preset"
+required-features = ["svg"]
 
 [[example]]
-name = "custom_presentation_theme"
+name = "custom_diagram_theme"
 required-features = ["svg"]
 
 [[example]]

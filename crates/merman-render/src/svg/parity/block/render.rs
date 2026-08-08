@@ -264,7 +264,7 @@ pub(crate) fn render_block_diagram_svg_model(
         >,
     ) -> Result<String> {
         let id = escape_xml(diagram_id);
-        let theme = PresentationTheme::new(effective_config).node_diagram();
+        let theme = MermaidThemeAdapter::new(effective_config).node_diagram();
         let font_family = theme.common.font_family_css.as_str();
         let font_size = theme.common.font_size_px;
         let text_color = theme.common.text_color.as_str();

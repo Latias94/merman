@@ -4,7 +4,7 @@ use crate::model::{
     XyChartDiagramLayout, XyChartDrawableElem, XyChartPathData, XyChartRectData, XyChartTextData,
 };
 use crate::text::{TextMeasurer, TextStyle};
-use crate::theme::PresentationTheme;
+use crate::theme::MermaidThemeAdapter;
 use crate::{Error, Result};
 use merman_core::diagrams::xychart::{
     XyChartAxisRenderModel, XyChartDiagramRenderModel, XyChartPlotType,
@@ -979,7 +979,7 @@ pub(crate) fn layout_xychart_diagram_typed(
     }
 
     let chart_cfg = parse_chart_config(effective_config, model);
-    let theme_cfg = PresentationTheme::new(effective_config).xychart();
+    let theme_cfg = MermaidThemeAdapter::new(effective_config).xychart();
 
     let title = model
         .title

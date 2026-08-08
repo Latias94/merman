@@ -149,7 +149,7 @@ fn render_timeline_diagram_svg_inner(
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let theme = PresentationTheme::new(effective_config).timeline();
+    let theme = MermaidThemeAdapter::new(effective_config).timeline();
     let is_redux_theme = theme.is_redux_theme;
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {

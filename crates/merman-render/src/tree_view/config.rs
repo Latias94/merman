@@ -1,5 +1,5 @@
 use crate::config::{config_bool, config_f64, config_font_family_css, config_string};
-use crate::theme::PresentationTheme;
+use crate::theme::MermaidThemeAdapter;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -23,7 +23,7 @@ impl<'a> TreeViewConfigView<'a> {
     }
 
     pub(crate) fn layout_settings(&self) -> TreeViewLayoutSettings {
-        let theme = PresentationTheme::new(self.effective_config).tree_view();
+        let theme = MermaidThemeAdapter::new(self.effective_config).tree_view();
         TreeViewLayoutSettings {
             row_indent: self
                 .tree_view_f64("rowIndent")

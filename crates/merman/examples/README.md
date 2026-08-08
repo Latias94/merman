@@ -21,11 +21,11 @@ cargo run -p merman --example render_svg > diagram.svg
 | Inspect computed geometry and routes | [`inspect_layout.rs`](inspect_layout.rs) | Stops after typed layout and serializes the result. |
 | Apply application-wide Mermaid defaults | [`configure_mermaid.rs`](configure_mermaid.rs) | Keeps host configuration outside user-authored diagram source. |
 | Make relative dates deterministic | [`deterministic_gantt.rs`](deterministic_gantt.rs) | Pins "today" and the local offset for snapshots and reproducible builds. |
-| Apply a ready-made product presentation | [`presentation_profile.rs`](presentation_profile.rs) | Combines the `merman-modern` profile with a semantic editor theme. |
-| Map an application's own theme tokens | [`custom_presentation_theme.rs`](custom_presentation_theme.rs) | Builds a `HostTheme` from semantic roles instead of family-specific CSS. |
+| Apply a compiled theme preset | [`theme_preset.rs`](theme_preset.rs) | Compiles one first-party `ThemePreset` and installs it on a reusable renderer. |
+| Build a complete custom diagram theme | [`custom_diagram_theme.rs`](custom_diagram_theme.rs) | Defines typed typography, semantic rules, canvas paint, and capability requirements. |
 | Control consumer SVG cleanup and styling | [`custom_svg_pipeline.rs`](custom_svg_pipeline.rs) | Builds an explicit resvg-safe, background, and scoped-CSS pipeline. |
 
-Use the one-shot root functions for ordinary SVG calls. `render_svg_with_id` normalizes IDs with `merman::svg::sanitize_svg_id`, so dynamic integrations should use stable ASCII keys and ensure the normalized results are unique rather than deriving IDs only from display titles. Reach for `HeadlessRenderer` only when an application needs reusable configuration, another output type, layout data, presentation policy, resource policy, or an SVG pipeline.
+Use the one-shot root functions for ordinary SVG calls. `render_svg_with_id` normalizes IDs with `merman::svg::sanitize_svg_id`, so dynamic integrations should use stable ASCII keys and ensure the normalized results are unique rather than deriving IDs only from display titles. Reach for `HeadlessRenderer` only when an application needs reusable configuration, another output type, layout data, a compiled diagram theme, resource policy, or an SVG pipeline.
 
 ## Run By Task
 
@@ -58,12 +58,12 @@ cargo run -p merman --example inspect_layout
 cargo run -p merman --example deterministic_gantt
 ```
 
-Configure host defaults, presentation, and output policy:
+Configure host defaults, diagram themes, and output policy:
 
 ```sh
 cargo run -p merman --example configure_mermaid > configured.svg
-cargo run -p merman --example presentation_profile > presentation.svg
-cargo run -p merman --example custom_presentation_theme > custom-theme.svg
+cargo run -p merman --example theme_preset > preset-theme.svg
+cargo run -p merman --example custom_diagram_theme > custom-theme.svg
 cargo run -p merman --example custom_svg_pipeline > consumer-safe.svg
 ```
 
@@ -91,8 +91,7 @@ The commands above favor a successful first run. Once the workflow is known, dis
 | Examples | Minimal selection |
 | --- | --- |
 | `inspect_semantics`, `deterministic_gantt` | No Merman features |
-| `render_svg`, `embed_multiple_svgs`, `render_many`, `inspect_layout`, `configure_mermaid`, `custom_presentation_theme`, `custom_svg_pipeline` | `svg` |
-| `presentation_profile` | `layout-elk` (also enables `svg`) |
+| `render_svg`, `embed_multiple_svgs`, `render_many`, `inspect_layout`, `configure_mermaid`, `theme_preset`, `custom_diagram_theme`, `custom_svg_pipeline` | `svg` |
 | `render_terminal` | `ascii` |
 | `render_png` | `png` (also enables `svg`) |
 

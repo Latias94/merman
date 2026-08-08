@@ -5,6 +5,8 @@ mod assets;
 mod canvas;
 mod compiler;
 mod effects;
+mod mermaid_projection;
+mod presets;
 mod resolved;
 mod resources;
 mod semantic;
@@ -35,6 +37,9 @@ pub use compiler::{DiagramThemeCompiler, ThemeCapabilityReport, ThemeCompileErro
 pub use effects::{
     DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FilterRegion,
 };
+pub use presets::{
+    ThemePreset, ThemePresetDescriptor, ThemePresetParseError, theme_preset_descriptors,
+};
 pub use resolved::{ResolvedDiagramTheme, ResolvedThemeStyle};
 pub use resources::{
     MAX_FONT_ALIASES_HARD_CAP, MAX_FONT_ASSET_COMPRESSED_BYTES_HARD_CAP,
@@ -54,8 +59,8 @@ pub use semantic::{
 pub use spec::{DiagramThemeSpec, MermaidThemeCompatibility, ThemeAssets};
 pub use tokens::ThemeTokens;
 pub use typography::{
-    FontStack, LineHeight, Specified, TextAlign, TextDecoration, TextStyle, TextStylePatch,
-    TextTransform, TypographySpec, WhiteSpace, WrapMode,
+    FontStack, LineHeight, Specified, TextAlign, TextDecoration, TextStyle as ThemeTextStyle,
+    TextStylePatch, TextTransform, TypographySpec, WhiteSpace, WrapMode as ThemeWrapMode,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]

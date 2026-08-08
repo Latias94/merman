@@ -1,9 +1,5 @@
 use crate::environment::RenderSession;
 use crate::model::*;
-use crate::presentation::{
-    FlowchartPresentationPolicy, PresentationAspectResolution, PresentationProfile,
-    PresentationRenderPolicy,
-};
 use crate::resources::ResourceLimitPhase;
 use crate::svg::{
     ResvgCompatibleSvg, SvgDebugOptions, SvgPipeline, SvgPostprocessMetadata, SvgRenderOptions,
@@ -104,8 +100,6 @@ pub struct RenderCapabilityPlan {
     diagram_type: String,
     required: Vec<RenderCapability>,
     missing: Vec<RenderCapability>,
-    presentation_profile: Option<PresentationProfile>,
-    presentation_aspects: Vec<PresentationAspectResolution>,
 }
 
 impl RenderCapabilityPlan {
@@ -122,24 +116,6 @@ impl RenderCapabilityPlan {
     /// Returns the required capabilities unavailable in the planned render session.
     pub fn missing_capabilities(&self) -> &[RenderCapability] {
         &self.missing
-    }
-
-    /// Returns the selected first-party presentation profile, if any.
-    pub const fn presentation_profile(&self) -> Option<PresentationProfile> {
-        self.presentation_profile
-    }
-
-    /// Returns the selected presentation profile's stable ID, if any.
-    pub const fn presentation_profile_id(&self) -> Option<&'static str> {
-        match self.presentation_profile {
-            Some(profile) => Some(profile.id()),
-            None => None,
-        }
-    }
-
-    /// Returns per-aspect resolution for the selected presentation profile.
-    pub fn presentation_aspects(&self) -> &[PresentationAspectResolution] {
-        &self.presentation_aspects
     }
 
     /// Iterates over stable semantic IDs for every required capability.
@@ -208,7 +184,6 @@ pub(crate) struct FlowchartFamilyArtifact<L> {
     pair: FamilyPair<diagrams::flowchart::FlowchartModel, L>,
     label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
     svg_label_sidecar: crate::flowchart::FlowchartSvgLabelSidecar,
-    policy: Option<FlowchartPresentationPolicy>,
 }
 
 impl<L> FlowchartFamilyArtifact<L> {
@@ -222,10 +197,6 @@ impl<L> FlowchartFamilyArtifact<L> {
 
     pub(crate) fn svg_label_sidecar(&self) -> &crate::flowchart::FlowchartSvgLabelSidecar {
         &self.svg_label_sidecar
-    }
-
-    pub(crate) const fn policy(&self) -> Option<FlowchartPresentationPolicy> {
-        self.policy
     }
 }
 
@@ -883,7 +854,6 @@ fn prepare_pair<S, L>(
 fn prepare_flowchart_artifact<L>(
     semantic: diagrams::flowchart::FlowchartModel,
     label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
-    policy: Option<FlowchartPresentationPolicy>,
     layout: impl FnOnce(
         &diagrams::flowchart::FlowchartModel,
         &diagrams::flowchart::FlowchartRenderLabelSources,
@@ -897,7 +867,6 @@ fn prepare_flowchart_artifact<L>(
         pair: FamilyPair::new(semantic, layout),
         label_sources,
         svg_label_sidecar,
-        policy,
     }))
 }
 
@@ -1017,17 +986,7 @@ pub fn plan_render(
     parsed: &ParsedDiagramRender,
     session: &RenderSession,
 ) -> Result<RenderCapabilityPlan> {
-    plan_render_with_policy(parsed, session, PresentationRenderPolicy::default())
-}
-
-/// Plans capability admission and selected presentation aspects without running layout.
-pub fn plan_render_with_policy(
-    parsed: &ParsedDiagramRender,
-    session: &RenderSession,
-    render_policy: PresentationRenderPolicy,
-) -> Result<RenderCapabilityPlan> {
     let meta = parsed.metadata();
-    let model = parsed.model();
     validate_render_input(parsed, session)?;
     let required = required_capabilities(parsed);
     let missing = required
@@ -1035,20 +994,10 @@ pub fn plan_render_with_policy(
         .copied()
         .filter(|capability| !capability_is_available(*capability, session))
         .collect();
-    let flowchart_svg_applicable = matches!(model, RenderSemanticModel::Flowchart(_))
-        && meta.effective_config.get_str("layout") != Some("swimlane");
-    let presentation_aspects = render_policy.resolve_aspects(
-        flowchart_svg_applicable,
-        crate::uses_elk_layout(&meta.effective_config),
-        capability_is_available(RenderCapability::LayoutElk, session),
-    );
-
     Ok(RenderCapabilityPlan {
         diagram_type: meta.diagram_type.clone(),
         required,
         missing,
-        presentation_profile: render_policy.profile(),
-        presentation_aspects,
     })
 }
 
@@ -1116,28 +1065,13 @@ pub fn prepare(
     options: &LayoutOptions,
     session: RenderSession,
 ) -> Result<FamilyRenderArtifact> {
-    prepare_with_render_policy(
-        parsed,
-        options,
-        session,
-        PresentationRenderPolicy::default(),
-    )
-}
-
-/// Prepares one family artifact with renderer policy derived from a resolved presentation.
-pub fn prepare_with_render_policy(
-    parsed: ParsedDiagramRender,
-    options: &LayoutOptions,
-    session: RenderSession,
-    render_policy: PresentationRenderPolicy,
-) -> Result<FamilyRenderArtifact> {
-    plan_render_with_policy(&parsed, &session, render_policy)?.ensure_available()?;
+    plan_render(&parsed, &session)?.ensure_available()?;
     // The heterogeneous router has one generic layout call per family. Keep its debug-build
     // caller slots out of the Class Dagre call chain, whose own phase frames are already deep.
     if matches!(parsed.model(), RenderSemanticModel::Class(_)) {
         return prepare_class_render(parsed, options, session);
     }
-    prepare_non_class_render(parsed, options, session, render_policy)
+    prepare_non_class_render(parsed, options, session)
 }
 
 #[inline(never)]
@@ -1145,7 +1079,6 @@ fn prepare_non_class_render(
     parsed: ParsedDiagramRender,
     options: &LayoutOptions,
     session: RenderSession,
-    render_policy: PresentationRenderPolicy,
 ) -> Result<FamilyRenderArtifact> {
     let (meta, model, render_context) = parsed.into_render_parts();
     let flowchart_label_sources = render_context.into_flowchart_label_sources();
@@ -1205,7 +1138,6 @@ fn prepare_non_class_render(
             BuiltinFamilyArtifact::Swimlane(prepare_flowchart_artifact(
                 model,
                 flowchart_label_sources,
-                None,
                 |model, label_sources, svg_label_sidecar| {
                     crate::swimlane::layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
                         model,
@@ -1223,7 +1155,6 @@ fn prepare_non_class_render(
             BuiltinFamilyArtifact::Flowchart(prepare_flowchart_artifact(
                 model,
                 flowchart_label_sources,
-                render_policy.flowchart(),
                 |model, label_sources, svg_label_sidecar| {
                     crate::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_by_engine(
                         diagram_type,

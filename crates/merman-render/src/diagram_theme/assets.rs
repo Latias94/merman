@@ -33,6 +33,13 @@ pub enum FontContainer {
 }
 
 impl FontContainer {
+    pub const ALL: [Self; 4] = [
+        Self::TrueType,
+        Self::OpenType,
+        Self::Collection,
+        Self::Woff2,
+    ];
+
     pub const fn id(self) -> &'static str {
         match self {
             Self::TrueType => "truetype",
@@ -52,7 +59,9 @@ pub enum FontStyle {
 }
 
 impl FontStyle {
-    const fn id(self) -> &'static str {
+    pub const ALL: [Self; 3] = [Self::Normal, Self::Italic, Self::Oblique];
+
+    pub const fn id(self) -> &'static str {
         match self {
             Self::Normal => "normal",
             Self::Italic => "italic",
@@ -95,6 +104,15 @@ pub enum GenericFontFamily {
 }
 
 impl GenericFontFamily {
+    pub const ALL: [Self; 6] = [
+        Self::Serif,
+        Self::SansSerif,
+        Self::Monospace,
+        Self::Cursive,
+        Self::Fantasy,
+        Self::SystemUi,
+    ];
+
     pub const fn id(self) -> &'static str {
         match self {
             Self::Serif => "serif",

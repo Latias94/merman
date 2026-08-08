@@ -43,7 +43,7 @@ pub(crate) fn render_ishikawa_diagram_svg(
     let _ = write!(&mut out, "<style>{css}</style>");
     out.push_str(r#"<g/><g class="ishikawa">"#);
     if crate::config::config_diagram_look(effective_config).as_str() == "handDrawn" {
-        let theme = PresentationTheme::new(effective_config).ishikawa();
+        let theme = MermaidThemeAdapter::new(effective_config).ishikawa();
         let rough = RoughContext {
             randomness: options.rough_randomness(
                 effective_config
@@ -437,7 +437,7 @@ fn push_text_with_offset(out: &mut String, text: &IshikawaTextLayout, dx: f64, d
 }
 
 fn ishikawa_css(layout: &IshikawaDiagramLayout, effective_config: &serde_json::Value) -> String {
-    let theme = PresentationTheme::new(effective_config).ishikawa();
+    let theme = MermaidThemeAdapter::new(effective_config).ishikawa();
     let font_size = crate::ishikawa::IshikawaConfigView::new(effective_config)
         .render_settings()
         .font_size_css

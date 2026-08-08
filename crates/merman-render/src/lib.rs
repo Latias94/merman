@@ -38,7 +38,6 @@ pub mod mindmap;
 pub mod model;
 pub mod packet;
 pub mod pie;
-pub mod presentation;
 pub mod quadrantchart;
 pub mod radar;
 pub mod railroad;

@@ -2,7 +2,6 @@
 
 use crate::config::config_f64;
 use crate::flowchart::FlowchartConfigView;
-use crate::presentation::FlowchartPresentationPolicy;
 use crate::text::{TextStyle, WrapMode};
 
 pub(in crate::svg::parity::flowchart) struct FlowchartRenderConfig {
@@ -34,7 +33,6 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
     model: &crate::flowchart::FlowchartModel,
     effective_config_value: &serde_json::Value,
     diagram_type: &str,
-    presentation_policy: Option<FlowchartPresentationPolicy>,
 ) -> FlowchartRenderConfig {
     let config = FlowchartConfigView::new(effective_config_value);
     let font_family = config.font_family();
@@ -80,13 +78,9 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
     let node_corner_radius = config_f64(effective_config_value, &["themeVariables", "radius"])
         .unwrap_or(5.0)
         .max(0.0);
-    let presentation_policy = presentation_policy.unwrap_or_default();
-    let edge_corner_radius = presentation_policy
-        .edge_corner_radius
-        .unwrap_or(node_corner_radius)
-        .max(0.0);
-    let edge_label_padding = presentation_policy.edge_label_padding.max(0.0);
-    let compact_edge_corners = presentation_policy.compact_edge_corners;
+    let edge_corner_radius = node_corner_radius;
+    let edge_label_padding = 0.0;
+    let compact_edge_corners = false;
 
     FlowchartRenderConfig {
         font_family,

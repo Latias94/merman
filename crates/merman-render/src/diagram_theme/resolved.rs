@@ -142,17 +142,7 @@ impl ResolvedDiagramTheme {
         variant: ThemeVariant,
         ordinal: Option<usize>,
     ) -> ResolvedThemeStyle {
-        let base_typography = self.typography().clone();
-        let mut style = ResolvedThemeStyle::new(base_typography.clone());
-        for rule in self
-            .theme
-            .spec()
-            .styles()
-            .matching_rules(self.family, target, variant, ordinal)
-        {
-            style.apply(rule.style(), &base_typography);
-        }
-        style
+        resolve_style(self.theme.spec(), self.family, target, variant, ordinal)
     }
 
     pub fn series_color(
@@ -179,6 +169,24 @@ impl ResolvedDiagramTheme {
     pub fn into_theme(self) -> super::DiagramTheme {
         self.theme
     }
+}
+
+pub(crate) fn resolve_style(
+    spec: &super::DiagramThemeSpec,
+    family: RenderFamilyKind,
+    target: ThemeTarget,
+    variant: ThemeVariant,
+    ordinal: Option<usize>,
+) -> ResolvedThemeStyle {
+    let base_typography = spec.typography().family_style(family).clone();
+    let mut style = ResolvedThemeStyle::new(base_typography.clone());
+    for rule in spec
+        .styles()
+        .matching_rules(family, target, variant, ordinal)
+    {
+        style.apply(rule.style(), &base_typography);
+    }
+    style
 }
 
 fn apply_optional<T: Clone>(value: &Specified<T>, target: &mut Option<T>) {

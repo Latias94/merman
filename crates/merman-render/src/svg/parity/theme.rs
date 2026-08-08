@@ -11,6 +11,7 @@ use helpers::*;
 #[derive(Debug, Clone)]
 pub(super) struct CommonCssTheme {
     pub(super) theme_name: String,
+    pub(super) dark_mode: bool,
     pub(super) look: String,
     pub(super) font_family_css: String,
     pub(super) font_size_px: f64,
@@ -22,7 +23,7 @@ pub(super) struct CommonCssTheme {
 
 impl CommonCssTheme {
     pub(super) fn is_dark_theme(&self) -> bool {
-        self.theme_name.contains("dark")
+        self.dark_mode
     }
 
     pub(super) fn is_neo(&self) -> bool {
@@ -359,16 +360,20 @@ pub(crate) struct TimelineTheme {
     pub(crate) sections: Vec<TimelineSectionTheme>,
 }
 
-pub(crate) struct PresentationTheme<'a> {
+pub(crate) struct MermaidThemeAdapter<'a> {
     raw: SvgTheme<'a>,
     common: CommonCssTheme,
 }
 
-impl<'a> PresentationTheme<'a> {
+impl<'a> MermaidThemeAdapter<'a> {
     pub(crate) fn new(effective_config: &'a Value) -> Self {
         let raw = SvgTheme::new(effective_config);
+        let theme_name = raw.theme_name();
         let common = CommonCssTheme {
-            theme_name: raw.theme_name(),
+            dark_mode: raw
+                .bool_root_or_theme("darkMode")
+                .unwrap_or_else(|| theme_name.contains("dark")),
+            theme_name,
             look: raw.look(),
             font_family_css: raw.font_family_css(),
             font_size_px: raw.font_size_px(),

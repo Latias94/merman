@@ -2,9 +2,33 @@ use super::*;
 use serde_json::json;
 
 #[test]
-fn presentation_theme_node_diagram_uses_shared_fallbacks() {
+fn mermaid_theme_adapter_prefers_explicit_dark_mode_over_theme_name() {
+    let typed_dark = json!({
+        "theme": "base",
+        "themeVariables": { "darkMode": true }
+    });
+    assert!(
+        MermaidThemeAdapter::new(&typed_dark)
+            .common()
+            .is_dark_theme()
+    );
+
+    let explicitly_light = json!({
+        "theme": "dark",
+        "darkMode": false,
+        "themeVariables": { "darkMode": true }
+    });
+    assert!(
+        !MermaidThemeAdapter::new(&explicitly_light)
+            .common()
+            .is_dark_theme()
+    );
+}
+
+#[test]
+fn mermaid_theme_adapter_node_diagram_uses_shared_fallbacks() {
     let cfg = json!({});
-    let theme = PresentationTheme::new(&cfg);
+    let theme = MermaidThemeAdapter::new(&cfg);
     let node = theme.node_diagram();
 
     assert_eq!(node.common.text_color, "#333");
@@ -18,14 +42,14 @@ fn presentation_theme_node_diagram_uses_shared_fallbacks() {
 }
 
 #[test]
-fn presentation_theme_sequence_neo_uses_drop_shadow_for_label_box_filter() {
+fn mermaid_theme_adapter_sequence_neo_uses_drop_shadow_for_label_box_filter() {
     let cfg = json!({
         "look": "neo",
         "themeVariables": {
             "dropShadow": "drop-shadow(1px 2px 3px rgba(0,0,0,.4))"
         }
     });
-    let theme = PresentationTheme::new(&cfg);
+    let theme = MermaidThemeAdapter::new(&cfg);
 
     let sequence = theme.sequence_diagram();
     assert_eq!(
@@ -35,7 +59,7 @@ fn presentation_theme_sequence_neo_uses_drop_shadow_for_label_box_filter() {
 }
 
 #[test]
-fn presentation_theme_xychart_resolves_chart_roles() {
+fn mermaid_theme_adapter_xychart_resolves_chart_roles() {
     let cfg = json!({
         "theme": "neo",
         "themeVariables": {
@@ -51,7 +75,7 @@ fn presentation_theme_xychart_resolves_chart_roles() {
         }
     });
 
-    let xychart = PresentationTheme::new(&cfg).xychart();
+    let xychart = MermaidThemeAdapter::new(&cfg).xychart();
 
     assert_eq!(xychart.background_color, "#0f172a");
     assert_eq!(xychart.title_color, "#f43f5e");
@@ -65,7 +89,7 @@ fn presentation_theme_xychart_resolves_chart_roles() {
 }
 
 #[test]
-fn presentation_theme_quadrantchart_resolves_chart_roles() {
+fn mermaid_theme_adapter_quadrantchart_resolves_chart_roles() {
     let cfg = json!({
         "theme": "redux-dark",
         "themeVariables": {
@@ -86,7 +110,7 @@ fn presentation_theme_quadrantchart_resolves_chart_roles() {
         }
     });
 
-    let quadrant = PresentationTheme::new(&cfg).quadrantchart();
+    let quadrant = MermaidThemeAdapter::new(&cfg).quadrantchart();
 
     assert_eq!(quadrant.quadrant1_fill, "#010203");
     assert_eq!(quadrant.quadrant2_fill, "#020304");
@@ -101,7 +125,7 @@ fn presentation_theme_quadrantchart_resolves_chart_roles() {
 }
 
 #[test]
-fn presentation_theme_tree_view_resolves_tree_view_roles() {
+fn mermaid_theme_adapter_tree_view_resolves_tree_view_roles() {
     let cfg = json!({
         "themeVariables": {
             "treeView": {
@@ -116,7 +140,7 @@ fn presentation_theme_tree_view_resolves_tree_view_roles() {
         }
     });
 
-    let tree_view = PresentationTheme::new(&cfg).tree_view();
+    let tree_view = MermaidThemeAdapter::new(&cfg).tree_view();
 
     assert_eq!(tree_view.label_font_size, 20.0);
     assert_eq!(tree_view.label_font_size_css, "20px");
@@ -129,10 +153,10 @@ fn presentation_theme_tree_view_resolves_tree_view_roles() {
 }
 
 #[test]
-fn presentation_theme_tree_view_uses_default_tree_view_roles() {
+fn mermaid_theme_adapter_tree_view_uses_default_tree_view_roles() {
     let cfg = json!({});
 
-    let tree_view = PresentationTheme::new(&cfg).tree_view();
+    let tree_view = MermaidThemeAdapter::new(&cfg).tree_view();
 
     assert_eq!(tree_view.label_font_size, 16.0);
     assert_eq!(tree_view.label_font_size_css, "16px");
@@ -145,7 +169,7 @@ fn presentation_theme_tree_view_uses_default_tree_view_roles() {
 }
 
 #[test]
-fn presentation_theme_treemap_resolves_top_level_treemap_roles() {
+fn mermaid_theme_adapter_treemap_resolves_top_level_treemap_roles() {
     let cfg = json!({
         "theme": "custom",
         "themeVariables": {
@@ -172,7 +196,7 @@ fn presentation_theme_treemap_resolves_top_level_treemap_roles() {
         }
     });
 
-    let treemap = PresentationTheme::new(&cfg).treemap().unwrap();
+    let treemap = MermaidThemeAdapter::new(&cfg).treemap().unwrap();
 
     assert_eq!(treemap.title_color, "#777777");
     assert_eq!(treemap.label_color, "#555555");
@@ -192,7 +216,7 @@ fn presentation_theme_treemap_resolves_top_level_treemap_roles() {
 }
 
 #[test]
-fn presentation_theme_treemap_uses_text_and_title_fallbacks() {
+fn mermaid_theme_adapter_treemap_uses_text_and_title_fallbacks() {
     let cfg = json!({
         "themeVariables": {
             "textColor": "#101010",
@@ -200,7 +224,7 @@ fn presentation_theme_treemap_uses_text_and_title_fallbacks() {
         }
     });
 
-    let treemap = PresentationTheme::new(&cfg).treemap().unwrap();
+    let treemap = MermaidThemeAdapter::new(&cfg).treemap().unwrap();
 
     assert_eq!(treemap.title_color, "#202020");
     assert_eq!(treemap.label_color, "#101010");
@@ -208,14 +232,14 @@ fn presentation_theme_treemap_uses_text_and_title_fallbacks() {
 }
 
 #[test]
-fn presentation_theme_treemap_uses_default_scales_and_label_inversion() {
+fn mermaid_theme_adapter_treemap_uses_default_scales_and_label_inversion() {
     let cfg = json!({
         "themeVariables": {
             "labelTextColor": "rgb(10, 20, 30)"
         }
     });
 
-    let treemap = PresentationTheme::new(&cfg).treemap().unwrap();
+    let treemap = MermaidThemeAdapter::new(&cfg).treemap().unwrap();
 
     assert_eq!(treemap.color_scale[0], "hsl(240, 100%, 76.2745098039%)");
     assert_eq!(
@@ -232,7 +256,7 @@ fn presentation_theme_treemap_uses_default_scales_and_label_inversion() {
 }
 
 #[test]
-fn presentation_theme_gantt_resolves_gantt_roles() {
+fn mermaid_theme_adapter_gantt_resolves_gantt_roles() {
     let cfg = json!({
         "themeVariables": {
             "fontFamily": "\"ibm plex sans\", arial, sans-serif",
@@ -260,7 +284,7 @@ fn presentation_theme_gantt_resolves_gantt_roles() {
         }
     });
 
-    let gantt = PresentationTheme::new(&cfg).gantt();
+    let gantt = MermaidThemeAdapter::new(&cfg).gantt();
 
     assert_eq!(gantt.font_family, r#""ibm plex sans",arial,sans-serif"#);
     assert_eq!(gantt.text_color, "#707070");
@@ -288,7 +312,7 @@ fn presentation_theme_gantt_resolves_gantt_roles() {
 }
 
 #[test]
-fn presentation_theme_gantt_uses_text_color_for_empty_title_color() {
+fn mermaid_theme_adapter_gantt_uses_text_color_for_empty_title_color() {
     let cfg = json!({
         "themeVariables": {
             "textColor": "#707070",
@@ -296,14 +320,14 @@ fn presentation_theme_gantt_uses_text_color_for_empty_title_color() {
         }
     });
 
-    let gantt = PresentationTheme::new(&cfg).gantt();
+    let gantt = MermaidThemeAdapter::new(&cfg).gantt();
 
     assert_eq!(gantt.title_color, "   ");
     assert_eq!(gantt.title_text_color, "#707070");
 }
 
 #[test]
-fn presentation_theme_kanban_resolves_theme_roles() {
+fn mermaid_theme_adapter_kanban_resolves_theme_roles() {
     let cfg = json!({
         "themeVariables": {
             "background": "#0f172a",
@@ -317,7 +341,7 @@ fn presentation_theme_kanban_resolves_theme_roles() {
         }
     });
 
-    let kanban = PresentationTheme::new(&cfg).kanban().unwrap();
+    let kanban = MermaidThemeAdapter::new(&cfg).kanban().unwrap();
 
     assert_eq!(kanban.text_color, "#f8fafc");
     assert_eq!(kanban.background, "#0f172a");
@@ -331,12 +355,12 @@ fn presentation_theme_kanban_resolves_theme_roles() {
 }
 
 #[test]
-fn presentation_theme_kanban_dark_mode_adjusts_section_fill_down() {
+fn mermaid_theme_adapter_kanban_dark_mode_adjusts_section_fill_down() {
     let cfg = json!({
         "darkMode": true
     });
 
-    let kanban = PresentationTheme::new(&cfg).kanban().unwrap();
+    let kanban = MermaidThemeAdapter::new(&cfg).kanban().unwrap();
 
     assert_eq!(kanban.sections[0].c_scale, "hsl(240, 100%, 76.2745098039%)");
     assert_eq!(
@@ -351,7 +375,7 @@ fn presentation_theme_kanban_dark_mode_adjusts_section_fill_down() {
 }
 
 #[test]
-fn presentation_theme_kanban_uses_khroma_for_every_supported_color_syntax() {
+fn mermaid_theme_adapter_kanban_uses_khroma_for_every_supported_color_syntax() {
     let cases = [
         ("#ff0000", "hsl(0, 100%, 60%)"),
         ("rebeccapurple", "hsl(270, 50%, 50%)"),
@@ -363,20 +387,20 @@ fn presentation_theme_kanban_uses_khroma_for_every_supported_color_syntax() {
 
     for (input, expected) in cases {
         let cfg = json!({ "themeVariables": { "cScale0": input } });
-        let kanban = PresentationTheme::new(&cfg).kanban().unwrap();
+        let kanban = MermaidThemeAdapter::new(&cfg).kanban().unwrap();
         assert_eq!(kanban.sections[0].section_fill, expected, "{input}");
     }
 }
 
 #[test]
-fn presentation_theme_kanban_rejects_invalid_derived_colors() {
+fn mermaid_theme_adapter_kanban_rejects_invalid_derived_colors() {
     let cfg = json!({ "themeVariables": { "cScale0": "var(--runtime-color)" } });
-    let error = PresentationTheme::new(&cfg).kanban().unwrap_err();
+    let error = MermaidThemeAdapter::new(&cfg).kanban().unwrap_err();
     assert!(matches!(error, crate::Error::Color(_)));
 }
 
 #[test]
-fn presentation_theme_timeline_resolves_timeline_roles() {
+fn mermaid_theme_adapter_timeline_resolves_timeline_roles() {
     let cfg = json!({
         "theme": "redux-color",
         "themeVariables": {
@@ -400,7 +424,7 @@ fn presentation_theme_timeline_resolves_timeline_roles() {
         }
     });
 
-    let timeline = PresentationTheme::new(&cfg).timeline();
+    let timeline = MermaidThemeAdapter::new(&cfg).timeline();
 
     assert!(timeline.is_redux_theme);
     assert!(!timeline.is_dark_theme);
@@ -424,10 +448,10 @@ fn presentation_theme_timeline_resolves_timeline_roles() {
 }
 
 #[test]
-fn presentation_theme_timeline_uses_default_timeline_roles() {
+fn mermaid_theme_adapter_timeline_uses_default_timeline_roles() {
     let cfg = json!({});
 
-    let timeline = PresentationTheme::new(&cfg).timeline();
+    let timeline = MermaidThemeAdapter::new(&cfg).timeline();
 
     assert!(!timeline.is_redux_theme);
     assert!(!timeline.is_dark_theme);
@@ -455,7 +479,7 @@ fn presentation_theme_timeline_uses_default_timeline_roles() {
 }
 
 #[test]
-fn presentation_theme_eventmodeling_resolves_eventmodeling_roles() {
+fn mermaid_theme_adapter_eventmodeling_resolves_eventmodeling_roles() {
     let cfg = json!({
         "fontFamily": "Inter, sans-serif",
         "themeVariables": {
@@ -471,7 +495,7 @@ fn presentation_theme_eventmodeling_resolves_eventmodeling_roles() {
         }
     });
 
-    let eventmodeling = PresentationTheme::new(&cfg).eventmodeling();
+    let eventmodeling = MermaidThemeAdapter::new(&cfg).eventmodeling();
 
     assert_eq!(eventmodeling.font_family_css, "Inter,sans-serif");
     assert_eq!(eventmodeling.text_color, "#111111");
@@ -486,10 +510,10 @@ fn presentation_theme_eventmodeling_resolves_eventmodeling_roles() {
 }
 
 #[test]
-fn presentation_theme_eventmodeling_uses_default_eventmodeling_roles() {
+fn mermaid_theme_adapter_eventmodeling_uses_default_eventmodeling_roles() {
     let cfg = json!({});
 
-    let eventmodeling = PresentationTheme::new(&cfg).eventmodeling();
+    let eventmodeling = MermaidThemeAdapter::new(&cfg).eventmodeling();
 
     assert_eq!(
         eventmodeling.font_family_css,
@@ -505,7 +529,7 @@ fn presentation_theme_eventmodeling_uses_default_eventmodeling_roles() {
 }
 
 #[test]
-fn presentation_theme_ishikawa_resolves_ishikawa_roles() {
+fn mermaid_theme_adapter_ishikawa_resolves_ishikawa_roles() {
     let cfg = json!({
         "fontFamily": "Inter, sans-serif",
         "themeVariables": {
@@ -516,7 +540,7 @@ fn presentation_theme_ishikawa_resolves_ishikawa_roles() {
         }
     });
 
-    let ishikawa = PresentationTheme::new(&cfg).ishikawa();
+    let ishikawa = MermaidThemeAdapter::new(&cfg).ishikawa();
 
     assert_eq!(ishikawa.line_color, "#008800");
     assert_eq!(ishikawa.main_bkg, "#FFFFFF");
@@ -525,10 +549,10 @@ fn presentation_theme_ishikawa_resolves_ishikawa_roles() {
 }
 
 #[test]
-fn presentation_theme_ishikawa_uses_default_ishikawa_roles() {
+fn mermaid_theme_adapter_ishikawa_uses_default_ishikawa_roles() {
     let cfg = json!({});
 
-    let ishikawa = PresentationTheme::new(&cfg).ishikawa();
+    let ishikawa = MermaidThemeAdapter::new(&cfg).ishikawa();
 
     assert_eq!(ishikawa.line_color, "#333");
     assert_eq!(ishikawa.main_bkg, "#fff");
@@ -540,7 +564,7 @@ fn presentation_theme_ishikawa_uses_default_ishikawa_roles() {
 }
 
 #[test]
-fn presentation_theme_venn_resolves_venn_roles() {
+fn mermaid_theme_adapter_venn_resolves_venn_roles() {
     let cfg = json!({
         "theme": "dark",
         "fontFamily": "Inter, sans-serif",
@@ -556,7 +580,7 @@ fn presentation_theme_venn_resolves_venn_roles() {
         }
     });
 
-    let venn = PresentationTheme::new(&cfg).venn().unwrap();
+    let venn = MermaidThemeAdapter::new(&cfg).venn().unwrap();
 
     assert_eq!(venn.font_family_css, "Inter,sans-serif");
     assert_eq!(venn.title_color, "#f43f5e");
@@ -571,10 +595,10 @@ fn presentation_theme_venn_resolves_venn_roles() {
 }
 
 #[test]
-fn presentation_theme_venn_uses_default_venn_roles() {
+fn mermaid_theme_adapter_venn_uses_default_venn_roles() {
     let cfg = json!({});
 
-    let venn = PresentationTheme::new(&cfg).venn().unwrap();
+    let venn = MermaidThemeAdapter::new(&cfg).venn().unwrap();
 
     assert_eq!(
         venn.font_family_css,
@@ -596,12 +620,12 @@ fn presentation_theme_venn_uses_default_venn_roles() {
 }
 
 #[test]
-fn presentation_theme_venn_uses_background_color_not_theme_name_for_contrast() {
+fn mermaid_theme_adapter_venn_uses_background_color_not_theme_name_for_contrast() {
     let dark_named_background = json!({
         "theme": "base",
         "themeVariables": { "background": "rebeccapurple" }
     });
-    let theme = PresentationTheme::new(&dark_named_background)
+    let theme = MermaidThemeAdapter::new(&dark_named_background)
         .venn()
         .unwrap();
     assert!(theme.is_dark_theme);
@@ -615,13 +639,13 @@ fn presentation_theme_venn_uses_background_color_not_theme_name_for_contrast() {
         "themeVariables": { "background": "not-a-color" }
     });
     assert!(matches!(
-        PresentationTheme::new(&invalid_background).venn(),
+        MermaidThemeAdapter::new(&invalid_background).venn(),
         Err(crate::Error::Color(_))
     ));
 }
 
 #[test]
-fn presentation_theme_journey_resolves_style_roles() {
+fn mermaid_theme_adapter_journey_resolves_style_roles() {
     let cfg = json!({
         "themeVariables": {
             "fontFamily": "\"ibm plex sans\", arial, sans-serif",
@@ -642,7 +666,7 @@ fn presentation_theme_journey_resolves_style_roles() {
         }
     });
 
-    let journey = PresentationTheme::new(&cfg).journey();
+    let journey = MermaidThemeAdapter::new(&cfg).journey();
 
     assert_eq!(
         journey.font_family_css,
@@ -667,10 +691,10 @@ fn presentation_theme_journey_resolves_style_roles() {
 }
 
 #[test]
-fn presentation_theme_journey_uses_default_style_roles() {
+fn mermaid_theme_adapter_journey_uses_default_style_roles() {
     let cfg = json!({});
 
-    let journey = PresentationTheme::new(&cfg).journey();
+    let journey = MermaidThemeAdapter::new(&cfg).journey();
 
     assert_eq!(
         journey.font_family_css,
@@ -697,7 +721,7 @@ fn presentation_theme_journey_uses_default_style_roles() {
 }
 
 #[test]
-fn presentation_theme_radar_resolves_style_roles() {
+fn mermaid_theme_adapter_radar_resolves_style_roles() {
     let cfg = json!({
         "fontFamily": "Ignored, sans-serif",
         "themeVariables": {
@@ -734,7 +758,7 @@ fn presentation_theme_radar_resolves_style_roles() {
         }
     });
 
-    let radar = PresentationTheme::new(&cfg).radar();
+    let radar = MermaidThemeAdapter::new(&cfg).radar();
 
     assert_eq!(radar.font_family_css, "\"ibm plex sans\",arial,sans-serif");
     assert_eq!(radar.base_font_size_css, "18");
@@ -758,10 +782,10 @@ fn presentation_theme_radar_resolves_style_roles() {
 }
 
 #[test]
-fn presentation_theme_radar_uses_default_style_roles() {
+fn mermaid_theme_adapter_radar_uses_default_style_roles() {
     let cfg = json!({});
 
-    let radar = PresentationTheme::new(&cfg).radar();
+    let radar = MermaidThemeAdapter::new(&cfg).radar();
 
     assert_eq!(
         radar.font_family_css,

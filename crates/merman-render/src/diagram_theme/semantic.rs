@@ -12,6 +12,7 @@ pub enum ThemeTarget {
     NodeLabel,
     Edge,
     EdgeLabel,
+    EdgeLabelBackground,
     Cluster,
     ClusterLabel,
     Marker,
@@ -24,14 +25,19 @@ pub enum ThemeTarget {
     State,
     StateLabel,
     Transition,
+    TransitionLabel,
     Composite,
+    CompositeLabel,
     SpecialState,
     Actor,
+    ActorLabel,
     Lifeline,
     Message,
     MessageLabel,
     Loop,
+    LoopLabel,
     Note,
+    NoteLabel,
     Activation,
     Requirement,
     Relation,
@@ -42,6 +48,47 @@ pub enum ThemeTarget {
 }
 
 impl ThemeTarget {
+    pub const ALL: [Self; 38] = [
+        Self::Canvas,
+        Self::Node,
+        Self::NodeLabel,
+        Self::Edge,
+        Self::EdgeLabel,
+        Self::EdgeLabelBackground,
+        Self::Cluster,
+        Self::ClusterLabel,
+        Self::Marker,
+        Self::Title,
+        Self::Text,
+        Self::Axis,
+        Self::Legend,
+        Self::Table,
+        Self::Task,
+        Self::State,
+        Self::StateLabel,
+        Self::Transition,
+        Self::TransitionLabel,
+        Self::Composite,
+        Self::CompositeLabel,
+        Self::SpecialState,
+        Self::Actor,
+        Self::ActorLabel,
+        Self::Lifeline,
+        Self::Message,
+        Self::MessageLabel,
+        Self::Loop,
+        Self::LoopLabel,
+        Self::Note,
+        Self::NoteLabel,
+        Self::Activation,
+        Self::Requirement,
+        Self::Relation,
+        Self::PieSlice,
+        Self::ChartSeries,
+        Self::TimelineEvent,
+        Self::JourneyTask,
+    ];
+
     pub const fn id(self) -> &'static str {
         match self {
             Self::Canvas => "canvas",
@@ -49,6 +96,7 @@ impl ThemeTarget {
             Self::NodeLabel => "node-label",
             Self::Edge => "edge",
             Self::EdgeLabel => "edge-label",
+            Self::EdgeLabelBackground => "edge-label-background",
             Self::Cluster => "cluster",
             Self::ClusterLabel => "cluster-label",
             Self::Marker => "marker",
@@ -61,14 +109,19 @@ impl ThemeTarget {
             Self::State => "state",
             Self::StateLabel => "state-label",
             Self::Transition => "transition",
+            Self::TransitionLabel => "transition-label",
             Self::Composite => "composite",
+            Self::CompositeLabel => "composite-label",
             Self::SpecialState => "special-state",
             Self::Actor => "actor",
+            Self::ActorLabel => "actor-label",
             Self::Lifeline => "lifeline",
             Self::Message => "message",
             Self::MessageLabel => "message-label",
             Self::Loop => "loop",
+            Self::LoopLabel => "loop-label",
             Self::Note => "note",
+            Self::NoteLabel => "note-label",
             Self::Activation => "activation",
             Self::Requirement => "requirement",
             Self::Relation => "relation",
@@ -84,15 +137,19 @@ impl ThemeTarget {
             Self::State
             | Self::StateLabel
             | Self::Transition
+            | Self::TransitionLabel
             | Self::Composite
+            | Self::CompositeLabel
             | Self::SpecialState => {
                 matches!(family, RenderFamilyKind::State)
             }
             Self::Actor
+            | Self::ActorLabel
             | Self::Lifeline
             | Self::Message
             | Self::MessageLabel
             | Self::Loop
+            | Self::LoopLabel
             | Self::Activation => {
                 matches!(family, RenderFamilyKind::Sequence)
             }
@@ -120,6 +177,7 @@ impl ThemeTarget {
             | Self::NodeLabel
             | Self::Edge
             | Self::EdgeLabel
+            | Self::EdgeLabelBackground
             | Self::Cluster
             | Self::ClusterLabel
             | Self::Marker => {
@@ -135,7 +193,9 @@ impl ThemeTarget {
                 )
             }
             Self::Canvas | Self::Title | Self::Text => true,
-            Self::Note => matches!(family, RenderFamilyKind::Sequence | RenderFamilyKind::State),
+            Self::Note | Self::NoteLabel => {
+                matches!(family, RenderFamilyKind::Sequence | RenderFamilyKind::State)
+            }
         }
     }
 }
@@ -161,6 +221,23 @@ pub enum ThemeVariant {
 }
 
 impl ThemeVariant {
+    pub const ALL: [Self; 14] = [
+        Self::Default,
+        Self::Primary,
+        Self::Secondary,
+        Self::Tertiary,
+        Self::Active,
+        Self::Selected,
+        Self::Odd,
+        Self::Even,
+        Self::Start,
+        Self::End,
+        Self::Special,
+        Self::Error,
+        Self::Warning,
+        Self::Success,
+    ];
+
     pub const fn id(self) -> &'static str {
         match self {
             Self::Default => "default",

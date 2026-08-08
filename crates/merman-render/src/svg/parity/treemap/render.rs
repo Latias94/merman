@@ -206,7 +206,7 @@ pub(crate) fn render_treemap_diagram_svg(
     let diagram_id = options.diagram_id.as_deref().unwrap_or("treemap");
     let diagram_id_esc = escape_xml(diagram_id);
 
-    let theme = PresentationTheme::new(effective_config).treemap()?;
+    let theme = MermaidThemeAdapter::new(effective_config).treemap()?;
 
     let mut color_scale = OrdinalScale::default();
     color_scale.range.push("transparent".to_string());

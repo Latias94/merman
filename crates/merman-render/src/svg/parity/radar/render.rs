@@ -176,7 +176,7 @@ pub(crate) fn render_radar_diagram_svg_model(
         );
     }
 
-    let theme = PresentationTheme::new(effective_config).radar();
+    let theme = MermaidThemeAdapter::new(effective_config).radar();
     let css = radar_css(diagram_id, &theme);
     let _ = write!(&mut out, "<style>{}</style>", css);
     out.push_str("<g/>");
@@ -364,7 +364,7 @@ mod tests {
             }
         });
 
-        let theme = PresentationTheme::new(&cfg).radar();
+        let theme = MermaidThemeAdapter::new(&cfg).radar();
         let css = radar_css("radar", &theme);
 
         assert!(css.contains(r#"#radar .radarTitle{font-size:18px;color:#202020;"#));
@@ -404,7 +404,7 @@ mod tests {
             }
         });
 
-        let theme = PresentationTheme::new(&cfg).radar();
+        let theme = MermaidThemeAdapter::new(&cfg).radar();
         let css = radar_css("radar", &theme);
 
         assert!(css.contains(r#"#radar .radarAxisLine{stroke:#404040;stroke-width:2;}"#));

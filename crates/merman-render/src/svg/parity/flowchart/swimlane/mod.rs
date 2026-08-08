@@ -27,7 +27,6 @@ pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
             effective_config: &metadata.effective_config,
             diagram_type: metadata.diagram_type.as_str(),
             diagram_title: metadata.title.as_deref(),
-            presentation_policy: None,
             svg_label_sidecar: artifact.svg_label_sidecar(),
         },
         options,
@@ -256,7 +255,7 @@ pub(super) fn swimlane_css(
     diagram_id: &str,
     effective_config: &merman_core::MermaidConfig,
 ) -> String {
-    let theme = PresentationTheme::new(effective_config.as_value()).node_diagram();
+    let theme = MermaidThemeAdapter::new(effective_config.as_value()).node_diagram();
     format!(
         r#"#{id} .swimlane.cluster rect{{stroke:{border}!important;}}#{id} [data-look="neo"].cluster rect{{filter:none;}}"#,
         id = diagram_id,

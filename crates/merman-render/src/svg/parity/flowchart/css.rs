@@ -10,7 +10,7 @@ pub(in crate::svg::parity) fn flowchart_css(
     class_defs: &IndexMap<String, Vec<String>>,
 ) -> Result<String> {
     let id = escape_xml(diagram_id);
-    let theme = PresentationTheme::new(effective_config).node_diagram();
+    let theme = MermaidThemeAdapter::new(effective_config).node_diagram();
     let stroke = theme.common.line_color.as_str();
     let arrowhead_color = theme.arrowhead_color.as_str();
     let node_border = theme.node_border.as_str();

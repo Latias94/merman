@@ -1,7 +1,7 @@
 use super::*;
 use merman_core::theme_color::{darken, invert, is_dark, lighten};
 
-impl<'a> PresentationTheme<'a> {
+impl<'a> MermaidThemeAdapter<'a> {
     pub(crate) fn xychart(&self) -> XyChartTheme {
         let background = self
             .raw
@@ -470,7 +470,7 @@ impl<'a> PresentationTheme<'a> {
 
         TimelineTheme {
             is_redux_theme: theme_name.contains("redux"),
-            is_dark_theme: theme_name.contains("dark"),
+            is_dark_theme: self.common.is_dark_theme(),
             is_color_theme: theme_name.contains("color"),
             stroke_width: self.raw.css_value("strokeWidth", "1"),
             font_weight: self.raw.css_value("fontWeight", "normal"),

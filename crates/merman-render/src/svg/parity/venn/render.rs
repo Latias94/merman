@@ -273,7 +273,7 @@ pub(crate) fn render_venn_diagram_svg_model(
         );
     }
 
-    let theme = PresentationTheme::new(effective_config).venn()?;
+    let theme = MermaidThemeAdapter::new(effective_config).venn()?;
     let css = venn_css(diagram_id, &theme);
     let _ = write!(&mut out, r#"<style>{css}</style>"#);
     out.push_str("<g/>");

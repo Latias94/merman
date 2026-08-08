@@ -2,7 +2,6 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use merman_core::MermaidConfig;
-use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
 use super::admission::{
@@ -13,7 +12,6 @@ use super::assets::{FontCatalog, FontCatalogError};
 use super::canvas::CanvasPaint;
 use super::effects::EffectPrimitive;
 use super::resources::{ThemeResourceLimitExceeded, ThemeResourcePolicy};
-use super::semantic::{ThemeTarget, ThemeVariant};
 use super::spec::DiagramThemeSpec;
 use super::typography::Specified;
 use super::{ThemeCompileValidationError, ThemeFingerprint, ThemeResolutionReport};
@@ -122,6 +120,13 @@ impl DiagramThemeCompiler {
             fingerprint: ThemeFingerprint::from_bytes(fingerprint),
             report,
         })))
+    }
+
+    pub fn compile_preset(
+        &self,
+        preset: super::ThemePreset,
+    ) -> Result<super::DiagramTheme, ThemeCompileError> {
+        self.compile(preset.spec())
     }
 }
 
@@ -280,135 +285,7 @@ pub enum ThemeCompileError {
 }
 
 fn compile_mermaid_config(spec: &DiagramThemeSpec) -> MermaidConfig {
-    let mut config = spec.mermaid().to_mermaid_config();
-    let mut root = Map::new();
-    let mut variables = Map::new();
-    let (font_family, font_size) = spec.typography().default_style().to_mermaid_values();
-    variables.insert("fontFamily".to_string(), Value::String(font_family.clone()));
-    variables.insert("fontSize".to_string(), Value::String(font_size.clone()));
-    root.insert("fontFamily".to_string(), Value::String(font_family));
-
-    if let CanvasPaint::Solid(color) = spec.canvas().base() {
-        variables.insert("background".to_string(), Value::String(color.as_css()));
-    }
-
-    let shape_mappings = [
-        (
-            crate::family::RenderFamilyKind::Flowchart,
-            ThemeTarget::Node,
-            "primaryColor",
-            "primaryBorderColor",
-        ),
-        (
-            crate::family::RenderFamilyKind::Flowchart,
-            ThemeTarget::Edge,
-            "lineColor",
-            "lineColor",
-        ),
-        (
-            crate::family::RenderFamilyKind::Flowchart,
-            ThemeTarget::EdgeLabel,
-            "edgeLabelBackground",
-            "edgeLabelBackground",
-        ),
-        (
-            crate::family::RenderFamilyKind::Flowchart,
-            ThemeTarget::Cluster,
-            "clusterBkg",
-            "clusterBorder",
-        ),
-        (
-            crate::family::RenderFamilyKind::Sequence,
-            ThemeTarget::Note,
-            "noteBkgColor",
-            "noteBorderColor",
-        ),
-        (
-            crate::family::RenderFamilyKind::Sequence,
-            ThemeTarget::Actor,
-            "actorBkg",
-            "actorBorder",
-        ),
-        (
-            crate::family::RenderFamilyKind::Sequence,
-            ThemeTarget::Activation,
-            "activationBkgColor",
-            "activationBorderColor",
-        ),
-        (
-            crate::family::RenderFamilyKind::State,
-            ThemeTarget::State,
-            "stateBkg",
-            "stateBorder",
-        ),
-        (
-            crate::family::RenderFamilyKind::State,
-            ThemeTarget::Transition,
-            "transitionColor",
-            "transitionColor",
-        ),
-    ];
-    for (family, target, fill_key, stroke_key) in shape_mappings {
-        if let Some(rule) = spec
-            .styles()
-            .matching_rules(family, target, ThemeVariant::Default, None)
-            .next()
-        {
-            if let Specified::Value(CanvasPaint::Solid(color)) = &rule.style().paint.fill {
-                variables.insert(fill_key.to_string(), Value::String(color.as_css()));
-            }
-            if let Specified::Value(CanvasPaint::Solid(color)) = &rule.style().stroke.paint {
-                variables.insert(stroke_key.to_string(), Value::String(color.as_css()));
-            }
-        }
-    }
-
-    let text_mappings = [
-        (
-            crate::family::RenderFamilyKind::Flowchart,
-            ThemeTarget::NodeLabel,
-            &["primaryTextColor", "nodeTextColor"][..],
-        ),
-        (
-            crate::family::RenderFamilyKind::Flowchart,
-            ThemeTarget::ClusterLabel,
-            &["textColor"][..],
-        ),
-        (
-            crate::family::RenderFamilyKind::Sequence,
-            ThemeTarget::MessageLabel,
-            &["signalTextColor"][..],
-        ),
-        (
-            crate::family::RenderFamilyKind::State,
-            ThemeTarget::StateLabel,
-            &["stateLabelColor"][..],
-        ),
-    ];
-    for (family, target, keys) in text_mappings {
-        if let Some(rule) = spec
-            .styles()
-            .matching_rules(family, target, ThemeVariant::Default, None)
-            .next()
-            && let Some(color) = text_color_from_rule(rule)
-        {
-            for key in keys {
-                variables.insert((*key).to_string(), Value::String(color.clone()));
-            }
-        }
-    }
-
-    root.insert("theme".to_string(), Value::String("base".to_string()));
-    root.insert("themeVariables".to_string(), Value::Object(variables));
-    config.deep_merge(&Value::Object(root));
-    config
-}
-
-fn text_color_from_rule(rule: &super::semantic::ThemeRule) -> Option<String> {
-    match &rule.style().paint.fill {
-        Specified::Value(CanvasPaint::Solid(color)) => Some(color.as_css()),
-        _ => None,
-    }
+    super::mermaid_projection::compile(spec)
 }
 
 fn fingerprint(

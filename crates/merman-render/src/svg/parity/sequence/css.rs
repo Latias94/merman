@@ -8,7 +8,7 @@ pub(super) fn sequence_css(
     // Mirrors Mermaid 11.15 `diagrams/sequence/styles.js` + shared base stylesheet ordering.
     // Keep `:root` last (matches upstream fixtures).
     let id = escape_xml(diagram_id);
-    let theme = PresentationTheme::new(effective_config).sequence_diagram();
+    let theme = MermaidThemeAdapter::new(effective_config).sequence_diagram();
     let font = theme.common.font_family_css.as_str();
     let text_color = theme.common.text_color.as_str();
     let error_bkg = theme.common.error_bkg.as_str();
