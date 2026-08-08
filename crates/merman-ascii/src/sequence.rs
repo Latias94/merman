@@ -10,7 +10,7 @@ mod text;
 mod validate;
 
 pub(crate) use model::from_sequence_model;
-pub(crate) use render::render_sequence_diagram;
+pub(crate) use render::render_sequence_diagram_with_resources;
 
 const BOX_PADDING_LEFT_RIGHT: usize = 2;
 const MIN_BOX_WIDTH: usize = 3;

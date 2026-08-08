@@ -2,8 +2,11 @@ use super::charset::GraphCharset;
 use super::label::GraphLabel;
 use super::layout::{GraphLayout, GridCoord, GroupLayout, NodeLayout};
 use super::model::{AsciiGraph, AsciiGraphEdge, GraphNodeShape, GraphNodeStyle};
-use crate::canvas::Canvas;
+use super::surface::GraphSurface;
+use super::topology::GraphGroupTopology;
+use crate::canvas::Canvas as RawCanvas;
 use crate::error::{AsciiError, Result};
+use crate::resource::{AsciiResourceLimitId, ResourceContext};
 
 mod cell;
 mod label;
@@ -13,15 +16,21 @@ mod plan;
 pub(super) use cell::RouteCells;
 use cell::{set_edge_cell_with_paint, set_route_cell_with_paint};
 use label::{EdgeLabel, draw_routed_label};
-use plan::{EdgeRoutePlan, EdgeRouteRequest, PlannedRouteCellKind, RoutePlan, plan_edge_route};
+#[cfg(test)]
+use plan::plan_edge_route;
+use plan::{
+    EdgeRoutePlan, EdgeRouteRequest, PlannedRouteCellKind, RoutePlan, plan_edge_route_with_topology,
+};
+
+type Canvas<'surface> = dyn GraphSurface + 'surface;
 
 pub(super) struct RouteDrawing<'a> {
-    canvas: &'a mut Canvas,
+    canvas: &'a mut Canvas<'a>,
     route_cells: &'a mut RouteCells,
 }
 
 impl<'a> RouteDrawing<'a> {
-    pub(super) fn new(canvas: &'a mut Canvas, route_cells: &'a mut RouteCells) -> Self {
+    pub(super) fn new(canvas: &'a mut Canvas<'a>, route_cells: &'a mut RouteCells) -> Self {
         Self {
             canvas,
             route_cells,
@@ -32,6 +41,7 @@ impl<'a> RouteDrawing<'a> {
 pub(super) struct RouteScene {
     routes: Vec<PreparedRoute>,
     extent: (usize, usize),
+    planned_cell_count: usize,
 }
 
 struct PreparedRoute {
@@ -39,8 +49,8 @@ struct PreparedRoute {
 }
 
 impl PreparedRoute {
-    fn paint(&self, drawing: &mut RouteDrawing<'_>) {
-        paint_route_plan(drawing, &self.plan);
+    fn paint(&self, drawing: &mut RouteDrawing<'_>) -> Result<()> {
+        paint_route_plan(drawing, &self.plan)
     }
 }
 
@@ -49,13 +59,22 @@ impl RouteScene {
         self.extent
     }
 
-    pub(super) fn paint_routes(&self, drawing: &mut RouteDrawing<'_>) {
-        for route in &self.routes {
-            route.paint(drawing);
-        }
+    pub(super) fn planned_cell_count(&self) -> usize {
+        self.planned_cell_count
     }
 
-    pub(super) fn draw_labels(&self, canvas: &mut Canvas, transform: RouteLabelTransform) {
+    pub(super) fn paint_routes(&self, drawing: &mut RouteDrawing<'_>) -> Result<()> {
+        for route in &self.routes {
+            route.paint(drawing)?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn draw_labels(
+        &self,
+        canvas: &mut RawCanvas,
+        transform: RouteLabelTransform,
+    ) -> Result<()> {
         for route in &self.routes {
             for label in &route.plan.labels {
                 let label = transform.apply(EdgeLabel {
@@ -63,9 +82,10 @@ impl RouteScene {
                     placement: label.placement,
                     color: label.paint.color,
                 });
-                draw_routed_label(canvas, &label);
+                draw_routed_label(canvas, &label)?;
             }
         }
+        Ok(())
     }
 }
 
@@ -104,17 +124,40 @@ impl RouteLabelTransform {
     }
 }
 
-pub(super) fn prepare_route_scene(
+pub(super) fn prepare_route_scene_with_resources(
     graph: &AsciiGraph,
     graph_layout: &GraphLayout,
     edges: &[AsciiGraphEdge],
     charset: &GraphCharset,
+    resources: &mut ResourceContext,
 ) -> Result<RouteScene> {
-    let mut routes = Vec::with_capacity(edges.len());
+    let topology = if graph.groups.is_empty() {
+        None
+    } else {
+        Some(GraphGroupTopology::try_new(graph, resources)?)
+    };
+    let mut routes = Vec::new();
+    routes
+        .try_reserve(edges.len())
+        .map_err(|_| AsciiError::AllocationFailed {
+            phase: crate::resource::AsciiResourceLimitPhase::LayoutWork.as_str(),
+        })?;
     let mut width = 0;
     let mut height = 0;
+    let mut planned_cell_count = 0usize;
+    let route_scan_width = graph_layout
+        .nodes
+        .len()
+        .checked_add(graph_layout.groups.len())
+        .and_then(|count| count.checked_add(edges.len()))
+        .ok_or_else(|| {
+            resources
+                .policy()
+                .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
+        })?;
 
     for (edge_index, edge) in edges.iter().enumerate() {
+        resources.charge_layout_work(route_scan_width)?;
         let Some(from) = endpoint_layout(graph_layout, &edge.from, charset) else {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: graph.diagram_type(),
@@ -127,16 +170,20 @@ pub(super) fn prepare_route_scene(
                 feature: "edges with missing endpoint layouts",
             });
         };
-        let plan = match plan_edge_route(EdgeRouteRequest {
-            graph,
-            graph_layout,
-            edges,
-            from: &from,
-            to: &to,
-            edge_index,
-            edge,
-            charset,
-        }) {
+        let plan = match plan_edge_route_with_topology(
+            EdgeRouteRequest {
+                graph,
+                graph_layout,
+                edges,
+                from: &from,
+                to: &to,
+                edge_index,
+                edge,
+                charset,
+            },
+            topology.as_ref(),
+            resources,
+        )? {
             EdgeRoutePlan::Routed(plan) => plan,
             EdgeRoutePlan::Unsupported(route) => {
                 return Err(AsciiError::UnsupportedFeature {
@@ -147,7 +194,14 @@ pub(super) fn prepare_route_scene(
         };
 
         let plan = plan.with_style(edge.style);
-        let (plan_width, plan_height) = plan.canvas_extent();
+        planned_cell_count = planned_cell_count
+            .checked_add(plan.cells.len())
+            .ok_or_else(|| {
+                resources
+                    .policy()
+                    .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
+            })?;
+        let (plan_width, plan_height) = plan.canvas_extent_with_resources(resources)?;
         width = width.max(plan_width);
         height = height.max(plan_height);
         routes.push(PreparedRoute { plan });
@@ -156,7 +210,21 @@ pub(super) fn prepare_route_scene(
     Ok(RouteScene {
         routes,
         extent: (width, height),
+        planned_cell_count,
     })
+}
+
+#[cfg(test)]
+pub(super) fn prepare_route_scene(
+    graph: &AsciiGraph,
+    graph_layout: &GraphLayout,
+    edges: &[AsciiGraphEdge],
+    charset: &GraphCharset,
+) -> Result<RouteScene> {
+    let mut resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
+        merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+    ));
+    prepare_route_scene_with_resources(graph, graph_layout, edges, charset, &mut resources)
 }
 
 fn endpoint_layout(
@@ -192,7 +260,7 @@ fn group_endpoint_layout(group: &GroupLayout, charset: &GraphCharset) -> NodeLay
     }
 }
 
-fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) {
+fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) -> Result<()> {
     for cell in &plan.cells {
         match cell.kind {
             PlannedRouteCellKind::EdgeLine | PlannedRouteCellKind::EdgeArrow => {
@@ -202,7 +270,7 @@ fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) {
                     cell.coord.y,
                     cell.ch,
                     cell.paint.color,
-                )
+                )?
             }
             PlannedRouteCellKind::RouteCell => set_route_cell_with_paint(
                 drawing.canvas,
@@ -211,9 +279,10 @@ fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) {
                 cell.coord.y,
                 cell.ch,
                 cell.paint.color,
-            ),
+            )?,
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -228,7 +297,9 @@ mod tests {
     use crate::graph::layout::layout_graph;
     use crate::graph::model::{GraphDirection, GraphEdgeAttrs, GraphEdgeStyle};
     use crate::graph::routing::label::{RoutedLabelPlacement, RoutedLabelText};
+    use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use crate::{AsciiRenderOptions, TerminalWidthProfile};
+    use merman_core::resources::ResourceProfile;
 
     #[test]
     fn edge_style_is_applied_to_route_plan_cells_and_labels() {
@@ -247,7 +318,7 @@ mod tests {
             )],
         );
 
-        let mut canvas = Canvas::with_width_profile(5, 1, TerminalWidthProfile::Unicode);
+        let mut canvas = RawCanvas::with_width_profile(5, 1, TerminalWidthProfile::Unicode);
         let mut route_cells = RouteCells::new();
         let mut drawing = RouteDrawing::new(&mut canvas, &mut route_cells);
         let plan = plan.with_style(GraphEdgeStyle {
@@ -256,7 +327,8 @@ mod tests {
             label: Some(label),
         });
 
-        paint_route_plan(&mut drawing, &plan);
+        paint_route_plan(&mut drawing, &plan)
+            .expect("test route should fit the unbounded resource policy");
 
         assert_eq!(
             canvas.get_color(0, 0),
@@ -274,8 +346,11 @@ mod tests {
         let scene = RouteScene {
             routes: vec![PreparedRoute { plan }],
             extent: (5, 1),
+            planned_cell_count: 3,
         };
-        scene.draw_labels(&mut canvas, RouteLabelTransform::Identity);
+        scene
+            .draw_labels(&mut canvas, RouteLabelTransform::Identity)
+            .expect("test route label should fit the unbounded resource policy");
 
         assert_eq!(canvas.get_color(0, 0), Some(CanvasColor::Direct(label)));
     }
@@ -316,7 +391,7 @@ mod tests {
             Vec::new(),
         );
 
-        let mut canvas = Canvas::with_width_profile(1, 1, TerminalWidthProfile::Unicode);
+        let mut canvas = RawCanvas::with_width_profile(1, 1, TerminalWidthProfile::Unicode);
         let mut route_cells = RouteCells::new();
         let mut drawing = RouteDrawing::new(&mut canvas, &mut route_cells);
 
@@ -327,7 +402,8 @@ mod tests {
                 arrow: None,
                 label: None,
             }),
-        );
+        )
+        .expect("test edge arrow should fit the unbounded resource policy");
 
         assert_eq!(
             canvas.get_color(0, 0),
@@ -459,6 +535,84 @@ mod tests {
         }
 
         assert_eq!(scene.canvas_extent(), (expected_width, expected_height));
+    }
+
+    #[test]
+    fn overlapping_route_cells_accept_exact_work_limit_and_reject_max_minus_one() {
+        let options = AsciiRenderOptions::ascii();
+        let charset = GraphCharset::for_options(&options);
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        graph.add_node("a", "A");
+        graph.add_node("b", "B");
+        graph.add_edge("a", "b");
+        graph.add_edge("a", "b");
+        let graph_layout = layout_graph(&graph, &options);
+        let scene = prepare_route_scene(&graph, &graph_layout, &graph.edges, &charset)
+            .expect("overlapping routes should plan");
+        let route_scan_width =
+            graph_layout.nodes.len() + graph_layout.groups.len() + graph.edges.len();
+        let exact = graph.edges.len() * route_scan_width + scene.planned_cell_count();
+        assert!(exact > 1, "test graph should plan overlapping route cells");
+
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let exact_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact)
+            .expect("exact layout-work limit should be valid");
+        let mut exact_resources = ResourceContext::new(exact_policy);
+        prepare_route_scene_with_resources(
+            &graph,
+            &graph_layout,
+            &graph.edges,
+            &charset,
+            &mut exact_resources,
+        )
+        .expect("exact planned-cell work limit should pass");
+
+        let below_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact - 1)
+            .expect("max-minus-one layout-work limit should be valid");
+        let mut below_resources = ResourceContext::new(below_policy);
+        let error = match prepare_route_scene_with_resources(
+            &graph,
+            &graph_layout,
+            &graph.edges,
+            &charset,
+            &mut below_resources,
+        ) {
+            Ok(_) => panic!("max-minus-one planned-cell work limit should fail"),
+            Err(error) => error,
+        };
+        let AsciiError::ResourceLimitExceeded(details) = error else {
+            panic!("expected a layout-work resource error, got {error:?}");
+        };
+        assert_eq!(details.limit, AsciiResourceLimitId::MaxLayoutWorkUnits);
+        assert_eq!(details.actual, exact);
+        assert_eq!(details.max, exact - 1);
+    }
+
+    #[test]
+    fn route_extent_reports_checked_cell_geometry_overflow() {
+        let plan = RoutePlan::new(
+            vec![planned_cell(
+                usize::MAX,
+                0,
+                '-',
+                PlannedRouteCellKind::RouteCell,
+            )],
+            Vec::new(),
+        );
+        let resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
+            ResourceProfile::UnboundedForTrustedInput,
+        ));
+
+        let error = plan
+            .canvas_extent_with_resources(&resources)
+            .expect_err("overflowing route-cell geometry should fail");
+        let AsciiError::ResourceLimitExceeded(details) = error else {
+            panic!("expected a grid resource error, got {error:?}");
+        };
+        assert_eq!(details.limit, AsciiResourceLimitId::MaxGridCells);
+        assert_eq!(details.actual, usize::MAX);
     }
 
     fn planned_cell(x: usize, y: usize, ch: char, kind: PlannedRouteCellKind) -> PlannedRouteCell {

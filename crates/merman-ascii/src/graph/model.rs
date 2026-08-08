@@ -1,4 +1,6 @@
 use crate::color::AsciiRgb;
+use crate::error::{AsciiError, Result};
+use crate::resource::AsciiResourceLimitPhase;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GraphDirection {
@@ -163,6 +165,30 @@ impl AsciiGraph {
             edges: Vec::new(),
             groups: Vec::new(),
         }
+    }
+
+    pub(crate) fn try_reserve_projection(
+        &mut self,
+        nodes: usize,
+        edges: usize,
+        groups: usize,
+    ) -> Result<()> {
+        self.nodes
+            .try_reserve(nodes)
+            .map_err(|_| AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+            })?;
+        self.edges
+            .try_reserve(edges)
+            .map_err(|_| AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+            })?;
+        self.groups
+            .try_reserve(groups)
+            .map_err(|_| AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+            })?;
+        Ok(())
     }
 
     pub(crate) fn diagram_type(&self) -> &'static str {

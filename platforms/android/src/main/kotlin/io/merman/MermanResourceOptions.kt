@@ -38,6 +38,11 @@ public class MermanResourceLimitId private constructor(
         public val MAX_SVG_ELEMENTS: MermanResourceLimitId = MermanResourceLimitId("max_svg_elements", "svg_postprocess", true, 1)
         public val MAX_DOCUMENT_DIAGRAMS: MermanResourceLimitId = MermanResourceLimitId("max_document_diagrams", "document_scan", true, 0)
         public val MAX_ASCII_GRID_CELLS: MermanResourceLimitId = MermanResourceLimitId("max_ascii_grid_cells", "ascii_layout", true, 1)
+        public val MAX_ASCII_LAYOUT_WORK_UNITS: MermanResourceLimitId = MermanResourceLimitId("max_ascii_layout_work_units", "ascii_layout_work", true, 1)
+        public val MAX_ASCII_DOCUMENT_CELLS: MermanResourceLimitId = MermanResourceLimitId("max_ascii_document_cells", "ascii_document", true, 1)
+        public val MAX_ASCII_OUTPUT_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_ascii_output_bytes", "ascii_output", true, 1)
+        public val MAX_ASCII_GRAPHEME_BYTES: MermanResourceLimitId = MermanResourceLimitId("max_ascii_grapheme_bytes", "ascii_grapheme", true, 1)
+        public val MAX_ASCII_NESTING_DEPTH: MermanResourceLimitId = MermanResourceLimitId("max_ascii_nesting_depth", "ascii_nesting", true, 1)
         public val MAX_RASTER_WIDTH: MermanResourceLimitId = MermanResourceLimitId("max_raster_width", "raster_allocation", true, 1)
         public val MAX_RASTER_HEIGHT: MermanResourceLimitId = MermanResourceLimitId("max_raster_height", "raster_allocation", true, 1)
         public val MAX_RASTER_PIXELS: MermanResourceLimitId = MermanResourceLimitId("max_raster_pixels", "raster_allocation", true, 1)
@@ -64,6 +69,11 @@ public class MermanResourceLimitId private constructor(
             MAX_SVG_ELEMENTS,
             MAX_DOCUMENT_DIAGRAMS,
             MAX_ASCII_GRID_CELLS,
+            MAX_ASCII_LAYOUT_WORK_UNITS,
+            MAX_ASCII_DOCUMENT_CELLS,
+            MAX_ASCII_OUTPUT_BYTES,
+            MAX_ASCII_GRAPHEME_BYTES,
+            MAX_ASCII_NESTING_DEPTH,
             MAX_RASTER_WIDTH,
             MAX_RASTER_HEIGHT,
             MAX_RASTER_PIXELS,
@@ -101,6 +111,11 @@ public enum class MermanResourceOverrideId(public val id: String, public val min
     MAX_SVG_ELEMENTS("max_svg_elements", 1),
     MAX_DOCUMENT_DIAGRAMS("max_document_diagrams", 0),
     MAX_ASCII_GRID_CELLS("max_ascii_grid_cells", 1),
+    MAX_ASCII_LAYOUT_WORK_UNITS("max_ascii_layout_work_units", 1),
+    MAX_ASCII_DOCUMENT_CELLS("max_ascii_document_cells", 1),
+    MAX_ASCII_OUTPUT_BYTES("max_ascii_output_bytes", 1),
+    MAX_ASCII_GRAPHEME_BYTES("max_ascii_grapheme_bytes", 1),
+    MAX_ASCII_NESTING_DEPTH("max_ascii_nesting_depth", 1),
     MAX_RASTER_WIDTH("max_raster_width", 1),
     MAX_RASTER_HEIGHT("max_raster_height", 1),
     MAX_RASTER_PIXELS("max_raster_pixels", 1),

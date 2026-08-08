@@ -216,6 +216,34 @@ const SWIFT_LIMIT_FIXED_MEMBERS: &[&str] = &[
     "phase",
 ];
 const RUST_PASCAL_RESERVED_WORDS: &[&str] = &["Self"];
+
+// UniFFI enums are serialized by their generated discriminants. Keep this list append-only so
+// adding a resource descriptor never changes an existing foreign-language wire value.
+const UNIFFI_RESOURCE_OVERRIDE_WIRE_ORDER: &[&str] = &[
+    "max_source_bytes",
+    "max_model_items",
+    "max_model_text_bytes",
+    "max_model_nesting_depth",
+    "max_layout_work_units",
+    "max_svg_bytes",
+    "max_svg_elements",
+    "max_document_diagrams",
+    "max_ascii_grid_cells",
+    "max_raster_width",
+    "max_raster_height",
+    "max_raster_pixels",
+    "max_embedded_image_bytes",
+    "max_total_embedded_image_bytes",
+    "max_embedded_image_pixels",
+    "max_total_embedded_image_pixels",
+    "max_pdf_filter_image_pixels",
+    "max_ascii_layout_work_units",
+    "max_ascii_document_cells",
+    "max_ascii_output_bytes",
+    "max_ascii_grapheme_bytes",
+    "max_ascii_nesting_depth",
+];
+
 #[derive(Clone, Copy)]
 struct ProjectionRules {
     language: &'static str,
@@ -400,6 +428,39 @@ fn validate_c_macro_symbols(contract: &BindingResourceContract) -> Result<(), St
     Ok(())
 }
 
+fn validate_uniffi_override_wire_order(contract: &BindingResourceContract) -> Result<(), String> {
+    let mut wire_ids = BTreeMap::new();
+    for id in UNIFFI_RESOURCE_OVERRIDE_WIRE_ORDER {
+        if wire_ids.insert(*id, ()).is_some() {
+            return Err(format!(
+                "UniFFI resource override wire order contains duplicate id `{id}`"
+            ));
+        }
+    }
+
+    for limit in contract.limits.iter().filter(|limit| limit.overridable) {
+        if !wire_ids.contains_key(limit.stable_id) {
+            return Err(format!(
+                "overridable resource limit `{}` is missing from the append-only UniFFI wire order",
+                limit.stable_id
+            ));
+        }
+    }
+    for id in UNIFFI_RESOURCE_OVERRIDE_WIRE_ORDER {
+        if !contract
+            .limits
+            .iter()
+            .any(|limit| limit.overridable && limit.stable_id == *id)
+        {
+            return Err(format!(
+                "UniFFI resource override wire id `{id}` is not an overridable resource limit"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 fn validate_resource_projections(contract: &BindingResourceContract) -> Result<(), String> {
     validate_projected_members(
         contract.profiles.iter().map(|profile| profile.id),
@@ -481,7 +542,8 @@ fn validate_resource_projections(contract: &BindingResourceContract) -> Result<(
         PYTHON_OVERRIDE_PROJECTION,
     )?;
 
-    validate_c_macro_symbols(contract)
+    validate_c_macro_symbols(contract)?;
+    validate_uniffi_override_wire_order(contract)
 }
 
 fn web_profile_default(contract: &RuntimeResourceContract) -> &'static str {
@@ -1007,6 +1069,15 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
 fn render_uniffi(contract: &BindingResourceContract) -> String {
     let profiles = &contract.profiles;
     let limits = &contract.limits;
+    let override_limits = UNIFFI_RESOURCE_OVERRIDE_WIRE_ORDER
+        .iter()
+        .map(|id| {
+            limits
+                .iter()
+                .find(|limit| limit.overridable && limit.stable_id == *id)
+                .expect("validated UniFFI override wire id must resolve")
+        })
+        .collect::<Vec<_>>();
     let mut out = generated_preamble("//");
     out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]\npub enum MermanResourceProfile {\n");
     for profile in profiles {
@@ -1025,13 +1096,13 @@ fn render_uniffi(contract: &BindingResourceContract) -> String {
         .unwrap();
     }
     out.push_str("        }\n    }\n}\n\n#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]\npub enum MermanResourceOverrideId {\n");
-    for limit in limits.iter().filter(|limit| limit.overridable) {
+    for limit in &override_limits {
         writeln!(out, "    {},", pascal_case(limit.stable_id)).unwrap();
     }
     out.push_str(
         "}\n\nimpl MermanResourceOverrideId {\n    fn id(self) -> &'static str { match self {\n",
     );
-    for limit in limits.iter().filter(|limit| limit.overridable) {
+    for limit in &override_limits {
         writeln!(
             out,
             "        Self::{} => {:?},",
@@ -1133,6 +1204,78 @@ pub(crate) fn verify_resource_contract(args: Vec<String>) -> Result<(), XtaskErr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn uniffi_resource_override_wire_order_is_append_only() {
+        let legacy_ordinals = [
+            (0, "max_source_bytes"),
+            (1, "max_model_items"),
+            (2, "max_model_text_bytes"),
+            (3, "max_model_nesting_depth"),
+            (4, "max_layout_work_units"),
+            (5, "max_svg_bytes"),
+            (6, "max_svg_elements"),
+            (7, "max_document_diagrams"),
+            (8, "max_ascii_grid_cells"),
+            (9, "max_raster_width"),
+            (10, "max_raster_height"),
+            (11, "max_raster_pixels"),
+            (12, "max_embedded_image_bytes"),
+            (13, "max_total_embedded_image_bytes"),
+            (14, "max_embedded_image_pixels"),
+            (15, "max_total_embedded_image_pixels"),
+            (16, "max_pdf_filter_image_pixels"),
+        ];
+        for (ordinal, id) in legacy_ordinals {
+            assert_eq!(
+                UNIFFI_RESOURCE_OVERRIDE_WIRE_ORDER[ordinal], id,
+                "pre-U3 UniFFI resource override ordinal {ordinal} must remain stable"
+            );
+        }
+
+        assert_eq!(
+            &UNIFFI_RESOURCE_OVERRIDE_WIRE_ORDER[17..],
+            [
+                "max_ascii_layout_work_units",
+                "max_ascii_document_cells",
+                "max_ascii_output_bytes",
+                "max_ascii_grapheme_bytes",
+                "max_ascii_nesting_depth",
+            ]
+        );
+        assert_eq!(
+            UNIFFI_RESOURCE_OVERRIDE_WIRE_ORDER
+                .iter()
+                .copied()
+                .filter(|id| id.starts_with("max_ascii_"))
+                .collect::<Vec<_>>(),
+            [
+                "max_ascii_grid_cells",
+                "max_ascii_layout_work_units",
+                "max_ascii_document_cells",
+                "max_ascii_output_bytes",
+                "max_ascii_grapheme_bytes",
+                "max_ascii_nesting_depth",
+            ]
+        );
+
+        let binding = binding_resource_contract();
+        validate_uniffi_override_wire_order(&binding)
+            .expect("the committed binding contract must match the UniFFI wire order");
+        let generated = render_uniffi(&binding);
+        let mut previous = 0;
+        for (ordinal, id) in UNIFFI_RESOURCE_OVERRIDE_WIRE_ORDER.iter().enumerate() {
+            let variant = format!("    {},", pascal_case(id));
+            let position = generated
+                .find(variant.as_str())
+                .unwrap_or_else(|| panic!("missing UniFFI override variant `{id}`"));
+            assert!(
+                ordinal == 0 || position > previous,
+                "UniFFI override variant `{id}` was emitted out of wire order"
+            );
+            previous = position;
+        }
+    }
 
     #[test]
     fn runtime_resource_ids_are_open_while_input_vocabularies_remain_closed() {

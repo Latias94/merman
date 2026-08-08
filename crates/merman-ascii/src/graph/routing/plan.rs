@@ -5,6 +5,8 @@ use super::label::{RoutedLabelPlacement, RoutedLabelText, routed_label_placement
 use super::path::StepDirection;
 use crate::canvas::CanvasColor;
 use crate::color::{AsciiColorRole, AsciiRgb};
+use crate::error::{AsciiError, Result};
+use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 
 mod boundary;
 mod edges;
@@ -14,7 +16,9 @@ mod same_rank;
 mod select;
 mod top_down;
 
-pub(super) use select::{EdgeRoutePlan, EdgeRouteRequest, plan_edge_route};
+#[cfg(test)]
+pub(super) use select::plan_edge_route;
+pub(super) use select::{EdgeRoutePlan, EdgeRouteRequest, plan_edge_route_with_topology};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct RoutePlan {
@@ -65,23 +69,36 @@ impl RoutePlan {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn canvas_extent(&self) -> (usize, usize) {
+        let resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
+            merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        ));
+        self.canvas_extent_with_resources(&resources)
+            .expect("test route geometry must remain representable")
+    }
+
+    pub(super) fn canvas_extent_with_resources(
+        &self,
+        resources: &ResourceContext,
+    ) -> Result<(usize, usize)> {
         let mut width = self.min_canvas_extent.width;
         let mut height = self.min_canvas_extent.height;
 
         for cell in &self.cells {
-            width = width.max(cell.coord.x.saturating_add(1));
-            height = height.max(cell.coord.y.saturating_add(1));
+            width = width.max(resources.checked_grid_add(cell.coord.x, 1)?);
+            height = height.max(resources.checked_grid_add(cell.coord.y, 1)?);
         }
         for label in &self.labels {
-            let (label_width, label_height) = label
-                .placement
-                .canvas_extent_for_lines(label.text.line_count());
+            let label_width =
+                resources.checked_grid_add(label.placement.x(), label.placement.width())?;
+            let label_height =
+                resources.checked_grid_add(label.placement.y(), label.text.line_count().max(1))?;
             width = width.max(label_width);
             height = height.max(label_height);
         }
 
-        (width, height)
+        Ok((width, height))
     }
 }
 
@@ -98,6 +115,43 @@ pub(super) struct PlannedRouteCell {
     pub(super) kind: PlannedRouteCellKind,
     pub(super) segment: PlannedRouteSegment,
     pub(super) paint: PlannedRoutePaint,
+}
+
+#[derive(Debug, Default)]
+struct PlannedRouteCells {
+    inner: Vec<PlannedRouteCell>,
+}
+
+impl PlannedRouteCells {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn try_push(
+        &mut self,
+        resources: &mut ResourceContext,
+        build: impl FnOnce() -> PlannedRouteCell,
+    ) -> Result<()> {
+        resources.charge_layout_work(1)?;
+        self.inner
+            .try_reserve(1)
+            .map_err(|_| AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+            })?;
+        self.inner.push(build());
+        Ok(())
+    }
+
+    fn into_vec(self) -> Vec<PlannedRouteCell> {
+        self.inner
+    }
+}
+
+#[cfg(test)]
+fn unbounded_route_resources() -> ResourceContext {
+    ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
+        merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+    ))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

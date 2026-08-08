@@ -4,10 +4,13 @@ use super::draw::{
     RelationLineChars, draw_relation_span_exclusive, draw_relation_span_inclusive,
     put_relation_char, write_centered_relation_label, write_centered_relation_text,
 };
+use crate::AsciiError;
 use crate::Result;
 use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
 use crate::options::TerminalWidthProfile;
+use crate::resource::ResourceContext;
+use crate::text::display_width_with_profile;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RelationOverlay {
@@ -67,9 +70,9 @@ impl RelationOverlay {
         }
     }
 
-    fn draw_at(&self, canvas: &mut Canvas) {
+    fn draw_at(&self, canvas: &mut Canvas) -> Result<()> {
         match self {
-            RelationOverlay::Glyph { x, y, ch, role } => canvas.set_role(*x, *y, *ch, *role),
+            RelationOverlay::Glyph { x, y, ch, role } => canvas.try_set_role(*x, *y, *ch, *role),
             RelationOverlay::Text {
                 center_x,
                 y,
@@ -83,6 +86,36 @@ impl RelationOverlay {
                 label,
                 role,
             } => write_centered_relation_label(canvas, *center_x, *y, label, *role),
+        }
+    }
+
+    fn fits(&self, width: usize, height: usize) -> bool {
+        match self {
+            Self::Glyph { x, y, .. } => *x < width && *y < height,
+            Self::Text {
+                center_x,
+                y,
+                text,
+                width_profile,
+                ..
+            } => centered_text_fits(
+                *center_x,
+                *y,
+                display_width_with_profile(text, *width_profile),
+                1,
+                width,
+                height,
+            ),
+            Self::Label {
+                center_x, y, label, ..
+            } => centered_text_fits(
+                *center_x,
+                *y,
+                label.width(),
+                label.line_count(),
+                width,
+                height,
+            ),
         }
     }
 }
@@ -121,10 +154,17 @@ impl LayeredRelationRouteGeometry {
 
     pub(crate) fn label_y_after_source(&self) -> usize {
         if self.source_marker_y <= self.target_marker_y {
-            return self.source_marker_y.saturating_add(1).min(self.route_y());
+            return self
+                .source_marker_y
+                .checked_add(1)
+                .unwrap_or(self.route_y())
+                .min(self.route_y());
         }
 
-        self.source_marker_y.saturating_sub(1).max(self.route_y())
+        self.source_marker_y
+            .checked_sub(1)
+            .unwrap_or(self.route_y())
+            .max(self.route_y())
     }
 }
 
@@ -154,7 +194,7 @@ impl LayeredRelationRoutePlan {
         }
     }
 
-    pub(crate) fn draw_route_at(&self, canvas: &mut Canvas) {
+    pub(crate) fn draw_route_at(&self, canvas: &mut Canvas) -> Result<()> {
         draw_relation_span_inclusive(
             canvas,
             self.geometry.from_x,
@@ -162,7 +202,7 @@ impl LayeredRelationRoutePlan {
             self.geometry.route_y,
             self.vertical_char,
             self.relation_chars,
-        );
+        )?;
         if self.geometry.from_x != self.geometry.to_x {
             let left = self.geometry.from_x.min(self.geometry.to_x);
             let right = self.geometry.from_x.max(self.geometry.to_x);
@@ -173,7 +213,7 @@ impl LayeredRelationRoutePlan {
                     self.geometry.route_y,
                     self.horizontal_char,
                     self.relation_chars,
-                );
+                )?;
             }
         }
         draw_relation_span_exclusive(
@@ -183,13 +223,32 @@ impl LayeredRelationRoutePlan {
             self.geometry.target_path_end_y,
             self.vertical_char,
             self.relation_chars,
-        );
+        )?;
+        Ok(())
     }
 
-    pub(crate) fn draw_overlays_at(&self, canvas: &mut Canvas) {
+    pub(crate) fn draw_overlays_at(&self, canvas: &mut Canvas) -> Result<()> {
         for overlay in &self.overlays {
-            overlay.draw_at(canvas);
+            overlay.draw_at(canvas)?;
         }
+        Ok(())
+    }
+
+    pub(crate) fn route_fits(&self, width: usize, height: usize) -> bool {
+        [
+            (self.geometry.from_x, self.geometry.source_path_start_y),
+            (self.geometry.from_x, self.geometry.route_y),
+            (self.geometry.to_x, self.geometry.route_y),
+            (self.geometry.to_x, self.geometry.target_path_end_y),
+        ]
+        .into_iter()
+        .all(|(x, y)| x < width && y < height)
+    }
+
+    pub(crate) fn overlays_fit(&self, width: usize, height: usize) -> bool {
+        self.overlays
+            .iter()
+            .all(|overlay| overlay.fits(width, height))
     }
 }
 
@@ -290,10 +349,26 @@ impl<'boxes, 'graph> LayeredRelationRouteRequest<'boxes, 'graph> {
 pub(crate) fn plan_layered_relation_route_draw(
     request: LayeredRelationRouteRequest<'_, '_>,
     style: LayeredRelationRouteStyle,
-    build_overlays: impl FnOnce(&LayeredRelationRouteGeometry) -> Result<Vec<RelationOverlay>>,
+    resources: &mut ResourceContext,
+    build_overlays: impl FnOnce(
+        &LayeredRelationRouteGeometry,
+        &mut ResourceContext,
+    ) -> Result<Vec<RelationOverlay>>,
 ) -> Result<LayeredRelationRoutePlan> {
-    let geometry = plan_layered_relation_route(request);
-    let overlays = build_overlays(&geometry)?;
+    resources.charge_layout_work(request.placed_boxes.len().max(1))?;
+    let geometry = plan_layered_relation_route(request, resources)?;
+    let overlays = build_overlays(&geometry, resources)?;
+    resources.charge_layout_work(overlays.len().max(1))?;
+    let vertical_work = geometry
+        .source_path_start_y
+        .abs_diff(geometry.route_y)
+        .checked_add(geometry.route_y.abs_diff(geometry.target_path_end_y))
+        .ok_or_else(|| work_overflow(resources))?;
+    let route_work = vertical_work
+        .checked_add(geometry.from_x.abs_diff(geometry.to_x))
+        .and_then(|value| value.checked_add(3))
+        .ok_or_else(|| work_overflow(resources))?;
+    resources.charge_layout_work(route_work)?;
     Ok(LayeredRelationRoutePlan::new(
         geometry,
         style.vertical_char,
@@ -303,16 +378,29 @@ pub(crate) fn plan_layered_relation_route_draw(
     ))
 }
 
-pub(crate) fn offset_center(center: usize, offset: isize) -> usize {
+pub(crate) fn offset_center(
+    center: usize,
+    offset: isize,
+    resources: &ResourceContext,
+) -> Result<usize> {
     if offset < 0 {
-        center.saturating_sub(offset.unsigned_abs())
+        center
+            .checked_sub(offset.unsigned_abs())
+            .ok_or_else(|| grid_overflow(resources))
     } else {
-        center.saturating_add(offset as usize)
+        center
+            .checked_add(usize::try_from(offset).map_err(|_| grid_overflow(resources))?)
+            .ok_or_else(|| grid_overflow(resources))
     }
 }
 
-pub(crate) fn spanning_lane_offset(top_width: usize, bottom_width: usize) -> isize {
-    (top_width.max(bottom_width) / 2).saturating_add(3) as isize
+pub(crate) fn spanning_lane_offset(
+    top_width: usize,
+    bottom_width: usize,
+    resources: &ResourceContext,
+) -> Result<isize> {
+    let offset = resources.checked_grid_add(top_width.max(bottom_width) / 2, 3)?;
+    isize::try_from(offset).map_err(|_| grid_overflow(resources))
 }
 
 pub(crate) fn spanning_lane_offset_around_intermediate_boxes(
@@ -320,15 +408,22 @@ pub(crate) fn spanning_lane_offset_around_intermediate_boxes(
     top: &PlacedRelationGraphBox<'_>,
     bottom: &PlacedRelationGraphBox<'_>,
     lane_offset: isize,
-) -> isize {
+    resources: &mut ResourceContext,
+) -> Result<isize> {
+    resources.charge_layout_work(placed_boxes.len().max(1))?;
     let lower_bound = top.y().min(bottom.y());
     let upper_bound = top.bottom().max(bottom.bottom());
-    let intermediate_boxes = placed_boxes
-        .iter()
-        .filter(|placed_box| placed_box.y() > lower_bound && placed_box.bottom() < upper_bound)
-        .collect::<Vec<_>>();
+    let mut intermediate_boxes: Vec<&PlacedRelationGraphBox<'_>> = Vec::new();
+    intermediate_boxes
+        .try_reserve_exact(placed_boxes.len())
+        .map_err(|_| layout_allocation_failed())?;
+    intermediate_boxes.extend(
+        placed_boxes
+            .iter()
+            .filter(|placed_box| placed_box.y() > lower_bound && placed_box.bottom() < upper_bound),
+    );
     if intermediate_boxes.is_empty() {
-        return lane_offset;
+        return Ok(lane_offset);
     }
 
     let route_clearance = intermediate_boxes
@@ -337,121 +432,170 @@ pub(crate) fn spanning_lane_offset_around_intermediate_boxes(
         .max()
         .unwrap_or(0);
     let spanning_offset = spanning_lane_offset(
-        top.width().max(route_clearance.saturating_mul(2)),
+        top.width()
+            .max(resources.checked_grid_mul(route_clearance, 2)?),
         bottom.width(),
-    );
-    let left_offset = lane_offset - spanning_offset;
-    let right_offset = lane_offset + spanning_offset;
-    let left_is_clear =
-        !route_column_crosses_any_box(top.center_x(), left_offset, &intermediate_boxes);
-    let right_is_clear =
-        !route_column_crosses_any_box(top.center_x(), right_offset, &intermediate_boxes);
+        resources,
+    )?;
+    let left_offset = lane_offset
+        .checked_sub(spanning_offset)
+        .ok_or_else(|| grid_overflow(resources))?;
+    let right_offset = lane_offset
+        .checked_add(spanning_offset)
+        .ok_or_else(|| grid_overflow(resources))?;
+    let left_is_clear = lane_offset_fits_center(bottom.center_x(), left_offset)
+        && !route_column_crosses_any_box(
+            top.center_x(),
+            left_offset,
+            &intermediate_boxes,
+            resources,
+        )?;
+    let right_is_clear = lane_offset_fits_center(bottom.center_x(), right_offset)
+        && !route_column_crosses_any_box(
+            top.center_x(),
+            right_offset,
+            &intermediate_boxes,
+            resources,
+        )?;
 
-    match (left_is_clear, right_is_clear) {
+    Ok(match (left_is_clear, right_is_clear) {
         (true, false) => left_offset,
         (false, true) => right_offset,
         (true, true) if lane_offset < 0 => left_offset,
         (true, true) if top_is_left_of_intermediate_boxes(top, &intermediate_boxes) => left_offset,
         (true, true) => right_offset,
         (false, false) if top_is_left_of_intermediate_boxes(top, &intermediate_boxes) => {
-            route_column_left_of_intermediate_boxes(top, &intermediate_boxes)
+            route_column_left_of_intermediate_boxes(top, &intermediate_boxes, resources)?
         }
-        (false, false) => route_column_right_of_intermediate_boxes(top, &intermediate_boxes),
-    }
+        (false, false) => {
+            route_column_right_of_intermediate_boxes(top, &intermediate_boxes, resources)?
+        }
+    })
 }
 
 pub(crate) fn plan_layered_relation_route(
     request: LayeredRelationRouteRequest<'_, '_>,
-) -> LayeredRelationRouteGeometry {
+    resources: &mut ResourceContext,
+) -> Result<LayeredRelationRouteGeometry> {
     let lane_offset = spanning_lane_offset_around_intermediate_boxes(
         request.placed_boxes,
         request.top,
         request.bottom,
         request.lane_offset,
-    );
-    let from_x = offset_center(request.top.center_x(), lane_offset);
-    let to_x = offset_center(request.bottom.center_x(), lane_offset);
+        resources,
+    )?;
+    let from_x = offset_center(request.top.center_x(), lane_offset, resources)?;
+    let to_x = offset_center(request.bottom.center_x(), lane_offset, resources)?;
     let source_top = request.top.y();
     let source_bottom = request.top.bottom();
     let target_top = request.bottom.y();
     let target_bottom = request.bottom.bottom();
     let endpoint_label_gap = request.profile.endpoint_label_gap;
 
-    if target_top > source_bottom.saturating_add(request.profile.min_vertical_gap) {
-        return LayeredRelationRouteGeometry {
+    if target_top > resources.checked_grid_add(source_bottom, request.profile.min_vertical_gap)? {
+        return Ok(LayeredRelationRouteGeometry {
             from_x,
             to_x,
-            source_path_start_y: source_bottom
-                .saturating_add(request.profile.source_path_start_offset)
-                .saturating_add(endpoint_label_gap),
-            source_marker_y: source_bottom
-                .saturating_add(1)
-                .saturating_add(endpoint_label_gap),
-            route_y: target_top
-                .saturating_sub(request.profile.route_y_offset_from_target)
-                .saturating_sub(endpoint_label_gap),
-            target_marker_y: target_top
-                .saturating_sub(1)
-                .saturating_sub(endpoint_label_gap),
-            target_path_end_y: target_top
-                .saturating_sub(request.profile.target_path_end_offset_from_target)
-                .saturating_sub(endpoint_label_gap),
-        };
+            source_path_start_y: checked_add_gap(
+                source_bottom,
+                request.profile.source_path_start_offset,
+                endpoint_label_gap,
+                resources,
+            )?,
+            source_marker_y: checked_add_gap(source_bottom, 1, endpoint_label_gap, resources)?,
+            route_y: checked_sub_gap(
+                target_top,
+                request.profile.route_y_offset_from_target,
+                endpoint_label_gap,
+                resources,
+            )?,
+            target_marker_y: checked_sub_gap(target_top, 1, endpoint_label_gap, resources)?,
+            target_path_end_y: checked_sub_gap(
+                target_top,
+                request.profile.target_path_end_offset_from_target,
+                endpoint_label_gap,
+                resources,
+            )?,
+        });
     }
 
-    if source_top > target_bottom.saturating_add(request.profile.min_vertical_gap) {
-        return LayeredRelationRouteGeometry {
+    if source_top > resources.checked_grid_add(target_bottom, request.profile.min_vertical_gap)? {
+        return Ok(LayeredRelationRouteGeometry {
             from_x,
             to_x,
-            source_path_start_y: source_top
-                .saturating_sub(request.profile.source_path_start_offset)
-                .saturating_sub(endpoint_label_gap),
-            source_marker_y: source_top
-                .saturating_sub(1)
-                .saturating_sub(endpoint_label_gap),
-            route_y: target_bottom
-                .saturating_add(request.profile.route_y_offset_from_target)
-                .saturating_add(endpoint_label_gap),
-            target_marker_y: target_bottom
-                .saturating_add(1)
-                .saturating_add(endpoint_label_gap),
-            target_path_end_y: target_bottom
-                .saturating_add(request.profile.target_path_end_offset_from_target)
-                .saturating_add(endpoint_label_gap),
-        };
+            source_path_start_y: checked_sub_gap(
+                source_top,
+                request.profile.source_path_start_offset,
+                endpoint_label_gap,
+                resources,
+            )?,
+            source_marker_y: checked_sub_gap(source_top, 1, endpoint_label_gap, resources)?,
+            route_y: checked_add_gap(
+                target_bottom,
+                request.profile.route_y_offset_from_target,
+                endpoint_label_gap,
+                resources,
+            )?,
+            target_marker_y: checked_add_gap(target_bottom, 1, endpoint_label_gap, resources)?,
+            target_path_end_y: checked_add_gap(
+                target_bottom,
+                request.profile.target_path_end_offset_from_target,
+                endpoint_label_gap,
+                resources,
+            )?,
+        });
     }
 
-    LayeredRelationRouteGeometry {
+    Ok(LayeredRelationRouteGeometry {
         from_x,
         to_x,
-        source_path_start_y: source_bottom
-            .saturating_add(request.profile.source_path_start_offset)
-            .saturating_add(endpoint_label_gap),
-        source_marker_y: source_bottom
-            .saturating_add(1)
-            .saturating_add(endpoint_label_gap),
-        route_y: source_bottom
-            .max(target_bottom)
-            .saturating_add(request.profile.route_y_offset_from_target)
-            .saturating_add(endpoint_label_gap),
-        target_marker_y: target_bottom
-            .saturating_add(1)
-            .saturating_add(endpoint_label_gap),
-        target_path_end_y: target_bottom
-            .saturating_add(request.profile.target_path_end_offset_from_target)
-            .saturating_add(endpoint_label_gap),
-    }
+        source_path_start_y: checked_add_gap(
+            source_bottom,
+            request.profile.source_path_start_offset,
+            endpoint_label_gap,
+            resources,
+        )?,
+        source_marker_y: checked_add_gap(source_bottom, 1, endpoint_label_gap, resources)?,
+        route_y: checked_add_gap(
+            source_bottom.max(target_bottom),
+            request.profile.route_y_offset_from_target,
+            endpoint_label_gap,
+            resources,
+        )?,
+        target_marker_y: checked_add_gap(target_bottom, 1, endpoint_label_gap, resources)?,
+        target_path_end_y: checked_add_gap(
+            target_bottom,
+            request.profile.target_path_end_offset_from_target,
+            endpoint_label_gap,
+            resources,
+        )?,
+    })
 }
 
 fn route_column_crosses_any_box(
     center_x: usize,
     lane_offset: isize,
     boxes: &[&PlacedRelationGraphBox<'_>],
-) -> bool {
-    let column = offset_center(center_x, lane_offset);
-    boxes
+    resources: &ResourceContext,
+) -> Result<bool> {
+    if !lane_offset_fits_center(center_x, lane_offset) {
+        return Ok(true);
+    }
+    let column = offset_center(center_x, lane_offset, resources)?;
+    Ok(boxes
         .iter()
-        .any(|placed_box| column >= placed_box.x() && column <= placed_box.right())
+        .any(|placed_box| column >= placed_box.x() && column <= placed_box.right()))
+}
+
+fn lane_offset_fits_center(center_x: usize, lane_offset: isize) -> bool {
+    if lane_offset < 0 {
+        lane_offset.unsigned_abs() <= center_x
+    } else {
+        usize::try_from(lane_offset)
+            .ok()
+            .and_then(|offset| center_x.checked_add(offset))
+            .is_some()
+    }
 }
 
 fn top_is_left_of_intermediate_boxes(
@@ -466,25 +610,91 @@ fn top_is_left_of_intermediate_boxes(
 fn route_column_left_of_intermediate_boxes(
     top: &PlacedRelationGraphBox<'_>,
     intermediate_boxes: &[&PlacedRelationGraphBox<'_>],
-) -> isize {
+    resources: &ResourceContext,
+) -> Result<isize> {
     let target = intermediate_boxes
         .iter()
         .map(|placed_box| placed_box.x())
         .min()
         .unwrap_or(0)
-        .saturating_sub(2);
-    target as isize - top.center_x() as isize
+        .checked_sub(2)
+        .ok_or_else(|| grid_overflow(resources))?;
+    checked_signed_difference(target, top.center_x(), resources)
 }
 
 fn route_column_right_of_intermediate_boxes(
     top: &PlacedRelationGraphBox<'_>,
     intermediate_boxes: &[&PlacedRelationGraphBox<'_>],
-) -> isize {
+    resources: &ResourceContext,
+) -> Result<isize> {
     let target = intermediate_boxes
         .iter()
         .map(|placed_box| placed_box.right())
         .max()
         .unwrap_or(top.center_x())
-        .saturating_add(2);
-    target as isize - top.center_x() as isize
+        .checked_add(2)
+        .ok_or_else(|| grid_overflow(resources))?;
+    checked_signed_difference(target, top.center_x(), resources)
+}
+
+fn centered_text_fits(
+    center_x: usize,
+    y: usize,
+    text_width: usize,
+    line_count: usize,
+    width: usize,
+    height: usize,
+) -> bool {
+    center_x
+        .checked_sub(text_width / 2)
+        .and_then(|start| start.checked_add(text_width))
+        .is_some_and(|end| end <= width)
+        && y.checked_add(line_count).is_some_and(|end| end <= height)
+}
+
+fn checked_add_gap(
+    base: usize,
+    offset: usize,
+    gap: usize,
+    resources: &ResourceContext,
+) -> Result<usize> {
+    resources.checked_grid_add(resources.checked_grid_add(base, offset)?, gap)
+}
+
+fn checked_sub_gap(
+    base: usize,
+    offset: usize,
+    gap: usize,
+    resources: &ResourceContext,
+) -> Result<usize> {
+    base.checked_sub(offset)
+        .and_then(|value| value.checked_sub(gap))
+        .ok_or_else(|| grid_overflow(resources))
+}
+
+fn checked_signed_difference(
+    left: usize,
+    right: usize,
+    resources: &ResourceContext,
+) -> Result<isize> {
+    if left >= right {
+        isize::try_from(left - right).map_err(|_| grid_overflow(resources))
+    } else {
+        isize::try_from(right - left)
+            .ok()
+            .and_then(isize::checked_neg)
+            .ok_or_else(|| grid_overflow(resources))
+    }
+}
+
+fn grid_overflow(resources: &ResourceContext) -> AsciiError {
+    resources.grid_overflow()
+}
+
+fn work_overflow(resources: &ResourceContext) -> AsciiError {
+    resources.work_overflow()
+}
+
+fn layout_allocation_failed() -> AsciiError {
+    AsciiError::allocation_failed(crate::resource::AsciiResourceLimitPhase::LayoutWork.as_str())
 }

@@ -1,6 +1,8 @@
+use crate::Result;
+use crate::error::AsciiError;
 use crate::options::AsciiRenderOptions;
-use crate::safe_text::encode_text_lines;
-use crate::text::{push_wrapped_prefixed_line_with_profile, trim_trailing_blank_lines};
+use crate::resource::AsciiResourceLimitPhase;
+use crate::safe_text::BudgetedTextDocument;
 use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
 use std::collections::HashMap;
 
@@ -9,67 +11,92 @@ const SUMMARY_WRAP_WIDTH: usize = 80;
 pub fn render_kanban_diagram(
     model: &KanbanDiagramRenderModel,
     options: &AsciiRenderOptions,
-) -> String {
-    let mut lines = Vec::new();
-    let groups: Vec<&KanbanRenderNode> = model.nodes.iter().filter(|node| node.is_group).collect();
+) -> Result<String> {
+    let mut document = BudgetedTextDocument::new(options);
     let mut children_by_parent: HashMap<&str, Vec<&KanbanRenderNode>> = HashMap::new();
+    document
+        .resources_mut()
+        .charge_layout_work(model.nodes.len())?;
+    children_by_parent
+        .try_reserve(model.nodes.len())
+        .map_err(|_| layout_allocation_error())?;
     for node in model.nodes.iter().filter(|node| !node.is_group) {
+        document.resources_mut().charge_layout_work(1)?;
         if let Some(parent_id) = node.parent_id.as_deref() {
-            children_by_parent.entry(parent_id).or_default().push(node);
+            document.preflight_text_work(parent_id)?;
+            let children = children_by_parent.entry(parent_id).or_default();
+            children
+                .try_reserve(1)
+                .map_err(|_| layout_allocation_error())?;
+            children.push(node);
         }
     }
 
-    for group in groups {
-        lines.push(group.label.clone());
+    let mut has_groups = false;
+    for group in model.nodes.iter().filter(|node| node.is_group) {
+        has_groups = true;
+        document.resources_mut().charge_layout_work(1)?;
+        document.push_line(&group.label)?;
+        document.preflight_text_work(&group.id)?;
         if let Some(children) = children_by_parent.get(group.id.as_str()) {
             for child in children {
-                push_wrapped_prefixed_line_with_profile(
-                    &mut lines,
+                document.resources_mut().charge_layout_work(1)?;
+                document.push_wrapped_prefixed_line_with(
                     "  - ",
                     "    ",
-                    &format!("{}{}", child.label, render_metadata(child)),
                     SUMMARY_WRAP_WIDTH,
-                    options.terminal_width_profile,
-                );
+                    |line| push_node_text(line, child),
+                )?;
             }
         }
     }
 
-    if lines.is_empty() {
+    if !has_groups {
         for node in &model.nodes {
             if !node.is_group {
-                push_wrapped_prefixed_line_with_profile(
-                    &mut lines,
+                document.resources_mut().charge_layout_work(1)?;
+                document.push_wrapped_prefixed_line_with(
                     "- ",
                     "  ",
-                    &format!("{}{}", node.label, render_metadata(node)),
                     SUMMARY_WRAP_WIDTH,
-                    options.terminal_width_profile,
-                );
+                    |line| push_node_text(line, node),
+                )?;
             }
         }
     }
 
-    encode_text_lines(trim_trailing_blank_lines(lines), options)
+    document.finish(options)
 }
 
-fn render_metadata(node: &KanbanRenderNode) -> String {
-    let mut parts = Vec::new();
-    if let Some(ticket) = &node.ticket {
-        parts.push(format!("ticket={ticket}"));
+fn push_node_text(
+    line: &mut crate::safe_text::BudgetedWrappedText<'_, '_>,
+    node: &KanbanRenderNode,
+) -> Result<()> {
+    line.push_str(&node.label)?;
+    let metadata = [
+        ("ticket=", node.ticket.as_deref()),
+        ("priority=", node.priority.as_deref()),
+        ("assigned=", node.assigned.as_deref()),
+        ("icon=", node.icon.as_deref()),
+    ];
+    let mut emitted = false;
+    for (key, value) in metadata
+        .into_iter()
+        .filter_map(|(key, value)| value.map(|value| (key, value)))
+    {
+        line.push_str(if emitted { ", " } else { " [" })?;
+        line.push_str(key)?;
+        line.push_str(value)?;
+        emitted = true;
     }
-    if let Some(priority) = &node.priority {
-        parts.push(format!("priority={priority}"));
+    if emitted {
+        line.push_str("]")?;
     }
-    if let Some(assigned) = &node.assigned {
-        parts.push(format!("assigned={assigned}"));
-    }
-    if let Some(icon) = &node.icon {
-        parts.push(format!("icon={icon}"));
-    }
-    if parts.is_empty() {
-        String::new()
-    } else {
-        format!(" [{}]", parts.join(", "))
+    Ok(())
+}
+
+fn layout_allocation_error() -> AsciiError {
+    AsciiError::AllocationFailed {
+        phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
     }
 }

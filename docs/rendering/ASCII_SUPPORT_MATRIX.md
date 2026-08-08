@@ -29,7 +29,12 @@ Binding migration: consumers must replace `summary_fallback` with `structured_te
 `semantic_coverage` and `primary_projection` as the source fields, and treat `support_level` only as
 a compatibility view.
 
-## Supported Families
+## Diagrammatic Families
+
+These families are counted as ASCII diagrams because the primary projection preserves a spatial
+relationship: nodes/edges, participants/messages, states/transitions, entities/relations, or plot
+coordinates. A family remains `Partial` until its common semantic fields are both retained and
+readable at ordinary terminal widths.
 
 | Mermaid family | Semantic coverage | Primary projection | Structured-text fallback | What renders well | Important limits |
 | --- | --- | --- | --- | --- | --- |
@@ -40,13 +45,24 @@ a compatibility view.
 | ER | Partial | Diagrammatic | Yes | Entities, attributes, keys, relationship labels/cardinalities, routed components, and explicit relation summaries. | Dense/collision-prone topology can use `relations:` output. |
 | XYChart | Partial | Diagrammatic | No | Compact plots, titles, axes, legends, labels, values, and horizontal/vertical variants. | Browser tooltips and SVG coordinate precision are not represented. |
 | TreeView | Partial | Diagrammatic | No | Tree nodes, folders/leaves, indentation, and terminal tree connectors. | Typed-field and terminal-usefulness review is incomplete; browser tree styling is not represented. |
-| Gantt | Partial | Structured text | No | Titles, sections, tasks, resolved dates, tags, and deterministic date formatting. | No timeline geometry; dependency source expressions such as `after task` are not disclosed (A-GANTT-010). |
-| GitGraph | Partial | Structured text | No | Commits, branches, merges, tags, cherry-picks, and ordering. | Does not draw a full Git lane graph. |
-| Journey | Partial | Structured text | No | Sections, tasks, actors, and scores. | Does not draw Mermaid journey geometry. |
-| Kanban | Partial | Structured text | No | Columns, cards, assignments, and metadata. | Drag/drop and board presentation are not represented. |
-| Mindmap | Partial | Structured text | No | Hierarchical nodes and labels as an outline. | Icons, images, and rich node shapes are omitted or approximated. |
-| Packet | Partial | Structured text | No | Bit ranges and labels in ordered terminal rows. | Output does not preserve spatial bit widths; browser-oriented styling is not represented. |
-| Timeline | Partial | Structured text | No | Sections and events in ordered grouped text. | Does not draw Mermaid timeline geometry. |
+
+## Structured-Text Outputs
+
+These families intentionally produce a terminal-safe semantic report or outline rather than a
+diagram. The output is useful for logs, accessibility, debugging, and narrow terminals, but it is
+excluded from diagrammatic-family counts and from claims that Merman has an ASCII geometry
+implementation. It must not silently substitute for a diagrammatic projection when a resource limit
+is exceeded.
+
+| Mermaid family | Semantic coverage | Primary projection | What the report preserves | Why it is not counted as an ASCII diagram |
+| --- | --- | --- | --- | --- |
+| Gantt | Partial | Structured text | Titles, sections, tasks, resolved dates, tags, and deterministic date formatting. | No timeline geometry; dependency source expressions such as `after task` are not disclosed (A-GANTT-010). |
+| GitGraph | Partial | Structured text | Commits, branches, merges, tags, cherry-picks, and ordering. | Does not draw a full Git lane graph. |
+| Journey | Partial | Structured text | Sections, tasks, actors, and scores. | Does not draw Mermaid journey geometry. |
+| Kanban | Partial | Structured text | Columns, cards, assignments, and metadata. | Drag/drop and board presentation are not represented. |
+| Mindmap | Partial | Structured text | Hierarchical nodes and labels as an outline. | Icons, images, and rich node shapes are omitted or approximated. |
+| Packet | Partial | Structured text | Bit ranges and labels in ordered terminal rows. | Output does not preserve spatial bit widths; browser-oriented styling is not represented. |
+| Timeline | Partial | Structured text | Sections and events in ordered grouped text. | Does not draw Mermaid timeline geometry. |
 
 ## Unsupported Families
 
@@ -91,4 +107,4 @@ through an explicit `relations:` summary instead of routed lines through contain
 - Use explicit `UnsupportedFeature` tests for unsupported semantics instead of silently dropping
   Mermaid input.
 - Keep Class/ER dense topology cases on the shared `relation_graph` summary path when routed output
-  would overlap boxes or exceed the configured grid budget.
+  would overlap boxes; a resource-limit error remains an error and never becomes a summary.

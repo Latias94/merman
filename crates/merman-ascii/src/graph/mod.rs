@@ -7,10 +7,13 @@ mod model;
 mod routing;
 mod shape;
 pub(crate) mod style;
+mod surface;
 mod topology;
 
 pub(crate) use adapter::from_flowchart_model;
+#[cfg(test)]
 pub(crate) use draw::render_graph;
+pub(crate) use draw::render_graph_with_resources;
 pub(crate) use model::{
     AsciiGraph, GraphDirection, GraphEdgeArrow, GraphEdgeAttrs, GraphGroupKind, GraphGroupStyle,
     GraphNodeShape, GraphNodeStyle,

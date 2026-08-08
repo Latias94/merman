@@ -200,7 +200,7 @@ pub(crate) enum ResolvedOutput {
     #[cfg(feature = "ascii")]
     Text {
         destination: ResolvedDestination,
-        options: merman::ascii::AsciiRenderOptions,
+        options: Box<merman::ascii::AsciiRenderOptions>,
     },
     #[cfg(feature = "png")]
     Png {
@@ -1088,7 +1088,7 @@ fn resolved_native_output(
             let options = resolve_text_output_options(format, &options.text, &destination, facts)?;
             Ok(ResolvedOutput::Text {
                 destination,
-                options,
+                options: Box::new(options),
             })
         }
         #[cfg(feature = "svg")]
@@ -1192,7 +1192,15 @@ fn resolve_text_output_options(
         options.xychart_horizontal_plot_width = width;
     }
     if let Some(max_grid_cells) = args.ascii_max_grid_cells {
-        options.max_grid_cells = max_grid_cells;
+        options
+            .resources
+            .apply_limit(
+                merman::ascii::AsciiResourceLimitId::MaxGridCells,
+                max_grid_cells,
+            )
+            .map_err(|error| {
+                CliError::InvalidInput(format!("invalid ASCII resource limit: {error}"))
+            })?;
     }
     options
         .validate()

@@ -346,8 +346,7 @@ fn provenance() -> Provenance {
         cargo: command_output("cargo", &["-V"]),
         kernel: command_output("uname", &["-srv"]),
         os_version: command_output("sw_vers", &["-productVersion"]),
-        cpu: command_output("sysctl", &["-n", "machdep.cpu.brand_string"])
-            .or_else(|| linux_cpu_model()),
+        cpu: command_output("sysctl", &["-n", "machdep.cpu.brand_string"]).or_else(linux_cpu_model),
     }
 }
 

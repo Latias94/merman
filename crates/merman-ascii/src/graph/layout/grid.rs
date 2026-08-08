@@ -3,21 +3,48 @@ use super::super::model::{AsciiGraph, AsciiGraphNode, GraphDirection, GraphRootP
 use super::super::shape::{GraphNodeShapeSemantics, GraphNodeShapeSize};
 use super::groups;
 use super::{GridCoord, NodeLayout};
+use crate::error::{AsciiError, Result};
 use crate::graph::topology::GraphGroupTopology;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
+use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
+
+const MINIMUM_NODE_GRID_WIDTH: usize = 3;
+const MINIMUM_NODE_GRID_HEIGHT: usize = 3;
+const MINIMUM_NODE_GRID_CELLS: usize = MINIMUM_NODE_GRID_WIDTH * MINIMUM_NODE_GRID_HEIGHT;
+const AXIS_ENTRIES_PER_NODE: usize = 4;
+
+pub(super) type AxisSizes = HashMap<usize, usize>;
+type LevelPositions = HashMap<usize, usize>;
+type NodeIndexById<'a> = HashMap<&'a str, usize>;
+pub(super) type GridNodeLayoutParts = (Vec<NodeLayout>, AxisSizes, AxisSizes);
+
+pub(super) fn preflight_minimum_grid_extent(
+    graph: &AsciiGraph,
+    options: &AsciiRenderOptions,
+    resources: &ResourceContext,
+) -> Result<()> {
+    // Every placed node owns a disjoint 3x3 exclusion block in the temporary routing grid. Check
+    // that unavoidable storage before constructing any hash-backed layout containers.
+    let minimum_cells = minimum_node_grid_cells(graph.nodes.len(), resources)?;
+    resources.grid_extent(minimum_cells, 1)?;
+    resources.grid_extent(options.graph_padding_x, 1)?;
+    resources.grid_extent(options.graph_padding_y, 1)?;
+    Ok(())
+}
 
 pub(super) fn layout_nodes(
     graph: &AsciiGraph,
     options: &AsciiRenderOptions,
-) -> (
-    Vec<NodeLayout>,
-    BTreeMap<usize, usize>,
-    BTreeMap<usize, usize>,
-) {
+    topology: Option<&GraphGroupTopology<'_>>,
+    resources: &mut ResourceContext,
+) -> Result<GridNodeLayoutParts> {
     match graph.direction.canonical() {
-        GraphDirection::LeftRight => layout_left_right_grid_nodes(graph, options),
-        GraphDirection::TopDown => layout_top_down_grid_nodes(graph, options),
+        GraphDirection::LeftRight => {
+            layout_left_right_grid_nodes(graph, options, topology, resources)
+        }
+        GraphDirection::TopDown => layout_top_down_grid_nodes(graph, options, topology, resources),
         GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
     }
 }
@@ -25,18 +52,18 @@ pub(super) fn layout_nodes(
 fn layout_left_right_grid_nodes(
     graph: &AsciiGraph,
     options: &AsciiRenderOptions,
-) -> (
-    Vec<NodeLayout>,
-    BTreeMap<usize, usize>,
-    BTreeMap<usize, usize>,
-) {
-    let placements = place_left_right_grid_nodes(graph, options.terminal_width_profile);
-    let mut column_widths = BTreeMap::new();
-    let mut row_heights = BTreeMap::new();
+    topology: Option<&GraphGroupTopology<'_>>,
+    resources: &mut ResourceContext,
+) -> Result<GridNodeLayoutParts> {
+    let placements =
+        place_left_right_grid_nodes(graph, topology, options.terminal_width_profile, resources)?;
+    let node_padding = groups::NodePaddingIndex::try_new(graph, &placements, topology, resources)?;
+    let mut column_widths = new_axis_sizes(graph.nodes.len(), resources)?;
+    let mut row_heights = new_axis_sizes(graph.nodes.len(), resources)?;
 
     for (index, coord) in placements.iter().copied().enumerate() {
         let node = &graph.nodes[index];
-        let shape_size = node_shape_size(node, options);
+        let shape_size = node_shape_size(node, options, resources)?;
         set_axis_size(&mut column_widths, coord.x, 1);
         set_axis_size(
             &mut column_widths,
@@ -59,17 +86,12 @@ fn layout_left_right_grid_nodes(
             set_axis_size(
                 &mut row_heights,
                 coord.y - 1,
-                groups::node_padding_y(graph, &placements, index, options),
+                groups::node_padding_y(index, &node_padding, options, resources)?,
             );
         }
     }
 
-    let coord_by_id = graph
-        .nodes
-        .iter()
-        .zip(placements.iter().copied())
-        .map(|(node, coord)| (node.id.as_str(), coord))
-        .collect::<HashMap<_, _>>();
+    let coord_by_id = node_coords_by_id(graph, &placements)?;
     for edge in &graph.edges {
         let (Some(from), Some(to)) = (
             coord_by_id.get(edge.from.as_str()).copied(),
@@ -81,81 +103,96 @@ fn layout_left_right_grid_nodes(
             continue;
         }
 
-        let length_gap = options
-            .graph_padding_x
-            .saturating_add(edge.length.saturating_sub(1) * 2);
+        let length_gap = resources.checked_grid_add(
+            options.graph_padding_x,
+            resources.checked_grid_mul(edge.length.saturating_sub(1), 2)?,
+        )?;
         let label_gap = edge
             .label
             .as_deref()
             .map(|label| {
-                GraphLabel::new_with_profile(label, options.terminal_width_profile).width() + 2
+                resources.checked_grid_add(
+                    GraphLabel::new_with_profile(label, options.terminal_width_profile).width(),
+                    2,
+                )
             })
+            .transpose()?
             .unwrap_or_default();
         set_axis_size(&mut column_widths, to.x - 1, length_gap.max(label_gap));
     }
 
-    let layouts = placements
-        .into_iter()
-        .zip(graph.nodes.iter())
-        .map(|(coord, node)| NodeLayout {
-            id: node.id.clone(),
-            label: GraphLabel::new_with_profile(&node.label, options.terminal_width_profile),
-            shape: node.shape,
-            style: node.style,
-            grid: coord,
-            x: axis_position(&column_widths, coord.x),
-            y: axis_position(&row_heights, coord.y),
-            width: axis_span(&column_widths, coord.x, 3),
-            height: axis_span(&row_heights, coord.y, 3),
-        })
-        .collect();
+    let width = checked_axis_total(&column_widths, resources)?;
+    let height = checked_axis_total(&row_heights, resources)?;
+    resources.grid_extent(width, height)?;
 
-    (layouts, column_widths, row_heights)
+    let layouts = build_node_layouts(
+        graph,
+        placements,
+        &column_widths,
+        &row_heights,
+        options.terminal_width_profile,
+    )?;
+
+    Ok((layouts, column_widths, row_heights))
 }
 
 fn place_left_right_grid_nodes(
     graph: &AsciiGraph,
+    topology: Option<&GraphGroupTopology<'_>>,
     width_profile: TerminalWidthProfile,
-) -> Vec<GridCoord> {
-    let index_by_id = graph
-        .nodes
-        .iter()
-        .enumerate()
-        .map(|(index, node)| (node.id.as_str(), index))
-        .collect::<HashMap<_, _>>();
-    let mut placements = vec![None; graph.nodes.len()];
-    let mut occupied = HashSet::new();
-    let mut highest_position_per_level = BTreeMap::<usize, usize>::new();
+    resources: &mut ResourceContext,
+) -> Result<Vec<GridCoord>> {
+    let index_by_id = node_indices_by_id(graph)?;
+    let mut placements = new_placement_slots(graph.nodes.len())?;
+    let mut occupied = new_occupied_grid(graph.nodes.len(), resources)?;
+    let mut highest_position_per_level = new_level_positions(graph.nodes.len())?;
 
-    let root_indices = graph_root_indices(graph);
-    let topology = GraphGroupTopology::new(graph);
-    let should_separate_roots =
-        should_separate_left_right_roots(graph, &root_indices, &index_by_id, &topology);
-    let (external_roots, subgraph_roots): (Vec<_>, Vec<_>) =
-        root_indices.into_iter().partition(|root_index| {
+    let root_indices = graph_root_indices(graph)?;
+    if graph.groups.is_empty() {
+        for root_index in root_indices.iter().copied() {
+            place_left_right_node(
+                root_index,
+                0,
+                &mut placements,
+                &mut occupied,
+                &mut highest_position_per_level,
+                resources,
+            )?;
+        }
+    } else {
+        let topology = topology.expect("non-empty graph groups must have topology");
+        let should_separate_roots =
+            should_separate_left_right_roots(graph, &root_indices, &index_by_id, topology);
+        for root_index in root_indices.iter().copied().filter(|root_index| {
             !should_separate_roots
                 || topology
                     .direct_node_group_index(&graph.nodes[*root_index].id)
                     .is_none()
-        });
-
-    for root_index in external_roots {
-        place_left_right_node(
-            root_index,
-            0,
-            &mut placements,
-            &mut occupied,
-            &mut highest_position_per_level,
-        );
-    }
-    for root_index in subgraph_roots {
-        place_left_right_node(
-            root_index,
-            4,
-            &mut placements,
-            &mut occupied,
-            &mut highest_position_per_level,
-        );
+        }) {
+            place_left_right_node(
+                root_index,
+                0,
+                &mut placements,
+                &mut occupied,
+                &mut highest_position_per_level,
+                resources,
+            )?;
+        }
+        for root_index in root_indices.iter().copied().filter(|root_index| {
+            should_separate_roots
+                && topology
+                    .direct_node_group_index(&graph.nodes[*root_index].id)
+                    .is_some()
+        }) {
+            place_left_right_node(
+                root_index,
+                4,
+                &mut placements,
+                &mut occupied,
+                &mut highest_position_per_level,
+                resources,
+            )?;
+        }
     }
 
     for node_index in 0..graph.nodes.len() {
@@ -166,13 +203,14 @@ fn place_left_right_grid_nodes(
                 &mut placements,
                 &mut occupied,
                 &mut highest_position_per_level,
-            );
+                resources,
+            )?;
         }
 
         let Some(parent_coord) = placements[node_index] else {
             continue;
         };
-        let child_level = parent_coord.x + 4;
+        let child_level = resources.checked_grid_add(parent_coord.x, 4)?;
         for child_index in child_indices(graph, node_index, &index_by_id) {
             if placements[child_index].is_some() {
                 continue;
@@ -183,16 +221,22 @@ fn place_left_right_grid_nodes(
                 &mut placements,
                 &mut occupied,
                 &mut highest_position_per_level,
-            );
+                resources,
+            )?;
         }
     }
 
-    let mut placements = placements
-        .into_iter()
-        .map(|coord| coord.unwrap_or(GridCoord { x: 0, y: 0 }))
-        .collect::<Vec<_>>();
-    groups::apply_group_placement_adjustments(graph, &mut placements, width_profile);
-    placements
+    let mut placements = finalize_placements(placements)?;
+    if !graph.groups.is_empty() {
+        groups::apply_group_placement_adjustments(
+            graph,
+            &mut placements,
+            topology.expect("non-empty graph groups must have topology"),
+            width_profile,
+            resources,
+        )?;
+    }
+    Ok(placements)
 }
 
 fn should_separate_left_right_roots(
@@ -210,55 +254,50 @@ fn should_separate_left_right_roots(
         topology
             .direct_node_group_index(&graph.nodes[*index].id)
             .is_some()
-            && !child_indices(graph, *index, index_by_id).is_empty()
+            && child_indices(graph, *index, index_by_id).next().is_some()
     });
 
     has_external_roots && has_subgraph_roots_with_edges
 }
 
-fn graph_root_indices(graph: &AsciiGraph) -> Vec<usize> {
-    let nodes_with_incoming = graph
-        .edges
-        .iter()
-        .map(|edge| edge.to.as_str())
-        .collect::<HashSet<_>>();
+fn graph_root_indices(graph: &AsciiGraph) -> Result<Vec<usize>> {
+    let mut nodes_with_incoming = HashSet::new();
+    try_reserve_hash_set(&mut nodes_with_incoming, graph.edges.len())?;
+    for edge in &graph.edges {
+        nodes_with_incoming.insert(edge.to.as_str());
+    }
 
     let declared_first =
         graph.root_policy == GraphRootPolicy::DeclaredFirst && !graph.nodes.is_empty();
     let mut roots = Vec::new();
+    try_reserve_vec(&mut roots, graph.nodes.len())?;
     if declared_first {
         roots.push(0);
     }
 
-    let incoming_roots = graph
-        .nodes
-        .iter()
-        .enumerate()
-        .filter_map(|(index, node)| {
-            (!nodes_with_incoming.contains(node.id.as_str()) && (!declared_first || index != 0))
-                .then_some(index)
-        })
-        .collect::<Vec<_>>();
-    roots.extend(incoming_roots);
+    for (index, node) in graph.nodes.iter().enumerate() {
+        if !nodes_with_incoming.contains(node.id.as_str()) && (!declared_first || index != 0) {
+            roots.push(index);
+        }
+    }
     if roots.is_empty() && !graph.nodes.is_empty() {
         roots.push(0);
     }
 
-    roots
+    Ok(roots)
 }
 
 fn child_indices<'a>(
     graph: &'a AsciiGraph,
     node_index: usize,
-    index_by_id: &HashMap<&'a str, usize>,
-) -> Vec<usize> {
-    let node = &graph.nodes[node_index];
+    index_by_id: &'a HashMap<&str, usize>,
+) -> impl Iterator<Item = usize> + 'a {
+    let node_id = graph.nodes[node_index].id.as_str();
     graph
         .edges
         .iter()
-        .filter(|edge| edge.from == node.id)
-        .filter_map(|edge| index_by_id.get(edge.to.as_str()).copied())
-        .collect()
+        .filter(move |edge| edge.from == node_id)
+        .filter_map(move |edge| index_by_id.get(edge.to.as_str()).copied())
 }
 
 fn place_left_right_node(
@@ -266,8 +305,9 @@ fn place_left_right_node(
     level: usize,
     placements: &mut [Option<GridCoord>],
     occupied: &mut HashSet<(usize, usize)>,
-    highest_position_per_level: &mut BTreeMap<usize, usize>,
-) {
+    highest_position_per_level: &mut LevelPositions,
+    resources: &ResourceContext,
+) -> Result<()> {
     let requested_y = highest_position_per_level
         .get(&level)
         .copied()
@@ -279,53 +319,65 @@ fn place_left_right_node(
             y: requested_y,
         },
         GraphDirection::LeftRight,
-    );
+        resources,
+    )?;
     placements[node_index] = Some(coord);
-    highest_position_per_level.insert(level, coord.y + 4);
+    highest_position_per_level.insert(level, resources.checked_grid_add(coord.y, 4)?);
+    Ok(())
 }
 
 pub(crate) fn reserve_grid_spot(
     occupied: &mut HashSet<(usize, usize)>,
     requested_coord: GridCoord,
     direction: GraphDirection,
-) -> GridCoord {
+    resources: &ResourceContext,
+) -> Result<GridCoord> {
     let mut coord = requested_coord;
-    while grid_spot_occupied(occupied, coord) {
+    while grid_spot_occupied(occupied, coord, resources)? {
         match direction.canonical() {
-            GraphDirection::LeftRight => coord.y += 4,
-            GraphDirection::TopDown => coord.x += 4,
+            GraphDirection::LeftRight => coord.y = resources.checked_grid_add(coord.y, 4)?,
+            GraphDirection::TopDown => coord.x = resources.checked_grid_add(coord.x, 4)?,
             GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
         }
     }
 
-    for x in coord.x..(coord.x + 3) {
-        for y in coord.y..(coord.y + 3) {
+    let end_x = resources.checked_grid_add(coord.x, MINIMUM_NODE_GRID_WIDTH)?;
+    let end_y = resources.checked_grid_add(coord.y, MINIMUM_NODE_GRID_HEIGHT)?;
+    try_reserve_hash_set(occupied, MINIMUM_NODE_GRID_CELLS)?;
+    for x in coord.x..end_x {
+        for y in coord.y..end_y {
             occupied.insert((x, y));
         }
     }
 
-    coord
+    Ok(coord)
 }
 
-fn grid_spot_occupied(occupied: &HashSet<(usize, usize)>, coord: GridCoord) -> bool {
-    (coord.x..(coord.x + 3)).any(|x| (coord.y..(coord.y + 3)).any(|y| occupied.contains(&(x, y))))
+fn grid_spot_occupied(
+    occupied: &HashSet<(usize, usize)>,
+    coord: GridCoord,
+    resources: &ResourceContext,
+) -> Result<bool> {
+    let end_x = resources.checked_grid_add(coord.x, MINIMUM_NODE_GRID_WIDTH)?;
+    let end_y = resources.checked_grid_add(coord.y, MINIMUM_NODE_GRID_HEIGHT)?;
+    Ok((coord.x..end_x).any(|x| (coord.y..end_y).any(|y| occupied.contains(&(x, y)))))
 }
 
 fn layout_top_down_grid_nodes(
     graph: &AsciiGraph,
     options: &AsciiRenderOptions,
-) -> (
-    Vec<NodeLayout>,
-    BTreeMap<usize, usize>,
-    BTreeMap<usize, usize>,
-) {
-    let placements = place_top_down_grid_nodes(graph, options.terminal_width_profile);
-    let mut column_widths = BTreeMap::new();
-    let mut row_heights = BTreeMap::new();
+    topology: Option<&GraphGroupTopology<'_>>,
+    resources: &mut ResourceContext,
+) -> Result<GridNodeLayoutParts> {
+    let placements =
+        place_top_down_grid_nodes(graph, topology, options.terminal_width_profile, resources)?;
+    let node_padding = groups::NodePaddingIndex::try_new(graph, &placements, topology, resources)?;
+    let mut column_widths = new_axis_sizes(graph.nodes.len(), resources)?;
+    let mut row_heights = new_axis_sizes(graph.nodes.len(), resources)?;
 
     for (index, coord) in placements.iter().copied().enumerate() {
         let node = &graph.nodes[index];
-        let shape_size = node_shape_size(node, options);
+        let shape_size = node_shape_size(node, options, resources)?;
         set_axis_size(&mut column_widths, coord.x, 1);
         set_axis_size(
             &mut column_widths,
@@ -348,17 +400,12 @@ fn layout_top_down_grid_nodes(
             set_axis_size(
                 &mut row_heights,
                 coord.y - 1,
-                groups::node_padding_y(graph, &placements, index, options),
+                groups::node_padding_y(index, &node_padding, options, resources)?,
             );
         }
     }
 
-    let index_by_id = graph
-        .nodes
-        .iter()
-        .enumerate()
-        .map(|(index, node)| (node.id.as_str(), index))
-        .collect::<HashMap<_, _>>();
+    let index_by_id = node_indices_by_id(graph)?;
     for edge in &graph.edges {
         let (Some(from_index), Some(to_index)) = (
             index_by_id.get(edge.from.as_str()).copied(),
@@ -374,51 +421,49 @@ fn layout_top_down_grid_nodes(
         if let Some(label) = edge.label.as_deref() {
             let label_width =
                 GraphLabel::new_with_profile(label, options.terminal_width_profile).width();
-            set_axis_size(&mut column_widths, from.x + 1, label_width + 2);
+            set_axis_size(
+                &mut column_widths,
+                from.x + 1,
+                resources.checked_grid_add(label_width, 2)?,
+            );
         }
     }
 
-    let layouts = placements
-        .into_iter()
-        .zip(graph.nodes.iter())
-        .map(|(coord, node)| NodeLayout {
-            id: node.id.clone(),
-            label: GraphLabel::new_with_profile(&node.label, options.terminal_width_profile),
-            shape: node.shape,
-            style: node.style,
-            grid: coord,
-            x: axis_position(&column_widths, coord.x),
-            y: axis_position(&row_heights, coord.y),
-            width: axis_span(&column_widths, coord.x, 3),
-            height: axis_span(&row_heights, coord.y, 3),
-        })
-        .collect();
+    let width = checked_axis_total(&column_widths, resources)?;
+    let height = checked_axis_total(&row_heights, resources)?;
+    resources.grid_extent(width, height)?;
 
-    (layouts, column_widths, row_heights)
+    let layouts = build_node_layouts(
+        graph,
+        placements,
+        &column_widths,
+        &row_heights,
+        options.terminal_width_profile,
+    )?;
+
+    Ok((layouts, column_widths, row_heights))
 }
 
 fn place_top_down_grid_nodes(
     graph: &AsciiGraph,
+    topology: Option<&GraphGroupTopology<'_>>,
     width_profile: TerminalWidthProfile,
-) -> Vec<GridCoord> {
-    let index_by_id = graph
-        .nodes
-        .iter()
-        .enumerate()
-        .map(|(index, node)| (node.id.as_str(), index))
-        .collect::<HashMap<_, _>>();
-    let mut placements = vec![None; graph.nodes.len()];
-    let mut occupied = HashSet::new();
-    let mut highest_position_per_level = BTreeMap::<usize, usize>::new();
+    resources: &mut ResourceContext,
+) -> Result<Vec<GridCoord>> {
+    let index_by_id = node_indices_by_id(graph)?;
+    let mut placements = new_placement_slots(graph.nodes.len())?;
+    let mut occupied = new_occupied_grid(graph.nodes.len(), resources)?;
+    let mut highest_position_per_level = new_level_positions(graph.nodes.len())?;
 
-    for root_index in graph_root_indices(graph) {
+    for root_index in graph_root_indices(graph)? {
         place_top_down_node(
             root_index,
             0,
             &mut placements,
             &mut occupied,
             &mut highest_position_per_level,
-        );
+            resources,
+        )?;
     }
 
     for node_index in 0..graph.nodes.len() {
@@ -429,13 +474,14 @@ fn place_top_down_grid_nodes(
                 &mut placements,
                 &mut occupied,
                 &mut highest_position_per_level,
-            );
+                resources,
+            )?;
         }
 
         let Some(parent_coord) = placements[node_index] else {
             continue;
         };
-        let child_level = parent_coord.y + 4;
+        let child_level = resources.checked_grid_add(parent_coord.y, 4)?;
         for child_index in child_indices(graph, node_index, &index_by_id) {
             if placements[child_index].is_some() {
                 continue;
@@ -446,16 +492,22 @@ fn place_top_down_grid_nodes(
                 &mut placements,
                 &mut occupied,
                 &mut highest_position_per_level,
-            );
+                resources,
+            )?;
         }
     }
 
-    let mut placements = placements
-        .into_iter()
-        .map(|coord| coord.unwrap_or(GridCoord { x: 0, y: 0 }))
-        .collect::<Vec<_>>();
-    groups::apply_group_placement_adjustments(graph, &mut placements, width_profile);
-    placements
+    let mut placements = finalize_placements(placements)?;
+    if !graph.groups.is_empty() {
+        groups::apply_group_placement_adjustments(
+            graph,
+            &mut placements,
+            topology.expect("non-empty graph groups must have topology"),
+            width_profile,
+            resources,
+        )?;
+    }
+    Ok(placements)
 }
 
 fn place_top_down_node(
@@ -463,8 +515,9 @@ fn place_top_down_node(
     level: usize,
     placements: &mut [Option<GridCoord>],
     occupied: &mut HashSet<(usize, usize)>,
-    highest_position_per_level: &mut BTreeMap<usize, usize>,
-) {
+    highest_position_per_level: &mut LevelPositions,
+    resources: &ResourceContext,
+) -> Result<()> {
     let requested_x = highest_position_per_level
         .get(&level)
         .copied()
@@ -476,33 +529,165 @@ fn place_top_down_node(
             y: level,
         },
         GraphDirection::TopDown,
-    );
+        resources,
+    )?;
     placements[node_index] = Some(coord);
-    highest_position_per_level.insert(level, coord.x + 4);
+    highest_position_per_level.insert(level, resources.checked_grid_add(coord.x, 4)?);
+    Ok(())
 }
 
-fn set_axis_size(axis_sizes: &mut BTreeMap<usize, usize>, index: usize, size: usize) {
+fn minimum_node_grid_cells(node_count: usize, resources: &ResourceContext) -> Result<usize> {
+    resources.checked_grid_mul(node_count, MINIMUM_NODE_GRID_CELLS)
+}
+
+fn node_indices_by_id(graph: &AsciiGraph) -> Result<NodeIndexById<'_>> {
+    let mut index_by_id = HashMap::new();
+    try_reserve_hash_map(&mut index_by_id, graph.nodes.len())?;
+    for (index, node) in graph.nodes.iter().enumerate() {
+        index_by_id.insert(node.id.as_str(), index);
+    }
+    Ok(index_by_id)
+}
+
+fn node_coords_by_id<'a>(
+    graph: &'a AsciiGraph,
+    placements: &[GridCoord],
+) -> Result<HashMap<&'a str, GridCoord>> {
+    let mut coord_by_id = HashMap::new();
+    try_reserve_hash_map(&mut coord_by_id, graph.nodes.len())?;
+    for (node, coord) in graph.nodes.iter().zip(placements.iter().copied()) {
+        coord_by_id.insert(node.id.as_str(), coord);
+    }
+    Ok(coord_by_id)
+}
+
+fn new_placement_slots(node_count: usize) -> Result<Vec<Option<GridCoord>>> {
+    let mut placements = Vec::new();
+    try_reserve_vec(&mut placements, node_count)?;
+    placements.resize(node_count, None);
+    Ok(placements)
+}
+
+fn finalize_placements(placements: Vec<Option<GridCoord>>) -> Result<Vec<GridCoord>> {
+    let mut finalized = Vec::new();
+    try_reserve_vec(&mut finalized, placements.len())?;
+    for coord in placements {
+        finalized.push(coord.unwrap_or(GridCoord { x: 0, y: 0 }));
+    }
+    Ok(finalized)
+}
+
+fn new_occupied_grid(
+    node_count: usize,
+    resources: &ResourceContext,
+) -> Result<HashSet<(usize, usize)>> {
+    let mut occupied = HashSet::new();
+    try_reserve_hash_set(
+        &mut occupied,
+        minimum_node_grid_cells(node_count, resources)?,
+    )?;
+    Ok(occupied)
+}
+
+fn new_level_positions(node_count: usize) -> Result<LevelPositions> {
+    let mut positions = HashMap::new();
+    try_reserve_hash_map(&mut positions, node_count)?;
+    Ok(positions)
+}
+
+fn new_axis_sizes(node_count: usize, resources: &ResourceContext) -> Result<AxisSizes> {
+    let mut axis_sizes = HashMap::new();
+    let capacity = resources.checked_grid_mul(node_count, AXIS_ENTRIES_PER_NODE)?;
+    try_reserve_hash_map(&mut axis_sizes, capacity)?;
+    Ok(axis_sizes)
+}
+
+fn build_node_layouts(
+    graph: &AsciiGraph,
+    placements: Vec<GridCoord>,
+    column_widths: &AxisSizes,
+    row_heights: &AxisSizes,
+    width_profile: TerminalWidthProfile,
+) -> Result<Vec<NodeLayout>> {
+    let mut layouts = Vec::new();
+    try_reserve_vec(&mut layouts, placements.len())?;
+    for (coord, node) in placements.into_iter().zip(graph.nodes.iter()) {
+        layouts.push(NodeLayout {
+            id: node.id.clone(),
+            label: GraphLabel::new_with_profile(&node.label, width_profile),
+            shape: node.shape,
+            style: node.style,
+            grid: coord,
+            x: axis_position(column_widths, coord.x),
+            y: axis_position(row_heights, coord.y),
+            width: axis_span(column_widths, coord.x, 3),
+            height: axis_span(row_heights, coord.y, 3),
+        });
+    }
+    Ok(layouts)
+}
+
+fn set_axis_size(axis_sizes: &mut AxisSizes, index: usize, size: usize) {
     axis_sizes
         .entry(index)
         .and_modify(|current| *current = (*current).max(size))
         .or_insert(size);
 }
 
-pub(super) fn axis_position(axis_sizes: &BTreeMap<usize, usize>, index: usize) -> usize {
+pub(super) fn axis_position(axis_sizes: &AxisSizes, index: usize) -> usize {
     axis_sizes
-        .range(..index)
+        .iter()
+        .filter(|(axis_index, _)| **axis_index < index)
         .map(|(_, size)| *size)
         .sum::<usize>()
         + axis_sizes.get(&index).copied().unwrap_or_default() / 2
 }
 
-fn axis_span(axis_sizes: &BTreeMap<usize, usize>, start: usize, len: usize) -> usize {
+fn axis_span(axis_sizes: &AxisSizes, start: usize, len: usize) -> usize {
     (start..(start + len))
         .map(|index| axis_sizes.get(&index).copied().unwrap_or_default())
         .sum()
 }
 
-fn node_shape_size(node: &AsciiGraphNode, options: &AsciiRenderOptions) -> GraphNodeShapeSize {
+fn node_shape_size(
+    node: &AsciiGraphNode,
+    options: &AsciiRenderOptions,
+    resources: &ResourceContext,
+) -> Result<GraphNodeShapeSize> {
     let label = GraphLabel::new_with_profile(&node.label, options.terminal_width_profile);
-    GraphNodeShapeSemantics::new(node.shape).size_for_label(&label, options)
+    GraphNodeShapeSemantics::new(node.shape).try_size_for_label(&label, options, resources)
+}
+
+fn checked_axis_total(axis_sizes: &AxisSizes, resources: &ResourceContext) -> Result<usize> {
+    axis_sizes.values().try_fold(0usize, |total, size| {
+        resources.checked_grid_add(total, *size)
+    })
+}
+
+fn try_reserve_vec<T>(values: &mut Vec<T>, additional: usize) -> Result<()> {
+    values
+        .try_reserve(additional)
+        .map_err(|_| layout_allocation_failed())
+}
+
+fn try_reserve_hash_map<K, V>(map: &mut HashMap<K, V>, additional: usize) -> Result<()>
+where
+    K: Eq + Hash,
+{
+    map.try_reserve(additional)
+        .map_err(|_| layout_allocation_failed())
+}
+
+fn try_reserve_hash_set<T>(set: &mut HashSet<T>, additional: usize) -> Result<()>
+where
+    T: Eq + Hash,
+{
+    set.try_reserve(additional)
+        .map_err(|_| layout_allocation_failed())
+}
+
+fn layout_allocation_failed() -> AsciiError {
+    AsciiError::AllocationFailed {
+        phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+    }
 }

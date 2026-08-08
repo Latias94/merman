@@ -1,6 +1,6 @@
 use merman_ascii::{
-    AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions, AsciiRgb,
-    render_model,
+    AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions,
+    AsciiResourceLimitId, AsciiRgb, render_model,
 };
 use merman_core::{Engine, ParseOptions};
 use std::path::Path;
@@ -565,9 +565,10 @@ bar [4, 8]
 }
 
 #[test]
-fn xychart_plot_area_respects_max_grid_cells() {
-    let mut options = AsciiRenderOptions::ascii();
-    options.max_grid_cells = 3;
+fn xychart_plot_area_respects_typed_grid_limit() {
+    let options = AsciiRenderOptions::ascii()
+        .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 3)
+        .expect("valid grid limit");
 
     let err = render_xychart(
         r#"xychart
@@ -577,15 +578,14 @@ bar [4, 8]
 "#,
         &options,
     )
-    .expect_err("xychart plot area should respect max_grid_cells");
+    .expect_err("xychart plot area should respect max_ascii_grid_cells");
 
-    assert_eq!(
-        err,
-        AsciiError::RenderLimitExceeded {
-            actual: 35,
-            limit: 3,
-        }
-    );
+    let AsciiError::ResourceLimitExceeded(details) = err else {
+        panic!("expected a typed resource-limit error, got {err:?}");
+    };
+    assert_eq!(details.limit, AsciiResourceLimitId::MaxGridCells);
+    assert_eq!(details.actual, 35);
+    assert_eq!(details.max, 3);
 }
 
 #[test]

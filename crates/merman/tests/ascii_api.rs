@@ -2,9 +2,10 @@
 
 use merman::RenderSemanticModel;
 use merman::ascii::{
-    AsciiRenderOptions, HeadlessAsciiRenderer, render_ascii_sync, render_class, render_er,
-    render_model, render_state, render_xychart,
+    AsciiError, AsciiRenderOptions, AsciiResourceLimitId, HeadlessAsciiRenderer, render_ascii_sync,
+    render_class, render_er, render_model, render_state, render_xychart,
 };
+use merman::resources::ResourceProfile;
 
 fn render_model_for(source: &str) -> RenderSemanticModel {
     merman::Engine::new()
@@ -170,12 +171,26 @@ fn render_ascii_model_handles_deep_flowchart_subgraph_chain_with_small_stack() {
     const DEPTH: usize = 512;
     let source = deeply_nested_flowchart(DEPTH);
     let model = render_model_for(&source);
+    let error = render_model(&model, &AsciiRenderOptions::ascii())
+        .expect_err("the Interactive profile should reject nesting beyond its public limit");
+    assert!(matches!(
+        error,
+        AsciiError::ResourceLimitExceeded(details)
+            if details.limit == AsciiResourceLimitId::MaxNestingDepth
+                && details.actual == 257
+                && details.max == 256
+    ));
+
     let handle = std::thread::Builder::new()
         .name("ascii-deep-flowchart-subgraph".to_string())
         .stack_size(64 * 1024)
         .spawn(move || {
-            let mut options = AsciiRenderOptions::ascii();
-            options.max_grid_cells = 10_000_000;
+            let mut options = AsciiRenderOptions::ascii()
+                .with_resource_profile(ResourceProfile::UnboundedForTrustedInput);
+            options
+                .resources
+                .apply_limit(AsciiResourceLimitId::MaxGridCells, 10_000_000)
+                .expect("valid ASCII grid override");
             let rendered = render_model(&model, &options)
                 .expect("deep Flowchart ASCII render should not return an error");
             assert!(rendered.contains('A'));

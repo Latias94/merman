@@ -28,6 +28,40 @@ fn run_with_stdin(args: &[&str], input: &str) -> Output {
     child.wait_with_output().expect("wait cli")
 }
 
+fn run_ascii_with_resource_limit(limit_id: &str, max: u64, source: &str) -> Output {
+    let override_arg = format!("{limit_id}={max}");
+    run_with_stdin(
+        &[
+            "render",
+            "--format",
+            "ascii",
+            "--resource-limit",
+            &override_arg,
+            "-",
+        ],
+        source,
+    )
+}
+
+fn ascii_resource_actual(stderr: &str, limit_id: &str, phase: &str, max: u64) -> u64 {
+    let prefix = format!("ASCII resource limit `{limit_id}` exceeded during `{phase}`: actual ");
+    let actual = stderr
+        .split_once(&prefix)
+        .unwrap_or_else(|| panic!("missing typed ASCII resource prefix for {limit_id}: {stderr}"))
+        .1
+        .split_once(',')
+        .unwrap_or_else(|| panic!("missing ASCII resource actual terminator: {stderr}"))
+        .0
+        .parse::<u64>()
+        .unwrap_or_else(|_| panic!("invalid ASCII resource actual for {limit_id}: {stderr}"));
+    assert!(actual > max, "{limit_id}: {stderr}");
+    assert!(
+        stderr.contains(&format!("maximum {max} (profile `trusted-native`)")),
+        "{limit_id}: {stderr}"
+    );
+    actual
+}
+
 #[cfg(unix)]
 fn open_pty() -> (fs::File, fs::File) {
     let mut master = -1;
@@ -363,6 +397,132 @@ fn cli_applies_the_selected_resource_profile_to_text_output() {
         &input,
     );
     assert!(trusted.status.success(), "stderr: {:?}", trusted.stderr);
+}
+
+#[test]
+fn cli_applies_ascii_resource_overrides_to_text_output() {
+    let output = run_with_stdin(
+        &[
+            "render",
+            "--format",
+            "ascii",
+            "--resource-limit",
+            "max_ascii_output_bytes=1",
+            "-",
+        ],
+        "flowchart LR\nA --> B",
+    );
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(stderr.contains("max_ascii_output_bytes"), "{stderr}");
+}
+
+#[test]
+fn cli_reports_every_ascii_resource_limit_with_stable_typed_context() {
+    let cases = [
+        (
+            "max_ascii_grid_cells",
+            "ascii_layout",
+            "flowchart TD\nA[Hello] --> B[World]",
+        ),
+        (
+            "max_ascii_layout_work_units",
+            "ascii_layout_work",
+            "flowchart TD\nA[Hello] --> B[World]",
+        ),
+        (
+            "max_ascii_document_cells",
+            "ascii_document",
+            "gitGraph\n  commit id: \"A\"",
+        ),
+        (
+            "max_ascii_output_bytes",
+            "ascii_output",
+            "flowchart TD\nA[Hello] --> B[World]",
+        ),
+        (
+            "max_ascii_grapheme_bytes",
+            "ascii_grapheme",
+            "flowchart TD\nA[👨‍👩‍👧‍👦]",
+        ),
+        (
+            "max_ascii_nesting_depth",
+            "ascii_nesting",
+            "mindmap\n  Root\n    Child",
+        ),
+    ];
+
+    for (limit_id, phase, source) in cases {
+        let mut lower = 0;
+        let mut candidate = 1;
+        let mut attempts = 0;
+        let mut upper = loop {
+            attempts += 1;
+            assert!(attempts <= 64, "failed to converge {limit_id} boundary");
+            let output = run_ascii_with_resource_limit(limit_id, candidate, source);
+            if output.status.success() {
+                assert!(!output.stdout.is_empty(), "{limit_id} produced no output");
+                break candidate;
+            }
+            let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+            let actual = ascii_resource_actual(&stderr, limit_id, phase, candidate);
+            lower = candidate;
+            candidate = actual.max(candidate.saturating_mul(2));
+        };
+        while upper - lower > 1 {
+            let candidate = lower + (upper - lower) / 2;
+            let output = run_ascii_with_resource_limit(limit_id, candidate, source);
+            if output.status.success() {
+                upper = candidate;
+            } else {
+                let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+                ascii_resource_actual(&stderr, limit_id, phase, candidate);
+                lower = candidate;
+            }
+        }
+        let exact = upper;
+        assert!(exact > 1, "fixture must exercise {limit_id}");
+
+        let exact_output = run_ascii_with_resource_limit(limit_id, exact, source);
+        assert!(
+            exact_output.status.success(),
+            "exact {limit_id} boundary failed: {}",
+            String::from_utf8_lossy(&exact_output.stderr)
+        );
+
+        let below_output = run_ascii_with_resource_limit(limit_id, exact - 1, source);
+        assert!(
+            !below_output.status.success(),
+            "one-below {limit_id} boundary unexpectedly succeeded"
+        );
+        let stderr = String::from_utf8(below_output.stderr).expect("stderr should be utf8");
+        assert_eq!(
+            ascii_resource_actual(&stderr, limit_id, phase, exact - 1),
+            exact
+        );
+    }
+}
+
+#[test]
+fn cli_rejects_duplicate_generic_and_legacy_ascii_grid_overrides() {
+    let output = run_with_stdin(
+        &[
+            "render",
+            "--format",
+            "ascii",
+            "--resource-limit",
+            "max_ascii_grid_cells=100",
+            "--ascii-max-grid-cells",
+            "100",
+            "-",
+        ],
+        "flowchart LR\nA --> B",
+    );
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(stderr.contains("specified by both"), "{stderr}");
 }
 
 #[cfg(feature = "svg")]

@@ -564,6 +564,92 @@ mod tests {
     #[cfg(any(feature = "analysis", feature = "ascii"))]
     use serde_json::Value;
 
+    #[cfg(feature = "ascii")]
+    fn wasm_ascii_options(limit_id: &str, value: u64) -> String {
+        format!(r#"{{"resources":{{"limits":{{"{limit_id}":{value}}}}}}}"#)
+    }
+
+    #[cfg(feature = "ascii")]
+    fn assert_wasm_ascii_resource_error(
+        error: BindingError,
+        expected_limit_id: &str,
+        expected_phase: &str,
+        expected_max: u64,
+    ) -> u64 {
+        assert_eq!(
+            error.status(),
+            merman_bindings_core::BindingStatus::ResourceLimitExceeded
+        );
+        assert_eq!(error.capability_id(), None);
+        let details = error
+            .resource_details()
+            .expect("WASM ASCII resource errors must expose typed details");
+        assert_eq!(details.limit_id, expected_limit_id);
+        assert_eq!(details.phase, expected_phase);
+        assert_eq!(details.max, expected_max);
+        assert_eq!(details.profile, "interactive");
+        assert!(details.actual > details.max);
+
+        let payload = binding_error_payload_value(&error).expect("structured WASM error payload");
+        let resource = payload["details"]["resource"]
+            .as_object()
+            .expect("WASM resource details object");
+        assert_eq!(resource.len(), 5, "WASM resource error shape changed");
+        assert_eq!(resource["limit_id"], expected_limit_id);
+        assert_eq!(resource["phase"], expected_phase);
+        assert_eq!(resource["actual"], details.actual);
+        assert_eq!(resource["max"], expected_max);
+        assert_eq!(resource["profile"], "interactive");
+        details.actual
+    }
+
+    #[cfg(feature = "ascii")]
+    fn assert_wasm_ascii_exact_boundary(limit_id: &str, phase: &str, source: &str) {
+        let mut lower = 0;
+        let mut candidate = 1;
+        let mut attempts = 0;
+        let mut upper = loop {
+            attempts += 1;
+            assert!(attempts <= 64, "failed to converge {limit_id} boundary");
+            let options = wasm_ascii_options(limit_id, candidate);
+            match execute_wasm_operation("ascii", source.as_bytes(), options.as_bytes(), None) {
+                Ok(_) => break candidate,
+                Err(error) => {
+                    let actual =
+                        assert_wasm_ascii_resource_error(error, limit_id, phase, candidate);
+                    lower = candidate;
+                    candidate = actual.max(candidate.saturating_mul(2));
+                }
+            }
+        };
+        while upper - lower > 1 {
+            let candidate = lower + (upper - lower) / 2;
+            let options = wasm_ascii_options(limit_id, candidate);
+            match execute_wasm_operation("ascii", source.as_bytes(), options.as_bytes(), None) {
+                Ok(_) => upper = candidate,
+                Err(error) => {
+                    assert_wasm_ascii_resource_error(error, limit_id, phase, candidate);
+                    lower = candidate;
+                }
+            }
+        }
+        let exact = upper;
+        assert!(exact > 1, "fixture must exercise {limit_id}");
+
+        let exact_options = wasm_ascii_options(limit_id, exact);
+        let output =
+            execute_wasm_operation("ascii", source.as_bytes(), exact_options.as_bytes(), None)
+                .unwrap_or_else(|error| panic!("exact {limit_id} boundary failed: {error:?}"));
+        assert!(!output.is_empty());
+
+        let below_options = wasm_ascii_options(limit_id, exact - 1);
+        let error =
+            execute_wasm_operation("ascii", source.as_bytes(), below_options.as_bytes(), None)
+                .expect_err("one-below WASM ASCII boundary must fail");
+        let actual = assert_wasm_ascii_resource_error(error, limit_id, phase, exact - 1);
+        assert_eq!(actual, exact);
+    }
+
     #[test]
     fn package_version_matches_crate_version() {
         assert_eq!(package_version(), env!("CARGO_PKG_VERSION"));
@@ -1171,5 +1257,46 @@ mod tests {
 
         assert!(text.contains("Hello"));
         assert!(text.contains("World"));
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn wasm_ascii_operations_preserve_typed_exact_resource_boundaries() {
+        let cases = [
+            (
+                "max_ascii_grid_cells",
+                "ascii_layout",
+                "flowchart TD\nA[Hello] --> B[World]",
+            ),
+            (
+                "max_ascii_layout_work_units",
+                "ascii_layout_work",
+                "flowchart TD\nA[Hello] --> B[World]",
+            ),
+            (
+                "max_ascii_document_cells",
+                "ascii_document",
+                "gitGraph\n  commit id: \"A\"",
+            ),
+            (
+                "max_ascii_output_bytes",
+                "ascii_output",
+                "flowchart TD\nA[Hello] --> B[World]",
+            ),
+            (
+                "max_ascii_grapheme_bytes",
+                "ascii_grapheme",
+                "flowchart TD\nA[👨‍👩‍👧‍👦]",
+            ),
+            (
+                "max_ascii_nesting_depth",
+                "ascii_nesting",
+                "mindmap\n  Root\n    Child",
+            ),
+        ];
+
+        for (limit_id, phase, source) in cases {
+            assert_wasm_ascii_exact_boundary(limit_id, phase, source);
+        }
     }
 }

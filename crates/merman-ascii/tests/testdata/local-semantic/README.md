@@ -38,20 +38,21 @@ Class and ER relation fixtures are split by topology readability:
 
 These fixtures protect the shared `relation_graph` seam. Class and ER adapters may differ in
 markers, cardinality, labels, notes, and unsupported diagnostics, but routing, lane placement,
-layered draw policy, and dense/grid-budget summary fallback should stay shared.
+layered draw policy, and readability-only summary fallback should stay shared. Resource limits are
+shared hard errors and never select a summary.
 
 - Use routed-grid fixtures when the relation graph has a deterministic, readable terminal path:
   chains, stars, same-endpoint lanes, bidirectional same-pair lanes, simple spanning lanes, and
   cycle-closing lanes.
 - Use structured relation-summary fixtures when a relation graph is too dense for a readable
-  deterministic layered layout, or when the routed scene exceeds `AsciiRenderOptions::max_grid_cells`.
+  deterministic layered layout or when a routed route/overlay would collide with a box.
 - Summary fixtures must keep every endpoint, connector, and label line visible; multiline Mermaid
   labels should become continuation rows rather than slash-joined text or leaked `<br>` markup.
 
 | Fixture class | Use when | Assertions |
 | --- | --- | --- |
 | Routed grid | The topology has readable terminal routes. | Important endpoints, labels, markers, and compartments are visible; `relations:` is absent. |
-| Structured summary | Dense crossings or grid budget make a routed grid misleading. | Every endpoint, connector, and label line is visible under `relations:`; `<br>` does not leak. |
+| Structured summary | Dense crossings or route/overlay collisions make a routed grid misleading. | Every endpoint, connector, and label line is visible under `relations:`; `<br>` does not leak. |
 | Unsupported boundary | Mermaid syntax has semantics the ASCII renderer cannot honestly represent yet. | Prefer focused parser/model tests that assert `UnsupportedFeature`; add a fixture only when the input itself documents a durable boundary. |
 
 See [ASCII Class / ER Capability Matrix](../../../../../docs/rendering/ASCII_CLASS_ER_CAPABILITY_MATRIX.md) for the current comparison against `beautiful-mermaid` and `mermaid-ascii`.

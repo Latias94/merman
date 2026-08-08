@@ -1,42 +1,6 @@
 use crate::color::{AsciiColorMode, AsciiColorTheme};
 use crate::error::{AsciiError, Result};
-
-/// Stable binding metadata for the terminal-grid budget owned by the ASCII renderer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub struct AsciiResourceLimitDescriptor {
-    pub stable_id: &'static str,
-    pub phase: &'static str,
-    pub description: &'static str,
-    pub overridable: bool,
-    pub minimum_value: usize,
-}
-
-pub const MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID: &str = "max_ascii_grid_cells";
-pub const ASCII_RESOURCE_LIMIT_DESCRIPTORS: [AsciiResourceLimitDescriptor; 1] =
-    [AsciiResourceLimitDescriptor {
-        stable_id: MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID,
-        phase: "ascii_layout",
-        description: "Maximum terminal grid cells allocated by ASCII layout",
-        overridable: true,
-        minimum_value: 1,
-    }];
-
-/// Returns the profile value for an ASCII-owned resource limit.
-pub fn ascii_resource_profile_value(
-    profile: merman_core::resources::ResourceProfile,
-    stable_id: &str,
-) -> Option<usize> {
-    if stable_id != MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID {
-        return None;
-    }
-    match profile {
-        merman_core::resources::ResourceProfile::Interactive => Some(250_000),
-        merman_core::resources::ResourceProfile::Constrained => Some(125_000),
-        merman_core::resources::ResourceProfile::TrustedNative => Some(1_000_000),
-        merman_core::resources::ResourceProfile::UnboundedForTrustedInput => None,
-    }
-}
+use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
 
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -85,7 +49,7 @@ pub struct AsciiRenderOptions {
     pub xychart_vertical_plot_height: usize,
     pub xychart_category_band_width: usize,
     pub xychart_horizontal_plot_width: usize,
-    pub max_grid_cells: usize,
+    pub resources: AsciiResourcePolicy,
     pub relation_summary_diagnostics: bool,
 }
 
@@ -107,7 +71,7 @@ impl Default for AsciiRenderOptions {
             xychart_vertical_plot_height: 5,
             xychart_category_band_width: 3,
             xychart_horizontal_plot_width: 10,
-            max_grid_cells: 250_000,
+            resources: AsciiResourcePolicy::default(),
             relation_summary_diagnostics: false,
         }
     }
@@ -160,9 +124,27 @@ impl AsciiRenderOptions {
         self
     }
 
-    pub fn with_max_grid_cells(mut self, max_grid_cells: usize) -> Self {
-        self.max_grid_cells = max_grid_cells;
+    pub fn with_resource_policy(mut self, resources: AsciiResourcePolicy) -> Self {
+        self.resources = resources;
         self
+    }
+
+    pub fn with_resource_profile(
+        mut self,
+        profile: merman_core::resources::ResourceProfile,
+    ) -> Self {
+        self.resources = self.resources.with_profile(profile);
+        self
+    }
+
+    pub fn with_resource_limit(mut self, id: AsciiResourceLimitId, value: usize) -> Result<Self> {
+        self.resources
+            .apply_limit(id, value)
+            .map_err(|_| AsciiError::InvalidOption {
+                field: id.as_str(),
+                message: "must be greater than 0",
+            })?;
+        Ok(self)
     }
 
     pub fn with_relation_summary_diagnostics(mut self, enabled: bool) -> Self {
@@ -209,13 +191,6 @@ impl AsciiRenderOptions {
             return Err(AsciiError::InvalidOption {
                 field: "xychart_horizontal_plot_width",
                 message: "must be at least 2",
-            });
-        }
-
-        if self.max_grid_cells == 0 {
-            return Err(AsciiError::InvalidOption {
-                field: "max_grid_cells",
-                message: "must be greater than 0",
             });
         }
 

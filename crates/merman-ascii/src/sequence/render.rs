@@ -1,10 +1,11 @@
-use super::layout::{SequenceLayout, calculate_layout};
+use super::layout::{SequenceLayout, calculate_layout_with_resources};
 use super::model::{AsciiSequenceDiagram, SequenceArrowHead};
 use super::plan::SequenceRowPlan;
-use super::text::{SequenceLine, padded_line, trim_right};
+use super::text::{SequenceLine, blank_line, padded_line, trim_right};
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
 use crate::options::{AsciiCharset, AsciiRenderOptions};
+use crate::resource::ResourceContext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct SequenceChars {
@@ -97,9 +98,19 @@ impl SequenceChars {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn render_sequence_diagram(
     diagram: &AsciiSequenceDiagram,
     options: &AsciiRenderOptions,
+) -> Result<String> {
+    let mut resources = ResourceContext::new(options.resources);
+    render_sequence_diagram_with_resources(diagram, options, &mut resources)
+}
+
+pub(crate) fn render_sequence_diagram_with_resources(
+    diagram: &AsciiSequenceDiagram,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
 ) -> Result<String> {
     options.validate()?;
     if diagram.participants.is_empty() {
@@ -109,11 +120,17 @@ pub(crate) fn render_sequence_diagram(
         });
     }
 
+    debug_assert_eq!(resources.policy(), options.resources);
     let chars = SequenceChars::for_options(options);
-    let layout = calculate_layout(diagram, options);
-    let row_plan =
-        SequenceRowPlan::build(diagram, &layout, &chars, options.sequence_mirror_actors)?;
-    Ok(row_plan.render(diagram, &layout, &chars, options))
+    let layout = calculate_layout_with_resources(diagram, options, resources)?;
+    let row_plan = SequenceRowPlan::build(
+        diagram,
+        &layout,
+        &chars,
+        options.sequence_mirror_actors,
+        resources,
+    )?;
+    row_plan.render(diagram, &layout, &chars, options, resources)
 }
 
 pub(super) fn build_lifeline_line(
@@ -121,19 +138,36 @@ pub(super) fn build_lifeline_line(
     chars: &SequenceChars,
     active_counts: &[usize],
     visible_actors: &[bool],
-) -> SequenceLine {
-    let mut line = SequenceLine::blank_with_profile(layout.total_width + 1, layout.width_profile);
+    resources: &ResourceContext,
+) -> Result<SequenceLine> {
+    let width = resources.checked_grid_add(layout.total_width, 1)?;
+    let mut line = blank_line(width, layout.width_profile, resources)?;
     for (index, center) in layout.participant_centers.iter().enumerate() {
         if !visible_actors.get(index).copied().unwrap_or(true) {
             continue;
         }
-        line.set_role(
+        line.try_set_role(
             *center,
             lifeline_char(index, chars, active_counts),
             lifeline_role(index, active_counts),
-        );
+        )?;
     }
     trim_right(line)
+}
+
+pub(super) fn retained_lifeline_width(
+    layout: &SequenceLayout,
+    visible_actors: &[bool],
+    resources: &ResourceContext,
+) -> Result<usize> {
+    layout
+        .participant_centers
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| visible_actors.get(*index).copied().unwrap_or(true))
+        .try_fold(0usize, |width, (_, center)| {
+            Ok(width.max(resources.checked_grid_add(*center, 1)?))
+        })
 }
 
 pub(super) fn lifeline_char(index: usize, chars: &SequenceChars, active_counts: &[usize]) -> char {
@@ -152,6 +186,7 @@ pub(super) fn lifeline_role(index: usize, active_counts: &[usize]) -> AsciiColor
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn render_overlay_row(
     layout: &SequenceLayout,
     chars: &SequenceChars,
@@ -159,12 +194,103 @@ pub(super) fn render_overlay_row(
     visible_actors: &[bool],
     left: usize,
     overlay: &SequenceLine,
-) -> SequenceLine {
-    let needed = left + overlay.len();
+    resources: &ResourceContext,
+) -> Result<SequenceLine> {
+    let needed = resources.checked_grid_add(left, overlay.len())?;
+    let width = needed.max(resources.checked_grid_add(layout.total_width, 1)?);
+    resources.grid_extent(width, 1)?;
     let mut line = padded_line(
-        build_lifeline_line(layout, chars, active_counts, visible_actors),
-        needed,
-    );
-    line.write_line(left, overlay);
+        build_lifeline_line(layout, chars, active_counts, visible_actors, resources)?,
+        width,
+    )?;
+    line.try_write_line(left, overlay)?;
     trim_right(line)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::options::TerminalWidthProfile;
+    use crate::resource::AsciiResourceLimitId;
+    use crate::sequence::model::{
+        SequenceActorLifecycle, SequenceParticipant, SequenceParticipantLabel,
+    };
+
+    #[test]
+    fn sequence_grid_extent_accepts_exact_limit_and_rejects_limit_minus_one() {
+        let diagram = single_participant_diagram();
+        let renders_with_limit = |limit| {
+            let options = AsciiRenderOptions::ascii()
+                .with_resource_limit(AsciiResourceLimitId::MaxGridCells, limit)
+                .expect("valid grid limit");
+            render_sequence_diagram(&diagram, &options)
+        };
+
+        let mut upper = 1usize;
+        while renders_with_limit(upper).is_err() {
+            upper = upper.checked_mul(2).expect("grid boundary must fit usize");
+        }
+        let mut lower = 1usize;
+        while lower < upper {
+            let midpoint = lower + (upper - lower) / 2;
+            if renders_with_limit(midpoint).is_ok() {
+                upper = midpoint;
+            } else {
+                lower = midpoint + 1;
+            }
+        }
+        let exact_cells = lower;
+
+        let exact = AsciiRenderOptions::ascii()
+            .with_resource_limit(AsciiResourceLimitId::MaxGridCells, exact_cells)
+            .unwrap();
+        assert!(render_sequence_diagram(&diagram, &exact).is_ok());
+
+        let below = AsciiRenderOptions::ascii()
+            .with_resource_limit(AsciiResourceLimitId::MaxGridCells, exact_cells - 1)
+            .unwrap();
+        let error = render_sequence_diagram(&diagram, &below).unwrap_err();
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxGridCells
+                    && details.actual == exact_cells
+                    && details.max == exact_cells - 1
+        ));
+    }
+
+    #[test]
+    fn sequence_plain_output_enforces_custom_grapheme_limit() {
+        let mut diagram = single_participant_diagram();
+        diagram.participants[0].label =
+            SequenceParticipantLabel::from_raw("👨‍👩‍👧‍👦", false, TerminalWidthProfile::Unicode);
+        let options = AsciiRenderOptions::ascii()
+            .with_resource_limit(AsciiResourceLimitId::MaxGraphemeBytes, 4)
+            .unwrap();
+
+        let error = render_sequence_diagram(&diagram, &options).unwrap_err();
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxGraphemeBytes
+                    && details.actual > details.max
+        ));
+    }
+
+    fn single_participant_diagram() -> AsciiSequenceDiagram {
+        AsciiSequenceDiagram {
+            title: None,
+            participants: vec![SequenceParticipant {
+                id: "p0".to_string(),
+                label: SequenceParticipantLabel::from_raw(
+                    "P0",
+                    false,
+                    TerminalWidthProfile::Unicode,
+                ),
+            }],
+            lifecycles: vec![SequenceActorLifecycle::default()],
+            boxes: Vec::new(),
+            events: Vec::new(),
+        }
+    }
 }

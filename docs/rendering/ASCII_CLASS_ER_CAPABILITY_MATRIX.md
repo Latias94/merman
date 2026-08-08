@@ -15,10 +15,11 @@ Class and ER ASCII rendering share the `relation_graph` seam for relation routin
 layered drawing, and structured summary fallback. The family adapters should keep only
 Mermaid-specific semantics at their edges: Class markers, notes, lollipop/interface handling,
 endpoint labels, ER cardinality, relationship identification, entity labels, and explicit
-unsupported diagnostics. Dense crossings and tight `AsciiRenderOptions::max_grid_cells` budgets
-should use the shared `relations:` summary rather than renderer-local fallback branches. Summary
-fallback reasons are preserved at the `relation_graph` seam so tests can assert the topology policy
-directly instead of inferring it only from rendered text.
+unsupported diagnostics. Dense crossings and route/overlay collisions may use the shared
+`relations:` summary rather than renderer-local fallback branches. Resource limits are never
+readability fallbacks: exceeding `max_ascii_grid_cells` or another ASCII limit returns a structured
+resource error. Summary fallback reasons are preserved at the `relation_graph` seam so tests can
+assert the topology policy directly instead of inferring it only from rendered text.
 
 ## Class Diagram Matrix
 
@@ -30,7 +31,7 @@ directly instead of inferring it only from rendered text.
 | Relationship labels and multiline labels, including CJK/emoji summary labels | `beautiful-mermaid` integration tests plus local wide-text coverage | Supported | Routed-grid, structured-summary, and local semantic fixtures |
 | Same-endpoint lanes, reverse lanes, cycles, crossings, spanning routes | `beautiful-mermaid` ASCII tests | Supported | Routed-grid fixtures |
 | Dense layouts that should collapse to relation summary | `beautiful-mermaid` ASCII tests | Supported | Structured summary fixtures |
-| Tight `max_grid_cells` budgets | Local policy | Supported | Structured summary fixture with explicit budget |
+| Tight `max_ascii_grid_cells` budgets | Local policy | Supported hard error | Structured resource-error fixture with exact details |
 | Disconnected components / isolated nodes | `beautiful-mermaid` disconnected-layout patterns plus local component-separation coverage | Supported | Local semantic fixtures with component-separation assertions |
 | Namespace-qualified class names | Local semantic tests | Supported | Local semantic fixtures |
 | Endpoint labels / cardinality strings attached to a relation | Mermaid class cardinality tests and `beautiful-mermaid` parser/renderer | Supported | Exact vertical fixtures and summary regressions |
@@ -48,7 +49,7 @@ directly instead of inferring it only from rendered text.
 | Relationship labels and multiline labels, including CJK/emoji summary labels | `beautiful-mermaid` ER integration tests plus local wide-text coverage | Supported | Routed-grid, structured-summary, and local semantic fixtures |
 | Same-endpoint lanes, reverse lanes, cycles, crossings, spanning routes | `beautiful-mermaid` ER ASCII tests | Supported | Routed-grid fixtures |
 | Dense layouts that should collapse to relation summary | `beautiful-mermaid` ER ASCII tests | Supported | Structured summary fixtures |
-| Tight `max_grid_cells` budgets | Local policy | Supported | Structured summary fixture with explicit budget |
+| Tight `max_ascii_grid_cells` budgets | Local policy | Supported hard error | Structured resource-error fixture with exact details |
 | Disconnected components / isolated entities | `beautiful-mermaid` disconnected-layout patterns plus local component-separation coverage | Supported | Local semantic fixtures with component-separation assertions |
 | Unknown cardinality markers | Not represented in reference ASCII output | Explicit unsupported | Keep as `UnsupportedFeature` model tests |
 | Unknown relationship identification types | Not represented in reference ASCII output | Explicit unsupported | Keep as `UnsupportedFeature` model tests |

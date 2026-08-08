@@ -14,8 +14,14 @@ mod allocator;
 #[allow(dead_code, unused_imports)]
 #[path = "../src/color.rs"]
 mod color;
+#[allow(dead_code, unused_imports)]
+#[path = "../src/error.rs"]
+mod error;
 #[path = "terminal_cell_representation/prototype.rs"]
 mod prototype;
+#[allow(clippy::enum_variant_names, dead_code, unused_imports)]
+#[path = "../src/resource.rs"]
+mod resource;
 #[allow(dead_code, unused_imports)]
 #[path = "../src/style_color.rs"]
 mod style_color;

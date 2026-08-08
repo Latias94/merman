@@ -38,6 +38,11 @@ pub enum MermanResourceOverrideId {
     MaxEmbeddedImagePixels,
     MaxTotalEmbeddedImagePixels,
     MaxPdfFilterImagePixels,
+    MaxAsciiLayoutWorkUnits,
+    MaxAsciiDocumentCells,
+    MaxAsciiOutputBytes,
+    MaxAsciiGraphemeBytes,
+    MaxAsciiNestingDepth,
 }
 
 impl MermanResourceOverrideId {
@@ -59,6 +64,11 @@ impl MermanResourceOverrideId {
         Self::MaxEmbeddedImagePixels => "max_embedded_image_pixels",
         Self::MaxTotalEmbeddedImagePixels => "max_total_embedded_image_pixels",
         Self::MaxPdfFilterImagePixels => "max_pdf_filter_image_pixels",
+        Self::MaxAsciiLayoutWorkUnits => "max_ascii_layout_work_units",
+        Self::MaxAsciiDocumentCells => "max_ascii_document_cells",
+        Self::MaxAsciiOutputBytes => "max_ascii_output_bytes",
+        Self::MaxAsciiGraphemeBytes => "max_ascii_grapheme_bytes",
+        Self::MaxAsciiNestingDepth => "max_ascii_nesting_depth",
         }
     }
 }

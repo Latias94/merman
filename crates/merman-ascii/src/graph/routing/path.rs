@@ -1,4 +1,6 @@
 use super::super::layout::{GridCoord, NodeLayout};
+use crate::error::Result;
+use crate::resource::ResourceContext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum GridPathPortPolicy {
@@ -32,20 +34,38 @@ impl PortPair {
     }
 }
 
+#[cfg(test)]
 pub(super) fn route_grid_path(
     layouts: &[NodeLayout],
     from: &NodeLayout,
     to: &NodeLayout,
     port_policy: GridPathPortPolicy,
 ) -> Option<GridPathRoute> {
+    let mut resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
+        merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+    ));
+    route_grid_path_with_resources(layouts, from, to, port_policy, &mut resources)
+        .expect("test grid routing work must remain representable")
+}
+
+pub(super) fn route_grid_path_with_resources(
+    layouts: &[NodeLayout],
+    from: &NodeLayout,
+    to: &NodeLayout,
+    port_policy: GridPathPortPolicy,
+    resources: &mut ResourceContext,
+) -> Result<Option<GridPathRoute>> {
     match port_policy {
         GridPathPortPolicy::DirectionalShortest => select_shortest_reachable_grid_path(
             layouts,
             from,
             to,
             directional_left_right_port_pairs(from, to),
+            resources,
         ),
-        GridPathPortPolicy::Fixed(ports) => plan_grid_path_for_ports(layouts, from, to, ports),
+        GridPathPortPolicy::Fixed(ports) => {
+            plan_grid_path_for_ports(layouts, from, to, ports, resources)
+        }
     }
 }
 
@@ -54,17 +74,21 @@ fn select_shortest_reachable_grid_path(
     from: &NodeLayout,
     to: &NodeLayout,
     candidates: [PortPair; 2],
-) -> Option<GridPathRoute> {
-    let mut routes = candidates
-        .into_iter()
-        .filter_map(|ports| plan_grid_path_for_ports(layouts, from, to, ports));
-    let mut selected = routes.next()?;
-    for route in routes {
-        if route.path.len() < selected.path.len() {
-            selected = route;
+    resources: &mut ResourceContext,
+) -> Result<Option<GridPathRoute>> {
+    let mut selected: Option<GridPathRoute> = None;
+    for ports in candidates {
+        let Some(route) = plan_grid_path_for_ports(layouts, from, to, ports, resources)? else {
+            continue;
+        };
+        if selected
+            .as_ref()
+            .is_none_or(|current| route.path.len() < current.path.len())
+        {
+            selected = Some(route);
         }
     }
-    Some(selected)
+    Ok(selected)
 }
 
 fn plan_grid_path_for_ports(
@@ -72,14 +96,13 @@ fn plan_grid_path_for_ports(
     from: &NodeLayout,
     to: &NodeLayout,
     ports: PortPair,
-) -> Option<GridPathRoute> {
-    find_grid_path(
-        layouts,
-        from.grid_for_port(ports.start),
-        to.grid_for_port(ports.end),
-    )
-    .map(merge_grid_path)
-    .map(|path| GridPathRoute { path, ports })
+    resources: &mut ResourceContext,
+) -> Result<Option<GridPathRoute>> {
+    let start = from.grid_for_port(ports.start, resources)?;
+    let target = to.grid_for_port(ports.end, resources)?;
+    Ok(find_grid_path(layouts, start, target, resources)?
+        .map(merge_grid_path)
+        .map(|path| GridPathRoute { path, ports }))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,16 +137,16 @@ impl Port {
 }
 
 trait NodeGridPort {
-    fn grid_for_port(&self, port: Port) -> GridCoord;
+    fn grid_for_port(&self, port: Port, resources: &ResourceContext) -> Result<GridCoord>;
 }
 
 impl NodeGridPort for NodeLayout {
-    fn grid_for_port(&self, port: Port) -> GridCoord {
+    fn grid_for_port(&self, port: Port, resources: &ResourceContext) -> Result<GridCoord> {
         let (x, y) = port.offset();
-        GridCoord {
-            x: self.grid.x + x,
-            y: self.grid.y + y,
-        }
+        Ok(GridCoord {
+            x: resources.checked_grid_add(self.grid.x, x)?,
+            y: resources.checked_grid_add(self.grid.y, y)?,
+        })
     }
 }
 
@@ -207,24 +230,26 @@ fn find_grid_path(
     layouts: &[NodeLayout],
     start: GridCoord,
     target: GridCoord,
-) -> Option<Vec<GridCoord>> {
-    let max_x = layouts
-        .iter()
-        .map(|layout| layout.grid.x + 2)
-        .max()
-        .unwrap_or_default()
-        + 6;
-    let max_y = layouts
-        .iter()
-        .map(|layout| layout.grid.y + 2)
-        .max()
-        .unwrap_or_default()
-        + 6;
+    resources: &mut ResourceContext,
+) -> Result<Option<Vec<GridCoord>>> {
+    let max_x = layouts.iter().try_fold(0usize, |current, layout| {
+        Ok::<_, crate::error::AsciiError>(
+            current.max(resources.checked_grid_add(layout.grid.x, 2)?),
+        )
+    })?;
+    let max_y = layouts.iter().try_fold(0usize, |current, layout| {
+        Ok::<_, crate::error::AsciiError>(
+            current.max(resources.checked_grid_add(layout.grid.y, 2)?),
+        )
+    })?;
+    let max_x = resources.checked_grid_add(max_x, 6)?;
+    let max_y = resources.checked_grid_add(max_y, 6)?;
     let mut open = vec![(start, 0usize)];
     let mut cost_so_far = std::collections::HashMap::from([(start, 0usize)]);
     let mut came_from = std::collections::HashMap::<GridCoord, GridCoord>::new();
 
     while !open.is_empty() {
+        resources.charge_layout_work(open.len())?;
         let best_index = open
             .iter()
             .enumerate()
@@ -236,31 +261,37 @@ fn find_grid_path(
             let mut path = vec![current];
             let mut cursor = current;
             while let Some(previous) = came_from.get(&cursor).copied() {
-                path.insert(0, previous);
+                resources.charge_layout_work(1)?;
+                path.push(previous);
                 cursor = previous;
             }
-            return Some(path);
+            path.reverse();
+            return Ok(Some(path));
         }
 
-        for next in grid_neighbors(current, max_x, max_y) {
+        let neighbors = grid_neighbors(current, max_x, max_y);
+        let occupancy_work = resources.checked_work_mul(neighbors.len(), layouts.len().max(1))?;
+        resources.charge_layout_work(occupancy_work)?;
+        for next in neighbors {
             if grid_occupied(layouts, next) && next != target {
                 continue;
             }
 
-            let new_cost = cost_so_far[&current] + 1;
+            let new_cost = resources.checked_work_add(cost_so_far[&current], 1)?;
             if cost_so_far
                 .get(&next)
                 .is_none_or(|current_cost| new_cost < *current_cost)
             {
                 cost_so_far.insert(next, new_cost);
-                let priority = new_cost + grid_heuristic(next, target);
+                let priority = resources
+                    .checked_work_add(new_cost, grid_heuristic(next, target, resources)?)?;
                 open.push((next, priority));
                 came_from.insert(next, current);
             }
         }
     }
 
-    None
+    Ok(None)
 }
 
 fn grid_neighbors(coord: GridCoord, max_x: usize, max_y: usize) -> Vec<GridCoord> {
@@ -292,20 +323,30 @@ fn grid_neighbors(coord: GridCoord, max_x: usize, max_y: usize) -> Vec<GridCoord
     neighbors
 }
 
-fn grid_heuristic(a: GridCoord, b: GridCoord) -> usize {
+fn grid_heuristic(a: GridCoord, b: GridCoord, resources: &ResourceContext) -> Result<usize> {
     let dx = a.x.abs_diff(b.x);
     let dy = a.y.abs_diff(b.y);
     if dx == 0 || dy == 0 {
-        dx + dy
+        dx.checked_add(dy)
     } else {
-        dx + dy + 1
+        dx.checked_add(dy)
+            .and_then(|distance| distance.checked_add(1))
     }
+    .ok_or_else(|| resources.grid_overflow())
 }
 
 fn grid_occupied(layouts: &[NodeLayout], coord: GridCoord) -> bool {
     layouts.iter().any(|layout| {
-        (layout.grid.x..=(layout.grid.x + 2)).contains(&coord.x)
-            && (layout.grid.y..=(layout.grid.y + 2)).contains(&coord.y)
+        layout
+            .grid
+            .x
+            .checked_add(2)
+            .is_some_and(|right| (layout.grid.x..=right).contains(&coord.x))
+            && layout
+                .grid
+                .y
+                .checked_add(2)
+                .is_some_and(|bottom| (layout.grid.y..=bottom).contains(&coord.y))
     })
 }
 
@@ -346,6 +387,8 @@ mod tests {
     use super::*;
     use crate::graph::label::GraphLabel;
     use crate::graph::model::{GraphNodeShape, GraphNodeStyle};
+    use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
+    use merman_core::resources::ResourceProfile;
 
     #[test]
     fn fixed_port_policy_does_not_substitute_directional_candidates() {
@@ -391,6 +434,32 @@ mod tests {
         .expect("directional policy should select the reachable candidate");
 
         assert_eq!(route.ports, PortPair::new(Port::Right, Port::Up));
+    }
+
+    #[test]
+    fn grid_frontier_expansion_honors_layout_work_limit() {
+        let from = node("from", 0, 0);
+        let blocker = node("blocker", 1, 2);
+        let to = node("to", 5, 5);
+        let layouts = vec![from.clone(), blocker, to.clone()];
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+            .expect("frontier work limit should be valid");
+        let mut resources = ResourceContext::new(policy);
+
+        let error = route_grid_path_with_resources(
+            &layouts,
+            &from,
+            &to,
+            GridPathPortPolicy::DirectionalShortest,
+            &mut resources,
+        )
+        .expect_err("frontier expansion should exceed one work unit");
+        let crate::AsciiError::ResourceLimitExceeded(details) = error else {
+            panic!("expected a layout-work resource error, got {error:?}");
+        };
+        assert_eq!(details.limit, AsciiResourceLimitId::MaxLayoutWorkUnits);
+        assert!(details.actual > details.max);
     }
 
     fn node(id: &str, grid_x: usize, grid_y: usize) -> NodeLayout {

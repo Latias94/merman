@@ -1,9 +1,7 @@
+use crate::Result;
 use crate::options::AsciiRenderOptions;
-use crate::safe_text::encode_text_lines;
-use crate::text::{
-    normalize_optional_text, push_wrapped_prefixed_line_with_profile, trim_trailing_blank_lines,
-};
-use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
+use crate::safe_text::BudgetedTextDocument;
+use merman_core::diagrams::gantt::GanttDiagramRenderModel;
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
@@ -11,72 +9,69 @@ pub fn render_gantt_diagram(
     model: &GanttDiagramRenderModel,
     options: &AsciiRenderOptions,
     local_time_zone: &merman_core::time::LocalTimeZone,
-) -> String {
-    let mut lines = Vec::new();
+) -> Result<String> {
+    let mut document = BudgetedTextDocument::new(options);
 
-    if let Some(title) = normalize_optional_text(model.title.as_deref()) {
-        lines.push(title);
-    }
-    if let Some(acc_title) = normalize_optional_text(model.acc_title.as_deref()) {
-        lines.push(format!("accTitle: {acc_title}"));
-    }
-    if let Some(acc_descr) = normalize_optional_text(model.acc_descr.as_deref()) {
-        lines.push(format!("accDescr: {acc_descr}"));
-    }
+    document.push_optional_line(model.title.as_deref())?;
+    document.push_optional_prefixed_line("accTitle: ", model.acc_title.as_deref())?;
+    document.push_optional_prefixed_line("accDescr: ", model.acc_descr.as_deref())?;
     if !model.date_format.is_empty() {
-        lines.push(format!("dateFormat: {}", model.date_format));
+        document.push_line_with(|line| {
+            line.push_str("dateFormat: ")?;
+            line.push_str(&model.date_format)
+        })?;
     }
     if !model.axis_format.is_empty() {
-        lines.push(format!("axisFormat: {}", model.axis_format));
+        document.push_line_with(|line| {
+            line.push_str("axisFormat: ")?;
+            line.push_str(&model.axis_format)
+        })?;
     }
 
     let mut current_section: Option<&str> = None;
     for task in &model.tasks {
         if current_section != Some(task.section.as_str()) {
             current_section = Some(task.section.as_str());
-            lines.push(format!("section: {}", task.section));
+            document.push_line_with(|line| {
+                line.push_str("section: ")?;
+                line.push_str(&task.section)
+            })?;
         }
-        push_wrapped_prefixed_line_with_profile(
-            &mut lines,
-            "  - ",
-            "    ",
-            &render_task_text(task, local_time_zone),
-            SUMMARY_WRAP_WIDTH,
-            options.terminal_width_profile,
-        );
+        document.resources_mut().charge_layout_work(1)?;
+        let start = format_date(task.start_ms, local_time_zone);
+        let end = format_date(task.render_end_ms.unwrap_or(task.end_ms), local_time_zone);
+        document.push_wrapped_prefixed_line_with("  - ", "    ", SUMMARY_WRAP_WIDTH, |line| {
+            line.push_str(&task.task)?;
+            line.push_str(" [")?;
+            line.push_str(&start)?;
+            line.push_str(" -> ")?;
+            line.push_str(&end)?;
+            line.push_str("]")?;
+
+            let flags = [
+                (task.milestone, "milestone"),
+                (task.active, "active"),
+                (task.done, "done"),
+                (task.crit, "crit"),
+                (task.vert, "vert"),
+            ];
+            let mut emitted_flag = false;
+            for flag in flags
+                .into_iter()
+                .filter_map(|(enabled, flag)| enabled.then_some(flag))
+            {
+                line.push_str(if emitted_flag { ", " } else { " [" })?;
+                line.push_str(flag)?;
+                emitted_flag = true;
+            }
+            if emitted_flag {
+                line.push_str("]")?;
+            }
+            Ok(())
+        })?;
     }
 
-    encode_text_lines(trim_trailing_blank_lines(lines), options)
-}
-
-fn render_task_text(
-    task: &GanttRenderTask,
-    local_time_zone: &merman_core::time::LocalTimeZone,
-) -> String {
-    let start = format_date(task.start_ms, local_time_zone);
-    let end = format_date(task.render_end_ms.unwrap_or(task.end_ms), local_time_zone);
-    let mut flags = Vec::new();
-    if task.milestone {
-        flags.push("milestone");
-    }
-    if task.active {
-        flags.push("active");
-    }
-    if task.done {
-        flags.push("done");
-    }
-    if task.crit {
-        flags.push("crit");
-    }
-    if task.vert {
-        flags.push("vert");
-    }
-    let suffix = if flags.is_empty() {
-        String::new()
-    } else {
-        format!(" [{}]", flags.join(", "))
-    };
-    format!("{} [{} -> {}]{}", task.task, start, end, suffix)
+    document.finish(options)
 }
 
 fn format_date(ms: i64, local_time_zone: &merman_core::time::LocalTimeZone) -> String {

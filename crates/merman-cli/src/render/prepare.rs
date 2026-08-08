@@ -291,6 +291,20 @@ fn prepare_single(
             destination,
             options,
         } => {
+            let mut options = *options;
+            let mut resources = common.resources.ascii_policy();
+            for (id, value) in options.resources.explicit_overrides() {
+                if resources.explicit_override(id).is_some() {
+                    return Err(CliError::InvalidInput(format!(
+                        "resource limit `{}` was specified by both --resource-limit and a legacy ASCII option",
+                        id.as_str()
+                    )));
+                }
+                resources.apply_limit(id, value).map_err(|error| {
+                    CliError::InvalidInput(format!("invalid ASCII resource limit: {error}"))
+                })?;
+            }
+            options.resources = resources;
             let ascii = options;
             let admission = BackendAdmission::for_text(&common.resources, &ascii)?;
             let renderer = merman::ascii::HeadlessAsciiRenderer::new()

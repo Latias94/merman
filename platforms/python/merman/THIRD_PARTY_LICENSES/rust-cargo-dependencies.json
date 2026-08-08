@@ -68,7 +68,7 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "a26ff38860d27888969b7cc33a51254e150e5f1daa080da64718a84e858bfae8",
+    "cargo_lock_sha256": "7b946938b342e01f0afa526bed48668636eb9df81995e3ffd43249d2673cfa59",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "54948536b23025cb7c686a9cc68e80a8a1bc083080c0b10203ec0c187bf0dfb5"
   },
@@ -76,25 +76,25 @@
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "aarch64-apple-darwin",
-      "package_count": 241,
-      "packages_sha256": "d08312a802ada9e8b19410cf74ac08f620ebfe2f9c521455bcc80eed82487986"
+      "package_count": 242,
+      "packages_sha256": "3fbf464188ea76e21507b086a31c252d1f5e7d02d092eb641183757d3a31af98"
     },
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "x86_64-pc-windows-msvc",
-      "package_count": 243,
-      "packages_sha256": "ad22170bb0addae04372b032638f537e00a6003f71c01615e0c51200b7f1f5f4"
+      "package_count": 244,
+      "packages_sha256": "329ea72a13a34c52934a02e4ce5fe4011b886002dfdb6c7b3315b496312a247e"
     },
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "x86_64-unknown-linux-gnu",
-      "package_count": 243,
-      "packages_sha256": "54563aafc20a5977b69710dddad630a834cdf7ea2692f12f011fd092cf158972"
+      "package_count": 244,
+      "packages_sha256": "b1a48ef41117235b53b8d6c7c983356c8d2fabc0bac4e185dd62072ed3cdc1b3"
     }
   ],
   "dependency_closure": {
-    "package_count": 249,
-    "packages_sha256": "3037568247c18e4f152edff883ef608e25859f392a80c20560678efa17ae37c8"
+    "package_count": 250,
+    "packages_sha256": "41f8d354a796351882cba82aa89bff7710a5b2d43ec52069122642b0eb3bf702"
   },
   "licenses": [
     {
@@ -1319,6 +1319,17 @@
             "Manish Goregaokar <manishsmail@gmail.com>"
           ],
           "repository": "https://github.com/unicode-rs/unicode-properties"
+        },
+        {
+          "name": "unicode-segmentation",
+          "version": "1.13.3",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Manish Goregaokar <manishsmail@gmail.com>",
+            "kwantam <kwantam@gmail.com>"
+          ],
+          "repository": "https://github.com/unicode-rs/unicode-segmentation"
         },
         {
           "name": "unicode-vo",

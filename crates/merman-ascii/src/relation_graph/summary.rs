@@ -4,6 +4,7 @@ use super::{
 };
 use crate::color::AsciiColorRole;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
+use crate::resource::ResourceContext;
 use crate::safe_text::SafeLine;
 use crate::text::display_width_with_profile;
 
@@ -43,41 +44,43 @@ pub(crate) fn render_stacked_boxes_with_relation_summary(
     rows: &[RelationGraphSummaryRow],
     reason: Option<LayeredRelationSummaryReason>,
     options: &AsciiRenderOptions,
-) -> String {
-    let lines = relation_summary_lines(rows, reason, options);
-    render_stacked_boxes_with_section(
-        boxes,
-        RelationGraphLine::with_role(
-            "relations:".to_string(),
-            AsciiColorRole::MutedText,
-            options.terminal_width_profile,
-        ),
-        &lines,
-        options,
-    )
+    resources: &mut ResourceContext,
+) -> crate::Result<String> {
+    let lines = relation_summary_lines(rows, reason, options, resources)?;
+    let header = RelationGraphLine::try_with_role(
+        "relations:",
+        AsciiColorRole::MutedText,
+        options.terminal_width_profile,
+        resources,
+    )?;
+    render_stacked_boxes_with_section(boxes, header, &lines, options, resources)
 }
 
 pub(crate) fn relation_summary_rows_lines<R>(
     relations: &[R],
     options: &AsciiRenderOptions,
     reason: Option<LayeredRelationSummaryReason>,
-    build_row: impl FnMut(&R) -> crate::Result<RelationGraphSummaryRow>,
+    resources: &mut ResourceContext,
+    mut build_row: impl FnMut(&R) -> crate::Result<RelationGraphSummaryRow>,
 ) -> crate::Result<Vec<RelationGraphLine>> {
-    let rows = relations
-        .iter()
-        .map(build_row)
-        .collect::<crate::Result<Vec<_>>>()?;
+    let mut rows = Vec::new();
+    rows.try_reserve_exact(relations.len())
+        .map_err(|_| super::layout_allocation_failed())?;
+    for relation in relations {
+        rows.push(build_row(relation)?);
+    }
 
-    Ok(relation_summary_lines(&rows, reason, options))
+    relation_summary_lines(&rows, reason, options, resources)
 }
 
 fn relation_summary_lines(
     rows: &[RelationGraphSummaryRow],
     reason: Option<LayeredRelationSummaryReason>,
     options: &AsciiRenderOptions,
-) -> Vec<RelationGraphLine> {
+    resources: &mut ResourceContext,
+) -> crate::Result<Vec<RelationGraphLine>> {
     if rows.is_empty() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
 
     let source_width = rows
@@ -95,17 +98,50 @@ fn relation_summary_lines(
         .map(|row| display_width_with_profile(&row.target, options.terminal_width_profile))
         .max()
         .unwrap_or(0);
-    let label_prefix_width = source_width + connector_width + target_width + 5;
+    let base_width = resources.checked_grid_add(
+        resources.checked_grid_add(source_width, connector_width)?,
+        target_width,
+    )?;
+    let label_prefix_width = resources.checked_grid_add(base_width, 5)?;
+    let diagnostic = options
+        .relation_summary_diagnostics
+        .then_some(reason)
+        .flatten()
+        .map(|reason| format!("reason: {}", relation_summary_reason_text(reason)));
+    let mut height = usize::from(diagnostic.is_some());
+    let mut width = diagnostic
+        .as_deref()
+        .map(|line| display_width_with_profile(line, options.terminal_width_profile))
+        .unwrap_or(0);
+    for row in rows {
+        height = resources.checked_grid_add(height, 1)?;
+        let row_width = match row.label.as_ref() {
+            Some(label) if !label.lines().is_empty() => {
+                height =
+                    resources.checked_grid_add(height, label.lines().len().saturating_sub(1))?;
+                resources.checked_grid_add(label_prefix_width, label.width())?
+            }
+            _ => resources.checked_grid_add(base_width, 2)?,
+        };
+        width = width.max(row_width);
+    }
+    let extent = resources.grid_extent(width, height)?;
+    resources.charge_layout_work(extent.cells())?;
 
     let mut lines = Vec::new();
+    lines
+        .try_reserve_exact(height)
+        .map_err(|_| super::layout_allocation_failed())?;
     if options.relation_summary_diagnostics
         && let Some(reason) = reason
     {
-        lines.push(RelationGraphLine::with_role(
-            format!("reason: {}", relation_summary_reason_text(reason)),
+        let diagnostic = format!("reason: {}", relation_summary_reason_text(reason));
+        lines.push(RelationGraphLine::try_with_role(
+            &diagnostic,
             AsciiColorRole::MutedText,
             options.terminal_width_profile,
-        ));
+            resources,
+        )?);
     }
 
     for row in rows {
@@ -133,45 +169,48 @@ fn relation_summary_lines(
                 let label_lines = label.lines();
                 line.push_str(" : ");
                 line.push_str(&label_lines[0]);
-                lines.push(RelationGraphLine::with_role(
-                    line,
+                lines.push(RelationGraphLine::try_with_role(
+                    &line,
                     AsciiColorRole::EdgeLabel,
                     options.terminal_width_profile,
-                ));
+                    resources,
+                )?);
                 for continuation in label_lines.iter().skip(1) {
-                    lines.push(RelationGraphLine::with_role(
-                        format!("{}{}", " ".repeat(label_prefix_width), continuation),
+                    let continuation =
+                        format!("{}{}", " ".repeat(label_prefix_width), continuation);
+                    lines.push(RelationGraphLine::try_with_role(
+                        &continuation,
                         AsciiColorRole::EdgeLabel,
                         options.terminal_width_profile,
-                    ));
+                        resources,
+                    )?);
                 }
             }
-            _ => lines.push(RelationGraphLine::with_role(
-                line,
+            _ => lines.push(RelationGraphLine::try_with_role(
+                &line,
                 AsciiColorRole::EdgeLabel,
                 options.terminal_width_profile,
-            )),
+                resources,
+            )?),
         }
     }
 
-    lines
+    Ok(lines)
 }
 
-fn relation_summary_reason_text(reason: LayeredRelationSummaryReason) -> String {
+fn relation_summary_reason_text(reason: LayeredRelationSummaryReason) -> &'static str {
     match reason {
-        LayeredRelationSummaryReason::Crossing => "crossing".to_string(),
-        LayeredRelationSummaryReason::RouteCollision => "route_collision".to_string(),
-        LayeredRelationSummaryReason::OverlayCollision => "overlay_collision".to_string(),
-        LayeredRelationSummaryReason::GridBudget { actual, limit } => {
-            format!("grid_budget actual={actual} limit={limit}")
-        }
+        LayeredRelationSummaryReason::Crossing => "crossing",
+        LayeredRelationSummaryReason::RouteCollision => "route_collision",
+        LayeredRelationSummaryReason::OverlayCollision => "overlay_collision",
     }
 }
 
 fn pad_right(text: &str, width: usize, width_profile: TerminalWidthProfile) -> String {
     let text_width = display_width_with_profile(text, width_profile);
     let mut padded = String::from(text);
-    padded.extend(std::iter::repeat_n(' ', width.saturating_sub(text_width)));
+    debug_assert!(width >= text_width);
+    padded.extend(std::iter::repeat_n(' ', width - text_width));
     padded
 }
 
@@ -180,6 +219,10 @@ mod tests {
     use super::*;
     use crate::color::{AsciiColorTheme, AsciiRgb};
     use crate::{AsciiColorMode, AsciiRenderOptions};
+
+    fn test_resources(options: &AsciiRenderOptions) -> ResourceContext {
+        ResourceContext::new(options.resources)
+    }
 
     #[test]
     fn render_stacked_boxes_with_relation_summary_aligns_columns_and_wraps_labels() {
@@ -191,12 +234,11 @@ mod tests {
             RelationGraphSummaryRow::new("Svc", "-->", "Repo"),
         ];
 
-        let rendered = render_stacked_boxes_with_relation_summary(
-            &[],
-            &rows,
-            None,
-            &AsciiRenderOptions::ascii(),
-        );
+        let options = AsciiRenderOptions::ascii();
+        let mut resources = test_resources(&options);
+        let rendered =
+            render_stacked_boxes_with_relation_summary(&[], &rows, None, &options, &mut resources)
+                .expect("summary should render");
 
         assert_eq!(
             rendered,
@@ -221,12 +263,11 @@ mod tests {
             RelationGraphSummaryRow::new("API", "-->", "数据"),
         ];
 
-        let rendered = render_stacked_boxes_with_relation_summary(
-            &[],
-            &rows,
-            None,
-            &AsciiRenderOptions::ascii(),
-        );
+        let options = AsciiRenderOptions::ascii();
+        let mut resources = test_resources(&options);
+        let rendered =
+            render_stacked_boxes_with_relation_summary(&[], &rows, None, &options, &mut resources)
+                .expect("wide summary should render");
 
         assert_eq!(
             rendered,
@@ -251,14 +292,13 @@ mod tests {
             .with_role(AsciiColorRole::MutedText, AsciiRgb::from_hex24(0x222222))
             .with_role(AsciiColorRole::EdgeLabel, AsciiRgb::from_hex24(0x333333));
 
-        let rendered = render_stacked_boxes_with_relation_summary(
-            &[],
-            &rows,
-            None,
-            &AsciiRenderOptions::ascii()
-                .with_color_mode(AsciiColorMode::Html)
-                .with_color_theme(theme),
-        );
+        let options = AsciiRenderOptions::ascii()
+            .with_color_mode(AsciiColorMode::Html)
+            .with_color_theme(theme);
+        let mut resources = test_resources(&options);
+        let rendered =
+            render_stacked_boxes_with_relation_summary(&[], &rows, None, &options, &mut resources)
+                .expect("colored summary should render");
 
         assert!(rendered.contains("<span style=\"color:#222222\">relations:</span>"));
         assert!(rendered.contains("<span style=\"color:#333333\">A --&gt; B : one</span>"));
@@ -269,15 +309,16 @@ mod tests {
     fn render_stacked_boxes_with_relation_summary_hides_diagnostics_by_default() {
         let rows = vec![RelationGraphSummaryRow::new("A", "-->", "B")];
 
+        let options = AsciiRenderOptions::ascii();
+        let mut resources = test_resources(&options);
         let rendered = render_stacked_boxes_with_relation_summary(
             &[],
             &rows,
-            Some(LayeredRelationSummaryReason::GridBudget {
-                actual: 12,
-                limit: 1,
-            }),
-            &AsciiRenderOptions::ascii(),
-        );
+            Some(LayeredRelationSummaryReason::Crossing),
+            &options,
+            &mut resources,
+        )
+        .expect("summary should render");
 
         assert!(!rendered.contains("reason:"), "{rendered}");
     }
@@ -286,19 +327,17 @@ mod tests {
     fn render_stacked_boxes_with_relation_summary_can_show_diagnostics() {
         let rows = vec![RelationGraphSummaryRow::new("A", "-->", "B")];
 
+        let options = AsciiRenderOptions::ascii().with_relation_summary_diagnostics(true);
+        let mut resources = test_resources(&options);
         let rendered = render_stacked_boxes_with_relation_summary(
             &[],
             &rows,
-            Some(LayeredRelationSummaryReason::GridBudget {
-                actual: 12,
-                limit: 1,
-            }),
-            &AsciiRenderOptions::ascii().with_relation_summary_diagnostics(true),
-        );
+            Some(LayeredRelationSummaryReason::RouteCollision),
+            &options,
+            &mut resources,
+        )
+        .expect("diagnostic summary should render");
 
-        assert_eq!(
-            rendered,
-            "relations:\nreason: grid_budget actual=12 limit=1\nA --> B\n"
-        );
+        assert_eq!(rendered, "relations:\nreason: route_collision\nA --> B\n");
     }
 }

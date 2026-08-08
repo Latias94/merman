@@ -20,6 +20,7 @@ mod mindmap;
 mod options;
 mod packet;
 mod relation_graph;
+mod resource;
 mod safe_text;
 mod sequence;
 mod state;
@@ -37,10 +38,14 @@ pub use capability::{
 };
 pub use color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb, AsciiTerminalPalette};
 pub use error::{AsciiError, Result};
-pub use options::{
-    ASCII_RESOURCE_LIMIT_DESCRIPTORS, AsciiCharset, AsciiDirection, AsciiRenderOptions,
-    AsciiResourceLimitDescriptor, MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID, TerminalWidthProfile,
-    ascii_resource_profile_value,
+pub use options::{AsciiCharset, AsciiDirection, AsciiRenderOptions, TerminalWidthProfile};
+pub use resource::{
+    ASCII_RESOURCE_LIMIT_COUNT, ASCII_RESOURCE_LIMIT_DESCRIPTORS, AsciiResourceLimitDescriptor,
+    AsciiResourceLimitExceeded, AsciiResourceLimitId, AsciiResourceLimitOverrideError,
+    AsciiResourceLimitPhase, AsciiResourcePolicy, MAX_ASCII_DOCUMENT_CELLS_RESOURCE_LIMIT_ID,
+    MAX_ASCII_GRAPHEME_BYTES_RESOURCE_LIMIT_ID, MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID,
+    MAX_ASCII_LAYOUT_WORK_UNITS_RESOURCE_LIMIT_ID, MAX_ASCII_NESTING_DEPTH_RESOURCE_LIMIT_ID,
+    MAX_ASCII_OUTPUT_BYTES_RESOURCE_LIMIT_ID, ascii_resource_profile_value,
 };
 pub use safe_text::{normalize_terminal_diagnostic, normalize_terminal_text};
 
@@ -148,8 +153,9 @@ pub fn render_er(model: &ErDiagramRenderModel, options: &AsciiRenderOptions) -> 
 
 pub fn render_flowchart(model: &FlowchartModel, options: &AsciiRenderOptions) -> Result<String> {
     options.validate()?;
-    let graph = graph::from_flowchart_model(model, options)?;
-    graph::render_graph(&graph, options)
+    let mut resources = resource::ResourceContext::new(options.resources);
+    let graph = graph::from_flowchart_model(model, options, &mut resources)?;
+    graph::render_graph_with_resources(&graph, options, &mut resources)
 }
 
 pub fn render_mindmap(
@@ -157,7 +163,7 @@ pub fn render_mindmap(
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     options.validate()?;
-    Ok(mindmap::render_mindmap_diagram(model, options))
+    mindmap::render_mindmap_diagram(model, options)
 }
 
 pub fn render_gantt(
@@ -173,7 +179,7 @@ pub fn render_gantt_with_local_time_zone(
     local_time_zone: &merman_core::time::LocalTimeZone,
 ) -> Result<String> {
     options.validate()?;
-    Ok(gantt::render_gantt_diagram(model, options, local_time_zone))
+    gantt::render_gantt_diagram(model, options, local_time_zone)
 }
 
 pub fn render_git_graph(
@@ -181,7 +187,7 @@ pub fn render_git_graph(
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     options.validate()?;
-    Ok(git_graph::render_git_graph_diagram(model, options))
+    git_graph::render_git_graph_diagram(model, options)
 }
 
 pub fn render_journey(
@@ -189,7 +195,7 @@ pub fn render_journey(
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     options.validate()?;
-    Ok(journey::render_journey_diagram(model, options))
+    journey::render_journey_diagram(model, options)
 }
 
 pub fn render_kanban(
@@ -197,7 +203,7 @@ pub fn render_kanban(
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     options.validate()?;
-    Ok(kanban::render_kanban_diagram(model, options))
+    kanban::render_kanban_diagram(model, options)
 }
 
 pub fn render_packet(
@@ -205,7 +211,7 @@ pub fn render_packet(
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     options.validate()?;
-    Ok(packet::render_packet_diagram(model, options))
+    packet::render_packet_diagram(model, options)
 }
 
 pub fn render_sequence(
@@ -213,8 +219,10 @@ pub fn render_sequence(
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     options.validate()?;
-    let diagram = sequence::from_sequence_model(model, options.terminal_width_profile)?;
-    sequence::render_sequence_diagram(&diagram, options)
+    let mut resources = resource::ResourceContext::new(options.resources);
+    let diagram =
+        sequence::from_sequence_model(model, options.terminal_width_profile, &mut resources)?;
+    sequence::render_sequence_diagram_with_resources(&diagram, options, &mut resources)
 }
 
 pub fn render_state(
@@ -222,8 +230,9 @@ pub fn render_state(
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     options.validate()?;
-    let graph = state::from_state_model(model)?;
-    graph::render_graph(&graph, options)
+    let mut resources = resource::ResourceContext::new(options.resources);
+    let graph = state::from_state_model_with_context(model, &mut resources)?;
+    graph::render_graph_with_resources(&graph, options, &mut resources)
 }
 
 pub fn render_timeline(
@@ -231,7 +240,7 @@ pub fn render_timeline(
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     options.validate()?;
-    Ok(timeline::render_timeline_diagram(model, options))
+    timeline::render_timeline_diagram(model, options)
 }
 
 pub fn render_xychart(
@@ -247,7 +256,7 @@ pub fn render_tree_view(
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     options.validate()?;
-    Ok(tree_view::render_tree_view_diagram(model, options))
+    tree_view::render_tree_view_diagram(model, options)
 }
 
 #[cfg(test)]
@@ -337,7 +346,10 @@ mod tests {
         assert_eq!(options.xychart_vertical_plot_height, 5);
         assert_eq!(options.xychart_category_band_width, 3);
         assert_eq!(options.xychart_horizontal_plot_width, 10);
-        assert_eq!(options.max_grid_cells, 250_000);
+        assert_eq!(
+            options.resources.value(AsciiResourceLimitId::MaxGridCells),
+            Some(250_000)
+        );
         assert!(!options.relation_summary_diagnostics);
     }
 
@@ -392,10 +404,15 @@ mod tests {
     }
 
     #[test]
-    fn options_builder_sets_max_grid_cells() {
-        let options = AsciiRenderOptions::ascii().with_max_grid_cells(42);
+    fn options_builder_sets_typed_grid_cell_limit() {
+        let options = AsciiRenderOptions::ascii()
+            .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 42)
+            .unwrap();
 
-        assert_eq!(options.max_grid_cells, 42);
+        assert_eq!(
+            options.resources.value(AsciiResourceLimitId::MaxGridCells),
+            Some(42)
+        );
     }
 
     #[test]
@@ -594,20 +611,19 @@ mod tests {
         let mut model = empty_flowchart();
         model.nodes = vec![node("A"), node("B")];
         model.edges = vec![edge("A", "B")];
-        let options = AsciiRenderOptions {
-            max_grid_cells: 1,
-            ..AsciiRenderOptions::ascii()
-        };
+        let options = AsciiRenderOptions::ascii()
+            .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 1)
+            .unwrap();
 
         let err = render_flowchart(&model, &options).unwrap_err();
 
-        assert_eq!(
+        assert!(matches!(
             err,
-            AsciiError::RenderLimitExceeded {
-                actual: 75,
-                limit: 1,
-            }
-        );
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxGridCells
+                    && details.actual > details.max
+                    && details.max == 1
+        ));
     }
 
     #[test]

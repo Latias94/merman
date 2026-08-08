@@ -2,8 +2,9 @@ use super::{SEQUENCE_ACTOR_WRAP_TEXT_WIDTH, validate::validate_supported_sequenc
 use crate::color::AsciiRgb;
 use crate::error::{AsciiError, Result};
 use crate::options::TerminalWidthProfile;
+use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
+use crate::safe_text::{charge_text_layout, try_build_normalized_label_lines};
 use crate::style_color::{CssColor, parse_css_color, parse_css_color_value};
-use crate::text::{display_width_with_profile, split_label_lines, wrap_label_lines_with_profile};
 use merman_core::diagrams::sequence::{
     SequenceDiagramRenderModel, SequenceMessage as CoreSequenceMessage, SequenceMessagePayload,
 };
@@ -63,13 +64,32 @@ pub(super) struct SequenceParticipantLabel {
 }
 
 impl SequenceParticipantLabel {
+    pub(super) fn try_from_raw(
+        raw: &str,
+        wrap: bool,
+        width_profile: TerminalWidthProfile,
+        resources: &mut ResourceContext,
+    ) -> Result<Self> {
+        let normalized = try_build_normalized_label_lines(
+            raw,
+            width_profile,
+            false,
+            wrap.then_some(SEQUENCE_ACTOR_WRAP_TEXT_WIDTH),
+            resources,
+        )?
+        .expect("non-trimmed labels always retain one row");
+        let (lines, width) = normalized.into_parts();
+        Ok(Self { lines, width })
+    }
+
+    #[cfg(test)]
     pub(super) fn from_raw(raw: &str, wrap: bool, width_profile: TerminalWidthProfile) -> Self {
-        let lines = if wrap {
-            wrap_label_lines_with_profile(raw, SEQUENCE_ACTOR_WRAP_TEXT_WIDTH, width_profile)
-        } else {
-            split_label_lines(raw)
-        };
-        Self::from_lines(lines, width_profile)
+        let policy = crate::resource::AsciiResourcePolicy::for_profile(
+            merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        );
+        let mut resources = ResourceContext::new(policy);
+        Self::try_from_raw(raw, wrap, width_profile, &mut resources)
+            .expect("test participant label should fit the unbounded resource policy")
     }
 
     pub(super) fn lines(&self) -> &[String] {
@@ -78,18 +98,6 @@ impl SequenceParticipantLabel {
 
     pub(super) fn width(&self) -> usize {
         self.width
-    }
-
-    fn from_lines(mut lines: Vec<String>, width_profile: TerminalWidthProfile) -> Self {
-        if lines.is_empty() {
-            lines.push(String::new());
-        }
-        let width = lines
-            .iter()
-            .map(|line| display_width_with_profile(line, width_profile))
-            .max()
-            .unwrap_or_default();
-        Self { lines, width }
     }
 }
 
@@ -252,13 +260,107 @@ impl SequenceNotePlacement {
     }
 }
 
+fn preflight_sequence_projection(
+    model: &SequenceDiagramRenderModel,
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    resources.charge_layout_work(1)?;
+    if let Some(title) = model.title.as_deref() {
+        charge_text_layout(resources, title)?;
+    }
+
+    for actor_id in &model.actor_order {
+        resources.charge_layout_work(1)?;
+        charge_text_layout(resources, actor_id)?;
+    }
+    for (actor_id, actor) in &model.actors {
+        resources.charge_layout_work(1)?;
+        charge_text_layout(resources, actor_id)?;
+        charge_text_layout(resources, &actor.name)?;
+        charge_text_layout(resources, &actor.description)?;
+    }
+    for sequence_box in &model.boxes {
+        resources.charge_layout_work(1)?;
+        charge_text_layout(resources, &sequence_box.fill)?;
+        if let Some(name) = sequence_box.name.as_deref() {
+            charge_text_layout(resources, name)?;
+        }
+        for actor_key in &sequence_box.actor_keys {
+            resources.charge_layout_work(1)?;
+            charge_text_layout(resources, actor_key)?;
+        }
+    }
+
+    let mut nesting_depth = 0usize;
+    for message in &model.messages {
+        resources.charge_layout_work(1)?;
+        if let Some(from) = message.from.as_deref() {
+            charge_text_layout(resources, from)?;
+        }
+        if let Some(to) = message.to.as_deref() {
+            charge_text_layout(resources, to)?;
+        }
+        charge_text_layout(resources, message.message_text())?;
+
+        if is_control_start_message(message.message_type) {
+            nesting_depth = nesting_depth.checked_add(1).ok_or_else(|| {
+                resources
+                    .policy()
+                    .overflow(AsciiResourceLimitId::MaxNestingDepth)
+            })?;
+            resources.check_nesting_depth(nesting_depth)?;
+        } else if is_control_end_message(message.message_type) {
+            nesting_depth = nesting_depth.saturating_sub(1);
+        }
+    }
+
+    for actor_id in model
+        .created_actors
+        .keys()
+        .chain(model.destroyed_actors.keys())
+    {
+        resources.charge_layout_work(1)?;
+        charge_text_layout(resources, actor_id)?;
+    }
+    Ok(())
+}
+
+fn is_control_start_message(message_type: i32) -> bool {
+    matches!(
+        message_type,
+        LOOP_START_MESSAGE_TYPE
+            | ALT_START_MESSAGE_TYPE
+            | OPT_START_MESSAGE_TYPE
+            | PAR_START_MESSAGE_TYPE
+            | RECT_START_MESSAGE_TYPE
+            | CRITICAL_START_MESSAGE_TYPE
+            | BREAK_START_MESSAGE_TYPE
+            | PAR_OVER_START_MESSAGE_TYPE
+    )
+}
+
+fn is_control_end_message(message_type: i32) -> bool {
+    matches!(
+        message_type,
+        LOOP_END_MESSAGE_TYPE
+            | ALT_END_MESSAGE_TYPE
+            | OPT_END_MESSAGE_TYPE
+            | PAR_END_MESSAGE_TYPE
+            | RECT_END_MESSAGE_TYPE
+            | CRITICAL_END_MESSAGE_TYPE
+            | BREAK_END_MESSAGE_TYPE
+    )
+}
+
 pub(crate) fn from_sequence_model(
     model: &SequenceDiagramRenderModel,
     width_profile: TerminalWidthProfile,
+    resources: &mut ResourceContext,
 ) -> Result<AsciiSequenceDiagram> {
+    preflight_sequence_projection(model, resources)?;
     validate_supported_sequence_model(model)?;
 
-    let participants = sequence_participants(model, width_profile);
+    let participants = sequence_participants(model, width_profile, resources)?;
     if participants.is_empty() {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
@@ -266,14 +368,19 @@ pub(crate) fn from_sequence_model(
         });
     }
 
-    let participant_index = participants
-        .iter()
-        .enumerate()
-        .map(|(index, participant)| (participant.id.as_str(), index))
-        .collect::<HashMap<_, _>>();
+    let mut participant_index = HashMap::new();
+    participant_index
+        .try_reserve(participants.len())
+        .map_err(|_| projection_allocation_failed())?;
+    for (index, participant) in participants.iter().enumerate() {
+        participant_index.insert(participant.id.as_str(), index);
+    }
     let boxes = sequence_boxes(model, &participant_index)?;
     let lifecycles = sequence_actor_lifecycles(model, &participant_index)?;
     let mut events = Vec::new();
+    events
+        .try_reserve_exact(model.messages.len())
+        .map_err(|_| projection_allocation_failed())?;
     let mut autonumber = AutonumberState::default();
 
     for (model_index, message) in model.messages.iter().enumerate() {
@@ -347,7 +454,7 @@ pub(crate) fn from_sequence_model(
                 model_index,
                 from,
                 to,
-                label: label.to_string(),
+                label: try_clone_projection_string(label)?,
                 wrap: message.wrap,
                 placement,
             }));
@@ -368,7 +475,7 @@ pub(crate) fn from_sequence_model(
                 });
             }
         };
-        let label = autonumber.label(message.message_text());
+        let label = autonumber.label(message.message_text())?;
 
         events.push(SequenceEvent::Message(SequenceMessage {
             model_index,
@@ -384,9 +491,10 @@ pub(crate) fn from_sequence_model(
     Ok(AsciiSequenceDiagram {
         title: model
             .title
-            .as_ref()
+            .as_deref()
             .filter(|title| !title.is_empty())
-            .cloned(),
+            .map(try_clone_projection_string)
+            .transpose()?,
         participants,
         lifecycles,
         boxes,
@@ -431,7 +539,7 @@ fn sequence_control_event(
                 SequenceControlSeparator {
                     model_index,
                     kind,
-                    label: message.message_text().to_string(),
+                    label: try_clone_projection_string(message.message_text())?,
                 },
             )));
         }
@@ -442,7 +550,7 @@ fn sequence_control_event(
 
     if is_start {
         let raw_label = message.message_text();
-        let (label, background) = sequence_control_start_label(kind, raw_label);
+        let (label, background) = sequence_control_start_label(kind, raw_label)?;
         Ok(Some(SequenceEvent::ControlStart(SequenceControlStart {
             model_index,
             kind,
@@ -457,16 +565,16 @@ fn sequence_control_event(
 fn sequence_control_start_label(
     kind: SequenceControlKind,
     raw_label: &str,
-) -> (String, Option<AsciiRgb>) {
+) -> Result<(String, Option<AsciiRgb>)> {
     if kind != SequenceControlKind::Rect {
-        return (raw_label.to_string(), None);
+        return Ok((try_clone_projection_string(raw_label)?, None));
     }
 
-    match parse_css_color_value(raw_label) {
+    Ok(match parse_css_color_value(raw_label) {
         Some(CssColor::Rgb(color)) => (String::new(), Some(color)),
         Some(CssColor::Transparent) => (String::new(), None),
-        None => (raw_label.to_string(), None),
-    }
+        None => (try_clone_projection_string(raw_label)?, None),
+    })
 }
 
 fn ensure_endpointless_control_message(message: &CoreSequenceMessage) -> Result<()> {
@@ -483,73 +591,107 @@ fn ensure_endpointless_control_message(message: &CoreSequenceMessage) -> Result<
 fn sequence_participants(
     model: &SequenceDiagramRenderModel,
     width_profile: TerminalWidthProfile,
-) -> Vec<SequenceParticipant> {
-    let ids = if model.actor_order.is_empty() {
-        model.actors.keys().cloned().collect::<Vec<_>>()
+    resources: &mut ResourceContext,
+) -> Result<Vec<SequenceParticipant>> {
+    let expected = if model.actor_order.is_empty() {
+        model.actors.len()
     } else {
-        model.actor_order.clone()
+        model.actor_order.len()
     };
+    let mut participants = Vec::new();
+    participants
+        .try_reserve_exact(expected)
+        .map_err(|_| projection_allocation_failed())?;
 
-    ids.into_iter()
-        .filter_map(|id| {
-            let actor = model.actors.get(&id)?;
-            let raw_label = if actor.description.is_empty() {
-                if actor.name.is_empty() {
-                    id.clone()
-                } else {
-                    actor.name.clone()
-                }
-            } else {
-                actor.description.clone()
-            };
-            let label = SequenceParticipantLabel::from_raw(&raw_label, actor.wrap, width_profile);
-            Some(SequenceParticipant { id, label })
-        })
-        .collect()
+    if model.actor_order.is_empty() {
+        for id in model.actors.keys() {
+            push_sequence_participant(&mut participants, model, id, width_profile, resources)?;
+        }
+    } else {
+        for id in &model.actor_order {
+            push_sequence_participant(&mut participants, model, id, width_profile, resources)?;
+        }
+    }
+
+    Ok(participants)
+}
+
+fn push_sequence_participant(
+    participants: &mut Vec<SequenceParticipant>,
+    model: &SequenceDiagramRenderModel,
+    id: &str,
+    width_profile: TerminalWidthProfile,
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    let Some(actor) = model.actors.get(id) else {
+        return Ok(());
+    };
+    let raw_label = if actor.description.is_empty() {
+        if actor.name.is_empty() {
+            id
+        } else {
+            &actor.name
+        }
+    } else {
+        &actor.description
+    };
+    let label =
+        SequenceParticipantLabel::try_from_raw(raw_label, actor.wrap, width_profile, resources)?;
+    participants.push(SequenceParticipant {
+        id: try_clone_projection_string(id)?,
+        label,
+    });
+    Ok(())
 }
 
 fn sequence_boxes(
     model: &SequenceDiagramRenderModel,
     participant_index: &HashMap<&str, usize>,
 ) -> Result<Vec<SequenceGroupBox>> {
-    model
-        .boxes
-        .iter()
-        .map(|sequence_box| {
-            let actor_indices = sequence_box
-                .actor_keys
-                .iter()
-                .map(|actor_key| {
-                    participant_index.get(actor_key.as_str()).copied().ok_or(
-                        AsciiError::UnsupportedFeature {
-                            diagram_type: "sequence",
-                            feature: "boxes with unknown actors",
-                        },
-                    )
-                })
-                .collect::<Result<Vec<_>>>()?;
+    let mut boxes = Vec::new();
+    boxes
+        .try_reserve_exact(model.boxes.len())
+        .map_err(|_| projection_allocation_failed())?;
+    for sequence_box in &model.boxes {
+        let mut actor_indices = Vec::new();
+        actor_indices
+            .try_reserve_exact(sequence_box.actor_keys.len())
+            .map_err(|_| projection_allocation_failed())?;
+        for actor_key in &sequence_box.actor_keys {
+            actor_indices.push(participant_index.get(actor_key.as_str()).copied().ok_or(
+                AsciiError::UnsupportedFeature {
+                    diagram_type: "sequence",
+                    feature: "boxes with unknown actors",
+                },
+            )?);
+        }
 
-            let label = sequence_box
-                .name
-                .as_ref()
-                .filter(|name| !name.is_empty())
-                .cloned();
+        let label = sequence_box
+            .name
+            .as_deref()
+            .filter(|name| !name.is_empty())
+            .map(try_clone_projection_string)
+            .transpose()?;
 
-            Ok(SequenceGroupBox {
-                actor_indices,
-                label,
-                background: parse_css_color(&sequence_box.fill),
-                wrap: sequence_box.wrap,
-            })
-        })
-        .collect()
+        boxes.push(SequenceGroupBox {
+            actor_indices,
+            label,
+            background: parse_css_color(&sequence_box.fill),
+            wrap: sequence_box.wrap,
+        });
+    }
+    Ok(boxes)
 }
 
 fn sequence_actor_lifecycles(
     model: &SequenceDiagramRenderModel,
     participant_index: &HashMap<&str, usize>,
 ) -> Result<Vec<SequenceActorLifecycle>> {
-    let mut lifecycles = vec![SequenceActorLifecycle::default(); participant_index.len()];
+    let mut lifecycles = Vec::new();
+    lifecycles
+        .try_reserve_exact(participant_index.len())
+        .map_err(|_| projection_allocation_failed())?;
+    lifecycles.resize(participant_index.len(), SequenceActorLifecycle::default());
 
     for (actor_id, model_index) in &model.created_actors {
         let actor_index =
@@ -624,6 +766,21 @@ fn actor_lifecycle_message<'a>(
         })
 }
 
+fn try_clone_projection_string(value: &str) -> Result<String> {
+    let mut output = String::new();
+    output
+        .try_reserve_exact(value.len())
+        .map_err(|_| projection_allocation_failed())?;
+    output.push_str(value);
+    Ok(output)
+}
+
+fn projection_allocation_failed() -> AsciiError {
+    AsciiError::AllocationFailed {
+        phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 struct AutonumberState {
     next: Option<f64>,
@@ -631,18 +788,30 @@ struct AutonumberState {
 }
 
 impl AutonumberState {
-    fn label(&mut self, text: &str) -> String {
+    fn label(&mut self, text: &str) -> Result<String> {
         if let Some(next) = self.next {
             let number = format_sequence_number(next);
             let label = if text.is_empty() {
                 number
             } else {
-                format!("{number}. {text}")
+                let capacity = number
+                    .len()
+                    .checked_add(2)
+                    .and_then(|value| value.checked_add(text.len()))
+                    .ok_or_else(projection_allocation_failed)?;
+                let mut label = String::new();
+                label
+                    .try_reserve_exact(capacity)
+                    .map_err(|_| projection_allocation_failed())?;
+                label.push_str(&number);
+                label.push_str(". ");
+                label.push_str(text);
+                label
             };
             self.next = Some(round_sequence_number(next + self.step));
-            return label;
+            return Ok(label);
         }
-        text.to_string()
+        try_clone_projection_string(text)
     }
 }
 

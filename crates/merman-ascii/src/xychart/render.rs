@@ -1,11 +1,14 @@
 use super::plot::{
     ChartChars, ValueRange, XyChartPlotArea, apply_vertical_bar_data_labels,
-    build_horizontal_plot_rows, build_vertical_plot, format_number, horizontal_bar_width,
+    build_horizontal_plot_rows, build_vertical_plot, checked_grid_sub, format_number,
+    horizontal_bar_width,
 };
-use crate::canvas::Canvas;
-use crate::color::{AsciiColorMode, AsciiColorRole};
+use crate::canvas::finish_styled_lines_with_resources;
+use crate::color::AsciiColorRole;
 use crate::error::AsciiError;
 use crate::options::TerminalWidthProfile;
+use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
+use crate::safe_text::charge_text_layout;
 use crate::text::{
     StyledLine, display_width_with_profile, normalize_optional_text,
     truncate_display_width_with_profile,
@@ -15,90 +18,122 @@ use merman_core::diagrams::xychart::{
     XyChartAxisDisplayPolicy, XyChartAxisRenderModel, XyChartDiagramRenderModel,
     XyChartPlotRenderModel, XyChartPlotType,
 };
+use std::borrow::Cow;
 
 type ChartLine = StyledLine;
+type CategoryLabel<'a> = Cow<'a, str>;
+
+#[derive(Debug, Default)]
+struct ChartDocument {
+    lines: Vec<ChartLine>,
+    width: usize,
+}
+
+impl ChartDocument {
+    fn push(&mut self, line: ChartLine, resources: &ResourceContext) -> Result<()> {
+        let height = resources.checked_grid_add(self.lines.len(), 1)?;
+        let width = self.width.max(line.len());
+        resources.grid_extent(width, height)?;
+        self.lines
+            .try_reserve(1)
+            .map_err(|_| allocation_failed(AsciiResourceLimitPhase::LayoutWork))?;
+        self.lines.push(line);
+        self.width = width;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ChartRenderContext<'a> {
+    y_range: ValueRange,
+    chars: ChartChars,
+    plot_area: XyChartPlotArea,
+    plot_extent: LogicalExtent,
+    options: &'a AsciiRenderOptions,
+}
 
 pub(crate) fn render_xychart_diagram(
     model: &XyChartDiagramRenderModel,
     options: &AsciiRenderOptions,
 ) -> Result<String> {
+    options.validate()?;
     if model.plots.is_empty() {
         return Ok(String::new());
     }
 
-    let chars = ChartChars::from_options(options);
-    let categories = category_labels(model);
-    if categories.is_empty() {
+    let mut resources = ResourceContext::new(options.resources);
+    let data_count = max_plot_value_count(model, &mut resources)?;
+    let category_count = category_count(model, data_count);
+    if category_count == 0 {
         return Ok(String::new());
     }
 
-    let y_range = y_value_range(model);
+    let chars = ChartChars::from_options(options);
     let plot_area = XyChartPlotArea::from_options(options);
-    if model.orientation.eq_ignore_ascii_case("horizontal") {
-        enforce_plot_cell_limit(plot_area.horizontal_cell_count(categories.len()), options)?;
-        return Ok(render_horizontal(
-            model,
-            &categories,
-            y_range,
-            chars,
-            plot_area,
-            options,
-        ));
-    }
-
-    enforce_plot_cell_limit(plot_area.vertical_cell_count(categories.len()), options)?;
-    Ok(render_vertical(
-        model,
-        &categories,
+    let horizontal = model.orientation.eq_ignore_ascii_case("horizontal");
+    let plot_extent = if horizontal {
+        plot_area.horizontal_plot_extent(category_count, &resources)?
+    } else {
+        plot_area.vertical_plot_extent(category_count, &resources)?
+    };
+    let categories = category_labels(model, data_count, &mut resources)?;
+    let y_range = y_value_range(model, &mut resources)?;
+    let context = ChartRenderContext {
         y_range,
         chars,
         plot_area,
+        plot_extent,
         options,
-    ))
-}
+    };
 
-fn enforce_plot_cell_limit(actual: usize, options: &AsciiRenderOptions) -> Result<()> {
-    if actual > options.max_grid_cells {
-        return Err(AsciiError::RenderLimitExceeded {
-            actual,
-            limit: options.max_grid_cells,
-        });
+    if horizontal {
+        return render_horizontal(model, &categories, context, &mut resources);
     }
 
-    Ok(())
+    render_vertical(model, &categories, context, &mut resources)
 }
 
 fn render_vertical(
     model: &XyChartDiagramRenderModel,
-    categories: &[String],
-    y_range: ValueRange,
-    chars: ChartChars,
-    plot_area: XyChartPlotArea,
-    options: &AsciiRenderOptions,
-) -> String {
+    categories: &[CategoryLabel<'_>],
+    context: ChartRenderContext<'_>,
+    resources: &mut ResourceContext,
+) -> Result<String> {
+    let ChartRenderContext {
+        y_range,
+        chars,
+        plot_area,
+        plot_extent,
+        options,
+    } = context;
     let width_profile = options.terminal_width_profile;
-    let mut plot = build_vertical_plot(model, categories.len(), y_range, chars, plot_area);
+    let mut plot = build_vertical_plot(model, y_range, chars, plot_area, plot_extent, resources)?;
 
-    let mut out = Vec::new();
-    push_title_lines(&mut out, model, width_profile);
-    push_legend_line(&mut out, model, chars, width_profile);
+    let mut document_resources = resources.scoped();
+    let resources = &mut document_resources;
+    let mut out = ChartDocument::default();
+    push_title_lines(&mut out, model, options, resources)?;
+    push_legend_line(&mut out, model, chars, options, resources)?;
     if model.display.show_data_label && !uses_compact_bar_data_labels(model) {
-        push_value_disclosure_lines(&mut out, model, categories, chars, width_profile);
+        push_value_disclosure_lines(&mut out, model, categories, chars, options, resources)?;
     }
 
     let show_y_labels = axis_labels_visible(model.display.y_axis);
-    let tick_labels = if show_y_labels {
-        vertical_tick_labels(y_range, plot_area)
+    let (tick_labels, min_label, gutter) = if show_y_labels {
+        let tick_labels = vertical_tick_labels(y_range, plot_area, resources)?;
+        let min_label = Some(format_number(y_range.min));
+        let gutter = label_gutter(
+            min_label
+                .iter()
+                .map(String::as_str)
+                .chain(tick_labels.iter().map(String::as_str)),
+            width_profile,
+            resources,
+        )?;
+        (tick_labels, min_label, gutter)
     } else {
-        vec![String::new(); plot_area.vertical_height]
+        (empty_labels(plot_area.vertical_height)?, None, 0)
     };
-    let min_label = show_y_labels.then(|| format_number(y_range.min));
-    let gutter = min_label
-        .iter()
-        .chain(tick_labels.iter())
-        .map(|s| display_width_with_profile(s, width_profile))
-        .max()
-        .unwrap_or(0);
     let y_axis_mark = vertical_axis_mark(model.display.y_axis, chars);
     let baseline_mark = if model.display.x_axis.show_axis_line || model.display.x_axis.show_tick {
         Some(chars.origin)
@@ -106,21 +141,23 @@ fn render_vertical(
         y_axis_mark
     };
     let reserve_axis_slot = show_y_labels || y_axis_mark.is_some() || baseline_mark.is_some();
-    let plot_prefix_width = plot_prefix_width(show_y_labels, reserve_axis_slot, gutter);
+    let plot_prefix_width = plot_prefix_width(show_y_labels, reserve_axis_slot, gutter, resources)?;
 
     if model.display.show_data_label && uses_compact_bar_data_labels(model) {
         if model.display.show_data_label_outside_bar {
-            if let Some(line) = vertical_data_label_line(model, plot_prefix_width, plot_area) {
-                out.push(line);
+            if let Some(line) =
+                vertical_data_label_line(model, plot_prefix_width, plot_area, resources)?
+            {
+                out.push(line, resources)?;
             }
         } else {
-            apply_vertical_bar_data_labels(&mut plot, model, y_range, plot_area);
+            apply_vertical_bar_data_labels(&mut plot, model, y_range, plot_area, resources)?;
         }
     }
 
     for (idx, row) in plot.rows.into_iter().enumerate() {
         let label = &tick_labels[idx];
-        let mut line = ChartLine::with_width_profile(width_profile);
+        let mut line = new_chart_line(options, resources);
         push_axis_prefix(
             &mut line,
             label,
@@ -128,13 +165,15 @@ fn render_vertical(
             show_y_labels,
             y_axis_mark,
             reserve_axis_slot,
-        );
-        line.push_line(&row);
-        out.push(line);
+            resources,
+        )?;
+        resources.charge_layout_work(row.len())?;
+        line.try_push_line(&row)?;
+        out.push(line, resources)?;
     }
 
     if show_y_labels || baseline_mark.is_some() {
-        let mut axis_line = ChartLine::with_width_profile(width_profile);
+        let mut axis_line = new_chart_line(options, resources);
         push_axis_baseline_prefix(
             &mut axis_line,
             min_label.as_deref().unwrap_or_default(),
@@ -142,73 +181,88 @@ fn render_vertical(
             show_y_labels,
             baseline_mark,
             reserve_axis_slot,
-        );
+            resources,
+        )?;
         if model.display.x_axis.show_axis_line {
-            axis_line.push_role_repeat(
+            resources.charge_layout_work(plot.width)?;
+            axis_line.try_push_role_repeat(
                 chars.horizontal_axis,
                 plot.width,
                 AsciiColorRole::ChartAxis,
-            );
+            )?;
         } else if model.display.x_axis.show_tick {
-            axis_line.push_spaces(plot.width);
+            resources.charge_layout_work(plot.width)?;
+            axis_line.try_push_spaces(plot.width)?;
         }
         if model.display.x_axis.show_tick {
-            overlay_axis_ticks(
+            overlay_vertical_category_ticks(
                 &mut axis_line,
                 plot_prefix_width,
-                vertical_category_tick_positions(categories.len(), plot_area),
+                categories.len(),
+                plot_area,
                 chars.horizontal_tick,
-            );
+                resources,
+            )?;
         }
-        out.push(axis_line);
+        out.push(axis_line, resources)?;
     }
 
     if axis_labels_visible(model.display.x_axis) {
-        let mut category_line = ChartLine::with_width_profile(width_profile);
-        category_line.push_spaces(plot_prefix_width);
-        category_line.push_role_text_with_unstyled_trailing_spaces(
-            &plot_area.category_axis_labels(categories),
-            AsciiColorRole::Text,
-        );
-        out.push(category_line);
+        charge_category_text(categories, resources)?;
+        let labels = plot_area.category_axis_labels(categories, resources)?;
+        let mut category_line = new_chart_line(options, resources);
+        resources.charge_layout_work(plot_prefix_width)?;
+        category_line.try_push_spaces(plot_prefix_width)?;
+        category_line
+            .try_push_role_text_with_unstyled_trailing_spaces(&labels, AsciiColorRole::Text)?;
+        out.push(category_line, resources)?;
     }
 
     if model.display.x_axis.show_title
-        && let Some(title) = x_axis_title(model)
+        && let Some(title) = x_axis_title(model, resources)?
     {
-        let mut line = ChartLine::with_width_profile(width_profile);
-        line.push_role_text("x: ", AsciiColorRole::Text);
-        line.push_role_text(&title, AsciiColorRole::Text);
-        out.push(line);
+        let mut line = new_chart_line(options, resources);
+        resources.charge_layout_work(3)?;
+        line.try_push_role_text("x: ", AsciiColorRole::Text)?;
+        line.try_push_role_text(&title, AsciiColorRole::Text)?;
+        out.push(line, resources)?;
     }
 
-    finish_chart_lines(out, options)
+    finish_chart_lines(out, options, resources)
 }
 
 fn render_horizontal(
     model: &XyChartDiagramRenderModel,
-    categories: &[String],
-    y_range: ValueRange,
-    chars: ChartChars,
-    plot_area: XyChartPlotArea,
-    options: &AsciiRenderOptions,
-) -> String {
+    categories: &[CategoryLabel<'_>],
+    context: ChartRenderContext<'_>,
+    resources: &mut ResourceContext,
+) -> Result<String> {
+    let ChartRenderContext {
+        y_range,
+        chars,
+        plot_area,
+        plot_extent,
+        options,
+    } = context;
     let width_profile = options.terminal_width_profile;
-    let mut out = Vec::new();
-    push_title_lines(&mut out, model, width_profile);
-    push_legend_line(&mut out, model, chars, width_profile);
+    let mut document_resources = resources.scoped();
+    let resources = &mut document_resources;
+    let mut out = ChartDocument::default();
+    push_title_lines(&mut out, model, options, resources)?;
+    push_legend_line(&mut out, model, chars, options, resources)?;
     if model.display.show_data_label && !uses_compact_bar_data_labels(model) {
-        push_value_disclosure_lines(&mut out, model, categories, chars, width_profile);
+        push_value_disclosure_lines(&mut out, model, categories, chars, options, resources)?;
     }
-    let plot_rows = build_horizontal_plot_rows(model, categories.len(), y_range, chars, plot_area);
+    let plot_rows =
+        build_horizontal_plot_rows(model, y_range, chars, plot_area, plot_extent, resources)?;
 
     let show_x_labels = axis_labels_visible(model.display.x_axis);
     let gutter = if show_x_labels {
-        categories
-            .iter()
-            .map(|c| display_width_with_profile(c, width_profile))
-            .max()
-            .unwrap_or(0)
+        label_gutter(
+            categories.iter().map(|category| category.as_ref()),
+            width_profile,
+            resources,
+        )?
     } else {
         0
     };
@@ -219,41 +273,50 @@ fn render_horizontal(
         x_axis_mark
     };
     let reserve_axis_slot = show_x_labels || x_axis_mark.is_some() || baseline_mark.is_some();
-    let plot_prefix_width = plot_prefix_width(show_x_labels, reserve_axis_slot, gutter);
+    let plot_prefix_width = plot_prefix_width(show_x_labels, reserve_axis_slot, gutter, resources)?;
 
     for (idx, category) in categories.iter().enumerate() {
         let plot_row = &plot_rows[idx];
 
-        let mut line = ChartLine::with_width_profile(width_profile);
+        resources.charge_layout_work(1)?;
+        let mut line = new_chart_line(options, resources);
         push_axis_prefix(
             &mut line,
-            category,
+            category.as_ref(),
             gutter,
             show_x_labels,
             x_axis_mark,
             reserve_axis_slot,
-        );
-        line.push_line(&plot_row.line);
+            resources,
+        )?;
+        resources.charge_layout_work(plot_row.line.len())?;
+        line.try_push_line(&plot_row.line)?;
         if model.display.show_data_label
             && uses_compact_bar_data_labels(model)
             && let (Some(value), Some(label)) = (plot_row.bar_value, plot_row.bar_label.as_deref())
-            && (model.display.show_data_label_outside_bar
-                || !write_horizontal_inside_data_label(
+        {
+            let written_inside = if model.display.show_data_label_outside_bar {
+                false
+            } else {
+                write_horizontal_inside_data_label(
                     &mut line,
                     plot_prefix_width,
                     label,
                     value,
                     y_range,
                     plot_area,
-                ))
-        {
-            push_horizontal_outside_data_label(&mut line, label);
+                    resources,
+                )?
+            };
+            if !written_inside {
+                push_horizontal_outside_data_label(&mut line, label, resources)?;
+            }
         }
-        out.push(line);
+        out.push(line, resources)?;
     }
 
     if axis_labels_visible(model.display.y_axis) || baseline_mark.is_some() {
-        let mut axis_line = ChartLine::with_width_profile(width_profile);
+        let mut axis_line = new_chart_line(options, resources);
         push_axis_baseline_prefix(
             &mut axis_line,
             "",
@@ -261,106 +324,122 @@ fn render_horizontal(
             show_x_labels,
             baseline_mark,
             reserve_axis_slot,
-        );
+            resources,
+        )?;
         if model.display.y_axis.show_axis_line {
-            axis_line.push_role_repeat(
+            resources.charge_layout_work(plot_area.horizontal_width)?;
+            axis_line.try_push_role_repeat(
                 chars.horizontal_axis,
                 plot_area.horizontal_width,
                 AsciiColorRole::ChartAxis,
-            );
+            )?;
         } else if model.display.y_axis.show_tick {
-            axis_line.push_spaces(plot_area.horizontal_width);
+            resources.charge_layout_work(plot_area.horizontal_width)?;
+            axis_line.try_push_spaces(plot_area.horizontal_width)?;
         }
         if model.display.y_axis.show_tick {
-            overlay_axis_ticks(
+            overlay_horizontal_value_ticks(
                 &mut axis_line,
                 plot_prefix_width,
-                horizontal_value_tick_positions(plot_area),
+                plot_area,
                 chars.horizontal_tick,
-            );
+                resources,
+            )?;
         }
-        out.push(axis_line);
+        out.push(axis_line, resources)?;
     }
 
     if axis_labels_visible(model.display.y_axis) {
-        let mut tick_line = ChartLine::with_width_profile(width_profile);
-        tick_line.push_spaces(plot_prefix_width);
-        tick_line.push_line(&horizontal_tick_label_line(y_range, plot_area));
-        out.push(tick_line);
+        let tick_labels = horizontal_tick_label_line(y_range, plot_area, resources)?;
+        let mut tick_line = new_chart_line(options, resources);
+        resources.charge_layout_work(plot_prefix_width)?;
+        tick_line.try_push_spaces(plot_prefix_width)?;
+        resources.charge_layout_work(tick_labels.len())?;
+        tick_line.try_push_line(&tick_labels)?;
+        out.push(tick_line, resources)?;
     }
 
     if model.display.x_axis.show_title
-        && let Some(title) = x_axis_title(model)
+        && let Some(title) = x_axis_title(model, resources)?
     {
-        let mut line = ChartLine::with_width_profile(width_profile);
-        line.push_role_text("x: ", AsciiColorRole::Text);
-        line.push_role_text(&title, AsciiColorRole::Text);
-        out.push(line);
+        let mut line = new_chart_line(options, resources);
+        resources.charge_layout_work(3)?;
+        line.try_push_role_text("x: ", AsciiColorRole::Text)?;
+        line.try_push_role_text(&title, AsciiColorRole::Text)?;
+        out.push(line, resources)?;
     }
 
-    finish_chart_lines(out, options)
+    finish_chart_lines(out, options, resources)
 }
 
 fn push_title_lines(
-    out: &mut Vec<ChartLine>,
+    out: &mut ChartDocument,
     model: &XyChartDiagramRenderModel,
-    width_profile: TerminalWidthProfile,
-) {
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+) -> Result<()> {
     if model.display.show_title
-        && let Some(title) = normalize_optional_text(model.title.as_deref())
+        && let Some(title) = normalized_optional_text(model.title.as_deref(), resources)?
     {
-        out.push(ChartLine::role_text_with_profile(
-            &title,
-            AsciiColorRole::Text,
-            width_profile,
-        ));
+        let mut line = new_chart_line(options, resources);
+        line.try_push_role_text(&title, AsciiColorRole::Text)?;
+        out.push(line, resources)?;
     }
 
     if model.display.y_axis.show_title
-        && let Some(title) = y_axis_title(model)
+        && let Some(title) = y_axis_title(model, resources)?
     {
-        let mut line = ChartLine::with_width_profile(width_profile);
-        line.push_role_text("y: ", AsciiColorRole::Text);
-        line.push_role_text(&title, AsciiColorRole::Text);
-        out.push(line);
+        let mut line = new_chart_line(options, resources);
+        resources.charge_layout_work(3)?;
+        line.try_push_role_text("y: ", AsciiColorRole::Text)?;
+        line.try_push_role_text(&title, AsciiColorRole::Text)?;
+        out.push(line, resources)?;
     }
+    Ok(())
 }
 
 fn push_legend_line(
-    out: &mut Vec<ChartLine>,
+    out: &mut ChartDocument,
     model: &XyChartDiagramRenderModel,
     chars: ChartChars,
-    width_profile: TerminalWidthProfile,
-) {
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+) -> Result<()> {
     if model.plots.len() <= 1 {
-        return;
+        return Ok(());
     }
 
-    out.push(legend_line(&model.plots, chars, width_profile));
+    let line = legend_line(&model.plots, chars, options, resources)?;
+    out.push(line, resources)
 }
 
 fn legend_line(
     plots: &[XyChartPlotRenderModel],
     chars: ChartChars,
-    width_profile: TerminalWidthProfile,
-) -> ChartLine {
-    let mut line = ChartLine::with_width_profile(width_profile);
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+) -> Result<ChartLine> {
+    let mut line = new_chart_line(options, resources);
     let mut label_state = SeriesLabelState::default();
 
     for (series_index, plot) in plots.iter().enumerate() {
+        resources.charge_layout_work(1)?;
         if series_index > 0 {
-            line.push_spaces(2);
+            resources.charge_layout_work(2)?;
+            line.try_push_spaces(2)?;
         }
 
-        line.push_role_char(
+        resources.charge_layout_work(2)?;
+        line.try_push_role_char(
             chars.legend_symbol(plot.plot_type),
             AsciiColorRole::ChartSeries(series_index),
-        );
-        line.push_plain_char(' ');
-        line.push_role_text(&series_label(plot, &mut label_state), AsciiColorRole::Text);
+        )?;
+        line.try_push_plain_char(' ')?;
+        let label = series_label(plot, &mut label_state, resources)?;
+        line.try_push_role_text(&label, AsciiColorRole::Text)?;
     }
 
-    line
+    Ok(line)
 }
 
 #[derive(Debug, Default)]
@@ -369,7 +448,11 @@ struct SeriesLabelState {
     line_index: usize,
 }
 
-fn series_label(plot: &XyChartPlotRenderModel, state: &mut SeriesLabelState) -> String {
+fn series_label(
+    plot: &XyChartPlotRenderModel,
+    state: &mut SeriesLabelState,
+    resources: &mut ResourceContext,
+) -> Result<String> {
     let default_label = match plot.plot_type {
         XyChartPlotType::Bar => {
             state.bar_index += 1;
@@ -381,23 +464,33 @@ fn series_label(plot: &XyChartPlotRenderModel, state: &mut SeriesLabelState) -> 
         }
     };
 
-    plot.title
-        .as_deref()
-        .and_then(non_empty)
-        .unwrap_or(default_label)
+    if let Some(title) = plot.title.as_deref() {
+        charge_text_layout(resources, title)?;
+        if let Some(title) = normalize_optional_text(Some(title)) {
+            return Ok(title);
+        }
+    }
+
+    charge_text_layout(resources, &default_label)?;
+    Ok(default_label)
 }
 
 fn axis_labels_visible(axis: XyChartAxisDisplayPolicy) -> bool {
     axis.show_label
 }
 
-fn plot_prefix_width(show_axis_labels: bool, reserve_axis_slot: bool, gutter: usize) -> usize {
+fn plot_prefix_width(
+    show_axis_labels: bool,
+    reserve_axis_slot: bool,
+    gutter: usize,
+    resources: &ResourceContext,
+) -> Result<usize> {
     if show_axis_labels {
-        gutter.saturating_add(2)
+        resources.checked_grid_add(gutter, 2)
     } else if reserve_axis_slot {
-        1
+        Ok(1)
     } else {
-        0
+        Ok(0)
     }
 }
 
@@ -418,17 +511,31 @@ fn push_axis_prefix(
     show_axis_labels: bool,
     axis_mark: Option<char>,
     reserve_axis_slot: bool,
-) {
+    resources: &mut ResourceContext,
+) -> Result<()> {
     if show_axis_labels {
-        line.push_right_aligned_role_text(label, gutter, AsciiColorRole::Text);
-        line.push_plain_char(' ');
+        charge_text_layout(resources, label)?;
+        let label_width = display_width_with_profile(label, line.width_profile());
+        let padding = checked_grid_sub(resources, gutter, label_width)?;
+        resources.charge_layout_work(gutter)?;
+        line.try_push_spaces(padding)?;
+        line.try_push_role_text(label, AsciiColorRole::Text)?;
+        resources.charge_layout_work(1)?;
+        line.try_push_plain_char(' ')?;
     }
 
     match axis_mark {
-        Some(axis_mark) => line.push_role_char(axis_mark, AsciiColorRole::ChartAxis),
-        None if reserve_axis_slot => line.push_plain_char(' '),
+        Some(axis_mark) => {
+            resources.charge_layout_work(1)?;
+            line.try_push_role_char(axis_mark, AsciiColorRole::ChartAxis)?;
+        }
+        None if reserve_axis_slot => {
+            resources.charge_layout_work(1)?;
+            line.try_push_plain_char(' ')?;
+        }
         None => {}
     }
+    Ok(())
 }
 
 fn push_axis_baseline_prefix(
@@ -438,114 +545,164 @@ fn push_axis_baseline_prefix(
     show_axis_labels: bool,
     origin: Option<char>,
     reserve_axis_slot: bool,
-) {
+    resources: &mut ResourceContext,
+) -> Result<()> {
     if show_axis_labels {
-        line.push_right_aligned_role_text(label, gutter, AsciiColorRole::Text);
-        line.push_plain_char(' ');
+        charge_text_layout(resources, label)?;
+        let label_width = display_width_with_profile(label, line.width_profile());
+        let padding = checked_grid_sub(resources, gutter, label_width)?;
+        resources.charge_layout_work(gutter)?;
+        line.try_push_spaces(padding)?;
+        line.try_push_role_text(label, AsciiColorRole::Text)?;
+        resources.charge_layout_work(1)?;
+        line.try_push_plain_char(' ')?;
     }
 
     match origin {
-        Some(origin) => line.push_role_char(origin, AsciiColorRole::ChartAxis),
-        None if reserve_axis_slot => line.push_plain_char(' '),
+        Some(origin) => {
+            resources.charge_layout_work(1)?;
+            line.try_push_role_char(origin, AsciiColorRole::ChartAxis)?;
+        }
+        None if reserve_axis_slot => {
+            resources.charge_layout_work(1)?;
+            line.try_push_plain_char(' ')?;
+        }
         None => {}
     }
+    Ok(())
 }
 
-fn overlay_axis_ticks(
+fn overlay_vertical_category_ticks(
     line: &mut ChartLine,
     plot_start: usize,
-    tick_positions: impl IntoIterator<Item = usize>,
-    tick: char,
-) {
-    for position in tick_positions {
-        line.set_role(plot_start + position, tick, AsciiColorRole::ChartAxis);
-    }
-}
-
-fn vertical_category_tick_positions(
     category_count: usize,
     plot_area: XyChartPlotArea,
-) -> impl Iterator<Item = usize> {
-    (0..category_count).map(move |idx| plot_area.vertical_band_center(idx))
+    tick: char,
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    for index in 0..category_count {
+        resources.charge_layout_work(1)?;
+        let position = plot_area.vertical_band_center(index, resources)?;
+        let target = resources.checked_grid_add(plot_start, position)?;
+        line.try_set_role(target, tick, AsciiColorRole::ChartAxis)?;
+    }
+    Ok(())
 }
 
-fn horizontal_value_tick_positions(plot_area: XyChartPlotArea) -> impl Iterator<Item = usize> {
-    [0, plot_area.horizontal_width.saturating_sub(1)].into_iter()
+fn overlay_horizontal_value_ticks(
+    line: &mut ChartLine,
+    plot_start: usize,
+    plot_area: XyChartPlotArea,
+    tick: char,
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    let last = plot_area
+        .horizontal_width
+        .checked_sub(1)
+        .ok_or(AsciiError::InvalidOption {
+            field: "xychart_horizontal_plot_width",
+            message: "must be at least 2",
+        })?;
+    for position in [0, last] {
+        resources.charge_layout_work(1)?;
+        let target = resources.checked_grid_add(plot_start, position)?;
+        line.try_set_role(target, tick, AsciiColorRole::ChartAxis)?;
+    }
+    Ok(())
 }
 
 fn vertical_data_label_line(
     model: &XyChartDiagramRenderModel,
     plot_prefix_width: usize,
     plot_area: XyChartPlotArea,
-) -> Option<ChartLine> {
-    let labels = compact_bar_value_labels(model)?;
+    resources: &mut ResourceContext,
+) -> Result<Option<ChartLine>> {
+    let Some(labels) = compact_bar_value_labels(model, resources)? else {
+        return Ok(None);
+    };
     if labels.is_empty() {
-        return None;
+        return Ok(None);
     }
 
-    let mut line = ChartLine::with_width_profile(plot_area.width_profile);
-    line.push_spaces(plot_prefix_width);
-    line.push_role_text_with_unstyled_trailing_spaces(
-        &plot_area.band_labels(&labels),
-        AsciiColorRole::Text,
-    );
-    Some(line)
+    let band_labels = plot_area.band_labels(&labels, resources)?;
+    let mut line = ChartLine::with_resources(plot_area.width_profile, resources);
+    resources.charge_layout_work(plot_prefix_width)?;
+    line.try_push_spaces(plot_prefix_width)?;
+    line.try_push_role_text_with_unstyled_trailing_spaces(&band_labels, AsciiColorRole::Text)?;
+    Ok(Some(line))
 }
 
 fn push_value_disclosure_lines(
-    out: &mut Vec<ChartLine>,
+    out: &mut ChartDocument,
     model: &XyChartDiagramRenderModel,
-    categories: &[String],
+    categories: &[CategoryLabel<'_>],
     chars: ChartChars,
-    width_profile: TerminalWidthProfile,
-) {
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+) -> Result<()> {
     let mut label_state = SeriesLabelState::default();
 
     for (series_index, plot) in model.plots.iter().enumerate() {
-        let label = series_label(plot, &mut label_state);
-        let Some(line) =
-            value_disclosure_line(series_index, plot, &label, categories, chars, width_profile)
+        resources.charge_layout_work(1)?;
+        let label = series_label(plot, &mut label_state, resources)?;
+        let Some(line) = value_disclosure_line(
+            series_index,
+            plot,
+            &label,
+            categories,
+            chars,
+            options,
+            resources,
+        )?
         else {
             continue;
         };
-        out.push(line);
+        out.push(line, resources)?;
     }
+    Ok(())
 }
 
 fn value_disclosure_line(
     series_index: usize,
     plot: &XyChartPlotRenderModel,
     label: &str,
-    categories: &[String],
+    categories: &[CategoryLabel<'_>],
     chars: ChartChars,
-    width_profile: TerminalWidthProfile,
-) -> Option<ChartLine> {
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+) -> Result<Option<ChartLine>> {
     if plot.values.is_empty() {
-        return None;
+        return Ok(None);
     }
 
-    let mut line = ChartLine::with_width_profile(width_profile);
-    line.push_role_text("values: ", AsciiColorRole::Text);
-    line.push_role_char(
+    let mut line = new_chart_line(options, resources);
+    resources.charge_layout_work(12)?;
+    line.try_push_role_text("values: ", AsciiColorRole::Text)?;
+    line.try_push_role_char(
         chars.legend_symbol(plot.plot_type),
         AsciiColorRole::ChartSeries(series_index),
-    );
-    line.push_plain_char(' ');
-    line.push_role_text(label, AsciiColorRole::Text);
-    line.push_role_text(": ", AsciiColorRole::Text);
+    )?;
+    line.try_push_plain_char(' ')?;
+    line.try_push_role_text(label, AsciiColorRole::Text)?;
+    line.try_push_role_text(": ", AsciiColorRole::Text)?;
 
     for (idx, value) in plot.values.iter().copied().enumerate() {
+        resources.charge_layout_work(1)?;
         if idx > 0 {
-            line.push_role_text(", ", AsciiColorRole::Text);
+            line.try_push_role_text(", ", AsciiColorRole::Text)?;
         }
-        if let Some(category) = categories.get(idx).map(String::as_str).and_then(non_empty) {
-            line.push_role_text(&category, AsciiColorRole::Text);
-            line.push_plain_char('=');
+        if let Some(category) = categories
+            .get(idx)
+            .map(|category| category.as_ref())
+            .filter(|category| !category.trim().is_empty())
+        {
+            line.try_push_role_text(category, AsciiColorRole::Text)?;
+            line.try_push_plain_char('=')?;
         }
-        line.push_role_text(&format_number(value), AsciiColorRole::Text);
+        line.try_push_role_text(&format_number(value), AsciiColorRole::Text)?;
     }
 
-    Some(line)
+    Ok(Some(line))
 }
 
 fn write_horizontal_inside_data_label(
@@ -555,89 +712,136 @@ fn write_horizontal_inside_data_label(
     value: f64,
     y_range: ValueRange,
     plot_area: XyChartPlotArea,
-) -> bool {
+    resources: &mut ResourceContext,
+) -> Result<bool> {
+    charge_text_layout(resources, label)?;
     let bar_width = horizontal_bar_width(value, y_range, plot_area);
     let label_width = display_width_with_profile(label, plot_area.width_profile);
     if bar_width == 0 || label_width == 0 || label_width > bar_width {
-        return false;
+        return Ok(false);
     }
 
-    let start = plot_prefix_width + bar_width - label_width;
-    line.write_text_role(start, label, AsciiColorRole::Text);
-    true
+    let bar_end = resources.checked_grid_add(plot_prefix_width, bar_width)?;
+    let start = checked_grid_sub(resources, bar_end, label_width)?;
+    resources.charge_layout_work(label_width)?;
+    line.try_write_text_role(start, label, AsciiColorRole::Text)?;
+    Ok(true)
 }
 
-fn push_horizontal_outside_data_label(line: &mut ChartLine, label: &str) {
+fn push_horizontal_outside_data_label(
+    line: &mut ChartLine,
+    label: &str,
+    resources: &mut ResourceContext,
+) -> Result<()> {
     if label.is_empty() {
-        return;
+        return Ok(());
     }
 
-    line.push_plain_char(' ');
-    line.push_role_text(label, AsciiColorRole::Text);
+    charge_text_layout(resources, label)?;
+    resources.charge_layout_work(1)?;
+    line.try_push_plain_char(' ')?;
+    line.try_push_role_text(label, AsciiColorRole::Text)?;
+    Ok(())
 }
 
 fn uses_compact_bar_data_labels(model: &XyChartDiagramRenderModel) -> bool {
     model.plots.len() == 1 && model.plots[0].plot_type == XyChartPlotType::Bar
 }
 
-fn compact_bar_value_labels(model: &XyChartDiagramRenderModel) -> Option<Vec<String>> {
-    uses_compact_bar_data_labels(model).then(|| {
-        model.plots[0]
-            .values
-            .iter()
-            .copied()
-            .map(format_number)
-            .collect()
-    })
+fn compact_bar_value_labels(
+    model: &XyChartDiagramRenderModel,
+    resources: &mut ResourceContext,
+) -> Result<Option<Vec<String>>> {
+    if !uses_compact_bar_data_labels(model) {
+        return Ok(None);
+    }
+
+    let values = &model.plots[0].values;
+    let mut labels = Vec::new();
+    labels
+        .try_reserve_exact(values.len())
+        .map_err(|_| allocation_failed(AsciiResourceLimitPhase::LayoutWork))?;
+    for value in values.iter().copied() {
+        resources.charge_layout_work(1)?;
+        labels.push(format_number(value));
+    }
+    Ok(Some(labels))
 }
 
-fn category_labels(model: &XyChartDiagramRenderModel) -> Vec<String> {
-    let data_count = model
-        .plots
-        .iter()
-        .map(|plot| plot.values.len())
-        .max()
-        .unwrap_or(0);
-
+fn category_labels<'a>(
+    model: &'a XyChartDiagramRenderModel,
+    data_count: usize,
+    resources: &mut ResourceContext,
+) -> Result<Vec<CategoryLabel<'a>>> {
+    let count = category_count(model, data_count);
     match &model.x_axis {
         XyChartAxisRenderModel::Band { categories, .. } => {
-            let mut labels = categories.clone();
-            labels.extend((labels.len()..data_count).map(|idx| (idx + 1).to_string()));
+            let mut labels = Vec::new();
             labels
+                .try_reserve_exact(count)
+                .map_err(|_| allocation_failed(AsciiResourceLimitPhase::LayoutWork))?;
+            for category in categories {
+                resources.charge_layout_work(1)?;
+                labels.push(Cow::Borrowed(category.as_str()));
+            }
+            for index in labels.len()..data_count {
+                resources.charge_layout_work(1)?;
+                let label = resources.checked_grid_add(index, 1)?;
+                labels.push(Cow::Owned(label.to_string()));
+            }
+            Ok(labels)
         }
         XyChartAxisRenderModel::Linear { min, max, .. } => linear_axis_labels(
             min.unwrap_or(1.0),
             max.unwrap_or(data_count as f64),
             data_count,
+            resources,
         ),
     }
 }
 
-fn linear_axis_labels(min: f64, max: f64, count: usize) -> Vec<String> {
+fn linear_axis_labels<'a>(
+    min: f64,
+    max: f64,
+    count: usize,
+    resources: &mut ResourceContext,
+) -> Result<Vec<CategoryLabel<'a>>> {
     if count == 0 {
-        return Vec::new();
-    }
-    if count == 1 {
-        return vec![format_number(min)];
+        return Ok(Vec::new());
     }
 
-    let step = (max - min) / ((count - 1) as f64);
-    (0..count)
-        .map(|idx| format_number(min + step * (idx as f64)))
-        .collect()
+    let mut labels = Vec::new();
+    labels
+        .try_reserve_exact(count)
+        .map_err(|_| allocation_failed(AsciiResourceLimitPhase::LayoutWork))?;
+    if count == 1 {
+        resources.charge_layout_work(1)?;
+        labels.push(Cow::Owned(format_number(min)));
+        return Ok(labels);
+    }
+
+    let intervals = checked_grid_sub(resources, count, 1)?;
+    let step = (max - min) / (intervals as f64);
+    for index in 0..count {
+        resources.charge_layout_work(1)?;
+        labels.push(Cow::Owned(format_number(min + step * (index as f64))));
+    }
+    Ok(labels)
 }
 
-fn y_value_range(model: &XyChartDiagramRenderModel) -> ValueRange {
+fn y_value_range(
+    model: &XyChartDiagramRenderModel,
+    resources: &mut ResourceContext,
+) -> Result<ValueRange> {
     let mut data_min = f64::INFINITY;
     let mut data_max = f64::NEG_INFINITY;
-    for value in model
-        .plots
-        .iter()
-        .flat_map(|plot| plot.values.iter())
-        .copied()
-    {
-        data_min = data_min.min(value);
-        data_max = data_max.max(value);
+    for plot in &model.plots {
+        resources.charge_layout_work(1)?;
+        for value in plot.values.iter().copied() {
+            resources.charge_layout_work(1)?;
+            data_min = data_min.min(value);
+            data_max = data_max.max(value);
+        }
     }
 
     let (axis_min, axis_max) = match &model.y_axis {
@@ -658,39 +862,67 @@ fn y_value_range(model: &XyChartDiagramRenderModel) -> ValueRange {
         max = min + 1.0;
     }
 
-    ValueRange { min, max }
+    Ok(ValueRange { min, max })
 }
 
-fn y_axis_title(model: &XyChartDiagramRenderModel) -> Option<String> {
+fn y_axis_title(
+    model: &XyChartDiagramRenderModel,
+    resources: &mut ResourceContext,
+) -> Result<Option<String>> {
     match &model.y_axis {
         XyChartAxisRenderModel::Linear { title, .. }
-        | XyChartAxisRenderModel::Band { title, .. } => non_empty(title),
+        | XyChartAxisRenderModel::Band { title, .. } => {
+            normalized_optional_text(Some(title), resources)
+        }
     }
 }
 
-fn x_axis_title(model: &XyChartDiagramRenderModel) -> Option<String> {
+fn x_axis_title(
+    model: &XyChartDiagramRenderModel,
+    resources: &mut ResourceContext,
+) -> Result<Option<String>> {
     match &model.x_axis {
         XyChartAxisRenderModel::Linear { title, .. }
-        | XyChartAxisRenderModel::Band { title, .. } => non_empty(title),
+        | XyChartAxisRenderModel::Band { title, .. } => {
+            normalized_optional_text(Some(title), resources)
+        }
     }
 }
 
-fn non_empty(value: &str) -> Option<String> {
-    normalize_optional_text(Some(value))
+fn normalized_optional_text(
+    value: Option<&str>,
+    resources: &mut ResourceContext,
+) -> Result<Option<String>> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    charge_text_layout(resources, value)?;
+    Ok(normalize_optional_text(Some(value)))
 }
 
-fn vertical_tick_labels(y_range: ValueRange, plot_area: XyChartPlotArea) -> Vec<String> {
-    (1..=plot_area.vertical_height)
-        .rev()
-        .map(|level| {
-            let value =
-                y_range.min + (y_range.span() * (level as f64) / plot_area.vertical_height as f64);
-            format_number(value)
-        })
-        .collect()
+fn vertical_tick_labels(
+    y_range: ValueRange,
+    plot_area: XyChartPlotArea,
+    resources: &mut ResourceContext,
+) -> Result<Vec<String>> {
+    let mut labels = Vec::new();
+    labels
+        .try_reserve_exact(plot_area.vertical_height)
+        .map_err(|_| allocation_failed(AsciiResourceLimitPhase::LayoutWork))?;
+    for level in (1..=plot_area.vertical_height).rev() {
+        resources.charge_layout_work(1)?;
+        let value =
+            y_range.min + (y_range.span() * (level as f64) / plot_area.vertical_height as f64);
+        labels.push(format_number(value));
+    }
+    Ok(labels)
 }
 
-fn horizontal_tick_label_line(y_range: ValueRange, plot_area: XyChartPlotArea) -> ChartLine {
+fn horizontal_tick_label_line(
+    y_range: ValueRange,
+    plot_area: XyChartPlotArea,
+    resources: &mut ResourceContext,
+) -> Result<ChartLine> {
     let min = format_number(y_range.min);
     let max = format_number(y_range.max);
     horizontal_tick_label_line_for_labels(
@@ -698,6 +930,7 @@ fn horizontal_tick_label_line(y_range: ValueRange, plot_area: XyChartPlotArea) -
         &max,
         plot_area.horizontal_width,
         plot_area.width_profile,
+        resources,
     )
 }
 
@@ -706,69 +939,116 @@ fn horizontal_tick_label_line_for_labels(
     max: &str,
     width: usize,
     width_profile: TerminalWidthProfile,
-) -> ChartLine {
-    let mut line = ChartLine::blank_with_profile(width, width_profile);
-    write_horizontal_tick_label(&mut line, 0, min, width);
+    resources: &mut ResourceContext,
+) -> Result<ChartLine> {
+    let mut line = ChartLine::try_blank_with_resources(width, width_profile, resources)?;
+    write_horizontal_tick_label(&mut line, 0, min, width, resources)?;
 
     let fitted_max = truncate_display_width_with_profile(max, width, width_profile);
-    let max_start = width.saturating_sub(display_width_with_profile(&fitted_max, width_profile));
-    write_horizontal_tick_label(
-        &mut line,
-        max_start,
-        &fitted_max,
-        width.saturating_sub(max_start),
-    );
+    let fitted_width = display_width_with_profile(&fitted_max, width_profile);
+    let max_start = checked_grid_sub(resources, width, fitted_width)?;
+    let remaining = checked_grid_sub(resources, width, max_start)?;
+    write_horizontal_tick_label(&mut line, max_start, &fitted_max, remaining, resources)?;
 
-    line
+    Ok(line)
 }
 
-fn write_horizontal_tick_label(line: &mut ChartLine, start: usize, label: &str, width: usize) {
+fn write_horizontal_tick_label(
+    line: &mut ChartLine,
+    start: usize,
+    label: &str,
+    width: usize,
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    charge_text_layout(resources, label)?;
     let fitted = truncate_display_width_with_profile(label, width, line.width_profile());
-    line.write_text_role(start, &fitted, AsciiColorRole::Text);
+    resources.charge_layout_work(display_width_with_profile(&fitted, line.width_profile()))?;
+    line.try_write_text_role(start, &fitted, AsciiColorRole::Text)?;
+    Ok(())
 }
 
-fn finish_chart_lines(lines: Vec<ChartLine>, options: &AsciiRenderOptions) -> String {
-    if options.color_mode == AsciiColorMode::Plain {
-        return finish_lines(lines.into_iter().map(|line| line.text()).collect());
+fn finish_chart_lines(
+    document: ChartDocument,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+) -> Result<String> {
+    if document.lines.is_empty() {
+        return Ok(String::new());
     }
 
-    if lines.is_empty() {
-        return String::new();
-    }
-
-    let width = lines.iter().map(ChartLine::len).max().unwrap_or(0);
-    if width == 0 {
-        return "\n".repeat(lines.len());
-    }
-
-    let mut canvas = Canvas::with_width_profile(width, lines.len(), options.terminal_width_profile);
-    for (y, line) in lines.iter().enumerate() {
-        line.write_to(&mut canvas, y);
-    }
-
-    canvas.finish_trimmed_with_options(options)
+    resources.grid_extent(document.width, document.lines.len())?;
+    finish_styled_lines_with_resources(&document.lines, options, true, resources)
 }
 
-fn finish_lines(lines: Vec<String>) -> String {
-    if lines.is_empty() {
-        return String::new();
-    }
+fn new_chart_line(options: &AsciiRenderOptions, resources: &ResourceContext) -> ChartLine {
+    ChartLine::with_resources(options.terminal_width_profile, resources)
+}
 
-    let mut out = String::new();
-    for line in lines {
-        out.push_str(line.trim_end());
-        out.push('\n');
+fn allocation_failed(phase: AsciiResourceLimitPhase) -> AsciiError {
+    AsciiError::allocation_failed(phase.as_str())
+}
+
+fn empty_labels(count: usize) -> Result<Vec<String>> {
+    let mut labels = Vec::new();
+    labels
+        .try_reserve_exact(count)
+        .map_err(|_| allocation_failed(AsciiResourceLimitPhase::LayoutWork))?;
+    labels.resize_with(count, String::new);
+    Ok(labels)
+}
+
+fn label_gutter<'a>(
+    labels: impl IntoIterator<Item = &'a str>,
+    width_profile: TerminalWidthProfile,
+    resources: &mut ResourceContext,
+) -> Result<usize> {
+    let mut gutter = 0;
+    for label in labels {
+        charge_text_layout(resources, label)?;
+        gutter = gutter.max(display_width_with_profile(label, width_profile));
     }
-    out
+    Ok(gutter)
+}
+
+fn charge_category_text(
+    categories: &[CategoryLabel<'_>],
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    for category in categories {
+        charge_text_layout(resources, category.as_ref())?;
+    }
+    Ok(())
+}
+
+fn max_plot_value_count(
+    model: &XyChartDiagramRenderModel,
+    resources: &mut ResourceContext,
+) -> Result<usize> {
+    let mut count = 0;
+    for plot in &model.plots {
+        resources.charge_layout_work(1)?;
+        count = count.max(plot.values.len());
+    }
+    Ok(count)
+}
+
+fn category_count(model: &XyChartDiagramRenderModel, data_count: usize) -> usize {
+    match &model.x_axis {
+        XyChartAxisRenderModel::Band { categories, .. } => categories.len().max(data_count),
+        XyChartAxisRenderModel::Linear { .. } => data_count,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{horizontal_tick_label_line_for_labels, render_xychart_diagram};
-    use crate::{AsciiColorMode, AsciiRenderOptions, TerminalWidthProfile};
+    use crate::resource::ResourceContext;
+    use crate::{
+        AsciiColorMode, AsciiError, AsciiRenderOptions, AsciiResourceLimitId, TerminalWidthProfile,
+    };
     use merman_core::diagrams::xychart::{
-        XyChartAxisRenderModel, XyChartDiagramRenderModel, XyChartDisplayPolicy,
-        XyChartPlotRenderModel, XyChartPlotType,
+        XyChartAxisDisplayPolicy, XyChartAxisRenderModel, XyChartDiagramRenderModel,
+        XyChartDisplayPolicy, XyChartPlotRenderModel, XyChartPlotType,
     };
 
     fn authored_text_model() -> XyChartDiagramRenderModel {
@@ -797,10 +1077,91 @@ mod tests {
         }
     }
 
+    fn tick_label_line(
+        min: &str,
+        max: &str,
+        width: usize,
+        width_profile: TerminalWidthProfile,
+    ) -> super::ChartLine {
+        let options = AsciiRenderOptions::ascii().with_terminal_width_profile(width_profile);
+        let mut resources = ResourceContext::new(options.resources);
+        horizontal_tick_label_line_for_labels(min, max, width, width_profile, &mut resources)
+            .expect("tick labels should fit the default resource policy")
+    }
+
+    fn compact_vertical_model(title: Option<&str>) -> XyChartDiagramRenderModel {
+        let hidden_axis = XyChartAxisDisplayPolicy {
+            show_label: false,
+            show_title: false,
+            show_tick: false,
+            show_axis_line: false,
+        };
+        XyChartDiagramRenderModel {
+            orientation: "vertical".to_string(),
+            title: title.map(str::to_string),
+            acc_title: None,
+            acc_descr: None,
+            x_axis: XyChartAxisRenderModel::Band {
+                title: String::new(),
+                categories: vec!["A".to_string()],
+            },
+            y_axis: XyChartAxisRenderModel::Linear {
+                title: String::new(),
+                min: Some(0.0),
+                max: Some(1.0),
+            },
+            plots: vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Bar,
+                title: None,
+                values: vec![1.0],
+                data: Vec::new(),
+                point_labels: Vec::new(),
+            }],
+            display: XyChartDisplayPolicy {
+                show_title: title.is_some(),
+                show_data_label: false,
+                show_data_label_outside_bar: false,
+                x_axis: hidden_axis,
+                y_axis: hidden_axis,
+            },
+        }
+    }
+
+    fn compact_options(color_mode: AsciiColorMode) -> AsciiRenderOptions {
+        AsciiRenderOptions::ascii()
+            .with_color_mode(color_mode)
+            .with_xychart_vertical_plot_height(2)
+            .with_xychart_category_band_width(1)
+    }
+
+    fn compact_horizontal_model() -> XyChartDiagramRenderModel {
+        let mut model = compact_vertical_model(None);
+        model.orientation = "horizontal".to_string();
+        model.x_axis = XyChartAxisRenderModel::Band {
+            title: String::new(),
+            categories: vec!["A".to_string(), "B".to_string()],
+        };
+        model.plots[0].values = vec![1.0, 0.5];
+        model
+    }
+
+    fn assert_resource_error(
+        error: AsciiError,
+        limit: AsciiResourceLimitId,
+        actual: usize,
+        max: usize,
+    ) {
+        let AsciiError::ResourceLimitExceeded(details) = error else {
+            panic!("expected a resource-limit error, got {error:?}");
+        };
+        assert_eq!(details.limit, limit);
+        assert_eq!(details.actual, actual);
+        assert_eq!(details.max, max);
+    }
+
     #[test]
     fn horizontal_tick_label_line_uses_display_cells_for_wide_labels() {
-        let line =
-            horizontal_tick_label_line_for_labels("中", "界", 5, TerminalWidthProfile::Unicode);
+        let line = tick_label_line("中", "界", 5, TerminalWidthProfile::Unicode);
 
         assert_eq!(line.len(), 5);
         assert_eq!(line.text(), "中 界");
@@ -813,8 +1174,7 @@ mod tests {
 
     #[test]
     fn horizontal_tick_label_line_truncates_at_display_cell_boundaries() {
-        let line =
-            horizontal_tick_label_line_for_labels("中国A", "", 3, TerminalWidthProfile::Unicode);
+        let line = tick_label_line("中国A", "", 3, TerminalWidthProfile::Unicode);
 
         assert_eq!(line.len(), 3);
         assert_eq!(line.text(), "中 ");
@@ -825,9 +1185,8 @@ mod tests {
 
     #[test]
     fn horizontal_tick_label_line_obeys_cjk_ambiguous_width() {
-        let unicode =
-            horizontal_tick_label_line_for_labels("·", "", 2, TerminalWidthProfile::Unicode);
-        let cjk = horizontal_tick_label_line_for_labels("·", "", 2, TerminalWidthProfile::Cjk);
+        let unicode = tick_label_line("·", "", 2, TerminalWidthProfile::Unicode);
+        let cjk = tick_label_line("·", "", 2, TerminalWidthProfile::Cjk);
 
         assert_eq!(unicode.text(), "· ");
         assert_eq!(unicode.get(1), Some(' '));
@@ -923,5 +1282,138 @@ mod tests {
                 "missing normalized {text}:\n{rendered}"
             );
         }
+    }
+
+    #[test]
+    fn xychart_complete_grid_budget_covers_title_and_plot_in_every_mode() {
+        let model = compact_vertical_model(Some("12345678"));
+        for color_mode in [
+            AsciiColorMode::Plain,
+            AsciiColorMode::Ansi16,
+            AsciiColorMode::Ansi256,
+            AsciiColorMode::TrueColor,
+            AsciiColorMode::Html,
+        ] {
+            let accepted = compact_options(color_mode)
+                .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 24)
+                .expect("valid exact grid limit");
+            render_xychart_diagram(&model, &accepted)
+                .expect("the exact complete XYChart grid limit should succeed");
+
+            let rejected = compact_options(color_mode)
+                .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 23)
+                .expect("valid below-boundary grid limit");
+            let error = render_xychart_diagram(&model, &rejected)
+                .expect_err("the complete title plus plot grid should exceed 23 cells");
+            assert_resource_error(error, AsciiResourceLimitId::MaxGridCells, 24, 23);
+        }
+    }
+
+    #[test]
+    fn xychart_horizontal_plot_budget_is_checked_before_row_allocation() {
+        let model = compact_horizontal_model();
+        let accepted = compact_options(AsciiColorMode::Plain)
+            .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 20)
+            .expect("valid exact horizontal grid limit");
+        render_xychart_diagram(&model, &accepted)
+            .expect("the exact horizontal plot grid limit should succeed");
+
+        let rejected = compact_options(AsciiColorMode::Plain)
+            .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 19)
+            .expect("valid below-boundary horizontal grid limit");
+        let error = render_xychart_diagram(&model, &rejected)
+            .expect_err("the horizontal plot extent should be rejected before row allocation");
+        assert_resource_error(error, AsciiResourceLimitId::MaxGridCells, 20, 19);
+    }
+
+    #[test]
+    fn xychart_document_budget_counts_trimmed_rows_in_every_mode() {
+        let model = compact_vertical_model(Some("12345678"));
+        for color_mode in [
+            AsciiColorMode::Plain,
+            AsciiColorMode::Ansi16,
+            AsciiColorMode::Ansi256,
+            AsciiColorMode::TrueColor,
+            AsciiColorMode::Html,
+        ] {
+            let accepted = compact_options(color_mode)
+                .with_resource_limit(AsciiResourceLimitId::MaxDocumentCells, 10)
+                .expect("valid exact document limit");
+            render_xychart_diagram(&model, &accepted)
+                .expect("the exact trimmed document-cell limit should succeed");
+
+            let rejected = compact_options(color_mode)
+                .with_resource_limit(AsciiResourceLimitId::MaxDocumentCells, 9)
+                .expect("valid below-boundary document limit");
+            let error = render_xychart_diagram(&model, &rejected)
+                .expect_err("the title plus two plot rows should exceed nine document cells");
+            assert_resource_error(error, AsciiResourceLimitId::MaxDocumentCells, 10, 9);
+        }
+    }
+
+    #[test]
+    fn xychart_plain_output_budget_is_enforced_during_final_encoding() {
+        let model = compact_vertical_model(None);
+        let accepted = compact_options(AsciiColorMode::Plain)
+            .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, 4)
+            .expect("valid exact output limit");
+        let rendered = render_xychart_diagram(&model, &accepted)
+            .expect("the exact plain-output byte limit should succeed");
+        assert_eq!(rendered, "#\n#\n");
+
+        let rejected = compact_options(AsciiColorMode::Plain)
+            .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, 3)
+            .expect("valid below-boundary output limit");
+        let error = render_xychart_diagram(&model, &rejected)
+            .expect_err("the final newline should cross the output-byte boundary");
+        assert_resource_error(error, AsciiResourceLimitId::MaxOutputBytes, 4, 3);
+    }
+
+    #[test]
+    fn xychart_grapheme_budget_rejects_zwj_before_arena_insertion() {
+        let model = compact_vertical_model(Some("👩‍💻"));
+        let accepted = compact_options(AsciiColorMode::Plain)
+            .with_resource_limit(AsciiResourceLimitId::MaxGraphemeBytes, 11)
+            .expect("valid exact grapheme limit");
+        render_xychart_diagram(&model, &accepted)
+            .expect("the exact UTF-8 grapheme-byte limit should succeed");
+
+        let rejected = compact_options(AsciiColorMode::Plain)
+            .with_resource_limit(AsciiResourceLimitId::MaxGraphemeBytes, 10)
+            .expect("valid below-boundary grapheme limit");
+        let error = render_xychart_diagram(&model, &rejected)
+            .expect_err("the authored ZWJ grapheme should be rejected before insertion");
+        assert_resource_error(error, AsciiResourceLimitId::MaxGraphemeBytes, 11, 10);
+    }
+
+    #[test]
+    fn xychart_layout_work_budget_covers_series_values_categories_and_paint() {
+        let model = compact_vertical_model(None);
+        let accepted = compact_options(AsciiColorMode::Plain)
+            .with_resource_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 13)
+            .expect("valid exact work limit");
+        render_xychart_diagram(&model, &accepted)
+            .expect("the exact XYChart layout-work limit should succeed");
+
+        let rejected = compact_options(AsciiColorMode::Plain)
+            .with_resource_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 12)
+            .expect("valid below-boundary work limit");
+        let error = render_xychart_diagram(&model, &rejected)
+            .expect_err("the final plot-row copy should cross the work boundary");
+        assert_resource_error(error, AsciiResourceLimitId::MaxLayoutWorkUnits, 13, 12);
+    }
+
+    #[test]
+    fn xychart_plot_geometry_overflow_fails_before_row_allocation() {
+        let model = compact_vertical_model(None);
+        let options =
+            compact_options(AsciiColorMode::Plain).with_xychart_category_band_width(usize::MAX);
+        let error = render_xychart_diagram(&model, &options)
+            .expect_err("overflow-shaped plot geometry should be rejected");
+        let AsciiError::ResourceLimitExceeded(details) = error else {
+            panic!("expected a resource-limit error, got {error:?}");
+        };
+        assert_eq!(details.limit, AsciiResourceLimitId::MaxGridCells);
+        assert_eq!(details.actual, usize::MAX);
     }
 }

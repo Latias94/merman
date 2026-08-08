@@ -28,6 +28,49 @@ use crate::graph::routing::plan::PlannedRouteSegment;
 use crate::graph::routing::plan::select::{
     EdgeBoundaryContext, UnsupportedEdgeRouteReason, edge_boundary_context,
 };
+use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
+use merman_core::resources::ResourceProfile;
+use std::cell::Cell;
+
+#[test]
+fn planned_route_cells_debit_before_materializing_exact_and_max_minus_one() {
+    let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+    let exact_policy = unbounded
+        .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 2)
+        .expect("exact route-cell work limit should be valid");
+    let mut exact_resources = crate::resource::ResourceContext::new(exact_policy);
+    let mut exact_cells = PlannedRouteCells::new();
+    exact_cells
+        .try_push(&mut exact_resources, || route_cell(0, 0, '-'))
+        .expect("first exact-budget route cell should materialize");
+    exact_cells
+        .try_push(&mut exact_resources, || route_cell(1, 0, '-'))
+        .expect("second exact-budget route cell should materialize");
+    assert_eq!(exact_cells.into_vec().len(), 2);
+
+    let below_policy = unbounded
+        .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+        .expect("max-minus-one route-cell work limit should be valid");
+    let mut below_resources = crate::resource::ResourceContext::new(below_policy);
+    let mut below_cells = PlannedRouteCells::new();
+    below_cells
+        .try_push(&mut below_resources, || route_cell(0, 0, '-'))
+        .expect("first max-minus-one route cell should materialize");
+    let second_materialized = Cell::new(false);
+    let error = below_cells
+        .try_push(&mut below_resources, || {
+            second_materialized.set(true);
+            route_cell(1, 0, '-')
+        })
+        .expect_err("second max-minus-one route cell should fail before materialization");
+    assert!(!second_materialized.get());
+    let crate::AsciiError::ResourceLimitExceeded(details) = error else {
+        panic!("expected a layout-work resource error, got {error:?}");
+    };
+    assert_eq!(details.limit, AsciiResourceLimitId::MaxLayoutWorkUnits);
+    assert_eq!(details.actual, 2);
+    assert_eq!(details.max, 1);
+}
 
 #[test]
 fn edge_route_selects_left_right_parallel_bottom_lane() {

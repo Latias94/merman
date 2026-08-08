@@ -1,6 +1,8 @@
 use super::label::GraphLabel;
 use super::model::GraphNodeShape;
+use crate::error::Result;
 use crate::options::AsciiRenderOptions;
+use crate::resource::ResourceContext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct GraphNodeShapeSemantics {
@@ -18,15 +20,36 @@ impl GraphNodeShapeSemantics {
         Self { shape }
     }
 
+    #[cfg(test)]
     pub(super) fn size_for_label(
         self,
         label: &GraphLabel,
         options: &AsciiRenderOptions,
     ) -> GraphNodeShapeSize {
-        let framed_width = label.width() + options.box_border_padding * 2 + 2;
-        let framed_height = 2 + label.content_height() + options.box_border_padding * 2;
+        let resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
+            merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        ));
+        self.try_size_for_label(label, options, &resources)
+            .expect("trusted graph shape geometry must remain representable")
+    }
 
-        match self.shape {
+    pub(super) fn try_size_for_label(
+        self,
+        label: &GraphLabel,
+        options: &AsciiRenderOptions,
+        resources: &ResourceContext,
+    ) -> Result<GraphNodeShapeSize> {
+        let border_padding = resources.checked_grid_mul(options.box_border_padding, 2)?;
+        let framed_width = resources.checked_grid_add(
+            resources.checked_grid_add(label.width(), border_padding)?,
+            2,
+        )?;
+        let framed_height = resources.checked_grid_add(
+            resources.checked_grid_add(label.content_height(), border_padding)?,
+            2,
+        )?;
+
+        let size = match self.shape {
             GraphNodeShape::StateStart | GraphNodeShape::StateEnd | GraphNodeShape::Choice => {
                 GraphNodeShapeSize {
                     width: 5,
@@ -42,11 +65,11 @@ impl GraphNodeShapeSemantics {
                 height: 7,
             },
             GraphNodeShape::Subroutine | GraphNodeShape::Cylinder => GraphNodeShapeSize {
-                width: framed_width + 2,
+                width: resources.checked_grid_add(framed_width, 2)?,
                 height: framed_height,
             },
             GraphNodeShape::LeanRight | GraphNodeShape::LeanLeft => GraphNodeShapeSize {
-                width: framed_width + framed_height.saturating_sub(1),
+                width: resources.checked_grid_add(framed_width, framed_height.saturating_sub(1))?,
                 height: framed_height,
             },
             GraphNodeShape::Rect
@@ -62,14 +85,16 @@ impl GraphNodeShapeSemantics {
                 height: framed_height,
             },
             GraphNodeShape::Stadium => GraphNodeShapeSize {
-                width: framed_width + 2,
+                width: resources.checked_grid_add(framed_width, 2)?,
                 height: framed_height,
             },
             GraphNodeShape::Datastore | GraphNodeShape::Document => GraphNodeShapeSize {
                 width: framed_width,
                 height: framed_height,
             },
-        }
+        };
+        resources.grid_extent(size.width, size.height)?;
+        Ok(size)
     }
 
     pub(super) fn uses_external_self_loop_connector(self) -> bool {

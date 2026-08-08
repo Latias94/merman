@@ -185,7 +185,7 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "a26ff38860d27888969b7cc33a51254e150e5f1daa080da64718a84e858bfae8",
+    "cargo_lock_sha256": "7b946938b342e01f0afa526bed48668636eb9df81995e3ffd43249d2673cfa59",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "30cffd8faa16b54b83524e119049e7161f463269c1adecee1080aacf41d2cba5"
   },
@@ -193,67 +193,67 @@
     {
       "artifact_profile_id": "flutter-android-native",
       "target": "aarch64-linux-android",
-      "package_count": 219,
-      "packages_sha256": "746c4edd050aabd454beb9bf89b757deee42899e1be164ba760c1a46b42c5099"
+      "package_count": 220,
+      "packages_sha256": "a665b3d70897e79d3f6bdd9a6bee441134e0ac6a4272abbf86ef2020bfb68e6b"
     },
     {
       "artifact_profile_id": "flutter-android-native",
       "target": "x86_64-linux-android",
-      "package_count": 219,
-      "packages_sha256": "746c4edd050aabd454beb9bf89b757deee42899e1be164ba760c1a46b42c5099"
+      "package_count": 220,
+      "packages_sha256": "a665b3d70897e79d3f6bdd9a6bee441134e0ac6a4272abbf86ef2020bfb68e6b"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "aarch64-apple-darwin",
-      "package_count": 219,
-      "packages_sha256": "746c4edd050aabd454beb9bf89b757deee42899e1be164ba760c1a46b42c5099"
+      "package_count": 220,
+      "packages_sha256": "a665b3d70897e79d3f6bdd9a6bee441134e0ac6a4272abbf86ef2020bfb68e6b"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "aarch64-unknown-linux-gnu",
-      "package_count": 221,
-      "packages_sha256": "0ccf62efa60f44da6b6c133cc33136bc74bc72763335fff2594491335bbc3c70"
+      "package_count": 222,
+      "packages_sha256": "3ef3daf0b6b007833b6ab1c32ec4f7340d9f89540e62e3f80589ea0a4eff63a0"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "x86_64-apple-darwin",
-      "package_count": 219,
-      "packages_sha256": "746c4edd050aabd454beb9bf89b757deee42899e1be164ba760c1a46b42c5099"
+      "package_count": 220,
+      "packages_sha256": "a665b3d70897e79d3f6bdd9a6bee441134e0ac6a4272abbf86ef2020bfb68e6b"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "x86_64-pc-windows-gnu",
-      "package_count": 223,
-      "packages_sha256": "9a5fbe39ab9ec1daaaf13b176ffcbf39e83fea1e729e338c1cad0d32194537ac"
+      "package_count": 224,
+      "packages_sha256": "81fa843a2f0c768b6c0456adbc3a1109479d30d73153b4d4112cb5bc8660e921"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "x86_64-unknown-linux-gnu",
-      "package_count": 221,
-      "packages_sha256": "0ccf62efa60f44da6b6c133cc33136bc74bc72763335fff2594491335bbc3c70"
+      "package_count": 222,
+      "packages_sha256": "3ef3daf0b6b007833b6ab1c32ec4f7340d9f89540e62e3f80589ea0a4eff63a0"
     },
     {
       "artifact_profile_id": "flutter-ios-native",
       "target": "aarch64-apple-ios",
-      "package_count": 221,
-      "packages_sha256": "0ccf62efa60f44da6b6c133cc33136bc74bc72763335fff2594491335bbc3c70"
+      "package_count": 222,
+      "packages_sha256": "3ef3daf0b6b007833b6ab1c32ec4f7340d9f89540e62e3f80589ea0a4eff63a0"
     },
     {
       "artifact_profile_id": "flutter-ios-native",
       "target": "aarch64-apple-ios-sim",
-      "package_count": 221,
-      "packages_sha256": "0ccf62efa60f44da6b6c133cc33136bc74bc72763335fff2594491335bbc3c70"
+      "package_count": 222,
+      "packages_sha256": "3ef3daf0b6b007833b6ab1c32ec4f7340d9f89540e62e3f80589ea0a4eff63a0"
     },
     {
       "artifact_profile_id": "flutter-ios-native",
       "target": "x86_64-apple-ios",
-      "package_count": 221,
-      "packages_sha256": "0ccf62efa60f44da6b6c133cc33136bc74bc72763335fff2594491335bbc3c70"
+      "package_count": 222,
+      "packages_sha256": "3ef3daf0b6b007833b6ab1c32ec4f7340d9f89540e62e3f80589ea0a4eff63a0"
     }
   ],
   "dependency_closure": {
-    "package_count": 226,
-    "packages_sha256": "853aa7317ab59f87d7aaa25b41ce3cf67c4056a9e8552b357f8b271dfc3195f1"
+    "package_count": 227,
+    "packages_sha256": "86bb127c24a919a78ce612cd781ea17e25c8c5bbe62f4565e28708bcdebdc250"
   },
   "licenses": [
     {
@@ -1374,6 +1374,17 @@
             "Manish Goregaokar <manishsmail@gmail.com>"
           ],
           "repository": "https://github.com/unicode-rs/unicode-properties"
+        },
+        {
+          "name": "unicode-segmentation",
+          "version": "1.13.3",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Manish Goregaokar <manishsmail@gmail.com>",
+            "kwantam <kwantam@gmail.com>"
+          ],
+          "repository": "https://github.com/unicode-rs/unicode-segmentation"
         },
         {
           "name": "unicode-vo",

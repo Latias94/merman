@@ -1,5 +1,6 @@
 use super::super::layout::CanvasCoord;
 use crate::canvas::{Canvas, CanvasColor};
+use crate::error::Result;
 use crate::options::TerminalWidthProfile;
 use crate::safe_text::SafeLine;
 use crate::text::{display_width_with_profile, normalize_optional_text, split_label_lines};
@@ -108,7 +109,7 @@ impl RoutedLabelText {
     }
 }
 
-pub(crate) fn draw_routed_label(canvas: &mut Canvas, label: &EdgeLabel) {
+pub(crate) fn draw_routed_label(canvas: &mut Canvas, label: &EdgeLabel) -> Result<()> {
     for (line_index, line) in label.text.lines().iter().enumerate() {
         let line_width = label.text.line_width(line);
         let x = label
@@ -122,8 +123,9 @@ pub(crate) fn draw_routed_label(canvas: &mut Canvas, label: &EdgeLabel) {
             line,
             label.text.width_profile,
             label.color,
-        );
+        )?;
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -202,22 +204,23 @@ fn write_label_overlay(
     label: &str,
     width_profile: TerminalWidthProfile,
     color: CanvasColor,
-) {
+) -> Result<()> {
     let mut offset = 0;
     let label = SafeLine::new(label);
     for grapheme in label.graphemes(width_profile) {
         if grapheme.text() != " " {
             match color {
                 CanvasColor::Role(role) => {
-                    canvas.write_text_role(x + offset, y, grapheme.text(), role)
+                    canvas.write_text_role(x + offset, y, grapheme.text(), role)?
                 }
                 CanvasColor::Direct(color) => {
-                    canvas.write_text_color(x + offset, y, grapheme.text(), color)
+                    canvas.write_text_color(x + offset, y, grapheme.text(), color)?
                 }
             }
         }
         offset += grapheme.width();
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -301,7 +304,8 @@ mod tests {
                 text,
                 color: CanvasColor::Role(crate::color::AsciiColorRole::EdgeLabel),
             },
-        );
+        )
+        .expect("test routed label should fit the unbounded resource policy");
 
         assert_eq!(
             canvas.get_text(0, 0),

@@ -22,6 +22,11 @@ export const RESOURCE_LIMIT_IDS = Object.freeze([
   "max_svg_elements",
   "max_document_diagrams",
   "max_ascii_grid_cells",
+  "max_ascii_layout_work_units",
+  "max_ascii_document_cells",
+  "max_ascii_output_bytes",
+  "max_ascii_grapheme_bytes",
+  "max_ascii_nesting_depth",
 ] as const);
 export type KnownResourceLimitId = (typeof RESOURCE_LIMIT_IDS)[number];
 export type ResourceLimitId = string;
@@ -44,6 +49,11 @@ export const RESOURCE_LIMIT_METADATA: Readonly<Record<KnownResourceLimitId, Know
   "max_svg_elements": Object.freeze({ id: "max_svg_elements", phase: "svg_postprocess", overridable: true, minimumValue: 1 }),
   "max_document_diagrams": Object.freeze({ id: "max_document_diagrams", phase: "document_scan", overridable: true, minimumValue: 0 }),
   "max_ascii_grid_cells": Object.freeze({ id: "max_ascii_grid_cells", phase: "ascii_layout", overridable: true, minimumValue: 1 }),
+  "max_ascii_layout_work_units": Object.freeze({ id: "max_ascii_layout_work_units", phase: "ascii_layout_work", overridable: true, minimumValue: 1 }),
+  "max_ascii_document_cells": Object.freeze({ id: "max_ascii_document_cells", phase: "ascii_document", overridable: true, minimumValue: 1 }),
+  "max_ascii_output_bytes": Object.freeze({ id: "max_ascii_output_bytes", phase: "ascii_output", overridable: true, minimumValue: 1 }),
+  "max_ascii_grapheme_bytes": Object.freeze({ id: "max_ascii_grapheme_bytes", phase: "ascii_grapheme", overridable: true, minimumValue: 1 }),
+  "max_ascii_nesting_depth": Object.freeze({ id: "max_ascii_nesting_depth", phase: "ascii_nesting", overridable: true, minimumValue: 1 }),
 });
 
 export function isKnownResourceLimitId(id: ResourceLimitId): id is KnownResourceLimitId {
@@ -66,6 +76,11 @@ export const RESOURCE_OVERRIDE_IDS = Object.freeze([
   "max_svg_elements",
   "max_document_diagrams",
   "max_ascii_grid_cells",
+  "max_ascii_layout_work_units",
+  "max_ascii_document_cells",
+  "max_ascii_output_bytes",
+  "max_ascii_grapheme_bytes",
+  "max_ascii_nesting_depth",
 ] as const);
 export type ResourceOverrideId = (typeof RESOURCE_OVERRIDE_IDS)[number];
 const RESOURCE_OVERRIDE_ID_SET: ReadonlySet<string> = new Set(RESOURCE_OVERRIDE_IDS);
@@ -95,6 +110,11 @@ const RESOURCE_PROFILE_LIMITS: Record<ResourceProfile, ResourceLimitValues> = {
     "max_svg_elements": 250000,
     "max_document_diagrams": 256,
     "max_ascii_grid_cells": 250000,
+    "max_ascii_layout_work_units": 2000000,
+    "max_ascii_document_cells": 250000,
+    "max_ascii_output_bytes": 16777216,
+    "max_ascii_grapheme_bytes": 4096,
+    "max_ascii_nesting_depth": 256,
   },
   "constrained": {
     "max_source_bytes": 1048576,
@@ -106,6 +126,11 @@ const RESOURCE_PROFILE_LIMITS: Record<ResourceProfile, ResourceLimitValues> = {
     "max_svg_elements": 125000,
     "max_document_diagrams": 128,
     "max_ascii_grid_cells": 125000,
+    "max_ascii_layout_work_units": 1000000,
+    "max_ascii_document_cells": 125000,
+    "max_ascii_output_bytes": 8388608,
+    "max_ascii_grapheme_bytes": 2048,
+    "max_ascii_nesting_depth": 128,
   },
   "trusted-native": {
     "max_source_bytes": 16777216,
@@ -117,6 +142,11 @@ const RESOURCE_PROFILE_LIMITS: Record<ResourceProfile, ResourceLimitValues> = {
     "max_svg_elements": 1000000,
     "max_document_diagrams": 1024,
     "max_ascii_grid_cells": 1000000,
+    "max_ascii_layout_work_units": 8000000,
+    "max_ascii_document_cells": 1000000,
+    "max_ascii_output_bytes": 67108864,
+    "max_ascii_grapheme_bytes": 65536,
+    "max_ascii_nesting_depth": 1024,
   },
   "unbounded-for-trusted-input": {
     "max_source_bytes": null,
@@ -128,6 +158,11 @@ const RESOURCE_PROFILE_LIMITS: Record<ResourceProfile, ResourceLimitValues> = {
     "max_svg_elements": null,
     "max_document_diagrams": null,
     "max_ascii_grid_cells": null,
+    "max_ascii_layout_work_units": null,
+    "max_ascii_document_cells": null,
+    "max_ascii_output_bytes": null,
+    "max_ascii_grapheme_bytes": null,
+    "max_ascii_nesting_depth": null,
   },
 };
 
@@ -141,6 +176,11 @@ const RESOURCE_LIMIT_MINIMUMS: Record<ResourceOverrideId, number> = {
   "max_svg_elements": 1,
   "max_document_diagrams": 0,
   "max_ascii_grid_cells": 1,
+  "max_ascii_layout_work_units": 1,
+  "max_ascii_document_cells": 1,
+  "max_ascii_output_bytes": 1,
+  "max_ascii_grapheme_bytes": 1,
+  "max_ascii_nesting_depth": 1,
 };
 
 export function resourceOptions(

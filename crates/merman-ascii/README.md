@@ -60,6 +60,20 @@ Every concrete built-in typed family has one capability record. `semantic_covera
 derived from them. Other Mermaid families return `AsciiError::UnsupportedDiagram` through the typed
 model path. The generated [ASCII/Unicode support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md) is the user-facing source of truth for exact limits. Family-specific engineering detail lives in [Flowchart](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/FLOWCHART_SUPPORT.md), [Sequence](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/SEQUENCE_SUPPORT.md), and [State](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/STATE_SUPPORT.md) support notes.
 
+## Resource Policy
+
+`AsciiRenderOptions::resources` owns six typed limits: checked grid extent, deterministic layout
+work, aggregate logical document cells, actual encoded output bytes, bytes in one grapheme cluster,
+and semantic nesting depth. Select a shared `ResourceProfile` with
+`AsciiRenderOptions::with_resource_profile`, or tighten one limit with
+`with_resource_limit(AsciiResourceLimitId, value)`. `UnboundedForTrustedInput` uses an explicit
+unbounded value rather than a numeric sentinel; arithmetic overflow and allocation failure remain
+fallible.
+
+Resource limits are hard errors. They never select a relation summary or another lower-fidelity
+projection. Plain, ANSI16, ANSI256, TrueColor, and HTML use the same logical document accounting,
+while `max_ascii_output_bytes` counts the actual bytes produced by each encoder.
+
 ## Terminal Theme API
 
 `AsciiColorTheme::from_terminal_palette` derives terminal roles from a compact `AsciiTerminalPalette`: required `foreground` and `background`, plus optional `line`, `accent`, `muted`, `surface`, and `border` colors. The derived theme maps only terminal-meaningful roles such as text, borders, edge lines/arrows, sequence lifelines, and chart series colors. It does not import SVG CSS-variable semantics into text output. Explicit `AsciiColorTheme::with_role` calls still take precedence after derivation.
@@ -78,7 +92,7 @@ The renderer consumes the typed XYChart display policy from `merman-core`. `xyCh
 
 ## Relation Summary Diagnostics
 
-Class and ER diagrams fall back to readable `relations:` summary sections when a topology cannot be drawn as a deterministic terminal grid, when class relationships cross namespace/container boundaries, when route or overlay collision checks would damage a box, or when the selected routed scene exceeds `AsciiRenderOptions::max_grid_cells`. Default output hides that internal reason to keep terminal text stable and user-facing. Enable `AsciiRenderOptions::with_relation_summary_diagnostics(true)` to add a muted diagnostic row such as `reason: grid_budget actual=12 limit=1` directly under `relations:`. Possible reason keys are `crossing`, `route_collision`, `overlay_collision`, and `grid_budget`.
+Class and ER diagrams fall back to readable `relations:` summary sections when a topology cannot be drawn as a deterministic terminal grid, when class relationships cross namespace/container boundaries, or when route or overlay collision checks would damage a box. Default output hides that internal reason to keep terminal text stable and user-facing. Enable `AsciiRenderOptions::with_relation_summary_diagnostics(true)` to add a muted diagnostic row such as `reason: crossing` directly under `relations:`. Possible reason keys are `crossing`, `route_collision`, and `overlay_collision`. Resource limits always return `AsciiError::ResourceLimitExceeded` instead of selecting this summary path.
 
 ## Direct Model API
 

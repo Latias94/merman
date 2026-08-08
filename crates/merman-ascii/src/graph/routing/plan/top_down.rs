@@ -7,32 +7,50 @@ use super::super::label::{
     RoutedLabelText, routed_label_right_of_vertical_route_placement_for_text,
 };
 use super::{
-    PlannedRouteLabel, RoutePlan, edge_arrow_cell, edge_line_cell, planned_label, route_cell,
+    PlannedRouteCells, PlannedRouteLabel, RoutePlan, edge_arrow_cell, edge_line_cell,
+    planned_label, route_cell,
 };
+use crate::error::Result;
+use crate::resource::ResourceContext;
 
+#[cfg(test)]
 pub(super) fn plan_top_down_direct_route(
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
     charset: &GraphCharset,
 ) -> Option<RoutePlan> {
+    let mut resources = super::unbounded_route_resources();
+    plan_top_down_direct_route_with_resources(from, to, edge, charset, &mut resources)
+        .expect("test route planning work must remain representable")
+}
+
+pub(super) fn plan_top_down_direct_route_with_resources(
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+    resources: &mut ResourceContext,
+) -> Result<Option<RoutePlan>> {
     if to.y <= from.bottom() + 1 {
-        return None;
+        return Ok(None);
     }
 
     let x = from.center_x();
     let start = from.bottom() + 1;
     let end = to.y - 1;
     let line = edge_line_char(edge, charset, GraphDirection::TopDown);
-    let mut cells = Vec::new();
-    cells.push(edge_line_cell(x, from.bottom(), charset.down_connector));
+    let mut cells = PlannedRouteCells::new();
+    cells.try_push(resources, || {
+        edge_line_cell(x, from.bottom(), charset.down_connector)
+    })?;
     for y in start..end {
-        cells.push(route_cell(x, y, line));
+        cells.try_push(resources, || route_cell(x, y, line))?;
     }
-    cells.push(match edge.arrow {
+    cells.try_push(resources, || match edge.arrow {
         GraphEdgeArrow::Open => route_cell(x, end, line),
         GraphEdgeArrow::Point => edge_arrow_cell(x, end, charset.arrow_down),
-    });
+    })?;
 
     let labels = planned_label(
         edge.label.as_deref(),
@@ -43,22 +61,35 @@ pub(super) fn plan_top_down_direct_route(
     .into_iter()
     .collect();
 
-    Some(RoutePlan::new(cells, labels))
+    Ok(Some(RoutePlan::new(cells.into_vec(), labels)))
 }
 
+#[cfg(test)]
 pub(super) fn plan_top_down_bent_route(
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
     charset: &GraphCharset,
 ) -> Option<RoutePlan> {
+    let mut resources = super::unbounded_route_resources();
+    plan_top_down_bent_route_with_resources(from, to, edge, charset, &mut resources)
+        .expect("test route planning work must remain representable")
+}
+
+pub(super) fn plan_top_down_bent_route_with_resources(
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+    resources: &mut ResourceContext,
+) -> Result<Option<RoutePlan>> {
     if GraphNodeShapeSemantics::new(from.shape).uses_drop_then_turn_bent_route()
         || GraphNodeShapeSemantics::new(to.shape).uses_drop_then_turn_bent_route()
     {
-        return plan_top_down_drop_then_turn_route(from, to, edge, charset);
+        return plan_top_down_drop_then_turn_route(from, to, edge, charset, resources);
     }
 
-    plan_top_down_side_bend_route(from, to, edge, charset)
+    plan_top_down_side_bend_route(from, to, edge, charset, resources)
 }
 
 fn plan_top_down_side_bend_route(
@@ -66,56 +97,61 @@ fn plan_top_down_side_bend_route(
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
     charset: &GraphCharset,
-) -> Option<RoutePlan> {
+    resources: &mut ResourceContext,
+) -> Result<Option<RoutePlan>> {
     let turn_y = from.center_y();
-    let end_y = to.y.checked_sub(1)?;
+    let Some(end_y) = to.y.checked_sub(1) else {
+        return Ok(None);
+    };
     if end_y <= turn_y {
-        return None;
+        return Ok(None);
     }
 
     let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
     let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
     let target_x = to.center_x();
-    let mut cells = Vec::new();
+    let mut cells = PlannedRouteCells::new();
     let (label_start_x, label_end_x);
 
     if target_x > from.center_x() {
         if target_x <= from.right() {
-            return None;
+            return Ok(None);
         }
 
         label_start_x = from.right();
         label_end_x = target_x;
-        cells.push(edge_line_cell(
-            from.right(),
-            turn_y,
-            charset.right_connector,
-        ));
+        cells.try_push(resources, || {
+            edge_line_cell(from.right(), turn_y, charset.right_connector)
+        })?;
         for x in (from.right() + 1)..target_x {
-            cells.push(route_cell(x, turn_y, horizontal));
+            cells.try_push(resources, || route_cell(x, turn_y, horizontal))?;
         }
-        cells.push(route_cell(target_x, turn_y, charset.top_right));
+        cells.try_push(resources, || {
+            route_cell(target_x, turn_y, charset.top_right)
+        })?;
     } else {
         if from.x <= target_x {
-            return None;
+            return Ok(None);
         }
 
         label_start_x = target_x;
         label_end_x = from.x;
-        cells.push(edge_line_cell(from.x, turn_y, charset.left_connector));
+        cells.try_push(resources, || {
+            edge_line_cell(from.x, turn_y, charset.left_connector)
+        })?;
         for x in ((target_x + 1)..from.x).rev() {
-            cells.push(route_cell(x, turn_y, horizontal));
+            cells.try_push(resources, || route_cell(x, turn_y, horizontal))?;
         }
-        cells.push(route_cell(target_x, turn_y, charset.top_left));
+        cells.try_push(resources, || route_cell(target_x, turn_y, charset.top_left))?;
     }
 
     for y in (turn_y + 1)..end_y {
-        cells.push(route_cell(target_x, y, vertical));
+        cells.try_push(resources, || route_cell(target_x, y, vertical))?;
     }
-    cells.push(match edge.arrow {
+    cells.try_push(resources, || match edge.arrow {
         GraphEdgeArrow::Open => route_cell(target_x, end_y, vertical),
         GraphEdgeArrow::Point => edge_arrow_cell(target_x, end_y, charset.arrow_down),
-    });
+    })?;
 
     let labels = planned_label(
         edge.label.as_deref(),
@@ -132,7 +168,7 @@ fn plan_top_down_side_bend_route(
     .into_iter()
     .collect();
 
-    Some(RoutePlan::new(cells, labels))
+    Ok(Some(RoutePlan::new(cells.into_vec(), labels)))
 }
 
 fn plan_top_down_drop_then_turn_route(
@@ -140,43 +176,48 @@ fn plan_top_down_drop_then_turn_route(
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
     charset: &GraphCharset,
-) -> Option<RoutePlan> {
-    let end_y = to.y.checked_sub(1)?;
+    resources: &mut ResourceContext,
+) -> Result<Option<RoutePlan>> {
+    let Some(end_y) = to.y.checked_sub(1) else {
+        return Ok(None);
+    };
     if end_y <= from.bottom() {
-        return None;
+        return Ok(None);
     }
 
     let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
     let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
     let source_x = from.center_x();
     let target_x = to.center_x();
-    let mut cells = Vec::new();
+    let mut cells = PlannedRouteCells::new();
 
-    cells.push(edge_line_cell(
-        source_x,
-        from.bottom(),
-        charset.down_connector,
-    ));
+    cells.try_push(resources, || {
+        edge_line_cell(source_x, from.bottom(), charset.down_connector)
+    })?;
     for y in (from.bottom() + 1)..end_y {
-        cells.push(route_cell(source_x, y, vertical));
+        cells.try_push(resources, || route_cell(source_x, y, vertical))?;
     }
 
     if target_x > source_x {
-        cells.push(route_cell(source_x, end_y, charset.corner_down_right));
+        cells.try_push(resources, || {
+            route_cell(source_x, end_y, charset.corner_down_right)
+        })?;
         for x in (source_x + 1)..target_x {
-            cells.push(route_cell(x, end_y, horizontal));
+            cells.try_push(resources, || route_cell(x, end_y, horizontal))?;
         }
     } else {
-        cells.push(route_cell(source_x, end_y, charset.corner_right_up));
+        cells.try_push(resources, || {
+            route_cell(source_x, end_y, charset.corner_right_up)
+        })?;
         for x in ((target_x + 1)..source_x).rev() {
-            cells.push(route_cell(x, end_y, horizontal));
+            cells.try_push(resources, || route_cell(x, end_y, horizontal))?;
         }
     }
 
-    cells.push(match edge.arrow {
+    cells.try_push(resources, || match edge.arrow {
         GraphEdgeArrow::Open => route_cell(target_x, end_y, horizontal),
         GraphEdgeArrow::Point => edge_arrow_cell(target_x, end_y, charset.arrow_down),
-    });
+    })?;
 
     let labels = planned_label(
         edge.label.as_deref(),
@@ -193,39 +234,54 @@ fn plan_top_down_drop_then_turn_route(
     .into_iter()
     .collect();
 
-    Some(RoutePlan::new(cells, labels))
+    Ok(Some(RoutePlan::new(cells.into_vec(), labels)))
 }
 
+#[cfg(test)]
 pub(super) fn plan_top_down_side_entry_route(
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
     charset: &GraphCharset,
 ) -> Option<RoutePlan> {
+    let mut resources = super::unbounded_route_resources();
+    plan_top_down_side_entry_route_with_resources(from, to, edge, charset, &mut resources)
+        .expect("test route planning work must remain representable")
+}
+
+pub(super) fn plan_top_down_side_entry_route_with_resources(
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+    resources: &mut ResourceContext,
+) -> Result<Option<RoutePlan>> {
     let y = from.center_y();
     if y < to.y || y > to.bottom() {
-        return None;
+        return Ok(None);
     }
 
     let line = edge_line_char(edge, charset, GraphDirection::LeftRight);
-    let mut cells = Vec::new();
+    let mut cells = PlannedRouteCells::new();
 
     if from.center_x() < to.center_x() {
         if to.x <= from.right() + 1 {
-            return None;
+            return Ok(None);
         }
         if charset.unicode {
-            cells.push(edge_line_cell(from.right(), y, charset.right_connector));
+            cells.try_push(resources, || {
+                edge_line_cell(from.right(), y, charset.right_connector)
+            })?;
         }
         let start = from.right() + 1;
         let end = to.x - 1;
         for x in start..end {
-            cells.push(route_cell(x, y, line));
+            cells.try_push(resources, || route_cell(x, y, line))?;
         }
-        cells.push(match edge.arrow {
+        cells.try_push(resources, || match edge.arrow {
             GraphEdgeArrow::Open => route_cell(end, y, line),
             GraphEdgeArrow::Point => edge_arrow_cell(end, y, charset.arrow_right),
-        });
+        })?;
 
         let labels = planned_label(
             edge.label.as_deref(),
@@ -236,23 +292,25 @@ pub(super) fn plan_top_down_side_entry_route(
         .into_iter()
         .collect();
 
-        return Some(RoutePlan::new(cells, labels));
+        return Ok(Some(RoutePlan::new(cells.into_vec(), labels)));
     }
 
     if from.x <= to.right() + 1 {
-        return None;
+        return Ok(None);
     }
     if charset.unicode {
-        cells.push(edge_line_cell(from.x, y, charset.left_connector));
+        cells.try_push(resources, || {
+            edge_line_cell(from.x, y, charset.left_connector)
+        })?;
     }
     let start = to.right() + 1;
     let end = from.x - 1;
-    cells.push(match edge.arrow {
+    cells.try_push(resources, || match edge.arrow {
         GraphEdgeArrow::Open => route_cell(start, y, line),
         GraphEdgeArrow::Point => edge_arrow_cell(start, y, charset.arrow_left),
-    });
+    })?;
     for x in (start + 1)..from.x {
-        cells.push(route_cell(x, y, line));
+        cells.try_push(resources, || route_cell(x, y, line))?;
     }
 
     let labels = planned_label(
@@ -264,54 +322,68 @@ pub(super) fn plan_top_down_side_entry_route(
     .into_iter()
     .collect();
 
-    Some(RoutePlan::new(cells, labels))
+    Ok(Some(RoutePlan::new(cells.into_vec(), labels)))
 }
 
+#[cfg(test)]
 pub(super) fn plan_top_down_back_route(
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
     charset: &GraphCharset,
 ) -> Option<RoutePlan> {
+    let mut resources = super::unbounded_route_resources();
+    plan_top_down_back_route_with_resources(from, to, edge, charset, &mut resources)
+        .expect("test route planning work must remain representable")
+}
+
+pub(super) fn plan_top_down_back_route_with_resources(
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+    resources: &mut ResourceContext,
+) -> Result<Option<RoutePlan>> {
     let lane_x = top_down_back_edge_lane_x(from, to);
     let source_y = from.center_y();
     let target_y = to.center_y();
     if source_y <= target_y || lane_x <= from.right() {
-        return None;
+        return Ok(None);
     }
 
     let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
     let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
-    let mut cells = vec![edge_line_cell(
-        from.right(),
-        source_y,
-        charset.right_connector,
-    )];
+    let mut cells = PlannedRouteCells::new();
+    cells.try_push(resources, || {
+        edge_line_cell(from.right(), source_y, charset.right_connector)
+    })?;
 
     for x in (from.right() + 1)..lane_x {
-        cells.push(route_cell(x, source_y, horizontal));
+        cells.try_push(resources, || route_cell(x, source_y, horizontal))?;
     }
-    cells.push(route_cell(lane_x, source_y, charset.corner_right_up));
+    cells.try_push(resources, || {
+        route_cell(lane_x, source_y, charset.corner_right_up)
+    })?;
 
     for y in (target_y + 1)..source_y {
-        cells.push(route_cell(lane_x, y, vertical));
+        cells.try_push(resources, || route_cell(lane_x, y, vertical))?;
     }
-    cells.push(route_cell(lane_x, target_y, charset.top_right));
+    cells.try_push(resources, || {
+        route_cell(lane_x, target_y, charset.top_right)
+    })?;
 
     match edge.arrow {
         GraphEdgeArrow::Open => {
             for x in (to.right() + 1)..lane_x {
-                cells.push(route_cell(x, target_y, horizontal));
+                cells.try_push(resources, || route_cell(x, target_y, horizontal))?;
             }
         }
         GraphEdgeArrow::Point => {
-            cells.push(edge_arrow_cell(
-                to.right() + 1,
-                target_y,
-                charset.arrow_left,
-            ));
+            cells.try_push(resources, || {
+                edge_arrow_cell(to.right() + 1, target_y, charset.arrow_left)
+            })?;
             for x in (to.right() + 2)..lane_x {
-                cells.push(route_cell(x, target_y, horizontal));
+                cells.try_push(resources, || route_cell(x, target_y, horizontal))?;
             }
         }
     }
@@ -330,9 +402,12 @@ pub(super) fn plan_top_down_back_route(
         )
     });
 
-    Some(RoutePlan::with_min_canvas_extent(
-        cells, labels, min_width, 0,
-    ))
+    Ok(Some(RoutePlan::with_min_canvas_extent(
+        cells.into_vec(),
+        labels,
+        min_width,
+        0,
+    )))
 }
 
 pub(super) fn top_down_back_edge_lane_x(from: &NodeLayout, to: &NodeLayout) -> usize {

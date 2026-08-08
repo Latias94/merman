@@ -1,8 +1,6 @@
-use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
-use crate::safe_text::encode_text_lines;
-use crate::text::{
-    normalize_optional_text, push_wrapped_prefixed_line_with_profile, trim_trailing_blank_lines,
-};
+use crate::Result;
+use crate::options::AsciiRenderOptions;
+use crate::safe_text::BudgetedTextDocument;
 use merman_core::diagrams::timeline::{TimelineDiagramRenderModel, TimelineRenderTask};
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
@@ -10,24 +8,21 @@ const SUMMARY_WRAP_WIDTH: usize = 80;
 pub fn render_timeline_diagram(
     model: &TimelineDiagramRenderModel,
     options: &AsciiRenderOptions,
-) -> String {
-    let mut lines = Vec::new();
+) -> Result<String> {
+    let mut document = BudgetedTextDocument::new(options);
 
-    if let Some(title) = normalize_optional_text(model.title.as_deref()) {
-        lines.push(title);
-    }
-    if let Some(acc_title) = normalize_optional_text(model.acc_title.as_deref()) {
-        lines.push(format!("accTitle: {acc_title}"));
-    }
-    if let Some(acc_descr) = normalize_optional_text(model.acc_descr.as_deref()) {
-        lines.push(format!("accDescr: {acc_descr}"));
-    }
+    document.push_optional_line(model.title.as_deref())?;
+    document.push_optional_prefixed_line("accTitle: ", model.acc_title.as_deref())?;
+    document.push_optional_prefixed_line("accDescr: ", model.acc_descr.as_deref())?;
 
     if !model.sections.is_empty() {
         for section in &model.sections {
-            lines.push(format!("section: {section}"));
+            document.push_line_with(|line| {
+                line.push_str("section: ")?;
+                line.push_str(section)
+            })?;
             for task in model.tasks.iter().filter(|task| task.section == *section) {
-                push_task(&mut lines, task, options.terminal_width_profile);
+                push_task(&mut document, task)?;
             }
         }
 
@@ -37,43 +32,29 @@ pub fn render_timeline_diagram(
                 .iter()
                 .any(|section| section == &task.section)
         }) {
-            push_task(&mut lines, task, options.terminal_width_profile);
+            push_task(&mut document, task)?;
         }
     } else {
         for task in &model.tasks {
-            push_task(&mut lines, task, options.terminal_width_profile);
+            push_task(&mut document, task)?;
         }
     }
 
-    encode_text_lines(trim_trailing_blank_lines(lines), options)
+    document.finish(options)
 }
 
-fn push_task(
-    lines: &mut Vec<String>,
-    task: &TimelineRenderTask,
-    width_profile: TerminalWidthProfile,
-) {
-    let score = if task.score == 0 {
-        String::new()
-    } else {
-        format!(" (score {})", task.score)
-    };
-    push_wrapped_prefixed_line_with_profile(
-        lines,
-        "  - ",
-        "    ",
-        &format!("{}{score}", task.task),
-        SUMMARY_WRAP_WIDTH,
-        width_profile,
-    );
+fn push_task(document: &mut BudgetedTextDocument, task: &TimelineRenderTask) -> Result<()> {
+    document.resources_mut().charge_layout_work(1)?;
+    document.push_wrapped_prefixed_line_with("  - ", "    ", SUMMARY_WRAP_WIDTH, |line| {
+        line.push_str(&task.task)?;
+        if task.score != 0 {
+            line.write_fmt(format_args!(" (score {})", task.score))?;
+        }
+        Ok(())
+    })?;
     for event in &task.events {
-        push_wrapped_prefixed_line_with_profile(
-            lines,
-            "    * ",
-            "      ",
-            event,
-            SUMMARY_WRAP_WIDTH,
-            width_profile,
-        );
+        document.resources_mut().charge_layout_work(1)?;
+        document.push_wrapped_prefixed_line("    * ", "      ", event, SUMMARY_WRAP_WIDTH)?;
     }
+    Ok(())
 }

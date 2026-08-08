@@ -400,8 +400,18 @@ if (hasCapability("svg")) {
 const resourceLimitIds = runtimeCatalog.resources.limits
   .map((limit) => limit.id)
   .sort();
+const generatedAsciiResourceLimitIds = api.RESOURCE_LIMIT_IDS
+  .filter((id) => id.startsWith("max_ascii_"));
+assert.deepEqual(generatedAsciiResourceLimitIds, [
+  "max_ascii_grid_cells",
+  "max_ascii_layout_work_units",
+  "max_ascii_document_cells",
+  "max_ascii_output_bytes",
+  "max_ascii_grapheme_bytes",
+  "max_ascii_nesting_depth",
+]);
 const expectedResourceLimitIds = [
-  ...(hasCapability("ascii") ? ["max_ascii_grid_cells"] : []),
+  ...(hasCapability("ascii") ? generatedAsciiResourceLimitIds : []),
   ...(hasCapability("analysis") ? ["max_document_diagrams"] : []),
   ...(hasCapability("svg") ? ["max_layout_work_units"] : []),
   "max_model_items",

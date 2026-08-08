@@ -1704,16 +1704,22 @@ pub(crate) fn binding_input_resource_policy(
 }
 
 #[cfg(feature = "ascii")]
-pub(crate) fn binding_ascii_grid_cells(
+pub(crate) fn binding_ascii_resource_policy(
     resources: Option<&ResourceOptionsJson>,
-) -> Result<usize, BindingError> {
-    let default_resources = ResourceOptionsJson::default();
-    let values = effective_resource_limits(resources.unwrap_or(&default_resources))?;
-    Ok(values
-        .get(merman::ascii::MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID)
-        .copied()
-        .flatten()
-        .unwrap_or(usize::MAX))
+) -> Result<merman::ascii::AsciiResourcePolicy, BindingError> {
+    let profile = binding_resource_profile(resources)?;
+    let mut policy = merman::ascii::AsciiResourcePolicy::for_profile(profile);
+    if let Some(resources) = resources {
+        for (id, value) in &resources.limits {
+            let Some(ascii_id) = merman::ascii::AsciiResourceLimitId::from_stable_id(id) else {
+                continue;
+            };
+            policy.apply_limit(ascii_id, *value).map_err(|error| {
+                BindingError::new(BindingStatus::InvalidArgument, error.to_string())
+            })?;
+        }
+    }
+    Ok(policy)
 }
 
 #[cfg(feature = "svg")]
@@ -1737,7 +1743,13 @@ pub(crate) fn binding_resource_policy(
     Ok(limits)
 }
 
-#[cfg(any(feature = "svg", feature = "png", feature = "jpeg", feature = "pdf"))]
+#[cfg(any(
+    feature = "ascii",
+    feature = "svg",
+    feature = "png",
+    feature = "jpeg",
+    feature = "pdf"
+))]
 fn binding_resource_profile(
     resources: Option<&ResourceOptionsJson>,
 ) -> Result<merman::resources::ResourceProfile, BindingError> {

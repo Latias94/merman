@@ -1,20 +1,215 @@
 use super::layout::SequenceLayout;
 use crate::color::AsciiColorRole;
+use crate::error::{AsciiError, Result};
+use crate::resource::{AsciiResourceLimitId, ResourceContext};
+use crate::safe_text::{SafeLine, SafeText};
 use crate::text::StyledLine;
 
 pub(super) type SequenceLine = StyledLine;
 
-pub(super) fn padded_line(mut line: SequenceLine, width: usize) -> SequenceLine {
-    line.pad_to(width);
-    line
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(super) struct SequenceBatchExtent {
+    height: usize,
+    materialized_width: usize,
+    retained_width: usize,
+    document_cells: usize,
+    work_units: usize,
+}
+
+impl SequenceBatchExtent {
+    pub(super) fn from_line_lengths(
+        materialized_width: usize,
+        lengths: impl IntoIterator<Item = usize>,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        Self::try_from_line_lengths(materialized_width, lengths.into_iter().map(Ok), resources)
+    }
+
+    pub(super) fn try_from_line_lengths(
+        materialized_width: usize,
+        lengths: impl IntoIterator<Item = Result<usize>>,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        let mut extent = Self {
+            materialized_width,
+            ..Self::default()
+        };
+        for length in lengths {
+            let length = length?;
+            extent.height = resources.checked_grid_add(extent.height, 1)?;
+            extent.retained_width = extent.retained_width.max(length);
+            extent.document_cells = extent.document_cells.checked_add(length).ok_or_else(|| {
+                resources
+                    .policy()
+                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
+            })?;
+            extent.work_units = resources.checked_work_add(extent.work_units, length.max(1))?;
+        }
+        extent.materialized_width = extent.materialized_width.max(extent.retained_width);
+        Ok(extent)
+    }
+
+    pub(super) fn uniform(
+        height: usize,
+        materialized_width: usize,
+        retained_width: usize,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        let document_cells = retained_width.checked_mul(height).ok_or_else(|| {
+            resources
+                .policy()
+                .overflow(AsciiResourceLimitId::MaxDocumentCells)
+        })?;
+        let work_units = resources.checked_work_mul(retained_width.max(1), height)?;
+        Ok(Self {
+            height,
+            materialized_width: materialized_width.max(retained_width),
+            retained_width,
+            document_cells,
+            work_units,
+        })
+    }
+
+    pub(super) const fn height(self) -> usize {
+        self.height
+    }
+
+    #[cfg(test)]
+    pub(super) const fn materialized_width(self) -> usize {
+        self.materialized_width
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(super) struct SequenceExtentLedger {
+    height: usize,
+    retained_width: usize,
+    document_cells: usize,
+}
+
+impl SequenceExtentLedger {
+    pub(super) fn reserve(
+        &self,
+        batch: SequenceBatchExtent,
+        resources: &mut ResourceContext,
+    ) -> Result<SequenceExtentReservation> {
+        let height = resources.checked_grid_add(self.height, batch.height)?;
+        let materialized_width = self.retained_width.max(batch.materialized_width);
+        resources.grid_extent(materialized_width, height)?;
+
+        let document_cells = self
+            .document_cells
+            .checked_add(batch.document_cells)
+            .ok_or_else(|| {
+                resources
+                    .policy()
+                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
+            })?;
+        resources
+            .policy()
+            .check(AsciiResourceLimitId::MaxDocumentCells, document_cells)?;
+        resources.charge_layout_work(batch.work_units)?;
+
+        Ok(SequenceExtentReservation {
+            batch,
+            next: Self {
+                height,
+                retained_width: self.retained_width.max(batch.retained_width),
+                document_cells,
+            },
+        })
+    }
+
+    #[cfg(test)]
+    pub(super) const fn height(self) -> usize {
+        self.height
+    }
+
+    #[cfg(test)]
+    pub(super) const fn document_cells(self) -> usize {
+        self.document_cells
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct SequenceExtentReservation {
+    batch: SequenceBatchExtent,
+    next: SequenceExtentLedger,
+}
+
+impl SequenceExtentReservation {
+    pub(super) fn commit(
+        self,
+        ledger: &mut SequenceExtentLedger,
+        lines: &[SequenceLine],
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        let actual = SequenceBatchExtent::from_line_lengths(
+            self.batch.materialized_width,
+            lines.iter().map(SequenceLine::len),
+            resources,
+        )?;
+        if actual.height != self.batch.height
+            || actual.retained_width != self.batch.retained_width
+            || actual.document_cells != self.batch.document_cells
+            || actual.work_units != self.batch.work_units
+        {
+            return Err(invalid_extent_plan());
+        }
+        *ledger = self.next;
+        Ok(())
+    }
+}
+
+fn invalid_extent_plan() -> AsciiError {
+    AsciiError::UnsupportedFeature {
+        diagram_type: "sequence",
+        feature: "row extent planning",
+    }
+}
+
+pub(super) fn blank_line(
+    width: usize,
+    width_profile: crate::options::TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<SequenceLine> {
+    SequenceLine::try_blank_with_policy(width, width_profile, resources.policy())
+}
+
+pub(super) fn charge_text_work(
+    value: &str,
+    width_profile: crate::options::TerminalWidthProfile,
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    resources.charge_layout_work(1)?;
+    let text = SafeText::new(value);
+    for logical_line in text.lines() {
+        let line = SafeLine::new(logical_line);
+        for grapheme in line.graphemes(width_profile) {
+            resources.check_grapheme_bytes(grapheme.text().len())?;
+            resources.charge_layout_work(1)?;
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn padded_line(mut line: SequenceLine, width: usize) -> Result<SequenceLine> {
+    line.try_pad_to(width)?;
+    Ok(line)
 }
 
 pub(super) fn ensure_self_width(
     line: SequenceLine,
     layout: &SequenceLayout,
     needed: usize,
-) -> SequenceLine {
-    let width = (layout.total_width + layout.self_message_width + 1).max(needed);
+    resources: &ResourceContext,
+) -> Result<SequenceLine> {
+    let width = resources
+        .checked_grid_add(
+            resources.checked_grid_add(layout.total_width, layout.self_message_width)?,
+            1,
+        )?
+        .max(needed);
     padded_line(line, width)
 }
 
@@ -23,10 +218,167 @@ pub(super) fn write_text_role(
     start: usize,
     text: &str,
     role: AsciiColorRole,
-) {
-    line.write_text_role(start, text, role);
+) -> Result<()> {
+    line.try_write_text_role(start, text, role)
 }
 
-pub(super) fn trim_right(line: SequenceLine) -> SequenceLine {
-    line.trim_right()
+pub(super) fn trim_right(line: SequenceLine) -> Result<SequenceLine> {
+    Ok(line.trim_right())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell;
+
+    use super::*;
+    use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
+
+    #[test]
+    fn extent_ledger_accepts_exact_grid_and_document_limits() {
+        let options = AsciiRenderOptions::ascii()
+            .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 12)
+            .unwrap()
+            .with_resource_limit(AsciiResourceLimitId::MaxDocumentCells, 12)
+            .unwrap();
+        let mut resources = ResourceContext::new(options.resources);
+        let mut ledger = SequenceExtentLedger::default();
+
+        commit_uniform_batch(&mut ledger, 2, 4, &mut resources).unwrap();
+        commit_uniform_batch(&mut ledger, 1, 4, &mut resources).unwrap();
+
+        assert_eq!(ledger.height(), 3);
+        assert_eq!(ledger.document_cells(), 12);
+    }
+
+    #[test]
+    fn extent_ledger_rejects_limit_minus_one_with_exact_aggregate_counts() {
+        for limit in [
+            AsciiResourceLimitId::MaxGridCells,
+            AsciiResourceLimitId::MaxDocumentCells,
+        ] {
+            let options = AsciiRenderOptions::ascii()
+                .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 12)
+                .unwrap()
+                .with_resource_limit(AsciiResourceLimitId::MaxDocumentCells, 12)
+                .unwrap()
+                .with_resource_limit(limit, 11)
+                .unwrap();
+            let mut resources = ResourceContext::new(options.resources);
+            let mut ledger = SequenceExtentLedger::default();
+
+            commit_uniform_batch(&mut ledger, 2, 4, &mut resources).unwrap();
+            let error = reserve_uniform_batch(&ledger, 1, 4, &mut resources).unwrap_err();
+
+            assert!(matches!(
+                error,
+                AsciiError::ResourceLimitExceeded(details)
+                    if details.limit == limit && details.actual == 12 && details.max == 11
+            ));
+        }
+    }
+
+    #[test]
+    fn extent_ledger_accepts_exact_work_and_rejects_limit_minus_one() {
+        let exact = AsciiRenderOptions::ascii()
+            .with_resource_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 12)
+            .unwrap();
+        let mut exact_resources = ResourceContext::new(exact.resources);
+        let mut exact_ledger = SequenceExtentLedger::default();
+        commit_uniform_batch(&mut exact_ledger, 2, 4, &mut exact_resources).unwrap();
+        commit_uniform_batch(&mut exact_ledger, 1, 4, &mut exact_resources).unwrap();
+        assert_eq!(exact_resources.layout_work_used(), 12);
+
+        let below = AsciiRenderOptions::ascii()
+            .with_resource_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 11)
+            .unwrap();
+        let mut below_resources = ResourceContext::new(below.resources);
+        let mut below_ledger = SequenceExtentLedger::default();
+        commit_uniform_batch(&mut below_ledger, 2, 4, &mut below_resources).unwrap();
+        let error = reserve_uniform_batch(&below_ledger, 1, 4, &mut below_resources).unwrap_err();
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual == 12
+                    && details.max == 11
+        ));
+    }
+
+    #[test]
+    fn combined_grid_rejects_before_the_next_batch_is_materialized() {
+        let options = AsciiRenderOptions::ascii()
+            .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 100)
+            .unwrap();
+        let mut resources = ResourceContext::new(options.resources);
+        let mut ledger = SequenceExtentLedger::default();
+        commit_uniform_batch(&mut ledger, 9, 10, &mut resources).unwrap();
+
+        let materialized = Cell::new(false);
+        let result = (|| {
+            let reservation = reserve_uniform_batch(&ledger, 9, 10, &mut resources)?;
+            materialized.set(true);
+            let lines = uniform_lines(9, 10, &resources)?;
+            reservation.commit(&mut ledger, &lines, &resources)
+        })();
+
+        let error = result.unwrap_err();
+        assert!(!materialized.get());
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxGridCells
+                    && details.actual == 180
+                    && details.max == 100
+        ));
+    }
+
+    #[test]
+    fn next_batch_work_charge_is_independent_of_retained_history() {
+        let short = next_batch_work_delta(1);
+        let long = next_batch_work_delta(1_024);
+
+        assert_eq!(short, 7);
+        assert_eq!(long, short);
+    }
+
+    fn next_batch_work_delta(history_rows: usize) -> usize {
+        let options = AsciiRenderOptions::ascii();
+        let mut resources = ResourceContext::new(options.resources);
+        let mut ledger = SequenceExtentLedger::default();
+        commit_uniform_batch(&mut ledger, history_rows, 4, &mut resources).unwrap();
+        let before = resources.layout_work_used();
+        commit_uniform_batch(&mut ledger, 1, 7, &mut resources).unwrap();
+        resources.layout_work_used() - before
+    }
+
+    fn reserve_uniform_batch(
+        ledger: &SequenceExtentLedger,
+        height: usize,
+        width: usize,
+        resources: &mut ResourceContext,
+    ) -> Result<SequenceExtentReservation> {
+        let batch = SequenceBatchExtent::uniform(height, width, width, resources)?;
+        ledger.reserve(batch, resources)
+    }
+
+    fn commit_uniform_batch(
+        ledger: &mut SequenceExtentLedger,
+        height: usize,
+        width: usize,
+        resources: &mut ResourceContext,
+    ) -> Result<()> {
+        let reservation = reserve_uniform_batch(ledger, height, width, resources)?;
+        let lines = uniform_lines(height, width, resources)?;
+        reservation.commit(ledger, &lines, resources)
+    }
+
+    fn uniform_lines(
+        height: usize,
+        width: usize,
+        resources: &ResourceContext,
+    ) -> Result<Vec<SequenceLine>> {
+        (0..height)
+            .map(|_| blank_line(width, TerminalWidthProfile::Unicode, resources))
+            .collect()
+    }
 }

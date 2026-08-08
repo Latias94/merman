@@ -1,14 +1,19 @@
 pub use merman_ascii::{
-    ASCII_RESOURCE_LIMIT_DESCRIPTORS, AsciiCapability, AsciiCapabilityEvidence, AsciiCharset,
-    AsciiColorMode, AsciiColorTheme, AsciiDirection, AsciiError, AsciiEvidenceKind,
-    AsciiPrimaryProjection, AsciiRenderOptions, AsciiRenderer, AsciiResourceLimitDescriptor,
-    AsciiRgb, AsciiSemanticCoverage, AsciiSupportLevel, AsciiTerminalPalette,
-    MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID, TerminalWidthProfile, ascii_capabilities,
-    ascii_diagrammatic_diagram_types, ascii_resource_profile_value, ascii_supported_diagram_types,
-    render_class, render_er, render_flowchart, render_gantt, render_gantt_with_local_time_zone,
-    render_git_graph, render_journey, render_kanban, render_mindmap, render_model,
-    render_model_with_local_time_zone, render_packet, render_sequence, render_state,
-    render_timeline, render_tree_view, render_xychart,
+    ASCII_RESOURCE_LIMIT_COUNT, ASCII_RESOURCE_LIMIT_DESCRIPTORS, AsciiCapability,
+    AsciiCapabilityEvidence, AsciiCharset, AsciiColorMode, AsciiColorTheme, AsciiDirection,
+    AsciiError, AsciiEvidenceKind, AsciiPrimaryProjection, AsciiRenderOptions, AsciiRenderer,
+    AsciiResourceLimitDescriptor, AsciiResourceLimitExceeded, AsciiResourceLimitId,
+    AsciiResourceLimitOverrideError, AsciiResourceLimitPhase, AsciiResourcePolicy, AsciiRgb,
+    AsciiSemanticCoverage, AsciiSupportLevel, AsciiTerminalPalette,
+    MAX_ASCII_DOCUMENT_CELLS_RESOURCE_LIMIT_ID, MAX_ASCII_GRAPHEME_BYTES_RESOURCE_LIMIT_ID,
+    MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID, MAX_ASCII_LAYOUT_WORK_UNITS_RESOURCE_LIMIT_ID,
+    MAX_ASCII_NESTING_DEPTH_RESOURCE_LIMIT_ID, MAX_ASCII_OUTPUT_BYTES_RESOURCE_LIMIT_ID,
+    TerminalWidthProfile, ascii_capabilities, ascii_diagrammatic_diagram_types,
+    ascii_resource_profile_value, ascii_supported_diagram_types, render_class, render_er,
+    render_flowchart, render_gantt, render_gantt_with_local_time_zone, render_git_graph,
+    render_journey, render_kanban, render_mindmap, render_model, render_model_with_local_time_zone,
+    render_packet, render_sequence, render_state, render_timeline, render_tree_view,
+    render_xychart,
 };
 pub use merman_ascii::{normalize_terminal_diagnostic, normalize_terminal_text};
 
@@ -217,9 +222,7 @@ fn safe_ascii_error(error: &merman_ascii::AsciiError) -> String {
                 "ASCII rendering does not support `{feature}` for `{diagram_type}` yet"
             ))
         }
-        merman_ascii::AsciiError::RenderLimitExceeded { actual, limit } => {
-            format!("ASCII render grid has {actual} cells, exceeding configured limit {limit}")
-        }
+        merman_ascii::AsciiError::ResourceLimitExceeded(details) => details.to_string(),
         _ => "ASCII rendering failed".to_string(),
     }
 }
@@ -244,7 +247,7 @@ fn safe_ascii_details(error: &merman_ascii::AsciiError) -> Option<HeadlessAsciiD
             Some(normalize_terminal_diagnostic(feature)),
             Some(normalize_terminal_diagnostic(diagram_type)),
         ),
-        merman_ascii::AsciiError::RenderLimitExceeded { .. } => return None,
+        merman_ascii::AsciiError::ResourceLimitExceeded(_) => return None,
         _ => ("merman.ascii.render", None, None),
     };
     Some(HeadlessAsciiDiagnosticDetails {
@@ -418,7 +421,8 @@ impl HeadlessAsciiRenderer {
     }
 
     pub fn with_ascii_options(mut self, ascii: AsciiRenderOptions) -> Self {
-        self.ascii = ascii;
+        let resources = ascii.resources.with_profile(self.resources.profile());
+        self.ascii = ascii.with_resource_policy(resources);
         self
     }
 
@@ -427,9 +431,7 @@ impl HeadlessAsciiRenderer {
         profile: merman_core::resources::ResourceProfile,
     ) -> Self {
         self.resources = merman_core::resources::InputResourcePolicy::for_profile(profile);
-        self.ascii.max_grid_cells =
-            ascii_resource_profile_value(profile, MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID)
-                .unwrap_or(usize::MAX);
+        self.ascii.resources = self.ascii.resources.with_profile(profile);
         self
     }
 
@@ -437,6 +439,7 @@ impl HeadlessAsciiRenderer {
         mut self,
         resources: merman_core::resources::InputResourcePolicy,
     ) -> Self {
+        self.ascii.resources = self.ascii.resources.with_profile(resources.profile());
         self.resources = resources;
         self
     }
@@ -488,6 +491,75 @@ mod headless_ascii_renderer_tests {
     use super::*;
     use serde_json::Value;
 
+    fn render_with_ascii_limit(
+        limit: AsciiResourceLimitId,
+        max: usize,
+        source: &str,
+    ) -> Result<Option<String>> {
+        let ascii = AsciiRenderOptions::ascii()
+            .with_resource_limit(limit, max)
+            .expect("test limit must satisfy the public minimum");
+        HeadlessAsciiRenderer::new()
+            .with_ascii_options(ascii)
+            .render_ascii_sync(source)
+    }
+
+    fn ascii_limit_details(error: HeadlessAsciiError) -> AsciiResourceLimitExceeded {
+        match error {
+            HeadlessAsciiError::Ascii(AsciiError::ResourceLimitExceeded(details)) => details,
+            other => panic!("expected typed ASCII resource error, got {other:?}"),
+        }
+    }
+
+    fn assert_headless_ascii_exact_boundary(limit: AsciiResourceLimitId, source: &str) {
+        let mut lower = 0usize;
+        let mut candidate = 1usize;
+        let upper = loop {
+            match render_with_ascii_limit(limit, candidate, source) {
+                Ok(Some(output)) => {
+                    assert!(!output.is_empty(), "{} produced no output", limit.as_str());
+                    break candidate;
+                }
+                Ok(None) => panic!("{} fixture was not detected", limit.as_str()),
+                Err(error) => {
+                    let details = ascii_limit_details(error);
+                    assert_eq!(details.limit, limit);
+                    assert_eq!(details.max, candidate);
+                    lower = candidate;
+                    candidate = details.actual.max(candidate.saturating_mul(2));
+                }
+            }
+        };
+
+        let mut upper = upper;
+        while upper - lower > 1 {
+            let candidate = lower + (upper - lower) / 2;
+            match render_with_ascii_limit(limit, candidate, source) {
+                Ok(Some(_)) => upper = candidate,
+                Ok(None) => panic!("{} fixture was not detected", limit.as_str()),
+                Err(error) => {
+                    let details = ascii_limit_details(error);
+                    assert_eq!(details.limit, limit);
+                    assert_eq!(details.max, candidate);
+                    lower = candidate;
+                }
+            }
+        }
+
+        render_with_ascii_limit(limit, upper, source)
+            .unwrap_or_else(|error| panic!("exact {} boundary failed: {error:?}", limit.as_str()))
+            .expect("fixture should render at the exact boundary");
+        let details = ascii_limit_details(
+            render_with_ascii_limit(limit, upper - 1, source)
+                .expect_err("one-below headless ASCII boundary must fail"),
+        );
+        assert_eq!(details.limit, limit);
+        assert_eq!(details.phase(), limit.descriptor().phase);
+        assert_eq!(details.actual, upper);
+        assert_eq!(details.max, upper - 1);
+        assert_eq!(details.profile.id(), "interactive");
+    }
+
     fn task_by_id<'a>(model: &'a Value, id: &str) -> &'a Value {
         model["tasks"]
             .as_array()
@@ -495,6 +567,40 @@ mod headless_ascii_renderer_tests {
             .iter()
             .find(|task| task["id"].as_str() == Some(id))
             .unwrap_or_else(|| panic!("missing Gantt task {id} in {model}"))
+    }
+
+    #[test]
+    fn headless_ascii_renderer_proves_every_ascii_limit_at_exact_boundary() {
+        let cases = [
+            (
+                AsciiResourceLimitId::MaxGridCells,
+                "flowchart TD\nA[Hello] --> B[World]",
+            ),
+            (
+                AsciiResourceLimitId::MaxLayoutWorkUnits,
+                "flowchart TD\nA[Hello] --> B[World]",
+            ),
+            (
+                AsciiResourceLimitId::MaxDocumentCells,
+                "gitGraph\n  commit id: \"A\"",
+            ),
+            (
+                AsciiResourceLimitId::MaxOutputBytes,
+                "flowchart TD\nA[Hello] --> B[World]",
+            ),
+            (
+                AsciiResourceLimitId::MaxGraphemeBytes,
+                "flowchart TD\nA[👨‍👩‍👧‍👦]",
+            ),
+            (
+                AsciiResourceLimitId::MaxNestingDepth,
+                "mindmap\n  Root\n    Child",
+            ),
+        ];
+
+        for (limit, source) in cases {
+            assert_headless_ascii_exact_boundary(limit, source);
+        }
     }
 
     #[test]
@@ -677,15 +783,64 @@ Task: task1, 2026-01-01, 1d
     fn headless_ascii_renderer_resource_profile_applies_ascii_grid_budget() {
         let constrained = HeadlessAsciiRenderer::new()
             .with_resource_profile(merman_core::resources::ResourceProfile::Constrained);
-        assert_eq!(constrained.ascii.max_grid_cells, 125_000);
+        assert_eq!(
+            constrained
+                .ascii
+                .resources
+                .value(AsciiResourceLimitId::MaxGridCells),
+            Some(125_000)
+        );
 
         let trusted = HeadlessAsciiRenderer::new()
             .with_resource_profile(merman_core::resources::ResourceProfile::TrustedNative);
-        assert_eq!(trusted.ascii.max_grid_cells, 1_000_000);
+        assert_eq!(
+            trusted
+                .ascii
+                .resources
+                .value(AsciiResourceLimitId::MaxGridCells),
+            Some(1_000_000)
+        );
 
         let unbounded = HeadlessAsciiRenderer::new().with_resource_profile(
             merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
         );
-        assert_eq!(unbounded.ascii.max_grid_cells, usize::MAX);
+        assert_eq!(
+            unbounded
+                .ascii
+                .resources
+                .value(AsciiResourceLimitId::MaxGridCells),
+            None
+        );
+    }
+
+    #[test]
+    fn ascii_options_and_resource_profile_are_order_independent() {
+        let ascii = AsciiRenderOptions::ascii()
+            .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 42)
+            .expect("valid ASCII override");
+        let profile = merman_core::resources::ResourceProfile::Constrained;
+
+        let profile_then_options = HeadlessAsciiRenderer::new()
+            .with_resource_profile(profile)
+            .with_ascii_options(ascii);
+        let options_then_profile = HeadlessAsciiRenderer::new()
+            .with_ascii_options(ascii)
+            .with_resource_profile(profile);
+
+        assert_eq!(profile_then_options.ascii, options_then_profile.ascii);
+        assert_eq!(
+            profile_then_options
+                .ascii
+                .resources
+                .value(AsciiResourceLimitId::MaxGridCells),
+            Some(42)
+        );
+        assert_eq!(
+            profile_then_options
+                .ascii
+                .resources
+                .value(AsciiResourceLimitId::MaxOutputBytes),
+            Some(8 * 1024 * 1024)
+        );
     }
 }

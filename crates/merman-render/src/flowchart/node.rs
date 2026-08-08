@@ -950,57 +950,6 @@ pub(crate) fn flowchart_node_render_dimensions(
     node_render_dimensions(layout_shape, metrics, padding, look_is_neo)
 }
 
-#[cfg(test)]
-mod render_dimension_tests {
-    use super::*;
-
-    fn metrics() -> crate::text::TextMetrics {
-        crate::text::TextMetrics {
-            width: 100.0,
-            height: 20.0,
-            line_count: 1,
-        }
-    }
-
-    #[test]
-    fn neo_uses_pinned_shape_specific_content_padding() {
-        assert_eq!(
-            node_render_dimensions(Some("squareRect"), metrics(), 15.0, true),
-            (132.0, 44.0)
-        );
-        assert_eq!(
-            node_render_dimensions(Some("stadium"), metrics(), 15.0, true),
-            (151.0, 44.0)
-        );
-        assert_eq!(
-            node_render_dimensions(Some("subroutine"), metrics(), 15.0, true),
-            (144.0, 32.0)
-        );
-
-        let (cylinder_w, cylinder_h) =
-            node_render_dimensions(Some("cylinder"), metrics(), 15.0, true);
-        let expected_ry = 62.0 / (2.5 + 124.0 / 50.0);
-        assert_eq!(cylinder_w, 124.0);
-        assert!((cylinder_h - (44.0 + 3.0 * expected_ry)).abs() < 1e-9);
-    }
-
-    #[test]
-    fn classic_shape_padding_remains_unchanged() {
-        assert_eq!(
-            node_render_dimensions(Some("squareRect"), metrics(), 15.0, false),
-            (160.0, 50.0)
-        );
-        assert_eq!(
-            node_render_dimensions(Some("stadium"), metrics(), 15.0, false),
-            (123.75, 35.0)
-        );
-        assert_eq!(
-            node_render_dimensions(Some("subroutine"), metrics(), 15.0, false),
-            (131.0, 35.0)
-        );
-    }
-}
-
 pub(crate) struct NodeLayoutDimensionsRequest<'a> {
     pub(crate) layout_shape: Option<&'a str>,
     pub(crate) layout_direction: &'a str,
@@ -1182,4 +1131,55 @@ pub(crate) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f
     }
 
     (render_w, render_h)
+}
+
+#[cfg(test)]
+mod render_dimension_tests {
+    use super::*;
+
+    fn metrics() -> crate::text::TextMetrics {
+        crate::text::TextMetrics {
+            width: 100.0,
+            height: 20.0,
+            line_count: 1,
+        }
+    }
+
+    #[test]
+    fn neo_uses_pinned_shape_specific_content_padding() {
+        assert_eq!(
+            node_render_dimensions(Some("squareRect"), metrics(), 15.0, true),
+            (132.0, 44.0)
+        );
+        assert_eq!(
+            node_render_dimensions(Some("stadium"), metrics(), 15.0, true),
+            (151.0, 44.0)
+        );
+        assert_eq!(
+            node_render_dimensions(Some("subroutine"), metrics(), 15.0, true),
+            (144.0, 32.0)
+        );
+
+        let (cylinder_w, cylinder_h) =
+            node_render_dimensions(Some("cylinder"), metrics(), 15.0, true);
+        let expected_ry = 62.0 / (2.5 + 124.0 / 50.0);
+        assert_eq!(cylinder_w, 124.0);
+        assert!((cylinder_h - (44.0 + 3.0 * expected_ry)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn classic_shape_padding_remains_unchanged() {
+        assert_eq!(
+            node_render_dimensions(Some("squareRect"), metrics(), 15.0, false),
+            (160.0, 50.0)
+        );
+        assert_eq!(
+            node_render_dimensions(Some("stadium"), metrics(), 15.0, false),
+            (123.75, 35.0)
+        );
+        assert_eq!(
+            node_render_dimensions(Some("subroutine"), metrics(), 15.0, false),
+            (131.0, 35.0)
+        );
+    }
 }

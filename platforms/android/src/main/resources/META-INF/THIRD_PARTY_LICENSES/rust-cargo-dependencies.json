@@ -59,7 +59,7 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "a26ff38860d27888969b7cc33a51254e150e5f1daa080da64718a84e858bfae8",
+    "cargo_lock_sha256": "7b946938b342e01f0afa526bed48668636eb9df81995e3ffd43249d2673cfa59",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "170b46acd9d96f720d13d68da2fd62f871345ee902e3f3399f6299cd1c07edee"
   },
@@ -67,19 +67,19 @@
     {
       "artifact_profile_id": "android-native",
       "target": "aarch64-linux-android",
-      "package_count": 227,
-      "packages_sha256": "090a6354291e43d41c33afae2cda0f92a8de96fb1062e95320dc6b763cc87c8a"
+      "package_count": 228,
+      "packages_sha256": "04ceb53e2420a3fe773f90b84293c3f694e712654fc9920e7ff1ea75e5b41323"
     },
     {
       "artifact_profile_id": "android-native",
       "target": "x86_64-linux-android",
-      "package_count": 227,
-      "packages_sha256": "090a6354291e43d41c33afae2cda0f92a8de96fb1062e95320dc6b763cc87c8a"
+      "package_count": 228,
+      "packages_sha256": "04ceb53e2420a3fe773f90b84293c3f694e712654fc9920e7ff1ea75e5b41323"
     }
   ],
   "dependency_closure": {
-    "package_count": 227,
-    "packages_sha256": "090a6354291e43d41c33afae2cda0f92a8de96fb1062e95320dc6b763cc87c8a"
+    "package_count": 228,
+    "packages_sha256": "04ceb53e2420a3fe773f90b84293c3f694e712654fc9920e7ff1ea75e5b41323"
   },
   "licenses": [
     {
@@ -1238,6 +1238,17 @@
             "Manish Goregaokar <manishsmail@gmail.com>"
           ],
           "repository": "https://github.com/unicode-rs/unicode-properties"
+        },
+        {
+          "name": "unicode-segmentation",
+          "version": "1.13.3",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Manish Goregaokar <manishsmail@gmail.com>",
+            "kwantam <kwantam@gmail.com>"
+          ],
+          "repository": "https://github.com/unicode-rs/unicode-segmentation"
         },
         {
           "name": "unicode-vo",

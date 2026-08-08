@@ -9,7 +9,10 @@ use crate::relation_graph::{
     RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
     RelationOverlay, RelationParallelPlan, RelationStackPlan,
 };
-use crate::safe_text::normalize_terminal_text;
+#[cfg(test)]
+use crate::resource::AsciiResourceLimitId;
+use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
+use crate::safe_text::{charge_text_layout, normalize_terminal_text};
 use merman_core::entities::decode_html_entities_to_unicode;
 use merman_core::models::class_diagram::{
     ClassDiagram, ClassInterface, ClassMember, ClassNode, ClassNote, ClassRelation, Namespace,
@@ -95,9 +98,80 @@ impl ClassCharset {
 
 type RenderedClassBox = RelationGraphBox;
 
-struct ClassRelationComponentAdapter {
+#[derive(Debug)]
+struct ClassNoteIndex<'a> {
+    by_id: HashMap<&'a str, &'a ClassNote>,
+}
+
+impl<'a> ClassNoteIndex<'a> {
+    fn new(notes: &'a [ClassNote], resources: &mut ResourceContext) -> Result<Self> {
+        resources.charge_layout_work(notes.len())?;
+        let mut by_id = HashMap::new();
+        by_id
+            .try_reserve(notes.len())
+            .map_err(|_| layout_allocation_failed())?;
+        for note in notes {
+            // Preserve the previous linear lookup's first-match behavior for duplicate ids.
+            by_id.entry(note.id.as_str()).or_insert(note);
+        }
+        Ok(Self { by_id })
+    }
+
+    fn get(&self, id: &str, resources: &mut ResourceContext) -> Result<Option<&'a ClassNote>> {
+        resources.charge_layout_work(1)?;
+        Ok(self.by_id.get(id).copied())
+    }
+}
+
+#[derive(Debug)]
+struct RenderedClassBoxIndex<'a> {
+    by_id: HashMap<&'a str, &'a RenderedClassBox>,
+}
+
+impl<'a> RenderedClassBoxIndex<'a> {
+    fn new(boxes: &'a [RenderedClassBox], resources: &mut ResourceContext) -> Result<Self> {
+        resources.charge_layout_work(boxes.len())?;
+        let mut by_id = HashMap::new();
+        by_id
+            .try_reserve(boxes.len())
+            .map_err(|_| layout_allocation_failed())?;
+        for relation_box in boxes {
+            // Preserve the previous linear lookup's first-match behavior for duplicate ids.
+            by_id.entry(relation_box.id()).or_insert(relation_box);
+        }
+        Ok(Self { by_id })
+    }
+
+    fn get(
+        &self,
+        id: &str,
+        resources: &mut ResourceContext,
+    ) -> Result<Option<&'a RenderedClassBox>> {
+        resources.charge_layout_work(1)?;
+        Ok(self.by_id.get(id).copied())
+    }
+
+    fn require(&self, id: &str, resources: &mut ResourceContext) -> Result<&'a RenderedClassBox> {
+        self.get(id, resources)?
+            .ok_or(AsciiError::UnsupportedFeature {
+                diagram_type: "class",
+                feature: "relationships with missing endpoint classes",
+            })
+    }
+}
+
+struct ClassRelationComponentAdapter<'index, 'boxes> {
     charset: ClassCharset,
     width_profile: TerminalWidthProfile,
+    box_by_id: &'index RenderedClassBoxIndex<'boxes>,
+}
+
+struct NamespaceRenderContext<'a> {
+    model: &'a ClassDiagram,
+    options: &'a AsciiRenderOptions,
+    charset: ClassCharset,
+    namespace_facade_aliases: &'a HashMap<String, String>,
+    note_by_id: ClassNoteIndex<'a>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,44 +216,70 @@ pub(crate) fn render_class_diagram(
     model: &ClassDiagram,
     options: &AsciiRenderOptions,
 ) -> Result<String> {
+    let mut resources = ResourceContext::new(options.resources);
+    preflight_class_text(model, &mut resources)?;
+    charge_class_model_work(model, &mut resources)?;
     let charset = ClassCharset::for_options(options);
-    let namespace_facade_aliases = namespace_facade_aliases(model);
+    let namespace_facade_aliases = namespace_facade_aliases(model)?;
     if has_renderable_namespaces(model) {
-        return render_namespaced_class_diagram(model, options, charset, &namespace_facade_aliases);
+        return render_namespaced_class_diagram(
+            model,
+            options,
+            charset,
+            &namespace_facade_aliases,
+            &mut resources,
+        );
     }
 
-    let boxes = render_class_boxes(model, options, charset, &namespace_facade_aliases);
+    let boxes = render_class_boxes(
+        model,
+        options,
+        charset,
+        &namespace_facade_aliases,
+        &mut resources,
+    )?;
     if boxes.is_empty() {
-        return Ok(relation_graph::render_stacked_boxes_with_options(
-            &boxes, options,
-        ));
+        return relation_graph::render_stacked_boxes_with_options(&boxes, options, &mut resources);
     }
+    let box_by_id = RenderedClassBoxIndex::new(&boxes, &mut resources)?;
 
-    let mut layouts = model
+    let layout_capacity = model
         .relations
-        .iter()
-        .map(|relation| {
-            relation_layout(
-                model,
-                relation,
-                &namespace_facade_aliases,
-                options.terminal_width_profile,
-            )
-        })
-        .collect::<Result<Vec<_>>>()?;
+        .len()
+        .checked_add(model.notes.len())
+        .ok_or_else(|| work_overflow(&resources))?;
+    let mut layouts = Vec::new();
+    layouts
+        .try_reserve_exact(layout_capacity)
+        .map_err(|_| layout_allocation_failed())?;
+    for relation in &model.relations {
+        layouts.push(relation_layout(
+            model,
+            relation,
+            &namespace_facade_aliases,
+            options.terminal_width_profile,
+            &resources,
+        )?);
+    }
     layouts.extend(note_relation_layouts(
         model,
         &namespace_facade_aliases,
-        &boxes,
-    ));
+        &box_by_id,
+        &mut resources,
+    )?);
 
     if layouts.is_empty() {
-        return Ok(relation_graph::render_stacked_boxes_with_options(
-            &boxes, options,
-        ));
+        return relation_graph::render_stacked_boxes_with_options(&boxes, options, &mut resources);
     }
 
-    render_class_components(&boxes, &layouts, options, charset)
+    render_class_components(
+        &boxes,
+        &box_by_id,
+        &layouts,
+        options,
+        charset,
+        &mut resources,
+    )
 }
 
 fn has_renderable_namespaces(model: &ClassDiagram) -> bool {
@@ -198,44 +298,57 @@ fn render_namespaced_class_diagram(
     options: &AsciiRenderOptions,
     charset: ClassCharset,
     namespace_facade_aliases: &HashMap<String, String>,
+    resources: &mut ResourceContext,
 ) -> Result<String> {
-    let boxes = render_namespaced_class_boxes(model, options, charset, namespace_facade_aliases)?;
-    let external_layouts = model
-        .relations
-        .iter()
-        .filter(|relation| {
-            relation_explicit_namespace_id(model, relation, namespace_facade_aliases).is_none()
-        })
-        .map(|relation| {
-            relation_layout(
-                model,
-                relation,
-                namespace_facade_aliases,
-                options.terminal_width_profile,
-            )
-        })
-        .collect::<Result<Vec<_>>>()?;
-    let mut summary_rows = external_layouts
-        .iter()
-        .map(class_relation_summary_row)
-        .collect::<Result<Vec<_>>>()?;
+    let boxes = render_namespaced_class_boxes(
+        model,
+        options,
+        charset,
+        namespace_facade_aliases,
+        resources,
+    )?;
+    let mut external_layouts = Vec::new();
+    external_layouts
+        .try_reserve_exact(model.relations.len())
+        .map_err(|_| layout_allocation_failed())?;
+    for relation in model.relations.iter().filter(|relation| {
+        relation_explicit_namespace_id(model, relation, namespace_facade_aliases).is_none()
+    }) {
+        external_layouts.push(relation_layout(
+            model,
+            relation,
+            namespace_facade_aliases,
+            options.terminal_width_profile,
+            resources,
+        )?);
+    }
+    let summary_capacity = external_layouts
+        .len()
+        .checked_add(model.notes.len())
+        .ok_or_else(|| work_overflow(resources))?;
+    let mut summary_rows = Vec::new();
+    summary_rows
+        .try_reserve_exact(summary_capacity)
+        .map_err(|_| layout_allocation_failed())?;
+    for layout in &external_layouts {
+        summary_rows.push(class_relation_summary_row(layout)?);
+    }
     summary_rows.extend(external_namespace_note_summary_rows(
         model,
         namespace_facade_aliases,
-    ));
+    )?);
 
     if summary_rows.is_empty() {
-        return Ok(relation_graph::render_stacked_boxes_with_options(
-            &boxes, options,
-        ));
+        return relation_graph::render_stacked_boxes_with_options(&boxes, options, resources);
     }
 
-    Ok(relation_graph::render_stacked_boxes_with_relation_summary(
+    relation_graph::render_stacked_boxes_with_relation_summary(
         &boxes,
         &summary_rows,
         None,
         options,
-    ))
+        resources,
+    )
 }
 
 fn render_class_boxes(
@@ -243,29 +356,34 @@ fn render_class_boxes(
     options: &AsciiRenderOptions,
     charset: ClassCharset,
     namespace_facade_aliases: &HashMap<String, String>,
-) -> Vec<RenderedClassBox> {
-    let mut boxes =
-        Vec::with_capacity(model.classes.len() + model.interfaces.len() + model.notes.len());
-    boxes.extend(
-        model
-            .classes
-            .values()
-            .filter(|class| !namespace_facade_aliases.contains_key(class.id.as_str()))
-            .map(|class| render_class_box(class, options, charset)),
-    );
-    boxes.extend(
-        model
-            .interfaces
-            .iter()
-            .map(|interface| render_interface_box(interface, options, charset)),
-    );
-    boxes.extend(
-        model
-            .notes
-            .iter()
-            .map(|note| render_note_box(note, options, charset)),
-    );
+    resources: &mut ResourceContext,
+) -> Result<Vec<RenderedClassBox>> {
+    let capacity = model
+        .classes
+        .len()
+        .checked_add(model.interfaces.len())
+        .and_then(|value| value.checked_add(model.notes.len()))
+        .ok_or_else(|| work_overflow(resources))?;
+    let mut boxes = Vec::new();
     boxes
+        .try_reserve_exact(capacity)
+        .map_err(|_| layout_allocation_failed())?;
+    for class in model
+        .classes
+        .values()
+        .filter(|class| !namespace_facade_aliases.contains_key(class.id.as_str()))
+    {
+        boxes.push(render_class_box(class, options, charset, resources)?);
+    }
+    for interface in &model.interfaces {
+        boxes.push(render_interface_box(
+            interface, options, charset, resources,
+        )?);
+    }
+    for note in &model.notes {
+        boxes.push(render_note_box(note, options, charset, resources)?);
+    }
+    Ok(boxes)
 }
 
 fn render_namespaced_class_boxes(
@@ -273,9 +391,35 @@ fn render_namespaced_class_boxes(
     options: &AsciiRenderOptions,
     charset: ClassCharset,
     namespace_facade_aliases: &HashMap<String, String>,
+    resources: &mut ResourceContext,
 ) -> Result<Vec<RenderedClassBox>> {
+    let note_by_id = ClassNoteIndex::new(&model.notes, resources)?;
+    let context = NamespaceRenderContext {
+        model,
+        options,
+        charset,
+        namespace_facade_aliases,
+        note_by_id,
+    };
     let mut rendered_namespace_ids = HashSet::new();
+    rendered_namespace_ids
+        .try_reserve(model.namespaces.len())
+        .map_err(|_| layout_allocation_failed())?;
+    let mut visiting_namespace_ids = HashSet::new();
+    visiting_namespace_ids
+        .try_reserve(model.namespaces.len())
+        .map_err(|_| layout_allocation_failed())?;
     let mut boxes = Vec::new();
+    let box_capacity = model
+        .namespaces
+        .len()
+        .checked_add(model.classes.len())
+        .and_then(|value| value.checked_add(model.interfaces.len()))
+        .and_then(|value| value.checked_add(model.notes.len()))
+        .ok_or_else(|| work_overflow(resources))?;
+    boxes
+        .try_reserve_exact(box_capacity)
+        .map_err(|_| layout_allocation_failed())?;
 
     for namespace in model
         .namespaces
@@ -284,12 +428,12 @@ fn render_namespaced_class_boxes(
     {
         if namespace.explicit {
             boxes.push(render_namespace_box(
-                model,
+                &context,
                 namespace,
-                options,
-                charset,
-                namespace_facade_aliases,
                 &mut rendered_namespace_ids,
+                &mut visiting_namespace_ids,
+                1,
+                resources,
             )?);
         }
     }
@@ -297,131 +441,182 @@ fn render_namespaced_class_boxes(
     for namespace in model.namespaces.values() {
         if namespace.explicit && !rendered_namespace_ids.contains(namespace.id.as_str()) {
             boxes.push(render_namespace_box(
-                model,
+                &context,
                 namespace,
-                options,
-                charset,
-                namespace_facade_aliases,
                 &mut rendered_namespace_ids,
+                &mut visiting_namespace_ids,
+                1,
+                resources,
             )?);
         }
     }
 
-    boxes.extend(
-        model
-            .classes
-            .values()
-            .filter(|class| {
-                !namespace_facade_aliases.contains_key(class.id.as_str())
-                    && class
-                        .parent
-                        .as_ref()
-                        .is_none_or(|parent| !rendered_namespace_ids.contains(parent))
-            })
-            .map(|class| render_class_box(class, options, charset)),
-    );
-    boxes.extend(
-        model
-            .interfaces
-            .iter()
-            .map(|interface| render_interface_box(interface, options, charset)),
-    );
-    boxes.extend(
-        model
-            .notes
-            .iter()
-            .filter(|note| {
-                note.parent
-                    .as_ref()
-                    .is_none_or(|parent| !rendered_namespace_ids.contains(parent))
-            })
-            .map(|note| render_note_box(note, options, charset)),
-    );
+    for class in model.classes.values().filter(|class| {
+        !namespace_facade_aliases.contains_key(class.id.as_str())
+            && class
+                .parent
+                .as_ref()
+                .is_none_or(|parent| !rendered_namespace_ids.contains(parent))
+    }) {
+        boxes.push(render_class_box(class, options, charset, resources)?);
+    }
+    for interface in &model.interfaces {
+        boxes.push(render_interface_box(
+            interface, options, charset, resources,
+        )?);
+    }
+    for note in model.notes.iter().filter(|note| {
+        note.parent
+            .as_ref()
+            .is_none_or(|parent| !rendered_namespace_ids.contains(parent))
+    }) {
+        boxes.push(render_note_box(note, options, charset, resources)?);
+    }
 
     Ok(boxes)
 }
 
 fn render_namespace_box(
-    model: &ClassDiagram,
+    context: &NamespaceRenderContext<'_>,
     namespace: &Namespace,
-    options: &AsciiRenderOptions,
-    charset: ClassCharset,
-    namespace_facade_aliases: &HashMap<String, String>,
     rendered_namespace_ids: &mut HashSet<String>,
+    visiting_namespace_ids: &mut HashSet<String>,
+    depth: usize,
+    resources: &mut ResourceContext,
 ) -> Result<RenderedClassBox> {
+    resources.check_nesting_depth(depth)?;
+    resources.charge_layout_work(context.model.namespaces.len().max(1))?;
+    if !visiting_namespace_ids.insert(namespace.id.clone()) {
+        return Err(AsciiError::UnsupportedFeature {
+            diagram_type: "class",
+            feature: "cyclic class namespace nesting",
+        });
+    }
     rendered_namespace_ids.insert(namespace.id.clone());
-    let mut children = Vec::new();
-
-    for child in model
+    let child_capacity = context
+        .model
         .namespaces
-        .values()
-        .filter(|child| child.parent.as_deref() == Some(namespace.id.as_str()) && child.explicit)
+        .len()
+        .checked_add(namespace.class_ids.len())
+        .and_then(|value| value.checked_add(namespace.note_ids.len()))
+        .ok_or_else(|| work_overflow(resources))?;
+    let mut children = Vec::new();
+    children
+        .try_reserve_exact(child_capacity)
+        .map_err(|_| layout_allocation_failed())?;
+
+    for child in
+        context.model.namespaces.values().filter(|child| {
+            child.parent.as_deref() == Some(namespace.id.as_str()) && child.explicit
+        })
     {
         children.push(render_namespace_box(
-            model,
+            context,
             child,
-            options,
-            charset,
-            namespace_facade_aliases,
             rendered_namespace_ids,
+            visiting_namespace_ids,
+            depth
+                .checked_add(1)
+                .ok_or_else(|| nesting_overflow(resources))?,
+            resources,
         )?);
     }
 
     let mut direct_boxes = Vec::new();
+    let direct_box_capacity = namespace
+        .class_ids
+        .len()
+        .checked_add(namespace.note_ids.len())
+        .ok_or_else(|| work_overflow(resources))?;
+    direct_boxes
+        .try_reserve_exact(direct_box_capacity)
+        .map_err(|_| layout_allocation_failed())?;
     for class_id in &namespace.class_ids {
-        if let Some(class) = model.classes.get(class_id)
-            && !namespace_facade_aliases.contains_key(class.id.as_str())
+        if let Some(class) = context.model.classes.get(class_id)
+            && !context
+                .namespace_facade_aliases
+                .contains_key(class.id.as_str())
         {
-            direct_boxes.push(render_class_box(class, options, charset));
+            direct_boxes.push(render_class_box(
+                class,
+                context.options,
+                context.charset,
+                resources,
+            )?);
         }
     }
 
     for note_id in &namespace.note_ids {
-        if let Some(note) = model.notes.iter().find(|note| note.id == *note_id) {
-            direct_boxes.push(render_note_box(note, options, charset));
+        if let Some(note) = context.note_by_id.get(note_id, resources)? {
+            direct_boxes.push(render_note_box(
+                note,
+                context.options,
+                context.charset,
+                resources,
+            )?);
         }
     }
+    let box_by_id = RenderedClassBoxIndex::new(&direct_boxes, resources)?;
 
-    let mut direct_layouts = model
+    let direct_layout_capacity = context
+        .model
         .relations
-        .iter()
-        .filter(|relation| {
-            relation_explicit_namespace_id(model, relation, namespace_facade_aliases)
-                == Some(namespace.id.as_str())
-        })
-        .map(|relation| {
-            relation_layout(
-                model,
-                relation,
-                namespace_facade_aliases,
-                options.terminal_width_profile,
-            )
-        })
-        .collect::<Result<Vec<_>>>()?;
+        .len()
+        .checked_add(context.model.notes.len())
+        .ok_or_else(|| work_overflow(resources))?;
+    let mut direct_layouts = Vec::new();
+    direct_layouts
+        .try_reserve_exact(direct_layout_capacity)
+        .map_err(|_| layout_allocation_failed())?;
+    for relation in context.model.relations.iter().filter(|relation| {
+        relation_explicit_namespace_id(context.model, relation, context.namespace_facade_aliases)
+            == Some(namespace.id.as_str())
+    }) {
+        direct_layouts.push(relation_layout(
+            context.model,
+            relation,
+            context.namespace_facade_aliases,
+            context.options.terminal_width_profile,
+            resources,
+        )?);
+    }
 
     direct_layouts.extend(note_relation_layouts_for_notes(
-        model.notes.iter().filter(|note| {
+        context.model.notes.iter().filter(|note| {
             note.parent.as_deref() == Some(namespace.id.as_str()) && note.class_id.is_some()
         }),
-        namespace_facade_aliases,
-        &direct_boxes,
-    ));
+        context.namespace_facade_aliases,
+        &box_by_id,
+        resources,
+    )?);
 
     if direct_layouts.is_empty() {
         children.extend(direct_boxes);
     } else {
-        let component_lines =
-            render_class_component_lines(&direct_boxes, &direct_layouts, options, charset)?;
+        let component_lines = render_class_component_lines(
+            &direct_boxes,
+            &box_by_id,
+            &direct_layouts,
+            context.options,
+            context.charset,
+            resources,
+        )?;
         children.push(RelationGraphBox::from_rendered_lines(
             format!("{}::relations", namespace.id),
             component_lines,
-            options.terminal_width_profile,
-        ));
+            context.options.terminal_width_profile,
+            resources,
+        )?);
     }
 
-    Ok(render_namespace_container_box(
-        namespace, children, options, charset,
-    ))
+    visiting_namespace_ids.remove(namespace.id.as_str());
+    render_namespace_container_box(
+        namespace,
+        children,
+        context.options,
+        context.charset,
+        resources,
+    )
 }
 
 fn render_namespace_container_box(
@@ -429,10 +624,11 @@ fn render_namespace_container_box(
     children: Vec<RenderedClassBox>,
     options: &AsciiRenderOptions,
     charset: ClassCharset,
-) -> RenderedClassBox {
+    resources: &mut ResourceContext,
+) -> Result<RenderedClassBox> {
     let title = namespace_title(namespace);
     let inner_gap = options.box_border_padding;
-    let content_width = children
+    let inner_width = children
         .iter()
         .map(RelationGraphBox::width)
         .max()
@@ -442,8 +638,24 @@ fn render_namespace_container_box(
         .max(crate::text::display_width_with_profile(
             &title,
             options.terminal_width_profile,
-        ))
-        .saturating_add(options.box_border_padding.saturating_mul(2));
+        ));
+    let content_width = resources.checked_grid_add(
+        inner_width,
+        resources.checked_grid_mul(options.box_border_padding, 2)?,
+    )?;
+    let child_rows = children.iter().try_fold(0usize, |height, child| {
+        resources.checked_grid_add(height, child.height())
+    })?;
+    let child_gaps = children.len().saturating_sub(1);
+    let body_rows = if children.is_empty() {
+        1
+    } else {
+        resources.checked_grid_add(child_rows, child_gaps)?
+    };
+    let height = resources.checked_grid_add(body_rows, 4)?;
+    let width = resources.checked_grid_add(content_width, 2)?;
+    let extent = resources.grid_extent(width, height)?;
+    resources.charge_layout_work(extent.cells())?;
     let style = RelationGraphBoxStyle {
         top_left: charset.top_left,
         top_right: charset.top_right,
@@ -457,31 +669,35 @@ fn render_namespace_container_box(
         text_role: AsciiColorRole::Text,
     };
     let mut lines = Vec::new();
-    lines.push(RelationGraphLine::box_border(
+    lines
+        .try_reserve_exact(height)
+        .map_err(|_| layout_allocation_failed())?;
+    lines.push(RelationGraphLine::try_box_border(
         style.top_left,
         style.top_right,
         style.horizontal,
         content_width,
         style.border_role,
         options.terminal_width_profile,
-    ));
+        resources,
+    )?);
     lines.push(RelationGraphLine::box_content(
         &title,
         content_width,
         options.box_border_padding,
-        style.vertical,
-        style.border_role,
-        style.text_role,
+        style,
         options.terminal_width_profile,
-    ));
-    lines.push(RelationGraphLine::box_border(
+        resources,
+    )?);
+    lines.push(RelationGraphLine::try_box_border(
         style.separator_left,
         style.separator_right,
         style.horizontal,
         content_width,
         style.border_role,
         options.terminal_width_profile,
-    ));
+        resources,
+    )?);
 
     for (child_index, child) in children.iter().enumerate() {
         if child_index > 0 {
@@ -490,7 +706,8 @@ fn render_namespace_container_box(
                 style.vertical,
                 style.border_role,
                 options.terminal_width_profile,
-            ));
+                resources,
+            )?);
         }
         lines.extend(namespace_child_lines(
             child,
@@ -498,7 +715,8 @@ fn render_namespace_container_box(
             style.vertical,
             style.border_role,
             inner_gap,
-        ));
+            resources,
+        )?);
     }
 
     if children.is_empty() {
@@ -507,24 +725,26 @@ fn render_namespace_container_box(
             style.vertical,
             style.border_role,
             options.terminal_width_profile,
-        ));
+            resources,
+        )?);
     }
 
-    lines.push(RelationGraphLine::box_border(
+    lines.push(RelationGraphLine::try_box_border(
         style.bottom_left,
         style.bottom_right,
         style.horizontal,
         content_width,
         style.border_role,
         options.terminal_width_profile,
-    ));
+        resources,
+    )?);
 
-    RelationGraphBox::new_with_lines(
+    Ok(RelationGraphBox::new_with_lines(
         namespace.id.clone(),
         lines,
-        content_width + 2,
+        width,
         options.terminal_width_profile,
-    )
+    ))
 }
 
 fn namespace_child_lines(
@@ -533,32 +753,52 @@ fn namespace_child_lines(
     vertical: char,
     border_role: AsciiColorRole,
     inner_gap: usize,
-) -> Vec<RelationGraphLine> {
-    let trailing = content_width.saturating_sub(inner_gap + child.width());
-    child
-        .lines()
-        .iter()
-        .map(|line| {
-            relation_graph::concat_relation_lines(
-                vec![
-                    RelationGraphLine::with_role(
-                        vertical.to_string(),
-                        border_role,
-                        child.width_profile(),
-                    ),
-                    RelationGraphLine::plain(" ".repeat(inner_gap), child.width_profile()),
-                    line.clone(),
-                    RelationGraphLine::plain(" ".repeat(trailing), child.width_profile()),
-                    RelationGraphLine::with_role(
-                        vertical.to_string(),
-                        border_role,
-                        child.width_profile(),
-                    ),
-                ],
-                child.width_profile(),
-            )
-        })
-        .collect()
+    resources: &ResourceContext,
+) -> Result<Vec<RelationGraphLine>> {
+    let used_width = resources.checked_grid_add(inner_gap, child.width())?;
+    let trailing = content_width
+        .checked_sub(used_width)
+        .ok_or_else(|| grid_overflow(resources))?;
+    let mut lines = Vec::new();
+    lines
+        .try_reserve_exact(child.height())
+        .map_err(|_| layout_allocation_failed())?;
+    let vertical_text = vertical.to_string();
+    for line in child.lines() {
+        let mut parts = Vec::new();
+        parts
+            .try_reserve_exact(5)
+            .map_err(|_| layout_allocation_failed())?;
+        parts.push(RelationGraphLine::try_with_role(
+            &vertical_text,
+            border_role,
+            child.width_profile(),
+            resources,
+        )?);
+        parts.push(RelationGraphLine::try_blank(
+            inner_gap,
+            child.width_profile(),
+            resources,
+        )?);
+        parts.push(line.clone());
+        parts.push(RelationGraphLine::try_blank(
+            trailing,
+            child.width_profile(),
+            resources,
+        )?);
+        parts.push(RelationGraphLine::try_with_role(
+            &vertical_text,
+            border_role,
+            child.width_profile(),
+            resources,
+        )?);
+        lines.push(relation_graph::try_concat_relation_lines(
+            parts,
+            child.width_profile(),
+            resources,
+        )?);
+    }
+    Ok(lines)
 }
 
 fn namespace_empty_content_line(
@@ -566,14 +806,16 @@ fn namespace_empty_content_line(
     vertical: char,
     border_role: AsciiColorRole,
     width_profile: TerminalWidthProfile,
-) -> RelationGraphLine {
-    RelationGraphLine::box_border(
+    resources: &ResourceContext,
+) -> Result<RelationGraphLine> {
+    RelationGraphLine::try_box_border(
         vertical,
         vertical,
         ' ',
         content_width,
         border_role,
         width_profile,
+        resources,
     )
 }
 
@@ -587,15 +829,18 @@ fn namespace_title(namespace: &Namespace) -> String {
     decode_html_entities_to_unicode(raw).into_owned()
 }
 
-fn namespace_facade_aliases(model: &ClassDiagram) -> HashMap<String, String> {
+fn namespace_facade_aliases(model: &ClassDiagram) -> Result<HashMap<String, String>> {
     let mut aliases = HashMap::new();
+    aliases
+        .try_reserve(model.classes.len())
+        .map_err(|_| layout_allocation_failed())?;
     for class in model.classes.values() {
         let Some(local_id) = namespace_facade_local_id(model, class) else {
             continue;
         };
         aliases.insert(class.id.clone(), local_id.to_string());
     }
-    aliases
+    Ok(aliases)
 }
 
 fn namespace_facade_local_id<'a>(model: &'a ClassDiagram, class: &'a ClassNode) -> Option<&'a str> {
@@ -631,65 +876,97 @@ fn namespace_facade_local_id<'a>(model: &'a ClassDiagram, class: &'a ClassNode) 
 
 fn render_class_components(
     boxes: &[RenderedClassBox],
+    box_by_id: &RenderedClassBoxIndex<'_>,
     layouts: &[RelationLayout<'_>],
     options: &AsciiRenderOptions,
     charset: ClassCharset,
+    resources: &mut ResourceContext,
 ) -> Result<String> {
     let adapter = ClassRelationComponentAdapter {
         charset,
         width_profile: options.terminal_width_profile,
+        box_by_id,
     };
-    relation_graph::render_relation_components(boxes, layouts, options, &adapter)
+    relation_graph::render_relation_components(boxes, layouts, options, resources, &adapter)
 }
 
 fn render_class_component_lines(
     boxes: &[RenderedClassBox],
+    box_by_id: &RenderedClassBoxIndex<'_>,
     layouts: &[RelationLayout<'_>],
     options: &AsciiRenderOptions,
     charset: ClassCharset,
+    resources: &mut ResourceContext,
 ) -> Result<Vec<RelationGraphLine>> {
     let adapter = ClassRelationComponentAdapter {
         charset,
         width_profile: options.terminal_width_profile,
+        box_by_id,
     };
-    Ok(
-        relation_graph::render_relation_component_lines(boxes, layouts, options, &adapter)?
-            .unwrap_or_default(),
-    )
+    Ok(relation_graph::render_relation_component_lines(
+        boxes, layouts, options, resources, &adapter,
+    )?
+    .unwrap_or_default())
 }
 
 fn render_class_box(
     class: &ClassNode,
     options: &AsciiRenderOptions,
     charset: ClassCharset,
-) -> RenderedClassBox {
-    let sections = class_sections(class);
-    render_box_sections(class.id.clone(), sections, options, charset)
+    resources: &mut ResourceContext,
+) -> Result<RenderedClassBox> {
+    let sections = class_sections(class, resources)?;
+    render_box_sections(class.id.clone(), sections, options, charset, resources)
 }
 
 fn render_interface_box(
     interface: &ClassInterface,
     options: &AsciiRenderOptions,
     charset: ClassCharset,
-) -> RenderedClassBox {
-    let sections = vec![vec![
-        "<<interface>>".to_string(),
-        decode_html_entities_to_unicode(&interface.label).into_owned(),
-    ]];
-    render_box_sections(interface.id.clone(), sections, options, charset)
+    resources: &mut ResourceContext,
+) -> Result<RenderedClassBox> {
+    let mut header = Vec::new();
+    header
+        .try_reserve_exact(2)
+        .map_err(|_| layout_allocation_failed())?;
+    header.push("<<interface>>".to_string());
+    header.push(decode_html_entities_to_unicode(&interface.label).into_owned());
+    let mut sections = Vec::new();
+    sections
+        .try_reserve_exact(1)
+        .map_err(|_| layout_allocation_failed())?;
+    sections.push(header);
+    render_box_sections(interface.id.clone(), sections, options, charset, resources)
 }
 
 fn render_note_box(
     note: &ClassNote,
     options: &AsciiRenderOptions,
     charset: ClassCharset,
-) -> RenderedClassBox {
-    let mut lines = vec!["note".to_string()];
-    if let Some(label) = RelationGraphLabel::new(&note.text, options.terminal_width_profile) {
+    resources: &mut ResourceContext,
+) -> Result<RenderedClassBox> {
+    let label = RelationGraphLabel::try_new(&note.text, options.terminal_width_profile, resources)?;
+    let capacity = label
+        .as_ref()
+        .map(RelationGraphLabel::line_count)
+        .unwrap_or(0)
+        .checked_add(1)
+        .ok_or_else(|| work_overflow(resources))?;
+    let mut lines = Vec::new();
+    lines
+        .try_reserve_exact(capacity)
+        .map_err(|_| layout_allocation_failed())?;
+    lines.push("note".to_string());
+    if let Some(label) = label {
         lines.extend(label.lines().iter().cloned());
     }
 
-    render_box_sections(note.id.clone(), vec![lines], options, charset)
+    let mut sections = Vec::new();
+    sections
+        .try_reserve_exact(1)
+        .map_err(|_| layout_allocation_failed())?;
+    sections.push(lines);
+    render_box_sections(note.id.clone(), sections, options, charset, resources)
 }
 
 fn render_box_sections(
@@ -697,7 +974,8 @@ fn render_box_sections(
     sections: Vec<Vec<String>>,
     options: &AsciiRenderOptions,
     charset: ClassCharset,
-) -> RenderedClassBox {
+    resources: &mut ResourceContext,
+) -> Result<RenderedClassBox> {
     let style = RelationGraphBoxStyle {
         top_left: charset.top_left,
         top_right: charset.top_right,
@@ -716,40 +994,65 @@ fn render_box_sections(
         options.box_border_padding,
         style,
         options.terminal_width_profile,
+        resources,
     )
 }
 
-fn class_sections(class: &ClassNode) -> Vec<Vec<String>> {
-    let mut header = class
+fn class_sections(class: &ClassNode, resources: &ResourceContext) -> Result<Vec<Vec<String>>> {
+    let header_capacity = class
         .annotations
-        .iter()
-        .map(|annotation| format!("<<{annotation}>>"))
-        .collect::<Vec<_>>();
+        .len()
+        .checked_add(1)
+        .ok_or_else(|| work_overflow(resources))?;
+    let mut header = Vec::new();
+    header
+        .try_reserve_exact(header_capacity)
+        .map_err(|_| layout_allocation_failed())?;
+    header.extend(
+        class
+            .annotations
+            .iter()
+            .map(|annotation| format!("<<{annotation}>>")),
+    );
     header.push(class_title(class));
 
-    let mut sections = vec![header];
+    let mut sections = Vec::new();
+    sections
+        .try_reserve_exact(3)
+        .map_err(|_| layout_allocation_failed())?;
+    sections.push(header);
 
-    let members = class
-        .members
-        .iter()
-        .map(member_text)
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>();
+    let mut members = Vec::new();
+    members
+        .try_reserve_exact(class.members.len())
+        .map_err(|_| layout_allocation_failed())?;
+    members.extend(
+        class
+            .members
+            .iter()
+            .map(member_text)
+            .filter(|line| !line.is_empty()),
+    );
     if !members.is_empty() {
         sections.push(members);
     }
 
-    let methods = class
-        .methods
-        .iter()
-        .map(member_text)
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>();
+    let mut methods = Vec::new();
+    methods
+        .try_reserve_exact(class.methods.len())
+        .map_err(|_| layout_allocation_failed())?;
+    methods.extend(
+        class
+            .methods
+            .iter()
+            .map(member_text)
+            .filter(|line| !line.is_empty()),
+    );
     if !methods.is_empty() {
         sections.push(methods);
     }
 
-    sections
+    Ok(sections)
 }
 
 fn class_title(class: &ClassNode) -> String {
@@ -768,6 +1071,7 @@ fn relation_layout<'a>(
     relation: &'a ClassRelation,
     namespace_facade_aliases: &'a HashMap<String, String>,
     width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
 ) -> Result<RelationLayout<'a>> {
     let line = if relation.relation.line_type == model.constants.line_type.line {
         RelationLine::Solid
@@ -802,9 +1106,11 @@ fn relation_layout<'a>(
         }
     };
 
-    let label = RelationGraphLabel::new(&relation.title, width_profile);
-    let left_endpoint_label = relation_endpoint_label(&relation.relation_title_1, width_profile);
-    let right_endpoint_label = relation_endpoint_label(&relation.relation_title_2, width_profile);
+    let label = RelationGraphLabel::try_new(&relation.title, width_profile, resources)?;
+    let left_endpoint_label =
+        relation_endpoint_label(&relation.relation_title_1, width_profile, resources)?;
+    let right_endpoint_label =
+        relation_endpoint_label(&relation.relation_title_2, width_profile, resources)?;
 
     if let Some(marker) =
         endpoint_marker.filter(|marker| marker.marker == RelationMarker::Extension)
@@ -932,21 +1238,35 @@ fn marker_for_relation_type(
 fn note_relation_layouts<'a>(
     model: &'a ClassDiagram,
     namespace_facade_aliases: &'a HashMap<String, String>,
-    boxes: &[RenderedClassBox],
-) -> Vec<RelationLayout<'a>> {
-    note_relation_layouts_for_notes(model.notes.iter(), namespace_facade_aliases, boxes)
+    box_by_id: &RenderedClassBoxIndex<'_>,
+    resources: &mut ResourceContext,
+) -> Result<Vec<RelationLayout<'a>>> {
+    note_relation_layouts_for_notes(
+        model.notes.iter(),
+        namespace_facade_aliases,
+        box_by_id,
+        resources,
+    )
 }
 
 fn note_relation_layouts_for_notes<'a>(
     notes: impl Iterator<Item = &'a ClassNote>,
     namespace_facade_aliases: &'a HashMap<String, String>,
-    boxes: &[RenderedClassBox],
-) -> Vec<RelationLayout<'a>> {
-    notes
-        .filter_map(|note| {
-            let target_id = note.class_id.as_deref()?;
-            let target_id = relation_endpoint_id(namespace_facade_aliases, target_id);
-            relation_graph::find_box(boxes, target_id).map(|_| RelationLayout {
+    box_by_id: &RenderedClassBoxIndex<'_>,
+    resources: &mut ResourceContext,
+) -> Result<Vec<RelationLayout<'a>>> {
+    let notes = notes;
+    let mut layouts = Vec::new();
+    layouts
+        .try_reserve(notes.size_hint().0)
+        .map_err(|_| layout_allocation_failed())?;
+    for note in notes {
+        let Some(target_id) = note.class_id.as_deref() else {
+            continue;
+        };
+        let target_id = relation_endpoint_id(namespace_facade_aliases, target_id);
+        if box_by_id.get(target_id, resources)?.is_some() {
+            layouts.push(RelationLayout {
                 top_id: note.id.as_str(),
                 bottom_id: target_id,
                 endpoint_marker: None,
@@ -954,48 +1274,47 @@ fn note_relation_layouts_for_notes<'a>(
                 label: None,
                 top_endpoint_label: None,
                 bottom_endpoint_label: None,
-            })
-        })
-        .collect()
+            });
+        }
+    }
+    Ok(layouts)
 }
 
 fn external_namespace_note_summary_rows(
     model: &ClassDiagram,
     namespace_facade_aliases: &HashMap<String, String>,
-) -> Vec<RelationGraphSummaryRow> {
-    model
+) -> Result<Vec<RelationGraphSummaryRow>> {
+    let mut rows = Vec::new();
+    rows.try_reserve_exact(model.notes.len())
+        .map_err(|_| layout_allocation_failed())?;
+    for note in model
         .notes
         .iter()
         .filter(|note| note_explicit_namespace_id(model, note, namespace_facade_aliases).is_none())
-        .filter_map(|note| {
-            let target_id = note.class_id.as_deref()?;
-            let target_id = relation_endpoint_id(namespace_facade_aliases, target_id);
-            model
-                .classes
-                .contains_key(target_id)
-                .then(|| RelationGraphSummaryRow::new("note", "..", target_id))
-        })
-        .collect()
+    {
+        let Some(target_id) = note.class_id.as_deref() else {
+            continue;
+        };
+        let target_id = relation_endpoint_id(namespace_facade_aliases, target_id);
+        if model.classes.contains_key(target_id) {
+            rows.push(RelationGraphSummaryRow::new("note", "..", target_id));
+        }
+    }
+    Ok(rows)
 }
 
 fn relation_endpoint_label(
     label: &str,
     width_profile: TerminalWidthProfile,
-) -> Option<RelationGraphLabel> {
-    let normalized = normalize_terminal_text(label);
-    let trimmed = normalized.trim();
-    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("none") {
-        return None;
+    resources: &ResourceContext,
+) -> Result<Option<RelationGraphLabel>> {
+    let label = RelationGraphLabel::try_new(label, width_profile, resources)?;
+    if label.as_ref().is_some_and(|label| {
+        label.lines().len() == 1 && label.lines()[0].eq_ignore_ascii_case("none")
+    }) {
+        return Ok(None);
     }
-
-    RelationGraphLabel::new(trimmed, width_profile)
-}
-
-fn find_box<'a>(boxes: &'a [RenderedClassBox], id: &str) -> Result<&'a RenderedClassBox> {
-    relation_graph::find_box(boxes, id).ok_or(AsciiError::UnsupportedFeature {
-        diagram_type: "class",
-        feature: "relationships with missing endpoint classes",
-    })
+    Ok(label)
 }
 
 fn render_vertical_relation(
@@ -1003,7 +1322,8 @@ fn render_vertical_relation(
     bottom: &RenderedClassBox,
     layout: &RelationLayout<'_>,
     charset: ClassCharset,
-) -> Vec<RelationGraphLine> {
+    resources: &mut ResourceContext,
+) -> Result<Vec<RelationGraphLine>> {
     let label_half_widths = [
         layout
             .label
@@ -1022,24 +1342,27 @@ fn render_vertical_relation(
             .unwrap_or(0),
     ];
     let plan = RelationStackPlan::from_centered_rows(top, bottom, &label_half_widths, |center| {
-        class_relation_rows(layout, center, charset, top.width_profile())
-    });
+        class_relation_rows(layout, center, charset, top.width_profile(), resources)
+    })?;
 
-    plan.render_lines()
+    plan.render_lines(resources)
 }
 
 fn push_centered_endpoint_label(
     relation_lines: &mut Vec<RelationGraphLine>,
     label: Option<&RelationGraphLabel>,
     center: usize,
-) {
+    resources: &ResourceContext,
+) -> Result<()> {
     if let Some(label) = label {
         relation_lines.extend(relation_graph::centered_label_lines_with_role(
             label,
             center,
             AsciiColorRole::EdgeLabel,
-        ));
+            resources,
+        )?);
     }
+    Ok(())
 }
 
 fn class_relation_rows(
@@ -1047,13 +1370,15 @@ fn class_relation_rows(
     center: usize,
     charset: ClassCharset,
     width_profile: TerminalWidthProfile,
-) -> Vec<RelationGraphLine> {
+    resources: &ResourceContext,
+) -> Result<Vec<RelationGraphLine>> {
     let mut relation_lines = Vec::new();
     push_centered_endpoint_label(
         &mut relation_lines,
         layout.top_endpoint_label.as_ref(),
         center,
-    );
+        resources,
+    )?;
     match layout.endpoint_marker {
         None => {
             relation_lines.push(relation_graph::marker_line_with_role(
@@ -1061,19 +1386,22 @@ fn class_relation_rows(
                 center,
                 AsciiColorRole::EdgeLine,
                 width_profile,
-            ));
+                resources,
+            )?);
             if let Some(label) = layout.label.as_ref() {
                 relation_lines.extend(relation_graph::centered_label_lines_with_role(
                     label,
                     center,
                     AsciiColorRole::EdgeLabel,
-                ));
+                    resources,
+                )?);
                 relation_lines.push(relation_graph::marker_line_with_role(
                     line_char(layout.line, charset),
                     center,
                     AsciiColorRole::EdgeLine,
                     width_profile,
-                ));
+                    resources,
+                )?);
             }
         }
         Some(endpoint_marker) => match endpoint_marker.side {
@@ -1083,20 +1411,23 @@ fn class_relation_rows(
                     center,
                     AsciiColorRole::EdgeArrow,
                     width_profile,
-                ));
+                    resources,
+                )?);
                 if let Some(label) = layout.label.as_ref() {
                     relation_lines.extend(relation_graph::centered_label_lines_with_role(
                         label,
                         center,
                         AsciiColorRole::EdgeLabel,
-                    ));
+                        resources,
+                    )?);
                 }
                 relation_lines.push(relation_graph::marker_line_with_role(
                     line_char(layout.line, charset),
                     center,
                     AsciiColorRole::EdgeLine,
                     width_profile,
-                ));
+                    resources,
+                )?);
             }
             MarkerSide::Bottom => {
                 relation_lines.push(relation_graph::marker_line_with_role(
@@ -1104,20 +1435,23 @@ fn class_relation_rows(
                     center,
                     AsciiColorRole::EdgeLine,
                     width_profile,
-                ));
+                    resources,
+                )?);
                 if let Some(label) = layout.label.as_ref() {
                     relation_lines.extend(relation_graph::centered_label_lines_with_role(
                         label,
                         center,
                         AsciiColorRole::EdgeLabel,
-                    ));
+                        resources,
+                    )?);
                 }
                 relation_lines.push(relation_graph::marker_line_with_role(
                     marker_char(endpoint_marker.marker, MarkerSide::Bottom, charset),
                     center,
                     AsciiColorRole::EdgeArrow,
                     width_profile,
-                ));
+                    resources,
+                )?);
             }
         },
     }
@@ -1125,8 +1459,9 @@ fn class_relation_rows(
         &mut relation_lines,
         layout.bottom_endpoint_label.as_ref(),
         center,
-    );
-    relation_lines
+        resources,
+    )?;
+    Ok(relation_lines)
 }
 
 fn is_same_endpoint_parallel_layout(layouts: &[RelationLayout<'_>]) -> bool {
@@ -1140,68 +1475,79 @@ fn is_same_endpoint_parallel_layout(layouts: &[RelationLayout<'_>]) -> bool {
 }
 
 fn render_parallel_vertical_relations(
-    boxes: &[RenderedClassBox],
+    box_by_id: &RenderedClassBoxIndex<'_>,
     layouts: &[RelationLayout<'_>],
     charset: ClassCharset,
     width_profile: TerminalWidthProfile,
+    resources: &mut ResourceContext,
 ) -> Result<Vec<RelationGraphLine>> {
-    let first = &layouts[0];
-    let top = find_box(boxes, first.top_id)?;
-    let bottom = find_box(boxes, first.bottom_id)?;
+    let first = layouts.first().ok_or(AsciiError::UnsupportedFeature {
+        diagram_type: "class",
+        feature: "empty parallel class relationship layout",
+    })?;
+    let top = box_by_id.require(first.top_id, resources)?;
+    let bottom = box_by_id.require(first.bottom_id, resources)?;
     let reserve_top_endpoint_label = layouts
         .iter()
         .any(|layout| layout.top_endpoint_label.is_some());
     let reserve_bottom_endpoint_label = layouts
         .iter()
         .any(|layout| layout.bottom_endpoint_label.is_some());
-    let lanes = layouts
-        .iter()
-        .map(|layout| {
-            parallel_class_lane_rows(
-                layout,
-                charset,
-                reserve_top_endpoint_label,
-                reserve_bottom_endpoint_label,
-                width_profile,
-            )
-        })
-        .collect::<Vec<_>>();
-    let plan = RelationParallelPlan::new(top, bottom, lanes, 2);
+    let mut lanes = Vec::new();
+    lanes
+        .try_reserve_exact(layouts.len())
+        .map_err(|_| layout_allocation_failed())?;
+    for layout in layouts {
+        lanes.push(parallel_class_lane_rows(
+            layout,
+            charset,
+            reserve_top_endpoint_label,
+            reserve_bottom_endpoint_label,
+            width_profile,
+            resources,
+        )?);
+    }
+    let plan = RelationParallelPlan::new(top, bottom, lanes, 2, resources)?;
 
-    Ok(plan.render_lines())
+    plan.render_lines(resources)
 }
 
 fn endpoint_label_lines_or_empty(
     label: Option<&RelationGraphLabel>,
     reserve_empty: bool,
     width_profile: TerminalWidthProfile,
-) -> Vec<RelationGraphLine> {
+    resources: &ResourceContext,
+) -> Result<Vec<RelationGraphLine>> {
     match label {
-        Some(label) => relation_graph::label_lines_with_role(label, AsciiColorRole::EdgeLabel),
-        None if reserve_empty => {
-            vec![RelationGraphLine::with_role(
-                String::new(),
-                AsciiColorRole::EdgeLabel,
-                width_profile,
-            )]
+        Some(label) => {
+            relation_graph::label_lines_with_role(label, AsciiColorRole::EdgeLabel, resources)
         }
-        None => Vec::new(),
+        None if reserve_empty => Ok(vec![RelationGraphLine::try_with_role(
+            "",
+            AsciiColorRole::EdgeLabel,
+            width_profile,
+            resources,
+        )?]),
+        None => Ok(Vec::new()),
     }
 }
 
 fn central_label_lines_or_empty(
     label: Option<&RelationGraphLabel>,
     width_profile: TerminalWidthProfile,
-) -> Vec<RelationGraphLine> {
-    label
-        .map(|label| relation_graph::label_lines_with_role(label, AsciiColorRole::EdgeLabel))
-        .unwrap_or_else(|| {
-            vec![RelationGraphLine::with_role(
-                String::new(),
-                AsciiColorRole::EdgeLabel,
-                width_profile,
-            )]
-        })
+    resources: &ResourceContext,
+) -> Result<Vec<RelationGraphLine>> {
+    match label {
+        Some(label) => {
+            relation_graph::label_lines_with_role(label, AsciiColorRole::EdgeLabel, resources)
+        }
+        None => Ok(vec![RelationGraphLine::try_with_role(
+            "",
+            AsciiColorRole::EdgeLabel,
+            width_profile,
+            resources,
+        )?]),
+    }
 }
 
 fn parallel_class_lane_rows(
@@ -1210,18 +1556,23 @@ fn parallel_class_lane_rows(
     reserve_top_endpoint_label: bool,
     reserve_bottom_endpoint_label: bool,
     width_profile: TerminalWidthProfile,
-) -> Vec<RelationGraphLine> {
-    let line = RelationGraphLine::with_role(
-        line_char(layout.line, charset).to_string(),
+    resources: &ResourceContext,
+) -> Result<Vec<RelationGraphLine>> {
+    let line_text = line_char(layout.line, charset).to_string();
+    let line = RelationGraphLine::try_with_role(
+        &line_text,
         AsciiColorRole::EdgeLine,
         width_profile,
-    );
+        resources,
+    )?;
     let mut rows = endpoint_label_lines_or_empty(
         layout.top_endpoint_label.as_ref(),
         reserve_top_endpoint_label,
         width_profile,
-    );
-    let label_lines = central_label_lines_or_empty(layout.label.as_ref(), width_profile);
+        resources,
+    )?;
+    let label_lines =
+        central_label_lines_or_empty(layout.label.as_ref(), width_profile, resources)?;
     let relation_rows = match layout.endpoint_marker {
         None => {
             let mut rows = vec![line.clone()];
@@ -1230,11 +1581,14 @@ fn parallel_class_lane_rows(
             rows
         }
         Some(endpoint_marker) => {
-            let marker = RelationGraphLine::with_role(
-                marker_char(endpoint_marker.marker, endpoint_marker.side, charset).to_string(),
+            let marker_text =
+                marker_char(endpoint_marker.marker, endpoint_marker.side, charset).to_string();
+            let marker = RelationGraphLine::try_with_role(
+                &marker_text,
                 AsciiColorRole::EdgeArrow,
                 width_profile,
-            );
+                resources,
+            )?;
             match endpoint_marker.side {
                 MarkerSide::Top => {
                     let mut rows = vec![marker];
@@ -1256,8 +1610,9 @@ fn parallel_class_lane_rows(
         layout.bottom_endpoint_label.as_ref(),
         reserve_bottom_endpoint_label,
         width_profile,
-    ));
-    rows
+        resources,
+    )?);
+    Ok(rows)
 }
 
 fn class_relation_summary_row(layout: &RelationLayout<'_>) -> Result<RelationGraphSummaryRow> {
@@ -1276,8 +1631,7 @@ fn class_relation_summary_row_for_reason(
     match reason {
         relation_graph::LayeredRelationSummaryReason::Crossing
         | relation_graph::LayeredRelationSummaryReason::RouteCollision
-        | relation_graph::LayeredRelationSummaryReason::OverlayCollision
-        | relation_graph::LayeredRelationSummaryReason::GridBudget { .. } => {
+        | relation_graph::LayeredRelationSummaryReason::OverlayCollision => {
             class_relation_summary_row(layout)
         }
     }
@@ -1341,12 +1695,26 @@ fn class_relation_summary_symbol(layout: &RelationLayout<'_>) -> &'static str {
 }
 
 fn class_layered_edge(layout: &RelationLayout<'_>) -> LayeredRelationEdge {
-    let label = layout.label.as_ref();
+    let labels = [
+        layout.label.as_ref(),
+        layout.top_endpoint_label.as_ref(),
+        layout.bottom_endpoint_label.as_ref(),
+    ];
     LayeredRelationEdge::new(
         layout.top_id,
         layout.bottom_id,
-        label.map(RelationGraphLabel::half_width).unwrap_or(0),
-        label.map(RelationGraphLabel::line_count).unwrap_or(0),
+        labels
+            .iter()
+            .flatten()
+            .map(|label| label.half_width())
+            .max()
+            .unwrap_or(0),
+        labels
+            .iter()
+            .flatten()
+            .map(|label| label.line_count())
+            .max()
+            .unwrap_or(0),
     )
 }
 
@@ -1362,52 +1730,57 @@ fn class_layered_error(error: LayeredRelationError) -> AsciiError {
     }
 }
 
-impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
-    for ClassRelationComponentAdapter
+impl<'relation, 'index, 'boxes> relation_graph::RelationComponentAdapter<RelationLayout<'relation>>
+    for ClassRelationComponentAdapter<'index, 'boxes>
 {
-    fn build_edges(&self, layout: &RelationLayout<'a>) -> LayeredRelationEdge {
+    fn build_edges(&self, layout: &RelationLayout<'relation>) -> LayeredRelationEdge {
         class_layered_edge(layout)
     }
 
-    fn is_same_endpoint_parallel(&self, layouts: &[RelationLayout<'a>]) -> bool {
+    fn is_same_endpoint_parallel(&self, layouts: &[RelationLayout<'relation>]) -> bool {
         is_same_endpoint_parallel_layout(layouts)
     }
 
-    fn is_self_relation(&self, layout: &RelationLayout<'a>) -> bool {
+    fn is_self_relation(&self, layout: &RelationLayout<'relation>) -> bool {
         layout.top_id == layout.bottom_id
     }
 
     fn render_self_relation(
         &self,
         relation_box: &RenderedClassBox,
-        layout: &RelationLayout<'a>,
+        layout: &RelationLayout<'relation>,
         options: &AsciiRenderOptions,
+        resources: &mut ResourceContext,
     ) -> Result<Vec<RelationGraphLine>> {
-        let rows = self_loop_rows_for_class_layout(layout, self.charset, self.width_profile);
+        let rows =
+            self_loop_rows_for_class_layout(layout, self.charset, self.width_profile, resources)?;
 
         let _ = options;
-        Ok(relation_graph::render_parallel_self_loops(
-            relation_box,
-            vec![rows],
-        ))
+        relation_graph::render_parallel_self_loops(relation_box, vec![rows], resources)
     }
 
     fn render_self_relations(
         &self,
         relation_box: &RenderedClassBox,
-        layouts: &[RelationLayout<'a>],
+        layouts: &[RelationLayout<'relation>],
         options: &AsciiRenderOptions,
+        resources: &mut ResourceContext,
     ) -> Result<Vec<RelationGraphLine>> {
-        let loops = layouts
-            .iter()
-            .map(|layout| self_loop_rows_for_class_layout(layout, self.charset, self.width_profile))
-            .collect::<Vec<_>>();
+        let mut loops = Vec::new();
+        loops
+            .try_reserve_exact(layouts.len())
+            .map_err(|_| layout_allocation_failed())?;
+        for layout in layouts {
+            loops.push(self_loop_rows_for_class_layout(
+                layout,
+                self.charset,
+                self.width_profile,
+                resources,
+            )?);
+        }
 
         let _ = options;
-        Ok(relation_graph::render_parallel_self_loops(
-            relation_box,
-            loops,
-        ))
+        relation_graph::render_parallel_self_loops(relation_box, loops, resources)
     }
 
     fn layered_horizontal_gap(&self) -> usize {
@@ -1416,7 +1789,7 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
 
     fn layered_route_style(
         &self,
-        layout: &RelationLayout<'a>,
+        layout: &RelationLayout<'relation>,
     ) -> Result<LayeredRelationRouteStyle> {
         let vertical = line_char(layout.line, self.charset);
         let horizontal = horizontal_line_char(layout.line, self.charset);
@@ -1431,23 +1804,31 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
 
     fn layered_relation_overlays(
         &self,
-        layout: &RelationLayout<'a>,
+        layout: &RelationLayout<'relation>,
         geometry: &relation_graph::LayeredRelationRouteGeometry,
+        resources: &mut ResourceContext,
     ) -> Result<Vec<RelationOverlay>> {
+        resources.charge_layout_work(3)?;
         let mut overlays = Vec::new();
+        overlays
+            .try_reserve_exact(4)
+            .map_err(|_| layout_allocation_failed())?;
         if let Some(label) = layout.top_endpoint_label.as_ref() {
             overlays.push(RelationOverlay::label(
                 geometry.source_x(),
                 geometry
                     .source_marker_y()
-                    .saturating_sub(label.line_count()),
+                    .checked_sub(label.line_count())
+                    .ok_or_else(|| grid_overflow(resources))?,
                 label.clone(),
                 AsciiColorRole::EdgeLabel,
             ));
         }
         if let Some(label) = layout.label.as_ref() {
+            let center_x =
+                resources.checked_grid_add(geometry.source_x(), geometry.target_x())? / 2;
             overlays.push(RelationOverlay::label(
-                (geometry.source_x() + geometry.target_x()) / 2,
+                center_x,
                 geometry.label_y_after_source(),
                 label.clone(),
                 AsciiColorRole::EdgeLabel,
@@ -1474,7 +1855,7 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
         if let Some(label) = layout.bottom_endpoint_label.as_ref() {
             overlays.push(RelationOverlay::label(
                 geometry.target_x(),
-                geometry.target_marker_y() + 1,
+                resources.checked_grid_add(geometry.target_marker_y(), 1)?,
                 label.clone(),
                 AsciiColorRole::EdgeLabel,
             ));
@@ -1485,30 +1866,38 @@ impl<'a> relation_graph::RelationComponentAdapter<RelationLayout<'a>>
 
     fn render_vertical(
         &self,
-        boxes: &[RenderedClassBox],
-        layout: &RelationLayout<'a>,
+        _boxes: &[RenderedClassBox],
+        layout: &RelationLayout<'relation>,
         options: &AsciiRenderOptions,
+        resources: &mut ResourceContext,
     ) -> Result<Vec<RelationGraphLine>> {
-        let top = find_box(boxes, layout.top_id)?;
-        let bottom = find_box(boxes, layout.bottom_id)?;
+        let top = self.box_by_id.require(layout.top_id, resources)?;
+        let bottom = self.box_by_id.require(layout.bottom_id, resources)?;
 
         let _ = options;
-        Ok(render_vertical_relation(top, bottom, layout, self.charset))
+        render_vertical_relation(top, bottom, layout, self.charset, resources)
     }
 
     fn render_parallel(
         &self,
-        boxes: &[RenderedClassBox],
-        layouts: &[RelationLayout<'a>],
+        _boxes: &[RenderedClassBox],
+        layouts: &[RelationLayout<'relation>],
         options: &AsciiRenderOptions,
+        resources: &mut ResourceContext,
     ) -> Result<Vec<RelationGraphLine>> {
         let _ = options;
-        render_parallel_vertical_relations(boxes, layouts, self.charset, self.width_profile)
+        render_parallel_vertical_relations(
+            self.box_by_id,
+            layouts,
+            self.charset,
+            self.width_profile,
+            resources,
+        )
     }
 
     fn build_summary_row(
         &self,
-        layout: &RelationLayout<'a>,
+        layout: &RelationLayout<'relation>,
         reason: relation_graph::LayeredRelationSummaryReason,
     ) -> Result<RelationGraphSummaryRow> {
         class_relation_summary_row_for_reason(layout, reason)
@@ -1523,31 +1912,35 @@ fn self_loop_rows_for_class_layout(
     layout: &RelationLayout<'_>,
     charset: ClassCharset,
     width_profile: TerminalWidthProfile,
-) -> relation_graph::RelationSelfLoopRows {
+    resources: &ResourceContext,
+) -> Result<relation_graph::RelationSelfLoopRows> {
     let top_marker =
-        RelationGraphLine::with_role("+".to_string(), AsciiColorRole::EdgeLine, width_profile);
-    let bottom_marker = RelationGraphLine::with_role(
-        layout
-            .endpoint_marker
-            .map(|marker| marker_char(marker.marker, marker.side, charset))
-            .unwrap_or_else(|| line_char(layout.line, charset))
-            .to_string(),
+        RelationGraphLine::try_with_role("+", AsciiColorRole::EdgeLine, width_profile, resources)?;
+    let bottom_marker_text = layout
+        .endpoint_marker
+        .map(|marker| marker_char(marker.marker, marker.side, charset))
+        .unwrap_or_else(|| line_char(layout.line, charset))
+        .to_string();
+    let bottom_marker = RelationGraphLine::try_with_role(
+        &bottom_marker_text,
         AsciiColorRole::EdgeArrow,
         width_profile,
-    );
-    let label_lines = layout
-        .label
-        .as_ref()
-        .map(|label| relation_graph::label_lines_with_role(label, AsciiColorRole::EdgeLabel))
-        .unwrap_or_default();
+        resources,
+    )?;
+    let label_lines = match layout.label.as_ref() {
+        Some(label) => {
+            relation_graph::label_lines_with_role(label, AsciiColorRole::EdgeLabel, resources)?
+        }
+        None => Vec::new(),
+    };
 
-    relation_graph::RelationSelfLoopRows::new(
+    Ok(relation_graph::RelationSelfLoopRows::new(
         top_marker,
         label_lines,
         bottom_marker,
         horizontal_line_char(layout.line, charset),
         line_char(layout.line, charset),
-    )
+    ))
 }
 
 fn class_route_profile(layout: &RelationLayout<'_>) -> relation_graph::LayeredRelationRouteProfile {
@@ -1611,4 +2004,216 @@ fn relation_line_chars(charset: ClassCharset) -> RelationLineChars {
         ],
         charset.relation_junction,
     )
+}
+
+fn charge_class_model_work(model: &ClassDiagram, resources: &mut ResourceContext) -> Result<()> {
+    let item_count = model
+        .classes
+        .len()
+        .checked_add(model.interfaces.len())
+        .and_then(|value| value.checked_add(model.notes.len()))
+        .and_then(|value| value.checked_add(model.relations.len()))
+        .and_then(|value| value.checked_add(model.namespaces.len()))
+        .ok_or_else(|| work_overflow(resources))?;
+    resources.charge_layout_work(item_count.max(1))?;
+    charge_work_product(
+        resources,
+        model.classes.len(),
+        model.namespaces.len().max(1),
+    )?;
+    charge_work_product(
+        resources,
+        model.relations.len(),
+        model.namespaces.len().max(1),
+    )?;
+    charge_work_product(
+        resources,
+        model.namespaces.len(),
+        model.namespaces.len().max(1),
+    )?;
+    Ok(())
+}
+
+fn preflight_class_text(model: &ClassDiagram, resources: &mut ResourceContext) -> Result<()> {
+    for class in model.classes.values() {
+        charge_text_layout(resources, &class.id)?;
+        charge_text_layout(resources, &class.text)?;
+        if let Some(parent) = class.parent.as_deref() {
+            charge_text_layout(resources, parent)?;
+        }
+        for annotation in &class.annotations {
+            charge_text_layout(resources, annotation)?;
+        }
+        for member in class.members.iter().chain(&class.methods) {
+            let text = if member.display_text.is_empty() {
+                &member.id
+            } else {
+                &member.display_text
+            };
+            charge_text_layout(resources, text)?;
+        }
+    }
+
+    for interface in &model.interfaces {
+        charge_text_layout(resources, &interface.id)?;
+        charge_text_layout(resources, &interface.label)?;
+        charge_text_layout(resources, &interface.class_id)?;
+    }
+
+    for note in &model.notes {
+        charge_text_layout(resources, &note.id)?;
+        charge_text_layout(resources, &note.text)?;
+        if let Some(class_id) = note.class_id.as_deref() {
+            charge_text_layout(resources, class_id)?;
+        }
+        if let Some(parent) = note.parent.as_deref() {
+            charge_text_layout(resources, parent)?;
+        }
+    }
+
+    for relation in &model.relations {
+        charge_text_layout(resources, &relation.id1)?;
+        charge_text_layout(resources, &relation.id2)?;
+        charge_text_layout(resources, &relation.title)?;
+        charge_text_layout(resources, &relation.relation_title_1)?;
+        charge_text_layout(resources, &relation.relation_title_2)?;
+    }
+
+    for namespace in model.namespaces.values() {
+        charge_text_layout(resources, &namespace.id)?;
+        charge_text_layout(resources, &namespace.label)?;
+        if let Some(parent) = namespace.parent.as_deref() {
+            charge_text_layout(resources, parent)?;
+        }
+        for id in namespace.class_ids.iter().chain(&namespace.note_ids) {
+            charge_text_layout(resources, id)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn charge_work_product(resources: &mut ResourceContext, left: usize, right: usize) -> Result<()> {
+    resources.charge_layout_work_product(left, right)
+}
+
+fn grid_overflow(resources: &ResourceContext) -> AsciiError {
+    resources.grid_overflow()
+}
+
+fn work_overflow(resources: &ResourceContext) -> AsciiError {
+    resources.work_overflow()
+}
+
+fn nesting_overflow(resources: &ResourceContext) -> AsciiError {
+    resources.nesting_overflow()
+}
+
+fn layout_allocation_failed() -> AsciiError {
+    AsciiError::allocation_failed(AsciiResourceLimitPhase::LayoutWork.as_str())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::resource::AsciiResourcePolicy;
+
+    fn resources_with_layout_work_limit(max: usize) -> ResourceContext {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, max)
+            .expect("layout work test limit should be valid");
+        ResourceContext::new(policy)
+    }
+
+    fn note(id: &str, text: &str) -> ClassNote {
+        ClassNote {
+            id: id.to_string(),
+            class_id: None,
+            text: text.to_string(),
+            parent: None,
+        }
+    }
+
+    fn assert_layout_work_limit(error: AsciiError, actual: usize, max: usize) {
+        let AsciiError::ResourceLimitExceeded(details) = error else {
+            panic!("expected a typed layout work error, got {error:?}");
+        };
+        assert_eq!(details.limit, AsciiResourceLimitId::MaxLayoutWorkUnits);
+        assert_eq!(details.phase(), AsciiResourceLimitPhase::LayoutWork);
+        assert_eq!(details.actual, actual);
+        assert_eq!(details.max, max);
+        assert_eq!(details.profile, AsciiResourcePolicy::default().profile());
+    }
+
+    #[test]
+    fn class_note_index_charges_linear_build_and_lookup_work() {
+        let notes = vec![note("note-a", "first"), note("note-b", "second")];
+
+        let mut exact = resources_with_layout_work_limit(4);
+        let index = ClassNoteIndex::new(&notes, &mut exact)
+            .expect("two notes should consume two index build work units");
+        assert_eq!(
+            index
+                .get("note-a", &mut exact)
+                .expect("first lookup should fit the exact budget")
+                .expect("indexed note should exist")
+                .text,
+            "first"
+        );
+        assert!(
+            index
+                .get("missing", &mut exact)
+                .expect("missing lookup should still fit the exact budget")
+                .is_none()
+        );
+        assert_eq!(exact.layout_work_used(), 4);
+
+        let mut below = resources_with_layout_work_limit(3);
+        let index = ClassNoteIndex::new(&notes, &mut below)
+            .expect("index build should fit below the full lookup budget");
+        index
+            .get("note-a", &mut below)
+            .expect("first lookup should reach the configured budget");
+        let error = index
+            .get("note-b", &mut below)
+            .expect_err("the N-1 budget must reject the second constant-time lookup");
+        assert_layout_work_limit(error, 4, 3);
+    }
+
+    #[test]
+    fn class_box_index_charges_linear_build_and_lookup_work() {
+        let boxes = vec![
+            RelationGraphBox::new("A".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("B".to_string(), vec!["B".to_string()], 1),
+        ];
+
+        let mut exact = resources_with_layout_work_limit(4);
+        let index = RenderedClassBoxIndex::new(&boxes, &mut exact)
+            .expect("two boxes should consume two index build work units");
+        assert_eq!(
+            index
+                .require("A", &mut exact)
+                .expect("first endpoint lookup should fit the exact budget")
+                .id(),
+            "A"
+        );
+        assert!(
+            index
+                .get("missing", &mut exact)
+                .expect("missing endpoint lookup should fit the exact budget")
+                .is_none()
+        );
+        assert_eq!(exact.layout_work_used(), 4);
+
+        let mut below = resources_with_layout_work_limit(3);
+        let index = RenderedClassBoxIndex::new(&boxes, &mut below)
+            .expect("index build should fit below the full lookup budget");
+        index
+            .require("A", &mut below)
+            .expect("first endpoint lookup should reach the configured budget");
+        let error = index
+            .require("B", &mut below)
+            .expect_err("the N-1 budget must reject the second constant-time lookup");
+        assert_layout_work_limit(error, 4, 3);
+    }
 }

@@ -44,6 +44,11 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
     public static let maxSvgElements = MermanResourceLimitId("max_svg_elements")
     public static let maxDocumentDiagrams = MermanResourceLimitId("max_document_diagrams")
     public static let maxAsciiGridCells = MermanResourceLimitId("max_ascii_grid_cells")
+    public static let maxAsciiLayoutWorkUnits = MermanResourceLimitId("max_ascii_layout_work_units")
+    public static let maxAsciiDocumentCells = MermanResourceLimitId("max_ascii_document_cells")
+    public static let maxAsciiOutputBytes = MermanResourceLimitId("max_ascii_output_bytes")
+    public static let maxAsciiGraphemeBytes = MermanResourceLimitId("max_ascii_grapheme_bytes")
+    public static let maxAsciiNestingDepth = MermanResourceLimitId("max_ascii_nesting_depth")
     public static let maxRasterWidth = MermanResourceLimitId("max_raster_width")
     public static let maxRasterHeight = MermanResourceLimitId("max_raster_height")
     public static let maxRasterPixels = MermanResourceLimitId("max_raster_pixels")
@@ -69,6 +74,11 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
         .maxSvgElements,
         .maxDocumentDiagrams,
         .maxAsciiGridCells,
+        .maxAsciiLayoutWorkUnits,
+        .maxAsciiDocumentCells,
+        .maxAsciiOutputBytes,
+        .maxAsciiGraphemeBytes,
+        .maxAsciiNestingDepth,
         .maxRasterWidth,
         .maxRasterHeight,
         .maxRasterPixels,
@@ -98,6 +108,11 @@ public struct MermanResourceLimitId: Hashable, Sendable, CustomStringConvertible
         "max_svg_elements": MermanResourceLimitMetadata(id: "max_svg_elements", phase: "svg_postprocess", overridable: true, minimumValue: 1),
         "max_document_diagrams": MermanResourceLimitMetadata(id: "max_document_diagrams", phase: "document_scan", overridable: true, minimumValue: 0),
         "max_ascii_grid_cells": MermanResourceLimitMetadata(id: "max_ascii_grid_cells", phase: "ascii_layout", overridable: true, minimumValue: 1),
+        "max_ascii_layout_work_units": MermanResourceLimitMetadata(id: "max_ascii_layout_work_units", phase: "ascii_layout_work", overridable: true, minimumValue: 1),
+        "max_ascii_document_cells": MermanResourceLimitMetadata(id: "max_ascii_document_cells", phase: "ascii_document", overridable: true, minimumValue: 1),
+        "max_ascii_output_bytes": MermanResourceLimitMetadata(id: "max_ascii_output_bytes", phase: "ascii_output", overridable: true, minimumValue: 1),
+        "max_ascii_grapheme_bytes": MermanResourceLimitMetadata(id: "max_ascii_grapheme_bytes", phase: "ascii_grapheme", overridable: true, minimumValue: 1),
+        "max_ascii_nesting_depth": MermanResourceLimitMetadata(id: "max_ascii_nesting_depth", phase: "ascii_nesting", overridable: true, minimumValue: 1),
         "max_raster_width": MermanResourceLimitMetadata(id: "max_raster_width", phase: "raster_allocation", overridable: true, minimumValue: 1),
         "max_raster_height": MermanResourceLimitMetadata(id: "max_raster_height", phase: "raster_allocation", overridable: true, minimumValue: 1),
         "max_raster_pixels": MermanResourceLimitMetadata(id: "max_raster_pixels", phase: "raster_allocation", overridable: true, minimumValue: 1),

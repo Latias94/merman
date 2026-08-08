@@ -1,7 +1,7 @@
 use crate::common::{
     BindingDiagnosticErrorDetails, BindingDiagnosticSpan, BindingError, BindingStatus,
-    binding_ascii_grid_cells, binding_input_resource_policy, binding_site_config, no_diagram_error,
-    source_text,
+    binding_ascii_resource_policy, binding_input_resource_policy, binding_site_config,
+    no_diagram_error, source_text,
 };
 
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
@@ -44,8 +44,8 @@ impl AsciiOperationConfig {
             merman::ParseOptions::strict()
         };
         let mut render_options = ascii_options_from_json(options)?;
-        render_options.max_grid_cells =
-            binding_ascii_grid_cells(options.analysis.resources.as_ref())?;
+        render_options.resources =
+            binding_ascii_resource_policy(options.analysis.resources.as_ref())?;
         let resources = binding_input_resource_policy(options.analysis.resources.as_ref())?;
         let site_config = binding_site_config(options)?;
         Ok(Self {
@@ -265,19 +265,15 @@ fn render_ascii_with_renderer(
     renderer: &merman::ascii::HeadlessAsciiRenderer,
     source: &str,
 ) -> Result<Vec<u8>, BindingError> {
-    let resource_profile = renderer.resource_policy().profile();
     let rendered = renderer
         .render_ascii_sync(source)
-        .map_err(|error| classify_ascii_error(error, resource_profile))?
+        .map_err(classify_ascii_error)?
         .ok_or_else(no_diagram_error)?;
 
     Ok(rendered.into_bytes())
 }
 
-fn classify_ascii_error(
-    err: merman::ascii::HeadlessAsciiError,
-    resource_profile: merman::resources::ResourceProfile,
-) -> BindingError {
+fn classify_ascii_error(err: merman::ascii::HeadlessAsciiError) -> BindingError {
     let safe_message = err.terminal_safe_message();
     let diagnostic = err
         .terminal_diagnostic_details()
@@ -300,16 +296,15 @@ fn classify_ascii_error(
             | merman::ascii::AsciiError::UnsupportedFeature { .. } => {
                 BindingError::new(BindingStatus::UnsupportedOperation, safe_message)
             }
-            merman::ascii::AsciiError::RenderLimitExceeded { actual, limit } => {
+            merman::ascii::AsciiError::ResourceLimitExceeded(details) => {
+                let descriptor = details.limit.descriptor();
                 BindingError::resource_limit(
-                    merman::ascii::ASCII_RESOURCE_LIMIT_DESCRIPTORS[0].phase,
-                    merman::ascii::MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID,
-                    actual as u64,
-                    limit as u64,
-                    resource_profile.id(),
-                    format!(
-                        "ASCII render grid has {actual} cells, exceeding configured limit {limit}"
-                    ),
+                    descriptor.phase.as_str(),
+                    descriptor.stable_id,
+                    u64::try_from(details.actual).unwrap_or(u64::MAX),
+                    u64::try_from(details.max).unwrap_or(u64::MAX),
+                    details.profile.id(),
+                    safe_message,
                 )
             }
             _ => BindingError::new(BindingStatus::RenderError, safe_message),
@@ -347,6 +342,70 @@ fn binding_diagnostic_details(
 mod tests {
     use super::*;
 
+    fn render_ascii_with_limit(
+        limit_id: &str,
+        max: u64,
+        source: &str,
+    ) -> std::result::Result<Vec<u8>, BindingError> {
+        let options = format!(r#"{{ "resources": {{ "limits": {{ "{limit_id}": {max} }} }} }}"#);
+        render_ascii(source.as_bytes(), options.as_bytes())
+    }
+
+    fn assert_binding_ascii_exact_boundary(limit_id: &str, phase: &str, source: &str) {
+        let mut lower = 0u64;
+        let mut candidate = 1u64;
+        let upper = loop {
+            match render_ascii_with_limit(limit_id, candidate, source) {
+                Ok(output) => {
+                    assert!(!output.is_empty(), "{limit_id} produced no output");
+                    break candidate;
+                }
+                Err(error) => {
+                    assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+                    let details = error
+                        .resource_details()
+                        .expect("ASCII resource errors expose structured details");
+                    assert_eq!(details.limit_id, limit_id);
+                    assert_eq!(details.phase, phase);
+                    assert_eq!(details.max, candidate);
+                    lower = candidate;
+                    candidate = details.actual.max(candidate.saturating_mul(2));
+                }
+            }
+        };
+
+        let mut upper = upper;
+        while upper - lower > 1 {
+            let candidate = lower + (upper - lower) / 2;
+            match render_ascii_with_limit(limit_id, candidate, source) {
+                Ok(_) => upper = candidate,
+                Err(error) => {
+                    let details = error
+                        .resource_details()
+                        .expect("ASCII resource errors expose structured details");
+                    assert_eq!(details.limit_id, limit_id);
+                    assert_eq!(details.phase, phase);
+                    assert_eq!(details.max, candidate);
+                    lower = candidate;
+                }
+            }
+        }
+
+        render_ascii_with_limit(limit_id, upper, source)
+            .unwrap_or_else(|error| panic!("exact {limit_id} boundary failed: {error:?}"));
+        let error = render_ascii_with_limit(limit_id, upper - 1, source)
+            .expect_err("one-below binding ASCII boundary must fail");
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        let details = error
+            .resource_details()
+            .expect("ASCII resource errors expose structured details");
+        assert_eq!(details.limit_id, limit_id);
+        assert_eq!(details.phase, phase);
+        assert_eq!(details.actual, upper);
+        assert_eq!(details.max, upper - 1);
+        assert_eq!(details.profile, "interactive");
+    }
+
     #[test]
     fn render_ascii_returns_unicode_text() {
         let text =
@@ -380,13 +439,9 @@ mod tests {
         let diagnostic = merman::ParseDiagnostic::new("bad input")
             .with_span(span, merman::ParseDiagnosticSpanKind::InsertionPoint)
             .with_code("merman.test");
-        let error = classify_ascii_error(
-            merman::ascii::HeadlessAsciiError::from(merman::Error::diagram_parse_diagnostic(
-                "flow\u{1b}",
-                diagnostic,
-            )),
-            merman::resources::ResourceProfile::Constrained,
-        );
+        let error = classify_ascii_error(merman::ascii::HeadlessAsciiError::from(
+            merman::Error::diagram_parse_diagnostic("flow\u{1b}", diagnostic),
+        ));
 
         let details = error
             .diagnostic_details()
@@ -534,20 +589,21 @@ mod tests {
     }
 
     #[test]
-    fn render_ascii_accepts_relation_summary_diagnostics_option() {
-        let text = String::from_utf8(
-            render_ascii(
-                b"classDiagram\nclass Gateway\nclass Service\nclass Repo\nGateway --> Service : routes\nService --> Repo : stores",
-                br#"{ "resources": { "limits": { "max_ascii_grid_cells": 1 } }, "ascii": { "charset": "ascii", "relationSummaryDiagnostics": true } }"#,
-            )
-            .unwrap(),
+    fn render_ascii_relation_resource_limit_never_falls_back_to_summary() {
+        let error = render_ascii(
+            b"classDiagram\nclass Gateway\nclass Service\nclass Repo\nGateway --> Service : routes\nService --> Repo : stores",
+            br#"{ "resources": { "limits": { "max_ascii_grid_cells": 1 } }, "ascii": { "charset": "ascii", "relationSummaryDiagnostics": true } }"#,
         )
-        .unwrap();
+        .unwrap_err();
 
-        assert!(text.contains("relations:"), "{text}");
-        assert!(text.contains("reason: grid_budget"), "{text}");
-        assert!(text.contains("actual="), "{text}");
-        assert!(text.contains("limit=1"), "{text}");
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        let details = error
+            .resource_details()
+            .expect("structured resource details");
+        assert_eq!(details.limit_id, "max_ascii_grid_cells");
+        assert_eq!(details.phase, "ascii_layout");
+        assert_eq!(details.max, 1);
+        assert_eq!(details.profile, "interactive");
     }
 
     #[test]
@@ -704,7 +760,10 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
-        assert!(error.message().contains("ASCII render grid"), "{error:?}");
+        assert!(
+            error.message().contains("max_ascii_grid_cells"),
+            "{error:?}"
+        );
         let details = error
             .resource_details()
             .expect("structured resource details");
@@ -712,6 +771,46 @@ mod tests {
         assert_eq!(details.phase, "ascii_layout");
         assert_eq!(details.max, 1);
         assert_eq!(details.profile, "interactive");
+    }
+
+    #[test]
+    fn every_ascii_resource_limit_round_trips_exact_public_boundaries() {
+        let cases = [
+            (
+                "max_ascii_grid_cells",
+                "ascii_layout",
+                "flowchart TD\nA[Hello] --> B[World]",
+            ),
+            (
+                "max_ascii_layout_work_units",
+                "ascii_layout_work",
+                "flowchart TD\nA[Hello] --> B[World]",
+            ),
+            (
+                "max_ascii_document_cells",
+                "ascii_document",
+                "gitGraph\n  commit id: \"A\"",
+            ),
+            (
+                "max_ascii_output_bytes",
+                "ascii_output",
+                "flowchart TD\nA[Hello] --> B[World]",
+            ),
+            (
+                "max_ascii_grapheme_bytes",
+                "ascii_grapheme",
+                "flowchart TD\nA[👨‍👩‍👧‍👦]",
+            ),
+            (
+                "max_ascii_nesting_depth",
+                "ascii_nesting",
+                "mindmap\n  Root\n    Child",
+            ),
+        ];
+
+        for (limit_id, phase, source) in cases {
+            assert_binding_ascii_exact_boundary(limit_id, phase, source);
+        }
     }
 
     #[test]
