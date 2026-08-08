@@ -85,6 +85,16 @@ struct SingleProbeReport {
     outcome: SingleProbeOutcome,
 }
 
+struct SingleProbeContext<'a> {
+    workspace_root: &'a Path,
+    corpus: &'a CorpusSelection,
+    owned_paths: &'a [PathBuf],
+    snapshot: &'a SourceSnapshot,
+    base_policy: RenderResourcePolicy,
+    default_max_layout_work_units: usize,
+    authoritative_date: String,
+}
+
 #[derive(Debug, Serialize)]
 struct SingleProbeInputReport {
     kind: &'static str,
@@ -355,14 +365,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     if let Some(probe) = args.probe {
         let report = run_single_probe(
-            &workspace_root,
-            &corpus,
-            &owned_paths,
-            &preflight,
+            SingleProbeContext {
+                workspace_root: &workspace_root,
+                corpus: &corpus,
+                owned_paths: &owned_paths,
+                snapshot: &preflight,
+                base_policy: policy,
+                default_max_layout_work_units: max_layout_work_units,
+                authoritative_date: args.authoritative_date,
+            },
             probe,
-            policy,
-            max_layout_work_units,
-            args.authoritative_date,
         )?;
         write_json_report(&args.json_out, &report)?;
         return Ok(());
@@ -417,23 +429,23 @@ fn write_json_report<T: Serialize>(path: &Path, report: &T) -> Result<(), Box<dy
 }
 
 fn run_single_probe(
-    workspace_root: &Path,
-    corpus: &CorpusSelection,
-    owned_paths: &[PathBuf],
-    snapshot: &SourceSnapshot,
+    context: SingleProbeContext<'_>,
     request: ProbeRequest,
-    base_policy: RenderResourcePolicy,
-    default_max_layout_work_units: usize,
-    authoritative_date: String,
 ) -> Result<SingleProbeReport, Box<dyn Error>> {
-    let (input, source) = resolve_probe_source(corpus, &request.input)?;
+    let (input, source) = resolve_probe_source(context.corpus, &request.input)?;
     let (policy, expected_max, expected_override) = match request.limit {
         Some(limit) => (
-            base_policy.with_limit(ResourceLimitId::MaxLayoutWorkUnits, limit)?,
+            context
+                .base_policy
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, limit)?,
             limit,
             Some(limit),
         ),
-        None => (base_policy, default_max_layout_work_units, None),
+        None => (
+            context.base_policy,
+            context.default_max_layout_work_units,
+            None,
+        ),
     };
     let renderer = HeadlessRenderer::new().with_resource_policy(policy);
     let outcome = match request.stage {
@@ -545,16 +557,17 @@ fn run_single_probe(
             }
         }
     };
-    let postflight = capture_source_snapshot(workspace_root, corpus, owned_paths)?;
-    if *snapshot != postflight {
+    let postflight =
+        capture_source_snapshot(context.workspace_root, context.corpus, context.owned_paths)?;
+    if *context.snapshot != postflight {
         return Err("calibration inputs or executable changed during the probe".into());
     }
 
     Ok(SingleProbeReport {
         schema_version: 1,
         report_kind: "single_probe",
-        authoritative_date,
-        provenance: provenance(workspace_root, snapshot.clone())?,
+        authoritative_date: context.authoritative_date,
+        provenance: provenance(context.workspace_root, context.snapshot.clone())?,
         policy: policy_report(&policy)?,
         input,
         stage: request.stage,
