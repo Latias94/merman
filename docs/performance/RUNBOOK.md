@@ -204,9 +204,9 @@ count, and maximum pair budget before looking at the result. The default contrac
 - fresh confirmation observations that do not reuse diagnostic or calibration data;
 - suite-level simultaneous 95% paired bounds for `log(head/base)` and `head - base`, using
   Bonferroni component confidence across both metrics and every comparable row;
-- a joint `>10% AND >50 us` regression threshold for ordinary end-to-end work, or the
-  preregistered low-latency public-operation formula from `BENCHMARKING.md` when the frozen baseline
-  is below 500 us.
+- one preregistered materiality contract: the default joint `>10% AND >50 us` reporting budget, the
+  low-latency public-operation formula from `BENCHMARKING.md`, or a documented interactive,
+  throughput, high-volume, memory, or structural objective whose bounds dominate A/A noise.
 
 Use `--confidence-level`, `--bootstrap-seed`, and `--bootstrap-resamples` when an experiment needs
 explicit reproducibility values. Confirmation requires at least 10,000 bootstrap resamples;
@@ -214,10 +214,16 @@ smaller values are diagnostic-only, and values above 100,000 are rejected to kee
 generation bounded. Schema-v2 confirmation resolves current and registered historical selectors to
 one public operation and takes its divisor from lane metadata. Legacy schema-v1 confirmation instead
 requires exact benchmark identity and divisors of one. If A/A is unstable, the required count
-exceeds `--max-pairs`, or a decision interval crosses the joint boundary, record the result as
-inconclusive. Do not add samples after seeing the classification or relax either threshold.
-Exploratory owner-local results may motivate selecting the low-latency gate, but they must be
-disclosed and cannot be reused in A/A calibration or fresh public confirmation.
+exceeds `--max-pairs`, or a decision interval crosses the registered materiality boundary, record
+the result as inconclusive. Do not add samples after seeing the classification or relax the
+registered contract. Exploratory owner-local results may motivate the next experiment's contract,
+but they must be disclosed and cannot be reused in A/A calibration or fresh public confirmation.
+
+Structural and memory candidates follow the same preregistration discipline but do not manufacture
+a latency claim. Exact removal of repeated work, improved reachable complexity, or reduced
+allocation/retention may be accepted with semantic parity and public non-regression controls. New
+caches, persistent state, protocol machinery, or broad abstractions require stronger measured
+benefit proportional to their maintenance and correctness risk.
 
 ## 6. Run semantic and resource gates
 

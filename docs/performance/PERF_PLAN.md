@@ -53,22 +53,28 @@ fixtures differ; `flowchart_large` and Info have no shared measurement.
 
 ## Triage policy
 
-An ordinary regression enters the active queue when both conditions hold:
+A regression enters the active queue when it breaches the materiality contract registered for its
+public scenario. When no scenario-specific contract exists, the comparator's same-host default is
+the joint `>10% AND >50 us` budget. The 50-microsecond value is a stable reporting fallback, not a
+universal engineering cutoff.
 
-- the same-host A/B regression exceeds 10%; and
-- the absolute median increase exceeds 50 microseconds.
+Candidates and regressions must instead be judged against the evidence class that matches the real
+cost:
 
-A fixed 50-microsecond threshold cannot classify a public operation whose complete baseline is
-itself below 50 microseconds. For a frozen baseline below 500 microseconds, a candidate may instead
-preregister the low-latency gate in [BENCHMARKING.md](BENCHMARKING.md). That gate derives both
-thresholds from the baseline and independent A/A noise, still requires fresh public-operation
-confirmation, and adds a memory, throughput, or documented high-volume objective when the
-implementation adds substantial machinery. It is not an automatic exception for a large ratio on
-a tiny private stage.
+- complete operations below 500 microseconds may preregister the noise-derived low-latency gate in
+  [BENCHMARKING.md](BENCHMARKING.md);
+- interactive work may use a documented frame or response budget;
+- high-frequency integrations may use cumulative CPU time, throughput, or tail-latency objectives;
+- memory work may use allocation, peak, or retained-state objectives; and
+- reachable repeated work or input amplification may use exact counters and old/new complexity
+  bounds with representative public latency as a non-regression control.
 
-A workload can also bypass the ordinary threshold when it crosses an interactive frame budget,
-materially changes throughput or memory use, or affects a documented high-volume integration. The
-exception and its evidence must be frozen before confirmation samples are collected.
+The scenario, expected call volume, A/A noise floor, decision statistic, and thresholds must be
+frozen before confirmation. A small, owner-local, semantics-preserving removal of repeated work can
+land under structural or memory evidence even when the per-call absolute latency delta is below 50
+microseconds. A candidate that adds caches, protocol machinery, persistent state, or broad
+abstractions needs stronger measured public-operation evidence proportional to that maintenance and
+correctness cost. A large ratio on a tiny private stage remains attribution evidence only.
 
 An externally reachable complexity or resource-amplification repair uses a different evidence
 class. It must name the user-controlled variables, prove the reachable old/new time and added-space
