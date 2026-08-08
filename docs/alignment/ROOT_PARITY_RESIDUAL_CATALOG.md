@@ -29,7 +29,7 @@ normalized descendants pass ordinary `parity`; the only `structure` descendant p
 Ishikawa hand-drawn fixture. Candidate generation rejects every other mismatch, so the catalog
 cannot absorb parser, semantic, DOM-order, label-wrapper, or compared descendant-geometry failures.
 
-The current candidate contains 1,563 observations across 25 family ids. Fixture-scoped Node KaTeX
+The current candidate contains 1,566 observations across 25 family ids. Fixture-scoped Node KaTeX
 renders are excluded from exact root approval because their local MathML viewport is measured by
 the host browser. Those fixtures still require successful rendered-output and browser-measurement
 evidence, ordinary `parity` for the complete normalized descendant tree, and a fail-closed root
@@ -50,7 +50,7 @@ a new mismatch appears, or descendants no longer satisfy their declared profile.
 
 | Evidence id | Kind | Entries | Families | Source-backed classification |
 | --- | --- | ---: | --- | --- |
-| `browser-root-bbox` | `browser-measurement` | 1,389 | Architecture 33; Class 207; ER 51; Event Modeling 1; Flowchart 542; GitGraph 209; Ishikawa 11; Kanban 1; Mindmap 95; Requirement 42; Sankey 3; State 177; Swimlane 2; Timeline 12; Treemap 3 | Pinned Mermaid derives the final root from `setupGraphViewbox()`, `setupViewPortForSVG()`, or a family-local SVG `getBBox()`. Those paths measure the rendered DOM, including text, strokes, transforms, fallback fonts, and the Chromium float lattice. Merman uses the same padding and sizing algorithms over deterministic emitted-content bounds. |
+| `browser-root-bbox` | `browser-measurement` | 1,392 | Architecture 33; Class 207; ER 51; Event Modeling 1; Flowchart 545; GitGraph 209; Ishikawa 11; Kanban 1; Mindmap 95; Requirement 42; Sankey 3; State 177; Swimlane 2; Timeline 12; Treemap 3 | Pinned Mermaid derives the final root from `setupGraphViewbox()`, `setupViewPortForSVG()`, or a family-local SVG `getBBox()`. Those paths measure the rendered DOM, including text, strokes, transforms, fallback fonts, and the Chromium float lattice. Merman uses the same padding and sizing algorithms over deterministic emitted-content bounds. |
 | `browser-derived-layout` | `browser-measurement` | 121 | Block 41; Journey 4; Pie 43; Railroad 6; Railroad ABNF 2; Railroad EBNF 3; Railroad PEG 2; Sequence 4; TreeView 16 | These families compute root values explicitly, but their upstream dimensions consume `getBBox()`, `getBoundingClientRect()`, or `getComputedTextLength()` earlier in layout. The root residual is therefore the propagated browser measurement, not a second root formula. |
 | `c4-headless-layout` | `source-backed-layout-approximation` | 51 | C4 51 | C4 computes its root from `screenBounds` rather than final SVG `getBBox()`. This evidence class covers the headless profile where no browser screen fact is supplied: Merman ports the pinned `Bounds` and `drawInsideBoundary()` algorithms, but replaces browser-dependent text and screen facts with deterministic measurement and explicit container dimensions. Browser hosts can separately project `screen.availWidth` for exact C4 wrapping. The root-only remainder is retained as the bounded headless-layout approximation. |
 | `external-resource-layout` | `browser-measurement` | 1 | Flowchart 1 | The fixture intentionally retains remote `<img>` references. Mermaid leaves their intrinsic dimensions to the embedding browser, so network availability and image-load completion can change the browser-owned layout and root viewport without changing the Mermaid source or serialized resource reference. |
@@ -155,6 +155,26 @@ intrinsic image dimensions while retaining the same external references. This ob
 classified separately as `external-resource-layout`; it is not generalized into a tolerance or a
 production override. The catalog remains exact and hash-bound, so a future remote-load outcome
 change requires another explicit review.
+
+## 2026-08-08 Text Semantics and Metric Identity Review
+
+The full candidate was regenerated after the vendored text-measurement identity was aligned with
+Mermaid 11.16.1 and Flowchart sanitization stopped deleting literal comparison text. The candidate
+contains no removed fixture identities, three new Flowchart root-only observations, and 12 changed
+local root signatures: Architecture 2, Flowchart 5, Mindmap 4, and State 1.
+
+For all 12 changed signatures, the Mermaid input and pinned upstream SVG hashes are unchanged. The
+three new observations are likewise bound to existing pinned inputs and upstream SVGs. Every one
+of the 15 reviewed observations passes complete descendant `parity`; only root `style` or
+`viewBox` differs. The pinned renderers for Architecture, Flowchart, Mindmap, and State all derive
+the final viewport through `setupGraphViewbox()`, `setupViewPortForSVG()`, or the equivalent SVG
+`getBBox()` path already audited above, so all 15 observations retain the
+`browser-root-bbox` classification.
+
+The catalog therefore increases from 1,563 to 1,566 observations, with Flowchart increasing from
+543 to 546 total root observations. No schema, comparison revision, descendant normalization, or
+production rendering override changed. The reviewed candidate was accepted with SHA-256
+`242f60ef17145489803de85f63f1fac72927d226fc620de388f068bd16c8fc90`.
 
 ## Production Boundary
 
