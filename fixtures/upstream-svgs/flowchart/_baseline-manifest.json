@@ -5,8 +5,8 @@
     "mermaid_cli_version": "11.16.0",
     "mermaid_source_tag": "mermaid@11.16.1",
     "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
-    "package_json_sha256": "a79ba26e5efd40c22f7fddf57ecb17c428771b1d548dae70c09075840de62e78",
-    "package_lock_sha256": "c536966faf732663022f9bcb358ed92092af60b50dd3b658c6311fc2424d1a42",
+    "package_json_sha256": "77c7d37873d20c9ef1a2ef267911835e666537decc341722aa8d2f0170d06b42",
+    "package_lock_sha256": "aea75ff98014fe1ad3a410aeec334f1676ec41d2f81e96787b50768f81d3e97d",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v3"
   },
@@ -1639,7 +1639,7 @@
     },
     "upstream_cypress_flowchart_v2_spec_4023_should_render_html_labels_with_images_and_or_text_correctly_042": {
       "input_sha256": "4023a2758e3a3ba0df67ab1f06dba896aa25d28ae11dc7dc9bb16effef819e50",
-      "svg_sha256": "e4e5d6efa35595046817fd49b70c0429de3ce3403aec94c640358d6be855ded2",
+      "svg_sha256": "dc882b10b42e41ba1cb4677c0ea696ad21cac8105bd5e4085fff6835111dc4d3",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_flowchart_v2_spec_4439_should_render_the_graph_even_if_some_images_are_missing_043": {
