@@ -671,7 +671,7 @@ fn flowchart_parser_top_down_branch_merge_uses_connected_unicode_bend_corner() {
 }
 
 #[test]
-fn flowchart_parser_top_down_same_rank_reverse_edge_routes_instead_of_failing() {
+fn flowchart_parser_top_down_same_rank_left_edge_routes_instead_of_failing() {
     let rendered = render_flowchart(
         concat!(
             "flowchart TD\n",
@@ -698,26 +698,27 @@ fn flowchart_parser_top_down_same_rank_reverse_edge_routes_instead_of_failing() 
             "  v         v  \n",
             "+---+     +---+\n",
             "|   |     |   |\n",
-            "| C |     | B |\n",
+            "| C |<----| B |\n",
             "|   |     |   |\n",
             "+---+     +---+\n",
-            "  ^         |  \n",
-            "  +---------+  \n",
         ),
-        "same-rank right-to-left top-down edge should route through the bottom lane"
+        "same-rank right-to-left top-down edge should use natural horizontal ports"
     );
     assert_rectangular_char_grid(&rendered);
 }
 
 #[test]
 fn flowchart_parser_top_down_skip_edge_routes_for_every_declaration_order() {
-    // Declaring `A --> C` before the `A --> B --> C` chain places B and C on the same
-    // rank with B to the right of C. That layout previously had no top-down route
-    // family and failed with `unroutable graph edges`.
+    // Some declaration orders place B and C on the same rank instead of ranking C below B.
+    // `render_flowchart` rejects the diagram if any edge lacks a route plan, so a successful
+    // render proves every permutation can plan all three edges even when routed cells overlap.
     for input in [
         "flowchart TD\n  A --> B\n  B --> C\n  A --> C\n",
-        "flowchart TD\n  A --> C\n  A --> B\n  B --> C\n",
+        "flowchart TD\n  A --> B\n  A --> C\n  B --> C\n",
+        "flowchart TD\n  B --> C\n  A --> B\n  A --> C\n",
         "flowchart TD\n  B --> C\n  A --> C\n  A --> B\n",
+        "flowchart TD\n  A --> C\n  A --> B\n  B --> C\n",
+        "flowchart TD\n  A --> C\n  B --> C\n  A --> B\n",
     ] {
         let rendered = render_flowchart(input, &AsciiRenderOptions::ascii())
             .unwrap_or_else(|err| panic!("top-down skip edge should route for {input:?}: {err}"));
@@ -733,7 +734,7 @@ fn flowchart_parser_top_down_skip_edge_routes_for_every_declaration_order() {
 }
 
 #[test]
-fn flowchart_parser_bt_same_rank_reverse_edge_routes_through_flipped_lane() {
+fn flowchart_parser_bt_same_rank_left_edge_routes_after_vertical_flip() {
     let rendered = render_flowchart(
         "flowchart BT\n  A --> C\n  A --> B\n  B --> C\n",
         &AsciiRenderOptions::ascii(),
@@ -743,11 +744,9 @@ fn flowchart_parser_bt_same_rank_reverse_edge_routes_through_flipped_lane() {
     assert_eq!(
         rendered,
         concat!(
-            "  +---------+  \n",
-            "  v         |  \n",
             "+---+     +---+\n",
             "|   |     |   |\n",
-            "| C |     | B |\n",
+            "| C |<----| B |\n",
             "|   |     |   |\n",
             "+---+     +---+\n",
             "  ^         ^  \n",
@@ -761,13 +760,13 @@ fn flowchart_parser_bt_same_rank_reverse_edge_routes_through_flipped_lane() {
             "|   |          \n",
             "+---+          \n",
         ),
-        "BT same-rank edge should render as a vertical flip of the TD lane"
+        "BT same-rank edge should keep its horizontal route after the vertical flip"
     );
     assert_rectangular_char_grid(&rendered);
 }
 
 #[test]
-fn flowchart_parser_top_down_same_rank_reverse_edge_connects_unicode_lane() {
+fn flowchart_parser_top_down_same_rank_left_edge_connects_unicode_ports() {
     let rendered = render_flowchart(
         "flowchart TD\n  A --> C\n  A --> B\n  B --> C\n",
         &AsciiRenderOptions::unicode(),
@@ -775,12 +774,8 @@ fn flowchart_parser_top_down_same_rank_reverse_edge_connects_unicode_lane() {
     .expect("same-rank top-down skip edge should route in unicode");
 
     assert!(
-        rendered.contains("└─────────┘"),
-        "unicode same-rank lane should use connected box-drawing corners:\n{rendered}"
-    );
-    assert!(
-        rendered.contains("  ▲         │  "),
-        "unicode same-rank lane should point the arrow back into the target:\n{rendered}"
+        rendered.contains("│ C │◄────┤ B │"),
+        "unicode same-rank edge should connect the source and target horizontal ports:\n{rendered}"
     );
 }
 

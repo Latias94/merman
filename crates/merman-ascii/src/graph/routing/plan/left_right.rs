@@ -5,47 +5,6 @@ use super::super::super::shape::GraphNodeShapeSemantics;
 use super::super::cell::edge_line_char;
 use super::{RoutePlan, edge_arrow_cell, edge_line_cell, planned_label, route_cell};
 
-pub(super) fn plan_left_right_direct_route(
-    layouts: &[NodeLayout],
-    from: &NodeLayout,
-    to: &NodeLayout,
-    edge: &AsciiGraphEdge,
-    charset: &GraphCharset,
-) -> Option<RoutePlan> {
-    if from.center_y() != to.center_y() || to.x <= from.right() + 1 {
-        return None;
-    }
-    if !left_right_direct_route_is_clear(layouts, from, to) {
-        return None;
-    }
-
-    let y = from.center_y();
-    let start = from.right() + 1;
-    let end = to.x - 1;
-    let line = edge_line_char(edge, charset, GraphDirection::LeftRight);
-    let mut cells = Vec::new();
-    if charset.unicode {
-        cells.push(edge_line_cell(from.right(), y, charset.right_connector));
-    }
-    for x in start..end {
-        cells.push(route_cell(x, y, line));
-    }
-    cells.push(match edge.arrow {
-        GraphEdgeArrow::Open => route_cell(end, y, line),
-        GraphEdgeArrow::Point => edge_arrow_cell(end, y, charset.arrow_right),
-    });
-
-    let labels = planned_label(
-        edge.label.as_deref(),
-        CanvasCoord { x: start, y },
-        CanvasCoord { x: end, y },
-    )
-    .into_iter()
-    .collect();
-
-    Some(RoutePlan::new(cells, labels))
-}
-
 pub(super) fn plan_left_right_down_route(
     from: &NodeLayout,
     to: &NodeLayout,
@@ -171,77 +130,6 @@ pub(super) fn plan_left_right_right_then_up_route(
     });
 
     Some(RoutePlan::new(cells, Vec::new()))
-}
-
-pub(super) fn plan_left_right_bottom_lane_route(
-    from: &NodeLayout,
-    to: &NodeLayout,
-    edge: &AsciiGraphEdge,
-    charset: &GraphCharset,
-) -> Option<RoutePlan> {
-    let start_x = from.center_x();
-    let end_x = to.center_x();
-    if start_x == end_x {
-        return None;
-    }
-
-    let bottom_y = left_right_back_edge_bottom_y(from);
-    let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
-    let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
-    let min_x = start_x.min(end_x);
-    let max_x = start_x.max(end_x);
-    let mut cells = Vec::new();
-
-    cells.push(edge_line_cell(
-        start_x,
-        from.bottom(),
-        charset.down_connector,
-    ));
-    for y in (from.bottom() + 1)..bottom_y {
-        cells.push(route_cell(start_x, y, vertical));
-    }
-    let start_corner = if start_x < end_x {
-        charset.corner_down_right
-    } else {
-        charset.bottom_right
-    };
-    cells.push(route_cell(start_x, bottom_y, start_corner));
-
-    for x in (min_x + 1)..max_x {
-        cells.push(route_cell(x, bottom_y, horizontal));
-    }
-    let end_corner = if start_x < end_x {
-        charset.bottom_right
-    } else {
-        charset.corner_down_right
-    };
-    cells.push(route_cell(end_x, bottom_y, end_corner));
-
-    let arrow_y = bottom_y - 1;
-    cells.push(match edge.arrow {
-        GraphEdgeArrow::Open => edge_line_cell(end_x, arrow_y, vertical),
-        GraphEdgeArrow::Point => edge_arrow_cell(end_x, arrow_y, charset.arrow_up),
-    });
-    let labels = planned_label(
-        edge.label.as_deref(),
-        CanvasCoord {
-            x: min_x,
-            y: bottom_y,
-        },
-        CanvasCoord {
-            x: max_x,
-            y: bottom_y,
-        },
-    )
-    .into_iter()
-    .collect();
-
-    Some(RoutePlan::with_min_canvas_extent(
-        cells,
-        labels,
-        max_x + 3,
-        bottom_y + 1,
-    ))
 }
 
 pub(super) fn plan_left_right_reverse_over_self_loop_route(
@@ -414,22 +302,6 @@ fn plan_left_right_basic_right_then_up_route(
     Some(RoutePlan::new(cells, Vec::new()))
 }
 
-fn left_right_direct_route_is_clear(
-    layouts: &[NodeLayout],
-    from: &NodeLayout,
-    to: &NodeLayout,
-) -> bool {
-    let y = from.center_y();
-    let start = from.right() + 1;
-    let end = to.x - 1;
-    layouts
-        .iter()
-        .filter(|layout| layout.id != from.id && layout.id != to.id)
-        .all(|layout| {
-            y < layout.y || y > layout.bottom() || end < layout.x || start > layout.right()
-        })
-}
-
 fn has_left_right_crossing_pair(
     layouts: &[NodeLayout],
     edges: &[AsciiGraphEdge],
@@ -480,10 +352,6 @@ fn lane_x_between(from: &NodeLayout, to: &NodeLayout) -> usize {
 
 fn lane_y_between(upper: &NodeLayout, lower: &NodeLayout) -> usize {
     (upper.bottom() + lower.y) / 2
-}
-
-pub(super) fn left_right_back_edge_bottom_y(from: &NodeLayout) -> usize {
-    from.bottom() + 2
 }
 
 pub(super) fn self_loop_right_x(layouts: &[NodeLayout], from: &NodeLayout) -> usize {
