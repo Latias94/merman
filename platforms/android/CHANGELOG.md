@@ -8,44 +8,27 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ### Breaking changes
 
-- Replaced the C-ABI-forwarding JNI bridge with a direct `JNI_OnLoad` + `RegisterNatives`
-  transport over `merman-bindings-core` in a dedicated internal crate. Kotlin classes and the new
-  `libmerman_android_jni.so` from this release must be upgraded together; older
-  `libmerman_ffi.so` JNI slices are incompatible.
+- Replaced the C-ABI-forwarding JNI bridge with direct `JNI_OnLoad` + `RegisterNatives` transport API 1. Upgrade the Kotlin classes and `libmerman_android_jni.so` together; alpha.3 `libmerman_ffi.so` JNI slices and ABI 2 checks are incompatible.
 - Split the Kotlin source model into `Merman` for discovery and one-shot calls and `MermanEngine(optionsJson, services)` for reusable calls. Removed `MermanReusableEngine` without a compatibility alias.
-- Replaced byte-only generic execution with `execute(operationId, source, optionsJson, uri)`, which returns a typed `MermanOperationResult` for both one-shot and reusable engines. Binary byte helpers remain, while `renderPngResult`, `renderJpegResult`, and `renderPdfResult` retain metadata and effective output plans.
-- Replaced mutable callback configuration and callback-specialized constructors with immutable `MermanEngineServices`. Callback-free reusable engines permit concurrent calls; callback-enabled engines return `BUSY` for a competing call and `REENTRANT_CALL` for callback reentry.
-- Renamed the immutable Kotlin pack snapshot from `MermanIconRegistry` to `MermanIconPackSet` and the corresponding `MermanEngineServices` property from `iconRegistry` to `iconPackSet`; no compatibility aliases remain.
-- Replaced blocking/destructive `nativeFree` close with nonblocking `nativeTryClose`. A failed `close()` preserves the Kotlin handle and can be retried after the active call completes.
-- Replaced `runtimeContractJson()` with `runtimeCatalogJson()`. The new direct catalog is a flat
-  schema-1 document containing package identity, sorted capability/output/operation IDs, registry
-  facts, resource descriptors, and text-measurement providers; it validates Android transport API
-  version `1` and intentionally has no C ABI version field.
+- Replaced mutable `setTextMeasurer()` configuration with constructor-owned immutable `MermanEngineServices`. Callback-free engines admit concurrent calls; callback-enabled engines return `BUSY` for competing calls and `REENTRANT_CALL` for reentry. `close()` is now nonblocking, retryable, and preserves the handle when an active call prevents closure.
 - Replaced the zero-filled `MermanTextMeasureResult` constructor with shape-specific `metrics`, `length`, `horizontalExtents`, and `wrappedWithRawWidth` factories; custom measurers must now provide every field required by the selected shape.
 - Replaced parser-backed document facts with their final schema 1 shape. Other versions are rejected before body decoding; remove `fact_source: "text_scan"` handling and consume parser-backed items with explicit unavailable bodies.
-- Renamed binding option fields `viewport_width` and `viewport_height` to `container_width` and `container_height`, and removed the legacy Flowchart ELK backend selector; update serialized `optionsJson` before upgrading.
-- Moved binding JSON environment selectors to `environment.text_measurement` and `environment.math_renderer`, semantic host colors to `presentation.theme`, raw Mermaid overrides to top-level `site_config`, and output policy to `svg`. The prerelease `host_theme` group and the old `layout.text_measurer` / `layout.math_renderer` fields are rejected.
-- Removed underscore and shorthand binding enum aliases plus the old host-theme preset discovery method. Use the documented kebab-case values and `presentationCatalogJson()` for open-ended theme/profile discovery.
-- Expanded the diagram-family capability JSON. Upgrade custom strict Kotlin/JSON decoders with the native library; the canonical record now includes logical/render-model identities, parser/render flags, authoring header, and configuration namespace.
-- Replaced the incompatible prerelease options grammar with Options JSON schema `2`. `MermanResourceOptionsBuilder` now leaves the profile unset by default so request overlays inherit their constructor ceiling, and only generated `MermanResourceOverrideId` values can be supplied as overrides.
+- Replaced Options JSON schema 1 with schema 2. Rename `viewport_width` / `viewport_height` to `container_width` / `container_height`, move text/math selectors under `environment`, move semantic theme values under `presentation.theme`, use top-level `site_config` and `svg`, remove the legacy Flowchart ELK selector, and use documented kebab-case values. Request overlays now inherit their constructor resource profile unless one is explicitly supplied.
+- Removed `supportedHostThemePresetsJson()` in favor of artifact-aware `presentationCatalogJson()`. Expanded diagram-family capability records require strict custom decoders to upgrade with the matching native slice.
 
 ### Added
 
-- Added generated Kotlin text-measurement operation/result-kind constants.
-- Added the generated `MermanResourceOptionsBuilder` and runtime resource catalog so Android
-  callers can select `interactive`, `constrained`, `trusted-native`, or
-  `unbounded-for-trusted-input` without duplicating limit tables.
-- Added `presentationCatalogJson()` for artifact-aware theme preset, presentation profile, aspect, and missing-capability discovery.
-- Added generic `metadataJson(id)`, named analysis-facts and SVG-plan helpers, and generated parity checks for the complete 13-operation artifact surface.
-- Added typed schema-1 operation metadata with raster and PDF output plans. Unknown future output-plan kinds and the original metadata JSON are preserved.
-- Added immutable `MermanIconPackSet.fromPacks` snapshots for bounded IconifyJSON packs. Each engine constructor borrows the snapshot, builds its own native registry transactionally, and retains no registry handle outside the engine.
+- Added `execute(operationId, source, optionsJson, uri)` and typed `MermanOperationResult` values for the complete operation catalog. Named SVG, ASCII, analysis, PNG, JPEG, and PDF helpers wrap the same operation path; `*Result` binary helpers retain metadata and effective output plans.
+- Added `runtimeCatalogJson()` and generic `metadataJson(id)` discovery with generated operation, output, resource, and text-measurement constants.
+- Added `MermanResourceOptionsBuilder` and generated override IDs for `interactive`, `constrained`, `trusted-native`, and `unbounded-for-trusted-input` resource configuration.
+- Added `presentationCatalogJson()` for theme preset, presentation profile, aspect, and missing-capability discovery.
+- Added immutable `MermanIconPackSet.fromPacks(...)` snapshots and `MermanEngineServices` for constructor-owned icon packs and optional text measurement.
 
 ### Changed
 
-- Updated the native engine to the Mermaid 11.16 compatibility baseline, including source-backed Swimlane, Cynefin, Railroad, Wardley, and ZenUML behavior plus parser, layout, SVG, theme, Gantt, TreeView, and edge-routing fixes across existing families.
+- Updated the native engine to the Mermaid 11.16.1 compatibility baseline, including source-backed Swimlane, Cynefin, Railroad, Wardley, and ZenUML behavior plus parser, layout, SVG, theme, Gantt, TreeView, and edge-routing fixes across existing families.
 - JNI text-measurement failures, unsupported operations, and wrong-kind results now fall back per operation instead of invalidating the enclosing render.
 - Reusable engine close is idempotent. Engine service destruction occurs only after native admission locks are released, and constructor conflicts fail without invoking callbacks. Icon pack snapshots have no native lifecycle to close.
-- Runtime-catalog validation now requires both binding payload schemas and strictly validates generated option-group and constructor-service sections whenever they are present, while accepting older schema-1 producers that omit those additive sections.
 - The AAR now carries the project license, source-provenance notice, and exact third-party license texts under `META-INF`.
 - Android source builds now use the checked-in Gradle Wrapper and pinned JDK 17/NDK toolchain; the build helper can install the required NDK, assemble both published ABIs, and verify the completed AAR in one workflow.
 
