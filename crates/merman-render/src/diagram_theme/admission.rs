@@ -24,10 +24,15 @@ pub enum ThemeCapability {
     SvgFilter,
     Noise,
     Displacement,
+    ContentPadding,
+    Opacity,
+    TextDecoration,
+    WhiteSpaceWrapping,
+    WordSpacing,
 }
 
 impl ThemeCapability {
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 23] = [
         Self::SemanticTokens,
         Self::Typography,
         Self::SemanticRules,
@@ -46,6 +51,11 @@ impl ThemeCapability {
         Self::SvgFilter,
         Self::Noise,
         Self::Displacement,
+        Self::ContentPadding,
+        Self::Opacity,
+        Self::TextDecoration,
+        Self::WhiteSpaceWrapping,
+        Self::WordSpacing,
     ];
 
     pub const fn id(self) -> &'static str {
@@ -68,6 +78,11 @@ impl ThemeCapability {
             Self::SvgFilter => "svg-filter",
             Self::Noise => "noise",
             Self::Displacement => "displacement",
+            Self::ContentPadding => "content-padding",
+            Self::Opacity => "opacity",
+            Self::TextDecoration => "text-decoration",
+            Self::WhiteSpaceWrapping => "white-space-wrapping",
+            Self::WordSpacing => "word-spacing",
         }
     }
 }

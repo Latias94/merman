@@ -1,0 +1,432 @@
+use std::collections::BTreeSet;
+use std::sync::Arc;
+
+use merman_core::MermaidConfig;
+use serde_json::{Map, Value};
+use sha2::{Digest, Sha256};
+
+use super::admission::{
+    FontSourcePolicy, HostMeasurementFallback, HostMeasurementFallbackPolicy, ThemeAdmissionError,
+    ThemeAdmissionPolicy, ThemeCapability, ThemePortabilityRequirement, resolve_theme_admission,
+};
+use super::assets::{FontCatalog, FontCatalogError};
+use super::canvas::CanvasPaint;
+use super::effects::EffectPrimitive;
+use super::resources::{ThemeResourceLimitExceeded, ThemeResourcePolicy};
+use super::semantic::{ThemeTarget, ThemeVariant};
+use super::spec::DiagramThemeSpec;
+use super::typography::Specified;
+use super::{ThemeCompileValidationError, ThemeFingerprint, ThemeResolutionReport};
+
+const THEME_FINGERPRINT_DOMAIN: &[u8] = b"merman-diagram-theme-v1";
+
+/// Host-owned compiler for one complete typed theme value.
+#[derive(Debug, Clone)]
+pub struct DiagramThemeCompiler {
+    admission: ThemeAdmissionPolicy,
+    resources: ThemeResourcePolicy,
+    font_sources: FontSourcePolicy,
+    measurement_fallbacks: HostMeasurementFallbackPolicy,
+    portability: ThemePortabilityRequirement,
+}
+
+impl Default for DiagramThemeCompiler {
+    fn default() -> Self {
+        Self {
+            admission: ThemeAdmissionPolicy::default(),
+            resources: ThemeResourcePolicy::default(),
+            font_sources: FontSourcePolicy::default(),
+            measurement_fallbacks: HostMeasurementFallbackPolicy::new([
+                HostMeasurementFallback::NativeCatalog,
+                HostMeasurementFallback::AcceptHostDependent,
+                HostMeasurementFallback::VendoredDefault,
+            ])
+            .expect("static measurement fallback policy"),
+            portability: ThemePortabilityRequirement::BestEffort,
+        }
+    }
+}
+
+impl DiagramThemeCompiler {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_admission(mut self, admission: ThemeAdmissionPolicy) -> Self {
+        self.admission = admission;
+        self
+    }
+
+    pub fn with_resource_policy(mut self, resources: ThemeResourcePolicy) -> Self {
+        self.resources = resources;
+        self
+    }
+
+    pub fn with_font_source_policy(mut self, font_sources: FontSourcePolicy) -> Self {
+        self.font_sources = font_sources;
+        self
+    }
+
+    pub fn with_measurement_fallbacks(
+        mut self,
+        measurement_fallbacks: HostMeasurementFallbackPolicy,
+    ) -> Self {
+        self.measurement_fallbacks = measurement_fallbacks;
+        self
+    }
+
+    pub fn with_portability_requirement(
+        mut self,
+        portability: ThemePortabilityRequirement,
+    ) -> Self {
+        self.portability = portability;
+        self
+    }
+
+    pub fn compile(
+        &self,
+        spec: DiagramThemeSpec,
+    ) -> Result<super::DiagramTheme, ThemeCompileError> {
+        spec.validate()?;
+        let catalog = match spec.assets().font_catalog() {
+            Some(catalog) => catalog.clone().compile(&self.resources)?,
+            None => FontCatalog::default_parity(),
+        };
+        let inferred_capabilities = infer_required_capabilities(&spec);
+        let effective_requirements = spec
+            .requirements()
+            .clone()
+            .with_required_capabilities(inferred_capabilities);
+        let admission = resolve_theme_admission(
+            &self.admission,
+            &self.font_sources,
+            &self.measurement_fallbacks,
+            self.portability,
+            &effective_requirements,
+            &catalog,
+        )?;
+        let mermaid_config = compile_mermaid_config(&spec);
+        let capabilities = ThemeCapabilityReport::from_requirements(&effective_requirements);
+        let fingerprint = fingerprint(&spec, &catalog, &mermaid_config);
+        let report = ThemeResolutionReport::compiled(
+            ThemeFingerprint::from_bytes(fingerprint),
+            catalog.fingerprint(),
+            capabilities.required.clone(),
+        );
+        Ok(super::DiagramTheme(Arc::new(super::CompiledDiagramTheme {
+            spec,
+            catalog,
+            admission,
+            mermaid_config,
+            capabilities,
+            fingerprint: ThemeFingerprint::from_bytes(fingerprint),
+            report,
+        })))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThemeCapabilityReport {
+    required: BTreeSet<ThemeCapability>,
+    admitted: BTreeSet<ThemeCapability>,
+}
+
+impl ThemeCapabilityReport {
+    fn from_requirements(requirements: &super::ThemeRequirements) -> Self {
+        let required = requirements
+            .required_capabilities()
+            .collect::<BTreeSet<_>>();
+        let admitted = required.clone();
+        Self { required, admitted }
+    }
+
+    pub fn required(&self) -> impl ExactSizeIterator<Item = ThemeCapability> + '_ {
+        self.required.iter().copied()
+    }
+
+    pub fn admitted(&self) -> impl ExactSizeIterator<Item = ThemeCapability> + '_ {
+        self.admitted.iter().copied()
+    }
+
+    pub fn requires(&self, capability: ThemeCapability) -> bool {
+        self.required.contains(&capability)
+    }
+}
+
+fn infer_required_capabilities(spec: &DiagramThemeSpec) -> BTreeSet<ThemeCapability> {
+    let mut required = BTreeSet::new();
+    if !spec.styles().rules().is_empty() {
+        required.insert(ThemeCapability::SemanticTokens);
+        required.insert(ThemeCapability::SemanticRules);
+    }
+    if !spec.styles().ordinal_palettes().is_empty() {
+        required.insert(ThemeCapability::OrdinalPalette);
+    }
+    if spec.typography() != &super::typography::TypographySpec::default() {
+        required.insert(ThemeCapability::Typography);
+    }
+    collect_paint_capabilities(spec.canvas().base(), &mut required);
+    for layer in spec.canvas().layers() {
+        collect_paint_capabilities(layer.paint(), &mut required);
+    }
+    if !spec.canvas().layers().is_empty() {
+        required.insert(ThemeCapability::LayeredCanvas);
+    }
+    if spec
+        .canvas()
+        .layers()
+        .iter()
+        .any(|layer| !matches!(layer.blend_mode(), super::BlendMode::Normal))
+    {
+        required.insert(ThemeCapability::BlendMode);
+    }
+    if !spec.effects().graphs().is_empty() {
+        required.insert(ThemeCapability::SvgFilter);
+        for graph in spec.effects().graphs() {
+            for primitive in graph.primitives() {
+                match primitive {
+                    EffectPrimitive::DropShadow { .. } => {
+                        required.insert(ThemeCapability::Shadow);
+                    }
+                    EffectPrimitive::Turbulence { .. } => {
+                        required.insert(ThemeCapability::Noise);
+                    }
+                    EffectPrimitive::Displacement { .. } => {
+                        required.insert(ThemeCapability::Displacement);
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    for rule in spec.styles().rules() {
+        let style = rule.style();
+        if !matches!(style.stroke.width, Specified::Unspecified)
+            || !matches!(style.stroke.linecap, Specified::Unspecified)
+            || !matches!(style.stroke.linejoin, Specified::Unspecified)
+        {
+            required.insert(ThemeCapability::BorderStyling);
+        }
+        if !matches!(style.stroke.dasharray, Specified::Unspecified) {
+            required.insert(ThemeCapability::DashStyling);
+        }
+        if !matches!(style.geometry.radius, Specified::Unspecified) {
+            required.insert(ThemeCapability::RoundedGeometry);
+        }
+        if !matches!(style.typography.letter_spacing_px, Specified::Unspecified) {
+            required.insert(ThemeCapability::Typography);
+            required.insert(ThemeCapability::LetterSpacing);
+        }
+        if !matches!(style.typography.transform, Specified::Unspecified) {
+            required.insert(ThemeCapability::Typography);
+            required.insert(ThemeCapability::TextTransform);
+        }
+        if !matches!(style.typography.word_spacing_px, Specified::Unspecified) {
+            required.insert(ThemeCapability::Typography);
+            required.insert(ThemeCapability::WordSpacing);
+        }
+        if !matches!(style.typography.decoration, Specified::Unspecified) {
+            required.insert(ThemeCapability::Typography);
+            required.insert(ThemeCapability::TextDecoration);
+        }
+        if !matches!(style.typography.white_space, Specified::Unspecified)
+            || !matches!(style.typography.wrap, Specified::Unspecified)
+        {
+            required.insert(ThemeCapability::Typography);
+            required.insert(ThemeCapability::WhiteSpaceWrapping);
+        }
+        if style.typography != super::TextStylePatch::default() {
+            required.insert(ThemeCapability::Typography);
+        }
+        if !matches!(style.spacing.padding, Specified::Unspecified) {
+            required.insert(ThemeCapability::ContentPadding);
+        }
+        if !matches!(style.paint.opacity, Specified::Unspecified)
+            || !matches!(style.paint.fill_opacity, Specified::Unspecified)
+            || !matches!(style.stroke.stroke_opacity, Specified::Unspecified)
+        {
+            required.insert(ThemeCapability::Opacity);
+        }
+    }
+    required
+}
+
+fn collect_paint_capabilities(paint: &CanvasPaint, required: &mut BTreeSet<ThemeCapability>) {
+    match paint {
+        CanvasPaint::Transparent => {}
+        CanvasPaint::Solid(_) => {
+            required.insert(ThemeCapability::SolidCanvas);
+        }
+        CanvasPaint::LinearGradient(_) | CanvasPaint::RadialGradient(_) => {
+            required.insert(ThemeCapability::GradientCanvas);
+        }
+        CanvasPaint::Pattern(_) => {
+            required.insert(ThemeCapability::PatternCanvas);
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum ThemeCompileError {
+    #[error(transparent)]
+    Validation(#[from] ThemeCompileValidationError),
+    #[error(transparent)]
+    Admission(#[from] ThemeAdmissionError),
+    #[error(transparent)]
+    FontCatalog(#[from] FontCatalogError),
+    #[error(transparent)]
+    ResourceLimit(#[from] ThemeResourceLimitExceeded),
+}
+
+fn compile_mermaid_config(spec: &DiagramThemeSpec) -> MermaidConfig {
+    let mut config = spec.mermaid().to_mermaid_config();
+    let mut root = Map::new();
+    let mut variables = Map::new();
+    let (font_family, font_size) = spec.typography().default_style().to_mermaid_values();
+    variables.insert("fontFamily".to_string(), Value::String(font_family.clone()));
+    variables.insert("fontSize".to_string(), Value::String(font_size.clone()));
+    root.insert("fontFamily".to_string(), Value::String(font_family));
+
+    if let CanvasPaint::Solid(color) = spec.canvas().base() {
+        variables.insert("background".to_string(), Value::String(color.as_css()));
+    }
+
+    let shape_mappings = [
+        (
+            crate::family::RenderFamilyKind::Flowchart,
+            ThemeTarget::Node,
+            "primaryColor",
+            "primaryBorderColor",
+        ),
+        (
+            crate::family::RenderFamilyKind::Flowchart,
+            ThemeTarget::Edge,
+            "lineColor",
+            "lineColor",
+        ),
+        (
+            crate::family::RenderFamilyKind::Flowchart,
+            ThemeTarget::EdgeLabel,
+            "edgeLabelBackground",
+            "edgeLabelBackground",
+        ),
+        (
+            crate::family::RenderFamilyKind::Flowchart,
+            ThemeTarget::Cluster,
+            "clusterBkg",
+            "clusterBorder",
+        ),
+        (
+            crate::family::RenderFamilyKind::Sequence,
+            ThemeTarget::Note,
+            "noteBkgColor",
+            "noteBorderColor",
+        ),
+        (
+            crate::family::RenderFamilyKind::Sequence,
+            ThemeTarget::Actor,
+            "actorBkg",
+            "actorBorder",
+        ),
+        (
+            crate::family::RenderFamilyKind::Sequence,
+            ThemeTarget::Activation,
+            "activationBkgColor",
+            "activationBorderColor",
+        ),
+        (
+            crate::family::RenderFamilyKind::State,
+            ThemeTarget::State,
+            "stateBkg",
+            "stateBorder",
+        ),
+        (
+            crate::family::RenderFamilyKind::State,
+            ThemeTarget::Transition,
+            "transitionColor",
+            "transitionColor",
+        ),
+    ];
+    for (family, target, fill_key, stroke_key) in shape_mappings {
+        if let Some(rule) = spec
+            .styles()
+            .matching_rules(family, target, ThemeVariant::Default, None)
+            .next()
+        {
+            if let Specified::Value(CanvasPaint::Solid(color)) = &rule.style().paint.fill {
+                variables.insert(fill_key.to_string(), Value::String(color.as_css()));
+            }
+            if let Specified::Value(CanvasPaint::Solid(color)) = &rule.style().stroke.paint {
+                variables.insert(stroke_key.to_string(), Value::String(color.as_css()));
+            }
+        }
+    }
+
+    let text_mappings = [
+        (
+            crate::family::RenderFamilyKind::Flowchart,
+            ThemeTarget::NodeLabel,
+            &["primaryTextColor", "nodeTextColor"][..],
+        ),
+        (
+            crate::family::RenderFamilyKind::Flowchart,
+            ThemeTarget::ClusterLabel,
+            &["textColor"][..],
+        ),
+        (
+            crate::family::RenderFamilyKind::Sequence,
+            ThemeTarget::MessageLabel,
+            &["signalTextColor"][..],
+        ),
+        (
+            crate::family::RenderFamilyKind::State,
+            ThemeTarget::StateLabel,
+            &["stateLabelColor"][..],
+        ),
+    ];
+    for (family, target, keys) in text_mappings {
+        if let Some(rule) = spec
+            .styles()
+            .matching_rules(family, target, ThemeVariant::Default, None)
+            .next()
+            && let Some(color) = text_color_from_rule(rule)
+        {
+            for key in keys {
+                variables.insert((*key).to_string(), Value::String(color.clone()));
+            }
+        }
+    }
+
+    root.insert("theme".to_string(), Value::String("base".to_string()));
+    root.insert("themeVariables".to_string(), Value::Object(variables));
+    config.deep_merge(&Value::Object(root));
+    config
+}
+
+fn text_color_from_rule(rule: &super::semantic::ThemeRule) -> Option<String> {
+    match &rule.style().paint.fill {
+        Specified::Value(CanvasPaint::Solid(color)) => Some(color.as_css()),
+        _ => None,
+    }
+}
+
+fn fingerprint(
+    spec: &DiagramThemeSpec,
+    catalog: &FontCatalog,
+    mermaid_config: &MermaidConfig,
+) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    update_len_prefixed(&mut hasher, THEME_FINGERPRINT_DOMAIN);
+    update_len_prefixed(&mut hasher, format!("{spec:?}").as_bytes());
+    update_len_prefixed(&mut hasher, catalog.fingerprint().as_bytes());
+    if let Ok(value) = serde_json::to_vec(mermaid_config.as_value()) {
+        update_len_prefixed(&mut hasher, &value);
+    }
+    hasher.finalize().into()
+}
+
+fn update_len_prefixed(hasher: &mut Sha256, value: &[u8]) {
+    hasher.update((value.len() as u64).to_be_bytes());
+    hasher.update(value);
+}
