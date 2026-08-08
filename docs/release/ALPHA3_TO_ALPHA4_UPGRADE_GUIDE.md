@@ -310,7 +310,9 @@ APIs that were never part of the alpha.3 release and can be ignored by tag-only 
   `details.resource.cause` (`ceiling`, `arithmetic_overflow`, or `unknown`). Direct Rust
   construction of non-exhaustive `BindingResourceErrorDetails` and all binding-side decoders must
   preserve and accept this field; do not infer arithmetic overflow from the human-readable error
-  text.
+  text. JavaScript `details.resource.actual` and `details.resource.max` use `number` for safe
+  integers and a canonical decimal `string` for wider `u64` values, so consumers must accept both
+  forms without rounding.
 - Configure text measurement, math, icons, clock, randomness, and resource policy through `RenderEnvironment`. Binding and Web JSON use `presentation.theme` for semantic host colors, top-level `site_config` for raw Mermaid `themeVariables`, and `environment.text_measurement` / `environment.math_renderer` for rendering services. The removed `host_theme` group and the old `layout.text_measurer` / `layout.math_renderer` fields are rejected.
 - Replace `HostThemeProfile`, `CompiledHostTheme`, `HostThemeProfileBuilder`, `with_host_theme`, `with_compiled_host_theme`, `render_svg_with_host_theme_sync`, and `render_svg_with_compiled_host_theme_sync` with one immutable `Presentation`. Build semantic colors through `HostTheme`, select `PresentationProfile::MermanModern` independently when wanted, apply Mermaid overrides through `with_site_config`, and select cleanup/background/scoped CSS through an explicit `SvgPipeline` or `SvgOutputPolicy::pipeline()`. Replace flat `supported_host_theme_presets*` calls with `theme_preset_descriptors()` in Rust or the artifact-aware `presentation-catalog` metadata payload in bindings; the old helpers are deleted rather than deprecated.
 - Replace field-based `RenderResourceLimits` with sealed `RenderResourcePolicy`. Select `interactive`, `constrained`, `trusted-native`, or `unbounded-for-trusted-input`, then apply validated overrides by stable limit id.
@@ -360,7 +362,15 @@ fresh alpha.3-versus-release A/B run.
 
 Use the [detailed evidence report](ALPHA3_TO_ALPHA4_REFACTORING_REPORT.md) for recipes and historical
 measurements. Use the [performance plan](../performance/PERF_PLAN.md) for the rolling optimization
-status.
+status and the [final hardening attribution](../performance/headless_performance_final_attribution_2026-08-08.md)
+for the completed four-lane integration boundary.
+
+That final hardening pass adds no browser host-measurement protocol break, CLI transaction-journal
+format break, semantic-token ABI break, or diagnostics-capture API break. Browser-WASM now reads the
+existing optional `handled` disposition directly before the unchanged complete result decoder, but
+the callback shape, fallback behavior, protocol version, error class, and public API are unchanged.
+The public layout, work/error, ordering, resource-cause, rendering, binding, Web, CLI, and LSP
+migrations documented above remain the complete user-facing boundary for this branch.
 
 ## What remains unproven before release
 
@@ -380,4 +390,5 @@ status.
 - [Capability guide](../FEATURES.md)
 - [Package surfaces](PACKAGE_SURFACES.md)
 - [Performance plan](../performance/PERF_PLAN.md)
+- [Final hardening attribution](../performance/headless_performance_final_attribution_2026-08-08.md)
 - [ABI 3 migration](../bindings/ABI3_MIGRATION.md)

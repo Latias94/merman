@@ -34,10 +34,17 @@ The release-range baseline and latest committed checkpoints were measured on 202
 - The current-base Requirement and Mindmap U9 hypotheses are closed independently:
   [Requirement](requirement_metric_reuse_2026-08-07.md) is rejected as written and by upper bound,
   while [Mindmap](mindmap_metric_reuse_2026-08-07.md) is rejected as superseded by U8.
+- [Browser-WASM disposition decision](wasm_host_measurement_disposition_2026-08-08.md) accepts a
+  smaller owner-local replacement for the rejected custom visitor. It removes one disposition
+  Serde decode per handled callback, shrinks the optimized render artifact by 388 bytes, and keeps
+  latency as supporting non-regression evidence rather than a release claim.
+- [Final four-lane attribution](headless_performance_final_attribution_2026-08-08.md) closes U13
+  with one late accepted structural candidate, records the representative interaction guard,
+  preserves the fail-closed alpha.3 coverage boundary, and reconciles the public break inventory.
 
-The authoritative date for these hardening decisions is 2026-08-07. Automatic later timestamps
-from the local machine are known clock drift and are excluded; receipts bind revisions,
-executables, fixtures, and raw reports by digest.
+Evidence dates use the local Asia/Shanghai calendar recorded by each receipt. Decisions through
+2026-08-08 are authoritative; there is no blanket clock-drift exclusion for the U10-U13 receipts.
+Every claim remains bound to named revisions, executables, fixtures, and raw reports by digest.
 
 | Comparison lane | Shared rows | Median ratio | Geometric mean | Faster / slower |
 | --- | ---: | ---: | ---: | ---: |
@@ -109,27 +116,33 @@ evidence. Their measured alpha.3 increases are about 2-5 microseconds. Architect
 `flowchart_small`, Gantt, and `flowchart_ports_heavy` are within the current noise band.
 
 Kanban is no longer a cross-runner P0: it now measures 57.66 us versus mmdr's 28.19 us, a 29.47 us
-absolute gap below the active threshold. Its alpha.3 lane must be rerun before declaring the
-historical release regression closed. XYChart is not a valid cross-runner priority until both
-runners use the same fixture.
+absolute gap on a cross-runner lane with different product semantics. A new candidate requires a
+current causal owner-local upper bound and a registered scenario objective rather than a fixed
+absolute cutoff. Its alpha.3 lane must be rerun before declaring the historical release regression
+closed. XYChart is not a valid cross-runner priority until both runners use the same fixture.
 
 ## Completed work
 
-### 2026-08-07 headless hardening decisions
+### 2026-08-08 headless hardening decisions
 
 | Unit | Decision | Durable boundary |
 |---|---|---|
-| U5 Flowchart work accounting | `accepted-structural` | One render-owned meter spans Dagre and ELK through neutral lower-crate controls; public causal controls are recorded in [the U5 receipt](flowchart_layout_work_accounting_2026-08-04.md). |
+| U1 evidence and current baselines | `completed-evidence-only` | The clean branch-start boundary, benchmark/output-identity contracts, candidate-local ignored ledgers, and cleanup rules are frozen in [the U1 receipt](headless_performance_branch_start_2026-08-02.md). |
+| U2 pinned registry baselines | `rejected-inconclusive` | Two current-base confirmations failed the preregistered A/A stability contract on opposite sides. The `OnceLock + COW` candidate and its candidate-only tests were removed in an explicit cleanup commit; see [the U2 receipt](cached_baseline_registries_2026-08-03.md). |
+| U3 Browser-WASM disposition | `accepted-structural` | A direct `handled` property read replaces the disposition-only Serde struct decode before the existing complete result deserialization. The rejected custom visitor remains absent; the optimized render artifact is 388 bytes smaller, full Web smoke passes, and noisy browser timing is supporting evidence only. See [the U3 follow-up receipt](wasm_host_measurement_disposition_2026-08-08.md). |
+| U4 State Rough lifecycle | `accepted-memory`, `accepted-structural` | Seeded Rough reuse is operation-owned and releases every cache allocation after success, ordinary error, unwind, concurrency, and recovery; native rectangles skip unused Rough construction. The representative public lane made no latency claim. See [the U4 receipt](state_rough_operation_cache_2026-08-02.md). |
+| U5 Architecture and Flowchart work accounting | `accepted-structural` | One render-owned operation meter receives neutral lower-crate work-control charges for Architecture FCoSE, Flowchart Dagre/Dugong, and Flowchart ELK without clamping configuration or substituting algorithms. See the [Flowchart accounting receipt](flowchart_layout_work_accounting_2026-08-04.md) and [interactive policy calibration](interactive_layout_work_calibration_2026-08-07.md). |
 | U6 ELK hierarchy preparation | `accepted-structural` | Stable scope ownership and iterative postorder remove suffix cloning and repeated descendant discovery. A source-equivalent synthetic adjacent pair passed eight-pair public ELK A/A and AB/BA controls with exact SVG identity; see [the U6 receipt](elk_hierarchy_preparation_2026-08-03.md). No latency or memory claim is admitted. |
 | U7 Dugong transient retirement | `accepted-structural` | Stable batch retirement preserves node/edge/compound order and exact writeback; public controls matched SVG identity. One self-loop row was stable, while the long-edge base A/A lane was inconclusive, so no latency claim is admitted; see [the U7 receipt](dugong_transient_retirement_2026-08-02.md). |
 | U8 rich inline HTML planning | `accepted-structural` | Cumulative five-slice planner closure removes repeated run/style scans and growing transient payloads while preserving Mermaid 11.16.1 wrapping and opaque callback semantics; see [the U8 receipt](rich_inline_html_planning_2026-08-07.md). No latency or peak-memory claim is admitted. |
 | Interactive layout-work policy calibration | `accepted-structural` | The 800,000-unit ceiling follows the registered headroom rule for the closed 68-member corpus and has exact `W/W-1`, node/edge cardinality, configuration-amplification, isolated-stage, timeout, RSS, and output evidence; see [the policy receipt](interactive_layout_work_calibration_2026-08-07.md). No latency or memory claim is admitted. |
-| U9 Sequence operation metrics | `accepted-latency`, `accepted-memory` | Reuse is private to the exact built-in carrier and semantic owner; host/custom callbacks remain unchanged. |
-| U9 Requirement Markdown width | `rejected-as-written`, `rejected-upper-bound` | The old shared change reduced opaque callbacks; a compliant owner-local variant could save at most 13.249 us / 7.379%, below admission. |
-| U9 Mindmap inline metrics | `rejected-superseded` | U8 already removed every admissible discarded built-in request; the remaining opaque callbacks are observable behavior. |
+| U9 Sequence operation metrics | `accepted-latency`, `accepted-memory` | Reuse is private to the exact built-in carrier and semantic owner; host/custom callbacks remain unchanged. See [the Sequence receipt](sequence_operation_metric_reuse_2026-08-07.md). |
+| U9 Requirement Markdown width | `rejected-as-written`, `rejected-upper-bound` | The old shared change reduced opaque callbacks; the compliant owner-local upper bound was only 13.249 us / 7.379% and did not justify another metric carrier without a registered high-volume, memory, or structural objective. See [the Requirement receipt](requirement_metric_reuse_2026-08-07.md). |
+| U9 Mindmap inline metrics | `rejected-superseded` | U8 already removed every admissible discarded built-in request; the remaining opaque callbacks are observable behavior. See [the Mindmap receipt](mindmap_metric_reuse_2026-08-07.md). |
 | U10 CLI transaction metadata | `accepted-structural` + `rejected-not-admitted` | The mandatory target-to-index map removes the stage-slot `O(N^2)` lookup term. The optional sealed-manifest/compact-frontier topology was not admitted because no adjacent candidate or three-platform durability matrix exists; the baseline journal remains unchanged. See [the U10 receipt](cli_transaction_metadata_2026-08-08.md). |
 | U11 semantic-token reducer | `accepted-structural` | One active scan removes the per-interval finalists vector and redundant precedence/narrowness passes while preserving packed output and conflict semantics. Public latency/memory claims are not admitted without the required current LSP/WASM lanes; see [the U11 receipt](semantic_token_reducer_2026-08-08.md). |
 | U12 diagnostics-only capture | `rejected-not-admitted` | The existing narrow `DiagnosticsOnly` retained-object split is kept, but deeper parser/Flowchart projection elimination was not admitted: it lacks a current allocation/public gate and would risk observable projection diagnostics. See [the U12 receipt](diagnostics_capture_specialization_2026-08-08.md). |
+| U13 final attribution and integration | `completed-one-new-candidate` | The fixed-budget native, browser-WASM, CLI, and editor/analysis scan admitted one smaller owner-local Browser-WASM structural candidate after the materiality policy was made scenario-aware. The production-equivalent representative guard found no material regression, alpha.3 remains coverage-only, and the public break inventory is reconciled in [the U13 receipt](headless_performance_final_attribution_2026-08-08.md). |
 
 No failed U9 production path or global text cache remains. The old Requirement and Mindmap
 experiment branches are historical hypotheses only.
@@ -255,7 +268,8 @@ below its 4.07 us and 10% low-latency thresholds, and was removed. See
 Each render session initializes and updates measurement-provenance counters, and
 the string-only API constructs a completed report before discarding it. A/B a no-report terminal
 path while preserving the report-returning API unchanged. This is a hypothesis, not a proven
-cause; reject it if the absolute saving is below the active threshold.
+cause; reject it if it cannot clear the preregistered public-scenario contract or justify a
+separate structural or memory claim.
 
 Exit: report APIs retain identical evidence, string APIs retain identical SVG/error behavior, and
 the stage benchmark demonstrates any saving.
