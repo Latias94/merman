@@ -431,7 +431,7 @@ pub(crate) struct BindingOptions {
     pub(crate) analysis: BindingAnalysisOptionsJson,
     pub(crate) parse: Option<ParseOptionsJson>,
     #[cfg(feature = "svg")]
-    pub(crate) presentation: Option<PresentationOptionsJson>,
+    pub(crate) theme: Option<crate::theme::BindingThemeOptionsJson>,
     #[cfg(feature = "ascii")]
     pub(crate) ascii: Option<AsciiOptionsJson>,
     #[cfg(feature = "svg")]
@@ -484,12 +484,22 @@ pub(crate) struct BaseBindingOptions {
     resource_ceiling: ResourceOptionsJson,
 }
 
+#[cfg(feature = "svg")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BindingThemeOverlay {
+    Inherit,
+    Clear,
+    Replace,
+}
+
 #[derive(Debug)]
 pub(crate) enum BindingRequestOverlay {
     Unchanged,
     Override {
         normalized_wire: Value,
         requested_resources: Option<ResourceOptionsJson>,
+        #[cfg(feature = "svg")]
+        theme: BindingThemeOverlay,
     },
 }
 
@@ -614,26 +624,6 @@ pub(crate) enum PdfPageOptionsJson {
     FitSvg,
     Fixed { width_pt: f64, height_pt: f64 },
     FitCssWidth { max_width_px: f64 },
-}
-
-#[cfg(feature = "svg")]
-#[derive(Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct PresentationOptionsJson {
-    pub(crate) profile: Option<String>,
-    pub(crate) theme: Option<PresentationThemeOptionsJson>,
-}
-
-#[cfg(feature = "svg")]
-#[derive(Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct PresentationThemeOptionsJson {
-    pub(crate) preset: Option<String>,
-    pub(crate) appearance: Option<String>,
-    pub(crate) font_family: Option<String>,
-    pub(crate) font_size: Option<String>,
-    pub(crate) roles: Option<BTreeMap<String, String>>,
-    pub(crate) series_palette: Option<Vec<String>>,
 }
 
 pub fn error_payload_json_bytes(status: BindingStatus, message: &str) -> Vec<u8> {
@@ -788,10 +778,20 @@ fn parse_base_options_for_contract(
     let wire = options_json_value(bytes)?;
     let typed = parse_options_value_for_contract(&wire, artifact_contract)?;
     let resource_ceiling = typed.analysis.resources.clone().unwrap_or_default();
+    let normalized_wire = normalize_analysis_wrapper(wire);
+    #[cfg(feature = "svg")]
+    let normalized_wire = {
+        let mut normalized_wire = normalized_wire;
+        normalized_wire
+            .as_object_mut()
+            .expect("validated binding options always normalize to an object")
+            .remove("theme");
+        normalized_wire
+    };
     Ok((
         typed,
         BaseBindingOptions {
-            normalized_wire: Arc::new(normalize_analysis_wrapper(wire)),
+            normalized_wire: Arc::new(normalized_wire),
             resource_ceiling,
         },
     ))
@@ -808,8 +808,10 @@ fn parse_options_value_for_contract(
     validate_options_schema_version(value)?;
     reject_ambiguous_analysis_wrappers(value)?;
     reject_removed_host_theme(value)?;
-    reject_null_presentation_values(value)?;
+    reject_removed_presentation(value)?;
     reject_unavailable_option_groups(value, artifact_contract)?;
+    #[cfg(feature = "svg")]
+    crate::theme::validate_theme_wire(value.get("theme"))?;
     #[cfg(feature = "svg")]
     reject_removed_layout_fields(value)?;
     #[cfg(feature = "ascii")]
@@ -842,43 +844,21 @@ fn reject_removed_host_theme(value: &Value) -> Result<(), BindingError> {
     {
         return Err(BindingError::new(
             BindingStatus::OptionsJsonError,
-            "options group `host_theme` was removed; use `presentation.profile` for first-party profiles, `presentation.theme` for theme values, top-level `site_config` for Mermaid overrides, and `svg` for output policy",
+            "options group `host_theme` was removed; use top-level `theme` for compiled diagram themes, `site_config` for Mermaid behavior overrides, and `svg` for output policy",
         ));
     }
     Ok(())
 }
 
-fn reject_null_presentation_values(value: &Value) -> Result<(), BindingError> {
-    let Some(presentation) = value.get("presentation") else {
-        return Ok(());
-    };
-    let Some(presentation) = presentation.as_object() else {
-        if presentation.is_null() {
-            return Err(BindingError::new(
-                BindingStatus::OptionsJsonError,
-                "options group `presentation` must be an object, not null",
-            ));
-        }
-        return Ok(());
-    };
-
-    for key in ["profile", "theme"] {
-        if presentation.get(key).is_some_and(Value::is_null) {
-            return Err(BindingError::new(
-                BindingStatus::OptionsJsonError,
-                format!("options field `presentation.{key}` must not be null"),
-            ));
-        }
-    }
-    if let Some(theme) = presentation.get("theme").and_then(Value::as_object) {
-        for (key, value) in theme {
-            if value.is_null() {
-                return Err(BindingError::new(
-                    BindingStatus::OptionsJsonError,
-                    format!("options field `presentation.theme.{key}` must not be null"),
-                ));
-            }
-        }
+fn reject_removed_presentation(value: &Value) -> Result<(), BindingError> {
+    if value
+        .as_object()
+        .is_some_and(|options| options.contains_key("presentation"))
+    {
+        return Err(BindingError::new(
+            BindingStatus::OptionsJsonError,
+            "options group `presentation` was removed; use top-level `theme`, `site_config`, layout configuration, and `svg` as independent owners",
+        ));
     }
     Ok(())
 }
@@ -952,14 +932,7 @@ fn reject_unknown_options_json_fields(value: &Value) -> Result<(), BindingError>
             || BINDING_ANALYSIS_OPTION_KEYS.contains(&key.as_str())
             || matches!(
                 key.as_str(),
-                "presentation"
-                    | "ascii"
-                    | "layout"
-                    | "environment"
-                    | "svg"
-                    | "raster"
-                    | "jpeg"
-                    | "pdf"
+                "theme" | "ascii" | "layout" | "environment" | "svg" | "raster" | "jpeg" | "pdf"
             );
         if !known {
             return Err(BindingError::new(
@@ -1012,12 +985,35 @@ fn parse_request_overlay_for_contract(
     }
     parse_options_value_for_contract(&request_value, artifact_contract)?;
 
+    #[cfg(feature = "svg")]
+    let theme = request_value
+        .as_object()
+        .and_then(|options| options.get("theme"))
+        .map_or(BindingThemeOverlay::Inherit, |theme| {
+            if theme.is_null() {
+                BindingThemeOverlay::Clear
+            } else {
+                BindingThemeOverlay::Replace
+            }
+        });
     let mut normalized_wire = normalize_analysis_wrapper(request_value);
     let requested_resources = take_request_resource_options(&mut normalized_wire, resource_scope)?;
     Ok(BindingRequestOverlay::Override {
         normalized_wire,
         requested_resources,
+        #[cfg(feature = "svg")]
+        theme,
     })
+}
+
+#[cfg(feature = "svg")]
+impl BindingRequestOverlay {
+    pub(crate) const fn theme_overlay(&self) -> BindingThemeOverlay {
+        match self {
+            Self::Unchanged => BindingThemeOverlay::Inherit,
+            Self::Override { theme, .. } => *theme,
+        }
+    }
 }
 
 impl BaseBindingOptions {
@@ -1036,6 +1032,8 @@ impl BaseBindingOptions {
         let BindingRequestOverlay::Override {
             normalized_wire,
             requested_resources,
+            #[cfg(feature = "svg")]
+                theme: _,
         } = overlay
         else {
             unreachable!("unchanged request overlays borrow the base engine");
@@ -1270,17 +1268,24 @@ fn request_selects_runtime_policy(value: &Value) -> bool {
     })
 }
 
+fn merge_json_object(
+    base: &mut serde_json::Map<String, Value>,
+    request: serde_json::Map<String, Value>,
+) {
+    for (key, value) in request {
+        match base.get_mut(&key) {
+            Some(base_value) => merge_json_value(base_value, value),
+            None => {
+                base.insert(key, value);
+            }
+        }
+    }
+}
+
 fn merge_json_value(base: &mut Value, request: Value) {
     match (base, request) {
         (Value::Object(base), Value::Object(request)) => {
-            for (key, value) in request {
-                match base.get_mut(&key) {
-                    Some(base_value) => merge_json_value(base_value, value),
-                    None => {
-                        base.insert(key, value);
-                    }
-                }
-            }
+            merge_json_object(base, request);
         }
         (base, request) => *base = request,
     }
@@ -1454,6 +1459,15 @@ pub(crate) fn binding_site_config(
         return Err(BindingError::new(
             BindingStatus::InvalidArgument,
             "site_config must be a JSON object",
+        ));
+    }
+    if site_config
+        .as_object()
+        .is_some_and(|config| config.contains_key("themeCSS"))
+    {
+        return Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            "site_config.themeCSS is not accepted by general bindings; use the typed `theme` schema instead",
         ));
     }
     Ok(Some(merman::MermaidConfig::from_value(site_config.clone())))
@@ -1945,6 +1959,8 @@ fn options_json_value(options_json: &[u8]) -> Result<Value, BindingError> {
             format!("invalid options_json UTF-8: {error}"),
         )
     })?;
+    #[cfg(feature = "svg")]
+    crate::theme::validate_theme_input_json(options_json)?;
     serde_json::from_str(text).map_err(|error| {
         BindingError::new(
             BindingStatus::OptionsJsonError,
@@ -2286,6 +2302,32 @@ mod tests {
         assert_eq!(resources.profile.as_deref(), Some("interactive"));
         assert_eq!(resources.limits.get("max_source_bytes"), Some(&2048));
         assert_eq!(resources.limits.get("max_model_items"), Some(&128));
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn request_theme_overlay_preserves_wire_level_intent() {
+        let (_, base) =
+            parse_base_options(br##"{"theme":{"spec":{"canvas":{"base":"#111827"}}}}"##).unwrap();
+        assert!(
+            base.normalized_wire.get("theme").is_none(),
+            "the compiled constructor theme must not remain in the generic request merge bag"
+        );
+
+        for (request, expected) in [
+            (
+                br#"{"svg":{"diagram_id":"inherit"}}"#.as_slice(),
+                BindingThemeOverlay::Inherit,
+            ),
+            (br#"{"theme":null}"#.as_slice(), BindingThemeOverlay::Clear),
+            (
+                br#"{"theme":{"preset":"editor-light"}}"#.as_slice(),
+                BindingThemeOverlay::Replace,
+            ),
+        ] {
+            let overlay = parse_request_overlay(request, BindingResourceScope::Svg).unwrap();
+            assert_eq!(overlay.theme_overlay(), expected, "request={request:?}");
+        }
     }
 
     #[test]
@@ -2734,9 +2776,9 @@ mod tests {
                 br#"{"version":2,"ascii":{}}"#.as_slice(),
             ),
             (
-                "presentation",
+                "theme",
                 cfg!(feature = "svg"),
-                br#"{"version":2,"presentation":{}}"#.as_slice(),
+                br#"{"version":2,"theme":{"preset":"editor-dark"}}"#.as_slice(),
             ),
             (
                 "layout",

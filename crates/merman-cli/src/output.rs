@@ -566,6 +566,7 @@ fn anchor_acquisition_paths(invocation: &mut ResolvedInvocation, cwd: &Path) {
         ResolvedInvocation::Layout(args) => {
             anchor_input(&mut args.input, cwd);
             anchor_optional_path(&mut args.parse.config_file, cwd);
+            anchor_optional_path(&mut args.render.theme_file, cwd);
         }
         #[cfg(feature = "analysis")]
         ResolvedInvocation::Lint(args) => {
@@ -616,7 +617,10 @@ fn anchor_optional_path(path: &mut Option<PathBuf>, cwd: &Path) {
 fn anchor_render_inputs(common: &mut crate::invocation::ResolvedRenderCommon, cwd: &Path) {
     anchor_optional_path(&mut common.parse.config_file, cwd);
     #[cfg(feature = "svg")]
-    anchor_optional_path(&mut common.css_file, cwd);
+    {
+        anchor_optional_path(&mut common.render.theme_file, cwd);
+        anchor_optional_path(&mut common.css_file, cwd);
+    }
 }
 
 #[cfg(feature = "analysis")]

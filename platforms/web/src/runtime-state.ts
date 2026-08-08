@@ -6,8 +6,8 @@ import type {
 import type {
   MermanWasmLoader,
   MermanWasmModule,
-  PresentationCatalog,
   RuntimeCatalog,
+  ThemeCatalog,
 } from "./public-types.js";
 
 export interface MermanRuntimeState {
@@ -17,7 +17,7 @@ export interface MermanRuntimeState {
   supportedDiagramsCache: DiagramType[] | null;
   diagramFamilyCapabilitiesCache: DiagramFamilyCapability[] | null;
   runtimeCatalogCache: RuntimeCatalog | null;
-  presentationCatalogCache: PresentationCatalog | null;
+  themeCatalogCache: ThemeCatalog | null;
   supportedThemesCache: ThemeName[] | null;
 }
 
@@ -33,7 +33,7 @@ export function createMermanRuntimeState(
     supportedDiagramsCache: null,
     diagramFamilyCapabilitiesCache: null,
     runtimeCatalogCache: null,
-    presentationCatalogCache: null,
+    themeCatalogCache: null,
     supportedThemesCache: null,
   };
 }

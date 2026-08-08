@@ -92,9 +92,9 @@ internal object MermanBindingMetadataId {
     internal const val ASCII_CAPABILITIES: String = "ascii-capabilities"
     internal const val DIAGRAM_FAMILY_CAPABILITIES: String = "diagram-family-capabilities"
     internal const val LINT_RULE_CATALOG: String = "lint-rule-catalog"
-    internal const val PRESENTATION_CATALOG: String = "presentation-catalog"
     internal const val SUPPORTED_DIAGRAMS: String = "supported-diagrams"
     internal const val SUPPORTED_THEMES: String = "supported-themes"
+    internal const val THEME_CATALOG: String = "theme-catalog"
 }
 
 internal val MERMAN_BINDING_CAPABILITY_SPECS: Map<String, MermanBindingCapabilitySpec> = listOf(
@@ -123,9 +123,9 @@ internal val MERMAN_BINDING_METADATA_SPECS: Map<String, MermanBindingMetadataSpe
     MermanBindingMetadataSpec("ascii-capabilities", "ascii"),
     MermanBindingMetadataSpec("diagram-family-capabilities", null),
     MermanBindingMetadataSpec("lint-rule-catalog", "analysis"),
-    MermanBindingMetadataSpec("presentation-catalog", null),
     MermanBindingMetadataSpec("supported-diagrams", null),
     MermanBindingMetadataSpec("supported-themes", null),
+    MermanBindingMetadataSpec("theme-catalog", null),
 ).associateBy(MermanBindingMetadataSpec::id)
 
 internal val MERMAN_REQUIRED_PAYLOAD_SCHEMA_VERSIONS: Map<String, Int> = mapOf(
@@ -143,12 +143,12 @@ internal val MERMAN_BINDING_OPTION_GROUP_SPECS: Map<String, MermanBindingOptionG
     MermanBindingOptionGroupSpec("lint", false, setOf("analysis"), false),
     MermanBindingOptionGroupSpec("parse", true, setOf(), false),
     MermanBindingOptionGroupSpec("pdf", false, setOf("pdf"), false),
-    MermanBindingOptionGroupSpec("presentation", false, setOf(), true),
     MermanBindingOptionGroupSpec("raster", false, setOf("jpeg", "png"), false),
     MermanBindingOptionGroupSpec("resources", true, setOf(), false),
     MermanBindingOptionGroupSpec("runtime_policy", true, setOf(), false),
     MermanBindingOptionGroupSpec("site_config", true, setOf(), false),
     MermanBindingOptionGroupSpec("svg", false, setOf(), true),
+    MermanBindingOptionGroupSpec("theme", false, setOf(), true),
     MermanBindingOptionGroupSpec("version", true, setOf(), false),
 ).associateBy(MermanBindingOptionGroupSpec::id)
 
@@ -188,7 +188,7 @@ internal val MERMAN_ANDROID_ARTIFACT_EXPECTATION = MermanBindingArtifactExpectat
     outputIds = listOf("ascii", "jpeg", "pdf", "png", "svg"),
     systemAdapterIds = listOf("system-clock", "system-random", "system-timezone"),
     operationIds = listOf("analysis-facts-json", "analysis-json", "ascii", "document-analysis-facts-json", "document-analysis-json", "jpeg", "layout-json", "pdf", "png", "semantic-json", "svg", "svg-plan-json", "validation-json"),
-    metadataIds = listOf("ascii-capabilities", "diagram-family-capabilities", "lint-rule-catalog", "presentation-catalog", "supported-diagrams", "supported-themes"),
+    metadataIds = listOf("ascii-capabilities", "diagram-family-capabilities", "lint-rule-catalog", "supported-diagrams", "supported-themes", "theme-catalog"),
 )
 
 internal val MERMAN_ANDROID_OUTPUT_CONTRACT_JSON_BY_ID: Map<String, String> = mapOf(

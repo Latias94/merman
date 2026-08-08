@@ -595,9 +595,9 @@ impl Merman {
         string_output(native_artifact_contract().metadata_json(&id))
     }
 
-    /// Returns the presentation catalog projected to this native artifact.
-    pub fn presentation_catalog_json(&self) -> Result<String, MermanError> {
-        string_output(native_artifact_contract().metadata_json("presentation-catalog"))
+    /// Returns the versioned theme catalog JSON projected to this native artifact.
+    pub fn theme_catalog_json(&self) -> Result<String, MermanError> {
+        string_output(native_artifact_contract().metadata_json("theme-catalog"))
     }
 
     /// Executes a descriptor-owned output operation with a fresh engine configuration.
@@ -2706,27 +2706,30 @@ mod tests {
             assert!(ascii_capabilities.is_empty());
         }
         assert!(engine.supported_themes().contains(&"default".to_string()));
-        let presentation_catalog: serde_json::Value =
-            serde_json::from_str(&engine.presentation_catalog_json().unwrap()).unwrap();
-        assert_eq!(presentation_catalog["schema_version"], 1);
+        let theme_catalog: serde_json::Value =
+            serde_json::from_str(&engine.theme_catalog_json().unwrap()).unwrap();
+        assert_eq!(theme_catalog["schema_version"], 2);
         if has_svg {
+            assert_eq!(theme_catalog["structured_spec_available"], true);
             assert!(
-                presentation_catalog["theme_presets"]
+                theme_catalog["presets"]
                     .as_array()
                     .unwrap()
                     .iter()
                     .any(|preset| preset["id"] == "one-dark")
             );
-            assert_eq!(presentation_catalog["profiles"][0]["id"], "merman-modern");
-        } else {
             assert!(
-                presentation_catalog["theme_presets"]
+                theme_catalog["known_semantic_target_ids"]
                     .as_array()
                     .unwrap()
-                    .is_empty()
+                    .iter()
+                    .any(|target| target == "state-label")
             );
+        } else {
+            assert_eq!(theme_catalog["structured_spec_available"], false);
+            assert!(theme_catalog["presets"].as_array().unwrap().is_empty());
             assert!(
-                presentation_catalog["profiles"]
+                theme_catalog["known_semantic_target_ids"]
                     .as_array()
                     .unwrap()
                     .is_empty()

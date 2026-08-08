@@ -31,6 +31,8 @@ mod transport_contract;
 mod ascii;
 #[cfg(feature = "svg")]
 mod render;
+#[cfg(feature = "svg")]
+mod theme;
 
 pub use artifact_contract::{ArtifactContractSpec, ValidatedArtifactContract};
 pub use capability::{
@@ -56,14 +58,14 @@ pub use lifecycle::{
 };
 pub use metadata::{
     BindingAsciiCapability, BindingAsciiCapabilityEvidence, BindingDiagramFamilyCapability,
-    PRESENTATION_CATALOG_SCHEMA_VERSION, RUNTIME_CATALOG_SCHEMA_VERSION, RuleCatalogEntry,
-    RuntimeCapabilities, RuntimeCatalog, RuntimeConstructorResourceLimit,
-    RuntimeConstructorServiceContract, RuntimeEmbeddedImageContract, RuntimeEmbeddedImageLimits,
-    RuntimeOutputContract, RuntimePayloadSchema, RuntimeRegistryContract, RuntimeResourceContract,
-    RuntimeResourceLimit, RuntimeResourceProfile, RuntimeSystemFontContract,
-    TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK, TEXT_MEASUREMENT_PROVIDER_VENDORED,
-    TextMeasurementCapabilities, ascii_capabilities, ascii_capabilities_json,
-    ascii_supported_diagrams, ascii_supported_diagrams_json, configurable_lint_rule_catalog,
+    RUNTIME_CATALOG_SCHEMA_VERSION, RuleCatalogEntry, RuntimeCapabilities, RuntimeCatalog,
+    RuntimeConstructorResourceLimit, RuntimeConstructorServiceContract,
+    RuntimeEmbeddedImageContract, RuntimeEmbeddedImageLimits, RuntimeOutputContract,
+    RuntimePayloadSchema, RuntimeRegistryContract, RuntimeResourceContract, RuntimeResourceLimit,
+    RuntimeResourceProfile, RuntimeSystemFontContract, TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK,
+    TEXT_MEASUREMENT_PROVIDER_VENDORED, THEME_CATALOG_SCHEMA_VERSION, TextMeasurementCapabilities,
+    ascii_capabilities, ascii_capabilities_json, ascii_supported_diagrams,
+    ascii_supported_diagrams_json, configurable_lint_rule_catalog,
     configurable_lint_rule_catalog_json, diagram_family_capabilities,
     diagram_family_capabilities_json, lint_rule_catalog, lint_rule_catalog_json,
     runtime_constructor_resource_limits, supported_diagrams, supported_diagrams_json,
@@ -95,9 +97,7 @@ pub use service_contract::{
 pub use services::BindingEngineServices;
 #[cfg(feature = "svg")]
 pub use services::{BindingIconRegistry, build_icon_registry};
-pub use svg_plan::{
-    SVG_PLAN_SCHEMA_VERSION, SvgPlanPayload, SvgPlanPresentationAspect, svg_plan_json,
-};
+pub use svg_plan::{SVG_PLAN_SCHEMA_VERSION, SvgPlanPayload, svg_plan_json};
 
 /// Parses Mermaid into the canonical semantic JSON model without requiring any render backend.
 pub fn parse_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
@@ -130,6 +130,8 @@ pub use text_measurement::{
     HostTextMeasurementRecord, HostTextMeasurementResultKind, HostTextMeasurementTransportFields,
     decode_host_text_measurement, host_text_measurement_transport_fields,
 };
+#[cfg(feature = "svg")]
+pub use theme::{compile_theme_selection_json, compile_theme_selection_json_with};
 pub use transport_contract::{BindingTransportExposureSpec, BindingTransportKey};
 
 #[cfg(not(feature = "ascii"))]

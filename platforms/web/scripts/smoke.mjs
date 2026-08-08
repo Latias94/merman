@@ -249,7 +249,7 @@ assert.equal(
 assert.equal(Object.isFrozen(api.UNAVAILABLE_DIAGRAM_DETECTION), true);
 assert.match(api.packageVersion(), /^\d+\.\d+\.\d+/);
 const runtimeCatalog = api.runtimeCatalog();
-const presentationCatalog = api.presentationCatalog();
+const themeCatalog = api.themeCatalog();
 const capabilities = runtimeCatalog.capabilities;
 const hasCapability = (id) => capabilities.capability_ids.includes(id);
 const completeCytoscapeRenderSurface = hasCapability("layout-cytoscape");
@@ -376,26 +376,32 @@ assert.equal(
   "interactive"
 );
 assert.equal(runtimeCatalog.resources.cli_default_profile, "trusted-native");
-assert.ok(runtimeCatalog.metadata_ids.includes("presentation-catalog"));
-assert.equal(presentationCatalog.schema_version, 1);
+assert.ok(runtimeCatalog.metadata_ids.includes("theme-catalog"));
+assert.equal(themeCatalog.schema_version, 2);
 if (hasCapability("svg")) {
+  assert.equal(themeCatalog.structured_spec_available, true);
+  assert.deepEqual(themeCatalog.supported_output_ids, ["svg"]);
   assert.deepEqual(
-    presentationCatalog.theme_presets.map(({ id }) => id),
+    themeCatalog.presets.map(({ id }) => id),
     [...api.BUNDLED_THEME_PRESETS],
   );
-  const modernProfile = presentationCatalog.profiles.find(
-    ({ id }) => id === "merman-modern",
-  );
-  assert.ok(modernProfile);
-  assert.equal(modernProfile.fully_available, hasCapability("layout-elk"));
-  assert.equal(
-    modernProfile.aspects.find(({ id }) => id === "flowchart-elk-default")
-      ?.available,
-    hasCapability("layout-elk"),
+  assert.ok(themeCatalog.known_capability_ids.includes("semantic-rules"));
+  assert.ok(themeCatalog.known_text_capability_ids.includes("opentype-shaping"));
+  assert.ok(themeCatalog.known_font_container_ids.includes("woff2"));
+  assert.ok(themeCatalog.known_semantic_target_ids.includes("state-label"));
+  assert.ok(
+    themeCatalog.resource_limits.some(
+      ({ id, effective_value, hard_cap }) =>
+        id === "max_theme_encoded_bytes" && effective_value > 0 && !hard_cap,
+    ),
   );
 } else {
-  assert.deepEqual(presentationCatalog.theme_presets, []);
-  assert.deepEqual(presentationCatalog.profiles, []);
+  assert.equal(themeCatalog.structured_spec_available, false);
+  assert.deepEqual(themeCatalog.supported_output_ids, []);
+  assert.deepEqual(themeCatalog.presets, []);
+  assert.deepEqual(themeCatalog.known_capability_ids, []);
+  assert.deepEqual(themeCatalog.known_semantic_target_ids, []);
+  assert.deepEqual(themeCatalog.resource_limits, []);
 }
 const resourceLimitIds = runtimeCatalog.resources.limits
   .map((limit) => limit.id)
@@ -1423,10 +1429,18 @@ async function runSameProcessPackageSmoke() {
     analysis.runtimeCatalog().capabilities.capability_ids.includes("svg"),
     false
   );
-  assert.deepEqual(analysis.presentationCatalog(), {
-    schema_version: 1,
-    theme_presets: [],
-    profiles: [],
+  assert.deepEqual(analysis.themeCatalog(), {
+    schema_version: 2,
+    structured_spec_available: false,
+    supported_output_ids: [],
+    presets: [],
+    known_capability_ids: [],
+    known_text_capability_ids: [],
+    known_font_container_ids: [],
+    known_font_source_ids: [],
+    known_semantic_target_ids: [],
+    known_variant_ids: [],
+    resource_limits: [],
   });
   assert.equal(typeof analysis.renderSvg, "undefined");
 
@@ -1443,14 +1457,14 @@ async function runSameProcessPackageSmoke() {
     full.runtimeCatalog().resources.general_binding_default_profile,
     "interactive"
   );
-  assert.equal(full.presentationCatalog().theme_presets.length, 7);
-  assert.equal(full.presentationCatalog().profiles[0].id, "merman-modern");
+  assert.equal(full.themeCatalog().presets.length, 7);
+  assert.ok(full.themeCatalog().known_semantic_target_ids.includes("node"));
   assert.match(full.renderSvg(source, options), /<svg/);
   assert.equal(
     analysis.runtimeCatalog().capabilities.capability_ids.includes("svg"),
     false
   );
-  assert.equal(analysis.presentationCatalog().theme_presets.length, 0);
+  assert.equal(analysis.themeCatalog().presets.length, 0);
   assert.equal(typeof analysis.renderSvg, "undefined");
 }
 

@@ -87,7 +87,12 @@ analysis = [
     "dep:sha2",
     "dep:similar",
 ]
-svg = ["dep:atomic-write-file", "dep:same-file", "merman/svg"]
+svg = [
+    "dep:atomic-write-file",
+    "dep:merman-bindings-core",
+    "dep:same-file",
+    "merman/svg",
+]
 ascii = ["dep:atomic-write-file", "dep:same-file", "merman/ascii"]
 png = ["svg", "merman/png"]
 jpeg = ["svg", "merman/jpeg"]
@@ -117,6 +122,7 @@ shell-completions = ["dep:clap_complete"]
 
 [dependencies]
 atomic-write-file = { workspace = true, optional = true }
+merman-bindings-core = { workspace = true, optional = true, default-features = false, features = ["svg"] }
 clap.workspace = true
 clap_complete = { workspace = true, optional = true }
 hickory-resolver = { workspace = true, optional = true }

@@ -39,9 +39,9 @@ abstract final class MermanBindingMetadataId {
   static const String asciiCapabilities = "ascii-capabilities";
   static const String diagramFamilyCapabilities = "diagram-family-capabilities";
   static const String lintRuleCatalog = "lint-rule-catalog";
-  static const String presentationCatalog = "presentation-catalog";
   static const String supportedDiagrams = "supported-diagrams";
   static const String supportedThemes = "supported-themes";
+  static const String themeCatalog = "theme-catalog";
 }
 
 final class MermanBindingOptionGroupSpec {
@@ -219,16 +219,16 @@ const Map<String, MermanBindingMetadataSpec> mermanBindingMetadataSpecs =
     id: "lint-rule-catalog",
     requiredCapabilityId: "analysis",
   ),
-  "presentation-catalog": MermanBindingMetadataSpec(
-    id: "presentation-catalog",
-    requiredCapabilityId: null,
-  ),
   "supported-diagrams": MermanBindingMetadataSpec(
     id: "supported-diagrams",
     requiredCapabilityId: null,
   ),
   "supported-themes": MermanBindingMetadataSpec(
     id: "supported-themes",
+    requiredCapabilityId: null,
+  ),
+  "theme-catalog": MermanBindingMetadataSpec(
+    id: "theme-catalog",
     requiredCapabilityId: null,
   ),
 };
@@ -488,12 +488,6 @@ const Map<String, MermanBindingOptionGroupSpec> mermanBindingOptionGroupSpecs =
     },
     requiresSvgPipeline: false,
   ),
-  "presentation": MermanBindingOptionGroupSpec(
-    id: "presentation",
-    alwaysAvailable: false,
-    anyCapabilityIds: <String>{},
-    requiresSvgPipeline: true,
-  ),
   "raster": MermanBindingOptionGroupSpec(
     id: "raster",
     alwaysAvailable: false,
@@ -523,6 +517,12 @@ const Map<String, MermanBindingOptionGroupSpec> mermanBindingOptionGroupSpecs =
   ),
   "svg": MermanBindingOptionGroupSpec(
     id: "svg",
+    alwaysAvailable: false,
+    anyCapabilityIds: <String>{},
+    requiresSvgPipeline: true,
+  ),
+  "theme": MermanBindingOptionGroupSpec(
+    id: "theme",
     alwaysAvailable: false,
     anyCapabilityIds: <String>{},
     requiresSvgPipeline: true,

@@ -47,7 +47,7 @@ Normally use `bash scripts/build-apple-xcframework.sh`, which performs both step
 
 ## Exposed Capabilities
 
-Generated bindings provide `Merman` for discovery and one-shot calls and `MermanEngine` for reusable calls that share options or constructor-owned services. They expose semantic JSON and, when the matching output capability is selected, SVG, PNG, JPEG, PDF, terminal rendering, layout JSON, validation, diagram/document analysis, parser facts, Mermaid themes, the open-ended presentation catalog, lint metadata, ASCII support grades, and diagram-family capability discovery.
+Generated bindings provide `Merman` for discovery and one-shot calls and `MermanEngine` for reusable calls that share options or constructor-owned services. They expose semantic JSON and, when the matching output capability is selected, SVG, PNG, JPEG, PDF, terminal rendering, layout JSON, validation, diagram/document analysis, parser facts, Mermaid themes, the open-ended compiled-theme catalog, lint metadata, ASCII support grades, and diagram-family capability discovery.
 
 The generated API shape remains stable for smaller feature profiles. Lint catalog calls return a structured `analysis` missing-capability error when analysis is absent. `MermanTextMeasurer` and its reusable-engine entrypoints remain generated when SVG is absent and return a structured `svg` missing-capability error when called.
 

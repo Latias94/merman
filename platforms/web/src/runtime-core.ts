@@ -42,13 +42,11 @@ import type {
   CommonBindingOptions,
   MermanInitInput,
   MermanWasmModule,
-  PresentationAspectCatalogEntry,
-  PresentationCatalog,
-  PresentationProfileCatalogEntry,
-  PresentationThemePresetCatalogEntry,
   RuntimeCatalog,
   RuntimeEmbeddedImageLimits,
   ResourceOptions,
+  ThemeCatalog,
+  ThemePresetCatalogEntry,
   UnavailableDiagramDetectionFacts,
 } from "./public-types.js";
 
@@ -171,12 +169,10 @@ export function runtimeCatalog(): RuntimeCatalog {
   return structuredCloneValue(state.runtimeCatalogCache);
 }
 
-export function presentationCatalog(): PresentationCatalog {
+export function themeCatalog(): ThemeCatalog {
   const state = currentRuntimeState();
-  state.presentationCatalogCache ??= normalizePresentationCatalog(
-    getMerman().presentationCatalog()
-  );
-  return structuredCloneValue(state.presentationCatalogCache);
+  state.themeCatalogCache ??= normalizeThemeCatalog(getMerman().themeCatalog());
+  return structuredCloneValue(state.themeCatalogCache);
 }
 
 export function supportedDiagrams(): DiagramType[] {
@@ -727,160 +723,161 @@ function validateRuntimeConstructorServiceProviders(
   }
 }
 
-function normalizePresentationCatalog(value: unknown): PresentationCatalog {
-  if (!isRecord(value) || value.schema_version !== 1) {
-    throw new Error("Merman WASM returned an unsupported presentation catalog schema.");
+function normalizeThemeCatalog(value: unknown): ThemeCatalog {
+  if (!isRecord(value) || value.schema_version !== 2) {
+    throw new Error("Merman WASM returned an unsupported theme catalog schema.");
   }
   assertRequiredRecordKeys(
     value,
-    ["profiles", "schema_version", "theme_presets"],
-    "Merman WASM presentation catalog"
+    [
+      "known_capability_ids",
+      "known_font_container_ids",
+      "known_font_source_ids",
+      "known_semantic_target_ids",
+      "known_text_capability_ids",
+      "known_variant_ids",
+      "presets",
+      "resource_limits",
+      "schema_version",
+      "structured_spec_available",
+      "supported_output_ids",
+    ],
+    "Merman WASM theme catalog"
   );
-  if (!Array.isArray(value.theme_presets) || !Array.isArray(value.profiles)) {
-    throw new Error("Merman WASM returned an invalid presentation catalog.");
+  if (!Array.isArray(value.presets) || !Array.isArray(value.resource_limits)) {
+    throw new Error("Merman WASM returned an invalid theme catalog.");
   }
   return {
-    schema_version: 1,
-    theme_presets: normalizePresentationThemePresets(value.theme_presets),
-    profiles: normalizePresentationProfiles(value.profiles),
+    schema_version: 2,
+    structured_spec_available: assertBooleanField(
+      value.structured_spec_available,
+      "theme structured spec availability"
+    ),
+    supported_output_ids: normalizeSortedIdentifierIds(
+      value.supported_output_ids,
+      "theme supported output IDs"
+    ),
+    presets: normalizeThemePresets(value.presets),
+    known_capability_ids: normalizeSortedIdentifierIds(
+      value.known_capability_ids,
+      "known theme capability IDs"
+    ),
+    known_text_capability_ids: normalizeSortedIdentifierIds(
+      value.known_text_capability_ids,
+      "known theme text capability IDs"
+    ),
+    known_font_container_ids: normalizeSortedIdentifierIds(
+      value.known_font_container_ids,
+      "known theme font container IDs"
+    ),
+    known_font_source_ids: normalizeSortedIdentifierIds(
+      value.known_font_source_ids,
+      "known theme font source IDs"
+    ),
+    known_semantic_target_ids: normalizeSortedIdentifierIds(
+      value.known_semantic_target_ids,
+      "known theme semantic target IDs"
+    ),
+    known_variant_ids: normalizeSortedIdentifierIds(
+      value.known_variant_ids,
+      "known theme variant IDs"
+    ),
+    resource_limits: normalizeThemeResourceLimits(value.resource_limits),
   };
 }
 
-function normalizePresentationThemePresets(
-  value: unknown[]
-): PresentationThemePresetCatalogEntry[] {
+function normalizeThemePresets(value: unknown[]): ThemePresetCatalogEntry[] {
   const seen = new Set<string>();
   return value.map((entry) => {
     if (!isRecord(entry)) {
-      throw new Error("Merman WASM returned an invalid presentation theme preset.");
-    }
-    assertRequiredRecordKeys(
-      entry,
-      ["appearance", "fully_available", "id", "missing_capability_ids"],
-      "Merman WASM presentation theme preset"
-    );
-    const id = assertUniquePresentationId(entry.id, seen, "theme preset");
-    return {
-      id,
-      appearance: assertRuntimeIdentifier(
-        entry.appearance,
-        `presentation theme preset ${id} appearance`
-      ),
-      fully_available: assertBooleanField(
-        entry.fully_available,
-        `presentation theme preset ${id} availability`
-      ),
-      missing_capability_ids: normalizeSortedIdentifierIds(
-        entry.missing_capability_ids,
-        `presentation theme preset ${id} missing capability IDs`
-      ),
-    };
-  });
-}
-
-function normalizePresentationProfiles(value: unknown[]): PresentationProfileCatalogEntry[] {
-  const seen = new Set<string>();
-  return value.map((entry) => {
-    if (!isRecord(entry)) {
-      throw new Error("Merman WASM returned an invalid presentation profile.");
-    }
-    assertRequiredRecordKeys(
-      entry,
-      ["aspects", "fully_available", "id", "missing_capability_ids"],
-      "Merman WASM presentation profile"
-    );
-    if (!Array.isArray(entry.aspects)) {
-      throw new Error("Merman WASM returned invalid presentation profile aspects.");
-    }
-    const id = assertUniquePresentationId(entry.id, seen, "profile");
-    return {
-      id,
-      fully_available: assertBooleanField(
-        entry.fully_available,
-        `presentation profile ${id} availability`
-      ),
-      missing_capability_ids: normalizeSortedIdentifierIds(
-        entry.missing_capability_ids,
-        `presentation profile ${id} missing capability IDs`
-      ),
-      aspects: normalizePresentationAspects(id, entry.aspects),
-    };
-  });
-}
-
-function normalizePresentationAspects(
-  profileId: string,
-  value: unknown[]
-): PresentationAspectCatalogEntry[] {
-  const seen = new Set<string>();
-  return value.map((entry) => {
-    if (!isRecord(entry) || !isRecord(entry.applicability)) {
-      throw new Error("Merman WASM returned an invalid presentation profile aspect.");
+      throw new Error("Merman WASM returned an invalid theme preset.");
     }
     assertRequiredRecordKeys(
       entry,
       [
-        "applicability",
-        "available",
+        "appearance",
         "id",
-        "missing_capability_ids",
-        "required_capability_id",
+        "required_capability_ids",
+        "required_text_capability_ids",
       ],
-      "Merman WASM presentation profile aspect"
+      "Merman WASM theme preset"
     );
-    assertRequiredRecordKeys(
-      entry.applicability,
-      ["family_id", "kind"],
-      "Merman WASM presentation aspect applicability"
-    );
-    const id = assertUniquePresentationId(
-      entry.id,
-      seen,
-      `profile ${profileId} aspect`
-    );
-    const familyId = entry.applicability.family_id;
+    const id = assertUniqueThemeId(entry.id, seen, "preset");
     return {
       id,
-      applicability: {
-        kind: assertRuntimeIdentifier(
-          entry.applicability.kind,
-          `presentation aspect ${id} applicability kind`
-        ),
-        family_id:
-          familyId === null
-            ? null
-            : assertRuntimeIdentifier(
-                familyId,
-                `presentation aspect ${id} family ID`
-              ),
-      },
-      required_capability_id:
-        entry.required_capability_id === null
-          ? null
-          : assertRuntimeIdentifier(
-              entry.required_capability_id,
-              `presentation aspect ${id} required capability ID`
-            ),
-      available: assertBooleanField(
-        entry.available,
-        `presentation aspect ${id} availability`
+      appearance: assertRuntimeIdentifier(
+        entry.appearance,
+        `theme preset ${id} appearance`
       ),
-      missing_capability_ids: normalizeSortedIdentifierIds(
-        entry.missing_capability_ids,
-        `presentation aspect ${id} missing capability IDs`
+      required_capability_ids: normalizeSortedIdentifierIds(
+        entry.required_capability_ids,
+        `theme preset ${id} required capability IDs`
+      ),
+      required_text_capability_ids: normalizeSortedIdentifierIds(
+        entry.required_text_capability_ids,
+        `theme preset ${id} required text capability IDs`
       ),
     };
   });
 }
 
-function assertUniquePresentationId(
+function normalizeThemeResourceLimits(
+  value: unknown[]
+): ThemeCatalog["resource_limits"] {
+  const limits = value.map((entry) => {
+    if (!isRecord(entry)) {
+      throw new Error("Merman WASM returned an invalid theme resource limit.");
+    }
+    assertRequiredRecordKeys(
+      entry,
+      [
+        "description",
+        "effective_value",
+        "hard_cap",
+        "id",
+        "phase",
+      ],
+      "Merman WASM theme resource limit"
+    );
+    const id = assertRuntimeFieldIdentifier(entry.id, "theme resource limit ID");
+    const effectiveValue = entry.effective_value === null
+      ? null
+      : assertSafeIntegerField(
+          entry.effective_value,
+          `theme resource limit ${id} effective value`,
+          0
+        );
+    const hardCap = assertBooleanField(
+      entry.hard_cap,
+      `theme resource limit ${id} hard-cap flag`
+    );
+    return {
+      id,
+      phase: assertRuntimeFieldIdentifier(entry.phase, `theme resource limit ${id} phase`),
+      description: assertStringField(
+        entry.description,
+        `theme resource limit ${id} description`
+      ),
+      effective_value: effectiveValue,
+      hard_cap: hardCap,
+    };
+  });
+  for (let index = 1; index < limits.length; index += 1) {
+    if (limits[index - 1].id >= limits[index].id) {
+      throw new Error("Merman WASM theme resource limit IDs must be sorted and unique.");
+    }
+  }
+  return limits;
+}
+
+function assertUniqueThemeId(
   value: unknown,
   seen: Set<string>,
   label: string
 ): string {
-  const id = assertRuntimeIdentifier(value, `presentation ${label} ID`);
+  const id = assertRuntimeIdentifier(value, `theme ${label} ID`);
   if (seen.has(id)) {
-    throw new Error(`Merman WASM presentation ${label} IDs must be unique.`);
+    throw new Error(`Merman WASM theme ${label} IDs must be unique.`);
   }
   seen.add(id);
   return id;

@@ -185,15 +185,15 @@ METADATA_SPECS = (
         "required_capability_id": "analysis",
     },
     {
-        "id": "presentation-catalog",
-        "required_capability_id": None,
-    },
-    {
         "id": "supported-diagrams",
         "required_capability_id": None,
     },
     {
         "id": "supported-themes",
+        "required_capability_id": None,
+    },
+    {
+        "id": "theme-catalog",
         "required_capability_id": None,
     },
 )
@@ -254,12 +254,6 @@ BINDING_OPTION_GROUP_SPECS = (
         "requires_svg_pipeline": False,
     },
     {
-        "id": "presentation",
-        "always_available": False,
-        "any_capability_ids": (),
-        "requires_svg_pipeline": True,
-    },
-    {
         "id": "raster",
         "always_available": False,
         "any_capability_ids": ("jpeg", "png"),
@@ -285,6 +279,12 @@ BINDING_OPTION_GROUP_SPECS = (
     },
     {
         "id": "svg",
+        "always_available": False,
+        "any_capability_ids": (),
+        "requires_svg_pipeline": True,
+    },
+    {
+        "id": "theme",
         "always_available": False,
         "any_capability_ids": (),
         "requires_svg_pipeline": True,

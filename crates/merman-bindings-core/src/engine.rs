@@ -19,6 +19,10 @@ pub struct BindingEngine {
     analyzer: Analyzer,
     #[cfg(feature = "svg")]
     render: crate::render::CachedRenderEngine,
+    #[cfg(feature = "svg")]
+    theme_compiler: merman::svg::DiagramThemeCompiler,
+    #[cfg(feature = "svg")]
+    base_theme: Option<merman::svg::DiagramTheme>,
     #[cfg(feature = "ascii")]
     ascii: crate::ascii::CachedAsciiEngine,
     services: BindingEngineServices,
@@ -169,6 +173,18 @@ impl BindingEngine {
         base_options: common::BaseBindingOptions,
         services: BindingEngineServices,
     ) -> Result<Self, BindingError> {
+        #[cfg(feature = "svg")]
+        let theme_compiler = merman::svg::DiagramThemeCompiler::new();
+        #[cfg(feature = "svg")]
+        let base_theme = crate::theme::compile_theme_with(&theme_compiler, options.theme.as_ref())?;
+        #[cfg(feature = "svg")]
+        let configs = BindingOperationConfigs::compile(
+            options,
+            runtime_policy.clone(),
+            &artifact_contract,
+            base_theme.clone(),
+        )?;
+        #[cfg(not(feature = "svg"))]
         let configs =
             BindingOperationConfigs::compile(options, runtime_policy.clone(), &artifact_contract)?;
         #[cfg(feature = "svg")]
@@ -184,6 +200,10 @@ impl BindingEngine {
             analyzer: Analyzer::with_options(configs.analysis),
             #[cfg(feature = "svg")]
             render,
+            #[cfg(feature = "svg")]
+            theme_compiler,
+            #[cfg(feature = "svg")]
+            base_theme,
             #[cfg(feature = "ascii")]
             ascii: configs.ascii.materialize(),
             services,
@@ -211,10 +231,29 @@ impl BindingEngine {
                 Ok(PreparedRequestOverlay::Unchanged)
             }
             overlay @ common::BindingRequestOverlay::Override { .. } => {
+                #[cfg(feature = "svg")]
+                let theme_overlay = overlay.theme_overlay();
                 let options = self
                     .base_options
                     .apply_overlay(overlay, &self.artifact_contract)?;
                 self.services.validate_options(&options)?;
+                #[cfg(feature = "svg")]
+                let theme = match theme_overlay {
+                    common::BindingThemeOverlay::Inherit => self.base_theme.clone(),
+                    common::BindingThemeOverlay::Clear => None,
+                    common::BindingThemeOverlay::Replace => crate::theme::compile_theme_with(
+                        &self.theme_compiler,
+                        options.theme.as_ref(),
+                    )?,
+                };
+                #[cfg(feature = "svg")]
+                let configs = BindingOperationConfigs::compile(
+                    &options,
+                    self.runtime_policy.clone(),
+                    &self.artifact_contract,
+                    theme,
+                )?;
+                #[cfg(not(feature = "svg"))]
                 let configs = BindingOperationConfigs::compile(
                     &options,
                     self.runtime_policy.clone(),
@@ -780,6 +819,7 @@ impl BindingOperationConfigs {
         options: &common::BindingOptions,
         runtime_policy: merman::runtime::RuntimePolicy,
         artifact_contract: &ValidatedArtifactContract,
+        #[cfg(feature = "svg")] theme: Option<merman::svg::DiagramTheme>,
     ) -> Result<Self, BindingError> {
         let runtime_policy = common::binding_runtime_policy_from(options, runtime_policy)?;
         let semantic = SemanticOperationConfig::compile(options, runtime_policy.clone())?;
@@ -791,6 +831,7 @@ impl BindingOperationConfigs {
             options,
             runtime_policy.clone(),
             artifact_contract.render_capability_policy(),
+            theme,
         )?;
         #[cfg(not(feature = "svg"))]
         let _ = artifact_contract;
@@ -1042,6 +1083,70 @@ mod tests {
             assert_eq!(error.status(), crate::BindingStatus::InvalidArgument);
             assert_eq!(counter.calls(), 0);
         }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn request_theme_replacement_uses_the_constructor_owned_compiler() {
+        let mut engine = BindingEngine::new(
+            br##"{
+                "theme": {
+                    "spec": {
+                        "styles": [{
+                            "kind": "rule",
+                            "target": "node",
+                            "family": "flowchart",
+                            "style": { "fill": "#111827" }
+                        }]
+                    }
+                }
+            }"##,
+        )
+        .unwrap();
+        engine.theme_compiler = merman::svg::DiagramThemeCompiler::new().with_admission(
+            merman::svg::ThemeAdmissionPolicy::permissive()
+                .with_allowed_capabilities([merman::svg::ThemeCapability::SemanticTokens]),
+        );
+
+        let inherited = engine
+            .execute(
+                crate::BindingOperationRequest::new("svg", b"flowchart TD\nA --> B")
+                    .with_options_json(br#"{"svg":{"diagram_id":"inherit"}}"#),
+            )
+            .expect("an inherited compiled theme must not be recompiled");
+        assert!(
+            String::from_utf8_lossy(inherited.data()).contains("#111827"),
+            "the inherited compiled theme must remain installed"
+        );
+
+        engine
+            .execute(
+                crate::BindingOperationRequest::new("svg", b"flowchart TD\nA --> B")
+                    .with_options_json(br#"{"theme":null}"#),
+            )
+            .expect("clearing a theme does not require theme admission");
+
+        let error = engine
+            .execute(
+                crate::BindingOperationRequest::new("svg", b"flowchart TD\nA --> B")
+                    .with_options_json(
+                        br##"{
+                    "theme": {
+                        "spec": {
+                            "styles": [{
+                                "kind": "rule",
+                                "target": "node",
+                                "family": "flowchart",
+                                "style": { "fill": "#f8fafc" }
+                            }]
+                        }
+                    }
+                }"##,
+                    ),
+            )
+            .expect_err("replacement themes must use the engine compiler policy");
+        assert_eq!(error.status(), crate::BindingStatus::InvalidArgument);
+        assert!(error.message().contains("semantic-rules"), "{error:?}");
     }
 
     #[cfg(feature = "svg")]

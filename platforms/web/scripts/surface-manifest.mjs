@@ -29,7 +29,7 @@ const analysisWasmExportNames = [
 
 const metadataRuntimeExportNames = [
   "runtimeCatalog",
-  "presentationCatalog",
+  "themeCatalog",
   "supportedDiagrams",
   "diagramFamilyCapabilities",
   "supportedThemes",
@@ -39,7 +39,7 @@ const metadataRuntimeExportNames = [
 
 const metadataWasmExportNames = [
   "runtimeCatalog",
-  "presentationCatalog",
+  "themeCatalog",
   "supportedDiagrams",
   "diagramFamilyCapabilities",
   "supportedThemes",

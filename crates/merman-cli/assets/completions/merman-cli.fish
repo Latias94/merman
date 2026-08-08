@@ -127,7 +127,14 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l runtime
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l fixed-today -d 'Override the local "today" date for time-dependent diagrams' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l fixed-local-offset-minutes -d 'Override the local timezone offset in minutes for time-dependent diagrams' -r
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l presentation-profile -d 'First-party presentation profile applied below explicit Mermaid configuration' -r -f -a "merman-modern\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-preset -d 'Compiled diagram-theme preset applied below explicit Mermaid configuration' -r -f -a "editor-light\t''
+editor-dark\t''
+one-dark\t''
+gruvbox-light\t''
+gruvbox-dark\t''
+ayu-light\t''
+ayu-dark\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-file -d 'JSON theme selection file containing exactly one `preset` or `spec` member' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l text-measurer -d 'Text measurement strategy' -r -f -a "deterministic\t''
 vendored\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''
@@ -211,7 +218,14 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l runtime 
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l fixed-today -d 'Override the local "today" date for time-dependent diagrams' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l fixed-local-offset-minutes -d 'Override the local timezone offset in minutes for time-dependent diagrams' -r
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l presentation-profile -d 'First-party presentation profile applied below explicit Mermaid configuration' -r -f -a "merman-modern\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-preset -d 'Compiled diagram-theme preset applied below explicit Mermaid configuration' -r -f -a "editor-light\t''
+editor-dark\t''
+one-dark\t''
+gruvbox-light\t''
+gruvbox-dark\t''
+ayu-light\t''
+ayu-dark\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-file -d 'JSON theme selection file containing exactly one `preset` or `spec` member' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l text-measurer -d 'Text measurement strategy' -r -f -a "deterministic\t''
 vendored\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''
@@ -310,6 +324,14 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l runtime
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l fixed-today -d 'Override the local "today" date for time-dependent diagrams' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l fixed-local-offset-minutes -d 'Override the local timezone offset in minutes for time-dependent diagrams' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l theme-preset -d 'Compiled diagram-theme preset applied before layout' -r -f -a "editor-light\t''
+editor-dark\t''
+one-dark\t''
+gruvbox-light\t''
+gruvbox-dark\t''
+ayu-light\t''
+ayu-dark\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l theme-file -d 'JSON theme selection file containing exactly one `preset` or `spec` member' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l text-measurer -d 'Text measurement strategy' -r -f -a "deterministic\t''
 vendored\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''
@@ -357,7 +379,7 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l embedded-
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l iconPacks -d 'Iconify package names' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l iconPacksNamesAndUrls -d 'Iconify prefix#url definitions' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -s c -l configFile -d 'JSON Mermaid configuration file' -r -F
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -s t -l theme -d 'Theme of the chart' -r -f -a "default\t''
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -s t -l theme -d 'Official Mermaid CLI theme selector' -r -f -a "default\t''
 forest\t''
 dark\t''
 neutral\t''"
@@ -365,7 +387,14 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l runtime -
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l fixed-today -d 'Override the local "today" date for time-dependent diagrams' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l fixed-local-offset-minutes -d 'Override the local timezone offset in minutes for time-dependent diagrams' -r
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l presentation-profile -d 'First-party presentation profile applied below explicit Mermaid configuration' -r -f -a "merman-modern\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l theme-preset -d 'Compiled Merman diagram-theme preset' -r -f -a "editor-light\t''
+editor-dark\t''
+one-dark\t''
+gruvbox-light\t''
+gruvbox-dark\t''
+ayu-light\t''
+ayu-dark\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l theme-file -d 'JSON theme selection file containing exactly one `preset` or `spec` member' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l text-measurer -d 'Text measurement strategy' -r -f -a "deterministic\t''
 vendored\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default' -r -f -a "none\t''

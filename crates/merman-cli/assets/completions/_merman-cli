@@ -125,7 +125,8 @@ _arguments "${_arguments_options[@]}" : \
 '--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
 '--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
-'--presentation-profile=[First-party presentation profile applied below explicit Mermaid configuration]:PRESENTATION_PROFILE:(merman-modern)' \
+'--theme-preset=[Compiled diagram-theme preset applied below explicit Mermaid configuration]:THEME_PRESET:(editor-light editor-dark one-dark gruvbox-light gruvbox-dark ayu-light ayu-dark)' \
+'(--theme-preset)--theme-file=[JSON theme selection file containing exactly one \`preset\` or \`spec\` member]:THEME_FILE:_files' \
 '--text-measurer=[Text measurement strategy]:TEXT_MEASURER:(deterministic vendored)' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default; \`ratex\` requires \`math\`]:MATH_RENDERER:(none ratex)' \
 '-w+[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
@@ -205,7 +206,8 @@ _arguments "${_arguments_options[@]}" : \
 '--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
 '--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
-'--presentation-profile=[First-party presentation profile applied below explicit Mermaid configuration]:PRESENTATION_PROFILE:(merman-modern)' \
+'--theme-preset=[Compiled diagram-theme preset applied below explicit Mermaid configuration]:THEME_PRESET:(editor-light editor-dark one-dark gruvbox-light gruvbox-dark ayu-light ayu-dark)' \
+'(--theme-preset)--theme-file=[JSON theme selection file containing exactly one \`preset\` or \`spec\` member]:THEME_FILE:_files' \
 '--text-measurer=[Text measurement strategy]:TEXT_MEASURER:(deterministic vendored)' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default; \`ratex\` requires \`math\`]:MATH_RENDERER:(none ratex)' \
 '-w+[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
@@ -327,6 +329,8 @@ _arguments "${_arguments_options[@]}" : \
 '--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
 '--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
+'(--theme-file)--theme-preset=[Compiled diagram-theme preset applied before layout]:THEME_PRESET:(editor-light editor-dark one-dark gruvbox-light gruvbox-dark ayu-light ayu-dark)' \
+'(--theme-preset)--theme-file=[JSON theme selection file containing exactly one \`preset\` or \`spec\` member]:THEME_FILE:_files' \
 '--text-measurer=[Text measurement strategy]:TEXT_MEASURER:(deterministic vendored)' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default; \`ratex\` requires \`math\`]:MATH_RENDERER:(none ratex)' \
 '-w+[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
@@ -389,12 +393,13 @@ _arguments "${_arguments_options[@]}" : \
 '*--iconPacksNamesAndUrls=[Iconify prefix#url definitions]:ICON_PACKS_NAMES_AND_URLS:_default' \
 '-c+[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
 '--configFile=[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
-'-t+[Theme of the chart]:THEME:(default forest dark neutral)' \
-'--theme=[Theme of the chart]:THEME:(default forest dark neutral)' \
+'-t+[Official Mermaid CLI theme selector]::THEME:(default forest dark neutral)' \
+'--theme=[Official Mermaid CLI theme selector]::THEME:(default forest dark neutral)' \
 '--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
 '--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
-'--presentation-profile=[First-party presentation profile applied below explicit Mermaid configuration]:PRESENTATION_PROFILE:(merman-modern)' \
+'(-t --theme)--theme-preset=[Compiled Merman diagram-theme preset]:THEME_PRESET:(editor-light editor-dark one-dark gruvbox-light gruvbox-dark ayu-light ayu-dark)' \
+'(-t --theme --theme-preset)--theme-file=[JSON theme selection file containing exactly one \`preset\` or \`spec\` member]:THEME_FILE:_files' \
 '--text-measurer=[Text measurement strategy]:TEXT_MEASURER:(deterministic vendored)' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default]:MATH_RENDERER:(none ratex)' \
 '-w+[Width of the page]:CONTAINER_WIDTH:_default' \

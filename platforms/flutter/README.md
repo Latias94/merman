@@ -61,7 +61,7 @@ A native artifact can intentionally omit some outputs. Inspect `merman.runtimeCa
 
 ## Inspect Native Metadata
 
-The typed metadata APIs expose the loaded artifact's diagram, ASCII, parser/render, lint, Mermaid theme, and presentation catalogs. Results are copied into Dart-owned immutable values and cached on the `Merman` instance. Decoders require the documented fields while tolerating additive JSON fields from a compatible newer producer. Presentation IDs remain open strings so compatible producers can add presets, profiles, and aspects without requiring a Dart enum update.
+The typed metadata APIs expose the loaded artifact's diagram, ASCII, parser/render, lint, Mermaid theme, and compiled-theme catalogs. Results are copied into Dart-owned immutable values and cached on the `Merman` instance. Decoders require the documented fields while tolerating additive JSON fields from a compatible newer producer. Theme preset and descriptor IDs remain open strings so compatible producers can add values without requiring Dart enum updates.
 
 ```dart
 final diagrams = merman.supportedDiagrams();
@@ -69,7 +69,7 @@ final ascii = merman.asciiCapabilities();
 final families = merman.diagramFamilyCapabilities();
 final lintRules = merman.lintRuleCatalog();
 final themes = merman.supportedThemes();
-final presentation = merman.presentationCatalog();
+final themeCatalog = merman.themeCatalog();
 final rawCatalog = merman.metadataJson('supported-diagrams');
 ```
 

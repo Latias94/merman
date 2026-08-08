@@ -19,7 +19,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 - Replaced raw generic-result metadata JSON with `MermanOperationMetadata` and an open `MermanOutputPlan` record. Switch on `kind`, use optional typed raster/PDF payloads, and retain `rawJson` for future plans.
 - Added immutable `MermanIconPack`, transactional reusable `MermanIconRegistry.fromPacks`, and a zero-argument persistent `MermanEngineServices` builder for constructor-owned icon registries and optional text measurement. Reusable engines now expose retryable, idempotent `close()`.
 - Replaced the incompatible prerelease options grammar with Options JSON schema `2`. The generated `resourceOptionsJson(profile:overrides:)` API now accepts a `nil` profile for request overlays that inherit their constructor ceiling, and its override records use `MermanResourceOverrideId`.
-- Removed the prerelease `supportedHostThemePresets()` method. Decode `presentationCatalogJson()` for open-ended, artifact-aware theme preset and presentation profile discovery.
+- Removed the prerelease `supportedHostThemePresets()` method. Decode `themeCatalogJson()` for open-ended, artifact-aware compiled-theme discovery.
 
 ### Added
 
@@ -29,7 +29,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 - Added generated `resourceOptionsJson(profile:overrides:)` so Swift callers can select
   `interactive`, `constrained`, `trusted-native`, or `unbounded-for-trusted-input` without
   duplicating limit tables.
-- Added generated `presentationCatalogJson()` without changing the UniFFI API 3 version.
+- Added generated `themeCatalogJson()` without changing the UniFFI API 3 version.
 
 ### Changed
 

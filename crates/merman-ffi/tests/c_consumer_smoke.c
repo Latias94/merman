@@ -188,7 +188,7 @@ int merman_c_consumer_smoke(
         "diagram-family-capabilities",
         "lint-rule-catalog",
         "supported-themes",
-        "presentation-catalog"
+        "theme-catalog"
     };
     static const uint8_t unknown_metadata_id[] = "unknown-catalog";
     MermanNativeApiRequest discovery;
@@ -280,17 +280,22 @@ int merman_c_consumer_smoke(
             return 31;
         }
         if (
-            strcmp(metadata_id, "presentation-catalog") == 0 &&
+            strcmp(metadata_id, "theme-catalog") == 0 &&
             (
                 !bytes_contain(
                     result.metadata_or_error_json.data,
                     result.metadata_or_error_json.len,
-                    "\"schema_version\":1"
+                    "\"schema_version\":2"
                 ) ||
                 !bytes_contain(
                     result.metadata_or_error_json.data,
                     result.metadata_or_error_json.len,
-                    "\"profiles\""
+                    "\"presets\""
+                ) ||
+                !bytes_contain(
+                    result.metadata_or_error_json.data,
+                    result.metadata_or_error_json.len,
+                    "\"known_semantic_target_ids\""
                 )
             )
         ) {

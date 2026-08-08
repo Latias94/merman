@@ -138,6 +138,8 @@ Native `render -e` and `batch -e` are hidden aliases for `-f/--format` during `0
 
 The `mmdc` subcommand is a release-pinned compatibility snapshot. This release follows the supported command behavior of `@mermaid-js/mermaid-cli@11.16.0`; future changes are tied to an explicit Mermaid baseline update. See the [compatibility register](https://github.com/Latias94/merman/blob/main/docs/alignment/CLI_COMPATIBILITY.md) for exact coverage and deliberate browserless divergences.
 
+`mmdc -t/--theme` remains the official Mermaid CLI selector and accepts only `default`, `forest`, `dark`, and `neutral`; omitting the option value selects `default`, matching mmdc. Merman additionally exposes `--theme-preset` for built-in compiled themes and `--theme-file` for one complete JSON theme selection. The file must contain exactly one `preset` or `spec` member, for example `{"preset":"editor-dark"}`. These three selectors are mutually exclusive. Selecting a Merman theme suppresses mmdc's implicit `default` theme, while explicit Mermaid values loaded from `--configFile` retain normal configuration precedence above the compiled theme. The removed `--presentation-profile` and `merman-modern` inputs are not compatibility aliases.
+
 ## Markdown Batches
 
 Native batch rendering owns one output directory:

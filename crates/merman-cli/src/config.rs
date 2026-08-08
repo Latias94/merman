@@ -1,7 +1,7 @@
 use crate::cli::{ParseCliArgs, RuntimeCliArgs, RuntimePolicyKind};
 use crate::error::CliError;
 use crate::input::InputLimit;
-use crate::io::read_named_text_file;
+use crate::io::{read_named_bytes_file, read_named_text_file};
 use crate::resources::ResolvedResourcePolicy;
 use merman::runtime::RuntimePolicy;
 use merman::{Engine, MermaidConfig, ParseOptions};
@@ -18,9 +18,11 @@ use crate::invocation::ResolvedRenderOptions;
 use crate::invocation::{ResolvedParseOptions, ResolvedRuntimeOptions};
 #[cfg(feature = "svg")]
 use merman::svg::{
-    HeadlessRenderer, IconRegistry, LayoutOptions, MathRenderer, PresentationProfile,
-    RenderEnvironment, SvgRenderOptions, TextMeasurementPolicy,
+    DiagramThemeCompiler, HeadlessRenderer, IconRegistry, LayoutOptions, MathRenderer,
+    RenderEnvironment, SvgRenderOptions, TextMeasurementPolicy, ThemePreset,
 };
+#[cfg(feature = "svg")]
+use merman_bindings_core::compile_theme_selection_json_with;
 
 pub(crate) fn engine_for(
     parse: &ParseCliArgs,
@@ -240,7 +242,8 @@ pub(crate) fn renderer_for_resolved(
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, Copy)]
 struct RendererInputs<'a> {
-    presentation_profile: Option<PresentationProfile>,
+    theme_preset: Option<ThemePreset>,
+    theme_file: Option<&'a Path>,
     text_measurer: TextMeasurerKind,
     math_renderer: Option<MathRendererKind>,
     container_width: Option<f64>,
@@ -253,7 +256,8 @@ struct RendererInputs<'a> {
 impl<'a> RendererInputs<'a> {
     fn from_cli(render: &'a RenderCliArgs) -> Self {
         Self {
-            presentation_profile: render.presentation_profile,
+            theme_preset: render.theme_preset,
+            theme_file: render.theme_file.as_deref(),
             text_measurer: render.text_measurer.unwrap_or(TextMeasurerKind::Vendored),
             math_renderer: render.math_renderer,
             container_width: render.container_width,
@@ -265,7 +269,8 @@ impl<'a> RendererInputs<'a> {
 
     fn from_resolved(render: &'a ResolvedRenderOptions) -> Self {
         Self {
-            presentation_profile: render.presentation_profile,
+            theme_preset: render.theme_preset,
+            theme_file: render.theme_file.as_deref(),
             text_measurer: render.text_measurer,
             math_renderer: render.math_renderer,
             container_width: render.container_width,
@@ -316,8 +321,40 @@ fn renderer_from_config(
             render.container_height.unwrap_or(600.0),
         ))
         .with_svg_options(svg);
-    if let Some(profile) = render.presentation_profile {
-        renderer = renderer.with_presentation_profile(profile);
+    let compiler = DiagramThemeCompiler::new();
+    let selected_theme =
+        match (render.theme_preset, render.theme_file) {
+            (Some(_), Some(_)) => {
+                return Err(CliError::InvalidInput(
+                    "--theme-preset and --theme-file are mutually exclusive".to_string(),
+                ));
+            }
+            (Some(preset), None) => Some(compiler.compile_preset(preset).map_err(|error| {
+                CliError::InvalidInput(format!("invalid theme preset: {error}"))
+            })?),
+            (None, Some(path)) => {
+                let max_bytes = compiler
+                    .resource_policy()
+                    .value(merman::svg::ThemeResourceLimitId::MaxThemeEncodedBytes)
+                    .expect("interactive theme input limit");
+                let bytes = read_named_bytes_file(
+                    path,
+                    "theme selection file",
+                    InputLimit::new("max_theme_encoded_bytes", Some(max_bytes)),
+                )?;
+                Some(
+                    compile_theme_selection_json_with(&compiler, &bytes).map_err(|error| {
+                        CliError::InvalidInput(format!(
+                            "invalid theme selection file: {}",
+                            error.message()
+                        ))
+                    })?,
+                )
+            }
+            (None, None) => None,
+        };
+    if let Some(theme) = selected_theme {
+        renderer = renderer.with_theme(theme);
     }
     Ok(renderer.with_site_config(site_config))
 }

@@ -315,7 +315,7 @@ const expectedRuntimeStateProperties = new Set([
   "supportedDiagramsCache",
   "diagramFamilyCapabilitiesCache",
   "runtimeCatalogCache",
-  "presentationCatalogCache",
+  "themeCatalogCache",
   "supportedThemesCache",
 ]);
 failed ||= reportMissing(
@@ -345,13 +345,16 @@ failed ||= reportPolicyFailure(
     .has("parse"),
 );
 failed ||= reportPolicyFailure(
-  "check-contracts: SVG options must use presentation instead of the removed host_theme group",
+  "check-contracts: SVG options must use theme instead of the removed presentation and host_theme groups",
   contract
     .exportedTypePropertyNames(publicEntry, "SvgBindingOptions")
     .has("host_theme") ||
+    contract
+      .exportedTypePropertyNames(publicEntry, "SvgBindingOptions")
+      .has("presentation") ||
     !contract
       .exportedTypePropertyNames(publicEntry, "SvgBindingOptions")
-      .has("presentation"),
+      .has("theme"),
 );
 failed ||= reportPolicyFailure(
   "check-contracts: legacy single-document workspace symbol names must be removed",

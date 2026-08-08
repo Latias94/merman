@@ -24,9 +24,9 @@ def valid_catalog():
             "ascii-capabilities",
             "diagram-family-capabilities",
             "lint-rule-catalog",
-            "presentation-catalog",
             "supported-diagrams",
             "supported-themes",
+            "theme-catalog",
         ],
         "option_group_ids": [
             "ascii",
@@ -36,11 +36,11 @@ def valid_catalog():
             "layout",
             "lint",
             "parse",
-            "presentation",
             "resources",
             "runtime_policy",
             "site_config",
             "svg",
+            "theme",
             "version",
         ],
         "constructor_service_ids": ["host-text-measurement", "icon-registry"],
@@ -246,9 +246,9 @@ class RuntimeCatalogTest(unittest.TestCase):
         }
         catalog["metadata_ids"] = [
             "diagram-family-capabilities",
-            "presentation-catalog",
             "supported-diagrams",
             "supported-themes",
+            "theme-catalog",
         ]
         catalog["option_group_ids"] = [
             "environment",
@@ -256,12 +256,12 @@ class RuntimeCatalogTest(unittest.TestCase):
             "fixed_today",
             "layout",
             "parse",
-            "presentation",
             "raster",
             "resources",
             "runtime_policy",
             "site_config",
             "svg",
+            "theme",
             "version",
         ]
         catalog["output_contracts"] = [

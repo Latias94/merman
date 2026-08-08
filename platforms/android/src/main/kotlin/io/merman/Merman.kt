@@ -47,8 +47,8 @@ object Merman {
         metadataJson(MermanBindingMetadataId.SUPPORTED_THEMES)
     }
 
-    private val presentationCatalogJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        metadataJson(MermanBindingMetadataId.PRESENTATION_CATALOG)
+    private val themeCatalogJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        metadataJson(MermanBindingMetadataId.THEME_CATALOG)
     }
 
     /** Executes any operation ID exposed by [runtimeCatalogJson]. */
@@ -156,7 +156,7 @@ object Merman {
     fun supportedThemesJson(): String = supportedThemesJsonCache
 
     @JvmStatic
-    fun presentationCatalogJson(): String = presentationCatalogJsonCache
+    fun themeCatalogJson(): String = themeCatalogJsonCache
 
     private fun executeText(
         operationId: String,

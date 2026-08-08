@@ -600,14 +600,25 @@ pub(crate) enum RuntimePolicyKind {
 #[derive(Debug, Clone, Default, ClapArgs)]
 pub(crate) struct RenderCliArgs {
     #[cfg(feature = "svg")]
-    /// First-party presentation profile applied below explicit Mermaid configuration.
+    /// Compiled diagram-theme preset applied below explicit Mermaid configuration.
     #[arg(
-        long = "presentation-profile",
-        value_parser = presentation_profile_value_parser(),
+        long = "theme-preset",
+        value_parser = theme_preset_value_parser(),
         help_heading = "Merman renderer controls",
         hide_short_help = true
     )]
-    pub(crate) presentation_profile: Option<merman::svg::PresentationProfile>,
+    pub(crate) theme_preset: Option<merman::svg::ThemePreset>,
+
+    #[cfg(feature = "svg")]
+    /// JSON theme selection file containing exactly one `preset` or `spec` member.
+    #[arg(
+        long = "theme-file",
+        value_hint = ValueHint::FilePath,
+        conflicts_with = "theme_preset",
+        help_heading = "Merman renderer controls",
+        hide_short_help = true
+    )]
+    pub(crate) theme_file: Option<PathBuf>,
 
     #[cfg(feature = "svg")]
     /// Text measurement strategy.
@@ -674,6 +685,24 @@ pub(crate) struct RenderCliArgs {
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, ClapArgs)]
 pub(crate) struct LayoutRenderCliArgs {
+    /// Compiled diagram-theme preset applied before layout.
+    #[arg(
+        long = "theme-preset",
+        value_parser = theme_preset_value_parser(),
+        conflicts_with = "theme_file",
+        help_heading = "Layout controls"
+    )]
+    pub(crate) theme_preset: Option<merman::svg::ThemePreset>,
+
+    /// JSON theme selection file containing exactly one `preset` or `spec` member.
+    #[arg(
+        long = "theme-file",
+        value_hint = ValueHint::FilePath,
+        conflicts_with = "theme_preset",
+        help_heading = "Layout controls"
+    )]
+    pub(crate) theme_file: Option<PathBuf>,
+
     /// Text measurement strategy.
     #[arg(
         long = "text-measurer",
@@ -710,7 +739,8 @@ pub(crate) struct LayoutRenderCliArgs {
 impl LayoutRenderCliArgs {
     pub(crate) fn into_render_args(self) -> RenderCliArgs {
         RenderCliArgs {
-            presentation_profile: None,
+            theme_preset: self.theme_preset,
+            theme_file: self.theme_file,
             text_measurer: Some(self.text_measurer),
             math_renderer: self.math_renderer,
             container_width: self.container_width,
@@ -756,8 +786,18 @@ pub(crate) struct MmdcParseCliArgs {
     )]
     pub(crate) config_file: Option<PathBuf>,
 
-    /// Theme of the chart.
-    #[arg(short = 't', long, value_enum, help_heading = "mmdc-compatible export")]
+    /// Official Mermaid CLI theme selector.
+    ///
+    /// The accepted values stay pinned to the upstream mmdc contract. Use
+    /// `--theme-preset` for Merman's compiled diagram themes.
+    #[arg(
+        short = 't',
+        long,
+        value_enum,
+        num_args = 0..=1,
+        default_missing_value = "default",
+        help_heading = "mmdc-compatible export"
+    )]
     pub(crate) theme: Option<MmdcTheme>,
 
     #[command(flatten)]
@@ -767,14 +807,29 @@ pub(crate) struct MmdcParseCliArgs {
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, ClapArgs)]
 pub(crate) struct MmdcRenderCliArgs {
-    /// First-party presentation profile applied below explicit Mermaid configuration.
+    /// Compiled Merman diagram-theme preset.
+    ///
+    /// This is a complete visual theme selector and therefore cannot be combined with the
+    /// official mmdc `-t`/`--theme` option. Explicit values in `--configFile` retain normal
+    /// Mermaid configuration precedence.
     #[arg(
-        long = "presentation-profile",
-        value_parser = presentation_profile_value_parser(),
+        long = "theme-preset",
+        value_parser = theme_preset_value_parser(),
+        conflicts_with = "theme",
         help_heading = "Merman renderer controls",
         hide_short_help = true
     )]
-    pub(crate) presentation_profile: Option<merman::svg::PresentationProfile>,
+    pub(crate) theme_preset: Option<merman::svg::ThemePreset>,
+
+    /// JSON theme selection file containing exactly one `preset` or `spec` member.
+    #[arg(
+        long = "theme-file",
+        value_hint = ValueHint::FilePath,
+        conflicts_with_all = ["theme", "theme_preset"],
+        help_heading = "Merman renderer controls",
+        hide_short_help = true
+    )]
+    pub(crate) theme_file: Option<PathBuf>,
 
     /// Text measurement strategy.
     #[arg(
@@ -839,7 +894,8 @@ pub(crate) struct MmdcRenderCliArgs {
 impl Default for MmdcRenderCliArgs {
     fn default() -> Self {
         Self {
-            presentation_profile: None,
+            theme_preset: None,
+            theme_file: None,
             text_measurer: TextMeasurerKind::Vendored,
             math_renderer: None,
             container_width: 800.0,
@@ -1472,16 +1528,15 @@ fn theme_value_parser() -> impl TypedValueParser<Value = String> {
 }
 
 #[cfg(feature = "svg")]
-fn presentation_profile_value_parser()
--> impl TypedValueParser<Value = merman::svg::PresentationProfile> {
+fn theme_preset_value_parser() -> impl TypedValueParser<Value = merman::svg::ThemePreset> {
     PossibleValuesParser::new(
-        merman::svg::presentation_profile_descriptors()
+        merman::svg::theme_preset_descriptors()
             .iter()
             .map(|descriptor| descriptor.id()),
     )
     .map(|id| {
-        merman::svg::PresentationProfile::from_id(&id)
-            .expect("possible values come from the presentation profile descriptors")
+        merman::svg::ThemePreset::from_id(&id)
+            .expect("possible values come from the theme preset descriptors")
     })
 }
 

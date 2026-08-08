@@ -487,15 +487,15 @@ export const METADATA_SPECS = [
     "required_capability_id": "analysis"
   },
   {
-    "id": "presentation-catalog",
-    "required_capability_id": null
-  },
-  {
     "id": "supported-diagrams",
     "required_capability_id": null
   },
   {
     "id": "supported-themes",
+    "required_capability_id": null
+  },
+  {
+    "id": "theme-catalog",
     "required_capability_id": null
   }
 ];
@@ -564,12 +564,6 @@ export const BINDING_OPTION_GROUP_SPECS = [
     "requires_svg_pipeline": false
   },
   {
-    "id": "presentation",
-    "always_available": false,
-    "any_capability_ids": [],
-    "requires_svg_pipeline": true
-  },
-  {
     "id": "raster",
     "always_available": false,
     "any_capability_ids": [
@@ -598,6 +592,12 @@ export const BINDING_OPTION_GROUP_SPECS = [
   },
   {
     "id": "svg",
+    "always_available": false,
+    "any_capability_ids": [],
+    "requires_svg_pipeline": true
+  },
+  {
+    "id": "theme",
     "always_available": false,
     "any_capability_ids": [],
     "requires_svg_pipeline": true

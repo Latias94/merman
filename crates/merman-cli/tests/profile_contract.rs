@@ -1028,11 +1028,10 @@ fn workflow_completions() {
                     .collect()
             );
 
-            let presentation_profiles =
-                bash_completion_values(&script, "render", "--presentation-profile");
+            let theme_presets = bash_completion_values(&script, "render", "--theme-preset");
             assert_eq!(
-                presentation_profiles,
-                merman::svg::presentation_profile_descriptors()
+                theme_presets,
+                merman::svg::theme_preset_descriptors()
                     .iter()
                     .map(|descriptor| descriptor.id().to_owned())
                     .collect()

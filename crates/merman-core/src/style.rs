@@ -1,7 +1,11 @@
-//! Shared Mermaid CSS declaration safety helpers.
+//! Shared Mermaid source-style admission helpers.
+//!
+//! This module intentionally stays independent of `cssparser`: the core crate owns Mermaid's
+//! source model and is also used by non-SVG artifacts. Render-side compatibility values use the
+//! stricter token-aware policy in `merman-render::mermaid_style`.
 
-/// Parses one Mermaid CSS declaration after applying the same structural safety policy used by
-/// renderers and source-backed fixture evidence.
+/// Parses one Mermaid CSS declaration after applying the structural policy used by source-style
+/// evidence.
 pub fn parse_safe_style_decl(s: &str) -> Option<(&str, &str)> {
     let s = s.trim().trim_end_matches(';').trim();
     if s.is_empty() {
@@ -16,7 +20,7 @@ pub fn parse_safe_style_decl(s: &str) -> Option<(&str, &str)> {
     Some((key, value))
 }
 
-/// Returns whether a font-family value is structurally safe for Mermaid's style lane.
+/// Returns whether a font-family value is structurally safe for Mermaid's source-style lane.
 pub fn is_safe_css_font_family_value(value: &str) -> bool {
     is_safe_css_declaration_value(value) && !value.contains(':')
 }

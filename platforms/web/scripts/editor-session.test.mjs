@@ -270,15 +270,15 @@ function editorCapabilities() {
 const EDITOR_METADATA_IDS = [
   "diagram-family-capabilities",
   "lint-rule-catalog",
-  "presentation-catalog",
   "supported-diagrams",
   "supported-themes",
+  "theme-catalog",
 ];
 const SVG_METADATA_IDS = [
   "diagram-family-capabilities",
-  "presentation-catalog",
   "supported-diagrams",
   "supported-themes",
+  "theme-catalog",
 ];
 const EDITOR_OPTION_GROUP_IDS = [
   "fixed_local_offset_minutes",
@@ -296,11 +296,11 @@ const SVG_OPTION_GROUP_IDS = [
   "fixed_today",
   "layout",
   "parse",
-  "presentation",
   "resources",
   "runtime_policy",
   "site_config",
   "svg",
+  "theme",
   "version",
 ];
 
@@ -903,9 +903,9 @@ test("runtime catalog accepts unknown future IDs", async () => {
     "diagram-family-capabilities",
     "future-metadata",
     "lint-rule-catalog",
-    "presentation-catalog",
     "supported-diagrams",
     "supported-themes",
+    "theme-catalog",
   ]);
   assert.deepEqual(catalog.option_group_ids, [
     "fixed_local_offset_minutes",

@@ -17,8 +17,8 @@ Corresponds to merman workspace release `0.8.0-alpha.4`.
 - Made `MermanTextMeasurer` immutable after reusable-engine construction and removed `set_text_measurer()` / `clear_text_measurer()`. Callback-free engines admit concurrent operations; callback engines raise typed `BUSY` or `REENTRANT_CALL` errors without waiting.
 - Replaced parser-backed document facts with their final schema 1 shape. Other versions are rejected before body decoding; remove `fact_source: "text_scan"` handling and consume parser-backed items with explicit unavailable bodies.
 - Renamed binding option fields `viewport_width` and `viewport_height` to `container_width` and `container_height`, and removed the legacy Flowchart ELK backend selector; update any serialized `options_json` before upgrading.
-- Moved binding JSON environment selectors to `environment.text_measurement` and `environment.math_renderer`, semantic host colors to `presentation.theme`, raw Mermaid overrides to top-level `site_config`, and output policy to `svg`. The prerelease `host_theme` group and the old `layout.text_measurer` / `layout.math_renderer` fields are rejected.
-- Removed underscore and shorthand binding enum aliases plus `supported_host_theme_presets()`. Use documented kebab-case values and decode `presentation_catalog_json()` for open-ended theme/profile discovery.
+- Moved binding JSON environment selectors to `environment.text_measurement` and `environment.math_renderer`, compiled visual styling to the closed `theme` preset-or-spec union, raw Mermaid overrides to top-level `site_config`, and output policy to `svg`. The prerelease `presentation`, `host_theme`, `layout.text_measurer`, and `layout.math_renderer` inputs are rejected.
+- Removed underscore and shorthand binding enum aliases plus `supported_host_theme_presets()`. Use documented kebab-case values and decode `theme_catalog_json()` for open-ended compiled-theme discovery.
 - Removed generated `ABI_VERSION` and `require_abi_version()` helpers. Use `Merman.binding_api_version()` for the UniFFI transport version, `get_runtime_catalog()` for a validated runtime catalog, and the separate text-measurement protocol helper for callback compatibility.
 - Removed split `runtime_contract_json()` and `runtime_capability_vocabulary_json()` discovery. Use the one atomic `runtime_catalog_json()` endpoint and `get_runtime_catalog()` decoder.
 - Moved generic operation options into `MermanOperationRequest.options_json`; call `engine.execute(request)` without a parallel options argument. Reusable operation options now deeply merge over the engine baseline but cannot change its constructor-owned runtime policy.
@@ -32,7 +32,7 @@ Corresponds to merman workspace release `0.8.0-alpha.4`.
 - Added `MermanOperationRequest`, `MermanOperationResult`, and `MermanEngine.execute()` as the one descriptor-owned operation path. Named methods are wrappers over it.
 - Added real `render_png()`, `render_jpeg()`, and `render_pdf()` byte APIs when the matching artifact output capability is enabled.
 - Added the generated `ResourceOptionsBuilder` and schema `2` resource contract so Python callers can select `interactive`, `constrained`, `trusted-native`, or `unbounded-for-trusted-input` without duplicating limit tables.
-- Added `presentation_catalog_json()` for artifact-aware theme preset, presentation profile, aspect, and missing-capability discovery.
+- Added `theme_catalog_json()` for artifact-aware compiled-theme preset, capability, font-container, semantic-target, and variant discovery.
 
 ### Changed
 

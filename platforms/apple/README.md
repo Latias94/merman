@@ -47,7 +47,7 @@ Empty or omitted options select deterministic runtime state even in the full nat
 
 Generated binding errors expose `MermanErrorKind`, an optional `capabilityId`, and optional `MermanResourceErrorDetails`. `.unknownOperation` has no capability ID, `.missingCapability` preserves the stable descriptor ID required by the request, and resource failures preserve typed limit evidence without message parsing.
 
-The full native SDK artifact includes semantic JSON, analysis, ASCII, SVG, PNG, JPEG, PDF, Cytoscape and ELK layouts, and RaTeX math. Check `runtimeCatalogJson()` rather than inferring support from package names or build flags, and decode `presentationCatalogJson()` when presenting theme or presentation-profile choices. Catalog IDs are open strings so a compatible native producer can add values without requiring a closed Swift enum update; treat a typed missing-capability error as the final answer for any attempted operation.
+The full native SDK artifact includes semantic JSON, analysis, ASCII, SVG, PNG, JPEG, PDF, Cytoscape and ELK layouts, and RaTeX math. Check `runtimeCatalogJson()` rather than inferring support from package names or build flags, and decode `themeCatalogJson()` when presenting compiled-theme choices and capabilities. Catalog IDs are open strings so a compatible native producer can add values without requiring closed Swift enum updates; treat a typed missing-capability error as the final answer for any attempted operation.
 
 ## Text Measurement
 

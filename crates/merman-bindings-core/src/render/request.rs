@@ -1,18 +1,16 @@
 #[cfg(test)]
 use crate::common::binding_runtime_policy_from;
 use crate::common::{
-    BindingError, BindingOptions, BindingStatus, PresentationOptionsJson,
-    PresentationThemeOptionsJson, binding_resource_policy, binding_site_config,
+    BindingError, BindingOptions, BindingStatus, binding_resource_policy, binding_site_config,
     css_declaration_value, finite_positive, internal_json_error, no_diagram_error,
     normalize_option, runtime_policy_error,
 };
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use crate::common::{BindingExportResourceOptions, binding_export_resource_options};
 use merman::svg::{
-    HeadlessRenderer, HostTheme, HostThemeAppearance, HostThemePreset, LayoutOptions,
-    MeasurementProfileId, PresentationProfile, RenderCapability, RenderCapabilityPolicy,
-    RenderEnvironment, TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
-    ThemeRole,
+    HeadlessRenderer, LayoutOptions, MeasurementProfileId, RenderCapability,
+    RenderCapabilityPolicy, RenderEnvironment, TextMeasurementPhase, TextMeasurementPolicy,
+    TextMeasurementProfileIdentity,
 };
 
 #[derive(Clone)]
@@ -30,8 +28,7 @@ pub(super) struct RenderRequestPlan {
 pub(super) struct RenderOperationConfig {
     environment: RenderEnvironment,
     lenient_parsing: bool,
-    presentation_profile: Option<PresentationProfile>,
-    host_theme: Option<HostTheme>,
+    theme: Option<merman::svg::DiagramTheme>,
     site_config: Option<merman::MermaidConfig>,
     layout: LayoutOptions,
     svg: merman::svg::SvgRenderOptions,
@@ -137,10 +134,13 @@ fn compile_for_test(
     options: &BindingOptions,
     runtime_policy: merman::runtime::RuntimePolicy,
 ) -> Result<RenderOperationConfig, BindingError> {
+    let compiler = merman::svg::DiagramThemeCompiler::new();
+    let theme = crate::theme::compile_theme_with(&compiler, options.theme.as_ref())?;
     RenderOperationConfig::compile(
         options,
         runtime_policy,
         RenderCapabilityPolicy::unrestricted(),
+        theme,
     )
 }
 
@@ -149,6 +149,7 @@ impl RenderOperationConfig {
         options: &BindingOptions,
         runtime_policy: merman::runtime::RuntimePolicy,
         capability_policy: RenderCapabilityPolicy,
+        theme: Option<merman::svg::DiagramTheme>,
     ) -> Result<Self, BindingError> {
         let mut environment = RenderEnvironment::deterministic()
             .with_capability_policy(capability_policy)
@@ -203,10 +204,6 @@ impl RenderOperationConfig {
             .and_then(|parse| parse.suppress_errors)
             .unwrap_or(false);
         let mut output = merman::svg::SvgOutputPolicy::default();
-        let (presentation_profile, host_theme) = match options.presentation.as_ref() {
-            Some(options) => binding_presentation(options)?,
-            None => (None, None),
-        };
         let site_config = binding_site_config(options)?;
 
         let mut layout = LayoutOptions::headless_svg_defaults();
@@ -282,8 +279,7 @@ impl RenderOperationConfig {
         Ok(Self {
             environment,
             lenient_parsing,
-            presentation_profile,
-            host_theme,
+            theme,
             site_config,
             layout,
             svg: svg_options,
@@ -319,11 +315,8 @@ impl RenderOperationConfig {
         } else {
             renderer.with_strict_parsing()
         };
-        if let Some(profile) = self.presentation_profile {
-            renderer = renderer.with_presentation_profile(profile);
-        }
-        if let Some(theme) = self.host_theme {
-            renderer = renderer.with_host_theme(theme);
+        if let Some(theme) = self.theme {
+            renderer = renderer.with_theme(theme);
         }
         if let Some(site_config) = self.site_config {
             renderer = renderer.with_site_config(site_config);
@@ -472,94 +465,6 @@ fn finite_nonnegative(value: f64, name: &'static str) -> Result<f64, BindingErro
             format!("{name} must be finite and non-negative"),
         ))
     }
-}
-
-fn binding_presentation(
-    options: &PresentationOptionsJson,
-) -> Result<(Option<PresentationProfile>, Option<HostTheme>), BindingError> {
-    let profile = options
-        .profile
-        .as_deref()
-        .map(|profile| {
-            PresentationProfile::from_id(profile.trim()).map_err(|_| {
-                BindingError::new(
-                    BindingStatus::InvalidArgument,
-                    format!("unsupported presentation.profile: {profile}"),
-                )
-            })
-        })
-        .transpose()?;
-    let theme = options
-        .theme
-        .as_ref()
-        .map(binding_presentation_theme)
-        .transpose()?;
-    Ok((profile, theme))
-}
-
-fn binding_presentation_theme(
-    options: &PresentationThemeOptionsJson,
-) -> Result<HostTheme, BindingError> {
-    let mut theme = if let Some(preset) = options.preset.as_deref() {
-        let preset = HostThemePreset::from_id(preset.trim()).map_err(|_| {
-            BindingError::new(
-                BindingStatus::InvalidArgument,
-                format!("unsupported presentation.theme.preset: {preset}"),
-            )
-        })?;
-        HostTheme::from_preset(preset)
-    } else {
-        HostTheme::new()
-    };
-
-    if let Some(appearance) = options.appearance.as_deref() {
-        theme = theme.with_appearance(match appearance.trim() {
-            "light" => HostThemeAppearance::Light,
-            "dark" => HostThemeAppearance::Dark,
-            other => {
-                return Err(BindingError::new(
-                    BindingStatus::InvalidArgument,
-                    format!("unsupported presentation.theme.appearance: {other}"),
-                ));
-            }
-        });
-    }
-    if let Some(font_family) = options.font_family.as_deref() {
-        theme = theme
-            .try_with_font_family(font_family)
-            .map_err(binding_presentation_error)?;
-    }
-    if let Some(font_size) = options.font_size.as_deref() {
-        theme = theme
-            .try_with_font_size(font_size)
-            .map_err(binding_presentation_error)?;
-    }
-    if let Some(roles) = options.roles.as_ref() {
-        for (id, value) in roles {
-            let role = ThemeRole::from_id(id).map_err(|_| {
-                BindingError::new(
-                    BindingStatus::InvalidArgument,
-                    format!("unsupported presentation.theme.roles key: {id}"),
-                )
-            })?;
-            theme = theme
-                .try_with_role(role, value)
-                .map_err(binding_presentation_error)?;
-        }
-    }
-    if let Some(palette) = options.series_palette.as_ref() {
-        theme = theme
-            .try_with_series_palette(palette.iter().cloned())
-            .map_err(binding_presentation_error)?;
-    }
-    Ok(theme)
-}
-
-fn binding_presentation_error(error: merman::svg::PresentationError) -> BindingError {
-    BindingError::new(
-        BindingStatus::InvalidArgument,
-        format!("invalid presentation.{error}"),
-    )
 }
 
 fn classify_render_error(err: merman::svg::HeadlessError) -> BindingError {

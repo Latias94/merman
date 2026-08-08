@@ -78,10 +78,10 @@ export {
   initMerman,
   isMermanInitialized,
   packageVersion,
-  presentationCatalog,
   runtimeCatalog,
   supportedDiagrams,
   supportedThemes,
+  themeCatalog,
   transportApiVersion,
   withResourceOptions,
 } from "./runtime-core.js";

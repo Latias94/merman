@@ -81,6 +81,18 @@ impl DiagramThemeCompiler {
         self
     }
 
+    pub const fn resource_policy(&self) -> &ThemeResourcePolicy {
+        &self.resources
+    }
+
+    /// Rejects an encoded theme input before its typed object graph is allocated.
+    pub fn check_encoded_input_bytes(
+        &self,
+        actual: usize,
+    ) -> Result<(), ThemeResourceLimitExceeded> {
+        self.resources.check_theme_encoded_bytes(actual)
+    }
+
     pub fn compile(
         &self,
         spec: DiagramThemeSpec,

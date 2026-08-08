@@ -283,9 +283,9 @@ pub fn supported_themes() -> Result<JsValue, JsValue> {
     json_value_result(wasm_artifact_contract().metadata_json("supported-themes"))
 }
 
-#[wasm_bindgen(js_name = presentationCatalog)]
-pub fn presentation_catalog() -> Result<JsValue, JsValue> {
-    json_value_result(wasm_artifact_contract().metadata_json("presentation-catalog"))
+#[wasm_bindgen(js_name = themeCatalog)]
+pub fn theme_catalog() -> Result<JsValue, JsValue> {
+    json_value_result(wasm_artifact_contract().metadata_json("theme-catalog"))
 }
 
 #[wasm_bindgen(js_name = asciiSupportedDiagrams)]

@@ -31,9 +31,9 @@
     ],
     "metadata_ids": [
       "diagram-family-capabilities",
-      "presentation-catalog",
       "supported-diagrams",
-      "supported-themes"
+      "supported-themes",
+      "theme-catalog"
     ],
     "option_group_ids": [
       "environment",
@@ -41,11 +41,11 @@
       "fixed_today",
       "layout",
       "parse",
-      "presentation",
       "resources",
       "runtime_policy",
       "site_config",
       "svg",
+      "theme",
       "version"
     ],
     "constructor_service_ids": [],

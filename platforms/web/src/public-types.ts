@@ -71,37 +71,33 @@ export interface RuntimeCatalog {
   resources: RuntimeResourceContract;
 }
 
-export interface PresentationCatalog {
-  schema_version: 1;
-  theme_presets: PresentationThemePresetCatalogEntry[];
-  profiles: PresentationProfileCatalogEntry[];
+export interface ThemeCatalog {
+  schema_version: 2;
+  structured_spec_available: boolean;
+  supported_output_ids: string[];
+  presets: ThemePresetCatalogEntry[];
+  known_capability_ids: string[];
+  known_text_capability_ids: string[];
+  known_font_container_ids: string[];
+  known_font_source_ids: string[];
+  known_semantic_target_ids: string[];
+  known_variant_ids: string[];
+  resource_limits: ThemeResourceLimitCatalogEntry[];
 }
 
-export interface PresentationThemePresetCatalogEntry {
+export interface ThemePresetCatalogEntry {
   id: string;
   appearance: string;
-  fully_available: boolean;
-  missing_capability_ids: string[];
+  required_capability_ids: string[];
+  required_text_capability_ids: string[];
 }
 
-export interface PresentationProfileCatalogEntry {
+export interface ThemeResourceLimitCatalogEntry {
   id: string;
-  fully_available: boolean;
-  missing_capability_ids: string[];
-  aspects: PresentationAspectCatalogEntry[];
-}
-
-export interface PresentationAspectCatalogEntry {
-  id: string;
-  applicability: PresentationAspectApplicability;
-  required_capability_id: string | null;
-  available: boolean;
-  missing_capability_ids: string[];
-}
-
-export interface PresentationAspectApplicability {
-  kind: string;
-  family_id: string | null;
+  phase: string;
+  description: string;
+  effective_value: number | null;
+  hard_cap: boolean;
 }
 
 export interface RuntimePayloadSchema {
@@ -205,20 +201,210 @@ export interface SvgOptions {
   viewBoxPadding?: number;
 }
 
-export type PresentationThemeAppearance = "light" | "dark";
+export type DiagramThemeSelection =
+  | { preset: string; spec?: never }
+  | { preset?: never; spec: DiagramThemeSpec };
 
-export interface PresentationThemeOptions {
-  preset?: string;
-  appearance?: PresentationThemeAppearance;
-  font_family?: string;
-  font_size?: string;
-  roles?: Record<string, string>;
-  series_palette?: string[];
+export interface DiagramThemeSpec {
+  mermaid?: MermaidThemeCompatibility;
+  typography?: ThemeTypographySpec;
+  styles?: ThemeStyleEntry[];
+  canvas?: ThemeCanvasSpec;
+  effects?: ThemeEffectEntry[];
+  requirements?: ThemeRequirementsSpec;
+  assets?: ThemeAssetsSpec;
 }
 
-export interface PresentationOptions {
-  profile?: string;
-  theme?: PresentationThemeOptions;
+export interface MermaidThemeCompatibility {
+  theme?: "default" | "forest" | "dark" | "neutral" | "base";
+  dark_mode?: boolean;
+  variables?: Record<string, string>;
+}
+
+export interface ThemeTypographySpec {
+  default?: ThemeTextStyle;
+  families?: Record<string, ThemeTextStyle>;
+}
+
+export interface ThemeTextStyle {
+  font_stack?: string[];
+  font_size_px?: number;
+  font_weight?: number;
+  font_style?: "normal" | "italic" | "oblique";
+  line_height?: ThemeLineHeight;
+  letter_spacing_px?: number;
+  word_spacing_px?: number;
+  transform?: "none" | "uppercase" | "lowercase" | "capitalize";
+  decoration?: "none" | "underline" | "overline" | "line-through";
+  text_align?: "start" | "center" | "end";
+  white_space?: "normal" | "pre" | "no-wrap" | "pre-wrap" | "pre-line";
+  wrap?: "normal" | "break-word" | "anywhere";
+}
+
+export type ThemeLineHeight = "normal" | number | { px: number };
+export type ThemePatch<T> = T | null;
+export type ThemeLength = number | { px: number } | { percent: number };
+export type ThemeInsets =
+  | number
+  | { top: number; right: number; bottom: number; left: number };
+
+export type ThemePaint =
+  | string
+  | { kind: "transparent" }
+  | { kind: "solid"; color: string }
+  | {
+      kind: "linear-gradient";
+      angle_degrees: number;
+      stops: ThemeGradientStop[];
+    }
+  | {
+      kind: "radial-gradient";
+      center_x: ThemeLength;
+      center_y: ThemeLength;
+      radius: ThemeLength;
+      stops: ThemeGradientStop[];
+    }
+  | {
+      kind: "pattern";
+      pattern: "dots" | "grid" | "stripes";
+      cell_width: number;
+      cell_height: number;
+      foreground: string;
+      background?: string;
+      angle_degrees?: number;
+    };
+
+export interface ThemeGradientStop {
+  offset: number;
+  color: string;
+}
+
+export type ThemeStyleEntry = ThemeRuleEntry | ThemeOrdinalPaletteEntry;
+
+export interface ThemeRuleEntry {
+  kind: "rule";
+  target: string;
+  family?: string;
+  variant?: string;
+  ordinal?: { exact: number } | { cycle: { period: number; offset: number } };
+  style: ThemeStylePatch;
+}
+
+export interface ThemeOrdinalPaletteEntry {
+  kind: "ordinal-palette";
+  target: string;
+  colors: string[];
+}
+
+export interface ThemeStylePatch {
+  fill?: ThemePatch<ThemePaint>;
+  opacity?: ThemePatch<number>;
+  fill_opacity?: ThemePatch<number>;
+  stroke?: ThemePatch<ThemeStrokePatch>;
+  radius?: ThemePatch<number>;
+  padding?: ThemePatch<ThemeInsets>;
+  typography?: ThemePatch<ThemeTextStylePatch>;
+  effect?: ThemePatch<string>;
+}
+
+export interface ThemeStrokePatch {
+  paint?: ThemePatch<ThemePaint>;
+  width?: ThemePatch<number>;
+  dasharray?: ThemePatch<number[]>;
+  linecap?: ThemePatch<"butt" | "round" | "square">;
+  linejoin?: ThemePatch<"miter" | "round" | "bevel">;
+  opacity?: ThemePatch<number>;
+}
+
+export interface ThemeTextStylePatch {
+  font_stack?: ThemePatch<string[]>;
+  font_size_px?: ThemePatch<number>;
+  font_weight?: ThemePatch<number>;
+  font_style?: ThemePatch<"normal" | "italic" | "oblique">;
+  line_height?: ThemePatch<ThemeLineHeight>;
+  letter_spacing_px?: ThemePatch<number>;
+  word_spacing_px?: ThemePatch<number>;
+  transform?: ThemePatch<"none" | "uppercase" | "lowercase" | "capitalize">;
+  decoration?: ThemePatch<"none" | "underline" | "overline" | "line-through">;
+  text_align?: ThemePatch<"start" | "center" | "end">;
+  white_space?: ThemePatch<"normal" | "pre" | "no-wrap" | "pre-wrap" | "pre-line">;
+  wrap?: ThemePatch<"normal" | "break-word" | "anywhere">;
+}
+
+export interface ThemeCanvasSpec {
+  base?: ThemePaint;
+  layers?: ThemeCanvasLayer[];
+  bleed?: ThemeInsets;
+}
+
+export interface ThemeCanvasLayer {
+  paint: ThemePaint;
+  opacity?: number;
+  blend_mode?: "normal" | "multiply" | "screen" | "overlay" | "darken" | "lighten" | "difference";
+  offset_x?: number;
+  offset_y?: number;
+}
+
+export type ThemeEffectEntry = ThemeEffectGraph | ThemeEffectBinding;
+
+export interface ThemeEffectGraph {
+  kind: "graph";
+  id: string;
+  region: { x: number; y: number; width: number; height: number };
+  primitives: ThemeEffectPrimitive[];
+}
+
+export interface ThemeEffectBinding {
+  kind: "binding";
+  target: string;
+  effect_id: string;
+}
+
+export type ThemeEffectInput = "source-graphic" | "previous";
+export type ThemeEffectPrimitive =
+  | {
+      kind: "drop-shadow";
+      input?: ThemeEffectInput;
+      offset_x: number;
+      offset_y: number;
+      blur_radius: number;
+      spread: number;
+      color: string;
+    }
+  | { kind: "gaussian-blur"; input?: ThemeEffectInput; std_deviation: number }
+  | { kind: "color-matrix"; input?: ThemeEffectInput; values: number[] }
+  | {
+      kind: "turbulence";
+      input?: ThemeEffectInput;
+      base_frequency_x: number;
+      base_frequency_y: number;
+      octaves: number;
+      seed: number;
+    }
+  | {
+      kind: "displacement";
+      input?: ThemeEffectInput;
+      map_input: ThemeEffectInput;
+      scale: number;
+    };
+
+export interface ThemeRequirementsSpec {
+  capabilities?: string[];
+  text_capabilities?: string[];
+}
+
+export interface ThemeAssetsSpec {
+  fonts?: ThemeFontAsset[];
+  aliases?: Array<{ alias: string; target: string }>;
+  generic_families?: Array<{ generic: string; target: string }>;
+  available_sources?: Array<"embedded" | "system">;
+  embedding?: "none" | "full-font" | "subset";
+}
+
+export interface ThemeFontAsset {
+  id: string;
+  format: "truetype" | "opentype" | "collection" | "woff2";
+  data_base64: string;
 }
 
 export type MermaidSiteConfig = Record<string, unknown>;
@@ -311,7 +497,7 @@ export interface AsciiBindingOptions extends CommonBindingOptions {
 }
 
 export interface SvgBindingOptions extends CommonBindingOptions {
-  presentation?: PresentationOptions;
+  theme?: DiagramThemeSelection | null;
   environment?: RenderEnvironmentOptions;
   layout?: LayoutOptions;
   svg?: SvgOptions;
@@ -650,17 +836,9 @@ export interface SvgPlanResult {
   schema_version: 1;
   planned_operation_id: "svg";
   diagram_type: string;
-  presentation_profile_id: string | null;
-  presentation_aspects: SvgPlanPresentationAspect[];
   required_capability_ids: string[];
   missing_capability_ids: string[];
   ready: boolean;
-}
-
-export interface SvgPlanPresentationAspect {
-  id: string;
-  state: string;
-  required_capability_id: string | null;
 }
 
 export interface AvailableDiagramDetectionFacts {
@@ -1065,7 +1243,7 @@ export interface MermanWasmModule extends MermanWasmModuleBase {
   asciiSupportedDiagrams: () => string[];
   asciiCapabilities: () => AsciiCapability[];
   runtimeCatalog: () => RuntimeCatalog;
-  presentationCatalog: () => PresentationCatalog;
+  themeCatalog: () => ThemeCatalog;
   diagramFamilyCapabilities: () => DiagramFamilyCapability[];
   lintRuleCatalog?: () => LintRuleCatalogResponse;
   supportedDiagrams: () => string[];

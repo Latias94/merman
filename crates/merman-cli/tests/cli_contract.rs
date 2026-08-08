@@ -5,7 +5,7 @@ use serde_json::Value;
 use std::fs;
 use std::process::Command;
 use std::time::Duration;
-use support::{repo_root, run_with_stdin};
+use support::{repo_root, run_with_stdin, run_with_stdin_in_dir};
 
 fn task_by_id<'a>(model: &'a Value, id: &str) -> &'a Value {
     model["tasks"]
@@ -167,13 +167,18 @@ fn mmdc_help_owns_the_pinned_compatibility_options() {
         "--pdfFit",
         "--iconPacks",
         "--iconPacksNamesAndUrls",
-        "--presentation-profile",
+        "--theme",
+        "--theme-preset",
     ] {
         assert!(
             stdout.contains(flag),
             "mmdc help should expose compatibility option {flag}:\n{stdout}"
         );
     }
+    assert!(
+        !stdout.contains("--presentation-profile") && !stdout.contains("merman-modern"),
+        "removed non-upstream presentation inputs must stay absent:\n{stdout}"
+    );
 }
 
 #[test]
@@ -199,6 +204,137 @@ fn mmdc_theme_values_match_the_pinned_upstream_contract() {
             "theme validation should identify the rejected value:\n{stderr}"
         );
     }
+}
+
+#[test]
+fn mmdc_theme_flag_without_a_value_selects_the_official_default() {
+    for flag in ["-t", "--theme"] {
+        let output = run_with_stdin(
+            &["mmdc", flag, "-i", "-", "-o", "-"],
+            "flowchart LR\nA-->B\n",
+        );
+
+        assert!(
+            output.status.success(),
+            "{flag} without a value should select the official default theme: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("<svg"),
+            "mmdc should still emit SVG for {flag} without a value"
+        );
+    }
+}
+
+#[test]
+fn mmdc_rejects_two_explicit_theme_selectors_before_input_acquisition() {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let output = Command::new(exe)
+        .args([
+            "mmdc",
+            "-i",
+            "missing.mmd",
+            "--theme",
+            "dark",
+            "--theme-preset",
+            "editor-dark",
+        ])
+        .output()
+        .expect("run cli");
+
+    assert_eq!(support::exit_code(output.status), 2);
+    assert!(output.stdout.is_empty(), "failure must not write a payload");
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("--theme")
+            && stderr.contains("--theme-preset")
+            && !stderr.contains("missing.mmd:"),
+        "theme selector conflict must be reported during argument parsing:\n{stderr}"
+    );
+}
+
+#[test]
+fn theme_file_conflicts_with_other_complete_theme_selectors() {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    for args in [
+        vec![
+            "render",
+            "missing.mmd",
+            "--theme-preset",
+            "editor-dark",
+            "--theme-file",
+            "missing-theme.json",
+        ],
+        vec![
+            "mmdc",
+            "-i",
+            "missing.mmd",
+            "--theme",
+            "dark",
+            "--theme-file",
+            "missing-theme.json",
+        ],
+        vec![
+            "mmdc",
+            "-i",
+            "missing.mmd",
+            "--theme-preset",
+            "editor-dark",
+            "--theme-file",
+            "missing-theme.json",
+        ],
+    ] {
+        let output = Command::new(exe).args(&args).output().expect("run cli");
+
+        assert_eq!(support::exit_code(output.status), 2, "{args:?}");
+        assert!(output.stdout.is_empty(), "{args:?}");
+        let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+        assert!(
+            stderr.contains("--theme-file") && !stderr.contains("missing.mmd:"),
+            "theme selector conflicts must precede input acquisition for {args:?}:\n{stderr}"
+        );
+    }
+}
+
+#[test]
+fn mmdc_config_file_can_explicitly_override_theme_preset_inputs() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let config = tmp.path().join("mermaid.json");
+    fs::write(
+        &config,
+        r##"{
+  "theme": "base",
+  "themeVariables": {
+    "mainBkg": "#123456",
+    "nodeBorder": "#654321"
+  }
+}"##,
+    )
+    .expect("write config");
+    let path = config.to_string_lossy();
+    let output = run_with_stdin(
+        &[
+            "mmdc",
+            "-i",
+            "-",
+            "-o",
+            "-",
+            "--theme-preset",
+            "editor-dark",
+            "--configFile",
+            path.as_ref(),
+        ],
+        "flowchart LR\nA-->B\n",
+    );
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let svg = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(svg.contains("#123456"), "explicit config should win: {svg}");
+    assert!(svg.contains("#654321"), "explicit config should win: {svg}");
 }
 
 #[test]
@@ -238,11 +374,11 @@ fn native_theme_values_match_the_compiled_runtime_catalog() {
 }
 
 #[test]
-fn presentation_profile_values_match_the_compiled_runtime_catalog() {
+fn theme_preset_values_match_the_compiled_runtime_catalog() {
     let exe = assert_cmd::cargo_bin!("merman-cli");
     for command in ["render", "mmdc"] {
         let mut rejected = Command::new(exe);
-        rejected.args([command, "--presentation-profile", "not-a-runtime-profile"]);
+        rejected.args([command, "--theme-preset", "not-a-runtime-preset"]);
         if command == "mmdc" {
             rejected.args(["-i", "missing.mmd"]);
         } else {
@@ -257,13 +393,13 @@ fn presentation_profile_values_match_the_compiled_runtime_catalog() {
         );
         let stderr = String::from_utf8(rejected.stderr).expect("stderr should be utf8");
         assert!(
-            stderr.contains("not-a-runtime-profile") && !stderr.contains("missing.mmd:"),
-            "profile validation must precede input acquisition:\n{stderr}"
+            stderr.contains("not-a-runtime-preset") && !stderr.contains("missing.mmd:"),
+            "theme preset validation must precede input acquisition:\n{stderr}"
         );
-        for descriptor in merman::svg::presentation_profile_descriptors() {
+        for descriptor in merman::svg::theme_preset_descriptors() {
             assert!(
                 stderr.contains(descriptor.id()),
-                "profile validation should list `{}`:\n{stderr}",
+                "theme preset validation should list `{}`:\n{stderr}",
                 descriptor.id()
             );
         }
@@ -272,8 +408,8 @@ fn presentation_profile_values_match_the_compiled_runtime_catalog() {
     let accepted = run_with_stdin(
         &[
             "render",
-            "--presentation-profile",
-            "merman-modern",
+            "--theme-preset",
+            "editor-dark",
             "--format",
             "svg",
             "-",
@@ -282,15 +418,17 @@ fn presentation_profile_values_match_the_compiled_runtime_catalog() {
     );
     assert!(
         accepted.status.success(),
-        "compiled presentation profile should be accepted: {}",
+        "compiled theme preset should be accepted: {}",
         String::from_utf8_lossy(&accepted.stderr)
     );
     let svg = String::from_utf8(accepted.stdout).expect("stdout should be utf8");
     assert!(
-        svg.contains(
-            r#".flowchart-link[data-look="neo"]{stroke-linecap:round;stroke-linejoin:round;}"#
-        ),
-        "the profile should activate its typed Flowchart presentation policy: {svg}"
+        svg.contains("#111827") && svg.contains("#e5e7eb") && svg.contains("#94a3b8"),
+        "the preset should compile into typed visual theme inputs: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"data-look="neo""#),
+        "a visual theme preset must not select Mermaid look: {svg}"
     );
 
     let mmdc = run_with_stdin(
@@ -300,28 +438,107 @@ fn presentation_profile_values_match_the_compiled_runtime_catalog() {
             "-",
             "-o",
             "-",
-            "--presentation-profile",
-            "merman-modern",
+            "--theme-preset",
+            "editor-dark",
         ],
         "flowchart LR\nA-->B\n",
     );
     assert!(
         mmdc.status.success(),
-        "mmdc presentation profile should be accepted: {}",
+        "mmdc theme preset should be accepted: {}",
         String::from_utf8_lossy(&mmdc.stderr)
     );
     let svg = String::from_utf8(mmdc.stdout).expect("stdout should be utf8");
     assert!(
-        svg.contains("fill:#F8FAFC")
-            && svg.contains(
-                r#".flowchart-link[data-look="neo"]{stroke-linecap:round;stroke-linejoin:round;}"#
-            ),
-        "implicit mmdc defaults must not override an explicit presentation profile: {svg}"
+        svg.contains("#111827") && svg.contains("#e5e7eb") && svg.contains("#94a3b8"),
+        "implicit mmdc defaults must not override an explicit theme preset: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"data-look="neo""#),
+        "mmdc theme presets must remain independent from Mermaid look: {svg}"
     );
 }
 
 #[test]
-fn presentation_profile_composes_with_config_regardless_of_argument_order() {
+fn theme_file_uses_the_same_compiled_theme_contract_across_commands() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    fs::write(
+        tmp.path().join("theme.json"),
+        br#"{"preset":"editor-dark"}"#,
+    )
+    .expect("write theme selection");
+    let source = "flowchart LR\nA-->B\n";
+
+    for args in [
+        vec![
+            "render",
+            "--theme-file",
+            "theme.json",
+            "--format",
+            "svg",
+            "-",
+        ],
+        vec!["mmdc", "-i", "-", "-o", "-", "--theme-file", "theme.json"],
+    ] {
+        let output = run_with_stdin_in_dir(&args, source, Some(tmp.path()));
+        assert!(
+            output.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let svg = String::from_utf8(output.stdout).expect("stdout should be utf8");
+        assert!(
+            svg.contains("#111827") && svg.contains("#e5e7eb") && svg.contains("#94a3b8"),
+            "{args:?} should compile the theme file through the typed theme path: {svg}"
+        );
+    }
+
+    let layout = run_with_stdin_in_dir(
+        &["layout", "--theme-file", "theme.json", "-"],
+        source,
+        Some(tmp.path()),
+    );
+    assert!(
+        layout.status.success(),
+        "layout should accept the same relative theme file: {}",
+        String::from_utf8_lossy(&layout.stderr)
+    );
+    let model: Value = serde_json::from_slice(&layout.stdout).expect("layout JSON");
+    assert!(model.is_object(), "layout should emit a JSON model");
+}
+
+#[test]
+fn theme_file_obeys_the_compiler_encoded_input_budget() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    fs::write(
+        tmp.path().join("oversized-theme.json"),
+        vec![b' '; 2_097_153],
+    )
+    .expect("write oversized theme selection");
+    let output = run_with_stdin_in_dir(
+        &[
+            "render",
+            "--theme-file",
+            "oversized-theme.json",
+            "--format",
+            "svg",
+            "-",
+        ],
+        "flowchart LR\nA-->B\n",
+        Some(tmp.path()),
+    );
+
+    assert_eq!(support::exit_code(output.status), 2);
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("max_theme_encoded_bytes"),
+        "theme-file limits should use the compiler-owned resource ID:\n{stderr}"
+    );
+}
+
+#[test]
+fn theme_preset_composes_with_config_regardless_of_argument_order() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let config = tmp.path().join("mermaid.json");
     fs::write(
@@ -340,11 +557,11 @@ fn presentation_profile_composes_with_config_regardless_of_argument_order() {
     let path = config.to_string_lossy();
     let source = "flowchart LR\nA-->|label|B\n";
 
-    let profile_first = run_with_stdin(
+    let preset_first = run_with_stdin(
         &[
             "render",
-            "--presentation-profile",
-            "merman-modern",
+            "--theme-preset",
+            "editor-dark",
             "--config-file",
             path.as_ref(),
             "--format",
@@ -358,8 +575,8 @@ fn presentation_profile_composes_with_config_regardless_of_argument_order() {
             "render",
             "--config-file",
             path.as_ref(),
-            "--presentation-profile",
-            "merman-modern",
+            "--theme-preset",
+            "editor-dark",
             "--format",
             "svg",
             "-",
@@ -368,25 +585,22 @@ fn presentation_profile_composes_with_config_regardless_of_argument_order() {
     );
 
     assert!(
-        profile_first.status.success(),
+        preset_first.status.success(),
         "stderr: {}",
-        String::from_utf8_lossy(&profile_first.stderr)
+        String::from_utf8_lossy(&preset_first.stderr)
     );
     assert!(
         config_first.status.success(),
         "stderr: {}",
         String::from_utf8_lossy(&config_first.stderr)
     );
-    assert_eq!(profile_first.stdout, config_first.stdout);
-    let svg = String::from_utf8(profile_first.stdout).expect("stdout should be utf8");
+    assert_eq!(preset_first.stdout, config_first.stdout);
+    let svg = String::from_utf8(preset_first.stdout).expect("stdout should be utf8");
     assert!(svg.contains("#123456"), "explicit config should win: {svg}");
+    assert!(svg.contains("#654321"), "explicit config should win: {svg}");
     assert!(
         !svg.contains(r#"data-look="neo""#),
-        "explicit Mermaid look should override the profile default: {svg}"
-    );
-    assert!(
-        svg.contains(r#"rx="4" ry="4""#),
-        "the independent private Flowchart aspect should remain active: {svg}"
+        "theme presets must not introduce a Mermaid look: {svg}"
     );
 }
 
@@ -712,9 +926,14 @@ fn native_render_rejects_each_irrelevant_output_option_before_input_acquisition(
             &["--text-measurer", "deterministic"],
         ),
         (
-            "presentation profile on text",
+            "theme preset on text",
             "ascii",
-            &["--presentation-profile", "merman-modern"],
+            &["--theme-preset", "editor-dark"],
+        ),
+        (
+            "theme file on text",
+            "ascii",
+            &["--theme-file", "missing-theme.json"],
         ),
         (
             "math renderer on text",
@@ -783,10 +1002,8 @@ fn raw_svg_rejects_each_mermaid_only_option_before_input_acquisition() {
             &["--fixed-local-offset-minutes", "480"],
         ),
         ("text measurer", &["--text-measurer", "deterministic"]),
-        (
-            "presentation profile",
-            &["--presentation-profile", "merman-modern"],
-        ),
+        ("theme preset", &["--theme-preset", "editor-dark"]),
+        ("theme file", &["--theme-file", "missing-theme.json"]),
         ("math renderer", &["--math-renderer", "none"]),
         ("container width", &["--width", "100"]),
         ("container height", &["--height", "100"]),

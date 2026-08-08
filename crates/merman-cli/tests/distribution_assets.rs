@@ -67,6 +67,10 @@ fn complete_profile_bash_completion_preserves_native_and_mmdc_contracts() {
         !render.contains("-e"),
         "deprecated native -e must stay hidden from completion"
     );
+    assert!(
+        render.contains("--theme-file"),
+        "native render completion must expose structured theme files"
+    );
 
     let batch = bash_options(&script, "batch");
     assert!(
@@ -83,6 +87,10 @@ fn complete_profile_bash_completion_preserves_native_and_mmdc_contracts() {
         mmdc.contains("-e"),
         "the permanent mmdc compatibility surface must retain -e"
     );
+    assert!(
+        mmdc.contains("--theme-file"),
+        "mmdc completion must expose the Merman theme-file extension"
+    );
 
     let native_themes = bash_option_values(&script, "render", "--theme");
     let expected_native_themes = merman::supported_themes()
@@ -91,16 +99,15 @@ fn complete_profile_bash_completion_preserves_native_and_mmdc_contracts() {
         .collect::<BTreeSet<_>>();
     assert_eq!(native_themes, expected_native_themes);
 
-    let native_presentation_profiles =
-        bash_option_values(&script, "render", "--presentation-profile");
-    let expected_presentation_profiles = merman::svg::presentation_profile_descriptors()
+    let native_theme_presets = bash_option_values(&script, "render", "--theme-preset");
+    let expected_theme_presets = merman::svg::theme_preset_descriptors()
         .iter()
         .map(|descriptor| descriptor.id().to_owned())
         .collect::<BTreeSet<_>>();
-    assert_eq!(native_presentation_profiles, expected_presentation_profiles);
+    assert_eq!(native_theme_presets, expected_theme_presets);
 
-    let mmdc_presentation_profiles = bash_option_values(&script, "mmdc", "--presentation-profile");
-    assert_eq!(mmdc_presentation_profiles, expected_presentation_profiles);
+    let mmdc_theme_presets = bash_option_values(&script, "mmdc", "--theme-preset");
+    assert_eq!(mmdc_theme_presets, expected_theme_presets);
 
     let mmdc_themes = bash_option_values(&script, "mmdc", "--theme");
     assert_eq!(

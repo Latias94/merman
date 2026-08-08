@@ -345,7 +345,8 @@ pub(crate) struct ResolvedRuntimeOptions {
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone)]
 pub(crate) struct ResolvedRenderOptions {
-    pub(crate) presentation_profile: Option<merman::svg::PresentationProfile>,
+    pub(crate) theme_preset: Option<merman::svg::ThemePreset>,
+    pub(crate) theme_file: Option<PathBuf>,
     pub(crate) text_measurer: crate::cli::TextMeasurerKind,
     pub(crate) math_renderer: Option<crate::cli::MathRendererKind>,
     pub(crate) container_width: Option<f64>,
@@ -803,6 +804,8 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
     let warn_on_implicit_stdin = args.input_file.is_none();
     let warn_on_implicit_output_format =
         args.output.as_deref() == Some(Path::new("-")) && args.output_format.is_none();
+    // Preserve mmdc's implicit official `default` theme only when the Merman extension did not
+    // select a complete compiled theme. Explicit config-file values still merge above the preset.
     let parse = ParseCliArgs {
         suppress_errors: false,
         config_file: args.parse.config_file.clone(),
@@ -810,9 +813,7 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
             .parse
             .theme
             .or_else(|| {
-                args.render
-                    .presentation_profile
-                    .is_none()
+                (args.render.theme_preset.is_none() && args.render.theme_file.is_none())
                     .then_some(crate::cli::MmdcTheme::Default)
             })
             .map(|theme| theme.as_str().to_string()),
@@ -820,7 +821,8 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
     };
     let runtime_policy = resolve_render_runtime_policy(&parse, args.quiet)?;
     let render = RenderCliArgs {
-        presentation_profile: args.render.presentation_profile,
+        theme_preset: args.render.theme_preset,
+        theme_file: args.render.theme_file.clone(),
         text_measurer: Some(args.render.text_measurer),
         math_renderer: args.render.math_renderer,
         container_width: Some(args.render.container_width),
@@ -1399,7 +1401,8 @@ fn resolve_parse_options(
 #[cfg(feature = "svg")]
 fn resolve_render_options(args: RenderCliArgs) -> ResolvedRenderOptions {
     ResolvedRenderOptions {
-        presentation_profile: args.presentation_profile,
+        theme_preset: args.theme_preset,
+        theme_file: args.theme_file,
         text_measurer: args
             .text_measurer
             .unwrap_or(crate::cli::TextMeasurerKind::Vendored),
@@ -1601,7 +1604,8 @@ fn validate_graphical_output_options(
         }
         #[cfg(feature = "svg")]
         if options.render.text_measurer.is_some()
-            || options.render.presentation_profile.is_some()
+            || options.render.theme_preset.is_some()
+            || options.render.theme_file.is_some()
             || options.render.math_renderer.is_some()
             || options.render.container_width.is_some()
             || options.render.container_height.is_some()
@@ -1648,7 +1652,8 @@ fn validate_raw_svg_options(options: &crate::cli::GraphicalRenderCliArgs) -> Res
         ));
     }
     if options.render.text_measurer.is_some()
-        || options.render.presentation_profile.is_some()
+        || options.render.theme_preset.is_some()
+        || options.render.theme_file.is_some()
         || options.render.math_renderer.is_some()
         || options.render.container_width.is_some()
         || options.render.container_height.is_some()

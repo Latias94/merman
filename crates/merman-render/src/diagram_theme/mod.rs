@@ -56,7 +56,7 @@ pub use semantic::{
     ThemeGeometryPatch, ThemePaintPatch, ThemeRule, ThemeRuleSet, ThemeSpacingPatch,
     ThemeStrokePatch, ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
-pub use spec::{DiagramThemeSpec, MermaidThemeCompatibility, ThemeAssets};
+pub use spec::{DiagramThemeSpec, MermaidThemeCompatibility, MermaidThemeValue, ThemeAssets};
 pub use tokens::ThemeTokens;
 pub use typography::{
     FontStack, LineHeight, Specified, TextAlign, TextDecoration, TextStyle as ThemeTextStyle,

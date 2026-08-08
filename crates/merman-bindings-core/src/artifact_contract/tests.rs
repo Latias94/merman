@@ -225,7 +225,7 @@ fn semantic_contract_rejects_unadvertised_request_option_groups_after_feature_un
         BindingOptionGroupKey::Environment,
         BindingOptionGroupKey::Layout,
         BindingOptionGroupKey::Lint,
-        BindingOptionGroupKey::Presentation,
+        BindingOptionGroupKey::Theme,
         BindingOptionGroupKey::Svg,
     ] {
         let options = format!(r#"{{"{}":{{}}}}"#, group.id());

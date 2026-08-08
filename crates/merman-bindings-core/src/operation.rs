@@ -1238,10 +1238,10 @@ mod tests {
     #[test]
     fn reusable_engine_rejects_ambiguous_analysis_wrappers_at_construction() {
         let error = BindingEngine::from_options(
-            br#"{
+            br##"{
                 "merman": { "fixed_today": "2025-01-01" },
                 "analysis": {}
-            }"#,
+            }"##,
         )
         .err()
         .expect("ambiguous wrappers must fail before a reusable engine is created");
@@ -1745,35 +1745,56 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn empty_request_presentation_inherits_the_reusable_engine_profile() {
+    fn request_theme_inherits_clears_and_replaces_atomically() {
         let engine = BindingEngine::new(
-            br#"{
-                "presentation": { "profile": "merman-modern" },
-                "site_config": { "flowchart": { "defaultRenderer": "dagre-wrapper" } }
-            }"#,
+            br##"{
+                "theme": {
+                    "spec": {
+                        "styles": [{
+                            "kind": "rule",
+                            "target": "node",
+                            "family": "flowchart",
+                            "style": { "fill": "#111827" }
+                        }],
+                        "canvas": { "base": "#0f172a" }
+                    }
+                }
+            }"##,
         )
         .unwrap();
-        let execute = |options_json: &[u8]| {
-            engine
-                .execute(BindingOperationRequest {
-                    operation_id: "svg-plan-json",
-                    source: b"flowchart TD\nA --> B",
-                    uri: None,
-                    options_json,
-                })
-                .unwrap()
-                .data
+        let execute = |options_json: &[u8]| -> String {
+            String::from_utf8(
+                engine
+                    .execute(BindingOperationRequest {
+                        operation_id: "svg",
+                        source: b"flowchart TD\nA --> B",
+                        uri: None,
+                        options_json,
+                    })
+                    .unwrap()
+                    .data,
+            )
+            .unwrap()
         };
 
         let baseline = execute(b"");
-        let empty_overlay = execute(br#"{"presentation":{}}"#);
-        assert_eq!(empty_overlay, baseline);
+        assert!(baseline.contains("#111827"), "{baseline}");
+        assert_eq!(execute(br#"{"version":2}"#), baseline);
 
-        let plan: serde_json::Value = serde_json::from_slice(&baseline).unwrap();
-        assert_eq!(plan["presentation_profile_id"], "merman-modern");
-        assert_eq!(plan["presentation_aspects"][1]["state"], "active");
-        assert_eq!(plan["presentation_aspects"][2]["state"], "inactive");
-        assert_eq!(plan["ready"], true);
+        let inherited_override = execute(br#"{"svg":{"diagram_id":"request-inherit"}}"#);
+        assert!(
+            inherited_override.contains("#111827"),
+            "{inherited_override}"
+        );
+
+        let cleared = execute(br#"{"theme":null}"#);
+        assert!(!cleared.contains("#111827"), "{cleared}");
+
+        // The request preset replaces the constructor spec as one value. A recursive object merge
+        // would leave both `preset` and `spec` present and violate the tagged-union contract.
+        let replaced = execute(br#"{"theme":{"preset":"editor-light"}}"#);
+        assert!(replaced.contains("#f8fafc"), "{replaced}");
+        assert!(!replaced.contains("#111827"), "{replaced}");
     }
 
     #[cfg(feature = "svg")]
