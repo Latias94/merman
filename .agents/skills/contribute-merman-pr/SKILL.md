@@ -164,6 +164,21 @@ python3 tools/bench/test_native_memory_driver_contracts.py
 python3 tools/bench/test_perf_contracts.py
 ```
 
+When the performance lane is in scope and a change touches a native-memory probe, its registered
+workload/contract, or resource/work accounting reachable from that workload, run the compiled smoke
+owner as well:
+
+```text
+CARGO_BUILD_JOBS=1 python3 tools/bench/run_native_memory.py --smoke \
+  --build-timeout-seconds 900 \
+  --json-out target/bench/native_memory_smoke.json
+python3 tools/bench/test_native_memory_driver_contracts.py \
+  --verify-smoke-report target/bench/native_memory_smoke.json
+```
+
+This gate proves that every registered boundary scale completes under the probe's explicit resource
+policy; the Python-only contracts cannot detect a compiled render being rejected mid-schedule.
+
 Keep compiled Criterion discovery and native-memory probes on the performance-labelled, main,
 scheduled, or manual lanes. When that lane is explicitly in scope, use the complete pipeline
 capability set:
