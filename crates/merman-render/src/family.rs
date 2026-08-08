@@ -21,6 +21,7 @@ pub use crate::render_family::RenderFamilyKind;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderCapabilityPlan {
     diagram_type: String,
+    family_kind: RenderFamilyKind,
     required: Vec<RenderCapability>,
     missing: Vec<RenderCapability>,
 }
@@ -29,6 +30,11 @@ impl RenderCapabilityPlan {
     /// Returns the detected Mermaid diagram type used by render dispatch.
     pub fn diagram_type(&self) -> &str {
         &self.diagram_type
+    }
+
+    /// Returns the authoritative typed render family selected before layout starts.
+    pub const fn family_kind(&self) -> RenderFamilyKind {
+        self.family_kind
     }
 
     /// Returns every optional capability this operation requires.
@@ -873,7 +879,54 @@ fn required_capabilities(parsed: &ParsedDiagramRender) -> Vec<RenderCapability> 
     required
 }
 
-fn validate_render_input(parsed: &ParsedDiagramRender, session: &RenderSession) -> Result<()> {
+fn detect_render_family(parsed: &ParsedDiagramRender) -> Option<RenderFamilyKind> {
+    let effective_config = &parsed.metadata().effective_config;
+    Some(match parsed.model() {
+        RenderSemanticModel::Error(_) => RenderFamilyKind::Error,
+        RenderSemanticModel::Mindmap(_) => RenderFamilyKind::Mindmap,
+        RenderSemanticModel::State(_) => RenderFamilyKind::State,
+        RenderSemanticModel::Sequence(_) => RenderFamilyKind::Sequence,
+        RenderSemanticModel::Zenuml(_) => RenderFamilyKind::Zenuml,
+        RenderSemanticModel::Flowchart(_)
+            if effective_config.get_str("layout") == Some("swimlane") =>
+        {
+            RenderFamilyKind::Swimlane
+        }
+        RenderSemanticModel::Flowchart(_) => RenderFamilyKind::Flowchart,
+        RenderSemanticModel::Architecture(_) => RenderFamilyKind::Architecture,
+        RenderSemanticModel::Class(_) => RenderFamilyKind::Class,
+        RenderSemanticModel::C4(_) => RenderFamilyKind::C4,
+        RenderSemanticModel::Cynefin(_) => RenderFamilyKind::Cynefin,
+        RenderSemanticModel::Wardley(_) => RenderFamilyKind::Wardley,
+        RenderSemanticModel::Railroad(_) => RenderFamilyKind::Railroad,
+        RenderSemanticModel::Kanban(_) => RenderFamilyKind::Kanban,
+        RenderSemanticModel::Gantt(_) => RenderFamilyKind::Gantt,
+        RenderSemanticModel::Pie(_) => RenderFamilyKind::Pie,
+        RenderSemanticModel::Packet(_) => RenderFamilyKind::Packet,
+        RenderSemanticModel::Timeline(_) => RenderFamilyKind::Timeline,
+        RenderSemanticModel::Journey(_) => RenderFamilyKind::Journey,
+        RenderSemanticModel::Requirement(_) => RenderFamilyKind::Requirement,
+        RenderSemanticModel::Sankey(_) => RenderFamilyKind::Sankey,
+        RenderSemanticModel::Radar(_) => RenderFamilyKind::Radar,
+        RenderSemanticModel::Info(_) => RenderFamilyKind::Info,
+        RenderSemanticModel::Treemap(_) => RenderFamilyKind::Treemap,
+        RenderSemanticModel::Block(_) => RenderFamilyKind::Block,
+        RenderSemanticModel::Er(_) => RenderFamilyKind::Er,
+        RenderSemanticModel::QuadrantChart(_) => RenderFamilyKind::QuadrantChart,
+        RenderSemanticModel::XyChart(_) => RenderFamilyKind::XyChart,
+        RenderSemanticModel::GitGraph(_) => RenderFamilyKind::GitGraph,
+        RenderSemanticModel::TreeView(_) => RenderFamilyKind::TreeView,
+        RenderSemanticModel::Ishikawa(_) => RenderFamilyKind::Ishikawa,
+        RenderSemanticModel::EventModeling(_) => RenderFamilyKind::EventModeling,
+        RenderSemanticModel::Venn(_) => RenderFamilyKind::Venn,
+        RenderSemanticModel::CustomJson(_) => return None,
+    })
+}
+
+fn validate_render_input(
+    parsed: &ParsedDiagramRender,
+    session: &RenderSession,
+) -> Result<RenderFamilyKind> {
     let meta = parsed.metadata();
     let model = parsed.model();
     let diagram_type = meta.diagram_type.as_str();
@@ -895,7 +948,12 @@ fn validate_render_input(parsed: &ParsedDiagramRender, session: &RenderSession) 
     }
 
     session.resource_policy().check_parsed_render(parsed)?;
-    Ok(())
+    detect_render_family(parsed).ok_or_else(|| Error::InvalidModel {
+        message: format!(
+            "render model variant {} has no built-in family for diagram type: {diagram_type}",
+            model.kind()
+        ),
+    })
 }
 
 /// Plans capability admission for a canonically paired typed render model without running layout.
@@ -904,7 +962,7 @@ pub fn plan_render(
     session: &RenderSession,
 ) -> Result<RenderCapabilityPlan> {
     let meta = parsed.metadata();
-    validate_render_input(parsed, session)?;
+    let family_kind = validate_render_input(parsed, session)?;
     let required = required_capabilities(parsed);
     let missing = required
         .iter()
@@ -913,6 +971,7 @@ pub fn plan_render(
         .collect();
     Ok(RenderCapabilityPlan {
         diagram_type: meta.diagram_type.clone(),
+        family_kind,
         required,
         missing,
     })
@@ -982,13 +1041,25 @@ pub fn prepare(
     options: &LayoutOptions,
     session: RenderSession,
 ) -> Result<FamilyRenderArtifact> {
-    plan_render(&parsed, &session)?.ensure_available()?;
+    let plan = plan_render(&parsed, &session)?;
+    plan.ensure_available()?;
+    let expected_family = plan.family_kind();
     // The heterogeneous router has one generic layout call per family. Keep its debug-build
     // caller slots out of the Class Dagre call chain, whose own phase frames are already deep.
-    if matches!(parsed.model(), RenderSemanticModel::Class(_)) {
-        return prepare_class_render(parsed, options, session);
+    let artifact = if matches!(parsed.model(), RenderSemanticModel::Class(_)) {
+        prepare_class_render(parsed, options, session)?
+    } else {
+        prepare_non_class_render(parsed, options, session)?
+    };
+    let actual_family = artifact.family_kind();
+    if actual_family != expected_family {
+        return Err(Error::InvalidModel {
+            message: format!(
+                "detected render family {expected_family} produced {actual_family} artifact"
+            ),
+        });
     }
-    prepare_non_class_render(parsed, options, session)
+    Ok(artifact)
 }
 
 #[inline(never)]
@@ -1395,6 +1466,40 @@ mod tests {
         crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
+    }
+
+    #[test]
+    fn capability_plan_reports_the_authoritative_render_family() {
+        let configured_swimlane = Engine::new().with_site_config(
+            merman_core::MermaidConfig::from_value(json!({ "layout": "swimlane" })),
+        );
+        let cases = [
+            (
+                Engine::new(),
+                "flowchart TD\nA --> B\n",
+                RenderFamilyKind::Flowchart,
+            ),
+            (
+                Engine::new(),
+                "swimlane-beta LR\nA --> B\n",
+                RenderFamilyKind::Swimlane,
+            ),
+            (
+                configured_swimlane,
+                "flowchart LR\nA --> B\n",
+                RenderFamilyKind::Swimlane,
+            ),
+        ];
+
+        for (engine, source, expected_family) in cases {
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("family fixture should produce a render model");
+            let plan = plan_render(&parsed, &session()).unwrap();
+
+            assert_eq!(plan.family_kind(), expected_family, "{source}");
+        }
     }
 
     fn prepare_with_model_item_limit(
