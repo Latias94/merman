@@ -66,6 +66,12 @@ pub struct SourcePhaseDiagnostics {
     graph: LGraph,
 }
 
+impl Drop for SourcePhaseDiagnostics {
+    fn drop(&mut self) {
+        detach_source_graph_hierarchy_for_drop(&mut self.graph);
+    }
+}
+
 impl SourcePhaseDiagnostics {
     /// Builds a raw diagnostic session. Executing a graph that retains ELK's zero seed sentinel
     /// returns the same typed error as [`layout`].
@@ -1466,6 +1472,24 @@ fn write_source_graph_dump(output: &mut String, graph: &LGraph, depth: usize) ->
         );
     }
     Ok(())
+}
+
+/// Detaches nested graphs before their owners are dropped so deeply nested diagnostics do not
+/// recurse through `Box<LGraph>` destruction on small worker stacks.
+fn detach_source_graph_hierarchy_for_drop(graph: &mut LGraph) {
+    let mut pending = graph
+        .layerless_nodes
+        .iter_mut()
+        .filter_map(|node| node.nested_graph.take())
+        .collect::<Vec<_>>();
+    while let Some(mut nested) = pending.pop() {
+        pending.extend(
+            nested
+                .layerless_nodes
+                .iter_mut()
+                .filter_map(|node| node.nested_graph.take()),
+        );
+    }
 }
 
 fn write_source_graph_dump_frame(
