@@ -1768,12 +1768,13 @@ fn sanitized_label(raw: &str, config: &MermaidConfig) -> String {
 }
 
 fn sanitized_render_label_source(raw: &str, config: &MermaidConfig) -> String {
-    let sanitized = sanitize_text(raw, config);
-    crate::entities::restore_mermaid_entity_spelling(&sanitized).into_owned()
+    let flow_db_label = sanitize_text(raw, config);
+    let decoded = crate::entities::restore_mermaid_entity_spelling(&flow_db_label);
+    crate::sanitize::sanitize_text_as_html_fragment(decoded.as_ref(), config)
 }
 
 fn render_label_source_needs_provenance(raw: &str) -> bool {
-    raw.contains('&') || raw.contains('#') || raw.contains('ﬂ') || raw.contains('¶')
+    raw.contains(['&', '#', 'ﬂ', '¶', '<', '>'])
 }
 
 fn decode_mermaid_hash_entities(input: &str) -> std::borrow::Cow<'_, str> {
@@ -1790,7 +1791,7 @@ fn flow_subgraph_to_model(
     let sanitized_title = sanitize_text(&sg.title, config);
     let title = decode_mermaid_hash_entities(&sanitized_title).into_owned();
     let render_title_source = render_label_source_needs_provenance(&sg.title)
-        .then(|| crate::entities::restore_mermaid_entity_spelling(&sanitized_title).into_owned())
+        .then(|| sanitized_render_label_source(&sg.title, config))
         .filter(|source| *source != title);
     let subgraph = FlowSubgraph {
         id: sg.id,
@@ -1996,6 +1997,46 @@ F -- "&nbsp;" --> G
         assert_eq!(roundtrip.edges.len(), model.edges.len());
         assert_eq!(roundtrip.nodes[0].label, model.nodes[0].label);
         assert_eq!(roundtrip.edges[0].label, model.edges[0].label);
+    }
+
+    #[test]
+    fn flowchart_render_label_context_applies_shape_sanitization_to_angle_text() {
+        let parsed = crate::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                include_str!(
+                    "../../../../fixtures/flowchart/stress_flowchart_svglike_escaped_tags_025.mmd"
+                ),
+                crate::ParseOptions::strict(),
+            )
+            .expect("parse flowchart")
+            .expect("detect flowchart");
+        let render_label_sources = parsed
+            .flowchart_render_label_sources()
+            .expect("flowchart render label sources");
+        let crate::RenderSemanticModel::Flowchart(model) = parsed.model() else {
+            panic!("expected Flowchart model");
+        };
+
+        let comparison = model
+            .nodes
+            .iter()
+            .find(|node| node.id == "C")
+            .expect("comparison node");
+        assert_eq!(comparison.label.as_deref(), Some("x &lt; y and y > z"));
+        assert_eq!(
+            render_label_sources.node_label_for_render(comparison),
+            Some("x &lt; y and y &gt; z")
+        );
+
+        let formatted = model
+            .nodes
+            .iter()
+            .find(|node| node.id == "D")
+            .expect("formatted node");
+        assert_eq!(
+            render_label_sources.node_label_for_render(formatted),
+            Some("<u>under</u> and <i>italic</i>")
+        );
     }
 
     #[test]
