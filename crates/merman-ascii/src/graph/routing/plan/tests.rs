@@ -137,6 +137,32 @@ fn edge_route_selects_top_down_same_rank_left_direct_route() {
 }
 
 #[test]
+fn edge_route_selects_top_down_bottom_lane_when_label_would_cover_arrow() {
+    let options = AsciiRenderOptions::unicode();
+    let graph_layout = left_right_layout(&[("a", "b")], &options);
+    let from = layout_node(&graph_layout, "b");
+    let to = layout_node(&graph_layout, "a");
+    let edge = edge_between("b", "a", Some("label"), GraphEdgeArrow::Point);
+    let edges = vec![edge.clone()];
+    let charset = GraphCharset::for_options(&options);
+
+    let selected = plan_edge_route(EdgeRouteRequest {
+        graph: &AsciiGraph::new(GraphDirection::TopDown),
+        graph_layout: &graph_layout,
+        edges: &edges,
+        from,
+        to,
+        edge_index: 0,
+        edge: &edge,
+        charset: &charset,
+    })
+    .unwrap();
+    let expected = plan_same_rank_bottom_lane_route(from, to, &edge, &charset).unwrap();
+
+    assert_eq!(selected, expected);
+}
+
+#[test]
 fn edge_route_selects_top_down_blocked_same_rank_bottom_lane() {
     let options = AsciiRenderOptions::ascii();
     let graph_layout = left_right_layout(&[("a", "b"), ("b", "c")], &options);
@@ -562,7 +588,7 @@ fn direct_grid_route_cells_keep_direct_segment_marker() {
 #[test]
 fn same_rank_direct_route_plans_ascii_right_arrow_and_label_without_connector() {
     let from = node("a", 0, 0, 5, 3);
-    let to = node("b", 10, 0, 5, 3);
+    let to = node("b", 11, 0, 5, 3);
     let layouts = vec![from.clone(), to.clone()];
     let edge = edge(Some("label"), GraphEdgeArrow::Point);
     let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
@@ -576,7 +602,8 @@ fn same_rank_direct_route_plans_ascii_right_arrow_and_label_without_connector() 
             cell(6, 1, '-', PlannedRouteCellKind::RouteCell),
             cell(7, 1, '-', PlannedRouteCellKind::RouteCell),
             cell(8, 1, '-', PlannedRouteCellKind::RouteCell),
-            cell(9, 1, '>', PlannedRouteCellKind::EdgeArrow),
+            cell(9, 1, '-', PlannedRouteCellKind::RouteCell),
+            cell(10, 1, '>', PlannedRouteCellKind::EdgeArrow),
         ]
     );
     assert_eq!(
@@ -637,7 +664,7 @@ fn same_rank_direct_route_plans_unicode_left_connector_arrow_and_label() {
         plan.labels,
         vec![PlannedRouteLabel::new(
             RoutedLabelText::new("back").expect("single-line label should exist"),
-            RoutedLabelPlacement::new(5, 1, 4),
+            RoutedLabelPlacement::new(6, 1, 4),
         )]
     );
 }

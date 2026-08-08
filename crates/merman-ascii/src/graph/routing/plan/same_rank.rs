@@ -2,7 +2,9 @@ use super::super::super::charset::GraphCharset;
 use super::super::super::layout::{CanvasCoord, NodeLayout};
 use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow};
 use super::super::cell::edge_line_char;
-use super::{RoutePlan, edge_arrow_cell, edge_line_cell, planned_label, route_cell};
+use super::{
+    PlannedRouteLabel, RoutePlan, edge_arrow_cell, edge_line_cell, planned_label, route_cell,
+};
 
 pub(super) fn plan_same_rank_direct_route(
     layouts: &[NodeLayout],
@@ -53,13 +55,7 @@ pub(super) fn plan_same_rank_direct_route(
         }
     }
 
-    let labels = planned_label(
-        edge.label.as_deref(),
-        CanvasCoord { x: start, y },
-        CanvasCoord { x: end, y },
-    )
-    .into_iter()
-    .collect();
+    let labels = planned_direct_labels(edge, start, end, y, points_right)?;
 
     Some(RoutePlan::new(cells, labels))
 }
@@ -149,4 +145,40 @@ fn direct_route_is_clear(
         .all(|layout| {
             y < layout.y || y > layout.bottom() || end < layout.x || start > layout.right()
         })
+}
+
+fn planned_direct_labels(
+    edge: &AsciiGraphEdge,
+    start: usize,
+    end: usize,
+    y: usize,
+    points_right: bool,
+) -> Option<Vec<PlannedRouteLabel>> {
+    let Some(mut label) = planned_label(
+        edge.label.as_deref(),
+        CanvasCoord { x: start, y },
+        CanvasCoord { x: end, y },
+    ) else {
+        return Some(Vec::new());
+    };
+    if edge.arrow == GraphEdgeArrow::Open {
+        return Some(vec![label]);
+    }
+
+    let available_start = if points_right { start } else { start + 1 };
+    let available_end = if points_right {
+        end.checked_sub(1)?
+    } else {
+        end
+    };
+    let label_width = label.text.width();
+    let available_width = available_end.checked_sub(available_start)? + 1;
+    if label_width > available_width {
+        return None;
+    }
+
+    let max_label_x = available_end.checked_add(1)?.checked_sub(label_width)?;
+    let x = label.placement.x().clamp(available_start, max_label_x);
+    label.placement = label.placement.with_position(x, label.placement.y());
+    Some(vec![label])
 }

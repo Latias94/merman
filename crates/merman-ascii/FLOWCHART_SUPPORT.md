@@ -13,7 +13,7 @@ This document describes the current `merman-ascii` flowchart support boundary. T
 | Directions | Supported subset | `LR`, `TD`, Mermaid's `TB` alias, `BT`, and `RL` root directions. `BT` and `RL` are rendered as terminal-native output transforms of the TD/LR layouts. |
 | Node shape | Supported subset | Rectangular shapes, rounded/circle/double-circle/stadium-like shapes, diamond/decision shapes, subroutine shapes, cylinder/database shapes, hexagon shapes, asymmetric/flag/paper-tape shapes, trapezoid shapes, lean-left/right shapes, datastore shapes, and document / stacked-document / tagged-document / lined-document variants. |
 | Node labels | Supported subset | Text labels, Mermaid-ascii-compatible escaped newlines, and `<br>` line breaks. Missing labels fall back to node ids. |
-| Edges | Supported subset | Directed point arrows, open edges, dotted edges, thick edges, edge labels including multiline labels, deterministic length spacing, and TD same-rank merge/skip edges in either horizontal direction. Clear spans use direct horizontal ports; obstructed spans use a bottom lane. |
+| Edges | Supported subset | Directed point arrows, open edges, dotted edges, thick edges, edge labels including multiline labels, deterministic length spacing, and TD same-rank merge/skip edges in either horizontal direction. Clear spans use direct horizontal ports when any label fits without covering an arrowhead; obstructed or label-constrained spans use a bottom lane. |
 | Subgraphs | Supported subset | Titled group boxes, multiline title rows from explicit line breaks, automatic wrapping for long titles, nested groups, disconnected sibling groups, external nodes, and boundary-aware cross-boundary routing for the shipped `LR`-inside-`TD` subset. Boundary grid-path labels use planner-owned vertical transit-lane placement and reserve their planned canvas extent instead of being clipped at the original graph width. |
 | Layout | Supported subset | LR roots, child levels, multi-root graphs, fan-out/fan-in, self-loops, same-row back edges, crossing/backlink routes, TD branches, and subgraphs use a deterministic grid layout. |
 | Character sets | Supported | ASCII and Unicode box-drawing output via `AsciiRenderOptions::ascii()` and `unicode()`. |
@@ -81,8 +81,8 @@ reference implementation is only an implementation aid.
   duplicate and bidirectional label lanes for the supported graph subset.
 - TD routing supports vertical chains, branch layouts, same-rank merge/skip edges in either
   horizontal direction, bent cross-column downward edges, and right-side back-edge label lanes for
-  the copied fixture set. Same-rank spans use direct horizontal ports when clear and the shared
-  bottom lane when another node blocks the path.
+  the copied fixture set. Same-rank spans use direct horizontal ports when clear and when any
+  label fits without covering an arrowhead; otherwise they use the shared bottom lane.
 - `BT` and `RL` remain root-direction transforms only.
 - `FlowSubgraph.dir` now ships nested local-direction overrides for the exercised flowchart
   combinations, including the current boundary-aware cross-boundary cases. Add new unsupported

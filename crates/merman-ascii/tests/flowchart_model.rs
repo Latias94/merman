@@ -780,6 +780,20 @@ fn flowchart_parser_top_down_same_rank_left_edge_connects_unicode_ports() {
 }
 
 #[test]
+fn flowchart_parser_top_down_same_rank_left_label_preserves_arrow() {
+    let rendered = render_flowchart(
+        "flowchart TD\n  A --> C\n  A --> B\n  B -->|back| C\n",
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("labeled same-rank top-down edge should route in unicode");
+
+    assert!(
+        rendered.contains("│ C │◄back┤ B │"),
+        "same-rank label should not overwrite the left arrowhead:\n{rendered}"
+    );
+}
+
+#[test]
 fn flowchart_parser_simple_subgraph_renders_group_box() {
     let rendered = render_flowchart(
         "flowchart TB\nsubgraph one\nA --> B\nend",
