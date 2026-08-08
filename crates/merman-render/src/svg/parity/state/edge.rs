@@ -495,12 +495,20 @@ fn write_state_edge_path(
     let geometry = state_edge_prepare_geometry(ctx, le, arrow_type_end, origin_x, origin_y);
     let data_points = base64::engine::general_purpose::STANDARD
         .encode(serde_json::to_vec(&geometry.data_points).unwrap_or_default());
+    let style = ctx
+        .style_plan
+        .edge(edge_id)
+        .map(crate::state::StateEdgeStylePlan::path_style_attr)
+        .filter(|style| !style.is_empty())
+        .map(|style| format!("fill:none;;;fill:none;{style}"))
+        .unwrap_or_else(|| "fill:none;;;fill:none".to_string());
     let _ = write!(
         out,
-        r#"<path d="{}" id="{}" class="{}" style="fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
+        r#"<path d="{}" id="{}" class="{}" style="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
         geometry.rendered_d,
         escape_xml_display(&state_scoped_dom_id(ctx, edge_id)),
         escape_xml_display(classes),
+        escape_xml_display(&style),
         escape_xml_display(edge_id),
         data_points,
         escape_xml_display(state_data_look(ctx))
@@ -528,9 +536,18 @@ pub(super) fn render_state_edge_path(
     }
 
     let marker_end = match edge.arrow_type_end.trim() {
-        "arrow_barb" | "arrow_barb_neo" => {
-            Some(format!("url(#{}_stateDiagram-barbEnd)", ctx.diagram_id))
-        }
+        "arrow_barb" | "arrow_barb_neo" => ctx
+            .style_plan
+            .edge(edge.id.as_str())
+            .filter(|style| !style.marker_style_attr().is_empty())
+            .and_then(crate::state::StateEdgeStylePlan::marker_ordinal)
+            .map(|ordinal| {
+                format!(
+                    "url(#{})",
+                    state_transition_marker_id(ctx.diagram_id.as_str(), ordinal)
+                )
+            })
+            .or_else(|| Some(format!("url(#{}_stateDiagram-barbEnd)", ctx.diagram_id))),
         _ => None,
     };
 
@@ -557,19 +574,23 @@ pub(super) fn render_state_edge_label(
     origin_x: f64,
     origin_y: f64,
 ) {
-    fn edge_label_div_style(label_w: f64) -> String {
+    fn edge_label_div_style(label_w: f64, prefix: &str, background: &str) -> String {
         // Mermaid uses `createText(..., { width: 200 })` for state edge labels and flips the XHTML
         // `<div>` container to wrapping mode when the label reaches the max width.
         let max_width = crate::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX;
         if label_w >= max_width - 1e-3 {
             format!(
-                "display: table; white-space: break-spaces; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
+                "{}{}display: table; white-space: break-spaces; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
+                prefix,
+                background,
                 fmt_display(max_width),
                 fmt_display(max_width),
             )
         } else {
             format!(
-                "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
+                "{}{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
+                prefix,
+                background,
                 fmt_display(max_width),
             )
         }
@@ -600,6 +621,10 @@ pub(super) fn render_state_edge_label(
         w: f64,
         h: f64,
         html_labels: bool,
+        label_style: &str,
+        label_div_prefix: &str,
+        html_background_style: &str,
+        svg_background_style: &str,
     ) {
         let w = w.max(0.0);
         let h = h.max(0.0);
@@ -614,19 +639,28 @@ pub(super) fn render_state_edge_label(
                 fmt_display(-h / 2.0),
                 fmt_display(w),
                 fmt_display(h),
-                edge_label_div_style(w),
+                escape_attr(&edge_label_div_style(
+                    w,
+                    label_div_prefix,
+                    html_background_style,
+                )),
                 state_edge_label_html(label_text)
             );
         } else {
-            let label_dom = state_svg_text_label(label_text, true, None);
+            let label_dom = state_svg_text_label(
+                label_text,
+                true,
+                (!label_style.is_empty()).then_some(label_style),
+            );
             let _ = write!(
                 out,
-                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background" style="stroke: none" x="0" y="0" width="{}" height="{}"/><g transform="translate({}, {})">{}</g></g></g></g>"#,
+                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background" style="stroke: none;{}" x="0" y="0" width="{}" height="{}"/><g transform="translate({}, {})">{}</g></g></g></g>"#,
                 fmt_display(label_pos.x),
                 fmt_display(label_pos.y),
                 escape_attr(id),
                 fmt_display(-w / 2.0),
                 fmt_display(-h / 2.0),
+                escape_attr(svg_background_style),
                 fmt_display(w),
                 fmt_display(h),
                 fmt_display(w / 2.0),
@@ -636,7 +670,25 @@ pub(super) fn render_state_edge_label(
         }
     }
 
-    let empty_edge_label_style = edge_label_div_style(0.0);
+    let edge_style = ctx.style_plan.edge(edge.id.as_str());
+    let label_style = edge_style
+        .map(crate::state::StateEdgeStylePlan::label_style_attr)
+        .unwrap_or_default();
+    let label_div_prefix = edge_style
+        .map(crate::state::StateEdgeStylePlan::label_div_style_prefix)
+        .unwrap_or_default();
+    let html_background_style = edge_style
+        .map(crate::state::StateEdgeStylePlan::label_background_div_style_prefix)
+        .filter(|style| !style.is_empty())
+        .unwrap_or_else(|| {
+            ctx.style_plan
+                .transition_label_background_div_style_prefix()
+        });
+    let svg_background_style = edge_style
+        .map(crate::state::StateEdgeStylePlan::label_background_style_attr)
+        .filter(|style| !style.is_empty())
+        .unwrap_or_else(|| ctx.style_plan.transition_label_background_style_attr());
+    let empty_edge_label_style = edge_label_div_style(0.0, label_div_prefix, html_background_style);
     let label_text = edge.label.trim();
     if label_text.is_empty() {
         write_empty_edge_label(
@@ -682,6 +734,10 @@ pub(super) fn render_state_edge_label(
         w,
         h,
         ctx.html_labels,
+        label_style,
+        label_div_prefix,
+        html_background_style,
+        svg_background_style,
     );
 }
 

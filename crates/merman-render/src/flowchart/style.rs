@@ -51,7 +51,10 @@ fn apply_text_style_decl(style: &mut std::borrow::Cow<'_, TextStyle>, key: &str,
     match key.trim().to_ascii_lowercase().as_str() {
         "font-size" => {
             let inherited_px = style.as_ref().font_size;
-            if let Some(px) = crate::mermaid_style::parse_css_font_size_px(value, inherited_px) {
+            if let Some(px) = crate::mermaid_style::resolve_mermaid_font_size_px(
+                value,
+                crate::mermaid_style::CssFontSizeContext::uniform(inherited_px),
+            ) {
                 style.to_mut().font_size = px;
             }
         }

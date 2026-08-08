@@ -1701,9 +1701,10 @@ fn class_effective_text_style<'a>(
             "font-weight" => style.to_mut().font_weight = Some(value.trim().to_string()),
             "font-style" => style.to_mut().font_style = Some(value.trim().to_string()),
             "font-size" => {
-                if let Some(font_size) =
-                    crate::mermaid_style::parse_css_font_size_px(value, style.font_size)
-                {
+                if let Some(font_size) = crate::mermaid_style::resolve_mermaid_font_size_px(
+                    value,
+                    crate::mermaid_style::CssFontSizeContext::uniform(style.font_size),
+                ) {
                     style.to_mut().font_size = font_size;
                 }
             }

@@ -4,114 +4,441 @@ use std::collections::BTreeMap;
 use super::canvas::{CanvasPaint, InsetsPx, ThemeColorValue};
 use super::compiler::ThemeCapabilityReport;
 use super::semantic::{
-    StrokeLineCap, StrokeLineJoin, ThemeRule, ThemeStylePatch, ThemeTarget, ThemeVariant,
+    OrdinalSelector, StrokeLineCap, StrokeLineJoin, ThemeRule, ThemeStylePatch, ThemeTarget,
+    ThemeVariant,
 };
-use super::typography::{Specified, TextStyle};
+use super::typography::{Specified, TextStyle, TextStylePatch};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ThemeRuleOrigin {
+    rule_index: usize,
+    target: ThemeTarget,
+    family: Option<RenderFamilyKind>,
+    variant: Option<ThemeVariant>,
+    ordinal: Option<OrdinalSelector>,
+}
+
+impl ThemeRuleOrigin {
+    fn new(rule_index: usize, rule: &ThemeRule) -> Self {
+        Self {
+            rule_index,
+            target: rule.target(),
+            family: rule.family(),
+            variant: rule.variant(),
+            ordinal: rule.ordinal(),
+        }
+    }
+
+    pub(crate) const fn rule_index(self) -> usize {
+        self.rule_index
+    }
+
+    pub(crate) const fn target(self) -> ThemeTarget {
+        self.target
+    }
+
+    pub(crate) const fn family(self) -> Option<RenderFamilyKind> {
+        self.family
+    }
+
+    pub(crate) const fn variant(self) -> Option<ThemeVariant> {
+        self.variant
+    }
+
+    pub(crate) const fn ordinal(self) -> Option<OrdinalSelector> {
+        self.ordinal
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedProperty<T> {
+    specified: Specified<T>,
+    winner: Option<ThemeRuleOrigin>,
+}
+
+impl<T: PartialEq> PartialEq for ResolvedProperty<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.specified == other.specified
+    }
+}
+
+impl<T> Default for ResolvedProperty<T> {
+    fn default() -> Self {
+        Self {
+            specified: Specified::Unspecified,
+            winner: None,
+        }
+    }
+}
+
+impl<T> ResolvedProperty<T> {
+    fn apply(&mut self, specified: &Specified<T>, origin: ThemeRuleOrigin)
+    where
+        T: Clone,
+    {
+        if specified.is_unspecified() {
+            return;
+        }
+        self.specified = specified.clone();
+        self.winner = Some(origin);
+    }
+
+    pub const fn specified(&self) -> &Specified<T> {
+        &self.specified
+    }
+
+    pub(crate) const fn winner(&self) -> Option<ThemeRuleOrigin> {
+        self.winner
+    }
+
+    pub const fn value(&self) -> Option<&T> {
+        match &self.specified {
+            Specified::Value(value) => Some(value),
+            Specified::Unspecified | Specified::Clear => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub(crate) enum ThemeTypographyProperty {
+    FontStack,
+    FontSize,
+    FontWeight,
+    FontStyle,
+    LineHeight,
+    LetterSpacing,
+    WordSpacing,
+    Transform,
+    Decoration,
+    TextAlign,
+    WhiteSpace,
+    Wrap,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedTypography {
+    base: TextStyle,
+    computed: TextStyle,
+    patch: TextStylePatch,
+    winners: BTreeMap<ThemeTypographyProperty, ThemeRuleOrigin>,
+}
+
+impl PartialEq for ResolvedTypography {
+    fn eq(&self, other: &Self) -> bool {
+        self.base == other.base && self.computed == other.computed && self.patch == other.patch
+    }
+}
+
+impl ResolvedTypography {
+    fn new(base: TextStyle) -> Self {
+        Self {
+            computed: base.clone(),
+            base,
+            patch: TextStylePatch::default(),
+            winners: BTreeMap::new(),
+        }
+    }
+
+    fn apply(&mut self, patch: &TextStylePatch, origin: ThemeRuleOrigin) {
+        apply_typography_property(
+            &patch.font_stack,
+            &mut self.patch.font_stack,
+            ThemeTypographyProperty::FontStack,
+            origin,
+            &mut self.winners,
+        );
+        apply_typography_property(
+            &patch.font_size_px,
+            &mut self.patch.font_size_px,
+            ThemeTypographyProperty::FontSize,
+            origin,
+            &mut self.winners,
+        );
+        apply_typography_property(
+            &patch.font_weight,
+            &mut self.patch.font_weight,
+            ThemeTypographyProperty::FontWeight,
+            origin,
+            &mut self.winners,
+        );
+        apply_typography_property(
+            &patch.font_style,
+            &mut self.patch.font_style,
+            ThemeTypographyProperty::FontStyle,
+            origin,
+            &mut self.winners,
+        );
+        apply_typography_property(
+            &patch.line_height,
+            &mut self.patch.line_height,
+            ThemeTypographyProperty::LineHeight,
+            origin,
+            &mut self.winners,
+        );
+        apply_typography_property(
+            &patch.letter_spacing_px,
+            &mut self.patch.letter_spacing_px,
+            ThemeTypographyProperty::LetterSpacing,
+            origin,
+            &mut self.winners,
+        );
+        apply_typography_property(
+            &patch.word_spacing_px,
+            &mut self.patch.word_spacing_px,
+            ThemeTypographyProperty::WordSpacing,
+            origin,
+            &mut self.winners,
+        );
+        apply_typography_property(
+            &patch.transform,
+            &mut self.patch.transform,
+            ThemeTypographyProperty::Transform,
+            origin,
+            &mut self.winners,
+        );
+        apply_typography_property(
+            &patch.decoration,
+            &mut self.patch.decoration,
+            ThemeTypographyProperty::Decoration,
+            origin,
+            &mut self.winners,
+        );
+        apply_typography_property(
+            &patch.text_align,
+            &mut self.patch.text_align,
+            ThemeTypographyProperty::TextAlign,
+            origin,
+            &mut self.winners,
+        );
+        apply_typography_property(
+            &patch.white_space,
+            &mut self.patch.white_space,
+            ThemeTypographyProperty::WhiteSpace,
+            origin,
+            &mut self.winners,
+        );
+        apply_typography_property(
+            &patch.wrap,
+            &mut self.patch.wrap,
+            ThemeTypographyProperty::Wrap,
+            origin,
+            &mut self.winners,
+        );
+        self.computed = self.base.clone();
+        self.patch.apply_to(&mut self.computed, &self.base);
+    }
+
+    pub const fn base(&self) -> &TextStyle {
+        &self.base
+    }
+
+    pub const fn computed(&self) -> &TextStyle {
+        &self.computed
+    }
+
+    pub const fn patch(&self) -> &TextStylePatch {
+        &self.patch
+    }
+
+    pub(crate) fn winner(&self, property: ThemeTypographyProperty) -> Option<ThemeRuleOrigin> {
+        self.winners.get(&property).copied()
+    }
+}
+
+fn apply_typography_property<T: Clone>(
+    incoming: &Specified<T>,
+    resolved: &mut Specified<T>,
+    property: ThemeTypographyProperty,
+    origin: ThemeRuleOrigin,
+    winners: &mut BTreeMap<ThemeTypographyProperty, ThemeRuleOrigin>,
+) {
+    if incoming.is_unspecified() {
+        return;
+    }
+    *resolved = incoming.clone();
+    winners.insert(property, origin);
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResolvedThemeStyle {
-    fill: Option<CanvasPaint>,
-    stroke: Option<CanvasPaint>,
-    stroke_width: Option<f32>,
-    stroke_dasharray: Option<Vec<f32>>,
-    stroke_linecap: Option<StrokeLineCap>,
-    stroke_linejoin: Option<StrokeLineJoin>,
-    opacity: Option<f32>,
-    fill_opacity: Option<f32>,
-    stroke_opacity: Option<f32>,
-    radius: Option<f32>,
-    padding: Option<InsetsPx>,
-    typography: TextStyle,
-    effect: Option<String>,
+    fill: ResolvedProperty<CanvasPaint>,
+    stroke: ResolvedProperty<CanvasPaint>,
+    stroke_width: ResolvedProperty<f32>,
+    stroke_dasharray: ResolvedProperty<Vec<f32>>,
+    stroke_linecap: ResolvedProperty<StrokeLineCap>,
+    stroke_linejoin: ResolvedProperty<StrokeLineJoin>,
+    opacity: ResolvedProperty<f32>,
+    fill_opacity: ResolvedProperty<f32>,
+    stroke_opacity: ResolvedProperty<f32>,
+    radius: ResolvedProperty<f32>,
+    padding: ResolvedProperty<InsetsPx>,
+    typography: ResolvedTypography,
+    effect: ResolvedProperty<String>,
 }
 
 impl ResolvedThemeStyle {
     fn new(typography: TextStyle) -> Self {
         Self {
-            fill: None,
-            stroke: None,
-            stroke_width: None,
-            stroke_dasharray: None,
-            stroke_linecap: None,
-            stroke_linejoin: None,
-            opacity: None,
-            fill_opacity: None,
-            stroke_opacity: None,
-            radius: None,
-            padding: None,
-            typography,
-            effect: None,
+            fill: ResolvedProperty::default(),
+            stroke: ResolvedProperty::default(),
+            stroke_width: ResolvedProperty::default(),
+            stroke_dasharray: ResolvedProperty::default(),
+            stroke_linecap: ResolvedProperty::default(),
+            stroke_linejoin: ResolvedProperty::default(),
+            opacity: ResolvedProperty::default(),
+            fill_opacity: ResolvedProperty::default(),
+            stroke_opacity: ResolvedProperty::default(),
+            radius: ResolvedProperty::default(),
+            padding: ResolvedProperty::default(),
+            typography: ResolvedTypography::new(typography),
+            effect: ResolvedProperty::default(),
         }
     }
 
-    fn apply(&mut self, patch: &ThemeStylePatch, base_typography: &TextStyle) {
-        apply_optional(&patch.paint.fill, &mut self.fill);
-        apply_optional(&patch.stroke.paint, &mut self.stroke);
-        apply_optional(&patch.stroke.width, &mut self.stroke_width);
-        apply_optional(&patch.stroke.dasharray, &mut self.stroke_dasharray);
-        apply_optional(&patch.stroke.linecap, &mut self.stroke_linecap);
-        apply_optional(&patch.stroke.linejoin, &mut self.stroke_linejoin);
-        apply_optional(&patch.paint.opacity, &mut self.opacity);
-        apply_optional(&patch.paint.fill_opacity, &mut self.fill_opacity);
-        apply_optional(&patch.stroke.stroke_opacity, &mut self.stroke_opacity);
-        apply_optional(&patch.geometry.radius, &mut self.radius);
-        apply_optional(&patch.spacing.padding, &mut self.padding);
-        patch
-            .typography
-            .apply_to(&mut self.typography, base_typography);
-        apply_optional(&patch.effects.effect, &mut self.effect);
+    fn apply(&mut self, patch: &ThemeStylePatch, origin: ThemeRuleOrigin) {
+        self.fill.apply(&patch.paint.fill, origin);
+        self.stroke.apply(&patch.stroke.paint, origin);
+        self.stroke_width.apply(&patch.stroke.width, origin);
+        self.stroke_dasharray.apply(&patch.stroke.dasharray, origin);
+        self.stroke_linecap.apply(&patch.stroke.linecap, origin);
+        self.stroke_linejoin.apply(&patch.stroke.linejoin, origin);
+        self.opacity.apply(&patch.paint.opacity, origin);
+        self.fill_opacity.apply(&patch.paint.fill_opacity, origin);
+        self.stroke_opacity
+            .apply(&patch.stroke.stroke_opacity, origin);
+        self.radius.apply(&patch.geometry.radius, origin);
+        self.padding.apply(&patch.spacing.padding, origin);
+        self.typography.apply(&patch.typography, origin);
+        self.effect.apply(&patch.effects.effect, origin);
     }
 
     pub const fn fill(&self) -> Option<&CanvasPaint> {
-        self.fill.as_ref()
+        self.fill.value()
     }
 
     pub const fn stroke(&self) -> Option<&CanvasPaint> {
-        self.stroke.as_ref()
+        self.stroke.value()
     }
 
     pub const fn stroke_width(&self) -> Option<f32> {
-        self.stroke_width
+        match self.stroke_width.value() {
+            Some(value) => Some(*value),
+            None => None,
+        }
     }
 
     pub fn stroke_dasharray(&self) -> Option<&[f32]> {
-        self.stroke_dasharray.as_deref()
+        self.stroke_dasharray.value().map(Vec::as_slice)
     }
 
     pub const fn stroke_linecap(&self) -> Option<StrokeLineCap> {
-        self.stroke_linecap
+        match self.stroke_linecap.value() {
+            Some(value) => Some(*value),
+            None => None,
+        }
     }
 
     pub const fn stroke_linejoin(&self) -> Option<StrokeLineJoin> {
-        self.stroke_linejoin
+        match self.stroke_linejoin.value() {
+            Some(value) => Some(*value),
+            None => None,
+        }
     }
 
     pub const fn opacity(&self) -> Option<f32> {
-        self.opacity
+        match self.opacity.value() {
+            Some(value) => Some(*value),
+            None => None,
+        }
     }
 
     pub const fn fill_opacity(&self) -> Option<f32> {
-        self.fill_opacity
+        match self.fill_opacity.value() {
+            Some(value) => Some(*value),
+            None => None,
+        }
     }
 
     pub const fn stroke_opacity(&self) -> Option<f32> {
-        self.stroke_opacity
+        match self.stroke_opacity.value() {
+            Some(value) => Some(*value),
+            None => None,
+        }
     }
 
     pub const fn radius(&self) -> Option<f32> {
-        self.radius
+        match self.radius.value() {
+            Some(value) => Some(*value),
+            None => None,
+        }
     }
 
     pub const fn padding(&self) -> Option<InsetsPx> {
-        self.padding
+        match self.padding.value() {
+            Some(value) => Some(*value),
+            None => None,
+        }
     }
 
     pub const fn typography(&self) -> &TextStyle {
-        &self.typography
+        self.typography.computed()
     }
 
     pub fn effect(&self) -> Option<&str> {
-        self.effect.as_deref()
+        self.effect.value().map(String::as_str)
+    }
+
+    pub const fn fill_resolution(&self) -> &ResolvedProperty<CanvasPaint> {
+        &self.fill
+    }
+
+    pub const fn stroke_resolution(&self) -> &ResolvedProperty<CanvasPaint> {
+        &self.stroke
+    }
+
+    pub const fn stroke_width_resolution(&self) -> &ResolvedProperty<f32> {
+        &self.stroke_width
+    }
+
+    pub const fn stroke_dasharray_resolution(&self) -> &ResolvedProperty<Vec<f32>> {
+        &self.stroke_dasharray
+    }
+
+    pub const fn stroke_linecap_resolution(&self) -> &ResolvedProperty<StrokeLineCap> {
+        &self.stroke_linecap
+    }
+
+    pub const fn stroke_linejoin_resolution(&self) -> &ResolvedProperty<StrokeLineJoin> {
+        &self.stroke_linejoin
+    }
+
+    pub const fn opacity_resolution(&self) -> &ResolvedProperty<f32> {
+        &self.opacity
+    }
+
+    pub const fn fill_opacity_resolution(&self) -> &ResolvedProperty<f32> {
+        &self.fill_opacity
+    }
+
+    pub const fn stroke_opacity_resolution(&self) -> &ResolvedProperty<f32> {
+        &self.stroke_opacity
+    }
+
+    pub const fn radius_resolution(&self) -> &ResolvedProperty<f32> {
+        &self.radius
+    }
+
+    pub const fn padding_resolution(&self) -> &ResolvedProperty<InsetsPx> {
+        &self.padding
+    }
+
+    pub const fn typography_resolution(&self) -> &ResolvedTypography {
+        &self.typography
+    }
+
+    pub const fn effect_resolution(&self) -> &ResolvedProperty<String> {
+        &self.effect
     }
 }
 
@@ -176,8 +503,8 @@ impl ResolvedDiagramTheme {
             &self.base_typography,
             indices
                 .iter()
-                .map(|index| &rules[*index])
-                .filter(|rule| rule.applies_to(self.family, variant, ordinal)),
+                .map(|index| (*index, &rules[*index]))
+                .filter(|(_, rule)| rule.applies_to(self.family, variant, ordinal)),
         )
     }
 
@@ -209,27 +536,26 @@ pub(crate) fn resolve_style(
     resolve_matching_rules(
         &base_typography,
         spec.styles()
-            .matching_rules(family, target, variant, ordinal),
+            .rules()
+            .iter()
+            .enumerate()
+            .filter(|(_, rule)| {
+                target.valid_for(family)
+                    && rule.target() == target
+                    && rule.applies_to(family, variant, ordinal)
+            }),
     )
 }
 
 fn resolve_matching_rules<'a>(
     base_typography: &TextStyle,
-    rules: impl Iterator<Item = &'a ThemeRule>,
+    rules: impl Iterator<Item = (usize, &'a ThemeRule)>,
 ) -> ResolvedThemeStyle {
     let mut style = ResolvedThemeStyle::new(base_typography.clone());
-    for rule in rules {
-        style.apply(rule.style(), base_typography);
+    for (rule_index, rule) in rules {
+        style.apply(rule.style(), ThemeRuleOrigin::new(rule_index, rule));
     }
     style
-}
-
-fn apply_optional<T: Clone>(value: &Specified<T>, target: &mut Option<T>) {
-    match value {
-        Specified::Unspecified => {}
-        Specified::Clear => *target = None,
-        Specified::Value(value) => *target = Some(value.clone()),
-    }
 }
 
 #[cfg(test)]
@@ -372,5 +698,127 @@ mod tests {
         let active_second = resolved.style(ThemeTarget::Node, ThemeVariant::Active, Some(2));
         assert_eq!(active_second.fill(), Some(&ordinal_fill));
         assert_eq!(active_second.stroke(), Some(&variant_stroke));
+    }
+
+    #[test]
+    fn resolved_style_preserves_unspecified_clear_and_rule_origin() {
+        let fill = CanvasPaint::solid("#ef4444").expect("valid fill");
+        let mut base = ThemeStylePatch::default().with_fill(fill.clone());
+        base.typography.font_size_px = Specified::Value(22.0);
+        let mut clear = ThemeStylePatch::default();
+        clear.paint.fill = Specified::Clear;
+        clear.typography.font_size_px = Specified::Clear;
+        let rules = ThemeRuleSet::default()
+            .with_rule(ThemeRule::new(ThemeTarget::Node, base))
+            .with_rule(ThemeRule::new(ThemeTarget::Node, clear).with_variant(ThemeVariant::Active));
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .expect("compile theme");
+        let resolved = theme.resolve(RenderFamilyKind::Flowchart);
+
+        let default = resolved.style(ThemeTarget::Node, ThemeVariant::Default, None);
+        assert_eq!(default.fill(), Some(&fill));
+        assert!(matches!(
+            default.fill_resolution().specified(),
+            Specified::Value(value) if value == &fill
+        ));
+        assert_eq!(default.fill_resolution().winner().unwrap().rule_index(), 0);
+        assert_eq!(default.typography().font_size_px(), 22.0);
+        assert!(matches!(
+            default.typography_resolution().patch().font_size_px,
+            Specified::Value(22.0)
+        ));
+
+        let active = resolved.style(ThemeTarget::Node, ThemeVariant::Active, None);
+        assert_eq!(active.fill(), None);
+        assert!(matches!(
+            active.fill_resolution().specified(),
+            Specified::Clear
+        ));
+        assert_eq!(active.fill_resolution().winner().unwrap().rule_index(), 1);
+        assert_eq!(active.typography().font_size_px(), 16.0);
+        assert!(matches!(
+            active.typography_resolution().patch().font_size_px,
+            Specified::Clear
+        ));
+        assert_eq!(
+            active
+                .typography_resolution()
+                .winner(ThemeTypographyProperty::FontSize)
+                .unwrap()
+                .rule_index(),
+            1
+        );
+
+        assert!(matches!(
+            active.stroke_resolution().specified(),
+            Specified::Unspecified
+        ));
+        assert_eq!(active.stroke_resolution().winner(), None);
+    }
+
+    #[test]
+    fn resolved_style_equality_ignores_rule_origin_but_preserves_specified_state() {
+        let fill = CanvasPaint::solid("#ef4444").expect("valid fill");
+        let one_rule = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default().with_fill(fill.clone()),
+                    ),
+                )),
+            )
+            .expect("compile one-rule theme");
+        let repeated_rule = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Node,
+                            ThemeStylePatch::default().with_fill(fill.clone()),
+                        ))
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Node,
+                            ThemeStylePatch::default().with_fill(fill),
+                        )),
+                ),
+            )
+            .expect("compile repeated-rule theme");
+
+        let one_rule_style = one_rule.resolve(RenderFamilyKind::Flowchart).style(
+            ThemeTarget::Node,
+            ThemeVariant::Default,
+            None,
+        );
+        let repeated_rule_style = repeated_rule.resolve(RenderFamilyKind::Flowchart).style(
+            ThemeTarget::Node,
+            ThemeVariant::Default,
+            None,
+        );
+
+        assert_ne!(
+            one_rule_style.fill_resolution().winner(),
+            repeated_rule_style.fill_resolution().winner()
+        );
+        assert_eq!(one_rule_style, repeated_rule_style);
+
+        let mut clear_fill = ThemeStylePatch::default();
+        clear_fill.paint.fill = Specified::Clear;
+        let cleared = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Node, clear_fill)),
+            ))
+            .expect("compile clear theme")
+            .resolve(RenderFamilyKind::Flowchart)
+            .style(ThemeTarget::Node, ThemeVariant::Default, None);
+        let unspecified = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new())
+            .expect("compile empty theme")
+            .resolve(RenderFamilyKind::Flowchart)
+            .style(ThemeTarget::Node, ThemeVariant::Default, None);
+
+        assert_eq!(cleared.fill(), unspecified.fill());
+        assert_ne!(cleared, unspecified);
     }
 }

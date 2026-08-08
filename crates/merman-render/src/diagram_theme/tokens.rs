@@ -362,12 +362,24 @@ impl ThemeTokens {
                 fill_stroke(&self.line, &self.line),
             ))
             .with_rule(ThemeRule::new(
+                ThemeTarget::TransitionMarker,
+                fill_stroke(&self.line, &self.line),
+            ))
+            .with_rule(ThemeRule::new(
                 ThemeTarget::TransitionLabel,
                 text(&self.text),
             ))
             .with_rule(ThemeRule::new(
+                ThemeTarget::TransitionLabelBackground,
+                fill(&self.edge_label_background),
+            ))
+            .with_rule(ThemeRule::new(
                 ThemeTarget::Composite,
                 fill_stroke(&self.canvas, &self.border),
+            ))
+            .with_rule(ThemeRule::new(
+                ThemeTarget::CompositeHeader,
+                fill_stroke(&self.surface_alt, &self.border),
             ))
             .with_rule(ThemeRule::new(
                 ThemeTarget::CompositeLabel,
@@ -379,6 +391,13 @@ impl ThemeTokens {
                     fill_stroke(&self.accent, &self.accent),
                 )
                 .with_variant(ThemeVariant::Special),
+            )
+            .with_rule(
+                ThemeRule::new(
+                    ThemeTarget::SpecialStateInner,
+                    fill_stroke(&self.canvas, &self.canvas),
+                )
+                .with_variant(ThemeVariant::End),
             )
             .with_rule(ThemeRule::new(
                 ThemeTarget::Marker,

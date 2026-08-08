@@ -724,7 +724,8 @@ fn theme_catalog_for(artifact_contract: &ValidatedArtifactContract) -> BindingTh
             ),
             known_semantic_target_ids: sorted_theme_ids(
                 merman::svg::ThemeTarget::ALL
-                    .into_iter()
+                    .iter()
+                    .copied()
                     .map(merman::svg::ThemeTarget::id)
                     .collect(),
             ),
@@ -1688,6 +1689,25 @@ mod tests {
                 serde_json::from_slice(&theme_catalog_json_for(&empty_contract).unwrap()).unwrap();
             assert_eq!(empty_again, empty);
         }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn theme_catalog_contains_every_semantic_target_id() {
+        let svg_contract =
+            ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+                .with_operations(&[OperationKey::Svg])
+                .materialize();
+        let catalog = theme_catalog_for(&svg_contract);
+        let expected = sorted_theme_ids(
+            merman::svg::ThemeTarget::ALL
+                .iter()
+                .copied()
+                .map(merman::svg::ThemeTarget::id)
+                .collect(),
+        );
+
+        assert_eq!(catalog.known_semantic_target_ids, expected);
     }
 
     #[test]

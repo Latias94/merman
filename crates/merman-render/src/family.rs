@@ -1,4 +1,7 @@
-use crate::diagram_theme::{ResolvedDiagramTheme, ThemeFingerprint};
+use crate::diagram_theme::{
+    ResolvedDiagramTheme, SourceStyleChannel, SourceStyleOrigin, SourceStyleResidual,
+    SourceStyleResidualReason, ThemeFingerprint, ThemePortabilityRequirement,
+};
 use crate::environment::{RenderSession, RenderSessionReport};
 use crate::model::*;
 use crate::resources::ResourceLimitPhase;
@@ -74,26 +77,289 @@ impl RenderCapabilityPlan {
     }
 }
 
-/// Frozen family identity and operation evidence captured after SVG work completes.
-///
-/// The theme fingerprint identifies the compiled theme selected and resolved for the family. It
-/// does not claim that every semantic target has an adapter or was emitted by this diagram.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FamilyRenderReport {
-    family_kind: RenderFamilyKind,
-    session: RenderSessionReport,
+/// Verification state of a family-local style plan after source styles have been adapted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum FamilyStyleVerification {
+    Verified,
+    Unverified,
 }
 
-impl FamilyRenderReport {
-    fn freeze(family_kind: RenderFamilyKind, session: RenderSession) -> Self {
+/// Source channel that produced an unverified family style residual.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum FamilyStyleChannel {
+    Shape,
+    Label,
+    Stylesheet,
+}
+
+impl FamilyStyleChannel {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::Shape => "shape",
+            Self::Label => "label",
+            Self::Stylesheet => "stylesheet",
+        }
+    }
+}
+
+impl std::fmt::Display for FamilyStyleChannel {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.id())
+    }
+}
+
+/// Source origin that produced an unverified family style residual.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum FamilyStyleOrigin {
+    AssignedClass,
+    InlineStyle,
+    LabelStyle,
+    GeneratedClassCss,
+}
+
+impl FamilyStyleOrigin {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::AssignedClass => "assigned-class",
+            Self::InlineStyle => "inline-style",
+            Self::LabelStyle => "label-style",
+            Self::GeneratedClassCss => "generated-class-css",
+        }
+    }
+}
+
+impl std::fmt::Display for FamilyStyleOrigin {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.id())
+    }
+}
+
+/// Reason a source style could not be verified by the family adapter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum FamilyStyleResidualReason {
+    InvalidDeclaration,
+    UnsupportedProperty,
+    InvalidValue,
+    UnsupportedSurface,
+}
+
+impl FamilyStyleResidualReason {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::InvalidDeclaration => "invalid-declaration",
+            Self::UnsupportedProperty => "unsupported-property",
+            Self::InvalidValue => "invalid-value",
+            Self::UnsupportedSurface => "unsupported-surface",
+        }
+    }
+}
+
+impl std::fmt::Display for FamilyStyleResidualReason {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.id())
+    }
+}
+
+/// Frozen evidence for one source style the family adapter could not verify as portable.
+///
+/// Fields are intentionally private: callers can inspect the stable evidence but cannot forge a
+/// renderer report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FamilyStyleResidual {
+    raw: String,
+    property: Option<String>,
+    owner_id: String,
+    class_id: Option<String>,
+    origin: FamilyStyleOrigin,
+    channel: FamilyStyleChannel,
+    assignment_ordinal: Option<usize>,
+    declaration_ordinal: usize,
+    reason: FamilyStyleResidualReason,
+}
+
+impl FamilyStyleResidual {
+    fn freeze(residual: &SourceStyleResidual) -> Self {
+        let provenance = residual.provenance();
         Self {
-            family_kind,
-            session: session.report(),
+            raw: residual.raw().to_string(),
+            property: residual.property().map(str::to_string),
+            owner_id: provenance.owner_id().to_string(),
+            class_id: provenance.class_id().map(str::to_string),
+            origin: provenance.origin().into(),
+            channel: provenance.channel().into(),
+            assignment_ordinal: provenance.assignment_ordinal(),
+            declaration_ordinal: provenance.declaration_ordinal(),
+            reason: residual.reason().into(),
+        }
+    }
+
+    pub fn raw(&self) -> &str {
+        &self.raw
+    }
+
+    pub fn property(&self) -> Option<&str> {
+        self.property.as_deref()
+    }
+
+    pub fn owner_id(&self) -> &str {
+        &self.owner_id
+    }
+
+    pub fn class_id(&self) -> Option<&str> {
+        self.class_id.as_deref()
+    }
+
+    pub const fn origin(&self) -> FamilyStyleOrigin {
+        self.origin
+    }
+
+    pub const fn channel(&self) -> FamilyStyleChannel {
+        self.channel
+    }
+
+    pub const fn assignment_ordinal(&self) -> Option<usize> {
+        self.assignment_ordinal
+    }
+
+    pub const fn declaration_ordinal(&self) -> usize {
+        self.declaration_ordinal
+    }
+
+    pub const fn reason(&self) -> FamilyStyleResidualReason {
+        self.reason
+    }
+}
+
+impl std::fmt::Display for FamilyStyleResidual {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{} {} style on `{}`",
+            self.reason, self.channel, self.owner_id
+        )?;
+        if let Some(property) = self.property() {
+            write!(formatter, " for property `{property}`")?;
+        }
+        Ok(())
+    }
+}
+
+impl From<SourceStyleChannel> for FamilyStyleChannel {
+    fn from(channel: SourceStyleChannel) -> Self {
+        match channel {
+            SourceStyleChannel::Shape => Self::Shape,
+            SourceStyleChannel::Label => Self::Label,
+            SourceStyleChannel::Stylesheet => Self::Stylesheet,
+        }
+    }
+}
+
+impl From<SourceStyleOrigin> for FamilyStyleOrigin {
+    fn from(origin: SourceStyleOrigin) -> Self {
+        match origin {
+            SourceStyleOrigin::AssignedClass => Self::AssignedClass,
+            SourceStyleOrigin::InlineStyle => Self::InlineStyle,
+            SourceStyleOrigin::LabelStyle => Self::LabelStyle,
+            SourceStyleOrigin::GeneratedClassCss => Self::GeneratedClassCss,
+        }
+    }
+}
+
+impl From<SourceStyleResidualReason> for FamilyStyleResidualReason {
+    fn from(reason: SourceStyleResidualReason) -> Self {
+        match reason {
+            SourceStyleResidualReason::InvalidDeclaration => Self::InvalidDeclaration,
+            SourceStyleResidualReason::UnsupportedProperty => Self::UnsupportedProperty,
+            SourceStyleResidualReason::InvalidValue => Self::InvalidValue,
+            SourceStyleResidualReason::UnsupportedSurface => Self::UnsupportedSurface,
+        }
+    }
+}
+
+/// Frozen family-local style evidence retained through SVG postprocessing and completion.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FamilyStyleReport {
+    family_kind: RenderFamilyKind,
+    residuals: Vec<FamilyStyleResidual>,
+}
+
+impl FamilyStyleReport {
+    fn freeze(plan: &ResolvedFamilyStylePlan) -> Self {
+        let mut residuals = Vec::new();
+        if let FamilyStylePayload::State(state) = &plan.payload {
+            for residual in state.residuals() {
+                let residual = FamilyStyleResidual::freeze(residual);
+                if !residuals.contains(&residual) {
+                    residuals.push(residual);
+                }
+            }
+        }
+        Self {
+            family_kind: plan.family_kind,
+            residuals,
         }
     }
 
     pub const fn family_kind(&self) -> RenderFamilyKind {
         self.family_kind
+    }
+
+    pub fn residuals(&self) -> &[FamilyStyleResidual] {
+        &self.residuals
+    }
+
+    pub fn verification(&self) -> FamilyStyleVerification {
+        if self.residuals.is_empty() {
+            FamilyStyleVerification::Verified
+        } else {
+            FamilyStyleVerification::Unverified
+        }
+    }
+
+    pub fn is_verified(&self) -> bool {
+        self.residuals.is_empty()
+    }
+}
+
+/// Frozen family identity and operation evidence captured after SVG work completes.
+///
+/// The theme fingerprint identifies the compiled theme selected and resolved for the family. It
+/// does not claim that every semantic target has an adapter or was emitted by this diagram. The
+/// family style report separately records source declarations that remained unverified.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FamilyRenderReport {
+    style: FamilyStyleReport,
+    session: RenderSessionReport,
+}
+
+impl FamilyRenderReport {
+    fn freeze(style: FamilyStyleReport, session: RenderSession) -> Self {
+        Self {
+            style,
+            session: session.report(),
+        }
+    }
+
+    pub const fn family_kind(&self) -> RenderFamilyKind {
+        self.style.family_kind()
+    }
+
+    pub const fn style_report(&self) -> &FamilyStyleReport {
+        &self.style
+    }
+
+    /// Returns the frozen family style report carried by this completion.
+    pub const fn family_style_report(&self) -> &FamilyStyleReport {
+        &self.style
+    }
+
+    /// Returns source-style residuals recorded by the family adapter.
+    pub fn family_style_residuals(&self) -> &[FamilyStyleResidual] {
+        self.style.residuals()
     }
 
     pub fn theme_fingerprint(&self) -> Option<ThemeFingerprint> {
@@ -106,28 +372,94 @@ impl FamilyRenderReport {
 }
 
 struct FamilyRenderContext {
+    style_plan: ResolvedFamilyStylePlan,
+    session: RenderSession,
+}
+
+#[derive(Debug)]
+enum FamilyStylePayload {
+    Unadapted,
+    State(Box<crate::state::StateStylePlan>),
+}
+
+#[derive(Debug)]
+pub(crate) struct ResolvedFamilyStylePlan {
     family_kind: RenderFamilyKind,
     resolved_theme: Option<Box<ResolvedDiagramTheme>>,
-    session: RenderSession,
+    payload: FamilyStylePayload,
+}
+
+impl ResolvedFamilyStylePlan {
+    fn new(session: &RenderSession, family_kind: RenderFamilyKind) -> Self {
+        Self {
+            family_kind,
+            resolved_theme: session
+                .theme()
+                .map(|theme| Box::new(theme.resolve(family_kind))),
+            payload: FamilyStylePayload::Unadapted,
+        }
+    }
+
+    fn adapt_state(
+        &mut self,
+        model: &merman_core::diagrams::state::StateDiagramRenderModel,
+        effective_config: &serde_json::Value,
+        portability: ThemePortabilityRequirement,
+    ) -> Result<()> {
+        debug_assert_eq!(self.family_kind, RenderFamilyKind::State);
+        self.payload = FamilyStylePayload::State(Box::new(crate::state::StateStylePlan::resolve(
+            model,
+            effective_config,
+            self.resolved_theme.as_deref(),
+        )));
+        self.ensure_portable(portability)
+    }
+
+    fn ensure_portable(&self, portability: ThemePortabilityRequirement) -> Result<()> {
+        if portability != ThemePortabilityRequirement::RequirePortable {
+            return Ok(());
+        }
+
+        let report = FamilyStyleReport::freeze(self);
+        let Some(first_residual) = report.residuals().first().cloned() else {
+            return Ok(());
+        };
+        Err(Error::UnverifiedFamilyStyle {
+            family_kind: self.family_kind,
+            residual_count: report.residuals().len(),
+            first_residual,
+        })
+    }
+
+    pub(crate) const fn family_kind(&self) -> RenderFamilyKind {
+        self.family_kind
+    }
+
+    pub(crate) fn resolved_theme(&self) -> Option<&ResolvedDiagramTheme> {
+        self.resolved_theme.as_deref()
+    }
+
+    pub(crate) fn state(&self) -> Option<&crate::state::StateStylePlan> {
+        match &self.payload {
+            FamilyStylePayload::State(plan) => Some(plan),
+            FamilyStylePayload::Unadapted => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
 pub(crate) struct FamilyExecutionView<'a> {
     family_kind: RenderFamilyKind,
     session: &'a RenderSession,
-    resolved_theme: Option<&'a ResolvedDiagramTheme>,
+    style_plan: Option<&'a ResolvedFamilyStylePlan>,
 }
 
 impl<'a> FamilyExecutionView<'a> {
-    fn new(
-        session: &'a RenderSession,
-        family_kind: RenderFamilyKind,
-        resolved_theme: Option<&'a ResolvedDiagramTheme>,
-    ) -> Self {
+    fn new(session: &'a RenderSession, style_plan: &'a ResolvedFamilyStylePlan) -> Self {
         let execution = Self {
-            family_kind,
+            family_kind: style_plan.family_kind(),
             session,
-            resolved_theme,
+            style_plan: Some(style_plan),
         };
         debug_assert_eq!(
             execution.resolved_theme().is_some(),
@@ -136,7 +468,9 @@ impl<'a> FamilyExecutionView<'a> {
         );
         debug_assert_eq!(
             execution.resolved_theme().map(ResolvedDiagramTheme::family),
-            session.theme_fingerprint().map(|_| family_kind),
+            session
+                .theme_fingerprint()
+                .map(|_| style_plan.family_kind()),
             "family theme plan must match the planned render family"
         );
         execution
@@ -150,34 +484,42 @@ impl<'a> FamilyExecutionView<'a> {
         self.session
     }
 
-    pub(crate) const fn resolved_theme(self) -> Option<&'a ResolvedDiagramTheme> {
-        self.resolved_theme
+    pub(crate) fn resolved_theme(self) -> Option<&'a ResolvedDiagramTheme> {
+        match self.style_plan {
+            Some(plan) => plan.resolved_theme(),
+            None => None,
+        }
+    }
+
+    pub(crate) const fn style_plan(self) -> Option<&'a ResolvedFamilyStylePlan> {
+        self.style_plan
     }
 
     #[cfg(test)]
     pub(crate) fn for_test(session: &'a RenderSession, family_kind: RenderFamilyKind) -> Self {
-        Self::new(session, family_kind, None)
+        Self {
+            family_kind,
+            session,
+            style_plan: None,
+        }
     }
 }
 
 impl FamilyRenderContext {
     fn resolve(session: RenderSession, family_kind: RenderFamilyKind) -> Self {
-        let resolved_theme = session
-            .theme()
-            .map(|theme| Box::new(theme.resolve(family_kind)));
+        let style_plan = ResolvedFamilyStylePlan::new(&session, family_kind);
         Self {
-            family_kind,
-            resolved_theme,
+            style_plan,
             session,
         }
     }
 
     const fn family_kind(&self) -> RenderFamilyKind {
-        self.family_kind
+        self.style_plan.family_kind()
     }
 
     fn resolved_theme(&self) -> Option<&ResolvedDiagramTheme> {
-        self.resolved_theme.as_deref()
+        self.style_plan.resolved_theme()
     }
 
     const fn session(&self) -> &RenderSession {
@@ -185,11 +527,27 @@ impl FamilyRenderContext {
     }
 
     fn execution(&self) -> FamilyExecutionView<'_> {
-        FamilyExecutionView::new(&self.session, self.family_kind, self.resolved_theme())
+        FamilyExecutionView::new(&self.session, &self.style_plan)
     }
 
-    fn into_session_and_family(self) -> (RenderSession, RenderFamilyKind) {
-        (self.session, self.family_kind)
+    fn adapt_state(
+        &mut self,
+        model: &merman_core::diagrams::state::StateDiagramRenderModel,
+        effective_config: &serde_json::Value,
+    ) -> Result<()> {
+        let portability = self
+            .session
+            .theme()
+            .map_or(ThemePortabilityRequirement::BestEffort, |theme| {
+                theme.portability_requirement()
+            });
+        self.style_plan
+            .adapt_state(model, effective_config, portability)
+    }
+
+    fn into_session_and_style_report(self) -> (RenderSession, FamilyStyleReport) {
+        let style_report = FamilyStyleReport::freeze(&self.style_plan);
+        (self.session, style_report)
     }
 }
 
@@ -677,7 +1035,7 @@ impl GanttTimeAxisDiagnostics {
 /// ```
 pub struct RenderedFamilySvg {
     svg: String,
-    family_kind: RenderFamilyKind,
+    style_report: FamilyStyleReport,
     metadata: ParseMetadata,
     session: RenderSession,
 }
@@ -725,7 +1083,11 @@ impl RenderedFamilySvg {
     }
 
     pub fn family_kind(&self) -> RenderFamilyKind {
-        self.family_kind
+        self.style_report.family_kind()
+    }
+
+    pub const fn style_report(&self) -> &FamilyStyleReport {
+        &self.style_report
     }
 
     /// Applies an output pipeline while retaining the renderer-owned family capability.
@@ -755,7 +1117,7 @@ impl RenderedFamilySvg {
             .check_svg_bytes(svg.as_str(), ResourceLimitPhase::SvgPostprocess)?;
         Ok(RenderedResvgCompatibleSvg {
             svg,
-            family_kind: self.family_kind,
+            style_report: self.style_report,
             session: self.session,
         })
     }
@@ -770,7 +1132,7 @@ impl RenderedFamilySvg {
     pub fn into_completion(self) -> FamilyRenderCompletion<String> {
         FamilyRenderCompletion {
             output: self.svg,
-            report: FamilyRenderReport::freeze(self.family_kind, self.session),
+            report: FamilyRenderReport::freeze(self.style_report, self.session),
         }
     }
 }
@@ -778,7 +1140,7 @@ impl RenderedFamilySvg {
 /// Renderer-owned family output after the terminal resvg compatibility finalizer.
 pub struct RenderedResvgCompatibleSvg {
     svg: ResvgCompatibleSvg,
-    family_kind: RenderFamilyKind,
+    style_report: FamilyStyleReport,
     session: RenderSession,
 }
 
@@ -788,13 +1150,17 @@ impl RenderedResvgCompatibleSvg {
     }
 
     pub const fn family_kind(&self) -> RenderFamilyKind {
-        self.family_kind
+        self.style_report.family_kind()
+    }
+
+    pub const fn style_report(&self) -> &FamilyStyleReport {
+        &self.style_report
     }
 
     pub fn into_completion(self) -> FamilyRenderCompletion<ResvgCompatibleSvg> {
         FamilyRenderCompletion {
             output: self.svg,
-            report: FamilyRenderReport::freeze(self.family_kind, self.session),
+            report: FamilyRenderReport::freeze(self.style_report, self.session),
         }
     }
 }
@@ -906,11 +1272,11 @@ impl FamilyRenderArtifact {
             family: _,
             context,
         } = self;
-        let (session, family_kind) = context.into_session_and_family();
+        let (session, style_report) = context.into_session_and_style_report();
 
         Ok(RenderedFamilySvg {
             svg,
-            family_kind,
+            style_report,
             metadata,
             session,
         })
@@ -1231,14 +1597,17 @@ pub fn prepare(
 fn prepare_non_class_render(
     parsed: ParsedDiagramRender,
     options: &LayoutOptions,
-    context: FamilyRenderContext,
+    mut context: FamilyRenderContext,
 ) -> Result<FamilyRenderArtifact> {
     let (meta, model, render_context) = parsed.into_render_parts();
     let flowchart_label_sources = render_context.into_flowchart_label_sources();
     let diagram_type = meta.diagram_type.as_str();
-    let execution = LayoutExecution::new(options, context.execution());
     let effective_config = meta.effective_config.as_value();
     let title = meta.title.as_deref();
+    if let RenderSemanticModel::State(model) = &model {
+        context.adapt_state(model, effective_config)?;
+    }
+    let execution = LayoutExecution::new(options, context.execution());
     let family = match model {
         RenderSemanticModel::Error(model) => {
             BuiltinFamilyArtifact::Error(prepare_pair(model, |model| {
@@ -1264,6 +1633,9 @@ fn prepare_non_class_render(
                 crate::state::layout_state_diagram_typed(
                     model,
                     effective_config,
+                    execution
+                        .state_style_plan()
+                        .expect("State family layout requires an adapted style plan"),
                     execution.text_measurer(),
                 )
             })?)
@@ -1737,6 +2109,10 @@ mod tests {
             .expect("render themed family SVG");
         assert_eq!(rendered.family_kind(), RenderFamilyKind::Swimlane);
         assert_eq!(
+            rendered.style_report().verification(),
+            FamilyStyleVerification::Verified
+        );
+        assert_eq!(
             rendered.session.theme_fingerprint(),
             Some(theme.fingerprint())
         );
@@ -1754,6 +2130,7 @@ mod tests {
             .finalize_resvg(&SvgPipeline::resvg_safe())
             .expect("finalize themed family SVG");
         assert_eq!(finalized.family_kind(), RenderFamilyKind::Swimlane);
+        assert!(finalized.style_report().is_verified());
         assert_eq!(
             finalized.session.theme_fingerprint(),
             Some(theme.fingerprint())
@@ -1772,6 +2149,88 @@ mod tests {
             completion.report().session_report().theme_fingerprint(),
             Some(theme.fingerprint())
         );
+        assert_eq!(
+            completion.report().style_report(),
+            &FamilyStyleReport {
+                family_kind: RenderFamilyKind::Swimlane,
+                residuals: Vec::new(),
+            }
+        );
+    }
+
+    #[test]
+    fn state_style_residual_survives_terminal_svg_completion() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "stateDiagram-v2\nclassDef broken font-size:not-a-size\n[*] --> Ready:::broken\nReady --> [*]\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("State source should produce a render model");
+        let rendered = prepare(parsed, &LayoutOptions::default(), session())
+            .expect("best-effort State preparation")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render State SVG");
+
+        assert_eq!(rendered.family_kind(), RenderFamilyKind::State);
+        assert_eq!(
+            rendered.style_report().verification(),
+            FamilyStyleVerification::Unverified
+        );
+        let residual = rendered
+            .style_report()
+            .residuals()
+            .first()
+            .cloned()
+            .expect("invalid font-size residual");
+        assert_eq!(residual.property(), Some("font-size"));
+        assert_eq!(residual.owner_id(), "Ready");
+        assert_eq!(residual.class_id(), Some("broken"));
+        assert_eq!(residual.origin(), FamilyStyleOrigin::AssignedClass);
+        assert_eq!(residual.channel(), FamilyStyleChannel::Label);
+        assert_eq!(residual.reason(), FamilyStyleResidualReason::InvalidValue);
+
+        let completion = rendered
+            .finalize_resvg(&SvgPipeline::resvg_safe())
+            .expect("finalize State SVG")
+            .into_completion();
+        assert_eq!(
+            completion.report().style_report().residuals(),
+            std::slice::from_ref(&residual)
+        );
+    }
+
+    #[test]
+    fn require_portable_rejects_state_style_residual_before_layout() {
+        let theme = DiagramThemeCompiler::new()
+            .with_portability_requirement(
+                crate::diagram_theme::ThemePortabilityRequirement::RequirePortable,
+            )
+            .compile(DiagramThemeSpec::new())
+            .expect("compile strict portable theme");
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "stateDiagram-v2\nclassDef broken font-size:not-a-size\n[*] --> Ready:::broken\nReady --> [*]\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("State source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_theme(&theme)
+            .expect("begin strict portable render session");
+
+        let error = match prepare(parsed, &LayoutOptions::default(), session) {
+            Ok(_) => panic!("strict portability must reject an unverified State style"),
+            Err(error) => error,
+        };
+        let (family_kind, residual_count, residual) = error
+            .unverified_family_style()
+            .expect("structured family style portability error");
+        assert_eq!(family_kind, RenderFamilyKind::State);
+        assert_eq!(residual_count, 1);
+        assert_eq!(residual.owner_id(), "Ready");
+        assert_eq!(residual.property(), Some("font-size"));
+        assert_eq!(residual.reason(), FamilyStyleResidualReason::InvalidValue);
     }
 
     #[test]

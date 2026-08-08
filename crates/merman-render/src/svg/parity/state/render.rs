@@ -13,6 +13,11 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     let total_timer = timing.start();
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let style_plan = options
+        .state_style_plan()
+        .ok_or_else(|| Error::InvalidModel {
+            message: "state SVG rendering requires the pre-layout family style plan".to_string(),
+        })?;
 
     let _g_build_ctx = timing.section(&mut timings.build_ctx);
 
@@ -70,8 +75,6 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         .acc_descr
         .as_deref()
         .is_some_and(|s| !s.trim().is_empty());
-
-    let text_style = state_render_settings.text_style.clone();
 
     let mut nodes_by_id: FxHashMap<&str, &StateSvgNode> =
         FxHashMap::with_capacity_and_hasher(model.nodes.len(), Default::default());
@@ -132,8 +135,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         include_edges: options.debug.include_edges,
         include_nodes: options.debug.include_nodes,
         measurer,
-        text_style,
-        theme_defaults: StateThemeDefaults::from_config(effective_config),
+        style_plan,
         rough_cache,
         #[cfg(test)]
         rough_lifecycle_probe,
@@ -287,7 +289,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     const TITLE_PLACEHOLDER_COMMENT: &str = "<!--__MERMAID_TITLE__-->";
 
     // Mermaid emits a single `<style>` element with diagram-scoped CSS.
-    let css = state_css(diagram_id, model, effective_config);
+    let css = state_css(diagram_id, effective_config, style_plan);
 
     let estimated_svg_bytes = 2048usize
         + css.len()
@@ -337,7 +339,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
-    state_markers(&mut out, diagram_id, effective_config);
+    state_markers(&mut out, diagram_id, style_plan);
 
     // `svg.getBBox()` does not include `<style>` and typically excludes non-rendered `<defs>`
     // content from the rendered bbox. Scan only the rendered graph payload to reduce overhead
@@ -356,7 +358,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     let bounds_scan_end = out.len();
 
     out.push_str("</g>");
-    state_root_defs(&mut out, diagram_id, effective_config);
+    state_root_defs(&mut out, diagram_id, effective_config, style_plan);
     out.push_str(TITLE_PLACEHOLDER_COMMENT);
     out.push_str("</svg>\n");
 
@@ -382,8 +384,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         let title_x = (content_bounds.min_x + content_bounds.max_x) / 2.0;
         let title_y = -title_top_margin;
 
-        let mut title_style = crate::state::state_text_style(effective_config);
-        title_style.font_size = 18.0;
+        let title_style = style_plan.title_text_style();
         let (title_left, title_right) = measurer.measure_svg_title_bbox_x(title, &title_style);
 
         let (ascent, descent) = crate::text::svg_title_bbox_vertical_extents_px(&title_style);
@@ -394,11 +395,17 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         content_bounds.max_y = content_bounds.max_y.max(title_y + descent);
 
         title_svg = String::with_capacity(title.len() + 128);
+        let title_style_attr = if style_plan.title_style_attr().is_empty() {
+            String::new()
+        } else {
+            format!(r#" style="{}""#, escape_attr(style_plan.title_style_attr()))
+        };
         let _ = write!(
             &mut title_svg,
-            r#"<text text-anchor="middle" x="{}" y="{}" class="statediagramTitleText">{}</text>"#,
+            r#"<text text-anchor="middle" x="{}" y="{}" class="statediagramTitleText"{}>{}</text>"#,
             fmt(title_x),
             fmt(title_y),
+            title_style_attr,
             escape_xml_display(title)
         );
     }
@@ -791,14 +798,59 @@ fn render_state_cluster(
     let x = left - origin_x;
     let y = top - origin_y;
     let dom_id = state_node_scoped_dom_id(ctx, cluster_id);
+    let node_style = ctx.style_plan.node(cluster_id);
+    let body_style = node_style
+        .map(crate::state::StateNodeStylePlan::shape_style_attr)
+        .unwrap_or_default();
+    let header_style = node_style
+        .map(crate::state::StateNodeStylePlan::composite_header_style_attr)
+        .unwrap_or_default();
+    let label_style = node_style
+        .map(crate::state::StateNodeStylePlan::label_style_attr)
+        .unwrap_or_default();
+    let label_div_prefix = node_style
+        .map(crate::state::StateNodeStylePlan::div_style_prefix)
+        .unwrap_or_default();
+    let title_style = node_style
+        .map(|style| {
+            let header_text_style = style.composite_header_text_style_attr();
+            if header_text_style.is_empty() {
+                style.label_style_attr()
+            } else {
+                header_text_style
+            }
+        })
+        .unwrap_or(label_style);
+    let title_div_prefix = node_style
+        .map(|style| {
+            let header_text_prefix = style.composite_header_text_div_style_prefix();
+            if header_text_prefix.is_empty() {
+                style.div_style_prefix()
+            } else {
+                header_text_prefix
+            }
+        })
+        .unwrap_or(label_div_prefix);
+    let radius_attrs = node_style
+        .and_then(crate::state::StateNodeStylePlan::radius_override)
+        .map(|radius| {
+            format!(
+                r#" rx="{}" ry="{}""#,
+                fmt(radius.max(0.0)),
+                fmt(radius.max(0.0))
+            )
+        })
+        .unwrap_or_default();
 
     if shape == "divider" {
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-look="{}"><g><rect class="divider" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g></g>"#,
+            r#"<g class="{}" id="{}" data-look="{}"><g><rect class="divider" style="{}"{} x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g></g>"#,
             escape_attr(class),
             escape_attr(&dom_id),
             escape_attr(data_look),
+            escape_attr(body_style),
+            radius_attrs,
             fmt(x),
             fmt(y),
             fmt(cluster.width.max(1.0)),
@@ -814,50 +866,73 @@ fn render_state_cluster(
         .copied()
         .map(state_node_label_text)
         .unwrap_or_else(|| cluster_id.to_string());
+    let title_height = cluster.title_label.height.max(0.0);
+    let inner_y = y + title_height + 2.0;
+    let inner_height = (cluster.height - title_height - 6.0).max(1.0);
 
     if ctx.html_labels {
+        let label_div_style = format!(
+            "{}display: table-cell; white-space: nowrap; line-height: 1.5;",
+            title_div_prefix
+        );
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
+            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" style="{}"{} x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" style="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g><rect class="inner" style="{}"{} x="{}" y="{}" width="{}" height="{}"/></g>"#,
             escape_attr(class),
             escape_attr(&dom_id),
             escape_attr(cluster_id),
             escape_attr(data_look),
+            escape_attr(header_style),
+            radius_attrs,
             fmt(x),
             fmt(y),
             fmt(cluster.width.max(1.0)),
             fmt(cluster.height.max(1.0)),
             escape_attr(data_look),
+            escape_attr(title_style),
             fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
             fmt(y + 1.0),
             fmt(cluster.title_label.width.max(0.0)),
+            fmt(title_height),
+            escape_attr(&label_div_style),
             escape_xml(&title),
+            escape_attr(body_style),
+            radius_attrs,
             fmt(x),
-            fmt(y + 26.0),
+            fmt(inner_y),
             fmt(cluster.width.max(1.0)),
-            fmt((cluster.height - 30.0).max(1.0))
+            fmt(inner_height)
         );
     } else {
-        let title_dom = state_svg_text_label(&title, false, None);
+        let title_dom = state_svg_text_label(
+            &title,
+            false,
+            (!title_style.is_empty()).then_some(title_style),
+        );
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})">{}</g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
+            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" style="{}"{} x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" style="{}" transform="translate({}, {})">{}</g><rect class="inner" style="{}"{} x="{}" y="{}" width="{}" height="{}"/></g>"#,
             escape_attr(class),
             escape_attr(&dom_id),
             escape_attr(cluster_id),
             escape_attr(data_look),
+            escape_attr(header_style),
+            radius_attrs,
             fmt(x),
             fmt(y),
             fmt(cluster.width.max(1.0)),
             fmt(cluster.height.max(1.0)),
             escape_attr(data_look),
+            escape_attr(title_style),
             fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
-            fmt(y + 1.0),
+            fmt(y - 2.0),
             title_dom,
+            escape_attr(body_style),
+            radius_attrs,
             fmt(x),
-            fmt(y + 21.0),
+            fmt(inner_y),
             fmt(cluster.width.max(1.0)),
-            fmt((cluster.height - 29.0).max(1.0))
+            fmt(inner_height)
         );
     }
 }

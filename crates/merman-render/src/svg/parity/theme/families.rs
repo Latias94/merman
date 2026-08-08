@@ -592,7 +592,7 @@ impl<'a> MermaidThemeAdapter<'a> {
         }
     }
 
-    pub(in crate::svg::parity) fn state_diagram(&self) -> StateDiagramTheme {
+    pub(crate) fn state_diagram(&self) -> crate::state::StateCompatibilityStyle {
         let node_border = self.raw.color("nodeBorder", "#9370DB");
         let main_bkg = self.raw.color("mainBkg", "#ECECFF");
         let background = self.raw.color("background", "white");
@@ -633,8 +633,18 @@ impl<'a> MermaidThemeAdapter<'a> {
             background.clone()
         };
 
-        StateDiagramTheme {
-            common: self.common.clone(),
+        crate::state::StateCompatibilityStyle {
+            dark_mode: self.common.is_dark_theme(),
+            neo: self.common.is_neo(),
+            font_family_css: self.common.font_family_css.clone(),
+            font_size_px: self.common.font_size_px,
+            text_color: self.common.text_color.clone(),
+            title_color: self
+                .raw
+                .color("titleColor", self.common.text_color.as_str()),
+            line_color: self.common.line_color.clone(),
+            error_bkg: self.common.error_bkg.clone(),
+            error_text: self.common.error_text.clone(),
             transition_color,
             node_border: node_border.clone(),
             background: background.clone(),

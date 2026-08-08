@@ -40,6 +40,11 @@ type StateSvgLink = merman_core::diagrams::state::StateDiagramRenderLink;
 type StateSvgLinks = merman_core::diagrams::state::StateDiagramRenderLinks;
 type StateSvgNode = merman_core::diagrams::state::StateDiagramRenderNode;
 type StateSvgEdge = merman_core::diagrams::state::StateDiagramRenderEdge;
+
+fn state_transition_marker_id(diagram_id: &str, ordinal: usize) -> String {
+    format!("{diagram_id}_stateDiagram-barbEnd-{ordinal}")
+}
+
 struct StateRenderCtx<'a> {
     diagram_id: String,
     diagram_look: String,
@@ -62,8 +67,7 @@ struct StateRenderCtx<'a> {
     include_edges: bool,
     include_nodes: bool,
     measurer: &'a dyn TextMeasurer,
-    text_style: crate::text::TextStyle,
-    theme_defaults: StateThemeDefaults,
+    style_plan: &'a crate::state::StateStylePlan,
     rough_cache: StateRoughCache,
     // Keep this field after the operation cache. Rust drops fields in declaration order, so the
     // test-only probe observes retained global/TLS state after operation-owned entries release.

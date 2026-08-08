@@ -134,6 +134,7 @@ The requirement IDs in this document form a new namespace. They do not preserve 
 - R37. Runtime discovery must report known theme presets, explicit renderer/layout options, required compiled capabilities, portability support, supported font containers, semantic target catalogs, and output-specific residuals from Rust-owned descriptors. It must not advertise a hidden `merman-modern` bundle.
 - R38. `merman-fixture-render-context` must remain a test-only owner of source-bound fixture config and DOM evidence. Theme assets and portability fixtures must use a separate theme fixture catalog.
 - R39. The modern theme capability corpus must completely classify the diagram and canvas mechanics of all 24 local `modern_mermaid` themes plus the visual mechanisms contributed through Merman PR #28. Portable mechanisms must map to typed capabilities and fixtures; Aurora backdrop blur remains an explicit residual unless a source-backed portable implementation is found. These references are manually decomposed into typed capabilities and product examples; they are not imported as TypeScript/CSS input languages.
+- R39a. Modern-theme validation targets semantic and visual-mechanism equivalence rather than browser-engine pixel identity. Merman-owned examples must be able to reconstruct the visual language of representative `modern_mermaid` themes through typed theme data across multiple diagram families and enabled outputs. Browser font rasterization, `getBBox()` floats, HTML-label layout, RoughJS geometry, and other implementation-specific differences may remain only as named, bounded residuals; they must not excuse missing contrast, clipped geometry, omitted semantic roles, or unsupported admitted theme capabilities.
 - R40. Annotation colors and the interactive annotation overlay from `modern_mermaid` must remain application-owned and outside the core diagram-theme contract.
 - R41. `Portable` means the same admitted visual semantics, resources, bounds, and fallback decisions across the enabled outputs. It must not be documented as platform-independent text raster pixels or browser `getBBox()` floats.
 - R42. `ThemeAdmissionPolicy`, `ThemeResourcePolicy`, and `RenderResourcePolicy` must be constructor/host-owned monotonic ceilings with separate ownership. Theme input, font decoding/catalog compilation, and typed effect-graph compilation use `ThemeResourcePolicy`; source/layout/SVG/postprocessing operations use `RenderResourcePolicy`. Request themes may declare stricter requirements but cannot enable system fonts, `BestEffort` portability admission, host-measurement fallbacks, raw resources, or larger budgets that the host disabled.
@@ -238,6 +239,7 @@ The requirement IDs in this document form a new namespace. They do not preserve 
 - AE21. A named `pr28-modern-slate` documented composition example records source and contributor provenance and is expressed as a visual theme plus explicit `look: neo`, ELK/layout, and family configuration, with no `MermanModern` compatibility type. Every retained PR #28 visual mechanism has a typed mapping and fixture witness. Covers R4, R8, R34, and R39.
 - AE22. Hand Drawn binds independently bounded node and line effect graphs, Cyberpunk composes multiple shadows and text glow, Ghibli uses explicit `none` plus opacity, Spotless exercises dash/linecap/linejoin, and edge-label content padding changes measurement without changing Flowchart route/mask clearance. Covers R18a, R19b, R21-R23, and R39.
 - AE23. A portable theme rejects `.node#B` or any other arbitrary element-ID selector while the trusted raw-CSS compatibility lane can retain it only as `Unverified`. Covers R18b, R24, and R35.
+- AE24. Runnable Merman-owned showcases manually reconstruct Brutalist, Cyberpunk, Ghibli, Hand Drawn, Memphis, and Spotless from the pinned local capability corpus without loading its TypeScript or CSS at runtime. Each showcase renders representative Flowchart, State, and Sequence inputs, records any implementation-specific residual, and demonstrates readable labels, complete geometry, and the same admitted semantics in standalone SVG and enabled native outputs. Covers R12-R16a, R18-R24, R39, R39a, and R41.
 
 ### Success Criteria
 
@@ -246,6 +248,7 @@ The requirement IDs in this document form a new namespace. They do not preserve 
 - Portable custom themes use one font catalog and one resolved style plan across layout and every output.
 - Canvas and effect paint cannot be clipped by a viewport that was planned before their outsets were known.
 - The modern capability corpus has a source-backed expression result for every theme mechanism and a named residual for anything not portable.
+- Representative modern-theme showcases demonstrate semantic and visual-mechanism equivalence without asserting browser-engine pixel identity.
 - Dark State and Sequence diagrams can be driven from generic design-system tokens without hard-coded light paint or typography clipping.
 - The useful visual and layout ideas from PR #28 remain traceable even though the provisional mixed profile implementation is deleted.
 - Unreleased provisional APIs and compatibility shims are deleted instead of preserved.
@@ -807,6 +810,7 @@ The final receipt must name the exact artifact-profile feature sets used for FFI
 - Best-effort mode records every fallback and approximation.
 - Canvas/effect fixtures have non-clipped SVG bounds and nonblank PNG/JPEG/PDF output.
 - Dark State and Sequence fixtures preserve contrast and unclipped long-label geometry in standalone SVG, PNG, JPEG, and PDF while reusing the same compiled light/dark theme instances across operations and independent renderer instances.
+- Brutalist, Cyberpunk, Ghibli, Hand Drawn, Memphis, and Spotless showcase fixtures are expressed entirely through Rust-owned typed themes, render across Flowchart, State, and Sequence, and name every browser- or RoughJS-specific residual instead of weakening semantic, contrast, geometry, or portability assertions.
 - Owner-local theme resource limits cover encoded JSON/base64, compressed and decoded font bytes, faces, tables, catalog totals, CSS font data, and typed effect graphs; render resource limits separately cover layout/SVG/filter-raster/postprocessor work. Request overlays can only tighten their own namespace.
 - Options JSON and every binding enforce preset/spec exclusivity, omit/null/empty semantics, external-path/URL rejection, and unknown raw structural-input rejection.
 - Browser SVG font data passes the canonical Web policy, the generated VS Code copy stays current, and raw CSS security outcomes remain independent from portability grades.
@@ -848,6 +852,7 @@ The final receipt must name the exact artifact-profile feature sets used for FFI
 - Options JSON is a closed preset-or-complete-spec union, and general binding diagnostics are bounded and redacted.
 - Web/VS Code SVG safety policies, rendering threat docs, and the theme-font fuzz target cover the new resource boundary.
 - the modern capability corpus completely classifies all 24 themes, maps every admitted portable mechanism to typed evidence, records PR #28 contribution provenance, provides one named attributed PR #28-derived composition example, and names the explicit Aurora residual.
+- representative Brutalist, Cyberpunk, Ghibli, Hand Drawn, Memphis, and Spotless examples prove that typed Merman themes can reconstruct their semantic visual language across Flowchart, State, Sequence, SVG, and enabled native outputs without treating browser-level pixel identity as the compatibility contract.
 - design-system token fixtures prove reusable light/dark State and Sequence themes with readable, unclipped long labels.
 - provisional presentation APIs, dead code, and obsolete docs are removed.
 - focused nextest, cross-target checks, visual evidence, and multi-agent reviews pass.

@@ -90,36 +90,6 @@ pub(super) struct SequenceDiagramTheme {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct StateDiagramTheme {
-    pub(super) common: CommonCssTheme,
-    pub(super) transition_color: String,
-    pub(super) node_border: String,
-    pub(super) background: String,
-    pub(super) main_bkg: String,
-    pub(super) alt_background: String,
-    pub(super) stroke_width: String,
-    pub(super) stroke_width_px: String,
-    pub(super) rough_stroke_width_value: f64,
-    pub(super) note_border: String,
-    pub(super) note_bkg: String,
-    pub(super) note_text: String,
-    pub(super) label_background: String,
-    pub(super) edge_label_background: String,
-    pub(super) transition_label_color: String,
-    pub(super) special_state_color: String,
-    pub(super) inner_end_background: String,
-    pub(super) end_outer_fill: String,
-    pub(super) end_outer_stroke: String,
-    pub(super) end_inner_stroke: String,
-    pub(super) composite_background: String,
-    pub(super) state_bkg: String,
-    pub(super) state_border: String,
-    pub(super) composite_title_background: String,
-    pub(super) state_label_color: String,
-    pub(super) drop_shadow: String,
-}
-
-#[derive(Debug, Clone)]
 pub(crate) struct XyChartTheme {
     pub(crate) background_color: String,
     pub(crate) title_color: String,

@@ -25,10 +25,14 @@ pub enum ThemeTarget {
     State,
     StateLabel,
     Transition,
+    TransitionMarker,
     TransitionLabel,
+    TransitionLabelBackground,
     Composite,
+    CompositeHeader,
     CompositeLabel,
     SpecialState,
+    SpecialStateInner,
     Actor,
     ActorLabel,
     Lifeline,
@@ -48,7 +52,11 @@ pub enum ThemeTarget {
 }
 
 impl ThemeTarget {
-    pub const ALL: [Self; 38] = [
+    /// Stable enumeration view for catalogs and bindings.
+    ///
+    /// Keep the collection behind a slice so adding a semantic target does not expose the
+    /// collection length as part of the Rust type contract.
+    pub const ALL: &'static [Self] = &[
         Self::Canvas,
         Self::Node,
         Self::NodeLabel,
@@ -67,10 +75,14 @@ impl ThemeTarget {
         Self::State,
         Self::StateLabel,
         Self::Transition,
+        Self::TransitionMarker,
         Self::TransitionLabel,
+        Self::TransitionLabelBackground,
         Self::Composite,
+        Self::CompositeHeader,
         Self::CompositeLabel,
         Self::SpecialState,
+        Self::SpecialStateInner,
         Self::Actor,
         Self::ActorLabel,
         Self::Lifeline,
@@ -109,10 +121,14 @@ impl ThemeTarget {
             Self::State => "state",
             Self::StateLabel => "state-label",
             Self::Transition => "transition",
+            Self::TransitionMarker => "transition-marker",
             Self::TransitionLabel => "transition-label",
+            Self::TransitionLabelBackground => "transition-label-background",
             Self::Composite => "composite",
+            Self::CompositeHeader => "composite-header",
             Self::CompositeLabel => "composite-label",
             Self::SpecialState => "special-state",
+            Self::SpecialStateInner => "special-state-inner",
             Self::Actor => "actor",
             Self::ActorLabel => "actor-label",
             Self::Lifeline => "lifeline",
@@ -137,10 +153,14 @@ impl ThemeTarget {
             Self::State
             | Self::StateLabel
             | Self::Transition
+            | Self::TransitionMarker
             | Self::TransitionLabel
+            | Self::TransitionLabelBackground
             | Self::Composite
+            | Self::CompositeHeader
             | Self::CompositeLabel
-            | Self::SpecialState => {
+            | Self::SpecialState
+            | Self::SpecialStateInner => {
                 matches!(family, RenderFamilyKind::State)
             }
             Self::Actor
@@ -486,6 +506,26 @@ pub enum StrokeLineJoin {
     Miter,
     Round,
     Bevel,
+}
+
+impl StrokeLineCap {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::Butt => "butt",
+            Self::Round => "round",
+            Self::Square => "square",
+        }
+    }
+}
+
+impl StrokeLineJoin {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::Miter => "miter",
+            Self::Round => "round",
+            Self::Bevel => "bevel",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

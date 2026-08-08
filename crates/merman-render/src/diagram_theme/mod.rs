@@ -10,6 +10,7 @@ mod presets;
 mod resolved;
 mod resources;
 mod semantic;
+mod source_styles;
 mod spec;
 mod tokens;
 mod typography;
@@ -40,7 +41,9 @@ pub use effects::{
 pub use presets::{
     ThemePreset, ThemePresetDescriptor, ThemePresetParseError, theme_preset_descriptors,
 };
-pub use resolved::{ResolvedDiagramTheme, ResolvedThemeStyle};
+pub use resolved::{
+    ResolvedDiagramTheme, ResolvedProperty, ResolvedThemeStyle, ResolvedTypography,
+};
 pub use resources::{
     MAX_FONT_ALIASES_HARD_CAP, MAX_FONT_ASSET_COMPRESSED_BYTES_HARD_CAP,
     MAX_FONT_ASSET_DECODED_BYTES_HARD_CAP, MAX_FONT_ASSETS_HARD_CAP,
@@ -61,6 +64,11 @@ pub use tokens::ThemeTokens;
 pub use typography::{
     FontStack, LineHeight, Specified, TextAlign, TextDecoration, TextStyle as ThemeTextStyle,
     TextStylePatch, TextTransform, TypographySpec, WhiteSpace, WrapMode as ThemeWrapMode,
+};
+
+pub(crate) use source_styles::{
+    PreparedSourceStyleDeclaration, SourceStyleChannel, SourceStyleDeclaration, SourceStyleOrigin,
+    SourceStyleProvenance, SourceStyleResidual, SourceStyleResidualReason,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]

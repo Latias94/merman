@@ -163,6 +163,7 @@ pub(super) struct StateRoughCacheKey {
     pub(super) tag: u8,
     pub(super) a: u64,
     pub(super) b: u64,
+    pub(super) c: u64,
     pub(super) seed: roughr::core::RoughJsSeed,
 }
 

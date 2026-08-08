@@ -1362,10 +1362,14 @@ fn parse_theme_target(value: &str, field: &'static str) -> Result<ThemeTarget, B
         "state" => ThemeTarget::State,
         "state-label" => ThemeTarget::StateLabel,
         "transition" => ThemeTarget::Transition,
+        "transition-marker" => ThemeTarget::TransitionMarker,
         "transition-label" => ThemeTarget::TransitionLabel,
+        "transition-label-background" => ThemeTarget::TransitionLabelBackground,
         "composite" => ThemeTarget::Composite,
+        "composite-header" => ThemeTarget::CompositeHeader,
         "composite-label" => ThemeTarget::CompositeLabel,
         "special-state" => ThemeTarget::SpecialState,
+        "special-state-inner" => ThemeTarget::SpecialStateInner,
         "actor" => ThemeTarget::Actor,
         "actor-label" => ThemeTarget::ActorLabel,
         "lifeline" => ThemeTarget::Lifeline,
@@ -1618,6 +1622,18 @@ fn invalid_options(message: impl Into<String>) -> BindingError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_semantic_target_id_round_trips_through_the_binding_parser() {
+        for &target in ThemeTarget::ALL {
+            let id = target.id();
+            assert_eq!(
+                parse_theme_target(id, "theme.spec.styles.target").unwrap(),
+                target,
+                "binding theme parser must accept semantic target `{id}`"
+            );
+        }
+    }
 
     #[test]
     fn theme_wire_requires_exactly_one_selection() {

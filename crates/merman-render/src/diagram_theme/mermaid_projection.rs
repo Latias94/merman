@@ -43,6 +43,7 @@ struct CompatibilityThemeRoles {
     surface_alt: Option<String>,
     surface_muted: Option<String>,
     text: Option<String>,
+    title: Option<String>,
     subtle_text: Option<String>,
     border: Option<String>,
     line: Option<String>,
@@ -92,6 +93,8 @@ impl CompatibilityThemeRoles {
             .or_else(|| surface_alt.clone());
         let text = fill(spec, RenderFamilyKind::Flowchart, ThemeTarget::Text)
             .or_else(|| fill(spec, RenderFamilyKind::Flowchart, ThemeTarget::NodeLabel));
+        let title =
+            fill(spec, RenderFamilyKind::State, ThemeTarget::Title).or_else(|| text.clone());
         let subtle_text = fill(spec, RenderFamilyKind::Flowchart, ThemeTarget::ClusterLabel)
             .or_else(|| text.clone());
         let border = stroke(spec, RenderFamilyKind::Flowchart, ThemeTarget::Node);
@@ -194,6 +197,7 @@ impl CompatibilityThemeRoles {
             surface_alt: surface_alt.clone(),
             surface_muted: surface_muted.clone(),
             text,
+            title,
             subtle_text,
             border,
             line,
@@ -249,7 +253,7 @@ fn put_theme_roles(theme_variables: &mut Map<String, Value>, roles: &Compatibili
     put_opt(theme_variables, "primaryTextColor", roles.text.as_deref());
     put_opt(theme_variables, "nodeTextColor", roles.text.as_deref());
     put_opt(theme_variables, "textColor", roles.text.as_deref());
-    put_opt(theme_variables, "titleColor", roles.text.as_deref());
+    put_opt(theme_variables, "titleColor", roles.title.as_deref());
     put_opt(
         theme_variables,
         "secondaryTextColor",

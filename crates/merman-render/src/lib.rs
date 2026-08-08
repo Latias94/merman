@@ -183,6 +183,14 @@ pub enum Error {
         capability: RenderCapability,
         diagram_type: String,
     },
+    #[error(
+        "portable theme rendering rejected {residual_count} unverified family style residual(s) for `{family_kind}`; first residual: {first_residual}"
+    )]
+    UnverifiedFamilyStyle {
+        family_kind: RenderFamilyKind,
+        residual_count: usize,
+        first_residual: crate::family::FamilyStyleResidual,
+    },
     #[error("invalid semantic model: {message}")]
     InvalidModel { message: String },
     #[error(
@@ -242,6 +250,19 @@ impl Error {
     pub const fn missing_capability(&self) -> Option<RenderCapability> {
         match self {
             Self::MissingCapability { capability, .. } => Some(*capability),
+            _ => None,
+        }
+    }
+
+    pub const fn unverified_family_style(
+        &self,
+    ) -> Option<(RenderFamilyKind, usize, &crate::family::FamilyStyleResidual)> {
+        match self {
+            Self::UnverifiedFamilyStyle {
+                family_kind,
+                residual_count,
+                first_residual,
+            } => Some((*family_kind, *residual_count, first_residual)),
             _ => None,
         }
     }
@@ -329,6 +350,10 @@ impl<'a> LayoutExecution<'a> {
 
     pub(crate) const fn family_kind(&self) -> RenderFamilyKind {
         self.family.family_kind()
+    }
+
+    pub(crate) fn state_style_plan(&self) -> Option<&crate::state::StateStylePlan> {
+        self.family.style_plan().and_then(|plan| plan.state())
     }
 
     pub(crate) fn text_measurer(&self) -> &dyn crate::text::TextMeasurer {

@@ -60,7 +60,6 @@ struct StateDagreInput {
     dagre_id_by_semantic_id: HashMap<String, String>,
     dir_by_dagre_id: HashMap<String, Option<String>>,
     explicit_dir_ids: HashSet<String>,
-    text_style: TextStyle,
     wrap_mode: WrapMode,
     wrapping_width: f64,
     html_labels: bool,
@@ -119,93 +118,14 @@ fn edge_label_metrics(
 fn node_label_metrics(
     label: &str,
     wrapping_width: f64,
-    node_css_compiled_styles: &[String],
-    node_css_styles: &[String],
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
     wrap_mode: WrapMode,
 ) -> (f64, f64) {
-    fn parse_css_px_f64(v: &str) -> Option<f64> {
-        let t = v.trim();
-        let t = t.trim_end_matches(';').trim();
-        let t = t.trim_end_matches("!important").trim();
-        let t = t.trim_end_matches("px").trim();
-        t.parse::<f64>().ok()
-    }
-
-    fn parse_text_style_overrides(
-        compiled: &[String],
-        direct: &[String],
-    ) -> (Option<String>, Option<String>, Option<f64>, Option<String>) {
-        let mut weight: Option<String> = None;
-        let mut font_style: Option<String> = None;
-        let mut font_size_px: Option<f64> = None;
-        let mut font_family: Option<String> = None;
-
-        for raw in compiled.iter().chain(direct.iter()) {
-            let raw = raw.trim().trim_end_matches(';').trim();
-            if raw.is_empty() {
-                continue;
-            }
-            let Some((k, v)) = raw.split_once(':') else {
-                continue;
-            };
-            let key = k.trim().to_ascii_lowercase();
-            let val = v.trim();
-            match key.as_str() {
-                "font-weight" => {
-                    let val = val.trim_end_matches("!important").trim();
-                    if !val.is_empty() {
-                        weight = Some(val.to_string());
-                    }
-                }
-                "font-style" => {
-                    let val = val.trim_end_matches("!important").trim();
-                    if !val.is_empty() {
-                        font_style = Some(val.to_string());
-                    }
-                }
-                "font-size" => {
-                    if let Some(px) = parse_css_px_f64(val)
-                        && px.is_finite()
-                        && px > 0.0
-                    {
-                        font_size_px = Some(px);
-                    }
-                }
-                "font-family" => {
-                    let val = val.trim_end_matches("!important").trim();
-                    if !val.is_empty() {
-                        font_family = Some(val.to_string());
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        (weight, font_style, font_size_px, font_family)
-    }
-
-    let (weight, font_style, font_size_px, font_family) =
-        parse_text_style_overrides(node_css_compiled_styles, node_css_styles);
-    let mut style = text_style.clone();
-    if let Some(px) = font_size_px {
-        style.font_size = px;
-    }
-    if let Some(ff) = font_family {
-        style.font_family = Some(ff);
-    }
-    if let Some(weight) = weight {
-        style.font_weight = Some(weight);
-    }
-    if let Some(font_style) = font_style {
-        style.font_style = Some(font_style);
-    }
-
     let metrics = super::measure_state_markdown_label(
         label,
         measurer,
-        &style,
+        text_style,
         Some(wrapping_width),
         wrap_mode,
     )
@@ -1235,9 +1155,10 @@ fn compact_self_loop_edges(
 pub(crate) fn layout_state_diagram_typed(
     model: &StateDiagramModel,
     effective_config: &Value,
+    style_plan: &super::StateStylePlan,
     measurer: &dyn TextMeasurer,
 ) -> Result<StateDiagramLayout> {
-    layout_state_diagram_inner(model, effective_config, measurer)
+    layout_state_diagram_inner(model, effective_config, style_plan, measurer)
 }
 
 fn state_hidden_prefixes(model: &StateDiagramModel) -> Vec<String> {
@@ -1277,6 +1198,7 @@ fn dagre_id_for_node(n: &StateNode) -> String {
 fn build_state_diagram_dagre_input(
     model: &StateDiagramModel,
     effective_config: &Value,
+    style_plan: &super::StateStylePlan,
     measurer: &dyn TextMeasurer,
 ) -> Result<StateDagreInput> {
     // Mermaid accepts some historical "floating note" syntaxes in the parser but does not render them.
@@ -1302,8 +1224,8 @@ fn build_state_diagram_dagre_input(
         wrap_mode,
         wrapping_width,
         state_padding,
-        text_style,
     } = StateConfigView::new(effective_config).layout_settings(&model.direction);
+    let text_style = style_plan.base_text_style().clone();
     let diagram_dir = graph_label.rankdir;
 
     let mut graph = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
@@ -1333,7 +1255,15 @@ fn build_state_diagram_dagre_input(
                 ..Default::default()
             }
         } else {
-            let padding = n.padding.unwrap_or(state_padding).max(0.0);
+            let node_style = style_plan.node(&n.id);
+            let node_text_style = node_style
+                .map(super::StateNodeStylePlan::text_style)
+                .unwrap_or(&text_style);
+            let padding = node_style
+                .and_then(super::StateNodeStylePlan::padding_override)
+                .or(n.padding)
+                .unwrap_or(state_padding)
+                .max(0.0);
             let label_text = n
                 .label
                 .as_ref()
@@ -1359,10 +1289,8 @@ fn build_state_diagram_dagre_input(
                     let (tw, th) = node_label_metrics(
                         &label_text,
                         wrapping_width,
-                        &n.css_compiled_styles,
-                        &n.css_styles,
                         measurer,
-                        &text_style,
+                        node_text_style,
                         wrap_mode,
                     );
                     (tw + padding * 2.0, th + padding * 2.0)
@@ -1373,10 +1301,14 @@ fn build_state_diagram_dagre_input(
                         .as_ref()
                         .map(|v| v.join("\n"))
                         .unwrap_or_default();
-                    let (title_w, title_h) =
-                        title_label_metrics(&label_text, measurer, &text_style, WrapMode::HtmlLike);
+                    let (title_w, title_h) = title_label_metrics(
+                        &label_text,
+                        measurer,
+                        node_text_style,
+                        WrapMode::HtmlLike,
+                    );
                     let (desc_w, desc_h) =
-                        title_label_metrics(&desc, measurer, &text_style, WrapMode::HtmlLike);
+                        title_label_metrics(&desc, measurer, node_text_style, WrapMode::HtmlLike);
 
                     let geometry = super::RectWithTitleGeometry::from_metrics(
                         title_w, title_h, desc_w, desc_h, padding,
@@ -1387,14 +1319,15 @@ fn build_state_diagram_dagre_input(
                     let (tw, th) = node_label_metrics(
                         &label_text,
                         wrapping_width,
-                        &n.css_compiled_styles,
-                        &n.css_styles,
                         measurer,
-                        &text_style,
+                        node_text_style,
                         wrap_mode,
                     );
                     // Mermaid converts `rect` into `roundedRect` when rx/ry is set.
-                    let has_rounding = n.rx.unwrap_or(0.0) > 0.0 && n.ry.unwrap_or(0.0) > 0.0;
+                    let radius = node_style
+                        .and_then(super::StateNodeStylePlan::radius_override)
+                        .unwrap_or_else(|| n.rx.unwrap_or(0.0).min(n.ry.unwrap_or(0.0)));
+                    let has_rounding = radius > 0.0;
                     let pad_x = if has_rounding { padding } else { padding * 2.0 };
                     let pad_y = padding;
                     (tw + pad_x * 2.0, th + pad_y * 2.0)
@@ -1436,7 +1369,11 @@ fn build_state_diagram_dagre_input(
         {
             continue;
         }
-        let (lw, lh) = edge_label_metrics(&e.label, measurer, &text_style, wrap_mode);
+        let edge_text_style = style_plan
+            .edge(&e.id)
+            .map(super::StateEdgeStylePlan::text_style)
+            .unwrap_or_else(|| style_plan.transition_text_style());
+        let (lw, lh) = edge_label_metrics(&e.label, measurer, edge_text_style, wrap_mode);
         let mut base = EdgeLabel {
             width: lw,
             height: lh,
@@ -1549,7 +1486,6 @@ fn build_state_diagram_dagre_input(
         dagre_id_by_semantic_id,
         dir_by_dagre_id,
         explicit_dir_ids,
-        text_style,
         wrap_mode,
         wrapping_width,
         html_labels,
@@ -1559,6 +1495,7 @@ fn build_state_diagram_dagre_input(
 fn layout_state_diagram_inner(
     model: &StateDiagramModel,
     effective_config: &Value,
+    style_plan: &super::StateStylePlan,
     measurer: &dyn TextMeasurer,
 ) -> Result<StateDiagramLayout> {
     validate_state_parent_cycles(model)?;
@@ -1569,11 +1506,10 @@ fn layout_state_diagram_inner(
         dagre_id_by_semantic_id,
         dir_by_dagre_id,
         explicit_dir_ids,
-        text_style,
         wrap_mode,
         wrapping_width,
         html_labels,
-    } = build_state_diagram_dagre_input(model, effective_config, measurer)?;
+    } = build_state_diagram_dagre_input(model, effective_config, style_plan, measurer)?;
 
     let cluster_dir =
         |id: &str| -> Option<String> { dir_by_dagre_id.get(id).and_then(|v| v.clone()) };
@@ -1681,20 +1617,28 @@ fn layout_state_diagram_inner(
         if title.trim().is_empty() {
             title = n.id.clone();
         }
-        let pad = n.padding.unwrap_or(8.0).max(0.0);
+        let node_style = style_plan.node(&n.id);
+        let pad = node_style
+            .and_then(super::StateNodeStylePlan::padding_override)
+            .or(n.padding)
+            .unwrap_or(8.0)
+            .max(0.0);
+        let cluster_text_style = node_style
+            .map(super::StateNodeStylePlan::cluster_text_style)
+            .unwrap_or_else(|| style_plan.composite_text_style());
         let (tw, th) = if title.trim().is_empty() {
             (0.0, 0.0)
         } else if n.shape == "noteGroup" {
             let measurement = super::measure_state_markdown_label(
                 &title,
                 measurer,
-                &text_style,
+                cluster_text_style,
                 Some(wrapping_width),
                 wrap_mode,
             );
             (measurement.metrics.width, measurement.metrics.height)
         } else {
-            title_label_metrics(&title, measurer, &text_style, wrap_mode)
+            title_label_metrics(&title, measurer, cluster_text_style, wrap_mode)
         };
 
         // Mermaid expands cluster width to ensure the title fits, but does not re-run Dagre after
@@ -2203,7 +2147,8 @@ pub fn debug_build_state_diagram_dagre_graph(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<Graph<NodeLabel, EdgeLabel, GraphLabel>> {
-    Ok(build_state_diagram_dagre_input(model, effective_config, measurer)?.graph)
+    let style_plan = super::StateStylePlan::resolve(model, effective_config, None);
+    Ok(build_state_diagram_dagre_input(model, effective_config, &style_plan, measurer)?.graph)
 }
 
 #[cfg(test)]
@@ -2239,9 +2184,15 @@ mod tests {
         let RenderSemanticModel::State(model) = parsed.model() else {
             panic!("expected State render model");
         };
+        let style_plan = crate::state::StateStylePlan::resolve(
+            model,
+            parsed.metadata().effective_config.as_value(),
+            None,
+        );
         let input = build_state_diagram_dagre_input(
             model,
             parsed.metadata().effective_config.as_value(),
+            &style_plan,
             &VendoredFontMetricsTextMeasurer::default(),
         )
         .expect("build State Dagre input");
@@ -2294,15 +2245,7 @@ mod tests {
             (73.123_456_789, 17.25)
         );
         assert_eq!(
-            node_label_metrics(
-                "node",
-                180.0,
-                &[],
-                &[],
-                &measurer,
-                &style,
-                WrapMode::HtmlLike,
-            ),
+            node_label_metrics("node", 180.0, &measurer, &style, WrapMode::HtmlLike,),
             (73.123_456_789, 17.25)
         );
         assert_eq!(
@@ -2324,15 +2267,7 @@ mod tests {
             (250.123_456_789, 17.25)
         );
         assert_eq!(
-            node_label_metrics(
-                "node",
-                180.0,
-                &[],
-                &[],
-                &measurer,
-                &style,
-                WrapMode::HtmlLike,
-            ),
+            node_label_metrics("node", 180.0, &measurer, &style, WrapMode::HtmlLike,),
             (250.123_456_789, 17.25)
         );
         assert_eq!(

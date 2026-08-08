@@ -2,6 +2,10 @@ mod common;
 
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
+use merman_render::diagram_theme::{
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, Specified, TextStylePatch,
+    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
+};
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
@@ -66,6 +70,145 @@ fn render_state_svg_from_text_with_engine(engine: Engine, text: &str) -> String 
         .expect("render State artifact")
         .svg()
         .to_string()
+}
+
+fn render_state_svg_from_text_with_theme(text: &str, theme: &DiagramTheme) -> String {
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_theme(theme)
+        .unwrap();
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
+        .expect("parse ok")
+        .expect("diagram detected");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare themed State artifact");
+
+    artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render themed State artifact")
+        .svg()
+        .to_string()
+}
+
+fn state_edge_label_foreign_object_height(svg: &str, edge_id: &str) -> f64 {
+    let document = roxmltree::Document::parse(svg).expect("valid State SVG XML");
+    document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("data-id") == Some(edge_id)
+                && node
+                    .attribute("class")
+                    .is_some_and(|classes| classes.split_whitespace().any(|class| class == "label"))
+        })
+        .and_then(|label| {
+            label
+                .descendants()
+                .find(|node| node.has_tag_name("foreignObject"))
+        })
+        .and_then(|node| node.attribute("height"))
+        .and_then(|height| height.parse::<f64>().ok())
+        .unwrap_or_else(|| panic!("missing numeric State edge label height for {edge_id}"))
+}
+
+fn state_cluster_title_geometry(svg: &str, cluster_id: &str) -> (f64, f64, f64) {
+    let document = roxmltree::Document::parse(svg).expect("valid State SVG XML");
+    let cluster = document
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("data-id") == Some(cluster_id))
+        .unwrap_or_else(|| panic!("missing State cluster {cluster_id}"));
+    let title_height = cluster
+        .descendants()
+        .find(|node| node.has_tag_name("foreignObject"))
+        .and_then(|node| node.attribute("height"))
+        .and_then(|height| height.parse::<f64>().ok())
+        .unwrap_or_else(|| panic!("missing State cluster title height for {cluster_id}"));
+    let outer_y = cluster
+        .descendants()
+        .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("outer"))
+        .and_then(|node| node.attribute("y"))
+        .and_then(|y| y.parse::<f64>().ok())
+        .unwrap_or_else(|| panic!("missing State cluster outer y for {cluster_id}"));
+    let inner_y = cluster
+        .children()
+        .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("inner"))
+        .and_then(|node| node.attribute("y"))
+        .and_then(|y| y.parse::<f64>().ok())
+        .unwrap_or_else(|| panic!("missing State cluster inner y for {cluster_id}"));
+    (title_height, outer_y, inner_y)
+}
+
+#[test]
+fn state_svg_compiled_theme_styles_structural_roles_and_reflows_transition_labels() {
+    let mut label_typography = TextStylePatch::default();
+    label_typography.font_size_px = Specified::Value(30.0);
+    let mut composite_typography = TextStylePatch::default();
+    composite_typography.font_size_px = Specified::Value(40.0);
+    let styles = ThemeRuleSet::default()
+        .with_rule(ThemeRule::new(
+            ThemeTarget::TransitionMarker,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#00f2ff").unwrap())
+                .with_stroke(CanvasPaint::solid("#00f2ff").unwrap()),
+        ))
+        .with_rule(ThemeRule::new(
+            ThemeTarget::TransitionLabelBackground,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#051423").unwrap()),
+        ))
+        .with_rule(ThemeRule::new(
+            ThemeTarget::TransitionLabel,
+            ThemeStylePatch {
+                typography: label_typography,
+                ..ThemeStylePatch::default()
+            },
+        ))
+        .with_rule(ThemeRule::new(
+            ThemeTarget::CompositeHeader,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ff00aa").unwrap()),
+        ))
+        .with_rule(ThemeRule::new(
+            ThemeTarget::CompositeLabel,
+            ThemeStylePatch {
+                typography: composite_typography,
+                ..ThemeStylePatch::default()
+            },
+        ))
+        .with_rule(
+            ThemeRule::new(
+                ThemeTarget::SpecialStateInner,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ffffff").unwrap()),
+            )
+            .with_variant(ThemeVariant::End),
+        );
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .expect("compile State structural theme");
+    let source = r#"stateDiagram-v2
+state Parent {
+  [*] --> Running : a deliberately long transition label
+  Running --> [*]
+}"#;
+
+    let baseline = render_state_svg_from_text(source);
+    let themed = render_state_svg_from_text_with_theme(source, &theme);
+
+    assert!(themed.contains("fill:#00f2ff !important"), "{themed}");
+    assert!(
+        themed.contains("background-color: #051423 !important"),
+        "{themed}"
+    );
+    assert!(themed.contains("fill:#ff00aa !important"), "{themed}");
+    assert!(themed.contains("fill:#ffffff !important"), "{themed}");
+    assert!(themed.contains("font-size: 30px !important"), "{themed}");
+    assert!(
+        state_edge_label_foreign_object_height(&themed, "edge0")
+            > state_edge_label_foreign_object_height(&baseline, "edge0")
+    );
+    let (baseline_title_height, _, _) = state_cluster_title_geometry(&baseline, "Parent");
+    let (themed_title_height, themed_outer_y, themed_inner_y) =
+        state_cluster_title_geometry(&themed, "Parent");
+    assert!(themed_title_height > baseline_title_height);
+    assert!((themed_inner_y - themed_outer_y - themed_title_height - 2.0).abs() < 1e-6);
 }
 
 fn render_state_svg_with_hand_drawn_seed(seed: u64) -> String {

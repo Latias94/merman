@@ -194,7 +194,10 @@ impl<'a> FlowchartConfigView<'a> {
                 if !raw.to_ascii_lowercase().ends_with("px") {
                     return None;
                 }
-                crate::mermaid_style::parse_css_font_size_px(raw, render_style.font_size)
+                crate::mermaid_style::resolve_mermaid_font_size_px(
+                    raw,
+                    crate::mermaid_style::CssFontSizeContext::uniform(render_style.font_size),
+                )
             })
             .unwrap_or(16.0);
         style

@@ -55,8 +55,12 @@ impl RectWithTitleGeometry {
 
 mod config;
 mod layout;
+mod style_plan;
 
-pub(crate) use config::{StateConfigView, state_text_style};
+pub(crate) use config::StateConfigView;
+pub(crate) use style_plan::{
+    StateCompatibilityStyle, StateEdgeStylePlan, StateNodeStylePlan, StateStylePlan,
+};
 
 pub(crate) use layout::layout_state_diagram_typed;
 pub use layout::{

@@ -358,6 +358,14 @@ impl<'a> SvgExecution<'a> {
         self.family.family_kind()
     }
 
+    pub(crate) fn resolved_theme(&self) -> Option<&crate::diagram_theme::ResolvedDiagramTheme> {
+        self.family.resolved_theme()
+    }
+
+    pub(crate) fn state_style_plan(&self) -> Option<&crate::state::StateStylePlan> {
+        self.family.style_plan().and_then(|plan| plan.state())
+    }
+
     pub(crate) fn text_measurer_for(&self, phase: TextMeasurementPhase) -> RoutedTextMeasurer<'_> {
         self.family.session().text_measurer(phase)
     }

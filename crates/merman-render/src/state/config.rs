@@ -113,10 +113,6 @@ pub(super) fn decode_html_entities_once(text: &str) -> std::borrow::Cow<'_, str>
     std::borrow::Cow::Owned(out)
 }
 
-pub(crate) fn state_text_style(effective_config: &Value) -> TextStyle {
-    StateConfigView::new(effective_config).text_style()
-}
-
 pub(crate) struct StateConfigView<'a> {
     effective_config: &'a Value,
     flowchart_config: &'a Value,
@@ -151,7 +147,6 @@ impl<'a> StateConfigView<'a> {
             wrap_mode: state_wrap_mode(html_labels),
             wrapping_width: self.html_label_wrapping_width(),
             state_padding: self.state_padding(),
-            text_style: self.text_style(),
         }
     }
 
@@ -171,7 +166,6 @@ impl<'a> StateConfigView<'a> {
             html_label_wrapping_width: self.html_label_wrapping_width(),
             state_padding: self.state_padding(),
             security_level_loose: self.root_string("securityLevel").as_deref() == Some("loose"),
-            text_style: self.text_style(),
         }
     }
 
@@ -233,7 +227,6 @@ pub(super) struct StateLayoutSettings {
     pub(super) wrap_mode: WrapMode,
     pub(super) wrapping_width: f64,
     pub(super) state_padding: f64,
-    pub(super) text_style: TextStyle,
 }
 
 pub(crate) struct StateRenderSettings {
@@ -244,7 +237,6 @@ pub(crate) struct StateRenderSettings {
     pub(crate) html_label_wrapping_width: f64,
     pub(crate) state_padding: f64,
     pub(crate) security_level_loose: bool,
-    pub(crate) text_style: TextStyle,
 }
 
 fn state_wrap_mode(html_labels: bool) -> WrapMode {
@@ -316,7 +308,7 @@ mod tests {
     }
 
     #[test]
-    fn state_layout_settings_project_dagre_wrap_padding_and_text_style() {
+    fn state_layout_settings_project_dagre_wrap_and_padding() {
         let cfg = json!({
             "fontFamily": "Root Sans",
             "themeVariables": {
@@ -342,11 +334,10 @@ mod tests {
         assert_eq!(settings.wrap_mode, WrapMode::SvgLike);
         assert_eq!(settings.wrapping_width, 260.0);
         assert_eq!(settings.state_padding, 9.0);
-        assert_eq!(
-            settings.text_style.font_family.as_deref(),
-            Some("Root Sans")
-        );
-        assert_eq!(settings.text_style.font_size, 24.0);
+
+        let text_style = StateConfigView::new(&cfg).text_style();
+        assert_eq!(text_style.font_family.as_deref(), Some("Root Sans"));
+        assert_eq!(text_style.font_size, 24.0);
     }
 
     #[test]
