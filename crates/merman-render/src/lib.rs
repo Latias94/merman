@@ -298,16 +298,34 @@ impl LayoutOptions {
 pub(crate) struct LayoutExecution<'a> {
     request: &'a LayoutOptions,
     session: &'a RenderSession,
+    resolved_theme: Option<&'a crate::diagram_theme::ResolvedDiagramTheme>,
     text_measurer: RoutedTextMeasurer<'a>,
 }
 
 impl<'a> LayoutExecution<'a> {
-    pub(crate) fn new(request: &'a LayoutOptions, session: &'a RenderSession) -> Self {
-        Self {
+    pub(crate) fn new(
+        request: &'a LayoutOptions,
+        session: &'a RenderSession,
+        resolved_theme: Option<&'a crate::diagram_theme::ResolvedDiagramTheme>,
+    ) -> Self {
+        let execution = Self {
             request,
             session,
+            resolved_theme,
             text_measurer: session.text_measurer(TextMeasurementPhase::Layout),
-        }
+        };
+        debug_assert_eq!(
+            execution.resolved_theme().is_some(),
+            session.theme_fingerprint().is_some(),
+            "layout theme plan presence must match the render session"
+        );
+        execution
+    }
+
+    pub(crate) const fn resolved_theme(
+        &self,
+    ) -> Option<&crate::diagram_theme::ResolvedDiagramTheme> {
+        self.resolved_theme
     }
 
     pub(crate) fn text_measurer(&self) -> &dyn crate::text::TextMeasurer {
@@ -566,7 +584,7 @@ mod tests {
             &parsed.metadata().diagram_type,
             model,
             &parsed.metadata().effective_config,
-            &LayoutExecution::new(options, session),
+            &LayoutExecution::new(options, session, None),
         )
         .expect("flowchart layout")
     }
@@ -584,7 +602,7 @@ mod tests {
             &parsed.metadata().diagram_type,
             model,
             &parsed.metadata().effective_config,
-            &LayoutExecution::new(options, session),
+            &LayoutExecution::new(options, session, None),
         )
         .expect("class layout")
     }
@@ -619,7 +637,7 @@ mod tests {
                 )
                 .begin_session()
                 .expect("render session");
-            LayoutExecution::new(&LayoutOptions::default(), &session).elk_operation_seed()
+            LayoutExecution::new(&LayoutOptions::default(), &session, None).elk_operation_seed()
         }
 
         assert_eq!(capture(17), capture(17));

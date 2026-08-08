@@ -34,7 +34,7 @@ Omitting an optional layout or math backend preserves parsing and semantic suppo
 
 ## Render Environment
 
-`RenderEnvironment` owns adapters and policy for one operation: named text-measurement routes, math rendering, icons, time, randomness, and resource limits. Call `begin_session()` once before layout and retain that `RenderSession` through SVG and any raster postprocessing so those phases observe the same snapshot and provenance. The higher-level `HeadlessRenderer` also applies the frozen session date and timezone to date-sensitive parsing; direct low-level callers are responsible for configuring the core `Engine` consistently.
+`RenderEnvironment` owns adapters and policy for one operation: named text-measurement routes, math rendering, icons, time, randomness, and resource limits. Call `begin_session()` once before layout and retain that `RenderSession` through SVG postprocessing so those phases observe the same snapshot and provenance. Convert the final family SVG into `FamilyRenderCompletion` only after the pipeline finishes; that boundary drops the live session and retains a frozen `RenderSessionReport`. The higher-level `HeadlessRenderer` also applies the frozen session date and timezone to date-sensitive parsing; direct low-level callers are responsible for configuring the core `Engine` consistently.
 
 `TextMeasurer` keeps browser DOM primitives distinct. In particular, `measure_svg_create_text_bbox_y_offset_px` measures ordinary Mermaid createText, while `measure_svg_create_text_middle_bbox_y_offset_px` measures Architecture's formatted text under an inherited middle baseline. The latter is font- and x-height-dependent and cannot reuse the former. The vendored profile's pinned middle-baseline shift is a deterministic fallback, not a general system-font formula; an authoritative host measurement bypasses it.
 
@@ -47,9 +47,7 @@ use merman_core::{Engine, ParseOptions};
 use merman_render::{
     environment::RenderEnvironment, family, LayoutOptions,
 };
-use merman_render::svg::{
-    SvgDebugOptions, SvgPipeline, SvgPostprocessMetadata, SvgRenderOptions,
-};
+use merman_render::svg::{SvgDebugOptions, SvgPipeline, SvgRenderOptions};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let engine = Engine::new();
@@ -73,17 +71,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..SvgRenderOptions::default()
     };
 
-    // SVG consumes the artifact, so its semantic model and layout cannot be recombined.
+    // SVG consumes the artifact, so its semantic model and layout cannot be recombined. Run every
+    // postprocessor before freezing the completed family report.
     let rendered = artifact.render_svg(&svg_options, &SvgDebugOptions::default())?;
-    let (svg, family_kind, metadata, session) = rendered.into_parts();
-    assert_eq!(family_kind, family::RenderFamilyKind::Flowchart);
-    let pipeline_metadata = SvgPostprocessMetadata::from_svg(&svg)
-        .with_family_kind(family_kind)
-        .with_diagram_type(metadata.diagram_type)
-        .with_optional_diagram_title(metadata.title);
-    let svg = SvgPipeline::resvg_safe()
-        .process_to_string_with_metadata(&svg, &pipeline_metadata, &session)?;
-    println!("{svg}");
+    let rendered = rendered.finalize_resvg(&SvgPipeline::resvg_safe())?;
+    let completion = rendered.into_completion();
+    assert_eq!(
+        completion.report().family_kind(),
+        family::RenderFamilyKind::Flowchart
+    );
+    let (svg, report) = completion.into_output_and_report();
+    assert_eq!(report.family_kind(), family::RenderFamilyKind::Flowchart);
+    println!("{}", svg.as_str());
 
     Ok(())
 }

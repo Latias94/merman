@@ -958,7 +958,7 @@ mod tests {
             .unwrap();
         let request = SvgRenderOptions::default();
         let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::new(&request, &debug, &session).expect("SVG execution");
+        let execution = SvgExecution::new(&request, &debug, &session, None).expect("SVG execution");
         let svg = render_treemap_diagram_svg(&layout, &serde_json::json!({}), &execution).unwrap();
 
         let section_label = opening_tag_by_class(&svg, "treemapSectionLabel");

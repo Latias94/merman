@@ -1053,7 +1053,7 @@ mod tests {
         let measurer = session.text_measurer(TextMeasurementPhase::Wrap);
         let request = SvgRenderOptions::default();
         let debug = SvgDebugOptions::default();
-        let options = SvgExecution::new(&request, &debug, &session).expect("SVG execution");
+        let options = SvgExecution::new(&request, &debug, &session, None).expect("SVG execution");
 
         let config = merman_core::MermaidConfig::default();
         let prepared = prepare_kanban_artifact_from_layout_for_test(&layout, &config, &measurer);

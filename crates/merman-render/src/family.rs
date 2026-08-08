@@ -1,4 +1,5 @@
-use crate::environment::RenderSession;
+use crate::diagram_theme::{ResolvedDiagramTheme, ThemeFingerprint};
+use crate::environment::{RenderSession, RenderSessionReport};
 use crate::model::*;
 use crate::resources::ResourceLimitPhase;
 use crate::svg::{
@@ -70,6 +71,80 @@ impl RenderCapabilityPlan {
             capability,
             diagram_type: self.diagram_type.clone(),
         })
+    }
+}
+
+/// Frozen family identity and operation evidence captured after SVG work completes.
+///
+/// The theme fingerprint identifies the compiled theme selected and resolved for the family. It
+/// does not claim that every semantic target has an adapter or was emitted by this diagram.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FamilyRenderReport {
+    family_kind: RenderFamilyKind,
+    session: RenderSessionReport,
+}
+
+impl FamilyRenderReport {
+    fn freeze(family_kind: RenderFamilyKind, session: RenderSession) -> Self {
+        Self {
+            family_kind,
+            session: session.report(),
+        }
+    }
+
+    pub const fn family_kind(&self) -> RenderFamilyKind {
+        self.family_kind
+    }
+
+    pub fn theme_fingerprint(&self) -> Option<ThemeFingerprint> {
+        self.session.theme_fingerprint()
+    }
+
+    pub const fn session_report(&self) -> &RenderSessionReport {
+        &self.session
+    }
+}
+
+struct FamilyRenderContext {
+    family_kind: RenderFamilyKind,
+    resolved_theme: Option<Box<ResolvedDiagramTheme>>,
+    session: RenderSession,
+}
+
+impl FamilyRenderContext {
+    fn resolve(session: RenderSession, family_kind: RenderFamilyKind) -> Self {
+        let resolved_theme = session
+            .theme()
+            .map(|theme| Box::new(theme.resolve(family_kind)));
+        debug_assert_eq!(
+            resolved_theme.is_some(),
+            session.theme_fingerprint().is_some()
+        );
+        debug_assert_eq!(
+            resolved_theme.as_deref().map(ResolvedDiagramTheme::family),
+            session.theme_fingerprint().map(|_| family_kind)
+        );
+        Self {
+            family_kind,
+            resolved_theme,
+            session,
+        }
+    }
+
+    const fn family_kind(&self) -> RenderFamilyKind {
+        self.family_kind
+    }
+
+    fn resolved_theme(&self) -> Option<&ResolvedDiagramTheme> {
+        self.resolved_theme.as_deref()
+    }
+
+    const fn session(&self) -> &RenderSession {
+        &self.session
+    }
+
+    fn into_session_and_family(self) -> (RenderSession, RenderFamilyKind) {
+        (self.session, self.family_kind)
     }
 }
 
@@ -436,7 +511,7 @@ pub struct FamilyRenderArtifact {
     metadata: ParseMetadata,
     compatibility_projection: OnceLock<std::result::Result<serde_json::Value, String>>,
     family: BuiltinFamilyArtifact,
-    session: RenderSession,
+    context: FamilyRenderContext,
 }
 
 /// Owned projection of the Gantt time scale used by comparison tooling.
@@ -562,6 +637,39 @@ pub struct RenderedFamilySvg {
     session: RenderSession,
 }
 
+/// Opaque output paired with the family report frozen after all requested SVG work.
+///
+/// The live [`RenderSession`] remains in pre-completion SVG types so pipelines can record their
+/// measurements. Converting to this type replaces that mutable session with [`RenderSessionReport`].
+/// Completion therefore exposes no route for recording more measurements:
+///
+/// ```compile_fail
+/// use merman_render::family::FamilyRenderCompletion;
+///
+/// fn measure_after_completion(completion: FamilyRenderCompletion<String>) {
+///     let _ = completion.session();
+/// }
+/// ```
+#[must_use = "completed render output and its frozen report should be consumed together"]
+pub struct FamilyRenderCompletion<T> {
+    output: T,
+    report: FamilyRenderReport,
+}
+
+impl<T> FamilyRenderCompletion<T> {
+    pub const fn output(&self) -> &T {
+        &self.output
+    }
+
+    pub const fn report(&self) -> &FamilyRenderReport {
+        &self.report
+    }
+
+    pub fn into_output_and_report(self) -> (T, FamilyRenderReport) {
+        (self.output, self.report)
+    }
+}
+
 impl RenderedFamilySvg {
     pub fn svg(&self) -> &str {
         &self.svg
@@ -603,20 +711,22 @@ impl RenderedFamilySvg {
         Ok(RenderedResvgCompatibleSvg {
             svg,
             family_kind: self.family_kind,
-            metadata: self.metadata,
             session: self.session,
         })
     }
 
     fn output_metadata(&self) -> SvgPostprocessMetadata {
         SvgPostprocessMetadata::from_svg(&self.svg)
-            .with_family_kind(self.family_kind)
+            .with_family_kind(self.family_kind())
             .with_diagram_type(self.metadata.diagram_type.clone())
             .with_optional_diagram_title(self.metadata.title.clone())
     }
 
-    pub fn into_parts(self) -> (String, RenderFamilyKind, ParseMetadata, RenderSession) {
-        (self.svg, self.family_kind, self.metadata, self.session)
+    pub fn into_completion(self) -> FamilyRenderCompletion<String> {
+        FamilyRenderCompletion {
+            output: self.svg,
+            report: FamilyRenderReport::freeze(self.family_kind, self.session),
+        }
     }
 }
 
@@ -624,7 +734,6 @@ impl RenderedFamilySvg {
 pub struct RenderedResvgCompatibleSvg {
     svg: ResvgCompatibleSvg,
     family_kind: RenderFamilyKind,
-    metadata: ParseMetadata,
     session: RenderSession,
 }
 
@@ -633,19 +742,42 @@ impl RenderedResvgCompatibleSvg {
         &self.svg
     }
 
-    pub fn into_parts(
-        self,
-    ) -> (
-        ResvgCompatibleSvg,
-        RenderFamilyKind,
-        ParseMetadata,
-        RenderSession,
-    ) {
-        (self.svg, self.family_kind, self.metadata, self.session)
+    pub const fn family_kind(&self) -> RenderFamilyKind {
+        self.family_kind
+    }
+
+    pub fn into_completion(self) -> FamilyRenderCompletion<ResvgCompatibleSvg> {
+        FamilyRenderCompletion {
+            output: self.svg,
+            report: FamilyRenderReport::freeze(self.family_kind, self.session),
+        }
     }
 }
 
 impl FamilyRenderArtifact {
+    fn new(
+        metadata: ParseMetadata,
+        family: BuiltinFamilyArtifact,
+        context: FamilyRenderContext,
+    ) -> Result<Self> {
+        let actual_family = family.kind();
+        let expected_family = context.family_kind();
+        if actual_family != expected_family {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "detected render family {expected_family} produced {actual_family} artifact"
+                ),
+            });
+        }
+
+        Ok(Self {
+            metadata,
+            compatibility_projection: OnceLock::new(),
+            family,
+            context,
+        })
+    }
+
     pub fn metadata(&self) -> &ParseMetadata {
         &self.metadata
     }
@@ -719,16 +851,17 @@ impl FamilyRenderArtifact {
         debug: &SvgDebugOptions,
     ) -> Result<RenderedFamilySvg> {
         let svg = render_family_artifact_svg(&self, options, debug)?;
-        self.session
+        self.context
+            .session()
             .resource_policy()
             .check_svg_bytes(&svg, ResourceLimitPhase::SvgOutput)?;
-        let family_kind = self.family.kind();
         let Self {
             metadata,
             compatibility_projection: _,
             family: _,
-            session,
+            context,
         } = self;
+        let (session, family_kind) = context.into_session_and_family();
 
         Ok(RenderedFamilySvg {
             svg,
@@ -751,7 +884,8 @@ fn render_family_artifact_svg(
         return crate::svg::render_architecture_family_artifact(
             pair,
             &artifact.metadata.effective_config,
-            &artifact.session,
+            artifact.context.session(),
+            artifact.context.resolved_theme(),
             &options,
             debug,
         );
@@ -759,7 +893,8 @@ fn render_family_artifact_svg(
     crate::svg::render_builtin_family_artifact(
         &artifact.family,
         &artifact.metadata,
-        &artifact.session,
+        artifact.context.session(),
+        artifact.context.resolved_theme(),
         &options,
         debug,
     )
@@ -1001,22 +1136,16 @@ fn prepare_class_family(
 fn prepare_class_render(
     parsed: ParsedDiagramRender,
     options: &LayoutOptions,
-    session: RenderSession,
+    context: FamilyRenderContext,
 ) -> Result<FamilyRenderArtifact> {
     let (meta, model) = parsed.into_parts();
     let RenderSemanticModel::Class(model) = model else {
         unreachable!("Class render dispatch requires a Class semantic model")
     };
     let diagram_type = meta.diagram_type.as_str();
-    let execution = LayoutExecution::new(options, &session);
+    let execution = LayoutExecution::new(options, context.session(), context.resolved_theme());
     let family = prepare_class_family(model, &meta, diagram_type, &execution)?;
-
-    Ok(FamilyRenderArtifact {
-        metadata: meta,
-        compatibility_projection: OnceLock::new(),
-        family,
-        session,
-    })
+    FamilyRenderArtifact::new(meta, family, context)
 }
 
 /// Prepares one family-owned typed semantic model for layout and SVG rendering.
@@ -1044,34 +1173,26 @@ pub fn prepare(
     let plan = plan_render(&parsed, &session)?;
     plan.ensure_available()?;
     let expected_family = plan.family_kind();
+    let context = FamilyRenderContext::resolve(session, expected_family);
     // The heterogeneous router has one generic layout call per family. Keep its debug-build
     // caller slots out of the Class Dagre call chain, whose own phase frames are already deep.
-    let artifact = if matches!(parsed.model(), RenderSemanticModel::Class(_)) {
-        prepare_class_render(parsed, options, session)?
+    if matches!(parsed.model(), RenderSemanticModel::Class(_)) {
+        prepare_class_render(parsed, options, context)
     } else {
-        prepare_non_class_render(parsed, options, session)?
-    };
-    let actual_family = artifact.family_kind();
-    if actual_family != expected_family {
-        return Err(Error::InvalidModel {
-            message: format!(
-                "detected render family {expected_family} produced {actual_family} artifact"
-            ),
-        });
+        prepare_non_class_render(parsed, options, context)
     }
-    Ok(artifact)
 }
 
 #[inline(never)]
 fn prepare_non_class_render(
     parsed: ParsedDiagramRender,
     options: &LayoutOptions,
-    session: RenderSession,
+    context: FamilyRenderContext,
 ) -> Result<FamilyRenderArtifact> {
     let (meta, model, render_context) = parsed.into_render_parts();
     let flowchart_label_sources = render_context.into_flowchart_label_sources();
     let diagram_type = meta.diagram_type.as_str();
-    let execution = LayoutExecution::new(options, &session);
+    let execution = LayoutExecution::new(options, context.session(), context.resolved_theme());
     let effective_config = meta.effective_config.as_value();
     let title = meta.title.as_deref();
     let family = match model {
@@ -1427,17 +1548,13 @@ fn prepare_non_class_render(
             unreachable!("custom JSON models return before built-in family dispatch")
         }
     };
-    Ok(FamilyRenderArtifact {
-        metadata: meta,
-        compatibility_projection: OnceLock::new(),
-        family,
-        session,
-    })
+    FamilyRenderArtifact::new(meta, family, context)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::diagram_theme::{DiagramThemeCompiler, DiagramThemeSpec};
     use merman_core::{CustomJsonProvenance, CustomJsonRenderModel, Engine, ParseOptions};
     use serde_json::{Value, json};
 
@@ -1500,6 +1617,165 @@ mod tests {
 
             assert_eq!(plan.family_kind(), expected_family, "{source}");
         }
+    }
+
+    #[test]
+    fn family_theme_plan_tracks_the_authoritative_family() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new())
+            .expect("compile test theme");
+        let configured_swimlane = Engine::new().with_site_config(
+            merman_core::MermaidConfig::from_value(json!({ "layout": "swimlane" })),
+        );
+        let cases = [
+            (
+                Engine::new(),
+                "flowchart TD\nA --> B\n",
+                RenderFamilyKind::Flowchart,
+            ),
+            (
+                configured_swimlane,
+                "flowchart LR\nA --> B\n",
+                RenderFamilyKind::Swimlane,
+            ),
+        ];
+
+        for (engine, source, expected_family) in cases {
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("family fixture should produce a render model");
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&theme)
+                .expect("begin themed render session");
+            let artifact = prepare(parsed, &LayoutOptions::default(), session).unwrap();
+            let resolved_theme = artifact
+                .context
+                .resolved_theme()
+                .expect("themed artifact should retain a resolved family plan");
+
+            assert_eq!(artifact.family_kind(), expected_family, "{source}");
+            assert_eq!(artifact.context.family_kind(), expected_family, "{source}");
+            assert_eq!(resolved_theme.family(), expected_family, "{source}");
+            assert_eq!(
+                artifact.context.session().theme_fingerprint(),
+                Some(theme.fingerprint()),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn family_render_report_freezes_after_pipeline_and_terminal_svg() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new())
+            .expect("compile test theme");
+        let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+            json!({ "layout": "swimlane" }),
+        ));
+        let parsed = engine
+            .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
+            .unwrap()
+            .expect("flowchart source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_theme(&theme)
+            .expect("begin themed render session");
+        let artifact = prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render themed family SVG");
+        assert_eq!(rendered.family_kind(), RenderFamilyKind::Swimlane);
+        assert_eq!(
+            rendered.session.theme_fingerprint(),
+            Some(theme.fingerprint())
+        );
+
+        let rendered = rendered
+            .apply_pipeline(&SvgPipeline::parity())
+            .expect("apply themed family SVG pipeline");
+        assert_eq!(rendered.family_kind(), RenderFamilyKind::Swimlane);
+        assert_eq!(
+            rendered.session.theme_fingerprint(),
+            Some(theme.fingerprint())
+        );
+
+        let finalized = rendered
+            .finalize_resvg(&SvgPipeline::resvg_safe())
+            .expect("finalize themed family SVG");
+        assert_eq!(finalized.family_kind(), RenderFamilyKind::Swimlane);
+        assert_eq!(
+            finalized.session.theme_fingerprint(),
+            Some(theme.fingerprint())
+        );
+
+        let completion = finalized.into_completion();
+        assert_eq!(
+            completion.report().family_kind(),
+            RenderFamilyKind::Swimlane
+        );
+        assert_eq!(
+            completion.report().theme_fingerprint(),
+            Some(theme.fingerprint())
+        );
+        assert_eq!(
+            completion.report().session_report().theme_fingerprint(),
+            Some(theme.fingerprint())
+        );
+    }
+
+    #[test]
+    fn family_artifact_rejects_theme_family_drift() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("flowchart TD\nA --> B\n", ParseOptions::strict())
+            .unwrap()
+            .expect("flowchart source should produce a render model");
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let FamilyRenderArtifact {
+            metadata, family, ..
+        } = artifact;
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new())
+            .expect("compile test theme");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_theme(&theme)
+            .expect("begin themed render session");
+        let state_context = FamilyRenderContext::resolve(session, RenderFamilyKind::State);
+
+        let error = match FamilyRenderArtifact::new(metadata, family, state_context) {
+            Ok(_) => panic!("family drift must be rejected"),
+            Err(error) => error,
+        };
+        let Error::InvalidModel { message } = error else {
+            panic!("expected invalid model error")
+        };
+        assert!(message.contains("flowchart"));
+        assert!(message.contains("state"));
+    }
+
+    #[test]
+    fn unthemed_family_completion_has_no_theme_identity() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("flowchart TD\nA --> B\n", ParseOptions::strict())
+            .unwrap()
+            .expect("flowchart source should produce a render model");
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        assert!(artifact.context.resolved_theme().is_none());
+
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render unthemed family SVG");
+        assert_eq!(rendered.family_kind(), RenderFamilyKind::Flowchart);
+
+        let completion = rendered.into_completion();
+        assert_eq!(
+            completion.report().family_kind(),
+            RenderFamilyKind::Flowchart
+        );
+        assert_eq!(completion.report().theme_fingerprint(), None);
+        assert_eq!(
+            completion.report().session_report().theme_fingerprint(),
+            None
+        );
     }
 
     fn prepare_with_model_item_limit(
@@ -1595,7 +1871,7 @@ mod tests {
 
             assert_eq!(artifact.family_kind(), expected_family);
             assert!(
-                artifact.session.report().layout_work_units() > 0,
+                artifact.context.session().report().layout_work_units() > 0,
                 "{expected_family} must contribute layout work to the session report"
             );
         }
@@ -1802,7 +2078,8 @@ D --> P
             |artifact: &FamilyRenderArtifact,
              operation: crate::environment::TextMeasurementOperation| {
                 artifact
-                    .session
+                    .context
+                    .session()
                     .text_measurement_report()
                     .entries()
                     .iter()

@@ -391,16 +391,18 @@ title Routed title
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render SVG");
-    let (host_svg, family_kind, _, host_session) = rendered.into_parts();
-    assert_eq!(family_kind, RenderFamilyKind::Treemap);
+    let completion = rendered.into_completion();
+    assert_eq!(completion.report().family_kind(), RenderFamilyKind::Treemap);
+    let (host_svg, host_report) = completion.into_output_and_report();
 
     assert!(
         host.calls.load(Ordering::Relaxed) > 0,
         "Treemap must not bypass the session with a family-local vendored measurer"
     );
     assert!(
-        host_session
-            .text_measurement_report()
+        host_report
+            .session_report()
+            .measurement()
             .entries()
             .iter()
             .any(|entry| {
@@ -412,8 +414,9 @@ title Routed title
         "Treemap fitting checks must use the exact getComputedTextLength operation"
     );
     assert!(
-        host_session
-            .text_measurement_report()
+        host_report
+            .session_report()
+            .measurement()
             .entries()
             .iter()
             .any(|entry| {

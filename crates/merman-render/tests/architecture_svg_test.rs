@@ -615,8 +615,12 @@ fn architecture_svg_uses_the_session_measurement_route() {
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render Architecture artifact");
-    let (host_svg, family_kind, _, session) = rendered.into_parts();
-    assert_eq!(family_kind, RenderFamilyKind::Architecture);
+    let completion = rendered.into_completion();
+    assert_eq!(
+        completion.report().family_kind(),
+        RenderFamilyKind::Architecture
+    );
+    let (host_svg, family_report) = completion.into_output_and_report();
 
     assert!(
         host.calls.load(Ordering::Relaxed) > 0,
@@ -644,8 +648,9 @@ fn architecture_svg_uses_the_session_measurement_route() {
     );
     drop(operations);
     assert!(
-        session
-            .text_measurement_report()
+        family_report
+            .session_report()
+            .measurement()
             .entries()
             .iter()
             .any(|entry| {
@@ -657,8 +662,9 @@ fn architecture_svg_uses_the_session_measurement_route() {
         "Architecture wrap probes must retain computed-length host provenance"
     );
     assert!(
-        session
-            .text_measurement_report()
+        family_report
+            .session_report()
+            .measurement()
             .entries()
             .iter()
             .any(|entry| {
@@ -676,8 +682,12 @@ fn architecture_svg_uses_the_session_measurement_route() {
     let parity_rendered = parity_artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render parity Architecture artifact");
-    let (parity_svg, family_kind, _, _) = parity_rendered.into_parts();
-    assert_eq!(family_kind, RenderFamilyKind::Architecture);
+    let completion = parity_rendered.into_completion();
+    assert_eq!(
+        completion.report().family_kind(),
+        RenderFamilyKind::Architecture
+    );
+    let (parity_svg, _) = completion.into_output_and_report();
     assert_ne!(
         host_svg, parity_svg,
         "host metrics must change observable geometry"
@@ -713,8 +723,12 @@ fn architecture_zero_seed_consumes_the_operation_stream_without_rerun_reset() {
                 &SvgDebugOptions::default(),
             )
             .expect("render Architecture artifact");
-        let (svg, family_kind, _, _) = rendered.into_parts();
-        assert_eq!(family_kind, RenderFamilyKind::Architecture);
+        let completion = rendered.into_completion();
+        assert_eq!(
+            completion.report().family_kind(),
+            RenderFamilyKind::Architecture
+        );
+        let (svg, _) = completion.into_output_and_report();
         (layout, svg)
     }
 

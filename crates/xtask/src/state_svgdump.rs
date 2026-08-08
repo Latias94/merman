@@ -314,7 +314,7 @@ pub(crate) fn analyze_state_fixture(args: Vec<String>) -> Result<(), XtaskError>
         .map_err(|e| {
             XtaskError::SvgCompareFailed(format!("render failed for {}: {e}", mmd_path.display()))
         })?;
-    let (local_svg, _family_kind, _metadata, _session) = rendered.into_parts();
+    let (local_svg, _report) = rendered.into_completion().into_output_and_report();
 
     let local_svg_path = out_svg_dir.join(format!("{fixture}.local.svg"));
     let upstream_svg_path = out_svg_dir.join(format!("{fixture}.upstream.svg"));

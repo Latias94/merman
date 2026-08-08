@@ -3,7 +3,7 @@ use super::{
 };
 use merman_render::{
     ResourceLimitExceeded,
-    environment::{RenderEnvironment, RenderSession, RenderSessionReport},
+    environment::{RenderEnvironment, RenderSession},
 };
 
 /// Stable identity of the operation that produced a retained render result.
@@ -23,14 +23,14 @@ impl RenderExecutionPath {
 
 /// Immutable evidence emitted only after a typed headless SVG operation completes successfully.
 ///
-/// A fresh render session yields [`RenderSessionReport`], which cannot be substituted for this
+/// A fresh render session yields [`super::RenderSessionReport`], which cannot be substituted for this
 /// completed operation report. Its completion fields are private, so external callers cannot
 /// forge one from a fresh session. The public [`crate::svg`] module documentation carries the
 /// compile-fail contract tests for both boundaries.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderOperationReport {
     execution_path: RenderExecutionPath,
-    session: RenderSessionReport,
+    family: merman_render::family::FamilyRenderReport,
 }
 
 impl RenderOperationReport {
@@ -38,74 +38,79 @@ impl RenderOperationReport {
         self.execution_path
     }
 
+    /// Returns the authoritative family selected before layout for this completed operation.
+    pub const fn family_kind(&self) -> super::RenderFamilyKind {
+        self.family.family_kind()
+    }
+
     pub fn measurement_routes(&self) -> &[super::TextMeasurementRoute; 4] {
-        self.session.measurement_routes()
+        self.family.session_report().measurement_routes()
     }
 
     pub fn measurement(&self) -> &super::TextMeasurementReport {
-        self.session.measurement()
+        self.family.session_report().measurement()
     }
 
     pub fn operation_context(&self) -> &merman_core::runtime::OperationContext {
-        self.session.operation_context()
+        self.family.session_report().operation_context()
     }
 
     pub const fn unix_millis(&self) -> i64 {
-        self.session.unix_millis()
+        self.family.session_report().unix_millis()
     }
 
     pub const fn local_date(&self) -> merman_core::time::CivilDate {
-        self.session.local_date()
+        self.family.session_report().local_date()
     }
 
     pub fn local_time_zone(&self) -> &merman_core::time::LocalTimeZoneProvenance {
-        self.session.local_time_zone()
+        self.family.session_report().local_time_zone()
     }
 
     pub fn render_seed(&self) -> std::num::NonZeroU64 {
-        self.session.render_seed()
+        self.family.session_report().render_seed()
     }
 
     /// Returns the deterministic owner-accounted layout and geometry work consumed by the
     /// completed operation. The value supports policy calibration and is not a latency estimate.
     pub const fn layout_work_units(&self) -> usize {
-        self.session.layout_work_units()
+        self.family.session_report().layout_work_units()
     }
 
     /// Returns the compiled theme identity frozen for this completed operation.
     pub fn theme_fingerprint(&self) -> Option<super::ThemeFingerprint> {
-        self.session.theme_fingerprint()
+        self.family.theme_fingerprint()
     }
 
     /// Returns output-independent theme resolution evidence without retaining runtime services.
     pub const fn theme_resolution_report(&self) -> Option<&super::ThemeResolutionReport> {
-        self.session.theme_resolution_report()
+        self.family.session_report().theme_resolution_report()
     }
 
     /// Returns the catalog identity retained by the completed render operation.
     pub const fn font_catalog_fingerprint(&self) -> super::FontCatalogFingerprint {
-        self.session.font_catalog_fingerprint()
+        self.family.session_report().font_catalog_fingerprint()
     }
 
     /// Returns the host-owned font-source order frozen by the completed render operation.
     pub const fn font_source_policy(&self) -> &super::FontSourcePolicy {
-        self.session.font_source_policy()
+        self.family.session_report().font_source_policy()
     }
 }
 
 struct CompletedTypedHeadlessSvg {
-    session: RenderSession,
+    family: merman_render::family::FamilyRenderReport,
 }
 
 impl CompletedTypedHeadlessSvg {
-    fn new(session: RenderSession) -> Self {
-        Self { session }
+    fn new(family: merman_render::family::FamilyRenderReport) -> Self {
+        Self { family }
     }
 
     fn into_report(self) -> RenderOperationReport {
         RenderOperationReport {
             execution_path: RenderExecutionPath::HeadlessOperationTyped,
-            session: self.session.report(),
+            family: self.family,
         }
     }
 }
@@ -199,6 +204,10 @@ impl RenderedDocument {
         &self.report
     }
 
+    pub const fn family_kind(&self) -> super::RenderFamilyKind {
+        self.report.family_kind()
+    }
+
     pub fn theme_fingerprint(&self) -> Option<super::ThemeFingerprint> {
         self.report.theme_fingerprint()
     }
@@ -238,6 +247,14 @@ impl RenderedSvg {
         &self.report
     }
 
+    pub const fn family_kind(&self) -> super::RenderFamilyKind {
+        self.report.family_kind()
+    }
+
+    /// Discards the completed operation report and returns only the SVG string.
+    ///
+    /// Use [`Self::into_parts`] when family, theme, measurement, or resource evidence must be
+    /// retained.
     pub fn into_svg(self) -> String {
         self.svg
     }
@@ -500,22 +517,25 @@ struct RenderedSvgParts {
 
 impl RenderedSvgParts {
     fn into_rendered_svg(self) -> RenderedSvg {
-        let (svg, _, _, session) = self.rendered.into_parts();
-        let report = CompletedTypedHeadlessSvg::new(session).into_report();
+        let completion = self.rendered.into_completion();
+        let (svg, family) = completion.into_output_and_report();
+        let report = CompletedTypedHeadlessSvg::new(family).into_report();
         RenderedSvg { svg, report }
     }
 
     fn into_pipeline_svg(self, pipeline: &SvgPipeline) -> Result<RenderedSvg> {
         let rendered = self.rendered.apply_pipeline(pipeline)?;
-        let (svg, _, _, session) = rendered.into_parts();
-        let report = CompletedTypedHeadlessSvg::new(session).into_report();
+        let completion = rendered.into_completion();
+        let (svg, family) = completion.into_output_and_report();
+        let report = CompletedTypedHeadlessSvg::new(family).into_report();
         Ok(RenderedSvg { svg, report })
     }
 
     fn into_document(self, pipeline: &SvgPipeline) -> Result<RenderedDocument> {
         let rendered = self.rendered.finalize_resvg(pipeline)?;
-        let (svg, _, _, session) = rendered.into_parts();
-        let report = CompletedTypedHeadlessSvg::new(session).into_report();
+        let completion = rendered.into_completion();
+        let (svg, family) = completion.into_output_and_report();
+        let report = CompletedTypedHeadlessSvg::new(family).into_report();
         debug_assert_eq!(
             svg.font_catalog().fingerprint(),
             report.font_catalog_fingerprint(),

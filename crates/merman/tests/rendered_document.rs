@@ -1,8 +1,8 @@
 use merman::Engine;
 use merman::svg::{
     DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontAssetSpec, FontCatalogSpec,
-    FontSourcePolicy, HeadlessRenderer, RenderEnvironment, RenderExecutionPath, ThemeAssets,
-    ThemePreset,
+    FontSourcePolicy, HeadlessRenderer, RenderEnvironment, RenderExecutionPath, RenderFamilyKind,
+    SvgPipeline, ThemeAssets, ThemePreset,
 };
 
 fn compile_preset(preset: ThemePreset) -> DiagramTheme {
@@ -53,6 +53,7 @@ fn rendered_document_keeps_svg_resources_and_operation_evidence_correlated() {
     );
     assert_eq!(document.theme_fingerprint(), None);
     assert_eq!(document.theme_resolution_report(), None);
+    assert_eq!(document.family_kind(), RenderFamilyKind::Info);
 }
 
 #[test]
@@ -87,6 +88,8 @@ fn themed_renderer_operations_freeze_one_theme_resource_identity() {
         document.report().theme_fingerprint(),
         Some(selected_theme.fingerprint())
     );
+    assert_eq!(document.family_kind(), RenderFamilyKind::Sequence);
+    assert_eq!(document.report().family_kind(), RenderFamilyKind::Sequence);
     assert_eq!(
         document.theme_resolution_report(),
         Some(selected_theme.report())
@@ -111,6 +114,32 @@ fn themed_renderer_operations_freeze_one_theme_resource_identity() {
         document.font_catalog().fingerprint(),
         environment_theme.font_catalog().fingerprint(),
         "a selected theme must not retain the environment catalog"
+    );
+}
+
+#[test]
+fn themed_pipeline_report_freezes_the_authoritative_swimlane_family() {
+    let theme = compile_preset(ThemePreset::OneDark);
+    let renderer = HeadlessRenderer::new()
+        .with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
+            "layout": "swimlane"
+        })))
+        .with_theme(theme.clone());
+
+    let rendered = renderer
+        .render_svg_with_pipeline_report_sync("flowchart LR\nA --> B\n", &SvgPipeline::readable())
+        .expect("pipeline render should succeed")
+        .expect("flowchart source should render");
+
+    assert_eq!(rendered.family_kind(), RenderFamilyKind::Swimlane);
+    assert_eq!(rendered.report().family_kind(), RenderFamilyKind::Swimlane);
+    assert_eq!(
+        rendered.report().theme_fingerprint(),
+        Some(theme.fingerprint())
+    );
+    assert_eq!(
+        rendered.report().theme_resolution_report(),
+        Some(theme.report())
     );
 }
 

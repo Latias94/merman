@@ -387,7 +387,7 @@ mod tests {
             .begin_session()
             .expect("render session");
         let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::new(&options, &debug, &session).expect("SVG execution");
+        let execution = SvgExecution::new(&options, &debug, &session, None).expect("SVG execution");
 
         let svg = render_pie_diagram_svg_model(
             &layout,

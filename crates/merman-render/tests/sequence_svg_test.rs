@@ -317,10 +317,11 @@ fn sequence_builtin_route_reuses_message_bound_metrics_within_one_operation() {
             let rendered = artifact
                 .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
                 .expect("render Sequence artifact");
-            let (_, _, _, session) = rendered.into_parts();
+            let (_, family_report) = rendered.into_completion().into_output_and_report();
 
-            let dimension_calls: u64 = session
-                .text_measurement_report()
+            let dimension_calls: u64 = family_report
+                .session_report()
+                .measurement()
                 .entries()
                 .iter()
                 .filter(|entry| {

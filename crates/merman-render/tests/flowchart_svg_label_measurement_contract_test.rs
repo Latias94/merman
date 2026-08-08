@@ -218,8 +218,8 @@ fn render_flowchart_with_host(
         outcome.name()
     );
 
-    let (_, _, _, session) = rendered.into_parts();
-    let report = session.text_measurement_report();
+    let (_, family_report) = rendered.into_completion().into_output_and_report();
+    let report = family_report.session_report().measurement();
     assert_eq!(
         report
             .entries()
