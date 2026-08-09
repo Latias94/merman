@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag to publish, for example v0.8.0-alpha.4"
+        description: "Release tag to publish, for example v0.8.0-alpha.5"
         required: true
         type: string
       source_ref:
@@ -90,6 +90,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Resolve verified source commit
@@ -129,6 +130,12 @@ jobs:
 
       - name: Verify release crate publish order
         run: python3 scripts/verify-release-crate-order.py
+
+      - name: Verify independent crate versions changed with their source
+        run: |
+          set -euo pipefail
+          base_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^)"
+          python3 scripts/verify-independent-crate-version-bumps.py --base-ref "$base_tag"
 
       - name: Verify exhaustive Cargo feature and artifact recipes
         run: cargo run --locked -p xtask -- verify-feature-matrix --strict

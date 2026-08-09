@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version without the leading v, for example 0.8.0-alpha.4"
+        description: "Release version without the leading v, for example 0.8.0-alpha.5"
         required: true
         type: string
       source_ref:
@@ -102,6 +102,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Install Rust toolchain
@@ -130,6 +131,12 @@ jobs:
       - name: Verify release crate order docs
         run: python3 scripts/verify-release-crate-order.py
 
+      - name: Verify independent crate versions changed with their source
+        run: |
+          set -euo pipefail
+          base_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^)"
+          python3 scripts/verify-independent-crate-version-bumps.py --base-ref "$base_tag"
+
       - name: Verify artifact dependency boundaries
         run: python3 scripts/verify_artifact_dependency_closures.py
 
@@ -141,6 +148,46 @@ jobs:
 
       - name: Validate CLI distribution assets
         run: python3 scripts/verify_cli_assets.py --require bash,zsh,fish,elvish,mandoc
+
+      - name: Install pinned cargo-dist
+        env:
+          DIST_INSTALLER_SHA256: b657cf8c04a8b7bc28f39d220f7e6dd11bbd2bdb072c552262bd9ccf597261b5
+        run: |
+          set -euo pipefail
+          installer="$RUNNER_TEMP/cargo-dist-installer.sh"
+          curl --proto '=https' --tlsv1.2 -LsSf \
+            -o "$installer" \
+            https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.sh
+          printf '%s  %s\n' "$DIST_INSTALLER_SHA256" "$installer" | sha256sum --check
+          sh "$installer"
+
+      - name: Build and verify host cargo-dist archives
+        env:
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          target=x86_64-unknown-linux-gnu
+          mkdir -p target/distrib
+          dist build \
+            "--tag=$RELEASE_TAG" \
+            --artifacts=local \
+            "--target=$target" \
+            --output-format=json > target/distrib/preflight-dist-manifest.json
+          python3 scripts/verify_cli_release_archive.py \
+            "target/distrib/merman-cli-$target.tar.xz" \
+            --checksum "target/distrib/merman-cli-$target.tar.xz.sha256" \
+            --target "$target" \
+            --version "$VERSION" \
+            --repo-root . \
+            --execute
+          python3 scripts/verify_lsp_release_archive.py \
+            "target/distrib/merman-lsp-$target.tar.xz" \
+            --checksum "target/distrib/merman-lsp-$target.tar.xz.sha256" \
+            --target "$target" \
+            --version "$VERSION" \
+            --repo-root . \
+            --execute
 
       - name: Verify CLI installation metadata
         run: python3 scripts/cli_installation_contract.py

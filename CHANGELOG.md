@@ -4,11 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [0.8.0-alpha.4] - 2026-08-09
+## [0.8.0-alpha.5] - 2026-08-09
 
-0.8.0-alpha.4 completes Merman's Mermaid 11.16.1 language and rendering surface and gives CLI, editor, browser, Rust, and native-SDK users explicit product contracts. It is a deliberately breaking prerelease; use the [alpha.3 to alpha.4 upgrade guide](docs/release/ALPHA3_TO_ALPHA4_UPGRADE_GUIDE.md) for exact migrations.
+0.8.0-alpha.5 completes Merman's Mermaid 11.16.1 language and rendering surface and gives CLI, editor, browser, Rust, and native-SDK users explicit product contracts. It is a deliberately breaking prerelease; use the [alpha.3 to alpha.5 upgrade guide](docs/release/ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md) for exact migrations.
 
 Rust crates and the lockstep browser packages use this workspace changelog. Package-specific details are available for [Android](platforms/android/CHANGELOG.md), [Apple](platforms/apple/CHANGELOG.md), [Flutter](platforms/flutter/CHANGELOG.md), [Python](platforms/python/merman/CHANGELOG.md), and the [VS Code extension](tools/vscode-extension/CHANGELOG.md).
+
+> **Publication note:** `0.8.0-alpha.4` was aborted before a complete release was produced. Its partially published Rust crates were withdrawn; `0.8.0-alpha.5` is the first supported release containing these changes.
 
 ### Breaking changes
 
@@ -20,7 +22,7 @@ Rust crates and the lockstep browser packages use this workspace changelog. Pack
 - Replaced public Chrono date/time values with project-owned `CivilDate`, `CivilDateTime`, `UtcOffset`, and `OffsetDateTime` types. Replace `chrono::NaiveDate` inputs and the removed `LocalTimeZone` conversion helpers with the checked constructors and resolution methods described in the upgrade guide. #37
 - Replaced the C and Flutter ABI 2 path with generated ABI 3, and replaced Android's legacy JNI-through-C-ABI path with direct JNI transport API 1. These native SDKs use Options JSON schema 2, opaque reusable engines, generic operation dispatch, typed missing-capability errors, and runtime capability/resource catalogs. Apple and Python use UniFFI binding API 3, whose resource error record includes the stable `cause` discriminator; callers must upgrade each generated wrapper with its matching native artifact. Generic UniFFI options now belong in `MermanOperationRequest.options_json`.
 - Resource-limit binding payloads now distinguish `ceiling` from `arithmetic_overflow` through the structured `details.resource.cause` field. Binding consumers must preserve the discriminator instead of classifying failures from display text; JavaScript `actual` and `max` counts are safe `number` values or canonical decimal `string` values for wider `u64` inputs.
-- Replaced `AnalysisResult` with sealed `AnalysisGeneration` values, explicit ready/rejected outcomes, policy-separated `AnalysisOptions`, parser-only facts schema 1, and cancellable caller-owned shared-source entry points. `SourceMap::line_starts()` / `source_arc()` are replaced by behavioral line queries and `shared_source()`; copy text only through the explicit `to_owned_text()` boundary. See the [Rust and embedding API migration](docs/release/ALPHA3_TO_ALPHA4_UPGRADE_GUIDE.md#rust-and-embedding-api-migration) section for exact replacements.
+- Replaced `AnalysisResult` with sealed `AnalysisGeneration` values, explicit ready/rejected outcomes, policy-separated `AnalysisOptions`, parser-only facts schema 1, and cancellable caller-owned shared-source entry points. `SourceMap::line_starts()` / `source_arc()` are replaced by behavioral line queries and `shared_source()`; copy text only through the explicit `to_owned_text()` boundary. See the [Rust and embedding API migration](docs/release/ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md#rust-and-embedding-api-migration) section for exact replacements.
 - Replaced low-level rendering entry points and independent layout/SVG service selection with `HeadlessRenderer`, one `RenderSession`, and operation-owned `RenderEnvironment` policy. Migrate viewport fields to `container_width` / `container_height`, construct the now non-exhaustive `LayoutOptions` from its defaults/builders, use descriptor-driven resource profiles, and remove legacy Manatee and Flowchart ELK backend selectors.
 - Replaced Dugong's `layout` / `layout_dagreish` split with one transactional Mermaid-compatible pipeline and non-exhaustive `LayoutError` results. Graphlib, ELK, Dugong, and Manatee now use source-backed ordering and non-exhaustive work errors; direct ELK importers must carry source `model_order` where edge order is observable.
 - Replaced `render_svg_resvg_safe{,_sync}` and `svg_resvg_safe()` with typed `render_resvg_compatible_svg{,_sync}` / `HeadlessRenderer::render_resvg_compatible_svg_sync()` and `finalize_resvg_svg()`. These return `ResvgCompatibleSvg` instead of an unbranded `String`; downstream raster consumers must preserve that sealed value until the final byte boundary.
@@ -49,7 +51,7 @@ Rust crates and the lockstep browser packages use this workspace changelog. Pack
 
 ### Performance and footprint
 
-- Substantially reduced the lint/analysis CLI binary and dependency closure compared with alpha.3, and removed repeated effective-config, label-measurement, hierarchy, ordering, conflict, and positioning work from common render paths. Complete products cover a broader capability set and are not uniformly smaller or faster; see the [refactoring evidence report](docs/release/ALPHA3_TO_ALPHA4_REFACTORING_REPORT.md) for scoped measurements. #48
+- Substantially reduced the lint/analysis CLI binary and dependency closure compared with alpha.3, and removed repeated effective-config, label-measurement, hierarchy, ordering, conflict, and positioning work from common render paths. Complete products cover a broader capability set and are not uniformly smaller or faster; see the [refactoring evidence report](docs/release/ALPHA3_TO_ALPHA5_REFACTORING_REPORT.md) for scoped measurements. #48
 
 ### Fixed
 

@@ -272,7 +272,7 @@ engine = merman.MermanEngine(None, None)
 svg = engine.render_svg("flowchart TD\n  A --> B", None)
 ```
 
-Flutter uses `flutter pub add 'merman:^0.8.0-alpha.4'` and `Merman.open()`. Android consumes the
+Flutter uses `flutter pub add 'merman:^0.8.0-alpha.5'` and `Merman.open()`. Android consumes the
 matching release AAR through `implementation(files(...))`; its Kotlin surface is direct JNI
 transport API 1 rather than C ABI 3. Apple consumes the matching
 XCFramework through the local Swift package; C and C++ build the source-only `c-abi-native`

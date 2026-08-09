@@ -24,7 +24,7 @@ flowchart TD
 
 | Typst package | merman source version | Typst plugin ABI | Notes |
 | --- | --- | --- | --- |
-| `0.2.0` | `0.8.0-alpha.4` | `2` | Uses the structured Typst result envelope and descriptor-owned capability catalog. |
+| `0.2.0` | `0.8.0-alpha.5` | `2` | Uses the structured Typst result envelope and descriptor-owned capability catalog. |
 | `0.1.0` | `0.8.0-alpha.1` | `1` | Initial published Typst wrapper. |
 
 The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows shared binding options schema `2`, including `presentation` for first-party profiles and host themes, `layout` for geometry, and `environment` for text measurement and math rendering. This options schema is independent from Typst plugin ABI 2 and native ABI 3.

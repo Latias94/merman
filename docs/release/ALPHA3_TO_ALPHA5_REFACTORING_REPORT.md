@@ -1,10 +1,10 @@
-# Alpha.3 to Alpha.4 Refactoring Evidence Report
+# Alpha.3 to Alpha.5 Refactoring Evidence Report
 
 > [!IMPORTANT]
-> This is a historical engineering evidence checkpoint, not the rolling alpha.4 upgrade guide.
+> This is a historical engineering evidence checkpoint, not the rolling alpha.5 upgrade guide.
 > Its primary release-range measurements compare alpha.3 with `d2698d0a3`, while explicitly named
 > later commits are separate focused receipts. See the
-> [Alpha.3 to Alpha.4 upgrade guide](ALPHA3_TO_ALPHA4_UPGRADE_GUIDE.md) for audience-specific
+> [Alpha.3 to Alpha.5 upgrade guide](ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md) for audience-specific
 > migration steps. Regenerate release measurements against the final tagged commit.
 
 ## Scope and verdict
@@ -12,7 +12,8 @@
 This report's primary revision comparison uses `v0.8.0-alpha.3`
 (`56227a541011a3929b808bb3555d67372d630aae`)
 with `d2698d0a365b905bb65a58a7690c74075878a4f9`, the alpha.4 candidate measured for this
-checkpoint.
+checkpoint. That candidate's user-visible work, together with later release-only repairs, ships
+as alpha.5 after the incomplete alpha.4 publication was withdrawn.
 It was measured on an Apple M4 Pro with Rust 1.95.0, Cargo 1.95.0, Node 26.5.0, and
 the same local source corpus on 2026-07-27.
 

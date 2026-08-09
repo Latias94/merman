@@ -48,7 +48,7 @@ These are headless `merman-cli` outputs. The [Playground](https://frankorz.com/m
 ## Quick Start
 
 > [!IMPORTANT]
-> This README describes the unreleased `0.8.0-alpha.4` source contract. The Rust and CLI commands below install the current repository source; published registry packages can still be alpha.3. Pin a full commit before using an unreleased build in CI or production.
+> This README describes the unreleased `0.8.0-alpha.5` source contract. The Rust and CLI commands below install the current repository source; published registry packages can still be alpha.3. Pin a full commit before using an unreleased build in CI or production.
 
 ### Rust
 
@@ -88,7 +88,7 @@ The task-oriented [Rust examples](https://github.com/Latias94/merman/tree/main/c
 After alpha.4 is published, the registry equivalent will be:
 
 ```sh
-cargo add merman@^0.8.0-alpha.4
+cargo add merman@^0.8.0-alpha.5
 ```
 
 ### Command Line
@@ -167,7 +167,7 @@ cargo add merman --git https://github.com/Latias94/merman --rev FULL_COMMIT_SHA
 
 For a shell, `cargo binstall merman-cli` installs the registry-selected release, while `brew install merman-cli` follows the stable Homebrew formula. Those external channels can trail the current source documentation, so check `merman-cli --version` before depending on a new contract.
 
-The source installation above pins an immutable commit. Starting with `0.8.0-alpha.4`, direct GitHub archives bundle checked completion and man-page assets, while the complete binary keeps `merman-cli completion <shell>` as the portable fallback. The [CLI guide](https://github.com/Latias94/merman/tree/main/crates/merman-cli#install) compares the installation channels and their on-disk support files.
+The source installation above pins an immutable commit. Starting with `0.8.0-alpha.5`, direct GitHub archives bundle checked completion and man-page assets, while the complete binary keeps `merman-cli completion <shell>` as the portable fallback. The [CLI guide](https://github.com/Latias94/merman/tree/main/crates/merman-cli#install) compares the installation channels and their on-disk support files.
 
 Publication routes differ by platform. The [package surface guide](https://github.com/Latias94/merman/blob/main/docs/release/PACKAGE_SURFACES.md) distinguishes registry packages from repository or CI artifacts.
 
@@ -212,7 +212,7 @@ See the current [alignment dashboard](https://github.com/Latias94/merman/blob/ma
 
 ## Documentation
 
-- [Upgrade from 0.8.0-alpha.3 to 0.8.0-alpha.4](https://github.com/Latias94/merman/blob/main/docs/release/ALPHA3_TO_ALPHA4_UPGRADE_GUIDE.md)
+- [Upgrade from 0.8.0-alpha.3 to 0.8.0-alpha.5](https://github.com/Latias94/merman/blob/main/docs/release/ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md)
 - [Choose capabilities and build profiles](https://github.com/Latias94/merman/blob/main/docs/FEATURES.md)
 - [Diagram coverage and parity](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
 - [CLI reference](https://github.com/Latias94/merman/blob/main/crates/merman-cli/README.md)

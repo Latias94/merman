@@ -8,7 +8,7 @@ push a `v*` tag whose version matches every package manifest that will publish i
 
 Release classification follows SemVer syntax, not the major version number. Versions without a
 prerelease suffix, including `0.7.0` and `0.8.0`, are regular releases. Only versions with a
-prerelease component such as `0.8.0-alpha.4`, `0.8.0-beta.1`, or `0.8.0-rc.1` use a prerelease
+prerelease component such as `0.8.0-alpha.5`, `0.8.0-beta.1`, or `0.8.0-rc.1` use a prerelease
 channel. Do not describe the project or a `0.x` release as alpha solely because its major version
 is zero.
 

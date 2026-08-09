@@ -1,6 +1,6 @@
 {
   "name": "@mermanjs/node-linux-x64-musl",
-  "version": "0.8.0-alpha.4",
+  "version": "0.8.0-alpha.5",
   "private": true,
   "description": "Private Merman Node native candidate for Linux x64 musl.",
   "engines": {"node": ">=22.0.0"},
