@@ -17,7 +17,10 @@ import {
 } from "@/components/ui/dialog";
 import { useAppStore } from "@/src/store";
 import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
-import type { AsciiCapability } from "@/src/lib/ascii-support";
+import {
+  asciiSupportLabelKey,
+  type AsciiCapability,
+} from "@/src/lib/ascii-support";
 import {
   categories,
   examples,
@@ -325,10 +328,9 @@ function AsciiCapabilityBadge({
   capability: AsciiCapability | null;
   t: (key: string, options?: Record<string, unknown>) => string;
 }) {
-  const level = capability?.support_level ?? "partial";
   return (
     <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-      {t(`asciiSupport.levels.${level}`)}
+      {t(asciiSupportLabelKey(capability))}
     </span>
   );
 }

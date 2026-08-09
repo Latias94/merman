@@ -950,6 +950,10 @@ for (const diagram of api.supportedDiagrams()) {
 
 if (hasCapability("ascii")) {
   const asciiDiagrams = api.asciiSupportedDiagrams();
+  assert.deepEqual(asciiDiagrams, [...api.SUPPORTED_ASCII_DIAGRAMS]);
+  assert.deepEqual(api.asciiDiagrammaticDiagrams(), [
+    ...api.DIAGRAMMATIC_ASCII_DIAGRAMS,
+  ]);
   for (const diagram of asciiDiagrams) {
     assert.equal(api.isAsciiDiagramType(diagram), true);
   }

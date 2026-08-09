@@ -58,7 +58,10 @@ test("fallback projection fields derive the compatibility support level", () => 
     assert.equal(capability.semantic_coverage, "partial");
     assert.equal(capability.primary_projection, "structured_text");
     assert.equal(capability.support_level, "summary");
-    assert.equal(asciiSupportLabelKey(capability), "asciiSupport.summary");
+    assert.equal(
+      asciiSupportLabelKey(capability),
+      "asciiSupport.structuredText"
+    );
   }
 
   const zenuml = byType.get("zenuml")!;
@@ -71,5 +74,18 @@ test("fallback projection fields derive the compatibility support level", () => 
   assert.ok(!gantt.supported_semantics.includes("dependencies"));
   assert.ok(
     gantt.limits.some((limit) => limit.includes("dependency source expressions"))
+  );
+
+  const classDiagram = byType.get("class")!;
+  assert.ok(
+    classDiagram.limits.some((limit) => limit.includes("cross-namespace"))
+  );
+  assert.ok(
+    classDiagram.limits.some((limit) => limit.includes("ports do not fit"))
+  );
+  assert.ok(
+    classDiagram.limits.every(
+      (limit) => !limit.includes("namespace containers are not drawn")
+    )
   );
 });

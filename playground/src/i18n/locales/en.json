@@ -202,12 +202,13 @@
   },
   "asciiSupport": {
     "unsupported": "Unsupported",
-    "summary": "Summary",
+    "summary": "Structured text",
+    "structuredText": "Structured text",
     "summaryFallback": "May summarize dense terminal-hostile layouts.",
     "levels": {
       "full": "Full ASCII",
       "partial": "Partial ASCII",
-      "summary": "Summary ASCII",
+      "summary": "Structured text",
       "unsupported": "Unsupported"
     }
   },

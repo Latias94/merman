@@ -71,8 +71,9 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: Partial<
     primaryProjection: "diagrammatic",
     structuredTextFallback: true,
     limits: [
-      "namespace containers are not drawn as nested boxes",
-      "dense or grid-budgeted relation scenes can summarize",
+      "cross-namespace or cross-container relationships render as relation summaries",
+      "parallel relation lanes whose ports do not fit use a lossless relation summary",
+      "dense or collision-prone relation scenes can summarize",
     ],
   },
   er: {
@@ -238,7 +239,7 @@ export function asciiSupportLabelKey(
     return "asciiSupport.unsupported";
   }
   if (capability.primary_projection === "structured_text") {
-    return "asciiSupport.summary";
+    return "asciiSupport.structuredText";
   }
   return `asciiSupport.levels.${capability.semantic_coverage}`;
 }
