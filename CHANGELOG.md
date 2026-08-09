@@ -4,11 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
+## [0.8.0-alpha.5] - 2026-08-09
+
+0.8.0-alpha.5 is a distribution and provenance follow-up to alpha.4. Rust, CLI, LSP, FFI, and WASM runtime contracts are unchanged from alpha.4; users already on alpha.4 can update the version without another code migration. Flutter, Python, Web, Android, and Apple users coming from alpha.3 should follow their package changelogs and the [alpha.3 to alpha.5 upgrade guide](docs/release/ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md).
+
+### Changed
+
+- Restored the ordinary single-tag release path after alpha.4 required an audited recovery descendant. Alpha.5 crates and GitHub binaries are generated from one canonical tagged source revision.
+- Made release-facing Rust dependency examples use exact prerelease versions; source-only Git commands are explicitly labeled and require a reviewed full commit.
+- Made partial publication recoverable without moving an accepted tag or republishing crates and artifacts that already reached their registry.
+
+### Fixed
+
+- Release verification now accepts valid PDF token spacing, LSP header forms, and notification ordering while retaining format signatures, bounded protocol framing, required responses, and real final-archive execution.
+- CLI and LSP cargo-dist archives include the project changelog, dual licenses, third-party notices, exact third-party license texts, and the package README; CLI archives also retain generated completion and manual-page assets.
+- Corrected release documentation that still described alpha.4 as unavailable after its crates and GitHub binaries had been recovered and published.
+
 ## [0.8.0-alpha.4] - 2026-08-09
 
-0.8.0-alpha.4 completes Merman's Mermaid 11.16.1 language and rendering surface and gives CLI, editor, browser, Rust, and native-SDK users explicit product contracts. It is a deliberately breaking prerelease; use the [alpha.3 to alpha.4 upgrade guide](docs/release/ALPHA3_TO_ALPHA4_UPGRADE_GUIDE.md) for exact migrations.
+0.8.0-alpha.4 completes Merman's Mermaid 11.16.1 language and rendering surface and gives CLI, editor, browser, Rust, and native-SDK users explicit product contracts. It is a deliberately breaking prerelease; users upgrading from alpha.3 can use the [alpha.3 to alpha.5 upgrade guide](docs/release/ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md) because alpha.5 does not change these runtime contracts.
 
-Rust crates and the lockstep browser packages use this workspace changelog. Package-specific details are available for [Android](platforms/android/CHANGELOG.md), [Apple](platforms/apple/CHANGELOG.md), [Flutter](platforms/flutter/CHANGELOG.md), [Python](platforms/python/merman/CHANGELOG.md), and the [VS Code extension](tools/vscode-extension/CHANGELOG.md).
+The published alpha.4 surfaces are the Rust crates and official CLI/LSP GitHub binaries. The source tree also prepared the lockstep browser and native wrapper contracts, but alpha.4 packages were not published to npm, pub.dev, PyPI, or the Android and Apple artifact channels; their package-local alpha.5 changelogs remain the release notes for those surfaces.
 
 ### Highlights
 
@@ -36,7 +52,7 @@ Rust crates and the lockstep browser packages use this workspace changelog. Pack
 - Replaced public Chrono date/time values with project-owned `CivilDate`, `CivilDateTime`, `UtcOffset`, and `OffsetDateTime` types. Replace `chrono::NaiveDate` inputs and the removed `LocalTimeZone` conversion helpers with the checked constructors and resolution methods described in the upgrade guide. #37
 - Replaced the C and Flutter ABI 2 path with generated ABI 3, and replaced Android's legacy JNI-through-C-ABI path with direct JNI transport API 1. These native SDKs use Options JSON schema 2, opaque reusable engines, generic operation dispatch, typed missing-capability errors, and runtime capability/resource catalogs. Apple and Python use UniFFI binding API 4, whose resource error record includes the stable `cause` discriminator and whose ASCII capability record exposes semantic coverage plus projection kind; callers must upgrade each generated wrapper with its matching native artifact. Generic UniFFI options now belong in `MermanOperationRequest.options_json`.
 - Resource-limit binding payloads now distinguish `ceiling` from `arithmetic_overflow` through the structured `details.resource.cause` field. Binding consumers must preserve the discriminator instead of classifying failures from display text; JavaScript `actual` and `max` counts are safe `number` values or canonical decimal `string` values for wider `u64` inputs.
-- Replaced `AnalysisResult` with sealed `AnalysisGeneration` values, explicit ready/rejected outcomes, policy-separated `AnalysisOptions`, parser-only facts schema 1, and cancellable caller-owned shared-source entry points. `SourceMap::line_starts()` / `source_arc()` are replaced by behavioral line queries and `shared_source()`; copy text only through the explicit `to_owned_text()` boundary. See the [Rust and embedding API migration](docs/release/ALPHA3_TO_ALPHA4_UPGRADE_GUIDE.md#rust-and-embedding-api-migration) section for exact replacements.
+- Replaced `AnalysisResult` with sealed `AnalysisGeneration` values, explicit ready/rejected outcomes, policy-separated `AnalysisOptions`, parser-only facts schema 1, and cancellable caller-owned shared-source entry points. `SourceMap::line_starts()` / `source_arc()` are replaced by behavioral line queries and `shared_source()`; copy text only through the explicit `to_owned_text()` boundary. See the [Rust and embedding API migration](docs/release/ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md#rust-and-embedding-api-migration) section for exact replacements.
 - Replaced low-level rendering entry points and independent layout/SVG service selection with `HeadlessRenderer`, one `RenderSession`, and operation-owned `RenderEnvironment` policy. Migrate viewport fields to `container_width` / `container_height`, construct the now non-exhaustive `LayoutOptions` from its defaults/builders, use descriptor-driven resource profiles, and remove legacy Manatee and Flowchart ELK backend selectors.
 - Replaced Dugong's `layout` / `layout_dagreish` split with one transactional Mermaid-compatible pipeline and non-exhaustive `LayoutError` results. Graphlib, ELK, Dugong, and Manatee now use source-backed ordering and non-exhaustive work errors; direct ELK importers must carry source `model_order` where edge order is observable.
 - Replaced `render_svg_resvg_safe{,_sync}` and `svg_resvg_safe()` with typed `render_resvg_compatible_svg{,_sync}` / `HeadlessRenderer::render_resvg_compatible_svg_sync()` and `finalize_resvg_svg()`. These return `ResvgCompatibleSvg` instead of an unbranded `String`; downstream raster consumers must preserve that sealed value until the final byte boundary.
@@ -44,6 +60,7 @@ Rust crates and the lockstep browser packages use this workspace changelog. Pack
 - Replaced the prerelease `HostThemeProfile` API and `host_theme` Options JSON group with four independent owners: `Presentation::with_theme(...)`, `Presentation::with_profile(...)`, top-level `site_config`, and `with_svg_pipeline(...)` / `svg`. The old Rust render helpers and host-theme preset discovery methods were removed directly rather than retained as deprecated aliases; use the artifact-aware `presentation-catalog` metadata payload for discovery.
 - Replaced the alpha.3 embedded LSP entry points with ordered `MermanLspService`, a one-time `MermanClientSocket::split()`, and transport-owned scheduling. Enable the `stdio` feature explicitly for the bundled server, send catalog/schema requests through the ordered service, and handle the exhaustive `StdioTermination::InputOverloaded` variant. #26 #33 #38
 - Typst calls now always enforce the `constrained` resource policy; caller-provided trusted or unbounded profiles and numeric overrides are replaced at the plugin boundary.
+- Expanded the public Flowchart `FlowEdge` model with independent endpoint marker, stroke, and visibility fields, and changed ER `classes` / `entities` collections from `BTreeMap` to declaration-ordered `IndexMap`. Rust callers using struct literals or explicit collection types must migrate as described in the upgrade guide.
 
 ### Added
 
@@ -65,7 +82,7 @@ Rust crates and the lockstep browser packages use this workspace changelog. Pack
 
 ### Performance and footprint
 
-- Substantially reduced the lint/analysis CLI binary and dependency closure compared with alpha.3, and removed repeated effective-config, label-measurement, hierarchy, ordering, conflict, and positioning work from common render paths. Complete products cover a broader capability set and are not uniformly smaller or faster; see the [refactoring evidence report](docs/release/ALPHA3_TO_ALPHA4_REFACTORING_REPORT.md) for scoped measurements. #48
+- Substantially reduced the lint/analysis CLI binary and dependency closure compared with alpha.3, and removed repeated effective-config, label-measurement, hierarchy, ordering, conflict, and positioning work from common render paths. Complete products cover a broader capability set and are not uniformly smaller or faster; see the [refactoring evidence report](docs/release/ALPHA3_TO_ALPHA5_REFACTORING_REPORT.md) for scoped measurements. #48
 
 ### Fixed
 

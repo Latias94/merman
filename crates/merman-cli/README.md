@@ -20,7 +20,7 @@ This README describes the current source revision. For a published release, pref
 cargo binstall merman-cli
 ```
 
-Starting with `0.8.0-alpha.4`, Merman's cargo-binstall metadata uses the repository's cargo-dist GitHub Release archive for the current target, disables third-party QuickInstall artifacts, and preserves `cargo install` as the fallback when an official archive is unavailable. Published binary channels can trail this development branch; check `merman-cli --version` first, then use `merman-cli capabilities --json` on `0.8.0-alpha.4` and later. Pin a source revision when you need the exact contract documented here.
+Starting with `0.8.0-alpha.5`, Merman's cargo-binstall metadata uses the repository's cargo-dist GitHub Release archive for the current target, disables third-party QuickInstall artifacts, and preserves `cargo install` as the fallback when an official archive is unavailable. Published binary channels can trail this development branch; check `merman-cli --version` first, then use `merman-cli capabilities --json` on `0.8.0-alpha.5` and later. Pin a source revision when you need the exact contract documented here.
 
 Homebrew users can install the stable formula:
 
@@ -30,15 +30,15 @@ brew install merman-cli
 
 The formula follows stable releases and may trail this pre-release documentation.
 
-Starting with `0.8.0-alpha.4`, version-specific [GitHub Releases](https://github.com/Latias94/merman/releases) also provide `merman-cli-installer.sh` and `merman-cli-installer.ps1`. Download an installer from the chosen release rather than a moving URL; it installs only the binary and fails closed if the archive SHA-256 cannot be verified.
+Starting with `0.8.0-alpha.5`, version-specific [GitHub Releases](https://github.com/Latias94/merman/releases) also provide `merman-cli-installer.sh` and `merman-cli-installer.ps1`. Download an installer from the chosen release rather than a moving URL; it installs only the binary and fails closed if the archive SHA-256 cannot be verified.
 
 Install the complete CLI from source:
 
 ```sh
-cargo install --git https://github.com/Latias94/merman --locked merman-cli
+cargo install --git https://github.com/Latias94/merman --rev FULL_COMMIT_SHA --locked merman-cli
 ```
 
-The Git command follows the repository's default branch at install time. Add `--rev FULL_COMMIT_SHA` to pin a remote revision.
+Replace `FULL_COMMIT_SHA` with a reviewed 40-character commit from the repository.
 
 From a local checkout:
 
@@ -46,13 +46,13 @@ From a local checkout:
 cargo install --path crates/merman-cli
 ```
 
-The standard commands above and project release artifacts select the complete `cli-release` capability set. Cargo-dist and, beginning with `0.8.0-alpha.4`, cargo-binstall consume the project-built `dist` artifact; source channels build the same features with their package manager's release profile. Channels also differ in which support files they place on disk and who publishes them:
+The standard commands above and project release artifacts select the complete `cli-release` capability set. Cargo-dist and, beginning with `0.8.0-alpha.5`, cargo-binstall consume the project-built `dist` artifact; source channels build the same features with their package manager's release profile. Channels also differ in which support files they place on disk and who publishes them:
 
 | Channel | Binary source | Completion and man pages | Availability |
 | --- | --- | --- | --- |
-| `cargo binstall merman-cli` | `0.8.0-alpha.4` and later: project release archive, with source fallback | Not installed | Registry-selected version; its own metadata governs |
-| GitHub shell or PowerShell installer | Project release archive | Not installed | `0.8.0-alpha.4` and later |
-| Direct GitHub archive | Project release archive | Bundled under `completions/` and `man/` | `0.8.0-alpha.4` and later |
+| `cargo binstall merman-cli` | `0.8.0-alpha.5` and later: project release archive, with source fallback | Not installed | Registry-selected version; its own metadata governs |
+| GitHub shell or PowerShell installer | Project release archive | Not installed | `0.8.0-alpha.5` and later |
+| Direct GitHub archive | Project release archive | Bundled under `completions/` and `man/` | `0.8.0-alpha.5` and later |
 | Homebrew formula | Formula source build or Homebrew bottle | `0.8.0` and later: Bash, Zsh, Fish, PowerShell, and man pages installed | External stable channel; selected formula version governs |
 | Repository Nix package | Built from locked repository source | Bash, Zsh, Fish, PowerShell, Elvish, and man pages installed | First-party source interface, not a registry package |
 | `cargo install` | Built from crates.io, Git, or a checkout | Not installed | Registry or source revision selected by the user |
@@ -72,7 +72,7 @@ merman-cli completion powershell
 merman-cli completion elvish
 ```
 
-Release archives beginning with `0.8.0-alpha.4` also include legal notices. Cargo-binstall installs only the executable. The cargo-dist installers likewise omit completion and man files, but may create an environment file and update shell startup configuration to expose their install directory on `PATH`. Direct archive users should verify the adjacent checksum and the GitHub attestation constrained to the release workflow and tag; the [CLI release contract](https://github.com/Latias94/merman/blob/main/docs/releasing/CLI.md) provides the exact command and trust boundary.
+Release archives beginning with `0.8.0-alpha.5` also include legal notices. Cargo-binstall installs only the executable. The cargo-dist installers likewise omit completion and man files, but may create an environment file and update shell startup configuration to expose their install directory on `PATH`. Direct archive users should verify the adjacent checksum and the GitHub attestation constrained to the release workflow and tag; the [CLI release contract](https://github.com/Latias94/merman/blob/main/docs/releasing/CLI.md) provides the exact command and trust boundary.
 
 The executable is named `merman-cli`; Merman does not install an `mmdc` alias.
 
@@ -206,7 +206,7 @@ The default feature set is the complete local product. Cargo features are additi
 Install a lint-only binary:
 
 ```sh
-cargo install --git https://github.com/Latias94/merman --locked merman-cli \
+cargo install merman-cli --version 0.8.0-alpha.5 --locked \
   --no-default-features --features analysis
 ```
 
@@ -305,7 +305,7 @@ merman-cli completion fish > merman-cli.fish
 merman-cli completion powershell > merman-cli.ps1
 ```
 
-Release archives beginning with `0.8.0-alpha.4` also carry deterministic completion snapshots and manual pages so downstream package definitions can install shell integration without executing a foreign-target binary during packaging. These assets are generated from the same Clap command tree and checked for drift in CI. Homebrew stable integration is monitored by this repository; Scoop and WinGet manifests are not currently published.
+Release archives beginning with `0.8.0-alpha.5` also carry deterministic completion snapshots and manual pages so downstream package definitions can install shell integration without executing a foreign-target binary during packaging. These assets are generated from the same Clap command tree and checked for drift in CI. Homebrew stable integration is monitored by this repository; Scoop and WinGet manifests are not currently published.
 
 The checked-in completion and manual assets represent the canonical `cli-release` complete profile.
 For a custom slim build with `shell-completions`, generate completion from that binary at runtime so

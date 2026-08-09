@@ -149,20 +149,24 @@ def _read_lsp_frame(
         lines = header[:-4].decode("ascii").split("\r\n")
     except UnicodeDecodeError as error:
         raise ArchiveVerificationError(f"LSP response header is not ASCII: {error}") from error
-    content_lengths = [
-        line.removeprefix("Content-Length: ")
-        for line in lines
-        if line.startswith("Content-Length: ")
-    ]
-    if len(content_lengths) != 1 or len(lines) != 1:
-        raise ArchiveVerificationError(
-            "LSP response must contain exactly one Content-Length header"
-        )
-    try:
-        content_length = int(content_lengths[0])
-    except ValueError as error:
-        raise ArchiveVerificationError("LSP Content-Length must be a decimal integer") from error
-    if content_length < 0 or content_length > LSP_BODY_MAX_BYTES:
+    content_length = None
+    for line in lines:
+        name, separator, value = line.partition(":")
+        if not separator or not name:
+            raise ArchiveVerificationError("LSP response contains a malformed header")
+        if name.casefold() != "content-length":
+            continue
+        if content_length is not None:
+            raise ArchiveVerificationError(
+                "LSP response contains more than one Content-Length header"
+            )
+        value = value.strip()
+        if not value or not value.isdigit():
+            raise ArchiveVerificationError("LSP Content-Length must be a decimal integer")
+        content_length = int(value)
+    if content_length is None:
+        raise ArchiveVerificationError("LSP response is missing the Content-Length header")
+    if content_length > LSP_BODY_MAX_BYTES:
         raise ArchiveVerificationError("LSP response body exceeds verification budget")
     session_bytes[0] += len(header) + content_length
     if session_bytes[0] > LSP_SESSION_MAX_BYTES:
@@ -394,7 +398,20 @@ def verify_runtime_contract(
         raise ArchiveVerificationError(
             "initialize response result must contain a capabilities object"
         )
-    for message in messages[1:-1]:
+    shutdown: dict[str, object] | None = None
+    for message in messages[1:]:
+        if message.get("id") == 2:
+            if shutdown is not None:
+                raise ArchiveVerificationError(
+                    "LSP lifecycle emitted more than one shutdown response"
+                )
+            _require_response(
+                message,
+                request_id=2,
+                label="shutdown response",
+            )
+            shutdown = message
+            continue
         if (
             message.get("jsonrpc") != "2.0"
             or not isinstance(message.get("method"), str)
@@ -403,12 +420,8 @@ def verify_runtime_contract(
             raise ArchiveVerificationError(
                 "LSP lifecycle emitted an unexpected intermediate message"
             )
-    shutdown = messages[-1]
-    _require_response(
-        shutdown,
-        request_id=2,
-        label="shutdown response",
-    )
+    if shutdown is None:
+        raise ArchiveVerificationError("LSP lifecycle did not return a shutdown response")
     if shutdown["result"] is not None:
         raise ArchiveVerificationError("shutdown response result must be null")
 

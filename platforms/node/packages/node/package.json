@@ -1,6 +1,6 @@
 {
   "name": "@mermanjs/node",
-  "version": "0.8.0-alpha.4",
+  "version": "0.8.0-alpha.5",
   "private": true,
   "description": "Private Merman Node/SSG candidate loader pending U14 evidence admission.",
   "type": "module",
@@ -25,10 +25,10 @@
   ],
   "license": "MIT OR Apache-2.0",
   "optionalDependencies": {
-    "@mermanjs/node-darwin-arm64": "0.8.0-alpha.4",
-    "@mermanjs/node-darwin-x64": "0.8.0-alpha.4",
-    "@mermanjs/node-linux-x64-gnu": "0.8.0-alpha.4",
-    "@mermanjs/node-linux-x64-musl": "0.8.0-alpha.4",
-    "@mermanjs/node-win32-x64-msvc": "0.8.0-alpha.4"
+    "@mermanjs/node-darwin-arm64": "0.8.0-alpha.5",
+    "@mermanjs/node-darwin-x64": "0.8.0-alpha.5",
+    "@mermanjs/node-linux-x64-gnu": "0.8.0-alpha.5",
+    "@mermanjs/node-linux-x64-musl": "0.8.0-alpha.5",
+    "@mermanjs/node-win32-x64-msvc": "0.8.0-alpha.5"
   }
 }

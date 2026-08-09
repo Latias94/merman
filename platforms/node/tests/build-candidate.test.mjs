@@ -190,7 +190,7 @@ test("candidate Cargo packages stay aligned with the private package surface ver
     "0.8.0-alpha.3";
   assert.throws(
     () => validateCandidatePackageVersions(staleCandidate),
-    /merman-node-candidate.*0\.8\.0-alpha\.4/i,
+    /merman-node-candidate.*0\.8\.0-alpha\.5/i,
   );
 
   const staleBindings = structuredClone(metadata);
@@ -198,7 +198,7 @@ test("candidate Cargo packages stay aligned with the private package surface ver
     "0.8.0-alpha.3";
   assert.throws(
     () => validateCandidatePackageVersions(staleBindings),
-    /merman-bindings-core.*0\.8\.0-alpha\.4/i,
+    /merman-bindings-core.*0\.8\.0-alpha\.5/i,
   );
 });
 

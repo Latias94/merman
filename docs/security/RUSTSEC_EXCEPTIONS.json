@@ -10,31 +10,31 @@
       "reason": "The current resvg/usvg, krilla, and ratex releases require ttf-parser; no safe upstream upgrade is available yet.",
       "dependency_paths": [
         [
-          "merman-export@0.8.0-alpha.4",
+          "merman-export@0.8.0-alpha.5",
           "krilla-svg@0.8.1",
           "fontdb@0.23.0",
           "ttf-parser@0.25.1"
         ],
         [
-          "merman-export@0.8.0-alpha.4",
+          "merman-export@0.8.0-alpha.5",
           "krilla@0.8.2",
           "rustybuzz@0.20.1",
           "ttf-parser@0.25.1"
         ],
         [
-          "merman-export@0.8.0-alpha.4",
+          "merman-export@0.8.0-alpha.5",
           "usvg@0.47.0",
           "ttf-parser@0.25.1"
         ],
         [
-          "merman-render@0.8.0-alpha.4",
+          "merman-render@0.8.0-alpha.5",
           "ratex-svg@0.1.14",
           "ab_glyph@0.2.32",
           "owned_ttf_parser@0.25.1",
           "ttf-parser@0.25.1"
         ],
         [
-          "merman-render@0.8.0-alpha.4",
+          "merman-render@0.8.0-alpha.5",
           "ratex-svg@0.1.14",
           "ratex-unicode-font@0.1.14",
           "ttf-parser@0.25.1"
@@ -78,12 +78,12 @@
       "reason": "The current resvg/usvg and krilla releases require rustybuzz; no safe upstream upgrade is available yet.",
       "dependency_paths": [
         [
-          "merman-export@0.8.0-alpha.4",
+          "merman-export@0.8.0-alpha.5",
           "krilla@0.8.2",
           "rustybuzz@0.20.1"
         ],
         [
-          "merman-export@0.8.0-alpha.4",
+          "merman-export@0.8.0-alpha.5",
           "usvg@0.47.0",
           "rustybuzz@0.20.1"
         ]

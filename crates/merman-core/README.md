@@ -8,10 +8,10 @@ Most applications that want rendered output should use the `merman` facade inste
 
 ## Quick Start
 
-Install from the repository's default branch:
+Add the exact alpha.5 prerelease:
 
 ```sh
-cargo add merman-core --git https://github.com/Latias94/merman
+cargo add merman-core@0.8.0-alpha.5
 ```
 
 Parse Mermaid into its compatibility semantic JSON projection:

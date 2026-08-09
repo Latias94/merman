@@ -68,7 +68,7 @@ VALID_PNG = (
     + b"\x00\x00\x00\x00IEND\xaeB`\x82"
 )
 VALID_JPEG = verifier.JPEG_START + verifier.JPEG_END
-VALID_PDF = b"%PDF-1.7\n1 0 obj <</Type /Page>> endobj\n%%EOF\n"
+VALID_PDF = b"%PDF-1.7\n1 0 obj <</Type/Page>> endobj\n%%EOF\n"
 ROOT_RELEASE_FILES = {
     "CHANGELOG.md": b"Release changes\n",
     "LICENSE-APACHE": b"Apache license\n",
@@ -187,6 +187,8 @@ def valid_capabilities_payload(
             "id": output["id"],
             "description": output["description"],
             "media_type": output["media_type"],
+            "system_fonts": None,
+            "embedded_images": None,
         }
         for output in sorted(
             surface["outputs"],
@@ -194,6 +196,29 @@ def valid_capabilities_payload(
         )
         if output["capability"] in runtime_ids
     ]
+    for output in outputs:
+        if output["id"] not in {"jpeg", "pdf", "png"}:
+            continue
+        output["system_fonts"] = {
+            "source_id": "host-system",
+            "discovery": "first-use",
+            "cache_scope": "process-global",
+            "host_dependent": True,
+            "caller_configurable": False,
+            "resource_bounded": False,
+        }
+        output["embedded_images"] = {
+            "source_ids": ["data-url"],
+            "filesystem_access": False,
+            "network_access": False,
+            "caller_configurable": True,
+            "limits": {
+                "max_bytes_per_image": 16 * 1024 * 1024,
+                "max_total_bytes": 32 * 1024 * 1024,
+                "max_pixels_per_image": 16 * 1024 * 1024,
+                "max_total_pixels": 32 * 1024 * 1024,
+            },
+        }
     return {
         "schema_version": 2,
         "cli_contract_version": 3,
@@ -1169,6 +1194,25 @@ class AdversarialRegressionTests(unittest.TestCase):
 
 
 class RuntimeContractTests(unittest.TestCase):
+    def test_pdf_validator_accepts_pdf_token_spacing_without_matching_pages_tree(self) -> None:
+        for page_type in (b"/Type/Page", b"/Type /Page", b"/Type\t/Page"):
+            with self.subTest(page_type=page_type):
+                verifier._validate_pdf(
+                    b"%PDF-1.7\n1 0 obj <<" + page_type + b">> endobj\n%%EOF\n"
+                )
+
+        for invalid_type in (b"/Type/Pages", b"/Type/PageTree"):
+            with (
+                self.subTest(invalid_type=invalid_type),
+                self.assertRaisesRegex(
+                    verifier.ArchiveVerificationError,
+                    "invalid container signature",
+                ),
+            ):
+                verifier._validate_pdf(
+                    b"%PDF-1.7\n1 0 obj <<" + invalid_type + b">> endobj\n%%EOF\n"
+                )
+
     def assert_runtime_payload_rejected(
         self,
         repo_root: Path,

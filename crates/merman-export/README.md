@@ -22,7 +22,7 @@ The `merman` facade owns the shortest source-to-output path. This dependency ena
 
 ```toml
 [dependencies]
-merman = { git = "https://github.com/Latias94/merman", default-features = false, features = ["png"] }
+merman = { version = "=0.8.0-alpha.5", default-features = false, features = ["png"] }
 ```
 
 ```rust
@@ -54,8 +54,8 @@ A host that separates rendering from encoding can retain the terminally validate
 
 ```toml
 [dependencies]
-merman = { git = "https://github.com/Latias94/merman", default-features = false, features = ["svg"] }
-merman-export = { git = "https://github.com/Latias94/merman", default-features = false, features = ["png"] }
+merman = { version = "=0.8.0-alpha.5", default-features = false, features = ["svg"] }
+merman-export = { version = "=0.8.0-alpha.5", default-features = false, features = ["png"] }
 ```
 
 ```rust

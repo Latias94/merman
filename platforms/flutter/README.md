@@ -11,7 +11,7 @@ Render and analyze Mermaid diagrams in Flutter without a browser or JavaScript r
 Install the current prerelease from pub.dev:
 
 ```sh
-flutter pub add 'merman:^0.8.0-alpha.4'
+flutter pub add 'merman:^0.8.0-alpha.5'
 ```
 
 For local source development, depend on a matching checkout instead:

@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.8.0-alpha.4 - 2026-08-09
+## 0.8.0-alpha.5 - 2026-08-09
 
-Corresponds to merman workspace release `0.8.0-alpha.4`. See the [alpha.3 to alpha.4 upgrade guide](../../docs/release/ALPHA3_TO_ALPHA4_UPGRADE_GUIDE.md) for the complete cross-surface migration.
+Corresponds to merman workspace release `0.8.0-alpha.5`. See the [alpha.3 to alpha.5 upgrade guide](../../docs/release/ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md) for the complete cross-surface migration.
 
 ### Breaking changes
 

@@ -326,16 +326,25 @@ class ReleaseArtifactWorkflowTests(unittest.TestCase):
                 "THIRD_PARTY_LICENSES/",
             ],
         )
-        expected = {
+        package_common = [
+            "../../CHANGELOG.md",
+            "../../LICENSE-APACHE",
+            "../../LICENSE-MIT",
+            "../../THIRD_PARTY_NOTICES.md",
+            "../../THIRD_PARTY_LICENSES/",
+        ]
+        package_specific = {
             "merman-cli": ["README.md", "assets/completions/", "assets/man/"],
             "merman-lsp": ["README.md"],
         }
-        for package, include in expected.items():
+        for package, include in package_specific.items():
             with (ROOT / f"crates/{package}/Cargo.toml").open("rb") as source:
                 package_dist = tomllib.load(source)["package"]["metadata"]["dist"]
             with self.subTest(package=package):
                 self.assertFalse(package_dist["auto-includes"])
-                self.assertEqual(package_dist["include"], include)
+                # cargo-dist package layers replace the workspace include list, so every
+                # package-local layer must repeat the common legal payload explicitly.
+                self.assertEqual(package_dist["include"], [*package_common, *include])
 
     def test_legal_payloads_are_checkout_stable_on_windows(self) -> None:
         paths = (

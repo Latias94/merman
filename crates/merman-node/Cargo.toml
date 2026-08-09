@@ -1,6 +1,6 @@
 [package]
 name = "merman-node-candidate"
-version = "0.8.0-alpha.4"
+version = "0.8.0-alpha.5"
 edition = "2024"
 rust-version = "1.95"
 publish = false

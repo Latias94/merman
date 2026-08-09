@@ -48,14 +48,14 @@ These are headless `merman-cli` outputs. The [Playground](https://frankorz.com/m
 ## Quick Start
 
 > [!IMPORTANT]
-> This README describes the unreleased `0.8.0-alpha.4` source contract. The Rust and CLI commands below install the current repository source; published registry packages can still be alpha.3. Pin a full commit before using an unreleased build in CI or production.
+> This README describes the unreleased `0.8.0-alpha.5` source contract. The current crates.io and GitHub binary release is `0.8.0-alpha.4`. Commands labeled as source installs require a reviewed full commit before use in CI or production.
 
 ### Rust
 
-Add the alpha.4 candidate from Git:
+Add the published alpha.4 crate:
 
 ```sh
-cargo add merman --git https://github.com/Latias94/merman
+cargo add merman@0.8.0-alpha.4
 ```
 
 Render one Mermaid source string without constructing a renderer:
@@ -85,18 +85,18 @@ Choose the narrowest Rust entry point that owns the task:
 
 The task-oriented [Rust examples](https://github.com/Latias94/merman/tree/main/crates/merman/examples) are self-contained files that can be copied into another crate. They cover one-shot SVG, same-DOM embedding, renderer reuse, PNG and terminal output, semantic and layout inspection, deterministic dates, site configuration, presentation themes, and consumer-specific SVG pipelines.
 
-After alpha.4 is published, the registry equivalent will be:
+When alpha.5 is published, its registry dependency will be:
 
 ```sh
-cargo add merman@^0.8.0-alpha.4
+cargo add merman@0.8.0-alpha.5
 ```
 
 ### Command Line
 
-Install the current complete CLI from source and render a diagram:
+Install the published complete CLI and render a diagram:
 
 ```sh
-cargo install --git https://github.com/Latias94/merman --locked merman-cli
+cargo install merman-cli --version 0.8.0-alpha.4 --locked
 printf 'flowchart LR\n  Source --> Merman --> SVG\n' | \
   merman-cli render - --output diagram.svg
 ```
@@ -141,7 +141,7 @@ The call returns the rendered SVG string in `svg`; it does not mutate the page.
 
 The browser package does not provide a Node.js or SSR fallback. See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md) for Worker lifecycle, custom WASM loading, and resource policy.
 
-The npm alpha channel can trail this source tree. Check the installed package version before using an alpha.4-only contract.
+The npm alpha channel can trail this source tree. Check the installed package version before using an alpha.5-only contract.
 
 ### Pin Unreleased Source
 
@@ -167,7 +167,7 @@ cargo add merman --git https://github.com/Latias94/merman --rev FULL_COMMIT_SHA
 
 For a shell, `cargo binstall merman-cli` installs the registry-selected release, while `brew install merman-cli` follows the stable Homebrew formula. Those external channels can trail the current source documentation, so check `merman-cli --version` before depending on a new contract.
 
-The source installation above pins an immutable commit. Starting with `0.8.0-alpha.4`, direct GitHub archives bundle checked completion and man-page assets, while the complete binary keeps `merman-cli completion <shell>` as the portable fallback. The [CLI guide](https://github.com/Latias94/merman/tree/main/crates/merman-cli#install) compares the installation channels and their on-disk support files.
+The source installation above pins an immutable commit. Starting with `0.8.0-alpha.5`, direct GitHub archives bundle checked completion and man-page assets, while the complete binary keeps `merman-cli completion <shell>` as the portable fallback. The [CLI guide](https://github.com/Latias94/merman/tree/main/crates/merman-cli#install) compares the installation channels and their on-disk support files.
 
 Publication routes differ by platform. The [package surface guide](https://github.com/Latias94/merman/blob/main/docs/release/PACKAGE_SURFACES.md) distinguishes registry packages from repository or CI artifacts.
 
@@ -183,17 +183,17 @@ Cargo features select observable capabilities and output backends, not diagram f
 | Terminal output | `default-features = false, features = ["ascii"]` |
 | Binary export | Add only the required `png`, `jpeg`, or `pdf` features |
 
-For example, a basic SVG dependency is:
+For the alpha.5 source contract, a basic SVG dependency is:
 
 ```toml
 [dependencies]
-merman = { git = "https://github.com/Latias94/merman", default-features = false, features = ["svg"] }
+merman = { version = "=0.8.0-alpha.5", default-features = false, features = ["svg"] }
 ```
 
 A lint-only CLI can omit rendering and export dependencies:
 
 ```sh
-cargo install --git https://github.com/Latias94/merman --locked merman-cli \
+cargo install merman-cli --version 0.8.0-alpha.5 --locked \
   --no-default-features --features analysis
 ```
 
@@ -212,7 +212,7 @@ See the current [alignment dashboard](https://github.com/Latias94/merman/blob/ma
 
 ## Documentation
 
-- [Upgrade from 0.8.0-alpha.3 to 0.8.0-alpha.4](https://github.com/Latias94/merman/blob/main/docs/release/ALPHA3_TO_ALPHA4_UPGRADE_GUIDE.md)
+- [Upgrade from 0.8.0-alpha.3 to 0.8.0-alpha.5](https://github.com/Latias94/merman/blob/main/docs/release/ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md)
 - [Choose capabilities and build profiles](https://github.com/Latias94/merman/blob/main/docs/FEATURES.md)
 - [Diagram coverage and parity](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
 - [CLI reference](https://github.com/Latias94/merman/blob/main/crates/merman-cli/README.md)

@@ -52,13 +52,30 @@ Treat `Cargo.toml` `[workspace.package].version` as the workspace release author
 
 Do not hand-edit generated version projections. If the command is interrupted, preserve the partial diff and rerun the same command; the workspace authority is written last.
 
-README files are ordinary documentation. Review their install examples, package names, feature names, and supported-platform statements before preflight, but do not switch them between source and registry modes or make them part of a version projection. A cancelled or completed release therefore has no README state to restore.
+README files are ordinary documentation and are not generated version projections. Before immutable preflight, perform a release-state documentation pass across the root README, every package README shipped by an authorized surface, and the closest installation guides:
+
+- Make the latest published registry or GitHub Release version explicit when the source tree is ahead of it.
+- Use the exact target prerelease version in Cargo dependency examples that will ship inside the target crate or archive; do not leave a moving default-branch Git dependency in release-facing examples.
+- Keep source-only Git commands only when the surrounding text labels them as source installs and the command pins a reviewed 40-character commit.
+- Remove stale future tense such as “after this version is published”, old published baselines, and candidate wording once external publication evidence exists.
+- Review package-local READMEs included by `cargo package`, cargo-dist, npm, Python, Flutter, Apple, Android, Typst, or VSIX packaging, not only the repository root README.
+
+Use a focused search before preflight and again after partial-release recovery:
+
+```bash
+rg -n 'published registry packages can still|candidate from Git|After alpha\.[0-9]+ is published|git\s*=\s*"https://github\.com/Latias94/merman' \
+  README.md crates docs/rendering platforms packages tools
+```
+
+Classify every match instead of blindly replacing it. Historical reports may retain historical wording; current installation guidance must match the intended release state. A cancelled or completed release has no generated README mode to restore, but a successful or partially recovered publication can require a new documentation commit so `main` stops describing an already-published version as unavailable.
 
 VS Code, Typst, and `roughr-merman` have independent version axes. Update them only when that surface is being released, and preserve their bundled Merman provenance.
 
 ### Local Contract And Preflight
 
 Run the owner-owned contract checks listed in `docs/release/RELEASING.md`, including exact artifact recipes, package build/load smoke tests, ABI checks, release legal material, and the requested preflight workflows.
+
+Keep release smoke tests strict about user-observable behavior and loose about valid representation choices. Binary-format checks may require signatures, bounded structure, and a real payload, but must accept legal token or whitespace forms. Async protocol checks must require the expected responses, bounds, and exit behavior while allowing valid notification ordering. When a final-archive smoke fails, reproduce against that exact archive before changing product code; do not refactor the product merely to satisfy an incidental serializer or scheduler ordering.
 
 Resolve the intended commit to a 40-character `SOURCE_SHA`. Use the exact preflight dispatch from `docs/release/RELEASING.md`, passing that immutable SHA instead of a branch. Wait for every job and diagnose failures before tagging. A local build is not a substitute for preflight.
 

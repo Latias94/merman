@@ -69,11 +69,11 @@ cargo run -p merman --example custom_svg_pipeline > consumer-safe.svg
 
 ## Copy Into An Application
 
-The alpha.4 candidate is not published yet, so use the repository source while evaluating these APIs:
+Use the exact alpha.5 dependency expected by these examples:
 
 ```toml
 [dependencies]
-merman = { git = "https://github.com/Latias94/merman" }
+merman = { version = "=0.8.0-alpha.5" }
 ```
 
 Copy the relevant `.rs` file into your application's `examples/` directory and run it by filename:
@@ -82,7 +82,7 @@ Copy the relevant `.rs` file into your application's `examples/` directory and r
 cargo run --example render_svg
 ```
 
-Enable `features = ["png"]` on the Merman dependency when copying `render_png`, or `features = ["ascii"]` when copying `render_terminal`. Add `serde_json = "1"` when copying `inspect_semantics`, `inspect_layout`, `configure_mermaid`, or `deterministic_gantt`. After alpha.4 is published, replace the Git dependency with the released crate version. Pin Git integrations with `rev = "FULL_COMMIT_SHA"` before using them in a reproducible build.
+Enable `features = ["png"]` on the Merman dependency when copying `render_png`, or `features = ["ascii"]` when copying `render_terminal`. Add `serde_json = "1"` when copying `inspect_semantics`, `inspect_layout`, `configure_mermaid`, or `deterministic_gantt`.
 
 ## Minimize Features Later
 

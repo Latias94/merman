@@ -26,7 +26,7 @@ layout accepted by `scripts/verify_cli_release_archive.py`.
 
 ## CLI contract migration
 
-Complete releases governed by this contract, beginning with `0.8.0-alpha.4`, report capability
+Complete releases governed by this contract, beginning with `0.8.0-alpha.5`, report capability
 document schema 2 and CLI contract 3.
 Contract 3 advertises `-f/--format` for native `render` and `batch`, makes `lint` text-first while
 keeping explicit JSON stable, and removes no-op configuration and rendering controls from `detect`.
@@ -44,7 +44,7 @@ when quiet, and are removed in `v0.9.0`. The explicit `merman-cli mmdc` command 
 | --- | --- | --- | --- |
 | Direct GitHub archive | cargo-dist `cli-release` binary | Yes, under `completions/` and `man/` | Published release artifact |
 | cargo-dist shell or PowerShell installer | Binary extracted from the release archive | No | Published release installer |
-| `cargo binstall merman-cli` | `0.8.0-alpha.4` and later: official release archive, then source fallback | No | Version-scoped manifest metadata |
+| `cargo binstall merman-cli` | `0.8.0-alpha.5` and later: official release archive, then source fallback | No | Version-scoped manifest metadata |
 | `cargo install merman-cli` | crates.io source | No | Complete defaults; custom features supported |
 | Nix | Repository source | Yes, in Nix integration directories | First-party source package and locked Flake |
 | Homebrew | Formula source build or Homebrew bottle | Formula `0.8.0+` installs assets | External stable registry |
@@ -77,7 +77,7 @@ repository-owned deterministic hardening step. PowerShell binds the downloaded W
 or the absence of every supported SHA-256 tool stops installation. Template drift stops the release
 instead of falling back to an unmodified installer.
 
-Every release produced by this contract, beginning with `0.8.0-alpha.4`, includes
+Every release produced by this contract, beginning with `0.8.0-alpha.5`, includes
 `release-verification.json`. It binds every other workflow-owned release asset to its SHA-256 digest
 and size, records the source commit and release version, and maps each CLI and LSP archive to its
 artifact profile and Rust target. It describes the exact payload files copied from the verified

@@ -7,6 +7,7 @@ import argparse
 from collections.abc import Iterable
 import json
 from pathlib import Path, PurePosixPath
+import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ElementTree
@@ -89,6 +90,10 @@ SVG_SMOKE_SOURCE = b"flowchart LR\nA --> B\n"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 JPEG_START = b"\xff\xd8"
 JPEG_END = b"\xff\xd9"
+PDF_PAGE_TYPE = re.compile(
+    rb"/Type[\x00\x09\x0a\x0c\x0d\x20]*/Page"
+    rb"(?=[\x00\x09\x0a\x0c\x0d\x20()<>{}\[\]/%]|$)"
+)
 REPOSITORY_CONTRACT_MAX_BYTES = 4 * 1024 * 1024
 
 ARTIFACT_PROFILES_PATH = "capabilities/artifact-profiles-v1.json"
@@ -100,6 +105,47 @@ PACKAGE_README_PATH = "README.md"
 ROOT_RELEASE_PATHS = ("CHANGELOG.md", "LICENSE-APACHE", "LICENSE-MIT")
 NOTICE_PATH = "THIRD_PARTY_NOTICES.md"
 LICENSE_ROOT = "THIRD_PARTY_LICENSES"
+
+
+def _release_output_contract(output: dict[str, object]) -> dict[str, object]:
+    """Project the runtime metadata emitted by ``merman-cli capabilities``.
+
+    Native raster/PDF exporters disclose their host-font and embedded-image
+    policies at runtime.  Keep the archive verifier in sync with that public
+    CLI contract; SVG and ASCII do not own those resources and therefore emit
+    explicit ``null`` values through serde.
+    """
+
+    projected = {
+        "id": output["id"],
+        "description": output["description"],
+        "media_type": output["media_type"],
+        "system_fonts": None,
+        "embedded_images": None,
+    }
+    if output["id"] in {"jpeg", "pdf", "png"}:
+        projected["system_fonts"] = {
+            "source_id": "host-system",
+            "discovery": "first-use",
+            "cache_scope": "process-global",
+            "host_dependent": True,
+            "caller_configurable": False,
+            "resource_bounded": False,
+        }
+        projected["embedded_images"] = {
+            "source_ids": ["data-url"],
+            "filesystem_access": False,
+            "network_access": False,
+            "caller_configurable": True,
+            "limits": {
+                "max_bytes_per_image": 16 * 1024 * 1024,
+                "max_total_bytes": 32 * 1024 * 1024,
+                "max_pixels_per_image": 16 * 1024 * 1024,
+                "max_total_pixels": 32 * 1024 * 1024,
+            },
+        }
+    return projected
+
 
 def release_archive_name(target: str) -> str:
     """Return the cargo-dist archive name consumed by installation metadata."""
@@ -527,11 +573,7 @@ def _release_capabilities_contract(
         if capability["id"] in enabled
     ]
     outputs = [
-        {
-            "id": output["id"],
-            "description": output["description"],
-            "media_type": output["media_type"],
-        }
+        _release_output_contract(output)
         for output in surface["outputs"]
         if output["capability"] in enabled
     ]
@@ -644,7 +686,7 @@ def _validate_pdf(payload: bytes) -> None:
         len(payload) < 16
         or not payload.startswith(b"%PDF-")
         or not payload.rstrip().endswith(b"%%EOF")
-        or b"/Type /Page" not in payload
+        or PDF_PAGE_TYPE.search(payload) is None
     ):
         raise ArchiveVerificationError("minimal PDF render has an invalid container signature")
 

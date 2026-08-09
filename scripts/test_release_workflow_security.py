@@ -203,6 +203,7 @@ def run_workflow_validation(
     path: Path,
     *,
     release_tag: str = "v1.2.3",
+    recovery_sha: str = "",
     source_ref: str = "main",
     version: str | None = None,
     event_name: str = "workflow_dispatch",
@@ -220,6 +221,7 @@ def run_workflow_validation(
     script = "\n".join(
         [
             f"EVENT_NAME={shlex.quote(event_name)}",
+            f"DISPATCH_RECOVERY_SHA={shlex.quote(recovery_sha)}",
             f"DISPATCH_RELEASE_TAG={shlex.quote(release_tag)}",
             f"DISPATCH_VERSION={shlex.quote(version)}",
             f"DISPATCH_SOURCE_REF={shlex.quote(source_ref)}",
@@ -773,6 +775,47 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("semver_re=", run)
         self.assertLess(run.index("semver_re="), run.index('[[ ! "$version" =~ $semver_re ]]'))
 
+    def test_independent_crate_publish_is_pinned_and_token_isolated(self) -> None:
+        path = WORKFLOW_ROOT / "release-independent-crate.yml"
+        workflow = workflow_document(path)
+        validate = workflow_job(workflow, "validate-inputs")
+        preflight = workflow_job(workflow, "preflight")
+        publish = workflow_job(workflow, "publish")
+        dry_run = workflow_step(preflight, name="Verify and dry-run independent crate")
+        upload = workflow_step(publish, name="Upload independent crate to crates.io")
+
+        self.assertEqual(workflow["permissions"], {"contents": "read"})
+        self.assertNotIn("secrets.", contract_text(validate))
+        self.assertNotIn("secrets.", contract_text(preflight))
+        self.assertNotIn("environment: crates.io", contract_text(validate))
+        self.assertNotIn("environment: crates.io", contract_text(preflight))
+        self.assertEqual(publish["environment"], "crates.io")
+        self.assertEqual(
+            checkout_steps(validate)[0]["with"]["ref"],
+            "${{ github.workflow_sha }}",
+        )
+        self.assertEqual(
+            checkout_steps(preflight)[0]["with"]["ref"],
+            "${{ github.workflow_sha }}",
+        )
+        self.assertEqual(
+            checkout_steps(publish)[0]["with"]["ref"],
+            "${{ needs.preflight.outputs.source_sha }}",
+        )
+        self.assertIn("roughr-merman", contract_text(validate))
+        self.assertIn("independent-packages", dry_run["run"])
+        self.assertIn(
+            'env -u CARGO_REGISTRY_TOKEN cargo publish -p "$PACKAGE" --locked --dry-run --registry crates-io',
+            dry_run["run"],
+        )
+        self.assertEqual(
+            upload["env"]["CARGO_REGISTRY_TOKEN"],
+            "${{ secrets.CARGO_REGISTRY_TOKEN }}",
+        )
+        self.assertIn('[[ -n "${CARGO_REGISTRY_TOKEN:-}" ]]', upload["run"])
+        self.assertIn('--token "$CARGO_REGISTRY_TOKEN"', upload["run"])
+        self.assertNotIn("secrets.CARGO_REGISTRY_TOKEN", upload["run"])
+
     def test_validation_jobs_do_not_hold_publish_permissions(self) -> None:
         for path in SOURCE_REF_WORKFLOWS:
             validate_job = job_contract_text(path, "validate-inputs")
@@ -862,6 +905,33 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertGreaterEqual(
             upload_run.count('wait_for_crate_version "$crate" "$crate_version"'),
             2,
+        )
+
+    def test_crates_yank_uses_a_dedicated_protected_token(self) -> None:
+        path = WORKFLOW_ROOT / "release-yank-crates.yml"
+        text = read_workflow(path)
+        document = workflow_document(path)
+        validate = contract_text(workflow_job(document, "validate-inputs"))
+        yank = workflow_job(document, "yank")
+        yank_job = contract_text(yank)
+        yank_step = workflow_step(yank, name="Yank selected crate versions")
+        yank_step_text = contract_text(yank_step)
+        yank_run = yank_step["run"]
+
+        self.assertNotIn("secrets.", validate)
+        self.assertNotIn("environment: crates.io", validate)
+        self.assertEqual(yank["environment"], "crates.io")
+        self.assertIn(
+            "CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_YANK_TOKEN }}",
+            yank_step_text,
+        )
+        self.assertNotIn("secrets.CARGO_REGISTRY_TOKEN", yank_job)
+        self.assertEqual(text.count("secrets.CARGO_REGISTRY_YANK_TOKEN"), 1)
+        self.assertIn('[[ -n "${CARGO_REGISTRY_TOKEN:-}" ]]', yank_run)
+        self.assertIn('cargo yank "$crate" --version "$VERSION"', yank_run)
+        self.assertIn(
+            "ref: ${{ needs.validate-inputs.outputs.source_sha }}",
+            yank_job,
         )
 
     def test_trusted_pypi_publish_job_only_downloads_artifact_and_publishes(self) -> None:
@@ -1060,6 +1130,23 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             "--require bash,zsh,fish,elvish,mandoc",
         )
 
+    def test_release_preflight_builds_and_executes_real_cargo_dist_archives(self) -> None:
+        workflow = parse_workflow_structure(WORKFLOW_ROOT / "release-preflight.yml")
+        preflight = workflow_job(workflow, "versions-and-packages")
+        build = workflow_step(
+            preflight,
+            name="Build and verify host cargo-dist archives",
+        )["run"]
+
+        self.assertIn("dist build", build)
+        self.assertIn("--artifacts=local", build)
+        self.assertIn('"--target=$target"', build)
+        self.assertNotIn("--output-format", build)
+        self.assertNotIn("preflight-dist-manifest", build)
+        self.assertIn("scripts/verify_cli_release_archive.py", build)
+        self.assertIn("scripts/verify_lsp_release_archive.py", build)
+        self.assertEqual(build.count("--execute"), 2)
+
     def test_trusted_npm_publish_job_does_not_disable_provenance(self) -> None:
         publish_job = job_contract_text(
             WORKFLOW_ROOT / "release-web.yml",
@@ -1231,11 +1318,14 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
         self.assertEqual(actual_packages, expected_packages)
 
-    def test_cargo_dist_release_workflow_is_tag_only_and_isolates_publish_authority(self) -> None:
+    def test_cargo_dist_release_workflow_guards_recovery_and_isolates_publish_authority(
+        self,
+    ) -> None:
         workflow = parse_workflow_structure(WORKFLOW_ROOT / "release.yml")
         text = read_workflow(WORKFLOW_ROOT / "release.yml")
         dist_config = read_workflow(ROOT / "dist-workspace.toml")
         header = text.split("\njobs:", 1)[0]
+        validate = workflow_job(workflow, "validate-inputs")
         plan = workflow_job(workflow, "plan")
         local_build = workflow_job(workflow, "build-local-artifacts")
         central_verification = workflow_job(workflow, "verify-release-archives")
@@ -1246,6 +1336,8 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("push:", header)
         self.assertIn("tags:", header)
         self.assertIn("'**[0-9]+.[0-9]+.[0-9]+*'", header)
+        self.assertIn("workflow_dispatch:", header)
+        self.assertIn("recovery_sha:", header)
         self.assertIn('pr-run-mode = "skip"', dist_config)
         self.assertNotIn('pr-run-mode = "plan"', dist_config)
         self.assertIn('cargo-dist-version = "0.32.0"', dist_config)
@@ -1285,26 +1377,62 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                     else:
                         self.assertNotIn("GH_TOKEN", step["env"])
 
+        validate_inputs = workflow_step(validate, name="Validate release inputs")
+        trusted_checkout = checkout_steps(validate)[0]
+        plan_checkout = checkout_steps(plan)[0]
         plan_step = workflow_step(plan, step_id="plan")
-        validate_tag = workflow_step(plan, name="Validate release tag")
+        verify_source = workflow_step(plan, name="Verify release source")
         install_dist = workflow_step(plan, name="Install dist")
-        self.assertEqual(validate_tag["env"]["RELEASE_TAG"], "${{ github.ref_name }}")
+        self.assertEqual(trusted_checkout["with"]["ref"], "${{ github.workflow_sha }}")
+        self.assertEqual(
+            plan_checkout["with"]["ref"],
+            "${{ needs.validate-inputs.outputs.release_source }}",
+        )
+        self.assertEqual(plan_checkout["with"]["fetch-depth"], "0")
+        self.assertIn('[[ "$RECOVERY_SHA" =~ ^[0-9a-f]{40}$ ]]', validate_inputs["run"])
         self.assertIn(
             'scripts/release-version.py canonical --version "$RELEASE_TAG"',
-            validate_tag["run"],
+            validate_inputs["run"],
         )
         self.assertIn(
-            'scripts/release-version.py check --version "$RELEASE_TAG"',
-            validate_tag["run"],
+            'scripts/release-version.py check --version "$VERSION"',
+            verify_source["run"],
         )
+        self.assertIn(
+            'git show "$WORKFLOW_SHA:scripts/verify-release-recovery.py" | python3 -',
+            verify_source["run"],
+        )
+        self.assertIn('--tag-sha "$tag_sha"', verify_source["run"])
+        self.assertIn('--source-sha "$source_sha"', verify_source["run"])
+        self.assertIn('--trusted-sha "$WORKFLOW_SHA"', verify_source["run"])
+
+        recovery_verifier = read_workflow(ROOT / "scripts/verify-release-recovery.py")
+        self.assertIn('"crates/merman-cli/Cargo.toml"', recovery_verifier)
+        self.assertIn('"crates/merman-lsp/Cargo.toml"', recovery_verifier)
+        self.assertIn('"scripts/test_verify_cli_release_archive.py"', recovery_verifier)
+        self.assertIn('"scripts/test_verify_lsp_release_archive.py"', recovery_verifier)
+        self.assertIn('"scripts/verify_cli_release_archive.py"', recovery_verifier)
+        self.assertIn('"scripts/verify_lsp_release_archive.py"', recovery_verifier)
+        self.assertIn(
+            "changes Cargo semantics beyond package.metadata.dist.include",
+            recovery_verifier,
+        )
+        self.assertIn('"merge-base",', recovery_verifier)
         self.assertIn("Install dist", install_dist["name"])
-        self.assertLess(plan["steps"].index(validate_tag), plan["steps"].index(install_dist))
-        self.assertEqual(plan_step["env"]["RELEASE_TAG"], "${{ steps.release.outputs.tag }}")
+        self.assertLess(plan["steps"].index(verify_source), plan["steps"].index(install_dist))
+        self.assertEqual(
+            plan_step["env"]["RELEASE_TAG"],
+            "${{ needs.validate-inputs.outputs.release_tag }}",
+        )
         self.assertIn('dist host --steps=create "--tag=$RELEASE_TAG"', plan_step["run"])
         self.assertNotIn("github.event.pull_request", text)
         self.assertNotIn("tag-flag", text)
 
         self.assertEqual(local_build["env"]["RELEASE_TAG"], "${{ needs.plan.outputs.tag }}")
+        self.assertEqual(
+            checkout_steps(local_build)[0]["with"]["ref"],
+            "${{ needs.plan.outputs.source_sha }}",
+        )
         local_build_step = next(
             step
             for step in local_build["steps"]
@@ -1316,6 +1444,10 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertEqual(
             central_verification["env"]["RELEASE_TAG"],
             "${{ needs.plan.outputs.tag }}",
+        )
+        self.assertEqual(
+            checkout_steps(central_verification)[0]["with"]["ref"],
+            "${{ needs.plan.outputs.source_sha }}",
         )
         verify_step = workflow_step(
             central_verification,
@@ -1350,10 +1482,12 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn('release_args+=(-- "$RELEASE_TAG" "${assets[@]}")', create_release["run"])
         self.assertIn('gh release create "${release_args[@]}"', create_release["run"])
 
-    def test_cargo_dist_rejects_noncanonical_tags_before_dist(self) -> None:
+    def test_cargo_dist_rejects_noncanonical_tags_before_checkout_of_release_source(
+        self,
+    ) -> None:
         workflow = parse_workflow_structure(WORKFLOW_ROOT / "release.yml")
-        plan = workflow_job(workflow, "plan")
-        validate_tag = workflow_step(plan, name="Validate release tag")
+        validate = workflow_job(workflow, "validate-inputs")
+        validate_tag = workflow_step(validate, name="Validate release inputs")
         release_version = ROOT / "scripts" / "release-version.py"
         validation_script = str(validate_tag["run"]).replace(
             "python3 scripts/release-version.py",
@@ -1371,7 +1505,11 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 github_output = temp / "github-output.txt"
                 env = {
                     "PATH": "/usr/bin:/bin",
-                    "RELEASE_TAG": release_tag,
+                    "DISPATCH_RECOVERY_SHA": "",
+                    "DISPATCH_RELEASE_TAG": release_tag,
+                    "EVENT_NAME": "workflow_dispatch",
+                    "GIT_REF": "refs/heads/main",
+                    "GIT_REF_NAME": "main",
                     "GITHUB_OUTPUT": str(github_output),
                 }
 
@@ -1388,6 +1526,35 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0, msg=result.stderr)
                 self.assertFalse((temp / "exploit-marker").exists())
                 self.assertFalse(github_output.exists())
+
+    def test_cargo_dist_recovery_accepts_only_an_immutable_lowercase_sha(self) -> None:
+        workflow = WORKFLOW_ROOT / "release.yml"
+        recovery_sha = "0123456789abcdef0123456789abcdef01234567"
+
+        result, outputs = run_workflow_validation(
+            workflow,
+            release_tag="v1.2.3-alpha.4",
+            recovery_sha=recovery_sha,
+        )
+        self.assertEqual(
+            result.returncode,
+            0,
+            msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}",
+        )
+        self.assertEqual(outputs["recovery_sha"], recovery_sha)
+        self.assertEqual(outputs["release_source"], recovery_sha)
+        self.assertEqual(outputs["release_tag"], "v1.2.3-alpha.4")
+        self.assertEqual(outputs["version"], "1.2.3-alpha.4")
+
+        for invalid in ["main", recovery_sha.upper(), recovery_sha[:-1]]:
+            with self.subTest(recovery_sha=invalid):
+                result, outputs = run_workflow_validation(
+                    workflow,
+                    release_tag="v1.2.3-alpha.4",
+                    recovery_sha=invalid,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn("release_source", outputs)
 
     def test_cargo_dist_passes_valid_tag_as_one_literal_argument(self) -> None:
         workflow = parse_workflow_structure(WORKFLOW_ROOT / "release.yml")

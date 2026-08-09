@@ -1,0 +1,178 @@
+name: Yank Partial Crates Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Immutable failed release tag, for example v0.8.0-alpha.4"
+        required: true
+        type: string
+      packages:
+        description: "Comma-separated workspace-coupled crate names to yank"
+        required: true
+        type: string
+      reason:
+        description: "Operator-visible reason recorded in the workflow summary"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate-inputs:
+    runs-on: ubuntu-24.04
+    outputs:
+      packages: ${{ steps.packages.outputs.packages }}
+      source_sha: ${{ steps.source.outputs.source_sha }}
+      version: ${{ steps.inputs.outputs.version }}
+    steps:
+      - name: Validate release inputs
+        id: inputs
+        shell: bash
+        env:
+          DISPATCH_PACKAGES: ${{ inputs.packages }}
+          DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          semver_re='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.(0|[1-9][0-9]*))?$'
+          tag_re="^v${semver_re#^}"
+          [[ "$DISPATCH_RELEASE_TAG" =~ $tag_re ]] || {
+            echo "::error::release_tag must be a canonical workspace release tag." >&2
+            exit 1
+          }
+          [[ "$DISPATCH_PACKAGES" =~ ^[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*$ ]] || {
+            echo "::error::packages must be a comma-separated list without whitespace." >&2
+            exit 1
+          }
+          {
+            printf 'release_tag=%s\n' "$DISPATCH_RELEASE_TAG"
+            printf 'version=%s\n' "${DISPATCH_RELEASE_TAG#v}"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v6
+        with:
+          ref: refs/tags/${{ steps.inputs.outputs.release_tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify immutable tagged source
+        id: source
+        env:
+          RELEASE_TAG: ${{ steps.inputs.outputs.release_tag }}
+          VERSION: ${{ steps.inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
+          test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$source_sha"
+          python3 scripts/release-version.py check --version "$VERSION"
+          printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Validate selected workspace crates
+        id: packages
+        env:
+          DISPATCH_PACKAGES: ${{ inputs.packages }}
+          VERSION: ${{ steps.inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 tools/publish.py --list-crates-io-packages > "$RUNNER_TEMP/publishable-crates.txt"
+          cargo metadata --locked --no-deps --format-version 1 > "$RUNNER_TEMP/cargo-metadata.json"
+          IFS=, read -r -a selected <<< "$DISPATCH_PACKAGES"
+          declare -A seen=()
+          for crate in "${selected[@]}"; do
+            [[ -z "${seen[$crate]:-}" ]] || {
+              echo "::error::duplicate crate in packages: $crate" >&2
+              exit 1
+            }
+            seen[$crate]=1
+            grep -Fxq "$crate" "$RUNNER_TEMP/publishable-crates.txt" || {
+              echo "::error::$crate is not a publishable workspace crate." >&2
+              exit 1
+            }
+            crate_version="$(jq -r --arg crate "$crate" '.packages[] | select(.name == $crate) | .version' "$RUNNER_TEMP/cargo-metadata.json")"
+            [[ "$crate_version" == "$VERSION" ]] || {
+              echo "::error::$crate uses $crate_version at the tag; this workflow only yanks workspace-coupled $VERSION crates." >&2
+              exit 1
+            }
+          done
+          {
+            echo 'packages<<EOF'
+            printf '%s\n' "${selected[@]}"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+  yank:
+    needs: validate-inputs
+    runs-on: ubuntu-24.04
+    environment: crates.io
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Yank selected crate versions
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_YANK_TOKEN }}
+          PACKAGES: ${{ needs.validate-inputs.outputs.packages }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          [[ -n "${CARGO_REGISTRY_TOKEN:-}" ]] || {
+            echo "::error::The crates.io environment must define CARGO_REGISTRY_YANK_TOKEN with yank permission." >&2
+            exit 1
+          }
+
+          crate_is_yanked() {
+            local crate="$1"
+            curl --fail --silent --show-error \
+              --retry 4 --retry-all-errors \
+              --header "User-Agent: merman-release-yank/$GITHUB_RUN_ID" \
+              "https://crates.io/api/v1/crates/$crate/$VERSION" \
+              | jq -e '.version.yanked == true' >/dev/null
+          }
+
+          while IFS= read -r crate; do
+            [[ -n "$crate" ]] || continue
+            if crate_is_yanked "$crate"; then
+              echo "$crate $VERSION is already yanked"
+              continue
+            fi
+            cargo yank "$crate" --version "$VERSION" --registry crates-io
+            for attempt in 1 2 3 4 5 6; do
+              if crate_is_yanked "$crate"; then
+                echo "$crate $VERSION is yanked"
+                break
+              fi
+              if [[ "$attempt" == 6 ]]; then
+                echo "::error::$crate $VERSION did not become visibly yanked in time." >&2
+                exit 1
+              fi
+              sleep 5
+            done
+          done <<< "$PACKAGES"
+
+      - name: Record incident summary
+        env:
+          PACKAGES: ${{ needs.validate-inputs.outputs.packages }}
+          REASON: ${{ inputs.reason }}
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          {
+            echo '## Crates release rollback'
+            echo
+            printf -- '- Version: `%s`\n' "$VERSION"
+            printf -- '- Source: `%s`\n' "$SOURCE_SHA"
+            printf -- '- Reason: %s\n' "$REASON"
+            echo '- Yanked crates:'
+            while IFS= read -r crate; do
+              [[ -n "$crate" ]] && printf '  - `%s`\n' "$crate"
+            done <<< "$PACKAGES"
+          } >> "$GITHUB_STEP_SUMMARY"
