@@ -225,7 +225,8 @@ Flowchart/State own graph semantics; Class/ER own relation semantics; Sequence o
 | Phase 2B: Common structured diagrams | U10-U14 | Phase 2A complete | Class, ER, State, and XYChart family gates pass with no silent typed-field loss. |
 | Phase 3: Existing-family truth | U15, U26-U29, U16 | Phase 2B complete | All 14 current families have field inventories, evidence, docs, and truthful support levels; current reference discovery is dispositioned. |
 | Phase 4: Gated breadth | U17-U20, U22 | Phase 3 complete and independently reviewed | Each candidate receives either a complete diagrammatic vertical slice or a source-backed Unsupported disposition; no prior common gate regresses. |
-| Phase 5: Closeout | U25 | All admitted units complete | Full verification, comparison scorecard, cleanup, docs, and independent review pass. |
+| Phase 5: Structural closeout | U30 | All semantic, capability, and evidence units complete | Oversized implementation and test modules are split by semantic ownership with no public-surface or behavior change; superseded helpers are removed. |
+| Phase 6: Closeout | U25 | U30 complete | Full verification, comparison scorecard, cleanup, docs, and independent review pass. |
 
 ### Assumptions
 
@@ -304,7 +305,8 @@ Flowchart/State own graph semantics; Class/ER own relation semantics; Sequence o
 | U19 | Evaluate and conditionally add Requirement terminal projection | new `requirement/*`, relation primitives/tests | U18; may reuse U10 |
 | U20 | Evaluate and conditionally add Ishikawa terminal projection | new `ishikawa/*`, hierarchy primitives/tests | U19; may reuse U15 |
 | U22 | Evaluate and conditionally add Quadrant terminal projection | new `quadrant/*`, plot primitives/tests | U20; may reuse U14 |
-| U25 | Prove measured advantage and close the refactor | full suite, benchmarks, docs, review | U18-U20, U22 |
+| U30 | Split oversized modules by semantic ownership | Sequence lexer/planner/tests, `relation_graph*`, family-local deep modules | U16, U18-U20, U22 |
+| U25 | Prove measured advantage and close the refactor | full suite, benchmarks, docs, review | U30 |
 
 ### U1. Establish truthful capability and characterization baseline
 
@@ -556,11 +558,21 @@ Flowchart/State own graph semantics; Class/ER own relation semantics; Sequence o
 - **Test scenarios:** Corners/axes/center, colliding points, out-of-range policy, all labels/titles, long/grapheme text, tiny/large grids, color modes, budgets.
 - **Verification:** Either every point is disclosed exactly once and the deterministic grid passes U17 at 80/100/120 columns, or the evaluation keeps Quadrant Unsupported with source-backed evidence.
 
+### U30. Split oversized modules by semantic ownership
+
+- **Goal:** Make the settled implementation easier to navigate, review, and change without reopening semantic or public-contract decisions.
+- **Requirements:** R1-R34 remain unchanged; this is a behavior-preserving structural gate.
+- **Dependencies:** U16 and completed dispositions from U18-U20 and U22
+- **Files:** `crates/merman-core/src/diagrams/sequence/lexer.rs`, `crates/merman-ascii/src/sequence/{plan,events,validate}.rs`, `crates/merman-ascii/src/relation_graph.rs`, their existing submodules, and oversized integration-test modules changed by this plan.
+- **Approach:** Use characterization and semantic tests as a fixed boundary, then extract deep modules by ownership rather than line count. Separate Sequence lexical modes/scanners from token iteration, control/event/document planning from paint, and relation document/component/scene/port/fallback planning from family-owned semantics. Split integration tests by semantic domain and keep shared fixtures/helpers private to the test tree. Preserve existing public exports unless a deliberate migration record already exists, avoid pass-through modules and one-function files, and delete obsolete shallow helpers only after repository search proves the extracted owner is the sole replacement. Do not combine this unit with new rendering behavior, fixture re-admission, or capability promotion.
+- **Test scenarios:** Before/after output equality for the already-admitted semantic corpus, private API visibility checks, direct-model and parser-backed paths, exact resource boundaries, all charsets/color modes, and repository searches for duplicate/superseded owners.
+- **Verification:** Each extracted module has one coherent reason to change, dependency direction follows adapter -> plan -> paint, no new public API is introduced accidentally, affected-package tests and Clippy pass before and after the split, and diff review shows only moves, visibility narrowing, caller rewiring, and deletion of proven-dead code.
+
 ### U25. Prove measured advantage and close the refactor
 
 - **Goal:** Demonstrate that the new surface is safer, deeper on common diagrams, broader only where justified, and maintainable.
 - **Requirements:** R1-R34
-- **Dependencies:** Completed dispositions from U18-U20 and U22
+- **Dependencies:** U30
 - **Files:** full tests/benchmarks, all ASCII docs/capabilities, comparison scorecard, changelog/migration notes if public contracts changed.
 - **Approach:** Run the complete serial verification matrix, benchmark representative large Flowchart/Sequence/Class/ER/XYChart cases before/after where a baseline is available, audit allocations and panic paths, run independent code review, remove only plan-owned experiments and directly superseded code proven caller-free, and update every support claim. Record exact versus semantic versus intentional-difference results for both references.
 - **Test scenarios:** Full workspace-affected tests, all charsets/color modes, direct/facade/binding/CLI entry points, resource profiles, unsupported families, new families, fixture inventory, doc/catalog consistency, and performance smoke cases.
@@ -590,6 +602,8 @@ Run Cargo commands serially and reuse the workspace target directory.
 | Generated/platform bindings | `cargo run --locked -p xtask -- verify-generated` and `python3 scripts/verify-platform-bindings.py` | U1-U3 and public capability/resource DTO/ABI changes |
 | Web contracts | `npm --prefix platforms/web run check:contracts`, `npm --prefix platforms/web test`, `npm --prefix platforms/web run build:ts`, and `npm --prefix platforms/web run build:wasm:ascii` | Capability/public catalog changes |
 | Playground capability and catalog | Add `test:ascii-support` and `typecheck` scripts, then run `npm --prefix playground run test:ascii-support`, `npm --prefix playground run typecheck`, `npm --prefix playground run test:examples`, and `cargo run -p xtask -- verify-playground-example-catalog` | U1, every capability change, new family/public example changes |
+
+U30 additionally reruns every affected package and lint command before and after extraction; a targeted test alone cannot establish behavior preservation for a module move.
 
 Targeted nextest expressions should run during red-green iteration, but no unit is complete until its full affected-package command passes.
 
@@ -630,6 +644,7 @@ Targeted nextest expressions should run during red-green iteration, but no unit 
 - The pinned exact oracle remains provenance-stable, the moving discovery lane is reproducible, and the final comparison scorecard distinguishes exact, semantic, private-extension, intentional-difference, and unsupported outcomes.
 - `cargo fmt`, affected-package nextest, Clippy, Web/Playground contract checks, phase reviews, and final independent review pass with no unresolved P0/P1 findings.
 - Within paths changed by this plan, plan-owned experiments, directly superseded route/cell/summary adapters, duplicate field sources, caller-free helpers made obsolete by their replacement unit, and stale support claims are removed; no unrelated user-owned files are modified or staged.
+- Oversized files changed by this plan are either split into ownership-coherent deep modules during U30 or retained with a written reason showing that extraction would weaken cohesion; line count alone is not an acceptance criterion.
 
 ### Per-Unit Completion
 
