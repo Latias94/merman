@@ -4,6 +4,7 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   useSyncExternalStore,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent,
@@ -156,6 +157,16 @@ interface RequestedPresentation {
   readonly preview: PreparedSvgPreview | null;
 }
 
+interface SvgMountFailure {
+  readonly error: Error;
+  readonly preview: PreparedSvgPreview;
+}
+
+interface PreparedSvgPresentation {
+  readonly error: Error | null;
+  readonly preview: PreparedSvgPreview | null;
+}
+
 interface SvgViewportProps {
   artifact: NavigableInlineSvg | null;
   presentationKey: number | null;
@@ -163,6 +174,7 @@ interface SvgViewportProps {
   empty?: ReactNode;
   navigationEnabled?: boolean;
   onPresentationReady?: (at: number) => void;
+  renderMountError?: (error: Error) => ReactNode;
 }
 
 const PAN_ACTIVATION_DISTANCE = 6;
@@ -176,15 +188,23 @@ export function SvgViewport({
   empty,
   navigationEnabled = true,
   onPresentationReady,
+  renderMountError,
 }: SvgViewportProps) {
-  const preview = useMemo(() => {
-    if (!artifact) return null;
+  const prepared = useMemo<PreparedSvgPresentation>(() => {
+    if (!artifact) return { error: null, preview: null };
     try {
-      return prepareSvgForResponsivePreview(artifact, document);
-    } catch {
-      return null;
+      const preview = prepareSvgForResponsivePreview(artifact, document);
+      return preview
+        ? { error: null, preview }
+        : {
+            error: new Error("Merman preview could not parse the rendered SVG root."),
+            preview: null,
+          };
+    } catch (error) {
+      return { error: normalizeMountError(error), preview: null };
     }
   }, [artifact]);
+  const preview = prepared.preview;
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const positionLayerRef = useRef<HTMLDivElement>(null);
@@ -195,6 +215,7 @@ export function SvgViewport({
   const readyFrameRef = useRef(0);
   const suppressedAnchorClickTimerRef = useRef(0);
   const suppressNextAnchorClickRef = useRef(false);
+  const [mountFailure, setMountFailure] = useState<SvgMountFailure | null>(null);
   const navigationEnabledRef = useRef(navigationEnabled);
   const previewRef = useRef(preview);
   const lastAppliedRef = useRef<AppliedTransform | null>(null);
@@ -222,6 +243,9 @@ export function SvgViewport({
   });
   previewRef.current = preview;
   navigationEnabledRef.current = navigationEnabled;
+  const presentationError =
+    prepared.error ??
+    (mountFailure?.preview === preview ? mountFailure.error : null);
 
   const applyTransform = useCallback(() => {
     transformFrameRef.current = 0;
@@ -492,7 +516,18 @@ export function SvgViewport({
 
     if (!host || !preview) return;
     const root = host.shadowRoot ?? host.attachShadow({ mode: "open" });
-    root.replaceChildren(preview.takeNode());
+    root.replaceChildren();
+    let node: Element;
+    try {
+      node = preview.takeNode();
+    } catch (error) {
+      setMountFailure({ error: normalizeMountError(error), preview });
+      return;
+    }
+    setMountFailure((current) =>
+      current?.preview === preview ? null : current,
+    );
+    root.replaceChildren(node);
     setNavigableAnchorsEnabled(root, navigationEnabledRef.current);
     const requested = requestedPresentationRef.current;
     if (requested.preview !== preview) return;
@@ -837,7 +872,9 @@ export function SvgViewport({
       }
       onDragStart={(event) => event.preventDefault()}
     >
-      {preview ? (
+      {presentationError ? (
+        (renderMountError?.(presentationError) ?? empty)
+      ) : preview ? (
         <div
           ref={positionLayerRef}
           className="absolute left-1/2 top-1/2"
@@ -865,6 +902,10 @@ export function SvgViewport({
       )}
     </div>
   );
+}
+
+function normalizeMountError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
 }
 
 function internalController(

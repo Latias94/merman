@@ -183,6 +183,22 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                     text=True,
                 )
 
+    def test_apple_binding_generator_uses_a_fresh_isolated_target(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        script = (repo_root / "scripts/build-apple-xcframework.sh").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            'BINDING_GENERATOR_TARGET_DIR="$OUT_DIR/binding-generator-target"',
+            script,
+        )
+        self.assertIn(
+            'CARGO_TARGET_DIR="$BINDING_GENERATOR_TARGET_DIR" cargo run',
+            script,
+        )
+        self.assertIn("trap cleanup_binding_generator_target EXIT", script)
+
     def test_capability_bearing_workspace_crates_have_exact_profiles(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         with (repo_root / "Cargo.toml").open("rb") as handle:

@@ -1,6 +1,6 @@
 {
   "name": "merman-playground",
-  "version": "0.7.0",
+  "version": "0.8.0-alpha.4",
   "private": true,
   "type": "module",
   "packageManager": "npm@11.17.0",
