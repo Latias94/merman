@@ -90,7 +90,7 @@ fn insert_er_redux_color_css(css: &mut String, diagram_id: &str, color_css: &str
 
 fn compile_er_entity_styles(
     entity: &crate::er::ErEntity,
-    classes: &std::collections::BTreeMap<String, crate::er::ErClassDef>,
+    classes: &indexmap::IndexMap<String, crate::er::ErClassDef>,
 ) -> (Vec<String>, Vec<String>) {
     let mut compiled_box: Vec<String> = Vec::new();
     let mut compiled_text: Vec<String> = Vec::new();
@@ -1501,9 +1501,9 @@ fn er_unified_marker_id(diagram_id: &str, diagram_type: &str, upstream_marker: &
 mod tests {
     use crate::model::{Bounds, ErDiagramLayout, LayoutNode};
     use crate::svg::{SvgRenderOptions, with_test_svg_execution};
+    use indexmap::IndexMap;
     use merman_core::diagrams::er::{ErDiagramRenderModel, ErEntityRenderModel};
     use serde_json::json;
-    use std::collections::BTreeMap;
 
     #[test]
     fn er_redux_color_theme_emits_per_entity_color_rules() {
@@ -1583,7 +1583,7 @@ mod tests {
         };
         let model = ErDiagramRenderModel {
             direction: "TB".to_string(),
-            entities: BTreeMap::from([
+            entities: IndexMap::from([
                 ("ALPHA".to_string(), alpha.clone()),
                 ("ZETA".to_string(), zeta.clone()),
             ]),
