@@ -38,7 +38,7 @@ readable at ordinary terminal widths.
 
 | Mermaid family | Semantic coverage | Primary projection | Structured-text fallback | What renders well | Important limits |
 | --- | --- | --- | --- | --- | --- |
-| Flowchart / graph | Partial | Diagrammatic | No | Root directions, boxed nodes, common node shapes, labels, edges, subgraphs, and nested groups. | Icons, images, callbacks, links, and some uncommon routes are omitted or approximate. |
+| Flowchart / graph | Partial | Diagrammatic | No | Root directions, explicit pinned-shape dispositions, common diagrammatic node shapes, independent endpoint markers, normal/dotted/thick/invisible edge semantics, labels, subgraphs, and nested groups. | Icons, images, callbacks, links, some uncommon shapes, declaration-order-independent Dagre ranking, and global dense-route occupancy remain unsupported or incomplete. |
 | Sequence | Partial | Diagrammatic | No | Participants, messages, notes, lifecycles, boxes, and Mermaid control blocks. | Actor presentation metadata and links are omitted; mirrored actors are opt-in. |
 | State | Partial | Diagrammatic | No | States, transitions, notes, graph-like pseudostates, groups, and terminal colors. | Some presentation metadata and future shape variants are approximated. |
 | Class | Partial | Diagrammatic | Yes | Class structure, notes, namespaces, common relations, routed components, and explicit relation summaries. | Namespace-crossing and dense/collision-prone relationships can use `relations:` output. |

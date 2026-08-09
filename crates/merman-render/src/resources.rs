@@ -901,7 +901,9 @@ pub struct ResourceLimitOverride {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::diagrams::flowchart::{FlowEdge, FlowNode, FlowSubgraph};
+    use merman_core::diagrams::flowchart::{
+        FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowSubgraph,
+    };
     use merman_core::{Engine, ParseOptions, RenderSemanticModel};
     use std::collections::HashSet;
 
@@ -1215,8 +1217,12 @@ mod tests {
                 label_type: None,
                 edge_type: None,
                 arrow: "-->".to_string(),
+                start_marker: FlowEdgeMarker::None,
+                end_marker: FlowEdgeMarker::Point,
                 is_user_defined_id: false,
                 stroke: None,
+                stroke_kind: FlowEdgeStroke::Normal,
+                visibility: FlowEdgeVisibility::Visible,
                 interpolate: None,
                 classes: Vec::new(),
                 style: Vec::new(),

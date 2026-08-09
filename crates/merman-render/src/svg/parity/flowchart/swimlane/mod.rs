@@ -2,6 +2,8 @@ use super::*;
 use crate::model::{
     FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, SwimlaneLayout,
 };
+#[cfg(test)]
+use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;
 
@@ -292,8 +294,12 @@ mod tests {
             label_type: None,
             edge_type: Some("arrow_open".to_string()),
             arrow: String::new(),
+            start_marker: FlowEdgeMarker::None,
+            end_marker: FlowEdgeMarker::None,
             is_user_defined_id: false,
             stroke: Some("normal".to_string()),
+            stroke_kind: FlowEdgeStroke::Normal,
+            visibility: FlowEdgeVisibility::Visible,
             interpolate: Some("linear".to_string()),
             classes: Vec::new(),
             style: Vec::new(),

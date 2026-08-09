@@ -13,7 +13,8 @@ use std::collections::{HashMap, HashSet, VecDeque, hash_map::Entry};
 use std::sync::Arc;
 
 use merman_core::diagrams::flowchart::{
-    FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderLabelSources,
+    FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowSubgraph,
+    FlowchartModel, FlowchartRenderLabelSources,
 };
 
 use super::config::{FlowchartConfigView, FlowchartLayoutSettings};
@@ -1946,8 +1947,12 @@ mod tests {
             label_type: Some("text".to_string()),
             edge_type: Some("arrow_point".to_string()),
             arrow: "-->".to_string(),
+            start_marker: FlowEdgeMarker::None,
+            end_marker: FlowEdgeMarker::Point,
             is_user_defined_id: false,
             stroke: Some("normal".to_string()),
+            stroke_kind: FlowEdgeStroke::Normal,
+            visibility: FlowEdgeVisibility::Visible,
             interpolate: None,
             classes: Vec::new(),
             style: Vec::new(),

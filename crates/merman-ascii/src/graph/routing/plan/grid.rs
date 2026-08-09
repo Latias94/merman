@@ -1,6 +1,6 @@
 use super::super::super::charset::GraphCharset;
 use super::super::super::layout::{CanvasCoord, GraphLayout, GridCoord, NodeLayout};
-use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow};
+use super::super::super::model::{AsciiGraphEdge, GraphDirection};
 use super::super::cell::edge_line_char;
 use super::super::label::{
     RoutedLabelPlacement, RoutedLabelText, routed_label_placement_for_text,
@@ -11,8 +11,9 @@ use super::super::path::{
     route_grid_path_with_resources, step_direction,
 };
 use super::{
-    PlannedRouteCells, PlannedRouteLabel, PlannedRouteSegment, RoutePlan,
-    edge_arrow_cell_in_segment, edge_line_cell_in_segment, route_cell_in_segment, route_turn_char,
+    MarkerAnchor, MarkerAnchors, PlannedCellId, PlannedRouteCells, PlannedRouteLabel,
+    PlannedRouteSegment, RoutePlan, edge_line_cell_in_segment, route_cell_in_segment,
+    route_turn_char,
 };
 use crate::error::Result;
 use crate::resource::ResourceContext;
@@ -82,15 +83,18 @@ pub(super) fn plan_left_right_grid_path_route(
     let mut resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
         merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
     ));
-    plan_left_right_grid_path_route_with_resources(
-        graph_layout,
-        from,
-        to,
+    super::materialize_test_markers(
+        plan_left_right_grid_path_route_with_resources(
+            graph_layout,
+            from,
+            to,
+            edge,
+            charset,
+            &mut resources,
+        ),
         edge,
         charset,
-        &mut resources,
     )
-    .expect("test grid route planning work must remain representable")
 }
 
 pub(super) fn plan_left_right_grid_path_route_with_resources(
@@ -124,16 +128,19 @@ pub(super) fn plan_left_right_grid_path_route_with_options(
     let mut resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
         merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
     ));
-    plan_left_right_grid_path_route_with_options_and_resources(
-        graph_layout,
-        from,
-        to,
+    super::materialize_test_markers(
+        plan_left_right_grid_path_route_with_options_and_resources(
+            graph_layout,
+            from,
+            to,
+            edge,
+            charset,
+            options,
+            &mut resources,
+        ),
         edge,
         charset,
-        options,
-        &mut resources,
     )
-    .expect("test grid route planning work must remain representable")
 }
 
 pub(super) fn plan_left_right_grid_path_route_with_options_and_resources(
@@ -164,25 +171,19 @@ pub(super) fn plan_left_right_grid_path_route_with_options_and_resources(
 
     let path = merge_grid_path(path);
     let segment = options.segment;
-    let (mut cells, lines_drawn, line_dirs) =
+    let (mut cells, lines_drawn, line_dirs, first_line_cell, last_line_cell) =
         plan_grid_path(graph_layout, &path, edge, charset, segment, resources)?;
     if lines_drawn.is_empty() || line_dirs.is_empty() {
         return Ok(None);
     }
+    let (Some(start_cell), Some(end_cell)) = (first_line_cell, last_line_cell) else {
+        return Ok(None);
+    };
     plan_grid_corners(&mut cells, graph_layout, &path, charset, segment, resources)?;
     plan_grid_box_start(
         &mut cells,
         lines_drawn[0].as_slice(),
         start_port,
-        charset,
-        segment,
-        resources,
-    )?;
-    plan_grid_arrow_head(
-        &mut cells,
-        lines_drawn.last().map(Vec::as_slice).unwrap_or_default(),
-        *line_dirs.last().unwrap_or(&end_port.terminal_direction()),
-        edge,
         charset,
         segment,
         resources,
@@ -197,7 +198,25 @@ pub(super) fn plan_left_right_grid_path_route_with_options_and_resources(
     .into_iter()
     .collect();
 
-    Ok(Some(RoutePlan::new(cells.into_vec(), labels)))
+    let start_anchor = MarkerAnchor::new(start_cell, opposite_direction(line_dirs[0]));
+    let end_anchor = MarkerAnchor::new(
+        end_cell,
+        *line_dirs.last().unwrap_or(&end_port.terminal_direction()),
+    );
+    Ok(Some(RoutePlan::new(
+        cells.into_vec(),
+        labels,
+        MarkerAnchors::new(start_anchor, end_anchor),
+    )))
+}
+
+fn opposite_direction(direction: StepDirection) -> StepDirection {
+    match direction {
+        StepDirection::Up => StepDirection::Down,
+        StepDirection::Right => StepDirection::Left,
+        StepDirection::Down => StepDirection::Up,
+        StepDirection::Left => StepDirection::Right,
+    }
 }
 
 fn planned_grid_label(
@@ -270,10 +289,18 @@ fn plan_grid_path(
     charset: &GraphCharset,
     segment: PlannedRouteSegment,
     resources: &mut ResourceContext,
-) -> Result<(PlannedRouteCells, Vec<Vec<CanvasCoord>>, Vec<StepDirection>)> {
+) -> Result<(
+    PlannedRouteCells,
+    Vec<Vec<CanvasCoord>>,
+    Vec<StepDirection>,
+    Option<PlannedCellId>,
+    Option<PlannedCellId>,
+)> {
     let mut cells = PlannedRouteCells::new();
     let mut lines_drawn = Vec::new();
     let mut line_dirs = Vec::new();
+    let mut first_line_cell = None;
+    let mut last_line_cell = None;
 
     for path_segment in path.windows(2) {
         let direction = step_direction(path_segment[0], path_segment[1]);
@@ -282,14 +309,23 @@ fn plan_grid_path(
             to: graph_layout.grid_to_canvas(path_segment[1]),
             direction,
         };
-        let line = plan_grid_line(&mut cells, line_span, edge, charset, segment, resources)?;
+        let (line, first_cell, last_cell) =
+            plan_grid_line(&mut cells, line_span, edge, charset, segment, resources)?;
         if !line.is_empty() {
             lines_drawn.push(line);
             line_dirs.push(direction);
+            first_line_cell.get_or_insert(first_cell.expect("non-empty line has a first cell"));
+            last_line_cell = last_cell;
         }
     }
 
-    Ok((cells, lines_drawn, line_dirs))
+    Ok((
+        cells,
+        lines_drawn,
+        line_dirs,
+        first_line_cell,
+        last_line_cell,
+    ))
 }
 
 fn plan_grid_line(
@@ -299,52 +335,66 @@ fn plan_grid_line(
     charset: &GraphCharset,
     segment: PlannedRouteSegment,
     resources: &mut ResourceContext,
-) -> Result<Vec<CanvasCoord>> {
+) -> Result<(
+    Vec<CanvasCoord>,
+    Option<PlannedCellId>,
+    Option<PlannedCellId>,
+)> {
     let GridLineSpan {
         from,
         to,
         direction,
     } = line_span;
     let mut drawn = Vec::new();
+    let mut first_cell = None;
+    let mut last_cell = None;
     match direction {
         StepDirection::Right => {
             let line = edge_line_char(edge, charset, GraphDirection::LeftRight);
             for x in (from.x + 1)..to.x {
-                cells.try_push(resources, || {
+                let cell = cells.try_push(resources, || {
                     route_cell_in_segment(x, from.y, line, segment)
                 })?;
+                first_cell.get_or_insert(cell);
+                last_cell = Some(cell);
                 drawn.push(CanvasCoord { x, y: from.y });
             }
         }
         StepDirection::Left => {
             let line = edge_line_char(edge, charset, GraphDirection::LeftRight);
             for x in ((to.x + 1)..from.x).rev() {
-                cells.try_push(resources, || {
+                let cell = cells.try_push(resources, || {
                     route_cell_in_segment(x, from.y, line, segment)
                 })?;
+                first_cell.get_or_insert(cell);
+                last_cell = Some(cell);
                 drawn.push(CanvasCoord { x, y: from.y });
             }
         }
         StepDirection::Down => {
             let line = edge_line_char(edge, charset, GraphDirection::TopDown);
             for y in (from.y + 1)..to.y {
-                cells.try_push(resources, || {
+                let cell = cells.try_push(resources, || {
                     route_cell_in_segment(from.x, y, line, segment)
                 })?;
+                first_cell.get_or_insert(cell);
+                last_cell = Some(cell);
                 drawn.push(CanvasCoord { x: from.x, y });
             }
         }
         StepDirection::Up => {
             let line = edge_line_char(edge, charset, GraphDirection::TopDown);
             for y in ((to.y + 1)..from.y).rev() {
-                cells.try_push(resources, || {
+                let cell = cells.try_push(resources, || {
                     route_cell_in_segment(from.x, y, line, segment)
                 })?;
+                first_cell.get_or_insert(cell);
+                last_cell = Some(cell);
                 drawn.push(CanvasCoord { x: from.x, y });
             }
         }
     }
-    Ok(drawn)
+    Ok((drawn, first_cell, last_cell))
 }
 
 fn plan_grid_corners(
@@ -407,51 +457,4 @@ fn plan_grid_box_start(
         ),
     })?;
     Ok(())
-}
-
-fn plan_grid_arrow_head(
-    cells: &mut PlannedRouteCells,
-    last_line: &[CanvasCoord],
-    default_direction: StepDirection,
-    edge: &AsciiGraphEdge,
-    charset: &GraphCharset,
-    segment: PlannedRouteSegment,
-    resources: &mut ResourceContext,
-) -> Result<()> {
-    if edge.arrow == GraphEdgeArrow::Open {
-        return Ok(());
-    }
-    let Some(last) = last_line.last().copied() else {
-        return Ok(());
-    };
-    let direction = last_line
-        .first()
-        .and_then(|first| canvas_line_direction(*first, last))
-        .unwrap_or(default_direction);
-    let ch = match direction {
-        StepDirection::Up => charset.arrow_up,
-        StepDirection::Down => charset.arrow_down,
-        StepDirection::Left => charset.arrow_left,
-        StepDirection::Right => charset.arrow_right,
-    };
-    cells.try_push(resources, || {
-        edge_arrow_cell_in_segment(last.x, last.y, ch, segment)
-    })?;
-    Ok(())
-}
-
-fn canvas_line_direction(from: CanvasCoord, to: CanvasCoord) -> Option<StepDirection> {
-    if from.x == to.x {
-        if from.y < to.y {
-            Some(StepDirection::Down)
-        } else if from.y > to.y {
-            Some(StepDirection::Up)
-        } else {
-            None
-        }
-    } else if from.x < to.x {
-        Some(StepDirection::Right)
-    } else {
-        Some(StepDirection::Left)
-    }
 }

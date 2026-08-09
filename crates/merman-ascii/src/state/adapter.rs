@@ -4,7 +4,7 @@ use crate::graph::style::{
     apply_node_declarations,
 };
 use crate::graph::{
-    AsciiGraph, GraphDirection, GraphEdgeArrow, GraphEdgeAttrs, GraphGroupKind, GraphGroupStyle,
+    AsciiGraph, GraphDirection, GraphEdgeAttrs, GraphEdgeMarker, GraphGroupKind, GraphGroupStyle,
     GraphNodeShape, GraphNodeStyle,
 };
 #[cfg(test)]
@@ -92,7 +92,7 @@ pub(crate) fn from_state_model_with_context(
             to,
             GraphEdgeAttrs {
                 label: edge_label(&edge.label),
-                arrow: edge_arrow(edge),
+                end_marker: edge_marker(edge),
                 ..GraphEdgeAttrs::default()
             },
         );
@@ -516,11 +516,11 @@ fn edge_label(label: &str) -> Option<String> {
     normalize_optional_text(Some(label))
 }
 
-fn edge_arrow(edge: &StateDiagramRenderEdge) -> GraphEdgeArrow {
+fn edge_marker(edge: &StateDiagramRenderEdge) -> GraphEdgeMarker {
     if is_note_edge(edge) {
-        GraphEdgeArrow::Open
+        GraphEdgeMarker::Open
     } else {
-        GraphEdgeArrow::Point
+        GraphEdgeMarker::Point
     }
 }
 

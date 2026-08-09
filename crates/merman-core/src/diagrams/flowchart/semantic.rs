@@ -284,7 +284,9 @@ impl<'a> FlowchartSemanticContext<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diagrams::flowchart::{ClassAssignStmt, LinkToken};
+    use crate::diagrams::flowchart::{
+        ClassAssignStmt, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, LinkToken,
+    };
 
     #[test]
     fn class_assignment_can_cancel_during_edge_scanning() {
@@ -297,8 +299,10 @@ mod tests {
                 id: Some(format!("edge-{index}")),
                 link: LinkToken {
                     end: "arrow_point".to_string(),
-                    edge_type: "arrow".to_string(),
-                    stroke: "normal".to_string(),
+                    start_marker: FlowEdgeMarker::None,
+                    end_marker: FlowEdgeMarker::Point,
+                    stroke_kind: FlowEdgeStroke::Normal,
+                    visibility: FlowEdgeVisibility::Visible,
                     length: 1,
                 },
                 label: None,

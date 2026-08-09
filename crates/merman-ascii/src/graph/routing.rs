@@ -5,8 +5,10 @@ use super::model::{AsciiGraph, AsciiGraphEdge, GraphNodeShape, GraphNodeStyle};
 use super::surface::GraphSurface;
 use super::topology::GraphGroupTopology;
 use crate::canvas::Canvas as RawCanvas;
+use crate::canvas::CanvasColor;
 use crate::error::{AsciiError, Result};
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
+use std::collections::HashMap;
 
 mod cell;
 mod label;
@@ -49,8 +51,12 @@ struct PreparedRoute {
 }
 
 impl PreparedRoute {
-    fn paint(&self, drawing: &mut RouteDrawing<'_>) -> Result<()> {
-        paint_route_plan(drawing, &self.plan)
+    fn paint_body(&self, drawing: &mut RouteDrawing<'_>) -> Result<()> {
+        paint_route_plan_body(drawing, &self.plan)
+    }
+
+    fn paint_markers(&self, drawing: &mut RouteDrawing<'_>) -> Result<()> {
+        paint_route_plan_markers(drawing, &self.plan)
     }
 }
 
@@ -65,7 +71,10 @@ impl RouteScene {
 
     pub(super) fn paint_routes(&self, drawing: &mut RouteDrawing<'_>) -> Result<()> {
         for route in &self.routes {
-            route.paint(drawing)?;
+            route.paint_body(drawing)?;
+        }
+        for route in &self.routes {
+            route.paint_markers(drawing)?;
         }
         Ok(())
     }
@@ -145,6 +154,17 @@ pub(super) fn prepare_route_scene_with_resources(
     let mut width = 0;
     let mut height = 0;
     let mut planned_cell_count = 0usize;
+    let marker_capacity = edges.len().checked_mul(2).ok_or_else(|| {
+        resources
+            .policy()
+            .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
+    })?;
+    let mut marker_ownership = HashMap::new();
+    marker_ownership
+        .try_reserve(marker_capacity)
+        .map_err(|_| AsciiError::AllocationFailed {
+            phase: crate::resource::AsciiResourceLimitPhase::LayoutWork.as_str(),
+        })?;
     let route_scan_width = graph_layout
         .nodes
         .len()
@@ -157,6 +177,9 @@ pub(super) fn prepare_route_scene_with_resources(
         })?;
 
     for (edge_index, edge) in edges.iter().enumerate() {
+        if edge.stroke == super::model::GraphEdgeStroke::Invisible {
+            continue;
+        }
         resources.charge_layout_work(route_scan_width)?;
         let Some(from) = endpoint_layout(graph_layout, &edge.from, charset) else {
             return Err(AsciiError::UnsupportedFeature {
@@ -193,7 +216,15 @@ pub(super) fn prepare_route_scene_with_resources(
             }
         };
 
-        let plan = plan.with_style(edge.style);
+        let plan = plan
+            .with_markers(
+                edge.start_marker,
+                edge.end_marker,
+                charset,
+                graph.diagram_type(),
+            )?
+            .with_style(edge.style);
+        validate_marker_ownership(&plan, &mut marker_ownership, graph.diagram_type())?;
         planned_cell_count = planned_cell_count
             .checked_add(plan.cells.len())
             .ok_or_else(|| {
@@ -260,18 +291,22 @@ fn group_endpoint_layout(group: &GroupLayout, charset: &GraphCharset) -> NodeLay
     }
 }
 
+#[cfg(test)]
 fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) -> Result<()> {
+    paint_route_plan_body(drawing, plan)?;
+    paint_route_plan_markers(drawing, plan)
+}
+
+fn paint_route_plan_body(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) -> Result<()> {
     for cell in &plan.cells {
         match cell.kind {
-            PlannedRouteCellKind::EdgeLine | PlannedRouteCellKind::EdgeArrow => {
-                set_edge_cell_with_paint(
-                    drawing.canvas,
-                    cell.coord.x,
-                    cell.coord.y,
-                    cell.ch,
-                    cell.paint.color,
-                )?
-            }
+            PlannedRouteCellKind::EdgeLine => set_edge_cell_with_paint(
+                drawing.canvas,
+                cell.coord.x,
+                cell.coord.y,
+                cell.ch,
+                cell.paint.color,
+            )?,
             PlannedRouteCellKind::RouteCell => set_route_cell_with_paint(
                 drawing.canvas,
                 drawing.route_cells,
@@ -280,6 +315,48 @@ fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) -> Result<
                 cell.ch,
                 cell.paint.color,
             )?,
+            PlannedRouteCellKind::EdgeArrow => {}
+        }
+    }
+    Ok(())
+}
+
+fn paint_route_plan_markers(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) -> Result<()> {
+    for cell in &plan.cells {
+        if cell.kind == PlannedRouteCellKind::EdgeArrow {
+            set_edge_cell_with_paint(
+                drawing.canvas,
+                cell.coord.x,
+                cell.coord.y,
+                cell.ch,
+                cell.paint.color,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_marker_ownership(
+    plan: &RoutePlan,
+    occupancy: &mut HashMap<(usize, usize), (char, CanvasColor)>,
+    diagram_type: &'static str,
+) -> Result<()> {
+    for cell in &plan.cells {
+        if cell.kind != PlannedRouteCellKind::EdgeArrow {
+            continue;
+        }
+        let marker = (cell.ch, cell.paint.color);
+        match occupancy.get(&(cell.coord.x, cell.coord.y)) {
+            Some(existing) if *existing != marker => {
+                return Err(AsciiError::UnsupportedFeature {
+                    diagram_type,
+                    feature: "conflicting edge marker ownership",
+                });
+            }
+            Some(_) => {}
+            None => {
+                occupancy.insert((cell.coord.x, cell.coord.y), marker);
+            }
         }
     }
     Ok(())
@@ -291,7 +368,6 @@ mod tests {
         PlannedRouteCell, PlannedRouteLabel, PlannedRoutePaint, PlannedRouteSegment,
     };
     use super::*;
-    use crate::canvas::CanvasColor;
     use crate::color::{AsciiColorRole, AsciiRgb};
     use crate::graph::layout::CanvasCoord;
     use crate::graph::layout::layout_graph;
@@ -306,7 +382,7 @@ mod tests {
         let line = AsciiRgb::new(1, 2, 3);
         let arrow = AsciiRgb::new(4, 5, 6);
         let label = AsciiRgb::new(7, 8, 9);
-        let plan = RoutePlan::new(
+        let plan = RoutePlan::new_without_markers_for_test(
             vec![
                 planned_cell(0, 0, '-', PlannedRouteCellKind::EdgeLine),
                 planned_cell(1, 0, '-', PlannedRouteCellKind::RouteCell),
@@ -386,7 +462,7 @@ mod tests {
     #[test]
     fn edge_arrow_style_falls_back_to_line_style() {
         let line = AsciiRgb::new(10, 11, 12);
-        let plan = RoutePlan::new(
+        let plan = RoutePlan::new_without_markers_for_test(
             vec![planned_cell(0, 0, '>', PlannedRouteCellKind::EdgeArrow)],
             Vec::new(),
         );
@@ -408,6 +484,31 @@ mod tests {
         assert_eq!(
             canvas.get_color(0, 0),
             Some(crate::terminal::CanvasColor::Direct(line))
+        );
+    }
+
+    #[test]
+    fn conflicting_marker_ownership_is_rejected_instead_of_using_paint_order() {
+        let first = RoutePlan::new_without_markers_for_test(
+            vec![planned_cell(0, 0, 'o', PlannedRouteCellKind::EdgeArrow)],
+            Vec::new(),
+        );
+        let second = RoutePlan::new_without_markers_for_test(
+            vec![planned_cell(0, 0, 'x', PlannedRouteCellKind::EdgeArrow)],
+            Vec::new(),
+        );
+        let mut occupancy = HashMap::new();
+        validate_marker_ownership(&first, &mut occupancy, "flowchart").unwrap();
+
+        let error = validate_marker_ownership(&second, &mut occupancy, "flowchart")
+            .expect_err("different markers cannot own the same terminal cell");
+
+        assert_eq!(
+            error,
+            AsciiError::UnsupportedFeature {
+                diagram_type: "flowchart",
+                feature: "conflicting edge marker ownership",
+            }
         );
     }
 
@@ -592,7 +693,7 @@ mod tests {
 
     #[test]
     fn route_extent_reports_checked_cell_geometry_overflow() {
-        let plan = RoutePlan::new(
+        let plan = RoutePlan::new_without_markers_for_test(
             vec![planned_cell(
                 usize::MAX,
                 0,

@@ -4,9 +4,12 @@ pub(super) fn parallel_edge_index(edges: &[AsciiGraphEdge], edge_index: usize) -
     let Some(edge) = edges.get(edge_index) else {
         return 0;
     };
+    if !edge.stroke.is_visible() {
+        return 0;
+    }
     edges[..edge_index]
         .iter()
-        .filter(|previous| same_edge_pair(previous, edge))
+        .filter(|previous| previous.stroke.is_visible() && same_edge_pair(previous, edge))
         .count()
 }
 

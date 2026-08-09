@@ -12,6 +12,8 @@ use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions, is_javascript_array_index};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use indexmap::IndexMap;
+#[cfg(test)]
+use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 use merman_core::{MermaidConfig, geom::Size};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -4476,8 +4478,12 @@ mod tests {
             label_type: None,
             edge_type: None,
             arrow: "-->".to_string(),
+            start_marker: FlowEdgeMarker::None,
+            end_marker: FlowEdgeMarker::Point,
             is_user_defined_id: false,
             stroke: None,
+            stroke_kind: FlowEdgeStroke::Normal,
+            visibility: FlowEdgeVisibility::Visible,
             interpolate: None,
             classes: Vec::new(),
             style: Vec::new(),

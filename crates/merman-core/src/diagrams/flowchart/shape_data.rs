@@ -183,6 +183,10 @@ pub(super) fn public_pinned_shape_names() -> impl Iterator<Item = &'static str> 
         .filter(|shape| is_public_shape_name(shape))
 }
 
+pub(super) fn pinned_shape_names() -> impl Iterator<Item = &'static str> {
+    PINNED_MERMAID_SHAPES.iter().copied()
+}
+
 fn is_public_shape_name(shape: &str) -> bool {
     shape == shape.to_lowercase() && !shape.contains('_')
 }

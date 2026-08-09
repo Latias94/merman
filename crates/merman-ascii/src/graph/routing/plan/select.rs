@@ -26,7 +26,8 @@ use super::same_rank::{
 };
 use super::top_down::{
     plan_top_down_back_route_with_resources, plan_top_down_bent_route_with_resources,
-    plan_top_down_direct_route_with_resources, plan_top_down_side_entry_route_with_resources,
+    plan_top_down_bent_side_entry_route_with_resources, plan_top_down_direct_route_with_resources,
+    plan_top_down_side_entry_route_with_resources,
 };
 use crate::error::Result;
 use crate::resource::ResourceContext;
@@ -98,8 +99,20 @@ pub(in crate::graph::routing) fn plan_edge_route(request: EdgeRouteRequest<'_>) 
     let mut resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
         merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
     ));
-    plan_edge_route_with_resources(request, &mut resources)
-        .expect("test route planning work must remain representable")
+    let planned = plan_edge_route_with_resources(request, &mut resources)
+        .expect("test route planning work must remain representable");
+    match planned {
+        EdgeRoutePlan::Routed(plan) => EdgeRoutePlan::Routed(
+            plan.with_markers(
+                request.edge.start_marker,
+                request.edge.end_marker,
+                request.charset,
+                request.graph.diagram_type(),
+            )
+            .expect("test endpoint markers must fit the planned route"),
+        ),
+        EdgeRoutePlan::Unsupported(route) => EdgeRoutePlan::Unsupported(route),
+    }
 }
 
 #[cfg(test)]
@@ -268,10 +281,38 @@ fn plan_top_down_route(
     }
 
     if from.center_x() != to.center_x() {
+        if target_has_direct_top_entry(request)
+            && let Some(plan) = plan_top_down_bent_side_entry_route_with_resources(
+                from, to, edge, charset, resources,
+            )?
+        {
+            return Ok(Some(plan));
+        }
         return plan_top_down_bent_route_with_resources(from, to, edge, charset, resources);
     }
 
     plan_top_down_direct_route_with_resources(from, to, edge, charset, resources)
+}
+
+fn target_has_direct_top_entry(request: EdgeRouteRequest<'_>) -> bool {
+    request
+        .edges
+        .iter()
+        .enumerate()
+        .filter(|(index, edge)| {
+            *index != request.edge_index && edge.stroke.is_visible() && edge.to == request.to.id
+        })
+        .any(|(_, edge)| {
+            request
+                .graph_layout
+                .nodes
+                .iter()
+                .find(|layout| layout.id == edge.from)
+                .is_some_and(|source| {
+                    source.center_y() < request.to.center_y()
+                        && source.center_x() == request.to.center_x()
+                })
+        })
 }
 
 fn plan_boundary_route(
@@ -360,5 +401,5 @@ fn unsupported_reason(
 fn has_self_loop(edges: &[AsciiGraphEdge], node_id: &str) -> bool {
     edges
         .iter()
-        .any(|edge| edge.from == node_id && edge.to == node_id)
+        .any(|edge| edge.stroke.is_visible() && edge.from == node_id && edge.to == node_id)
 }

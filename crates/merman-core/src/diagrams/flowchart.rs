@@ -75,7 +75,10 @@ use text::{
 
 #[doc(hidden)]
 pub use model::FlowchartRenderLabelSources;
-pub use model::{FlowEdge, FlowEdgeDefaults, FlowNode, FlowSubgraph, FlowchartModel};
+pub use model::{
+    FlowEdge, FlowEdgeDefaults, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode,
+    FlowSubgraph, FlowchartModel,
+};
 
 pub(crate) use model::{
     Edge, EdgeDefaults, LabeledText, LinkToken, Node, SubgraphHeader, TitleKind,
@@ -95,10 +98,11 @@ use accessibility::{
 };
 use build::FlowchartBuildState;
 use lexer::Lexer;
-use link::{destruct_end_link, destruct_start_link};
+use link::{destruct_end_link, destruct_labeled_end_link, destruct_start_link};
 use semantic::{FlowchartSemanticContext, apply_semantic_statements};
 use shape_data::{
-    apply_shape_data_value_to_node, public_pinned_shape_names, value_to_bool, value_to_string,
+    apply_shape_data_value_to_node, pinned_shape_names, public_pinned_shape_names, value_to_bool,
+    value_to_string,
 };
 use subgraph::SubgraphBuilder;
 
@@ -230,6 +234,16 @@ pub(crate) fn render_model_to_compat_json(
             "flowchart typed model did not serialize to an object".to_string(),
         )
     })?;
+    if let Some(edges) = root.get_mut("edges").and_then(Value::as_array_mut) {
+        for edge in edges {
+            if let Some(edge) = edge.as_object_mut() {
+                edge.remove("startMarker");
+                edge.remove("endMarker");
+                edge.remove("strokeKind");
+                edge.remove("visibility");
+            }
+        }
+    }
     root.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
     if model
         .warning_facts
@@ -249,6 +263,11 @@ pub(crate) fn render_model_to_compat_json(
 
 pub fn flowchart_public_shape_names() -> impl Iterator<Item = &'static str> {
     public_pinned_shape_names()
+}
+
+#[doc(hidden)]
+pub fn flowchart_pinned_shape_names() -> impl Iterator<Item = &'static str> {
+    pinned_shape_names()
 }
 
 fn parse_flowchart_semantic_source(
@@ -1696,6 +1715,8 @@ fn flow_edge_to_model(e: Edge, meta: &ParseMetadata) -> Result<(FlowEdge, Option
             "flowchart edge id missing".to_string(),
         )
     })?;
+    let edge_type = e.link.compatibility_edge_type().to_string();
+    let stroke = e.link.compatibility_stroke().to_string();
 
     Ok((
         FlowEdge {
@@ -1704,10 +1725,14 @@ fn flow_edge_to_model(e: Edge, meta: &ParseMetadata) -> Result<(FlowEdge, Option
             to: e.to,
             label,
             label_type: Some(title_kind_str(&e.label_type).to_string()),
-            edge_type: Some(e.link.edge_type),
+            edge_type: Some(edge_type),
             arrow: e.link.end,
+            start_marker: e.link.start_marker,
+            end_marker: e.link.end_marker,
             is_user_defined_id: e.is_user_defined_id,
-            stroke: Some(e.link.stroke),
+            stroke: Some(stroke),
+            stroke_kind: e.link.stroke_kind,
+            visibility: e.link.visibility,
             length: e.link.length,
             style: e.style,
             classes: e.classes,
@@ -1720,7 +1745,7 @@ fn flow_edge_to_model(e: Edge, meta: &ParseMetadata) -> Result<(FlowEdge, Option
 }
 
 fn layout_shape_for_node(n: &Node) -> String {
-    // Mirrors Mermaid FlowDB `getTypeFromVertex` logic at 11.12.2.
+    // Mirrors Mermaid FlowDB `getTypeFromVertex` logic at the pinned Mermaid 11.16.1 baseline.
     if n.img.is_some() {
         return "imageSquare".to_string();
     }

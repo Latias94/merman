@@ -2,7 +2,7 @@ use super::FlowchartLexemeComponent;
 use crate::{DiagramWarningFact, SourceSpan};
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowchartModel {
@@ -147,7 +147,37 @@ pub struct FlowNode {
     pub have_callback: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+/// Marker attached to one semantic endpoint of a Flowchart edge.
+pub enum FlowEdgeMarker {
+    #[default]
+    None,
+    Point,
+    Circle,
+    Cross,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+/// Visible stroke pattern, independent from whether the edge is painted.
+pub enum FlowEdgeStroke {
+    #[default]
+    Normal,
+    Dotted,
+    Thick,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+/// Whether the edge is painted or retained only as a layout constraint.
+pub enum FlowEdgeVisibility {
+    #[default]
+    Visible,
+    Invisible,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct FlowEdge {
     pub id: String,
     pub from: String,
@@ -156,13 +186,26 @@ pub struct FlowEdge {
     #[serde(default, rename = "labelType")]
     pub label_type: Option<String>,
     #[serde(default, rename = "type")]
+    /// Mermaid-compatible aggregate edge type retained for legacy JSON consumers.
     pub edge_type: Option<String>,
     #[serde(default)]
+    /// Authored full/end operator retained for compatibility and source inspection.
     pub arrow: String,
+    #[serde(default, rename = "startMarker")]
+    /// Typed marker owned by the source endpoint.
+    pub start_marker: FlowEdgeMarker,
+    #[serde(default, rename = "endMarker")]
+    /// Typed marker owned by the target endpoint.
+    pub end_marker: FlowEdgeMarker,
     #[serde(default, rename = "isUserDefinedId")]
     pub is_user_defined_id: bool,
     #[serde(default)]
+    /// Mermaid-compatible stroke string retained for legacy JSON consumers.
     pub stroke: Option<String>,
+    #[serde(default, rename = "strokeKind")]
+    pub stroke_kind: FlowEdgeStroke,
+    #[serde(default)]
+    pub visibility: FlowEdgeVisibility,
     #[serde(default)]
     pub interpolate: Option<String>,
     #[serde(default)]
@@ -174,6 +217,151 @@ pub struct FlowEdge {
     #[serde(default)]
     pub animation: Option<String>,
     pub length: usize,
+}
+
+#[derive(Deserialize)]
+struct FlowEdgeWire {
+    id: String,
+    from: String,
+    to: String,
+    label: Option<String>,
+    #[serde(default, rename = "labelType")]
+    label_type: Option<String>,
+    #[serde(default, rename = "type")]
+    edge_type: Option<String>,
+    #[serde(default)]
+    arrow: String,
+    #[serde(default, rename = "startMarker")]
+    start_marker: Option<FlowEdgeMarker>,
+    #[serde(default, rename = "endMarker")]
+    end_marker: Option<FlowEdgeMarker>,
+    #[serde(default, rename = "isUserDefinedId")]
+    is_user_defined_id: bool,
+    #[serde(default)]
+    stroke: Option<String>,
+    #[serde(default, rename = "strokeKind")]
+    stroke_kind: Option<FlowEdgeStroke>,
+    #[serde(default)]
+    visibility: Option<FlowEdgeVisibility>,
+    #[serde(default)]
+    interpolate: Option<String>,
+    #[serde(default)]
+    classes: Vec<String>,
+    #[serde(default)]
+    style: Vec<String>,
+    #[serde(default)]
+    animate: Option<bool>,
+    #[serde(default)]
+    animation: Option<String>,
+    length: usize,
+}
+
+impl<'de> Deserialize<'de> for FlowEdge {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = FlowEdgeWire::deserialize(deserializer)?;
+        let (legacy_start_marker, legacy_end_marker) =
+            markers_from_compatibility_fields(&wire.arrow, wire.edge_type.as_deref());
+        let legacy_stroke_kind = stroke_from_compatibility_field(wire.stroke.as_deref());
+        let legacy_visibility = visibility_from_compatibility_field(wire.stroke.as_deref());
+
+        Ok(Self {
+            id: wire.id,
+            from: wire.from,
+            to: wire.to,
+            label: wire.label,
+            label_type: wire.label_type,
+            edge_type: wire.edge_type,
+            arrow: wire.arrow,
+            start_marker: wire.start_marker.unwrap_or(legacy_start_marker),
+            end_marker: wire.end_marker.unwrap_or(legacy_end_marker),
+            is_user_defined_id: wire.is_user_defined_id,
+            stroke: wire.stroke,
+            stroke_kind: wire.stroke_kind.unwrap_or(legacy_stroke_kind),
+            visibility: wire.visibility.unwrap_or(legacy_visibility),
+            interpolate: wire.interpolate,
+            classes: wire.classes,
+            style: wire.style,
+            animate: wire.animate,
+            animation: wire.animation,
+            length: wire.length,
+        })
+    }
+}
+
+fn markers_from_compatibility_fields(
+    arrow: &str,
+    edge_type: Option<&str>,
+) -> (FlowEdgeMarker, FlowEdgeMarker) {
+    if let Some(edge_type) = edge_type {
+        let marker = marker_from_compatibility_edge_type(edge_type).unwrap_or_default();
+        let start_marker = if edge_type.starts_with("double_") {
+            marker
+        } else {
+            FlowEdgeMarker::None
+        };
+        return (start_marker, marker);
+    }
+
+    let arrow = arrow.trim();
+    let end_marker = arrow
+        .chars()
+        .next_back()
+        .and_then(marker_from_end_char)
+        .unwrap_or_default();
+    let start_marker = arrow
+        .chars()
+        .next()
+        .and_then(marker_from_start_char)
+        .filter(|marker| *marker == end_marker)
+        .unwrap_or_default();
+    (start_marker, end_marker)
+}
+
+fn marker_from_start_char(ch: char) -> Option<FlowEdgeMarker> {
+    match ch {
+        '<' => Some(FlowEdgeMarker::Point),
+        'o' => Some(FlowEdgeMarker::Circle),
+        'x' => Some(FlowEdgeMarker::Cross),
+        _ => None,
+    }
+}
+
+fn marker_from_end_char(ch: char) -> Option<FlowEdgeMarker> {
+    match ch {
+        '>' => Some(FlowEdgeMarker::Point),
+        'o' => Some(FlowEdgeMarker::Circle),
+        'x' => Some(FlowEdgeMarker::Cross),
+        _ => None,
+    }
+}
+
+fn marker_from_compatibility_edge_type(edge_type: &str) -> Option<FlowEdgeMarker> {
+    match edge_type.strip_prefix("double_").unwrap_or(edge_type) {
+        "arrow" | "arrow_point" => Some(FlowEdgeMarker::Point),
+        "arrow_circle" => Some(FlowEdgeMarker::Circle),
+        "arrow_cross" => Some(FlowEdgeMarker::Cross),
+        "arrow_open" => Some(FlowEdgeMarker::None),
+        _ => None,
+    }
+}
+
+fn stroke_from_compatibility_field(stroke: Option<&str>) -> FlowEdgeStroke {
+    match stroke {
+        Some("dotted") => FlowEdgeStroke::Dotted,
+        Some("thick") => FlowEdgeStroke::Thick,
+        _ => FlowEdgeStroke::Normal,
+    }
+}
+
+fn visibility_from_compatibility_field(stroke: Option<&str>) -> FlowEdgeVisibility {
+    if stroke == Some("invisible") {
+        FlowEdgeVisibility::Invisible
+    } else {
+        FlowEdgeVisibility::Visible
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -237,9 +425,36 @@ pub(crate) struct Edge {
 #[derive(Debug, Clone)]
 pub(crate) struct LinkToken {
     pub end: String,
-    pub edge_type: String,
-    pub stroke: String,
+    pub start_marker: FlowEdgeMarker,
+    pub end_marker: FlowEdgeMarker,
+    pub stroke_kind: FlowEdgeStroke,
+    pub visibility: FlowEdgeVisibility,
     pub length: usize,
+}
+
+impl LinkToken {
+    pub(crate) const fn compatibility_edge_type(&self) -> &'static str {
+        match (self.start_marker, self.end_marker) {
+            (FlowEdgeMarker::Point, FlowEdgeMarker::Point) => "double_arrow_point",
+            (FlowEdgeMarker::Circle, FlowEdgeMarker::Circle) => "double_arrow_circle",
+            (FlowEdgeMarker::Cross, FlowEdgeMarker::Cross) => "double_arrow_cross",
+            (_, FlowEdgeMarker::Point) => "arrow_point",
+            (_, FlowEdgeMarker::Circle) => "arrow_circle",
+            (_, FlowEdgeMarker::Cross) => "arrow_cross",
+            (_, FlowEdgeMarker::None) => "arrow_open",
+        }
+    }
+
+    pub(crate) const fn compatibility_stroke(&self) -> &'static str {
+        if matches!(self.visibility, FlowEdgeVisibility::Invisible) {
+            return "invisible";
+        }
+        match self.stroke_kind {
+            FlowEdgeStroke::Normal => "normal",
+            FlowEdgeStroke::Dotted => "dotted",
+            FlowEdgeStroke::Thick => "thick",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -2,6 +2,8 @@
 
 use super::super::defs::write_flowchart_marker_id_xml;
 use super::super::*;
+#[cfg(test)]
+use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 
 pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     out: &mut String,
@@ -247,8 +249,24 @@ mod tests {
             label_type: None,
             edge_type: Some(edge_type.to_string()),
             arrow: String::new(),
+            start_marker: FlowEdgeMarker::None,
+            end_marker: if edge_type.starts_with("arrow_open") {
+                FlowEdgeMarker::None
+            } else {
+                FlowEdgeMarker::Point
+            },
             is_user_defined_id: false,
             stroke: Some(stroke.to_string()),
+            stroke_kind: match stroke {
+                "dotted" => FlowEdgeStroke::Dotted,
+                "thick" => FlowEdgeStroke::Thick,
+                _ => FlowEdgeStroke::Normal,
+            },
+            visibility: if stroke == "invisible" {
+                FlowEdgeVisibility::Invisible
+            } else {
+                FlowEdgeVisibility::Visible
+            },
             interpolate: None,
             classes: Vec::new(),
             style: Vec::new(),

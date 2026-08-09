@@ -1,6 +1,5 @@
-use super::model::{
-    AsciiGraph, GraphDirection, GraphEdgeArrow, GraphEdgeAttrs, GraphEdgeStroke, GraphNodeShape,
-};
+use super::model::{AsciiGraph, GraphDirection, GraphEdgeAttrs, GraphEdgeMarker, GraphEdgeStroke};
+use super::shape::resolve_flowchart_node_shape;
 use super::style::{resolve_edge_style, resolve_group_style, resolve_node_style};
 use crate::AsciiDirection;
 use crate::error::{AsciiError, Result};
@@ -8,7 +7,10 @@ use crate::options::AsciiRenderOptions;
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::charge_text_layout;
 use crate::text::normalize_optional_text;
-use merman_core::diagrams::flowchart::FlowchartModel;
+use merman_core::diagrams::flowchart::{
+    FlowEdgeMarker as CoreFlowEdgeMarker, FlowEdgeStroke as CoreFlowEdgeStroke,
+    FlowEdgeVisibility as CoreFlowEdgeVisibility, FlowchartModel,
+};
 use std::collections::{HashMap, HashSet};
 
 pub(crate) fn from_flowchart_model(
@@ -32,12 +34,15 @@ pub(crate) fn from_flowchart_model(
     graph.try_reserve_projection(model.nodes.len(), model.edges.len(), model.subgraphs.len())?;
 
     for node in &model.nodes {
+        let resolved_shape = resolve_flowchart_node_shape(node.layout_shape.as_deref(), direction)?;
         let id = try_clone_projection_string(&node.id)?;
-        let label = try_clone_projection_string(node.label.as_deref().unwrap_or(&node.id))?;
+        let label = try_clone_projection_string(
+            resolved_shape.projected_label(node.label.as_deref().unwrap_or(&node.id)),
+        )?;
         graph.add_node_with_shape_and_style(
             id,
             label,
-            parse_node_shape(node.layout_shape.as_deref())?,
+            resolved_shape.shape,
             resolve_node_style(model, node),
         );
     }
@@ -49,12 +54,15 @@ pub(crate) fn from_flowchart_model(
             from,
             to,
             GraphEdgeAttrs {
+                id: Some(try_clone_projection_string(&edge.id)?),
+                is_user_defined_id: edge.is_user_defined_id,
                 label: edge
                     .label
                     .as_deref()
                     .and_then(|label| normalize_optional_text(Some(label))),
-                stroke: parse_edge_stroke(edge.stroke.as_deref().unwrap_or("normal"))?,
-                arrow: parse_edge_arrow(edge.edge_type.as_deref().unwrap_or("arrow_point"))?,
+                stroke: parse_flow_edge_stroke(edge.stroke_kind, edge.visibility),
+                start_marker: parse_flow_edge_marker(edge.start_marker),
+                end_marker: parse_flow_edge_marker(edge.end_marker),
                 length: edge.length,
                 style: resolve_edge_style(model, edge),
             },
@@ -86,6 +94,29 @@ pub(crate) fn from_flowchart_model(
     Ok(graph)
 }
 
+fn parse_flow_edge_marker(marker: CoreFlowEdgeMarker) -> GraphEdgeMarker {
+    match marker {
+        CoreFlowEdgeMarker::None => GraphEdgeMarker::Open,
+        CoreFlowEdgeMarker::Point => GraphEdgeMarker::Point,
+        CoreFlowEdgeMarker::Circle => GraphEdgeMarker::Circle,
+        CoreFlowEdgeMarker::Cross => GraphEdgeMarker::Cross,
+    }
+}
+
+fn parse_flow_edge_stroke(
+    stroke: CoreFlowEdgeStroke,
+    visibility: CoreFlowEdgeVisibility,
+) -> GraphEdgeStroke {
+    if matches!(visibility, CoreFlowEdgeVisibility::Invisible) {
+        return GraphEdgeStroke::Invisible;
+    }
+    match stroke {
+        CoreFlowEdgeStroke::Normal => GraphEdgeStroke::Normal,
+        CoreFlowEdgeStroke::Dotted => GraphEdgeStroke::Dotted,
+        CoreFlowEdgeStroke::Thick => GraphEdgeStroke::Thick,
+    }
+}
+
 fn preflight_flowchart_projection<'a>(
     model: &'a FlowchartModel,
     resources: &mut ResourceContext,
@@ -110,8 +141,16 @@ fn preflight_flowchart_projection<'a>(
 
     for edge in &model.edges {
         resources.charge_layout_work(1)?;
+        charge_text_layout(resources, &edge.id)?;
         charge_text_layout(resources, &edge.from)?;
         charge_text_layout(resources, &edge.to)?;
+        charge_text_layout(resources, &edge.arrow)?;
+        if let Some(edge_type) = edge.edge_type.as_deref() {
+            charge_text_layout(resources, edge_type)?;
+        }
+        if let Some(stroke) = edge.stroke.as_deref() {
+            charge_text_layout(resources, stroke)?;
+        }
         if let Some(label) = edge.label.as_deref() {
             charge_text_layout(resources, label)?;
         }
@@ -305,66 +344,6 @@ fn parse_direction(direction: &str) -> Result<GraphDirection> {
     }
 }
 
-fn parse_edge_stroke(stroke: &str) -> Result<GraphEdgeStroke> {
-    match stroke {
-        "normal" => Ok(GraphEdgeStroke::Normal),
-        "dotted" => Ok(GraphEdgeStroke::Dotted),
-        "thick" => Ok(GraphEdgeStroke::Thick),
-        _ => Err(AsciiError::UnsupportedFeature {
-            diagram_type: "flowchart",
-            feature: "non-normal edge strokes",
-        }),
-    }
-}
-
-fn parse_edge_arrow(edge_type: &str) -> Result<GraphEdgeArrow> {
-    match edge_type {
-        "arrow_open" => Ok(GraphEdgeArrow::Open),
-        "arrow_point" => Ok(GraphEdgeArrow::Point),
-        _ => Err(AsciiError::UnsupportedFeature {
-            diagram_type: "flowchart",
-            feature: "non-point edge arrows",
-        }),
-    }
-}
-
-fn parse_node_shape(shape: Option<&str>) -> Result<GraphNodeShape> {
-    match shape.unwrap_or("squareRect") {
-        "rect" | "rectangle" | "square" | "squareRect" => Ok(GraphNodeShape::Rect),
-        "roundedRect" | "rounded" | "event" | "ellipse" => Ok(GraphNodeShape::Rounded),
-        "circle" | "circ" => Ok(GraphNodeShape::Circle),
-        "stadium" | "terminal" | "pill" => Ok(GraphNodeShape::Stadium),
-        "doublecircle" | "dbl-circ" | "double-circle" => Ok(GraphNodeShape::DoubleCircle),
-        "diamond" | "question" | "diam" | "decision" => Ok(GraphNodeShape::Diamond),
-        "subroutine" | "fr-rect" | "subproc" | "subprocess" | "framed-rectangle" => {
-            Ok(GraphNodeShape::Subroutine)
-        }
-        "cylinder" | "cyl" | "db" | "database" => Ok(GraphNodeShape::Cylinder),
-        "lean_right" | "lean-r" | "lean-right" | "in-out" => Ok(GraphNodeShape::LeanRight),
-        "lean_left" | "lean-l" | "lean-left" | "out-in" => Ok(GraphNodeShape::LeanLeft),
-        "datastore" | "data-store" => Ok(GraphNodeShape::Datastore),
-        "doc" | "document" | "docs" | "documents" | "st-doc" | "stacked-document" | "lin-doc"
-        | "lined-document" | "tag-doc" | "tagged-document" => Ok(GraphNodeShape::Document),
-        "st-rect" | "stacked-rectangle" | "processes" | "procs" | "tag-rect" | "tag-proc"
-        | "tagged-process" | "tagged-rectangle" | "lin-rect" | "lin-proc" | "lined-process"
-        | "lined-rectangle" | "shaded-process" => Ok(GraphNodeShape::Rect),
-        "hexagon" | "hex" | "prepare" => Ok(GraphNodeShape::Hexagon),
-        "odd" | "rect_left_inv_arrow" | "flag" | "paper-tape" => Ok(GraphNodeShape::Asymmetric),
-        "choice" => Ok(GraphNodeShape::Choice),
-        "fork" | "join" | "forkJoin" => Ok(GraphNodeShape::ForkJoinHorizontal),
-        "start" | "small-circle" | "sm-circ" | "stateStart" => Ok(GraphNodeShape::StateStart),
-        "stop" | "framed-circle" | "fr-circ" | "stateEnd" => Ok(GraphNodeShape::StateEnd),
-        "trapezoid" | "trap-b" | "priority" | "trapezoid-bottom" => Ok(GraphNodeShape::Trapezoid),
-        "inv_trapezoid" | "inv-trapezoid" | "trap-t" | "manual" | "trapezoid-top" => {
-            Ok(GraphNodeShape::TrapezoidAlt)
-        }
-        _ => Err(AsciiError::UnsupportedFeature {
-            diagram_type: "flowchart",
-            feature: "non-rectangular node shapes",
-        }),
-    }
-}
-
 fn validate_supported_flowchart_model(
     model: &FlowchartModel,
     memberships: &FlowchartMembershipIndex<'_>,
@@ -423,8 +402,49 @@ fn validate_supported_flowchart_model(
 mod tests {
     use super::*;
     use crate::resource::AsciiResourcePolicy;
-    use merman_core::diagrams::flowchart::FlowSubgraph;
+    use merman_core::diagrams::flowchart::{
+        FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowSubgraph,
+    };
     use merman_core::resources::ResourceProfile;
+
+    fn flow_node(id: &str) -> FlowNode {
+        FlowNode {
+            id: id.to_string(),
+            label: Some(id.to_string()),
+            label_type: None,
+            layout_shape: None,
+            shape: None,
+            icon: None,
+            form: None,
+            pos: None,
+            img: None,
+            constraint: None,
+            asset_width: None,
+            asset_height: None,
+            classes: Vec::new(),
+            styles: Vec::new(),
+            link: None,
+            link_target: None,
+            have_callback: false,
+        }
+    }
+
+    fn model_with_edge(edge: FlowEdge) -> FlowchartModel {
+        FlowchartModel {
+            keyword: "flowchart".to_string(),
+            acc_descr: None,
+            acc_title: None,
+            class_defs: Default::default(),
+            direction: Some("LR".to_string()),
+            edge_defaults: None,
+            vertex_calls: Vec::new(),
+            nodes: vec![flow_node("A"), flow_node("B")],
+            edges: vec![edge],
+            subgraphs: Vec::new(),
+            tooltips: Default::default(),
+            warning_facts: Vec::new(),
+        }
+    }
 
     fn nested_subgraph_model(group_count: usize) -> FlowchartModel {
         let mut member = "node".to_string();
@@ -500,5 +520,41 @@ mod tests {
             below_resources.layout_work_used(),
             GROUP_COUNT + member_count
         );
+    }
+
+    #[test]
+    fn flowchart_projection_retains_edge_identity_provenance_and_marker_semantics() {
+        let model = model_with_edge(FlowEdge {
+            id: "edge-A-B".to_string(),
+            from: "A".to_string(),
+            to: "B".to_string(),
+            label: None,
+            label_type: None,
+            edge_type: Some("arrow_cross".to_string()),
+            arrow: "o--x".to_string(),
+            start_marker: FlowEdgeMarker::Circle,
+            end_marker: FlowEdgeMarker::Cross,
+            is_user_defined_id: true,
+            stroke: Some("invisible".to_string()),
+            stroke_kind: FlowEdgeStroke::Normal,
+            visibility: FlowEdgeVisibility::Invisible,
+            interpolate: None,
+            classes: Vec::new(),
+            style: Vec::new(),
+            animate: None,
+            animation: None,
+            length: 1,
+        });
+        let options = AsciiRenderOptions::ascii();
+        let mut resources = ResourceContext::new(options.resources);
+
+        let graph = from_flowchart_model(&model, &options, &mut resources).unwrap();
+        let edge = &graph.edges[0];
+
+        assert_eq!(edge.id.as_deref(), Some("edge-A-B"));
+        assert!(edge.is_user_defined_id);
+        assert_eq!(edge.start_marker, GraphEdgeMarker::Circle);
+        assert_eq!(edge.end_marker, GraphEdgeMarker::Cross);
+        assert_eq!(edge.stroke, GraphEdgeStroke::Invisible);
     }
 }

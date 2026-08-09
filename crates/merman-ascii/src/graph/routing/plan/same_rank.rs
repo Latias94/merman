@@ -1,10 +1,11 @@
 use super::super::super::charset::GraphCharset;
 use super::super::super::layout::{CanvasCoord, NodeLayout};
-use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow};
+use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeMarker};
 use super::super::cell::edge_line_char;
+use super::super::path::StepDirection;
 use super::{
-    PlannedRouteCells, PlannedRouteLabel, RoutePlan, edge_arrow_cell, edge_line_cell,
-    planned_label, route_cell,
+    MarkerAnchors, PlannedRouteCells, PlannedRouteLabel, RoutePlan, edge_line_cell, planned_label,
+    route_cell,
 };
 use crate::error::Result;
 use crate::resource::ResourceContext;
@@ -18,8 +19,18 @@ pub(super) fn plan_same_rank_direct_route(
     charset: &GraphCharset,
 ) -> Option<RoutePlan> {
     let mut resources = super::unbounded_route_resources();
-    plan_same_rank_direct_route_with_resources(layouts, from, to, edge, charset, &mut resources)
-        .expect("test route planning work must remain representable")
+    super::materialize_test_markers(
+        plan_same_rank_direct_route_with_resources(
+            layouts,
+            from,
+            to,
+            edge,
+            charset,
+            &mut resources,
+        ),
+        edge,
+        charset,
+    )
 }
 
 pub(super) fn plan_same_rank_direct_route_with_resources(
@@ -54,33 +65,66 @@ pub(super) fn plan_same_rank_direct_route_with_resources(
                 edge_line_cell(from.right(), y, charset.right_connector)
             })?;
         }
-        for x in start..end {
+        if start == end
+            && edge.start_marker != GraphEdgeMarker::Open
+            && edge.end_marker != GraphEdgeMarker::Open
+        {
+            return Ok(None);
+        }
+        let start_anchor = cells.try_push_anchor(
+            resources,
+            || route_cell(start, y, line),
+            StepDirection::Left,
+        )?;
+        for x in (start + 1)..end {
             cells.try_push(resources, || route_cell(x, y, line))?;
         }
-        cells.try_push(resources, || match edge.arrow {
-            GraphEdgeArrow::Open => route_cell(end, y, line),
-            GraphEdgeArrow::Point => edge_arrow_cell(end, y, charset.arrow_right),
-        })?;
+        let end_anchor = if end == start {
+            start_anchor
+        } else {
+            cells.try_push_anchor(resources, || route_cell(end, y, line), StepDirection::Right)?
+        };
+        let anchors = MarkerAnchors::new(start_anchor, end_anchor);
+
+        let Some(labels) = planned_direct_labels(edge, start, end, y, points_right, charset) else {
+            return Ok(None);
+        };
+        return Ok(Some(RoutePlan::new(cells.into_vec(), labels, anchors)));
     } else {
         if charset.unicode {
             cells.try_push(resources, || {
                 edge_line_cell(from.x, y, charset.left_connector)
             })?;
         }
-        cells.try_push(resources, || match edge.arrow {
-            GraphEdgeArrow::Open => route_cell(start, y, line),
-            GraphEdgeArrow::Point => edge_arrow_cell(start, y, charset.arrow_left),
-        })?;
-        for x in (start + 1)..=end {
-            cells.try_push(resources, || route_cell(x, y, line))?;
+        if start == end
+            && edge.start_marker != GraphEdgeMarker::Open
+            && edge.end_marker != GraphEdgeMarker::Open
+        {
+            return Ok(None);
         }
+        let end_anchor = cells.try_push_anchor(
+            resources,
+            || route_cell(start, y, line),
+            StepDirection::Left,
+        )?;
+        let mut start_anchor = end_anchor;
+        for x in (start + 1)..=end {
+            if x == end {
+                start_anchor = cells.try_push_anchor(
+                    resources,
+                    || route_cell(x, y, line),
+                    StepDirection::Right,
+                )?;
+            } else {
+                cells.try_push(resources, || route_cell(x, y, line))?;
+            }
+        }
+        let anchors = MarkerAnchors::new(start_anchor, end_anchor);
+        let Some(labels) = planned_direct_labels(edge, start, end, y, points_right, charset) else {
+            return Ok(None);
+        };
+        return Ok(Some(RoutePlan::new(cells.into_vec(), labels, anchors)));
     }
-
-    let Some(labels) = planned_direct_labels(edge, start, end, y, points_right, charset) else {
-        return Ok(None);
-    };
-
-    Ok(Some(RoutePlan::new(cells.into_vec(), labels)))
 }
 
 #[cfg(test)]
@@ -91,8 +135,11 @@ pub(super) fn plan_same_rank_bottom_lane_route(
     charset: &GraphCharset,
 ) -> Option<RoutePlan> {
     let mut resources = super::unbounded_route_resources();
-    plan_same_rank_bottom_lane_route_with_resources(from, to, edge, charset, &mut resources)
-        .expect("test route planning work must remain representable")
+    super::materialize_test_markers(
+        plan_same_rank_bottom_lane_route_with_resources(from, to, edge, charset, &mut resources),
+        edge,
+        charset,
+    )
 }
 
 pub(super) fn plan_same_rank_bottom_lane_route_with_resources(
@@ -115,9 +162,11 @@ pub(super) fn plan_same_rank_bottom_lane_route_with_resources(
     let max_x = start_x.max(end_x);
     let mut cells = PlannedRouteCells::new();
 
-    cells.try_push(resources, || {
-        edge_line_cell(start_x, from.bottom(), charset.down_connector)
-    })?;
+    let start_anchor = cells.try_push_anchor(
+        resources,
+        || edge_line_cell(start_x, from.bottom(), charset.down_connector),
+        StepDirection::Up,
+    )?;
     for y in (from.bottom() + 1)..bottom_y {
         cells.try_push(resources, || route_cell(start_x, y, vertical))?;
     }
@@ -139,10 +188,11 @@ pub(super) fn plan_same_rank_bottom_lane_route_with_resources(
     cells.try_push(resources, || route_cell(end_x, bottom_y, end_corner))?;
 
     let arrow_y = bottom_y - 1;
-    cells.try_push(resources, || match edge.arrow {
-        GraphEdgeArrow::Open => edge_line_cell(end_x, arrow_y, vertical),
-        GraphEdgeArrow::Point => edge_arrow_cell(end_x, arrow_y, charset.arrow_up),
-    })?;
+    let end_anchor = cells.try_push_anchor(
+        resources,
+        || edge_line_cell(end_x, arrow_y, vertical),
+        StepDirection::Up,
+    )?;
     let labels = planned_label(
         edge.label.as_deref(),
         CanvasCoord {
@@ -161,6 +211,7 @@ pub(super) fn plan_same_rank_bottom_lane_route_with_resources(
     Ok(Some(RoutePlan::with_min_canvas_extent(
         cells.into_vec(),
         labels,
+        MarkerAnchors::new(start_anchor, end_anchor),
         max_x + 3,
         bottom_y + 1,
     )))
@@ -198,16 +249,22 @@ fn planned_direct_labels(
     ) else {
         return Some(Vec::new());
     };
-    if edge.arrow == GraphEdgeArrow::Open {
+    if edge.start_marker == GraphEdgeMarker::Open && edge.end_marker == GraphEdgeMarker::Open {
         return Some(vec![label]);
     }
 
-    let available_start = if points_right { start } else { start + 1 };
-    let available_end = if points_right {
-        end.checked_sub(1)?
+    let left_marker = if points_right {
+        edge.start_marker
     } else {
-        end
+        edge.end_marker
     };
+    let right_marker = if points_right {
+        edge.end_marker
+    } else {
+        edge.start_marker
+    };
+    let available_start = start + usize::from(left_marker != GraphEdgeMarker::Open);
+    let available_end = end.checked_sub(usize::from(right_marker != GraphEdgeMarker::Open))?;
     let label_width = label.text.width();
     let available_width = available_end.checked_sub(available_start)? + 1;
     if label_width > available_width {

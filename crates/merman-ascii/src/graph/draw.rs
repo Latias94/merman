@@ -155,18 +155,27 @@ fn draw_node(
         GraphNodeShape::LeanLeft => draw_lean_node(canvas, layout, charset, options, false),
         GraphNodeShape::Datastore => draw_datastore_node(canvas, layout, charset, options),
         GraphNodeShape::Document => draw_document_node(canvas, layout, charset, options),
+        GraphNodeShape::StackedDocument => {
+            draw_stacked_document_node(canvas, layout, charset, options)
+        }
+        GraphNodeShape::LinedDocument => draw_lined_document_node(canvas, layout, charset, options),
+        GraphNodeShape::TaggedDocument => {
+            draw_tagged_document_node(canvas, layout, charset, options)
+        }
+        GraphNodeShape::StackedRect => draw_stacked_rect_node(canvas, layout, charset, options),
+        GraphNodeShape::LinedRect => draw_lined_rect_node(canvas, layout, charset, options),
+        GraphNodeShape::TaggedRect => draw_tagged_rect_node(canvas, layout, charset, options),
+        GraphNodeShape::Flag => draw_flag_node(canvas, layout, charset, options),
+        GraphNodeShape::PaperTape => draw_paper_tape_node(canvas, layout, charset, options),
+        GraphNodeShape::Text => Ok(()),
         GraphNodeShape::Hexagon => draw_hexagon_node(canvas, layout, charset, options),
         GraphNodeShape::Asymmetric => draw_asymmetric_node(canvas, layout, charset, options),
         GraphNodeShape::Trapezoid => draw_trapezoid_node(canvas, layout, charset, options),
         GraphNodeShape::TrapezoidAlt => draw_trapezoid_alt_node(canvas, layout, charset, options),
         GraphNodeShape::StateStart => draw_state_start_node(canvas, layout, charset, options),
         GraphNodeShape::StateEnd => draw_state_end_node(canvas, layout, charset, options),
-        GraphNodeShape::ForkJoinHorizontal => {
-            draw_fork_join_node(canvas, layout, charset, options, false)
-        }
-        GraphNodeShape::ForkJoinVertical => {
-            draw_fork_join_node(canvas, layout, charset, options, true)
-        }
+        GraphNodeShape::ForkJoinHorizontal => draw_fork_join_node(canvas, layout, charset, false),
+        GraphNodeShape::ForkJoinVertical => draw_fork_join_node(canvas, layout, charset, true),
         GraphNodeShape::Choice => draw_choice_node(canvas, layout),
     }
 }
@@ -762,6 +771,142 @@ fn draw_document_node(
     Ok(())
 }
 
+fn draw_stacked_rect_node(
+    canvas: &mut Canvas<'_>,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) -> Result<()> {
+    draw_rect_node(canvas, layout, charset, options)?;
+    draw_stacked_decorator(canvas, layout, charset)
+}
+
+fn draw_lined_rect_node(
+    canvas: &mut Canvas<'_>,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) -> Result<()> {
+    draw_rect_node(canvas, layout, charset, options)?;
+    draw_lined_decorator(canvas, layout, charset)
+}
+
+fn draw_tagged_rect_node(
+    canvas: &mut Canvas<'_>,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) -> Result<()> {
+    draw_rect_node(canvas, layout, charset, options)?;
+    draw_tagged_decorator(canvas, layout)
+}
+
+fn draw_stacked_document_node(
+    canvas: &mut Canvas<'_>,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) -> Result<()> {
+    draw_document_node(canvas, layout, charset, options)?;
+    draw_stacked_decorator(canvas, layout, charset)
+}
+
+fn draw_lined_document_node(
+    canvas: &mut Canvas<'_>,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) -> Result<()> {
+    draw_document_node(canvas, layout, charset, options)?;
+    draw_lined_decorator(canvas, layout, charset)
+}
+
+fn draw_tagged_document_node(
+    canvas: &mut Canvas<'_>,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) -> Result<()> {
+    draw_document_node(canvas, layout, charset, options)?;
+    draw_tagged_decorator(canvas, layout)
+}
+
+fn draw_stacked_decorator(
+    canvas: &mut Canvas<'_>,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+) -> Result<()> {
+    if layout.width < 6 || layout.height < 4 {
+        return Ok(());
+    }
+    let inner_right = layout.right().saturating_sub(2);
+    let inner_bottom = layout.bottom().saturating_sub(1);
+    for y in (layout.y + 1)..inner_bottom {
+        set_node_border(canvas, inner_right, y, charset.vertical, layout.style)?;
+    }
+    for x in (layout.x + 2)..inner_right {
+        set_node_border(canvas, x, inner_bottom, charset.horizontal, layout.style)?;
+    }
+    Ok(())
+}
+
+fn draw_lined_decorator(
+    canvas: &mut Canvas<'_>,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+) -> Result<()> {
+    if layout.width < 7 {
+        return Ok(());
+    }
+    let left_inner = layout.x + 2;
+    let right_inner = layout.right().saturating_sub(2);
+    for y in (layout.y + 1)..layout.bottom() {
+        set_node_border(canvas, left_inner, y, charset.vertical, layout.style)?;
+        set_node_border(canvas, right_inner, y, charset.vertical, layout.style)?;
+    }
+    Ok(())
+}
+
+fn draw_tagged_decorator(canvas: &mut Canvas<'_>, layout: &NodeLayout) -> Result<()> {
+    let right = layout.right();
+    let center_y = layout.center_y();
+    if center_y > layout.y {
+        set_node_border(canvas, right, center_y - 1, '\\', layout.style)?;
+    }
+    set_node_border(canvas, right, center_y, '>', layout.style)?;
+    if center_y < layout.bottom() {
+        set_node_border(canvas, right, center_y + 1, '/', layout.style)?;
+    }
+    Ok(())
+}
+
+fn draw_flag_node(
+    canvas: &mut Canvas<'_>,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) -> Result<()> {
+    draw_rect_node(canvas, layout, charset, options)?;
+    let right = layout.right();
+    set_node_border(canvas, right, layout.y, '\\', layout.style)?;
+    set_node_border(canvas, right, layout.center_y(), '>', layout.style)?;
+    set_node_border(canvas, right, layout.bottom(), '/', layout.style)
+}
+
+fn draw_paper_tape_node(
+    canvas: &mut Canvas<'_>,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+    options: &AsciiRenderOptions,
+) -> Result<()> {
+    draw_rect_node(canvas, layout, charset, options)?;
+    for x in (layout.x + 1)..layout.right() {
+        set_node_border(canvas, x, layout.y, '~', layout.style)?;
+        set_node_border(canvas, x, layout.bottom(), '~', layout.style)?;
+    }
+    Ok(())
+}
+
 fn draw_hexagon_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
@@ -895,28 +1040,30 @@ fn draw_fork_join_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
-    _vertical: bool,
+    vertical: bool,
 ) -> Result<()> {
-    let right = layout.right();
-    let bottom = layout.bottom();
-
-    set_node_border(canvas, layout.x, layout.y, charset.top_left, layout.style)?;
-    set_node_border(canvas, right, layout.y, charset.top_right, layout.style)?;
-    set_node_border(canvas, layout.x, bottom, charset.bottom_left, layout.style)?;
-    set_node_border(canvas, right, bottom, charset.bottom_right, layout.style)?;
-
-    for x in (layout.x + 1)..right {
-        set_node_border(canvas, x, layout.y, charset.thick_horizontal, layout.style)?;
-        set_node_border(canvas, x, bottom, charset.thick_horizontal, layout.style)?;
+    if vertical {
+        for y in layout.y..=layout.bottom() {
+            set_node_border(
+                canvas,
+                layout.center_x(),
+                y,
+                charset.thick_vertical,
+                layout.style,
+            )?;
+        }
+    } else {
+        for x in layout.x..=layout.right() {
+            set_node_border(
+                canvas,
+                x,
+                layout.center_y(),
+                charset.thick_horizontal,
+                layout.style,
+            )?;
+        }
     }
-
-    for y in (layout.y + 1)..bottom {
-        set_node_border(canvas, layout.x, y, charset.thick_vertical, layout.style)?;
-        set_node_border(canvas, right, y, charset.thick_vertical, layout.style)?;
-    }
-
-    write_centered_label(canvas, layout, options)
+    Ok(())
 }
 
 fn draw_choice_node(canvas: &mut Canvas<'_>, layout: &NodeLayout) -> Result<()> {
@@ -969,7 +1116,11 @@ fn redraw_transformed_node_labels(
 fn node_shape_draws_centered_label(shape: GraphNodeShape) -> bool {
     !matches!(
         shape,
-        GraphNodeShape::StateStart | GraphNodeShape::StateEnd | GraphNodeShape::Choice
+        GraphNodeShape::StateStart
+            | GraphNodeShape::StateEnd
+            | GraphNodeShape::Choice
+            | GraphNodeShape::ForkJoinHorizontal
+            | GraphNodeShape::ForkJoinVertical
     )
 }
 
@@ -980,9 +1131,13 @@ fn redraw_transformed_node_label(
     width: usize,
     height: usize,
 ) -> Result<()> {
-    let inner_height = layout.height.saturating_sub(2);
     let content_height = layout.label.content_height();
-    let content_y = layout.y + 1 + inner_height.saturating_sub(content_height) / 2;
+    let content_y = if layout.shape == GraphNodeShape::Text {
+        layout.y
+    } else {
+        let inner_height = layout.height.saturating_sub(2);
+        layout.y + 1 + inner_height.saturating_sub(content_height) / 2
+    };
     let line_step = GRAPH_LABEL_LINE_GAP + 1;
     let line_count = layout.label.lines().len();
     let last_line_y = content_y + line_count.saturating_sub(1) * line_step;

@@ -101,6 +101,35 @@ fn edge_route_selects_left_right_parallel_bottom_lane() {
 }
 
 #[test]
+fn invisible_edge_does_not_consume_a_visible_parallel_lane() {
+    let options = AsciiRenderOptions::ascii();
+    let layout = left_right_layout(&[("a", "b")], &options);
+    let from = layout_node(&layout, "a");
+    let to = layout_node(&layout, "b");
+    let mut invisible = edge(None, GraphEdgeArrow::Point);
+    invisible.stroke = GraphEdgeStroke::Invisible;
+    let visible = edge(None, GraphEdgeArrow::Point);
+    let edges = vec![invisible, visible];
+    let charset = GraphCharset::for_options(&options);
+
+    let selected = plan_edge_route(EdgeRouteRequest {
+        graph: &AsciiGraph::new(GraphDirection::LeftRight),
+        graph_layout: &layout,
+        edges: &edges,
+        from,
+        to,
+        edge_index: 1,
+        edge: &edges[1],
+        charset: &charset,
+    })
+    .unwrap();
+    let expected =
+        plan_same_rank_direct_route(&layout.nodes, from, to, &edges[1], &charset).unwrap();
+
+    assert_eq!(selected, expected);
+}
+
+#[test]
 fn edge_route_selects_top_down_back_route() {
     let options = AsciiRenderOptions::ascii();
     let layout = left_right_layout(&[("a", "b")], &options);
@@ -758,9 +787,8 @@ fn left_right_grid_path_route_plans_unicode_connector_arrow_and_label() {
             cell(6, 2, '─', PlannedRouteCellKind::RouteCell),
             cell(7, 2, '─', PlannedRouteCellKind::RouteCell),
             cell(8, 2, '─', PlannedRouteCellKind::RouteCell),
-            cell(9, 2, '─', PlannedRouteCellKind::RouteCell),
-            cell(4, 2, '├', PlannedRouteCellKind::EdgeLine),
             cell(9, 2, '►', PlannedRouteCellKind::EdgeArrow),
+            cell(4, 2, '├', PlannedRouteCellKind::EdgeLine),
         ]
     );
     assert_eq!(
@@ -934,6 +962,33 @@ fn left_right_down_then_right_route_plans_crossing_lane() {
             cell(9, 9, '>', PlannedRouteCellKind::EdgeArrow),
         ]
     );
+}
+
+#[test]
+fn invisible_crossing_edge_does_not_displace_a_visible_route() {
+    let from = node("a", 0, 0, 3, 3);
+    let lower_source = node("b", 0, 8, 3, 3);
+    let upper_target = node("c", 10, 0, 3, 3);
+    let to = node("d", 10, 8, 3, 3);
+    let layouts = vec![from.clone(), lower_source, upper_target, to.clone()];
+    let edge = edge_between("a", "d", None, GraphEdgeArrow::Point);
+    let mut crossing_edge = edge_between("b", "c", None, GraphEdgeArrow::Point);
+    crossing_edge.stroke = GraphEdgeStroke::Invisible;
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+
+    let with_invisible = plan_left_right_down_then_right_route(
+        &layouts,
+        &[crossing_edge],
+        &from,
+        &to,
+        &edge,
+        &charset,
+    )
+    .unwrap();
+    let without_crossing =
+        plan_left_right_down_then_right_route(&layouts, &[], &from, &to, &edge, &charset).unwrap();
+
+    assert_eq!(with_invisible, without_crossing);
 }
 
 #[test]
@@ -1291,6 +1346,40 @@ fn top_down_side_entry_route_plans_unicode_connector_and_label() {
     );
 }
 
+#[test]
+fn reverse_ascii_side_entry_uses_explicit_source_anchor_for_double_markers() {
+    let from = node("a", 8, 0, 3, 3);
+    let to = node("group", 0, 0, 3, 3);
+    let edge = edge_between_with_markers(
+        "a",
+        "group",
+        None,
+        GraphEdgeArrow::Circle,
+        GraphEdgeArrow::Cross,
+    );
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+
+    let plan = plan_top_down_side_entry_route(&from, &to, &edge, &charset)
+        .unwrap()
+        .with_markers(edge.start_marker, edge.end_marker, &charset, "flowchart")
+        .unwrap();
+
+    assert_eq!(
+        plan.cells
+            .iter()
+            .find(|cell| cell.coord == CanvasCoord { x: 3, y: 1 })
+            .map(|cell| (cell.ch, cell.kind)),
+        Some(('x', PlannedRouteCellKind::EdgeArrow))
+    );
+    assert_eq!(
+        plan.cells
+            .iter()
+            .find(|cell| cell.coord == CanvasCoord { x: 7, y: 1 })
+            .map(|cell| (cell.ch, cell.kind)),
+        Some(('o', PlannedRouteCellKind::EdgeArrow))
+    );
+}
+
 fn cell(x: usize, y: usize, ch: char, kind: PlannedRouteCellKind) -> PlannedRouteCell {
     PlannedRouteCell {
         coord: CanvasCoord { x, y },
@@ -1316,12 +1405,25 @@ fn edge_between(
     label: Option<&str>,
     arrow: GraphEdgeArrow,
 ) -> AsciiGraphEdge {
+    edge_between_with_markers(from, to, label, GraphEdgeArrow::Open, arrow)
+}
+
+fn edge_between_with_markers(
+    from: &str,
+    to: &str,
+    label: Option<&str>,
+    start_marker: GraphEdgeArrow,
+    end_marker: GraphEdgeArrow,
+) -> AsciiGraphEdge {
     AsciiGraphEdge {
+        id: None,
+        is_user_defined_id: false,
         from: from.to_string(),
         to: to.to_string(),
         label: label.map(ToOwned::to_owned),
         stroke: GraphEdgeStroke::Normal,
-        arrow,
+        start_marker,
+        end_marker,
         length: 1,
         style: GraphEdgeStyle::default(),
     }

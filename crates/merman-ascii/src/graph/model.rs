@@ -65,6 +65,15 @@ pub(crate) enum GraphNodeShape {
     LeanLeft,
     Datastore,
     Document,
+    StackedDocument,
+    LinedDocument,
+    TaggedDocument,
+    StackedRect,
+    LinedRect,
+    TaggedRect,
+    Flag,
+    PaperTape,
+    Text,
     Hexagon,
     Asymmetric,
     Trapezoid,
@@ -78,20 +87,26 @@ pub(crate) enum GraphNodeShape {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct AsciiGraphEdge {
+    pub(super) id: Option<String>,
+    pub(super) is_user_defined_id: bool,
     pub(super) from: String,
     pub(super) to: String,
     pub(super) label: Option<String>,
     pub(super) stroke: GraphEdgeStroke,
-    pub(super) arrow: GraphEdgeArrow,
+    pub(super) start_marker: GraphEdgeMarker,
+    pub(super) end_marker: GraphEdgeMarker,
     pub(super) length: usize,
     pub(super) style: GraphEdgeStyle,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct GraphEdgeAttrs {
+    pub(crate) id: Option<String>,
+    pub(crate) is_user_defined_id: bool,
     pub(crate) label: Option<String>,
     pub(crate) stroke: GraphEdgeStroke,
-    pub(crate) arrow: GraphEdgeArrow,
+    pub(crate) start_marker: GraphEdgeMarker,
+    pub(crate) end_marker: GraphEdgeMarker,
     pub(crate) length: usize,
     pub(crate) style: GraphEdgeStyle,
 }
@@ -99,9 +114,12 @@ pub(crate) struct GraphEdgeAttrs {
 impl Default for GraphEdgeAttrs {
     fn default() -> Self {
         Self {
+            id: None,
+            is_user_defined_id: false,
             label: None,
             stroke: GraphEdgeStroke::Normal,
-            arrow: GraphEdgeArrow::Point,
+            start_marker: GraphEdgeMarker::Open,
+            end_marker: GraphEdgeMarker::Point,
             length: 1,
             style: GraphEdgeStyle::default(),
         }
@@ -143,13 +161,25 @@ pub(crate) enum GraphEdgeStroke {
     Normal,
     Dotted,
     Thick,
+    Invisible,
+}
+
+impl GraphEdgeStroke {
+    pub(crate) const fn is_visible(self) -> bool {
+        !matches!(self, Self::Invisible)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GraphEdgeArrow {
+pub(crate) enum GraphEdgeMarker {
     Open,
     Point,
+    Circle,
+    Cross,
 }
+
+#[cfg(test)]
+pub(crate) type GraphEdgeArrow = GraphEdgeMarker;
 
 impl AsciiGraph {
     pub(crate) fn new(direction: GraphDirection) -> Self {
@@ -236,11 +266,14 @@ impl AsciiGraph {
         attrs: GraphEdgeAttrs,
     ) {
         self.edges.push(AsciiGraphEdge {
+            id: attrs.id,
+            is_user_defined_id: attrs.is_user_defined_id,
             from: from.into(),
             to: to.into(),
             label: attrs.label,
             stroke: attrs.stroke,
-            arrow: attrs.arrow,
+            start_marker: attrs.start_marker,
+            end_marker: attrs.end_marker,
             length: attrs.length.max(1),
             style: attrs.style,
         });

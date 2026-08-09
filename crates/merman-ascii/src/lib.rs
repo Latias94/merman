@@ -262,7 +262,10 @@ pub fn render_tree_view(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::diagrams::flowchart::{FlowEdge, FlowNode, FlowSubgraph, FlowchartModel};
+    use merman_core::diagrams::flowchart::{
+        FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowSubgraph,
+        FlowchartModel,
+    };
     use merman_core::diagrams::mindmap::{MindmapDiagramRenderModel, MindmapDiagramRenderNode};
     use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
 
@@ -314,8 +317,12 @@ mod tests {
             label_type: None,
             edge_type: None,
             arrow: "-->".to_string(),
+            start_marker: FlowEdgeMarker::None,
+            end_marker: FlowEdgeMarker::Point,
             is_user_defined_id: false,
             stroke: None,
+            stroke_kind: FlowEdgeStroke::Normal,
+            visibility: FlowEdgeVisibility::Visible,
             interpolate: None,
             classes: Vec::new(),
             style: Vec::new(),
@@ -644,35 +651,38 @@ mod tests {
     }
 
     #[test]
-    fn render_flowchart_rejects_unsupported_edge_variants() {
+    fn render_flowchart_supports_invisible_constraints_and_cross_markers() {
         let mut invisible = empty_flowchart();
         invisible.nodes = vec![node("A"), node("B")];
         invisible.edges = vec![FlowEdge {
             stroke: Some("invisible".to_string()),
+            visibility: FlowEdgeVisibility::Invisible,
             ..edge("A", "B")
         }];
 
-        assert_eq!(
-            render_flowchart(&invisible, &AsciiRenderOptions::ascii()),
-            Err(AsciiError::UnsupportedFeature {
-                diagram_type: "flowchart",
-                feature: "non-normal edge strokes",
-            })
+        let invisible_rendered =
+            render_flowchart(&invisible, &AsciiRenderOptions::ascii()).unwrap();
+        assert!(
+            invisible_rendered.contains("| A |") && invisible_rendered.contains("| B |"),
+            "invisible constraints should retain both positioned nodes:\n{invisible_rendered}"
+        );
+        assert!(
+            !invisible_rendered.contains("| A |-") && !invisible_rendered.contains(">| B |"),
+            "invisible constraints must not paint a terminal edge:\n{invisible_rendered}"
         );
 
         let mut cross = empty_flowchart();
         cross.nodes = vec![node("A"), node("B")];
         cross.edges = vec![FlowEdge {
             edge_type: Some("arrow_cross".to_string()),
+            end_marker: FlowEdgeMarker::Cross,
             ..edge("A", "B")
         }];
 
-        assert_eq!(
-            render_flowchart(&cross, &AsciiRenderOptions::ascii()),
-            Err(AsciiError::UnsupportedFeature {
-                diagram_type: "flowchart",
-                feature: "non-point edge arrows",
-            })
+        let cross_rendered = render_flowchart(&cross, &AsciiRenderOptions::ascii()).unwrap();
+        assert!(
+            cross_rendered.contains('x'),
+            "cross marker should remain visible:\n{cross_rendered}"
         );
     }
 

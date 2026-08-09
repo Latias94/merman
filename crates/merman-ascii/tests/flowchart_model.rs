@@ -2,7 +2,9 @@ use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb, render_model,
 };
 use merman_core::diagram::RenderSemanticModel;
-use merman_core::diagrams::flowchart::{FlowNode, FlowchartModel};
+use merman_core::diagrams::flowchart::{
+    FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowchartModel,
+};
 use merman_core::{Engine, ParseOptions};
 use std::path::Path;
 use unicode_width::UnicodeWidthStr;
@@ -734,7 +736,6 @@ fn flowchart_parser_top_down_skip_edge_routes_for_every_declaration_order() {
 }
 
 #[test]
-#[ignore = "A-GRAPH-050: declaration-order route overlaps can erase one terminal marker (owned by U4)"]
 fn flowchart_parser_top_down_skip_edges_retain_every_terminal_marker() {
     for input in [
         "flowchart TD\n  A --> B\n  B --> C\n  A --> C\n",
@@ -755,6 +756,53 @@ fn flowchart_parser_top_down_skip_edges_retain_every_terminal_marker() {
             "all three directed edges should retain one terminal marker for {input:?}:\n{rendered}"
         );
     }
+}
+
+#[test]
+fn flowchart_parser_preserves_bidirectional_point_markers_in_both_charsets() {
+    let ascii = render_flowchart("flowchart LR\nA <--> B", &AsciiRenderOptions::ascii()).unwrap();
+    let unicode =
+        render_flowchart("flowchart LR\nA <--> B", &AsciiRenderOptions::unicode()).unwrap();
+
+    assert_eq!(ascii.matches('<').count(), 1, "{ascii}");
+    assert_eq!(ascii.matches('>').count(), 1, "{ascii}");
+    assert_eq!(unicode.matches('◄').count(), 1, "{unicode}");
+    assert_eq!(unicode.matches('►').count(), 1, "{unicode}");
+}
+
+#[test]
+fn flowchart_parser_preserves_mixed_circle_and_cross_markers() {
+    let ascii = render_flowchart("flowchart LR\nA o--x B", &AsciiRenderOptions::ascii()).unwrap();
+    let unicode =
+        render_flowchart("flowchart LR\nA o--x B", &AsciiRenderOptions::unicode()).unwrap();
+
+    assert_eq!(ascii.matches('o').count(), 1, "{ascii}");
+    assert_eq!(ascii.matches('x').count(), 1, "{ascii}");
+    assert_eq!(unicode.matches('○').count(), 1, "{unicode}");
+    assert_eq!(unicode.matches('×').count(), 1, "{unicode}");
+}
+
+#[test]
+fn flowchart_parser_preserves_labeled_mixed_markers_without_label_overlap() {
+    let input = "flowchart LR\nA o-- label --x B";
+    let ascii = render_flowchart(input, &AsciiRenderOptions::ascii()).unwrap();
+    let unicode = render_flowchart(input, &AsciiRenderOptions::unicode()).unwrap();
+
+    assert_eq!(ascii.matches('o').count(), 1, "{ascii}");
+    assert_eq!(ascii.matches('x').count(), 1, "{ascii}");
+    assert!(ascii.contains("label"), "{ascii}");
+    assert_eq!(unicode.matches('○').count(), 1, "{unicode}");
+    assert_eq!(unicode.matches('×').count(), 1, "{unicode}");
+    assert!(unicode.contains("label"), "{unicode}");
+}
+
+#[test]
+fn flowchart_parser_top_down_double_point_edge_keeps_both_directions() {
+    let rendered =
+        render_flowchart("flowchart TD\nA <--> B", &AsciiRenderOptions::ascii()).unwrap();
+
+    assert_eq!(rendered.matches('^').count(), 1, "{rendered}");
+    assert_eq!(rendered.matches('v').count(), 1, "{rendered}");
 }
 
 #[test]
@@ -946,8 +994,12 @@ fn render_model_subgraph_direction_override_renders_local_left_right_layout_with
             label_type: None,
             edge_type: Some("arrow_point".to_string()),
             arrow: "-->".to_string(),
+            start_marker: FlowEdgeMarker::None,
+            end_marker: FlowEdgeMarker::Point,
             is_user_defined_id: false,
             stroke: Some("normal".to_string()),
+            stroke_kind: FlowEdgeStroke::Normal,
+            visibility: FlowEdgeVisibility::Visible,
             interpolate: None,
             classes: Vec::new(),
             style: Vec::new(),
@@ -1654,8 +1706,8 @@ fn flowchart_parser_doublecircle_shape_renders_as_double_terminal_shape() {
 #[test]
 fn flowchart_parser_public_state_pseudo_and_fork_join_shapes_render() {
     let cases = [
-        ("fork", true),
-        ("join", true),
+        ("fork", false),
+        ("join", false),
         ("start", false),
         ("stop", false),
     ];
@@ -1683,9 +1735,59 @@ fn flowchart_parser_public_state_pseudo_and_fork_join_shapes_render() {
 }
 
 #[test]
+fn flowchart_fork_join_axis_is_perpendicular_to_the_graph_direction() {
+    let left_right = render_flowchart(
+        "flowchart LR\nA@{ shape: fork, label: \"hidden\" }",
+        &AsciiRenderOptions::ascii(),
+    )
+    .unwrap();
+    assert_eq!(
+        left_right.lines().filter(|line| line.trim() == "#").count(),
+        7,
+        "LR fork should be a vertical synchronization bar:\n{left_right}"
+    );
+
+    let top_down = render_flowchart(
+        "flowchart TD\nA@{ shape: join, label: \"hidden\" }",
+        &AsciiRenderOptions::ascii(),
+    )
+    .unwrap();
+    assert!(
+        top_down.lines().any(|line| line.contains("=======")),
+        "TD join should be a horizontal synchronization bar:\n{top_down}"
+    );
+}
+
+#[test]
+fn flowchart_process_and_decorated_process_shapes_keep_distinct_terminal_geometry() {
+    let render = |shape: &str| {
+        render_flowchart(
+            &format!("flowchart LR\nA@{{ shape: {shape}, label: \"P\" }}"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap()
+    };
+
+    let rect = render("process");
+    let stacked = render("st-rect");
+    let lined = render("lin-rect");
+    let tagged = render("tag-rect");
+
+    for rendered in [&rect, &stacked, &lined, &tagged] {
+        assert!(rendered.contains('P'));
+    }
+    assert_ne!(stacked, rect, "stacked process must not collapse to rect");
+    assert_ne!(lined, rect, "lined process must not collapse to rect");
+    assert_ne!(tagged, rect, "tagged process must not collapse to rect");
+    assert_ne!(stacked, lined);
+    assert_ne!(stacked, tagged);
+    assert_ne!(lined, tagged);
+}
+
+#[test]
 fn flowchart_typed_model_internal_shape_aliases_render() {
     let cases = [
-        ("forkJoin", "F", true),
+        ("forkJoin", "F", false),
         ("stateStart", "S", false),
         ("stateEnd", "E", false),
         ("rect_left_inv_arrow", "Odd", true),
@@ -1849,26 +1951,47 @@ fn flowchart_parser_hexagon_shape_renders() {
 }
 
 #[test]
-fn flowchart_parser_asymmetric_shape_renders() {
-    for shape in ["odd", "flag", "paper-tape"] {
-        let rendered = render_flowchart(
-            &format!("flowchart LR\nA@{{ shape: {shape}, label: \"Odd\" }}"),
-            &AsciiRenderOptions::ascii(),
-        )
-        .unwrap();
+fn flowchart_parser_asymmetric_flag_and_paper_tape_shapes_remain_distinct() {
+    let odd = render_flowchart(
+        "flowchart LR\nA@{ shape: odd, label: \"Odd\" }",
+        &AsciiRenderOptions::ascii(),
+    )
+    .unwrap();
+    assert!(odd.contains("Odd"));
+    assert!(
+        odd.lines().next().is_some_and(|line| line.starts_with('>')),
+        "odd shape should keep its left-pointing corners:\n{odd}"
+    );
 
-        assert!(
-            rendered.contains("Odd"),
-            "asymmetric shape should keep its label"
-        );
-        assert!(
-            rendered
+    let flag = render_flowchart(
+        "flowchart LR\nA@{ shape: flag, label: \"Flag\" }",
+        &AsciiRenderOptions::ascii(),
+    )
+    .unwrap();
+    assert!(flag.contains("Flag"));
+    assert!(
+        flag.lines().next().is_some_and(|line| line.ends_with('\\'))
+            && flag.lines().any(|line| line.ends_with('>')),
+        "flag shape should use a right-facing flag edge instead of odd corners:\n{flag}"
+    );
+
+    let paper_tape = render_flowchart(
+        "flowchart LR\nA@{ shape: paper-tape, label: \"Tape\" }",
+        &AsciiRenderOptions::ascii(),
+    )
+    .unwrap();
+    assert!(paper_tape.contains("Tape"));
+    assert!(
+        paper_tape
+            .lines()
+            .next()
+            .is_some_and(|line| line.contains('~'))
+            && paper_tape
                 .lines()
-                .next()
-                .is_some_and(|line| line.starts_with('>')),
-            "asymmetric shape should use a left-pointing corner:\n{rendered}"
-        );
-    }
+                .last()
+                .is_some_and(|line| line.contains('~')),
+        "paper-tape shape should keep wavy top and bottom edges:\n{paper_tape}"
+    );
 }
 
 #[test]
@@ -2023,7 +2146,7 @@ fn flowchart_parser_rejects_remaining_uncommon_shapes() {
         err,
         merman_ascii::AsciiError::UnsupportedFeature {
             diagram_type: "flowchart",
-            feature: "non-rectangular node shapes",
+            feature: "unsupported flowchart node shape projections",
         }
     ));
 }

@@ -1,5 +1,5 @@
 use super::super::model::{
-    AsciiGraph, AsciiGraphEdge, AsciiGraphNode, GraphDirection, GraphEdgeArrow, GraphEdgeStroke,
+    AsciiGraph, AsciiGraphEdge, AsciiGraphNode, GraphDirection, GraphEdgeMarker, GraphEdgeStroke,
     GraphEdgeStyle, GraphGroupKind, GraphNodeShape, GraphNodeStyle,
 };
 use super::super::topology::GraphGroupTopology;
@@ -621,11 +621,14 @@ fn build_group_override_graph(
         let from = override_graph.nodes[from_member_index].id.clone();
         let to = override_graph.nodes[to_member_index].id.clone();
         override_graph.edges.push(AsciiGraphEdge {
+            id: None,
+            is_user_defined_id: false,
             from,
             to,
             label: None,
             stroke: GraphEdgeStroke::Normal,
-            arrow: GraphEdgeArrow::Point,
+            start_marker: GraphEdgeMarker::Open,
+            end_marker: GraphEdgeMarker::Point,
             length: 1,
             style: GraphEdgeStyle::default(),
         });

@@ -15,7 +15,7 @@ pub(crate) use adapter::from_flowchart_model;
 pub(crate) use draw::render_graph;
 pub(crate) use draw::render_graph_with_resources;
 pub(crate) use model::{
-    AsciiGraph, GraphDirection, GraphEdgeArrow, GraphEdgeAttrs, GraphGroupKind, GraphGroupStyle,
+    AsciiGraph, GraphDirection, GraphEdgeAttrs, GraphEdgeMarker, GraphGroupKind, GraphGroupStyle,
     GraphNodeShape, GraphNodeStyle,
 };
 

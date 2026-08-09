@@ -1,14 +1,15 @@
 use super::super::super::charset::GraphCharset;
 use super::super::super::layout::{CanvasCoord, NodeLayout};
-use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow};
+use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeMarker};
 use super::super::super::shape::GraphNodeShapeSemantics;
 use super::super::cell::edge_line_char;
 use super::super::label::{
     RoutedLabelText, routed_label_right_of_vertical_route_placement_for_text,
 };
+use super::super::path::StepDirection;
 use super::{
-    PlannedRouteCells, PlannedRouteLabel, RoutePlan, edge_arrow_cell, edge_line_cell,
-    planned_label, route_cell,
+    MarkerAnchors, PlannedRouteCells, PlannedRouteLabel, RoutePlan, edge_line_cell, planned_label,
+    route_cell, route_turn_char,
 };
 use crate::error::Result;
 use crate::resource::ResourceContext;
@@ -21,8 +22,11 @@ pub(super) fn plan_top_down_direct_route(
     charset: &GraphCharset,
 ) -> Option<RoutePlan> {
     let mut resources = super::unbounded_route_resources();
-    plan_top_down_direct_route_with_resources(from, to, edge, charset, &mut resources)
-        .expect("test route planning work must remain representable")
+    super::materialize_test_markers(
+        plan_top_down_direct_route_with_resources(from, to, edge, charset, &mut resources),
+        edge,
+        charset,
+    )
 }
 
 pub(super) fn plan_top_down_direct_route_with_resources(
@@ -41,16 +45,16 @@ pub(super) fn plan_top_down_direct_route_with_resources(
     let end = to.y - 1;
     let line = edge_line_char(edge, charset, GraphDirection::TopDown);
     let mut cells = PlannedRouteCells::new();
-    cells.try_push(resources, || {
-        edge_line_cell(x, from.bottom(), charset.down_connector)
-    })?;
+    let start_anchor = cells.try_push_anchor(
+        resources,
+        || edge_line_cell(x, from.bottom(), charset.down_connector),
+        StepDirection::Up,
+    )?;
     for y in start..end {
         cells.try_push(resources, || route_cell(x, y, line))?;
     }
-    cells.try_push(resources, || match edge.arrow {
-        GraphEdgeArrow::Open => route_cell(x, end, line),
-        GraphEdgeArrow::Point => edge_arrow_cell(x, end, charset.arrow_down),
-    })?;
+    let end_anchor =
+        cells.try_push_anchor(resources, || route_cell(x, end, line), StepDirection::Down)?;
 
     let labels = planned_label(
         edge.label.as_deref(),
@@ -61,7 +65,11 @@ pub(super) fn plan_top_down_direct_route_with_resources(
     .into_iter()
     .collect();
 
-    Ok(Some(RoutePlan::new(cells.into_vec(), labels)))
+    Ok(Some(RoutePlan::new(
+        cells.into_vec(),
+        labels,
+        MarkerAnchors::new(start_anchor, end_anchor),
+    )))
 }
 
 #[cfg(test)]
@@ -72,8 +80,11 @@ pub(super) fn plan_top_down_bent_route(
     charset: &GraphCharset,
 ) -> Option<RoutePlan> {
     let mut resources = super::unbounded_route_resources();
-    plan_top_down_bent_route_with_resources(from, to, edge, charset, &mut resources)
-        .expect("test route planning work must remain representable")
+    super::materialize_test_markers(
+        plan_top_down_bent_route_with_resources(from, to, edge, charset, &mut resources),
+        edge,
+        charset,
+    )
 }
 
 pub(super) fn plan_top_down_bent_route_with_resources(
@@ -90,6 +101,103 @@ pub(super) fn plan_top_down_bent_route_with_resources(
     }
 
     plan_top_down_side_bend_route(from, to, edge, charset, resources)
+}
+
+pub(super) fn plan_top_down_bent_side_entry_route_with_resources(
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+    resources: &mut ResourceContext,
+) -> Result<Option<RoutePlan>> {
+    if from.center_y() >= to.center_y() || from.center_x() == to.center_x() {
+        return Ok(None);
+    }
+
+    let source_x = from.center_x();
+    let target_y = to.center_y();
+    if target_y <= from.bottom() {
+        return Ok(None);
+    }
+
+    let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
+    let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
+    let mut cells = PlannedRouteCells::new();
+    let start_anchor = cells.try_push_anchor(
+        resources,
+        || edge_line_cell(source_x, from.bottom(), charset.down_connector),
+        StepDirection::Up,
+    )?;
+    for y in (from.bottom() + 1)..target_y {
+        cells.try_push(resources, || route_cell(source_x, y, vertical))?;
+    }
+
+    let (target_x, target_direction) = if source_x > to.center_x() {
+        let target_x = to.right() + 1;
+        if source_x <= target_x {
+            return Ok(None);
+        }
+        cells.try_push(resources, || {
+            route_cell(
+                source_x,
+                target_y,
+                route_turn_char(StepDirection::Down, StepDirection::Left, charset),
+            )
+        })?;
+        for x in ((target_x + 1)..source_x).rev() {
+            cells.try_push(resources, || route_cell(x, target_y, horizontal))?;
+        }
+        (target_x, StepDirection::Left)
+    } else {
+        let Some(target_x) = to.x.checked_sub(1) else {
+            return Ok(None);
+        };
+        if source_x >= target_x {
+            return Ok(None);
+        }
+        cells.try_push(resources, || {
+            route_cell(
+                source_x,
+                target_y,
+                route_turn_char(StepDirection::Down, StepDirection::Right, charset),
+            )
+        })?;
+        for x in (source_x + 1)..target_x {
+            cells.try_push(resources, || route_cell(x, target_y, horizontal))?;
+        }
+        (target_x, StepDirection::Right)
+    };
+
+    let end_anchor = cells.try_push_anchor(
+        resources,
+        || route_cell(target_x, target_y, horizontal),
+        target_direction,
+    )?;
+    let label_min_x = source_x.min(target_x)
+        + usize::from(edge.end_marker != GraphEdgeMarker::Open && target_x < source_x);
+    let label_max_x = source_x.max(target_x).saturating_sub(usize::from(
+        edge.end_marker != GraphEdgeMarker::Open && target_x > source_x,
+    ));
+    let labels = planned_label(
+        edge.label.as_deref(),
+        CanvasCoord {
+            x: label_min_x,
+            y: target_y,
+        },
+        CanvasCoord {
+            x: label_max_x,
+            y: target_y,
+        },
+        charset,
+    )
+    .into_iter()
+    .collect();
+
+    Ok(Some(RoutePlan::new(
+        cells.into_vec(),
+        labels,
+        MarkerAnchors::new(start_anchor, end_anchor),
+    )))
 }
 
 fn plan_top_down_side_bend_route(
@@ -111,7 +219,7 @@ fn plan_top_down_side_bend_route(
     let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
     let target_x = to.center_x();
     let mut cells = PlannedRouteCells::new();
-    let (label_start_x, label_end_x);
+    let (label_start_x, label_end_x, start_anchor);
 
     if target_x > from.center_x() {
         if target_x <= from.right() {
@@ -120,9 +228,11 @@ fn plan_top_down_side_bend_route(
 
         label_start_x = from.right();
         label_end_x = target_x;
-        cells.try_push(resources, || {
-            edge_line_cell(from.right(), turn_y, charset.right_connector)
-        })?;
+        start_anchor = cells.try_push_anchor(
+            resources,
+            || edge_line_cell(from.right(), turn_y, charset.right_connector),
+            StepDirection::Left,
+        )?;
         for x in (from.right() + 1)..target_x {
             cells.try_push(resources, || route_cell(x, turn_y, horizontal))?;
         }
@@ -136,9 +246,11 @@ fn plan_top_down_side_bend_route(
 
         label_start_x = target_x;
         label_end_x = from.x;
-        cells.try_push(resources, || {
-            edge_line_cell(from.x, turn_y, charset.left_connector)
-        })?;
+        start_anchor = cells.try_push_anchor(
+            resources,
+            || edge_line_cell(from.x, turn_y, charset.left_connector),
+            StepDirection::Right,
+        )?;
         for x in ((target_x + 1)..from.x).rev() {
             cells.try_push(resources, || route_cell(x, turn_y, horizontal))?;
         }
@@ -148,10 +260,11 @@ fn plan_top_down_side_bend_route(
     for y in (turn_y + 1)..end_y {
         cells.try_push(resources, || route_cell(target_x, y, vertical))?;
     }
-    cells.try_push(resources, || match edge.arrow {
-        GraphEdgeArrow::Open => route_cell(target_x, end_y, vertical),
-        GraphEdgeArrow::Point => edge_arrow_cell(target_x, end_y, charset.arrow_down),
-    })?;
+    let end_anchor = cells.try_push_anchor(
+        resources,
+        || route_cell(target_x, end_y, vertical),
+        StepDirection::Down,
+    )?;
 
     let labels = planned_label(
         edge.label.as_deref(),
@@ -168,7 +281,11 @@ fn plan_top_down_side_bend_route(
     .into_iter()
     .collect();
 
-    Ok(Some(RoutePlan::new(cells.into_vec(), labels)))
+    Ok(Some(RoutePlan::new(
+        cells.into_vec(),
+        labels,
+        MarkerAnchors::new(start_anchor, end_anchor),
+    )))
 }
 
 fn plan_top_down_drop_then_turn_route(
@@ -191,9 +308,11 @@ fn plan_top_down_drop_then_turn_route(
     let target_x = to.center_x();
     let mut cells = PlannedRouteCells::new();
 
-    cells.try_push(resources, || {
-        edge_line_cell(source_x, from.bottom(), charset.down_connector)
-    })?;
+    let start_anchor = cells.try_push_anchor(
+        resources,
+        || edge_line_cell(source_x, from.bottom(), charset.down_connector),
+        StepDirection::Up,
+    )?;
     for y in (from.bottom() + 1)..end_y {
         cells.try_push(resources, || route_cell(source_x, y, vertical))?;
     }
@@ -214,10 +333,11 @@ fn plan_top_down_drop_then_turn_route(
         }
     }
 
-    cells.try_push(resources, || match edge.arrow {
-        GraphEdgeArrow::Open => route_cell(target_x, end_y, horizontal),
-        GraphEdgeArrow::Point => edge_arrow_cell(target_x, end_y, charset.arrow_down),
-    })?;
+    let end_anchor = cells.try_push_anchor(
+        resources,
+        || route_cell(target_x, end_y, horizontal),
+        StepDirection::Down,
+    )?;
 
     let labels = planned_label(
         edge.label.as_deref(),
@@ -234,7 +354,11 @@ fn plan_top_down_drop_then_turn_route(
     .into_iter()
     .collect();
 
-    Ok(Some(RoutePlan::new(cells.into_vec(), labels)))
+    Ok(Some(RoutePlan::new(
+        cells.into_vec(),
+        labels,
+        MarkerAnchors::new(start_anchor, end_anchor),
+    )))
 }
 
 #[cfg(test)]
@@ -245,8 +369,11 @@ pub(super) fn plan_top_down_side_entry_route(
     charset: &GraphCharset,
 ) -> Option<RoutePlan> {
     let mut resources = super::unbounded_route_resources();
-    plan_top_down_side_entry_route_with_resources(from, to, edge, charset, &mut resources)
-        .expect("test route planning work must remain representable")
+    super::materialize_test_markers(
+        plan_top_down_side_entry_route_with_resources(from, to, edge, charset, &mut resources),
+        edge,
+        charset,
+    )
 }
 
 pub(super) fn plan_top_down_side_entry_route_with_resources(
@@ -275,13 +402,27 @@ pub(super) fn plan_top_down_side_entry_route_with_resources(
         }
         let start = from.right() + 1;
         let end = to.x - 1;
-        for x in start..end {
-            cells.try_push(resources, || route_cell(x, y, line))?;
+        if start == end
+            && edge.start_marker != GraphEdgeMarker::Open
+            && edge.end_marker != GraphEdgeMarker::Open
+        {
+            return Ok(None);
         }
-        cells.try_push(resources, || match edge.arrow {
-            GraphEdgeArrow::Open => route_cell(end, y, line),
-            GraphEdgeArrow::Point => edge_arrow_cell(end, y, charset.arrow_right),
-        })?;
+        let start_anchor = cells.try_push_anchor(
+            resources,
+            || route_cell(start, y, line),
+            StepDirection::Left,
+        )?;
+        for x in start..end {
+            if x != start {
+                cells.try_push(resources, || route_cell(x, y, line))?;
+            }
+        }
+        let end_anchor = if end == start {
+            start_anchor
+        } else {
+            cells.try_push_anchor(resources, || route_cell(end, y, line), StepDirection::Right)?
+        };
 
         let labels = planned_label(
             edge.label.as_deref(),
@@ -292,7 +433,11 @@ pub(super) fn plan_top_down_side_entry_route_with_resources(
         .into_iter()
         .collect();
 
-        return Ok(Some(RoutePlan::new(cells.into_vec(), labels)));
+        return Ok(Some(RoutePlan::new(
+            cells.into_vec(),
+            labels,
+            MarkerAnchors::new(start_anchor, end_anchor),
+        )));
     }
 
     if from.x <= to.right() + 1 {
@@ -305,12 +450,28 @@ pub(super) fn plan_top_down_side_entry_route_with_resources(
     }
     let start = to.right() + 1;
     let end = from.x - 1;
-    cells.try_push(resources, || match edge.arrow {
-        GraphEdgeArrow::Open => route_cell(start, y, line),
-        GraphEdgeArrow::Point => edge_arrow_cell(start, y, charset.arrow_left),
-    })?;
+    if start == end
+        && edge.start_marker != GraphEdgeMarker::Open
+        && edge.end_marker != GraphEdgeMarker::Open
+    {
+        return Ok(None);
+    }
+    let end_anchor = cells.try_push_anchor(
+        resources,
+        || route_cell(start, y, line),
+        StepDirection::Left,
+    )?;
+    let mut start_anchor = end_anchor;
     for x in (start + 1)..from.x {
-        cells.try_push(resources, || route_cell(x, y, line))?;
+        if x == end {
+            start_anchor = cells.try_push_anchor(
+                resources,
+                || route_cell(x, y, line),
+                StepDirection::Right,
+            )?;
+        } else {
+            cells.try_push(resources, || route_cell(x, y, line))?;
+        }
     }
 
     let labels = planned_label(
@@ -322,7 +483,11 @@ pub(super) fn plan_top_down_side_entry_route_with_resources(
     .into_iter()
     .collect();
 
-    Ok(Some(RoutePlan::new(cells.into_vec(), labels)))
+    Ok(Some(RoutePlan::new(
+        cells.into_vec(),
+        labels,
+        MarkerAnchors::new(start_anchor, end_anchor),
+    )))
 }
 
 #[cfg(test)]
@@ -333,8 +498,11 @@ pub(super) fn plan_top_down_back_route(
     charset: &GraphCharset,
 ) -> Option<RoutePlan> {
     let mut resources = super::unbounded_route_resources();
-    plan_top_down_back_route_with_resources(from, to, edge, charset, &mut resources)
-        .expect("test route planning work must remain representable")
+    super::materialize_test_markers(
+        plan_top_down_back_route_with_resources(from, to, edge, charset, &mut resources),
+        edge,
+        charset,
+    )
 }
 
 pub(super) fn plan_top_down_back_route_with_resources(
@@ -354,9 +522,11 @@ pub(super) fn plan_top_down_back_route_with_resources(
     let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
     let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
     let mut cells = PlannedRouteCells::new();
-    cells.try_push(resources, || {
-        edge_line_cell(from.right(), source_y, charset.right_connector)
-    })?;
+    let start_anchor = cells.try_push_anchor(
+        resources,
+        || edge_line_cell(from.right(), source_y, charset.right_connector),
+        StepDirection::Left,
+    )?;
 
     for x in (from.right() + 1)..lane_x {
         cells.try_push(resources, || route_cell(x, source_y, horizontal))?;
@@ -372,20 +542,13 @@ pub(super) fn plan_top_down_back_route_with_resources(
         route_cell(lane_x, target_y, charset.top_right)
     })?;
 
-    match edge.arrow {
-        GraphEdgeArrow::Open => {
-            for x in (to.right() + 1)..lane_x {
-                cells.try_push(resources, || route_cell(x, target_y, horizontal))?;
-            }
-        }
-        GraphEdgeArrow::Point => {
-            cells.try_push(resources, || {
-                edge_arrow_cell(to.right() + 1, target_y, charset.arrow_left)
-            })?;
-            for x in (to.right() + 2)..lane_x {
-                cells.try_push(resources, || route_cell(x, target_y, horizontal))?;
-            }
-        }
+    let end_anchor = cells.try_push_anchor(
+        resources,
+        || route_cell(to.right() + 1, target_y, horizontal),
+        StepDirection::Left,
+    )?;
+    for x in (to.right() + 2)..lane_x {
+        cells.try_push(resources, || route_cell(x, target_y, horizontal))?;
     }
     let labels: Vec<_> =
         planned_top_down_back_label(edge.label.as_deref(), lane_x, target_y, source_y, charset)
@@ -405,6 +568,7 @@ pub(super) fn plan_top_down_back_route_with_resources(
     Ok(Some(RoutePlan::with_min_canvas_extent(
         cells.into_vec(),
         labels,
+        MarkerAnchors::new(start_anchor, end_anchor),
         min_width,
         0,
     )))

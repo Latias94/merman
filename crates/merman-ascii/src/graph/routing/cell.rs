@@ -21,12 +21,12 @@ pub(super) fn set_route_cell_with_paint(
         return Ok(());
     };
     let was_routed = route_cells.contains(&(x, y));
-    let merged = if was_routed || is_arrow(existing) {
+    let merged = if was_routed || is_marker(existing) {
         merge_route_chars(existing, ch)
     } else {
         ch
     };
-    let role = if is_arrow(merged) {
+    let role = if is_marker(merged) {
         AsciiColorRole::EdgeArrow
     } else if was_routed && merged != existing {
         AsciiColorRole::Junction
@@ -49,6 +49,9 @@ pub(super) fn set_edge_cell_with_paint(
     ch: char,
     color: CanvasColor,
 ) -> crate::Result<()> {
+    if canvas.get(x, y).is_none() {
+        return Ok(());
+    }
     canvas.set_canvas_color(x, y, ch, color)
 }
 
@@ -59,10 +62,10 @@ fn merge_route_chars(existing: char, incoming: char) -> char {
     if incoming == ' ' {
         return existing;
     }
-    if is_arrow(incoming) {
+    if is_marker(incoming) {
         return incoming;
     }
-    if is_arrow(existing) {
+    if is_marker(existing) {
         return existing;
     }
     if is_ascii_route_char(existing) || is_ascii_route_char(incoming) {
@@ -77,8 +80,11 @@ fn merge_route_chars(existing: char, incoming: char) -> char {
     unicode_route_char(existing_dirs | incoming_dirs)
 }
 
-fn is_arrow(ch: char) -> bool {
-    matches!(ch, '>' | '<' | '^' | 'v' | '►' | '◄' | '▲' | '▼')
+fn is_marker(ch: char) -> bool {
+    matches!(
+        ch,
+        '>' | '<' | '^' | 'v' | '►' | '◄' | '▲' | '▼' | 'o' | 'x' | '○' | '×'
+    )
 }
 
 fn is_ascii_route_char(ch: char) -> bool {
@@ -146,6 +152,7 @@ pub(super) fn edge_line_char(
         (GraphEdgeStroke::Dotted, GraphDirection::TopDown) => charset.dotted_vertical,
         (GraphEdgeStroke::Thick, GraphDirection::LeftRight) => charset.thick_horizontal,
         (GraphEdgeStroke::Thick, GraphDirection::TopDown) => charset.thick_vertical,
+        (GraphEdgeStroke::Invisible, _) => ' ',
         (
             GraphEdgeStroke::Normal | GraphEdgeStroke::Dotted | GraphEdgeStroke::Thick,
             GraphDirection::RightLeft | GraphDirection::BottomTop,
