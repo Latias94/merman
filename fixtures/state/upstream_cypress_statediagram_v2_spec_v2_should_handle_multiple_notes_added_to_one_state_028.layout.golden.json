@@ -5,15 +5,15 @@
       "nodes": [
         {
           "id": "MyState",
-          "x": 43.76,
-          "y": 157.0,
+          "x": 101.84,
+          "y": 182.0,
           "width": 71.52,
           "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "MyState----note-0",
-          "x": 208.36,
+          "x": 101.84,
           "y": 60.0,
           "width": 110.8,
           "height": 54.0,
@@ -21,18 +21,26 @@
         },
         {
           "id": "MyState----note-1",
-          "x": 208.36,
-          "y": 254.0,
+          "x": 101.84,
+          "y": 304.0,
           "width": 117.68,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "MyState----parent",
-          "x": 208.36,
-          "y": 157.0,
+          "x": 101.84,
+          "y": 60.0,
+          "width": 180.8,
+          "height": 104.0,
+          "is_cluster": true
+        },
+        {
+          "id": "MyState----parent-1",
+          "x": 101.84,
+          "y": 304.0,
           "width": 187.68,
-          "height": 298.0,
+          "height": 104.0,
           "is_cluster": true
         }
       ],
@@ -45,16 +53,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 208.36,
+              "x": 101.84,
               "y": 60.0
             },
             {
-              "x": 208.36,
+              "x": 101.84,
               "y": 112.0
             },
             {
-              "x": 80.02,
-              "y": 147.724
+              "x": 101.84,
+              "y": 137.0
+            },
+            {
+              "x": 102.34,
+              "y": 162.5
             }
           ],
           "label": null,
@@ -74,16 +86,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 80.02,
-              "y": 167.276
+              "x": 102.34,
+              "y": 202.5
             },
             {
-              "x": 208.36,
-              "y": 202.0
+              "x": 101.84,
+              "y": 227.0
             },
             {
-              "x": 208.36,
-              "y": 254.0
+              "x": 101.84,
+              "y": 252.0
+            },
+            {
+              "x": 101.84,
+              "y": 304.0
             }
           ],
           "label": null,
@@ -99,16 +115,37 @@
       "clusters": [
         {
           "id": "MyState----parent",
-          "x": 208.36,
-          "y": 157.0,
+          "x": 101.84,
+          "y": 60.0,
+          "width": 180.8,
+          "height": 104.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
+          "title": "I am a lefty",
+          "title_label": {
+            "x": 101.84,
+            "y": 21.0,
+            "width": 80.8,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 16.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "MyState----parent-1",
+          "x": 101.84,
+          "y": 304.0,
           "width": 187.68,
-          "height": 298.0,
+          "height": 104.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "I am a righty",
           "title_label": {
-            "x": 208.36,
-            "y": 21.0,
+            "x": 101.84,
+            "y": 265.0,
             "width": 87.68,
             "height": 24.0
           },
@@ -122,8 +159,8 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 302.2,
-        "max_y": 306.0
+        "max_x": 195.68,
+        "max_y": 356.0
       }
     }
   }
