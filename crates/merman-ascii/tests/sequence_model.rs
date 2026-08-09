@@ -602,6 +602,26 @@ fn sequence_notes_render_from_typed_model() {
 }
 
 #[test]
+fn sequence_note_left_of_leftmost_actor_reserves_a_lifeline_gutter() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A\nparticipant B\nNote left of A: Left\nA->>B: Ping",
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("leftmost actor note should render with a dedicated gutter");
+
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with('┌') && line.contains("┐  │")),
+        "left-of note should end before the leftmost lifeline with the configured gap:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("Left") && rendered.contains("Ping"),
+        "note gutters should preserve both note and message content:\n{rendered}"
+    );
+}
+
+#[test]
 fn sequence_multiline_notes_render_from_typed_model() {
     let mut model = basic_sequence_model();
     model.notes.push(SequenceNote {
@@ -917,6 +937,27 @@ fn sequence_actor_lifecycle_renders_from_typed_model() {
     assert!(
         rendered.contains("×"),
         "destroyed participant should render a termination marker:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_note_after_destroy_uses_the_static_actor_anchor() {
+    let mut model = basic_sequence_model();
+    add_sequence_participant(&mut model, "B");
+    model.messages.push(message(Some("A"), Some("B"), 0));
+    model.destroyed_actors.insert("B".to_string(), 0);
+
+    let mut note = message(Some("B"), Some("B"), 2);
+    note.message = SequenceMessagePayload::Text("After destroy".to_string());
+    note.placement = Some(1);
+    model.messages.push(note);
+
+    let rendered = render_sequence_model(&model, &AsciiRenderOptions::unicode())
+        .expect("notes should retain static anchors after actor destruction");
+
+    assert!(
+        rendered.contains('×') && rendered.contains("After destroy"),
+        "destroy marker and later anchored note should both remain visible:\n{rendered}"
     );
 }
 
@@ -1612,7 +1653,7 @@ fn sequence_rect_par_over_nested_control_blocks_render() {
 }
 
 #[test]
-fn sequence_rect_par_over_empty_sections_are_explicitly_unsupported() {
+fn sequence_rect_par_over_empty_sections_render_visible_lifeline_rows() {
     let mut cases = Vec::new();
 
     let mut model = basic_sequence_model();
@@ -1621,7 +1662,7 @@ fn sequence_rect_par_over_empty_sections_are_explicitly_unsupported() {
         .messages
         .push(message(None, None, LINETYPE_RECT_START));
     model.messages.push(message(None, None, LINETYPE_RECT_END));
-    cases.push(model);
+    cases.push(("rect", model));
 
     let mut model = basic_sequence_model();
     add_sequence_participant(&mut model, "B");
@@ -1629,10 +1670,19 @@ fn sequence_rect_par_over_empty_sections_are_explicitly_unsupported() {
         .messages
         .push(message(None, None, LINETYPE_PAR_OVER_START));
     model.messages.push(message(None, None, LINETYPE_PAR_END));
-    cases.push(model);
+    cases.push(("par_over", model));
 
-    for model in cases {
-        assert_unsupported_sequence_model(model, "empty control block sections");
+    for (keyword, model) in cases {
+        let rendered = render_sequence_model(&model, &AsciiRenderOptions::unicode())
+            .unwrap_or_else(|err| panic!("empty {keyword} should render: {err}"));
+        assert!(
+            rendered.contains(&format!("{keyword} Hi")),
+            "empty {keyword} should retain its frame title:\n{rendered}"
+        );
+        assert!(
+            rendered.lines().any(|line| line.starts_with('│')),
+            "empty {keyword} should retain a visible lifeline row:\n{rendered}"
+        );
     }
 }
 
@@ -1689,10 +1739,16 @@ fn sequence_nested_control_blocks_render() {
             .any(|line| line.starts_with("│ │") && line.contains("Work")),
         "message rows should stay inside both frames:\n{rendered}"
     );
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("│ ├") && line.contains('►')),
+        "nested frame borders must not replace the message source junction:\n{rendered}"
+    );
 }
 
 #[test]
-fn sequence_empty_control_block_sections_are_explicitly_unsupported() {
+fn sequence_empty_control_block_sections_render_visible_lifeline_rows() {
     let mut cases = Vec::new();
 
     let mut model = basic_sequence_model();
@@ -1701,26 +1757,57 @@ fn sequence_empty_control_block_sections_are_explicitly_unsupported() {
         .messages
         .push(message(None, None, LINETYPE_LOOP_START));
     model.messages.push(message(None, None, LINETYPE_LOOP_END));
-    cases.push(model);
+    cases.push(("loop", model, None));
 
     let mut model = basic_sequence_model();
     add_sequence_participant(&mut model, "B");
     model.messages.push(message(None, None, LINETYPE_ALT_START));
     model.messages.push(message(None, None, LINETYPE_ALT_ELSE));
-    model.messages.push(message(Some("A"), Some("B"), 0));
     model.messages.push(message(None, None, LINETYPE_ALT_END));
-    cases.push(model);
+    cases.push(("alt", model, Some("else")));
 
     let mut model = basic_sequence_model();
     add_sequence_participant(&mut model, "B");
-    model.messages.push(message(None, None, LINETYPE_ALT_START));
-    model.messages.push(message(Some("A"), Some("B"), 0));
-    model.messages.push(message(None, None, LINETYPE_ALT_ELSE));
-    model.messages.push(message(None, None, LINETYPE_ALT_END));
-    cases.push(model);
+    model.messages.push(message(None, None, LINETYPE_PAR_START));
+    model.messages.push(message(None, None, LINETYPE_PAR_AND));
+    model.messages.push(message(None, None, LINETYPE_PAR_END));
+    cases.push(("par", model, Some("and")));
 
-    for model in cases {
-        assert_unsupported_sequence_model(model, "empty control block sections");
+    let mut model = basic_sequence_model();
+    add_sequence_participant(&mut model, "B");
+    model
+        .messages
+        .push(message(None, None, LINETYPE_CRITICAL_START));
+    model
+        .messages
+        .push(message(None, None, LINETYPE_CRITICAL_OPTION));
+    model
+        .messages
+        .push(message(None, None, LINETYPE_CRITICAL_END));
+    cases.push(("critical", model, Some("option")));
+
+    for (keyword, model, separator) in cases {
+        let rendered = render_sequence_model(&model, &AsciiRenderOptions::unicode())
+            .unwrap_or_else(|err| panic!("empty {keyword} should render: {err}"));
+        assert!(
+            rendered.contains(&format!("{keyword} Hi")),
+            "empty {keyword} should retain its frame title:\n{rendered}"
+        );
+        if let Some(separator) = separator {
+            assert!(
+                rendered.contains(&format!("{separator} Hi")),
+                "empty {keyword} should retain its empty section separator:\n{rendered}"
+            );
+        }
+        let expected_sections = usize::from(separator.is_some()) + 1;
+        assert!(
+            rendered
+                .lines()
+                .filter(|line| line.starts_with('│'))
+                .count()
+                >= expected_sections,
+            "every empty {keyword} section should retain a visible lifeline row:\n{rendered}"
+        );
     }
 }
 

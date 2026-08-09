@@ -1,15 +1,10 @@
 use super::model::SequenceControlKind;
 use super::render::SequenceChars;
-use super::text::{
-    SequenceBatchExtent, SequenceExtentLedger, SequenceLine, blank_line, charge_text_work,
-    padded_line, trim_right,
-};
+use super::text::{SequenceLine, blank_line, charge_text_work, padded_line, trim_right};
 use crate::color::{AsciiColorRole, AsciiRgb};
 use crate::error::{AsciiError, Result};
 use crate::options::TerminalWidthProfile;
-#[cfg(test)]
-use crate::resource::AsciiResourceLimitId;
-use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
+use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use crate::text::display_width_with_profile;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,6 +57,22 @@ struct SequenceControlBody {
     content: Vec<SequenceLine>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SequenceControlFramePlan {
+    body_rows: usize,
+    width: usize,
+    row_count: usize,
+    total_width: usize,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct SequenceControlOutputAdmission {
+    height: usize,
+    max_width: usize,
+    document_cells: usize,
+    work_units: usize,
+}
+
 pub(super) fn render_sequence_control_frames(
     lines: Vec<SequenceLine>,
     frames: &[SequenceControlFrame],
@@ -82,6 +93,8 @@ pub(super) fn render_sequence_control_frames(
     if forest.nodes.is_empty() {
         return Ok(lines);
     }
+    let frame_plans = plan_control_frames(&forest, frames, &lines, width_profile, resources)?;
+    let output_admission = admit_control_output(&lines, &forest, frames, &frame_plans, resources)?;
 
     let mut remaining_lines = Vec::new();
     remaining_lines
@@ -111,6 +124,7 @@ pub(super) fn render_sequence_control_frames(
                 node_index,
                 &forest,
                 frames,
+                &frame_plans,
                 &mut remaining_lines,
                 chars,
                 width_profile,
@@ -147,7 +161,9 @@ pub(super) fn render_sequence_control_frames(
     }
 
     let mut rendered = Vec::new();
-    let mut rendered_extent = SequenceExtentLedger::default();
+    rendered
+        .try_reserve_exact(output_admission.height)
+        .map_err(|_| allocation_failed())?;
     let mut row = 0;
 
     for root in &forest.roots {
@@ -160,34 +176,23 @@ pub(super) fn render_sequence_control_frames(
         };
 
         if row < frame.start_row {
-            extend_taken_lines(
-                &mut rendered,
-                &mut remaining_lines,
-                row..frame.start_row,
-                &mut rendered_extent,
-                resources,
-            )?;
+            extend_taken_lines(&mut rendered, &mut remaining_lines, row..frame.start_row)?;
         }
         let frame_lines = rendered_nodes
             .get_mut(*root)
             .and_then(Option::take)
             .ok_or_else(invalid_control_frame)?;
-        extend_owned_lines(&mut rendered, frame_lines, &mut rendered_extent, resources)?;
+        extend_owned_lines(&mut rendered, frame_lines)?;
         row = resources.checked_grid_add(node_end, 1)?;
     }
 
     if row < line_count {
-        extend_taken_lines(
-            &mut rendered,
-            &mut remaining_lines,
-            row..line_count,
-            &mut rendered_extent,
-            resources,
-        )?;
+        extend_taken_lines(&mut rendered, &mut remaining_lines, row..line_count)?;
     }
     if remaining_lines.iter().any(Option::is_some) || rendered_nodes.iter().any(Option::is_some) {
         return Err(invalid_control_frame());
     }
+    output_admission.validate(&rendered, resources)?;
     Ok(rendered)
 }
 
@@ -196,6 +201,7 @@ fn render_frame_node_iterative(
     node_index: usize,
     forest: &SequenceControlFrameForest,
     frames: &[SequenceControlFrame],
+    frame_plans: &[SequenceControlFramePlan],
     lines: &mut [Option<SequenceLine>],
     chars: &SequenceChars,
     width_profile: TerminalWidthProfile,
@@ -207,7 +213,6 @@ fn render_frame_node_iterative(
         .get(node_index)
         .ok_or_else(invalid_control_frame)?;
     resources.check_nesting_depth(node.depth)?;
-    resources.charge_layout_work(1)?;
     let inset_levels = node
         .depth
         .checked_sub(1)
@@ -216,20 +221,13 @@ fn render_frame_node_iterative(
     let frame = frames
         .get(node.frame_index)
         .ok_or_else(invalid_control_frame)?;
-    charge_text_work(&frame.label, width_profile, resources)?;
-    for separator in &frame.separators {
-        charge_text_work(&separator.label, width_profile, resources)?;
-    }
-    let (planned_body_rows, max_content_width) =
-        planned_frame_body_extent(node_index, forest, frames, lines, rendered_nodes, resources)?;
-    let width = frame_width(frame, max_content_width, inset, width_profile, resources)?;
-    let row_count = resources.checked_grid_add(planned_body_rows, 2)?;
-    let total_width = resources.checked_grid_add(inset, width)?;
-    resources.grid_extent(total_width, row_count)?;
-    charge_work_product(resources, total_width, row_count)?;
+    let plan = frame_plans
+        .get(node_index)
+        .copied()
+        .ok_or_else(invalid_control_frame)?;
     let mut rendered = Vec::new();
     rendered
-        .try_reserve_exact(row_count)
+        .try_reserve_exact(plan.row_count)
         .map_err(|_| allocation_failed())?;
     let body = render_frame_body_iterative(
         node_index,
@@ -237,14 +235,14 @@ fn render_frame_node_iterative(
         frames,
         lines,
         rendered_nodes,
-        planned_body_rows,
+        plan.body_rows,
         resources,
     )?;
     let mut content = body.content.into_iter();
     rendered.push(render_top_border(
         frame,
         inset,
-        width,
+        plan.width,
         chars,
         width_profile,
         resources,
@@ -257,7 +255,7 @@ fn render_frame_node_iterative(
                 rendered.push(render_content_row(
                     line,
                     inset,
-                    width,
+                    plan.width,
                     chars,
                     frame.background,
                     resources,
@@ -272,7 +270,7 @@ fn render_frame_node_iterative(
                     frame,
                     separator,
                     inset,
-                    width,
+                    plan.width,
                     chars,
                     width_profile,
                     resources,
@@ -286,7 +284,7 @@ fn render_frame_node_iterative(
 
     rendered.push(render_bottom_border(
         inset,
-        width,
+        plan.width,
         chars,
         frame.background,
         width_profile,
@@ -295,12 +293,72 @@ fn render_frame_node_iterative(
     Ok(rendered)
 }
 
+fn plan_control_frames(
+    forest: &SequenceControlFrameForest,
+    frames: &[SequenceControlFrame],
+    lines: &[SequenceLine],
+    width_profile: TerminalWidthProfile,
+    resources: &mut ResourceContext,
+) -> Result<Vec<SequenceControlFramePlan>> {
+    let mut pending = Vec::new();
+    pending
+        .try_reserve_exact(forest.nodes.len())
+        .map_err(|_| allocation_failed())?;
+    pending.resize(forest.nodes.len(), None);
+
+    for node_index in (0..forest.nodes.len()).rev() {
+        let node = forest
+            .nodes
+            .get(node_index)
+            .ok_or_else(invalid_control_frame)?;
+        resources.check_nesting_depth(node.depth)?;
+        resources.charge_layout_work(1)?;
+        let inset_levels = node
+            .depth
+            .checked_sub(1)
+            .ok_or_else(invalid_control_frame)?;
+        let inset = resources.checked_grid_mul(inset_levels, 2)?;
+        let frame = frames
+            .get(node.frame_index)
+            .ok_or_else(invalid_control_frame)?;
+        charge_text_work(&frame.label, width_profile, resources)?;
+        for separator in &frame.separators {
+            charge_text_work(&separator.label, width_profile, resources)?;
+        }
+        let (body_rows, max_content_width) =
+            planned_frame_body_extent(node_index, forest, frames, lines, &pending, resources)?;
+        let width = frame_width(frame, max_content_width, inset, width_profile, resources)?;
+        let row_count = resources.checked_grid_add(body_rows, 2)?;
+        let total_width = resources.checked_grid_add(inset, width)?;
+        resources.grid_extent(total_width, row_count)?;
+        charge_work_product(resources, total_width, row_count)?;
+        let slot = pending
+            .get_mut(node_index)
+            .ok_or_else(invalid_control_frame)?;
+        *slot = Some(SequenceControlFramePlan {
+            body_rows,
+            width,
+            row_count,
+            total_width,
+        });
+    }
+
+    let mut plans = Vec::new();
+    plans
+        .try_reserve_exact(pending.len())
+        .map_err(|_| allocation_failed())?;
+    for plan in pending {
+        plans.push(plan.ok_or_else(invalid_control_frame)?);
+    }
+    Ok(plans)
+}
+
 fn planned_frame_body_extent(
     node_index: usize,
     forest: &SequenceControlFrameForest,
     frames: &[SequenceControlFrame],
-    lines: &[Option<SequenceLine>],
-    rendered_nodes: &[Option<Vec<SequenceLine>>],
+    lines: &[SequenceLine],
+    frame_plans: &[Option<SequenceControlFramePlan>],
     resources: &mut ResourceContext,
 ) -> Result<(usize, usize)> {
     let node = forest
@@ -337,13 +395,12 @@ fn planned_frame_body_extent(
                 .get(child.frame_index)
                 .ok_or_else(invalid_control_frame)?;
             if child_frame.start_row == row {
-                let child_lines = rendered_nodes
+                let child_plan = frame_plans
                     .get(child_node_index)
                     .and_then(Option::as_ref)
                     .ok_or_else(invalid_control_frame)?;
-                planned_rows = resources.checked_grid_add(planned_rows, child_lines.len())?;
-                max_content_width = max_content_width
-                    .max(child_lines.iter().map(SequenceLine::len).max().unwrap_or(0));
+                planned_rows = resources.checked_grid_add(planned_rows, child_plan.row_count)?;
+                max_content_width = max_content_width.max(child_plan.total_width);
                 row = resources
                     .checked_grid_add(child_frame.end_row.ok_or_else(invalid_control_frame)?, 1)?;
                 child_index = resources.checked_grid_add(child_index, 1)?;
@@ -351,16 +408,111 @@ fn planned_frame_body_extent(
             }
         }
 
-        let line = lines
-            .get(row)
-            .and_then(Option::as_ref)
-            .ok_or_else(invalid_control_frame)?;
+        let line = lines.get(row).ok_or_else(invalid_control_frame)?;
         planned_rows = resources.checked_grid_add(planned_rows, 1)?;
         max_content_width = max_content_width.max(line.len());
         row = resources.checked_grid_add(row, 1)?;
     }
 
     Ok((planned_rows, max_content_width))
+}
+
+fn admit_control_output(
+    lines: &[SequenceLine],
+    forest: &SequenceControlFrameForest,
+    frames: &[SequenceControlFrame],
+    frame_plans: &[SequenceControlFramePlan],
+    resources: &mut ResourceContext,
+) -> Result<SequenceControlOutputAdmission> {
+    let mut admission = SequenceControlOutputAdmission::default();
+    let mut row = 0;
+
+    for root in &forest.roots {
+        let node = forest.nodes.get(*root).ok_or_else(invalid_control_frame)?;
+        let frame = frames
+            .get(node.frame_index)
+            .ok_or_else(invalid_control_frame)?;
+        let end_row = valid_frame_end_row(frame, lines.len()).ok_or_else(invalid_control_frame)?;
+        if frame.start_row < row {
+            return Err(invalid_control_frame());
+        }
+        for line in lines
+            .get(row..frame.start_row)
+            .ok_or_else(invalid_control_frame)?
+        {
+            admission.add_line(line.len(), resources)?;
+        }
+        let plan = frame_plans
+            .get(*root)
+            .copied()
+            .ok_or_else(invalid_control_frame)?;
+        admission.add_uniform(plan.total_width, plan.row_count, resources)?;
+        row = resources.checked_grid_add(end_row, 1)?;
+    }
+
+    for line in lines.get(row..).ok_or_else(invalid_control_frame)? {
+        admission.add_line(line.len(), resources)?;
+    }
+    admission.admit(resources)?;
+    Ok(admission)
+}
+
+impl SequenceControlOutputAdmission {
+    fn add_line(&mut self, width: usize, resources: &ResourceContext) -> Result<()> {
+        self.height = resources.checked_grid_add(self.height, 1)?;
+        self.max_width = self.max_width.max(width);
+        self.document_cells = self.document_cells.checked_add(width).ok_or_else(|| {
+            resources
+                .policy()
+                .overflow(AsciiResourceLimitId::MaxDocumentCells)
+        })?;
+        self.work_units = resources.checked_work_add(self.work_units, width.max(1))?;
+        Ok(())
+    }
+
+    fn add_uniform(
+        &mut self,
+        width: usize,
+        height: usize,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        self.height = resources.checked_grid_add(self.height, height)?;
+        self.max_width = self.max_width.max(width);
+        let cells = width.checked_mul(height).ok_or_else(|| {
+            resources
+                .policy()
+                .overflow(AsciiResourceLimitId::MaxDocumentCells)
+        })?;
+        self.document_cells = self.document_cells.checked_add(cells).ok_or_else(|| {
+            resources
+                .policy()
+                .overflow(AsciiResourceLimitId::MaxDocumentCells)
+        })?;
+        let work = resources.checked_work_mul(width.max(1), height)?;
+        self.work_units = resources.checked_work_add(self.work_units, work)?;
+        Ok(())
+    }
+
+    fn admit(self, resources: &mut ResourceContext) -> Result<()> {
+        resources.grid_extent(self.max_width, self.height)?;
+        resources.check(AsciiResourceLimitId::MaxDocumentCells, self.document_cells)?;
+        resources.charge_layout_work(self.work_units)
+    }
+
+    fn validate(self, lines: &[SequenceLine], resources: &ResourceContext) -> Result<()> {
+        let mut actual = Self::default();
+        for line in lines {
+            actual.add_line(line.len(), resources)?;
+        }
+        if actual.height != self.height
+            || actual.max_width != self.max_width
+            || actual.document_cells != self.document_cells
+            || actual.work_units != self.work_units
+        {
+            return Err(invalid_control_frame());
+        }
+        Ok(())
+    }
 }
 
 fn render_frame_body_iterative(
@@ -684,15 +836,26 @@ fn render_content_row(
     resources.grid_extent(total_width, 1)?;
     let mut row = padded_line(row, total_width)?;
     paint_row_background_if_unset(&mut row, inset..total_width, background);
-    row.try_set_role(inset, chars.vertical, AsciiColorRole::SequenceFrame)?;
-    row.try_set_role(
+    paint_frame_vertical_if_unset(&mut row, inset, chars.vertical)?;
+    paint_frame_vertical_if_unset(
+        &mut row,
         total_width
             .checked_sub(1)
             .ok_or_else(invalid_control_frame)?,
         chars.vertical,
-        AsciiColorRole::SequenceFrame,
     )?;
     trim_right(row)
+}
+
+fn paint_frame_vertical_if_unset(
+    row: &mut SequenceLine,
+    index: usize,
+    vertical: char,
+) -> Result<()> {
+    if row.get(index) == Some(' ') {
+        row.try_set_role(index, vertical, AsciiColorRole::SequenceFrame)?;
+    }
+    Ok(())
 }
 
 fn paint_row_background(
@@ -765,58 +928,23 @@ fn extend_taken_lines(
     target: &mut Vec<SequenceLine>,
     source: &mut [Option<SequenceLine>],
     range: std::ops::Range<usize>,
-    extent: &mut SequenceExtentLedger,
-    resources: &mut ResourceContext,
 ) -> Result<()> {
     let source = source.get_mut(range).ok_or_else(invalid_control_frame)?;
-    let batch = batch_extent_from_optional_lines(source, resources)?;
-    let reservation = extent.reserve(batch, resources)?;
-    let start = target.len();
     target
         .try_reserve(source.len())
         .map_err(|_| allocation_failed())?;
     for line in source {
         target.push(line.take().ok_or_else(invalid_control_frame)?);
     }
-    reservation.commit(extent, &target[start..], resources)?;
     Ok(())
 }
 
-fn extend_owned_lines(
-    target: &mut Vec<SequenceLine>,
-    source: Vec<SequenceLine>,
-    extent: &mut SequenceExtentLedger,
-    resources: &mut ResourceContext,
-) -> Result<()> {
-    let batch = batch_extent_from_lines(&source, resources)?;
-    let reservation = extent.reserve(batch, resources)?;
-    let start = target.len();
+fn extend_owned_lines(target: &mut Vec<SequenceLine>, source: Vec<SequenceLine>) -> Result<()> {
     target
         .try_reserve(source.len())
         .map_err(|_| allocation_failed())?;
     target.extend(source);
-    reservation.commit(extent, &target[start..], resources)?;
     Ok(())
-}
-
-fn batch_extent_from_lines(
-    lines: &[SequenceLine],
-    resources: &ResourceContext,
-) -> Result<SequenceBatchExtent> {
-    SequenceBatchExtent::from_line_lengths(0, lines.iter().map(SequenceLine::len), resources)
-}
-
-fn batch_extent_from_optional_lines(
-    lines: &[Option<SequenceLine>],
-    resources: &ResourceContext,
-) -> Result<SequenceBatchExtent> {
-    SequenceBatchExtent::try_from_line_lengths(
-        0,
-        lines
-            .iter()
-            .map(|line| Ok(line.as_ref().ok_or_else(invalid_control_frame)?.len())),
-        resources,
-    )
 }
 
 fn charge_work_product(resources: &mut ResourceContext, left: usize, right: usize) -> Result<()> {
@@ -889,6 +1017,26 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn control_output_admits_aggregate_extent_before_frame_materialization() {
+        for limit in [
+            AsciiResourceLimitId::MaxGridCells,
+            AsciiResourceLimitId::MaxDocumentCells,
+        ] {
+            let rendered = render_disjoint_frames_with_limit(limit, 48)
+                .expect("the exact aggregate output extent should be admitted");
+            assert_eq!(rendered.len(), 6);
+
+            let error = render_disjoint_frames_with_limit(limit, 47)
+                .expect_err("the aggregate output extent should exceed the limit");
+            assert!(matches!(
+                error,
+                AsciiError::ResourceLimitExceeded(details)
+                    if details.limit == limit && details.actual == 48 && details.max == 47
+            ));
+        }
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn deeply_nested_frames_render_on_a_small_stack() {
@@ -924,6 +1072,40 @@ mod tests {
             .expect("the small-stack thread should finish");
 
         assert_eq!(rendered_len, DEPTH * 2 + 1);
+    }
+
+    fn render_disjoint_frames_with_limit(
+        limit: AsciiResourceLimitId,
+        maximum: usize,
+    ) -> Result<Vec<SequenceLine>> {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(limit, maximum)
+            .expect("the aggregate output limit override should be valid");
+        let mut resources = ResourceContext::new(policy);
+        let lines = vec![
+            blank_line(4, TerminalWidthProfile::Unicode, &resources)?,
+            blank_line(4, TerminalWidthProfile::Unicode, &resources)?,
+        ];
+        let frames = vec![
+            SequenceControlFrame {
+                kind: SequenceControlKind::Loop,
+                label: String::new(),
+                background: None,
+                start_row: 0,
+                separators: Vec::new(),
+                end_row: Some(0),
+            },
+            SequenceControlFrame {
+                kind: SequenceControlKind::Loop,
+                label: String::new(),
+                background: None,
+                start_row: 1,
+                separators: Vec::new(),
+                end_row: Some(1),
+            },
+        ];
+
+        render_sequence_control_frames(lines, &frames, &ascii_chars(), &mut resources)
     }
 
     fn ascii_chars() -> SequenceChars {

@@ -9,7 +9,7 @@ use super::layout::{
     LifecycleEdge, SequenceLayout, initial_visible_actors, lifecycle_actors_at, participant_left,
 };
 use super::model::{AsciiSequenceDiagram, SequenceControlKind, SequenceEvent};
-use super::notes::{ensure_note_actors_visible, prepare_note_rows, render_note};
+use super::notes::{ensure_note_actors_known, prepare_note_rows, render_note};
 use super::render::{SequenceChars, build_lifeline_line, retained_lifeline_width};
 use super::text::{
     SequenceBatchExtent, SequenceExtentLedger, SequenceExtentReservation, SequenceLine, blank_line,
@@ -136,9 +136,6 @@ impl SequenceRowPlanner {
                 if frame.kind != separator.kind {
                     return Err(unsupported("control block ordering"));
                 }
-                if frame.current_section_start_row() == current_row {
-                    return Err(unsupported("empty control block sections"));
-                }
                 let separator_count = resources.checked_grid_add(frame.separators.len(), 1)?;
                 resources.grid_extent(separator_count, 1)?;
                 let label = try_clone_string(&separator.label)?;
@@ -207,6 +204,41 @@ impl SequenceRowPlanner {
         Ok(self.control_frames)
     }
 
+    fn empty_control_section_before(
+        &self,
+        event: &SequenceEvent,
+        current_row: usize,
+    ) -> Result<bool> {
+        let Some(frame_index) = self.active_control_frames.last().copied() else {
+            return match event {
+                SequenceEvent::ControlSeparator(_) | SequenceEvent::ControlEnd { .. } => {
+                    Err(unsupported("control block ordering"))
+                }
+                _ => Ok(false),
+            };
+        };
+        let frame = self
+            .control_frames
+            .get(frame_index)
+            .ok_or_else(|| unsupported("control block ordering"))?;
+
+        match event {
+            SequenceEvent::ControlSeparator(separator) => {
+                if frame.kind != separator.kind {
+                    return Err(unsupported("control block ordering"));
+                }
+            }
+            SequenceEvent::ControlEnd { kind, .. } => {
+                if !frame.kind.accepts_end(*kind) {
+                    return Err(unsupported("control block ordering"));
+                }
+            }
+            _ => return Ok(false),
+        }
+
+        Ok(frame.current_section_start_row() == current_row)
+    }
+
     fn end_control_frame(&mut self, kind: SequenceControlKind, current_row: usize) -> Result<()> {
         let Some(frame_index) = self.active_control_frames.last().copied() else {
             return Err(unsupported("control block ordering"));
@@ -217,12 +249,13 @@ impl SequenceRowPlanner {
             if !frame.kind.accepts_end(kind) {
                 return Err(unsupported("control block ordering"));
             }
-            if frame.current_section_start_row() == current_row {
-                return Err(unsupported("empty control block sections"));
-            }
-            let end_row = current_row
-                .checked_sub(1)
-                .ok_or_else(|| unsupported("control block ordering"))?;
+            let end_row = if frame.current_section_start_row() == current_row {
+                current_row
+            } else {
+                current_row
+                    .checked_sub(1)
+                    .ok_or_else(|| unsupported("control block ordering"))?
+            };
             frame.end_row = Some(end_row);
         }
         self.active_control_frames.pop();
@@ -325,6 +358,18 @@ impl<'diagram, 'layout, 'chars> SequenceRowEmitter<'diagram, 'layout, 'chars> {
         self.commit_lines(reservation, lines, resources)
     }
 
+    fn emit_control_lifeline(
+        &mut self,
+        active_counts: &[usize],
+        visible_actors: &[bool],
+        resources: &mut ResourceContext,
+    ) -> Result<()> {
+        let batch = lifeline_batch_extent(self.layout, visible_actors, resources)?;
+        let reservation = self.reserve_batch(batch, resources)?;
+        let line = self.lifeline_line_state(active_counts, visible_actors, resources)?;
+        self.commit_line(reservation, line, resources)
+    }
+
     fn emit_message_or_note(
         &mut self,
         step: &SequenceRowStep<'_>,
@@ -380,7 +425,7 @@ impl<'diagram, 'layout, 'chars> SequenceRowEmitter<'diagram, 'layout, 'chars> {
                 }
             }
             SequenceEvent::Note(note) => {
-                ensure_note_actors_visible(note, &step.visible_actors)?;
+                ensure_note_actors_known(note, self.layout)?;
                 let prepared =
                     prepare_note_rows(note, self.layout, &step.visible_actors, resources)?;
                 let reservation = self.reserve_batch(prepared.extent(), resources)?;
@@ -512,6 +557,13 @@ impl SequenceRowPlan {
             SequenceRowEmitter::new(diagram, layout, chars, planner.visible_actors(), resources)?;
 
         for event in &diagram.events {
+            if planner.empty_control_section_before(event, emitter.current_row())? {
+                emitter.emit_control_lifeline(
+                    planner.active_counts(),
+                    planner.visible_actors(),
+                    resources,
+                )?;
+            }
             if let Some(step) = planner.advance(diagram, event, emitter.current_row(), resources)? {
                 emitter.emit_step(&step, resources)?;
             }
@@ -970,7 +1022,7 @@ mod tests {
     }
 
     #[test]
-    fn event_plan_rejects_empty_control_sections() {
+    fn event_plan_accepts_empty_control_sections() {
         let diagram = diagram(1);
         let mut resources = test_resources();
         let mut plan = SequenceRowPlanner::new(&diagram, &mut resources).unwrap();
@@ -991,8 +1043,8 @@ mod tests {
             .is_none()
         );
 
-        let error = plan
-            .advance(
+        assert!(
+            plan.advance(
                 &diagram,
                 &SequenceEvent::ControlSeparator(SequenceControlSeparator {
                     model_index: 1,
@@ -1002,15 +1054,27 @@ mod tests {
                 3,
                 &mut resources,
             )
-            .unwrap_err();
+            .unwrap()
+            .is_none()
+        );
+        assert!(
+            plan.advance(
+                &diagram,
+                &SequenceEvent::ControlEnd {
+                    kind: SequenceControlKind::Alt,
+                    model_index: 2,
+                },
+                3,
+                &mut resources,
+            )
+            .unwrap()
+            .is_none()
+        );
 
-        assert!(matches!(
-            error,
-            AsciiError::UnsupportedFeature {
-                diagram_type: "sequence",
-                feature: "empty control block sections",
-            }
-        ));
+        let frames = plan.finish().unwrap();
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0].separators[0].row, 3);
+        assert_eq!(frames[0].end_row, Some(3));
     }
 
     #[test]

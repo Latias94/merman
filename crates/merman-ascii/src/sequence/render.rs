@@ -1,5 +1,6 @@
 use super::layout::{SequenceLayout, calculate_layout_with_resources};
 use super::model::{AsciiSequenceDiagram, SequenceArrowHead};
+use super::notes::apply_note_gutters;
 use super::plan::SequenceRowPlan;
 use super::text::{SequenceLine, blank_line, padded_line, trim_right};
 use crate::color::AsciiColorRole;
@@ -181,7 +182,8 @@ pub(crate) fn render_sequence_diagram_with_resources(
 
     debug_assert_eq!(resources.policy(), options.resources);
     let chars = SequenceChars::for_options(options);
-    let layout = calculate_layout_with_resources(diagram, options, resources)?;
+    let mut layout = calculate_layout_with_resources(diagram, options, resources)?;
+    apply_note_gutters(diagram, &mut layout, resources)?;
     let row_plan = SequenceRowPlan::build(
         diagram,
         &layout,

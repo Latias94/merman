@@ -4,7 +4,7 @@ use super::{
 };
 use crate::color::{AsciiColorRole, AsciiRgb};
 use crate::error::{AsciiError, Result};
-use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
+use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 use crate::text::{
     display_width_with_profile, split_label_lines, truncate_display_width_with_profile,
     wrap_label_lines_with_profile,
@@ -13,7 +13,10 @@ use crate::text::{
 use super::layout::SequenceLayout;
 use super::model::{AsciiSequenceDiagram, SequenceGroupBox};
 use super::render::SequenceChars;
-use super::text::{SequenceLine, blank_line, charge_text_work, trim_right};
+use super::text::{
+    SequenceBatchExtent, SequenceExtentLedger, SequenceLine, blank_line, charge_text_work,
+    trim_right,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SequenceGroupBoxBounds {
@@ -72,6 +75,10 @@ pub(super) fn render_sequence_boxes(
     )?;
     resources.grid_extent(width, height)?;
     charge_work_product(resources, width, height)?;
+    let output_batch =
+        planned_box_output_extent(&lines, label_extra_rows, box_width, width, resources)?;
+    let mut output_extent = SequenceExtentLedger::default();
+    let output_reservation = output_extent.reserve(output_batch, resources)?;
 
     let mut canvas = Vec::new();
     canvas
@@ -102,8 +109,32 @@ pub(super) fn render_sequence_boxes(
     for row in canvas {
         rendered.push(trim_right(row)?);
     }
-    check_document_cells(&rendered, resources)?;
+    output_reservation.commit(&mut output_extent, &rendered, resources)?;
     Ok(rendered)
+}
+
+fn planned_box_output_extent(
+    lines: &[SequenceLine],
+    label_extra_rows: usize,
+    box_width: usize,
+    materialized_width: usize,
+    resources: &ResourceContext,
+) -> Result<SequenceBatchExtent> {
+    let top_row_count = resources.checked_grid_add(label_extra_rows, 1)?;
+    let top_and_label_rows = std::iter::repeat_n(box_width, top_row_count);
+    let content_rows = lines.iter().map(|line| {
+        resources
+            .checked_grid_add(SEQUENCE_BOX_CONTENT_OFFSET, line.len())
+            .map(|content_width| content_width.max(box_width))
+    });
+    SequenceBatchExtent::try_from_line_lengths(
+        materialized_width,
+        top_and_label_rows
+            .map(Ok)
+            .chain(content_rows)
+            .chain(std::iter::once(Ok(box_width))),
+        resources,
+    )
 }
 
 fn prepare_sequence_box(
@@ -353,20 +384,6 @@ fn charge_work_product(resources: &mut ResourceContext, left: usize, right: usiz
     resources.charge_layout_work_product(left, right)
 }
 
-fn check_document_cells(lines: &[SequenceLine], resources: &ResourceContext) -> Result<()> {
-    let mut cells = 0usize;
-    for line in lines {
-        cells = cells.checked_add(line.len()).ok_or_else(|| {
-            resources
-                .policy()
-                .overflow(AsciiResourceLimitId::MaxDocumentCells)
-        })?;
-    }
-    resources
-        .policy()
-        .check(AsciiResourceLimitId::MaxDocumentCells, cells)
-}
-
 fn work_overflow(resources: &ResourceContext) -> AsciiError {
     resources.work_overflow()
 }
@@ -387,4 +404,88 @@ fn invalid_box_geometry() -> AsciiError {
 
 fn allocation_failed() -> AsciiError {
     AsciiError::allocation_failed(AsciiResourceLimitPhase::LayoutWork.as_str())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::options::TerminalWidthProfile;
+    use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
+
+    #[test]
+    fn box_output_admits_extent_before_canvas_materialization() {
+        for limit in [
+            AsciiResourceLimitId::MaxGridCells,
+            AsciiResourceLimitId::MaxDocumentCells,
+        ] {
+            let rendered = render_full_width_box_with_limit(limit, 27)
+                .expect("the exact box output extent should be admitted");
+            assert_eq!(rendered.len(), 3);
+
+            let error = render_full_width_box_with_limit(limit, 26)
+                .expect_err("the box output extent should exceed the limit");
+            assert!(matches!(
+                error,
+                AsciiError::ResourceLimitExceeded(details)
+                    if details.limit == limit && details.actual == 27 && details.max == 26
+            ));
+        }
+    }
+
+    fn render_full_width_box_with_limit(
+        limit: AsciiResourceLimitId,
+        maximum: usize,
+    ) -> Result<Vec<SequenceLine>> {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(limit, maximum)
+            .expect("the box output limit override should be valid");
+        let mut resources = ResourceContext::new(policy);
+        let diagram = AsciiSequenceDiagram {
+            title: None,
+            participants: Vec::new(),
+            lifecycles: Vec::new(),
+            boxes: vec![SequenceGroupBox {
+                actor_indices: Vec::new(),
+                label: None,
+                background: None,
+                wrap: false,
+            }],
+            events: Vec::new(),
+        };
+        let layout = SequenceLayout {
+            participant_widths: Vec::new(),
+            participant_centers: Vec::new(),
+            total_width: 0,
+            message_spacing: 1,
+            self_message_width: 1,
+            width_profile: TerminalWidthProfile::Unicode,
+        };
+        let lines = vec![blank_line(4, layout.width_profile, &resources)?];
+
+        render_sequence_boxes(lines, &diagram, &layout, &ascii_chars(), &mut resources)
+    }
+
+    fn ascii_chars() -> SequenceChars {
+        SequenceChars {
+            top_left: '+',
+            top_right: '+',
+            bottom_left: '+',
+            bottom_right: '+',
+            horizontal: '-',
+            vertical: '|',
+            active_vertical: '#',
+            destroyed_mark: 'x',
+            tee_down: '+',
+            tee_up: '+',
+            tee_right: '+',
+            tee_left: '+',
+            filled_arrow_right: '>',
+            filled_arrow_left: '<',
+            solid_line: '-',
+            dotted_line: '.',
+            self_top_right: '+',
+            self_bottom: '+',
+            unicode_markers: false,
+        }
+    }
 }

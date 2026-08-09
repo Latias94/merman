@@ -7,7 +7,7 @@ use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceCon
 use crate::text::{display_width_with_profile, split_label_lines, wrap_label_lines_with_profile};
 
 use super::layout::SequenceLayout;
-use super::model::{SequenceNote, SequenceNotePlacement};
+use super::model::{AsciiSequenceDiagram, SequenceEvent, SequenceNote, SequenceNotePlacement};
 use super::render::{SequenceChars, render_overlay_row, retained_lifeline_width};
 use super::text::{SequenceBatchExtent, SequenceLine, blank_line, charge_text_work};
 
@@ -25,20 +25,65 @@ impl PreparedNoteRows {
     }
 }
 
-pub(super) fn ensure_note_actors_visible(
-    note: &SequenceNote,
-    visible_actors: &[bool],
-) -> Result<()> {
-    if visible_actors.get(note.from).copied().unwrap_or(false)
-        && visible_actors.get(note.to).copied().unwrap_or(false)
+pub(super) fn ensure_note_actors_known(note: &SequenceNote, layout: &SequenceLayout) -> Result<()> {
+    if layout.participant_centers.get(note.from).is_some()
+        && layout.participant_centers.get(note.to).is_some()
     {
         return Ok(());
     }
 
     Err(AsciiError::UnsupportedFeature {
         diagram_type: "sequence",
-        feature: "actor lifecycle visibility",
+        feature: "note actors",
     })
+}
+
+pub(super) fn apply_note_gutters(
+    diagram: &AsciiSequenceDiagram,
+    layout: &mut SequenceLayout,
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    let mut left_gutter = 0;
+    for event in &diagram.events {
+        let SequenceEvent::Note(note) = event else {
+            continue;
+        };
+        resources.charge_layout_work(1)?;
+        let from = layout
+            .participant_centers
+            .get(note.from)
+            .copied()
+            .ok_or_else(invalid_note_geometry)?;
+        layout
+            .participant_centers
+            .get(note.to)
+            .ok_or_else(invalid_note_geometry)?;
+        let inner_width = note_inner_width(note, layout, resources)?;
+        let note_width = resources.checked_grid_add(inner_width, BOX_BORDER_WIDTH)?;
+        let required_anchor_offset = match note.placement {
+            SequenceNotePlacement::LeftOf => {
+                resources.checked_grid_add(note_width, NOTE_SIDE_GAP)?
+            }
+            SequenceNotePlacement::Over if note.from == note.to => note_width / 2,
+            SequenceNotePlacement::Over => 1,
+            SequenceNotePlacement::RightOf => 0,
+        };
+        if required_anchor_offset > from {
+            left_gutter = left_gutter.max(required_anchor_offset - from);
+        }
+    }
+
+    if left_gutter == 0 {
+        return Ok(());
+    }
+
+    resources.charge_layout_work(layout.participant_centers.len())?;
+    for center in &mut layout.participant_centers {
+        *center = resources.checked_grid_add(*center, left_gutter)?;
+    }
+    layout.total_width = resources.checked_grid_add(layout.total_width, left_gutter)?;
+    resources.grid_extent(resources.checked_grid_add(layout.total_width, 1)?, 1)?;
+    Ok(())
 }
 
 pub(super) fn prepare_note_rows(
@@ -47,7 +92,8 @@ pub(super) fn prepare_note_rows(
     visible_actors: &[bool],
     resources: &mut ResourceContext,
 ) -> Result<PreparedNoteRows> {
-    let label_lines = note_label_lines(note, layout, resources)?;
+    charge_text_work(&note.label, layout.width_profile, resources)?;
+    let label_lines = note_label_lines(note, layout);
     let label_width = label_lines
         .iter()
         .map(|line| display_width_with_profile(line, layout.width_profile))
@@ -62,15 +108,20 @@ pub(super) fn prepare_note_rows(
     let left = match note.placement {
         SequenceNotePlacement::LeftOf => {
             let total_width = resources.checked_grid_add(inner_width, BOX_BORDER_WIDTH)?;
-            from.saturating_sub(resources.checked_grid_add(total_width, NOTE_SIDE_GAP)?)
+            from.checked_sub(resources.checked_grid_add(total_width, NOTE_SIDE_GAP)?)
+                .ok_or_else(invalid_note_geometry)?
         }
         SequenceNotePlacement::RightOf => resources.checked_grid_add(from, NOTE_SIDE_GAP)?,
         SequenceNotePlacement::Over => {
             if from == to {
                 let total_width = resources.checked_grid_add(inner_width, BOX_BORDER_WIDTH)?;
-                from.saturating_sub(total_width / 2)
+                from.checked_sub(total_width / 2)
+                    .ok_or_else(invalid_note_geometry)?
             } else {
-                let span_left = from.min(to).saturating_sub(1);
+                let span_left = from
+                    .min(to)
+                    .checked_sub(1)
+                    .ok_or_else(invalid_note_geometry)?;
                 let span_inner_width = resources.checked_grid_add(from.abs_diff(to), 1)?;
                 inner_width = inner_width.max(span_inner_width);
                 span_left
@@ -215,21 +266,45 @@ fn note_border_row(
     Ok(row)
 }
 
-fn note_label_lines(
+fn note_inner_width(
     note: &SequenceNote,
     layout: &SequenceLayout,
-    resources: &mut ResourceContext,
-) -> Result<Vec<String>> {
-    charge_text_work(&note.label, layout.width_profile, resources)?;
+    resources: &ResourceContext,
+) -> Result<usize> {
+    let label_width = note_label_lines(note, layout)
+        .iter()
+        .map(|line| display_width_with_profile(line, layout.width_profile))
+        .max()
+        .unwrap_or(0);
+    let mut inner_width = resources
+        .checked_grid_add(label_width, BOX_PADDING_LEFT_RIGHT)?
+        .max(MIN_BOX_WIDTH);
+    if note.placement == SequenceNotePlacement::Over && note.from != note.to {
+        let from = layout
+            .participant_centers
+            .get(note.from)
+            .copied()
+            .ok_or_else(invalid_note_geometry)?;
+        let to = layout
+            .participant_centers
+            .get(note.to)
+            .copied()
+            .ok_or_else(invalid_note_geometry)?;
+        inner_width = inner_width.max(resources.checked_grid_add(from.abs_diff(to), 1)?);
+    }
+    Ok(inner_width)
+}
+
+fn note_label_lines(note: &SequenceNote, layout: &SequenceLayout) -> Vec<String> {
     if !note.wrap {
-        return Ok(split_label_lines(&note.label));
+        return split_label_lines(&note.label);
     }
 
     let span_width =
         layout.participant_centers[note.from].abs_diff(layout.participant_centers[note.to]);
-    Ok(wrap_label_lines_with_profile(
+    wrap_label_lines_with_profile(
         &note.label,
         span_width.max(NOTE_WRAP_TEXT_WIDTH),
         layout.width_profile,
-    ))
+    )
 }
