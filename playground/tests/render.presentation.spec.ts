@@ -86,8 +86,11 @@ test("SVG mount failures stay inside the preview pane", async ({ page }) => {
   errors.assertNone();
 });
 
-test("Event Model example remains mounted in the Playground", async ({ page }) => {
+test("Event Model keeps Mermaid HTML labels readable in a dark Playground", async ({
+  page,
+}) => {
   const errors = monitorBrowserErrors(page);
+  await page.emulateMedia({ colorScheme: "dark" });
   await openPlayground(page);
   await page.getByRole("button", { name: "Examples", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Example Gallery" });
@@ -104,6 +107,32 @@ test("Event Model example remains mounted in the Playground", async ({ page }) =
   await expect
     .poll(() => previewSvgText(page))
     .toContain("ItemAdded");
+
+  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  const mermaidPane = page.locator('[data-merman-compare-engine="mermaid"]');
+  const mermaidHost = mermaidPane.locator(".preview-container > div");
+  await expect(mermaidPane).toBeVisible();
+  await expect
+    .poll(() =>
+      mermaidHost.evaluate((host) =>
+        Boolean(host.shadowRoot?.querySelector("svg")),
+      ),
+    )
+    .toBe(true);
+  const colors = await mermaidHost.evaluate((host) => {
+    const svg = host.shadowRoot?.querySelector("svg");
+    if (!(svg instanceof SVGSVGElement)) {
+      throw new Error("Missing mounted Mermaid SVG.");
+    }
+    const labels = svg.querySelectorAll("foreignObject b, foreignObject code");
+    return {
+      host: getComputedStyle(host).color,
+      labels: [...new Set([...labels].map((label) => getComputedStyle(label).color))],
+      svgFill: getComputedStyle(svg).fill,
+    };
+  });
+  expect(colors.host).not.toBe(colors.svgFill);
+  expect(colors.labels).toEqual([colors.svgFill]);
   await expect(
     page.getByRole("button", { name: "Examples", exact: true }),
   ).toBeVisible();
