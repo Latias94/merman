@@ -382,6 +382,7 @@ impl<'diagram, 'layout, 'chars> SequenceRowEmitter<'diagram, 'layout, 'chars> {
                     let prepared = prepare_self_message_rows(
                         message,
                         self.layout,
+                        self.chars,
                         &step.visible_actors,
                         resources,
                     )?;

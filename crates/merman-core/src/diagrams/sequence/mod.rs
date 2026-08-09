@@ -257,6 +257,155 @@ A--//B: dotted open half bottom"#,
     }
 
     #[test]
+    fn typed_render_model_projects_every_pinned_half_arrow_semantic() {
+        let cases = [
+            (
+                "A-|\\B: 0",
+                SequenceMessageStroke::Solid,
+                SequenceMessageMarker::None,
+                SequenceMessageMarker::FilledHalfTop,
+                SequenceMessageDirection::Forward,
+            ),
+            (
+                "A-|/B: 1",
+                SequenceMessageStroke::Solid,
+                SequenceMessageMarker::None,
+                SequenceMessageMarker::FilledHalfBottom,
+                SequenceMessageDirection::Forward,
+            ),
+            (
+                "A-\\\\B: 2",
+                SequenceMessageStroke::Solid,
+                SequenceMessageMarker::None,
+                SequenceMessageMarker::OpenHalfTop,
+                SequenceMessageDirection::Forward,
+            ),
+            (
+                "A-//B: 3",
+                SequenceMessageStroke::Solid,
+                SequenceMessageMarker::None,
+                SequenceMessageMarker::OpenHalfBottom,
+                SequenceMessageDirection::Forward,
+            ),
+            (
+                "A--|\\B: 4",
+                SequenceMessageStroke::Dotted,
+                SequenceMessageMarker::None,
+                SequenceMessageMarker::FilledHalfTop,
+                SequenceMessageDirection::Forward,
+            ),
+            (
+                "A--|/B: 5",
+                SequenceMessageStroke::Dotted,
+                SequenceMessageMarker::None,
+                SequenceMessageMarker::FilledHalfBottom,
+                SequenceMessageDirection::Forward,
+            ),
+            (
+                "A--\\\\B: 6",
+                SequenceMessageStroke::Dotted,
+                SequenceMessageMarker::None,
+                SequenceMessageMarker::OpenHalfTop,
+                SequenceMessageDirection::Forward,
+            ),
+            (
+                "A--//B: 7",
+                SequenceMessageStroke::Dotted,
+                SequenceMessageMarker::None,
+                SequenceMessageMarker::OpenHalfBottom,
+                SequenceMessageDirection::Forward,
+            ),
+            (
+                "A/|-B: 8",
+                SequenceMessageStroke::Solid,
+                SequenceMessageMarker::FilledHalfTop,
+                SequenceMessageMarker::None,
+                SequenceMessageDirection::Reverse,
+            ),
+            (
+                "A\\|-B: 9",
+                SequenceMessageStroke::Solid,
+                SequenceMessageMarker::FilledHalfBottom,
+                SequenceMessageMarker::None,
+                SequenceMessageDirection::Reverse,
+            ),
+            (
+                "A//-B: 10",
+                SequenceMessageStroke::Solid,
+                SequenceMessageMarker::OpenHalfTop,
+                SequenceMessageMarker::None,
+                SequenceMessageDirection::Reverse,
+            ),
+            (
+                "A\\\\-B: 11",
+                SequenceMessageStroke::Solid,
+                SequenceMessageMarker::OpenHalfBottom,
+                SequenceMessageMarker::None,
+                SequenceMessageDirection::Reverse,
+            ),
+            (
+                "A/|--B: 12",
+                SequenceMessageStroke::Dotted,
+                SequenceMessageMarker::FilledHalfTop,
+                SequenceMessageMarker::None,
+                SequenceMessageDirection::Reverse,
+            ),
+            (
+                "A\\|--B: 13",
+                SequenceMessageStroke::Dotted,
+                SequenceMessageMarker::FilledHalfBottom,
+                SequenceMessageMarker::None,
+                SequenceMessageDirection::Reverse,
+            ),
+            (
+                "A//--B: 14",
+                SequenceMessageStroke::Dotted,
+                SequenceMessageMarker::OpenHalfTop,
+                SequenceMessageMarker::None,
+                SequenceMessageDirection::Reverse,
+            ),
+            (
+                "A\\\\--B: 15",
+                SequenceMessageStroke::Dotted,
+                SequenceMessageMarker::OpenHalfBottom,
+                SequenceMessageMarker::None,
+                SequenceMessageDirection::Reverse,
+            ),
+        ];
+        let input = format!(
+            "sequenceDiagram\nparticipant A\nparticipant B\n{}",
+            cases
+                .iter()
+                .map(|(source, ..)| *source)
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
+            .expect("parse should succeed")
+            .expect("sequence diagram should be detected");
+        let RenderSemanticModel::Sequence(model) = parsed.model() else {
+            panic!("expected typed Sequence render model");
+        };
+
+        assert_eq!(model.messages.len(), cases.len());
+        for (message, (_, stroke, source, target, direction)) in model.messages.iter().zip(cases) {
+            let semantics = message.signal_semantics().unwrap();
+            assert_eq!(
+                (
+                    semantics.stroke,
+                    semantics.source_marker,
+                    semantics.target_marker,
+                    semantics.direction,
+                ),
+                (stroke, source, target, direction),
+                "{}",
+                message.message_text()
+            );
+        }
+    }
+
+    #[test]
     fn typed_render_model_classifies_central_marker_records_without_losing_decorations() {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(

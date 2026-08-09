@@ -44,6 +44,48 @@ fn half_arrow_type(rest: &str) -> Option<(usize, i32)> {
         .find_map(|(arrow, ty)| rest.starts_with(arrow).then_some((arrow.len(), *ty)))
 }
 
+fn is_ecmascript_whitespace(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{0009}'
+            | '\u{000A}'
+            | '\u{000B}'
+            | '\u{000C}'
+            | '\u{000D}'
+            | '\u{0020}'
+            | '\u{00A0}'
+            | '\u{1680}'
+            | '\u{2000}'
+            ..='\u{200A}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202F}'
+                | '\u{205F}'
+                | '\u{3000}'
+                | '\u{FEFF}'
+    )
+}
+
+fn trim_start_ecmascript(value: &str) -> &str {
+    value.trim_start_matches(is_ecmascript_whitespace)
+}
+
+fn trim_end_ecmascript(value: &str) -> &str {
+    value.trim_end_matches(is_ecmascript_whitespace)
+}
+
+fn trim_ecmascript(value: &str) -> &str {
+    value.trim_matches(is_ecmascript_whitespace)
+}
+
+fn declaration_id_allows_config(actor_id: &str) -> bool {
+    !actor_id.is_empty()
+        && actor_id.chars().all(|ch| {
+            !is_ecmascript_whitespace(ch)
+                && !matches!(ch, '<' | '=' | '>' | '-' | ':' | ',' | ';' | '@')
+        })
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum Tok {
     Newline,
@@ -132,14 +174,25 @@ enum LineLexemeKind {
     Style,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActorBoundary {
+    Declaration,
+    StatementEnd,
+    Text,
+    TextOrComma,
+    SignalSource,
+}
+
 pub(super) struct Lexer<'input> {
     input: &'input str,
     pos: usize,
     pending: VecDeque<(usize, Tok, usize)>,
     mode: Mode,
-    // Keywords are also legal participant ids in Mermaid. These flags let parser context win over
-    // keyword lexing for positions that must be actor ids.
-    force_actor_id: bool,
+    // Keywords are also legal participant ids in Mermaid. The boundary records both that parser
+    // context must win over keyword lexing and where this particular actor id ends.
+    actor_boundary: Option<ActorBoundary>,
+    declaration_alias_pending: bool,
+    declaration_config_allowed: bool,
     after_signal_type: bool,
     line_lexeme_kind: Option<LineLexemeKind>,
     lexemes: EditorLexemeJournal<'input>,
@@ -152,7 +205,9 @@ impl<'input> Lexer<'input> {
             pos: 0,
             pending: VecDeque::new(),
             mode: Mode::Default,
-            force_actor_id: false,
+            actor_boundary: None,
+            declaration_alias_pending: false,
+            declaration_config_allowed: false,
             after_signal_type: false,
             line_lexeme_kind: None,
             lexemes: EditorLexemeJournal::family_lexer(input),
@@ -180,8 +235,8 @@ impl<'input> Lexer<'input> {
             self.push_lexeme(kind, start, end);
             return;
         };
-        let leading = raw.len() - raw.trim_start().len();
-        let trailing = raw.trim_end().len();
+        let leading = raw.len() - trim_start_ecmascript(raw).len();
+        let trailing = trim_end_ecmascript(raw).len();
         if leading < trailing {
             self.push_lexeme(kind, start + leading, start + trailing);
         }
@@ -240,12 +295,11 @@ impl<'input> Lexer<'input> {
     }
 
     fn skip_ws(&mut self) {
-        while let Some(b) = self.peek() {
-            if b == b' ' || b == b'\t' || b == b'\r' {
-                self.pos += 1;
-                continue;
+        while let Some(ch) = self.input[self.pos..].chars().next() {
+            if ch == '\n' || !is_ecmascript_whitespace(ch) {
+                break;
             }
-            break;
+            self.pos += ch.len_utf8();
         }
     }
 
@@ -283,7 +337,7 @@ impl<'input> Lexer<'input> {
             b'\n' | b';' => {
                 self.pos += 1;
                 self.mode = Mode::Default;
-                self.force_actor_id = false;
+                self.actor_boundary = None;
                 self.after_signal_type = false;
                 self.line_lexeme_kind = None;
                 Some((start, Tok::Newline, self.pos))
@@ -296,21 +350,25 @@ impl<'input> Lexer<'input> {
         let Some(b) = self.peek() else {
             return false;
         };
-        if b == b'#' {
-            let start = self.pos;
-            while let Some(b2) = self.peek() {
-                if b2 == b'\n' {
-                    break;
-                }
-                self.pos += 1;
-            }
-            self.push_lexeme(EditorLexemeKind::Comment, start, self.pos);
-            return true;
-        }
-        let Some([b'%', b'%']) = self.peek2() else {
+
+        let initial_percent_comment =
+            if self.mode != Mode::Default || self.forced_actor_uses_id_rules() {
+                false
+            } else if matches!(self.peek2(), Some([b'%', b'%'])) {
+                true
+            } else {
+                self.input[self.pos..].chars().next().is_some_and(|first| {
+                    first != '}'
+                        && first.len_utf16() == 1
+                        && self.input[self.pos + first.len_utf8()..].starts_with("%%")
+                })
+            };
+        if b != b'#' && !initial_percent_comment {
             return false;
-        };
-        // Mermaid directives are removed earlier in preprocess, so `%%` is always a comment here.
+        }
+
+        // Directives are removed earlier; remaining percent comments follow Jison's INITIAL-only
+        // rules, while exclusive ID/LINE states retain the same bytes as authored text.
         let start = self.pos;
         while let Some(b2) = self.peek() {
             if b2 == b'\n' {
@@ -387,19 +445,23 @@ impl<'input> Lexer<'input> {
             self.push_lexeme(EditorLexemeKind::Keyword, start, keyword_end);
             self.push_lexeme(EditorLexemeKind::Delimiter, keyword_end, keyword_end + 1);
             self.push_trimmed_lexeme(EditorLexemeKind::String, value_start, self.pos);
-            return Some((start, Tok::CompatTitle(s.trim().to_string()), self.pos));
+            return Some((
+                start,
+                Tok::CompatTitle(trim_ecmascript(&s).to_string()),
+                self.pos,
+            ));
         }
 
         if self.starts_with_ci_word("title") {
             let after = self.pos + "title".len();
-            if after < self.input.len() && self.input.as_bytes()[after].is_ascii_whitespace() {
+            if after < self.input.len() && self.char_at_is_inline_whitespace(after) {
                 self.pos = after;
                 self.skip_ws();
                 let value_start = self.pos;
                 let s = self.read_to_line_end();
                 self.push_lexeme(EditorLexemeKind::Keyword, start, after);
                 self.push_trimmed_lexeme(EditorLexemeKind::String, value_start, self.pos);
-                return Some((start, Tok::Title(s.trim().to_string()), self.pos));
+                return Some((start, Tok::Title(trim_ecmascript(&s).to_string()), self.pos));
             }
         }
 
@@ -418,13 +480,17 @@ impl<'input> Lexer<'input> {
             self.push_lexeme(EditorLexemeKind::Keyword, start, after);
             self.push_lexeme(EditorLexemeKind::Delimiter, colon, colon + 1);
             self.push_trimmed_lexeme(EditorLexemeKind::String, value_start, self.pos);
-            return Some((start, Tok::AccTitle(s.trim().to_string()), self.pos));
+            return Some((
+                start,
+                Tok::AccTitle(trim_ecmascript(&s).to_string()),
+                self.pos,
+            ));
         }
 
         if self.starts_with_ci_word("accDescr") {
             let after = self.pos + "accDescr".len();
             let rest = &self.input[after..];
-            let non_ws = rest.find(|c: char| !c.is_whitespace())?;
+            let non_ws = rest.find(|c: char| !is_ecmascript_whitespace(c))?;
             match rest[non_ws..].chars().next() {
                 Some(':') => {
                     let colon = after + non_ws;
@@ -435,7 +501,11 @@ impl<'input> Lexer<'input> {
                     self.push_lexeme(EditorLexemeKind::Keyword, start, after);
                     self.push_lexeme(EditorLexemeKind::Delimiter, colon, colon + 1);
                     self.push_trimmed_lexeme(EditorLexemeKind::String, value_start, self.pos);
-                    return Some((start, Tok::AccDescr(s.trim().to_string()), self.pos));
+                    return Some((
+                        start,
+                        Tok::AccDescr(trim_ecmascript(&s).to_string()),
+                        self.pos,
+                    ));
                 }
                 Some('{') => {
                     let opening = after + non_ws;
@@ -459,11 +529,6 @@ impl<'input> Lexer<'input> {
                 break;
             }
             if b == b'#' {
-                break;
-            }
-            if let Some([b'%', b'%']) = self.peek2()
-                && b == b'%'
-            {
                 break;
             }
             self.pos += 1;
@@ -569,7 +634,7 @@ impl<'input> Lexer<'input> {
             self.pos += "destroy".len();
             return Some((start, Tok::Destroy, self.pos));
         }
-        if self.starts_with_ci_word("as") {
+        if self.declaration_alias_pending && self.starts_with_ci_word("as") {
             self.pos += "as".len();
             self.mode = Mode::Line;
             self.line_lexeme_kind = Some(LineLexemeKind::String);
@@ -599,17 +664,13 @@ impl<'input> Lexer<'input> {
 
         if self.starts_with_ci("left of") {
             let after = self.pos + "left of".len();
-            if after >= self.input.len() || self.input.as_bytes()[after].is_ascii_whitespace() {
-                self.pos = after;
-                return Some((start, Tok::LeftOf, self.pos));
-            }
+            self.pos = after;
+            return Some((start, Tok::LeftOf, self.pos));
         }
         if self.starts_with_ci("right of") {
             let after = self.pos + "right of".len();
-            if after >= self.input.len() || self.input.as_bytes()[after].is_ascii_whitespace() {
-                self.pos = after;
-                return Some((start, Tok::RightOf, self.pos));
-            }
+            self.pos = after;
+            return Some((start, Tok::RightOf, self.pos));
         }
         if self.starts_with_ci_word("over") {
             self.pos += "over".len();
@@ -756,7 +817,11 @@ impl<'input> Lexer<'input> {
         };
         self.push_trimmed_lexeme(kind, start, self.pos);
         self.mode = Mode::Default;
-        Some((start, Tok::RestOfLine(s.trim().to_string()), self.pos))
+        Some((
+            start,
+            Tok::RestOfLine(trim_ecmascript(&s).to_string()),
+            self.pos,
+        ))
     }
 
     fn lex_config(&mut self) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
@@ -764,13 +829,18 @@ impl<'input> Lexer<'input> {
         if !self.input[self.pos..].starts_with("@{") {
             return None;
         }
-        if start > 0 && self.input.as_bytes()[start - 1].is_ascii_whitespace() {
+        let attached_without_whitespace = self.input[..start]
+            .chars()
+            .next_back()
+            .is_some_and(|ch| !is_ecmascript_whitespace(ch));
+        if !self.declaration_config_allowed || !attached_without_whitespace {
             return Some(Err(LexError {
-                message: "Config objects must be attached to the actor id without whitespace"
+                message: "Config objects require a whitespace-free actor id and must be attached without whitespace"
                     .to_string(),
                 span: SourceSpan::new(start, (start + 2).min(self.input.len())),
             }));
         }
+        self.declaration_config_allowed = false;
         self.pos += 2;
         let Some(rel_end) = self.input[self.pos..].find('}') else {
             return Some(Err(LexError {
@@ -779,8 +849,9 @@ impl<'input> Lexer<'input> {
             }));
         };
         let end = self.pos + rel_end;
-        let s = self.input[self.pos..end].trim().to_string();
+        let s = trim_ecmascript(&self.input[self.pos..end]).to_string();
         self.pos = end + 1;
+        self.declaration_alias_pending = self.config_followed_by_alias();
         self.push_lexeme(EditorLexemeKind::Style, start, self.pos);
         Some(Ok((start, Tok::Config(s), self.pos)))
     }
@@ -795,112 +866,258 @@ impl<'input> Lexer<'input> {
         let s = self.read_to_line_end();
         self.push_lexeme(EditorLexemeKind::Delimiter, start, start + 1);
         self.push_trimmed_lexeme(EditorLexemeKind::String, value_start, self.pos);
-        Some((start, Tok::Text(s.trim().to_string()), self.pos))
+        Some((start, Tok::Text(trim_ecmascript(&s).to_string()), self.pos))
     }
 
-    fn lex_actor(&mut self) -> Option<(usize, Tok, usize)> {
+    fn lex_actor_with_boundary(&mut self, boundary: ActorBoundary) -> Option<(usize, Tok, usize)> {
         let start = self.pos;
         let mut end = self.pos;
         let bytes = self.input.as_bytes();
+        let uses_id_rules = matches!(
+            boundary,
+            ActorBoundary::Declaration | ActorBoundary::StatementEnd
+        );
 
         while end < self.input.len() {
-            if self.input.is_char_boundary(end)
-                && matches!(bytes[end], b'-' | b'/' | b'\\')
-                && half_arrow_type(&self.input[end..]).is_some()
-            {
+            if !self.input.is_char_boundary(end) {
+                end += 1;
+                continue;
+            }
+            if !uses_id_rules && self.peek_signal_type_at(end) {
                 break;
             }
+            if !uses_id_rules && self.input[end..].starts_with("--") {
+                break;
+            }
+            let ch = self.input[end..].chars().next()?;
             let b = bytes[end];
-            if b.is_ascii_whitespace()
-                || b == b'\n'
-                || b == b';'
-                || b == b','
-                || b == b':'
-                || b == b'+'
-            {
+            if b == b'\n' || b == b';' || b == b',' || b == b':' || b == b'<' || b == b'>' {
                 break;
             }
-            if b == b'@' && end + 1 < bytes.len() && bytes[end + 1] == b'{' {
-                break;
-            }
-            if b == b'-' {
-                let next = bytes.get(end + 1).copied();
-                if matches!(next, Some(b'-' | b'>' | b'x' | b')')) {
+            if uses_id_rules {
+                if b == b'@' {
+                    break;
+                }
+                if boundary == ActorBoundary::Declaration
+                    && is_ecmascript_whitespace(ch)
+                    && self.declaration_alias_starts_at(start, end)
+                {
+                    break;
+                }
+            } else {
+                if b == b'+' || b == b'/' || b == b'\\' || b == b')' {
+                    break;
+                }
+                if boundary == ActorBoundary::Text && end == start && b == b'-' {
+                    // After a signal, a leading single dash is the deactivation modifier, not
+                    // part of the target actor id.
+                    break;
+                }
+                if b == b'(' {
+                    if boundary == ActorBoundary::SignalSource
+                        && self.central_suffix_precedes_signal(end)
+                    {
+                        end += 2;
+                        continue;
+                    }
                     break;
                 }
             }
-            if b == b'<' {
-                break;
-            }
-            end += 1;
+
+            end += ch.len_utf8();
         }
 
-        if end == start {
+        let mut trimmed_end = end;
+        while trimmed_end > start {
+            let Some(ch) = self.input[start..trimmed_end].chars().next_back() else {
+                break;
+            };
+            if !is_ecmascript_whitespace(ch) {
+                break;
+            }
+            trimmed_end -= ch.len_utf8();
+        }
+        if trimmed_end == start {
             return None;
         }
-        let s = self.input[start..end].trim().to_string();
+
+        let s = trim_start_ecmascript(&self.input[start..trimmed_end]).to_string();
         self.pos = end;
-        Some((start, Tok::Actor(s), self.pos))
+        if boundary == ActorBoundary::Declaration {
+            self.declaration_alias_pending = true;
+            self.declaration_config_allowed = declaration_id_allows_config(&s);
+        }
+        Some((start, Tok::Actor(s), trimmed_end))
+    }
+
+    fn config_followed_by_alias(&self) -> bool {
+        let mut alias_start = self.pos;
+        let mut saw_whitespace = false;
+        while let Some(ch) = self.input[alias_start..].chars().next() {
+            if ch == '\n' || !is_ecmascript_whitespace(ch) {
+                break;
+            }
+            saw_whitespace = true;
+            alias_start += ch.len_utf8();
+        }
+        saw_whitespace
+            && self.starts_with_ci_at(alias_start, "as")
+            && self.char_at_is_ecmascript_whitespace(alias_start + "as".len())
+    }
+
+    fn central_suffix_precedes_signal(&self, position: usize) -> bool {
+        if !self.input[position..].starts_with("()") {
+            return false;
+        }
+        let mut signal_start = position + 2;
+        while let Some(ch) = self.input[signal_start..].chars().next() {
+            if ch == '\n' || !is_ecmascript_whitespace(ch) {
+                break;
+            }
+            signal_start += ch.len_utf8();
+        }
+        self.peek_signal_type_at(signal_start)
+    }
+
+    fn declaration_alias_starts_at(&self, actor_start: usize, whitespace_start: usize) -> bool {
+        if self.input[actor_start..whitespace_start]
+            .chars()
+            .any(is_ecmascript_whitespace)
+        {
+            return false;
+        }
+
+        let mut alias_start = whitespace_start;
+        while let Some(ch) = self.input[alias_start..].chars().next() {
+            if !is_ecmascript_whitespace(ch) || ch == '\n' {
+                break;
+            }
+            alias_start += ch.len_utf8();
+        }
+        if !self.starts_with_ci_at(alias_start, "as") {
+            return false;
+        }
+        self.char_at_is_ecmascript_whitespace(alias_start + 2)
+    }
+
+    fn char_at_is_inline_whitespace(&self, position: usize) -> bool {
+        self.input
+            .get(position..)
+            .and_then(|rest| rest.chars().next())
+            .is_some_and(|ch| ch != '\n' && is_ecmascript_whitespace(ch))
+    }
+
+    fn char_at_is_ecmascript_whitespace(&self, position: usize) -> bool {
+        self.input
+            .get(position..)
+            .and_then(|rest| rest.chars().next())
+            .is_some_and(is_ecmascript_whitespace)
+    }
+
+    fn starts_with_ci_at(&self, position: usize, expected: &str) -> bool {
+        let Some(actual) = self
+            .input
+            .as_bytes()
+            .get(position..position.saturating_add(expected.len()))
+        else {
+            return false;
+        };
+        actual.eq_ignore_ascii_case(expected.as_bytes())
+    }
+
+    fn lex_actor(&mut self) -> Option<(usize, Tok, usize)> {
+        self.lex_actor_with_boundary(ActorBoundary::StatementEnd)
     }
 
     fn lex_forced_actor_id(&mut self) -> Option<(usize, Tok, usize)> {
-        if let Some(tok) = self.lex_num() {
-            return Some(tok);
-        }
-        self.lex_actor()
+        let boundary = self.actor_boundary?;
+        self.lex_actor_with_boundary(boundary)
     }
 
     fn lex_actor_before_signal(&mut self) -> Option<(usize, Tok, usize)> {
+        if self.initial_keyword_precedes_actor() {
+            return None;
+        }
         let saved = self.pos;
-        let tok = self.lex_actor()?;
+        let tok = self.lex_actor_with_boundary(ActorBoundary::SignalSource)?;
         let after_actor = self.pos;
 
         if let Tok::Actor(actor) = &tok.1
             && let Some(stripped) = actor.strip_suffix("()")
+            && self.peek_signal_type_at(after_actor)
         {
-            let mut pos = after_actor;
-            while let Some(b) = self.input.as_bytes().get(pos) {
-                if *b == b' ' || *b == b'\t' || *b == b'\r' {
-                    pos += 1;
-                    continue;
-                }
-                break;
-            }
-            if self.peek_signal_type_at(pos) {
-                self.pending
-                    .push_back((after_actor - 2, Tok::Central, after_actor));
-                return Some((tok.0, Tok::Actor(stripped.to_string()), after_actor - 2));
-            }
+            let central_start = tok.2.checked_sub(2)?;
+            self.pending.push_back((central_start, Tok::Central, tok.2));
+            let actor_end = trim_end_ecmascript(&self.input[tok.0..central_start]).len() + tok.0;
+            return Some((
+                tok.0,
+                Tok::Actor(trim_end_ecmascript(stripped).to_string()),
+                actor_end,
+            ));
         }
 
-        while let Some(b) = self.input.as_bytes().get(self.pos) {
-            if *b == b' ' || *b == b'\t' || *b == b'\r' {
-                self.pos += 1;
-                continue;
-            }
-            break;
-        }
-
-        let has_signal = if self.input[self.pos..].starts_with("()") {
-            let mut pos = self.pos + 2;
-            while let Some(b) = self.input.as_bytes().get(pos) {
-                if *b == b' ' || *b == b'\t' || *b == b'\r' {
-                    pos += 1;
-                    continue;
-                }
-                break;
-            }
-            self.peek_signal_type_at(pos)
-        } else {
-            self.peek_signal_type_at_current()
-        };
-        self.pos = after_actor;
-        if has_signal {
+        if self.peek_signal_type_at_current() {
             Some(tok)
         } else {
             self.pos = saved;
             None
         }
+    }
+
+    fn initial_keyword_precedes_actor(&self) -> bool {
+        if self.declaration_alias_pending
+            && self.starts_with_ci_at(self.pos, "as")
+            && self.char_at_is_ecmascript_whitespace(self.pos + "as".len())
+        {
+            return true;
+        }
+
+        const KEYWORDS: [&str; 28] = [
+            "sequenceDiagram",
+            "participant",
+            "actor",
+            "create",
+            "destroy",
+            "box",
+            "loop",
+            "rect",
+            "opt",
+            "alt",
+            "else",
+            "par",
+            "par_over",
+            "and",
+            "critical",
+            "option",
+            "break",
+            "end",
+            "note",
+            "links",
+            "link",
+            "properties",
+            "details",
+            "autonumber",
+            "off",
+            "activate",
+            "deactivate",
+            "over",
+        ];
+        KEYWORDS
+            .iter()
+            .any(|keyword| self.starts_with_ci_word(keyword))
+            || self.starts_initial_relative_note_keyword("left of")
+            || self.starts_initial_relative_note_keyword("right of")
+    }
+
+    fn starts_initial_relative_note_keyword(&self, keyword: &str) -> bool {
+        self.starts_with_ci_at(self.pos, keyword)
+    }
+
+    fn forced_actor_uses_id_rules(&self) -> bool {
+        matches!(
+            self.actor_boundary,
+            Some(ActorBoundary::Declaration | ActorBoundary::StatementEnd)
+        )
     }
 
     fn peek_signal_type_at_current(&self) -> bool {
@@ -923,26 +1140,29 @@ impl<'input> Lexer<'input> {
     }
 
     fn note_emitted_token(&mut self, tok: &Tok) {
+        match tok {
+            Tok::Newline | Tok::Participant | Tok::ActorKw | Tok::As => {
+                self.declaration_alias_pending = false;
+                self.declaration_config_allowed = false;
+            }
+            Tok::Config(_) => self.declaration_config_allowed = false,
+            _ => {}
+        }
         self.after_signal_type = matches!(tok, Tok::SignalType(_));
-        self.force_actor_id = matches!(
-            tok,
-            Tok::Participant
-                | Tok::ActorKw
-                | Tok::Destroy
-                | Tok::Links
-                | Tok::Link
-                | Tok::Properties
-                | Tok::Details
-                | Tok::Activate
-                | Tok::Deactivate
-                | Tok::LeftOf
-                | Tok::RightOf
-                | Tok::Over
-                | Tok::Plus
-                | Tok::Minus
-                | Tok::Comma
-                | Tok::Central
-        );
+        self.actor_boundary = match tok {
+            Tok::Participant | Tok::ActorKw => Some(ActorBoundary::Declaration),
+            Tok::Destroy | Tok::Activate | Tok::Deactivate => Some(ActorBoundary::StatementEnd),
+            Tok::Links
+            | Tok::Link
+            | Tok::Properties
+            | Tok::Details
+            | Tok::SignalType(_)
+            | Tok::Plus
+            | Tok::Minus
+            | Tok::Central => Some(ActorBoundary::Text),
+            Tok::LeftOf | Tok::RightOf | Tok::Over | Tok::Comma => Some(ActorBoundary::TextOrComma),
+            _ => None,
+        };
     }
 
     fn emit(
@@ -962,7 +1182,9 @@ impl<'input> Lexer<'input> {
             self.note_emitted_token(token);
             record_sequence_token(&mut self.lexemes, token, *start, *end);
         } else {
-            self.force_actor_id = false;
+            self.actor_boundary = None;
+            self.declaration_alias_pending = false;
+            self.declaration_config_allowed = false;
         }
         Some(token)
     }
@@ -1000,6 +1222,12 @@ impl<'input> Iterator for Lexer<'input> {
                 return self.emit(tok);
             }
 
+            if self.forced_actor_uses_id_rules()
+                && let Some(tok) = self.lex_forced_actor_id()
+            {
+                return self.emit(tok);
+            }
+
             if let Some(tok) = self.lex_keyword_lines() {
                 return self.emit(tok);
             }
@@ -1007,7 +1235,14 @@ impl<'input> Iterator for Lexer<'input> {
                 return None;
             }
 
-            if self.force_actor_id
+            if self.actor_boundary.is_some()
+                && self.initial_keyword_precedes_actor()
+                && let Some(tok) = self.lex_word_keywords()
+            {
+                return self.emit(tok);
+            }
+
+            if self.actor_boundary.is_some()
                 && let Some(tok) = self.lex_forced_actor_id()
             {
                 return self.emit(tok);

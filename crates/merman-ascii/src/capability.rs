@@ -459,7 +459,9 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         structured_text_fallback: false,
         supported_semantics: &[
             "participants",
-            "messages",
+            "Mermaid-valid spaced and Unicode participant identifiers",
+            "headless, filled, cross, point, bidirectional, and half-arrow messages",
+            "central endpoint decorations",
             "notes",
             "lifecycles",
             "actor boxes",
@@ -470,7 +472,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "optional mirrored actors",
             "terminal color roles",
         ],
-        limits: &["actor presentation metadata and links are omitted"],
+        limits: &["actor presentation metadata and links are accepted but intentionally omitted"],
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::MermaidAsciiOracle,

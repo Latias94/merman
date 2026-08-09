@@ -31,8 +31,30 @@ pub(super) struct SequenceChars {
     pub(super) unicode_markers: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct SequenceEndpointGlyph {
+    pub(super) tip: char,
+    pub(super) lineward_stem: Option<char>,
+}
+
+impl SequenceEndpointGlyph {
+    const fn single(tip: char) -> Self {
+        Self {
+            tip,
+            lineward_stem: None,
+        }
+    }
+
+    const fn filled_half(tip: char) -> Self {
+        Self {
+            tip,
+            lineward_stem: Some('|'),
+        }
+    }
+}
+
 impl SequenceChars {
-    fn for_options(options: &AsciiRenderOptions) -> Self {
+    pub(super) fn for_options(options: &AsciiRenderOptions) -> Self {
         match options.structural_charset() {
             AsciiCharset::Ascii => Self {
                 top_left: '+',
@@ -79,75 +101,75 @@ impl SequenceChars {
         }
     }
 
-    pub(super) fn arrow_right(self, marker: SequenceArrowHead) -> Option<char> {
+    pub(super) fn arrow_right(self, marker: SequenceArrowHead) -> Option<SequenceEndpointGlyph> {
         Some(match marker {
             SequenceArrowHead::None => return None,
-            SequenceArrowHead::Filled => self.filled_arrow_right,
-            SequenceArrowHead::Cross => self.destroyed_mark,
-            SequenceArrowHead::Point => ')',
+            SequenceArrowHead::Filled => SequenceEndpointGlyph::single(self.filled_arrow_right),
+            SequenceArrowHead::Cross => SequenceEndpointGlyph::single(self.destroyed_mark),
+            SequenceArrowHead::Point => SequenceEndpointGlyph::single(')'),
             SequenceArrowHead::FilledHalfTop => {
                 if self.unicode_markers {
-                    '◢'
+                    SequenceEndpointGlyph::single('◢')
                 } else {
-                    '\\'
+                    SequenceEndpointGlyph::filled_half('\\')
                 }
             }
             SequenceArrowHead::FilledHalfBottom => {
                 if self.unicode_markers {
-                    '◥'
+                    SequenceEndpointGlyph::single('◥')
                 } else {
-                    '/'
+                    SequenceEndpointGlyph::filled_half('/')
                 }
             }
             SequenceArrowHead::OpenHalfTop => {
                 if self.unicode_markers {
-                    '╲'
+                    SequenceEndpointGlyph::single('╲')
                 } else {
-                    '\\'
+                    SequenceEndpointGlyph::single('\\')
                 }
             }
             SequenceArrowHead::OpenHalfBottom => {
                 if self.unicode_markers {
-                    '╱'
+                    SequenceEndpointGlyph::single('╱')
                 } else {
-                    '/'
+                    SequenceEndpointGlyph::single('/')
                 }
             }
         })
     }
 
-    pub(super) fn arrow_left(self, marker: SequenceArrowHead) -> Option<char> {
+    pub(super) fn arrow_left(self, marker: SequenceArrowHead) -> Option<SequenceEndpointGlyph> {
         Some(match marker {
             SequenceArrowHead::None => return None,
-            SequenceArrowHead::Filled => self.filled_arrow_left,
-            SequenceArrowHead::Cross => self.destroyed_mark,
-            SequenceArrowHead::Point => '(',
+            SequenceArrowHead::Filled => SequenceEndpointGlyph::single(self.filled_arrow_left),
+            SequenceArrowHead::Cross => SequenceEndpointGlyph::single(self.destroyed_mark),
+            SequenceArrowHead::Point => SequenceEndpointGlyph::single('('),
             SequenceArrowHead::FilledHalfTop => {
                 if self.unicode_markers {
-                    '◣'
+                    SequenceEndpointGlyph::single('◣')
                 } else {
-                    '/'
+                    SequenceEndpointGlyph::filled_half('/')
                 }
             }
             SequenceArrowHead::FilledHalfBottom => {
                 if self.unicode_markers {
-                    '◤'
+                    SequenceEndpointGlyph::single('◤')
                 } else {
-                    '\\'
+                    SequenceEndpointGlyph::filled_half('\\')
                 }
             }
             SequenceArrowHead::OpenHalfTop => {
                 if self.unicode_markers {
-                    '╱'
+                    SequenceEndpointGlyph::single('╱')
                 } else {
-                    '/'
+                    SequenceEndpointGlyph::single('/')
                 }
             }
             SequenceArrowHead::OpenHalfBottom => {
                 if self.unicode_markers {
-                    '╲'
+                    SequenceEndpointGlyph::single('╲')
                 } else {
-                    '\\'
+                    SequenceEndpointGlyph::single('\\')
                 }
             }
         })
@@ -276,6 +298,54 @@ mod tests {
     use crate::sequence::model::{
         SequenceActorLifecycle, SequenceParticipant, SequenceParticipantLabel,
     };
+
+    #[test]
+    fn endpoint_glyphs_preserve_half_arrow_fill_in_every_structural_charset() {
+        let ascii = SequenceChars::for_options(&AsciiRenderOptions::ascii());
+        let unicode = SequenceChars::for_options(&AsciiRenderOptions::unicode());
+        let mut cjk_options = AsciiRenderOptions::unicode();
+        cjk_options.terminal_width_profile = TerminalWidthProfile::Cjk;
+        let cjk = SequenceChars::for_options(&cjk_options);
+
+        let ascii_cases = [
+            (
+                SequenceArrowHead::FilledHalfTop,
+                ('\\', Some('|')),
+                ('/', Some('|')),
+            ),
+            (
+                SequenceArrowHead::FilledHalfBottom,
+                ('/', Some('|')),
+                ('\\', Some('|')),
+            ),
+            (SequenceArrowHead::OpenHalfTop, ('\\', None), ('/', None)),
+            (SequenceArrowHead::OpenHalfBottom, ('/', None), ('\\', None)),
+        ];
+        for (marker, right, left) in ascii_cases {
+            for chars in [ascii, cjk] {
+                let right_glyph = chars.arrow_right(marker).unwrap();
+                let left_glyph = chars.arrow_left(marker).unwrap();
+                assert_eq!((right_glyph.tip, right_glyph.lineward_stem), right);
+                assert_eq!((left_glyph.tip, left_glyph.lineward_stem), left);
+            }
+        }
+
+        for (marker, right, left) in [
+            (SequenceArrowHead::FilledHalfTop, '◢', '◣'),
+            (SequenceArrowHead::FilledHalfBottom, '◥', '◤'),
+            (SequenceArrowHead::OpenHalfTop, '╲', '╱'),
+            (SequenceArrowHead::OpenHalfBottom, '╱', '╲'),
+        ] {
+            assert_eq!(
+                unicode.arrow_right(marker),
+                Some(SequenceEndpointGlyph::single(right))
+            );
+            assert_eq!(
+                unicode.arrow_left(marker),
+                Some(SequenceEndpointGlyph::single(left))
+            );
+        }
+    }
 
     #[test]
     fn sequence_grid_extent_accepts_exact_limit_and_rejects_limit_minus_one() {

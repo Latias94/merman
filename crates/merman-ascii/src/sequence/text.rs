@@ -1,4 +1,3 @@
-use super::layout::SequenceLayout;
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
@@ -196,21 +195,6 @@ pub(super) fn charge_text_work(
 pub(super) fn padded_line(mut line: SequenceLine, width: usize) -> Result<SequenceLine> {
     line.try_pad_to(width)?;
     Ok(line)
-}
-
-pub(super) fn ensure_self_width(
-    line: SequenceLine,
-    layout: &SequenceLayout,
-    needed: usize,
-    resources: &ResourceContext,
-) -> Result<SequenceLine> {
-    let width = resources
-        .checked_grid_add(
-            resources.checked_grid_add(layout.total_width, layout.self_message_width)?,
-            1,
-        )?
-        .max(needed);
-    padded_line(line, width)
 }
 
 pub(super) fn write_text_role(

@@ -14,14 +14,29 @@ use super::render::{
     SequenceChars, build_lifeline_line, lifeline_char, lifeline_role, retained_lifeline_width,
 };
 use super::text::{
-    SequenceBatchExtent, SequenceLine, charge_text_work, ensure_self_width, padded_line,
-    trim_right, write_text_role,
+    SequenceBatchExtent, SequenceLine, charge_text_work, padded_line, trim_right, write_text_role,
 };
 
 #[derive(Debug)]
 pub(super) struct PreparedMessageRows {
     label_lines: Vec<String>,
     extent: SequenceBatchExtent,
+}
+
+#[derive(Debug)]
+pub(super) struct PreparedSelfMessageRows {
+    label_lines: Vec<String>,
+    extent: SequenceBatchExtent,
+    geometry: SelfMessageGeometry,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SelfMessageGeometry {
+    width: usize,
+    loop_right: usize,
+    loop_needed: usize,
+    arrow_x: usize,
+    materialized_width: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -48,6 +63,38 @@ impl<'a> MessageActorState<'a> {
 impl PreparedMessageRows {
     pub(super) const fn extent(&self) -> SequenceBatchExtent {
         self.extent
+    }
+}
+
+impl PreparedSelfMessageRows {
+    pub(super) const fn extent(&self) -> SequenceBatchExtent {
+        self.extent
+    }
+}
+
+impl SelfMessageGeometry {
+    fn try_new(
+        message: &SequenceMessage,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        let center = layout.participant_centers[message.from];
+        let width = effective_self_message_width(message, layout, chars);
+        let loop_right_offset = width.checked_sub(1).ok_or_else(invalid_message_geometry)?;
+        let loop_right = resources.checked_grid_add(center, loop_right_offset)?;
+        Ok(Self {
+            width,
+            loop_right,
+            loop_needed: resources.checked_grid_add(loop_right, 1)?,
+            arrow_x: resources.checked_grid_add(center, 1)?,
+            materialized_width: resources
+                .checked_grid_add(resources.checked_grid_add(layout.total_width, width)?, 1)?,
+        })
+    }
+
+    fn pad_line(self, line: SequenceLine, needed: usize) -> Result<SequenceLine> {
+        padded_line(line, self.materialized_width.max(needed))
     }
 }
 
@@ -275,21 +322,18 @@ pub(super) fn render_message(
 pub(super) fn prepare_self_message_rows(
     message: &SequenceMessage,
     layout: &SequenceLayout,
+    chars: &SequenceChars,
     visible_actors: &[bool],
     resources: &mut ResourceContext,
-) -> Result<PreparedMessageRows> {
+) -> Result<PreparedSelfMessageRows> {
     let center = layout.participant_centers[message.from];
-    let width = layout.self_message_width;
-    let label_wrap_width = resources.checked_grid_add(width, LABEL_BUFFER_SPACE)?;
+    let geometry = SelfMessageGeometry::try_new(message, layout, chars, resources)?;
+    let label_wrap_width = resources.checked_grid_add(geometry.width, LABEL_BUFFER_SPACE)?;
     let label_lines =
         message_label_lines(message, label_wrap_width, layout.width_profile, resources)?;
     let row_count = resources.checked_grid_add(label_lines.len(), 3)?;
-    let base_width = resources.checked_grid_add(
-        resources.checked_grid_add(layout.total_width, layout.self_message_width)?,
-        1,
-    )?;
     let start = resources.checked_grid_add(center, LABEL_LEFT_MARGIN)?;
-    let mut max_width = base_width;
+    let mut max_width = geometry.materialized_width;
     for label in &label_lines {
         let label_right = resources.checked_grid_add(
             start,
@@ -301,9 +345,7 @@ pub(super) fn prepare_self_message_rows(
     charge_row_work(resources, max_width, row_count)?;
 
     let lifeline_width = retained_lifeline_width(layout, visible_actors, resources)?;
-    let loop_right_offset = width.checked_sub(1).ok_or_else(invalid_message_geometry)?;
-    let loop_right = resources.checked_grid_add(center, loop_right_offset)?;
-    let message_row_width = lifeline_width.max(resources.checked_grid_add(loop_right, 1)?);
+    let message_row_width = lifeline_width.max(geometry.loop_needed);
     let extent = SequenceBatchExtent::try_from_line_lengths(
         max_width,
         label_lines
@@ -317,14 +359,15 @@ pub(super) fn prepare_self_message_rows(
         resources,
     )?;
 
-    Ok(PreparedMessageRows {
+    Ok(PreparedSelfMessageRows {
         label_lines,
         extent,
+        geometry,
     })
 }
 
 pub(super) fn render_self_message(
-    prepared: PreparedMessageRows,
+    prepared: PreparedSelfMessageRows,
     message: &SequenceMessage,
     layout: &SequenceLayout,
     chars: &SequenceChars,
@@ -336,13 +379,13 @@ pub(super) fn render_self_message(
         visible_actors,
         destroyed_actors,
     } = actor_state;
-    let PreparedMessageRows {
+    let PreparedSelfMessageRows {
         label_lines,
         extent,
+        geometry,
     } = prepared;
     let row_count = extent.height();
     let center = layout.participant_centers[message.from];
-    let width = layout.self_message_width;
     let start = resources.checked_grid_add(center, LABEL_LEFT_MARGIN)?;
 
     let mut lines = Vec::new();
@@ -356,42 +399,39 @@ pub(super) fn render_self_message(
             display_width_with_profile(&label, layout.width_profile),
         )?;
         let needed = resources.checked_grid_add(label_right, LABEL_BUFFER_SPACE)?;
-        let mut line = ensure_self_width(
+        let mut line = geometry.pad_line(
             build_lifeline_line(layout, chars, active_counts, visible_actors, resources)?,
-            layout,
             needed,
-            resources,
         )?;
         write_text_role(&mut line, start, &label, AsciiColorRole::EdgeLabel)?;
         lines.push(trim_right(line)?);
     }
 
-    let mut top = ensure_self_width(
+    let mut top = geometry.pad_line(
         build_lifeline_line(layout, chars, active_counts, visible_actors, resources)?,
-        layout,
-        0,
-        resources,
+        geometry.loop_needed,
     )?;
-    let loop_right_offset = width.checked_sub(1).ok_or_else(invalid_message_geometry)?;
-    let loop_right = resources.checked_grid_add(center, loop_right_offset)?;
-    let arrow_x = resources.checked_grid_add(center, 1)?;
     let style = match message.style {
         SequenceLineStyle::Solid => chars.solid_line,
         SequenceLineStyle::Dotted => chars.dotted_line,
     };
     validate_message_direction(message)?;
     top.try_set_role(center, chars.tee_right, AsciiColorRole::Junction)?;
-    for offset in 1..width {
+    for offset in 1..geometry.width {
         top.try_set_role(
             resources.checked_grid_add(center, offset)?,
             style,
             AsciiColorRole::EdgeLine,
         )?;
     }
-    top.try_set_role(loop_right, chars.self_top_right, AsciiColorRole::EdgeLine)?;
+    top.try_set_role(
+        geometry.loop_right,
+        chars.self_top_right,
+        AsciiColorRole::EdgeLine,
+    )?;
     paint_endpoint_marker(
         &mut top,
-        arrow_x,
+        geometry.arrow_x,
         message.source_marker,
         false,
         destroyed_actors.contains(&message.from),
@@ -409,20 +449,20 @@ pub(super) fn render_self_message(
     }
     lines.push(trim_right(top)?);
 
-    let mut middle = ensure_self_width(
+    let mut middle = geometry.pad_line(
         build_lifeline_line(layout, chars, active_counts, visible_actors, resources)?,
-        layout,
-        0,
-        resources,
+        geometry.loop_needed,
     )?;
-    middle.try_set_role(loop_right, chars.vertical, AsciiColorRole::EdgeLine)?;
+    middle.try_set_role(
+        geometry.loop_right,
+        chars.vertical,
+        AsciiColorRole::EdgeLine,
+    )?;
     lines.push(trim_right(middle)?);
 
-    let mut bottom = ensure_self_width(
+    let mut bottom = geometry.pad_line(
         build_lifeline_line(layout, chars, active_counts, visible_actors, resources)?,
-        layout,
-        0,
-        resources,
+        geometry.loop_needed,
     )?;
     if destroyed_actors.contains(&message.from) {
         bottom.try_set_role(center, chars.destroyed_mark, AsciiColorRole::EdgeArrow)?;
@@ -433,18 +473,22 @@ pub(super) fn render_self_message(
             lifeline_role(message.from, active_counts),
         )?;
     }
-    bottom.try_set_role(arrow_x, style, AsciiColorRole::EdgeLine)?;
-    for offset in 2..loop_right_offset {
+    bottom.try_set_role(geometry.arrow_x, style, AsciiColorRole::EdgeLine)?;
+    for offset in 2..geometry.width - 1 {
         bottom.try_set_role(
             resources.checked_grid_add(center, offset)?,
             style,
             AsciiColorRole::EdgeLine,
         )?;
     }
-    bottom.try_set_role(loop_right, chars.self_bottom, AsciiColorRole::EdgeLine)?;
+    bottom.try_set_role(
+        geometry.loop_right,
+        chars.self_bottom,
+        AsciiColorRole::EdgeLine,
+    )?;
     paint_endpoint_marker(
         &mut bottom,
-        arrow_x,
+        geometry.arrow_x,
         message.target_marker,
         false,
         destroyed_actors.contains(&message.to),
@@ -503,15 +547,39 @@ fn paint_endpoint_marker(
         return Ok(());
     }
 
-    let marker = if points_right {
+    let glyph = if points_right {
         chars.arrow_right(marker)
     } else {
         chars.arrow_left(marker)
     };
-    if let Some(marker) = marker {
-        line.try_set_role(x, marker, AsciiColorRole::EdgeArrow)?;
+    if let Some(glyph) = glyph {
+        line.try_set_role(x, glyph.tip, AsciiColorRole::EdgeArrow)?;
+        if let Some(stem) = glyph.lineward_stem {
+            let stem_x = if points_right {
+                x.checked_sub(1).ok_or_else(invalid_message_geometry)?
+            } else {
+                x.checked_add(1).ok_or_else(invalid_message_geometry)?
+            };
+            line.try_set_role(stem_x, stem, AsciiColorRole::EdgeArrow)?;
+        }
     }
     Ok(())
+}
+
+fn effective_self_message_width(
+    message: &SequenceMessage,
+    layout: &SequenceLayout,
+    chars: &SequenceChars,
+) -> usize {
+    let has_filled_half_stem = [message.source_marker, message.target_marker]
+        .into_iter()
+        .filter_map(|marker| chars.arrow_left(marker))
+        .any(|glyph| glyph.lineward_stem.is_some());
+    if has_filled_half_stem {
+        layout.self_message_width.max(4)
+    } else {
+        layout.self_message_width
+    }
 }
 
 fn paint_central_decorations(
@@ -587,5 +655,97 @@ fn invalid_message_geometry() -> AsciiError {
     AsciiError::UnsupportedFeature {
         diagram_type: "sequence",
         feature: "message geometry",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::options::AsciiRenderOptions;
+    use crate::resource::AsciiResourceLimitId;
+    use crate::sequence::text::blank_line;
+
+    fn narrow_self_layout() -> SequenceLayout {
+        SequenceLayout {
+            participant_widths: vec![3],
+            participant_centers: vec![2],
+            total_width: 5,
+            message_spacing: 5,
+            self_message_width: 2,
+            width_profile: TerminalWidthProfile::Unicode,
+        }
+    }
+
+    fn filled_half_self_message() -> SequenceMessage {
+        SequenceMessage {
+            model_index: 0,
+            from: 0,
+            to: 0,
+            label: String::new(),
+            wrap: false,
+            style: SequenceLineStyle::Solid,
+            source_marker: SequenceArrowHead::None,
+            target_marker: SequenceArrowHead::FilledHalfTop,
+            direction: SequenceMessageDirection::Forward,
+            central_decoration: SequenceCentralDecoration::None,
+        }
+    }
+
+    #[test]
+    fn narrow_filled_half_self_message_uses_one_exact_geometry_for_admission_and_paint() {
+        let layout = narrow_self_layout();
+        let message = filled_half_self_message();
+        let options = AsciiRenderOptions::ascii()
+            .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 30)
+            .unwrap();
+        let chars = SequenceChars::for_options(&options);
+        let mut resources = ResourceContext::new(options.resources);
+        let prepared =
+            prepare_self_message_rows(&message, &layout, &chars, &[true], &mut resources)
+                .expect("the exact 10x3 self-message extent should be admitted");
+
+        assert_eq!(prepared.extent().materialized_width(), 10);
+        assert_eq!(prepared.extent().height(), 3);
+        assert_eq!(prepared.geometry.materialized_width, 10);
+        let padded = prepared
+            .geometry
+            .pad_line(
+                blank_line(6, layout.width_profile, &resources).unwrap(),
+                prepared.geometry.loop_needed,
+            )
+            .unwrap();
+        assert_eq!(padded.len(), prepared.geometry.materialized_width);
+
+        let lines = render_self_message(
+            prepared,
+            &message,
+            &layout,
+            &chars,
+            MessageActorState::new(&[0], &[true], &[]),
+            &mut resources,
+        )
+        .expect("the admitted self-message should paint from the same geometry");
+        assert_eq!(lines.len(), 3);
+        assert!(lines.iter().any(|line| line.text().contains("/|")));
+
+        let below = AsciiRenderOptions::ascii()
+            .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 29)
+            .unwrap();
+        let mut resources = ResourceContext::new(below.resources);
+        let error = prepare_self_message_rows(
+            &message,
+            &layout,
+            &SequenceChars::for_options(&below),
+            &[true],
+            &mut resources,
+        )
+        .expect_err("the 10x3 self-message must reject a 29-cell grid limit");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxGridCells
+                    && details.actual == 30
+                    && details.max == 29
+        ));
     }
 }

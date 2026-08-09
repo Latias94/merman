@@ -627,9 +627,10 @@ fn push_sequence_participant(
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
 ) -> Result<()> {
-    let Some(actor) = model.actors.get(id) else {
-        return Ok(());
-    };
+    let actor = model.actors.get(id).ok_or(AsciiError::UnsupportedFeature {
+        diagram_type: "sequence",
+        feature: "actor order",
+    })?;
     let raw_label = if actor.description.is_empty() {
         if actor.name.is_empty() {
             id

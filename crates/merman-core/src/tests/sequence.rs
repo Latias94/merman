@@ -765,7 +765,7 @@ link a: Tests @ https://tests.contoso.com/?svc=alice@contoso.com
 }
 
 #[test]
-fn parse_diagram_sequence_allows_keyword_like_actor_ids() {
+fn parse_diagram_sequence_limits_keyword_like_actor_ids_to_id_states() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram
 participant AS as AppService
@@ -773,9 +773,7 @@ participant DB as Store
 participant END as End Service
 participant loop as Loop Service
 participant RECT as Rectangle Worker
-AS->>DB: get recorded file timestamps
-END->>RECT: uppercase keyword id can send
-loop->>AS: lowercase keyword id can send when followed by a signal"#;
+AS->>DB: get recorded file timestamps"#;
 
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
@@ -791,10 +789,398 @@ loop->>AS: lowercase keyword id can send when followed by a signal"#;
     let msgs = res.model["messages"].as_array().unwrap();
     assert_eq!(msgs[0]["from"], json!("AS"));
     assert_eq!(msgs[0]["to"], json!("DB"));
-    assert_eq!(msgs[1]["from"], json!("END"));
-    assert_eq!(msgs[1]["to"], json!("RECT"));
-    assert_eq!(msgs[2]["from"], json!("loop"));
-    assert_eq!(msgs[2]["to"], json!("AS"));
+    assert_eq!(msgs.len(), 1);
+
+    for statement in [
+        "loop->>B: reserved source",
+        "A->>loop: reserved target",
+        "END->>B: case-insensitive reserved source",
+        "A->>RECT: case-insensitive reserved target",
+        "note-taker->>B: keyword-prefixed source",
+        "A->>off: reserved target",
+    ] {
+        let text = format!("sequenceDiagram\n{statement}");
+        assert!(
+            block_on(engine.parse_diagram(&text, ParseOptions::default())).is_err(),
+            "pinned INITIAL keywords must precede implicit ACTOR scanning for {statement:?}"
+        );
+    }
+}
+
+#[test]
+fn parse_diagram_sequence_id_states_precede_title_line_lexing() {
+    let engine = Engine::new();
+    let text = r#"sequenceDiagram
+participant title worker
+activate title worker
+deactivate title worker
+destroy title worker"#;
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert!(res.model["actors"].get("title worker").is_some());
+    assert!(res.model["destroyedActors"].get("title worker").is_some());
+    let messages = res.model["messages"].as_array().unwrap();
+    assert!(messages.iter().any(|message| {
+        message["type"] == json!(17) && message["from"] == json!("title worker")
+    }));
+    assert!(messages.iter().any(|message| {
+        message["type"] == json!(18) && message["from"] == json!("title worker")
+    }));
+}
+
+#[test]
+fn parse_diagram_sequence_preserves_mermaid_valid_spaced_actor_ids() {
+    let engine = Engine::new();
+    let text = r#"sequenceDiagram
+participant cron job
+participant data svc
+participant data=svc as Data Service
+participant as worker
+participant 客户 服务
+participant 数据 库
+cron job->>data svc: run
+data svc-->>cron job: done
+cron job->>customer-notifier: notify
+customer-notifier-->>data=svc: stored
+as worker->>data svc: reserved prefix
+客户 服务->>数据 库: 查询"#;
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+
+    let actors = res.model["actors"].as_object().unwrap();
+    for actor in [
+        "cron job",
+        "data svc",
+        "data=svc",
+        "as worker",
+        "customer-notifier",
+        "客户 服务",
+        "数据 库",
+    ] {
+        assert!(actors.contains_key(actor), "missing actor {actor:?}");
+    }
+    assert_eq!(actors["cron job"]["description"], json!("cron job"));
+    assert_eq!(actors["data svc"]["description"], json!("data svc"));
+    assert_eq!(actors["data=svc"]["description"], json!("Data Service"));
+
+    let messages = res.model["messages"].as_array().unwrap();
+    let endpoints = messages
+        .iter()
+        .map(|message| {
+            (
+                message["from"].as_str().unwrap(),
+                message["to"].as_str().unwrap(),
+                message["message"].as_str().unwrap(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        endpoints,
+        vec![
+            ("cron job", "data svc", "run"),
+            ("data svc", "cron job", "done"),
+            ("cron job", "customer-notifier", "notify"),
+            ("customer-notifier", "data=svc", "stored"),
+            ("as worker", "data svc", "reserved prefix"),
+            ("客户 服务", "数据 库", "查询"),
+        ]
+    );
+
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
+        .unwrap()
+        .expect("sequence editor facts");
+    for actor in ["cron job", "data svc", "客户 服务", "数据 库"] {
+        let symbol = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == actor)
+            .unwrap_or_else(|| panic!("missing editor symbol {actor:?}"));
+        assert_eq!(&text[symbol.selection.start..symbol.selection.end], actor);
+    }
+}
+
+#[test]
+fn parse_diagram_sequence_keeps_pinned_spaced_alias_boundary() {
+    let engine = Engine::new();
+    let text = "sequenceDiagram\nparticipant cron job as Cron";
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let actors = res.model["actors"].as_object().unwrap();
+
+    assert_eq!(actors.len(), 1);
+    assert_eq!(
+        actors["cron job as Cron"]["description"],
+        json!("cron job as Cron")
+    );
+}
+
+#[test]
+fn parse_diagram_sequence_rejects_config_on_spaced_declaration_ids() {
+    let engine = Engine::new();
+
+    for actor in [
+        "cron job",
+        "cron\u{a0}job",
+        "data=svc",
+        "api-xray",
+        "api\u{feff}svc",
+    ] {
+        let text = format!("sequenceDiagram\nparticipant {actor}@{{ \"type\": \"database\" }}");
+        assert!(
+            block_on(engine.parse_diagram(&text, ParseOptions::default())).is_err(),
+            "config must not extend the pinned declaration-ID grammar for {actor:?}"
+        );
+    }
+
+    let valid = "sequenceDiagram\nparticipant api\u{85}svc@{ \"type\": \"database\" }";
+    let parsed = block_on(engine.parse_diagram(valid, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert!(parsed.model["actors"].get("api\u{85}svc").is_some());
+}
+
+#[test]
+fn parse_diagram_sequence_requires_whitespace_before_alias_after_config() {
+    let engine = Engine::new();
+
+    let invalid = "sequenceDiagram\nparticipant A@{ \"type\": \"database\" }as Label";
+    assert!(
+        block_on(engine.parse_diagram(invalid, ParseOptions::default())).is_err(),
+        "the pinned CONFIG state requires whitespace before its AS transition"
+    );
+
+    let valid = "sequenceDiagram\nparticipant A@{ \"type\": \"database\" }\u{feff}as\u{a0}Label";
+    let parsed = block_on(engine.parse_diagram(valid, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["actors"]["A"]["description"], json!("Label"));
+}
+
+#[test]
+fn parse_diagram_sequence_preserves_empty_alias_descriptions() {
+    let engine = Engine::new();
+    let text = concat!(
+        "sequenceDiagram\n",
+        "participant A as\n",
+        "participant B@{ \"type\": \"database\" } as\n",
+    );
+
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["actors"]["A"]["description"], json!(""));
+    assert_eq!(parsed.model["actors"]["B"]["description"], json!(""));
+    assert_eq!(parsed.model["actors"]["B"]["type"], json!("database"));
+}
+
+#[test]
+fn parse_diagram_sequence_rejects_invalid_actor_token_extensions() {
+    let engine = Engine::new();
+
+    for statement in [
+        "A()B->>C: embedded central marker",
+        "foo--bar->>C: bare double dash source",
+        "A->>foo--bar: bare double dash target",
+        "left of-worker->>B: relative-note keyword source",
+        "A->>right of-worker: relative-note keyword target",
+    ] {
+        let text = format!("sequenceDiagram\n{statement}");
+        assert!(
+            block_on(engine.parse_diagram(&text, ParseOptions::default())).is_err(),
+            "pinned Mermaid rejects the private actor token extension {statement:?}"
+        );
+    }
+
+    let valid = "sequenceDiagram\nA() ->>B: spaced central suffix";
+    assert!(
+        block_on(engine.parse_diagram(valid, ParseOptions::default())).is_ok(),
+        "a terminal central marker may be separated from its signal by inline whitespace"
+    );
+}
+
+#[test]
+fn parse_diagram_sequence_preserves_comment_markers_inside_actor_tokens() {
+    let engine = Engine::new();
+    let text = r#"sequenceDiagram
+participant C#
+participant A%%tag
+C#->>B#tag: hash ids
+A%%tag-->>B%%tag: percent comment
+😀%%tag->>B: emoji percent id"#;
+
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let actors = parsed.model["actors"].as_object().unwrap();
+    for actor in ["C#", "A%%tag", "B#tag", "😀%%tag", "B"] {
+        assert!(actors.contains_key(actor), "missing actor {actor:?}");
+    }
+    assert!(!actors.contains_key("B%%tag"));
+
+    let messages = parsed.model["messages"].as_array().unwrap();
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0]["from"], json!("C#"));
+    assert_eq!(messages[0]["to"], json!("B#tag"));
+    assert_eq!(messages[1]["from"], json!("😀%%tag"));
+    assert_eq!(messages[1]["to"], json!("B"));
+}
+
+#[test]
+fn parse_diagram_sequence_keeps_percent_text_in_exclusive_line_states() {
+    let engine = Engine::new();
+    let text = r#"sequenceDiagram
+participant A as B%%tag
+loop A%%tag
+A->>A: work%%item
+end"#;
+
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["actors"]["A"]["description"], json!("B%%tag"));
+    let messages = parsed.model["messages"].as_array().unwrap();
+    assert!(
+        messages.iter().any(|message| {
+            message["type"] == json!(10) && message["message"] == json!("A%%tag")
+        })
+    );
+    assert!(messages.iter().any(|message| {
+        message["from"] == json!("A") && message["message"] == json!("work%%item")
+    }));
+}
+
+#[test]
+fn parse_diagram_sequence_preserves_distinct_id_and_actor_character_sets() {
+    let engine = Engine::new();
+    let text = r#"sequenceDiagram
+participant C++
+participant api(v2)
+participant api-xray
+activate api-xray
+deactivate api-xray
+alice@example.com->>data@example.com: mail"#;
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let actors = res.model["actors"].as_object().unwrap();
+    for actor in [
+        "C++",
+        "api(v2)",
+        "api-xray",
+        "alice@example.com",
+        "data@example.com",
+    ] {
+        assert!(actors.contains_key(actor), "missing actor {actor:?}");
+    }
+
+    let messages = res.model["messages"].as_array().unwrap();
+    assert!(messages.iter().any(|message| {
+        message["from"] == json!("alice@example.com")
+            && message["to"] == json!("data@example.com")
+            && message["message"] == json!("mail")
+    }));
+}
+
+#[test]
+fn parse_diagram_sequence_preserves_spaced_actor_statement_contexts() {
+    let engine = Engine::new();
+    let text = r#"sequenceDiagram
+participant cron job
+participant data svc
+activate cron job
+deactivate cron job
+cron job->>+data svc: inline start
+data svc-->>-cron job: inline end
+links cron job: { "Docs": "https://example.com/cron" }
+properties data svc: {"class": "service"}
+details cron job: {"owner": "platform"}
+destroy cron job
+data svc--xcron job: stop"#;
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let actors = res.model["actors"].as_object().unwrap();
+    assert_eq!(
+        actors["cron job"]["links"]["Docs"],
+        json!("https://example.com/cron")
+    );
+    assert_eq!(actors["data svc"]["properties"]["class"], json!("service"));
+    assert!(res.model["destroyedActors"].get("cron job").is_some());
+
+    let messages = res.model["messages"].as_array().unwrap();
+    assert!(
+        messages.iter().any(|message| {
+            message["type"] == json!(17) && message["from"] == json!("cron job")
+        })
+    );
+    assert!(
+        messages.iter().any(|message| {
+            message["type"] == json!(18) && message["from"] == json!("cron job")
+        })
+    );
+    assert!(messages.iter().any(|message| {
+        message["from"] == json!("data svc")
+            && message["to"] == json!("cron job")
+            && message["message"] == json!("stop")
+    }));
+}
+
+#[test]
+fn parse_diagram_sequence_accepts_pinned_unicode_whitespace_boundaries() {
+    let engine = Engine::new();
+    let text = "sequenceDiagram\ntitle\u{a0}Unicode spacing\nparticipant A\nNote left of\u{a0}A: left\nNote right of\u{a0}A: right";
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(res.model["title"], json!("Unicode spacing"));
+    let notes = res.model["notes"].as_array().unwrap();
+    assert_eq!(notes.len(), 2);
+    assert_eq!(notes[0]["message"], json!("left"));
+    assert_eq!(notes[1]["message"], json!("right"));
+}
+
+#[test]
+fn parse_diagram_sequence_keeps_fragment_labels_with_arrows_out_of_actor_scanning() {
+    let engine = Engine::new();
+    let text = r#"sequenceDiagram
+participant cron job
+participant data svc
+participant worker as Worker -> primary
+alt cache hit
+cron job->>data svc: hit
+else fall back -> origin: yes
+cron job->>data svc: miss
+end"#;
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let actors = res.model["actors"].as_object().unwrap();
+    assert_eq!(actors.len(), 3);
+    assert!(!actors.contains_key("else fall back"));
+    assert_eq!(actors["worker"]["description"], json!("Worker -> primary"));
+
+    let messages = res.model["messages"].as_array().unwrap();
+    assert_eq!(
+        messages
+            .iter()
+            .filter(|message| message["type"] == json!(0))
+            .count(),
+        2
+    );
+    assert!(messages.iter().any(|message| {
+        message["type"] == json!(13) && message["message"] == json!("fall back -> origin: yes")
+    }));
 }
 
 #[test]

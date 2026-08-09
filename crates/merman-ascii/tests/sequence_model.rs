@@ -1,9 +1,9 @@
 use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions, AsciiRgb,
-    render_model, render_sequence as render_sequence_model,
+    TerminalWidthProfile, render_model, render_sequence as render_sequence_model,
 };
 use merman_core::diagrams::sequence::{
-    SequenceActor, SequenceBox, SequenceDiagramRenderModel, SequenceMessage,
+    SequenceActor, SequenceAutonumber, SequenceBox, SequenceDiagramRenderModel, SequenceMessage,
     SequenceMessagePayload, SequenceNote,
 };
 use merman_core::{Engine, ParseOptions, RenderSemanticModel};
@@ -22,6 +22,7 @@ const LINETYPE_PAR_AND: i32 = 20;
 const LINETYPE_PAR_END: i32 = 21;
 const LINETYPE_RECT_START: i32 = 22;
 const LINETYPE_RECT_END: i32 = 23;
+const LINETYPE_AUTONUMBER: i32 = 26;
 const LINETYPE_CRITICAL_START: i32 = 27;
 const LINETYPE_CRITICAL_OPTION: i32 = 28;
 const LINETYPE_CRITICAL_END: i32 = 29;
@@ -481,6 +482,12 @@ fn message(from: Option<&str>, to: Option<&str>, message_type: i32) -> SequenceM
     }
 }
 
+fn empty_message(message_type: i32) -> SequenceMessage {
+    let mut message = message(None, None, message_type);
+    message.message = SequenceMessagePayload::Text(String::new());
+    message
+}
+
 #[test]
 fn sequence_golden_unicode_fixtures_match_upstream() {
     for path in fixture_cases("sequence") {
@@ -914,6 +921,17 @@ fn sequence_activations_render_from_typed_model() {
         rendered.contains("│ Working"),
         "messages should still render while a participant is active:\n{rendered}"
     );
+}
+
+#[test]
+fn sequence_global_wrap_does_not_invalidate_empty_activation_records() {
+    let rendered = render_sequence(
+        "%%{wrap}%%\nsequenceDiagram\nparticipant A\nparticipant B\nactivate B\nA->>B: Work\ndeactivate B",
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("global wrapping is harmless metadata on empty activation records");
+
+    assert!(rendered.contains("Work") && rendered.contains('┃'));
 }
 
 #[test]
@@ -1661,7 +1679,7 @@ fn sequence_rect_par_over_empty_sections_render_visible_lifeline_rows() {
     model
         .messages
         .push(message(None, None, LINETYPE_RECT_START));
-    model.messages.push(message(None, None, LINETYPE_RECT_END));
+    model.messages.push(empty_message(LINETYPE_RECT_END));
     cases.push(("rect", model));
 
     let mut model = basic_sequence_model();
@@ -1669,7 +1687,7 @@ fn sequence_rect_par_over_empty_sections_render_visible_lifeline_rows() {
     model
         .messages
         .push(message(None, None, LINETYPE_PAR_OVER_START));
-    model.messages.push(message(None, None, LINETYPE_PAR_END));
+    model.messages.push(empty_message(LINETYPE_PAR_END));
     cases.push(("par_over", model));
 
     for (keyword, model) in cases {
@@ -1696,7 +1714,7 @@ fn sequence_rect_par_over_malformed_ordering_is_explicitly_unsupported() {
         .messages
         .push(message(None, None, LINETYPE_RECT_START));
     model.messages.push(message(Some("A"), Some("B"), 0));
-    model.messages.push(message(None, None, LINETYPE_PAR_END));
+    model.messages.push(empty_message(LINETYPE_PAR_END));
     cases.push(model);
 
     let mut model = basic_sequence_model();
@@ -1705,7 +1723,7 @@ fn sequence_rect_par_over_malformed_ordering_is_explicitly_unsupported() {
         .messages
         .push(message(None, None, LINETYPE_PAR_OVER_START));
     model.messages.push(message(Some("A"), Some("B"), 0));
-    model.messages.push(message(None, None, LINETYPE_RECT_END));
+    model.messages.push(empty_message(LINETYPE_RECT_END));
     cases.push(model);
 
     for model in cases {
@@ -1756,21 +1774,21 @@ fn sequence_empty_control_block_sections_render_visible_lifeline_rows() {
     model
         .messages
         .push(message(None, None, LINETYPE_LOOP_START));
-    model.messages.push(message(None, None, LINETYPE_LOOP_END));
+    model.messages.push(empty_message(LINETYPE_LOOP_END));
     cases.push(("loop", model, None));
 
     let mut model = basic_sequence_model();
     add_sequence_participant(&mut model, "B");
     model.messages.push(message(None, None, LINETYPE_ALT_START));
     model.messages.push(message(None, None, LINETYPE_ALT_ELSE));
-    model.messages.push(message(None, None, LINETYPE_ALT_END));
+    model.messages.push(empty_message(LINETYPE_ALT_END));
     cases.push(("alt", model, Some("else")));
 
     let mut model = basic_sequence_model();
     add_sequence_participant(&mut model, "B");
     model.messages.push(message(None, None, LINETYPE_PAR_START));
     model.messages.push(message(None, None, LINETYPE_PAR_AND));
-    model.messages.push(message(None, None, LINETYPE_PAR_END));
+    model.messages.push(empty_message(LINETYPE_PAR_END));
     cases.push(("par", model, Some("and")));
 
     let mut model = basic_sequence_model();
@@ -1781,9 +1799,7 @@ fn sequence_empty_control_block_sections_render_visible_lifeline_rows() {
     model
         .messages
         .push(message(None, None, LINETYPE_CRITICAL_OPTION));
-    model
-        .messages
-        .push(message(None, None, LINETYPE_CRITICAL_END));
+    model.messages.push(empty_message(LINETYPE_CRITICAL_END));
     cases.push(("critical", model, Some("option")));
 
     for (keyword, model, separator) in cases {
@@ -1958,7 +1974,7 @@ fn sequence_box_with_lifecycle_and_mirror_keeps_boundaries() {
         placement: None,
         central_connection: 0,
     });
-    model.messages.push(message(None, None, LINETYPE_LOOP_END));
+    model.messages.push(empty_message(LINETYPE_LOOP_END));
     model.created_actors.insert("C".to_string(), 1);
     model.destroyed_actors.insert("C".to_string(), 3);
 
@@ -2188,6 +2204,156 @@ A--)A: Self async"#,
 }
 
 #[test]
+fn sequence_ascii_half_arrows_preserve_filled_and_open_semantics() {
+    let signal_row = |signal: &str| {
+        let rendered = render_sequence(
+            &format!("sequenceDiagram\nparticipant A\nparticipant B\nA{signal}B: Same"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap_or_else(|error| panic!("{signal:?} should render: {error}"));
+        rendered
+            .lines()
+            .nth(first_line_index_containing(&rendered, "Same") + 1)
+            .unwrap_or_else(|| panic!("missing signal row for {signal:?}:\n{rendered}"))
+            .to_string()
+    };
+
+    for (filled, open, filled_glyph) in [
+        ("-|\\", "-\\\\", "|\\"),
+        ("-|/", "-//", "|/"),
+        ("/|-", "//-", "/|"),
+        ("\\|-", "\\\\-", "\\|"),
+        ("--|\\", "--\\\\", "|\\"),
+        ("--|/", "--//", "|/"),
+        ("/|--", "//--", "/|"),
+        ("\\|--", "\\\\--", "\\|"),
+    ] {
+        let filled_row = signal_row(filled);
+        let open_row = signal_row(open);
+        assert_ne!(
+            filled_row, open_row,
+            "filled and open half arrows must not collide for {filled:?}/{open:?}"
+        );
+        assert!(
+            filled_row.contains(filled_glyph),
+            "filled half arrow {filled:?} should render {filled_glyph:?}:\n{filled_row}"
+        );
+        assert!(
+            !open_row.contains(filled_glyph),
+            "open half arrow {open:?} must not synthesize a filled stem:\n{open_row}"
+        );
+    }
+}
+
+#[test]
+fn sequence_ascii_self_half_arrow_expands_a_narrow_loop_without_losing_fill() {
+    let mut options = AsciiRenderOptions::ascii();
+    options.sequence_self_message_width = 2;
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A\nA-|\\A: Self filled half",
+        &options,
+    )
+    .expect("filled self half-arrow should expand its effective loop width");
+
+    assert!(rendered.contains("Self filled half"));
+    assert!(
+        rendered.contains("/|"),
+        "self half-arrow should retain its filled stem:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_cjk_half_arrows_preserve_fill_in_reverse_and_narrow_self_paths() {
+    let mut options = AsciiRenderOptions::unicode();
+    options.terminal_width_profile = TerminalWidthProfile::Cjk;
+
+    let signal_row = |signal: &str| {
+        let rendered = render_sequence(
+            &format!(
+                "sequenceDiagram\nparticipant 客户 服务\nparticipant 数据 库\n数据 库{signal}客户 服务: 同步"
+            ),
+            &options,
+        )
+        .unwrap_or_else(|error| panic!("CJK reverse signal {signal:?} should render: {error}"));
+        assert!(rendered.contains("客户 服务") && rendered.contains("数据 库"));
+        rendered
+            .lines()
+            .nth(first_line_index_containing(&rendered, "同步") + 1)
+            .unwrap_or_else(|| panic!("missing reverse signal row for {signal:?}:\n{rendered}"))
+            .to_string()
+    };
+
+    let filled = signal_row("-|\\");
+    let open = signal_row("-\\\\");
+    assert_ne!(filled, open);
+    assert!(
+        filled.contains("/|"),
+        "CJK reverse filled half-arrow should retain its stem:\n{filled}"
+    );
+    assert!(
+        !open.contains("/|"),
+        "CJK reverse open half-arrow must remain unfilled:\n{open}"
+    );
+
+    options.sequence_self_message_width = 2;
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant 客户 服务\n客户 服务-|\\客户 服务: 自调用",
+        &options,
+    )
+    .expect("a narrow CJK self-message should expand from the shared geometry");
+    assert!(rendered.contains("客户 服务") && rendered.contains("自调用"));
+    assert!(rendered.contains("/|"));
+}
+
+#[test]
+fn sequence_spaced_actor_names_render_without_splitting_participants() {
+    let input = r#"sequenceDiagram
+participant cron job
+participant data svc
+cron job ()->>() data svc: run
+Note over cron job,data svc: nightly
+data svc-->>cron job: done"#;
+
+    for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+        let rendered = render_sequence(input, &options)
+            .expect("Mermaid-valid spaced actor names should render");
+        for expected in ["cron job", "data svc", "run", "nightly", "done"] {
+            assert!(
+                rendered.contains(expected),
+                "spaced sequence should retain {expected:?}:\n{rendered}"
+            );
+        }
+    }
+}
+
+#[test]
+fn sequence_distinct_id_and_actor_character_sets_render_without_loss() {
+    let input = r#"sequenceDiagram
+participant C++
+participant api(v2)
+participant api-xray
+activate api-xray
+alice@example.com->>data@example.com: mail
+deactivate api-xray"#;
+
+    let rendered = render_sequence(input, &AsciiRenderOptions::ascii())
+        .expect("pinned ID and ACTOR character sets should survive terminal projection");
+    for expected in [
+        "C++",
+        "api(v2)",
+        "api-xray",
+        "alice@example.com",
+        "data@example.com",
+        "mail",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "sequence output should retain {expected:?}:\n{rendered}"
+        );
+    }
+}
+
+#[test]
 fn sequence_central_marker_records_are_suppressed_without_skipping_autonumbers() {
     let rendered = render_sequence(
         r#"sequenceDiagram
@@ -2382,7 +2548,7 @@ fn sequence_actor_links_do_not_block_ascii_rendering() {
 }
 
 #[test]
-fn sequence_actor_properties_are_explicitly_unsupported() {
+fn sequence_actor_properties_are_accepted_as_omitted_metadata() {
     let mut model = basic_sequence_model();
     model
         .actors
@@ -2391,7 +2557,239 @@ fn sequence_actor_properties_are_explicitly_unsupported() {
         .properties
         .insert("icon".to_string(), "@clock".into());
 
-    assert_unsupported_sequence_model(model, "actor properties");
+    let rendered = render_sequence_model(&model, &AsciiRenderOptions::ascii())
+        .expect("actor presentation properties should not block ASCII rendering");
+    assert!(rendered.contains('A'));
+    assert!(!rendered.contains("icon"));
+    assert!(!rendered.contains("@clock"));
+}
+
+#[test]
+fn sequence_actor_order_must_be_a_complete_actor_permutation() {
+    let mut unknown = basic_sequence_model();
+    unknown.actor_order = vec!["missing".to_string()];
+
+    let mut duplicate = basic_sequence_model();
+    add_sequence_participant(&mut duplicate, "B");
+    duplicate.actor_order = vec!["A".to_string(), "A".to_string()];
+
+    let mut omitted = basic_sequence_model();
+    add_sequence_participant(&mut omitted, "B");
+    omitted.actor_order = vec!["A".to_string()];
+
+    for model in [unknown, duplicate, omitted] {
+        assert_unsupported_sequence_model(model, "actor order");
+    }
+}
+
+#[test]
+fn sequence_empty_actor_order_uses_deterministic_model_order() {
+    let mut model = basic_sequence_model();
+    add_sequence_participant(&mut model, "B");
+    model.actor_order.clear();
+    model.messages.push(message(Some("A"), Some("B"), 0));
+
+    let rendered = render_sequence_model(&model, &AsciiRenderOptions::ascii())
+        .expect("an absent compatibility actor order should use the ordered actor map");
+    assert!(rendered.contains("A") && rendered.contains("B") && rendered.contains("Hi"));
+}
+
+#[test]
+fn sequence_note_projection_must_match_the_typed_note_facts() {
+    let mut base = basic_sequence_model();
+    add_sequence_participant(&mut base, "B");
+    base.notes.push(SequenceNote {
+        actor: vec!["A", "B"].into(),
+        message: "typed note".to_string(),
+        placement: 2,
+        wrap: true,
+    });
+    base.messages.push(SequenceMessage {
+        id: "n0".to_string(),
+        from: Some("A".to_string()),
+        to: Some("B".to_string()),
+        message_type: 2,
+        message: SequenceMessagePayload::Text("typed note".to_string()),
+        wrap: true,
+        activate: false,
+        placement: Some(2),
+        central_connection: 0,
+    });
+
+    let mut wrong_text = base.clone();
+    wrong_text.messages[0].message = SequenceMessagePayload::Text("other note".to_string());
+
+    let mut wrong_actor = base.clone();
+    wrong_actor.messages[0].to = Some("A".to_string());
+
+    let mut wrong_placement = base.clone();
+    wrong_placement.messages[0].placement = Some(1);
+
+    let mut missing_message = base.clone();
+    missing_message.messages.clear();
+
+    for model in [wrong_text, wrong_actor, wrong_placement, missing_message] {
+        assert_unsupported_sequence_model(model, "note model consistency");
+    }
+}
+
+#[test]
+fn sequence_note_messages_are_the_compatibility_source_when_notes_are_absent() {
+    let mut model = basic_sequence_model();
+    let mut note = message(Some("A"), Some("A"), 2);
+    note.message = SequenceMessagePayload::Text("message-owned note".to_string());
+    note.placement = Some(1);
+    model.messages.push(note);
+
+    let rendered = render_sequence_model(&model, &AsciiRenderOptions::ascii())
+        .expect("ordered note messages should remain drawable without the duplicate notes vector");
+    assert!(rendered.contains("message-owned note"));
+}
+
+#[test]
+fn sequence_message_payload_must_match_its_semantic_kind() {
+    let autonumber = SequenceMessagePayload::Autonumber(SequenceAutonumber {
+        start: Some(5.0),
+        step: Some(2.0),
+        visible: true,
+    });
+
+    let mut signal_payload = basic_sequence_model();
+    let mut signal = message(Some("A"), Some("A"), 0);
+    signal.message = autonumber.clone();
+    signal_payload.messages.push(signal);
+
+    let mut note_payload = basic_sequence_model();
+    let mut note = message(Some("A"), Some("A"), 2);
+    note.message = autonumber;
+    note.placement = Some(1);
+    note_payload.messages.push(note);
+
+    let mut autonumber_payload = basic_sequence_model();
+    autonumber_payload
+        .messages
+        .push(message(None, None, LINETYPE_AUTONUMBER));
+
+    for model in [signal_payload, note_payload, autonumber_payload] {
+        assert_unsupported_sequence_model(model, "message payload shape");
+    }
+}
+
+#[test]
+fn sequence_structural_message_records_reject_unconsumed_fields() {
+    let mut activation_with_target = basic_sequence_model();
+    let mut activation = message(Some("A"), Some("A"), 17);
+    activation.message = SequenceMessagePayload::Text(String::new());
+    activation_with_target.messages.push(activation);
+
+    let mut activation_with_text = basic_sequence_model();
+    activation_with_text
+        .messages
+        .push(message(Some("A"), None, 17));
+
+    let mut control_end_with_text = basic_sequence_model();
+    control_end_with_text
+        .messages
+        .push(message(None, None, LINETYPE_LOOP_END));
+
+    let mut note_without_placement = basic_sequence_model();
+    note_without_placement
+        .messages
+        .push(message(Some("A"), Some("A"), 2));
+
+    for model in [
+        activation_with_target,
+        activation_with_text,
+        control_end_with_text,
+        note_without_placement,
+    ] {
+        assert_unsupported_sequence_model(model, "message record shape");
+    }
+}
+
+#[test]
+fn sequence_autonumber_values_must_be_finite() {
+    for (start, step) in [
+        (Some(f64::NAN), Some(1.0)),
+        (Some(1.0), Some(f64::INFINITY)),
+        (Some(f64::NEG_INFINITY), None),
+    ] {
+        let mut model = basic_sequence_model();
+        model.messages.push(SequenceMessage {
+            id: "auto".to_string(),
+            from: None,
+            to: None,
+            message_type: LINETYPE_AUTONUMBER,
+            message: SequenceMessagePayload::Autonumber(SequenceAutonumber {
+                start,
+                step,
+                visible: true,
+            }),
+            wrap: false,
+            activate: false,
+            placement: None,
+            central_connection: 0,
+        });
+        assert_unsupported_sequence_model(model, "autonumber values");
+    }
+}
+
+#[test]
+fn sequence_central_records_must_bind_their_visible_signal() {
+    let central_record = || {
+        let mut record = message(Some("A"), None, 59);
+        record.message = SequenceMessagePayload::Text(String::new());
+        record
+    };
+
+    let mut orphan = basic_sequence_model();
+    orphan.messages.push(central_record());
+    assert_unsupported_sequence_model(orphan, "central connection records");
+
+    let mut missing = basic_sequence_model();
+    let mut decorated = message(Some("A"), Some("A"), 0);
+    decorated.central_connection = 59;
+    decorated.activate = true;
+    missing.messages.push(decorated.clone());
+    assert_unsupported_sequence_model(missing, "central connection records");
+
+    let mut valid = basic_sequence_model();
+    valid.messages.push(decorated);
+    valid.messages.push(central_record());
+    let rendered = render_sequence_model(&valid, &AsciiRenderOptions::unicode())
+        .expect("a central record bound to its visible signal should render");
+    assert!(rendered.contains("Hi") && rendered.contains('○'));
+}
+
+#[test]
+fn sequence_activated_signals_must_bind_their_target_state_event() {
+    let mut missing = basic_sequence_model();
+    add_sequence_participant(&mut missing, "B");
+    missing.messages.push(SequenceMessage {
+        activate: true,
+        ..message(Some("A"), Some("B"), 0)
+    });
+
+    let mut wrong_actor = missing.clone();
+    let mut wrong_start = message(Some("A"), None, 17);
+    wrong_start.message = SequenceMessagePayload::Text(String::new());
+    wrong_actor.messages.push(wrong_start);
+
+    for model in [missing, wrong_actor] {
+        assert_unsupported_sequence_model(model, "activation state events");
+    }
+
+    let mut valid = basic_sequence_model();
+    add_sequence_participant(&mut valid, "B");
+    valid.messages.push(SequenceMessage {
+        activate: true,
+        ..message(Some("A"), Some("B"), 0)
+    });
+    let mut start = message(Some("B"), None, 17);
+    start.message = SequenceMessagePayload::Text(String::new());
+    valid.messages.push(start);
+    render_sequence_model(&valid, &AsciiRenderOptions::unicode())
+        .expect("a matching activation record should satisfy direct-model admission");
 }
 
 #[test]
@@ -2407,7 +2805,7 @@ fn sequence_other_model_features_are_explicitly_unsupported() {
 
     let mut model = basic_sequence_model();
     model.messages.push(message(None, None, 0));
-    cases.push((model, "control messages"));
+    cases.push((model, "message record shape"));
 
     let mut model = basic_sequence_model();
     model.messages.push(message(Some("A"), Some("B"), 0));
