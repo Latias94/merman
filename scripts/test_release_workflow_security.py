@@ -1026,6 +1026,10 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         workflow = parse_workflow_structure(WORKFLOW_ROOT / "release-preflight.yml")
         preflight = workflow_job(workflow, "versions-and-packages")
         install = workflow_step(preflight, name="Install cargo-about")
+        fetch = workflow_step(
+            preflight,
+            name="Prefetch locked Rust dependencies for offline license reports",
+        )
         verify = workflow_step(
             preflight,
             name="Verify exact Rust dependency license reports",
@@ -1033,6 +1037,11 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
         self.assertEqual(install["uses"], "taiki-e/install-action@v2")
         self.assertEqual(install["with"]["tool"], "cargo-about@0.9.1")
+        self.assertEqual(fetch["run"], "cargo fetch --locked")
+        self.assertLess(
+            preflight["steps"].index(fetch),
+            preflight["steps"].index(verify),
+        )
         self.assertEqual(
             verify["run"],
             "python3 scripts/generate-rust-license-report.py --check",

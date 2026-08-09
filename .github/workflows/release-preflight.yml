@@ -145,6 +145,9 @@ jobs:
       - name: Verify CLI installation metadata
         run: python3 scripts/cli_installation_contract.py
 
+      - name: Prefetch locked Rust dependencies for offline license reports
+        run: cargo fetch --locked
+
       - name: Verify exact Rust dependency license reports
         run: python3 scripts/generate-rust-license-report.py --check
 
