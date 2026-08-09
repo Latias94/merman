@@ -1483,13 +1483,18 @@ pub(crate) fn render_parallel_self_loops(
         .iter()
         .enumerate()
         .try_fold(0usize, |height, (index, rows)| {
+            let label_row_count = if index == 0 {
+                rows.label_lines.len()
+            } else {
+                rows.tail_label_row_count()
+            };
             let loop_height = if index == 0 {
                 resources.checked_grid_add(
                     relation_box.height(),
-                    resources.checked_grid_add(rows.label_lines.len(), 1)?,
+                    resources.checked_grid_add(label_row_count, 1)?,
                 )?
             } else {
-                resources.checked_grid_add(rows.label_lines.len(), 1)?
+                resources.checked_grid_add(label_row_count, 1)?
             };
             resources.checked_grid_add(height, loop_height)
         })?;
@@ -1570,6 +1575,12 @@ impl RelationSelfLoopRows {
     pub(crate) fn with_tail_prefix(mut self, tail_prefix: RelationGraphLine) -> Self {
         self.tail_prefix = Some(tail_prefix);
         self
+    }
+
+    fn tail_label_row_count(&self) -> usize {
+        self.label_lines
+            .len()
+            .max(usize::from(self.tail_prefix.is_some()))
     }
 }
 
@@ -1740,27 +1751,40 @@ fn tail_self_loop_lines(
         vertical,
     } = loop_rows;
     let mut lines = Vec::new();
-    let capacity = label_lines
-        .len()
+    let label_row_count = label_lines.len().max(usize::from(tail_prefix.is_some()));
+    let capacity = label_row_count
         .checked_add(1)
         .ok_or_else(|| work_overflow(resources))?;
     lines
         .try_reserve_exact(capacity)
         .map_err(|_| layout_allocation_failed())?;
-    for (label_index, label_line) in label_lines.into_iter().enumerate() {
-        let prefix = if label_index == 0 {
-            tail_prefix.as_ref().map(RelationGraphLine::shared)
-        } else {
-            None
-        };
-        lines.push(self_loop_label_line(
-            relation_box,
-            prefix,
-            label_line,
-            vertical,
-            geometry,
-            resources,
-        )?);
+    if label_lines.is_empty() {
+        if let Some(prefix) = tail_prefix {
+            lines.push(self_loop_label_line(
+                relation_box,
+                Some(prefix),
+                RelationGraphLine::try_plain("", relation_box.width_profile(), resources)?,
+                vertical,
+                geometry,
+                resources,
+            )?);
+        }
+    } else {
+        for (label_index, label_line) in label_lines.into_iter().enumerate() {
+            let prefix = if label_index == 0 {
+                tail_prefix.as_ref().map(RelationGraphLine::shared)
+            } else {
+                None
+            };
+            lines.push(self_loop_label_line(
+                relation_box,
+                prefix,
+                label_line,
+                vertical,
+                geometry,
+                resources,
+            )?);
+        }
     }
     lines.push(self_loop_bottom_line(
         bottom_marker,

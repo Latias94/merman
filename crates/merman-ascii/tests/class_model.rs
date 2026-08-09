@@ -803,6 +803,82 @@ class Outside",
 }
 
 #[test]
+fn class_parser_namespace_direction_controls_relationless_siblings() {
+    let render = |direction| {
+        render_class(
+            &format!(
+                "classDiagram\ndirection {direction}\nnamespace Domain {{\n  class A\n  class B\n}}"
+            ),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap_or_else(|error| panic!("namespace direction {direction} should render: {error}"))
+    };
+
+    let tb = render("TB");
+    let bt = render("BT");
+    let lr = render("LR");
+    let rl = render("RL");
+
+    assert!(
+        first_line_index_containing(&tb, "| A |") < first_line_index_containing(&tb, "| B |"),
+        "TB should preserve namespace declaration order:\n{tb}"
+    );
+    assert!(
+        first_line_index_containing(&bt, "| B |") < first_line_index_containing(&bt, "| A |"),
+        "BT should reverse namespace declaration order:\n{bt}"
+    );
+
+    let (lr_a_line, lr_a_column) = line_and_column_containing(&lr, "| A |");
+    let (lr_b_line, lr_b_column) = line_and_column_containing(&lr, "| B |");
+    assert_eq!(
+        lr_a_line, lr_b_line,
+        "LR siblings should share a row:\n{lr}"
+    );
+    assert!(
+        lr_a_column < lr_b_column,
+        "LR should preserve namespace declaration order:\n{lr}"
+    );
+
+    let (rl_a_line, rl_a_column) = line_and_column_containing(&rl, "| A |");
+    let (rl_b_line, rl_b_column) = line_and_column_containing(&rl, "| B |");
+    assert_eq!(
+        rl_a_line, rl_b_line,
+        "RL siblings should share a row:\n{rl}"
+    );
+    assert!(
+        rl_b_column < rl_a_column,
+        "RL should reverse namespace declaration order:\n{rl}"
+    );
+}
+
+#[test]
+fn class_parser_bottom_up_namespace_external_relation_orders_the_target_first() {
+    let rendered = render_class(
+        concat!(
+            "classDiagram\n",
+            "direction BT\n",
+            "namespace Domain {\n",
+            "  class A\n",
+            "}\n",
+            "class B\n",
+            "A --> B : leaves",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("bottom-up external namespace relation should render");
+
+    assert!(
+        first_line_index_containing(&rendered, "| B |")
+            < first_line_index_containing(&rendered, "| A |"),
+        "BT should place the external target before the namespace source:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("relations:") && rendered.contains("leaves"),
+        "external namespace relation must remain visible in the summary:\n{rendered}"
+    );
+}
+
+#[test]
 fn class_parser_namespace_internal_relationship_routes_inside_container() {
     let rendered = render_class(
         "classDiagram
@@ -1251,6 +1327,48 @@ fn class_parser_parallel_self_relations_share_single_box_loop() {
             "    v......+\n",
         )
     );
+}
+
+#[test]
+fn class_parser_self_relation_preserves_endpoint_labels_and_both_markers() {
+    let rendered = render_class(
+        "classDiagram\nclass Node\nNode \"source\" <|--|> \"target\" Node : recursive",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("two-sided self class relation should render");
+
+    for expected in ["source", "recursive", "target", "^", "v"] {
+        assert!(
+            rendered.contains(expected),
+            "self relation should preserve {expected:?} near its loop:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn class_parser_parallel_self_relations_preserve_unlabelled_source_markers() {
+    let rendered = render_class(
+        concat!(
+            "classDiagram\n",
+            "class Node\n",
+            "Node <|--|> Node : first\n",
+            "Node <|--|> Node",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("parallel two-sided self class relations should render");
+
+    assert_eq!(
+        rendered.matches("| Node |").count(),
+        1,
+        "parallel self relations must share one class box:\n{rendered}"
+    );
+    for marker in ['^', 'v'] {
+        assert!(
+            rendered.matches(marker).count() >= 2,
+            "each parallel self relation must preserve its {marker:?} marker:\n{rendered}"
+        );
+    }
 }
 
 #[test]

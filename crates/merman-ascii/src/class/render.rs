@@ -457,6 +457,12 @@ fn render_namespaced_class_diagram(
         append_class_summary_lines(&mut lines, &summary_rows, options, resources)?;
         return render_class_document_lines(lines, options, resources);
     }
+    if direction.is_reversed() {
+        let mut lines =
+            reversed_class_box_stack_lines(&boxes, options.terminal_width_profile, resources)?;
+        append_class_summary_lines(&mut lines, &summary_rows, options, resources)?;
+        return render_class_document_lines(lines, options, resources);
+    }
 
     relation_graph::render_stacked_boxes_with_relation_summary(
         &boxes,
@@ -748,17 +754,39 @@ fn render_namespace_box(
         children,
         context.options,
         context.charset,
+        context.direction,
         resources,
     )
 }
 
 fn render_namespace_container_box(
     namespace: &Namespace,
-    children: Vec<RenderedClassBox>,
+    mut children: Vec<RenderedClassBox>,
     options: &AsciiRenderOptions,
     charset: ClassCharset,
+    direction: ClassDirection,
     resources: &mut ResourceContext,
 ) -> Result<RenderedClassBox> {
+    if direction.is_horizontal() && children.len() > 1 {
+        let lines = relation_graph::render_horizontal_box_strip_lines(
+            &children,
+            direction.horizontal_direction(),
+            CLASS_LEVEL_HORIZONTAL_GAP,
+            options.terminal_width_profile,
+            resources,
+        )?;
+        let contents = RelationGraphBox::from_rendered_lines(
+            format!("{}::contents", namespace.id),
+            lines,
+            options.terminal_width_profile,
+            resources,
+        )?;
+        children.clear();
+        children.push(contents);
+    } else if direction == ClassDirection::BottomUp {
+        children.reverse();
+    }
+
     let title = namespace_title(namespace);
     let inner_gap = options.box_border_padding;
     let inner_width = children
@@ -2143,20 +2171,59 @@ fn self_loop_rows_for_class_layout(
         width_profile,
         resources,
     )?;
-    let label_lines = match layout.label.as_ref() {
-        Some(label) => {
-            relation_graph::label_lines_with_role(label, AsciiColorRole::EdgeLabel, resources)?
-        }
-        None => Vec::new(),
-    };
+    let label_line_count = layout
+        .top_endpoint_label
+        .as_ref()
+        .map(RelationGraphLabel::line_count)
+        .unwrap_or(0)
+        .checked_add(
+            layout
+                .label
+                .as_ref()
+                .map(RelationGraphLabel::line_count)
+                .unwrap_or(0),
+        )
+        .and_then(|count| {
+            count.checked_add(
+                layout
+                    .bottom_endpoint_label
+                    .as_ref()
+                    .map(RelationGraphLabel::line_count)
+                    .unwrap_or(0),
+            )
+        })
+        .ok_or_else(|| work_overflow(resources))?;
+    let mut label_lines = Vec::new();
+    label_lines
+        .try_reserve_exact(label_line_count)
+        .map_err(|_| layout_allocation_failed())?;
+    for label in [
+        layout.top_endpoint_label.as_ref(),
+        layout.label.as_ref(),
+        layout.bottom_endpoint_label.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        label_lines.extend(relation_graph::label_lines_with_role(
+            label,
+            AsciiColorRole::EdgeLabel,
+            resources,
+        )?);
+    }
 
-    Ok(relation_graph::RelationSelfLoopRows::new(
+    let tail_prefix = layout.top_marker.is_some().then(|| top_marker.clone());
+    let rows = relation_graph::RelationSelfLoopRows::new(
         top_marker,
         label_lines,
         bottom_marker,
         horizontal_line_char(layout.line, charset),
         line_char(layout.line, charset),
-    ))
+    );
+    Ok(match tail_prefix {
+        Some(prefix) => rows.with_tail_prefix(prefix),
+        None => rows,
+    })
 }
 
 fn class_route_profile(layout: &RelationLayout<'_>) -> relation_graph::LayeredRelationRouteProfile {
