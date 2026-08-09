@@ -1,0 +1,177 @@
+name: Release Independent Crate (crates.io)
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Independently versioned crate to publish"
+        required: true
+        type: choice
+        options:
+          - roughr-merman
+      version:
+        description: "Exact crate version to publish, for example 0.12.2"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate-inputs:
+    runs-on: ubuntu-24.04
+    outputs:
+      package: ${{ steps.release.outputs.package }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Validate independent crate inputs
+        id: release
+        env:
+          DISPATCH_PACKAGE: ${{ inputs.package }}
+          DISPATCH_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          fail() {
+            echo "::error::$1" >&2
+            exit 1
+          }
+
+          [[ "$DISPATCH_PACKAGE" == "roughr-merman" ]] || fail "package is not an admitted independently versioned crate."
+          canonical_version="$(python3 scripts/release-version.py canonical --version "$DISPATCH_VERSION")" || fail "version is not canonical SemVer."
+          [[ "$canonical_version" == "$DISPATCH_VERSION" ]] || fail "version must not use a v prefix."
+
+          {
+            printf 'package=%s\n' "$DISPATCH_PACKAGE"
+            printf 'version=%s\n' "$canonical_version"
+          } >> "$GITHUB_OUTPUT"
+
+  preflight:
+    needs: validate-inputs
+    runs-on: ubuntu-24.04
+    outputs:
+      source_sha: ${{ steps.source.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Pin independent crate source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
+          printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
+          echo "Verified source commit: $source_sha"
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+      - name: Verify and dry-run independent crate
+        env:
+          PACKAGE: ${{ needs.validate-inputs.outputs.package }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          actual_version="$(cargo pkgid -p "$PACKAGE" | sed -E 's/.*[#@]//')"
+          if [[ "$actual_version" != "$VERSION" ]]; then
+            echo "::error::$PACKAGE version $actual_version does not match requested version $VERSION." >&2
+            exit 1
+          fi
+
+          python3 - "$PACKAGE" <<'PY'
+          from pathlib import Path
+          import sys
+          import tomllib
+
+          package = sys.argv[1]
+          manifest = tomllib.loads(Path("Cargo.toml").read_text(encoding="utf-8"))
+          admitted = manifest["workspace"]["metadata"]["merman-release"][
+              "independent-packages"
+          ]
+          if package not in admitted:
+              raise SystemExit(f"{package} is not listed as an independent package")
+          PY
+
+          env -u CARGO_REGISTRY_TOKEN cargo publish -p "$PACKAGE" --locked --dry-run --registry crates-io
+
+  publish:
+    needs: [validate-inputs, preflight]
+    runs-on: ubuntu-24.04
+    environment: crates.io
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+          persist-credentials: false
+      - name: Verify pinned independent crate source
+        env:
+          SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_sha="$(git rev-parse HEAD)"
+          [[ "$current_sha" == "$SOURCE_SHA" ]] || {
+            echo "::error::Publish checkout $current_sha does not match preflight source $SOURCE_SHA." >&2
+            exit 1
+          }
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+      - name: Upload independent crate to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          PACKAGE: ${{ needs.validate-inputs.outputs.package }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          [[ -n "${CARGO_REGISTRY_TOKEN:-}" ]] || {
+            echo "::error::CARGO_REGISTRY_TOKEN is not configured in the crates.io environment." >&2
+            exit 1
+          }
+
+          actual_version="$(cargo pkgid -p "$PACKAGE" | sed -E 's/.*[#@]//')"
+          if [[ "$actual_version" != "$VERSION" ]]; then
+            echo "::error::$PACKAGE version $actual_version does not match preflight version $VERSION." >&2
+            exit 1
+          fi
+
+          crate_version_available() {
+            local crate="$1"
+            local version="$2"
+            local lookup_dir="${RUNNER_TEMP:-/tmp}"
+            (
+              cd "$lookup_dir"
+              cargo info "$crate@$version" --registry crates-io >/dev/null 2>&1
+            )
+          }
+
+          if crate_version_available "$PACKAGE" "$VERSION"; then
+            echo "Skipping $PACKAGE $VERSION because it is already published."
+            exit 0
+          fi
+
+          cargo publish -p "$PACKAGE" --locked --no-verify --registry crates-io --token "$CARGO_REGISTRY_TOKEN"
+
+          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            if crate_version_available "$PACKAGE" "$VERSION"; then
+              echo "$PACKAGE $VERSION is visible in crates.io."
+              exit 0
+            fi
+            if [[ "$attempt" == 12 ]]; then
+              echo "::error::$PACKAGE $VERSION was published but did not become visible in crates.io in time." >&2
+              exit 1
+            fi
+            sleep 15
+          done

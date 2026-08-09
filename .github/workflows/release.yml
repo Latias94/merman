@@ -44,44 +44,129 @@ on:
   push:
     tags:
       - '**[0-9]+.[0-9]+.[0-9]+*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing release tag to recover, for example v0.8.0-alpha.4"
+        required: true
+        type: string
+      recovery_sha:
+        description: "Optional immutable 40-character recovery commit derived from the release tag"
+        required: false
+        default: ""
+        type: string
 
 jobs:
+  validate-inputs:
+    runs-on: "ubuntu-24.04"
+    outputs:
+      recovery_sha: ${{ steps.release.outputs.recovery_sha }}
+      release_source: ${{ steps.release.outputs.release_source }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Validate release inputs
+        id: release
+        env:
+          DISPATCH_RECOVERY_SHA: ${{ inputs.recovery_sha }}
+          DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
+          EVENT_NAME: ${{ github.event_name }}
+          GIT_REF: ${{ github.ref }}
+          GIT_REF_NAME: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          fail() {
+            echo "::error::$1" >&2
+            exit 1
+          }
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            RELEASE_TAG="$DISPATCH_RELEASE_TAG"
+            RECOVERY_SHA="$DISPATCH_RECOVERY_SHA"
+          else
+            [[ "$GIT_REF" == refs/tags/* ]] || fail "release push must originate from a tag."
+            RELEASE_TAG="$GIT_REF_NAME"
+            RECOVERY_SHA=""
+          fi
+
+          [[ "$RELEASE_TAG" != *$'\n'* && "$RELEASE_TAG" != *$'\r'* ]] || fail "release_tag must be a single line."
+          [[ "$RECOVERY_SHA" != *$'\n'* && "$RECOVERY_SHA" != *$'\r'* ]] || fail "recovery_sha must be a single line."
+          canonical_version="$(python3 scripts/release-version.py canonical --version "$RELEASE_TAG")" || fail "release_tag is not canonical SemVer."
+          [[ "$RELEASE_TAG" == "v$canonical_version" ]] || fail "release_tag must be v$canonical_version."
+
+          if [[ -n "$RECOVERY_SHA" ]]; then
+            [[ "$EVENT_NAME" == "workflow_dispatch" ]] || fail "recovery_sha is only valid for manual recovery."
+            [[ "$RECOVERY_SHA" =~ ^[0-9a-f]{40}$ ]] || fail "recovery_sha must be an immutable lowercase 40-character commit SHA."
+            RELEASE_SOURCE="$RECOVERY_SHA"
+          else
+            RELEASE_SOURCE="refs/tags/$RELEASE_TAG"
+          fi
+
+          {
+            printf 'recovery_sha=%s\n' "$RECOVERY_SHA"
+            printf 'release_source=%s\n' "$RELEASE_SOURCE"
+            printf 'release_tag=%s\n' "$RELEASE_TAG"
+            printf 'version=%s\n' "$canonical_version"
+          } >> "$GITHUB_OUTPUT"
+
   # Run 'dist plan' (or host) to determine what tasks we need to do
   plan:
+    needs: validate-inputs
     runs-on: "ubuntu-24.04"
     outputs:
       val: ${{ steps.plan.outputs.manifest }}
-      tag: ${{ steps.release.outputs.tag }}
-      version: ${{ steps.release.outputs.version }}
-      source_sha: ${{ steps.release.outputs.source_sha }}
+      tag: ${{ needs.validate-inputs.outputs.release_tag }}
+      version: ${{ needs.validate-inputs.outputs.version }}
+      source_sha: ${{ steps.source.outputs.source_sha }}
+      tag_sha: ${{ steps.source.outputs.tag_sha }}
       prerelease: ${{ steps.plan.outputs.prerelease }}
       publishing: ${{ true }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
+          ref: ${{ needs.validate-inputs.outputs.release_source }}
+          fetch-depth: 0
           persist-credentials: false
           submodules: recursive
-      - name: Validate release tag
-        id: release
+      - name: Verify release source
+        id: source
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RECOVERY_SHA: ${{ needs.validate-inputs.outputs.recovery_sha }}
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
           set -euo pipefail
-          canonical_version="$(python3 scripts/release-version.py canonical --version "$RELEASE_TAG")"
-          if [[ "$RELEASE_TAG" != "v$canonical_version" ]]; then
-            echo "::error::Release tag must be v$canonical_version." >&2
-            exit 1
+          python3 scripts/release-version.py check --version "$VERSION"
+          source_sha="$(git rev-parse HEAD)"
+          tag_sha="$(git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}")"
+
+          if [[ -z "$RECOVERY_SHA" ]]; then
+            if [[ "$source_sha" != "$tag_sha" ]]; then
+              echo "::error::Release tag does not resolve to the checked-out commit." >&2
+              exit 1
+            fi
+          else
+            if [[ "$source_sha" != "$RECOVERY_SHA" ]]; then
+              echo "::error::Recovery checkout $source_sha does not match requested commit $RECOVERY_SHA." >&2
+              exit 1
+            fi
+            git show "$WORKFLOW_SHA:scripts/verify-release-recovery.py" | python3 - \
+              --repo-root "$GITHUB_WORKSPACE" \
+              --tag-sha "$tag_sha" \
+              --source-sha "$source_sha" \
+              --trusted-sha "$WORKFLOW_SHA"
           fi
-          python3 scripts/release-version.py check --version "$RELEASE_TAG"
-          source_sha="$(git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}")"
-          if [[ "$source_sha" != "$(git rev-parse HEAD)" ]]; then
-            echo "::error::Release tag does not resolve to the checked-out commit." >&2
-            exit 1
-          fi
+
           {
-            printf 'tag=%s\n' "$RELEASE_TAG"
-            printf 'version=%s\n' "$canonical_version"
             printf 'source_sha=%s\n' "$source_sha"
+            printf 'tag_sha=%s\n' "$tag_sha"
           } >> "$GITHUB_OUTPUT"
       - name: Install dist
         shell: bash
@@ -97,7 +182,7 @@ jobs:
           sh "$installer"
       - id: plan
         env:
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
         run: |
           set -euo pipefail
           dist host --steps=create "--tag=$RELEASE_TAG" --output-format=json > plan-dist-manifest.json
@@ -142,6 +227,7 @@ jobs:
           git config --global core.longpaths true
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
+          ref: ${{ needs.plan.outputs.source_sha }}
           persist-credentials: false
           submodules: recursive
       - name: Install Rust non-interactively if not already installed
@@ -240,6 +326,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
+          ref: ${{ needs.plan.outputs.source_sha }}
           persist-credentials: false
           submodules: recursive
       - name: Download isolated local cargo-dist artifacts
@@ -481,6 +568,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         if: ${{ needs.plan.outputs.prerelease != 'true' }}
         with:
+          ref: ${{ needs.plan.outputs.source_sha }}
           persist-credentials: false
           submodules: recursive
       - name: Download verified release bundle
@@ -546,13 +634,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ needs.plan.outputs.tag }}
-          SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+          TAG_SHA: ${{ needs.plan.outputs.tag_sha }}
         shell: bash
         run: |
           set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null
           observed="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)"
-          if [[ "$observed" != "$SOURCE_SHA" ]]; then
+          if [[ "$observed" != "$TAG_SHA" ]]; then
             echo "::error::Release tag moved after artifact verification." >&2
             exit 1
           fi
@@ -586,13 +674,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ needs.plan.outputs.tag }}
-          SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+          TAG_SHA: ${{ needs.plan.outputs.tag_sha }}
         shell: bash
         run: |
           set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null
           observed="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)"
-          if [[ "$observed" != "$SOURCE_SHA" ]]; then
+          if [[ "$observed" != "$TAG_SHA" ]]; then
             echo "::error::Release tag moved after artifact verification." >&2
             exit 1
           fi
