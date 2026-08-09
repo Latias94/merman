@@ -13,9 +13,10 @@ use std::collections::{HashMap, HashSet, VecDeque, hash_map::Entry};
 use std::sync::Arc;
 
 use merman_core::diagrams::flowchart::{
-    FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowSubgraph,
-    FlowchartModel, FlowchartRenderLabelSources,
+    FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderLabelSources,
 };
+#[cfg(test)]
+use merman_core::diagrams::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 
 use super::config::{FlowchartConfigView, FlowchartLayoutSettings};
 use super::label::compute_bounds;
