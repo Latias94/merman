@@ -943,6 +943,108 @@ fn xychart_horizontal_line_series_draw_connected_paths() {
 }
 
 #[test]
+fn xychart_horizontal_linear_axis_labels_use_authored_sample_coordinates() {
+    let mut model = typed_xychart_model(
+        "horizontal",
+        XyChartAxisRenderModel::Linear {
+            title: String::new(),
+            min: Some(0.0),
+            max: Some(10.0),
+        },
+        0.0,
+        10.0,
+        vec![XyChartPlotRenderModel {
+            plot_type: XyChartPlotType::Line,
+            title: None,
+            values: vec![2.0, 5.0, 8.0],
+            data: vec![
+                ("0".to_string(), Some(2.0)),
+                ("4".to_string(), Some(5.0)),
+                ("10".to_string(), Some(8.0)),
+            ],
+            point_labels: Vec::new(),
+        }],
+    );
+    model.display.x_axis = XyChartAxisDisplayPolicy::default();
+
+    let rendered = render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+        .expect("horizontal linear samples should retain their authored x labels");
+    let labels = rendered
+        .lines()
+        .filter_map(|line| line.split_whitespace().next())
+        .collect::<Vec<_>>();
+
+    assert!(
+        labels.contains(&"4"),
+        "the x=4 sample was mislabeled:\n{rendered}"
+    );
+    assert!(
+        !labels.contains(&"5"),
+        "a generated midpoint tick must not replace the authored x=4 coordinate:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("values:"),
+        "a simple lossless horizontal plot should not need disclosure:\n{rendered}"
+    );
+}
+
+#[test]
+fn xychart_horizontal_unequal_linear_series_share_exact_sample_labels() {
+    let mut model = typed_xychart_model(
+        "horizontal",
+        XyChartAxisRenderModel::Linear {
+            title: String::new(),
+            min: Some(0.0),
+            max: Some(10.0),
+        },
+        0.0,
+        10.0,
+        vec![
+            XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Line,
+                title: Some("Sparse".to_string()),
+                values: vec![1.0, 9.0],
+                data: vec![("0".to_string(), Some(1.0)), ("10".to_string(), Some(9.0))],
+                point_labels: Vec::new(),
+            },
+            XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Line,
+                title: Some("Dense".to_string()),
+                values: vec![2.0, 4.0, 6.0, 8.0],
+                data: vec![
+                    ("0".to_string(), Some(2.0)),
+                    ("3".to_string(), Some(4.0)),
+                    ("7".to_string(), Some(6.0)),
+                    ("10".to_string(), Some(8.0)),
+                ],
+                point_labels: Vec::new(),
+            },
+        ],
+    );
+    model.display.x_axis = XyChartAxisDisplayPolicy::default();
+
+    let rendered = render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+        .expect("unequal linear series should share an exact horizontal axis");
+    let first_tokens = rendered
+        .lines()
+        .filter_map(|line| line.split_whitespace().next())
+        .collect::<Vec<_>>();
+
+    for expected in ["0", "3", "7", "10"] {
+        assert!(
+            first_tokens.contains(&expected),
+            "missing authored x={expected} row label:\n{rendered}"
+        );
+    }
+    for expected in [
+        "values: * Sparse: 0=1, 10=9",
+        "values: * Dense: 0=2, 3=4, 7=6, 10=8",
+    ] {
+        assert!(rendered.contains(expected), "{rendered}");
+    }
+}
+
+#[test]
 fn xychart_unicode_line_topology_resolves_rounded_corners() {
     let model = typed_xychart_model(
         "vertical",

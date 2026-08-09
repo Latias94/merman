@@ -409,6 +409,7 @@ pub(super) struct TerminalChartPlan {
     pub(super) y_range: ValueRange,
     pub(super) series: Vec<SeriesPlan>,
     pub(super) category_labels: Vec<String>,
+    pub(super) horizontal_axis_labels: Vec<String>,
     pub(super) slot_count: usize,
     pub(super) bar_series_count: usize,
     pub(super) line_series_count: usize,
@@ -463,6 +464,13 @@ impl TerminalChartPlan {
                 resources,
             )?);
         }
+        let horizontal_axis_labels = build_horizontal_axis_labels(
+            &x_axis,
+            &category_labels,
+            slot_count,
+            &series,
+            resources,
+        )?;
 
         let y_range = build_value_range(&model.y_axis, &series, resources)?;
         Ok(Self {
@@ -470,6 +478,7 @@ impl TerminalChartPlan {
             y_range,
             series,
             category_labels,
+            horizontal_axis_labels,
             slot_count,
             bar_series_count: bar_lane,
             line_series_count,
@@ -533,7 +542,12 @@ impl TerminalChartPlan {
             return Ok(true);
         }
 
-        for (index, category) in self.category_labels.iter().enumerate() {
+        let axis_labels = if horizontal {
+            &self.horizontal_axis_labels
+        } else {
+            &self.category_labels
+        };
+        for (index, category) in axis_labels.iter().enumerate() {
             resources.charge_layout_work(1)?;
             if !horizontal
                 && display_width_with_profile(category, plot_area.width_profile)
@@ -541,7 +555,7 @@ impl TerminalChartPlan {
             {
                 return Ok(true);
             }
-            for previous in &self.category_labels[..index] {
+            for previous in &axis_labels[..index] {
                 resources.charge_layout_work(1)?;
                 if category == previous {
                     return Ok(true);
@@ -737,6 +751,93 @@ fn axis_labels(
                 }
             }
         }
+    }
+    Ok(labels)
+}
+
+fn build_horizontal_axis_labels(
+    axis: &AxisPlan,
+    fallback_labels: &[String],
+    slot_count: usize,
+    series: &[SeriesPlan],
+    resources: &mut ResourceContext,
+) -> Result<Vec<String>> {
+    let mut labels = Vec::new();
+    labels
+        .try_reserve_exact(fallback_labels.len())
+        .map_err(|_| AsciiError::AllocationFailed {
+            phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+        })?;
+    labels.extend(fallback_labels.iter().cloned());
+    if !matches!(axis, AxisPlan::Linear { .. }) {
+        return Ok(labels);
+    }
+
+    let mut authored_x_by_slot = Vec::new();
+    authored_x_by_slot
+        .try_reserve_exact(slot_count)
+        .map_err(|_| AsciiError::AllocationFailed {
+            phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+        })?;
+    for _ in 0..slot_count {
+        authored_x_by_slot.push(Vec::<&str>::new());
+    }
+
+    for series in series {
+        resources.charge_layout_work(1)?;
+        for datum in &series.data {
+            resources.charge_layout_work(1)?;
+            let x = datum.x.trim();
+            if x.is_empty() {
+                continue;
+            }
+            let Some(slot_values) = authored_x_by_slot.get_mut(datum.slot) else {
+                return Err(resources.grid_overflow());
+            };
+            let mut duplicate = false;
+            for existing in slot_values.iter().copied() {
+                resources.charge_layout_work(1)?;
+                if existing == x {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if duplicate {
+                continue;
+            }
+            slot_values
+                .try_reserve_exact(1)
+                .map_err(|_| AsciiError::AllocationFailed {
+                    phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+                })?;
+            slot_values.push(x);
+        }
+    }
+
+    for (slot, authored_values) in authored_x_by_slot.into_iter().enumerate() {
+        if authored_values.is_empty() {
+            continue;
+        }
+        let mut label = String::new();
+        for (index, x) in authored_values.into_iter().enumerate() {
+            resources.charge_layout_work(1)?;
+            let separator = if index == 0 { "" } else { " / " };
+            let additional = separator
+                .len()
+                .checked_add(x.len())
+                .ok_or_else(|| resources.work_overflow())?;
+            label
+                .try_reserve_exact(additional)
+                .map_err(|_| AsciiError::AllocationFailed {
+                    phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+                })?;
+            label.push_str(separator);
+            label.push_str(x);
+        }
+        let Some(target) = labels.get_mut(slot) else {
+            return Err(resources.grid_overflow());
+        };
+        *target = label;
     }
     Ok(labels)
 }

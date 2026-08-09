@@ -246,7 +246,7 @@ fn render_horizontal(
         options,
     } = context;
     let width_profile = options.terminal_width_profile;
-    let categories = &plan.category_labels;
+    let categories = &plan.horizontal_axis_labels;
     let mut document_resources = resources.scoped();
     let resources = &mut document_resources;
     let mut out = ChartDocument::default();
