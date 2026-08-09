@@ -755,8 +755,9 @@ Task: task1, 2026-01-01, 1d
             .unwrap()
             .unwrap();
 
+        assert!(rendered.contains("Task [id=task1"), "{rendered}");
         assert!(
-            rendered.contains("  - Task [2026-01-01 -> 2026-01-02]"),
+            rendered.contains("range=2026-01-01 -> 2026-01-02"),
             "{rendered}"
         );
     }

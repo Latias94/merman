@@ -263,6 +263,7 @@ pub(crate) fn read_named_text_file(
     read_utf8(file, resource, limit, Some(length_hint)).map_err(CliError::auxiliary_input)
 }
 
+#[cfg(feature = "icons")]
 pub(crate) fn read_named_bytes_file(
     path: impl AsRef<Path>,
     label: &str,

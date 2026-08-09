@@ -1724,7 +1724,8 @@ mod tests {
         assert!(class.limits.iter().any(|limit| limit.contains("namespace")));
         assert!(class.evidence.iter().any(|evidence| {
             evidence.kind == "beautiful_mermaid_prior_art"
-                && evidence.source.contains("repo-ref/beautiful-mermaid")
+                && evidence.source
+                    == "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison"
         }));
 
         let er = ascii_capability(&capabilities, "er");
@@ -1741,7 +1742,8 @@ mod tests {
         assert_eq!(xychart.support_level, "partial");
         assert!(xychart.evidence.iter().any(|evidence| {
             evidence.kind == "beautiful_mermaid_prior_art"
-                && evidence.source.contains("xychart-ascii.test.ts")
+                && evidence.source
+                    == "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison"
         }));
 
         assert_eq!(capabilities.len(), 31);

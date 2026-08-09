@@ -95,6 +95,7 @@ pub(crate) fn read_bytes(
     )
 }
 
+#[cfg(feature = "icons")]
 pub(crate) fn read_bytes_with_limit(
     reader: impl Read,
     resource: impl Into<String>,
