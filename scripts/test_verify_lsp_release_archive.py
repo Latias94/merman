@@ -112,6 +112,19 @@ def response_frame(request_id: int, result: object) -> bytes:
     return f"Content-Length: {len(body)}\r\n\r\n".encode() + body
 
 
+def response_frame_with_headers(
+    request_id: int,
+    result: object,
+    *headers: str,
+) -> bytes:
+    body = json.dumps(
+        {"jsonrpc": "2.0", "id": request_id, "result": result},
+        separators=(",", ":"),
+    ).encode()
+    lines = [*headers, f"content-length:{len(body)}"]
+    return ("\r\n".join(lines) + "\r\n\r\n").encode("ascii") + body
+
+
 def notification_frame(method: str, params: object) -> bytes:
     body = json.dumps(
         {"jsonrpc": "2.0", "method": method, "params": params},
@@ -408,6 +421,44 @@ class LspRuntimeTests(unittest.TestCase):
                     ),
                     host_target_checker=lambda _target: True,
                 )
+
+    def test_runtime_contract_accepts_legal_header_representations(self) -> None:
+        output = response_frame_with_headers(
+            1,
+            {"capabilities": {}},
+            "Content-Type: application/vscode-jsonrpc; charset=utf-8",
+            "X-Trace-Id: smoke",
+        ) + response_frame_with_headers(2, None)
+
+        verifier.verify_runtime_contract(
+            Path("merman-lsp"),
+            target=LINUX_TARGET,
+            runner=lambda _binary, _frames: subprocess.CompletedProcess(
+                ["merman-lsp"], 0, stdout=output, stderr=b""
+            ),
+            host_target_checker=lambda _target: True,
+        )
+
+    def test_runtime_contract_rejects_duplicate_content_length(self) -> None:
+        body = b'{"jsonrpc":"2.0","id":1,"result":{"capabilities":{}}}'
+        output = (
+            f"Content-Length: {len(body)}\r\ncontent-length: {len(body)}\r\n\r\n".encode()
+            + body
+            + response_frame(2, None)
+        )
+
+        with self.assertRaisesRegex(
+            verifier.ArchiveVerificationError,
+            "more than one Content-Length",
+        ):
+            verifier.verify_runtime_contract(
+                Path("merman-lsp"),
+                target=LINUX_TARGET,
+                runner=lambda _binary, _frames: subprocess.CompletedProcess(
+                    ["merman-lsp"], 0, stdout=output, stderr=b""
+                ),
+                host_target_checker=lambda _target: True,
+            )
 
     def test_runtime_contract_rejects_duplicate_shutdown_response(self) -> None:
         output = valid_session_output() + response_frame(2, None)
