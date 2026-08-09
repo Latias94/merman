@@ -394,7 +394,20 @@ def verify_runtime_contract(
         raise ArchiveVerificationError(
             "initialize response result must contain a capabilities object"
         )
-    for message in messages[1:-1]:
+    shutdown: dict[str, object] | None = None
+    for message in messages[1:]:
+        if message.get("id") == 2:
+            if shutdown is not None:
+                raise ArchiveVerificationError(
+                    "LSP lifecycle emitted more than one shutdown response"
+                )
+            _require_response(
+                message,
+                request_id=2,
+                label="shutdown response",
+            )
+            shutdown = message
+            continue
         if (
             message.get("jsonrpc") != "2.0"
             or not isinstance(message.get("method"), str)
@@ -403,12 +416,8 @@ def verify_runtime_contract(
             raise ArchiveVerificationError(
                 "LSP lifecycle emitted an unexpected intermediate message"
             )
-    shutdown = messages[-1]
-    _require_response(
-        shutdown,
-        request_id=2,
-        label="shutdown response",
-    )
+    if shutdown is None:
+        raise ArchiveVerificationError("LSP lifecycle did not return a shutdown response")
     if shutdown["result"] is not None:
         raise ArchiveVerificationError("shutdown response result must be null")
 

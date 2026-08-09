@@ -1410,7 +1410,9 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn('"crates/merman-cli/Cargo.toml"', recovery_verifier)
         self.assertIn('"crates/merman-lsp/Cargo.toml"', recovery_verifier)
         self.assertIn('"scripts/test_verify_cli_release_archive.py"', recovery_verifier)
+        self.assertIn('"scripts/test_verify_lsp_release_archive.py"', recovery_verifier)
         self.assertIn('"scripts/verify_cli_release_archive.py"', recovery_verifier)
+        self.assertIn('"scripts/verify_lsp_release_archive.py"', recovery_verifier)
         self.assertIn(
             "changes Cargo semantics beyond package.metadata.dist.include",
             recovery_verifier,

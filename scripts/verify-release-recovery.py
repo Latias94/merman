@@ -15,7 +15,9 @@ RECOVERY_PATHS = (
     "crates/merman-cli/Cargo.toml",
     "crates/merman-lsp/Cargo.toml",
     "scripts/test_verify_cli_release_archive.py",
+    "scripts/test_verify_lsp_release_archive.py",
     "scripts/verify_cli_release_archive.py",
+    "scripts/verify_lsp_release_archive.py",
 )
 EXPECTED_DIST_INCLUDES = {
     "crates/merman-cli/Cargo.toml": [
@@ -39,7 +41,9 @@ EXPECTED_DIST_INCLUDES = {
 }
 TRUSTED_FILES = (
     "scripts/test_verify_cli_release_archive.py",
+    "scripts/test_verify_lsp_release_archive.py",
     "scripts/verify_cli_release_archive.py",
+    "scripts/verify_lsp_release_archive.py",
 )
 
 
