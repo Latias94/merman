@@ -18,7 +18,6 @@ pub(super) struct GraphGroupTopology<'a> {
     node_index_by_id: HashMap<&'a str, usize>,
     direct_group_index_by_node: HashMap<&'a str, usize>,
     parent_index_by_group: HashMap<usize, usize>,
-    container_group_indices_by_member: HashMap<&'a str, Vec<usize>>,
 }
 
 impl<'a> GraphGroupTopology<'a> {
@@ -49,8 +48,6 @@ impl<'a> GraphGroupTopology<'a> {
         try_reserve_hash_map(&mut parent_index_by_group, graph.groups.len())?;
         let mut direct_group_index_by_node = HashMap::new();
         try_reserve_hash_map(&mut direct_group_index_by_node, graph.nodes.len())?;
-        let mut container_group_indices_by_member = HashMap::<&str, Vec<usize>>::new();
-        try_reserve_hash_map(&mut container_group_indices_by_member, member_count)?;
 
         for (group_index, group) in graph.groups.iter().enumerate() {
             for member in &group.nodes {
@@ -63,11 +60,6 @@ impl<'a> GraphGroupTopology<'a> {
                         .entry(member.as_str())
                         .or_insert(group_index);
                 }
-                let containers = container_group_indices_by_member
-                    .entry(member.as_str())
-                    .or_default();
-                try_reserve_vec(containers, 1)?;
-                containers.push(group_index);
             }
         }
 
@@ -77,7 +69,6 @@ impl<'a> GraphGroupTopology<'a> {
             node_index_by_id,
             direct_group_index_by_node,
             parent_index_by_group,
-            container_group_indices_by_member,
         })
     }
 
@@ -159,11 +150,14 @@ impl<'a> GraphGroupTopology<'a> {
         let mut groups = HashSet::new();
         let mut stack = Vec::new();
         // A group endpoint is a compound node in its parent's scope; the group does not contain
-        // itself. Its parent memberships are already indexed under the group id.
-        if let Some(container_indices) = self.container_group_indices_by_member.get(endpoint) {
-            for group_index in container_indices.iter().copied() {
-                push_group_frame(&mut stack, group_index, 1, resources)?;
-            }
+        // itself. Nodes and groups both follow the same first-parent topology used by layout.
+        let direct_container = match self.endpoint_index(endpoint) {
+            Some(GraphEndpointIndex::Node(_)) => self.direct_node_group_index(endpoint),
+            Some(GraphEndpointIndex::Group(group_index)) => self.parent_group_index(group_index),
+            None => None,
+        };
+        if let Some(group_index) = direct_container {
+            push_group_frame(&mut stack, group_index, 1, resources)?;
         }
 
         while let Some((group_index, depth)) = stack.pop() {
@@ -171,21 +165,13 @@ impl<'a> GraphGroupTopology<'a> {
             if !groups.insert(group_index) {
                 continue;
             }
-            let Some(group) = self.graph.groups.get(group_index) else {
-                continue;
-            };
-            if let Some(parent_indices) = self
-                .container_group_indices_by_member
-                .get(group.id.as_str())
-            {
-                for parent_index in parent_indices.iter().copied() {
-                    push_group_frame(
-                        &mut stack,
-                        parent_index,
-                        next_nesting_depth(depth, resources)?,
-                        resources,
-                    )?;
-                }
+            if let Some(parent_index) = self.parent_group_index(group_index) {
+                push_group_frame(
+                    &mut stack,
+                    parent_index,
+                    next_nesting_depth(depth, resources)?,
+                    resources,
+                )?;
             }
         }
 

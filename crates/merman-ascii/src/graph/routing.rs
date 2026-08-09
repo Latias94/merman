@@ -1016,13 +1016,11 @@ impl<'layout> SceneOccupancy<'layout> {
             let crosses_reserved = self.protected.iter().any(|protected| {
                 let is_endpoint_port = protected.allows_endpoint_port(&owner.from, cell.coord)
                     || protected.allows_endpoint_port(&owner.to, cell.coord);
-                protected.shape.contains(cell.coord)
-                    && !is_endpoint_port
-                    && !(cell.segment == PlannedRouteSegment::Boundary
-                        && protected.kind == ProtectedKind::GroupBorder
-                        && protected.group_index.is_some_and(|group_index| {
-                            owner.boundary_group_indices.contains(&group_index)
-                        }))
+                let is_owned_group_border = protected.kind == ProtectedKind::GroupBorder
+                    && protected.group_index.is_some_and(|group_index| {
+                        owner.boundary_group_indices.contains(&group_index)
+                    });
+                protected.shape.contains(cell.coord) && !is_endpoint_port && !is_owned_group_border
             });
             if crosses_reserved {
                 return Ok(None);
