@@ -521,6 +521,36 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             build_job,
         )
 
+    def test_android_release_jobs_install_the_exact_pinned_ndk_revision(self) -> None:
+        release_jobs = [
+            (WORKFLOW_ROOT / "release-preflight.yml", "android-aar"),
+            (WORKFLOW_ROOT / "release-preflight.yml", "flutter-dry-run"),
+            (WORKFLOW_ROOT / "release-android.yml", "build"),
+            (WORKFLOW_ROOT / "release-flutter.yml", "build"),
+        ]
+
+        for workflow, job_id in release_jobs:
+            job = workflow_job(workflow_document(workflow), job_id)
+            install = workflow_step(job, name="Install Android NDK")
+            with self.subTest(workflow=workflow.name, job=job_id):
+                self.assertNotIn("uses", install)
+                self.assertEqual(install.get("shell"), "bash")
+                self.assertEqual(
+                    install["env"].get("ANDROID_NDK_VERSION"),
+                    "${{ steps.android-toolchain.outputs.ndk }}",
+                )
+                self.assertIn(
+                    'sdkmanager --install "ndk;${ANDROID_NDK_VERSION}"',
+                    install["run"],
+                )
+                self.assertIn(
+                    'echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/'
+                    '${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"',
+                    install["run"],
+                )
+                self.assertNotIn("nttld/setup-ndk", contract_text(job))
+                self.assertNotIn("steps.ndk.outputs.ndk-path", contract_text(job))
+
     def test_source_ref_checkouts_do_not_persist_credentials(self) -> None:
         for path in SOURCE_REF_WORKFLOWS:
             steps = checkout_steps(workflow_document(path))
