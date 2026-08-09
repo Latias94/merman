@@ -1,48 +1,27 @@
 # Changelog
 
-## 0.8.0-alpha.4 - Unreleased
+## 0.8.0-alpha.4 - 2026-08-09
+
+Corresponds to merman workspace release `0.8.0-alpha.4`. See the [alpha.3 to alpha.4 upgrade guide](../../docs/release/ALPHA3_TO_ALPHA4_UPGRADE_GUIDE.md) for the complete cross-surface migration.
 
 ### Breaking changes
 
-- Split the public SDK into a stateless `Merman` discovery/one-shot facade and a directly constructed, explicitly closeable `MermanEngine`. Removed `MermanReusableEngine`, `Merman.reusableEngine(...)`, the engine-owning `Merman` lifecycle, `dispose()`, and callback-specialized facade constructors without compatibility aliases.
-- Replaced constructor-level `textMeasurer:` arguments with immutable `MermanEngineServices`, which composes an optional host text measurer and `MermanIconPackSet`.
-- Require the current complete ABI 3 table, runtime catalog, schemas, and service constructor for every Flutter native-library entry point; historical partial producers are no longer accepted.
-- Replaced raw operation metadata maps with typed `MermanOperationMetadata` and the open `MermanOutputPlan` hierarchy. Read additive metadata through `rawJson`; unknown future plans are preserved as `MermanUnknownOutputPlan`.
-- Replaced the closed `MermanOperation` enum with a generated value object. Iterate `MermanOperation.knownValues` instead of `.values`; unknown runtime operation IDs remain discoverable but require an updated SDK before invocation.
-- Replaced the closed runtime resource-limit enum with the open `MermanResourceLimitId` value object. Compare stable IDs or generated constants and iterate `.knownValues`; resource profiles and caller-owned override IDs remain closed inputs.
-- Rebuilt the Dart FFI transport against the frozen ABI 3 minimum prefix. The pre-freeze layout digest and `engine_free` table slot are no longer accepted; discovery now uses the minimum-prefix digest and `engine_try_close`.
-- Replaced the prerelease ABI 2 wrapper with ABI 3 table discovery. Direct `merman_*` symbol lookup, manually maintained raw Dart FFI records, and ABI 2 compatibility paths are removed. Upgrade the Dart package and its bundled native artifacts together.
-- Moved host text measurement into reusable-engine services. The former post-construction callback installation API is removed.
-- Replaced format-specific option envelopes with generic `optionsJson` on `execute` and every convenience method. Request options deeply override the reusable engine baseline for one call; `runtime_policy` remains constructor-owned.
-- Replaced parser-backed document facts with their final schema 1 shape. Other versions are rejected before body decoding; remove `fact_source: "text_scan"` handling and consume parser-backed items with explicit unavailable bodies.
-- Renamed binding option fields `viewport_width` and `viewport_height` to `container_width` and `container_height`, and removed the legacy Flowchart ELK backend selector; update serialized `optionsJson` before upgrading.
-- Moved binding JSON environment selectors to `environment.text_measurement` and `environment.math_renderer`, semantic host colors to `presentation.theme`, raw Mermaid overrides to top-level `site_config`, and output policy to `svg`. The prerelease `host_theme` group and the old `layout.text_measurer` / `layout.math_renderer` fields are rejected.
-- Removed underscore and shorthand binding enum aliases plus `supportedHostThemePresets()`. Use documented kebab-case values and the open-ended typed `presentationCatalog()` result instead of a closed preset list.
-- Replaced the incompatible prerelease options grammar with Options JSON schema `2`. Generated resource builders now leave the profile unset by default so request overlays inherit their constructor ceiling, and only `MermanResourceOverrideId` values can be written as overrides.
+- Replaced the prerelease ABI 2 wrapper with generated ABI 3 table discovery. Upgrade the Dart package and all bundled native artifacts together; direct `merman_*` symbol lookup, manually maintained raw FFI records, and partial-table compatibility are no longer supported.
+- Split the public SDK into a stateless `Merman` discovery/one-shot facade and a directly constructed, explicitly closeable `MermanEngine`. Replace `MermanReusableEngine`, `Merman.reusableEngine(...)`, engine-owning `Merman` instances, `dispose()`, and callback-specialized facade constructors.
+- Moved host text measurement and icon packs into immutable constructor-owned `MermanEngineServices`. The post-construction callback API is removed; callback-enabled engines report typed `BUSY` or `REENTRANT` failures, and engine close is retryable and idempotent.
+- Replaced format-specific option envelopes with generic `optionsJson` and Options JSON schema `2`. Rename viewport fields to `container_width` / `container_height`, move text/math selectors under `environment`, move semantic theme values under `presentation.theme`, use top-level `site_config` and `svg`, remove the legacy Flowchart ELK selector, and use documented kebab-case values.
+- Replaced parser-backed document facts with their final schema 1 shape, raw operation metadata maps with typed `MermanOperationMetadata` / `MermanOutputPlan` values, and closed operation/resource enums with generated open value objects. Iterate `.knownValues`, preserve unknown output plans through `rawJson`, and use `presentationCatalog()` instead of `supportedHostThemePresets()`.
 
 ### Added
 
-- Added immutable `MermanIconPack` and `MermanIconPackSet.fromPacks` values plus borrowed pack-buffer construction through the ABI 3 service slot. Native engine construction transactionally validates packs, preserves structured icon-registry errors, and owns the parsed registry after return.
-- Added generated operation-metadata decoding, typed raster/PDF output plans, result-returning PNG/JPEG/PDF helpers, generic metadata dispatch, and named `analysisFactsJson` / `svgPlanJson` helpers.
-- Added generated option-group, payload-schema, operation, and constructor-service contract projections. Current runtime sections are required and validated strictly while their vocabularies remain additive.
-- Added retryable, deterministic, idempotent engine close semantics that release callback state only after confirmed native quiescence. Failed constructor rollback retains callback state instead of creating a dangling native callback.
-- Added opaque native result allocation-token ownership, typed BUSY and REENTRANT exceptions, optional immutable text measurement on reusable-engine construction, and ABI-compatible `openPath` loading.
-- Added ffigen-generated ABI 3 declarations, checked against the native table's version, digest,
-  and function pointers before use.
-- Added a strict flat `MermanRuntimeCatalog` that validates the loaded artifact's capability,
-  output, adapter, registry, resource, and text-measurement facts before enabling calls.
-- Added generic output execution and copied output bytes alongside Dart conveniences for
-  SVG, PNG, JPEG, PDF, ASCII, semantic/layout/analysis JSON, document analysis, and validation.
-- Added generated resource options so Flutter callers can choose `interactive`, `constrained`,
-  `trusted-native`, or `unbounded-for-trusted-input` without copying limit tables.
-- Restored typed and cached diagram, ASCII, parser/render, lint-rule, Mermaid-theme, and presentation metadata APIs through ABI 3 `metadata_collect`. Release consumers use the matching current table; historical partial-table compatibility is no longer an SDK contract.
+- Added validated `MermanRuntimeCatalog` discovery plus generated operation, payload, resource, metadata, and constructor-service contracts for the exact loaded artifact.
+- Added generic execution and named helpers for SVG, PNG, JPEG, PDF, ASCII, semantic/layout/analysis JSON, document analysis, and validation, including typed raster/PDF output plans and result-returning binary helpers.
+- Added immutable `MermanIconPack` / `MermanIconPackSet`, generated resource builders for the standard runtime profiles, and typed cached diagram, parser/render, lint, Mermaid-theme, and presentation metadata APIs.
 
 ### Changed
 
-- Updated the bundled engine to the Mermaid 11.16 compatibility baseline, including source-backed Swimlane, Cynefin, Railroad, Wardley, and ZenUML behavior plus parser, layout, SVG, theme, Gantt, TreeView, and edge-routing fixes across existing families.
-- Flutter native build helpers now consume the exact artifact feature recipe.
-- Flutter Apple XCFramework slices now bundle and compile-check the complete public C header set.
-- The pub package now carries the project license, source-provenance notice, and exact third-party license texts.
+- Updated the bundled engine to the Mermaid 11.16.1 compatibility baseline and the shared 35-family parser, layout, SVG, theme, editor, and resource-limit contracts.
+- Flutter native builds now consume the exact artifact recipe; Apple slices compile-check the complete public C headers, and the pub package carries the project license, source provenance, and exact third-party license texts.
 
 ## 0.8.0-alpha.3 - 2026-07-09
 

@@ -4,12 +4,11 @@ All notable changes to the Apple Swift package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [0.8.0-alpha.4] - Unreleased
+## [0.8.0-alpha.4] - 2026-08-09
 
 ### Breaking changes
 
 - Replaced the hand-written Swift C binding with direct generated UniFFI bindings. `Merman` now owns discovery and one-shot calls, while reusable work uses the single throwing `MermanEngine(optionsJson:services:)` constructor. The obsolete `MermanReusableEngine` name and facade factories are removed.
-- Replaced split runtime-contract and capability-vocabulary discovery with one atomic `runtimeCatalogJson()` response. The generated API no longer exposes either legacy endpoint.
 - Removed all public C ABI structs, raw callback pointers, manual engine close methods, struct-size checks, and hand-maintained Swift capability/resource projections. Swift hosts now use generated UniFFI records, objects, and callback protocols only.
 - Replaced native ABI version checks with UniFFI binding API `4` and introduced runtime-contract schema `1`. Structured resource failures include a stable `cause` field; the generated binding rejects a mismatched native library through its contract and API checksum checks.
 - Replaced the C callback text-measurement API with generated `MermanTextMeasurer`. Return `nil` for an unhandled operation rather than populating a raw result buffer.
@@ -26,17 +25,20 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 - Added checked-in `Merman.swift`, `MermanFFI.h`, and `MermanFFI.modulemap` generation from the
   exact `merman-uniffi` static library included in the XCFramework.
 - Added generic operation requests/results and direct SVG, PNG, JPEG, and PDF smoke coverage.
+- Added atomic `runtimeCatalogJson()` discovery for package identity, capabilities, operations, outputs, resources, and text-measurement providers.
+- Added generic operation requests/results plus named SVG, PNG, JPEG, and PDF helpers. Results expose typed `MermanOperationMetadata` and open `MermanOutputPlan` records while retaining `rawJson` for future plan kinds.
+- Added immutable `MermanIconPack`, transactional `MermanIconRegistry.fromPacks(...)`, and persistent `MermanEngineServices` for constructor-owned icon registries and optional text measurement. Reusable engines expose retryable, idempotent `close()`.
 - Added generated `resourceOptionsJson(profile:overrides:)` so Swift callers can select
   `interactive`, `constrained`, `trusted-native`, or `unbounded-for-trusted-input` without
   duplicating limit tables.
-- Added generated `presentationCatalogJson()` before the later UniFFI API 4 capability-record migration.
+- Added generated `presentationCatalogJson()` without changing the UniFFI API 4 version.
 
 ### Changed
 
-- The XCFramework now packages `libmerman_uniffi.a` with the matching generated UniFFI header and
-  module map for every Apple slice.
-- Generated text-measurement protocols and reusable-engine entrypoints remain present across
-  feature profiles; artifacts without SVG report a typed `svg` missing-capability error when used.
+- Updated the bundled engine to the Mermaid 11.16.1 compatibility baseline and the shared 35-family parser, layout, SVG, theme, and editor contracts.
+- Added optional `optionsJson` to reusable convenience methods. Pass `nil` to inherit the engine baseline or provide a request-local deep merge; request options cannot change constructor-owned runtime policy.
+- Generated lint and text-measurement APIs remain present across feature profiles. Feature-slim artifacts report typed `analysis` or `svg` missing-capability errors instead of returning empty catalogs or omitting callback types.
+- The XCFramework now packages `libmerman_uniffi.a` with the matching generated UniFFI header and module map for every Apple slice.
 - XCFramework archives now carry the project license, source-provenance notice, and exact third-party license texts beside the binary bundle.
 
 ## [0.8.0-alpha.3] - 2026-07-09

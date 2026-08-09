@@ -357,6 +357,16 @@ function ComparePaneBody({
       controller={controller}
       navigationEnabled={!artifact.loading && !artifact.stale}
       onPresentationReady={onPresentationReady}
+      renderMountError={(mountError) => (
+        <CompareFailure
+          detail={mountError.stack ?? null}
+          engine={artifact.title}
+          message={mountError.message}
+          stage="svg-mount"
+          onRetry={onRetry}
+          t={t}
+        />
+      )}
       empty={
         <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
           {t("preview.empty")}

@@ -118,8 +118,7 @@ final class MermanBindingOperationExpectation {
   final String? availabilityCapabilityId;
 }
 
-const Map<String, MermanBindingCapabilitySpec>
-    mermanBindingCapabilitySpecs =
+const Map<String, MermanBindingCapabilitySpec> mermanBindingCapabilitySpecs =
     <String, MermanBindingCapabilitySpec>{
   "analysis": MermanBindingCapabilitySpec(
     id: "analysis",

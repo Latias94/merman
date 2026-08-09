@@ -135,6 +135,9 @@ class ReleaseProjectionTests(unittest.TestCase):
         self.assertIn("Web workspace lock package", labels)
         self.assertIn("Web package @mermanjs/web", labels)
         self.assertIn("Web lock package @mermanjs/web", labels)
+        self.assertIn("Playground application", labels)
+        self.assertIn("Playground application lock", labels)
+        self.assertIn("Playground application lock package", labels)
         self.assertIn("Playground local Web workspace lock", labels)
         self.assertIn("Playground local Web lock @mermanjs/web", labels)
         self.assertIn("Playground license lock digest", labels)
@@ -286,6 +289,22 @@ class ReleaseProjectionTests(unittest.TestCase):
                 )
                 for entry in entries
             ],
+            (
+                release_projection.PLAYGROUND_PACKAGE,
+                lambda text: replace_json_path(text, ("version",), "9.9.9"),
+            ),
+            (
+                release_projection.PLAYGROUND_LOCK,
+                lambda text: replace_json_path(text, ("version",), "9.9.9"),
+            ),
+            (
+                release_projection.PLAYGROUND_LOCK,
+                lambda text: replace_json_path(
+                    text,
+                    ("packages", "", "version"),
+                    "9.9.9",
+                ),
+            ),
             (
                 release_projection.PLAYGROUND_LOCK,
                 lambda text: replace_once(
@@ -441,6 +460,8 @@ class ReleaseProjectionTests(unittest.TestCase):
         self.assertIn(release_projection.NODE_WORKSPACE_LOCK, updates)
         for manifest_path in node_package_manifests():
             self.assertIn(manifest_path, updates)
+        self.assertIn(release_projection.PLAYGROUND_PACKAGE, updates)
+        self.assertIn(release_projection.PLAYGROUND_LOCK, updates)
         self.assertIn(release_projection.PLAYGROUND_LICENSE_REPORT, updates)
         self.assertIn(release_projection.FLUTTER_PACKAGE_VERSION, updates)
         self.assertIn(release_projection.FLUTTER_IOS_BUILD, updates)

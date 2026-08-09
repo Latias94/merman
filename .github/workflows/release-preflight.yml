@@ -29,6 +29,12 @@ jobs:
       release_tag: ${{ steps.release.outputs.release_tag }}
       version: ${{ steps.release.outputs.version }}
     steps:
+      - name: Check out trusted release tooling
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+
       - name: Validate release inputs
         id: release
         shell: bash
@@ -138,6 +144,9 @@ jobs:
 
       - name: Verify CLI installation metadata
         run: python3 scripts/cli_installation_contract.py
+
+      - name: Prefetch locked Rust dependencies for offline license reports
+        run: cargo fetch --locked
 
       - name: Verify exact Rust dependency license reports
         run: python3 scripts/generate-rust-license-report.py --check
@@ -315,14 +324,15 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Install Android NDK
-        uses: nttld/setup-ndk@v1
-        id: ndk
-        with:
-          ndk-version: ${{ steps.android-toolchain.outputs.ndk }}
+        shell: bash
+        env:
+          ANDROID_NDK_VERSION: ${{ steps.android-toolchain.outputs.ndk }}
+        run: |
+          set -euo pipefail
+          sdkmanager --install "ndk;${ANDROID_NDK_VERSION}"
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
 
       - name: Build Android native libraries
-        env:
-          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
 
       - name: Run Android JVM contract tests
@@ -332,8 +342,6 @@ jobs:
         run: platforms/android/gradlew -p platforms/android publishReleasePublicationToLocalStagingRepository --stacktrace
 
       - name: Verify Maven publication contract
-        env:
-          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: python3 scripts/verify-platform-bindings.py --verify-android-maven
 
   apple-xcframework:
@@ -619,14 +627,15 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install Android NDK
-        uses: nttld/setup-ndk@v1
-        id: ndk
-        with:
-          ndk-version: ${{ steps.android-toolchain.outputs.ndk }}
+        shell: bash
+        env:
+          ANDROID_NDK_VERSION: ${{ steps.android-toolchain.outputs.ndk }}
+        run: |
+          set -euo pipefail
+          sdkmanager --install "ndk;${ANDROID_NDK_VERSION}"
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
 
       - name: Build Android native libraries
-        env:
-          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: python3 platforms/android/build-android.py --artifact-profile flutter-android-native --targets aarch64-linux-android x86_64-linux-android
 
       - name: Verify Android libraries in Flutter package

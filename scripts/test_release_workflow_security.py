@@ -322,6 +322,32 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("scripts/release-version.py npm-dist-tag", validate_job)
         self.assertNotIn("is_release_version()", validate_job)
 
+    def test_release_preflight_checks_out_trusted_version_parser_before_validation(
+        self,
+    ) -> None:
+        validate_job = workflow_job(
+            workflow_document(WORKFLOW_ROOT / "release-preflight.yml"),
+            "validate-inputs",
+        )
+        input_step = workflow_step(validate_job, name="Validate release inputs")
+        trusted_checkouts = [
+            step
+            for step in checkout_steps(validate_job)
+            if step["with"].get("ref") == "${{ github.workflow_sha }}"
+        ]
+
+        self.assertEqual(len(trusted_checkouts), 1)
+        trusted_checkout = trusted_checkouts[0]
+        self.assertEqual(trusted_checkout["with"].get("persist-credentials"), "false")
+        self.assertLess(
+            validate_job["steps"].index(trusted_checkout),
+            validate_job["steps"].index(input_step),
+        )
+        self.assertIn(
+            "scripts/release-version.py canonical",
+            input_step["run"],
+        )
+
     def test_native_release_workflows_pin_tag_commit_and_tree_before_building(
         self,
     ) -> None:
@@ -494,6 +520,36 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             'dart run example/smoke.dart "macos/Libraries/libmerman_ffi.dylib"',
             build_job,
         )
+
+    def test_android_release_jobs_install_the_exact_pinned_ndk_revision(self) -> None:
+        release_jobs = [
+            (WORKFLOW_ROOT / "release-preflight.yml", "android-aar"),
+            (WORKFLOW_ROOT / "release-preflight.yml", "flutter-dry-run"),
+            (WORKFLOW_ROOT / "release-android.yml", "build"),
+            (WORKFLOW_ROOT / "release-flutter.yml", "build"),
+        ]
+
+        for workflow, job_id in release_jobs:
+            job = workflow_job(workflow_document(workflow), job_id)
+            install = workflow_step(job, name="Install Android NDK")
+            with self.subTest(workflow=workflow.name, job=job_id):
+                self.assertNotIn("uses", install)
+                self.assertEqual(install.get("shell"), "bash")
+                self.assertEqual(
+                    install["env"].get("ANDROID_NDK_VERSION"),
+                    "${{ steps.android-toolchain.outputs.ndk }}",
+                )
+                self.assertIn(
+                    'sdkmanager --install "ndk;${ANDROID_NDK_VERSION}"',
+                    install["run"],
+                )
+                self.assertIn(
+                    'echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/'
+                    '${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"',
+                    install["run"],
+                )
+                self.assertNotIn("nttld/setup-ndk", contract_text(job))
+                self.assertNotIn("steps.ndk.outputs.ndk-path", contract_text(job))
 
     def test_source_ref_checkouts_do_not_persist_credentials(self) -> None:
         for path in SOURCE_REF_WORKFLOWS:
@@ -970,6 +1026,10 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         workflow = parse_workflow_structure(WORKFLOW_ROOT / "release-preflight.yml")
         preflight = workflow_job(workflow, "versions-and-packages")
         install = workflow_step(preflight, name="Install cargo-about")
+        fetch = workflow_step(
+            preflight,
+            name="Prefetch locked Rust dependencies for offline license reports",
+        )
         verify = workflow_step(
             preflight,
             name="Verify exact Rust dependency license reports",
@@ -977,6 +1037,11 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
         self.assertEqual(install["uses"], "taiki-e/install-action@v2")
         self.assertEqual(install["with"]["tool"], "cargo-about@0.9.1")
+        self.assertEqual(fetch["run"], "cargo fetch --locked")
+        self.assertLess(
+            preflight["steps"].index(fetch),
+            preflight["steps"].index(verify),
+        )
         self.assertEqual(
             verify["run"],
             "python3 scripts/generate-rust-license-report.py --check",

@@ -156,14 +156,15 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install Android NDK
-        uses: nttld/setup-ndk@v1
-        id: ndk
-        with:
-          ndk-version: ${{ steps.android-toolchain.outputs.ndk }}
+        shell: bash
+        env:
+          ANDROID_NDK_VERSION: ${{ steps.android-toolchain.outputs.ndk }}
+        run: |
+          set -euo pipefail
+          sdkmanager --install "ndk;${ANDROID_NDK_VERSION}"
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
 
       - name: Build Android native libraries
-        env:
-          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: python3 platforms/android/build-android.py --artifact-profile flutter-android-native --targets aarch64-linux-android x86_64-linux-android
 
       - name: Verify Android libraries in Flutter package
