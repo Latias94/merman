@@ -133,7 +133,16 @@ Treat the root `CHANGELOG.md` as the canonical project-wide release narrative an
 
 For workspace-coupled packages, keep the target package entry at `Unreleased` during preparation and stamp it with the same intended tag date as the root entry immediately before immutable preflight. Each projection should contain only user-visible behavior, migrations, compatibility notes, and performance claims verified for that surface. Independently versioned surfaces keep their own version and publication date.
 
-README files are ordinary source documentation. Review their installation examples during release preflight, but `release-version.py` never rewrites them and no post-release mode reversal is required. Confirm publication through the owning package registry or artifact workflow before recommending a released install command.
+README files are ordinary source documentation and `release-version.py` never rewrites them. Before immutable preflight, review the root README, every package README shipped by an authorized surface, and the closest installation guides. Release-facing Cargo dependency examples should use the exact target prerelease version instead of a moving default-branch Git dependency. Source-only Git commands must be labeled as source installs and pin a reviewed full commit. Remove stale statements that an already-published version is unavailable, old published baselines, and future tense such as “after this version is published”. Historical reports may retain historical wording. Confirm publication through the owning package registry or artifact workflow before recommending a released install command, and repeat this documentation pass after any partial-release recovery.
+
+A focused audit command is:
+
+```bash
+rg -n 'published registry packages can still|candidate from Git|After alpha\.[0-9]+ is published|git\s*=\s*"https://github\.com/Latias94/merman' \
+  README.md crates docs/rendering platforms packages tools
+```
+
+Classify each match rather than applying a repository-wide mechanical rewrite. Package-local READMEs included in crates, cargo-dist archives, npm tarballs, wheels, Flutter packages, Apple/Android bundles, Typst packages, or VSIX files are part of the release experience even though they are not version authorities.
 
 The unpublished VS Code extension, the Typst package wrapper, and `roughr-merman` own independent
 version tracks. They are intentionally excluded from workspace projection. Record the workspace
@@ -156,6 +165,8 @@ The preflight workflow verifies release versions, package file lists, registry-i
 crate publish dry-runs, Python wheels, Android AAR builds, Apple XCFramework builds, the web npm
 package dry-run, platform VSIX packaging, and Flutter
 `dart pub publish --dry-run`. It does not publish to any registry.
+
+Release-archive smoke tests should verify user-observable contracts rather than incidental representation choices. Accept legal binary token and whitespace forms, and allow valid asynchronous notification ordering while still requiring bounded output, the expected protocol responses, successful exit, and exact archive contents. Reproduce failures against the final archive before changing product code.
 
 Record `VERSION` and `SOURCE_SHA` with the preflight run. The run must be green for that exact immutable commit, not merely for a branch name that can move while preflight is running. Create the tag only through the `Tag And Push` step after that run succeeds.
 

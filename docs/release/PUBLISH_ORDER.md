@@ -1,11 +1,11 @@
 # Publish Order
 
 Status: maintained workspace publish order.
-Last updated: 2026-07-26
+Last updated: 2026-08-09
 
 ## Version Decision
 
-Published workspace prerelease baseline: `0.8.0-alpha.3`.
+Published workspace prerelease baseline: `0.8.0-alpha.4`.
 
 Prepared workspace release candidate: `0.8.0-alpha.5`. This is a local prepare-state decision; it
 does not authorize a tag, workflow dispatch, registry publication, or GitHub Release mutation.

@@ -12,7 +12,7 @@ Use the facade from the repository's default branch:
 
 ```toml
 [dependencies]
-merman = { git = "https://github.com/Latias94/merman", default-features = false, features = ["analysis", "editor"] }
+merman = { version = "=0.8.0-alpha.5", default-features = false, features = ["analysis", "editor"] }
 ```
 
 ```rust

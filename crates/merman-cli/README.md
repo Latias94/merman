@@ -35,10 +35,10 @@ Starting with `0.8.0-alpha.5`, version-specific [GitHub Releases](https://github
 Install the complete CLI from source:
 
 ```sh
-cargo install --git https://github.com/Latias94/merman --locked merman-cli
+cargo install --git https://github.com/Latias94/merman --rev FULL_COMMIT_SHA --locked merman-cli
 ```
 
-The Git command follows the repository's default branch at install time. Add `--rev FULL_COMMIT_SHA` to pin a remote revision.
+Replace `FULL_COMMIT_SHA` with a reviewed 40-character commit from the repository.
 
 From a local checkout:
 
@@ -206,7 +206,7 @@ The default feature set is the complete local product. Cargo features are additi
 Install a lint-only binary:
 
 ```sh
-cargo install --git https://github.com/Latias94/merman --locked merman-cli \
+cargo install merman-cli --version 0.8.0-alpha.5 --locked \
   --no-default-features --features analysis
 ```
 
