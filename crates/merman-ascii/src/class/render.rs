@@ -8,7 +8,8 @@ use crate::relation_graph::{
     HorizontalRelationEndpoint, HorizontalRelationStyle, LayeredRelationEdge, LayeredRelationError,
     LayeredRelationRouteStyle, RelationGraphBoxStyle, RelationGraphHorizontalDirection,
     RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
-    RelationOverlay, RelationParallelPlan, RelationPortSide, RelationStackPlan,
+    RelationOverlay, RelationParallelPlan, RelationPortSide, RelationSelfLoopMetrics,
+    RelationStackPlan,
 };
 #[cfg(test)]
 use crate::resource::AsciiResourceLimitId;
@@ -2107,6 +2108,14 @@ impl<'relation, 'index, 'boxes> relation_graph::RelationComponentAdapter<Relatio
         layout.top_id == layout.bottom_id
     }
 
+    fn self_loop_metrics(
+        &self,
+        layout: &RelationLayout<'relation>,
+        resources: &ResourceContext,
+    ) -> Result<RelationSelfLoopMetrics> {
+        self_loop_metrics_for_class_layout(layout, self.charset, self.width_profile, resources)
+    }
+
     fn self_loop_rows(
         &self,
         layout: &RelationLayout<'relation>,
@@ -2282,6 +2291,80 @@ impl<'relation, 'index, 'boxes> relation_graph::RelationComponentAdapter<Relatio
     }
 }
 
+fn self_loop_metrics_for_class_layout(
+    layout: &RelationLayout<'_>,
+    charset: ClassCharset,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<RelationSelfLoopMetrics> {
+    let top_marker = layout
+        .top_marker
+        .map(|marker| marker_char(marker, MarkerSide::Top, charset))
+        .unwrap_or('+');
+    let bottom_marker = layout
+        .bottom_marker
+        .map(|marker| marker_char(marker, MarkerSide::Bottom, charset))
+        .unwrap_or_else(|| line_char(layout.line, charset));
+    let top_marker_width = relation_char_width(top_marker, width_profile);
+    let max_label_width = [
+        layout
+            .top_endpoint_label
+            .as_ref()
+            .map(RelationGraphLabel::width)
+            .unwrap_or(0),
+        layout
+            .label
+            .as_ref()
+            .map(RelationGraphLabel::width)
+            .unwrap_or(0),
+        layout
+            .bottom_endpoint_label
+            .as_ref()
+            .map(RelationGraphLabel::width)
+            .unwrap_or(0),
+    ]
+    .into_iter()
+    .max()
+    .unwrap_or(0);
+    Ok(RelationSelfLoopMetrics::new(
+        top_marker_width,
+        max_label_width,
+        class_self_loop_label_line_count(layout, resources)?,
+        relation_char_width(bottom_marker, width_profile),
+        layout.top_marker.map(|_| top_marker_width),
+        horizontal_line_char(layout.line, charset),
+        line_char(layout.line, charset),
+    ))
+}
+
+fn class_self_loop_label_line_count(
+    layout: &RelationLayout<'_>,
+    resources: &ResourceContext,
+) -> Result<usize> {
+    layout
+        .top_endpoint_label
+        .as_ref()
+        .map(RelationGraphLabel::line_count)
+        .unwrap_or(0)
+        .checked_add(
+            layout
+                .label
+                .as_ref()
+                .map(RelationGraphLabel::line_count)
+                .unwrap_or(0),
+        )
+        .and_then(|count| {
+            count.checked_add(
+                layout
+                    .bottom_endpoint_label
+                    .as_ref()
+                    .map(RelationGraphLabel::line_count)
+                    .unwrap_or(0),
+            )
+        })
+        .ok_or_else(|| work_overflow(resources))
+}
+
 fn self_loop_rows_for_class_layout(
     layout: &RelationLayout<'_>,
     charset: ClassCharset,
@@ -2317,28 +2400,7 @@ fn self_loop_rows_for_class_layout(
         width_profile,
         resources,
     )?;
-    let label_line_count = layout
-        .top_endpoint_label
-        .as_ref()
-        .map(RelationGraphLabel::line_count)
-        .unwrap_or(0)
-        .checked_add(
-            layout
-                .label
-                .as_ref()
-                .map(RelationGraphLabel::line_count)
-                .unwrap_or(0),
-        )
-        .and_then(|count| {
-            count.checked_add(
-                layout
-                    .bottom_endpoint_label
-                    .as_ref()
-                    .map(RelationGraphLabel::line_count)
-                    .unwrap_or(0),
-            )
-        })
-        .ok_or_else(|| work_overflow(resources))?;
+    let label_line_count = class_self_loop_label_line_count(layout, resources)?;
     let mut label_lines = Vec::new();
     label_lines
         .try_reserve_exact(label_line_count)

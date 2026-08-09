@@ -182,6 +182,16 @@ pub(crate) trait RelationComponentAdapter<R> {
 
     fn is_self_relation(&self, relation: &R) -> bool;
 
+    /// Describe a self-loop without constructing any styled terminal rows.
+    ///
+    /// Families own marker/cardinality semantics; the shared renderer only
+    /// consumes the resulting geometry metrics for resource admission.
+    fn self_loop_metrics(
+        &self,
+        relation: &R,
+        resources: &ResourceContext,
+    ) -> Result<RelationSelfLoopMetrics>;
+
     fn self_loop_rows(
         &self,
         relation: &R,
@@ -1813,60 +1823,217 @@ where
     Ok(Ok(rendered))
 }
 
-pub(crate) fn render_parallel_self_loops(
-    relation_box: &RelationGraphBox,
-    loops: Vec<RelationSelfLoopRows>,
-    resources: &mut ResourceContext,
-) -> Result<Vec<RelationGraphLine>> {
-    if loops.is_empty() {
-        let extent = resources.grid_extent(relation_box.width(), relation_box.height())?;
-        resources.charge_layout_work(extent.cells())?;
-        return try_share_relation_box_lines(relation_box);
+/// Geometry-only self-loop inputs supplied by a diagram family.
+///
+/// The shared renderer deliberately does not inspect markers or labels to
+/// derive these values.  That keeps cardinality/marker meaning in Class and ER
+/// while allowing the complete loop extent to be admitted before any styled
+/// rows are allocated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RelationSelfLoopMetrics {
+    pub(crate) top_marker_width: usize,
+    pub(crate) max_label_width: usize,
+    pub(crate) label_line_count: usize,
+    pub(crate) bottom_marker_width: usize,
+    pub(crate) tail_prefix_width: usize,
+    pub(crate) has_tail_prefix: bool,
+    pub(crate) horizontal: char,
+    pub(crate) vertical: char,
+}
+
+impl RelationSelfLoopMetrics {
+    pub(crate) const fn new(
+        top_marker_width: usize,
+        max_label_width: usize,
+        label_line_count: usize,
+        bottom_marker_width: usize,
+        tail_prefix_width: Option<usize>,
+        horizontal: char,
+        vertical: char,
+    ) -> Self {
+        let (tail_prefix_width, has_tail_prefix) = match tail_prefix_width {
+            Some(width) => (width, true),
+            None => (0, false),
+        };
+        Self {
+            top_marker_width,
+            max_label_width,
+            label_line_count,
+            bottom_marker_width,
+            tail_prefix_width,
+            has_tail_prefix,
+            horizontal,
+            vertical,
+        }
+    }
+}
+
+/// Admission plan for a group of parallel self-loops.
+///
+/// `metrics` contains no `StyledLine`.  The materializer closure is invoked
+/// only after the aggregate extent has passed the grid limit; the resulting
+/// rows are then checked against the exact metrics before rendering.
+#[derive(Debug)]
+pub(crate) struct RelationSelfLoopPlan<'a> {
+    relation_box: &'a RelationGraphBox,
+    metrics: Vec<RelationSelfLoopMetrics>,
+    geometry: SelfLoopGeometry,
+    extent: LogicalExtent,
+}
+
+impl<'a> RelationSelfLoopPlan<'a> {
+    pub(crate) fn try_new(
+        relation_box: &'a RelationGraphBox,
+        metrics: Vec<RelationSelfLoopMetrics>,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        let geometry = if metrics.is_empty() {
+            SelfLoopGeometry {
+                bottom_start: relation_box.width() / 2,
+                loop_col: relation_box.width(),
+            }
+        } else {
+            SelfLoopGeometry::for_metrics(relation_box, &metrics, resources)?
+        };
+        let extent = if metrics.is_empty() {
+            resources.grid_extent(relation_box.width(), relation_box.height())?
+        } else {
+            let height =
+                metrics
+                    .iter()
+                    .enumerate()
+                    .try_fold(0usize, |height, (index, metric)| {
+                        let label_row_count = if index == 0 {
+                            metric.label_line_count
+                        } else {
+                            metric
+                                .label_line_count
+                                .max(usize::from(metric.has_tail_prefix))
+                        };
+                        let loop_height = if index == 0 {
+                            resources
+                                .checked_grid_add(
+                                    relation_box.height(),
+                                    resources.checked_grid_add(label_row_count, 1)?,
+                                )?
+                                .max(3)
+                        } else {
+                            resources.checked_grid_add(label_row_count, 1)?
+                        };
+                        resources.checked_grid_add(height, loop_height)
+                    })?;
+            // Only the first loop emits its top marker.  Tail top markers are
+            // retained in the descriptor for semantic validation but are not
+            // present in the final rows.
+            let first_top_marker_width = metrics[0].top_marker_width.max(1);
+            let width = resources.checked_grid_add(geometry.loop_col, first_top_marker_width)?;
+            resources.grid_extent(width, height)?
+        };
+        Ok(Self {
+            relation_box,
+            metrics,
+            geometry,
+            extent,
+        })
     }
 
-    let geometry = SelfLoopGeometry::for_loops(relation_box, &loops, resources)?;
-    let height = loops
-        .iter()
-        .enumerate()
-        .try_fold(0usize, |height, (index, rows)| {
-            let label_row_count = if index == 0 {
-                rows.label_lines.len()
-            } else {
-                rows.tail_label_row_count()
-            };
-            let loop_height = if index == 0 {
-                resources.checked_grid_add(
-                    relation_box.height(),
-                    resources.checked_grid_add(label_row_count, 1)?,
-                )?
-            } else {
-                resources.checked_grid_add(label_row_count, 1)?
-            };
-            resources.checked_grid_add(height, loop_height)
-        })?;
-    let max_top_marker_width = loops
-        .iter()
-        .map(|rows| rows.top_marker.width())
-        .max()
-        .unwrap_or(1)
-        .max(1);
-    let width = resources.checked_grid_add(geometry.loop_col, max_top_marker_width)?;
-    let extent = resources.grid_extent(width, height)?;
-    resources.charge_layout_work(extent.cells())?;
+    #[cfg(test)]
+    pub(crate) fn extent(&self) -> LogicalExtent {
+        self.extent
+    }
+
+    pub(crate) fn render_lines(
+        self,
+        resources: &mut ResourceContext,
+        materialize_rows: impl FnOnce(&ResourceContext) -> Result<Vec<RelationSelfLoopRows>>,
+    ) -> Result<Vec<RelationGraphLine>> {
+        resources.charge_layout_work(self.extent.cells())?;
+        if self.metrics.is_empty() {
+            return try_share_relation_box_lines(self.relation_box);
+        }
+
+        let loops = materialize_rows(resources)?;
+        self.validate_rows(&loops, resources)?;
+        let lines =
+            render_parallel_self_loops(self.relation_box, loops, &self.geometry, resources)?;
+        let actual_width = lines
+            .iter()
+            .map(RelationGraphLine::width)
+            .max()
+            .unwrap_or(0);
+        let actual = resources.grid_extent(actual_width, lines.len())?;
+        if actual != self.extent {
+            return Err(grid_overflow(resources));
+        }
+        Ok(lines)
+    }
+
+    fn validate_rows(
+        &self,
+        loops: &[RelationSelfLoopRows],
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        if loops.len() != self.metrics.len() {
+            return Err(grid_overflow(resources));
+        }
+        for (rows, metric) in loops.iter().zip(&self.metrics) {
+            let max_label_width = rows
+                .label_lines
+                .iter()
+                .map(RelationGraphLine::width)
+                .max()
+                .unwrap_or(0);
+            let tail_prefix_width = rows
+                .tail_prefix
+                .as_ref()
+                .map(RelationGraphLine::width)
+                .unwrap_or(0);
+            let exact = rows.top_marker.width() == metric.top_marker_width
+                && max_label_width == metric.max_label_width
+                && rows.label_lines.len() == metric.label_line_count
+                && rows.bottom_marker.width() == metric.bottom_marker_width
+                && tail_prefix_width == metric.tail_prefix_width
+                && rows.tail_prefix.is_some() == metric.has_tail_prefix
+                && rows.horizontal == metric.horizontal
+                && rows.vertical == metric.vertical;
+            let profile = self.relation_box.width_profile();
+            let profiles_match = rows.top_marker.width_profile() == profile
+                && rows
+                    .label_lines
+                    .iter()
+                    .all(|line| line.width_profile() == profile)
+                && rows.bottom_marker.width_profile() == profile
+                && rows
+                    .tail_prefix
+                    .as_ref()
+                    .is_none_or(|line| line.width_profile() == profile);
+            if !exact || !profiles_match {
+                return Err(grid_overflow(resources));
+            }
+        }
+        Ok(())
+    }
+}
+
+fn render_parallel_self_loops(
+    relation_box: &RelationGraphBox,
+    loops: Vec<RelationSelfLoopRows>,
+    geometry: &SelfLoopGeometry,
+    resources: &ResourceContext,
+) -> Result<Vec<RelationGraphLine>> {
     let mut loop_iter = loops.into_iter();
     let Some(first_loop) = loop_iter.next() else {
         return try_share_relation_box_lines(relation_box);
     };
-    let mut lines = first_self_loop_lines(relation_box, first_loop, &geometry, resources)?;
+    let mut lines = first_self_loop_lines(relation_box, first_loop, geometry, resources)?;
     for loop_rows in loop_iter {
         lines.extend(tail_self_loop_lines(
             relation_box,
             loop_rows,
-            &geometry,
+            geometry,
             resources,
         )?);
     }
-
     Ok(lines)
 }
 
@@ -1881,14 +2048,29 @@ where
     R: 'relation,
     A: RelationComponentAdapter<R>,
 {
-    let mut loops = Vec::new();
-    loops
+    let mut relation_refs = Vec::new();
+    relation_refs
+        .try_reserve_exact(relation_count)
+        .map_err(|_| layout_allocation_failed())?;
+    let mut metrics = Vec::new();
+    metrics
         .try_reserve_exact(relation_count)
         .map_err(|_| layout_allocation_failed())?;
     for relation in relations {
-        loops.push(adapter.self_loop_rows(relation, resources)?);
+        relation_refs.push(relation);
+        metrics.push(adapter.self_loop_metrics(relation, resources)?);
     }
-    render_parallel_self_loops(relation_box, loops, resources)
+    let plan = RelationSelfLoopPlan::try_new(relation_box, metrics, resources)?;
+    plan.render_lines(resources, |resources| {
+        let mut loops = Vec::new();
+        loops
+            .try_reserve_exact(relation_refs.len())
+            .map_err(|_| layout_allocation_failed())?;
+        for relation in relation_refs {
+            loops.push(adapter.self_loop_rows(relation, resources)?);
+        }
+        Ok(loops)
+    })
 }
 
 pub(crate) struct RelationSelfLoopRows {
@@ -1922,39 +2104,40 @@ impl RelationSelfLoopRows {
         self.tail_prefix = Some(tail_prefix);
         self
     }
-
-    fn tail_label_row_count(&self) -> usize {
-        self.label_lines
-            .len()
-            .max(usize::from(self.tail_prefix.is_some()))
-    }
 }
 
+#[derive(Debug)]
 struct SelfLoopGeometry {
     bottom_start: usize,
     loop_col: usize,
 }
 
 impl SelfLoopGeometry {
-    fn for_loops(
+    fn for_metrics(
         relation_box: &RelationGraphBox,
-        loops: &[RelationSelfLoopRows],
+        metrics: &[RelationSelfLoopMetrics],
         resources: &ResourceContext,
     ) -> Result<Self> {
         let bottom_start = relation_box.width() / 2;
         let mut loop_col = resources.checked_grid_add(relation_box.width(), 3)?;
-        for (loop_index, loop_rows) in loops.iter().enumerate() {
-            let label_width = max_self_loop_label_width(&loop_rows.label_lines);
+        for (loop_index, metric) in metrics.iter().enumerate() {
+            let prefix_width = if loop_index > 0 && metric.has_tail_prefix {
+                Some(metric.tail_prefix_width)
+            } else {
+                None
+            };
             let label_start = self_loop_label_start(
-                relation_box,
-                label_width,
-                loop_rows.tail_prefix.as_ref().filter(|_| loop_index > 0),
+                relation_box.width(),
+                metric.max_label_width,
+                prefix_width,
                 resources,
             )?;
-            let label_end = resources
-                .checked_grid_add(resources.checked_grid_add(label_start, label_width)?, 2)?;
+            let label_end = resources.checked_grid_add(
+                resources.checked_grid_add(label_start, metric.max_label_width)?,
+                2,
+            )?;
             let marker_end = resources.checked_grid_add(
-                resources.checked_grid_add(bottom_start, loop_rows.bottom_marker.width())?,
+                resources.checked_grid_add(bottom_start, metric.bottom_marker_width)?,
                 3,
             )?;
             loop_col = loop_col.max(label_end).max(marker_end);
@@ -1967,27 +2150,19 @@ impl SelfLoopGeometry {
     }
 }
 
-fn max_self_loop_label_width(label_lines: &[RelationGraphLine]) -> usize {
-    label_lines
-        .iter()
-        .map(RelationGraphLine::width)
-        .max()
-        .unwrap_or(0)
-}
-
 fn self_loop_label_start(
-    relation_box: &RelationGraphBox,
+    relation_box_width: usize,
     label_width: usize,
-    prefix: Option<&RelationGraphLine>,
+    prefix_width: Option<usize>,
     resources: &ResourceContext,
 ) -> Result<usize> {
-    let centered_start = if label_width >= relation_box.width() {
+    let centered_start = if label_width >= relation_box_width {
         1
     } else {
-        resources.checked_grid_add((relation_box.width() - label_width) / 2, 1)?
+        resources.checked_grid_add((relation_box_width - label_width) / 2, 1)?
     };
-    let prefix_start = match prefix {
-        Some(prefix) => resources.checked_grid_add(prefix.width(), 1)?,
+    let prefix_start = match prefix_width {
+        Some(width) => resources.checked_grid_add(width, 1)?,
         None => 0,
     };
     Ok(centered_start.max(prefix_start))
@@ -2500,6 +2675,14 @@ mod tests {
             relation.source_id() == relation.target_id()
         }
 
+        fn self_loop_metrics(
+            &self,
+            _relation: &R,
+            _resources: &ResourceContext,
+        ) -> Result<RelationSelfLoopMetrics> {
+            Ok(RelationSelfLoopMetrics::new(1, 0, 0, 1, None, '-', '|'))
+        }
+
         fn self_loop_rows(
             &self,
             _relation: &R,
@@ -2706,6 +2889,114 @@ mod tests {
             TerminalWidthProfile::Unicode,
             resources,
         )?])
+    }
+
+    fn self_loop_test_metrics() -> Vec<RelationSelfLoopMetrics> {
+        vec![
+            RelationSelfLoopMetrics::new(1, 1, 1, 1, None, '-', '|'),
+            RelationSelfLoopMetrics::new(1, 2, 1, 1, Some(1), '-', '|'),
+        ]
+    }
+
+    fn materialize_self_loop_test_rows(
+        resources: &ResourceContext,
+    ) -> Result<Vec<RelationSelfLoopRows>> {
+        let width_profile = TerminalWidthProfile::Unicode;
+        let marker = |text, resources: &ResourceContext| {
+            RelationGraphLine::try_with_role(
+                text,
+                AsciiColorRole::EdgeArrow,
+                width_profile,
+                resources,
+            )
+        };
+        Ok(vec![
+            RelationSelfLoopRows::new(
+                marker("^", resources)?,
+                vec![RelationGraphLine::try_plain("x", width_profile, resources)?],
+                marker("v", resources)?,
+                '-',
+                '|',
+            ),
+            RelationSelfLoopRows::new(
+                marker("^", resources)?,
+                vec![RelationGraphLine::try_plain(
+                    "yy",
+                    width_profile,
+                    resources,
+                )?],
+                marker("v", resources)?,
+                '-',
+                '|',
+            )
+            .with_tail_prefix(marker(">", resources)?),
+        ])
+    }
+
+    #[test]
+    fn self_loop_plan_admits_exact_extent_before_materializing() {
+        let boxes = admission_test_boxes();
+        let options = options_with_grid_limit(42);
+        let mut resources = test_resources(&options);
+        let plan = RelationSelfLoopPlan::try_new(&boxes[0], self_loop_test_metrics(), &resources)
+            .expect("self-loop descriptor should fit the exact aggregate limit");
+        assert_eq!(
+            plan.extent(),
+            resources
+                .grid_extent(7, 6)
+                .expect("7 by 6 should fit the exact limit")
+        );
+
+        let materialized = Cell::new(false);
+        let lines = plan
+            .render_lines(&mut resources, |resources| {
+                materialized.set(true);
+                materialize_self_loop_test_rows(resources)
+            })
+            .expect("7 by 6 self-loop layout should fit 42 cells");
+
+        assert!(materialized.get());
+        assert_eq!(lines.len(), 6);
+        assert_eq!(lines.iter().map(RelationGraphLine::width).max(), Some(7));
+    }
+
+    #[test]
+    fn self_loop_plan_rejects_n_minus_one_before_materializing() {
+        let boxes = admission_test_boxes();
+        let options = options_with_grid_limit(41);
+        let mut resources = test_resources(&options);
+        let materialized = Cell::new(false);
+
+        let error = RelationSelfLoopPlan::try_new(&boxes[0], self_loop_test_metrics(), &resources)
+            .and_then(|plan| {
+                plan.render_lines(&mut resources, |resources| {
+                    materialized.set(true);
+                    materialize_self_loop_test_rows(resources)
+                })
+            })
+            .expect_err("7 by 6 self-loop layout must not fit 41 cells");
+
+        assert_grid_limit(error, 42, 41);
+        assert!(!materialized.get());
+    }
+
+    #[test]
+    fn self_loop_plan_rejects_materialized_descriptor_mismatch() {
+        let boxes = admission_test_boxes();
+        let options = options_with_grid_limit(42);
+        let mut resources = test_resources(&options);
+        let plan = RelationSelfLoopPlan::try_new(&boxes[0], self_loop_test_metrics(), &resources)
+            .expect("self-loop descriptor should fit before row validation");
+        let error = plan
+            .render_lines(&mut resources, |resources| {
+                let mut rows = materialize_self_loop_test_rows(resources)?;
+                rows[0].label_lines[0] =
+                    RelationGraphLine::try_plain("xx", TerminalWidthProfile::Unicode, resources)?;
+                Ok(rows)
+            })
+            .expect_err("materialized label width must match its admitted descriptor");
+
+        assert_grid_limit(error, usize::MAX, 42);
     }
 
     #[test]

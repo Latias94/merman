@@ -6,7 +6,8 @@ use crate::relation_graph::{
     HorizontalRelationEndpoint, HorizontalRelationStyle, LayeredRelationEdge, LayeredRelationError,
     LayeredRelationRouteStyle, RelationGraphBoxStyle, RelationGraphHorizontalDirection,
     RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
-    RelationOverlay, RelationParallelPlan, RelationPortSide, RelationStackPlan,
+    RelationOverlay, RelationParallelPlan, RelationPortSide, RelationSelfLoopMetrics,
+    RelationStackPlan,
 };
 #[cfg(test)]
 use crate::resource::AsciiResourceLimitId;
@@ -765,6 +766,20 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationLayout<'_>>
         layout.top_id == layout.bottom_id
     }
 
+    fn self_loop_metrics(
+        &self,
+        layout: &ErRelationLayout<'_>,
+        resources: &ResourceContext,
+    ) -> Result<RelationSelfLoopMetrics> {
+        self_loop_metrics_for_er_relationship(
+            layout,
+            self.charset,
+            self.width_profile,
+            self.direction.is_horizontal(),
+            resources,
+        )
+    }
+
     fn self_loop_rows(
         &self,
         layout: &ErRelationLayout<'_>,
@@ -923,16 +938,13 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationLayout<'_>>
     }
 }
 
-fn self_loop_rows_for_er_relationship(
+fn er_self_loop_cardinality_markers(
     layout: &ErRelationLayout<'_>,
     charset: ErCharset,
-    width_profile: TerminalWidthProfile,
     horizontal: bool,
-    resources: &ResourceContext,
-) -> Result<relation_graph::RelationSelfLoopRows> {
-    let relationship = layout.relationship;
-    let (top_cardinality, bottom_cardinality) = if horizontal {
-        (
+) -> Result<(&'static str, &'static str)> {
+    if horizontal {
+        Ok((
             horizontal_cardinality_marker(
                 layout.top_cardinality,
                 RelationPortSide::Right,
@@ -943,13 +955,54 @@ fn self_loop_rows_for_er_relationship(
                 RelationPortSide::Left,
                 charset,
             )?,
-        )
+        ))
     } else {
-        (
+        Ok((
             cardinality_marker(layout.top_cardinality, charset)?,
             cardinality_marker(layout.bottom_cardinality, charset)?,
-        )
-    };
+        ))
+    }
+}
+
+fn self_loop_metrics_for_er_relationship(
+    layout: &ErRelationLayout<'_>,
+    charset: ErCharset,
+    width_profile: TerminalWidthProfile,
+    horizontal: bool,
+    _resources: &ResourceContext,
+) -> Result<RelationSelfLoopMetrics> {
+    let relationship = layout.relationship;
+    let (top_cardinality, bottom_cardinality) =
+        er_self_loop_cardinality_markers(layout, charset, horizontal)?;
+    Ok(RelationSelfLoopMetrics::new(
+        display_width_with_profile(top_cardinality, width_profile),
+        layout
+            .label
+            .as_ref()
+            .map(RelationGraphLabel::width)
+            .unwrap_or(0),
+        layout
+            .label
+            .as_ref()
+            .map(RelationGraphLabel::line_count)
+            .unwrap_or(0),
+        display_width_with_profile(bottom_cardinality, width_profile),
+        Some(display_width_with_profile(top_cardinality, width_profile)),
+        relationship_horizontal_line(&relationship.rel_spec.rel_type, charset)?,
+        relationship_line(&relationship.rel_spec.rel_type, charset)?,
+    ))
+}
+
+fn self_loop_rows_for_er_relationship(
+    layout: &ErRelationLayout<'_>,
+    charset: ErCharset,
+    width_profile: TerminalWidthProfile,
+    horizontal: bool,
+    resources: &ResourceContext,
+) -> Result<relation_graph::RelationSelfLoopRows> {
+    let relationship = layout.relationship;
+    let (top_cardinality, bottom_cardinality) =
+        er_self_loop_cardinality_markers(layout, charset, horizontal)?;
     let top_marker = RelationGraphLine::try_with_role(
         top_cardinality,
         AsciiColorRole::EdgeArrow,
