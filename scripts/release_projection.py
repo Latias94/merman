@@ -905,10 +905,37 @@ def _collect_platform_versions(
             local_package.get("version"),
         )
 
+    playground = view.json(PLAYGROUND_PACKAGE)
+    if playground.get("private") is not True:
+        raise ReleaseProjectionError("playground/package.json must be private")
+    _observe(
+        observations,
+        "Playground application",
+        PLAYGROUND_PACKAGE,
+        canonical,
+        playground.get("version"),
+    )
     playground_web_packages = _playground_web_dependencies(view, web_entries)
     playground_lock = view.json(PLAYGROUND_LOCK)
     playground_packages = _mapping(
         playground_lock.get("packages"), "Playground lock packages"
+    )
+    playground_lock_package = _mapping(
+        playground_packages.get(""), "Playground lock root package"
+    )
+    _observe(
+        observations,
+        "Playground application lock",
+        PLAYGROUND_LOCK,
+        canonical,
+        playground_lock.get("version"),
+    )
+    _observe(
+        observations,
+        "Playground application lock package",
+        PLAYGROUND_LOCK,
+        canonical,
+        playground_lock_package.get("version"),
     )
     playground_web_workspace = _mapping(
         playground_packages.get("../platforms/web"),
@@ -1171,6 +1198,9 @@ def _plan_version_update(
         view.text(WEB_LOCK),
         web_lock_updates,
     )
+    updates[PLAYGROUND_PACKAGE] = _replace_json_paths(
+        view.text(PLAYGROUND_PACKAGE), {("version",): release.canonical}
+    )
     playground_web_packages = _playground_web_dependencies(view, web_entries)
     playground_lock_updates = {
         (
@@ -1182,6 +1212,12 @@ def _plan_version_update(
     }
     playground_lock_updates[("packages", "../platforms/web", "version")] = (
         release.canonical
+    )
+    playground_lock_updates.update(
+        {
+            ("version",): release.canonical,
+            ("packages", "", "version"): release.canonical,
+        }
     )
     playground_lock = _replace_json_paths(
         view.text(PLAYGROUND_LOCK),
