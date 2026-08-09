@@ -113,6 +113,11 @@ harness = false
 required-features = ["svg"]
 
 [[bench]]
+name = "ascii_pipeline"
+harness = false
+required-features = ["ascii"]
+
+[[bench]]
 name = "native_memory"
 harness = false
 required-features = ["svg"]

@@ -1,0 +1,81 @@
+{
+  "schema_version": 2,
+  "default_group": "ascii_end_to_end",
+  "suites": {
+    "closeout": "One stable medium fixture for each common ASCII family measured by U25."
+  },
+  "lanes": [
+    {
+      "id": "render-ascii",
+      "kind": "public",
+      "owner": "merman",
+      "public_operation": "render-ascii",
+      "diagnostic_stage": null,
+      "parent_public_lane": null,
+      "process_lifecycle": "reused-process",
+      "engine_lifecycle": "reused-engine",
+      "logical_operations_per_estimate": 1,
+      "transport": "native-criterion",
+      "required_features": ["ascii"],
+      "selector": "ascii_end_to_end/{fixture}",
+      "history_aliases": [],
+      "size_vector": [],
+      "workload": "common-family-medium-fixture",
+      "evidence_contract": null,
+      "measurement_metrics": ["latency_ns"],
+      "semantic_output_dimensions": ["plain_ascii_sha256", "plain_ascii_bytes"]
+    }
+  ],
+  "fixtures": [
+    {
+      "name": "flowchart_medium",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "ascii-closeout",
+      "source": "crates/merman/benches/fixtures/flowchart_medium.mmd",
+      "suites": ["closeout"],
+      "features": ["ascii"],
+      "quality": ["deterministic", "common-family"]
+    },
+    {
+      "name": "sequence_medium",
+      "family": "sequence",
+      "size": "medium",
+      "category": "ascii-closeout",
+      "source": "crates/merman/benches/fixtures/sequence_medium.mmd",
+      "suites": ["closeout"],
+      "features": ["ascii"],
+      "quality": ["deterministic", "common-family"]
+    },
+    {
+      "name": "class_medium",
+      "family": "class",
+      "size": "medium",
+      "category": "ascii-closeout",
+      "source": "crates/merman/benches/fixtures/class_medium.mmd",
+      "suites": ["closeout"],
+      "features": ["ascii"],
+      "quality": ["deterministic", "common-family"]
+    },
+    {
+      "name": "er_medium",
+      "family": "er",
+      "size": "medium",
+      "category": "ascii-closeout",
+      "source": "crates/merman/benches/fixtures/er_medium.mmd",
+      "suites": ["closeout"],
+      "features": ["ascii"],
+      "quality": ["deterministic", "common-family"]
+    },
+    {
+      "name": "xychart_medium",
+      "family": "xychart",
+      "size": "medium",
+      "category": "ascii-closeout",
+      "source": "crates/merman/benches/fixtures/xychart_medium.mmd",
+      "suites": ["closeout"],
+      "features": ["ascii"],
+      "quality": ["deterministic", "common-family"]
+    }
+  ]
+}
