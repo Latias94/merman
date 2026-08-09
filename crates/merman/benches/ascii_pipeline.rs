@@ -74,9 +74,10 @@ fn emit_preflight(name: &str, identity: &OutputIdentity) {
         "output_kind": "plain_ascii",
         "output_bytes": identity.bytes,
         "output_sha256": identity.sha256,
+        "svg_elements": null,
     });
     eprintln!(
-        "[ascii-bench][preflight] {}",
+        "[bench][preflight] {}",
         serde_json::to_string(&receipt).expect("preflight receipt must serialize")
     );
 }
@@ -95,7 +96,7 @@ fn verify_postflight(
         &postflight, preflight,
         "{GROUP}/{name} output identity changed after timed iterations"
     );
-    eprintln!("[ascii-bench][postflight] {GROUP}/{name}");
+    eprintln!("[bench][postflight] {GROUP}/{name}");
 }
 
 fn bench_ascii_end_to_end(c: &mut Criterion) {

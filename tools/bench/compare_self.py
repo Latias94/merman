@@ -459,7 +459,7 @@ _PREFLIGHT_FIELD_ORDER = (
     "svg_elements",
 )
 _PREFLIGHT_FIELDS = frozenset(_PREFLIGHT_FIELD_ORDER)
-_PREFLIGHT_OUTPUT_KIND_BY_GROUP = {
+_PIPELINE_PREFLIGHT_OUTPUT_KIND_BY_GROUP = {
     "parse": "typed_render_model",
     "compatibility_json_parse": "compatibility_json",
     "parse_cold_engine": "typed_render_model",
@@ -467,6 +467,10 @@ _PREFLIGHT_OUTPUT_KIND_BY_GROUP = {
     "layout": "prepared_layout",
     "render": "svg",
     "end_to_end": "svg",
+}
+_PREFLIGHT_OUTPUT_KIND_BY_GROUP = {
+    **_PIPELINE_PREFLIGHT_OUTPUT_KIND_BY_GROUP,
+    "ascii_end_to_end": "plain_ascii",
 }
 
 
@@ -580,7 +584,7 @@ def _pipeline_preflight_contract(corpus: Any, *, recipe: RunnerRecipe) -> str | 
         for lane in corpus.lanes
         if lane.transport == "native-criterion"
     }
-    expected_groups = frozenset(_PREFLIGHT_OUTPUT_KIND_BY_GROUP)
+    expected_groups = frozenset(_PIPELINE_PREFLIGHT_OUTPUT_KIND_BY_GROUP)
     if not native_lanes:
         return None
     if frozenset(native_lanes) != expected_groups:
@@ -615,7 +619,7 @@ def _describe_preflight_contract(path: Path) -> dict[str, Any]:
         "line_prefix": f"{_PREFLIGHT_PREFIX} ",
         "postflight_line_prefix": f"{_POSTFLIGHT_PREFIX} ",
         "required_fields": list(_PREFLIGHT_FIELD_ORDER),
-        "output_kinds": _PREFLIGHT_OUTPUT_KIND_BY_GROUP,
+        "output_kinds": _PIPELINE_PREFLIGHT_OUTPUT_KIND_BY_GROUP,
         "comparison": {
             "ignore_fields": ["benchmark"],
             "required_equal_fields": [

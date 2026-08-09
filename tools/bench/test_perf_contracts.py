@@ -662,6 +662,22 @@ class CompareSelfContractsTest(unittest.TestCase):
             {receipt["benchmark"]: receipt},
         )
 
+        ascii_receipt = {
+            "schema_version": 1,
+            "benchmark": "ascii_end_to_end/sequence_medium",
+            "output_kind": "plain_ascii",
+            "output_bytes": 321,
+            "output_sha256": "b" * 64,
+            "svg_elements": None,
+        }
+        self.assertEqual(
+            compare_self.parse_preflight_receipts(
+                "[bench][preflight] "
+                + json.dumps(ascii_receipt, separators=(",", ":"))
+            ),
+            {ascii_receipt["benchmark"]: ascii_receipt},
+        )
+
         with self.assertRaisesRegex(compare_self.ContractViolation, "duplicate"):
             compare_self.parse_preflight_receipts(f"{line}\n{line}")
 

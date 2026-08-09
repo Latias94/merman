@@ -1145,7 +1145,7 @@ fn separate_external_nodes_from_groups(
     if graph.groups.is_empty() || placements.is_empty() {
         return Ok(());
     }
-    let endpoint_group_ids = graph_endpoint_group_ids(graph);
+    let endpoint_group_ids = graph_endpoint_group_ids(graph, resources)?;
     if endpoint_group_ids.is_empty() {
         return Ok(());
     }
@@ -1209,17 +1209,16 @@ fn stack_divider_sections(
         return Ok(());
     }
 
-    let divider_groups = graph
+    let divider_group_count = graph
         .groups
         .iter()
-        .enumerate()
-        .filter(|(_, group)| group.kind == GraphGroupKind::Divider)
-        .collect::<Vec<_>>();
-    if divider_groups.len() < 2 {
+        .filter(|group| group.kind == GraphGroupKind::Divider)
+        .count();
+    if divider_group_count < 2 {
         return Ok(());
     }
 
-    let index_work = resources.checked_work_add(graph.groups.len(), divider_groups.len())?;
+    let index_work = resources.checked_work_add(graph.groups.len(), divider_group_count)?;
     resources.charge_layout_work(index_work)?;
     let mut child_dividers_by_parent = Vec::<Vec<usize>>::new();
     child_dividers_by_parent
@@ -1230,7 +1229,12 @@ fn stack_divider_sections(
             )
         })?;
     child_dividers_by_parent.resize_with(graph.groups.len(), Vec::new);
-    for (child_index, _) in divider_groups {
+    for (child_index, _) in graph
+        .groups
+        .iter()
+        .enumerate()
+        .filter(|(_, group)| group.kind == GraphGroupKind::Divider)
+    {
         let Some(parent_index) = topology.parent_group_index(child_index) else {
             continue;
         };
@@ -1444,18 +1448,32 @@ pub(super) fn node_padding_y(
     resources.checked_grid_add(options.graph_padding_y, SUBGRAPH_EXTERNAL_INCOMING_OVERHEAD)
 }
 
-fn graph_endpoint_group_ids(graph: &AsciiGraph) -> HashSet<&str> {
-    let group_ids = graph
-        .groups
-        .iter()
-        .map(|group| group.id.as_str())
-        .collect::<HashSet<_>>();
-    graph
-        .edges
-        .iter()
-        .flat_map(|edge| [edge.from.as_str(), edge.to.as_str()])
-        .filter(|endpoint| group_ids.contains(endpoint))
-        .collect()
+fn graph_endpoint_group_ids<'a>(
+    graph: &'a AsciiGraph,
+    resources: &ResourceContext,
+) -> Result<HashSet<&'a str>> {
+    let endpoint_count = resources.checked_work_mul(graph.edges.len(), 2)?;
+    resources
+        .charge_layout_work(resources.checked_work_add(graph.groups.len(), endpoint_count)?)?;
+
+    let mut group_ids = HashSet::new();
+    group_ids
+        .try_reserve(graph.groups.len())
+        .map_err(|_| layout_work_allocation_failed())?;
+    group_ids.extend(graph.groups.iter().map(|group| group.id.as_str()));
+
+    let mut endpoint_group_ids = HashSet::new();
+    endpoint_group_ids
+        .try_reserve(graph.groups.len().min(endpoint_count))
+        .map_err(|_| layout_work_allocation_failed())?;
+    for edge in &graph.edges {
+        for endpoint in [edge.from.as_str(), edge.to.as_str()] {
+            if group_ids.contains(endpoint) {
+                endpoint_group_ids.insert(endpoint);
+            }
+        }
+    }
+    Ok(endpoint_group_ids)
 }
 
 fn group_member_indices(

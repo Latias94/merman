@@ -2,7 +2,8 @@
   "schema_version": 2,
   "default_group": "ascii_end_to_end",
   "suites": {
-    "closeout": "One stable medium fixture for each common ASCII family measured by U25."
+    "closeout": "One stable medium fixture for each common ASCII family measured by U25.",
+    "comparable": "Fixtures whose baseline and head plain-ASCII output identities match."
   },
   "lanes": [
     {
@@ -43,7 +44,7 @@
       "size": "medium",
       "category": "ascii-closeout",
       "source": "crates/merman/benches/fixtures/sequence_medium.mmd",
-      "suites": ["closeout"],
+      "suites": ["closeout", "comparable"],
       "features": ["ascii"],
       "quality": ["deterministic", "common-family"]
     },
@@ -53,7 +54,7 @@
       "size": "medium",
       "category": "ascii-closeout",
       "source": "crates/merman/benches/fixtures/class_medium.mmd",
-      "suites": ["closeout"],
+      "suites": ["closeout", "comparable"],
       "features": ["ascii"],
       "quality": ["deterministic", "common-family"]
     },
