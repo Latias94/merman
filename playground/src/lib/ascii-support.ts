@@ -165,10 +165,16 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: Partial<
   treeView: {
     displayName: "TreeView",
     semanticCoverage: "partial",
-    primaryProjection: "diagrammatic",
+    primaryProjection: "structured_text",
+    supportedSemantics: [
+      "hierarchical outline order",
+      "directory and file distinction",
+      "ASCII and Unicode tree connectors",
+      "icons classes and descriptions as text disclosure",
+    ],
     limits: [
-      "typed-field and terminal-usefulness review is not yet complete",
-      "browser tree styling is not represented",
+      "outline output does not claim two-dimensional diagram geometry",
+      "browser icons and CSS classes are disclosed rather than styled",
     ],
   },
   xychart: {

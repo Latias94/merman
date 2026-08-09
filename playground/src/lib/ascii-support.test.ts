@@ -52,6 +52,7 @@ test("fallback projection fields derive the compatibility support level", () => 
     "mindmap",
     "packet",
     "timeline",
+    "treeView",
   ] as const) {
     const capability = byType.get(diagramType)!;
     assert.equal(capability.semantic_coverage, "partial");

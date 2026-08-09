@@ -18,6 +18,10 @@ fn render(model: RenderSemanticModel) -> String {
     render_model(&model, &AsciiRenderOptions::ascii()).unwrap()
 }
 
+fn render_with_options(model: RenderSemanticModel, options: &AsciiRenderOptions) -> String {
+    render_model(&model, options).unwrap()
+}
+
 fn render_parsed(input: &str) -> String {
     let engine = merman_core::Engine::new();
     let parsed = engine
@@ -33,10 +37,16 @@ fn tree_node(
     name: &str,
     children: Vec<TreeViewNodeRenderModel>,
 ) -> TreeViewNodeRenderModel {
+    let node_type = if children.is_empty() {
+        "file"
+    } else {
+        "directory"
+    };
     TreeViewNodeRenderModel {
         id,
         level,
         name: name.to_string(),
+        node_type: node_type.to_string(),
         children,
         ..Default::default()
     }
@@ -139,10 +149,64 @@ fn tree_view_render_model_renders_outline_summary() {
             "Project\n",
             "accTitle: Tree title\n",
             "accDescr: Tree description\n",
-            "|-- Root\n",
+            "|-- Root/\n",
             "|   |-- Child 1\n",
             "|   \\-- Child 2\n",
             "\\-- Sibling",
+        )
+    );
+}
+
+#[test]
+fn tree_view_discloses_typed_fields_and_honors_unicode_connectors() {
+    let file = TreeViewNodeRenderModel {
+        id: 2,
+        level: 1,
+        name: "App.tsx".to_string(),
+        node_type: "file".to_string(),
+        icon: Some("react".to_string()),
+        description: Some("main component".to_string()),
+        ..Default::default()
+    };
+    let directory = TreeViewNodeRenderModel {
+        id: 1,
+        level: 0,
+        name: "src".to_string(),
+        node_type: "directory".to_string(),
+        css_class: Some("highlight".to_string()),
+        icon: Some("folder".to_string()),
+        description: Some("source directory".to_string()),
+        children: vec![file],
+    };
+    let model = TreeViewDiagramRenderModel {
+        root: TreeViewNodeRenderModel {
+            children: vec![directory],
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let ascii = render_with_options(
+        RenderSemanticModel::TreeView(model.clone()),
+        &AsciiRenderOptions::ascii(),
+    );
+    let unicode = render_with_options(
+        RenderSemanticModel::TreeView(model),
+        &AsciiRenderOptions::unicode(),
+    );
+
+    assert_eq!(
+        ascii,
+        concat!(
+            "\\-- src/ [icon=folder, class=highlight] -- source directory\n",
+            "    \\-- App.tsx [icon=react] -- main component",
+        )
+    );
+    assert_eq!(
+        unicode,
+        concat!(
+            "└── src/ [icon=folder, class=highlight] -- source directory\n",
+            "    └── App.tsx [icon=react] -- main component",
         )
     );
 }
@@ -188,6 +252,37 @@ fn mindmap_render_model_marks_cycles_and_deduplicates_edges() {
     let rendered = render(RenderSemanticModel::Mindmap(model));
 
     assert_eq!(rendered, "Root\n\\-- Child\n    \\-- Root (cycle)");
+}
+
+#[test]
+fn mindmap_render_model_keeps_disconnected_cycle_components() {
+    let model = MindmapDiagramRenderModel {
+        nodes: vec![
+            mindmap_node("root", "Root", 0),
+            mindmap_node("child", "Child", 1),
+            mindmap_node("a", "A", 0),
+            mindmap_node("b", "B", 1),
+        ],
+        edges: vec![
+            mindmap_edge("e1", "root", "child"),
+            mindmap_edge("e2", "a", "b"),
+            mindmap_edge("e3", "b", "a"),
+        ],
+    };
+
+    let rendered = render(RenderSemanticModel::Mindmap(model));
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "Root\n",
+            "\\-- Child\n",
+            "\n",
+            "A\n",
+            "\\-- B\n",
+            "    \\-- A (cycle)",
+        )
+    );
 }
 
 #[test]
@@ -416,6 +511,48 @@ fn kanban_render_model_renders_groups_and_child_metadata() {
             "  - Ticket B [ticket=K-2]\n",
             "Doing\n",
             "  - Ticket C [ticket=K-3]",
+        )
+    );
+}
+
+#[test]
+fn kanban_render_model_keeps_unassigned_and_unknown_parent_cards() {
+    let model = KanbanDiagramRenderModel {
+        nodes: vec![
+            kanban_node("backlog", "Backlog", true, KanbanNodeMetadata::default()),
+            kanban_node(
+                "known",
+                "Known",
+                false,
+                KanbanNodeMetadata {
+                    parent_id: Some("backlog"),
+                    ..Default::default()
+                },
+            ),
+            kanban_node("loose", "Loose", false, KanbanNodeMetadata::default()),
+            kanban_node(
+                "unknown",
+                "Unknown",
+                false,
+                KanbanNodeMetadata {
+                    parent_id: Some("missing"),
+                    ticket: Some("K-404"),
+                    ..Default::default()
+                },
+            ),
+        ],
+    };
+
+    let rendered = render(RenderSemanticModel::Kanban(model));
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "Backlog\n",
+            "  - Known\n",
+            "Unassigned\n",
+            "  - Loose\n",
+            "  - Unknown [parent=missing, ticket=K-404]",
         )
     );
 }

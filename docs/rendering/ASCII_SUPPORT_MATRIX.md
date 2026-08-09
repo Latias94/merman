@@ -44,7 +44,6 @@ readable at ordinary terminal widths.
 | Class | Partial | Diagrammatic | Yes | Class structure, notes, namespaces, common relations, routed components, and explicit relation summaries. | Namespace-crossing and dense/collision-prone relationships can use `relations:` output. |
 | ER | Partial | Diagrammatic | Yes | Entities, attributes, keys, relationship labels/cardinalities, routed components, and explicit relation summaries. | Dense/collision-prone topology can use `relations:` output. |
 | XYChart | Partial | Diagrammatic | No | Typed x/y samples and point labels, band/linear axes, negative/reversed/degenerate ranges, grouped bars, connected topology-resolved lines, mixed series, titles, legends, display policy, exact disclosure, and horizontal/vertical variants. | Browser hover is replaced by terminal disclosure; SVG coordinates are quantized, and cross-series same-cell ownership remains approximate. |
-| TreeView | Partial | Diagrammatic | No | Tree nodes, folders/leaves, indentation, and terminal tree connectors. | Typed-field and terminal-usefulness review is incomplete; browser tree styling is not represented. |
 
 ## Structured-Text Outputs
 
@@ -63,6 +62,7 @@ is exceeded.
 | Mindmap | Partial | Structured text | Hierarchical nodes and labels as an outline. | Icons, images, and rich node shapes are omitted or approximated. |
 | Packet | Partial | Structured text | Bit ranges and labels in ordered terminal rows. | Output does not preserve spatial bit widths; browser-oriented styling is not represented. |
 | Timeline | Partial | Structured text | Sections and events in ordered grouped text. | Does not draw Mermaid timeline geometry. |
+| TreeView | Partial | Structured text | Hierarchy, file/directory types, charset-aware connectors, and icon/class/description disclosure. | It is an outline rather than two-dimensional diagram geometry; browser icons and CSS classes are disclosed rather than styled. |
 
 ## Unsupported Families
 

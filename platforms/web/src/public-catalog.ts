@@ -87,7 +87,6 @@ export const DIAGRAMMATIC_ASCII_DIAGRAMS = [
   "flowchart",
   "sequence",
   "state",
-  "treeView",
   "xychart",
 ] as const satisfies readonly AsciiDiagramType[];
 

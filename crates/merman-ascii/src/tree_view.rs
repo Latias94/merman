@@ -1,20 +1,46 @@
 use crate::Result;
 use crate::error::AsciiError;
-use crate::options::AsciiRenderOptions;
+use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::BudgetedTextDocument;
+use crate::text::display_width_with_profile;
 use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
-const TREE_BRANCH: &str = "|-- ";
-const TREE_CHILD_CONTINUE: &str = "|   ";
-const TREE_CHILD_EMPTY: &str = "    ";
+
+#[derive(Clone, Copy)]
+struct TreeViewChars {
+    branch: &'static str,
+    last_branch: &'static str,
+    child_continue: &'static str,
+    child_empty: &'static str,
+}
+
+impl TreeViewChars {
+    fn from_options(options: &AsciiRenderOptions) -> Self {
+        match options.structural_charset() {
+            AsciiCharset::Ascii => Self {
+                branch: "|-- ",
+                last_branch: "\\-- ",
+                child_continue: "|   ",
+                child_empty: "    ",
+            },
+            AsciiCharset::Unicode => Self {
+                branch: "├── ",
+                last_branch: "└── ",
+                child_continue: "│   ",
+                child_empty: "    ",
+            },
+        }
+    }
+}
 
 pub fn render_tree_view_diagram(
     model: &TreeViewDiagramRenderModel,
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     let mut document = BudgetedTextDocument::new(options);
+    let chars = TreeViewChars::from_options(options);
     document.push_optional_line(model.title.as_deref())?;
     document.push_optional_prefixed_line("accTitle: ", model.acc_title.as_deref())?;
     document.push_optional_prefixed_line("accDescr: ", model.acc_descr.as_deref())?;
@@ -42,16 +68,16 @@ pub fn render_tree_view_diagram(
         } = frame;
         let branch = if prefix.is_empty() {
             if is_last {
-                "\\-- ".to_string()
+                chars.last_branch.to_string()
             } else {
-                TREE_BRANCH.to_string()
+                chars.branch.to_string()
             }
         } else if is_last {
-            format!("{prefix}\\-- ")
+            format!("{prefix}{}", chars.last_branch)
         } else {
-            format!("{prefix}{TREE_BRANCH}")
+            format!("{prefix}{}", chars.branch)
         };
-        push_wrapped_label(&mut document, &branch, &node.name)?;
+        push_wrapped_node(&mut document, &branch, node, options)?;
 
         if node.children.is_empty() {
             continue;
@@ -65,14 +91,14 @@ pub fn render_tree_view_diagram(
         document.resources_mut().check_nesting_depth(child_depth)?;
         let next_prefix = if prefix.is_empty() {
             if is_last {
-                TREE_CHILD_EMPTY.to_string()
+                chars.child_empty.to_string()
             } else {
-                TREE_CHILD_CONTINUE.to_string()
+                chars.child_continue.to_string()
             }
         } else if is_last {
-            format!("{prefix}{TREE_CHILD_EMPTY}")
+            format!("{prefix}{}", chars.child_empty)
         } else {
-            format!("{prefix}{TREE_CHILD_CONTINUE}")
+            format!("{prefix}{}", chars.child_continue)
         };
 
         for (index, child) in node.children.iter().enumerate().rev() {
@@ -118,17 +144,57 @@ fn push_frame<'a>(
     Ok(())
 }
 
-fn push_wrapped_label(
+fn push_wrapped_node(
     document: &mut BudgetedTextDocument,
     prefix: &str,
-    label: &str,
+    node: &TreeViewNodeRenderModel,
+    options: &AsciiRenderOptions,
 ) -> Result<()> {
-    let continuation_width = prefix.len();
+    let continuation_width = display_width_with_profile(prefix, options.terminal_width_profile);
     document
         .resources_mut()
         .charge_layout_work(continuation_width)?;
     let continuation_prefix = " ".repeat(continuation_width);
-    document.push_wrapped_prefixed_line(prefix, &continuation_prefix, label, SUMMARY_WRAP_WIDTH)
+    document.push_wrapped_prefixed_line_with(
+        prefix,
+        &continuation_prefix,
+        SUMMARY_WRAP_WIDTH,
+        |line| {
+            line.push_str(&node.name)?;
+            match node.node_type.as_str() {
+                "directory" if !node.name.ends_with('/') => line.push_str("/")?,
+                "file" | "directory" => {}
+                node_type => {
+                    line.push_str(" [type=")?;
+                    line.push_str(node_type)?;
+                    line.push_str("]")?;
+                }
+            }
+
+            let metadata = [
+                ("icon=", node.icon.as_deref()),
+                ("class=", node.css_class.as_deref()),
+            ];
+            let mut emitted = false;
+            for (key, value) in metadata
+                .into_iter()
+                .filter_map(|(key, value)| value.map(|value| (key, value)))
+            {
+                line.push_str(if emitted { ", " } else { " [" })?;
+                line.push_str(key)?;
+                line.push_str(value)?;
+                emitted = true;
+            }
+            if emitted {
+                line.push_str("]")?;
+            }
+            if let Some(description) = node.description.as_deref() {
+                line.push_str(" -- ")?;
+                line.push_str(description)?;
+            }
+            Ok(())
+        },
+    )
 }
 
 #[cfg(test)]

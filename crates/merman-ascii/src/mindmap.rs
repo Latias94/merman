@@ -20,7 +20,14 @@ pub fn render_mindmap_diagram(
     let mut document = BudgetedTextDocument::new(options);
     let nodes_by_id = index_nodes(&model.nodes, document.resources_mut())?;
     let children_by_id = build_children_map(&model.edges, document.resources_mut())?;
-    let roots = root_ids(&model.nodes, &model.edges, document.resources_mut())?;
+    let mut roots = root_ids(&model.nodes, &model.edges, document.resources_mut())?;
+    append_disconnected_component_roots(
+        &model.nodes,
+        &nodes_by_id,
+        &children_by_id,
+        &mut roots,
+        document.resources_mut(),
+    )?;
 
     for (index, root_id) in roots.iter().enumerate() {
         if index > 0 {
@@ -199,6 +206,86 @@ fn root_ids<'a>(
     }
 
     Ok(roots)
+}
+
+fn append_disconnected_component_roots<'a>(
+    nodes: &'a [MindmapDiagramRenderNode],
+    nodes_by_id: &HashMap<&'a str, &'a MindmapDiagramRenderNode>,
+    children_by_id: &HashMap<&'a str, Vec<&'a str>>,
+    roots: &mut Vec<&'a str>,
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    let mut reachable = HashSet::new();
+    reachable
+        .try_reserve(nodes_by_id.len())
+        .map_err(|_| layout_allocation_error())?;
+    let mut stack = Vec::new();
+    stack
+        .try_reserve(nodes_by_id.len())
+        .map_err(|_| layout_allocation_error())?;
+
+    let initial_root_count = roots.len();
+    for root_index in 0..initial_root_count {
+        mark_reachable_component(
+            roots[root_index],
+            nodes_by_id,
+            children_by_id,
+            &mut reachable,
+            &mut stack,
+            resources,
+        )?;
+    }
+
+    for node in nodes {
+        resources.charge_layout_work(1)?;
+        if reachable.contains(node.id.as_str()) {
+            continue;
+        }
+        roots
+            .try_reserve(1)
+            .map_err(|_| layout_allocation_error())?;
+        roots.push(node.id.as_str());
+        mark_reachable_component(
+            node.id.as_str(),
+            nodes_by_id,
+            children_by_id,
+            &mut reachable,
+            &mut stack,
+            resources,
+        )?;
+    }
+
+    Ok(())
+}
+
+fn mark_reachable_component<'a>(
+    root_id: &'a str,
+    nodes_by_id: &HashMap<&'a str, &'a MindmapDiagramRenderNode>,
+    children_by_id: &HashMap<&'a str, Vec<&'a str>>,
+    reachable: &mut HashSet<&'a str>,
+    stack: &mut Vec<&'a str>,
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    if !nodes_by_id.contains_key(root_id) || !reachable.insert(root_id) {
+        return Ok(());
+    }
+    resources.charge_layout_work(1)?;
+    stack.push(root_id);
+
+    while let Some(node_id) = stack.pop() {
+        resources.charge_layout_work(1)?;
+        let Some(children) = children_by_id.get(node_id) else {
+            continue;
+        };
+        for child_id in children.iter().rev().copied() {
+            resources.charge_layout_work(1)?;
+            if nodes_by_id.contains_key(child_id) && reachable.insert(child_id) {
+                stack.push(child_id);
+            }
+        }
+    }
+
+    Ok(())
 }
 
 enum MindmapFrame<'a> {

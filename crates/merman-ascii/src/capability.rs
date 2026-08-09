@@ -548,28 +548,28 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         diagram_type: "treeView",
         display_name: "TreeView",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
-        primary_projection: AsciiPrimaryProjection::Diagrammatic,
+        primary_projection: AsciiPrimaryProjection::StructuredText,
         structured_text_fallback: false,
         supported_semantics: &[
-            "tree nodes",
-            "folders and leaves",
-            "indentation",
-            "tree connectors",
+            "hierarchical outline order",
+            "directory and file distinction",
+            "ASCII and Unicode tree connectors",
+            "icons classes and descriptions as text disclosure",
         ],
         limits: &[
-            "typed-field and terminal-usefulness review is not yet complete",
-            "browser tree styling is not represented",
+            "outline output does not claim two-dimensional diagram geometry",
+            "browser icons and CSS classes are disclosed rather than styled",
         ],
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalAdvantage,
                 source: "crates/merman-ascii/README.md#shipped-diagram-matrix",
-                note: "tree output is typed terminal structure and is not tied to metadata ids",
+                note: "tree output preserves typed hierarchy and annotations as terminal text",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
                 source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#supported-families",
-                note: "support matrix classifies TreeView as partial diagrammatic output",
+                note: "support matrix classifies TreeView as structured outline output",
             },
         ],
     },
@@ -712,15 +712,7 @@ mod tests {
         );
         assert_eq!(
             ascii_diagrammatic_diagram_types(),
-            &[
-                "class",
-                "er",
-                "flowchart",
-                "sequence",
-                "state",
-                "treeView",
-                "xychart",
-            ]
+            &["class", "er", "flowchart", "sequence", "state", "xychart",]
         );
     }
 
@@ -747,12 +739,19 @@ mod tests {
         assert_eq!(find("flowchart").support_level, AsciiSupportLevel::Partial);
         assert_eq!(find("sequence").support_level, AsciiSupportLevel::Partial);
         assert_eq!(find("packet").support_level, AsciiSupportLevel::Summary);
-        assert_eq!(find("treeView").support_level, AsciiSupportLevel::Partial);
+        assert_eq!(find("treeView").support_level, AsciiSupportLevel::Summary);
         assert_eq!(find("gantt").support_level, AsciiSupportLevel::Summary);
         assert_eq!(find("xychart").support_level, AsciiSupportLevel::Partial);
 
         for diagram_type in [
-            "gantt", "gitgraph", "journey", "kanban", "mindmap", "packet", "timeline",
+            "gantt",
+            "gitgraph",
+            "journey",
+            "kanban",
+            "mindmap",
+            "packet",
+            "timeline",
+            "treeView",
         ] {
             let capability = find(diagram_type);
             assert_eq!(
