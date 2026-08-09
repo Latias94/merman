@@ -3155,4 +3155,34 @@ mod tests {
         assert_eq!(geometry.target_x(), 7);
         assert_eq!(geometry.route_y(), 9);
     }
+
+    #[test]
+    fn layered_relation_route_uses_right_exterior_when_left_has_no_margin() {
+        let top_box = RelationGraphBox::new("top".to_string(), vec!["top".to_string()], 18);
+        let middle_left_box =
+            RelationGraphBox::new("middle-left".to_string(), vec!["left".to_string()], 15);
+        let middle_right_box =
+            RelationGraphBox::new("middle-right".to_string(), vec!["right".to_string()], 15);
+        let bottom_box =
+            RelationGraphBox::new("bottom".to_string(), vec!["bottom".to_string()], 21);
+        let placed = vec![
+            PlacedRelationGraphBox::for_test("top", &top_box, 9, 0),
+            PlacedRelationGraphBox::for_test("middle-left", &middle_left_box, 0, 4),
+            PlacedRelationGraphBox::for_test("middle-right", &middle_right_box, 28, 4),
+            PlacedRelationGraphBox::for_test("bottom", &bottom_box, 44, 10),
+        ];
+
+        let options = AsciiRenderOptions::ascii();
+        let mut resources = test_resources(&options);
+        let lane_offset = spanning_lane_offset_around_intermediate_boxes(
+            &placed,
+            &placed[0],
+            &placed[3],
+            0,
+            &mut resources,
+        )
+        .expect("a blocked route at the left canvas edge should use the right exterior");
+
+        assert_eq!(lane_offset, 26);
+    }
 }

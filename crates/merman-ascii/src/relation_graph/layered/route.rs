@@ -800,13 +800,14 @@ fn route_column_left_of_intermediate_boxes(
     intermediate_boxes: &[&PlacedRelationGraphBox<'_>],
     resources: &ResourceContext,
 ) -> Result<isize> {
-    let target = intermediate_boxes
+    let left = intermediate_boxes
         .iter()
         .map(|placed_box| placed_box.x())
         .min()
-        .unwrap_or(0)
-        .checked_sub(2)
-        .ok_or_else(|| grid_overflow(resources))?;
+        .unwrap_or(0);
+    let Some(target) = left.checked_sub(2) else {
+        return route_column_right_of_intermediate_boxes(top, intermediate_boxes, resources);
+    };
     checked_signed_difference(target, top.center_x(), resources)
 }
 
