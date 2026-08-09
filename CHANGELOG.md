@@ -8,7 +8,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 0.8.0-alpha.4 completes Merman's Mermaid 11.16.1 language and rendering surface and gives CLI, editor, browser, Rust, and native-SDK users explicit product contracts. It is a deliberately breaking prerelease; use the [alpha.3 to alpha.4 upgrade guide](docs/release/ALPHA3_TO_ALPHA4_UPGRADE_GUIDE.md) for exact migrations.
 
-Rust crates and the lockstep browser packages use this workspace changelog. Package-specific details are available for [Android](platforms/android/CHANGELOG.md), [Apple](platforms/apple/CHANGELOG.md), [Python](platforms/python/merman/CHANGELOG.md), and the [VS Code extension](tools/vscode-extension/CHANGELOG.md).
+Rust crates and the lockstep browser packages use this workspace changelog. Package-specific details are available for [Android](platforms/android/CHANGELOG.md), [Apple](platforms/apple/CHANGELOG.md), [Flutter](platforms/flutter/CHANGELOG.md), [Python](platforms/python/merman/CHANGELOG.md), and the [VS Code extension](tools/vscode-extension/CHANGELOG.md).
 
 ### Breaking changes
 
