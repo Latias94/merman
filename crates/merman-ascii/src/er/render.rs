@@ -11,7 +11,7 @@ use crate::relation_graph::{
 #[cfg(test)]
 use crate::resource::AsciiResourceLimitId;
 use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
-use crate::safe_text::charge_text_layout;
+use crate::safe_text::{charge_text_layout, terminal_char_display_width};
 use crate::text::display_width_with_profile;
 use crate::{AsciiError, Result};
 use merman_core::diagrams::er::{
@@ -406,7 +406,7 @@ fn render_vertical_relationship(
         .as_ref()
         .map(RelationGraphLabel::half_width)
         .unwrap_or(0);
-    let plan = RelationStackPlan::from_centered_rows(
+    let plan = RelationStackPlan::try_new(
         top,
         bottom,
         &[
@@ -414,8 +414,9 @@ fn render_vertical_relationship(
             display_width_with_profile(bottom_cardinality, width_profile) / 2,
             label_half_width,
         ],
-        |center| {
-            er_relationship_rows(
+        resources,
+        |center, resources| {
+            er_relationship_extent(
                 top_cardinality,
                 bottom_cardinality,
                 line,
@@ -427,7 +428,51 @@ fn render_vertical_relationship(
         },
     )?;
 
-    plan.render_lines(resources)
+    plan.render_lines(resources, |center, resources| {
+        er_relationship_rows(
+            top_cardinality,
+            bottom_cardinality,
+            line,
+            layout.label.as_ref(),
+            center,
+            width_profile,
+            resources,
+        )
+    })
+}
+
+fn er_relationship_extent(
+    top_cardinality: &str,
+    bottom_cardinality: &str,
+    line: char,
+    label: Option<&RelationGraphLabel>,
+    center: usize,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<LogicalExtent> {
+    let label = label
+        .map(|label| (label.width(), label.line_count()))
+        .unwrap_or((0, 0));
+    let centered = relation_graph::centered_row_blocks_extent(
+        center,
+        [
+            (
+                display_width_with_profile(top_cardinality, width_profile),
+                1,
+            ),
+            label,
+            (
+                display_width_with_profile(bottom_cardinality, width_profile),
+                1,
+            ),
+        ],
+        resources,
+    )?;
+    let width = centered
+        .width()
+        .max(resources.checked_grid_add(center, terminal_char_display_width(line, width_profile))?);
+    let height = resources.checked_grid_add(centered.height(), 1)?;
+    resources.grid_extent(width, height)
 }
 
 fn er_relationship_rows(

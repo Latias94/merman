@@ -299,15 +299,16 @@ pub(crate) struct RelationStackPlan<'a> {
     top: &'a RelationGraphBox,
     bottom: &'a RelationGraphBox,
     center: usize,
-    relation_lines: Vec<RelationGraphLine>,
+    relation_extent: LogicalExtent,
 }
 
 impl<'a> RelationStackPlan<'a> {
-    pub(crate) fn from_centered_rows(
+    pub(crate) fn try_new(
         top: &'a RelationGraphBox,
         bottom: &'a RelationGraphBox,
         extra_half_widths: &[usize],
-        build_rows: impl FnOnce(usize) -> Result<Vec<RelationGraphLine>>,
+        resources: &ResourceContext,
+        measure_rows: impl FnOnce(usize, &ResourceContext) -> Result<LogicalExtent>,
     ) -> Result<Self> {
         debug_assert_eq!(
             top.width_profile(),
@@ -315,32 +316,84 @@ impl<'a> RelationStackPlan<'a> {
             "stacked relation boxes must share one terminal width profile"
         );
         let center = vertical_center(top, bottom, extra_half_widths);
-        let relation_lines = build_rows(center)?;
-        debug_assert!(
-            relation_lines
-                .iter()
-                .all(|line| line.width_profile() == top.width_profile())
-        );
+        let relation_extent = measure_rows(center, resources)?;
         Ok(Self {
             top,
             bottom,
             center,
-            relation_lines,
+            relation_extent,
         })
     }
 
     pub(crate) fn render_lines(
         self,
         resources: &mut ResourceContext,
+        materialize_rows: impl FnOnce(usize, &ResourceContext) -> Result<Vec<RelationGraphLine>>,
     ) -> Result<Vec<RelationGraphLine>> {
-        vertical_stack_lines(
+        let extent = self.aggregate_extent(resources)?;
+        resources.charge_layout_work(extent.cells())?;
+        let relation_lines = materialize_rows(self.center, resources)?;
+        self.validate_relation_lines(&relation_lines, resources)?;
+        assemble_vertical_stack_lines(
             self.top,
             self.bottom,
             self.center,
-            self.relation_lines,
+            relation_lines,
+            extent,
             resources,
         )
     }
+
+    fn aggregate_extent(&self, resources: &ResourceContext) -> Result<LogicalExtent> {
+        vertical_stack_extent(
+            self.top,
+            self.bottom,
+            self.center,
+            self.relation_extent,
+            resources,
+        )
+    }
+
+    fn validate_relation_lines(
+        &self,
+        relation_lines: &[RelationGraphLine],
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        let width = relation_lines
+            .iter()
+            .map(RelationGraphLine::width)
+            .max()
+            .unwrap_or(0);
+        if relation_lines.len() != self.relation_extent.height()
+            || width != self.relation_extent.width()
+            || relation_lines
+                .iter()
+                .any(|line| line.width_profile() != self.top.width_profile())
+        {
+            return Err(grid_overflow(resources));
+        }
+        Ok(())
+    }
+}
+
+pub(crate) fn centered_row_blocks_extent(
+    center: usize,
+    blocks: impl IntoIterator<Item = (usize, usize)>,
+    resources: &ResourceContext,
+) -> Result<LogicalExtent> {
+    let mut width = 0usize;
+    let mut height = 0usize;
+    for (block_width, row_count) in blocks {
+        if row_count == 0 {
+            continue;
+        }
+        let left = center
+            .checked_sub(block_width / 2)
+            .ok_or_else(|| grid_overflow(resources))?;
+        width = width.max(resources.checked_grid_add(left, block_width)?);
+        height = resources.checked_grid_add(height, row_count)?;
+    }
+    resources.grid_extent(width, height)
 }
 
 /// A geometry-only parallel plan. Family-owned styled rows are materialized only
@@ -489,11 +542,12 @@ impl<'a> RelationParallelPlan<'a> {
             relation_lines.push(RelationGraphLine::from_styled(line));
         }
 
-        vertical_stack_lines(
+        assemble_vertical_stack_lines(
             self.top,
             self.bottom,
             self.center,
             relation_lines,
+            extent,
             resources,
         )
     }
@@ -2248,38 +2302,55 @@ pub(crate) fn vertical_center(
         .fold((top.width / 2).max(bottom.width / 2), usize::max)
 }
 
-pub(crate) fn vertical_stack_lines(
+fn vertical_stack_extent(
+    top: &RelationGraphBox,
+    bottom: &RelationGraphBox,
+    center: usize,
+    relation_extent: LogicalExtent,
+    resources: &ResourceContext,
+) -> Result<LogicalExtent> {
+    let height = resources.checked_grid_add(
+        resources.checked_grid_add(top.height(), relation_extent.height())?,
+        bottom.height(),
+    )?;
+    let top_left = center
+        .checked_sub(top.width() / 2)
+        .ok_or_else(|| grid_overflow(resources))?;
+    let bottom_left = center
+        .checked_sub(bottom.width() / 2)
+        .ok_or_else(|| grid_overflow(resources))?;
+    let top_width = resources.checked_grid_add(top_left, top.width())?;
+    let bottom_width = resources.checked_grid_add(bottom_left, bottom.width())?;
+    resources.grid_extent(
+        relation_extent.width().max(top_width).max(bottom_width),
+        height,
+    )
+}
+
+fn assemble_vertical_stack_lines(
     top: &RelationGraphBox,
     bottom: &RelationGraphBox,
     center: usize,
     relation_lines: Vec<RelationGraphLine>,
-    resources: &mut ResourceContext,
+    extent: LogicalExtent,
+    resources: &ResourceContext,
 ) -> Result<Vec<RelationGraphLine>> {
-    let height = resources.checked_grid_add(
-        resources.checked_grid_add(top.height(), relation_lines.len())?,
-        bottom.height(),
-    )?;
-    let width = relation_lines
-        .iter()
-        .map(RelationGraphLine::width)
-        .chain(std::iter::once(
-            resources.checked_grid_add(center - top.width() / 2, top.width())?,
-        ))
-        .chain(std::iter::once(resources.checked_grid_add(
-            center - bottom.width() / 2,
-            bottom.width(),
-        )?))
-        .max()
-        .unwrap_or(0);
-    let extent = resources.grid_extent(width, height)?;
-    resources.charge_layout_work(extent.cells())?;
     let mut lines = Vec::new();
     lines
-        .try_reserve_exact(height)
+        .try_reserve_exact(extent.height())
         .map_err(|_| layout_allocation_failed())?;
     lines.extend(try_align_box_lines(top, center, resources)?);
     lines.extend(relation_lines);
     lines.extend(try_align_box_lines(bottom, center, resources)?);
+    debug_assert_eq!(lines.len(), extent.height());
+    debug_assert_eq!(
+        lines
+            .iter()
+            .map(RelationGraphLine::width)
+            .max()
+            .unwrap_or(0),
+        extent.width()
+    );
     Ok(lines)
 }
 
@@ -2525,8 +2596,10 @@ mod tests {
                     LayeredRelationError::MissingEndpoint,
                 )
             })?;
-            RelationStackPlan::from_centered_rows(top, bottom, &[], |_| Ok(Vec::new()))?
-                .render_lines(resources)
+            RelationStackPlan::try_new(top, bottom, &[], resources, |_center, resources| {
+                resources.grid_extent(0, 0)
+            })?
+            .render_lines(resources, |_center, _resources| Ok(Vec::new()))
         }
 
         fn render_parallel(
@@ -2620,6 +2693,79 @@ mod tests {
                 RelationGraphLine::try_plain("|", width_profile, resources)?,
             ],
         ])
+    }
+
+    fn materialize_stack_test_rows(
+        center: usize,
+        resources: &ResourceContext,
+    ) -> Result<Vec<RelationGraphLine>> {
+        Ok(vec![marker_line_with_role(
+            '|',
+            center,
+            AsciiColorRole::EdgeLine,
+            TerminalWidthProfile::Unicode,
+            resources,
+        )?])
+    }
+
+    #[test]
+    fn stack_plan_admits_exact_extent_before_materializing() {
+        let boxes = admission_test_boxes();
+        let options = options_with_grid_limit(24);
+        let mut resources = test_resources(&options);
+        let plan = RelationStackPlan::try_new(
+            &boxes[0],
+            &boxes[1],
+            &[],
+            &resources,
+            |center, resources| centered_row_blocks_extent(center, [(1, 1)], resources),
+        )
+        .expect("relation row descriptor should fit before aggregate admission");
+        assert_eq!(
+            plan.aggregate_extent(&resources)
+                .expect("stack aggregate should have a checked extent"),
+            resources
+                .grid_extent(4, 6)
+                .expect("4 by 6 should fit the exact limit")
+        );
+
+        let materialized = Cell::new(false);
+        let lines = plan
+            .render_lines(&mut resources, |center, resources| {
+                materialized.set(true);
+                materialize_stack_test_rows(center, resources)
+            })
+            .expect("4 by 6 relation stack should fit 24 cells");
+
+        assert!(materialized.get());
+        assert_eq!(lines.len(), 6);
+        assert_eq!(lines.iter().map(RelationGraphLine::width).max(), Some(4));
+    }
+
+    #[test]
+    fn stack_plan_rejects_n_minus_one_before_materializing() {
+        let boxes = admission_test_boxes();
+        let options = options_with_grid_limit(23);
+        let mut resources = test_resources(&options);
+        let plan = RelationStackPlan::try_new(
+            &boxes[0],
+            &boxes[1],
+            &[],
+            &resources,
+            |center, resources| centered_row_blocks_extent(center, [(1, 1)], resources),
+        )
+        .expect("relation row descriptor should fit before aggregate admission");
+        let materialized = Cell::new(false);
+
+        let error = plan
+            .render_lines(&mut resources, |center, resources| {
+                materialized.set(true);
+                materialize_stack_test_rows(center, resources)
+            })
+            .expect_err("4 by 6 relation stack must not fit 23 cells");
+
+        assert_grid_limit(error, 24, 23);
+        assert!(!materialized.get());
     }
 
     #[test]

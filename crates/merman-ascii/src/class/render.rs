@@ -1552,11 +1552,82 @@ fn render_vertical_relation(
             .map(RelationGraphLabel::half_width)
             .unwrap_or(0),
     ];
-    let plan = RelationStackPlan::from_centered_rows(top, bottom, &label_half_widths, |center| {
-        class_relation_rows(layout, center, charset, top.width_profile(), resources)
-    })?;
+    let plan = RelationStackPlan::try_new(
+        top,
+        bottom,
+        &label_half_widths,
+        resources,
+        |center, resources| {
+            class_relation_extent(layout, center, charset, top.width_profile(), resources)
+        },
+    )?;
 
-    plan.render_lines(resources)
+    plan.render_lines(resources, |center, resources| {
+        class_relation_rows(layout, center, charset, top.width_profile(), resources)
+    })
+}
+
+fn class_relation_extent(
+    layout: &RelationLayout<'_>,
+    center: usize,
+    charset: ClassCharset,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<LogicalExtent> {
+    let top_endpoint = layout
+        .top_endpoint_label
+        .as_ref()
+        .map(|label| (label.width(), label.line_count()))
+        .unwrap_or((0, 0));
+    let relation_label = layout
+        .label
+        .as_ref()
+        .map(|label| (label.width(), label.line_count()))
+        .unwrap_or((0, 0));
+    let bottom_endpoint = layout
+        .bottom_endpoint_label
+        .as_ref()
+        .map(|label| (label.width(), label.line_count()))
+        .unwrap_or((0, 0));
+    let (marker_width, marker_count) = class_relation_marker_block(layout, charset, width_profile);
+    let centered = relation_graph::centered_row_blocks_extent(
+        center,
+        [top_endpoint, relation_label, bottom_endpoint],
+        resources,
+    )?;
+    let width = centered
+        .width()
+        .max(resources.checked_grid_add(center, marker_width)?);
+    let height = resources.checked_grid_add(centered.height(), marker_count)?;
+    resources.grid_extent(width, height)
+}
+
+fn class_relation_marker_block(
+    layout: &RelationLayout<'_>,
+    charset: ClassCharset,
+    width_profile: TerminalWidthProfile,
+) -> (usize, usize) {
+    let line_width = relation_char_width(line_char(layout.line, charset), width_profile);
+    let top_marker_width = layout
+        .top_marker
+        .map(|marker| {
+            relation_char_width(marker_char(marker, MarkerSide::Top, charset), width_profile)
+        })
+        .unwrap_or(line_width);
+    let bottom_marker_width = layout
+        .bottom_marker
+        .map(|marker| {
+            relation_char_width(
+                marker_char(marker, MarkerSide::Bottom, charset),
+                width_profile,
+            )
+        })
+        .unwrap_or(line_width);
+    if layout.top_marker.is_none() && layout.bottom_marker.is_none() && layout.label.is_none() {
+        (line_width, 1)
+    } else {
+        (top_marker_width.max(bottom_marker_width), 2)
+    }
 }
 
 fn push_centered_endpoint_label(
