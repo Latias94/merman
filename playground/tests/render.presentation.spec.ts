@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   monitorBrowserErrors,
   openPlayground,
+  previewSvgText,
   replaceEditorSource,
   waitForPreviewSvg,
 } from "./helpers/playground";
@@ -56,6 +57,58 @@ const C4_DYNAMIC_EXAMPLE = GENERATED_EXAMPLES.find(
 if (!C4_DYNAMIC_EXAMPLE) {
   throw new Error("Missing the C4 dynamic Playground example.");
 }
+
+test("SVG mount failures stay inside the preview pane", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await waitForPreviewSvg(page);
+  await page.evaluate(() => {
+    Object.defineProperty(window, "XMLSerializer", {
+      configurable: true,
+      value: class FailingXmlSerializer {
+        serializeToString(): string {
+          throw new Error("forced SVG mount failure");
+        }
+      },
+    });
+  });
+  await page.getByRole("button", { name: "View SVG source" }).click();
+  await page.getByRole("button", { name: "View SVG preview" }).click();
+
+  const failure = page.locator(
+    '[data-merman-render-error="true"][data-merman-error-stage="svg-mount"]',
+  );
+  await expect(failure).toBeVisible();
+  await expect(failure).toContainText("forced SVG mount failure");
+  await expect(
+    page.getByRole("button", { name: "Examples", exact: true }),
+  ).toBeVisible();
+  errors.assertNone();
+});
+
+test("Event Model example remains mounted in the Playground", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await page.getByRole("button", { name: "Examples", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Example Gallery" });
+  await dialog
+    .getByRole("searchbox", { name: "Search examples" })
+    .fill("Event Model");
+  const eventModelCard = dialog.getByRole("button", {
+    name: /^Event Model Flow/u,
+  });
+  await expect(eventModelCard).toHaveCount(1);
+  await eventModelCard.click();
+
+  await waitForPreviewSvg(page);
+  await expect
+    .poll(() => previewSvgText(page))
+    .toContain("ItemAdded");
+  await expect(
+    page.getByRole("button", { name: "Examples", exact: true }),
+  ).toBeVisible();
+  errors.assertNone();
+});
 
 test("Compare keeps Mermaid JS failures owned by the Mermaid pane", async ({ page }) => {
   const errors = monitorBrowserErrors(page);

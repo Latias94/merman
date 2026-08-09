@@ -111,7 +111,15 @@ function prepareSvgForDomMount(
   if (root.ownerDocument !== ownerDocument) {
     throw new Error("SVG root belongs to a different mount document.");
   }
-  return inspect(root.outerHTML);
+  // `outerHTML` is an HTML serialization. In particular, HTML void elements such as
+  // `<br />` are emitted as `<br>`, which is valid in the mounted foreignObject DOM but
+  // looks like an unclosed XML element to the SVG safety scanner. Re-serialize the
+  // already-admitted DOM as XML so the second check observes the same element structure
+  // as the original SVG artifact.
+  const Serializer = ownerDocument.defaultView?.XMLSerializer ?? globalThis.XMLSerializer;
+  return inspect(
+    Serializer ? new Serializer().serializeToString(root) : root.outerHTML,
+  );
 }
 
 function assertSvgMountDocument(

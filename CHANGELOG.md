@@ -62,6 +62,7 @@ Rust crates and the lockstep browser packages use this workspace changelog. Pack
 - Calibrated the `interactive` layout-work ceiling to 800,000 owner-accounted units while leaving the stricter `constrained` profile unchanged. Hosts that intentionally render larger trusted workloads can select `trusted-native` or `unbounded-for-trusted-input` with appropriate outer isolation.
 - Fixed `initMerman({ wasm })` to accept a URL, `Response`, byte buffer, or compiled `WebAssembly.Module`; callers no longer need wasm-bindgen's deprecated `{ module_or_path }` envelope.
 - Prevented valid diagram ids from colliding with deferred root `viewBox` or `max-width` placeholders during SVG emission.
+- Fixed Playground Event Modeling examples with payload line breaks by revalidating mounted SVG through XML serialization; any future mount rejection now stays inside the affected preview instead of blanking the app.
 - Restored sanitized Kanban ticket navigation in the Playground and improved persistent workspace state, generated example search, keyboard and focus behavior, responsive viewport sizing, and touch gesture handling.
 - Made LSP capability negotiation accurate for snippets, markup, diagnostics, code actions, semantic tokens, and document-only symbols. Stdio now keeps protocol stdout clean, prioritizes `OutputClosed` when output failure races another termination, rejects recoverable request overload with JSON-RPC `-32099`, and terminates when saturation would lose input integrity. #26
 
