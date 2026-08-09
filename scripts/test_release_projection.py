@@ -394,6 +394,14 @@ class ReleaseProjectionTests(unittest.TestCase):
                 ),
             ),
             (
+                release_projection.PLAYGROUND_LICENSE_REPORT,
+                lambda text: replace_once(
+                    text,
+                    f" - @mermanjs/web@{canonical}",
+                    " - @mermanjs/web@9.9.9",
+                ),
+            ),
+            (
                 release_projection.PYTHON_MANIFEST,
                 lambda text: replace_once(
                     text,
@@ -511,6 +519,10 @@ class ReleaseProjectionTests(unittest.TestCase):
         self.assertIn(release_projection.PLAYGROUND_PACKAGE, updates)
         self.assertIn(release_projection.PLAYGROUND_LOCK, updates)
         self.assertIn(release_projection.PLAYGROUND_LICENSE_REPORT, updates)
+        self.assertIn(
+            f" - @mermanjs/web@{next_version}",
+            updates[release_projection.PLAYGROUND_LICENSE_REPORT],
+        )
         self.assertIn(release_projection.FLUTTER_PACKAGE_VERSION, updates)
         self.assertIn(release_projection.FLUTTER_IOS_BUILD, updates)
         self.assertNotIn(Path("README.md"), updates)

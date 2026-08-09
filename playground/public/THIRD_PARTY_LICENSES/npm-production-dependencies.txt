@@ -37,7 +37,7 @@ SOFTWARE.
 The following npm packages may be included in this product:
 
  - @chevrotain/types@11.1.2
- - dompurify@3.4.13
+ - dompurify@3.4.12
 
 These packages each contain the following license:
 
@@ -5076,7 +5076,7 @@ For more information, please refer to <http://unlicense.org>
 
 The following npm package may be included in this product:
 
- - @mermanjs/web@0.8.0-alpha.5
+ - @mermanjs/web@0.8.0-alpha.6
 
 This package contains the following license:
 

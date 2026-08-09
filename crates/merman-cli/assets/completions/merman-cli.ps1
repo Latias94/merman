@@ -133,6 +133,7 @@ Register-ArgumentCompleter -Native -CommandName 'merman-cli' -ScriptBlock {
             [CompletionResult]::new('--svg-id', '--svg-id', [CompletionResultType]::ParameterName, 'Root SVG id and internal marker prefix')
             [CompletionResult]::new('--hand-drawn-seed', '--hand-drawn-seed', [CompletionResultType]::ParameterName, 'Stabilize rough/hand-drawn rendering where supported')
             [CompletionResult]::new('--ascii-charset', '--ascii-charset', [CompletionResultType]::ParameterName, 'Override the text renderer character set')
+            [CompletionResult]::new('--ascii-width-profile', '--ascii-width-profile', [CompletionResultType]::ParameterName, 'Display-width convention used for terminal text measurement')
             [CompletionResult]::new('--ascii-direction', '--ascii-direction', [CompletionResultType]::ParameterName, 'Override the default graph direction when Mermaid input omits one')
             [CompletionResult]::new('--ascii-color', '--ascii-color', [CompletionResultType]::ParameterName, 'Color mode for terminal text output')
             [CompletionResult]::new('--xychart-vertical-plot-height', '--xychart-vertical-plot-height', [CompletionResultType]::ParameterName, 'XYChart vertical plot height for text output')

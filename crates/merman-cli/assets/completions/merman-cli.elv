@@ -125,6 +125,7 @@ set edit:completion:arg-completer[merman-cli] = {|@words|
             cand --svg-id 'Root SVG id and internal marker prefix'
             cand --hand-drawn-seed 'Stabilize rough/hand-drawn rendering where supported'
             cand --ascii-charset 'Override the text renderer character set'
+            cand --ascii-width-profile 'Display-width convention used for terminal text measurement'
             cand --ascii-direction 'Override the default graph direction when Mermaid input omits one'
             cand --ascii-color 'Color mode for terminal text output'
             cand --xychart-vertical-plot-height 'XYChart vertical plot height for text output'

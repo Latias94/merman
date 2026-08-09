@@ -28,6 +28,11 @@ class ResourceLimitId(str):
     MAX_SVG_ELEMENTS: ClassVar[ResourceLimitId]
     MAX_DOCUMENT_DIAGRAMS: ClassVar[ResourceLimitId]
     MAX_ASCII_GRID_CELLS: ClassVar[ResourceLimitId]
+    MAX_ASCII_LAYOUT_WORK_UNITS: ClassVar[ResourceLimitId]
+    MAX_ASCII_DOCUMENT_CELLS: ClassVar[ResourceLimitId]
+    MAX_ASCII_OUTPUT_BYTES: ClassVar[ResourceLimitId]
+    MAX_ASCII_GRAPHEME_BYTES: ClassVar[ResourceLimitId]
+    MAX_ASCII_NESTING_DEPTH: ClassVar[ResourceLimitId]
     MAX_RASTER_WIDTH: ClassVar[ResourceLimitId]
     MAX_RASTER_HEIGHT: ClassVar[ResourceLimitId]
     MAX_RASTER_PIXELS: ClassVar[ResourceLimitId]
@@ -86,6 +91,11 @@ ResourceLimitId.MAX_SVG_BYTES = ResourceLimitId("max_svg_bytes")
 ResourceLimitId.MAX_SVG_ELEMENTS = ResourceLimitId("max_svg_elements")
 ResourceLimitId.MAX_DOCUMENT_DIAGRAMS = ResourceLimitId("max_document_diagrams")
 ResourceLimitId.MAX_ASCII_GRID_CELLS = ResourceLimitId("max_ascii_grid_cells")
+ResourceLimitId.MAX_ASCII_LAYOUT_WORK_UNITS = ResourceLimitId("max_ascii_layout_work_units")
+ResourceLimitId.MAX_ASCII_DOCUMENT_CELLS = ResourceLimitId("max_ascii_document_cells")
+ResourceLimitId.MAX_ASCII_OUTPUT_BYTES = ResourceLimitId("max_ascii_output_bytes")
+ResourceLimitId.MAX_ASCII_GRAPHEME_BYTES = ResourceLimitId("max_ascii_grapheme_bytes")
+ResourceLimitId.MAX_ASCII_NESTING_DEPTH = ResourceLimitId("max_ascii_nesting_depth")
 ResourceLimitId.MAX_RASTER_WIDTH = ResourceLimitId("max_raster_width")
 ResourceLimitId.MAX_RASTER_HEIGHT = ResourceLimitId("max_raster_height")
 ResourceLimitId.MAX_RASTER_PIXELS = ResourceLimitId("max_raster_pixels")
@@ -111,6 +121,11 @@ RESOURCE_LIMIT_IDS = (
     ResourceLimitId.MAX_SVG_ELEMENTS,
     ResourceLimitId.MAX_DOCUMENT_DIAGRAMS,
     ResourceLimitId.MAX_ASCII_GRID_CELLS,
+    ResourceLimitId.MAX_ASCII_LAYOUT_WORK_UNITS,
+    ResourceLimitId.MAX_ASCII_DOCUMENT_CELLS,
+    ResourceLimitId.MAX_ASCII_OUTPUT_BYTES,
+    ResourceLimitId.MAX_ASCII_GRAPHEME_BYTES,
+    ResourceLimitId.MAX_ASCII_NESTING_DEPTH,
     ResourceLimitId.MAX_RASTER_WIDTH,
     ResourceLimitId.MAX_RASTER_HEIGHT,
     ResourceLimitId.MAX_RASTER_PIXELS,
@@ -138,6 +153,11 @@ _RESOURCE_LIMIT_METADATA = {
     "max_svg_elements": ("svg_postprocess", True, 1),
     "max_document_diagrams": ("document_scan", True, 0),
     "max_ascii_grid_cells": ("ascii_layout", True, 1),
+    "max_ascii_layout_work_units": ("ascii_layout_work", True, 1),
+    "max_ascii_document_cells": ("ascii_document", True, 1),
+    "max_ascii_output_bytes": ("ascii_output", True, 1),
+    "max_ascii_grapheme_bytes": ("ascii_grapheme", True, 1),
+    "max_ascii_nesting_depth": ("ascii_nesting", True, 1),
     "max_raster_width": ("raster_allocation", True, 1),
     "max_raster_height": ("raster_allocation", True, 1),
     "max_raster_pixels": ("raster_allocation", True, 1),
@@ -164,6 +184,11 @@ class ResourceOverrideId(str, Enum):
     MAX_SVG_ELEMENTS = "max_svg_elements"
     MAX_DOCUMENT_DIAGRAMS = "max_document_diagrams"
     MAX_ASCII_GRID_CELLS = "max_ascii_grid_cells"
+    MAX_ASCII_LAYOUT_WORK_UNITS = "max_ascii_layout_work_units"
+    MAX_ASCII_DOCUMENT_CELLS = "max_ascii_document_cells"
+    MAX_ASCII_OUTPUT_BYTES = "max_ascii_output_bytes"
+    MAX_ASCII_GRAPHEME_BYTES = "max_ascii_grapheme_bytes"
+    MAX_ASCII_NESTING_DEPTH = "max_ascii_nesting_depth"
     MAX_RASTER_WIDTH = "max_raster_width"
     MAX_RASTER_HEIGHT = "max_raster_height"
     MAX_RASTER_PIXELS = "max_raster_pixels"
@@ -183,6 +208,11 @@ _MINIMUM_LIMIT_VALUES = {
     ResourceOverrideId.MAX_SVG_ELEMENTS: 1,
     ResourceOverrideId.MAX_DOCUMENT_DIAGRAMS: 0,
     ResourceOverrideId.MAX_ASCII_GRID_CELLS: 1,
+    ResourceOverrideId.MAX_ASCII_LAYOUT_WORK_UNITS: 1,
+    ResourceOverrideId.MAX_ASCII_DOCUMENT_CELLS: 1,
+    ResourceOverrideId.MAX_ASCII_OUTPUT_BYTES: 1,
+    ResourceOverrideId.MAX_ASCII_GRAPHEME_BYTES: 1,
+    ResourceOverrideId.MAX_ASCII_NESTING_DEPTH: 1,
     ResourceOverrideId.MAX_RASTER_WIDTH: 1,
     ResourceOverrideId.MAX_RASTER_HEIGHT: 1,
     ResourceOverrideId.MAX_RASTER_PIXELS: 1,

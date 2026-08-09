@@ -136,6 +136,7 @@ _arguments "${_arguments_options[@]}" : \
 '--svg-id=[Root SVG id and internal marker prefix]:SVG_ID:_default' \
 '--hand-drawn-seed=[Stabilize rough/hand-drawn rendering where supported]:HAND_DRAWN_SEED:_default' \
 '--ascii-charset=[Override the text renderer character set]:ASCII_CHARSET:(ascii unicode)' \
+'--ascii-width-profile=[Display-width convention used for terminal text measurement]:ASCII_WIDTH_PROFILE:(unicode cjk)' \
 '--ascii-direction=[Override the default graph direction when Mermaid input omits one]:ASCII_DIRECTION:(left-right top-down)' \
 '--ascii-color=[Color mode for terminal text output]:ASCII_COLOR:(plain auto ansi16 ansi256 truecolor html)' \
 '--xychart-vertical-plot-height=[XYChart vertical plot height for text output]:XYCHART_VERTICAL_PLOT_HEIGHT:_default' \

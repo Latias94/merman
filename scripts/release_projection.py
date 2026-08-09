@@ -1074,6 +1074,14 @@ def _collect_platform_versions(
         r"^package-lock\.json SHA-256: ([0-9a-f]{64})$",
         lock_digest,
     )
+    _observe_text_match(
+        observations,
+        "Playground license local Web package",
+        PLAYGROUND_LICENSE_REPORT,
+        license_report,
+        r"^ - @mermanjs/web@([^\s]+)$",
+        canonical,
+    )
     python = view.toml(PYTHON_MANIFEST)
     python_project = _mapping(python.get("project"), "Python [project]")
     _observe(
@@ -1329,6 +1337,13 @@ def _plan_version_update(
     updates[PLAYGROUND_LOCK] = playground_lock
     playground_license_report = _replace_one(
         view.text(PLAYGROUND_LICENSE_REPORT),
+        r"^( - @mermanjs/web@)[^\s]+$",
+        rf"\g<1>{release.canonical}",
+        PLAYGROUND_LICENSE_REPORT,
+        "local Web package version",
+    )
+    playground_license_report = _replace_one(
+        playground_license_report,
         r"^(package-lock\.json SHA-256: )[0-9a-f]{64}$",
         rf"\g<1>{hashlib.sha256(playground_lock.encode('utf-8')).hexdigest()}",
         PLAYGROUND_LICENSE_REPORT,

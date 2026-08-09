@@ -138,6 +138,8 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -s I -l sv
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l hand-drawn-seed -d 'Stabilize rough/hand-drawn rendering where supported' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-charset -d 'Override the text renderer character set' -r -f -a "ascii\t''
 unicode\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-width-profile -d 'Display-width convention used for terminal text measurement' -r -f -a "unicode\t''
+cjk\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-direction -d 'Override the default graph direction when Mermaid input omits one' -r -f -a "left-right\t''
 top-down\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l ascii-color -d 'Color mode for terminal text output' -r -f -a "plain\t''
