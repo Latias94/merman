@@ -804,7 +804,10 @@ impl<'input> Lexer<'input> {
         let bytes = self.input.as_bytes();
 
         while end < self.input.len() {
-            if half_arrow_type(&self.input[end..]).is_some() {
+            if self.input.is_char_boundary(end)
+                && matches!(bytes[end], b'-' | b'/' | b'\\')
+                && half_arrow_type(&self.input[end..]).is_some()
+            {
                 break;
             }
             let b = bytes[end];
@@ -1194,6 +1197,7 @@ mod tests {
             for input in [
                 format!("A {arrow} B: message"),
                 format!("A{arrow}B: message"),
+                format!("顧客{arrow}サーバー: message"),
             ] {
                 let signal_types: Vec<_> = Lexer::new(&input)
                     .map(|event| event.expect("sequence token").1)
