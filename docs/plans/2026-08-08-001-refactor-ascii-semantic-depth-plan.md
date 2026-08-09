@@ -603,12 +603,17 @@ diagram gates:
 
 U30 closeout disposition: the Sequence actor scanner now has its own lexical-syntax owner, the
 relation graph has separate document and self-loop planning modules, and Class namespace ownership
-has a dedicated renderer module. `sequence/plan.rs` and `sequence/control.rs` remain intentionally
-cohesive: row planning, `SequenceExtentLedger` reservations, control-frame lifetimes, and final
-paint ordering form one admission protocol and currently have no stable internal seam that would
-avoid exposing mutable row state or creating pass-through modules. Their existing focused tests are
-kept as the structural boundary; a future split should follow a new plan/paint descriptor rather
-than a line-count target.
+has a dedicated renderer module. The Sequence and Flowchart integration suites are split into
+semantic test modules while their shared parser/options helpers remain private in one parent.
+`sequence/plan.rs` and `sequence/control.rs` remain intentionally cohesive: row planning,
+`SequenceExtentLedger` reservations, control-frame lifetimes, and final paint ordering form one
+admission protocol and currently have no stable internal seam that would avoid exposing mutable row
+state or creating pass-through modules. The Class, ER, and XYChart integration suites remain
+family-level executable field inventories: their cases share one public parser/model/render harness,
+and no second stable fixture owner emerged during this work. Splitting those inventories only by
+line count would add pass-through modules without reducing dependency or semantic ownership; a
+future split should follow an extracted family fixture/plan owner. A future Sequence production
+split should likewise follow a new plan/paint descriptor rather than a line-count target.
 
 No extraction is allowed to introduce a new support claim, alter a fixture classification, or hide
 an unresolved semantic failure behind a fallback.
