@@ -1087,6 +1087,23 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             "--require bash,zsh,fish,elvish,mandoc",
         )
 
+    def test_release_preflight_builds_and_executes_real_cargo_dist_archives(self) -> None:
+        workflow = parse_workflow_structure(WORKFLOW_ROOT / "release-preflight.yml")
+        preflight = workflow_job(workflow, "versions-and-packages")
+        build = workflow_step(
+            preflight,
+            name="Build and verify host cargo-dist archives",
+        )["run"]
+
+        self.assertIn("dist build", build)
+        self.assertIn("--artifacts=local", build)
+        self.assertIn('"--target=$target"', build)
+        self.assertNotIn("--output-format", build)
+        self.assertNotIn("preflight-dist-manifest", build)
+        self.assertIn("scripts/verify_cli_release_archive.py", build)
+        self.assertIn("scripts/verify_lsp_release_archive.py", build)
+        self.assertEqual(build.count("--execute"), 2)
+
     def test_trusted_npm_publish_job_does_not_disable_provenance(self) -> None:
         publish_job = job_contract_text(
             WORKFLOW_ROOT / "release-web.yml",

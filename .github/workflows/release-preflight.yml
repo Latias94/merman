@@ -172,8 +172,7 @@ jobs:
           dist build \
             "--tag=$RELEASE_TAG" \
             --artifacts=local \
-            "--target=$target" \
-            --output-format=json > target/distrib/preflight-dist-manifest.json
+            "--target=$target"
           python3 scripts/verify_cli_release_archive.py \
             "target/distrib/merman-cli-$target.tar.xz" \
             --checksum "target/distrib/merman-cli-$target.tar.xz.sha256" \
