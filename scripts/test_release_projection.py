@@ -128,8 +128,11 @@ class ReleaseProjectionTests(unittest.TestCase):
         self.assertTrue(result.ok)
         labels = {observation.label for observation in result.observations}
         self.assertIn("Cargo workspace dependency merman-core", labels)
+        self.assertIn("Cargo workspace independent dependency roughr", labels)
         self.assertIn("Cargo.lock package merman-lsp", labels)
+        self.assertIn("Cargo.lock independent package roughr-merman", labels)
         self.assertIn("fuzz/Cargo.lock package merman-ffi", labels)
+        self.assertIn("fuzz/Cargo.lock independent package roughr-merman", labels)
         self.assertIn("Web workspace", labels)
         self.assertIn("Web workspace lock", labels)
         self.assertIn("Web workspace lock package", labels)
@@ -143,6 +146,10 @@ class ReleaseProjectionTests(unittest.TestCase):
         self.assertIn("Playground license lock digest", labels)
         self.assertIn("Node candidate Cargo package", labels)
         self.assertIn("Node candidate Cargo.lock package merman-bindings-core", labels)
+        self.assertIn(
+            "Node candidate Cargo.lock independent package roughr-merman",
+            labels,
+        )
         self.assertIn("Node candidate package surface", labels)
         self.assertIn("Node candidate workspace", labels)
         self.assertIn("Node candidate workspace lock", labels)
@@ -172,6 +179,14 @@ class ReleaseProjectionTests(unittest.TestCase):
     def test_every_release_projection_category_fails_closed_on_drift(self) -> None:
         version = release_projection.verify_repository(self.ROOT).authority
         canonical = version.canonical
+        catalog = release_projection.load_workspace_catalog(
+            release_projection.RepositoryView(self.ROOT)
+        )
+        roughr_version = catalog.independent_packages["roughr-merman"][1]
+        roughr_dependency = (
+            'roughr = { package = "roughr-merman", path = "crates/roughr", '
+            f'version = "{roughr_version}"'
+        )
         entries = web_package_entries()
         default_entry = next(entry for entry in entries if entry["id"] == "full")
         playground_lock_digest = hashlib.sha256(
@@ -183,6 +198,15 @@ class ReleaseProjectionTests(unittest.TestCase):
                 lambda text: replace_once(
                     text,
                     f'version = "{canonical}"',
+                    'version = "9.9.9"',
+                ),
+            ),
+            (
+                Path("Cargo.toml"),
+                lambda text: replace_once(
+                    text,
+                    roughr_dependency,
+                    'roughr = { package = "roughr-merman", path = "crates/roughr", '
                     'version = "9.9.9"',
                 ),
             ),
@@ -220,11 +244,35 @@ class ReleaseProjectionTests(unittest.TestCase):
                 ),
             ),
             (
+                Path("Cargo.lock"),
+                lambda text: replace_once(
+                    text,
+                    f'name = "roughr-merman"\nversion = "{roughr_version}"',
+                    'name = "roughr-merman"\nversion = "9.9.9"',
+                ),
+            ),
+            (
                 release_projection.FUZZ_LOCK,
                 lambda text: replace_once(
                     text,
                     f'name = "merman"\nversion = "{canonical}"',
                     'name = "merman"\nversion = "9.9.9"',
+                ),
+            ),
+            (
+                release_projection.FUZZ_LOCK,
+                lambda text: replace_once(
+                    text,
+                    f'name = "roughr-merman"\nversion = "{roughr_version}"',
+                    'name = "roughr-merman"\nversion = "9.9.9"',
+                ),
+            ),
+            (
+                release_projection.NODE_CARGO_LOCK,
+                lambda text: replace_once(
+                    text,
+                    f'name = "roughr-merman"\nversion = "{roughr_version}"',
+                    'name = "roughr-merman"\nversion = "9.9.9"',
                 ),
             ),
             (
@@ -470,6 +518,10 @@ class ReleaseProjectionTests(unittest.TestCase):
         self.assertFalse(any(path.suffix == ".md" for path in updates))
         self.assertNotIn(Path("tools/vscode-extension/package.json"), updates)
         self.assertNotIn(Path("packages/typst/merman/typst.toml"), updates)
+        for _name, (member, _version) in release_projection.load_workspace_catalog(
+            release_projection.RepositoryView(self.ROOT)
+        ).independent_packages.items():
+            self.assertNotIn(member / "Cargo.toml", updates)
 
     def test_node_candidate_verification_fails_closed_on_each_version_projection(
         self,
@@ -480,13 +532,14 @@ class ReleaseProjectionTests(unittest.TestCase):
         )
         descriptor = node_package_surface()
         local_lock_packages = [
-            package["name"]
+            (package["name"], package["version"])
             for package in release_projection.RepositoryView(self.ROOT)
             .toml(release_projection.NODE_CARGO_LOCK)["package"]
             if "source" not in package
             and (
                 package["name"] == release_projection.NODE_CARGO_PACKAGE
                 or package["name"] in catalog.coupled_packages
+                or package["name"] in catalog.independent_packages
             )
         ]
         mutations = [
@@ -511,13 +564,15 @@ class ReleaseProjectionTests(unittest.TestCase):
                 (
                     f"Cargo lock {package_name}",
                     release_projection.NODE_CARGO_LOCK,
-                    lambda text, package_name=package_name: replace_once(
+                    lambda text,
+                    package_name=package_name,
+                    package_version=package_version: replace_once(
                         text,
-                        f'name = "{package_name}"\nversion = "{version}"',
+                        f'name = "{package_name}"\nversion = "{package_version}"',
                         f'name = "{package_name}"\nversion = "9.9.9"',
                     ),
                 )
-                for package_name in local_lock_packages
+                for package_name, package_version in local_lock_packages
             ],
             (
                 "package surface",

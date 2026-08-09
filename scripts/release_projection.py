@@ -87,6 +87,7 @@ class VerificationResult:
 class WorkspaceCatalog:
     authority: ReleaseVersion
     coupled_packages: Mapping[str, Path]
+    independent_packages: Mapping[str, tuple[Path, str]]
     member_manifests: tuple[Path, ...]
     root_data: Mapping[str, Any]
 
@@ -239,6 +240,7 @@ def load_workspace_catalog(view: RepositoryView) -> WorkspaceCatalog:
         raise ReleaseProjectionError("Cargo.toml workspace.members must be a non-empty array")
 
     coupled: dict[str, Path] = {}
+    independent_packages: dict[str, tuple[Path, str]] = {}
     seen_names: set[str] = set()
     member_manifests: list[Path] = []
     for member in members:
@@ -264,7 +266,10 @@ def load_workspace_catalog(view: RepositoryView) -> WorkspaceCatalog:
                 raise ReleaseProjectionError(
                     f"independently versioned package {name} must not inherit the workspace version"
                 )
-            _string(version_source, f"{manifest_path} package.version")
+            independent_packages[name] = (
+                member_path,
+                _string(version_source, f"{manifest_path} package.version"),
+            )
             continue
 
         if version_source != {"workspace": True}:
@@ -285,6 +290,7 @@ def load_workspace_catalog(view: RepositoryView) -> WorkspaceCatalog:
     return WorkspaceCatalog(
         authority=authority,
         coupled_packages=coupled,
+        independent_packages=independent_packages,
         member_manifests=tuple(member_manifests),
         root_data=root_data,
     )
@@ -323,7 +329,22 @@ def verify_repository(
         observations,
         errors,
     )
+    _collect_independent_lock_versions(
+        view,
+        catalog,
+        ROOT_LOCK,
+        observations,
+        errors,
+        require_all=True,
+    )
     _collect_fuzz_lock_versions(view, catalog, observations, errors)
+    _collect_independent_lock_versions(
+        view,
+        catalog,
+        FUZZ_LOCK,
+        observations,
+        errors,
+    )
     _collect_node_candidate_projection(view, catalog, observations, errors)
     _collect_platform_versions(view, catalog.authority, observations)
 
@@ -345,7 +366,12 @@ def _collect_workspace_dependency_versions(
         workspace.get("dependencies"), "Cargo.toml [workspace.dependencies]"
     )
     coupled_dirs = _coupled_package_dirs(view, catalog)
+    independent_dirs = {
+        (view.root / member).resolve(): (name, version)
+        for name, (member, version) in catalog.independent_packages.items()
+    }
     inherited_by_package: dict[str, str] = {}
+    projected_independent: dict[str, str] = {}
 
     for dependency_key, raw_spec in dependencies.items():
         if not isinstance(raw_spec, dict) or "path" not in raw_spec:
@@ -355,6 +381,32 @@ def _collect_workspace_dependency_versions(
         )
         resolved = (view.root / dependency_path).resolve()
         package_name = coupled_dirs.get(resolved)
+        independent_package = independent_dirs.get(resolved)
+        if independent_package is not None:
+            independent_name, independent_version = independent_package
+            declared_package = raw_spec.get("package", dependency_key)
+            if declared_package != independent_name:
+                errors.append(
+                    f"Cargo.toml workspace dependency {dependency_key} resolves to "
+                    f"{independent_name}, not {declared_package}"
+                )
+            version = raw_spec.get("version")
+            observations.append(
+                VersionObservation(
+                    f"Cargo workspace independent dependency {dependency_key}",
+                    ROOT_MANIFEST,
+                    independent_version,
+                    version if isinstance(version, str) else "<missing>",
+                )
+            )
+            previous_key = projected_independent.get(independent_name)
+            if previous_key is not None:
+                errors.append(
+                    "Cargo.toml declares duplicate local independent projections for "
+                    f"{independent_name}: {previous_key} and {dependency_key}"
+                )
+            projected_independent[independent_name] = dependency_key
+            continue
         if package_name is None:
             continue
         declared_package = raw_spec.get("package", dependency_key)
@@ -512,6 +564,49 @@ def _collect_cargo_lock_versions(
                 f"{label or lock_path} package {package_name}",
                 lock_path,
                 catalog.authority.canonical,
+                actual if isinstance(actual, str) else "<missing>",
+            )
+        )
+
+
+def _collect_independent_lock_versions(
+    view: RepositoryView,
+    catalog: WorkspaceCatalog,
+    lock_path: Path,
+    observations: list[VersionObservation],
+    errors: list[str],
+    *,
+    label: str | None = None,
+    require_all: bool = False,
+) -> None:
+    lock = view.toml(lock_path)
+    packages = lock.get("package")
+    if not isinstance(packages, list):
+        raise ReleaseProjectionError(f"{lock_path} package must be an array of tables")
+    for package_name, (_member, expected_version) in sorted(
+        catalog.independent_packages.items()
+    ):
+        matches = [
+            package
+            for package in packages
+            if isinstance(package, dict)
+            and package.get("name") == package_name
+            and "source" not in package
+        ]
+        if not matches and not require_all:
+            continue
+        if len(matches) != 1:
+            errors.append(
+                f"{lock_path} must contain exactly one local independent package entry for "
+                f"{package_name}; found {len(matches)}"
+            )
+            continue
+        actual = matches[0].get("version")
+        observations.append(
+            VersionObservation(
+                f"{label or lock_path} independent package {package_name}",
+                lock_path,
+                expected_version,
                 actual if isinstance(actual, str) else "<missing>",
             )
         )
@@ -681,6 +776,14 @@ def _collect_node_candidate_projection(
         catalog,
         NODE_CARGO_LOCK,
         {NODE_CARGO_PACKAGE, NODE_BINDINGS_PACKAGE},
+        observations,
+        errors,
+        label="Node candidate Cargo.lock",
+    )
+    _collect_independent_lock_versions(
+        view,
+        catalog,
+        NODE_CARGO_LOCK,
         observations,
         errors,
         label="Node candidate Cargo.lock",

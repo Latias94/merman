@@ -1346,7 +1346,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "roughr-merman"
-version = "0.12.1"
+version = "0.12.2"
 dependencies = [
  "euclid",
  "num-traits",
