@@ -4,6 +4,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT_DIR="$REPO_ROOT/target/apple-xcframework"
 INCLUDE_DIR="$OUT_DIR/include"
+BINDING_GENERATOR_TARGET_DIR="$OUT_DIR/binding-generator-target"
 XCFRAMEWORK_OUT="$REPO_ROOT/platforms/apple/Merman.xcframework"
 SWIFT_BINDINGS_DIR="$REPO_ROOT/platforms/apple/Sources/Merman/Generated"
 RECIPE_PROFILE="apple-uniffi-native"
@@ -102,7 +103,7 @@ generate_swift_bindings() {
     fi
 
     echo "==> Generating Swift UniFFI bindings"
-    cargo run \
+    CARGO_TARGET_DIR="$BINDING_GENERATOR_TARGET_DIR" cargo run \
         --package merman-uniffi \
         --manifest-path "$REPO_ROOT/crates/merman-uniffi/Cargo.toml" \
         --locked \
@@ -121,6 +122,10 @@ generate_swift_bindings() {
     done
 }
 
+cleanup_binding_generator_target() {
+    rm -rf -- "$BINDING_GENERATOR_TARGET_DIR"
+}
+
 require_tool rustup
 require_tool cargo
 require_tool xcodebuild
@@ -128,6 +133,7 @@ require_tool lipo
 
 rm -rf "$OUT_DIR"
 mkdir -p "$INCLUDE_DIR"
+trap cleanup_binding_generator_target EXIT
 
 XC_ARGS=()
 
