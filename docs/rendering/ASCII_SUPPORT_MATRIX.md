@@ -56,13 +56,13 @@ is exceeded.
 
 | Mermaid family | Semantic coverage | Primary projection | What the report preserves | Why it is not counted as an ASCII diagram |
 | --- | --- | --- | --- | --- |
-| Gantt | Partial | Structured text | Titles, sections, tasks, resolved dates, tags, and deterministic date formatting. | No timeline geometry; dependency source expressions such as `after task` are not disclosed (A-GANTT-010). |
-| GitGraph | Partial | Structured text | Commits, branches, merges, tags, cherry-picks, and ordering. | Does not draw a full Git lane graph. |
+| Gantt | Partial | Structured text | Titles, empty sections, task ids, resolved and adjusted dates, time-of-day precision, start/end constraints such as multi-id `after`/`until`, tags, and relevant scheduling options. | No timeline geometry; links and click callbacks are metadata-only; duplicate or empty task ids are rejected. |
+| GitGraph | Partial | Structured text | Commits, branches, parent topology, merges, tags, cherry-picks, ordering, and semantic type/id override disclosure. | Does not draw a full Git lane graph. |
 | Journey | Partial | Structured text | Sections, tasks, actors, and scores. | Does not draw Mermaid journey geometry. |
-| Kanban | Partial | Structured text | Columns, cards, assignments, and metadata. | Drag/drop and board presentation are not represented. |
-| Mindmap | Partial | Structured text | Hierarchical nodes and labels as an outline. | Icons, images, and rich node shapes are omitted or approximated. |
+| Kanban | Partial | Structured text | Columns, stable group/card ids, assignments, metadata, and deterministic `Unassigned` grouping. | Drag/drop and board presentation are not represented; duplicate or empty ids are rejected. |
+| Mindmap | Partial | Structured text | Hierarchical nodes, stable ids, labels, cycles/disconnected components, and shape/icon/section disclosure as an outline. | Rich browser node geometry is not reproduced; duplicate ids/edges and missing endpoints are rejected. |
 | Packet | Partial | Structured text | Bit ranges and labels in ordered terminal rows. | Output does not preserve spatial bit widths; browser-oriented styling is not represented. |
-| Timeline | Partial | Structured text | Sections and events in ordered grouped text. | Does not draw Mermaid timeline geometry. |
+| Timeline | Partial | Structured text | Direction, sections, and events in ordered grouped text. | Does not draw Mermaid timeline geometry; parser bookkeeping score is omitted. |
 | TreeView | Partial | Structured text | Hierarchy, file/directory types, charset-aware connectors, and icon/class/description disclosure. | It is an outline rather than two-dimensional diagram geometry; browser icons and CSS classes are disclosed rather than styled. |
 
 ## Unsupported Families

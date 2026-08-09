@@ -314,14 +314,19 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "titles",
             "sections",
             "tasks",
+            "stable task ids",
+            "start and end constraint expressions",
+            "resolved and adjusted end times",
             "dates",
             "tags",
+            "time-of-day precision",
             "deterministic date formatting",
         ],
         limits: &[
             "no terminal timeline geometry",
             "output is a readable task summary",
-            "dependency source expressions are not disclosed",
+            "links and click callbacks are metadata-only",
+            "duplicate or empty task ids are rejected",
         ],
         evidence: &[
             AsciiCapabilityEvidence {
@@ -348,9 +353,14 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "merges",
             "tags",
             "cherry-picks",
+            "parent topology",
+            "explicit merge id and type overrides",
             "ordering",
         ],
-        limits: &["does not draw a full Git lane graph"],
+        limits: &[
+            "does not draw a full Git lane graph",
+            "terminal output normalizes implementation flags into semantic labels",
+        ],
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
@@ -391,8 +401,18 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
         primary_projection: AsciiPrimaryProjection::StructuredText,
         structured_text_fallback: false,
-        supported_semantics: &["columns", "cards", "assignments", "metadata"],
-        limits: &["drag and board presentation metadata are not terminal output"],
+        supported_semantics: &[
+            "columns",
+            "cards",
+            "stable card and group ids",
+            "assignments",
+            "metadata",
+            "deterministic Unassigned grouping",
+        ],
+        limits: &[
+            "drag and board presentation metadata are not terminal output",
+            "duplicate or empty ids are rejected",
+        ],
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
@@ -412,8 +432,20 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
         primary_projection: AsciiPrimaryProjection::StructuredText,
         structured_text_fallback: false,
-        supported_semantics: &["hierarchical nodes", "labels", "nesting", "wrapped text"],
-        limits: &["icons images and rich browser node shapes are omitted or approximated"],
+        supported_semantics: &[
+            "hierarchical nodes",
+            "stable node ids",
+            "labels",
+            "nesting",
+            "wrapped text",
+            "shape, icon, and section disclosure",
+            "disconnected components and cycles",
+            "validated edge endpoints",
+        ],
+        limits: &[
+            "icons and rich browser node shapes are disclosed as text rather than styled",
+            "duplicate ids, parallel edges, and missing endpoints are rejected",
+        ],
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
@@ -534,8 +566,11 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
         primary_projection: AsciiPrimaryProjection::StructuredText,
         structured_text_fallback: false,
-        supported_semantics: &["sections", "events", "ordered grouped text"],
-        limits: &["does not draw Mermaid timeline geometry"],
+        supported_semantics: &["sections", "events", "direction", "ordered grouped text"],
+        limits: &[
+            "does not draw Mermaid timeline geometry",
+            "parser bookkeeping score is intentionally omitted",
+        ],
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
@@ -918,12 +953,17 @@ mod tests {
     }
 
     #[test]
-    fn gantt_capability_does_not_claim_undisclosed_dependencies() {
+    fn gantt_capability_claims_only_disclosed_constraint_semantics() {
         let gantt = find("gantt");
 
-        assert!(!gantt.supported_semantics.contains(&"dependencies"));
         assert!(
             gantt
+                .supported_semantics
+                .iter()
+                .any(|semantic| semantic.contains("constraint expressions"))
+        );
+        assert!(
+            !gantt
                 .limits
                 .iter()
                 .any(|limit| limit.contains("dependency source expressions"))

@@ -498,6 +498,25 @@ Flowchart/State own graph semantics; Class/ER own relation semantics; Sequence o
 - **Test scenarios:** Both Mindmap dispositions cover identity, hierarchy facts, shapes/icons/sections, invalid edges/ids, and capability truth; its admitted branch additionally covers `<br>`, deep topology recovery, and 80/100/120-column scannability, while its rejected branch asserts the selected non-Diagrammatic contract without spatial requirements. Both Kanban dispositions cover orphan/unknown parent, duplicate labels/ids, assignments/metadata, and lossless grouping; its admitted branch additionally covers multi-column boards and narrow fallback. Both Timeline dispositions cover sections/events/directions without score leakage; its admitted branch additionally covers spine continuity and 80/100/120-column views. Journey covers sections/tasks/actors/scores and its intentional StructuredText rationale. All branches cover grapheme/control/color/charset behavior.
 - **Verification:** No reachable typed item silently disappears and output contains no upstream bookkeeping field that lacks user meaning. An admitted Mindmap passes its topology and R34 evidence; a rejected Mindmap applies the selected capability downgrade without a spatial-deepening requirement. Admitted Kanban/Timeline pass their board/spine gates, while rejected branches stay truthful StructuredText without spatial requirements; Journey remains explicitly StructuredText.
 
+#### U29 delivery slices
+
+U29 is intentionally delivered as independent semantic slices so a report-only family can become
+lossless without being mistaken for a diagrammatic upgrade:
+
+1. **U29-S1 Gantt:** preserve section declarations, task ids, raw start/end constraints,
+   multi-parent dependencies, and time-of-day precision in the structured report. Do not add a
+   date-scale canvas until an explicit R34 decision admits it.
+2. **U29-S2 Mindmap/Kanban:** validate duplicate ids and edge endpoints before traversal,
+   preserve node/card identity and typed metadata, and retain the deterministic disconnected and
+   `Unassigned` policies. This slice must not change the projection kind.
+3. **U29-S3 Timeline/GitGraph/Journey:** remove parser bookkeeping from user text, disclose
+   direction and relation facts where they are typed, and record the intentional StructuredText
+   boundary for Journey/GitGraph/Timeline before considering any spatial lane or spine.
+
+Each slice owns its parser-backed/direct-model tests and capability evidence. A slice may be
+committed independently; later slices must not depend on a successful diagrammatic admission of an
+earlier one.
+
 ### U16. Establish exact/discovery evidence lanes and common-family gate report
 
 - **Goal:** Turn local comparisons into repeatable admission evidence without moving the pinned byte oracle.
@@ -567,6 +586,23 @@ Flowchart/State own graph semantics; Class/ER own relation semantics; Sequence o
 - **Approach:** Use characterization and semantic tests as a fixed boundary, then extract deep modules by ownership rather than line count. Separate Sequence lexical modes/scanners from token iteration, control/event/document planning from paint, and relation document/component/scene/port/fallback planning from family-owned semantics. Split integration tests by semantic domain and keep shared fixtures/helpers private to the test tree. Preserve existing public exports unless a deliberate migration record already exists, avoid pass-through modules and one-function files, and delete obsolete shallow helpers only after repository search proves the extracted owner is the sole replacement. Do not combine this unit with new rendering behavior, fixture re-admission, or capability promotion.
 - **Test scenarios:** Before/after output equality for the already-admitted semantic corpus, private API visibility checks, direct-model and parser-backed paths, exact resource boundaries, all charsets/color modes, and repository searches for duplicate/superseded owners.
 - **Verification:** Each extracted module has one coherent reason to change, dependency direction follows adapter -> plan -> paint, no new public API is introduced accidentally, affected-package tests and Clippy pass before and after the split, and diff review shows only moves, visibility narrowing, caller rewiring, and deletion of proven-dead code.
+
+#### U30 extraction order
+
+The structural work follows the semantic ownership boundaries established by U29 and the common
+diagram gates:
+
+1. extract shared relation document/component/scene planning only after its descriptor tests are
+   green;
+2. split Sequence lexer contexts and event/control planning without moving typed semantics into
+   the ASCII crate;
+3. split family-local StructuredText renderers into `model_disposition`, `plan`, and `encode`
+   modules only where a second reason to change is visible in the current file;
+4. remove superseded helpers and stale compatibility shims after repository-wide reference
+   searches, then run the complete affected-package matrix.
+
+No extraction is allowed to introduce a new support claim, alter a fixture classification, or hide
+an unresolved semantic failure behind a fallback.
 
 ### U25. Prove measured advantage and close the refactor
 

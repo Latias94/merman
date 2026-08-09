@@ -1,4 +1,4 @@
-use merman_ascii::{AsciiRenderOptions, render_model};
+use merman_ascii::{AsciiError, AsciiRenderOptions, render_model};
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 use merman_core::diagrams::git_graph::{
@@ -10,7 +10,9 @@ use merman_core::diagrams::mindmap::{
     MindmapDiagramRenderEdge, MindmapDiagramRenderModel, MindmapDiagramRenderNode,
 };
 use merman_core::diagrams::packet::{PacketDiagramRenderModel, PacketRenderBlock};
-use merman_core::diagrams::timeline::{TimelineDiagramRenderModel, TimelineRenderTask};
+use merman_core::diagrams::timeline::{
+    TimelineDiagramRenderModel, TimelineDirection, TimelineRenderTask,
+};
 use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
 use merman_core::{DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID};
 
@@ -231,12 +233,17 @@ fn mindmap_render_model_renders_rooted_outline() {
 
     assert_eq!(
         rendered,
-        concat!("Root\n", "|-- Child 1\n", "|   \\-- Leaf\n", "\\-- Child 2",)
+        concat!(
+            "Root [id=root]\n",
+            "|-- Child 1 [id=child1]\n",
+            "|   \\-- Leaf [id=leaf]\n",
+            "\\-- Child 2 [id=child2]",
+        )
     );
 }
 
 #[test]
-fn mindmap_render_model_marks_cycles_and_deduplicates_edges() {
+fn mindmap_render_model_rejects_parallel_edges() {
     let model = MindmapDiagramRenderModel {
         nodes: vec![
             mindmap_node("root", "Root", 0),
@@ -249,9 +256,19 @@ fn mindmap_render_model_marks_cycles_and_deduplicates_edges() {
         ],
     };
 
-    let rendered = render(RenderSemanticModel::Mindmap(model));
+    let error = render_model(
+        &RenderSemanticModel::Mindmap(model),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("parallel mindmap edges must not be silently deduplicated");
 
-    assert_eq!(rendered, "Root\n\\-- Child\n    \\-- Root (cycle)");
+    assert!(matches!(
+        error,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "mindmap",
+            feature: "parallel edges",
+        }
+    ));
 }
 
 #[test]
@@ -275,13 +292,66 @@ fn mindmap_render_model_keeps_disconnected_cycle_components() {
     assert_eq!(
         rendered,
         concat!(
-            "Root\n",
-            "\\-- Child\n",
+            "Root [id=root]\n",
+            "\\-- Child [id=child]\n",
             "\n",
-            "A\n",
-            "\\-- B\n",
-            "    \\-- A (cycle)",
+            "A [id=a]\n",
+            "\\-- B [id=b]\n",
+            "    \\-- A [id=a] (cycle)",
         )
+    );
+}
+
+#[test]
+fn mindmap_direct_model_rejects_duplicate_ids_and_missing_edges() {
+    let mut duplicate = MindmapDiagramRenderModel {
+        nodes: vec![mindmap_node("same", "A", 0), mindmap_node("same", "B", 0)],
+        edges: Vec::new(),
+    };
+    let error = render_model(
+        &RenderSemanticModel::Mindmap(duplicate.clone()),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("duplicate node ids must be rejected");
+    assert!(matches!(
+        error,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "mindmap",
+            feature: "duplicate node ids",
+        }
+    ));
+
+    duplicate.nodes = vec![mindmap_node("root", "Root", 0)];
+    duplicate.edges = vec![mindmap_edge("edge", "root", "missing")];
+    let error = render_model(
+        &RenderSemanticModel::Mindmap(duplicate),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("missing edge endpoints must be rejected");
+    assert!(matches!(
+        error,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "mindmap",
+            feature: "edge with missing end node",
+        }
+    ));
+}
+
+#[test]
+fn mindmap_structured_text_discloses_identity_shape_icon_and_section() {
+    let mut root = mindmap_node("root", "Root", 0);
+    root.shape = "circle".to_string();
+    root.icon = Some("home".to_string());
+    root.section = Some(2);
+
+    let rendered = render(RenderSemanticModel::Mindmap(MindmapDiagramRenderModel {
+        nodes: vec![root],
+        edges: Vec::new(),
+    }));
+
+    assert_eq!(
+        rendered,
+        "Root [id=root] [shape=circle] [icon=home] [section=2]"
     );
 }
 
@@ -291,6 +361,7 @@ fn timeline_render_model_renders_sections_tasks_and_events() {
     model.title = Some("Timeline".to_string());
     model.acc_title = Some("Timeline title".to_string());
     model.acc_descr = Some("Timeline description".to_string());
+    model.direction = TimelineDirection::TopDown;
     model.sections = vec!["Planning".to_string()];
     model.tasks = vec![
         TimelineRenderTask {
@@ -319,10 +390,11 @@ fn timeline_render_model_renders_sections_tasks_and_events() {
             "Timeline\n",
             "accTitle: Timeline title\n",
             "accDescr: Timeline description\n",
+            "direction: TD\n",
             "section: Planning\n",
             "  - Design\n",
             "    * Kickoff\n",
-            "  - Implement (score 3)\n",
+            "  - Implement\n",
             "    * Build spec\n",
             "    * Review",
         )
@@ -349,6 +421,7 @@ fn timeline_render_model_wraps_long_task_and_event_text() {
     assert_eq!(
         rendered,
         concat!(
+            "direction: LR\n",
             "section: Planning\n",
             "  - Design a very long integration event stream normalization workflow that\n",
             "    still fits readable terminal output\n",
@@ -366,6 +439,11 @@ fn gantt_render_model_renders_sections_tasks_and_flags() {
     model.acc_descr = Some("Gantt description".to_string());
     model.date_format = "YYYY-MM-DD".to_string();
     model.axis_format = "%d".to_string();
+    model.sections = vec![
+        "Empty".to_string(),
+        "Empty".to_string(),
+        "Build".to_string(),
+    ];
     model.tasks = vec![GanttRenderTask {
         id: "task-1".to_string(),
         task: "Implement".to_string(),
@@ -394,28 +472,85 @@ fn gantt_render_model_renders_sections_tasks_and_flags() {
             "accDescr: Gantt description\n",
             "dateFormat: YYYY-MM-DD\n",
             "axisFormat: %d\n",
+            "section: Empty\n",
+            "section: Empty\n",
             "section: Build\n",
-            "  - Implement [+292278994-08-17 -> +292278994-08-17] [milestone, active, done,\n",
-            "    crit, vert]",
+            "  - Implement [id=task-1, range=+292278994-08-17T07:12:55.000 ->\n",
+            "    +292278994-08-17T07:12:55.001, renderEnd=+292278994-08-17T07:12:55.002,\n",
+            "    flags=milestone, active, done, crit, vert]",
         )
     );
 }
 
 #[test]
-#[ignore = "A-GANTT-010: dependency source disclosure belongs to Gantt semantic deepening (owned by U26)"]
 fn gantt_structured_text_discloses_dependency_source_expressions() {
     let rendered = render_parsed(concat!(
         "gantt\n",
         "dateFormat YYYY-MM-DD\n",
         "section Build\n",
         "Design: design, 2026-01-01, 1d\n",
-        "Implement: implementation, after design, 1d\n",
+        "Review: review, 2026-01-02, 1d\n",
+        "Implement: implementation, after design review, until design review\n",
     ));
 
+    let normalized = rendered.split_whitespace().collect::<Vec<_>>().join(" ");
     assert!(
-        rendered.contains("after design"),
+        normalized.contains("after=design review"),
         "structured Gantt output should disclose the dependency source expression:\n{rendered}"
     );
+    assert!(normalized.contains("until=design review"));
+    assert!(rendered.contains("id=design"));
+    assert!(rendered.contains("id=review"));
+    assert!(rendered.contains("id=implementation"));
+}
+
+#[test]
+fn gantt_structured_text_preserves_time_precision_and_render_end() {
+    let mut model = GanttDiagramRenderModel::default();
+    model.sections = vec!["Build".to_string()];
+    model.tasks = vec![GanttRenderTask {
+        id: "timed".to_string(),
+        task: "Timed".to_string(),
+        section: "Build".to_string(),
+        start_ms: 1,
+        end_ms: 2,
+        render_end_ms: Some(3),
+        ..Default::default()
+    }];
+
+    let rendered = render(RenderSemanticModel::Gantt(model));
+
+    assert!(rendered.contains("id=timed"));
+    assert!(
+        rendered.contains("T"),
+        "time-of-day precision must be visible:\n{rendered}"
+    );
+    assert!(rendered.contains("renderEnd="));
+}
+
+#[test]
+fn gantt_direct_model_rejects_duplicate_task_ids() {
+    let task = GanttRenderTask {
+        id: "same".to_string(),
+        task: "Task".to_string(),
+        section: "Build".to_string(),
+        ..Default::default()
+    };
+    let mut model = GanttDiagramRenderModel::default();
+    model.tasks = vec![task.clone(), task];
+
+    let error = render_model(
+        &RenderSemanticModel::Gantt(model),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("duplicate task ids cannot provide stable identity");
+    assert!(matches!(
+        error,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "gantt",
+            feature: "duplicate task ids",
+        }
+    ));
 }
 
 #[test]
@@ -506,11 +641,11 @@ fn kanban_render_model_renders_groups_and_child_metadata() {
     assert_eq!(
         rendered,
         concat!(
-            "Backlog\n",
-            "  - Ticket A [ticket=K-1, priority=high, assigned=alice, icon=bug]\n",
-            "  - Ticket B [ticket=K-2]\n",
-            "Doing\n",
-            "  - Ticket C [ticket=K-3]",
+            "Backlog [id=backlog]\n",
+            "  - Ticket A [id=card-a, ticket=K-1, priority=high, assigned=alice, icon=bug]\n",
+            "  - Ticket B [id=card-b, ticket=K-2]\n",
+            "Doing [id=doing]\n",
+            "  - Ticket C [id=card-c, ticket=K-3]",
         )
     );
 }
@@ -548,13 +683,56 @@ fn kanban_render_model_keeps_unassigned_and_unknown_parent_cards() {
     assert_eq!(
         rendered,
         concat!(
-            "Backlog\n",
-            "  - Known\n",
+            "Backlog [id=backlog]\n",
+            "  - Known [id=known]\n",
             "Unassigned\n",
-            "  - Loose\n",
-            "  - Unknown [parent=missing, ticket=K-404]",
+            "  - Loose [id=loose]\n",
+            "  - Unknown [id=unknown, parent=missing, ticket=K-404]",
         )
     );
+}
+
+#[test]
+fn kanban_render_model_rejects_duplicate_or_empty_ids() {
+    let duplicate = KanbanDiagramRenderModel {
+        nodes: vec![
+            kanban_node("same", "A", true, KanbanNodeMetadata::default()),
+            kanban_node("same", "B", false, KanbanNodeMetadata::default()),
+        ],
+    };
+    let error = render_model(
+        &RenderSemanticModel::Kanban(duplicate),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("group/card ids share one namespace");
+    assert!(matches!(
+        error,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "kanban",
+            feature: "duplicate node ids",
+        }
+    ));
+
+    let empty = KanbanDiagramRenderModel {
+        nodes: vec![kanban_node(
+            "",
+            "Empty",
+            false,
+            KanbanNodeMetadata::default(),
+        )],
+    };
+    let error = render_model(
+        &RenderSemanticModel::Kanban(empty),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("empty ids cannot provide stable card identity");
+    assert!(matches!(
+        error,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "kanban",
+            feature: "empty node ids",
+        }
+    ));
 }
 
 #[test]
@@ -663,7 +841,8 @@ fn git_graph_render_model_renders_branches_commits_and_warnings() {
             "accTitle: Git title\n",
             "accDescr: Git description\n",
             "branches: main, feature\n",
-            "  - 0 main c0 [highlight] init tags=v1 parents=seed customType=7 customId=true\n",
+            "  - 0 main c0 [highlight] init tags=v1 parents=seed typeOverride=7\n",
+            "    idSource=explicit\n",
             "warnings:\n",
             "  - duplicate head",
         )

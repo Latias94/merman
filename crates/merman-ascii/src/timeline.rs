@@ -1,7 +1,9 @@
 use crate::Result;
 use crate::options::AsciiRenderOptions;
 use crate::safe_text::BudgetedTextDocument;
-use merman_core::diagrams::timeline::{TimelineDiagramRenderModel, TimelineRenderTask};
+use merman_core::diagrams::timeline::{
+    TimelineDiagramRenderModel, TimelineDirection, TimelineRenderTask,
+};
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
@@ -14,6 +16,13 @@ pub fn render_timeline_diagram(
     document.push_optional_line(model.title.as_deref())?;
     document.push_optional_prefixed_line("accTitle: ", model.acc_title.as_deref())?;
     document.push_optional_prefixed_line("accDescr: ", model.acc_descr.as_deref())?;
+    document.push_line_with(|line| {
+        line.push_str("direction: ")?;
+        line.push_str(match model.direction {
+            TimelineDirection::LeftToRight => "LR",
+            TimelineDirection::TopDown => "TD",
+        })
+    })?;
 
     if !model.sections.is_empty() {
         for section in &model.sections {
@@ -46,11 +55,7 @@ pub fn render_timeline_diagram(
 fn push_task(document: &mut BudgetedTextDocument, task: &TimelineRenderTask) -> Result<()> {
     document.resources_mut().charge_layout_work(1)?;
     document.push_wrapped_prefixed_line_with("  - ", "    ", SUMMARY_WRAP_WIDTH, |line| {
-        line.push_str(&task.task)?;
-        if task.score != 0 {
-            line.write_fmt(format_args!(" (score {})", task.score))?;
-        }
-        Ok(())
+        line.push_str(&task.task)
     })?;
     for event in &task.events {
         document.resources_mut().charge_layout_work(1)?;

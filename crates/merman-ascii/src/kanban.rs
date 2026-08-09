@@ -14,10 +14,29 @@ pub fn render_kanban_diagram(
 ) -> Result<String> {
     let mut document = BudgetedTextDocument::new(options);
     let mut group_ids = HashSet::new();
+    let mut node_ids = HashSet::new();
     let mut children_by_parent: HashMap<&str, Vec<&KanbanRenderNode>> = HashMap::new();
     document
         .resources_mut()
         .charge_layout_work(model.nodes.len())?;
+    node_ids
+        .try_reserve(model.nodes.len())
+        .map_err(|_| layout_allocation_error())?;
+    for node in &model.nodes {
+        document.preflight_text_work(&node.id)?;
+        if node.id.is_empty() {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "kanban",
+                feature: "empty node ids",
+            });
+        }
+        if !node_ids.insert(node.id.as_str()) {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "kanban",
+                feature: "duplicate node ids",
+            });
+        }
+    }
     group_ids
         .try_reserve(model.nodes.len())
         .map_err(|_| layout_allocation_error())?;
@@ -49,7 +68,9 @@ pub fn render_kanban_diagram(
     let has_groups = !group_ids.is_empty();
     for group in model.nodes.iter().filter(|node| node.is_group) {
         document.resources_mut().charge_layout_work(1)?;
-        document.push_line(&group.label)?;
+        document.push_wrapped_prefixed_line_with("", "", SUMMARY_WRAP_WIDTH, |line| {
+            push_node_text(line, group, None)
+        })?;
         if let Some(children) = children_by_parent.get(group.id.as_str()) {
             for child in children {
                 document.resources_mut().charge_layout_work(1)?;
@@ -106,6 +127,7 @@ fn push_node_text(
 ) -> Result<()> {
     line.push_str(&node.label)?;
     let metadata = [
+        ("id=", Some(node.id.as_str())),
         ("parent=", disclosed_parent),
         ("ticket=", node.ticket.as_deref()),
         ("priority=", node.priority.as_deref()),

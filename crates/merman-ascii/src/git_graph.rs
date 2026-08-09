@@ -80,10 +80,15 @@ fn push_commit_text(
         push_joined(line, &commit.parents)?;
     }
     if let Some(custom_type) = commit.custom_type {
-        line.write_fmt(format_args!(" customType={custom_type}"))?;
+        line.push_str(" typeOverride=")?;
+        if let Some(kind) = commit_kind(custom_type) {
+            line.push_str(kind)?;
+        } else {
+            line.write_fmt(format_args!("{custom_type}"))?;
+        }
     }
-    if let Some(custom_id) = commit.custom_id {
-        line.write_fmt(format_args!(" customId={custom_id}"))?;
+    if commit.custom_id == Some(true) {
+        line.push_str(" idSource=explicit")?;
     }
     Ok(())
 }

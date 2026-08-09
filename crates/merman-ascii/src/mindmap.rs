@@ -19,7 +19,7 @@ pub fn render_mindmap_diagram(
 ) -> Result<String> {
     let mut document = BudgetedTextDocument::new(options);
     let nodes_by_id = index_nodes(&model.nodes, document.resources_mut())?;
-    let children_by_id = build_children_map(&model.edges, document.resources_mut())?;
+    let children_by_id = build_children_map(&model.edges, &nodes_by_id, document.resources_mut())?;
     let mut roots = root_ids(&model.nodes, &model.edges, document.resources_mut())?;
     append_disconnected_component_roots(
         &model.nodes,
@@ -77,11 +77,7 @@ pub fn render_mindmap_diagram(
                         branch_prefix(&prefix, is_last)
                     };
                     push_wrapped_label(&mut document, &branch, |line| {
-                        line.push_str(&node.label)?;
-                        if is_cycle {
-                            line.push_str(" (cycle)")?;
-                        }
-                        Ok(())
+                        push_node_text(line, node, is_cycle)
                     })?;
 
                     if is_cycle {
@@ -142,31 +138,97 @@ fn index_nodes<'a>(
     try_reserve_hash_map(&mut out, nodes.len())?;
     for node in nodes {
         charge_text_layout(resources, &node.id)?;
-        out.insert(node.id.as_str(), node);
+        if out.insert(node.id.as_str(), node).is_some() {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "mindmap",
+                feature: "duplicate node ids",
+            });
+        }
     }
     Ok(out)
 }
 
 fn build_children_map<'a>(
     edges: &'a [MindmapDiagramRenderEdge],
+    nodes_by_id: &HashMap<&'a str, &'a MindmapDiagramRenderNode>,
     resources: &mut ResourceContext,
 ) -> Result<HashMap<&'a str, Vec<&'a str>>> {
     resources.charge_layout_work(edges.len())?;
     let mut children: HashMap<&str, Vec<&str>> = HashMap::new();
     try_reserve_hash_map(&mut children, edges.len())?;
+    let mut edge_ids = HashSet::new();
+    let mut endpoint_pairs = HashSet::new();
+    edge_ids
+        .try_reserve(edges.len())
+        .map_err(|_| layout_allocation_error())?;
+    endpoint_pairs
+        .try_reserve(edges.len())
+        .map_err(|_| layout_allocation_error())?;
     for edge in edges {
         charge_text_layout(resources, &edge.start)?;
         charge_text_layout(resources, &edge.end)?;
+        if !nodes_by_id.contains_key(edge.start.as_str()) {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "mindmap",
+                feature: "edge with missing start node",
+            });
+        }
+        if !nodes_by_id.contains_key(edge.end.as_str()) {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "mindmap",
+                feature: "edge with missing end node",
+            });
+        }
+        if !edge.id.is_empty() && !edge_ids.insert(edge.id.as_str()) {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "mindmap",
+                feature: "duplicate edge ids",
+            });
+        }
+        if !endpoint_pairs.insert((edge.start.as_str(), edge.end.as_str())) {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "mindmap",
+                feature: "parallel edges",
+            });
+        }
         let siblings = children.entry(edge.start.as_str()).or_default();
         resources.charge_layout_work(siblings.len())?;
-        if !siblings.contains(&edge.end.as_str()) {
-            siblings
-                .try_reserve(1)
-                .map_err(|_| layout_allocation_error())?;
-            siblings.push(edge.end.as_str());
-        }
+        siblings
+            .try_reserve(1)
+            .map_err(|_| layout_allocation_error())?;
+        siblings.push(edge.end.as_str());
     }
     Ok(children)
+}
+
+fn push_node_text(
+    line: &mut crate::safe_text::BudgetedWrappedText<'_, '_>,
+    node: &MindmapDiagramRenderNode,
+    is_cycle: bool,
+) -> Result<()> {
+    line.push_str(&node.label)?;
+    if !node.id.is_empty() {
+        line.push_str(" [id=")?;
+        line.push_str(&node.id)?;
+        line.push_str("]")?;
+    }
+    if !node.shape.is_empty() && node.shape != "defaultMindmapNode" {
+        line.push_str(" [shape=")?;
+        line.push_str(&node.shape)?;
+        line.push_str("]")?;
+    }
+    if let Some(icon) = node.icon.as_deref() {
+        line.push_str(" [icon=")?;
+        line.push_str(icon)?;
+        line.push_str("]")?;
+    }
+    if let Some(section) = node.section {
+        line.write_fmt(format_args!(" [section={section}]"))?;
+    }
+    if is_cycle {
+        line.push_str(" (cycle)")?;
+    }
+    Ok(())
 }
 
 fn root_ids<'a>(
@@ -225,9 +287,9 @@ fn append_disconnected_component_roots<'a>(
         .map_err(|_| layout_allocation_error())?;
 
     let initial_root_count = roots.len();
-    for root_index in 0..initial_root_count {
+    for root_id in roots.iter().take(initial_root_count).copied() {
         mark_reachable_component(
-            roots[root_index],
+            root_id,
             nodes_by_id,
             children_by_id,
             &mut reachable,
