@@ -4,7 +4,7 @@ All notable changes to the Android JNI package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [0.8.0-alpha.4] - Unreleased
+## [0.8.0-alpha.4] - 2026-08-09
 
 ### Breaking changes
 

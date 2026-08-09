@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [0.8.0-alpha.4] - Unreleased
+## [0.8.0-alpha.4] - 2026-08-09
 
 0.8.0-alpha.4 completes Merman's Mermaid 11.16.1 language and rendering surface and gives CLI, editor, browser, Rust, and native-SDK users explicit product contracts. It is a deliberately breaking prerelease; use the [alpha.3 to alpha.4 upgrade guide](docs/release/ALPHA3_TO_ALPHA4_UPGRADE_GUIDE.md) for exact migrations.
 
