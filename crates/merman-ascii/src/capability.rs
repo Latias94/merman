@@ -580,18 +580,19 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         primary_projection: AsciiPrimaryProjection::Diagrammatic,
         structured_text_fallback: false,
         supported_semantics: &[
-            "compact bar and line plots",
-            "mixed plots",
-            "horizontal mode",
+            "typed x/y sample coordinates and point labels",
+            "band and linear axes with compact scale-aware ticks",
+            "grouped bar, topology-resolved line, and mixed plots",
+            "horizontal and vertical orientation",
             "titles and axes",
             "legends",
-            "data labels",
+            "exact data labels and semantic disclosure",
             "configurable plot dimensions",
         ],
         limits: &[
-            "tooltips are not represented",
-            "SVG coordinate precision is not represented",
-            "dense data uses terminal-compact layout",
+            "browser hover tooltips are replaced by deterministic terminal disclosure",
+            "SVG pixel coordinates are quantized to terminal cells",
+            "cross-series same-cell collisions use deterministic paint order plus exact disclosure",
         ],
         evidence: &[
             AsciiCapabilityEvidence {
@@ -601,13 +602,13 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
-                source: "crates/merman-ascii/tests/testdata/local-semantic/xychart/",
-                note: "local fixtures assert typed chart labels values and wide-cell behavior",
+                source: "crates/merman-ascii/tests/xychart_model.rs",
+                note: "semantic tests assert typed coordinates, grouped lanes, missing-sample gaps, connected horizontal paths, precision, clipping, collisions, labels, and resource extents",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::GapRegistry,
                 source: "crates/merman-ascii/ASCII_GAP_REGISTRY.md#A-XY-010",
-                note: "richer terminal chart disclosure remains an explicit gap",
+                note: "cross-series same-cell ownership remains an explicit compact-layout residual",
             },
         ],
     },

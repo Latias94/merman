@@ -1,6 +1,10 @@
 use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions,
-    AsciiResourceLimitId, AsciiRgb, render_model,
+    AsciiResourceLimitId, AsciiRgb, render_model, render_xychart as render_typed_xychart,
+};
+use merman_core::diagrams::xychart::{
+    XyChartAxisDisplayPolicy, XyChartAxisRenderModel, XyChartDiagramRenderModel,
+    XyChartDisplayPolicy, XyChartPlotRenderModel, XyChartPlotType,
 };
 use merman_core::{Engine, ParseOptions};
 use std::path::Path;
@@ -75,6 +79,44 @@ fn cjk_test_width(input: &str) -> usize {
         .chars()
         .map(|ch| if ch.is_ascii() { 1 } else { 2 })
         .sum()
+}
+
+fn hidden_axis_policy() -> XyChartAxisDisplayPolicy {
+    XyChartAxisDisplayPolicy {
+        show_label: false,
+        show_title: false,
+        show_tick: false,
+        show_axis_line: false,
+    }
+}
+
+fn typed_xychart_model(
+    orientation: &str,
+    x_axis: XyChartAxisRenderModel,
+    y_min: f64,
+    y_max: f64,
+    plots: Vec<XyChartPlotRenderModel>,
+) -> XyChartDiagramRenderModel {
+    XyChartDiagramRenderModel {
+        orientation: orientation.to_string(),
+        title: None,
+        acc_title: None,
+        acc_descr: None,
+        x_axis,
+        y_axis: XyChartAxisRenderModel::Linear {
+            title: String::new(),
+            min: Some(y_min),
+            max: Some(y_max),
+        },
+        plots,
+        display: XyChartDisplayPolicy {
+            show_title: false,
+            show_data_label: false,
+            show_data_label_outside_bar: false,
+            x_axis: hidden_axis_policy(),
+            y_axis: hidden_axis_policy(),
+        },
+    }
 }
 
 #[test]
@@ -157,11 +199,13 @@ line [8, 2]
         strip_html_spans(&rendered),
         concat!(
             "# Bar 1  * Line 1\n",
+            "values: # Bar 1: A=2, B=8\n",
+            "values: * Line 1: A=8, B=2\n",
             "10 +\n",
-            " 8 + ***###\n",
-            " 6 +   *###\n",
-            " 4 +   *###\n",
-            " 2 +###***#\n",
+            " 8 + *-+###\n",
+            " 6 +   |###\n",
+            " 4 +   |###\n",
+            " 2 +###+-*#\n",
             " 0 +-+---+-\n",
             "     A   B\n",
         )
@@ -171,7 +215,7 @@ line [8, 2]
         "<span style=\"color:#404040\">*</span>",
         "<span style=\"color:#202020\">+</span>",
         "<span style=\"color:#303030\">###</span>",
-        "<span style=\"color:#404040\">***</span>",
+        "<span style=\"color:#404040\">*-+</span>",
     ] {
         assert!(
             rendered.contains(expected_fragment),
@@ -225,11 +269,11 @@ line [1, 5, 9]
     assert_eq!(
         rendered,
         concat!(
-            "10 +       ***\n",
-            " 8 +       *\n",
-            " 6 +   *****\n",
-            " 4 +   *\n",
-            " 2 + ***\n",
+            "10 +       +-*\n",
+            " 8 +       |\n",
+            " 6 +   +-*-+\n",
+            " 4 +   |\n",
+            " 2 + *-+\n",
             " 0 +-+---+---+-\n",
             "     A   B   C\n",
         )
@@ -253,11 +297,13 @@ line [8, 2]
         rendered,
         concat!(
             "# Bar 1  * Line 1\n",
+            "values: # Bar 1: A=2, B=8\n",
+            "values: * Line 1: A=8, B=2\n",
             "10 +\n",
-            " 8 + ***###\n",
-            " 6 +   *###\n",
-            " 4 +   *###\n",
-            " 2 +###***#\n",
+            " 8 + *-+###\n",
+            " 6 +   |###\n",
+            " 4 +   |###\n",
+            " 2 +###+-*#\n",
             " 0 +-+---+-\n",
             "     A   B\n",
         )
@@ -396,8 +442,8 @@ line [4, 8]
         rendered,
         concat!(
             "values: * Line 1: A=4, B=8\n",
-            "A +   *\n",
-            "B +       *\n",
+            "A +   *-+\n",
+            "B +     +-*\n",
             "  ++--------+\n",
             "   0       10\n",
         )
@@ -425,10 +471,10 @@ line "Forecast" [8, 2]
             "values: # Revenue: A=2, B=8\n",
             "values: * Forecast: A=8, B=2\n",
             "10 +\n",
-            " 8 + ***###\n",
-            " 6 +   *###\n",
-            " 4 +   *###\n",
-            " 2 +###***#\n",
+            " 8 + *-+###\n",
+            " 6 +   |###\n",
+            " 4 +   |###\n",
+            " 2 +###+-*#\n",
             " 0 +-+---+-\n",
             "     A   B\n",
         )
@@ -718,15 +764,664 @@ fn xychart_local_semantic_fixture_covers_horizontal_mixed_plot_with_cjk_labels()
             .is_some_and(|line| line.find("Bar 1") < line.find("Line 1")),
         "legend should preserve series order on the same row:\n{rendered}"
     );
+    let category_row = |category: &str| {
+        rendered
+            .lines()
+            .position(|line| line.starts_with(category))
+            .unwrap_or_else(|| panic!("missing category row {category:?}:\n{rendered}"))
+    };
     assert!(
-        first_line_index_containing(&rendered, "北区")
-            < first_line_index_containing(&rendered, "南区")
-            && first_line_index_containing(&rendered, "南区")
-                < first_line_index_containing(&rendered, "东区"),
+        category_row("北区") < category_row("南区") && category_row("南区") < category_row("东区"),
         "CJK category labels should keep their row order:\n{rendered}"
     );
     assert!(
         rendered.lines().count() >= 6,
         "local semantic xychart fixture should produce a multi-line layout:\n{rendered}"
+    );
+}
+
+#[test]
+fn xychart_imported_fixture_matrix_remains_smoke_green() {
+    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/xychart");
+    let mut fixtures = std::fs::read_dir(&fixture_dir)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", fixture_dir.display()))
+        .map(|entry| {
+            entry
+                .expect("fixture directory entry should be readable")
+                .path()
+        })
+        .filter(|path| path.extension().is_some_and(|extension| extension == "mmd"))
+        .collect::<Vec<_>>();
+    fixtures.sort();
+    assert_eq!(
+        fixtures.len(),
+        73,
+        "the pinned XYChart fixture inventory changed; update the semantic gate intentionally"
+    );
+
+    let mut failures = Vec::new();
+    for fixture in fixtures {
+        let input = std::fs::read_to_string(&fixture)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", fixture.display()));
+        if let Err(error) = render_xychart(&input, &AsciiRenderOptions::ascii()) {
+            failures.push(format!(
+                "{}: {error}",
+                fixture
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("<non-utf8 fixture>")
+            ));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "imported XYChart fixtures failed ASCII smoke rendering:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[test]
+fn xychart_typed_data_is_the_coordinate_and_value_source_of_truth() {
+    let mut model = typed_xychart_model(
+        "vertical",
+        XyChartAxisRenderModel::Linear {
+            title: String::new(),
+            min: Some(0.0),
+            max: Some(10.0),
+        },
+        -3.0,
+        1.0,
+        vec![XyChartPlotRenderModel {
+            plot_type: XyChartPlotType::Line,
+            title: Some("precision".to_string()),
+            values: vec![999.0, 998.0, 997.0],
+            data: vec![
+                ("0".to_string(), Some(0.001)),
+                ("1".to_string(), Some(0.75)),
+                ("10".to_string(), Some(-2.5)),
+            ],
+            point_labels: vec!["tiny".to_string(), "ratio".to_string(), "loss".to_string()],
+        }],
+    );
+    model.display.show_data_label = true;
+
+    let rendered = render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+        .expect("typed XYChart data should render");
+
+    for expected in ["0=0.001 [tiny]", "1=0.75 [ratio]", "10=-2.5 [loss]"] {
+        assert!(
+            rendered.contains(expected),
+            "typed sample {expected:?} should survive exact disclosure:\n{rendered}"
+        );
+    }
+    assert!(
+        !rendered.contains("999") && !rendered.contains("998") && !rendered.contains("997"),
+        "legacy values must not override typed data samples:\n{rendered}"
+    );
+}
+
+#[test]
+fn xychart_linear_x_coordinates_control_terminal_point_spacing() {
+    let make_model = |second_x: &str| {
+        typed_xychart_model(
+            "vertical",
+            XyChartAxisRenderModel::Linear {
+                title: String::new(),
+                min: Some(0.0),
+                max: Some(10.0),
+            },
+            0.0,
+            1.0,
+            vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Line,
+                title: None,
+                values: vec![0.5, 0.5],
+                data: vec![
+                    ("0".to_string(), Some(0.5)),
+                    (second_x.to_string(), Some(0.5)),
+                ],
+                point_labels: Vec::new(),
+            }],
+        )
+    };
+    let options = AsciiRenderOptions::ascii()
+        .with_xychart_vertical_plot_height(3)
+        .with_xychart_category_band_width(3);
+
+    let near = render_typed_xychart(&make_model("2"), &options)
+        .expect("near linear samples should render");
+    let far = render_typed_xychart(&make_model("10"), &options)
+        .expect("far linear samples should render");
+    let near_width = near.lines().map(str::len).max().unwrap_or_default();
+    let far_width = far.lines().map(str::len).max().unwrap_or_default();
+
+    assert!(
+        far_width > near_width,
+        "typed x coordinates should change point spacing (near={near:?}, far={far:?})"
+    );
+}
+
+#[test]
+fn xychart_horizontal_line_series_draw_connected_paths() {
+    let model = typed_xychart_model(
+        "horizontal",
+        XyChartAxisRenderModel::Band {
+            title: String::new(),
+            categories: vec!["A".to_string(), "B".to_string(), "C".to_string()],
+        },
+        0.0,
+        10.0,
+        vec![XyChartPlotRenderModel {
+            plot_type: XyChartPlotType::Line,
+            title: None,
+            values: vec![2.0, 8.0, 4.0],
+            data: vec![
+                ("A".to_string(), Some(2.0)),
+                ("B".to_string(), Some(8.0)),
+                ("C".to_string(), Some(4.0)),
+            ],
+            point_labels: Vec::new(),
+        }],
+    );
+
+    let rendered = render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+        .expect("horizontal line series should render");
+    let painted_cells = rendered
+        .chars()
+        .filter(|ch| matches!(ch, '*' | '-' | '|' | '+'))
+        .count();
+
+    assert!(
+        painted_cells > 3,
+        "three samples should be joined by path cells, not emitted as isolated points:\n{rendered}"
+    );
+    assert!(
+        rendered.contains('-') && rendered.contains('+'),
+        "horizontal line topology should expose segments and bends:\n{rendered}"
+    );
+}
+
+#[test]
+fn xychart_unicode_line_topology_resolves_rounded_corners() {
+    let model = typed_xychart_model(
+        "vertical",
+        XyChartAxisRenderModel::Band {
+            title: String::new(),
+            categories: vec!["A".to_string(), "B".to_string()],
+        },
+        0.0,
+        10.0,
+        vec![XyChartPlotRenderModel {
+            plot_type: XyChartPlotType::Line,
+            title: None,
+            values: vec![2.0, 8.0],
+            data: vec![("A".to_string(), Some(2.0)), ("B".to_string(), Some(8.0))],
+            point_labels: Vec::new(),
+        }],
+    );
+
+    let rendered = render_typed_xychart(&model, &AsciiRenderOptions::unicode())
+        .expect("Unicode line topology should render");
+
+    for glyph in ['╭', '╯', '─', '│', '●'] {
+        assert!(
+            rendered.contains(glyph),
+            "Unicode line topology should contain {glyph:?}:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn xychart_line_topology_temporary_extent_is_budgeted() {
+    let model = typed_xychart_model(
+        "vertical",
+        XyChartAxisRenderModel::Band {
+            title: String::new(),
+            categories: vec!["A".to_string(), "B".to_string()],
+        },
+        0.0,
+        10.0,
+        vec![XyChartPlotRenderModel {
+            plot_type: XyChartPlotType::Line,
+            title: None,
+            values: vec![2.0, 8.0],
+            data: Vec::new(),
+            point_labels: Vec::new(),
+        }],
+    );
+    let options = AsciiRenderOptions::ascii()
+        .with_xychart_vertical_plot_height(3)
+        .with_xychart_category_band_width(3)
+        .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 41)
+        .expect("valid grid limit");
+
+    let error = render_typed_xychart(&model, &options)
+        .expect_err("plot cells plus the line-topology mask must exceed 41 cells");
+    let AsciiError::ResourceLimitExceeded(details) = error else {
+        panic!("expected resource-limit error, got {error:?}");
+    };
+    assert_eq!(details.limit, AsciiResourceLimitId::MaxGridCells);
+    assert_eq!(details.actual, 42);
+    assert_eq!(details.max, 41);
+}
+
+#[test]
+fn xychart_horizontal_grouped_bars_get_independent_rows() {
+    let model = typed_xychart_model(
+        "horizontal",
+        XyChartAxisRenderModel::Band {
+            title: String::new(),
+            categories: vec!["A".to_string(), "B".to_string()],
+        },
+        0.0,
+        10.0,
+        vec![
+            XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Bar,
+                title: Some("first".to_string()),
+                values: vec![2.0, 8.0],
+                data: vec![("A".to_string(), Some(2.0)), ("B".to_string(), Some(8.0))],
+                point_labels: Vec::new(),
+            },
+            XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Bar,
+                title: Some("second".to_string()),
+                values: vec![7.0, 3.0],
+                data: vec![("A".to_string(), Some(7.0)), ("B".to_string(), Some(3.0))],
+                point_labels: Vec::new(),
+            },
+        ],
+    );
+
+    let rendered = render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+        .expect("grouped horizontal bars should render");
+    let bar_rows = rendered
+        .lines()
+        .filter(|line| !line.is_empty() && line.chars().all(|ch| ch == '#'))
+        .count();
+
+    assert_eq!(
+        bar_rows, 4,
+        "two bar series across two categories need four recoverable lanes:\n{rendered}"
+    );
+}
+
+#[test]
+fn xychart_grouped_horizontal_extent_is_budgeted_before_allocation() {
+    let model = typed_xychart_model(
+        "horizontal",
+        XyChartAxisRenderModel::Band {
+            title: String::new(),
+            categories: vec!["A".to_string(), "B".to_string()],
+        },
+        0.0,
+        10.0,
+        vec![
+            XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Bar,
+                title: None,
+                values: vec![2.0, 8.0],
+                data: Vec::new(),
+                point_labels: Vec::new(),
+            },
+            XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Bar,
+                title: None,
+                values: vec![7.0, 3.0],
+                data: Vec::new(),
+                point_labels: Vec::new(),
+            },
+        ],
+    );
+    let options = AsciiRenderOptions::ascii()
+        .with_xychart_horizontal_plot_width(10)
+        .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 39)
+        .expect("valid grid limit");
+
+    let error = render_typed_xychart(&model, &options)
+        .expect_err("the four-by-ten grouped plot must exceed 39 grid cells");
+    let AsciiError::ResourceLimitExceeded(details) = error else {
+        panic!("expected resource-limit error, got {error:?}");
+    };
+    assert_eq!(details.limit, AsciiResourceLimitId::MaxGridCells);
+    assert_eq!(details.actual, 40);
+    assert_eq!(details.max, 39);
+}
+
+#[test]
+fn xychart_vertical_grouped_bars_use_distinct_category_lanes() {
+    let model = typed_xychart_model(
+        "vertical",
+        XyChartAxisRenderModel::Band {
+            title: String::new(),
+            categories: vec!["A".to_string()],
+        },
+        0.0,
+        10.0,
+        vec![
+            XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Bar,
+                title: Some("full".to_string()),
+                values: vec![10.0],
+                data: vec![("A".to_string(), Some(10.0))],
+                point_labels: Vec::new(),
+            },
+            XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Bar,
+                title: Some("half".to_string()),
+                values: vec![5.0],
+                data: vec![("A".to_string(), Some(5.0))],
+                point_labels: Vec::new(),
+            },
+        ],
+    );
+    let options = AsciiRenderOptions::ascii()
+        .with_xychart_vertical_plot_height(4)
+        .with_xychart_category_band_width(4);
+
+    let rendered =
+        render_typed_xychart(&model, &options).expect("grouped vertical bars should render");
+    let plot_rows = rendered
+        .lines()
+        .filter(|line| !line.is_empty() && line.chars().all(|ch| ch == '#'))
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        plot_rows,
+        vec!["##", "##", "####", "####"],
+        "bar series should occupy independent lanes inside the category band:\n{rendered}"
+    );
+}
+
+#[test]
+fn xychart_tiny_axis_ticks_remain_distinct_and_scale_aware() {
+    let rendered = render_xychart(
+        r#"xychart
+x-axis [A, B]
+y-axis 0.001 --> 0.005
+line [0.001, 0.005]
+"#,
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("tiny XYChart range should render");
+
+    assert!(
+        rendered.contains("0.005"),
+        "missing exact upper tick:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("0.001"),
+        "missing exact lower tick:\n{rendered}"
+    );
+    let visible_ticks = rendered
+        .lines()
+        .take(5)
+        .filter_map(|line| line.split_whitespace().next())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        visible_ticks.len(),
+        5,
+        "compact value axis should retain five tick rows:\n{rendered}"
+    );
+    assert!(
+        visible_ticks.windows(2).all(|pair| pair[0] != pair[1]),
+        "scale-aware formatting must not collapse adjacent ticks:\n{rendered}"
+    );
+}
+
+#[test]
+fn xychart_degenerate_range_keeps_data_visible() {
+    let model = typed_xychart_model(
+        "vertical",
+        XyChartAxisRenderModel::Band {
+            title: String::new(),
+            categories: vec!["A".to_string()],
+        },
+        5.0,
+        5.0,
+        vec![XyChartPlotRenderModel {
+            plot_type: XyChartPlotType::Bar,
+            title: None,
+            values: vec![5.0],
+            data: vec![("A".to_string(), Some(5.0))],
+            point_labels: Vec::new(),
+        }],
+    );
+
+    let options = AsciiRenderOptions::ascii().with_xychart_vertical_plot_height(4);
+    let rendered = render_typed_xychart(&model, &options)
+        .expect("degenerate XYChart range should render deterministically");
+
+    assert_eq!(
+        rendered.lines().filter(|line| line.contains('#')).count(),
+        2,
+        "a degenerate linear scale should place its bar at the domain midpoint:\n{rendered}"
+    );
+}
+
+#[test]
+fn xychart_reversed_value_range_preserves_authored_axis_direction() {
+    let mut model = typed_xychart_model(
+        "vertical",
+        XyChartAxisRenderModel::Band {
+            title: String::new(),
+            categories: vec!["A".to_string(), "B".to_string()],
+        },
+        10.0,
+        0.0,
+        vec![XyChartPlotRenderModel {
+            plot_type: XyChartPlotType::Line,
+            title: None,
+            values: vec![10.0, 0.0],
+            data: vec![("A".to_string(), Some(10.0)), ("B".to_string(), Some(0.0))],
+            point_labels: Vec::new(),
+        }],
+    );
+    model.display.x_axis = XyChartAxisDisplayPolicy::default();
+    model.display.y_axis = XyChartAxisDisplayPolicy::default();
+
+    let rendered = render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+        .expect("reversed XYChart range should render");
+    let lines = rendered.lines().collect::<Vec<_>>();
+
+    assert!(
+        lines
+            .first()
+            .is_some_and(|line| line.trim_start().starts_with("0 +")),
+        "the authored `0` endpoint should remain at the top of a reversed axis:\n{rendered}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.trim_start().starts_with("10 +")),
+        "the authored `10` endpoint should remain on the baseline:\n{rendered}"
+    );
+}
+
+#[test]
+fn xychart_orphan_point_labels_and_clipped_values_are_disclosed() {
+    let model = typed_xychart_model(
+        "vertical",
+        XyChartAxisRenderModel::Band {
+            title: String::new(),
+            categories: vec!["A".to_string()],
+        },
+        0.0,
+        1.0,
+        vec![XyChartPlotRenderModel {
+            plot_type: XyChartPlotType::Line,
+            title: None,
+            values: vec![2.0],
+            data: vec![("A".to_string(), Some(2.0))],
+            point_labels: vec!["peak".to_string(), "detached".to_string()],
+        }],
+    );
+
+    let rendered = render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+        .expect("clipped and orphan XYChart semantics should render through disclosure");
+
+    assert!(
+        rendered.contains("A=2 (clipped) [peak]"),
+        "clipped value and anchored point label should remain exact:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("orphan-label=detached"),
+        "orphan point labels must not disappear silently:\n{rendered}"
+    );
+}
+
+#[test]
+fn xychart_duplicate_categories_keep_source_order_and_disclosure_identity() {
+    let model = typed_xychart_model(
+        "vertical",
+        XyChartAxisRenderModel::Band {
+            title: String::new(),
+            categories: vec!["B".to_string(), "A".to_string(), "A".to_string()],
+        },
+        0.0,
+        3.0,
+        vec![XyChartPlotRenderModel {
+            plot_type: XyChartPlotType::Line,
+            title: None,
+            values: vec![0.0, 1.0, 2.0],
+            data: vec![
+                ("B".to_string(), Some(0.0)),
+                ("A".to_string(), Some(1.0)),
+                ("A".to_string(), Some(2.0)),
+            ],
+            point_labels: Vec::new(),
+        }],
+    );
+
+    let rendered = render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+        .expect("duplicate categories should render deterministically");
+
+    assert!(
+        rendered.contains("B=0, A[1]=1, A[2]=2"),
+        "duplicate categories need stable occurrence identities:\n{rendered}"
+    );
+    let plotted_points = rendered
+        .lines()
+        .filter(|line| !line.starts_with("values:"))
+        .map(|line| line.matches('*').count())
+        .sum::<usize>();
+    assert_eq!(
+        plotted_points, 3,
+        "duplicate category samples must retain separate source-order slots:\n{rendered}"
+    );
+}
+
+#[test]
+fn xychart_missing_samples_break_paths_and_remain_explicit() {
+    for orientation in ["vertical", "horizontal"] {
+        let model = typed_xychart_model(
+            orientation,
+            XyChartAxisRenderModel::Band {
+                title: String::new(),
+                categories: vec!["A".to_string(), "B".to_string(), "C".to_string()],
+            },
+            0.0,
+            10.0,
+            vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Line,
+                title: None,
+                values: vec![2.0, 8.0],
+                data: vec![
+                    ("A".to_string(), Some(2.0)),
+                    ("B".to_string(), None),
+                    ("C".to_string(), Some(8.0)),
+                ],
+                point_labels: Vec::new(),
+            }],
+        );
+
+        let rendered = render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+            .unwrap_or_else(|error| panic!("{orientation} sparse line should render: {error}"));
+        assert!(
+            rendered.contains("B=n/a"),
+            "{orientation} sparse line must disclose the missing sample:\n{rendered}"
+        );
+        let plot = rendered
+            .lines()
+            .filter(|line| !line.starts_with("values:"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(
+            plot.matches('*').count(),
+            2,
+            "{orientation} sparse line should retain both defined points:\n{rendered}"
+        );
+        assert!(
+            !plot.chars().any(|ch| matches!(ch, '-' | '|' | '+')),
+            "{orientation} sparse line must not bridge across a missing sample:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn xychart_quantized_line_collision_triggers_exact_disclosure() {
+    let model = typed_xychart_model(
+        "vertical",
+        XyChartAxisRenderModel::Linear {
+            title: String::new(),
+            min: Some(0.0),
+            max: Some(100.0),
+        },
+        0.0,
+        10.0,
+        vec![XyChartPlotRenderModel {
+            plot_type: XyChartPlotType::Line,
+            title: None,
+            values: vec![5.0, 5.0],
+            data: vec![("0".to_string(), Some(5.0)), ("0.1".to_string(), Some(5.0))],
+            point_labels: Vec::new(),
+        }],
+    );
+
+    let rendered = render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+        .expect("quantized line collision should render through disclosure");
+
+    assert!(
+        rendered.contains("0=5, 0.1=5"),
+        "colliding typed coordinates must remain exact:\n{rendered}"
+    );
+    let plotted_points = rendered
+        .lines()
+        .filter(|line| !line.starts_with("values:"))
+        .map(|line| line.matches('*').count())
+        .sum::<usize>();
+    assert_eq!(
+        plotted_points, 1,
+        "the probe should exercise one quantized terminal cell:\n{rendered}"
+    );
+}
+
+#[test]
+fn xychart_dense_linear_bar_overlap_triggers_exact_disclosure() {
+    let model = typed_xychart_model(
+        "vertical",
+        XyChartAxisRenderModel::Linear {
+            title: String::new(),
+            min: Some(0.0),
+            max: Some(100.0),
+        },
+        0.0,
+        10.0,
+        vec![XyChartPlotRenderModel {
+            plot_type: XyChartPlotType::Bar,
+            title: None,
+            values: vec![5.0, 8.0],
+            data: vec![("0".to_string(), Some(5.0)), ("20".to_string(), Some(8.0))],
+            point_labels: Vec::new(),
+        }],
+    );
+
+    let rendered = render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+        .expect("dense linear bars should render through disclosure");
+
+    assert!(
+        rendered.contains("0=5, 20=8"),
+        "overlapping bar identities must remain exact:\n{rendered}"
     );
 }

@@ -7,11 +7,48 @@ use crate::resource::{
 use crate::text::{StyledLine, display_width_with_profile, truncate_display_width_with_profile};
 use crate::{AsciiCharset, AsciiError, AsciiRenderOptions, Result};
 use merman_core::diagrams::xychart::{
-    XyChartDiagramRenderModel, XyChartPlotRenderModel, XyChartPlotType,
+    XyChartAxisRenderModel, XyChartDiagramRenderModel, XyChartPlotRenderModel, XyChartPlotType,
 };
 
 const BAND_GAP: usize = 1;
 const BAND_GAP_LABEL: &str = " ";
+const LINE_NORTH: u8 = 1 << 0;
+const LINE_EAST: u8 = 1 << 1;
+const LINE_SOUTH: u8 = 1 << 2;
+const LINE_WEST: u8 = 1 << 3;
+const LINE_POINT: u8 = 1 << 4;
+const LINE_HORIZONTAL_MASK: u8 = LINE_EAST | LINE_WEST;
+const LINE_VERTICAL_MASK: u8 = LINE_NORTH | LINE_SOUTH;
+const LINE_TOP_LEFT_MASK: u8 = LINE_EAST | LINE_SOUTH;
+const LINE_TOP_RIGHT_MASK: u8 = LINE_WEST | LINE_SOUTH;
+const LINE_BOTTOM_LEFT_MASK: u8 = LINE_EAST | LINE_NORTH;
+const LINE_BOTTOM_RIGHT_MASK: u8 = LINE_WEST | LINE_NORTH;
+const LINE_TEE_DOWN_MASK: u8 = LINE_EAST | LINE_WEST | LINE_SOUTH;
+const LINE_TEE_UP_MASK: u8 = LINE_EAST | LINE_WEST | LINE_NORTH;
+const LINE_TEE_RIGHT_MASK: u8 = LINE_NORTH | LINE_SOUTH | LINE_EAST;
+const LINE_TEE_LEFT_MASK: u8 = LINE_NORTH | LINE_SOUTH | LINE_WEST;
+const LINE_CROSS_MASK: u8 = LINE_NORTH | LINE_EAST | LINE_SOUTH | LINE_WEST;
+
+#[derive(Debug, Clone, Copy, Default)]
+struct LineTopologyCell(u8);
+
+impl LineTopologyCell {
+    fn add(&mut self, mask: u8) {
+        self.0 |= mask;
+    }
+
+    fn connections(self) -> u8 {
+        self.0 & !LINE_POINT
+    }
+
+    fn is_point(self) -> bool {
+        self.0 & LINE_POINT != 0
+    }
+
+    fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct XyChartPlotArea {
@@ -131,6 +168,15 @@ pub(super) struct ChartChars {
     line_horizontal: char,
     line_vertical: char,
     line_point: char,
+    line_top_left: char,
+    line_top_right: char,
+    line_bottom_left: char,
+    line_bottom_right: char,
+    line_tee_down: char,
+    line_tee_up: char,
+    line_tee_right: char,
+    line_tee_left: char,
+    line_cross: char,
 }
 
 impl ChartChars {
@@ -143,9 +189,18 @@ impl ChartChars {
                 horizontal_tick: '+',
                 vertical_tick: '+',
                 bar: '#',
-                line_horizontal: '*',
-                line_vertical: '*',
+                line_horizontal: '-',
+                line_vertical: '|',
                 line_point: '*',
+                line_top_left: '+',
+                line_top_right: '+',
+                line_bottom_left: '+',
+                line_bottom_right: '+',
+                line_tee_down: '+',
+                line_tee_up: '+',
+                line_tee_right: '+',
+                line_tee_left: '+',
+                line_cross: '+',
             },
             AsciiCharset::Unicode => Self {
                 horizontal_axis: '─',
@@ -157,6 +212,15 @@ impl ChartChars {
                 line_horizontal: '─',
                 line_vertical: '│',
                 line_point: '●',
+                line_top_left: '╭',
+                line_top_right: '╮',
+                line_bottom_left: '╰',
+                line_bottom_right: '╯',
+                line_tee_down: '┬',
+                line_tee_up: '┴',
+                line_tee_right: '├',
+                line_tee_left: '┤',
+                line_cross: '┼',
             },
         }
     }
@@ -165,6 +229,27 @@ impl ChartChars {
         match plot_type {
             XyChartPlotType::Bar => self.bar,
             XyChartPlotType::Line => self.line_point,
+        }
+    }
+
+    fn line_glyph(self, cell: LineTopologyCell) -> char {
+        if cell.is_point() {
+            return self.line_point;
+        }
+        match cell.connections() {
+            LINE_HORIZONTAL_MASK => self.line_horizontal,
+            LINE_VERTICAL_MASK => self.line_vertical,
+            LINE_TOP_LEFT_MASK => self.line_top_left,
+            LINE_TOP_RIGHT_MASK => self.line_top_right,
+            LINE_BOTTOM_LEFT_MASK => self.line_bottom_left,
+            LINE_BOTTOM_RIGHT_MASK => self.line_bottom_right,
+            LINE_TEE_DOWN_MASK => self.line_tee_down,
+            LINE_TEE_UP_MASK => self.line_tee_up,
+            LINE_TEE_RIGHT_MASK => self.line_tee_right,
+            LINE_TEE_LEFT_MASK => self.line_tee_left,
+            LINE_CROSS_MASK => self.line_cross,
+            mask if mask & (LINE_EAST | LINE_WEST) != 0 => self.line_horizontal,
+            _ => self.line_vertical,
         }
     }
 }
@@ -181,12 +266,609 @@ impl ValueRange {
     }
 
     fn normalized(self, value: f64) -> f64 {
-        if self.span().abs() <= f64::EPSILON {
-            return 0.0;
+        if self.span() == 0.0 {
+            return 0.5;
         }
 
         ((value - self.min) / self.span()).clamp(0.0, 1.0)
     }
+
+    pub(super) fn contains(self, value: f64) -> bool {
+        let lower = self.min.min(self.max);
+        let upper = self.min.max(self.max);
+        value >= lower && value <= upper
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(super) enum AxisPlan {
+    Band { categories: Vec<String> },
+    Linear { range: ValueRange },
+}
+
+impl AxisPlan {
+    fn resolve_sample_position(
+        &self,
+        x: &str,
+        fallback_index: usize,
+        slot_count: usize,
+        resources: &mut ResourceContext,
+    ) -> Result<(usize, Option<f64>, bool)> {
+        if slot_count <= 1 {
+            let (normalized_x, clipped) = match self {
+                Self::Band { categories } => (
+                    None,
+                    !categories.is_empty()
+                        && !categories
+                            .get(fallback_index)
+                            .is_some_and(|category| category == x),
+                ),
+                Self::Linear { range } => match x.parse::<f64>() {
+                    Ok(value) if value.is_finite() => {
+                        (Some(range.normalized(value)), !range.contains(value))
+                    }
+                    _ => (Some(0.0), !x.trim().is_empty()),
+                },
+            };
+            return Ok((0, normalized_x, clipped));
+        }
+
+        match self {
+            Self::Band { categories } => {
+                if categories
+                    .get(fallback_index)
+                    .is_some_and(|category| category == x)
+                {
+                    return Ok((fallback_index.min(slot_count - 1), None, false));
+                }
+                for (index, category) in categories.iter().enumerate() {
+                    resources.charge_layout_work(1)?;
+                    if category == x {
+                        return Ok((index.min(slot_count - 1), None, false));
+                    }
+                }
+                Ok((
+                    fallback_index.min(slot_count - 1),
+                    None,
+                    !categories.is_empty(),
+                ))
+            }
+            Self::Linear { range } => match x.parse::<f64>() {
+                Ok(value) if value.is_finite() => {
+                    let normalized = range.normalized(value);
+                    Ok((
+                        (normalized * (slot_count - 1) as f64).round() as usize,
+                        Some(normalized),
+                        !range.contains(value),
+                    ))
+                }
+                _ => Ok((
+                    fallback_index.min(slot_count - 1),
+                    Some(fallback_index.min(slot_count - 1) as f64 / (slot_count - 1) as f64),
+                    !x.trim().is_empty(),
+                )),
+            },
+        }
+    }
+
+    fn sample_column(
+        &self,
+        datum: &SeriesDatum,
+        slot_count: usize,
+        plot_width: usize,
+        plot_area: XyChartPlotArea,
+        resources: &ResourceContext,
+    ) -> Result<usize> {
+        if plot_width <= 1 {
+            return Ok(0);
+        }
+
+        match self {
+            Self::Band { .. } => plot_area.vertical_band_center(datum.slot, resources),
+            Self::Linear { .. } => {
+                let first = plot_area
+                    .vertical_band_center(0, resources)?
+                    .min(plot_width - 1);
+                if slot_count <= 1 {
+                    return Ok(first);
+                }
+                let last = plot_area
+                    .vertical_band_center(slot_count - 1, resources)?
+                    .min(plot_width - 1);
+                let span = checked_grid_sub(resources, last, first)?;
+                let normalized = datum.normalized_x.unwrap_or(0.0);
+                resources.checked_grid_add(first, (normalized * span as f64).round() as usize)
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct SeriesDatum {
+    pub(super) x: String,
+    pub(super) value: Option<f64>,
+    pub(super) point_label: Option<String>,
+    slot: usize,
+    normalized_x: Option<f64>,
+    pub(super) x_clipped: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct SeriesPlan {
+    pub(super) series_index: usize,
+    pub(super) plot_type: XyChartPlotType,
+    pub(super) title: Option<String>,
+    pub(super) data: Vec<SeriesDatum>,
+    pub(super) orphan_point_labels: Vec<String>,
+    pub(super) bar_lane: Option<usize>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct TerminalChartPlan {
+    pub(super) x_axis: AxisPlan,
+    pub(super) y_range: ValueRange,
+    pub(super) series: Vec<SeriesPlan>,
+    pub(super) category_labels: Vec<String>,
+    pub(super) slot_count: usize,
+    pub(super) bar_series_count: usize,
+    pub(super) line_series_count: usize,
+}
+
+impl TerminalChartPlan {
+    pub(super) fn build(
+        model: &XyChartDiagramRenderModel,
+        resources: &mut ResourceContext,
+    ) -> Result<Self> {
+        let mut max_data_count = 0;
+        for plot in &model.plots {
+            resources.charge_layout_work(1)?;
+            max_data_count = max_data_count.max(if plot.data.is_empty() {
+                plot.values.len()
+            } else {
+                plot.data.len()
+            });
+        }
+
+        let x_axis = build_axis_plan(&model.x_axis, max_data_count, &model.plots, resources)?;
+        let slot_count = match &x_axis {
+            AxisPlan::Band { categories } => categories.len().max(max_data_count),
+            AxisPlan::Linear { .. } => max_data_count,
+        };
+        let category_labels = axis_labels(&x_axis, slot_count, resources)?;
+
+        let mut series = Vec::new();
+        series
+            .try_reserve_exact(model.plots.len())
+            .map_err(|_| AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+            })?;
+        let mut bar_lane = 0;
+        let mut line_series_count = 0;
+        for (series_index, plot) in model.plots.iter().enumerate() {
+            resources.charge_layout_work(1)?;
+            let lane = if plot.plot_type == XyChartPlotType::Bar {
+                let lane = bar_lane;
+                bar_lane = resources.checked_grid_add(bar_lane, 1)?;
+                Some(lane)
+            } else {
+                line_series_count = resources.checked_grid_add(line_series_count, 1)?;
+                None
+            };
+            series.push(build_series_plan(
+                plot,
+                series_index,
+                lane,
+                &x_axis,
+                slot_count,
+                resources,
+            )?);
+        }
+
+        let y_range = build_value_range(&model.y_axis, &series, resources)?;
+        Ok(Self {
+            x_axis,
+            y_range,
+            series,
+            category_labels,
+            slot_count,
+            bar_series_count: bar_lane,
+            line_series_count,
+        })
+    }
+
+    pub(super) fn horizontal_rows_per_slot(&self) -> usize {
+        if self.bar_series_count <= 1 {
+            1
+        } else {
+            self.bar_series_count + usize::from(self.line_series_count > 0)
+        }
+    }
+
+    pub(super) fn horizontal_row_count(&self, resources: &ResourceContext) -> Result<usize> {
+        resources.checked_grid_mul(self.slot_count, self.horizontal_rows_per_slot())
+    }
+
+    pub(super) fn sample_slot(&self, datum: &SeriesDatum) -> usize {
+        datum.slot
+    }
+
+    pub(super) fn sample_vertical_column(
+        &self,
+        datum: &SeriesDatum,
+        plot_width: usize,
+        plot_area: XyChartPlotArea,
+        resources: &ResourceContext,
+    ) -> Result<usize> {
+        self.x_axis
+            .sample_column(datum, self.slot_count, plot_width, plot_area, resources)
+    }
+
+    pub(super) fn horizontal_anchor_row(
+        &self,
+        slot: usize,
+        resources: &ResourceContext,
+    ) -> Result<usize> {
+        let start = resources.checked_grid_mul(slot, self.horizontal_rows_per_slot())?;
+        if self.bar_series_count > 1 && self.line_series_count > 0 {
+            resources.checked_grid_add(start, self.bar_series_count)
+        } else {
+            Ok(start)
+        }
+    }
+
+    pub(super) fn requires_disclosure(
+        &self,
+        plot_area: XyChartPlotArea,
+        horizontal: bool,
+        resources: &mut ResourceContext,
+    ) -> Result<bool> {
+        resources.charge_layout_work(1)?;
+        if self.series.len() > 1 {
+            return Ok(true);
+        }
+
+        let grouped_bars_do_not_fit =
+            !horizontal && self.bar_series_count > plot_area.category_band_width;
+        if grouped_bars_do_not_fit {
+            return Ok(true);
+        }
+
+        for (index, category) in self.category_labels.iter().enumerate() {
+            resources.charge_layout_work(1)?;
+            if !horizontal
+                && display_width_with_profile(category, plot_area.width_profile)
+                    > plot_area.category_band_width
+            {
+                return Ok(true);
+            }
+            for previous in &self.category_labels[..index] {
+                resources.charge_layout_work(1)?;
+                if category == previous {
+                    return Ok(true);
+                }
+            }
+        }
+
+        for series in &self.series {
+            resources.charge_layout_work(1)?;
+            if !series.orphan_point_labels.is_empty() {
+                return Ok(true);
+            }
+            for (index, datum) in series.data.iter().enumerate() {
+                resources.charge_layout_work(1)?;
+                if datum.value.is_none()
+                    || datum.point_label.is_some()
+                    || datum
+                        .value
+                        .is_some_and(|value| !self.y_range.contains(value))
+                    || datum.x_clipped
+                {
+                    return Ok(true);
+                }
+
+                let projected_point = if series.plot_type == XyChartPlotType::Line {
+                    self.projected_point(datum, plot_area, horizontal, resources)?
+                } else {
+                    None
+                };
+                for previous in &series.data[..index] {
+                    resources.charge_layout_work(1)?;
+                    if horizontal
+                        && datum.value.is_some()
+                        && previous.value.is_some()
+                        && self.sample_slot(previous) == self.sample_slot(datum)
+                    {
+                        return Ok(true);
+                    }
+                    if projected_point.is_some()
+                        && projected_point
+                            == self.projected_point(previous, plot_area, horizontal, resources)?
+                    {
+                        return Ok(true);
+                    }
+                    if !horizontal
+                        && series.plot_type == XyChartPlotType::Bar
+                        && self
+                            .vertical_bars_overlap(series, datum, previous, plot_area, resources)?
+                    {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+        Ok(false)
+    }
+
+    fn projected_point(
+        &self,
+        datum: &SeriesDatum,
+        plot_area: XyChartPlotArea,
+        horizontal: bool,
+        resources: &ResourceContext,
+    ) -> Result<Option<(usize, usize)>> {
+        let Some(value) = datum.value.filter(|value| value.is_finite()) else {
+            return Ok(None);
+        };
+
+        if horizontal {
+            let row = self.horizontal_anchor_row(self.sample_slot(datum), resources)?;
+            let col = checked_grid_sub(
+                resources,
+                line_level(value, self.y_range, plot_area.horizontal_width),
+                1,
+            )?;
+            return Ok(Some((row, col)));
+        }
+
+        let plot_width = plot_area.vertical_plot_width(self.slot_count, resources)?;
+        let row = checked_grid_sub(
+            resources,
+            plot_area.vertical_height,
+            line_level(value, self.y_range, plot_area.vertical_height),
+        )?;
+        let col = self.sample_vertical_column(datum, plot_width, plot_area, resources)?;
+        Ok(Some((row, col)))
+    }
+
+    fn vertical_bars_overlap(
+        &self,
+        series: &SeriesPlan,
+        datum: &SeriesDatum,
+        previous: &SeriesDatum,
+        plot_area: XyChartPlotArea,
+        resources: &ResourceContext,
+    ) -> Result<bool> {
+        let Some(value) = datum.value.filter(|value| value.is_finite()) else {
+            return Ok(false);
+        };
+        let Some(previous_value) = previous.value.filter(|value| value.is_finite()) else {
+            return Ok(false);
+        };
+        if bar_height(value, self.y_range, plot_area.vertical_height) == 0
+            || bar_height(previous_value, self.y_range, plot_area.vertical_height) == 0
+        {
+            return Ok(false);
+        }
+
+        let plot_width = plot_area.vertical_plot_width(self.slot_count, resources)?;
+        let (start, width) =
+            vertical_bar_span(self, series, datum, plot_width, plot_area, resources)?;
+        let (previous_start, previous_width) =
+            vertical_bar_span(self, series, previous, plot_width, plot_area, resources)?;
+        let end = resources.checked_grid_add(start, width)?;
+        let previous_end = resources.checked_grid_add(previous_start, previous_width)?;
+        Ok(start < previous_end && previous_start < end)
+    }
+}
+
+fn build_axis_plan(
+    axis: &XyChartAxisRenderModel,
+    data_count: usize,
+    plots: &[XyChartPlotRenderModel],
+    resources: &mut ResourceContext,
+) -> Result<AxisPlan> {
+    match axis {
+        XyChartAxisRenderModel::Band { categories, .. } => Ok(AxisPlan::Band {
+            categories: categories.clone(),
+        }),
+        XyChartAxisRenderModel::Linear { min, max, .. } => {
+            let mut data_min = f64::INFINITY;
+            let mut data_max = f64::NEG_INFINITY;
+            for plot in plots {
+                resources.charge_layout_work(1)?;
+                for (x, _) in &plot.data {
+                    resources.charge_layout_work(1)?;
+                    if let Ok(value) = x.parse::<f64>()
+                        && value.is_finite()
+                    {
+                        data_min = data_min.min(value);
+                        data_max = data_max.max(value);
+                    }
+                }
+            }
+            let fallback_min = if data_min.is_finite() { data_min } else { 1.0 };
+            let fallback_max = if data_max.is_finite() {
+                data_max
+            } else {
+                data_count.max(1) as f64
+            };
+            Ok(AxisPlan::Linear {
+                range: ValueRange {
+                    min: min.unwrap_or(fallback_min),
+                    max: max.unwrap_or(fallback_max),
+                },
+            })
+        }
+    }
+}
+
+fn axis_labels(
+    axis: &AxisPlan,
+    count: usize,
+    resources: &mut ResourceContext,
+) -> Result<Vec<String>> {
+    let mut labels = Vec::new();
+    labels
+        .try_reserve_exact(count)
+        .map_err(|_| AsciiError::AllocationFailed {
+            phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+        })?;
+    match axis {
+        AxisPlan::Band { categories } => {
+            for category in categories {
+                resources.charge_layout_work(1)?;
+                labels.push(category.clone());
+            }
+            for index in labels.len()..count {
+                resources.charge_layout_work(1)?;
+                labels.push(resources.checked_grid_add(index, 1)?.to_string());
+            }
+        }
+        AxisPlan::Linear { range } => {
+            if count == 1 {
+                resources.charge_layout_work(1)?;
+                labels.push(format_data_number(range.min));
+            } else if count > 1 {
+                let intervals = checked_grid_sub(resources, count, 1)?;
+                let step = range.span() / intervals as f64;
+                for index in 0..count {
+                    resources.charge_layout_work(1)?;
+                    labels.push(format_tick_number(range.min + step * index as f64, step));
+                }
+            }
+        }
+    }
+    Ok(labels)
+}
+
+fn build_series_plan(
+    plot: &XyChartPlotRenderModel,
+    series_index: usize,
+    bar_lane: Option<usize>,
+    x_axis: &AxisPlan,
+    slot_count: usize,
+    resources: &mut ResourceContext,
+) -> Result<SeriesPlan> {
+    let data_len = if plot.data.is_empty() {
+        plot.values.len()
+    } else {
+        plot.data.len()
+    };
+    let mut data = Vec::new();
+    data.try_reserve_exact(data_len)
+        .map_err(|_| AsciiError::AllocationFailed {
+            phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+        })?;
+
+    if plot.data.is_empty() {
+        for (index, value) in plot.values.iter().copied().enumerate() {
+            resources.charge_layout_work(1)?;
+            let x = fallback_x_label(x_axis, index, plot.values.len());
+            let (slot, normalized_x, x_clipped) =
+                x_axis.resolve_sample_position(&x, index, slot_count, resources)?;
+            data.push(SeriesDatum {
+                x,
+                value: Some(value),
+                point_label: normalized_point_label(plot.point_labels.get(index)),
+                slot,
+                normalized_x,
+                x_clipped,
+            });
+        }
+    } else {
+        for (index, (x, value)) in plot.data.iter().enumerate() {
+            resources.charge_layout_work(1)?;
+            let (slot, normalized_x, x_clipped) =
+                x_axis.resolve_sample_position(x, index, slot_count, resources)?;
+            data.push(SeriesDatum {
+                x: x.clone(),
+                value: *value,
+                point_label: normalized_point_label(plot.point_labels.get(index)),
+                slot,
+                normalized_x,
+                x_clipped,
+            });
+        }
+    }
+
+    let mut orphan_point_labels = Vec::new();
+    if plot.point_labels.len() > data_len {
+        orphan_point_labels
+            .try_reserve_exact(plot.point_labels.len() - data_len)
+            .map_err(|_| AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+            })?;
+        for label in &plot.point_labels[data_len..] {
+            resources.charge_layout_work(1)?;
+            if !label.trim().is_empty() {
+                orphan_point_labels.push(label.clone());
+            }
+        }
+    }
+
+    Ok(SeriesPlan {
+        series_index,
+        plot_type: plot.plot_type,
+        title: plot.title.clone(),
+        data,
+        orphan_point_labels,
+        bar_lane,
+    })
+}
+
+fn fallback_x_label(axis: &AxisPlan, index: usize, count: usize) -> String {
+    match axis {
+        AxisPlan::Band { categories } => categories
+            .get(index)
+            .cloned()
+            .unwrap_or_else(|| (index + 1).to_string()),
+        AxisPlan::Linear { range } => {
+            let value = if count <= 1 {
+                range.min
+            } else {
+                range.min + range.span() * index as f64 / (count - 1) as f64
+            };
+            format_data_number(value)
+        }
+    }
+}
+
+fn normalized_point_label(label: Option<&String>) -> Option<String> {
+    label
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|label| !label.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn build_value_range(
+    axis: &XyChartAxisRenderModel,
+    series: &[SeriesPlan],
+    resources: &mut ResourceContext,
+) -> Result<ValueRange> {
+    let mut data_min = f64::INFINITY;
+    let mut data_max = f64::NEG_INFINITY;
+    for series in series {
+        resources.charge_layout_work(1)?;
+        for value in series.data.iter().filter_map(|datum| datum.value) {
+            resources.charge_layout_work(1)?;
+            if value.is_finite() {
+                data_min = data_min.min(value);
+                data_max = data_max.max(value);
+            }
+        }
+    }
+
+    let (axis_min, axis_max) = match axis {
+        XyChartAxisRenderModel::Linear { min, max, .. } => (*min, *max),
+        XyChartAxisRenderModel::Band { .. } => (None, None),
+    };
+    let fallback_min = if data_min.is_finite() { data_min } else { 0.0 };
+    let fallback_max = if data_max.is_finite() { data_max } else { 1.0 };
+    Ok(ValueRange {
+        min: axis_min.unwrap_or(fallback_min),
+        max: axis_max.unwrap_or(fallback_max),
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -198,13 +880,139 @@ pub(super) struct VerticalPlot {
 #[derive(Debug, Clone)]
 pub(super) struct HorizontalPlotRow {
     pub(super) line: StyledLine,
+    pub(super) category_index: usize,
+    pub(super) show_category_label: bool,
     pub(super) bar_value: Option<f64>,
     pub(super) bar_label: Option<String>,
 }
 
+#[derive(Debug)]
+struct LineTopology {
+    width: usize,
+    height: usize,
+    cells: Vec<LineTopologyCell>,
+}
+
+impl LineTopology {
+    fn new(width: usize, height: usize, resources: &mut ResourceContext) -> Result<Self> {
+        let extent = resources.grid_extent(width, height)?;
+        let concurrent_cells = resources.checked_grid_mul(extent.cells(), 2)?;
+        resources.check(AsciiResourceLimitId::MaxGridCells, concurrent_cells)?;
+        resources.charge_layout_work(extent.cells())?;
+        let mut cells = Vec::new();
+        cells
+            .try_reserve_exact(extent.cells())
+            .map_err(|_| AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::Layout.as_str(),
+            })?;
+        cells.resize(extent.cells(), LineTopologyCell::default());
+        Ok(Self {
+            width,
+            height,
+            cells,
+        })
+    }
+
+    fn connect(
+        &mut self,
+        from: (usize, usize),
+        to: (usize, usize),
+        resources: &mut ResourceContext,
+    ) -> Result<()> {
+        let (from_row, from_col) = from;
+        let (to_row, to_col) = to;
+        if from_col == to_col {
+            return self.connect_vertical(from_col, from_row, to_row, resources);
+        }
+        if from_row == to_row {
+            return self.connect_horizontal(from_row, from_col, to_col, resources);
+        }
+
+        let mid_col = resources.checked_grid_add(from_col, to_col)? / 2;
+        self.connect_horizontal(from_row, from_col, mid_col, resources)?;
+        self.connect_vertical(mid_col, from_row, to_row, resources)?;
+        self.connect_horizontal(to_row, mid_col, to_col, resources)
+    }
+
+    fn mark_point(&mut self, row: usize, col: usize, resources: &ResourceContext) -> Result<()> {
+        self.cell_mut(row, col, resources)?.add(LINE_POINT);
+        Ok(())
+    }
+
+    fn paint(
+        &self,
+        rows: &mut [StyledLine],
+        chars: ChartChars,
+        role: AsciiColorRole,
+        resources: &mut ResourceContext,
+    ) -> Result<()> {
+        resources.charge_layout_work(self.cells.len())?;
+        for (index, cell) in self.cells.iter().copied().enumerate() {
+            if cell.is_empty() {
+                continue;
+            }
+            let row = index / self.width;
+            let col = index % self.width;
+            set_cell(rows, row, col, chars.line_glyph(cell), role)?;
+        }
+        Ok(())
+    }
+
+    fn connect_horizontal(
+        &mut self,
+        row: usize,
+        from_col: usize,
+        to_col: usize,
+        resources: &mut ResourceContext,
+    ) -> Result<()> {
+        let start = from_col.min(to_col);
+        let end = from_col.max(to_col);
+        let steps = checked_grid_sub(resources, end, start)?;
+        resources.charge_layout_work(steps)?;
+        for col in start..end {
+            self.cell_mut(row, col, resources)?.add(LINE_EAST);
+            self.cell_mut(row, col + 1, resources)?.add(LINE_WEST);
+        }
+        Ok(())
+    }
+
+    fn connect_vertical(
+        &mut self,
+        col: usize,
+        from_row: usize,
+        to_row: usize,
+        resources: &mut ResourceContext,
+    ) -> Result<()> {
+        let start = from_row.min(to_row);
+        let end = from_row.max(to_row);
+        let steps = checked_grid_sub(resources, end, start)?;
+        resources.charge_layout_work(steps)?;
+        for row in start..end {
+            self.cell_mut(row, col, resources)?.add(LINE_SOUTH);
+            self.cell_mut(row + 1, col, resources)?.add(LINE_NORTH);
+        }
+        Ok(())
+    }
+
+    fn cell_mut(
+        &mut self,
+        row: usize,
+        col: usize,
+        resources: &ResourceContext,
+    ) -> Result<&mut LineTopologyCell> {
+        if row >= self.height || col >= self.width {
+            return Err(resources.grid_overflow());
+        }
+        let index =
+            resources.checked_grid_add(resources.checked_grid_mul(row, self.width)?, col)?;
+        self.cells
+            .get_mut(index)
+            .ok_or_else(|| resources.grid_overflow())
+    }
+}
+
 pub(super) fn build_vertical_plot(
-    model: &XyChartDiagramRenderModel,
-    y_range: ValueRange,
+    plan: &TerminalChartPlan,
     chars: ChartChars,
     plot_area: XyChartPlotArea,
     plot_extent: LogicalExtent,
@@ -221,33 +1029,17 @@ pub(super) fn build_vertical_plot(
         rows.push(try_plot_row(width, plot_area, resources)?);
     }
 
-    for (series_index, plot) in model.plots.iter().enumerate() {
+    for series in &plan.series {
         resources.charge_layout_work(1)?;
-        if plot.plot_type == XyChartPlotType::Bar {
-            draw_vertical_bar_plot(
-                &mut rows,
-                plot,
-                series_index,
-                y_range,
-                chars,
-                plot_area,
-                resources,
-            )?;
+        if series.plot_type == XyChartPlotType::Bar {
+            draw_vertical_bar_plot(&mut rows, series, plan, chars, plot_area, width, resources)?;
         }
     }
 
-    for (series_index, plot) in model.plots.iter().enumerate() {
+    for series in &plan.series {
         resources.charge_layout_work(1)?;
-        if plot.plot_type == XyChartPlotType::Line {
-            draw_vertical_line_plot(
-                &mut rows,
-                plot,
-                series_index,
-                y_range,
-                chars,
-                plot_area,
-                resources,
-            )?;
+        if series.plot_type == XyChartPlotType::Line {
+            draw_vertical_line_plot(&mut rows, series, plan, chars, plot_area, width, resources)?;
         }
     }
 
@@ -255,65 +1047,122 @@ pub(super) fn build_vertical_plot(
 }
 
 pub(super) fn build_horizontal_plot_rows(
-    model: &XyChartDiagramRenderModel,
-    y_range: ValueRange,
+    plan: &TerminalChartPlan,
     chars: ChartChars,
     plot_area: XyChartPlotArea,
     plot_extent: LogicalExtent,
     resources: &mut ResourceContext,
 ) -> Result<Vec<HorizontalPlotRow>> {
-    let category_count = plot_extent.height();
     debug_assert_eq!(plot_extent.width(), plot_area.horizontal_width);
-    let mut first_bar_values = None;
-    for plot in &model.plots {
-        resources.charge_layout_work(1)?;
-        if plot.plot_type == XyChartPlotType::Bar {
-            first_bar_values = Some(plot.values.as_slice());
-            break;
-        }
-    }
-
-    let mut rows = Vec::new();
-    rows.try_reserve_exact(category_count)
+    debug_assert_eq!(plot_extent.height(), plan.horizontal_row_count(resources)?);
+    let mut lines = Vec::new();
+    lines
+        .try_reserve_exact(plot_extent.height())
         .map_err(|_| AsciiError::AllocationFailed {
             phase: AsciiResourceLimitPhase::Layout.as_str(),
         })?;
-    for idx in 0..category_count {
+    for _ in 0..plot_extent.height() {
         resources.charge_layout_work(1)?;
-        let mut line = try_plot_row(plot_area.horizontal_width, plot_area, resources)?;
+        lines.push(try_plot_row(
+            plot_area.horizontal_width,
+            plot_area,
+            resources,
+        )?);
+    }
 
-        for (series_index, plot) in model.plots.iter().enumerate() {
+    let rows_per_slot = plan.horizontal_rows_per_slot();
+    for series in &plan.series {
+        resources.charge_layout_work(1)?;
+        if series.plot_type != XyChartPlotType::Bar {
+            continue;
+        }
+        let lane = series.bar_lane.unwrap_or(0);
+        for datum in &series.data {
             resources.charge_layout_work(1)?;
-            let Some(value) = plot.values.get(idx).copied() else {
+            let Some(value) = datum.value.filter(|value| value.is_finite()) else {
                 continue;
             };
-
-            match plot.plot_type {
-                XyChartPlotType::Bar => draw_horizontal_bar_value(
-                    &mut line,
+            let slot = plan.sample_slot(datum);
+            let row_start = resources.checked_grid_mul(slot, rows_per_slot)?;
+            let row_index = if plan.bar_series_count > 1 {
+                resources.checked_grid_add(row_start, lane)?
+            } else {
+                row_start
+            };
+            if let Some(line) = lines.get_mut(row_index) {
+                draw_horizontal_bar_value(
+                    line,
                     value,
-                    series_index,
-                    y_range,
+                    series.series_index,
+                    plan.y_range,
                     chars,
                     plot_area,
                     resources,
-                )?,
-                XyChartPlotType::Line => draw_horizontal_line_value(
-                    &mut line,
-                    value,
-                    series_index,
-                    y_range,
-                    chars,
-                    plot_area,
-                    resources,
-                )?,
+                )?;
             }
         }
+    }
 
-        let bar_value = first_bar_values.and_then(|values| values.get(idx).copied());
-        let bar_label = bar_value.map(format_number);
+    for series in &plan.series {
+        resources.charge_layout_work(1)?;
+        if series.plot_type != XyChartPlotType::Line {
+            continue;
+        }
+        let role = AsciiColorRole::ChartSeries(series.series_index);
+        let mut topology =
+            LineTopology::new(plot_area.horizontal_width, plot_extent.height(), resources)?;
+        let mut previous = None;
+        for datum in &series.data {
+            resources.charge_layout_work(1)?;
+            let Some(value) = datum.value.filter(|value| value.is_finite()) else {
+                previous = None;
+                continue;
+            };
+            let slot = plan.sample_slot(datum);
+            let row = plan.horizontal_anchor_row(slot, resources)?;
+            let col = checked_grid_sub(
+                resources,
+                line_level(value, plan.y_range, plot_area.horizontal_width),
+                1,
+            )?;
+            let point = (row, col);
+            if let Some(previous) = previous {
+                topology.connect(previous, point, resources)?;
+            }
+            resources.charge_layout_work(1)?;
+            topology.mark_point(row, col, resources)?;
+            previous = Some(point);
+        }
+        topology.paint(&mut lines, chars, role, resources)?;
+    }
+
+    let compact_bar = (plan.bar_series_count == 1 && plan.line_series_count == 0)
+        .then(|| {
+            plan.series
+                .iter()
+                .find(|series| series.plot_type == XyChartPlotType::Bar)
+        })
+        .flatten();
+    let mut rows = Vec::new();
+    rows.try_reserve_exact(lines.len())
+        .map_err(|_| AsciiError::AllocationFailed {
+            phase: AsciiResourceLimitPhase::Layout.as_str(),
+        })?;
+    for (row_index, line) in lines.into_iter().enumerate() {
+        let category_index = row_index / rows_per_slot;
+        let show_category_label = row_index % rows_per_slot == 0;
+        let bar_value = compact_bar.and_then(|series| {
+            series
+                .data
+                .iter()
+                .find(|datum| plan.sample_slot(datum) == category_index)
+                .and_then(|datum| datum.value)
+        });
+        let bar_label = bar_value.map(format_data_number);
         rows.push(HorizontalPlotRow {
             line,
+            category_index,
+            show_category_label,
             bar_value,
             bar_label,
         });
@@ -323,39 +1172,38 @@ pub(super) fn build_horizontal_plot_rows(
 
 pub(super) fn apply_vertical_bar_data_labels(
     plot: &mut VerticalPlot,
-    model: &XyChartDiagramRenderModel,
-    y_range: ValueRange,
+    plan: &TerminalChartPlan,
     plot_area: XyChartPlotArea,
     resources: &mut ResourceContext,
 ) -> Result<()> {
-    let mut bar_plot = None;
-    for plot in &model.plots {
-        resources.charge_layout_work(1)?;
-        if plot.plot_type == XyChartPlotType::Bar {
-            bar_plot = Some(plot);
-            break;
-        }
-    }
-    let Some(bar_plot) = bar_plot else {
+    let Some(bar_series) = plan
+        .series
+        .iter()
+        .find(|series| series.plot_type == XyChartPlotType::Bar)
+    else {
         return Ok(());
     };
 
-    for (idx, value) in bar_plot.values.iter().copied().enumerate() {
+    for datum in &bar_series.data {
         resources.charge_layout_work(1)?;
-        let height = bar_height(value, y_range, plot_area.vertical_height);
+        let Some(value) = datum.value.filter(|value| value.is_finite()) else {
+            continue;
+        };
+        let height = bar_height(value, plan.y_range, plot_area.vertical_height);
         if height == 0 {
             continue;
         }
 
         let row_idx = checked_grid_sub(resources, plot_area.vertical_height, height)?;
-        let band_start = plot_area.vertical_band_start(idx, resources)?;
+        let (band_start, band_width) =
+            vertical_bar_span(plan, bar_series, datum, plot.width, plot_area, resources)?;
         if let Some(row) = plot.rows.get_mut(row_idx) {
-            resources.charge_layout_work(plot_area.category_band_width)?;
+            resources.charge_layout_work(band_width)?;
             write_band_text(
                 row,
                 band_start,
-                plot_area.category_band_width,
-                &format_number(value),
+                band_width,
+                &format_data_number(value),
                 AsciiColorRole::Text,
                 resources,
             )?;
@@ -366,34 +1214,31 @@ pub(super) fn apply_vertical_bar_data_labels(
 
 fn draw_vertical_bar_plot(
     rows: &mut [StyledLine],
-    plot: &XyChartPlotRenderModel,
-    series_index: usize,
-    y_range: ValueRange,
+    series: &SeriesPlan,
+    plan: &TerminalChartPlan,
     chars: ChartChars,
     plot_area: XyChartPlotArea,
+    plot_width: usize,
     resources: &mut ResourceContext,
 ) -> Result<()> {
-    let role = AsciiColorRole::ChartSeries(series_index);
-    for (idx, value) in plot.values.iter().copied().enumerate() {
+    let role = AsciiColorRole::ChartSeries(series.series_index);
+    for datum in &series.data {
         resources.charge_layout_work(1)?;
-        let height = bar_height(value, y_range, plot_area.vertical_height);
+        let Some(value) = datum.value.filter(|value| value.is_finite()) else {
+            continue;
+        };
+        let height = bar_height(value, plan.y_range, plot_area.vertical_height);
         if height == 0 {
             continue;
         }
 
-        let band_start = plot_area.vertical_band_start(idx, resources)?;
+        let (band_start, band_width) =
+            vertical_bar_span(plan, series, datum, plot_width, plot_area, resources)?;
         for level in 1..=height {
-            resources.charge_layout_work(plot_area.category_band_width)?;
+            resources.charge_layout_work(band_width)?;
             let row_idx = checked_grid_sub(resources, plot_area.vertical_height, level)?;
             if let Some(row) = rows.get_mut(row_idx) {
-                fill_band(
-                    row,
-                    band_start,
-                    plot_area.category_band_width,
-                    chars.bar,
-                    role,
-                    resources,
-                )?;
+                fill_band(row, band_start, band_width, chars.bar, role, resources)?;
             }
         }
     }
@@ -402,101 +1247,86 @@ fn draw_vertical_bar_plot(
 
 fn draw_vertical_line_plot(
     rows: &mut [StyledLine],
-    plot: &XyChartPlotRenderModel,
-    series_index: usize,
-    y_range: ValueRange,
+    series: &SeriesPlan,
+    plan: &TerminalChartPlan,
     chars: ChartChars,
     plot_area: XyChartPlotArea,
+    plot_width: usize,
     resources: &mut ResourceContext,
 ) -> Result<()> {
-    let role = AsciiColorRole::ChartSeries(series_index);
-    let mut points = Vec::new();
-    points
-        .try_reserve_exact(plot.values.len())
-        .map_err(|_| AsciiError::AllocationFailed {
-            phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
-        })?;
-    for (idx, value) in plot.values.iter().copied().enumerate() {
+    let role = AsciiColorRole::ChartSeries(series.series_index);
+    let mut topology = LineTopology::new(plot_width, rows.len(), resources)?;
+    let mut previous = None;
+    for datum in &series.data {
         resources.charge_layout_work(1)?;
-        let level = line_level(value, y_range, plot_area.vertical_height);
+        let Some(value) = datum.value.filter(|value| value.is_finite()) else {
+            previous = None;
+            continue;
+        };
+        let level = line_level(value, plan.y_range, plot_area.vertical_height);
         let row = checked_grid_sub(resources, plot_area.vertical_height, level)?;
-        let col = plot_area.vertical_band_center(idx, resources)?;
-        points.push((row, col));
-    }
-
-    for pair in points.windows(2) {
-        draw_vertical_line_segment(rows, pair[0], pair[1], chars, role, resources)?;
-    }
-
-    for (row, col) in points {
+        let col = plan.sample_vertical_column(datum, plot_width, plot_area, resources)?;
+        let point = (row, col);
+        if let Some(previous) = previous {
+            topology.connect(previous, point, resources)?;
+        }
         resources.charge_layout_work(1)?;
-        set_cell(rows, row, col, chars.line_point, role)?;
+        topology.mark_point(row, col, resources)?;
+        previous = Some(point);
     }
-    Ok(())
+    topology.paint(rows, chars, role, resources)
 }
 
-fn draw_vertical_line_segment(
-    rows: &mut [StyledLine],
-    from: (usize, usize),
-    to: (usize, usize),
-    chars: ChartChars,
-    role: AsciiColorRole,
-    resources: &mut ResourceContext,
-) -> Result<()> {
-    let (from_row, from_col) = from;
-    let (to_row, to_col) = to;
-    if from_col == to_col {
-        return draw_column(
-            rows,
-            from_col,
-            from_row,
-            to_row,
-            chars.line_vertical,
-            role,
-            resources,
-        );
+fn vertical_bar_span(
+    plan: &TerminalChartPlan,
+    series: &SeriesPlan,
+    datum: &SeriesDatum,
+    plot_width: usize,
+    plot_area: XyChartPlotArea,
+    resources: &ResourceContext,
+) -> Result<(usize, usize)> {
+    if plot_width == 0 {
+        return Ok((0, 0));
+    }
+    let lane_count = plan.bar_series_count.max(1);
+    let lane = series.bar_lane.unwrap_or(0).min(lane_count - 1);
+
+    if matches!(&plan.x_axis, AxisPlan::Band { .. }) {
+        let slot = plan.sample_slot(datum);
+        let band_start = plot_area.vertical_band_start(slot, resources)?;
+        if lane_count == 1 {
+            return Ok((band_start, plot_area.category_band_width));
+        }
+
+        if lane_count <= plot_area.category_band_width {
+            let lane_width = plot_area.category_band_width / lane_count;
+            let remainder = plot_area.category_band_width % lane_count;
+            let extra_before = lane.min(remainder);
+            let lane_offset = resources
+                .checked_grid_add(resources.checked_grid_mul(lane, lane_width)?, extra_before)?;
+            let width = lane_width + usize::from(lane < remainder);
+            return Ok((resources.checked_grid_add(band_start, lane_offset)?, width));
+        }
+
+        let offset = lane % plot_area.category_band_width;
+        return Ok((resources.checked_grid_add(band_start, offset)?, 1));
     }
 
-    if from_row == to_row {
-        return draw_row(
-            rows,
-            from_row,
-            from_col,
-            to_col,
-            chars.line_horizontal,
-            role,
-            resources,
-        );
+    let center = plan.sample_vertical_column(datum, plot_width, plot_area, resources)?;
+    if lane_count == 1 {
+        let width = plot_area.category_band_width.min(plot_width).max(1);
+        let start = center
+            .saturating_sub(width / 2)
+            .min(checked_grid_sub(resources, plot_width, width)?);
+        return Ok((start, width));
     }
 
-    let mid_col = resources.checked_grid_add(from_col, to_col)? / 2;
-    draw_row(
-        rows,
-        from_row,
-        from_col,
-        mid_col,
-        chars.line_horizontal,
-        role,
-        resources,
-    )?;
-    draw_column(
-        rows,
-        mid_col,
-        from_row,
-        to_row,
-        chars.line_vertical,
-        role,
-        resources,
-    )?;
-    draw_row(
-        rows,
-        to_row,
-        mid_col,
-        to_col,
-        chars.line_horizontal,
-        role,
-        resources,
-    )
+    let visible_lanes = lane_count.min(plot_width);
+    let start = center
+        .saturating_sub(visible_lanes / 2)
+        .min(checked_grid_sub(resources, plot_width, visible_lanes)?);
+    let offset = lane.min(visible_lanes - 1);
+    Ok((resources.checked_grid_add(start, offset)?, 1))
 }
 
 fn draw_horizontal_bar_value(
@@ -523,65 +1353,6 @@ pub(super) fn horizontal_bar_width(
     plot_area: XyChartPlotArea,
 ) -> usize {
     bar_height(value, y_range, plot_area.horizontal_width)
-}
-
-fn draw_horizontal_line_value(
-    row: &mut StyledLine,
-    value: f64,
-    series_index: usize,
-    y_range: ValueRange,
-    chars: ChartChars,
-    plot_area: XyChartPlotArea,
-    resources: &mut ResourceContext,
-) -> Result<()> {
-    let role = AsciiColorRole::ChartSeries(series_index);
-    resources.charge_layout_work(1)?;
-    let col = checked_grid_sub(
-        resources,
-        line_level(value, y_range, plot_area.horizontal_width),
-        1,
-    )?;
-    row.try_set_role(col, chars.line_point, role)
-}
-
-fn draw_row(
-    rows: &mut [StyledLine],
-    row_idx: usize,
-    from_col: usize,
-    to_col: usize,
-    value: char,
-    role: AsciiColorRole,
-    resources: &mut ResourceContext,
-) -> Result<()> {
-    let start = from_col.min(to_col);
-    let end = from_col.max(to_col);
-    let length = resources.checked_grid_add(checked_grid_sub(resources, end, start)?, 1)?;
-    resources.charge_layout_work(length)?;
-    if let Some(row) = rows.get_mut(row_idx) {
-        for col in start..=end {
-            row.try_set_role(col, value, role)?;
-        }
-    }
-    Ok(())
-}
-
-fn draw_column(
-    rows: &mut [StyledLine],
-    col: usize,
-    from_row: usize,
-    to_row: usize,
-    value: char,
-    role: AsciiColorRole,
-    resources: &mut ResourceContext,
-) -> Result<()> {
-    let start = from_row.min(to_row);
-    let end = from_row.max(to_row);
-    let length = resources.checked_grid_add(checked_grid_sub(resources, end, start)?, 1)?;
-    resources.charge_layout_work(length)?;
-    for row_idx in start..=end {
-        set_cell(rows, row_idx, col, value, role)?;
-    }
-    Ok(())
 }
 
 fn set_cell(
@@ -678,25 +1449,89 @@ fn line_level(value: f64, range: ValueRange, height: usize) -> usize {
     bar_height(value, range, height).clamp(1, height)
 }
 
-pub(super) fn format_number(value: f64) -> String {
-    let rounded = value.round();
-    if (value - rounded).abs() <= 1e-9 {
-        return format!("{rounded:.0}");
+pub(super) fn format_data_number(value: f64) -> String {
+    if value == 0.0 {
+        return "0".to_string();
     }
+    value.to_string()
+}
 
-    let mut out = format!("{value:.1}");
+pub(super) fn format_tick_number(value: f64, step: f64) -> String {
+    if !value.is_finite() || !step.is_finite() {
+        return format_data_number(value);
+    }
+    let magnitude = step.abs();
+    if magnitude != 0.0 && magnitude < 1e-12 {
+        return format_data_number(value);
+    }
+    let precision = if magnitude == 0.0 {
+        0
+    } else if magnitude >= 1.0 {
+        usize::from((magnitude - magnitude.round()).abs() > 1e-9) * 2
+    } else {
+        ((-magnitude.log10()).ceil() as usize + 1).min(15)
+    };
+    let mut out = format!("{value:.precision$}");
     while out.contains('.') && out.ends_with('0') {
         out.pop();
     }
     if out.ends_with('.') {
         out.pop();
     }
-    out
+    if out == "-0" { "0".to_string() } else { out }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tick_formatter_keeps_representable_sub_epsilon_steps_distinct() {
+        let step = f64::EPSILON;
+        assert_ne!(
+            format_tick_number(1.0, step),
+            format_tick_number(1.0 + step, step)
+        );
+    }
+
+    #[test]
+    fn linear_samples_align_with_the_first_and_last_axis_band_centers() {
+        let options = AsciiRenderOptions::ascii().with_xychart_category_band_width(4);
+        let plot_area = XyChartPlotArea::from_options(&options);
+        let resources = ResourceContext::new(options.resources);
+        let axis = AxisPlan::Linear {
+            range: ValueRange {
+                min: 0.0,
+                max: 10.0,
+            },
+        };
+        let plot_width = plot_area
+            .vertical_plot_width(2, &resources)
+            .expect("two linear slots should fit");
+        let datum = |normalized_x| SeriesDatum {
+            x: String::new(),
+            value: Some(0.0),
+            point_label: None,
+            slot: 0,
+            normalized_x: Some(normalized_x),
+            x_clipped: false,
+        };
+
+        assert_eq!(
+            axis.sample_column(&datum(0.0), 2, plot_width, plot_area, &resources)
+                .expect("minimum x should map"),
+            plot_area
+                .vertical_band_center(0, &resources)
+                .expect("first band center should fit")
+        );
+        assert_eq!(
+            axis.sample_column(&datum(1.0), 2, plot_width, plot_area, &resources)
+                .expect("maximum x should map"),
+            plot_area
+                .vertical_band_center(1, &resources)
+                .expect("last band center should fit")
+        );
+    }
 
     #[test]
     fn write_band_text_preserves_wide_glyph_continuation_cells() {

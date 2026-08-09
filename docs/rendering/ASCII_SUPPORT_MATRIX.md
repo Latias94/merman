@@ -43,7 +43,7 @@ readable at ordinary terminal widths.
 | State | Partial | Diagrammatic | No | States, transitions, notes, graph-like pseudostates, groups, and terminal colors. | Some presentation metadata and future shape variants are approximated. |
 | Class | Partial | Diagrammatic | Yes | Class structure, notes, namespaces, common relations, routed components, and explicit relation summaries. | Namespace-crossing and dense/collision-prone relationships can use `relations:` output. |
 | ER | Partial | Diagrammatic | Yes | Entities, attributes, keys, relationship labels/cardinalities, routed components, and explicit relation summaries. | Dense/collision-prone topology can use `relations:` output. |
-| XYChart | Partial | Diagrammatic | No | Compact plots, titles, axes, legends, labels, values, and horizontal/vertical variants. | Browser tooltips and SVG coordinate precision are not represented. |
+| XYChart | Partial | Diagrammatic | No | Typed x/y samples and point labels, band/linear axes, negative/reversed/degenerate ranges, grouped bars, connected topology-resolved lines, mixed series, titles, legends, display policy, exact disclosure, and horizontal/vertical variants. | Browser hover is replaced by terminal disclosure; SVG coordinates are quantized, and cross-series same-cell ownership remains approximate. |
 | TreeView | Partial | Diagrammatic | No | Tree nodes, folders/leaves, indentation, and terminal tree connectors. | Typed-field and terminal-usefulness review is incomplete; browser tree styling is not represented. |
 
 ## Structured-Text Outputs
