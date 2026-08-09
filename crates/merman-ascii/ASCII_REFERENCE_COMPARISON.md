@@ -54,6 +54,10 @@ and routed relationships since the pinned copied-source revision. No ER fixture 
 checkout is part of the tracked copied inventory, so those additions do not silently change Merman's
 support or evidence boundary.
 
+The 137-path moving fixture delta and its validity, admission, feature, and evidence dispositions
+are tracked in `ASCII_MOVING_REFERENCE_MANIFEST.md`. Release CI does not need either reference
+checkout to verify that inventory.
+
 The `beautiful-mermaid` reference revision `2ac8bbbb060ca0a65a6a21f3200bd99b1587b488` has 63 `ascii` fixtures and 37
 `unicode` fixtures, plus focused tests for edge styles, multiline labels, class arrows, and
 `xychart-beta` ASCII rendering. Treat that corpus as capability discovery. Promote an idea from it

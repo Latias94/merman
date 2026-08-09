@@ -103,6 +103,63 @@ fn fixture_inventory_documents_graph_exact_and_gap_disposition() {
 }
 
 #[test]
+fn moving_reference_manifest_records_each_discovery_fixture_once() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let manifest = fs::read_to_string(manifest_dir.join("ASCII_MOVING_REFERENCE_MANIFEST.md"))
+        .expect("moving reference manifest must be readable");
+
+    for expected in [
+        "b1b35f67d6a5dd0699ccfc968c00a763db573076",
+        "6fffb8e2714acab2c4cb41c78894fabbc62cee56",
+        "2ac8bbbb060ca0a65a6a21f3200bd99b1587b488",
+        "Mermaid `11.16.1`",
+        "Classification: `mermaid_valid`",
+        "Classification: `mixed_valid_private_behavior`",
+        "Admission: `semantic_probe`",
+        "Admission: `discovery_only`",
+        "Semantic feature:",
+    ] {
+        assert!(
+            manifest.contains(expected),
+            "moving reference manifest must mention `{expected}`"
+        );
+    }
+
+    let entries = manifest
+        .lines()
+        .filter_map(|line| line.strip_prefix("- `"))
+        .filter_map(|line| line.strip_suffix('`'))
+        .filter(|path| path.ends_with(".txt"))
+        .collect::<Vec<_>>();
+    let unique_entries = entries.iter().copied().collect::<BTreeSet<_>>();
+
+    assert_eq!(entries.len(), 137, "moving discovery fixture count drifted");
+    assert_eq!(
+        unique_entries.len(),
+        entries.len(),
+        "moving discovery fixture identities must be unique"
+    );
+
+    for (prefix, expected_count) in [
+        ("ascii/", 3),
+        ("extended-chars/", 2),
+        ("sequence/", 31),
+        ("sequence-ascii/", 20),
+        ("er/", 69),
+        ("er-ascii/", 12),
+    ] {
+        assert_eq!(
+            entries
+                .iter()
+                .filter(|entry| entry.starts_with(prefix))
+                .count(),
+            expected_count,
+            "moving discovery fixture count drifted for {prefix}"
+        );
+    }
+}
+
+#[test]
 fn local_semantic_fixture_inventory_matches_readme() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let root = manifest_dir.join("tests/testdata/local-semantic");
