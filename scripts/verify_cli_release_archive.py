@@ -101,6 +101,47 @@ ROOT_RELEASE_PATHS = ("CHANGELOG.md", "LICENSE-APACHE", "LICENSE-MIT")
 NOTICE_PATH = "THIRD_PARTY_NOTICES.md"
 LICENSE_ROOT = "THIRD_PARTY_LICENSES"
 
+
+def _release_output_contract(output: dict[str, object]) -> dict[str, object]:
+    """Project the runtime metadata emitted by ``merman-cli capabilities``.
+
+    Native raster/PDF exporters disclose their host-font and embedded-image
+    policies at runtime.  Keep the archive verifier in sync with that public
+    CLI contract; SVG and ASCII do not own those resources and therefore emit
+    explicit ``null`` values through serde.
+    """
+
+    projected = {
+        "id": output["id"],
+        "description": output["description"],
+        "media_type": output["media_type"],
+        "system_fonts": None,
+        "embedded_images": None,
+    }
+    if output["id"] in {"jpeg", "pdf", "png"}:
+        projected["system_fonts"] = {
+            "source_id": "host-system",
+            "discovery": "first-use",
+            "cache_scope": "process-global",
+            "host_dependent": True,
+            "caller_configurable": False,
+            "resource_bounded": False,
+        }
+        projected["embedded_images"] = {
+            "source_ids": ["data-url"],
+            "filesystem_access": False,
+            "network_access": False,
+            "caller_configurable": True,
+            "limits": {
+                "max_bytes_per_image": 16 * 1024 * 1024,
+                "max_total_bytes": 32 * 1024 * 1024,
+                "max_pixels_per_image": 16 * 1024 * 1024,
+                "max_total_pixels": 32 * 1024 * 1024,
+            },
+        }
+    return projected
+
+
 def release_archive_name(target: str) -> str:
     """Return the cargo-dist archive name consumed by installation metadata."""
     return release_archive_name_for(PACKAGE_NAME, target)
@@ -527,11 +568,7 @@ def _release_capabilities_contract(
         if capability["id"] in enabled
     ]
     outputs = [
-        {
-            "id": output["id"],
-            "description": output["description"],
-            "media_type": output["media_type"],
-        }
+        _release_output_contract(output)
         for output in surface["outputs"]
         if output["capability"] in enabled
     ]
