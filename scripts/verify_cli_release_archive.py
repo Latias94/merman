@@ -7,6 +7,7 @@ import argparse
 from collections.abc import Iterable
 import json
 from pathlib import Path, PurePosixPath
+import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ElementTree
@@ -89,6 +90,10 @@ SVG_SMOKE_SOURCE = b"flowchart LR\nA --> B\n"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 JPEG_START = b"\xff\xd8"
 JPEG_END = b"\xff\xd9"
+PDF_PAGE_TYPE = re.compile(
+    rb"/Type[\x00\x09\x0a\x0c\x0d\x20]*/Page"
+    rb"(?=[\x00\x09\x0a\x0c\x0d\x20()<>{}\[\]/%]|$)"
+)
 REPOSITORY_CONTRACT_MAX_BYTES = 4 * 1024 * 1024
 
 ARTIFACT_PROFILES_PATH = "capabilities/artifact-profiles-v1.json"
@@ -681,7 +686,7 @@ def _validate_pdf(payload: bytes) -> None:
         len(payload) < 16
         or not payload.startswith(b"%PDF-")
         or not payload.rstrip().endswith(b"%%EOF")
-        or b"/Type /Page" not in payload
+        or PDF_PAGE_TYPE.search(payload) is None
     ):
         raise ArchiveVerificationError("minimal PDF render has an invalid container signature")
 

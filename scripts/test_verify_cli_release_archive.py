@@ -68,7 +68,7 @@ VALID_PNG = (
     + b"\x00\x00\x00\x00IEND\xaeB`\x82"
 )
 VALID_JPEG = verifier.JPEG_START + verifier.JPEG_END
-VALID_PDF = b"%PDF-1.7\n1 0 obj <</Type /Page>> endobj\n%%EOF\n"
+VALID_PDF = b"%PDF-1.7\n1 0 obj <</Type/Page>> endobj\n%%EOF\n"
 ROOT_RELEASE_FILES = {
     "CHANGELOG.md": b"Release changes\n",
     "LICENSE-APACHE": b"Apache license\n",
@@ -1194,6 +1194,25 @@ class AdversarialRegressionTests(unittest.TestCase):
 
 
 class RuntimeContractTests(unittest.TestCase):
+    def test_pdf_validator_accepts_pdf_token_spacing_without_matching_pages_tree(self) -> None:
+        for page_type in (b"/Type/Page", b"/Type /Page", b"/Type\t/Page"):
+            with self.subTest(page_type=page_type):
+                verifier._validate_pdf(
+                    b"%PDF-1.7\n1 0 obj <<" + page_type + b">> endobj\n%%EOF\n"
+                )
+
+        for invalid_type in (b"/Type/Pages", b"/Type/PageTree"):
+            with (
+                self.subTest(invalid_type=invalid_type),
+                self.assertRaisesRegex(
+                    verifier.ArchiveVerificationError,
+                    "invalid container signature",
+                ),
+            ):
+                verifier._validate_pdf(
+                    b"%PDF-1.7\n1 0 obj <<" + invalid_type + b">> endobj\n%%EOF\n"
+                )
+
     def assert_runtime_payload_rejected(
         self,
         repo_root: Path,
