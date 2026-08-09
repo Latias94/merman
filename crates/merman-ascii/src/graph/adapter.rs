@@ -86,9 +86,9 @@ pub(crate) fn from_flowchart_model(
             subgraph
                 .dir
                 .as_deref()
+                .filter(|_| subgraph.has_explicit_dir)
                 .map(parse_direction)
-                .transpose()?
-                .map(GraphDirection::canonical),
+                .transpose()?,
             members,
             resolve_group_style(model, subgraph),
         );

@@ -904,7 +904,12 @@ fn build_layout_data_typed(
             n.text = sanitize_text(&n.text, config);
 
             let note_id = format!("{item_id}{NOTE_ID}-{}", *ctx.graph_item_count);
-            let parent_node_id = format!("{item_id}{PARENT_ID}");
+            let parent_base_id = format!("{item_id}{PARENT_ID}");
+            let parent_node_id = if ctx.node_index.contains_key(&parent_base_id) {
+                format!("{parent_base_id}-{}", *ctx.graph_item_count)
+            } else {
+                parent_base_id
+            };
             let note_dom_id = state_dom_id(&item_id, *ctx.graph_item_count, Some(NOTE));
             let group_dom_id = state_dom_id(&item_id, *ctx.graph_item_count, Some(PARENT));
 

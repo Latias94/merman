@@ -81,6 +81,73 @@ fn state_lr_direction_renders_states_on_one_row() {
 }
 
 #[test]
+fn state_composite_without_explicit_direction_inherits_nearest_explicit_ancestor() {
+    let rendered = render_state(
+        concat!(
+            "stateDiagram-v2\n",
+            "direction LR\n",
+            "state Outer {\n",
+            "  state Inner {\n",
+            "    A --> B\n",
+            "  }\n",
+            "}\n",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("nested state composites should inherit the root direction");
+
+    let a = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(y, line)| line.find(" A ").map(|x| (x, y)))
+        .expect("missing state A");
+    let b = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(y, line)| line.find(" B ").map(|x| (x, y)))
+        .expect("missing state B");
+    assert_eq!(
+        a.1, b.1,
+        "nearest explicit LR direction should apply to the nested composite:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_composite_explicit_reverse_direction_mirrors_child_layout() {
+    let rendered = render_state(
+        concat!(
+            "stateDiagram-v2\n",
+            "direction TB\n",
+            "state Outer {\n",
+            "  direction RL\n",
+            "  A --> B\n",
+            "}\n",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("explicit reverse state direction should render");
+
+    let a = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(y, line)| line.find(" A ").map(|x| (x, y)))
+        .expect("missing state A");
+    let b = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(y, line)| line.find(" B ").map(|x| (x, y)))
+        .expect("missing state B");
+    assert_eq!(
+        a.1, b.1,
+        "explicit RL direction should keep child states on one row:\n{rendered}"
+    );
+    assert!(
+        b.0 < a.0,
+        "explicit RL direction should place B before A:\n{rendered}"
+    );
+}
+
+#[test]
 fn state_start_and_end_pseudo_states_render_as_distinct_visible_nodes() {
     let rendered = render_state(
         "stateDiagram-v2\n[*] --> A\nA --> [*]",
@@ -153,6 +220,25 @@ fn state_notes_render_as_note_nodes() {
     assert!(
         !rendered.contains("----note") && !rendered.contains("----parent"),
         "state note implementation ids should not leak into ASCII output:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_multiple_notes_preserve_text_and_side_ownership() {
+    let rendered = render_state(
+        concat!(
+            "stateDiagram-v2\n",
+            "A\n",
+            "note left of A : left text\n",
+            "note right of A : right text\n",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("multiple notes on one state should render");
+
+    assert!(
+        rendered.contains("left text") && rendered.contains("right text"),
+        "both note payloads must survive typed projection:\n{rendered}"
     );
 }
 

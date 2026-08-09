@@ -75,9 +75,9 @@ pub(crate) fn from_state_model_with_context(
             state_group_title(node),
             node.dir
                 .as_deref()
+                .filter(|_| node.explicit_dir == Some(true))
                 .map(parse_state_direction)
-                .transpose()?
-                .map(GraphDirection::canonical),
+                .transpose()?,
             members,
             state_group_kind(node),
             state_group_style(node),
@@ -364,18 +364,12 @@ fn state_node_direction_by_id(
     model: &StateDiagramRenderModel,
     root_direction: GraphDirection,
 ) -> Result<HashMap<String, GraphDirection>> {
-    let mut group_direction_by_id = HashMap::<&str, GraphDirection>::new();
-    group_direction_by_id
+    let mut node_by_id = HashMap::<&str, &StateDiagramRenderNode>::new();
+    node_by_id
         .try_reserve(model.nodes.len())
         .map_err(|_| projection_allocation_failed())?;
     for node in &model.nodes {
-        let Some(direction) = node.dir.as_deref() else {
-            continue;
-        };
-        group_direction_by_id.insert(
-            node.id.as_str(),
-            parse_state_direction(direction)?.canonical(),
-        );
+        node_by_id.insert(node.id.as_str(), node);
     }
 
     let mut directions = HashMap::new();
@@ -383,11 +377,27 @@ fn state_node_direction_by_id(
         .try_reserve(model.nodes.len())
         .map_err(|_| projection_allocation_failed())?;
     for node in &model.nodes {
-        let direction = node
-            .parent_id
-            .as_deref()
-            .and_then(|parent_id| group_direction_by_id.get(parent_id).copied())
-            .unwrap_or_else(|| root_direction.canonical());
+        let mut direction = root_direction;
+        let mut parent_id = node.parent_id.as_deref();
+        let mut visited = HashSet::new();
+        visited
+            .try_reserve(model.nodes.len())
+            .map_err(|_| projection_allocation_failed())?;
+        while let Some(parent) = parent_id {
+            if !visited.insert(parent) {
+                break;
+            }
+            let Some(parent_node) = node_by_id.get(parent).copied() else {
+                break;
+            };
+            if parent_node.explicit_dir == Some(true) {
+                if let Some(parent_direction) = parent_node.dir.as_deref() {
+                    direction = parse_state_direction(parent_direction)?;
+                }
+                break;
+            }
+            parent_id = parent_node.parent_id.as_deref();
+        }
         directions.insert(node.id.clone(), direction);
     }
     Ok(directions)

@@ -990,7 +990,8 @@ fn apply_subgraph_direction_overrides(
         let start_x = start_x.unwrap_or_default();
         let start_y = start_y.unwrap_or_default();
 
-        let local = place_group_nodes(&override_graph, direction, resources)?;
+        let mut local = place_group_nodes(&override_graph, direction, resources)?;
+        mirror_local_placements(&mut local, direction, resources)?;
         for (member_index, coord) in local {
             let Some(member) = members.get(member_index) else {
                 continue;
@@ -1729,6 +1730,69 @@ fn place_group_nodes(
     placements.extend(ranked.into_iter().enumerate());
 
     Ok(placements)
+}
+
+fn mirror_local_placements(
+    placements: &mut HashMap<usize, GridCoord>,
+    direction: GraphDirection,
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    let reverse_x = matches!(direction, GraphDirection::RightLeft);
+    let reverse_y = matches!(direction, GraphDirection::BottomTop);
+    if !reverse_x && !reverse_y {
+        return Ok(());
+    }
+
+    let Some((min_x, max_x, min_y, max_y)) = placements.values().try_fold(
+        None,
+        |bounds: Option<(usize, usize, usize, usize)>, coord| {
+            resources.charge_layout_work(1)?;
+            Ok::<_, crate::error::AsciiError>(Some(match bounds {
+                Some((min_x, max_x, min_y, max_y)) => (
+                    min_x.min(coord.x),
+                    max_x.max(coord.x),
+                    min_y.min(coord.y),
+                    max_y.max(coord.y),
+                ),
+                None => (coord.x, coord.x, coord.y, coord.y),
+            }))
+        },
+    )?
+    else {
+        return Ok(());
+    };
+
+    for coord in placements.values_mut() {
+        resources.charge_layout_work(1)?;
+        if reverse_x {
+            coord.x = min_x
+                .checked_add(max_x.checked_sub(coord.x).ok_or_else(|| {
+                    resources
+                        .policy()
+                        .overflow(AsciiResourceLimitId::MaxGridCells)
+                })?)
+                .ok_or_else(|| {
+                    resources
+                        .policy()
+                        .overflow(AsciiResourceLimitId::MaxGridCells)
+                })?;
+        }
+        if reverse_y {
+            coord.y = min_y
+                .checked_add(max_y.checked_sub(coord.y).ok_or_else(|| {
+                    resources
+                        .policy()
+                        .overflow(AsciiResourceLimitId::MaxGridCells)
+                })?)
+                .ok_or_else(|| {
+                    resources
+                        .policy()
+                        .overflow(AsciiResourceLimitId::MaxGridCells)
+                })?;
+        }
+    }
+
+    Ok(())
 }
 
 fn shift_external_nodes_away_from_group(
