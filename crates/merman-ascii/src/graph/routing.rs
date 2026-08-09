@@ -426,7 +426,7 @@ fn compare_edges(left: &AsciiGraphEdge, right: &AsciiGraphEdge) -> Ordering {
 
 fn explicit_edge_id(edge: &AsciiGraphEdge) -> Option<&str> {
     edge.is_user_defined_id
-        .then(|| edge.id.as_deref())
+        .then_some(edge.id.as_deref())
         .flatten()
 }
 
@@ -1583,11 +1583,11 @@ fn allocate_route_label_placements(
         return Ok(());
     }
 
-    for route_index in 0..routes.len() {
-        let label_len = routes[route_index].plan.labels.len();
+    for (route_index, route) in routes.iter_mut().enumerate() {
+        let label_len = route.plan.labels.len();
         for label_index in 0..label_len {
             let (original, line_count, unresolved_anchor) = {
-                let label = &routes[route_index].plan.labels[label_index];
+                let label = &route.plan.labels[label_index];
                 (label.placement, label.text.line_count(), label.anchor)
             };
             let original_rect = OccupiedRect::try_new(
@@ -1597,13 +1597,9 @@ fn allocate_route_label_placements(
                 line_count,
                 resources,
             )?;
-            let anchor = resolve_label_anchor(
-                &routes[route_index].plan,
-                unresolved_anchor,
-                original_rect,
-                resources,
-            )?;
-            routes[route_index].plan.labels[label_index].anchor = anchor;
+            let anchor =
+                resolve_label_anchor(&route.plan, unresolved_anchor, original_rect, resources)?;
+            route.plan.labels[label_index].anchor = anchor;
             let candidates = route_label_candidates(
                 original,
                 line_count,
@@ -1637,7 +1633,7 @@ fn allocate_route_label_placements(
                     feature: "edge label placement exhausted after bounded route-local search",
                 });
             };
-            routes[route_index].plan.labels[label_index].placement = placement;
+            route.plan.labels[label_index].placement = placement;
             occupancy.occupy_label(
                 footprint,
                 LabelOccupant {

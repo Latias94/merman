@@ -36,6 +36,13 @@ struct DagreRankLevels {
     leaf_groups: Vec<Option<usize>>,
 }
 
+struct DagreRankGraph {
+    graph: Graph<NodeLabel, EdgeLabel, DagreGraphLabel>,
+    node_ids: Vec<String>,
+    group_ids: Vec<String>,
+    group_anchors: Vec<GroupRankAnchor>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum GroupRankAnchor {
     Node(usize),
@@ -315,11 +322,7 @@ fn preferred_parent_lane(
         lane_total = resources.checked_grid_add(lane_total, lane)?;
         parent_count = resources.checked_grid_add(parent_count, 1)?;
     }
-    if parent_count == 0 {
-        Ok(None)
-    } else {
-        Ok(Some(lane_total / parent_count))
-    }
+    Ok(lane_total.checked_div(parent_count))
 }
 
 fn finalize_ranked_placements(
@@ -346,8 +349,12 @@ fn dagre_rank_levels(
     direction: GraphDirection,
     resources: &mut ResourceContext,
 ) -> Result<DagreRankLevels> {
-    let (rank_graph, node_ids, group_ids, group_anchors) =
-        build_dagre_rank_graph(graph, topology, direction, resources)?;
+    let DagreRankGraph {
+        graph: rank_graph,
+        node_ids,
+        group_ids,
+        group_anchors,
+    } = build_dagre_rank_graph(graph, topology, direction, resources)?;
     let plan = {
         let mut work_control = AsciiDagreWorkControl::new(resources);
         match dugong::rank::plan_controlled(&rank_graph, &mut work_control) {
@@ -475,12 +482,7 @@ fn build_dagre_rank_graph(
     topology: Option<&GraphGroupTopology<'_>>,
     direction: GraphDirection,
     resources: &ResourceContext,
-) -> Result<(
-    Graph<NodeLabel, EdgeLabel, DagreGraphLabel>,
-    Vec<String>,
-    Vec<String>,
-    Vec<GroupRankAnchor>,
-)> {
+) -> Result<DagreRankGraph> {
     let mut rank_graph = Graph::new(GraphOptions {
         directed: true,
         multigraph: true,
@@ -599,7 +601,12 @@ fn build_dagre_rank_graph(
         );
     }
 
-    Ok((rank_graph, node_ids, group_ids, group_anchors))
+    Ok(DagreRankGraph {
+        graph: rank_graph,
+        node_ids,
+        group_ids,
+        group_anchors,
+    })
 }
 
 fn graphlib_node_order(graph: &AsciiGraph, resources: &ResourceContext) -> Result<Vec<usize>> {
@@ -1419,9 +1426,12 @@ mod tests {
         graph.add_edge("z", "a");
         graph.add_edge("a", "m");
 
-        let mut resources = unbounded_resources();
-        let (rank_graph, node_ids, _, _) =
-            build_dagre_rank_graph(&graph, None, GraphDirection::TopDown, &mut resources).unwrap();
+        let resources = unbounded_resources();
+        let DagreRankGraph {
+            graph: rank_graph,
+            node_ids,
+            ..
+        } = build_dagre_rank_graph(&graph, None, GraphDirection::TopDown, &resources).unwrap();
         let edges = rank_graph.edges().collect::<Vec<_>>();
 
         assert_eq!(edges.len(), 3);
@@ -1464,13 +1474,12 @@ mod tests {
 
         let mut resources = unbounded_resources();
         let topology = GraphGroupTopology::try_new(&graph, &mut resources).unwrap();
-        let (rank_graph, node_ids, _, _) = build_dagre_rank_graph(
-            &graph,
-            Some(&topology),
-            GraphDirection::TopDown,
-            &mut resources,
-        )
-        .unwrap();
+        let DagreRankGraph {
+            graph: rank_graph,
+            node_ids,
+            ..
+        } = build_dagre_rank_graph(&graph, Some(&topology), GraphDirection::TopDown, &resources)
+            .unwrap();
         let edges = rank_graph.edges().collect::<Vec<_>>();
 
         assert_eq!(edges.len(), 2);
@@ -1643,13 +1652,13 @@ mod tests {
 
         let mut resources = unbounded_resources();
         let topology = GraphGroupTopology::try_new(&graph, &mut resources).unwrap();
-        let (rank_graph, node_ids, group_ids, anchors) = build_dagre_rank_graph(
-            &graph,
-            Some(&topology),
-            GraphDirection::TopDown,
-            &mut resources,
-        )
-        .unwrap();
+        let DagreRankGraph {
+            graph: rank_graph,
+            node_ids,
+            group_ids,
+            group_anchors: anchors,
+        } = build_dagre_rank_graph(&graph, Some(&topology), GraphDirection::TopDown, &resources)
+            .unwrap();
         let edges = rank_graph.edges().collect::<Vec<_>>();
 
         assert_eq!(anchors, [GroupRankAnchor::Group(0)]);

@@ -9,6 +9,17 @@ pub(crate) struct FlowchartSelfLoopHelperEdges {
     pub(crate) edge2: FlowEdge,
 }
 
+struct FlowchartSelfLoopEdgeSpec {
+    id: String,
+    from: String,
+    to: String,
+    label: Option<String>,
+    label_type: Option<String>,
+    edge_type: Option<String>,
+    start_marker: FlowEdgeMarker,
+    end_marker: FlowEdgeMarker,
+}
+
 pub(crate) fn flowchart_self_loop_helper_edges(base: &FlowEdge) -> FlowchartSelfLoopHelperEdges {
     let node_id = base.from.as_str();
     let special_id_1 = format!("{node_id}---{node_id}---1");
@@ -17,36 +28,42 @@ pub(crate) fn flowchart_self_loop_helper_edges(base: &FlowEdge) -> FlowchartSelf
 
     let edge1 = flowchart_self_loop_edge_from_base(
         base,
-        format!("{node_id}-cyclic-special-1"),
-        node_id.to_string(),
-        special_id_1.clone(),
-        endpoint_label.clone(),
-        None,
-        Some("arrow_open".to_string()),
-        base.start_marker,
-        FlowEdgeMarker::None,
+        FlowchartSelfLoopEdgeSpec {
+            id: format!("{node_id}-cyclic-special-1"),
+            from: node_id.to_string(),
+            to: special_id_1.clone(),
+            label: endpoint_label.clone(),
+            label_type: None,
+            edge_type: Some("arrow_open".to_string()),
+            start_marker: base.start_marker,
+            end_marker: FlowEdgeMarker::None,
+        },
     );
     let edge_mid = flowchart_self_loop_edge_from_base(
         base,
-        format!("{node_id}-cyclic-special-mid"),
-        special_id_1.clone(),
-        special_id_2.clone(),
-        base.label.clone(),
-        base.label_type.clone(),
-        Some("arrow_open".to_string()),
-        FlowEdgeMarker::None,
-        FlowEdgeMarker::None,
+        FlowchartSelfLoopEdgeSpec {
+            id: format!("{node_id}-cyclic-special-mid"),
+            from: special_id_1.clone(),
+            to: special_id_2.clone(),
+            label: base.label.clone(),
+            label_type: base.label_type.clone(),
+            edge_type: Some("arrow_open".to_string()),
+            start_marker: FlowEdgeMarker::None,
+            end_marker: FlowEdgeMarker::None,
+        },
     );
     let edge2 = flowchart_self_loop_edge_from_base(
         base,
-        format!("{node_id}-cyclic-special-2"),
-        special_id_2.clone(),
-        node_id.to_string(),
-        endpoint_label,
-        base.label_type.clone(),
-        base.edge_type.clone(),
-        FlowEdgeMarker::None,
-        base.end_marker,
+        FlowchartSelfLoopEdgeSpec {
+            id: format!("{node_id}-cyclic-special-2"),
+            from: special_id_2.clone(),
+            to: node_id.to_string(),
+            label: endpoint_label,
+            label_type: base.label_type.clone(),
+            edge_type: base.edge_type.clone(),
+            start_marker: FlowEdgeMarker::None,
+            end_marker: base.end_marker,
+        },
     );
 
     FlowchartSelfLoopHelperEdges {
@@ -60,25 +77,18 @@ pub(crate) fn flowchart_self_loop_helper_edges(base: &FlowEdge) -> FlowchartSelf
 
 fn flowchart_self_loop_edge_from_base(
     base: &FlowEdge,
-    id: String,
-    from: String,
-    to: String,
-    label: Option<String>,
-    label_type: Option<String>,
-    edge_type: Option<String>,
-    start_marker: FlowEdgeMarker,
-    end_marker: FlowEdgeMarker,
+    spec: FlowchartSelfLoopEdgeSpec,
 ) -> FlowEdge {
     FlowEdge {
-        id,
-        from,
-        to,
-        label,
-        label_type,
-        edge_type,
+        id: spec.id,
+        from: spec.from,
+        to: spec.to,
+        label: spec.label,
+        label_type: spec.label_type,
+        edge_type: spec.edge_type,
         arrow: base.arrow.clone(),
-        start_marker,
-        end_marker,
+        start_marker: spec.start_marker,
+        end_marker: spec.end_marker,
         is_user_defined_id: false,
         stroke: base.stroke.clone(),
         stroke_kind: base.stroke_kind,

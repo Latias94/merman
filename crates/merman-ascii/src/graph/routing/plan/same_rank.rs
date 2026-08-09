@@ -89,7 +89,7 @@ pub(super) fn plan_same_rank_direct_route_with_resources(
         let Some(labels) = planned_direct_labels(edge, start, end, y, points_right, charset) else {
             return Ok(None);
         };
-        return Ok(Some(RoutePlan::new(cells.into_vec(), labels, anchors)));
+        Ok(Some(RoutePlan::new(cells.into_vec(), labels, anchors)))
     } else {
         if charset.unicode {
             cells.try_push(resources, || {
@@ -123,7 +123,7 @@ pub(super) fn plan_same_rank_direct_route_with_resources(
         let Some(labels) = planned_direct_labels(edge, start, end, y, points_right, charset) else {
             return Ok(None);
         };
-        return Ok(Some(RoutePlan::new(cells.into_vec(), labels, anchors)));
+        Ok(Some(RoutePlan::new(cells.into_vec(), labels, anchors)))
     }
 }
 

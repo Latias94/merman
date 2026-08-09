@@ -38,7 +38,7 @@ pub(super) struct ResolvedGraphNodeShape {
 }
 
 impl ResolvedGraphNodeShape {
-    pub(super) fn projected_label<'a>(self, label: &'a str) -> &'a str {
+    pub(super) fn projected_label(self, label: &str) -> &str {
         match self.label_policy {
             GraphNodeLabelPolicy::Preserve => label,
             GraphNodeLabelPolicy::Suppress => "",

@@ -25,14 +25,17 @@ pub(super) fn apply_group_placement_adjustments(
     let endpoint_index =
         GroupEndpointIndex::try_new(graph, topology, &original_root_axis, resources)?;
     let mut disabled_overrides = try_bool_slots(graph.groups.len())?;
-    let mut placement_state = solve_group_placement_constraints(
+    let placement_context = GroupPlacementContext {
         graph,
-        placements,
         topology,
         width_profile,
-        &original_placements,
-        &original_root_axis,
-        &endpoint_index,
+        original_placements: &original_placements,
+        original_root_axis: &original_root_axis,
+        endpoint_index: &endpoint_index,
+    };
+    let mut placement_state = solve_group_placement_constraints(
+        &placement_context,
+        placements,
         &mut disabled_overrides,
         resources,
     )?;
@@ -53,13 +56,8 @@ pub(super) fn apply_group_placement_adjustments(
     )? {
         disable_all_group_overrides(graph, &mut disabled_overrides, resources)?;
         placement_state = solve_group_placement_constraints(
-            graph,
+            &placement_context,
             placements,
-            topology,
-            width_profile,
-            &original_placements,
-            &original_root_axis,
-            &endpoint_index,
             &mut disabled_overrides,
             resources,
         )?;
@@ -133,46 +131,61 @@ struct GroupPlacementState {
     invariants: Vec<RankInvariant>,
 }
 
-fn solve_group_placement_constraints(
-    graph: &AsciiGraph,
-    placements: &mut [GridCoord],
-    topology: &GraphGroupTopology<'_>,
+struct GroupPlacementContext<'context, 'graph> {
+    graph: &'context AsciiGraph,
+    topology: &'context GraphGroupTopology<'graph>,
     width_profile: TerminalWidthProfile,
-    original_placements: &[GridCoord],
-    original_root_axis: &[usize],
-    endpoint_index: &GroupEndpointIndex,
+    original_placements: &'context [GridCoord],
+    original_root_axis: &'context [usize],
+    endpoint_index: &'context GroupEndpointIndex,
+}
+
+fn solve_group_placement_constraints(
+    context: &GroupPlacementContext<'_, '_>,
+    placements: &mut [GridCoord],
     disabled_overrides: &mut [bool],
     resources: &mut ResourceContext,
 ) -> Result<GroupPlacementState> {
     // Rebuild each attempt from the Dagre placement. A conflicting rigid-block cycle therefore
     // disables only the implicated local override instead of accumulating partial shifts.
-    let maximum_attempts = resources.checked_work_add(graph.groups.len(), 1)?;
+    let maximum_attempts = resources.checked_work_add(context.graph.groups.len(), 1)?;
     for _ in 0..maximum_attempts {
         resources.charge_layout_work(1)?;
-        restore_grid_placements(placements, original_placements, resources)?;
+        restore_grid_placements(placements, context.original_placements, resources)?;
         apply_subgraph_direction_overrides(
-            graph,
+            context.graph,
             placements,
-            topology,
-            width_profile,
+            context.topology,
+            context.width_profile,
             disabled_overrides,
             resources,
         )?;
-        stack_divider_sections(graph, placements, topology, resources)?;
+        stack_divider_sections(context.graph, placements, context.topology, resources)?;
 
-        let blocks = PlacementBlocks::try_new(graph, topology, disabled_overrides, resources)?;
+        let blocks = PlacementBlocks::try_new(
+            context.graph,
+            context.topology,
+            disabled_overrides,
+            resources,
+        )?;
         let (constraints, invariants) = build_block_constraints(
-            graph,
+            context.graph,
             placements,
-            topology,
-            original_root_axis,
-            endpoint_index,
+            context.topology,
+            context.original_root_axis,
+            context.endpoint_index,
             &blocks,
             resources,
         )?;
         match solve_block_offsets(blocks.blocks.len(), &constraints, resources)? {
             BlockOffsetSolution::Offsets(offsets) => {
-                apply_block_offsets(graph.direction, placements, &blocks, &offsets, resources)?;
+                apply_block_offsets(
+                    context.graph.direction,
+                    placements,
+                    &blocks,
+                    &offsets,
+                    resources,
+                )?;
                 return Ok(GroupPlacementState { blocks, invariants });
             }
             BlockOffsetSolution::PositiveCycle(cycle) => {
@@ -182,14 +195,19 @@ fn solve_group_placement_constraints(
                     disabled_overrides,
                     resources,
                 )? {
-                    disable_all_group_overrides(graph, disabled_overrides, resources)?;
+                    disable_all_group_overrides(context.graph, disabled_overrides, resources)?;
                 }
             }
         }
     }
 
-    restore_grid_placements(placements, original_placements, resources)?;
-    let blocks = PlacementBlocks::try_new(graph, topology, disabled_overrides, resources)?;
+    restore_grid_placements(placements, context.original_placements, resources)?;
+    let blocks = PlacementBlocks::try_new(
+        context.graph,
+        context.topology,
+        disabled_overrides,
+        resources,
+    )?;
     Ok(GroupPlacementState {
         blocks,
         invariants: Vec::new(),

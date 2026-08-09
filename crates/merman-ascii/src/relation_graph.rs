@@ -2467,7 +2467,7 @@ mod tests {
 
     #[test]
     fn render_stacked_boxes_preserves_plain_text() {
-        let boxes = vec![
+        let boxes = [
             RelationGraphBox::new("a".to_string(), vec!["A".to_string(), "|".to_string()], 1),
             RelationGraphBox::new("b".to_string(), vec!["B".to_string(), "|".to_string()], 1),
         ];
@@ -2479,7 +2479,7 @@ mod tests {
     fn render_stacked_boxes_with_section_appends_summary() {
         let options = AsciiRenderOptions::ascii();
         let mut resources = test_resources(&options);
-        let boxes = vec![
+        let boxes = [
             RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
             RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
         ];
@@ -2594,7 +2594,7 @@ mod tests {
 
     #[test]
     fn relation_components_split_disconnected_relation_subgraphs() {
-        let boxes = vec![
+        let boxes = [
             RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
             RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
             RelationGraphBox::new("c".to_string(), vec!["C".to_string()], 1),
@@ -2915,7 +2915,7 @@ mod tests {
 
     #[test]
     fn layered_relation_gap_grows_with_label_line_count() {
-        let boxes = vec![
+        let boxes = [
             RelationGraphBox::new("top".to_string(), vec!["A".to_string()], 1),
             RelationGraphBox::new("bottom".to_string(), vec!["B".to_string()], 1),
         ];
@@ -2945,7 +2945,7 @@ mod tests {
 
     #[test]
     fn layered_relation_plan_reserves_width_for_reverse_spanning_edges() {
-        let boxes = vec![
+        let boxes = [
             RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
             RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
             RelationGraphBox::new("c".to_string(), vec!["C".to_string()], 1),
@@ -2967,7 +2967,7 @@ mod tests {
 
     #[test]
     fn layered_relation_plan_reserves_width_for_reverse_parallel_lanes() {
-        let boxes = vec![
+        let boxes = [
             RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
             RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
         ];

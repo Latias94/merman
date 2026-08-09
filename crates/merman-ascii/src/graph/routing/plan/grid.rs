@@ -39,6 +39,14 @@ struct GridLineSpan {
     direction: StepDirection,
 }
 
+struct GridPathPlan {
+    cells: PlannedRouteCells,
+    lines_drawn: Vec<Vec<CanvasCoord>>,
+    line_directions: Vec<StepDirection>,
+    first_line_cell: Option<PlannedCellId>,
+    last_line_cell: Option<PlannedCellId>,
+}
+
 impl GridRouteOptions {
     pub(super) fn direct() -> Self {
         Self {
@@ -170,9 +178,14 @@ pub(super) fn plan_left_right_grid_path_route_with_options_and_resources(
     }
 
     let segment = options.segment;
-    let (mut cells, lines_drawn, line_dirs, first_line_cell, last_line_cell) =
-        plan_grid_path(graph_layout, &path, edge, charset, segment, resources)?;
-    if lines_drawn.is_empty() || line_dirs.is_empty() {
+    let GridPathPlan {
+        mut cells,
+        lines_drawn,
+        line_directions,
+        first_line_cell,
+        last_line_cell,
+    } = plan_grid_path(graph_layout, &path, edge, charset, segment, resources)?;
+    if lines_drawn.is_empty() || line_directions.is_empty() {
         return Ok(None);
     }
     let (Some(start_cell), Some(end_cell)) = (first_line_cell, last_line_cell) else {
@@ -190,17 +203,19 @@ pub(super) fn plan_left_right_grid_path_route_with_options_and_resources(
     let labels = planned_grid_label(
         edge.label.as_deref(),
         &lines_drawn,
-        &line_dirs,
+        &line_directions,
         options.label_mode,
         charset,
     )
     .into_iter()
     .collect();
 
-    let start_anchor = MarkerAnchor::new(start_cell, opposite_direction(line_dirs[0]));
+    let start_anchor = MarkerAnchor::new(start_cell, opposite_direction(line_directions[0]));
     let end_anchor = MarkerAnchor::new(
         end_cell,
-        *line_dirs.last().unwrap_or(&end_port.terminal_direction()),
+        *line_directions
+            .last()
+            .unwrap_or(&end_port.terminal_direction()),
     );
     Ok(Some(RoutePlan::new(
         cells.into_vec(),
@@ -288,13 +303,7 @@ fn plan_grid_path(
     charset: &GraphCharset,
     segment: PlannedRouteSegment,
     resources: &mut ResourceContext,
-) -> Result<(
-    PlannedRouteCells,
-    Vec<Vec<CanvasCoord>>,
-    Vec<StepDirection>,
-    Option<PlannedCellId>,
-    Option<PlannedCellId>,
-)> {
+) -> Result<GridPathPlan> {
     let mut cells = PlannedRouteCells::new();
     let mut lines_drawn = Vec::new();
     let mut line_dirs = Vec::new();
@@ -318,13 +327,13 @@ fn plan_grid_path(
         }
     }
 
-    Ok((
+    Ok(GridPathPlan {
         cells,
         lines_drawn,
-        line_dirs,
+        line_directions: line_dirs,
         first_line_cell,
         last_line_cell,
-    ))
+    })
 }
 
 fn plan_grid_line(

@@ -299,9 +299,9 @@ impl AxisPlan {
                 Self::Band { categories } => (
                     None,
                     !categories.is_empty()
-                        && !categories
+                        && categories
                             .get(fallback_index)
-                            .is_some_and(|category| category == x),
+                            .is_none_or(|category| category != x),
                 ),
                 Self::Linear { range } => match x.parse::<f64>() {
                     Ok(value) if value.is_finite() => {
