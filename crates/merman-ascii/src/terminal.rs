@@ -138,7 +138,7 @@ impl GlyphArena {
         let mut referenced_bytes = 0usize;
 
         for (index, cell) in cells.iter().copied().enumerate() {
-            let TerminalGlyph::Arena(source_id) = cell.glyph else {
+            let TerminalGlyph::Arena(source_id, _) = cell.glyph else {
                 continue;
             };
             if !include(index, cells)? {
@@ -260,7 +260,7 @@ impl GlyphArena {
         if let Some(ch) = chars.next()
             && chars.next().is_none()
         {
-            return Ok(TerminalGlyph::Scalar(ch));
+            return Ok(TerminalGlyph::Scalar(ch, 1));
         }
 
         let final_byte_len = self
@@ -282,7 +282,7 @@ impl GlyphArena {
             .map_err(|_| glyph_allocation_failed())?;
         self.try_prepare_text_append(grapheme.len())?;
         self.append_complex_prepared(grapheme)
-            .map(TerminalGlyph::Arena)
+            .map(|id| TerminalGlyph::Arena(id, 1))
     }
 
     fn append_complex_prepared(&mut self, grapheme: &str) -> Result<GlyphId> {
@@ -356,12 +356,31 @@ impl GlyphArena {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TerminalGlyph {
-    Scalar(char),
-    Arena(GlyphId),
+    Scalar(char, u8),
+    Arena(GlyphId, u8),
     Continuation(u32),
 }
 
 impl TerminalGlyph {
+    fn try_with_primary_width(self, width: usize) -> Result<Self> {
+        let width = u8::try_from(width).map_err(|_| document_allocation_failed())?;
+        if width == 0 {
+            return Err(document_allocation_failed());
+        }
+        match self {
+            Self::Scalar(ch, _) => Ok(Self::Scalar(ch, width)),
+            Self::Arena(id, _) => Ok(Self::Arena(id, width)),
+            Self::Continuation(_) => Err(document_allocation_failed()),
+        }
+    }
+
+    const fn primary_width(self) -> Option<usize> {
+        match self {
+            Self::Scalar(_, width) | Self::Arena(_, width) => Some(width as usize),
+            Self::Continuation(_) => None,
+        }
+    }
+
     fn try_continuation(owner_back: usize) -> Result<Self> {
         let owner_back = u32::try_from(owner_back).map_err(|_| glyph_allocation_failed())?;
         if owner_back == 0 {
@@ -390,13 +409,20 @@ impl TerminalCell {
 
     pub(crate) fn with_style(ch: char, style: CanvasStyle) -> Self {
         Self {
-            glyph: TerminalGlyph::Scalar(ch),
+            glyph: TerminalGlyph::Scalar(ch, 1),
             style,
         }
     }
 
-    fn with_glyph_style(glyph: TerminalGlyph, style: CanvasStyle) -> Self {
-        Self { glyph, style }
+    fn try_with_glyph_width_style(
+        glyph: TerminalGlyph,
+        width: usize,
+        style: CanvasStyle,
+    ) -> Result<Self> {
+        Ok(Self {
+            glyph: glyph.try_with_primary_width(width)?,
+            style,
+        })
     }
 
     fn try_continuation_with_owner_back(owner_back: usize) -> Result<Self> {
@@ -408,8 +434,8 @@ impl TerminalCell {
 
     pub(crate) fn output_char(self) -> Option<char> {
         match self.glyph {
-            TerminalGlyph::Scalar(ch) => Some(ch),
-            TerminalGlyph::Arena(_) | TerminalGlyph::Continuation(_) => None,
+            TerminalGlyph::Scalar(ch, _) => Some(ch),
+            TerminalGlyph::Arena(_, _) | TerminalGlyph::Continuation(_) => None,
         }
     }
 
@@ -423,8 +449,8 @@ impl TerminalCell {
         arena: &GlyphArena,
     ) -> Result<Option<TerminalCellText<'_>>> {
         match self.glyph {
-            TerminalGlyph::Scalar(ch) => Ok(Some(TerminalCellText::Scalar(ch))),
-            TerminalGlyph::Arena(id) => arena
+            TerminalGlyph::Scalar(ch, _) => Ok(Some(TerminalCellText::Scalar(ch))),
+            TerminalGlyph::Arena(id, _) => arena
                 .get(id)
                 .map(TerminalCellText::Grapheme)
                 .map(Some)
@@ -466,18 +492,23 @@ impl TerminalCell {
     pub(crate) fn owner_back(self) -> Option<usize> {
         match self.glyph {
             TerminalGlyph::Continuation(owner_back) => Some(owner_back as usize),
-            TerminalGlyph::Scalar(_) | TerminalGlyph::Arena(_) => None,
+            TerminalGlyph::Scalar(_, _) | TerminalGlyph::Arena(_, _) => None,
         }
     }
 
+    pub(crate) const fn primary_width_hint(self) -> Option<usize> {
+        self.glyph.primary_width()
+    }
+
     pub(crate) fn is_trimmable_blank(self, preserve_color: bool) -> bool {
-        matches!(self.glyph, TerminalGlyph::Scalar(' '))
+        matches!(self.glyph, TerminalGlyph::Scalar(' ', _))
             && (!preserve_color || self.style.is_plain())
     }
 
     fn with_arena_id(self, id: GlyphId) -> Self {
+        let width = self.glyph.primary_width().unwrap_or(1) as u8;
         Self {
-            glyph: TerminalGlyph::Arena(id),
+            glyph: TerminalGlyph::Arena(id, width),
             style: self.style,
         }
     }
@@ -667,7 +698,7 @@ fn overwritten_arena_entries(cells: &[TerminalCell], index: usize, width: usize)
             continue;
         }
         last_owner = Some(owner);
-        if matches!(cells[owner].glyph, TerminalGlyph::Arena(_)) {
+        if matches!(cells[owner].glyph, TerminalGlyph::Arena(_, _)) {
             count = count
                 .checked_add(1)
                 .ok_or_else(document_allocation_failed)?;
@@ -695,7 +726,7 @@ fn validate_surviving_cell_remap(
     source_to_target: &HashMap<GlyphId, GlyphId>,
 ) -> Result<()> {
     for (owner, cell) in cells.iter().copied().enumerate() {
-        let TerminalGlyph::Arena(source_id) = cell.glyph else {
+        let TerminalGlyph::Arena(source_id, _) = cell.glyph else {
             continue;
         };
         if cell_survives_overwrite(cells, owner, overwrite_start, overwrite_end)?
@@ -712,7 +743,7 @@ fn validate_cell_remap(
     source_to_target: &HashMap<GlyphId, GlyphId>,
 ) -> Result<()> {
     for cell in cells.iter().copied() {
-        if let TerminalGlyph::Arena(source_id) = cell.glyph
+        if let TerminalGlyph::Arena(source_id, _) = cell.glyph
             && !source_to_target.contains_key(&source_id)
         {
             return Err(glyph_allocation_failed());
@@ -727,7 +758,7 @@ fn apply_validated_cell_remap(
 ) -> Result<()> {
     // The validation pass makes missing ids impossible without allocating a full staged surface.
     for cell in cells {
-        let TerminalGlyph::Arena(source_id) = cell.glyph else {
+        let TerminalGlyph::Arena(source_id, _) = cell.glyph else {
             continue;
         };
         let target_id = source_to_target
@@ -744,12 +775,12 @@ fn try_remap_cell(
     source_to_target: &HashMap<GlyphId, GlyphId>,
 ) -> Result<TerminalCell> {
     match cell.glyph {
-        TerminalGlyph::Arena(source_id) => source_to_target
+        TerminalGlyph::Arena(source_id, _) => source_to_target
             .get(&source_id)
             .copied()
             .map(|target_id| cell.with_arena_id(target_id))
             .ok_or_else(glyph_allocation_failed),
-        TerminalGlyph::Scalar(_) | TerminalGlyph::Continuation(_) => Ok(cell),
+        TerminalGlyph::Scalar(_, _) | TerminalGlyph::Continuation(_) => Ok(cell),
     }
 }
 
@@ -794,18 +825,15 @@ pub(crate) fn try_write_primary_cell_from_surface(
 }
 
 pub(crate) fn primary_width(cells: &[TerminalCell], index: usize) -> usize {
-    if index >= cells.len() || cells[index].is_continuation() {
+    let Some(width) = cells.get(index).and_then(|cell| cell.primary_width_hint()) else {
         return 0;
-    }
-
-    let mut width = 1;
-    while index
-        .checked_add(width)
-        .and_then(|position| cells.get(position))
-        .is_some_and(|cell| cell.owner_back() == Some(width))
-    {
-        width += 1;
-    }
+    };
+    debug_assert!(
+        (1..width).all(|offset| cells
+            .get(index + offset)
+            .is_some_and(|cell| cell.owner_back() == Some(offset))),
+        "primary width hint must match its continuation ownership"
+    );
     width
 }
 
@@ -886,7 +914,9 @@ fn push_terminal_glyph_prepared(
     if width == 0 {
         return Ok(());
     }
-    cells.push(TerminalCell::with_glyph_style(glyph, style));
+    cells.push(TerminalCell::try_with_glyph_width_style(
+        glyph, width, style,
+    )?);
     for owner_back in 1..width {
         cells.push(TerminalCell::try_continuation_with_owner_back(owner_back)?);
     }
@@ -920,7 +950,7 @@ fn write_terminal_glyph(
         clear_owner_at(cells, position);
     }
 
-    cells[index] = TerminalCell::with_glyph_style(glyph, style);
+    cells[index] = TerminalCell::try_with_glyph_width_style(glyph, width, style)?;
     for owner_back in 1..width {
         let position = index
             .checked_add(owner_back)
@@ -942,7 +972,7 @@ fn write_terminal_glyph_to_cleared_range(
     }
     validate_continuation_width(width)?;
 
-    cells[index] = TerminalCell::with_glyph_style(glyph, style);
+    cells[index] = TerminalCell::try_with_glyph_width_style(glyph, width, style)?;
     for owner_back in 1..width {
         let position = index
             .checked_add(owner_back)

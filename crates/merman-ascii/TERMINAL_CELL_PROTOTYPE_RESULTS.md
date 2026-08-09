@@ -1,7 +1,7 @@
 # U2 Terminal Cell Representation Prototype Results
 
-Date: 2026-08-08
-Revision: `c07bac794` on `refactor/ascii-semantic-depth`
+Date: 2026-08-10
+Revision: `98c7651ed` plus the primary-width working tree on `refactor/ascii-semantic-depth`
 Host: macOS Darwin 25.6.0, Apple M4, 10 logical CPUs, `rustc 1.95.0`
 
 ## Scope
@@ -118,14 +118,31 @@ Interpretation:
 - Correct grapheme mirror is much cheaper than scalar mirror on complex workloads because the
   candidate surface owns 1,843/1,024 cells instead of 3,073/3,072 scalar cells. The scalar result
   is not semantically admissible there.
-- CJK finalize is approximately 18% slower for both candidates in this cell-by-cell prototype
-  (about 0.25 microseconds per 1,024-grapheme operation). A production encoder should iterate
-  primary grapheme runs rather than inspect every continuation cell if this private-stage delta is
-  material.
+- The exploratory cell-by-cell run previously showed an approximately 18% CJK finalize penalty.
+  The production-shaped primary-run encoder was rerun below and removes that penalty.
+
+## Primary-run rerun
+
+The preregistered primary gate was rerun on 2026-08-10 with 50 samples, one second of warm-up,
+and two seconds of measurement on the same host. Mean times are microseconds per operation over
+1,024 logical graphemes:
+
+| Workload | Current scalar | Compact arena | Compact interned | Compact arena vs scalar |
+|---|---:|---:|---:|---:|
+| ASCII | 0.797 | 0.801 | 0.785 | -0.5% |
+| CJK | 1.340 | 1.245 | 1.197 | -7.1% |
+| Repeated emoji | 2.625 | 2.948 | 2.600 | +12.3% / -0.9% interned |
+| Unique complex | 2.924 | 3.117 | 2.575 | +6.6% / -11.9% interned |
+
+The repeated-emoji row is a diagnostic comparison: the selected append-only arena is intentionally
+optimized for bounded high-cardinality ownership, while the optional lazy interner wins when five
+complex values repeat. The mandatory scalar/CJK primary gate passes: ASCII improves and CJK remains
+7.1% faster than the frozen scalar baseline, below the preregistered 10% regression ceiling.
 
 ## Gate decision
 
-The full U2 gate is **conditionally passed for representation shape, not yet a blanket timing pass**.
+The full U2 representation and primary finalize timing gates are **passed**. Cross-surface compose
+and workload-specific interning remain diagnostic evidence, not a blanket public latency claim.
 
 ### Selected production direction
 
@@ -152,10 +169,10 @@ duplicate-rate policy.
 | Complete cell size no larger than current | Pass: 40 B vs 40 B |
 | Scalar ASCII/CJK arena entries | Pass: zero |
 | Scalar paint/clone/mirror/empty composition | Pass or within noise after exact no-arena fast path |
-| Scalar finalization provisional 10% relative gate | CJK misses by about 18%; ASCII passes |
+| Scalar finalization provisional 10% relative gate | Pass: ASCII improves; CJK is 7.1% faster |
 | Complex grapheme correctness | Pass for both candidates; current scalar rejected for mirror |
 | Complex memory boundedness | Append arena passes the practical comparison; always-on interner loses on unique values |
-| Worst-case cross-surface composition | Diagnostic residual; requires shared-arena/primary-run optimization before public timing admission |
+| Worst-case cross-surface composition | Diagnostic residual; shared-arena optimization remains future work |
 
 The CJK finalize miss is a private-stage attribution result, not a public renderer regression claim.
 The absolute difference is small, but U2 should retain a primary-grapheme/run encoder seam so the
@@ -175,7 +192,7 @@ The canonical command, after the normal workspace lockfile records the ASCII dev
 ```console
 CARGO_BUILD_JOBS=1 cargo bench --locked -p merman-ascii \
   --bench terminal_cell_representation -- \
-  --noplot --sample-size 20 --warm-up-time 1 --measurement-time 2
+  --noplot --sample-size 50 --warm-up-time 1 --measurement-time 2
 ```
 
 This run used an ignored standalone manifest under `target/bench/experiments/u2-terminal-cell-representation`

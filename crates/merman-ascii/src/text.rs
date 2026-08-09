@@ -211,7 +211,8 @@ impl StyledLine {
 
     /// Writes this row into an existing checked output without a per-line `String`.
     pub(crate) fn try_write_plain_to(&self, output: &mut CheckedOutput) -> Result<()> {
-        for cell in &self.cells {
+        let mut offset = 0usize;
+        while let Some(cell) = self.cells.get(offset).copied() {
             if let Some(text) = cell.try_output_text(&self.arena)? {
                 match text {
                     crate::terminal::TerminalCellText::Scalar(ch) => output.push_char(ch)?,
@@ -220,6 +221,9 @@ impl StyledLine {
                     }
                 }
             }
+            offset = offset
+                .checked_add(cell.primary_width_hint().unwrap_or(1).max(1))
+                .ok_or_else(document_allocation_failed)?;
         }
         Ok(())
     }

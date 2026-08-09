@@ -480,11 +480,12 @@ impl Canvas {
             } else {
                 row_start + self.width
             };
-            for cell in &self.cells[row_start..row_end] {
+            visit_primary_cells(&self.cells[row_start..row_end], |cell| {
                 if let Some(text) = cell.try_output_text(&self.arena)? {
                     push_terminal_text(&mut out, text)?;
                 }
-            }
+                Ok(())
+            })?;
             out.push_char('\n')?;
         }
         Ok(out.finish())
@@ -539,11 +540,12 @@ impl Canvas {
             } else {
                 row_start + self.width
             };
-            for cell in &self.cells[row_start..row_end] {
+            visit_primary_cells(&self.cells[row_start..row_end], |cell| {
                 if let Some(text) = cell.try_output_text(&self.arena)? {
                     push_terminal_text(&mut out, text)?;
                 }
-            }
+                Ok(())
+            })?;
             out.push_char('\n')?;
         }
         Ok(out.finish())
@@ -612,22 +614,22 @@ impl Canvas {
                 row_start + self.width
             };
             let mut active_style = ResolvedCanvasStyle::default();
-            for cell in &self.cells[row_start..row_end] {
-                let Some(text) = cell.try_output_text(&self.arena)? else {
-                    continue;
-                };
-                let desired_style = cell.raw_style().resolve(theme);
-                if desired_style != active_style {
-                    if !active_style.is_plain() {
-                        out.push_str("\u{1b}[0m")?;
+            visit_primary_cells(&self.cells[row_start..row_end], |cell| {
+                if let Some(text) = cell.try_output_text(&self.arena)? {
+                    let desired_style = cell.raw_style().resolve(theme);
+                    if desired_style != active_style {
+                        if !active_style.is_plain() {
+                            out.push_str("\u{1b}[0m")?;
+                        }
+                        if !desired_style.is_plain() {
+                            push_ansi_start(&mut out, mode, desired_style)?;
+                        }
+                        active_style = desired_style;
                     }
-                    if !desired_style.is_plain() {
-                        push_ansi_start(&mut out, mode, desired_style)?;
-                    }
-                    active_style = desired_style;
+                    push_terminal_text(&mut out, text)?;
                 }
-                push_terminal_text(&mut out, text)?;
-            }
+                Ok(())
+            })?;
             if !active_style.is_plain() {
                 out.push_str("\u{1b}[0m")?;
             }
@@ -649,22 +651,22 @@ impl Canvas {
                 row_start + self.width
             };
             let mut active_style = ResolvedCanvasStyle::default();
-            for cell in &self.cells[row_start..row_end] {
-                let Some(text) = cell.try_output_text(&self.arena)? else {
-                    continue;
-                };
-                let desired_style = cell.raw_style().resolve(theme);
-                if desired_style != active_style {
-                    if !active_style.is_plain() {
-                        out.push_str("</span>")?;
+            visit_primary_cells(&self.cells[row_start..row_end], |cell| {
+                if let Some(text) = cell.try_output_text(&self.arena)? {
+                    let desired_style = cell.raw_style().resolve(theme);
+                    if desired_style != active_style {
+                        if !active_style.is_plain() {
+                            out.push_str("</span>")?;
+                        }
+                        if !desired_style.is_plain() {
+                            push_html_span_start(&mut out, desired_style)?;
+                        }
+                        active_style = desired_style;
                     }
-                    if !desired_style.is_plain() {
-                        push_html_span_start(&mut out, desired_style)?;
-                    }
-                    active_style = desired_style;
+                    push_html_escaped_text(&mut out, text)?;
                 }
-                push_html_escaped_text(&mut out, text)?;
-            }
+                Ok(())
+            })?;
             if !active_style.is_plain() {
                 out.push_str("</span>")?;
             }
@@ -792,12 +794,12 @@ fn encode_styled_line_plain(
     line: &crate::text::StyledLine,
     row_end: usize,
 ) -> crate::Result<()> {
-    for cell in &line.surface_cells()[..row_end] {
+    visit_primary_cells(&line.surface_cells()[..row_end], |cell| {
         if let Some(text) = cell.try_output_text(line.surface_arena())? {
             push_terminal_text(output, text)?;
         }
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
 fn encode_styled_line_ansi(
@@ -808,22 +810,22 @@ fn encode_styled_line_ansi(
     mode: AsciiColorMode,
 ) -> crate::Result<()> {
     let mut active_style = ResolvedCanvasStyle::default();
-    for cell in &line.surface_cells()[..row_end] {
-        let Some(text) = cell.try_output_text(line.surface_arena())? else {
-            continue;
-        };
-        let desired_style = cell.raw_style().resolve(theme);
-        if desired_style != active_style {
-            if !active_style.is_plain() {
-                output.push_str("\u{1b}[0m")?;
+    visit_primary_cells(&line.surface_cells()[..row_end], |cell| {
+        if let Some(text) = cell.try_output_text(line.surface_arena())? {
+            let desired_style = cell.raw_style().resolve(theme);
+            if desired_style != active_style {
+                if !active_style.is_plain() {
+                    output.push_str("\u{1b}[0m")?;
+                }
+                if !desired_style.is_plain() {
+                    push_ansi_start(output, mode, desired_style)?;
+                }
+                active_style = desired_style;
             }
-            if !desired_style.is_plain() {
-                push_ansi_start(output, mode, desired_style)?;
-            }
-            active_style = desired_style;
+            push_terminal_text(output, text)?;
         }
-        push_terminal_text(output, text)?;
-    }
+        Ok(())
+    })?;
     if !active_style.is_plain() {
         output.push_str("\u{1b}[0m")?;
     }
@@ -837,25 +839,46 @@ fn encode_styled_line_html(
     theme: AsciiColorTheme,
 ) -> crate::Result<()> {
     let mut active_style = ResolvedCanvasStyle::default();
-    for cell in &line.surface_cells()[..row_end] {
-        let Some(text) = cell.try_output_text(line.surface_arena())? else {
-            continue;
-        };
-        let desired_style = cell.raw_style().resolve(theme);
-        if desired_style != active_style {
-            if !active_style.is_plain() {
-                output.push_str("</span>")?;
+    visit_primary_cells(&line.surface_cells()[..row_end], |cell| {
+        if let Some(text) = cell.try_output_text(line.surface_arena())? {
+            let desired_style = cell.raw_style().resolve(theme);
+            if desired_style != active_style {
+                if !active_style.is_plain() {
+                    output.push_str("</span>")?;
+                }
+                if !desired_style.is_plain() {
+                    push_html_span_start(output, desired_style)?;
+                }
+                active_style = desired_style;
             }
-            if !desired_style.is_plain() {
-                push_html_span_start(output, desired_style)?;
-            }
-            active_style = desired_style;
+            push_html_escaped_text(output, text)?;
         }
-        push_html_escaped_text(output, text)?;
-    }
+        Ok(())
+    })?;
     if !active_style.is_plain() {
         output.push_str("</span>")?;
     }
+    Ok(())
+}
+
+fn visit_primary_cells(
+    cells: &[TerminalCell],
+    mut visit: impl FnMut(TerminalCell) -> crate::Result<()>,
+) -> crate::Result<()> {
+    let mut offset = 0usize;
+    while let Some(cell) = cells.get(offset).copied() {
+        let width = cell
+            .primary_width_hint()
+            .ok_or_else(|| {
+                crate::AsciiError::allocation_failed(AsciiResourceLimitPhase::Document.as_str())
+            })?
+            .max(1);
+        visit(cell)?;
+        offset = offset.checked_add(width).ok_or_else(|| {
+            crate::AsciiError::allocation_failed(AsciiResourceLimitPhase::Document.as_str())
+        })?;
+    }
+    debug_assert_eq!(offset, cells.len());
     Ok(())
 }
 

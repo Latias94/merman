@@ -283,25 +283,42 @@ fn current_primary_width(cells: &[LegacyScalarCell], index: usize) -> usize {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PackedGlyph {
-    Scalar(char),
-    Arena(u32),
+    Scalar(char, u8),
+    Arena(u32, u8),
     Continuation(u32),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PackedGlyphView {
-    Scalar(char),
-    Arena(u32),
+    Scalar(char, u8),
+    Arena(u32, u8),
     Continuation(u32),
 }
 
 impl PackedGlyph {
     fn scalar(ch: char) -> Self {
-        Self::Scalar(ch)
+        Self::Scalar(ch, 1)
     }
 
     fn arena(id: u32) -> Self {
-        Self::Arena(id)
+        Self::Arena(id, 1)
+    }
+
+    fn with_primary_width(self, width: usize) -> Self {
+        let width = u8::try_from(width).expect("terminal grapheme width fits u8");
+        assert!(width > 0);
+        match self {
+            Self::Scalar(ch, _) => Self::Scalar(ch, width),
+            Self::Arena(id, _) => Self::Arena(id, width),
+            Self::Continuation(_) => panic!("continuations cannot own a primary width"),
+        }
+    }
+
+    fn primary_width(self) -> Option<usize> {
+        match self {
+            Self::Scalar(_, width) | Self::Arena(_, width) => Some(width as usize),
+            Self::Continuation(_) => None,
+        }
     }
 
     fn continuation(owner_back: usize) -> Self {
@@ -313,15 +330,15 @@ impl PackedGlyph {
 
     fn view(self) -> PackedGlyphView {
         match self {
-            Self::Scalar(ch) => PackedGlyphView::Scalar(ch),
-            Self::Arena(id) => PackedGlyphView::Arena(id),
+            Self::Scalar(ch, width) => PackedGlyphView::Scalar(ch, width),
+            Self::Arena(id, width) => PackedGlyphView::Arena(id, width),
             Self::Continuation(owner_back) => PackedGlyphView::Continuation(owner_back),
         }
     }
 
     fn remap_arena(self, remap: &[u32]) -> Self {
         match self.view() {
-            PackedGlyphView::Arena(id) => Self::arena(remap[id as usize]),
+            PackedGlyphView::Arena(id, width) => Self::Arena(remap[id as usize], width),
             _ => self,
         }
     }
@@ -358,21 +375,25 @@ impl PackedCell {
 }
 
 fn push_packed(cells: &mut Vec<PackedCell>, glyph: PackedGlyph, width: usize) {
-    cells.push(PackedCell::primary(glyph, CanvasStyle::default()));
+    cells.push(PackedCell::primary(
+        glyph.with_primary_width(width),
+        CanvasStyle::default(),
+    ));
     for owner_back in 1..width {
         cells.push(PackedCell::continuation(owner_back));
     }
 }
 
 fn packed_primary_width(cells: &[PackedCell], index: usize) -> usize {
-    let mut width = 1;
-    while let Some(cell) = cells.get(index + width) {
-        let PackedGlyphView::Continuation(owner_back) = cell.glyph.view() else {
-            break;
-        };
-        debug_assert_eq!(owner_back as usize, width);
-        width += 1;
-    }
+    let Some(width) = cells.get(index).and_then(|cell| cell.glyph.primary_width()) else {
+        return 0;
+    };
+    debug_assert!((1..width).all(
+        |offset| cells.get(index + offset).is_some_and(|cell| matches!(
+            cell.glyph.view(),
+            PackedGlyphView::Continuation(owner_back) if owner_back as usize == offset
+        ))
+    ));
     width
 }
 
@@ -397,11 +418,20 @@ fn mirror_packed_cells(cells: &[PackedCell]) -> Vec<PackedCell> {
 
 fn finalize_packed(cells: &[PackedCell], arena: &[Arc<str>], output_bytes: usize) -> String {
     let mut output = String::with_capacity(output_bytes);
-    for cell in cells {
+    let mut index = 0usize;
+    while let Some(cell) = cells.get(index) {
         match cell.glyph {
-            PackedGlyph::Scalar(ch) => output.push(ch),
-            PackedGlyph::Arena(id) => output.push_str(&arena[id as usize]),
-            PackedGlyph::Continuation(_) => {}
+            PackedGlyph::Scalar(ch, width) => {
+                output.push(ch);
+                index += width as usize;
+            }
+            PackedGlyph::Arena(id, width) => {
+                output.push_str(&arena[id as usize]);
+                index += width as usize;
+            }
+            PackedGlyph::Continuation(_) => {
+                unreachable!("primary-run iteration skips continuations")
+            }
         }
     }
     output
@@ -462,11 +492,20 @@ impl PrototypeSurface for CompactArenaSurface {
     fn finalize(&self) -> String {
         let text = self.text.as_deref().map(String::as_str).unwrap_or("");
         let mut output = String::with_capacity(self.output_bytes);
-        for cell in &self.cells {
+        let mut index = 0usize;
+        while let Some(cell) = self.cells.get(index) {
             match cell.glyph {
-                PackedGlyph::Scalar(ch) => output.push(ch),
-                PackedGlyph::Arena(id) => output.push_str(self.entries[id as usize].get(text)),
-                PackedGlyph::Continuation(_) => {}
+                PackedGlyph::Scalar(ch, width) => {
+                    output.push(ch);
+                    index += width as usize;
+                }
+                PackedGlyph::Arena(id, width) => {
+                    output.push_str(self.entries[id as usize].get(text));
+                    index += width as usize;
+                }
+                PackedGlyph::Continuation(_) => {
+                    unreachable!("primary-run iteration skips continuations")
+                }
             }
         }
         output
