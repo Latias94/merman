@@ -2267,6 +2267,7 @@ name = "merman-ascii"
 version = "0.8.0-alpha.4"
 dependencies = [
  "criterion",
+ "dugong",
  "merman-core",
  "thiserror 2.0.19",
  "unicode-segmentation",

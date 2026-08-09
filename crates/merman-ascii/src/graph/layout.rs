@@ -9,8 +9,6 @@ use std::collections::HashMap;
 mod grid;
 mod groups;
 
-pub(crate) use self::grid::reserve_grid_spot;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct GraphLayout {
     pub(super) nodes: Vec<NodeLayout>,
@@ -198,14 +196,15 @@ fn check_graph_nesting_depth(
 }
 
 fn charge_graph_layout_work(graph: &AsciiGraph, resources: &mut ResourceContext) -> Result<()> {
+    // Charge caller-owned graph projection once. Dagre ranking now meters its own adjacency,
+    // cycle-breaking, nesting, and ranker work through the shared ResourceContext, so the former
+    // coarse `nodes × edges` surcharge would double-count real work and reject sparse large graphs
+    // before the source-backed algorithm can apply its bounded tranche accounting.
     let graph_items = resources.checked_work_add(
         resources.checked_work_add(graph.nodes.len(), graph.edges.len())?,
         graph.groups.len(),
     )?;
     resources.charge_layout_work(graph_items)?;
-
-    let adjacency_scans = resources.checked_work_mul(graph.nodes.len(), graph.edges.len())?;
-    resources.charge_layout_work(adjacency_scans)?;
 
     let group_scan_width = resources.checked_work_add(
         resources.checked_work_add(graph.nodes.len(), graph.edges.len())?,
@@ -227,7 +226,7 @@ pub(super) fn layout_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::model::GraphDirection;
+    use crate::graph::model::{GraphDirection, GraphEdgeAttrs, GraphEdgeStroke, GraphGroupStyle};
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_core::resources::ResourceProfile;
 
@@ -309,5 +308,276 @@ mod tests {
         assert_eq!(details.actual, minimum_cells);
         assert_eq!(details.max, minimum_cells - 1);
         assert_eq!(below_resources.layout_work_used(), 0);
+    }
+
+    fn node_grid(layout: &GraphLayout, id: &str) -> GridCoord {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .map(|node| node.grid)
+            .unwrap_or_else(|| panic!("missing layout node {id}"))
+    }
+
+    #[test]
+    fn dagre_ranks_out_of_order_chain_by_connectivity_not_declaration_order() {
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        graph.add_node("c", "C");
+        graph.add_node("b", "B");
+        graph.add_node("a", "A");
+        graph.add_edge("a", "b");
+        graph.add_edge("b", "c");
+
+        let layout = layout_graph(&graph, &AsciiRenderOptions::unicode());
+        let a = node_grid(&layout, "a");
+        let b = node_grid(&layout, "b");
+        let c = node_grid(&layout, "c");
+
+        assert!(a.y < b.y, "A must rank before B: {a:?} vs {b:?}");
+        assert!(b.y < c.y, "B must rank before C: {b:?} vs {c:?}");
+    }
+
+    #[test]
+    fn dagre_rank_plan_honors_terminal_edge_minlen_on_both_axes() {
+        fn physical_span(direction: GraphDirection, length: usize) -> usize {
+            let mut graph = AsciiGraph::new(direction);
+            graph.add_node("a", "A");
+            graph.add_node("b", "B");
+            graph.add_edge_with_attrs(
+                "a",
+                "b",
+                GraphEdgeAttrs {
+                    length,
+                    ..GraphEdgeAttrs::default()
+                },
+            );
+            let layout = layout_graph(&graph, &AsciiRenderOptions::unicode());
+            let a = layout.nodes.iter().find(|node| node.id == "a").unwrap();
+            let b = layout.nodes.iter().find(|node| node.id == "b").unwrap();
+            match direction.canonical() {
+                GraphDirection::LeftRight => b.x - a.x,
+                GraphDirection::TopDown => b.y - a.y,
+                GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
+            }
+        }
+
+        for direction in [
+            GraphDirection::LeftRight,
+            GraphDirection::RightLeft,
+            GraphDirection::TopDown,
+            GraphDirection::BottomTop,
+        ] {
+            assert!(
+                physical_span(direction, 3) > physical_span(direction, 1),
+                "edge minlen must expand the canonical terminal axis for {direction:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn dagre_rank_plan_honors_minlen_inside_perpendicular_group_direction_overrides() {
+        fn physical_span(
+            graph_direction: GraphDirection,
+            group_direction: GraphDirection,
+            length: usize,
+        ) -> usize {
+            let mut graph = AsciiGraph::new(graph_direction);
+            graph.add_node("a", "A");
+            graph.add_node("b", "B");
+            graph.add_group_with_style(
+                "group",
+                "Group",
+                Some(group_direction),
+                vec!["a".to_string(), "b".to_string()],
+                GraphGroupStyle::default(),
+            );
+            graph.add_edge_with_attrs(
+                "a",
+                "b",
+                GraphEdgeAttrs {
+                    length,
+                    ..GraphEdgeAttrs::default()
+                },
+            );
+            let layout = layout_graph(&graph, &AsciiRenderOptions::unicode());
+            let a = layout.nodes.iter().find(|node| node.id == "a").unwrap();
+            let b = layout.nodes.iter().find(|node| node.id == "b").unwrap();
+            match group_direction.canonical() {
+                GraphDirection::LeftRight => b.x - a.x,
+                GraphDirection::TopDown => b.y - a.y,
+                GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
+            }
+        }
+
+        for (graph_direction, group_direction) in [
+            (GraphDirection::TopDown, GraphDirection::LeftRight),
+            (GraphDirection::LeftRight, GraphDirection::TopDown),
+        ] {
+            assert!(
+                physical_span(graph_direction, group_direction, 3)
+                    > physical_span(graph_direction, group_direction, 1),
+                "local {group_direction:?} minlen must survive global {graph_direction:?} layout"
+            );
+        }
+    }
+
+    #[test]
+    fn dagre_ranks_are_invariant_to_equivalent_edge_permutations() {
+        fn graph_with_edges(edges: &[(&str, &str)]) -> AsciiGraph {
+            let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+            for id in ["a", "b", "c", "d"] {
+                graph.add_node(id, id.to_uppercase());
+            }
+            for (from, to) in edges {
+                graph.add_edge(*from, *to);
+            }
+            graph
+        }
+
+        fn ranks(graph: &AsciiGraph) -> Vec<(String, usize)> {
+            let layout = layout_graph(graph, &AsciiRenderOptions::unicode());
+            let mut ranks = layout
+                .nodes
+                .into_iter()
+                .map(|node| (node.id, node.grid.y))
+                .collect::<Vec<_>>();
+            ranks.sort_by(|left, right| left.0.cmp(&right.0));
+            ranks
+        }
+
+        let first = graph_with_edges(&[("a", "b"), ("a", "c"), ("b", "d"), ("c", "d")]);
+        let second = graph_with_edges(&[("c", "d"), ("a", "c"), ("b", "d"), ("a", "b")]);
+
+        assert_eq!(ranks(&first), ranks(&second));
+    }
+
+    #[test]
+    fn dagre_cycle_breaking_is_stable_and_keeps_original_nodes_ranked() {
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        for id in ["a", "b", "c"] {
+            graph.add_node(id, id.to_uppercase());
+        }
+        graph.add_edge("a", "b");
+        graph.add_edge("b", "c");
+        graph.add_edge("c", "a");
+
+        let first = layout_graph(&graph, &AsciiRenderOptions::unicode());
+        let second = layout_graph(&graph, &AsciiRenderOptions::unicode());
+        let first_grids = first
+            .nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node.grid))
+            .collect::<Vec<_>>();
+        let second_grids = second
+            .nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node.grid))
+            .collect::<Vec<_>>();
+
+        assert_eq!(first_grids, second_grids);
+        assert!(first.nodes.iter().any(|node| node.grid.y > 0));
+    }
+
+    #[test]
+    fn dagre_cycle_feedback_edge_minlen_survives_restored_terminal_direction() {
+        fn physical_span(feedback_length: usize) -> usize {
+            let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+            for id in ["a", "b", "c"] {
+                graph.add_node(id, id.to_uppercase());
+            }
+            graph.add_edge("a", "b");
+            graph.add_edge("b", "c");
+            graph.add_edge_with_attrs(
+                "c",
+                "a",
+                GraphEdgeAttrs {
+                    length: feedback_length,
+                    ..GraphEdgeAttrs::default()
+                },
+            );
+
+            let layout = layout_graph(&graph, &AsciiRenderOptions::unicode());
+            let min_x = layout.nodes.iter().map(|node| node.x).min().unwrap();
+            let max_x = layout.nodes.iter().map(|node| node.x).max().unwrap();
+            max_x - min_x
+        }
+
+        assert!(physical_span(5) > physical_span(1));
+    }
+
+    #[test]
+    fn dagre_rank_projection_keeps_invisible_edges_as_constraints() {
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        graph.add_node("a", "A");
+        graph.add_node("b", "B");
+        graph.add_edge_with_attrs(
+            "a",
+            "b",
+            GraphEdgeAttrs {
+                stroke: GraphEdgeStroke::Invisible,
+                ..GraphEdgeAttrs::default()
+            },
+        );
+
+        let layout = layout_graph(&graph, &AsciiRenderOptions::unicode());
+        assert!(node_grid(&layout, "a").y < node_grid(&layout, "b").y);
+    }
+
+    #[test]
+    fn dagre_ranks_map_to_the_canonical_axis_before_surface_mirroring() {
+        for direction in [GraphDirection::LeftRight, GraphDirection::RightLeft] {
+            let mut graph = AsciiGraph::new(direction);
+            graph.add_node("a", "A");
+            graph.add_node("b", "B");
+            graph.add_edge("a", "b");
+            let layout = layout_graph(&graph, &AsciiRenderOptions::unicode());
+            assert!(node_grid(&layout, "a").x < node_grid(&layout, "b").x);
+        }
+        for direction in [GraphDirection::TopDown, GraphDirection::BottomTop] {
+            let mut graph = AsciiGraph::new(direction);
+            graph.add_node("a", "A");
+            graph.add_node("b", "B");
+            graph.add_edge("a", "b");
+            let layout = layout_graph(&graph, &AsciiRenderOptions::unicode());
+            assert!(node_grid(&layout, "a").y < node_grid(&layout, "b").y);
+        }
+    }
+
+    #[test]
+    fn dagre_rank_work_uses_the_shared_exact_layout_budget() {
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        for id in ["a", "b", "c", "d"] {
+            graph.add_node(id, id.to_uppercase());
+        }
+        graph.add_edge("a", "b");
+        graph.add_edge("a", "c");
+        graph.add_edge("b", "d");
+        graph.add_edge("c", "d");
+        let options = AsciiRenderOptions::unicode();
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let mut measured_resources = ResourceContext::new(unbounded);
+        layout_graph_with_resources(&graph, &options, &mut measured_resources)
+            .expect("unbounded rank layout should succeed");
+        let exact_work = measured_resources.layout_work_used();
+
+        let exact_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
+            .expect("measured exact work should be a valid limit");
+        let mut exact_resources = ResourceContext::new(exact_policy);
+        layout_graph_with_resources(&graph, &options, &mut exact_resources)
+            .expect("the exact shared Dagre rank budget should pass");
+        assert_eq!(exact_resources.layout_work_used(), exact_work);
+
+        let below_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
+            .expect("max-minus-one work should be a valid limit");
+        let mut below_resources = ResourceContext::new(below_policy);
+        let error = layout_graph_with_resources(&graph, &options, &mut below_resources)
+            .expect_err("max-minus-one Dagre rank budget should fail");
+        let crate::AsciiError::ResourceLimitExceeded(details) = error else {
+            panic!("expected a layout-work resource error, got {error:?}");
+        };
+        assert_eq!(details.limit, AsciiResourceLimitId::MaxLayoutWorkUnits);
+        assert_eq!(details.max, exact_work - 1);
     }
 }

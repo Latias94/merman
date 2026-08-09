@@ -7,7 +7,7 @@ use super::{GridCoord, GroupLayout, NodeLayout};
 use crate::error::Result;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
 mod bounds;
 
@@ -66,13 +66,6 @@ fn apply_subgraph_direction_overrides(
         }
 
         let override_graph = build_group_override_graph(graph, &members, resources)?;
-        resources.charge_layout_work(override_graph.nodes.len())?;
-        let member_indices = (0..override_graph.nodes.len()).collect::<Vec<_>>();
-        resources.charge_layout_work(member_indices.len())?;
-        let root_indices = group_root_indices(&override_graph, &member_indices);
-        if root_indices.is_empty() {
-            continue;
-        }
 
         let mut start_x = None::<usize>;
         let mut start_y = None::<usize>;
@@ -86,13 +79,7 @@ fn apply_subgraph_direction_overrides(
         let start_x = start_x.unwrap_or_default();
         let start_y = start_y.unwrap_or_default();
 
-        let local = place_group_nodes(
-            &override_graph,
-            &member_indices,
-            &root_indices,
-            direction,
-            resources,
-        )?;
+        let local = place_group_nodes(&override_graph, direction, resources)?;
         for (member_index, coord) in local {
             let Some(member) = members.get(member_index) else {
                 continue;
@@ -592,12 +579,6 @@ fn build_group_override_graph(
         }
     }
 
-    let mut seen_edges = HashSet::<(usize, usize)>::new();
-    seen_edges.try_reserve(graph.edges.len()).map_err(|_| {
-        crate::error::AsciiError::AllocationFailed {
-            phase: crate::resource::AsciiResourceLimitPhase::LayoutWork.as_str(),
-        }
-    })?;
     override_graph
         .edges
         .try_reserve(graph.edges.len())
@@ -615,21 +596,18 @@ fn build_group_override_graph(
         if from_member_index == to_member_index {
             continue;
         }
-        if !seen_edges.insert((from_member_index, to_member_index)) {
-            continue;
-        }
         let from = override_graph.nodes[from_member_index].id.clone();
         let to = override_graph.nodes[to_member_index].id.clone();
         override_graph.edges.push(AsciiGraphEdge {
-            id: None,
-            is_user_defined_id: false,
+            id: edge.id.clone(),
+            is_user_defined_id: edge.is_user_defined_id,
             from,
             to,
             label: None,
             stroke: GraphEdgeStroke::Normal,
             start_marker: GraphEdgeMarker::Open,
             end_marker: GraphEdgeMarker::Point,
-            length: 1,
+            length: edge.length,
             style: GraphEdgeStyle::default(),
         });
     }
@@ -804,199 +782,23 @@ fn shift_member_indices_x(
     Ok(())
 }
 
-fn group_root_indices(graph: &AsciiGraph, member_indices: &[usize]) -> Vec<usize> {
-    let member_ids = member_indices
-        .iter()
-        .filter_map(|index| graph.nodes.get(*index))
-        .map(|node| node.id.as_str())
-        .collect::<HashSet<_>>();
-
-    member_indices
-        .iter()
-        .copied()
-        .filter(|index| {
-            let Some(node) = graph.nodes.get(*index) else {
-                return false;
-            };
-            !graph
-                .edges
-                .iter()
-                .any(|edge| edge.to == node.id && member_ids.contains(edge.from.as_str()))
-        })
-        .collect()
-}
-
 fn place_group_nodes(
     graph: &AsciiGraph,
-    member_indices: &[usize],
-    root_indices: &[usize],
     direction: GraphDirection,
     resources: &mut ResourceContext,
 ) -> Result<HashMap<usize, GridCoord>> {
-    resources.charge_layout_work(member_indices.len())?;
-    let member_ids = member_indices
-        .iter()
-        .filter_map(|index| graph.nodes.get(*index))
-        .map(|node| node.id.as_str())
-        .collect::<HashSet<_>>();
-    let index_by_id = graph
-        .nodes
-        .iter()
-        .enumerate()
-        .map(|(index, node)| (node.id.as_str(), index))
-        .collect::<HashMap<_, _>>();
+    let ranked = super::grid::place_ranked_grid_nodes_without_group_adjustments(
+        graph, direction, resources,
+    )?;
     let mut placements = HashMap::new();
-    placements.try_reserve(member_indices.len()).map_err(|_| {
+    placements.try_reserve(ranked.len()).map_err(|_| {
         crate::error::AsciiError::AllocationFailed {
             phase: crate::resource::AsciiResourceLimitPhase::LayoutWork.as_str(),
         }
     })?;
-    let mut occupied = HashSet::new();
-    let occupied_capacity = member_indices.len().checked_mul(9).ok_or_else(|| {
-        resources
-            .policy()
-            .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
-    })?;
-    occupied.try_reserve(occupied_capacity).map_err(|_| {
-        crate::error::AsciiError::AllocationFailed {
-            phase: crate::resource::AsciiResourceLimitPhase::LayoutWork.as_str(),
-        }
-    })?;
-    let mut highest_position_per_level = BTreeMap::<usize, usize>::new();
-    let mut visit_order = Vec::new();
-    visit_order.try_reserve(member_indices.len()).map_err(|_| {
-        crate::error::AsciiError::AllocationFailed {
-            phase: crate::resource::AsciiResourceLimitPhase::LayoutWork.as_str(),
-        }
-    })?;
-    let mut cursor = 0usize;
-
-    for root_index in root_indices {
-        place_group_node(
-            *root_index,
-            0,
-            direction,
-            &mut placements,
-            &mut occupied,
-            &mut highest_position_per_level,
-            resources,
-        )?;
-        visit_order.push(*root_index);
-    }
-
-    {
-        let mut visit_state = GroupVisitState {
-            placements: &mut placements,
-            occupied: &mut occupied,
-            highest_position_per_level: &mut highest_position_per_level,
-            visit_order: &mut visit_order,
-            cursor: &mut cursor,
-        };
-        process_group_visit_order(
-            graph,
-            &member_ids,
-            &index_by_id,
-            direction,
-            &mut visit_state,
-            resources,
-        )?;
-    }
-
-    let remaining_members = member_indices
-        .iter()
-        .copied()
-        .filter(|index| !placements.contains_key(index))
-        .collect::<Vec<_>>();
-    if !remaining_members.is_empty() {
-        for node_index in remaining_members {
-            place_group_node(
-                node_index,
-                0,
-                direction,
-                &mut placements,
-                &mut occupied,
-                &mut highest_position_per_level,
-                resources,
-            )?;
-            visit_order.push(node_index);
-        }
-        let mut visit_state = GroupVisitState {
-            placements: &mut placements,
-            occupied: &mut occupied,
-            highest_position_per_level: &mut highest_position_per_level,
-            visit_order: &mut visit_order,
-            cursor: &mut cursor,
-        };
-        process_group_visit_order(
-            graph,
-            &member_ids,
-            &index_by_id,
-            direction,
-            &mut visit_state,
-            resources,
-        )?;
-    }
+    placements.extend(ranked.into_iter().enumerate());
 
     Ok(placements)
-}
-
-struct GroupVisitState<'a> {
-    placements: &'a mut HashMap<usize, GridCoord>,
-    occupied: &'a mut HashSet<(usize, usize)>,
-    highest_position_per_level: &'a mut BTreeMap<usize, usize>,
-    visit_order: &'a mut Vec<usize>,
-    cursor: &'a mut usize,
-}
-
-fn process_group_visit_order<'a>(
-    graph: &'a AsciiGraph,
-    member_ids: &HashSet<&'a str>,
-    index_by_id: &HashMap<&'a str, usize>,
-    direction: GraphDirection,
-    state: &mut GroupVisitState<'_>,
-    resources: &mut ResourceContext,
-) -> Result<()> {
-    while *state.cursor < state.visit_order.len() {
-        let node_index = state.visit_order[*state.cursor];
-        *state.cursor = (*state.cursor).checked_add(1).ok_or_else(|| {
-            resources
-                .policy()
-                .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
-        })?;
-        resources.charge_layout_work(1)?;
-
-        let Some(parent_coord) = state.placements.get(&node_index).copied() else {
-            continue;
-        };
-        let child_level = match direction {
-            GraphDirection::LeftRight => resources.checked_grid_add(parent_coord.x, 4)?,
-            GraphDirection::TopDown => resources.checked_grid_add(parent_coord.y, 4)?,
-            GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
-        };
-        for child_index in graph
-            .edges
-            .iter()
-            .filter(|edge| {
-                graph.nodes[node_index].id == edge.from && member_ids.contains(edge.to.as_str())
-            })
-            .filter_map(|edge| index_by_id.get(edge.to.as_str()).copied())
-        {
-            if state.placements.contains_key(&child_index) {
-                continue;
-            }
-            place_group_node(
-                child_index,
-                child_level,
-                direction,
-                state.placements,
-                state.occupied,
-                state.highest_position_per_level,
-                resources,
-            )?;
-            state.visit_order.push(child_index);
-        }
-    }
-    Ok(())
 }
 
 fn shift_external_nodes_away_from_group(
@@ -1086,53 +888,6 @@ fn raw_bounds_intersects(left: RawBounds, right: RawBounds) -> bool {
         || right.right < left.x
         || left.bottom < right.y
         || right.bottom < left.y)
-}
-
-fn place_group_node(
-    node_index: usize,
-    level: usize,
-    direction: GraphDirection,
-    placements: &mut HashMap<usize, GridCoord>,
-    occupied: &mut HashSet<(usize, usize)>,
-    highest_position_per_level: &mut BTreeMap<usize, usize>,
-    resources: &ResourceContext,
-) -> Result<()> {
-    let requested = highest_position_per_level
-        .get(&level)
-        .copied()
-        .unwrap_or_default();
-    let coord = match direction {
-        GraphDirection::LeftRight => super::reserve_grid_spot(
-            occupied,
-            GridCoord {
-                x: level,
-                y: requested,
-            },
-            direction,
-            resources,
-        )?,
-        GraphDirection::TopDown => super::reserve_grid_spot(
-            occupied,
-            GridCoord {
-                x: requested,
-                y: level,
-            },
-            direction,
-            resources,
-        )?,
-        GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
-    };
-    placements.insert(node_index, coord);
-    match direction {
-        GraphDirection::LeftRight => {
-            highest_position_per_level.insert(level, resources.checked_grid_add(coord.y, 4)?);
-        }
-        GraphDirection::TopDown => {
-            highest_position_per_level.insert(level, resources.checked_grid_add(coord.x, 4)?);
-        }
-        GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
-    }
-    Ok(())
 }
 
 #[cfg(test)]
