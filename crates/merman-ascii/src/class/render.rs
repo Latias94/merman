@@ -368,12 +368,12 @@ pub(crate) fn render_class_diagram(
 
 fn has_renderable_namespaces(model: &ClassDiagram) -> bool {
     model.namespaces.values().any(|namespace| {
-        namespace.explicit
-            && (!namespace.class_ids.is_empty()
-                || !namespace.note_ids.is_empty()
-                || model.namespaces.values().any(|child| {
-                    child.parent.as_deref() == Some(namespace.id.as_str()) && child.explicit
-                }))
+        !namespace.class_ids.is_empty()
+            || !namespace.note_ids.is_empty()
+            || model
+                .namespaces
+                .values()
+                .any(|child| child.parent.as_deref() == Some(namespace.id.as_str()))
     })
 }
 
@@ -550,20 +550,18 @@ fn render_namespaced_class_boxes(
         .values()
         .filter(|namespace| namespace.parent.is_none())
     {
-        if namespace.explicit {
-            boxes.push(render_namespace_box(
-                &context,
-                namespace,
-                &mut rendered_namespace_ids,
-                &mut visiting_namespace_ids,
-                1,
-                resources,
-            )?);
-        }
+        boxes.push(render_namespace_box(
+            &context,
+            namespace,
+            &mut rendered_namespace_ids,
+            &mut visiting_namespace_ids,
+            1,
+            resources,
+        )?);
     }
 
     for namespace in model.namespaces.values() {
-        if namespace.explicit && !rendered_namespace_ids.contains(namespace.id.as_str()) {
+        if !rendered_namespace_ids.contains(namespace.id.as_str()) {
             boxes.push(render_namespace_box(
                 &context,
                 namespace,
@@ -629,10 +627,11 @@ fn render_namespace_box(
         .try_reserve_exact(child_capacity)
         .map_err(|_| layout_allocation_failed())?;
 
-    for child in
-        context.model.namespaces.values().filter(|child| {
-            child.parent.as_deref() == Some(namespace.id.as_str()) && child.explicit
-        })
+    for child in context
+        .model
+        .namespaces
+        .values()
+        .filter(|child| child.parent.as_deref() == Some(namespace.id.as_str()))
     {
         children.push(render_namespace_box(
             context,
@@ -1702,8 +1701,10 @@ fn is_same_endpoint_parallel_layout(layouts: &[RelationLayout<'_>]) -> bool {
 }
 
 fn render_parallel_vertical_relations(
+    boxes: &[RenderedClassBox],
     box_by_id: &RenderedClassBoxIndex<'_>,
     layouts: &[RelationLayout<'_>],
+    options: &AsciiRenderOptions,
     charset: ClassCharset,
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
@@ -1735,6 +1736,17 @@ fn render_parallel_vertical_relations(
         )?);
     }
     let plan = RelationParallelPlan::new(top, bottom, lanes, 2, resources)?;
+
+    if !plan.ports_fit(resources)? {
+        return relation_graph::render_relation_summary_component_lines(
+            boxes,
+            layouts,
+            options,
+            relation_graph::LayeredRelationSummaryReason::RouteCollision,
+            resources,
+            class_relation_summary_row,
+        );
+    }
 
     plan.render_lines(resources)
 }
@@ -2108,15 +2120,16 @@ impl<'relation, 'index, 'boxes> relation_graph::RelationComponentAdapter<Relatio
 
     fn render_parallel(
         &self,
-        _boxes: &[RenderedClassBox],
+        boxes: &[RenderedClassBox],
         layouts: &[RelationLayout<'relation>],
         options: &AsciiRenderOptions,
         resources: &mut ResourceContext,
     ) -> Result<Vec<RelationGraphLine>> {
-        let _ = options;
         render_parallel_vertical_relations(
+            boxes,
             self.box_by_id,
             layouts,
+            options,
             self.charset,
             self.width_profile,
             resources,

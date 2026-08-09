@@ -124,6 +124,7 @@ struct ErRelationComponentAdapter<'a> {
     charset: ErCharset,
     entity_labels: &'a HashMap<String, String>,
     width_profile: TerminalWidthProfile,
+    direction: ErDirection,
 }
 
 struct ErRelationLayout<'a> {
@@ -239,6 +240,7 @@ fn render_er_components(
         charset,
         entity_labels,
         width_profile: options.terminal_width_profile,
+        direction,
     };
     if direction.is_horizontal() {
         let lines = render_horizontal_er_component_lines(
@@ -516,8 +518,10 @@ fn is_same_endpoint_parallel_relationship(layouts: &[ErRelationLayout<'_>]) -> b
 fn render_parallel_vertical_relationships(
     boxes: &[RenderedEntityBox],
     layouts: &[ErRelationLayout<'_>],
+    options: &AsciiRenderOptions,
     charset: ErCharset,
     width_profile: TerminalWidthProfile,
+    entity_labels: &HashMap<String, String>,
     resources: &mut ResourceContext,
 ) -> Result<Vec<RelationGraphLine>> {
     let first = layouts.first().ok_or(AsciiError::UnsupportedFeature {
@@ -539,6 +543,17 @@ fn render_parallel_vertical_relationships(
         )?);
     }
     let plan = RelationParallelPlan::new(top, bottom, lanes, 2, resources)?;
+
+    if !plan.ports_fit(resources)? {
+        return relation_graph::render_relation_summary_component_lines(
+            boxes,
+            layouts,
+            options,
+            relation_graph::LayeredRelationSummaryReason::RouteCollision,
+            resources,
+            |layout| er_relationship_summary_row(layout, entity_labels, charset),
+        );
+    }
 
     plan.render_lines(resources)
 }
@@ -600,8 +615,13 @@ fn er_relationship_summary_row(
     charset: ErCharset,
 ) -> Result<RelationGraphSummaryRow> {
     let relationship = layout.relationship;
-    let left_cardinality = cardinality_marker(layout.top_cardinality, charset)?;
-    let right_cardinality = cardinality_marker(layout.bottom_cardinality, charset)?;
+    // Summary rows use Mermaid's horizontal, left-to-right token orientation;
+    // the routed renderer passes the physical port side explicitly, so mirror
+    // that mapping here instead of reusing vertical marker glyphs.
+    let left_cardinality =
+        horizontal_cardinality_marker(layout.top_cardinality, RelationPortSide::Right, charset)?;
+    let right_cardinality =
+        horizontal_cardinality_marker(layout.bottom_cardinality, RelationPortSide::Left, charset)?;
     let relation = er_relationship_summary_line(&relationship.rel_spec.rel_type, charset)?;
     Ok(RelationGraphSummaryRow::new(
         relationship_label(entity_labels, layout.top_id),
@@ -680,7 +700,13 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationLayout<'_>>
         layout: &ErRelationLayout<'_>,
         resources: &ResourceContext,
     ) -> Result<relation_graph::RelationSelfLoopRows> {
-        self_loop_rows_for_er_relationship(layout, self.charset, self.width_profile, resources)
+        self_loop_rows_for_er_relationship(
+            layout,
+            self.charset,
+            self.width_profile,
+            self.direction.is_horizontal(),
+            resources,
+        )
     }
 
     fn horizontal_relation_style(
@@ -806,8 +832,10 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationLayout<'_>>
         render_parallel_vertical_relationships(
             boxes,
             layouts,
+            options,
             self.charset,
             self.width_profile,
+            self.entity_labels,
             resources,
         )
     }
@@ -829,11 +857,29 @@ fn self_loop_rows_for_er_relationship(
     layout: &ErRelationLayout<'_>,
     charset: ErCharset,
     width_profile: TerminalWidthProfile,
+    horizontal: bool,
     resources: &ResourceContext,
 ) -> Result<relation_graph::RelationSelfLoopRows> {
     let relationship = layout.relationship;
-    let top_cardinality = cardinality_marker(layout.top_cardinality, charset)?;
-    let bottom_cardinality = cardinality_marker(layout.bottom_cardinality, charset)?;
+    let (top_cardinality, bottom_cardinality) = if horizontal {
+        (
+            horizontal_cardinality_marker(
+                layout.top_cardinality,
+                RelationPortSide::Right,
+                charset,
+            )?,
+            horizontal_cardinality_marker(
+                layout.bottom_cardinality,
+                RelationPortSide::Left,
+                charset,
+            )?,
+        )
+    } else {
+        (
+            cardinality_marker(layout.top_cardinality, charset)?,
+            cardinality_marker(layout.bottom_cardinality, charset)?,
+        )
+    };
     let top_marker = RelationGraphLine::try_with_role(
         top_cardinality,
         AsciiColorRole::EdgeArrow,

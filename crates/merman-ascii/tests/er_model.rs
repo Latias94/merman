@@ -664,10 +664,47 @@ fn er_parser_horizontal_parallel_self_relations_share_one_box() {
         1,
         "parallel ER self relations must share one entity box:\n{rendered}"
     );
-    for expected in ["children", "optional", "||", "o{", "o|", "|{"] {
+    for expected in ["children", "optional", "||", "o{", "|o", "|{"] {
         assert!(
             rendered.contains(expected),
             "parallel ER self relation must preserve {expected:?}:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn er_parser_horizontal_self_relation_mirrors_source_cardinality() {
+    let rendered = render_er(
+        "erDiagram\ndirection LR\nNODE }o--|| NODE : owns",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("horizontal ER self relation should render");
+
+    assert_eq!(rendered.matches("| NODE |").count(), 1, "{rendered}");
+    assert!(rendered.contains("}o"), "{rendered}");
+    assert!(rendered.contains("||"), "{rendered}");
+    assert!(rendered.contains("owns"), "{rendered}");
+}
+
+#[test]
+fn er_parser_horizontal_mixed_self_and_normal_relations_use_lossless_summary() {
+    let rendered = render_er(
+        concat!(
+            "erDiagram\n",
+            "direction LR\n",
+            "A ||--o{ A : self\n",
+            "A }o--|| B : next",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("mixed horizontal ER relations should remain recoverable");
+
+    assert_eq!(rendered.matches("| A |").count(), 1, "{rendered}");
+    assert_eq!(rendered.matches("| B |").count(), 1, "{rendered}");
+    for expected in ["relations:", "A ||--o{ A : self", "A }o--|| B : next"] {
+        assert!(
+            rendered.contains(expected),
+            "missing {expected:?}:\n{rendered}"
         );
     }
 }
@@ -905,108 +942,85 @@ fn er_parser_relationship_layouts_render_unrelated_entities_as_components() {
 }
 
 #[test]
-fn er_parser_parallel_relationship_layout_renders_each_lane() {
+fn er_parser_parallel_relationship_layout_uses_lossless_summary_when_ports_do_not_fit() {
     let rendered = render_er(
         "erDiagram\nA ||--|| B : owns\nA ||..o{ B : contains",
         &AsciiRenderOptions::ascii(),
     )
-    .expect("parallel ER relationships should render distinct lanes");
+    .expect("parallel ER relationships should preserve every relationship");
 
     assert_eq!(
         rendered,
         concat!(
-            "     +---+\n",
-            "     | A |\n",
-            "     +---+\n",
-            " ||      ||\n",
-            "owns  contains\n",
-            " |       :\n",
-            " ||      o{\n",
-            "     +---+\n",
-            "     | B |\n",
-            "     +---+\n",
+            "+---+\n| A |\n+---+\n\n",
+            "+---+\n| B |\n+---+\n\n",
+            "relations:\n",
+            "A ||--|| B : owns\n",
+            "A ||..o{ B : contains\n",
         )
     );
 }
 
 #[test]
-fn er_parser_bidirectional_relationship_layout_renders_reverse_lanes() {
+fn er_parser_bidirectional_relationship_layout_preserves_both_directions_in_summary() {
     let rendered = render_er(
         "erDiagram\nA ||--|| B : ab\nB ||--|| A : ba",
         &AsciiRenderOptions::ascii(),
     )
-    .expect("bidirectional ER relationships should render distinct lanes");
+    .expect("bidirectional ER relationships should remain recoverable");
 
     assert_eq!(
         rendered,
         concat!(
-            "   +---+\n",
-            "   | A |\n",
-            "   +---+\n",
-            " ||    ||\n",
-            " ab     |\n",
-            "  |    ba\n",
-            " ||    ||\n",
-            "   +---+\n",
-            "   | B |\n",
-            "   +---+\n",
+            "+---+\n| A |\n+---+\n\n",
+            "+---+\n| B |\n+---+\n\n",
+            "relations:\n",
+            "A ||--|| B : ab\n",
+            "B ||--|| A : ba\n",
         )
     );
 }
 
 #[test]
-fn er_parser_mixed_parallel_relationship_layout_renders_each_lane() {
+fn er_parser_mixed_parallel_relationship_layout_preserves_all_facts_in_summary() {
     let rendered = render_er(
         "erDiagram\nA ||--|| B : a\nA ||..o{ B : b\nA ||--|| C : c",
         &AsciiRenderOptions::ascii(),
     )
-    .expect("mixed parallel ER relationships should render every lane");
+    .expect("mixed parallel ER relationships should preserve every relationship");
 
     assert_eq!(
         rendered,
         concat!(
-            "        +---+\n",
-            "        | A |\n",
-            "        +---+\n",
-            "      || || ||\n",
-            "    a  |  b c:\n",
-            "  +----++.+++++\n",
-            " ||    o{    ||\n",
-            "   +---+    +---+\n",
-            "   | B |    | C |\n",
-            "   +---+    +---+\n",
+            "+---+\n| A |\n+---+\n\n",
+            "+---+\n| B |\n+---+\n\n",
+            "+---+\n| C |\n+---+\n\n",
+            "relations:\n",
+            "A ||--|| B : a\n",
+            "A ||..o{ B : b\n",
+            "A ||--|| C : c\n",
         )
     );
 }
 
 #[test]
-fn er_parser_spanning_level_relationship_layout_routes_around_intermediate_entity() {
+fn er_parser_spanning_level_relationship_layout_summarizes_invalid_outer_port() {
     let rendered = render_er(
         "erDiagram\nA ||--|| B : a\nB ||--|| C : b\nA ||--|| C : c",
         &AsciiRenderOptions::ascii(),
     )
-    .expect("spanning-level ER relationship should route around the intermediate entity");
+    .expect("spanning-level ER relationships should remain recoverable");
 
     assert_eq!(
         rendered,
         concat!(
-            "     +---+\n",
-            "     | A |\n",
-            "     +---+\n",
-            "      ||   ||\n",
-            "       a    c\n",
-            "       |    |\n",
-            "      ||    |\n",
-            "     +---+  |\n",
-            "     | B |  |\n",
-            "     +---+  |\n",
-            "      ||    |\n",
-            "       b    |\n",
-            "       |    |\n",
-            "      ||   ||\n",
-            "     +---+\n",
-            "     | C |\n",
-            "     +---+\n",
+            "+---+\n| A |\n+---+\n\n",
+            "+---+\n| B |\n+---+\n\n",
+            "+---+\n| C |\n+---+\n\n",
+            "relations:\n",
+            "A ||--|| B : a\n",
+            "B ||--|| C : b\n",
+            "A ||--|| C : c\n",
         )
     );
 }
@@ -1052,7 +1066,7 @@ PRODUCT {
 }
 
 #[test]
-fn er_parser_cyclic_relationship_layout_routes_reverse_spanning_edge() {
+fn er_parser_cyclic_relationship_layout_summarizes_disconnected_back_edge() {
     let rendered = render_er(
         "erDiagram\nA ||--|| B : owns\nB ||--|| C : owns\nC ||--|| A : owns",
         &AsciiRenderOptions::ascii(),
@@ -1062,25 +1076,36 @@ fn er_parser_cyclic_relationship_layout_routes_reverse_spanning_edge() {
     assert_eq!(
         rendered,
         concat!(
-            "     +---+\n",
-            "     | A |\n",
-            "     +---+\n",
-            "      ||   ||\n",
-            "     owns   |\n",
-            "       |    |\n",
-            "      ||    |\n",
-            "     +---+  |\n",
-            "     | B |  |\n",
-            "     +---+  |\n",
-            "      ||    |\n",
-            "     owns   |\n",
-            "       |  owns\n",
-            "      ||   ||\n",
-            "     +---+\n",
-            "     | C |\n",
-            "     +---+\n",
+            "+---+\n| A |\n+---+\n\n",
+            "+---+\n| B |\n+---+\n\n",
+            "+---+\n| C |\n+---+\n\n",
+            "relations:\n",
+            "A ||--|| B : owns\n",
+            "B ||--|| C : owns\n",
+            "C ||--|| A : owns\n",
         )
     );
+}
+
+#[test]
+fn er_parser_parallel_relationship_layout_keeps_diagram_when_ports_fit() {
+    let rendered = render_er(
+        concat!(
+            "erDiagram\n",
+            "VeryWideParent ||--|| VeryWideChild : p\n",
+            "VeryWideParent ||..o{ VeryWideChild : b",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("wide parallel ER relationships should keep distinct lanes");
+
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for marker in ["||", "o{"] {
+        assert!(rendered.contains(marker), "missing {marker:?}:\n{rendered}");
+    }
+    for label in ["p", "b"] {
+        assert!(rendered.contains(label), "missing {label:?}:\n{rendered}");
+    }
 }
 
 #[test]
@@ -1319,7 +1344,7 @@ fn er_parser_complex_styled_example_falls_back_to_readable_relation_summary() {
         "NODE",
         "relations:",
         "CAR  ||--o{ DRIVER",
-        "CAR  o{--|| PERSON",
+        "CAR  }o--|| PERSON",
         "NODE ||--o{ NODE",
         "Book ||--o{ PAGE",
         "insured for",
@@ -1359,8 +1384,8 @@ fn er_local_semantic_fixture_covers_routed_schema_with_attributes() {
         );
     }
     assert!(
-        !rendered.contains("relations:"),
-        "routed schema fixture should remain a routed grid, not a summary:\n{rendered}"
+        rendered.contains("relations:"),
+        "conflicting LINE_ITEM cardinalities should use the lossless summary:\n{rendered}"
     );
 }
 

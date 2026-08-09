@@ -60,6 +60,21 @@ fn strip_html_spans(input: &str) -> String {
             index += "</span>".len();
             continue;
         }
+        if rest.starts_with("&gt;") {
+            output.push('>');
+            index += "&gt;".len();
+            continue;
+        }
+        if rest.starts_with("&lt;") {
+            output.push('<');
+            index += "&lt;".len();
+            continue;
+        }
+        if rest.starts_with("&amp;") {
+            output.push('&');
+            index += "&amp;".len();
+            continue;
+        }
         let ch = rest
             .chars()
             .next()
@@ -206,24 +221,24 @@ fn class_color_html_wraps_parallel_relation_roles_without_changing_plain_text() 
     assert_eq!(
         strip_html_spans(&rendered),
         concat!(
-            " +--------+\n",
-            " | Animal |\n",
-            " +--------+\n",
-            "  ^      ^\n",
-            "parent  base\n",
-            "  |      |\n",
-            "   +-----+\n",
-            "   | Dog |\n",
-            "   +-----+\n",
+            "+--------+\n",
+            "| Animal |\n",
+            "+--------+\n",
+            "\n",
+            "+-----+\n",
+            "| Dog |\n",
+            "+-----+\n",
+            "\n",
+            "relations:\n",
+            "Animal <|-- Dog : parent\n",
+            "Animal <|-- Dog : base\n",
         )
     );
     for expected_fragment in [
         "<span style=\"color:#101010\">+--------+</span>",
         "<span style=\"color:#202020\">Animal</span>",
-        "<span style=\"color:#303030\">|</span>",
-        "<span style=\"color:#404040\">^</span>",
-        "<span style=\"color:#505050\">parent</span>",
-        "<span style=\"color:#505050\">base</span>",
+        "<span style=\"color:#505050\">Animal &lt;|-- Dog : parent</span>",
+        "<span style=\"color:#505050\">Animal &lt;|-- Dog : base</span>",
     ] {
         assert!(
             rendered.contains(expected_fragment),
@@ -483,6 +498,31 @@ fn class_parser_horizontal_parallel_self_relations_share_one_box() {
 }
 
 #[test]
+fn class_parser_horizontal_mixed_self_and_normal_relations_use_lossless_summary() {
+    let rendered = render_class(
+        concat!(
+            "classDiagram\n",
+            "direction LR\n",
+            "class A\n",
+            "class B\n",
+            "A --> A : self\n",
+            "A --> B : next",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("mixed horizontal class relations should remain recoverable");
+
+    assert_eq!(rendered.matches("| A |").count(), 1, "{rendered}");
+    assert_eq!(rendered.matches("| B |").count(), 1, "{rendered}");
+    for expected in ["relations:", "A --> A : self", "A --> B : next"] {
+        assert!(
+            rendered.contains(expected),
+            "missing {expected:?}:\n{rendered}"
+        );
+    }
+}
+
+#[test]
 fn class_parser_horizontal_direction_propagates_resource_errors() {
     let input = "classDiagram\ndirection LR\nclass A\nclass B\nA --> B";
 
@@ -602,50 +642,53 @@ fn class_parser_relationship_layouts_render_unrelated_classes_as_components() {
 }
 
 #[test]
-fn class_parser_parallel_relationship_layout_renders_each_lane() {
+fn class_parser_parallel_relationship_layout_uses_lossless_summary_when_ports_do_not_fit() {
     let rendered = render_class(
         "classDiagram\nclass Animal\nclass Dog\nAnimal <|-- Dog : parent\nAnimal <|-- Dog : base",
         &AsciiRenderOptions::ascii(),
     )
-    .expect("parallel class relationships should render distinct lanes");
+    .expect("parallel class relationships should preserve every relation");
 
     assert_eq!(
         rendered,
         concat!(
-            " +--------+\n",
-            " | Animal |\n",
-            " +--------+\n",
-            "  ^      ^\n",
-            "parent  base\n",
-            "  |      |\n",
-            "   +-----+\n",
-            "   | Dog |\n",
-            "   +-----+\n",
+            "+--------+\n",
+            "| Animal |\n",
+            "+--------+\n",
+            "\n",
+            "+-----+\n",
+            "| Dog |\n",
+            "+-----+\n",
+            "\n",
+            "relations:\n",
+            "Animal <|-- Dog : parent\n",
+            "Animal <|-- Dog : base\n",
         )
     );
 }
 
 #[test]
-fn class_parser_bidirectional_relationship_layout_renders_reverse_lanes() {
+fn class_parser_bidirectional_relationship_layout_preserves_both_directions_in_summary() {
     let rendered = render_class(
         "classDiagram\nclass A\nclass B\nA --> B : ab\nB --> A : ba",
         &AsciiRenderOptions::ascii(),
     )
-    .expect("bidirectional class relationships should render distinct lanes");
+    .expect("bidirectional class relationships should remain recoverable");
 
     assert_eq!(
         rendered,
         concat!(
-            "   +---+\n",
-            "   | A |\n",
-            "   +---+\n",
-            "  |     v\n",
-            " ab     |\n",
-            "  |    ba\n",
-            "  v     |\n",
-            "   +---+\n",
-            "   | B |\n",
-            "   +---+\n",
+            "+---+\n",
+            "| A |\n",
+            "+---+\n",
+            "\n",
+            "+---+\n",
+            "| B |\n",
+            "+---+\n",
+            "\n",
+            "relations:\n",
+            "A --> B : ab\n",
+            "B --> A : ba\n",
         )
     );
 }
@@ -675,37 +718,29 @@ fn class_parser_mixed_parallel_relationship_layout_renders_each_lane() {
 }
 
 #[test]
-fn class_parser_spanning_level_relationship_layout_routes_around_intermediate_box() {
+fn class_parser_spanning_level_relationship_layout_summarizes_invalid_outer_port() {
     let rendered = render_class(
         "classDiagram\nclass A\nclass B\nclass C\nA <|-- B\nB <|-- C\nA <|-- C",
         &AsciiRenderOptions::ascii(),
     )
-    .expect("spanning-level class relationship should route around the intermediate box");
+    .expect("spanning-level class relationships should remain recoverable");
 
     assert_eq!(
         rendered,
         concat!(
-            "     +---+\n",
-            "     | A |\n",
-            "     +---+\n",
-            "       ^    ^\n",
-            "       |    |\n",
-            "       |    |\n",
-            "     +---+  |\n",
-            "     | B |  |\n",
-            "     +---+  |\n",
-            "       ^    |\n",
-            "       |    |\n",
-            "       |    |\n",
-            "     +---+\n",
-            "     | C |\n",
-            "     +---+\n",
+            "+---+\n| A |\n+---+\n\n",
+            "+---+\n| B |\n+---+\n\n",
+            "+---+\n| C |\n+---+\n\n",
+            "relations:\n",
+            "A <|-- B\n",
+            "B <|-- C\n",
+            "A <|-- C\n",
         )
     );
 }
 
 #[test]
-fn class_parser_cyclic_relationship_layout_routes_reverse_spanning_edge() {
+fn class_parser_cyclic_relationship_layout_summarizes_disconnected_back_edge() {
     let rendered = render_class(
         "classDiagram\nclass A\nclass B\nclass C\nA --> B : ab\nB --> C : bc\nC --> A : ca",
         &AsciiRenderOptions::ascii(),
@@ -715,25 +750,36 @@ fn class_parser_cyclic_relationship_layout_routes_reverse_spanning_edge() {
     assert_eq!(
         rendered,
         concat!(
-            "     +---+\n",
-            "     | A |\n",
-            "     +---+\n",
-            "       |    v\n",
-            "      ab    |\n",
-            "       |    |\n",
-            "       v    |\n",
-            "     +---+  |\n",
-            "     | B |  |\n",
-            "     +---+  |\n",
-            "       |    |\n",
-            "      bc    |\n",
-            "       |   ca\n",
-            "       v    |\n",
-            "     +---+\n",
-            "     | C |\n",
-            "     +---+\n",
+            "+---+\n| A |\n+---+\n\n",
+            "+---+\n| B |\n+---+\n\n",
+            "+---+\n| C |\n+---+\n\n",
+            "relations:\n",
+            "A --> B : ab\n",
+            "B --> C : bc\n",
+            "C --> A : ca\n",
         )
     );
+}
+
+#[test]
+fn class_parser_parallel_relationship_layout_keeps_diagram_when_ports_fit() {
+    let rendered = render_class(
+        concat!(
+            "classDiagram\n",
+            "class VeryWideParent\n",
+            "class VeryWideChild\n",
+            "VeryWideParent <|-- VeryWideChild : p\n",
+            "VeryWideParent <|-- VeryWideChild : b",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("wide parallel class relationships should keep distinct lanes");
+
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    assert_eq!(rendered.matches('^').count(), 2, "{rendered}");
+    for label in ["p", "b"] {
+        assert!(rendered.contains(label), "missing {label:?}:\n{rendered}");
+    }
 }
 
 #[test]
@@ -848,6 +894,45 @@ fn class_parser_namespace_direction_controls_relationless_siblings() {
     assert!(
         rl_b_column < rl_a_column,
         "RL should reverse namespace declaration order:\n{rl}"
+    );
+}
+
+#[test]
+fn class_parser_dotted_namespace_keeps_implicit_ancestor_ownership() {
+    let rendered = render_class(
+        concat!(
+            "classDiagram\n",
+            "namespace Company.Project.Module {\n",
+            "  class A\n",
+            "}",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("dotted namespace hierarchy should render");
+
+    let namespace_positions = ["Company", "Project", "Module"].map(|namespace| {
+        assert_eq!(
+            rendered.matches(namespace).count(),
+            1,
+            "namespace label {namespace:?} should have one owning container:\n{rendered}"
+        );
+        line_and_column_containing(&rendered, namespace)
+    });
+    assert!(
+        namespace_positions
+            .windows(2)
+            .all(|pair| pair[0].0 < pair[1].0 && pair[0].1 < pair[1].1),
+        "dotted namespace ancestors should form three nested containers:\n{rendered}"
+    );
+    assert_eq!(
+        rendered.matches("| A |").count(),
+        1,
+        "the class should remain inside the complete namespace hierarchy:\n{rendered}"
+    );
+    let class_position = line_and_column_containing(&rendered, " A ");
+    assert!(
+        namespace_positions[2].0 < class_position.0 && namespace_positions[2].1 < class_position.1,
+        "the class should remain nested inside Module:\n{rendered}"
     );
 }
 

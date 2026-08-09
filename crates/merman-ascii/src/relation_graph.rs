@@ -294,6 +294,41 @@ impl<'a> RelationParallelPlan<'a> {
         })
     }
 
+    /// Check that every lane's stem column lands on both endpoint box faces.
+    ///
+    /// Lane cells are centered with the same left-padding rule used by
+    /// `render_lines`; keeping this calculation here prevents family renderers
+    /// from accepting a visually plausible but disconnected parallel layout.
+    pub(crate) fn ports_fit(&self, resources: &ResourceContext) -> Result<bool> {
+        let top_left = self
+            .center
+            .checked_sub(self.top.width / 2)
+            .ok_or_else(|| grid_overflow(resources))?;
+        let bottom_left = self
+            .center
+            .checked_sub(self.bottom.width / 2)
+            .ok_or_else(|| grid_overflow(resources))?;
+        let top_right = resources.checked_grid_add(top_left, self.top.width.saturating_sub(1))?;
+        let bottom_right =
+            resources.checked_grid_add(bottom_left, self.bottom.width.saturating_sub(1))?;
+
+        let mut lane_left = self.lane_left;
+        for (lane_index, lane_width) in self.lane_widths.iter().copied().enumerate() {
+            let lane_anchor =
+                resources.checked_grid_add(lane_left, lane_width.saturating_sub(1) / 2)?;
+            if !(top_left..=top_right).contains(&lane_anchor)
+                || !(bottom_left..=bottom_right).contains(&lane_anchor)
+            {
+                return Ok(false);
+            }
+            lane_left = resources.checked_grid_add(lane_left, lane_width)?;
+            if lane_index + 1 < self.lane_widths.len() {
+                lane_left = resources.checked_grid_add(lane_left, self.lane_gap)?;
+            }
+        }
+        Ok(true)
+    }
+
     pub(crate) fn render_lines(
         &self,
         resources: &mut ResourceContext,
@@ -1172,6 +1207,26 @@ where
     if relations.is_empty() {
         return stacked_box_lines(boxes, options.terminal_width_profile, resources);
     }
+    let has_self_relation = relations
+        .iter()
+        .any(|relation| adapter.is_self_relation(relation));
+    if has_self_relation
+        && relations
+            .iter()
+            .any(|relation| !adapter.is_self_relation(relation))
+    {
+        // A self-loop changes the visual box extent. Keep ordinary routes on
+        // the original box face by using the lossless relation summary for a
+        // mixed component instead of letting one overlay overwrite another.
+        return render_layered_relation_component_lines(
+            boxes,
+            relations,
+            options,
+            adapter.layered_horizontal_gap(),
+            resources,
+            adapter,
+        );
+    }
     if relations.len() > 1
         && relations
             .iter()
@@ -1295,6 +1350,41 @@ where
     }
 }
 
+/// Render a lossless relation summary for a component whose spatial plan is
+/// not safe to materialize. This is shared by family-owned parallel planners so
+/// they can reject invalid endpoint ports without duplicating section assembly.
+pub(crate) fn render_relation_summary_component_lines<R>(
+    boxes: &[RelationGraphBox],
+    relations: &[R],
+    options: &AsciiRenderOptions,
+    reason: LayeredRelationSummaryReason,
+    resources: &mut ResourceContext,
+    mut build_row: impl FnMut(&R) -> Result<RelationGraphSummaryRow>,
+) -> Result<Vec<RelationGraphLine>> {
+    let mut lines = stacked_box_lines(boxes, options.terminal_width_profile, resources)?;
+    let summary_lines =
+        relation_summary_rows_lines(relations, options, Some(reason), resources, |relation| {
+            build_row(relation)
+        })?;
+    if !summary_lines.is_empty() {
+        if !lines.is_empty() {
+            lines.push(RelationGraphLine::try_plain(
+                "",
+                options.terminal_width_profile,
+                resources,
+            )?);
+        }
+        lines.push(RelationGraphLine::try_with_role(
+            "relations:",
+            AsciiColorRole::MutedText,
+            options.terminal_width_profile,
+            resources,
+        )?);
+        lines.extend(summary_lines);
+    }
+    Ok(lines)
+}
+
 fn render_layered_relation_component_ref_lines<R, A>(
     boxes: &[&RelationGraphBox],
     relations: &[R],
@@ -1388,6 +1478,16 @@ fn render_layered_relation_component_result<R, A>(
 where
     A: RelationComponentAdapter<R>,
 {
+    let has_self_relation = relations
+        .iter()
+        .any(|relation| adapter.is_self_relation(relation));
+    if has_self_relation
+        && relations
+            .iter()
+            .any(|relation| !adapter.is_self_relation(relation))
+    {
+        return Ok(Err(LayeredRelationSummaryReason::RouteCollision));
+    }
     let edges = build_layered_edges(relations, adapter, resources)?;
     let scene = match plan_layered_relation_scene(
         boxes,
@@ -1423,6 +1523,10 @@ where
             continue;
         };
 
+        if !scene.edge_ports_fit(edge_index, route_plan.source_x(), route_plan.target_x()) {
+            return Ok(Err(LayeredRelationSummaryReason::RouteCollision));
+        }
+
         route_plans.push(route_plan);
     }
 
@@ -1437,6 +1541,14 @@ where
         .any(|route_plan| !route_plan.overlays_fit(scene.width(), scene.height()))
     {
         return Ok(Err(LayeredRelationSummaryReason::OverlayCollision));
+    }
+    for (index, route_plan) in route_plans.iter().enumerate() {
+        if route_plans[index + 1..]
+            .iter()
+            .any(|other| route_plan.overlays_overlap(other))
+        {
+            return Ok(Err(LayeredRelationSummaryReason::OverlayCollision));
+        }
     }
 
     let mut canvas = scene.canvas_with_boxes(options, resources)?;

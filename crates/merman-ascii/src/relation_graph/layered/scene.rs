@@ -136,6 +136,35 @@ impl<'boxes> LayeredRelationScene<'boxes> {
         self.plan.height()
     }
 
+    pub(crate) fn edge_ports_fit(
+        &self,
+        edge_index: usize,
+        source_x: usize,
+        target_x: usize,
+    ) -> bool {
+        let Some(edge) = self.edges.get(edge_index) else {
+            return false;
+        };
+        let Some(source) = self
+            .plan
+            .placed_boxes()
+            .iter()
+            .find(|placed| placed.id() == edge.source_id())
+        else {
+            return false;
+        };
+        let Some(target) = self
+            .plan
+            .placed_boxes()
+            .iter()
+            .find(|placed| placed.id() == edge.target_id())
+        else {
+            return false;
+        };
+        (source.x()..=source.right()).contains(&source_x)
+            && (target.x()..=target.right()).contains(&target_x)
+    }
+
     pub(crate) fn canvas_with_boxes(
         &self,
         options: &AsciiRenderOptions,

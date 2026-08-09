@@ -118,6 +118,57 @@ impl RelationOverlay {
             ),
         }
     }
+
+    fn bounds(&self) -> Option<RelationOverlayBounds> {
+        let (center_x, y, width, height) = match self {
+            Self::Glyph { x, y, .. } => return RelationOverlayBounds::new(*x, *y, 1, 1),
+            Self::Text {
+                center_x,
+                y,
+                text,
+                width_profile,
+                ..
+            } => (
+                *center_x,
+                *y,
+                display_width_with_profile(text, *width_profile),
+                1,
+            ),
+            Self::Label {
+                center_x, y, label, ..
+            } => (*center_x, *y, label.width(), label.line_count()),
+        };
+        let left = center_x.checked_sub(width / 2)?;
+        RelationOverlayBounds::new(left, y, width, height)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RelationOverlayBounds {
+    left: usize,
+    right: usize,
+    top: usize,
+    bottom: usize,
+}
+
+impl RelationOverlayBounds {
+    fn new(left: usize, top: usize, width: usize, height: usize) -> Option<Self> {
+        let right = left.checked_add(width)?;
+        let bottom = top.checked_add(height)?;
+        Some(Self {
+            left,
+            right,
+            top,
+            bottom,
+        })
+    }
+
+    fn overlaps(self, other: Self) -> bool {
+        self.left < other.right
+            && other.left < self.right
+            && self.top < other.bottom
+            && other.top < self.bottom
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -227,6 +278,14 @@ impl LayeredRelationRoutePlan {
         Ok(())
     }
 
+    pub(crate) fn source_x(&self) -> usize {
+        self.geometry.source_x()
+    }
+
+    pub(crate) fn target_x(&self) -> usize {
+        self.geometry.target_x()
+    }
+
     pub(crate) fn draw_overlays_at(&self, canvas: &mut Canvas) -> Result<()> {
         for overlay in &self.overlays {
             overlay.draw_at(canvas)?;
@@ -249,6 +308,19 @@ impl LayeredRelationRoutePlan {
         self.overlays
             .iter()
             .all(|overlay| overlay.fits(width, height))
+    }
+
+    pub(crate) fn overlays_overlap(&self, other: &Self) -> bool {
+        self.overlays.iter().any(|left| {
+            other.overlays.iter().any(|right| {
+                if left == right {
+                    return false;
+                }
+                left.bounds()
+                    .zip(right.bounds())
+                    .is_some_and(|(left, right)| left.overlaps(right))
+            })
+        })
     }
 }
 

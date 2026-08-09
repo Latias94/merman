@@ -1,7 +1,8 @@
 use super::{
-    LayeredRelationEdge, LayeredRelationError, RelationComponentAdapter, RelationGraphBox,
-    RelationGraphLabel, RelationGraphLine, RelationLineChars, build_layered_edges, grid_overflow,
-    join_component_line_groups, layout_allocation_failed, put_relation_char, relation_components,
+    LayeredRelationEdge, LayeredRelationError, LayeredRelationSummaryReason,
+    RelationComponentAdapter, RelationGraphBox, RelationGraphLabel, RelationGraphLine,
+    RelationLineChars, build_layered_edges, grid_overflow, join_component_line_groups,
+    layout_allocation_failed, put_relation_char, relation_components, relation_summary_rows_lines,
     render_relation_self_loops, try_share_relation_box_lines, work_overflow,
 };
 use crate::Result;
@@ -278,6 +279,27 @@ where
     A: RelationComponentAdapter<R>,
 {
     let order = stable_horizontal_order(boxes, edge_indices, edges, direction, resources, adapter)?;
+    let self_relation_count = edge_indices.iter().try_fold(0usize, |count, edge_index| {
+        let relation = relations
+            .get(*edge_index)
+            .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
+        if adapter.is_self_relation(relation) {
+            count.checked_add(1).ok_or_else(|| work_overflow(resources))
+        } else {
+            Ok(count)
+        }
+    })?;
+    if self_relation_count > 0 && self_relation_count < edge_indices.len() {
+        return render_horizontal_relation_summary(
+            boxes,
+            &order,
+            edge_indices,
+            relations,
+            options,
+            resources,
+            adapter,
+        );
+    }
     let mut nodes = Vec::new();
     nodes
         .try_reserve_exact(boxes.len())
@@ -447,6 +469,69 @@ where
     Ok(rendered)
 }
 
+#[allow(clippy::too_many_arguments)]
+fn render_horizontal_relation_summary<R, A>(
+    boxes: &[&RelationGraphBox],
+    order: &[usize],
+    edge_indices: &[usize],
+    relations: &[R],
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    adapter: &A,
+) -> Result<Vec<RelationGraphLine>>
+where
+    A: RelationComponentAdapter<R>,
+{
+    let mut ordered_boxes = Vec::new();
+    ordered_boxes
+        .try_reserve_exact(order.len())
+        .map_err(|_| layout_allocation_failed())?;
+    for box_index in order {
+        ordered_boxes.push(
+            *boxes
+                .get(*box_index)
+                .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?,
+        );
+    }
+    let mut lines = horizontal_box_strip_lines(
+        &ordered_boxes,
+        RelationGraphHorizontalDirection::LeftRight,
+        adapter.layered_horizontal_gap(),
+        options.terminal_width_profile,
+        resources,
+    )?;
+
+    let reason = LayeredRelationSummaryReason::RouteCollision;
+    let mut rows = Vec::new();
+    rows.try_reserve_exact(edge_indices.len())
+        .map_err(|_| layout_allocation_failed())?;
+    for edge_index in edge_indices {
+        let relation = relations
+            .get(*edge_index)
+            .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
+        rows.push(adapter.build_summary_row(relation, reason)?);
+    }
+    let summary_lines =
+        relation_summary_rows_lines(&rows, options, Some(reason), resources, |row| {
+            Ok(row.clone())
+        })?;
+    if !lines.is_empty() {
+        lines.push(RelationGraphLine::try_plain(
+            "",
+            options.terminal_width_profile,
+            resources,
+        )?);
+    }
+    lines.push(RelationGraphLine::try_with_role(
+        "relations:",
+        AsciiColorRole::MutedText,
+        options.terminal_width_profile,
+        resources,
+    )?);
+    lines.extend(summary_lines);
+    Ok(lines)
+}
+
 fn stable_horizontal_order<R, A>(
     boxes: &[&RelationGraphBox],
     edge_indices: &[usize],
@@ -546,7 +631,9 @@ fn draw_horizontal_edge(
     let (left_index, left_endpoint, right_index, right_endpoint) = edge.physical_endpoints();
     let left = &nodes[left_index];
     let right = &nodes[right_index];
-    let left_stem_x = resources.checked_grid_add(left.x, left.visual.width())?;
+    // A self-loop expands only the visual projection. Ordinary edges must still
+    // attach to the original node face, not to the loop's outer gutter.
+    let left_stem_x = resources.checked_grid_add(left.x, left.original.width())?;
     let right_stem_x = right
         .x
         .checked_sub(1)
