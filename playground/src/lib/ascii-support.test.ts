@@ -24,6 +24,18 @@ test("fallback capabilities mirror the total runtime ASCII contract", () => {
 
   assert.deepEqual(outputAvailable, [...FALLBACK_ASCII_SUPPORTED_TYPES]);
   assert.deepEqual(diagrammatic, [...FALLBACK_ASCII_DIAGRAMMATIC_TYPES]);
+  for (const capability of FALLBACK_ASCII_CAPABILITIES.filter(
+    (candidate) => candidate.primary_projection !== "none"
+  )) {
+    assert.ok(
+      capability.supported_semantics.length > 0,
+      `${capability.diagram_type} fallback must describe its supported semantics`
+    );
+    assert.ok(
+      capability.limits.length > 0,
+      `${capability.diagram_type} fallback must describe its limits`
+    );
+  }
   assert.ok(
     !(FALLBACK_ASCII_SUPPORTED_TYPES as readonly string[]).includes("zenuml")
   );
@@ -71,9 +83,24 @@ test("fallback projection fields derive the compatibility support level", () => 
   assert.equal(asciiSupportLabelKey(zenuml), "asciiSupport.unsupported");
 
   const gantt = byType.get("gantt")!;
-  assert.ok(!gantt.supported_semantics.includes("dependencies"));
+  assert.ok(gantt.supported_semantics.includes("stable task ids"));
   assert.ok(
-    gantt.limits.some((limit) => limit.includes("dependency source expressions"))
+    gantt.supported_semantics.includes("start and end constraint expressions")
+  );
+  assert.ok(
+    gantt.limits.every(
+      (limit) => !limit.includes("dependency source expressions are not disclosed")
+    )
+  );
+
+  const xychart = byType.get("xychart")!;
+  assert.ok(
+    xychart.supported_semantics.some((semantic) =>
+      semantic.includes("model-owned x/y coordinates")
+    )
+  );
+  assert.ok(
+    xychart.limits.every((limit) => !limit.includes("SVG-coordinate"))
   );
 
   const classDiagram = byType.get("class")!;

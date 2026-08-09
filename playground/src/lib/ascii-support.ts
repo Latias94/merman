@@ -70,6 +70,12 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: Partial<
     semanticCoverage: "partial",
     primaryProjection: "diagrammatic",
     structuredTextFallback: true,
+    supportedSemantics: [
+      "class boxes, members, methods, annotations, and notes",
+      "independent relationship markers and endpoint labels",
+      "four directions and namespace containers",
+      "self-relations, routed relation components, and lossless summaries",
+    ],
     limits: [
       "cross-namespace or cross-container relationships render as relation summaries",
       "parallel relation lanes whose ports do not fit use a lossless relation summary",
@@ -81,6 +87,12 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: Partial<
     semanticCoverage: "partial",
     primaryProjection: "diagrammatic",
     structuredTextFallback: true,
+    supportedSemantics: [
+      "entity boxes, attributes, and key tokens",
+      "relationship labels, cardinalities, and identifying relationships",
+      "four directions, self-relations, and routed relation components",
+      "lossless crossing, port-fit, route, and collision summaries",
+    ],
     limits: [
       "complex cyclic topology can summarize",
       "unknown cardinality or relationship kinds are unsupported",
@@ -90,6 +102,12 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: Partial<
     displayName: "Flowchart / graph",
     semanticCoverage: "partial",
     primaryProjection: "diagrammatic",
+    supportedSemantics: [
+      "root directions and common node shapes",
+      "edge labels and open, dotted, thick, and invisible edges",
+      "subgraphs, nested groups, and boundary-aware routes",
+      "terminal color roles",
+    ],
     limits: [
       "icons, images, callbacks, and links are not terminal output",
       "some uncommon route shapes are approximate",
@@ -103,43 +121,80 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: Partial<
       "titles",
       "sections",
       "tasks",
+      "stable task ids",
+      "start and end constraint expressions",
+      "resolved and adjusted end times",
       "dates",
       "tags",
+      "time-of-day precision",
       "deterministic date formatting",
     ],
     limits: [
       "output is a readable task summary, not terminal timeline geometry",
-      "dependency source expressions are not disclosed",
+      "links and click callbacks are metadata-only",
+      "duplicate or empty task ids are rejected",
     ],
   },
   gitgraph: {
     displayName: "GitGraph",
     semanticCoverage: "partial",
     primaryProjection: "structured_text",
-    limits: ["does not draw a full Git lane graph"],
+    supportedSemantics: [
+      "commits, branches, merges, tags, and cherry-picks",
+      "parent topology and ordering",
+      "explicit merge id and type overrides",
+    ],
+    limits: [
+      "does not draw a full Git lane graph",
+      "implementation flags are normalized into semantic labels",
+    ],
   },
   journey: {
     displayName: "Journey",
     semanticCoverage: "partial",
     primaryProjection: "structured_text",
+    supportedSemantics: ["sections", "tasks", "actors", "scores"],
     limits: ["does not draw Mermaid journey chart geometry"],
   },
   kanban: {
     displayName: "Kanban",
     semanticCoverage: "partial",
     primaryProjection: "structured_text",
-    limits: ["drag and board presentation metadata are not terminal output"],
+    supportedSemantics: [
+      "columns and cards",
+      "stable card and group ids",
+      "assignments and metadata",
+      "deterministic Unassigned grouping",
+    ],
+    limits: [
+      "drag and board presentation metadata are not terminal output",
+      "duplicate or empty ids are rejected",
+    ],
   },
   mindmap: {
     displayName: "Mindmap",
     semanticCoverage: "partial",
     primaryProjection: "structured_text",
-    limits: ["icons, images, and rich browser node shapes are omitted or approximated"],
+    supportedSemantics: [
+      "hierarchical nodes, stable ids, labels, and nesting",
+      "wrapped text and shape, icon, and section disclosure",
+      "disconnected components, cycles, and validated edge endpoints",
+    ],
+    limits: [
+      "icons and rich browser node shapes are disclosed as text rather than styled",
+      "duplicate ids, parallel edges, and missing endpoints are rejected",
+    ],
   },
   packet: {
     displayName: "Packet",
     semanticCoverage: "partial",
     primaryProjection: "structured_text",
+    supportedSemantics: [
+      "bit ranges",
+      "labels",
+      "row splitting",
+      "multi-row packets",
+    ],
     limits: [
       "output is an ordered row report rather than a spatial bit-width grid",
       "visual styling beyond terminal borders is not represented",
@@ -149,19 +204,45 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: Partial<
     displayName: "Sequence",
     semanticCoverage: "partial",
     primaryProjection: "diagrammatic",
-    limits: ["actor presentation metadata and links are omitted"],
+    supportedSemantics: [
+      "participants with Mermaid-valid spaced and Unicode identifiers",
+      "typed headless, filled, cross, point, bidirectional, and half-arrow messages",
+      "central decorations, notes, lifecycles, boxes, and control blocks",
+      "optional mirrored actors and terminal color roles",
+    ],
+    limits: [
+      "actor presentation metadata and links are accepted but intentionally omitted",
+    ],
   },
   state: {
     displayName: "State",
     semanticCoverage: "partial",
     primaryProjection: "diagrammatic",
-    limits: ["some presentation metadata is omitted"],
+    supportedSemantics: [
+      "states, start and end nodes, and transitions",
+      "independently anchored notes",
+      "choice, fork, join-like nodes, and composite groups",
+      "terminal color roles",
+    ],
+    limits: [
+      "some presentation metadata is omitted",
+      "future state shape variants need explicit support rules",
+    ],
   },
   timeline: {
     displayName: "Timeline",
     semanticCoverage: "partial",
     primaryProjection: "structured_text",
-    limits: ["does not draw Mermaid timeline geometry"],
+    supportedSemantics: [
+      "sections",
+      "events",
+      "direction",
+      "ordered grouped text",
+    ],
+    limits: [
+      "does not draw Mermaid timeline geometry",
+      "parser bookkeeping score is intentionally omitted",
+    ],
   },
   treeView: {
     displayName: "TreeView",
@@ -182,9 +263,16 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: Partial<
     displayName: "XYChart",
     semanticCoverage: "partial",
     primaryProjection: "diagrammatic",
+    supportedSemantics: [
+      "model-owned x/y coordinates and point labels",
+      "band and linear axes with compact scale-aware ticks",
+      "grouped bars, topology-resolved lines, and mixed plots",
+      "horizontal and vertical orientation, titles, legends, and exact disclosure",
+    ],
     limits: [
-      "browser hover tooltips and SVG-coordinate precision are not represented",
-      "dense data uses terminal-compact layout",
+      "browser hover tooltips are replaced by deterministic terminal disclosure",
+      "typed chart coordinates are independently quantized by the terminal plan",
+      "cross-series same-cell collisions use deterministic paint order plus exact disclosure",
     ],
   },
 };
