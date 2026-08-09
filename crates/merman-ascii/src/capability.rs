@@ -187,7 +187,9 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "members and methods",
             "annotations and notes",
             "common relationship markers",
+            "independent source and target relationship markers",
             "endpoint labels",
+            "top-down, bottom-up, left-right, and right-left directions",
             "namespace containers",
             "namespace-qualified endpoint aliases",
             "namespace-internal class and note relationship routing",
@@ -200,7 +202,6 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         ],
         limits: &[
             "cross-namespace or cross-container relationships render as relation summaries",
-            "multiple relation markers on one relation are unsupported",
             "dense or grid-budgeted relation scenes can summarize",
         ],
         evidence: &[
@@ -232,7 +233,9 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "attributes and key tokens",
             "relationship labels",
             "cardinality markers",
+            "parent diamond cardinality markers",
             "identifying relationships",
+            "top-down, bottom-up, left-right, and right-left directions",
             "self-relationship loops",
             "bounded iterative relation-layer sweeps",
             "routed relation lanes",
@@ -744,14 +747,7 @@ mod tests {
         assert_eq!(find("xychart").support_level, AsciiSupportLevel::Partial);
 
         for diagram_type in [
-            "gantt",
-            "gitgraph",
-            "journey",
-            "kanban",
-            "mindmap",
-            "packet",
-            "timeline",
-            "treeView",
+            "gantt", "gitgraph", "journey", "kanban", "mindmap", "packet", "timeline", "treeView",
         ] {
             let capability = find(diagram_type);
             assert_eq!(

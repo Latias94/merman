@@ -85,6 +85,14 @@ fn first_line_index_containing(rendered: &str, needle: &str) -> usize {
         .unwrap_or_else(|| panic!("missing {needle:?} in rendered fixture:\n{rendered}"))
 }
 
+fn line_and_column_containing(rendered: &str, needle: &str) -> (usize, usize) {
+    rendered
+        .lines()
+        .enumerate()
+        .find_map(|(line, text)| text.find(needle).map(|column| (line, column)))
+        .unwrap_or_else(|| panic!("missing {needle:?} in rendered fixture:\n{rendered}"))
+}
+
 fn assert_unsupported_er_model(model: &ErDiagramRenderModel, feature: &'static str) {
     let err = merman_ascii::render_er(model, &AsciiRenderOptions::ascii())
         .expect_err("ER model should be rejected as unsupported");
@@ -498,6 +506,213 @@ fn er_parser_reversed_zero_or_more_cardinality_renders_normalized_marker() {
             "+---+\n", "| A |\n", "+---+\n", " o{\n", " has\n", "  |\n", " ||\n", "+---+\n",
             "| B |\n", "+---+\n",
         )
+    );
+}
+
+#[test]
+fn er_parser_md_parent_cardinality_renders_explicit_marker() {
+    let rendered = render_er(
+        "erDiagram\nPROJECT u--o{ TEAM_MEMBER : parent",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("ER parent cardinality should render");
+
+    for expected in ["PROJECT", "TEAM_MEMBER", "<>", "o{", "parent"] {
+        assert!(
+            rendered.contains(expected),
+            "ER parent relationship should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+
+    let unicode = render_er(
+        "erDiagram\nPROJECT u--o{ TEAM_MEMBER : parent",
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("Unicode ER parent cardinality should render");
+    assert!(
+        unicode.contains('◆'),
+        "Unicode ER parent cardinality should use a diamond marker:\n{unicode}"
+    );
+}
+
+#[test]
+fn er_parser_direction_controls_terminal_layout() {
+    let render = |direction| {
+        render_er(
+            &format!("erDiagram\ndirection {direction}\nA ||--o{{ B : owns"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap_or_else(|err| panic!("ER direction {direction} should render: {err}"))
+    };
+
+    let tb = render("TB");
+    let bt = render("BT");
+    let lr = render("LR");
+    let rl = render("RL");
+
+    assert!(
+        first_line_index_containing(&tb, "| A |") < first_line_index_containing(&tb, "| B |"),
+        "TB should place A above B:\n{tb}"
+    );
+    assert!(
+        first_line_index_containing(&bt, "| B |") < first_line_index_containing(&bt, "| A |"),
+        "BT should place B above A:\n{bt}"
+    );
+
+    let (lr_a_line, lr_a_column) = line_and_column_containing(&lr, "| A |");
+    let (lr_b_line, lr_b_column) = line_and_column_containing(&lr, "| B |");
+    assert_eq!(lr_a_line, lr_b_line, "LR should share one row:\n{lr}");
+    assert!(
+        lr_a_column < lr_b_column,
+        "LR should place A left of B:\n{lr}"
+    );
+
+    let (rl_a_line, rl_a_column) = line_and_column_containing(&rl, "| A |");
+    let (rl_b_line, rl_b_column) = line_and_column_containing(&rl, "| B |");
+    assert_eq!(rl_a_line, rl_b_line, "RL should share one row:\n{rl}");
+    assert!(
+        rl_b_column < rl_a_column,
+        "RL should place B left of A:\n{rl}"
+    );
+
+    assert_ne!(tb, bt);
+    assert_ne!(tb, lr);
+    assert_ne!(lr, rl);
+}
+
+#[test]
+fn er_parser_horizontal_component_draws_each_entity_once() {
+    let rendered = render_er(
+        concat!(
+            "erDiagram\n",
+            "direction LR\n",
+            "A ||--o{ B : owns\n",
+            "A |o..|{ B : \"may own\"\n",
+            "B ||--|| C : joins",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("horizontal ER component should render");
+
+    for title in ["| A |", "| B |", "| C |"] {
+        assert_eq!(
+            rendered.matches(title).count(),
+            1,
+            "a horizontal ER component must place {title:?} exactly once:\n{rendered}"
+        );
+    }
+    for label in ["owns", "may own", "joins"] {
+        assert!(
+            rendered.contains(label),
+            "horizontal ER routing must preserve {label:?}:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn er_parser_horizontal_cardinalities_mirror_at_physical_ports() {
+    for direction in ["LR", "RL"] {
+        let rendered = render_er(
+            &format!(
+                "erDiagram\ndirection {direction}\nA }}o--o{{ B : \"relationship label that forces a wide lane\""
+            ),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap_or_else(|err| panic!("horizontal ER direction {direction} should render: {err}"));
+
+        let (left_title, right_title) = if direction == "LR" {
+            ("| A |", "| B |")
+        } else {
+            ("| B |", "| A |")
+        };
+        let (_, left_column) = line_and_column_containing(&rendered, left_title);
+        let (_, right_column) = line_and_column_containing(&rendered, right_title);
+        let connector = rendered
+            .lines()
+            .find(|line| line.contains("}o") && line.contains("o{"))
+            .unwrap_or_else(|| {
+                panic!("ER cardinalities must mirror at physical ports:\n{rendered}")
+            });
+        let between_boxes = &connector[left_column + left_title.len()..right_column];
+
+        assert!(
+            !between_boxes.contains(' '),
+            "the ER connector must span the complete port-to-port gap:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("relationship label that forces a wide lane"),
+            "the ER relationship label must remain attached to its routed lane:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn er_parser_horizontal_parallel_self_relations_share_one_box() {
+    let rendered = render_er(
+        concat!(
+            "erDiagram\n",
+            "direction LR\n",
+            "NODE ||--o{ NODE : children\n",
+            "NODE |o..|{ NODE : optional",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("horizontal parallel ER self relations should render");
+
+    assert_eq!(
+        rendered.matches("| NODE |").count(),
+        1,
+        "parallel ER self relations must share one entity box:\n{rendered}"
+    );
+    for expected in ["children", "optional", "||", "o{", "o|", "|{"] {
+        assert!(
+            rendered.contains(expected),
+            "parallel ER self relation must preserve {expected:?}:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn er_parser_horizontal_direction_propagates_resource_errors() {
+    let input = "erDiagram\ndirection RL\nA ||--o{ B : owns";
+
+    for limit in [
+        AsciiResourceLimitId::MaxGridCells,
+        AsciiResourceLimitId::MaxLayoutWorkUnits,
+    ] {
+        let options = AsciiRenderOptions::ascii()
+            .with_resource_limit(limit, 1)
+            .expect("horizontal ER resource limit should be valid");
+        let error = render_er(input, &options)
+            .expect_err("horizontal ER rendering must propagate resource errors");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details) if details.limit == limit
+        ));
+    }
+}
+
+#[test]
+fn er_parser_preserves_entity_declaration_order() {
+    let input = "erDiagram\nZETA\nALPHA\nMIDDLE";
+    let model = parse_er_model(input);
+    assert!(
+        model
+            .entities
+            .values()
+            .map(|entity| entity.label.as_str())
+            .eq(["ZETA", "ALPHA", "MIDDLE"])
+    );
+
+    let rendered = render_er(input, &AsciiRenderOptions::ascii())
+        .expect("declaration-ordered ER entities should render");
+    assert!(
+        first_line_index_containing(&rendered, "| ZETA |")
+            < first_line_index_containing(&rendered, "| ALPHA |")
+    );
+    assert!(
+        first_line_index_containing(&rendered, "| ALPHA |")
+            < first_line_index_containing(&rendered, "| MIDDLE |")
     );
 }
 

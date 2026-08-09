@@ -85,17 +85,12 @@ fn first_line_index_containing(rendered: &str, needle: &str) -> usize {
         .unwrap_or_else(|| panic!("missing {needle:?} in rendered fixture:\n{rendered}"))
 }
 
-fn assert_unsupported_class_model(model: &ClassDiagram, feature: &'static str) {
-    let err = merman_ascii::render_class(model, &AsciiRenderOptions::ascii())
-        .expect_err("class model should be rejected as unsupported");
-
-    assert_eq!(
-        err,
-        AsciiError::UnsupportedFeature {
-            diagram_type: "class",
-            feature,
-        }
-    );
+fn line_and_column_containing(rendered: &str, needle: &str) -> (usize, usize) {
+    rendered
+        .lines()
+        .enumerate()
+        .find_map(|(line, text)| text.find(needle).map(|column| (line, column)))
+        .unwrap_or_else(|| panic!("missing {needle:?} in rendered fixture:\n{rendered}"))
 }
 
 #[test]
@@ -344,6 +339,166 @@ fn class_parser_generic_class_titles_render_type_parameters() {
             rendered.contains(expected),
             "generic class title should keep {expected:?} visible:\n{rendered}"
         );
+    }
+}
+
+#[test]
+fn class_parser_direction_controls_terminal_layout() {
+    let render = |direction| {
+        render_class(
+            &format!("classDiagram\ndirection {direction}\nclass A\nclass B\nA --> B"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap_or_else(|err| panic!("class direction {direction} should render: {err}"))
+    };
+
+    let tb = render("TB");
+    let bt = render("BT");
+    let lr = render("LR");
+    let rl = render("RL");
+
+    assert!(
+        first_line_index_containing(&tb, "| A |") < first_line_index_containing(&tb, "| B |"),
+        "TB should place A above B:\n{tb}"
+    );
+    assert!(
+        first_line_index_containing(&bt, "| B |") < first_line_index_containing(&bt, "| A |"),
+        "BT should place B above A:\n{bt}"
+    );
+
+    let (lr_a_line, lr_a_column) = line_and_column_containing(&lr, "| A |");
+    let (lr_b_line, lr_b_column) = line_and_column_containing(&lr, "| B |");
+    assert_eq!(lr_a_line, lr_b_line, "LR should share one row:\n{lr}");
+    assert!(
+        lr_a_column < lr_b_column,
+        "LR should place A left of B:\n{lr}"
+    );
+
+    let (rl_a_line, rl_a_column) = line_and_column_containing(&rl, "| A |");
+    let (rl_b_line, rl_b_column) = line_and_column_containing(&rl, "| B |");
+    assert_eq!(rl_a_line, rl_b_line, "RL should share one row:\n{rl}");
+    assert!(
+        rl_b_column < rl_a_column,
+        "RL should place B left of A:\n{rl}"
+    );
+
+    assert_ne!(tb, bt);
+    assert_ne!(tb, lr);
+    assert_ne!(lr, rl);
+}
+
+#[test]
+fn class_parser_horizontal_component_draws_each_class_once() {
+    let rendered = render_class(
+        concat!(
+            "classDiagram\n",
+            "direction LR\n",
+            "class A\n",
+            "class B\n",
+            "class C\n",
+            "A <|-- B : parent\n",
+            "A ..> B : depends\n",
+            "B --> C : next",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("horizontal class component should render");
+
+    for title in ["| A |", "| B |", "| C |"] {
+        assert_eq!(
+            rendered.matches(title).count(),
+            1,
+            "a horizontal component must place {title:?} exactly once:\n{rendered}"
+        );
+    }
+    for label in ["parent", "depends", "next"] {
+        assert!(
+            rendered.contains(label),
+            "horizontal routing must preserve {label:?}:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn class_parser_horizontal_long_label_keeps_connector_attached_to_ports() {
+    let rendered = render_class(
+        concat!(
+            "classDiagram\n",
+            "direction LR\n",
+            "A \"1\" <|--|> \"*\" B : relationship label that forces a wide lane",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("wide horizontal class relationship should render");
+
+    let (_, a_column) = line_and_column_containing(&rendered, "| A |");
+    let (_, b_column) = line_and_column_containing(&rendered, "| B |");
+    let connector = rendered
+        .lines()
+        .find(|line| line.contains("<|") && line.contains("|>"))
+        .unwrap_or_else(|| panic!("missing two-sided horizontal connector:\n{rendered}"));
+    let between_boxes = &connector[a_column + "| A |".len()..b_column];
+
+    assert!(
+        !between_boxes.contains(' '),
+        "the connector must span the complete port-to-port gap:\n{rendered}"
+    );
+    for expected in ["1", "*", "relationship label that forces a wide lane"] {
+        assert!(
+            rendered.contains(expected),
+            "horizontal relation must preserve {expected:?}:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn class_parser_horizontal_parallel_self_relations_share_one_box() {
+    let rendered = render_class(
+        concat!(
+            "classDiagram\n",
+            "direction LR\n",
+            "class Node\n",
+            "Node --> Node : next\n",
+            "Node ..> Node : loads",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("horizontal parallel self relations should render");
+
+    assert_eq!(
+        rendered.matches("| Node |").count(),
+        1,
+        "parallel self relations must share one class box:\n{rendered}"
+    );
+    for label in ["next", "loads"] {
+        assert!(
+            rendered.contains(label),
+            "parallel self relation must preserve {label:?}:\n{rendered}"
+        );
+    }
+    assert!(
+        rendered.matches('v').count() >= 2,
+        "each self relation must retain its terminal marker:\n{rendered}"
+    );
+}
+
+#[test]
+fn class_parser_horizontal_direction_propagates_resource_errors() {
+    let input = "classDiagram\ndirection LR\nclass A\nclass B\nA --> B";
+
+    for limit in [
+        AsciiResourceLimitId::MaxGridCells,
+        AsciiResourceLimitId::MaxLayoutWorkUnits,
+    ] {
+        let options = AsciiRenderOptions::ascii()
+            .with_resource_limit(limit, 1)
+            .expect("horizontal class resource limit should be valid");
+        let error = render_class(input, &options)
+            .expect_err("horizontal class rendering must propagate resource errors");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details) if details.limit == limit
+        ));
     }
 }
 
@@ -1313,7 +1468,7 @@ fn class_local_semantic_fixture_covers_standalone_note() {
 }
 
 #[test]
-fn class_render_model_rejects_relationships_with_multiple_markers() {
+fn class_render_model_preserves_independent_relationship_markers() {
     let mut model = parse_class_model("classDiagram\nclass A\nclass B\nA <|-- B");
     let aggregation = model.constants.relation_type.aggregation;
     let composition = model.constants.relation_type.composition;
@@ -1324,7 +1479,43 @@ fn class_render_model_rejects_relationships_with_multiple_markers() {
     relation.relation.type1 = aggregation;
     relation.relation.type2 = composition;
 
-    assert_unsupported_class_model(&model, "class relationships with multiple markers");
+    let rendered = merman_ascii::render_class(&model, &AsciiRenderOptions::ascii())
+        .expect("independent class relationship markers should render");
+
+    assert!(
+        rendered.contains('o'),
+        "aggregation marker should remain visible:\n{rendered}"
+    );
+    assert!(
+        rendered.contains('*'),
+        "composition marker should remain visible:\n{rendered}"
+    );
+}
+
+#[test]
+fn class_parser_two_sided_markers_keep_cardinalities_and_label() {
+    let rendered = render_class(
+        "classDiagram\nA \"1\" <|--|> \"*\" B : inherits both ways",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("two-sided class relationship markers should render");
+
+    for expected in ["A", "B", "1", "*", "inherits both ways", "^", "v"] {
+        assert!(
+            rendered.contains(expected),
+            "two-sided relationship should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+
+    let composition = render_class(
+        "classDiagram\nWhole *--* Part",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("two-sided composition should render");
+    assert!(
+        composition.matches('*').count() >= 2,
+        "both composition terminals should remain visible:\n{composition}"
+    );
 }
 
 #[test]

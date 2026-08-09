@@ -3,10 +3,13 @@ use crate::options::{AsciiCharset, AsciiRenderOptions, TerminalWidthProfile};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
 use crate::relation_graph::{
-    LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, RelationGraphBoxStyle,
+    HorizontalRelationEndpoint, HorizontalRelationStyle, LayeredRelationEdge, LayeredRelationError,
+    LayeredRelationRouteStyle, RelationGraphBoxStyle, RelationGraphHorizontalDirection,
     RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
-    RelationOverlay, RelationParallelPlan, RelationStackPlan,
+    RelationOverlay, RelationParallelPlan, RelationPortSide, RelationStackPlan,
 };
+#[cfg(test)]
+use crate::resource::AsciiResourceLimitId;
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::charge_text_layout;
 use crate::text::display_width_with_profile;
@@ -33,6 +36,7 @@ struct ErCharset {
     dotted_horizontal_relation: char,
     dotted_relation: char,
     relation_junction: char,
+    md_parent: &'static str,
 }
 
 impl ErCharset {
@@ -52,6 +56,7 @@ impl ErCharset {
                 dotted_horizontal_relation: '.',
                 dotted_relation: ':',
                 relation_junction: '+',
+                md_parent: "<>",
             },
             AsciiCharset::Unicode => Self {
                 top_left: '┌',
@@ -67,12 +72,53 @@ impl ErCharset {
                 dotted_horizontal_relation: '╌',
                 dotted_relation: '┆',
                 relation_junction: '┼',
+                md_parent: "◆",
             },
         }
     }
 }
 
 type RenderedEntityBox = RelationGraphBox;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ErDirection {
+    TopDown,
+    BottomUp,
+    LeftRight,
+    RightLeft,
+}
+
+impl ErDirection {
+    fn try_from_model(raw: &str) -> Result<Self> {
+        match raw.trim().to_ascii_uppercase().as_str() {
+            "" | "TB" | "TD" => Ok(Self::TopDown),
+            "BT" => Ok(Self::BottomUp),
+            "LR" => Ok(Self::LeftRight),
+            "RL" => Ok(Self::RightLeft),
+            _ => Err(AsciiError::UnsupportedFeature {
+                diagram_type: "er",
+                feature: "unknown ER diagram directions",
+            }),
+        }
+    }
+
+    fn is_horizontal(self) -> bool {
+        matches!(self, Self::LeftRight | Self::RightLeft)
+    }
+
+    fn is_reversed(self) -> bool {
+        matches!(self, Self::BottomUp | Self::RightLeft)
+    }
+
+    fn horizontal_direction(self) -> RelationGraphHorizontalDirection {
+        match self {
+            Self::RightLeft => RelationGraphHorizontalDirection::RightLeft,
+            Self::TopDown | Self::BottomUp | Self::LeftRight => {
+                RelationGraphHorizontalDirection::LeftRight
+            }
+        }
+    }
+}
 
 struct ErRelationComponentAdapter<'a> {
     charset: ErCharset,
@@ -82,7 +128,21 @@ struct ErRelationComponentAdapter<'a> {
 
 struct ErRelationLayout<'a> {
     relationship: &'a ErRelationshipRenderModel,
+    top_id: &'a str,
+    bottom_id: &'a str,
+    top_cardinality: &'a str,
+    bottom_cardinality: &'a str,
     label: Option<RelationGraphLabel>,
+}
+
+impl ErRelationLayout<'_> {
+    fn apply_direction(&mut self, direction: ErDirection) {
+        if direction != ErDirection::BottomUp {
+            return;
+        }
+        std::mem::swap(&mut self.top_id, &mut self.bottom_id);
+        std::mem::swap(&mut self.top_cardinality, &mut self.bottom_cardinality);
+    }
 }
 
 pub(crate) fn render_er_diagram(
@@ -97,6 +157,7 @@ pub(crate) fn render_er_diagram(
     preflight_er_text(model, &mut resources)?;
     charge_er_model_work(model, &mut resources)?;
     let charset = ErCharset::for_options(options);
+    let direction = ErDirection::try_from_model(&model.direction)?;
     let mut boxes = Vec::new();
     boxes
         .try_reserve_exact(model.entities.len())
@@ -105,6 +166,21 @@ pub(crate) fn render_er_diagram(
         boxes.push(render_entity_box(entity, options, charset, &mut resources)?);
     }
     if model.relationships.is_empty() {
+        if direction.is_horizontal() {
+            let lines = relation_graph::render_horizontal_box_strip_lines(
+                &boxes,
+                direction.horizontal_direction(),
+                ER_LEVEL_HORIZONTAL_GAP,
+                options.terminal_width_profile,
+                &resources,
+            )?;
+            return render_er_document_lines(lines, options, &mut resources);
+        }
+        if direction.is_reversed() {
+            let lines =
+                reversed_er_box_stack_lines(&boxes, options.terminal_width_profile, &resources)?;
+            return render_er_document_lines(lines, options, &mut resources);
+        }
         return relation_graph::render_stacked_boxes_with_options(&boxes, options, &mut resources);
     }
 
@@ -125,6 +201,7 @@ pub(crate) fn render_er_diagram(
         &entity_labels,
         options,
         charset,
+        direction,
         &mut resources,
     )
 }
@@ -135,6 +212,7 @@ fn render_er_components(
     entity_labels: &HashMap<String, String>,
     options: &AsciiRenderOptions,
     charset: ErCharset,
+    direction: ErDirection,
     resources: &mut ResourceContext,
 ) -> Result<String> {
     let mut layouts = Vec::new();
@@ -142,20 +220,32 @@ fn render_er_components(
         .try_reserve_exact(relationships.len())
         .map_err(|_| layout_allocation_failed())?;
     for relationship in relationships {
-        layouts.push(ErRelationLayout {
+        let mut layout = ErRelationLayout {
             relationship,
+            top_id: relationship.entity_a.as_str(),
+            bottom_id: relationship.entity_b.as_str(),
+            top_cardinality: relationship.rel_spec.card_b.as_str(),
+            bottom_cardinality: relationship.rel_spec.card_a.as_str(),
             label: RelationGraphLabel::try_new(
                 &relationship.role_a,
                 options.terminal_width_profile,
                 resources,
             )?,
-        });
+        };
+        layout.apply_direction(direction);
+        layouts.push(layout);
     }
     let adapter = ErRelationComponentAdapter {
         charset,
         entity_labels,
         width_profile: options.terminal_width_profile,
     };
+    if direction.is_horizontal() {
+        let lines = render_horizontal_er_component_lines(
+            boxes, &layouts, direction, options, &adapter, resources,
+        )?;
+        return render_er_document_lines(lines, options, resources);
+    }
     relation_graph::render_relation_components(boxes, &layouts, options, resources, &adapter)
 }
 
@@ -267,6 +357,61 @@ fn find_box<'a>(boxes: &'a [RenderedEntityBox], id: &str) -> Result<&'a Rendered
     })
 }
 
+fn render_er_document_lines(
+    lines: Vec<RelationGraphLine>,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+) -> Result<String> {
+    let document = RelationGraphBox::from_rendered_lines(
+        "er::directional-document".to_string(),
+        lines,
+        options.terminal_width_profile,
+        resources,
+    )?;
+    relation_graph::render_stacked_boxes_with_options(&[document], options, resources)
+}
+
+fn reversed_er_box_stack_lines(
+    boxes: &[RenderedEntityBox],
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<Vec<RelationGraphLine>> {
+    let height = boxes
+        .iter()
+        .try_fold(boxes.len().saturating_sub(1), |height, relation_box| {
+            resources.checked_grid_add(height, relation_box.height())
+        })?;
+    let mut lines = Vec::new();
+    lines
+        .try_reserve_exact(height)
+        .map_err(|_| layout_allocation_failed())?;
+    for (index, relation_box) in boxes.iter().rev().enumerate() {
+        if index > 0 {
+            lines.push(RelationGraphLine::try_plain("", width_profile, resources)?);
+        }
+        lines.extend(relation_box.lines().iter().cloned());
+    }
+    Ok(lines)
+}
+
+fn render_horizontal_er_component_lines(
+    boxes: &[RenderedEntityBox],
+    layouts: &[ErRelationLayout<'_>],
+    direction: ErDirection,
+    options: &AsciiRenderOptions,
+    adapter: &ErRelationComponentAdapter<'_>,
+    resources: &mut ResourceContext,
+) -> Result<Vec<RelationGraphLine>> {
+    relation_graph::render_horizontal_relation_components(
+        boxes,
+        layouts,
+        direction.horizontal_direction(),
+        options,
+        resources,
+        adapter,
+    )
+}
+
 fn render_vertical_relationship(
     top: &RenderedEntityBox,
     bottom: &RenderedEntityBox,
@@ -276,8 +421,8 @@ fn render_vertical_relationship(
     resources: &mut ResourceContext,
 ) -> Result<Vec<RelationGraphLine>> {
     let relationship = layout.relationship;
-    let top_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
-    let bottom_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
+    let top_cardinality = cardinality_marker(layout.top_cardinality, charset)?;
+    let bottom_cardinality = cardinality_marker(layout.bottom_cardinality, charset)?;
     let line = relationship_line(&relationship.rel_spec.rel_type, charset)?;
     let label_half_width = layout
         .label
@@ -363,10 +508,9 @@ fn is_same_endpoint_parallel_relationship(layouts: &[ErRelationLayout<'_>]) -> b
         return false;
     };
     layouts.len() > 1
-        && layouts.iter().all(|layout| {
-            layout.relationship.entity_a == first.relationship.entity_a
-                && layout.relationship.entity_b == first.relationship.entity_b
-        })
+        && layouts
+            .iter()
+            .all(|layout| layout.top_id == first.top_id && layout.bottom_id == first.bottom_id)
 }
 
 fn render_parallel_vertical_relationships(
@@ -380,8 +524,8 @@ fn render_parallel_vertical_relationships(
         diagram_type: "er",
         feature: "empty parallel ER relationship layout",
     })?;
-    let top = find_box(boxes, &first.relationship.entity_a)?;
-    let bottom = find_box(boxes, &first.relationship.entity_b)?;
+    let top = find_box(boxes, first.top_id)?;
+    let bottom = find_box(boxes, first.bottom_id)?;
     let mut lanes = Vec::new();
     lanes
         .try_reserve_exact(layouts.len())
@@ -406,8 +550,8 @@ fn parallel_er_lane_rows(
     resources: &ResourceContext,
 ) -> Result<Vec<RelationGraphLine>> {
     let relationship = layout.relationship;
-    let top_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
-    let bottom_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
+    let top_cardinality = cardinality_marker(layout.top_cardinality, charset)?;
+    let bottom_cardinality = cardinality_marker(layout.bottom_cardinality, charset)?;
     let line = relationship_line(&relationship.rel_spec.rel_type, charset)?;
     let label_lines = match layout.label.as_ref() {
         Some(label) => {
@@ -456,13 +600,13 @@ fn er_relationship_summary_row(
     charset: ErCharset,
 ) -> Result<RelationGraphSummaryRow> {
     let relationship = layout.relationship;
-    let left_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
-    let right_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
+    let left_cardinality = cardinality_marker(layout.top_cardinality, charset)?;
+    let right_cardinality = cardinality_marker(layout.bottom_cardinality, charset)?;
     let relation = er_relationship_summary_line(&relationship.rel_spec.rel_type, charset)?;
     Ok(RelationGraphSummaryRow::new(
-        relationship_label(entity_labels, &relationship.entity_a),
+        relationship_label(entity_labels, layout.top_id),
         format!("{left_cardinality}{relation}{right_cardinality}"),
-        relationship_label(entity_labels, &relationship.entity_b),
+        relationship_label(entity_labels, layout.bottom_id),
     )
     .with_label(layout.label.as_ref()))
 }
@@ -487,10 +631,9 @@ fn relationship_label<'a>(entity_labels: &'a HashMap<String, String>, id: &'a st
 }
 
 fn er_layered_edge(layout: &ErRelationLayout<'_>) -> LayeredRelationEdge {
-    let relationship = layout.relationship;
     LayeredRelationEdge::new(
-        relationship.entity_a.as_str(),
-        relationship.entity_b.as_str(),
+        layout.top_id,
+        layout.bottom_id,
         layout
             .label
             .as_ref()
@@ -529,50 +672,44 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationLayout<'_>>
     }
 
     fn is_self_relation(&self, layout: &ErRelationLayout<'_>) -> bool {
-        let relationship = layout.relationship;
-        relationship.entity_a == relationship.entity_b
+        layout.top_id == layout.bottom_id
     }
 
-    fn render_self_relation(
+    fn self_loop_rows(
         &self,
-        relation_box: &RenderedEntityBox,
         layout: &ErRelationLayout<'_>,
-        options: &AsciiRenderOptions,
-        resources: &mut ResourceContext,
-    ) -> Result<Vec<RelationGraphLine>> {
-        let rows = self_loop_rows_for_er_relationship(
-            layout,
-            self.charset,
+        resources: &ResourceContext,
+    ) -> Result<relation_graph::RelationSelfLoopRows> {
+        self_loop_rows_for_er_relationship(layout, self.charset, self.width_profile, resources)
+    }
+
+    fn horizontal_relation_style(
+        &self,
+        layout: &ErRelationLayout<'_>,
+        source_side: RelationPortSide,
+        target_side: RelationPortSide,
+        resources: &ResourceContext,
+    ) -> Result<HorizontalRelationStyle> {
+        let source_marker = RelationGraphLine::try_with_role(
+            horizontal_cardinality_marker(layout.top_cardinality, source_side, self.charset)?,
+            AsciiColorRole::EdgeArrow,
             self.width_profile,
             resources,
         )?;
-
-        let _ = options;
-        relation_graph::render_parallel_self_loops(relation_box, vec![rows], resources)
-    }
-
-    fn render_self_relations(
-        &self,
-        relation_box: &RenderedEntityBox,
-        layouts: &[ErRelationLayout<'_>],
-        options: &AsciiRenderOptions,
-        resources: &mut ResourceContext,
-    ) -> Result<Vec<RelationGraphLine>> {
-        let mut loops = Vec::new();
-        loops
-            .try_reserve_exact(layouts.len())
-            .map_err(|_| layout_allocation_failed())?;
-        for layout in layouts {
-            loops.push(self_loop_rows_for_er_relationship(
-                layout,
-                self.charset,
-                self.width_profile,
-                resources,
-            )?);
-        }
-
-        let _ = options;
-        relation_graph::render_parallel_self_loops(relation_box, loops, resources)
+        let target_marker = RelationGraphLine::try_with_role(
+            horizontal_cardinality_marker(layout.bottom_cardinality, target_side, self.charset)?,
+            AsciiColorRole::EdgeArrow,
+            self.width_profile,
+            resources,
+        )?;
+        Ok(HorizontalRelationStyle::new(
+            HorizontalRelationEndpoint::new(Some(source_marker), None),
+            HorizontalRelationEndpoint::new(Some(target_marker), None),
+            layout.label.clone(),
+            relationship_horizontal_line(&layout.relationship.rel_spec.rel_type, self.charset)?,
+            relationship_line(&layout.relationship.rel_spec.rel_type, self.charset)?,
+            relation_line_chars(self.charset),
+        ))
     }
 
     fn layered_horizontal_gap(&self) -> usize {
@@ -603,9 +740,8 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationLayout<'_>>
         resources: &mut ResourceContext,
     ) -> Result<Vec<RelationOverlay>> {
         resources.charge_layout_work(3)?;
-        let relationship = layout.relationship;
-        let top_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
-        let bottom_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
+        let top_cardinality = cardinality_marker(layout.top_cardinality, self.charset)?;
+        let bottom_cardinality = cardinality_marker(layout.bottom_cardinality, self.charset)?;
 
         let mut overlays = Vec::new();
         overlays
@@ -645,9 +781,8 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationLayout<'_>>
         options: &AsciiRenderOptions,
         resources: &mut ResourceContext,
     ) -> Result<Vec<RelationGraphLine>> {
-        let relationship = layout.relationship;
-        let top = find_box(boxes, &relationship.entity_a)?;
-        let bottom = find_box(boxes, &relationship.entity_b)?;
+        let top = find_box(boxes, layout.top_id)?;
+        let bottom = find_box(boxes, layout.bottom_id)?;
 
         let _ = options;
         render_vertical_relationship(
@@ -697,8 +832,8 @@ fn self_loop_rows_for_er_relationship(
     resources: &ResourceContext,
 ) -> Result<relation_graph::RelationSelfLoopRows> {
     let relationship = layout.relationship;
-    let top_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
-    let bottom_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
+    let top_cardinality = cardinality_marker(layout.top_cardinality, charset)?;
+    let bottom_cardinality = cardinality_marker(layout.bottom_cardinality, charset)?;
     let top_marker = RelationGraphLine::try_with_role(
         top_cardinality,
         AsciiColorRole::EdgeArrow,
@@ -733,12 +868,34 @@ fn self_loop_rows_for_er_relationship(
     )?))
 }
 
-fn cardinality_marker(cardinality: &str) -> Result<&'static str> {
+fn cardinality_marker(cardinality: &str, charset: ErCharset) -> Result<&'static str> {
     match cardinality {
         "ONLY_ONE" => Ok("||"),
         "ZERO_OR_ONE" => Ok("o|"),
         "ONE_OR_MORE" => Ok("|{"),
         "ZERO_OR_MORE" => Ok("o{"),
+        "MD_PARENT" => Ok(charset.md_parent),
+        _ => Err(AsciiError::UnsupportedFeature {
+            diagram_type: "er",
+            feature: "unknown ER cardinality markers",
+        }),
+    }
+}
+
+fn horizontal_cardinality_marker(
+    cardinality: &str,
+    side: RelationPortSide,
+    charset: ErCharset,
+) -> Result<&'static str> {
+    match (cardinality, side) {
+        ("ONLY_ONE", _) => Ok("||"),
+        ("ZERO_OR_ONE", RelationPortSide::Right) => Ok("|o"),
+        ("ZERO_OR_ONE", RelationPortSide::Left) => Ok("o|"),
+        ("ONE_OR_MORE", RelationPortSide::Right) => Ok("}|"),
+        ("ONE_OR_MORE", RelationPortSide::Left) => Ok("|{"),
+        ("ZERO_OR_MORE", RelationPortSide::Right) => Ok("}o"),
+        ("ZERO_OR_MORE", RelationPortSide::Left) => Ok("o{"),
+        ("MD_PARENT", _) => Ok(charset.md_parent),
         _ => Err(AsciiError::UnsupportedFeature {
             diagram_type: "er",
             feature: "unknown ER cardinality markers",
@@ -843,4 +1000,46 @@ fn grid_overflow(resources: &ResourceContext) -> AsciiError {
 
 fn layout_allocation_failed() -> AsciiError {
     AsciiError::allocation_failed(AsciiResourceLimitPhase::LayoutWork.as_str())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::resource::AsciiResourcePolicy;
+
+    fn resources_with_limit(id: AsciiResourceLimitId, max: usize) -> ResourceContext {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(id, max)
+            .expect("resource test limit should be valid");
+        ResourceContext::new(policy)
+    }
+
+    #[test]
+    fn horizontal_er_strip_checks_grid_and_layout_work_before_allocating_rows() {
+        let boxes = vec![
+            RelationGraphBox::new("A".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("B".to_string(), vec!["B".to_string()], 1),
+        ];
+
+        for limit in [
+            AsciiResourceLimitId::MaxGridCells,
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+        ] {
+            let resources = resources_with_limit(limit, 5);
+            let error = relation_graph::render_horizontal_box_strip_lines(
+                &boxes,
+                RelationGraphHorizontalDirection::LeftRight,
+                ER_LEVEL_HORIZONTAL_GAP,
+                TerminalWidthProfile::Unicode,
+                &resources,
+            )
+            .expect_err("a six-cell horizontal strip must reject a five-cell/work budget");
+            let AsciiError::ResourceLimitExceeded(details) = error else {
+                panic!("expected a typed horizontal resource error, got {error:?}");
+            };
+            assert_eq!(details.limit, limit);
+            assert_eq!(details.actual, 6);
+            assert_eq!(details.max, 5);
+        }
+    }
 }

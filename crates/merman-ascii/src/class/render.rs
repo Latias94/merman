@@ -5,9 +5,10 @@ use crate::options::{AsciiCharset, AsciiRenderOptions, TerminalWidthProfile};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
 use crate::relation_graph::{
-    LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, RelationGraphBoxStyle,
+    HorizontalRelationEndpoint, HorizontalRelationStyle, LayeredRelationEdge, LayeredRelationError,
+    LayeredRelationRouteStyle, RelationGraphBoxStyle, RelationGraphHorizontalDirection,
     RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
-    RelationOverlay, RelationParallelPlan, RelationStackPlan,
+    RelationOverlay, RelationParallelPlan, RelationPortSide, RelationStackPlan,
 };
 #[cfg(test)]
 use crate::resource::AsciiResourceLimitId;
@@ -170,6 +171,7 @@ struct NamespaceRenderContext<'a> {
     model: &'a ClassDiagram,
     options: &'a AsciiRenderOptions,
     charset: ClassCharset,
+    direction: ClassDirection,
     namespace_facade_aliases: &'a HashMap<String, String>,
     note_by_id: ClassNoteIndex<'a>,
 }
@@ -190,9 +192,43 @@ enum MarkerSide {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct RelationEndpointMarker {
-    marker: RelationMarker,
-    side: MarkerSide,
+enum ClassDirection {
+    TopDown,
+    BottomUp,
+    LeftRight,
+    RightLeft,
+}
+
+impl ClassDirection {
+    fn try_from_model(raw: &str) -> Result<Self> {
+        match raw.trim().to_ascii_uppercase().as_str() {
+            "" | "TB" | "TD" => Ok(Self::TopDown),
+            "BT" => Ok(Self::BottomUp),
+            "LR" => Ok(Self::LeftRight),
+            "RL" => Ok(Self::RightLeft),
+            _ => Err(AsciiError::UnsupportedFeature {
+                diagram_type: "class",
+                feature: "unknown class diagram directions",
+            }),
+        }
+    }
+
+    fn is_horizontal(self) -> bool {
+        matches!(self, Self::LeftRight | Self::RightLeft)
+    }
+
+    fn is_reversed(self) -> bool {
+        matches!(self, Self::BottomUp | Self::RightLeft)
+    }
+
+    fn horizontal_direction(self) -> RelationGraphHorizontalDirection {
+        match self {
+            Self::RightLeft => RelationGraphHorizontalDirection::RightLeft,
+            Self::TopDown | Self::BottomUp | Self::LeftRight => {
+                RelationGraphHorizontalDirection::LeftRight
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -205,11 +241,26 @@ enum RelationLine {
 struct RelationLayout<'a> {
     top_id: &'a str,
     bottom_id: &'a str,
-    endpoint_marker: Option<RelationEndpointMarker>,
+    top_marker: Option<RelationMarker>,
+    bottom_marker: Option<RelationMarker>,
     line: RelationLine,
     label: Option<RelationGraphLabel>,
     top_endpoint_label: Option<RelationGraphLabel>,
     bottom_endpoint_label: Option<RelationGraphLabel>,
+}
+
+impl RelationLayout<'_> {
+    fn apply_direction(&mut self, direction: ClassDirection) {
+        if direction != ClassDirection::BottomUp {
+            return;
+        }
+        std::mem::swap(&mut self.top_id, &mut self.bottom_id);
+        std::mem::swap(&mut self.top_marker, &mut self.bottom_marker);
+        std::mem::swap(
+            &mut self.top_endpoint_label,
+            &mut self.bottom_endpoint_label,
+        );
+    }
 }
 
 pub(crate) fn render_class_diagram(
@@ -220,12 +271,14 @@ pub(crate) fn render_class_diagram(
     preflight_class_text(model, &mut resources)?;
     charge_class_model_work(model, &mut resources)?;
     let charset = ClassCharset::for_options(options);
+    let direction = ClassDirection::try_from_model(&model.direction)?;
     let namespace_facade_aliases = namespace_facade_aliases(model)?;
     if has_renderable_namespaces(model) {
         return render_namespaced_class_diagram(
             model,
             options,
             charset,
+            direction,
             &namespace_facade_aliases,
             &mut resources,
         );
@@ -267,9 +320,40 @@ pub(crate) fn render_class_diagram(
         &box_by_id,
         &mut resources,
     )?);
+    for layout in &mut layouts {
+        layout.apply_direction(direction);
+    }
 
     if layouts.is_empty() {
+        if direction.is_horizontal() {
+            let lines = relation_graph::render_horizontal_box_strip_lines(
+                &boxes,
+                direction.horizontal_direction(),
+                CLASS_LEVEL_HORIZONTAL_GAP,
+                options.terminal_width_profile,
+                &resources,
+            )?;
+            return render_class_document_lines(lines, options, &mut resources);
+        }
+        if direction.is_reversed() {
+            let lines =
+                reversed_class_box_stack_lines(&boxes, options.terminal_width_profile, &resources)?;
+            return render_class_document_lines(lines, options, &mut resources);
+        }
         return relation_graph::render_stacked_boxes_with_options(&boxes, options, &mut resources);
+    }
+
+    if direction.is_horizontal() {
+        let lines = render_horizontal_class_component_lines(
+            &boxes,
+            &box_by_id,
+            &layouts,
+            direction,
+            options,
+            charset,
+            &mut resources,
+        )?;
+        return render_class_document_lines(lines, options, &mut resources);
     }
 
     render_class_components(
@@ -297,6 +381,7 @@ fn render_namespaced_class_diagram(
     model: &ClassDiagram,
     options: &AsciiRenderOptions,
     charset: ClassCharset,
+    direction: ClassDirection,
     namespace_facade_aliases: &HashMap<String, String>,
     resources: &mut ResourceContext,
 ) -> Result<String> {
@@ -304,6 +389,7 @@ fn render_namespaced_class_diagram(
         model,
         options,
         charset,
+        direction,
         namespace_facade_aliases,
         resources,
     )?;
@@ -322,6 +408,9 @@ fn render_namespaced_class_diagram(
             resources,
         )?);
     }
+    for layout in &mut external_layouts {
+        layout.apply_direction(direction);
+    }
     let summary_capacity = external_layouts
         .len()
         .checked_add(model.notes.len())
@@ -339,7 +428,34 @@ fn render_namespaced_class_diagram(
     )?);
 
     if summary_rows.is_empty() {
+        if direction.is_horizontal() {
+            let lines = relation_graph::render_horizontal_box_strip_lines(
+                &boxes,
+                direction.horizontal_direction(),
+                CLASS_LEVEL_HORIZONTAL_GAP,
+                options.terminal_width_profile,
+                resources,
+            )?;
+            return render_class_document_lines(lines, options, resources);
+        }
+        if direction.is_reversed() {
+            let lines =
+                reversed_class_box_stack_lines(&boxes, options.terminal_width_profile, resources)?;
+            return render_class_document_lines(lines, options, resources);
+        }
         return relation_graph::render_stacked_boxes_with_options(&boxes, options, resources);
+    }
+
+    if direction.is_horizontal() {
+        let mut lines = relation_graph::render_horizontal_box_strip_lines(
+            &boxes,
+            direction.horizontal_direction(),
+            CLASS_LEVEL_HORIZONTAL_GAP,
+            options.terminal_width_profile,
+            resources,
+        )?;
+        append_class_summary_lines(&mut lines, &summary_rows, options, resources)?;
+        return render_class_document_lines(lines, options, resources);
     }
 
     relation_graph::render_stacked_boxes_with_relation_summary(
@@ -390,6 +506,7 @@ fn render_namespaced_class_boxes(
     model: &ClassDiagram,
     options: &AsciiRenderOptions,
     charset: ClassCharset,
+    direction: ClassDirection,
     namespace_facade_aliases: &HashMap<String, String>,
     resources: &mut ResourceContext,
 ) -> Result<Vec<RenderedClassBox>> {
@@ -398,6 +515,7 @@ fn render_namespaced_class_boxes(
         model,
         options,
         charset,
+        direction,
         namespace_facade_aliases,
         note_by_id,
     };
@@ -589,18 +707,33 @@ fn render_namespace_box(
         &box_by_id,
         resources,
     )?);
+    for layout in &mut direct_layouts {
+        layout.apply_direction(context.direction);
+    }
 
     if direct_layouts.is_empty() {
         children.extend(direct_boxes);
     } else {
-        let component_lines = render_class_component_lines(
-            &direct_boxes,
-            &box_by_id,
-            &direct_layouts,
-            context.options,
-            context.charset,
-            resources,
-        )?;
+        let component_lines = if context.direction.is_horizontal() {
+            render_horizontal_class_component_lines(
+                &direct_boxes,
+                &box_by_id,
+                &direct_layouts,
+                context.direction,
+                context.options,
+                context.charset,
+                resources,
+            )?
+        } else {
+            render_class_component_lines(
+                &direct_boxes,
+                &box_by_id,
+                &direct_layouts,
+                context.options,
+                context.charset,
+                resources,
+            )?
+        };
         children.push(RelationGraphBox::from_rendered_lines(
             format!("{}::relations", namespace.id),
             component_lines,
@@ -909,6 +1042,99 @@ fn render_class_component_lines(
     .unwrap_or_default())
 }
 
+fn render_class_document_lines(
+    lines: Vec<RelationGraphLine>,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+) -> Result<String> {
+    let document = RelationGraphBox::from_rendered_lines(
+        "class::directional-document".to_string(),
+        lines,
+        options.terminal_width_profile,
+        resources,
+    )?;
+    relation_graph::render_stacked_boxes_with_options(&[document], options, resources)
+}
+
+fn reversed_class_box_stack_lines(
+    boxes: &[RenderedClassBox],
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<Vec<RelationGraphLine>> {
+    let height = boxes
+        .iter()
+        .try_fold(boxes.len().saturating_sub(1), |height, relation_box| {
+            resources.checked_grid_add(height, relation_box.height())
+        })?;
+    let mut lines = Vec::new();
+    lines
+        .try_reserve_exact(height)
+        .map_err(|_| layout_allocation_failed())?;
+    for (index, relation_box) in boxes.iter().rev().enumerate() {
+        if index > 0 {
+            lines.push(RelationGraphLine::try_plain("", width_profile, resources)?);
+        }
+        lines.extend(relation_box.lines().iter().cloned());
+    }
+    Ok(lines)
+}
+
+fn render_horizontal_class_component_lines(
+    boxes: &[RenderedClassBox],
+    box_by_id: &RenderedClassBoxIndex<'_>,
+    layouts: &[RelationLayout<'_>],
+    direction: ClassDirection,
+    options: &AsciiRenderOptions,
+    charset: ClassCharset,
+    resources: &mut ResourceContext,
+) -> Result<Vec<RelationGraphLine>> {
+    let adapter = ClassRelationComponentAdapter {
+        charset,
+        width_profile: options.terminal_width_profile,
+        box_by_id,
+    };
+    relation_graph::render_horizontal_relation_components(
+        boxes,
+        layouts,
+        direction.horizontal_direction(),
+        options,
+        resources,
+        &adapter,
+    )
+}
+
+fn append_class_summary_lines(
+    lines: &mut Vec<RelationGraphLine>,
+    rows: &[RelationGraphSummaryRow],
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    if !lines.is_empty() {
+        lines.push(RelationGraphLine::try_plain(
+            "",
+            options.terminal_width_profile,
+            resources,
+        )?);
+    }
+    lines.push(RelationGraphLine::try_with_role(
+        "relations:",
+        AsciiColorRole::MutedText,
+        options.terminal_width_profile,
+        resources,
+    )?);
+    lines.extend(relation_graph::relation_summary_rows_lines(
+        rows,
+        options,
+        None,
+        resources,
+        |row| Ok(row.clone()),
+    )?);
+    Ok(())
+}
+
 fn render_class_box(
     class: &ClassNode,
     options: &AsciiRenderOptions,
@@ -1087,24 +1313,14 @@ fn relation_layout<'a>(
     let left_marker = marker_for_relation_type(model, relation.relation.type1)?;
     let right_marker = marker_for_relation_type(model, relation.relation.type2)?;
     let none = model.constants.relation_type.none;
-
-    let endpoint_marker = match (left_marker, right_marker) {
-        (Some(marker), None) if relation.relation.type2 == none => Some(RelationEndpointMarker {
-            marker,
-            side: MarkerSide::Top,
-        }),
-        (None, Some(marker)) if relation.relation.type1 == none => Some(RelationEndpointMarker {
-            marker,
-            side: MarkerSide::Bottom,
-        }),
-        (None, None) if relation.relation.type1 == none && relation.relation.type2 == none => None,
-        _ => {
-            return Err(AsciiError::UnsupportedFeature {
-                diagram_type: "class",
-                feature: "class relationships with multiple markers",
-            });
-        }
-    };
+    if left_marker.is_none() && relation.relation.type1 != none
+        || right_marker.is_none() && relation.relation.type2 != none
+    {
+        return Err(AsciiError::UnsupportedFeature {
+            diagram_type: "class",
+            feature: "unknown class relationship marker types",
+        });
+    }
 
     let label = RelationGraphLabel::try_new(&relation.title, width_profile, resources)?;
     let left_endpoint_label =
@@ -1112,41 +1328,37 @@ fn relation_layout<'a>(
     let right_endpoint_label =
         relation_endpoint_label(&relation.relation_title_2, width_profile, resources)?;
 
-    if let Some(marker) =
-        endpoint_marker.filter(|marker| marker.marker == RelationMarker::Extension)
-    {
-        return Ok(match marker.side {
-            MarkerSide::Top => RelationLayout {
-                top_id: relation_endpoint_id(namespace_facade_aliases, relation.id1.as_str()),
-                bottom_id: relation_endpoint_id(namespace_facade_aliases, relation.id2.as_str()),
-                endpoint_marker: Some(RelationEndpointMarker {
-                    marker: marker.marker,
-                    side: MarkerSide::Top,
-                }),
-                line,
-                label,
-                top_endpoint_label: left_endpoint_label,
-                bottom_endpoint_label: right_endpoint_label,
-            },
-            MarkerSide::Bottom => RelationLayout {
-                top_id: relation_endpoint_id(namespace_facade_aliases, relation.id2.as_str()),
-                bottom_id: relation_endpoint_id(namespace_facade_aliases, relation.id1.as_str()),
-                endpoint_marker: Some(RelationEndpointMarker {
-                    marker: marker.marker,
-                    side: MarkerSide::Top,
-                }),
-                line,
-                label,
-                top_endpoint_label: right_endpoint_label,
-                bottom_endpoint_label: left_endpoint_label,
-            },
+    if left_marker == Some(RelationMarker::Extension) && right_marker.is_none() {
+        return Ok(RelationLayout {
+            top_id: relation_endpoint_id(namespace_facade_aliases, relation.id1.as_str()),
+            bottom_id: relation_endpoint_id(namespace_facade_aliases, relation.id2.as_str()),
+            top_marker: left_marker,
+            bottom_marker: None,
+            line,
+            label,
+            top_endpoint_label: left_endpoint_label,
+            bottom_endpoint_label: right_endpoint_label,
+        });
+    }
+
+    if right_marker == Some(RelationMarker::Extension) && left_marker.is_none() {
+        return Ok(RelationLayout {
+            top_id: relation_endpoint_id(namespace_facade_aliases, relation.id2.as_str()),
+            bottom_id: relation_endpoint_id(namespace_facade_aliases, relation.id1.as_str()),
+            top_marker: right_marker,
+            bottom_marker: None,
+            line,
+            label,
+            top_endpoint_label: right_endpoint_label,
+            bottom_endpoint_label: left_endpoint_label,
         });
     }
 
     Ok(RelationLayout {
         top_id: relation_endpoint_id(namespace_facade_aliases, relation.id1.as_str()),
         bottom_id: relation_endpoint_id(namespace_facade_aliases, relation.id2.as_str()),
-        endpoint_marker,
+        top_marker: left_marker,
+        bottom_marker: right_marker,
         line,
         label,
         top_endpoint_label: left_endpoint_label,
@@ -1269,7 +1481,8 @@ fn note_relation_layouts_for_notes<'a>(
             layouts.push(RelationLayout {
                 top_id: note.id.as_str(),
                 bottom_id: target_id,
-                endpoint_marker: None,
+                top_marker: None,
+                bottom_marker: None,
                 line: RelationLine::Dotted,
                 label: None,
                 top_endpoint_label: None,
@@ -1379,8 +1592,8 @@ fn class_relation_rows(
         center,
         resources,
     )?;
-    match layout.endpoint_marker {
-        None => {
+    match (layout.top_marker, layout.bottom_marker) {
+        (None, None) => {
             relation_lines.push(relation_graph::marker_line_with_role(
                 line_char(layout.line, charset),
                 center,
@@ -1404,56 +1617,42 @@ fn class_relation_rows(
                 )?);
             }
         }
-        Some(endpoint_marker) => match endpoint_marker.side {
-            MarkerSide::Top => {
-                relation_lines.push(relation_graph::marker_line_with_role(
-                    marker_char(endpoint_marker.marker, MarkerSide::Top, charset),
+        (top_marker, bottom_marker) => {
+            relation_lines.push(relation_graph::marker_line_with_role(
+                top_marker
+                    .map(|marker| marker_char(marker, MarkerSide::Top, charset))
+                    .unwrap_or_else(|| line_char(layout.line, charset)),
+                center,
+                if top_marker.is_some() {
+                    AsciiColorRole::EdgeArrow
+                } else {
+                    AsciiColorRole::EdgeLine
+                },
+                width_profile,
+                resources,
+            )?);
+            if let Some(label) = layout.label.as_ref() {
+                relation_lines.extend(relation_graph::centered_label_lines_with_role(
+                    label,
                     center,
-                    AsciiColorRole::EdgeArrow,
-                    width_profile,
-                    resources,
-                )?);
-                if let Some(label) = layout.label.as_ref() {
-                    relation_lines.extend(relation_graph::centered_label_lines_with_role(
-                        label,
-                        center,
-                        AsciiColorRole::EdgeLabel,
-                        resources,
-                    )?);
-                }
-                relation_lines.push(relation_graph::marker_line_with_role(
-                    line_char(layout.line, charset),
-                    center,
-                    AsciiColorRole::EdgeLine,
-                    width_profile,
+                    AsciiColorRole::EdgeLabel,
                     resources,
                 )?);
             }
-            MarkerSide::Bottom => {
-                relation_lines.push(relation_graph::marker_line_with_role(
-                    line_char(layout.line, charset),
-                    center,
-                    AsciiColorRole::EdgeLine,
-                    width_profile,
-                    resources,
-                )?);
-                if let Some(label) = layout.label.as_ref() {
-                    relation_lines.extend(relation_graph::centered_label_lines_with_role(
-                        label,
-                        center,
-                        AsciiColorRole::EdgeLabel,
-                        resources,
-                    )?);
-                }
-                relation_lines.push(relation_graph::marker_line_with_role(
-                    marker_char(endpoint_marker.marker, MarkerSide::Bottom, charset),
-                    center,
-                    AsciiColorRole::EdgeArrow,
-                    width_profile,
-                    resources,
-                )?);
-            }
-        },
+            relation_lines.push(relation_graph::marker_line_with_role(
+                bottom_marker
+                    .map(|marker| marker_char(marker, MarkerSide::Bottom, charset))
+                    .unwrap_or_else(|| line_char(layout.line, charset)),
+                center,
+                if bottom_marker.is_some() {
+                    AsciiColorRole::EdgeArrow
+                } else {
+                    AsciiColorRole::EdgeLine
+                },
+                width_profile,
+                resources,
+            )?);
+        }
     }
     push_centered_endpoint_label(
         &mut relation_lines,
@@ -1573,36 +1772,36 @@ fn parallel_class_lane_rows(
     )?;
     let label_lines =
         central_label_lines_or_empty(layout.label.as_ref(), width_profile, resources)?;
-    let relation_rows = match layout.endpoint_marker {
-        None => {
+    let relation_rows = match (layout.top_marker, layout.bottom_marker) {
+        (None, None) => {
             let mut rows = vec![line.clone()];
             rows.extend(label_lines);
             rows.push(line);
             rows
         }
-        Some(endpoint_marker) => {
-            let marker_text =
-                marker_char(endpoint_marker.marker, endpoint_marker.side, charset).to_string();
-            let marker = RelationGraphLine::try_with_role(
-                &marker_text,
-                AsciiColorRole::EdgeArrow,
-                width_profile,
-                resources,
-            )?;
-            match endpoint_marker.side {
-                MarkerSide::Top => {
-                    let mut rows = vec![marker];
-                    rows.extend(label_lines);
-                    rows.push(line);
-                    rows
-                }
-                MarkerSide::Bottom => {
-                    let mut rows = vec![line];
-                    rows.extend(label_lines);
-                    rows.push(marker);
-                    rows
-                }
-            }
+        (top_marker, bottom_marker) => {
+            let top = match top_marker {
+                Some(marker) => RelationGraphLine::try_with_role(
+                    &marker_char(marker, MarkerSide::Top, charset).to_string(),
+                    AsciiColorRole::EdgeArrow,
+                    width_profile,
+                    resources,
+                )?,
+                None => line.clone(),
+            };
+            let bottom = match bottom_marker {
+                Some(marker) => RelationGraphLine::try_with_role(
+                    &marker_char(marker, MarkerSide::Bottom, charset).to_string(),
+                    AsciiColorRole::EdgeArrow,
+                    width_profile,
+                    resources,
+                )?,
+                None => line,
+            };
+            let mut rows = vec![top];
+            rows.extend(label_lines);
+            rows.push(bottom);
+            rows
         }
     };
     rows.extend(relation_rows);
@@ -1662,36 +1861,26 @@ fn endpoint_label_summary_text(label: &RelationGraphLabel) -> String {
     label.lines().join("/")
 }
 
-fn class_relation_summary_symbol(layout: &RelationLayout<'_>) -> &'static str {
-    let Some(endpoint_marker) = layout.endpoint_marker else {
-        return match layout.line {
-            RelationLine::Solid => "--",
-            RelationLine::Dotted => "..",
-        };
+fn class_relation_summary_symbol(layout: &RelationLayout<'_>) -> String {
+    let line = match layout.line {
+        RelationLine::Solid => "--",
+        RelationLine::Dotted => "..",
     };
-
-    match (endpoint_marker.marker, endpoint_marker.side, layout.line) {
-        (RelationMarker::Extension, MarkerSide::Top, RelationLine::Solid) => "<|--",
-        (RelationMarker::Extension, MarkerSide::Top, RelationLine::Dotted) => "<|..",
-        (RelationMarker::Extension, MarkerSide::Bottom, RelationLine::Solid) => "--|>",
-        (RelationMarker::Extension, MarkerSide::Bottom, RelationLine::Dotted) => "..|>",
-        (RelationMarker::Dependency, MarkerSide::Top, RelationLine::Dotted) => "<..",
-        (RelationMarker::Dependency, MarkerSide::Bottom, RelationLine::Dotted) => "..>",
-        (RelationMarker::Dependency, MarkerSide::Top, RelationLine::Solid) => "<--",
-        (RelationMarker::Dependency, MarkerSide::Bottom, RelationLine::Solid) => "-->",
-        (RelationMarker::Aggregation, MarkerSide::Top, RelationLine::Solid) => "o--",
-        (RelationMarker::Aggregation, MarkerSide::Top, RelationLine::Dotted) => "o..",
-        (RelationMarker::Aggregation, MarkerSide::Bottom, RelationLine::Solid) => "--o",
-        (RelationMarker::Aggregation, MarkerSide::Bottom, RelationLine::Dotted) => "..o",
-        (RelationMarker::Composition, MarkerSide::Top, RelationLine::Solid) => "*--",
-        (RelationMarker::Composition, MarkerSide::Top, RelationLine::Dotted) => "*..",
-        (RelationMarker::Composition, MarkerSide::Bottom, RelationLine::Solid) => "--*",
-        (RelationMarker::Composition, MarkerSide::Bottom, RelationLine::Dotted) => "..*",
-        (RelationMarker::Lollipop, MarkerSide::Top, RelationLine::Solid) => "()--",
-        (RelationMarker::Lollipop, MarkerSide::Top, RelationLine::Dotted) => "()..",
-        (RelationMarker::Lollipop, MarkerSide::Bottom, RelationLine::Solid) => "--()",
-        (RelationMarker::Lollipop, MarkerSide::Bottom, RelationLine::Dotted) => "..()",
-    }
+    let top = layout.top_marker.map_or("", |marker| match marker {
+        RelationMarker::Extension => "<|",
+        RelationMarker::Dependency => "<",
+        RelationMarker::Aggregation => "o",
+        RelationMarker::Composition => "*",
+        RelationMarker::Lollipop => "()",
+    });
+    let bottom = layout.bottom_marker.map_or("", |marker| match marker {
+        RelationMarker::Extension => "|>",
+        RelationMarker::Dependency => ">",
+        RelationMarker::Aggregation => "o",
+        RelationMarker::Composition => "*",
+        RelationMarker::Lollipop => "()",
+    });
+    format!("{top}{line}{bottom}")
 }
 
 fn class_layered_edge(layout: &RelationLayout<'_>) -> LayeredRelationEdge {
@@ -1745,42 +1934,53 @@ impl<'relation, 'index, 'boxes> relation_graph::RelationComponentAdapter<Relatio
         layout.top_id == layout.bottom_id
     }
 
-    fn render_self_relation(
+    fn self_loop_rows(
         &self,
-        relation_box: &RenderedClassBox,
         layout: &RelationLayout<'relation>,
-        options: &AsciiRenderOptions,
-        resources: &mut ResourceContext,
-    ) -> Result<Vec<RelationGraphLine>> {
-        let rows =
-            self_loop_rows_for_class_layout(layout, self.charset, self.width_profile, resources)?;
-
-        let _ = options;
-        relation_graph::render_parallel_self_loops(relation_box, vec![rows], resources)
+        resources: &ResourceContext,
+    ) -> Result<relation_graph::RelationSelfLoopRows> {
+        self_loop_rows_for_class_layout(layout, self.charset, self.width_profile, resources)
     }
 
-    fn render_self_relations(
+    fn horizontal_relation_style(
         &self,
-        relation_box: &RenderedClassBox,
-        layouts: &[RelationLayout<'relation>],
-        options: &AsciiRenderOptions,
-        resources: &mut ResourceContext,
-    ) -> Result<Vec<RelationGraphLine>> {
-        let mut loops = Vec::new();
-        loops
-            .try_reserve_exact(layouts.len())
-            .map_err(|_| layout_allocation_failed())?;
-        for layout in layouts {
-            loops.push(self_loop_rows_for_class_layout(
-                layout,
-                self.charset,
-                self.width_profile,
-                resources,
-            )?);
-        }
-
-        let _ = options;
-        relation_graph::render_parallel_self_loops(relation_box, loops, resources)
+        layout: &RelationLayout<'relation>,
+        source_side: RelationPortSide,
+        target_side: RelationPortSide,
+        resources: &ResourceContext,
+    ) -> Result<HorizontalRelationStyle> {
+        let source_marker = layout
+            .top_marker
+            .map(|marker| {
+                horizontal_class_marker_line(
+                    marker,
+                    source_side,
+                    self.charset,
+                    self.width_profile,
+                    resources,
+                )
+            })
+            .transpose()?;
+        let target_marker = layout
+            .bottom_marker
+            .map(|marker| {
+                horizontal_class_marker_line(
+                    marker,
+                    target_side,
+                    self.charset,
+                    self.width_profile,
+                    resources,
+                )
+            })
+            .transpose()?;
+        Ok(HorizontalRelationStyle::new(
+            HorizontalRelationEndpoint::new(source_marker, layout.top_endpoint_label.clone()),
+            HorizontalRelationEndpoint::new(target_marker, layout.bottom_endpoint_label.clone()),
+            layout.label.clone(),
+            horizontal_line_char(layout.line, self.charset),
+            line_char(layout.line, self.charset),
+            relation_line_chars(self.charset),
+        ))
     }
 
     fn layered_horizontal_gap(&self) -> usize {
@@ -1835,21 +2035,21 @@ impl<'relation, 'index, 'boxes> relation_graph::RelationComponentAdapter<Relatio
             ));
         }
 
-        if let Some(endpoint_marker) = layout.endpoint_marker {
-            match endpoint_marker.side {
-                MarkerSide::Top => overlays.push(RelationOverlay::glyph(
-                    geometry.source_x(),
-                    geometry.source_marker_y(),
-                    marker_char(endpoint_marker.marker, MarkerSide::Top, self.charset),
-                    AsciiColorRole::EdgeArrow,
-                )),
-                MarkerSide::Bottom => overlays.push(RelationOverlay::glyph(
-                    geometry.target_x(),
-                    geometry.target_marker_y(),
-                    marker_char(endpoint_marker.marker, MarkerSide::Bottom, self.charset),
-                    AsciiColorRole::EdgeArrow,
-                )),
-            }
+        if let Some(marker) = layout.top_marker {
+            overlays.push(RelationOverlay::glyph(
+                geometry.source_x(),
+                geometry.source_marker_y(),
+                marker_char(marker, MarkerSide::Top, self.charset),
+                AsciiColorRole::EdgeArrow,
+            ));
+        }
+        if let Some(marker) = layout.bottom_marker {
+            overlays.push(RelationOverlay::glyph(
+                geometry.target_x(),
+                geometry.target_marker_y(),
+                marker_char(marker, MarkerSide::Bottom, self.charset),
+                AsciiColorRole::EdgeArrow,
+            ));
         }
 
         if let Some(label) = layout.bottom_endpoint_label.as_ref() {
@@ -1914,16 +2114,32 @@ fn self_loop_rows_for_class_layout(
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
 ) -> Result<relation_graph::RelationSelfLoopRows> {
-    let top_marker =
-        RelationGraphLine::try_with_role("+", AsciiColorRole::EdgeLine, width_profile, resources)?;
+    let top_marker_text = layout
+        .top_marker
+        .map(|marker| marker_char(marker, MarkerSide::Top, charset).to_string())
+        .unwrap_or_else(|| "+".to_string());
+    let top_marker = RelationGraphLine::try_with_role(
+        &top_marker_text,
+        if layout.top_marker.is_some() {
+            AsciiColorRole::EdgeArrow
+        } else {
+            AsciiColorRole::EdgeLine
+        },
+        width_profile,
+        resources,
+    )?;
     let bottom_marker_text = layout
-        .endpoint_marker
-        .map(|marker| marker_char(marker.marker, marker.side, charset))
+        .bottom_marker
+        .map(|marker| marker_char(marker, MarkerSide::Bottom, charset))
         .unwrap_or_else(|| line_char(layout.line, charset))
         .to_string();
     let bottom_marker = RelationGraphLine::try_with_role(
         &bottom_marker_text,
-        AsciiColorRole::EdgeArrow,
+        if layout.bottom_marker.is_some() {
+            AsciiColorRole::EdgeArrow
+        } else {
+            AsciiColorRole::EdgeLine
+        },
         width_profile,
         resources,
     )?;
@@ -1978,6 +2194,33 @@ fn marker_char(marker: RelationMarker, side: MarkerSide, charset: ClassCharset) 
         RelationMarker::Composition => charset.composition,
         RelationMarker::Lollipop => charset.lollipop,
     }
+}
+
+fn horizontal_class_marker_line(
+    marker: RelationMarker,
+    side: RelationPortSide,
+    charset: ClassCharset,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<RelationGraphLine> {
+    let marker = match marker {
+        RelationMarker::Extension => match (side, charset.extension_up) {
+            (RelationPortSide::Right, '^') => "<|".to_string(),
+            (RelationPortSide::Left, '^') => "|>".to_string(),
+            (RelationPortSide::Right, _) => "◁".to_string(),
+            (RelationPortSide::Left, _) => "▷".to_string(),
+        },
+        RelationMarker::Dependency => match (side, charset.arrow_up) {
+            (RelationPortSide::Right, '^') => "<".to_string(),
+            (RelationPortSide::Left, '^') => ">".to_string(),
+            (RelationPortSide::Right, _) => "◀".to_string(),
+            (RelationPortSide::Left, _) => "▶".to_string(),
+        },
+        RelationMarker::Aggregation => charset.aggregation.to_string(),
+        RelationMarker::Composition => charset.composition.to_string(),
+        RelationMarker::Lollipop => charset.lollipop.to_string(),
+    };
+    RelationGraphLine::try_with_role(&marker, AsciiColorRole::EdgeArrow, width_profile, resources)
 }
 
 fn horizontal_line_char(line: RelationLine, charset: ClassCharset) -> char {
@@ -2118,11 +2361,15 @@ mod tests {
     use super::*;
     use crate::resource::AsciiResourcePolicy;
 
-    fn resources_with_layout_work_limit(max: usize) -> ResourceContext {
+    fn resources_with_limit(id: AsciiResourceLimitId, max: usize) -> ResourceContext {
         let policy = AsciiResourcePolicy::default()
-            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, max)
-            .expect("layout work test limit should be valid");
+            .with_limit(id, max)
+            .expect("resource test limit should be valid");
         ResourceContext::new(policy)
+    }
+
+    fn resources_with_layout_work_limit(max: usize) -> ResourceContext {
+        resources_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, max)
     }
 
     fn note(id: &str, text: &str) -> ClassNote {
@@ -2143,6 +2390,35 @@ mod tests {
         assert_eq!(details.actual, actual);
         assert_eq!(details.max, max);
         assert_eq!(details.profile, AsciiResourcePolicy::default().profile());
+    }
+
+    #[test]
+    fn horizontal_class_strip_checks_grid_and_layout_work_before_allocating_rows() {
+        let boxes = vec![
+            RelationGraphBox::new("A".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("B".to_string(), vec!["B".to_string()], 1),
+        ];
+
+        for limit in [
+            AsciiResourceLimitId::MaxGridCells,
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+        ] {
+            let resources = resources_with_limit(limit, 5);
+            let error = relation_graph::render_horizontal_box_strip_lines(
+                &boxes,
+                RelationGraphHorizontalDirection::LeftRight,
+                CLASS_LEVEL_HORIZONTAL_GAP,
+                TerminalWidthProfile::Unicode,
+                &resources,
+            )
+            .expect_err("a six-cell horizontal strip must reject a five-cell/work budget");
+            let AsciiError::ResourceLimitExceeded(details) = error else {
+                panic!("expected a typed horizontal resource error, got {error:?}");
+            };
+            assert_eq!(details.limit, limit);
+            assert_eq!(details.actual, 6);
+            assert_eq!(details.max, 5);
+        }
     }
 
     #[test]

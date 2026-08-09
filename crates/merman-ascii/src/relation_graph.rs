@@ -13,9 +13,11 @@ use crate::text::{StyledLine, display_width_with_profile};
 use crate::{AsciiError, Result};
 use std::collections::HashSet;
 use std::rc::Rc;
+mod horizontal;
 mod layered;
 mod summary;
 
+pub(crate) use self::horizontal::*;
 pub(crate) use self::layered::*;
 pub(crate) use self::summary::*;
 
@@ -66,21 +68,19 @@ pub(crate) trait RelationComponentAdapter<R> {
 
     fn is_self_relation(&self, relation: &R) -> bool;
 
-    fn render_self_relation(
+    fn self_loop_rows(
         &self,
-        relation_box: &RelationGraphBox,
         relation: &R,
-        options: &AsciiRenderOptions,
-        resources: &mut ResourceContext,
-    ) -> Result<Vec<RelationGraphLine>>;
+        resources: &ResourceContext,
+    ) -> Result<RelationSelfLoopRows>;
 
-    fn render_self_relations(
+    fn horizontal_relation_style(
         &self,
-        relation_box: &RelationGraphBox,
-        relations: &[R],
-        options: &AsciiRenderOptions,
-        resources: &mut ResourceContext,
-    ) -> Result<Vec<RelationGraphLine>>;
+        relation: &R,
+        source_side: RelationPortSide,
+        target_side: RelationPortSide,
+        resources: &ResourceContext,
+    ) -> Result<HorizontalRelationStyle>;
 
     fn layered_horizontal_gap(&self) -> usize;
 
@@ -987,14 +987,26 @@ where
         if same_endpoint {
             let relation_box = find_box_ref(boxes, edge.source_id())
                 .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
-            return adapter.render_self_relations(relation_box, relations, options, resources);
+            return render_relation_self_loops(
+                relation_box,
+                relations.iter(),
+                relations.len(),
+                adapter,
+                resources,
+            );
         }
     }
     if relations.len() == 1 && adapter.is_self_relation(&relations[0]) {
         let edge = adapter.build_edges(&relations[0]);
         let relation_box = find_box_ref(boxes, edge.source_id())
             .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
-        return adapter.render_self_relation(relation_box, &relations[0], options, resources);
+        return render_relation_self_loops(
+            relation_box,
+            std::iter::once(&relations[0]),
+            1,
+            adapter,
+            resources,
+        );
     }
     if adapter.is_same_endpoint_parallel(relations) {
         return adapter.render_parallel(all_boxes, relations, options, resources);
@@ -1173,14 +1185,26 @@ where
         if same_endpoint {
             let relation_box = find_box(boxes, edge.source_id())
                 .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
-            return adapter.render_self_relations(relation_box, relations, options, resources);
+            return render_relation_self_loops(
+                relation_box,
+                relations.iter(),
+                relations.len(),
+                adapter,
+                resources,
+            );
         }
     }
     if relations.len() == 1 && adapter.is_self_relation(&relations[0]) {
         let edge = adapter.build_edges(&relations[0]);
         let relation_box = find_box(boxes, edge.source_id())
             .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
-        return adapter.render_self_relation(relation_box, &relations[0], options, resources);
+        return render_relation_self_loops(
+            relation_box,
+            std::iter::once(&relations[0]),
+            1,
+            adapter,
+            resources,
+        );
     }
     if adapter.is_same_endpoint_parallel(relations) {
         return adapter.render_parallel(boxes, relations, options, resources);
@@ -1493,6 +1517,27 @@ pub(crate) fn render_parallel_self_loops(
     }
 
     Ok(lines)
+}
+
+fn render_relation_self_loops<'relation, R, A>(
+    relation_box: &RelationGraphBox,
+    relations: impl IntoIterator<Item = &'relation R>,
+    relation_count: usize,
+    adapter: &A,
+    resources: &mut ResourceContext,
+) -> Result<Vec<RelationGraphLine>>
+where
+    R: 'relation,
+    A: RelationComponentAdapter<R>,
+{
+    let mut loops = Vec::new();
+    loops
+        .try_reserve_exact(relation_count)
+        .map_err(|_| layout_allocation_failed())?;
+    for relation in relations {
+        loops.push(adapter.self_loop_rows(relation, resources)?);
+    }
+    render_parallel_self_loops(relation_box, loops, resources)
 }
 
 pub(crate) struct RelationSelfLoopRows {
@@ -2068,24 +2113,41 @@ mod tests {
             relation.source_id() == relation.target_id()
         }
 
-        fn render_self_relation(
+        fn self_loop_rows(
             &self,
-            _relation_box: &RelationGraphBox,
             _relation: &R,
-            _options: &AsciiRenderOptions,
-            _resources: &mut ResourceContext,
-        ) -> Result<Vec<RelationGraphLine>> {
-            Ok(Vec::new())
+            resources: &ResourceContext,
+        ) -> Result<RelationSelfLoopRows> {
+            let line = RelationGraphLine::try_with_role(
+                "-",
+                AsciiColorRole::EdgeLine,
+                TerminalWidthProfile::Unicode,
+                resources,
+            )?;
+            Ok(RelationSelfLoopRows::new(
+                line.clone(),
+                Vec::new(),
+                line,
+                '-',
+                '|',
+            ))
         }
 
-        fn render_self_relations(
+        fn horizontal_relation_style(
             &self,
-            _relation_box: &RelationGraphBox,
-            _relations: &[R],
-            _options: &AsciiRenderOptions,
-            _resources: &mut ResourceContext,
-        ) -> Result<Vec<RelationGraphLine>> {
-            Ok(Vec::new())
+            _relation: &R,
+            _source_side: RelationPortSide,
+            _target_side: RelationPortSide,
+            _resources: &ResourceContext,
+        ) -> Result<HorizontalRelationStyle> {
+            Ok(HorizontalRelationStyle::new(
+                HorizontalRelationEndpoint::new(None, None),
+                HorizontalRelationEndpoint::new(None, None),
+                None,
+                '-',
+                '|',
+                RelationLineChars::new(['-', '|', '.', ':'], '+'),
+            ))
         }
 
         fn layered_horizontal_gap(&self) -> usize {
