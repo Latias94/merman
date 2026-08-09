@@ -2,11 +2,20 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use merman_ascii::{AsciiRenderOptions, render_model};
+use merman_core::{Engine, ParseOptions};
+
 const EXPECTED_FIXTURE_COUNTS: &[(&str, usize)] = &[
     ("ascii", 54),
     ("extended-chars", 25),
     ("sequence", 12),
     ("sequence-ascii", 5),
+];
+
+const IMPORTED_FAMILY_FIXTURE_COUNTS: &[(&str, &str, usize)] = &[
+    ("sequence", "sequence", 322),
+    ("class", "class", 251),
+    ("er", "er", 101),
 ];
 
 #[test]
@@ -157,6 +166,80 @@ fn moving_reference_manifest_records_each_discovery_fixture_once() {
             "moving discovery fixture count drifted for {prefix}"
         );
     }
+}
+
+#[test]
+fn imported_common_family_fixture_admission_is_reproducible() {
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let engine = Engine::new();
+    let options = AsciiRenderOptions::ascii();
+    let mut failures = Vec::new();
+
+    for (directory, expected_kind, expected_count) in IMPORTED_FAMILY_FIXTURE_COUNTS {
+        let root = workspace_root.join("fixtures").join(directory);
+        let mut fixtures = fs::read_dir(&root)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", root.display()))
+            .map(|entry| entry.expect("fixture entry must be readable").path())
+            .filter(|path| path.extension().is_some_and(|extension| extension == "mmd"))
+            .collect::<Vec<_>>();
+        fixtures.sort();
+
+        assert_eq!(
+            fixtures.len(),
+            *expected_count,
+            "imported fixture count drifted for {}",
+            root.display()
+        );
+
+        for path in fixtures {
+            let file_name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .expect("fixture name must be UTF-8");
+            if *directory == "sequence" && file_name == "stress_end_keyword_016.mmd" {
+                assert!(
+                    engine
+                        .parse_diagram_for_render_model_sync(
+                            &fs::read_to_string(&path).expect("fixture must be readable"),
+                            ParseOptions::strict(),
+                        )
+                        .is_err(),
+                    "the documented upstream-invalid local stress fixture must stay excluded"
+                );
+                continue;
+            }
+
+            let result = (|| -> std::result::Result<(), String> {
+                let source = fs::read_to_string(&path)
+                    .map_err(|error| format!("failed to read fixture: {error}"))?;
+                let parsed = engine
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                    .map_err(|error| format!("strict parse failed: {error}"))?
+                    .ok_or_else(|| "diagram type was not detected".to_string())?;
+                let model = parsed.model();
+                if model.kind() != *expected_kind {
+                    return Err(format!(
+                        "expected typed family `{expected_kind}`, got `{}`",
+                        model.kind()
+                    ));
+                }
+                render_model(model, &options)
+                    .map_err(|error| format!("ASCII render failed: {error}"))?;
+                Ok(())
+            })();
+
+            if let Err(error) = result {
+                let relative = path.strip_prefix(&workspace_root).unwrap_or(&path);
+                failures.push(format!("{}: {error}", relative.display()));
+            }
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "imported common-family admission failures:\n{}",
+        failures.join("\n")
+    );
 }
 
 #[test]
