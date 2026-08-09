@@ -1027,7 +1027,7 @@ pub(super) fn render_model_to_compat_json_controlled(
     let includes = strings_to_json_controlled(&model.includes, control)?;
     let excludes = strings_to_json_controlled(&model.excludes, control)?;
     let sections = strings_to_json_controlled(&model.sections, control)?;
-    let tasks = serialize_items_controlled(&model.tasks, control)?;
+    let tasks = serialize_gantt_tasks_controlled(&model.tasks, control)?;
     let links = string_map_to_json_controlled(&model.links, control)?;
     let click_events = serialize_map_to_json_controlled(&model.click_events, control)?;
 
@@ -1084,16 +1084,21 @@ fn strings_to_json_controlled(
     Ok(values)
 }
 
-fn serialize_items_controlled<T: serde::Serialize>(
-    items: &[T],
+fn serialize_gantt_tasks_controlled(
+    tasks: &[GanttRenderTask],
     control: &ParseControl,
 ) -> ParseControlResult<Vec<Value>> {
-    let mut values = Vec::with_capacity(items.len());
-    for (index, item) in items.iter().enumerate() {
+    let mut values = Vec::with_capacity(tasks.len());
+    for (index, task) in tasks.iter().enumerate() {
         if index % 128 == 0 {
             control.checkpoint()?;
         }
-        values.push(json!(item));
+        let mut value = json!(task);
+        if let Some(object) = value.as_object_mut() {
+            object.remove("startConstraint");
+            object.remove("endConstraint");
+        }
+        values.push(value);
     }
     Ok(values)
 }
@@ -1143,7 +1148,7 @@ pub(super) fn gantt_db_to_render_model_controlled(
         if index % 128 == 0 {
             control.checkpoint()?;
         }
-        match raw_task_to_render_task(task) {
+        match raw_task_to_render_task(task, &db.date_format) {
             Ok(task) => tasks.push(task),
             Err(error) => return Ok(Err(error)),
         }
@@ -1177,17 +1182,32 @@ fn non_empty_opt(value: String) -> Option<String> {
     if value.is_empty() { None } else { Some(value) }
 }
 
-fn raw_task_to_render_task(t: RawTask) -> Result<GanttRenderTask> {
+fn raw_task_to_render_task(t: RawTask, date_format: &str) -> Result<GanttRenderTask> {
     let start_ms = task_time_ms(&t, "startTime", t.start_time)?;
     let end_ms = task_time_ms(&t, "endTime", t.end_time)?;
-    let raw_start = match t.raw.start_time {
-        StartTimeRaw::PrevTaskEnd => GanttRenderTaskStart::PrevTaskEnd {
-            id: t.prev_task_id.clone(),
-        },
+    let (raw_start, start_constraint) = match t.raw.start_time {
+        StartTimeRaw::PrevTaskEnd => (
+            GanttRenderTaskStart::PrevTaskEnd {
+                id: t.prev_task_id.clone(),
+            },
+            GanttTaskStartConstraint::PreviousTaskEnd {
+                dependency_id: t.prev_task_id.clone(),
+            },
+        ),
         StartTimeRaw::GetStartDate { start_data } => {
-            GanttRenderTaskStart::GetStartDate { start_data }
+            let constraint = match relative_dependency_ids(&start_data, "after") {
+                Some(dependency_ids) => GanttTaskStartConstraint::After { dependency_ids },
+                None => GanttTaskStartConstraint::Fixed {
+                    value: start_data.clone(),
+                },
+            };
+            (
+                GanttRenderTaskStart::GetStartDate { start_data },
+                constraint,
+            )
         }
     };
+    let end_constraint = gantt_end_constraint(&t.raw.end_data, date_format);
 
     Ok(GanttRenderTask {
         id: t.id,
@@ -1202,6 +1222,8 @@ fn raw_task_to_render_task(t: RawTask) -> Result<GanttRenderTask> {
         vert: t.vert,
         order: t.order,
         prev_task_id: t.prev_task_id,
+        start_constraint,
+        end_constraint,
         processed: t.processed,
         manual_end_time: t.manual_end_time,
         raw: GanttRenderTaskRaw {
@@ -1215,6 +1237,33 @@ fn raw_task_to_render_task(t: RawTask) -> Result<GanttRenderTask> {
         end_ms,
         render_end_ms: t.render_end_time.map(|d| d.timestamp_millis()),
     })
+}
+
+fn relative_dependency_ids(value: &str, keyword: &str) -> Option<Vec<String>> {
+    relative_ref_ids(value.trim(), keyword).map(|ids| {
+        ids.split(' ')
+            .filter(|id| !id.is_empty())
+            .map(str::to_string)
+            .collect()
+    })
+}
+
+fn gantt_end_constraint(value: &str, date_format: &str) -> GanttTaskEndConstraint {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return GanttTaskEndConstraint::Unspecified;
+    }
+    if let Some(dependency_ids) = relative_dependency_ids(trimmed, "until") {
+        return GanttTaskEndConstraint::Until { dependency_ids };
+    }
+    if parse_dayjs_like_strict(date_format.trim(), trimmed).is_some() {
+        return GanttTaskEndConstraint::Fixed {
+            value: value.to_string(),
+        };
+    }
+    GanttTaskEndConstraint::Duration {
+        value: value.to_string(),
+    }
 }
 
 fn task_time_ms(task: &RawTask, field: &str, value: Option<OffsetDateTime>) -> Result<i64> {

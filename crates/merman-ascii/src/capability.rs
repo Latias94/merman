@@ -315,7 +315,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "sections",
             "tasks",
             "stable task ids",
-            "start and end constraint expressions",
+            "typed start and end constraints with dependency ids",
             "resolved and adjusted end times",
             "dates",
             "tags",
@@ -332,7 +332,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
                 source: "crates/merman-ascii/tests/new_family_models.rs",
-                note: "typed-model tests preserve task data without claiming pseudo-graph geometry",
+                note: "typed-model tests preserve task identity and typed scheduling constraints without claiming pseudo-graph geometry",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
@@ -434,7 +434,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         structured_text_fallback: false,
         supported_semantics: &[
             "hierarchical nodes",
-            "stable node ids",
+            "stable authored node ids",
             "labels",
             "nesting",
             "wrapped text",
@@ -444,7 +444,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         ],
         limits: &[
             "icons and rich browser node shapes are disclosed as text rather than styled",
-            "duplicate ids, parallel edges, and missing endpoints are rejected",
+            "duplicate internal or authored ids, missing authored ids, parallel edges, and missing endpoints are rejected",
         ],
         evidence: &[
             AsciiCapabilityEvidence {
@@ -958,12 +958,10 @@ mod tests {
     fn gantt_capability_claims_only_disclosed_constraint_semantics() {
         let gantt = find("gantt");
 
-        assert!(
-            gantt
-                .supported_semantics
-                .iter()
-                .any(|semantic| semantic.contains("constraint expressions"))
-        );
+        assert!(gantt.supported_semantics.iter().any(|semantic| {
+            semantic.contains("typed start and end constraints")
+                && semantic.contains("dependency ids")
+        }));
         assert!(
             !gantt
                 .limits

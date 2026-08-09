@@ -3,7 +3,7 @@ use crate::options::AsciiRenderOptions;
 use crate::resource::ResourceContext;
 use crate::safe_text::{BudgetedTextDocument, charge_text_layout};
 use merman_core::diagrams::gantt::{
-    GanttDiagramRenderModel, GanttRenderTask, GanttRenderTaskStart,
+    GanttDiagramRenderModel, GanttRenderTask, GanttTaskEndConstraint, GanttTaskStartConstraint,
 };
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
@@ -350,24 +350,17 @@ fn push_start_constraint(
     line: &mut crate::safe_text::BudgetedWrappedText<'_, '_>,
     task: &GanttRenderTask,
 ) -> Result<()> {
-    match &task.raw.start_time {
-        GanttRenderTaskStart::PrevTaskEnd { id } => {
-            if let Some(id) = id.as_deref().or(task.prev_task_id.as_deref()) {
-                line.push_str(", after=")?;
-                line.push_str(id)?;
+    match &task.start_constraint {
+        GanttTaskStartConstraint::PreviousTaskEnd { dependency_id } => {
+            if let Some(id) = dependency_id {
+                push_constraint_value(line, "after", id)?;
             }
         }
-        GanttRenderTaskStart::GetStartDate { start_data } => {
-            let (key, value) = start_data
-                .strip_prefix("after ")
-                .map(|value| ("after", value))
-                .unwrap_or(("start", start_data.as_str()));
-            if !value.is_empty() {
-                line.push_str(", ")?;
-                line.push_str(key)?;
-                line.push_str("=")?;
-                line.push_str(value)?;
-            }
+        GanttTaskStartConstraint::Fixed { value } => {
+            push_constraint_value(line, "start", value)?;
+        }
+        GanttTaskStartConstraint::After { dependency_ids } => {
+            push_dependency_constraint(line, "after", dependency_ids)?;
         }
     }
     Ok(())
@@ -377,20 +370,44 @@ fn push_end_constraint(
     line: &mut crate::safe_text::BudgetedWrappedText<'_, '_>,
     task: &GanttRenderTask,
 ) -> Result<()> {
-    if task.raw.end_time.data.is_empty() {
-        return Ok(());
+    match &task.end_constraint {
+        GanttTaskEndConstraint::Unspecified => Ok(()),
+        GanttTaskEndConstraint::Fixed { value } => push_constraint_value(line, "end", value),
+        GanttTaskEndConstraint::Duration { value } => {
+            push_constraint_value(line, "duration", value)
+        }
+        GanttTaskEndConstraint::Until { dependency_ids } => {
+            push_dependency_constraint(line, "until", dependency_ids)
+        }
     }
-    let (key, value) = task
-        .raw
-        .end_time
-        .data
-        .strip_prefix("until ")
-        .map(|value| ("until", value))
-        .unwrap_or(("duration", task.raw.end_time.data.as_str()));
+}
+
+fn push_constraint_value(
+    line: &mut crate::safe_text::BudgetedWrappedText<'_, '_>,
+    key: &str,
+    value: &str,
+) -> Result<()> {
     line.push_str(", ")?;
     line.push_str(key)?;
     line.push_str("=")?;
     line.push_str(value)
+}
+
+fn push_dependency_constraint(
+    line: &mut crate::safe_text::BudgetedWrappedText<'_, '_>,
+    key: &str,
+    dependency_ids: &[String],
+) -> Result<()> {
+    line.push_str(", ")?;
+    line.push_str(key)?;
+    line.push_str("=")?;
+    for (index, dependency_id) in dependency_ids.iter().enumerate() {
+        if index > 0 {
+            line.push_str(" ")?;
+        }
+        line.push_str(dependency_id)?;
+    }
+    Ok(())
 }
 
 fn format_date(ms: i64, local_time_zone: &merman_core::time::LocalTimeZone) -> String {

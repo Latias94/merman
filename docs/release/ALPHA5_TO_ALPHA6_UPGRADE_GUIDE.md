@@ -35,6 +35,13 @@ or WASM artifact; versions from alpha.5 and alpha.6 are not wire-compatible.
 - `ErDiagramRenderModel::{classes, entities}` now use declaration-ordered `indexmap::IndexMap`
   instead of `std::collections::BTreeMap`. Update explicit annotations, constructors, and helper
   signatures.
+- `GanttRenderTask` now carries typed `start_constraint` and `end_constraint` fields. Initialize
+  them in Rust struct literals; use `GanttTaskStartConstraint::{PreviousTaskEnd, Fixed, After}` and
+  `GanttTaskEndConstraint::{Unspecified, Fixed, Duration, Until}` instead of recovering authored
+  constraints from the compatibility `raw` strings.
+- Mindmap direct models now treat `MindmapDiagramRenderNode::id` as the internal topology key used
+  by edge endpoints and `node_id` as the authored identity disclosed in StructuredText. Populate a
+  unique, non-empty `node_id` for every node; missing or duplicate authored identities are rejected.
 
 ## Capability discovery
 

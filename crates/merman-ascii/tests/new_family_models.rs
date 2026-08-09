@@ -1,6 +1,9 @@
 use merman_ascii::{AsciiError, AsciiRenderOptions, render_model};
 use merman_core::diagram::RenderSemanticModel;
-use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
+use merman_core::diagrams::gantt::{
+    GanttDiagramRenderModel, GanttRenderTask, GanttRenderTaskEnd, GanttRenderTaskRaw,
+    GanttRenderTaskStart, GanttTaskEndConstraint, GanttTaskStartConstraint,
+};
 use merman_core::diagrams::git_graph::{
     GitGraphBranchRenderModel, GitGraphCommitRenderModel, GitGraphRenderModel,
 };
@@ -368,6 +371,45 @@ fn mindmap_direct_model_rejects_duplicate_ids_and_missing_edges() {
             feature: "edge with missing end node",
         }
     ));
+
+    let mut first = mindmap_node("0", "First", 0);
+    first.node_id = "authored".to_string();
+    let mut second = mindmap_node("1", "Second", 0);
+    second.node_id = "authored".to_string();
+    let duplicate_authored = MindmapDiagramRenderModel {
+        nodes: vec![first, second],
+        edges: Vec::new(),
+    };
+    let error = render_model(
+        &RenderSemanticModel::Mindmap(duplicate_authored),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("duplicate authored node ids must be rejected");
+    assert!(matches!(
+        error,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "mindmap",
+            feature: "duplicate authored node ids",
+        }
+    ));
+
+    let mut missing_authored = mindmap_node("0", "Missing", 0);
+    missing_authored.node_id.clear();
+    let error = render_model(
+        &RenderSemanticModel::Mindmap(MindmapDiagramRenderModel {
+            nodes: vec![missing_authored],
+            edges: Vec::new(),
+        }),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("missing authored node ids must be rejected");
+    assert!(matches!(
+        error,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "mindmap",
+            feature: "missing authored node ids",
+        }
+    ));
 }
 
 #[test]
@@ -386,6 +428,41 @@ fn mindmap_structured_text_discloses_identity_shape_icon_and_section() {
         rendered,
         "Root [id=root] [shape=circle] [icon=home] [section=2]"
     );
+}
+
+#[test]
+fn mindmap_uses_internal_ids_for_topology_and_authored_ids_for_disclosure() {
+    let mut root = mindmap_node("0", "Root", 0);
+    root.node_id = "authored-root".to_string();
+    let mut child = mindmap_node("1", "Child", 1);
+    child.node_id = "authored-child".to_string();
+    let model = MindmapDiagramRenderModel {
+        nodes: vec![root, child],
+        edges: vec![mindmap_edge("edge_0_1", "0", "1")],
+    };
+
+    assert_eq!(
+        render(RenderSemanticModel::Mindmap(model)),
+        "Root [id=authored-root]\n\\-- Child [id=authored-child]"
+    );
+}
+
+#[test]
+fn mindmap_parser_preserves_authored_ids_in_structured_text() {
+    let rendered = render_parsed("mindmap\nroot[The root]\n  theId(child1)\n    leaf1\n  child2\n");
+
+    for authored_id in ["root", "theId", "leaf1", "child2"] {
+        assert!(
+            rendered.contains(&format!("[id={authored_id}]")),
+            "missing authored id {authored_id}:\n{rendered}"
+        );
+    }
+    for internal_id in ["0", "1", "2", "3"] {
+        assert!(
+            !rendered.contains(&format!("[id={internal_id}]")),
+            "internal id {internal_id} leaked:\n{rendered}"
+        );
+    }
 }
 
 #[test]
@@ -527,6 +604,7 @@ fn gantt_structured_text_discloses_dependency_source_expressions() {
         "Design: design, 2026-01-01, 1d\n",
         "Review: review, 2026-01-02, 1d\n",
         "Implement: implementation, after design review, until design review\n",
+        "Release: release, 2026-01-05, 2026-01-06\n",
     ));
 
     let normalized = rendered.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -535,9 +613,90 @@ fn gantt_structured_text_discloses_dependency_source_expressions() {
         "structured Gantt output should disclose the dependency source expression:\n{rendered}"
     );
     assert!(normalized.contains("until=design review"));
+    assert!(normalized.contains("start=2026-01-01"));
+    assert!(normalized.contains("duration=1d"));
+    assert!(normalized.contains("end=2026-01-06"));
     assert!(rendered.contains("id=design"));
     assert!(rendered.contains("id=review"));
     assert!(rendered.contains("id=implementation"));
+    assert!(rendered.contains("id=release"));
+}
+
+#[test]
+fn gantt_direct_model_renders_only_typed_constraints() {
+    let mut model = GanttDiagramRenderModel::default();
+    model.sections = vec!["Build".to_string()];
+    model.tasks = vec![GanttRenderTask {
+        id: "implementation".to_string(),
+        task: "Implement".to_string(),
+        section: "Build".to_string(),
+        start_constraint: GanttTaskStartConstraint::After {
+            dependency_ids: vec!["design".to_string(), "review".to_string()],
+        },
+        end_constraint: GanttTaskEndConstraint::Until {
+            dependency_ids: vec!["release".to_string()],
+        },
+        prev_task_id: Some("legacy-previous".to_string()),
+        raw: GanttRenderTaskRaw {
+            data: "implementation,after raw-start,until raw-end".to_string(),
+            start_time: GanttRenderTaskStart::GetStartDate {
+                start_data: "after raw-start".to_string(),
+            },
+            end_time: GanttRenderTaskEnd {
+                data: "until raw-end".to_string(),
+            },
+        },
+        ..Default::default()
+    }];
+
+    let rendered = render(RenderSemanticModel::Gantt(model));
+    let normalized = rendered.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    assert!(normalized.contains("after=design review"));
+    assert!(normalized.contains("until=release"));
+    for legacy in ["raw-start", "raw-end", "legacy-previous"] {
+        assert!(
+            !rendered.contains(legacy),
+            "ASCII must not recover constraints from legacy raw fields:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn gantt_direct_model_distinguishes_fixed_and_relative_end_constraints() {
+    let mut model = GanttDiagramRenderModel::default();
+    model.tasks = vec![
+        GanttRenderTask {
+            id: "fixed".to_string(),
+            task: "Fixed".to_string(),
+            start_constraint: GanttTaskStartConstraint::Fixed {
+                value: "2026-01-01 08:30".to_string(),
+            },
+            end_constraint: GanttTaskEndConstraint::Fixed {
+                value: "2026-01-01 10:45".to_string(),
+            },
+            ..Default::default()
+        },
+        GanttRenderTask {
+            id: "relative".to_string(),
+            task: "Relative".to_string(),
+            start_constraint: GanttTaskStartConstraint::PreviousTaskEnd {
+                dependency_id: Some("fixed".to_string()),
+            },
+            end_constraint: GanttTaskEndConstraint::Duration {
+                value: "2.5h".to_string(),
+            },
+            ..Default::default()
+        },
+    ];
+
+    let rendered = render(RenderSemanticModel::Gantt(model));
+    let normalized = rendered.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    assert!(normalized.contains("start=2026-01-01 08:30"));
+    assert!(normalized.contains("end=2026-01-01 10:45"));
+    assert!(normalized.contains("after=fixed"));
+    assert!(normalized.contains("duration=2.5h"));
 }
 
 #[test]

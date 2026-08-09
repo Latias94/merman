@@ -135,13 +135,30 @@ fn index_nodes<'a>(
 ) -> Result<HashMap<&'a str, &'a MindmapDiagramRenderNode>> {
     resources.charge_layout_work(nodes.len())?;
     let mut out = HashMap::new();
+    let mut authored_ids = HashSet::new();
     try_reserve_hash_map(&mut out, nodes.len())?;
+    authored_ids
+        .try_reserve(nodes.len())
+        .map_err(|_| layout_allocation_error())?;
     for node in nodes {
         charge_text_layout(resources, &node.id)?;
+        charge_text_layout(resources, &node.node_id)?;
         if out.insert(node.id.as_str(), node).is_some() {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: "mindmap",
                 feature: "duplicate node ids",
+            });
+        }
+        if node.node_id.is_empty() {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "mindmap",
+                feature: "missing authored node ids",
+            });
+        }
+        if !authored_ids.insert(node.node_id.as_str()) {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "mindmap",
+                feature: "duplicate authored node ids",
             });
         }
     }
@@ -207,9 +224,9 @@ fn push_node_text(
     is_cycle: bool,
 ) -> Result<()> {
     line.push_str(&node.label)?;
-    if !node.id.is_empty() {
+    if !node.node_id.is_empty() {
         line.push_str(" [id=")?;
-        line.push_str(&node.id)?;
+        line.push_str(&node.node_id)?;
         line.push_str("]")?;
     }
     if !node.shape.is_empty() && node.shape != "defaultMindmapNode" {

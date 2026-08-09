@@ -88,6 +88,10 @@ pub struct GanttRenderTask {
     pub order: i64,
     #[serde(default, rename = "prevTaskId")]
     pub prev_task_id: Option<String>,
+    #[serde(rename = "startConstraint")]
+    pub start_constraint: GanttTaskStartConstraint,
+    #[serde(rename = "endConstraint")]
+    pub end_constraint: GanttTaskEndConstraint,
     #[serde(default)]
     pub processed: bool,
     #[serde(default, rename = "manualEndTime")]
@@ -132,6 +136,56 @@ impl Default for GanttRenderTaskStart {
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct GanttRenderTaskEnd {
     pub data: String,
+}
+
+/// The authored rule that determines a task's start instant.
+///
+/// This is independent of `GanttRenderTask::prev_task_id`, which remains part of Mermaid's
+/// compatibility model but is not sufficient to represent explicit multi-task dependencies.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum GanttTaskStartConstraint {
+    PreviousTaskEnd {
+        #[serde(
+            default,
+            rename = "dependencyId",
+            skip_serializing_if = "Option::is_none"
+        )]
+        dependency_id: Option<String>,
+    },
+    Fixed {
+        value: String,
+    },
+    After {
+        #[serde(rename = "dependencyIds")]
+        dependency_ids: Vec<String>,
+    },
+}
+
+impl Default for GanttTaskStartConstraint {
+    fn default() -> Self {
+        Self::PreviousTaskEnd {
+            dependency_id: None,
+        }
+    }
+}
+
+/// The authored rule that determines a task's end instant.
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum GanttTaskEndConstraint {
+    #[default]
+    Unspecified,
+    Fixed {
+        value: String,
+    },
+    Duration {
+        value: String,
+    },
+    Until {
+        #[serde(rename = "dependencyIds")]
+        dependency_ids: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

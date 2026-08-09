@@ -15,7 +15,8 @@ surfaces. See the [alpha.5 to alpha.6 upgrade guide](docs/release/ALPHA5_TO_ALPH
 
 - Replaced the single ASCII grid limit with a typed six-phase resource policy, changed ASCII error
   and diagnostic records, and added an explicit terminal-width profile.
-- Expanded public Flowchart edge semantics and changed ER render-model collections to preserve
+- Expanded public Flowchart edge semantics, added typed Gantt start/end constraints and
+  Timeline/Journey section ownership, and changed ER render-model collections to preserve
   declaration order.
 - Advanced UniFFI binding API and browser WASM transport API from `3` to `4`. ASCII capability
   records now expose semantic coverage and primary projection independently, and rename the old
