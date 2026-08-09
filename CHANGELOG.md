@@ -10,7 +10,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 Rust crates and the lockstep browser packages use this workspace changelog. Package-specific details are available for [Android](platforms/android/CHANGELOG.md), [Apple](platforms/apple/CHANGELOG.md), [Flutter](platforms/flutter/CHANGELOG.md), [Python](platforms/python/merman/CHANGELOG.md), and the [VS Code extension](tools/vscode-extension/CHANGELOG.md).
 
-> **Publication note:** `0.8.0-alpha.4` was aborted before a complete release was produced. Its partially published Rust crates were withdrawn; `0.8.0-alpha.5` is the first supported release containing these changes.
+> **Publication note:** `0.8.0-alpha.4` was aborted before a complete release was produced. Some Rust crates with that version reached crates.io, but the release is unsupported and must not be used; `0.8.0-alpha.5` is the first complete supported release containing these changes.
 
 ### Breaking changes
 

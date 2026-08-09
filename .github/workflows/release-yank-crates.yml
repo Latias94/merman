@@ -119,11 +119,15 @@ jobs:
 
       - name: Yank selected crate versions
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_YANK_TOKEN }}
           PACKAGES: ${{ needs.validate-inputs.outputs.packages }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: |
           set -euo pipefail
+          [[ -n "${CARGO_REGISTRY_TOKEN:-}" ]] || {
+            echo "::error::The crates.io environment must define CARGO_REGISTRY_YANK_TOKEN with yank permission." >&2
+            exit 1
+          }
 
           crate_is_yanked() {
             local crate="$1"

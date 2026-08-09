@@ -864,6 +864,33 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             2,
         )
 
+    def test_crates_yank_uses_a_dedicated_protected_token(self) -> None:
+        path = WORKFLOW_ROOT / "release-yank-crates.yml"
+        text = read_workflow(path)
+        document = workflow_document(path)
+        validate = contract_text(workflow_job(document, "validate-inputs"))
+        yank = workflow_job(document, "yank")
+        yank_job = contract_text(yank)
+        yank_step = workflow_step(yank, name="Yank selected crate versions")
+        yank_step_text = contract_text(yank_step)
+        yank_run = yank_step["run"]
+
+        self.assertNotIn("secrets.", validate)
+        self.assertNotIn("environment: crates.io", validate)
+        self.assertEqual(yank["environment"], "crates.io")
+        self.assertIn(
+            "CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_YANK_TOKEN }}",
+            yank_step_text,
+        )
+        self.assertNotIn("secrets.CARGO_REGISTRY_TOKEN", yank_job)
+        self.assertEqual(text.count("secrets.CARGO_REGISTRY_YANK_TOKEN"), 1)
+        self.assertIn('[[ -n "${CARGO_REGISTRY_TOKEN:-}" ]]', yank_run)
+        self.assertIn('cargo yank "$crate" --version "$VERSION"', yank_run)
+        self.assertIn(
+            "ref: ${{ needs.validate-inputs.outputs.source_sha }}",
+            yank_job,
+        )
+
     def test_trusted_pypi_publish_job_only_downloads_artifact_and_publishes(self) -> None:
         path = WORKFLOW_ROOT / "release-python.yml"
         publish = job_contract(path, "publish")

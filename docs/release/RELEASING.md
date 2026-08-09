@@ -19,6 +19,7 @@ is zero.
 | `release-preflight.yml` | Nothing; dry-run/build verification only | GitHub Actions artifacts |
 | `release.yml` | `merman-cli` and `merman-lsp` binary archives, installers, and checksums | GitHub Release |
 | `release-crates.yml` | Rust workspace crates | crates.io |
+| `release-yank-crates.yml` | Selected workspace-coupled versions after an incomplete publication | crates.io |
 | `release-apple.yml` | `Merman.xcframework-<tag>.zip` and checksum | GitHub Release artifact upload |
 | `release-python.yml` | `merman` wheels for Linux, macOS, and Windows | GitHub Release + PyPI |
 | `release-flutter.yml` | `merman` with injected Android, iOS, macOS, Windows, and Linux native artifacts | pub.dev |
@@ -43,7 +44,8 @@ dependencies in the same release have become visible in crates.io.
 
 | Surface | Credential |
 | --- | --- |
-| crates.io | `CARGO_REGISTRY_TOKEN` repository secret |
+| crates.io publish | `CARGO_REGISTRY_TOKEN` secret in the `crates.io` environment |
+| crates.io incident yank | Dedicated `CARGO_REGISTRY_YANK_TOKEN` secret with yank permission in the `crates.io` environment |
 | pub.dev | Trusted Publishing / OIDC configured for `merman`, this repository, `release-flutter.yml`, and the release tag pattern |
 | PyPI | Trusted Publishing / OIDC configured for `merman` and `release-python.yml` |
 | npm | Trusted Publishing / OIDC configured for every admitted `@mermanjs/web*` package, this repository, `release-web.yml`, and the `npm` environment |
@@ -52,6 +54,12 @@ dependencies in the same release have become visible in crates.io.
 
 Publish jobs use GitHub Environments (`crates.io`, `pypi`, `pub.dev`, `npm`, and `github-release`).
 Configure required reviewers on those environments if publication should require explicit approval.
+
+If a crates.io run stops after publishing only part of a release, keep the failed tag immutable and
+publish the corrected dependency graph under a new version. Use `release-yank-crates.yml` only for
+the exact workspace-coupled crate names that became visible from the failed tag. The workflow
+validates the tag, package set, and package versions before it receives the dedicated yank token;
+do not broaden the normal publish token merely to support incident rollback.
 
 Android Maven Central publishing is credential-blocked. Android now declares Maven publication
 metadata, but Central Portal credentials, signing secrets, and a dedicated publish job still need to
