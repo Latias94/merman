@@ -1102,12 +1102,12 @@ fn class_parser_extension_chain_renders_each_relationship() {
 }
 
 #[test]
-fn class_parser_crossing_relationship_layout_reorders_layer_to_render_each_edge() {
+fn class_parser_independent_relationships_render_as_compact_components() {
     let rendered = render_class(
         "classDiagram\nclass A\nclass B\nclass C\nclass D\nA <|-- D\nB <|-- C",
         &AsciiRenderOptions::ascii(),
     )
-    .expect("crossing class relationships should render by reordering the lower layer");
+    .expect("independent class relationships should render as separate components");
 
     assert_eq!(
         rendered,
@@ -1117,12 +1117,28 @@ fn class_parser_crossing_relationship_layout_reorders_layer_to_render_each_edge(
             "+---+    +---+\n",
             "  ^        ^\n",
             "  |        |\n",
-            "  |        |\n",
             "+---+    +---+\n",
             "| D |    | C |\n",
             "+---+    +---+\n",
         )
     );
+}
+
+#[test]
+fn class_parser_even_width_layered_label_uses_exact_terminal_extent() {
+    let rendered = render_class(
+        "classDiagram\nclass A\nclass B\nclass C\nA --> B : evenly\nB --> C : next",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("an even-width layered label must not be rejected as a grid overflow");
+
+    for expected in ["A", "B", "C", "evenly", "next"] {
+        assert!(
+            rendered.contains(expected),
+            "missing {expected:?} from exact-width layered output:\n{rendered}"
+        );
+    }
+    assert!(!rendered.contains("relations:"), "{rendered}");
 }
 
 #[test]

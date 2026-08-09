@@ -5,11 +5,12 @@ use crate::options::{AsciiCharset, AsciiRenderOptions, TerminalWidthProfile};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
 use crate::relation_graph::{
-    HorizontalRelationEndpoint, HorizontalRelationStyle, LayeredRelationEdge, LayeredRelationError,
-    LayeredRelationRouteStyle, RelationGraphBoxStyle, RelationGraphHorizontalDirection,
-    RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
-    RelationOverlay, RelationParallelPlan, RelationPortSide, RelationSelfLoopMetrics,
-    RelationStackPlan,
+    HorizontalRelationEndpoint, HorizontalRelationMarker, HorizontalRelationStyle,
+    LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, RelationGraphBoxStyle,
+    RelationGraphHorizontalDirection, RelationGraphLabel, RelationGraphLine,
+    RelationGraphSummaryRow, RelationLineChars, RelationOverlay, RelationParallelPlan,
+    RelationPortSide, RelationRegionPlan, RelationSelfLoopMetrics, RelationStackPlan,
+    RelationSummaryPaintPlan,
 };
 #[cfg(test)]
 use crate::resource::AsciiResourceLimitId;
@@ -154,6 +155,7 @@ impl<'a> RenderedClassBoxIndex<'a> {
         Ok(self.by_id.get(id).copied())
     }
 
+    #[cfg(test)]
     fn require(&self, id: &str, resources: &mut ResourceContext) -> Result<&'a RenderedClassBox> {
         self.get(id, resources)?
             .ok_or(AsciiError::UnsupportedFeature {
@@ -163,10 +165,9 @@ impl<'a> RenderedClassBoxIndex<'a> {
     }
 }
 
-struct ClassRelationComponentAdapter<'index, 'boxes> {
+struct ClassRelationComponentAdapter {
     charset: ClassCharset,
     width_profile: TerminalWidthProfile,
-    box_by_id: &'index RenderedClassBoxIndex<'boxes>,
 }
 
 struct NamespaceRenderContext<'a> {
@@ -1069,7 +1070,7 @@ fn namespace_facade_local_id<'a>(model: &'a ClassDiagram, class: &'a ClassNode) 
 
 fn render_class_components(
     boxes: &[RenderedClassBox],
-    box_by_id: &RenderedClassBoxIndex<'_>,
+    _box_by_id: &RenderedClassBoxIndex<'_>,
     layouts: &[RelationLayout<'_>],
     options: &AsciiRenderOptions,
     charset: ClassCharset,
@@ -1078,14 +1079,13 @@ fn render_class_components(
     let adapter = ClassRelationComponentAdapter {
         charset,
         width_profile: options.terminal_width_profile,
-        box_by_id,
     };
     relation_graph::render_relation_components(boxes, layouts, options, resources, &adapter)
 }
 
 fn render_class_component_lines(
     boxes: &[RenderedClassBox],
-    box_by_id: &RenderedClassBoxIndex<'_>,
+    _box_by_id: &RenderedClassBoxIndex<'_>,
     layouts: &[RelationLayout<'_>],
     options: &AsciiRenderOptions,
     charset: ClassCharset,
@@ -1094,7 +1094,6 @@ fn render_class_component_lines(
     let adapter = ClassRelationComponentAdapter {
         charset,
         width_profile: options.terminal_width_profile,
-        box_by_id,
     };
     Ok(relation_graph::render_relation_component_lines(
         boxes, layouts, options, resources, &adapter,
@@ -1112,7 +1111,7 @@ fn render_class_document_lines(
 
 fn render_horizontal_class_component_lines(
     boxes: &[RenderedClassBox],
-    box_by_id: &RenderedClassBoxIndex<'_>,
+    _box_by_id: &RenderedClassBoxIndex<'_>,
     layouts: &[RelationLayout<'_>],
     direction: ClassDirection,
     options: &AsciiRenderOptions,
@@ -1122,7 +1121,6 @@ fn render_horizontal_class_component_lines(
     let adapter = ClassRelationComponentAdapter {
         charset,
         width_profile: options.terminal_width_profile,
-        box_by_id,
     };
     relation_graph::render_horizontal_relation_components(
         boxes,
@@ -1529,13 +1527,13 @@ fn relation_endpoint_label(
     Ok(label)
 }
 
-fn render_vertical_relation(
-    top: &RenderedClassBox,
-    bottom: &RenderedClassBox,
-    layout: &RelationLayout<'_>,
+fn plan_vertical_relation<'plan>(
+    top: &'plan RenderedClassBox,
+    bottom: &'plan RenderedClassBox,
+    layout: &'plan RelationLayout<'_>,
     charset: ClassCharset,
     resources: &mut ResourceContext,
-) -> Result<Vec<RelationGraphLine>> {
+) -> Result<RelationRegionPlan<'plan>> {
     let label_half_widths = [
         layout
             .label
@@ -1563,8 +1561,11 @@ fn render_vertical_relation(
         },
     )?;
 
-    plan.render_lines(resources, |center, resources| {
-        class_relation_rows(layout, center, charset, top.width_profile(), resources)
+    Ok(RelationRegionPlan::Vertical {
+        plan,
+        rows: Box::new(move |center, resources| {
+            class_relation_rows(layout, center, charset, top.width_profile(), resources)
+        }),
     })
 }
 
@@ -1733,31 +1734,33 @@ fn class_relation_rows(
     Ok(relation_lines)
 }
 
-fn is_same_endpoint_parallel_layout(layouts: &[RelationLayout<'_>]) -> bool {
-    let Some(first) = layouts.first() else {
-        return false;
-    };
-    layouts.len() > 1
-        && layouts
-            .iter()
-            .all(|layout| layout.top_id == first.top_id && layout.bottom_id == first.bottom_id)
-}
-
-fn render_parallel_vertical_relations(
-    boxes: &[RenderedClassBox],
-    box_by_id: &RenderedClassBoxIndex<'_>,
-    layouts: &[RelationLayout<'_>],
+fn plan_parallel_vertical_relations<'plan>(
+    boxes: Vec<&'plan RenderedClassBox>,
+    layouts: Vec<&'plan RelationLayout<'_>>,
     options: &AsciiRenderOptions,
     charset: ClassCharset,
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
-) -> Result<Vec<RelationGraphLine>> {
-    let first = layouts.first().ok_or(AsciiError::UnsupportedFeature {
-        diagram_type: "class",
-        feature: "empty parallel class relationship layout",
-    })?;
-    let top = box_by_id.require(first.top_id, resources)?;
-    let bottom = box_by_id.require(first.bottom_id, resources)?;
+) -> Result<RelationRegionPlan<'plan>> {
+    let first = layouts
+        .first()
+        .copied()
+        .ok_or(AsciiError::UnsupportedFeature {
+            diagram_type: "class",
+            feature: "empty parallel class relationship layout",
+        })?;
+    let top = relation_graph::find_box_ref(&boxes, first.top_id).ok_or(
+        AsciiError::UnsupportedFeature {
+            diagram_type: "class",
+            feature: "relationships with missing endpoint classes",
+        },
+    )?;
+    let bottom = relation_graph::find_box_ref(&boxes, first.bottom_id).ok_or(
+        AsciiError::UnsupportedFeature {
+            diagram_type: "class",
+            feature: "relationships with missing endpoint classes",
+        },
+    )?;
     let reserve_top_endpoint_label = layouts
         .iter()
         .any(|layout| layout.top_endpoint_label.is_some());
@@ -1768,7 +1771,7 @@ fn render_parallel_vertical_relations(
     lane_extents
         .try_reserve_exact(layouts.len())
         .map_err(|_| layout_allocation_failed())?;
-    for layout in layouts {
+    for layout in &layouts {
         lane_extents.push(parallel_class_lane_extent(
             layout,
             charset,
@@ -1781,32 +1784,37 @@ fn render_parallel_vertical_relations(
     let plan = RelationParallelPlan::new(top, bottom, lane_extents, 2, resources)?;
 
     if !plan.ports_fit(resources)? {
-        return relation_graph::render_relation_summary_component_lines(
-            boxes,
-            layouts,
-            options,
-            relation_graph::LayeredRelationSummaryReason::RouteCollision,
-            resources,
-            class_relation_summary_row,
-        );
-    }
-
-    plan.render_lines(resources, |resources| {
-        let mut lanes = Vec::new();
-        lanes
-            .try_reserve_exact(layouts.len())
+        let reason = relation_graph::LayeredRelationSummaryReason::RouteCollision;
+        let mut rows = Vec::new();
+        rows.try_reserve_exact(layouts.len())
             .map_err(|_| layout_allocation_failed())?;
         for layout in layouts {
-            lanes.push(parallel_class_lane_rows(
-                layout,
-                charset,
-                reserve_top_endpoint_label,
-                reserve_bottom_endpoint_label,
-                width_profile,
-                resources,
-            )?);
+            rows.push(class_relation_summary_row(layout)?);
         }
-        Ok(lanes)
+        return Ok(RelationRegionPlan::Summary(
+            RelationSummaryPaintPlan::stacked(boxes, rows, Some(reason), options, resources)?,
+        ));
+    }
+
+    Ok(RelationRegionPlan::Parallel {
+        plan,
+        lanes: Box::new(move |resources| {
+            let mut lanes = Vec::new();
+            lanes
+                .try_reserve_exact(layouts.len())
+                .map_err(|_| layout_allocation_failed())?;
+            for layout in layouts {
+                lanes.push(parallel_class_lane_rows(
+                    layout,
+                    charset,
+                    reserve_top_endpoint_label,
+                    reserve_bottom_endpoint_label,
+                    width_profile,
+                    resources,
+                )?);
+            }
+            Ok(lanes)
+        }),
     })
 }
 
@@ -2069,7 +2077,7 @@ fn class_layered_edge(layout: &RelationLayout<'_>) -> LayeredRelationEdge {
         labels
             .iter()
             .flatten()
-            .map(|label| label.half_width())
+            .map(|label| label.width())
             .max()
             .unwrap_or(0),
         labels
@@ -2093,15 +2101,11 @@ fn class_layered_error(error: LayeredRelationError) -> AsciiError {
     }
 }
 
-impl<'relation, 'index, 'boxes> relation_graph::RelationComponentAdapter<RelationLayout<'relation>>
-    for ClassRelationComponentAdapter<'index, 'boxes>
+impl<'relation> relation_graph::RelationComponentAdapter<RelationLayout<'relation>>
+    for ClassRelationComponentAdapter
 {
     fn build_edges(&self, layout: &RelationLayout<'relation>) -> LayeredRelationEdge {
         class_layered_edge(layout)
-    }
-
-    fn is_same_endpoint_parallel(&self, layouts: &[RelationLayout<'relation>]) -> bool {
-        is_same_endpoint_parallel_layout(layouts)
     }
 
     fn is_self_relation(&self, layout: &RelationLayout<'relation>) -> bool {
@@ -2129,32 +2133,22 @@ impl<'relation, 'index, 'boxes> relation_graph::RelationComponentAdapter<Relatio
         layout: &RelationLayout<'relation>,
         source_side: RelationPortSide,
         target_side: RelationPortSide,
-        resources: &ResourceContext,
+        _resources: &ResourceContext,
     ) -> Result<HorizontalRelationStyle> {
-        let source_marker = layout
-            .top_marker
-            .map(|marker| {
-                horizontal_class_marker_line(
-                    marker,
-                    source_side,
-                    self.charset,
-                    self.width_profile,
-                    resources,
-                )
-            })
-            .transpose()?;
-        let target_marker = layout
-            .bottom_marker
-            .map(|marker| {
-                horizontal_class_marker_line(
-                    marker,
-                    target_side,
-                    self.charset,
-                    self.width_profile,
-                    resources,
-                )
-            })
-            .transpose()?;
+        let source_marker = layout.top_marker.map(|marker| {
+            HorizontalRelationMarker::new(
+                horizontal_class_marker(marker, source_side, self.charset),
+                AsciiColorRole::EdgeArrow,
+                self.width_profile,
+            )
+        });
+        let target_marker = layout.bottom_marker.map(|marker| {
+            HorizontalRelationMarker::new(
+                horizontal_class_marker(marker, target_side, self.charset),
+                AsciiColorRole::EdgeArrow,
+                self.width_profile,
+            )
+        });
         Ok(HorizontalRelationStyle::new(
             HorizontalRelationEndpoint::new(source_marker, layout.top_endpoint_label.clone()),
             HorizontalRelationEndpoint::new(target_marker, layout.bottom_endpoint_label.clone()),
@@ -2246,30 +2240,36 @@ impl<'relation, 'index, 'boxes> relation_graph::RelationComponentAdapter<Relatio
         Ok(overlays)
     }
 
-    fn render_vertical(
+    fn plan_vertical_region<'plan>(
         &self,
-        _boxes: &[RenderedClassBox],
-        layout: &RelationLayout<'relation>,
-        options: &AsciiRenderOptions,
+        boxes: &[&'plan RenderedClassBox],
+        layout: &'plan RelationLayout<'relation>,
         resources: &mut ResourceContext,
-    ) -> Result<Vec<RelationGraphLine>> {
-        let top = self.box_by_id.require(layout.top_id, resources)?;
-        let bottom = self.box_by_id.require(layout.bottom_id, resources)?;
-
-        let _ = options;
-        render_vertical_relation(top, bottom, layout, self.charset, resources)
+    ) -> Result<RelationRegionPlan<'plan>> {
+        let top = relation_graph::find_box_ref(boxes, layout.top_id).ok_or(
+            AsciiError::UnsupportedFeature {
+                diagram_type: "class",
+                feature: "relationships with missing endpoint classes",
+            },
+        )?;
+        let bottom = relation_graph::find_box_ref(boxes, layout.bottom_id).ok_or(
+            AsciiError::UnsupportedFeature {
+                diagram_type: "class",
+                feature: "relationships with missing endpoint classes",
+            },
+        )?;
+        plan_vertical_relation(top, bottom, layout, self.charset, resources)
     }
 
-    fn render_parallel(
+    fn plan_parallel_region<'plan>(
         &self,
-        boxes: &[RenderedClassBox],
-        layouts: &[RelationLayout<'relation>],
+        boxes: Vec<&'plan RenderedClassBox>,
+        layouts: Vec<&'plan RelationLayout<'relation>>,
         options: &AsciiRenderOptions,
         resources: &mut ResourceContext,
-    ) -> Result<Vec<RelationGraphLine>> {
-        render_parallel_vertical_relations(
+    ) -> Result<RelationRegionPlan<'plan>> {
+        plan_parallel_vertical_relations(
             boxes,
-            self.box_by_id,
             layouts,
             options,
             self.charset,
@@ -2471,14 +2471,12 @@ fn marker_char(marker: RelationMarker, side: MarkerSide, charset: ClassCharset) 
     }
 }
 
-fn horizontal_class_marker_line(
+fn horizontal_class_marker(
     marker: RelationMarker,
     side: RelationPortSide,
     charset: ClassCharset,
-    width_profile: TerminalWidthProfile,
-    resources: &ResourceContext,
-) -> Result<RelationGraphLine> {
-    let marker = match marker {
+) -> String {
+    match marker {
         RelationMarker::Extension => match (side, charset.extension_up) {
             (RelationPortSide::Right, '^') => "<|".to_string(),
             (RelationPortSide::Left, '^') => "|>".to_string(),
@@ -2494,8 +2492,7 @@ fn horizontal_class_marker_line(
         RelationMarker::Aggregation => charset.aggregation.to_string(),
         RelationMarker::Composition => charset.composition.to_string(),
         RelationMarker::Lollipop => charset.lollipop.to_string(),
-    };
-    RelationGraphLine::try_with_role(&marker, AsciiColorRole::EdgeArrow, width_profile, resources)
+    }
 }
 
 fn horizontal_line_char(line: RelationLine, charset: ClassCharset) -> char {

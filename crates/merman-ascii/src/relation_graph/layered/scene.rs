@@ -10,7 +10,10 @@ use super::route::{
 };
 use crate::canvas::Canvas;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
-use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
+#[cfg(test)]
+use crate::resource::AsciiResourceLimitId;
+use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
+#[cfg(test)]
 use crate::terminal::{CanvasStyle, TerminalCellText};
 use crate::{AsciiError, Result};
 
@@ -34,11 +37,13 @@ pub(crate) enum LayeredRelationSummaryReason {
     OverlayCollision,
 }
 
+#[cfg(test)]
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct LayeredRelationBoxSnapshot {
     rows: Vec<LayeredRelationBoxSnapshotRow>,
 }
 
+#[cfg(test)]
 #[derive(Debug, PartialEq, Eq)]
 struct LayeredRelationBoxSnapshotRow {
     x: usize,
@@ -50,6 +55,7 @@ struct LayeredRelationBoxSnapshotRow {
     styles: Vec<Option<CanvasStyle>>,
 }
 
+#[cfg(test)]
 impl LayeredRelationBoxSnapshot {
     fn matches(&self, canvas: &Canvas, resources: &mut ResourceContext) -> Result<bool> {
         resources.charge_layout_work(
@@ -94,7 +100,7 @@ impl LayeredRelationBoxSnapshot {
 
 impl<'boxes> LayeredRelationScene<'boxes> {
     pub(crate) fn new(
-        boxes: &'boxes [RelationGraphBox],
+        boxes: &[&'boxes RelationGraphBox],
         edges: Vec<LayeredRelationEdge>,
         horizontal_gap: usize,
         width_profile: TerminalWidthProfile,
@@ -182,6 +188,7 @@ impl<'boxes> LayeredRelationScene<'boxes> {
         Ok(canvas)
     }
 
+    #[cfg(test)]
     pub(crate) fn capture_box_snapshot(
         &self,
         canvas: &Canvas,
@@ -295,6 +302,7 @@ impl<'boxes> LayeredRelationScene<'boxes> {
         Ok(LayeredRelationBoxSnapshot { rows })
     }
 
+    #[cfg(test)]
     pub(crate) fn box_snapshot_matches(
         &self,
         canvas: &Canvas,
@@ -306,6 +314,18 @@ impl<'boxes> LayeredRelationScene<'boxes> {
 
     pub(crate) fn draw_order(&self) -> &[(usize, isize)] {
         &self.draw_order
+    }
+
+    pub(crate) fn route_overlaps_box(&self, route: &LayeredRelationRoutePlan) -> bool {
+        self.plan.placed_boxes().iter().any(|placed| {
+            route.route_overlaps_rect(placed.x(), placed.y(), placed.right(), placed.bottom())
+        })
+    }
+
+    pub(crate) fn overlays_overlap_box(&self, route: &LayeredRelationRoutePlan) -> bool {
+        self.plan.placed_boxes().iter().any(|placed| {
+            route.overlays_overlap_rect(placed.x(), placed.y(), placed.right(), placed.bottom())
+        })
     }
 
     pub(crate) fn plan_edge_draw(
@@ -360,7 +380,7 @@ impl<'boxes> LayeredRelationScene<'boxes> {
 }
 
 pub(crate) fn plan_layered_relation_scene<'boxes>(
-    boxes: &'boxes [RelationGraphBox],
+    boxes: &[&'boxes RelationGraphBox],
     edges: Vec<LayeredRelationEdge>,
     horizontal_gap: usize,
     width_profile: TerminalWidthProfile,
@@ -380,6 +400,7 @@ pub(crate) fn plan_layered_relation_scene<'boxes>(
     Ok(LayeredRelationScenePlan::Routed(scene))
 }
 
+#[cfg(test)]
 fn materialize_plain_display_range(
     canvas: &Canvas,
     row: &LayeredRelationBoxSnapshotRow,
@@ -422,6 +443,7 @@ fn snapshot_allocation_failed() -> AsciiError {
     }
 }
 
+#[cfg(test)]
 fn plain_display_range_matches(
     canvas: &Canvas,
     row: &LayeredRelationBoxSnapshotRow,
@@ -475,6 +497,10 @@ mod tests {
         ResourceContext::new(options.resources)
     }
 
+    fn relation_box_refs(boxes: &[RelationGraphBox]) -> Vec<&RelationGraphBox> {
+        boxes.iter().collect()
+    }
+
     #[test]
     fn layered_relation_scene_orders_parallel_edges_by_lane_distance() {
         let boxes = vec![
@@ -490,8 +516,9 @@ mod tests {
         ];
         let options = AsciiRenderOptions::ascii();
         let mut resources = test_resources(&options);
+        let box_refs = relation_box_refs(&boxes);
         let scene = LayeredRelationScene::new(
-            &boxes,
+            &box_refs,
             edges,
             1,
             TerminalWidthProfile::Unicode,
@@ -512,8 +539,9 @@ mod tests {
 
         let options = AsciiRenderOptions::ascii();
         let mut resources = test_resources(&options);
+        let box_refs = relation_box_refs(&boxes);
         let plan = plan_layered_relation_scene(
-            &boxes,
+            &box_refs,
             edges,
             1,
             TerminalWidthProfile::Unicode,
@@ -542,8 +570,9 @@ mod tests {
 
         let options = AsciiRenderOptions::ascii();
         let mut resources = test_resources(&options);
+        let box_refs = relation_box_refs(&boxes);
         let plan = plan_layered_relation_scene(
-            &boxes,
+            &box_refs,
             edges,
             1,
             TerminalWidthProfile::Unicode,
@@ -569,8 +598,9 @@ mod tests {
             .with_resource_limit(AsciiResourceLimitId::MaxGridCells, 1)
             .expect("test resource limit should be valid");
         let mut resources = test_resources(&options);
+        let box_refs = relation_box_refs(&boxes);
         let error = plan_layered_relation_scene(
-            &boxes,
+            &box_refs,
             edges,
             1,
             TerminalWidthProfile::Unicode,
@@ -612,7 +642,8 @@ mod tests {
         let edges = vec![LayeredRelationEdge::new("a", "b", 0, 0)];
         let options = AsciiRenderOptions::ascii();
         let mut resources = test_resources(&options);
-        let scene = LayeredRelationScene::new(&boxes, edges, 1, width_profile, &mut resources)
+        let box_refs = relation_box_refs(&boxes);
+        let scene = LayeredRelationScene::new(&box_refs, edges, 1, width_profile, &mut resources)
             .expect("scene should be buildable");
         let mut canvas = scene
             .canvas_with_boxes(&options, &resources)
@@ -681,8 +712,9 @@ mod tests {
         ];
         let options = AsciiRenderOptions::ascii();
         let mut planning_resources = test_resources(&options);
+        let box_refs = relation_box_refs(&boxes);
         let scene = LayeredRelationScene::new(
-            &boxes,
+            &box_refs,
             vec![LayeredRelationEdge::new("a", "b", 0, 0)],
             1,
             width_profile,

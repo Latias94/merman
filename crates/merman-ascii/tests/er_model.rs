@@ -1312,7 +1312,7 @@ fn er_local_semantic_fixture_covers_dense_multiline_relation_summary() {
 }
 
 #[test]
-fn er_parser_complex_styled_example_falls_back_to_readable_relation_summary() {
+fn er_parser_complex_styled_example_limits_summary_to_unroutable_component() {
     let rendered = render_er(
         r#"erDiagram
     CAR ||--o{ DRIVER : "insured for"
@@ -1343,10 +1343,8 @@ fn er_parser_complex_styled_example_falls_back_to_readable_relation_summary() {
         "PERSON",
         "NODE",
         "relations:",
-        "CAR  ||--o{ DRIVER",
-        "CAR  }o--|| PERSON",
-        "NODE ||--o{ NODE",
-        "Book ||--o{ PAGE",
+        "CAR ||--o{ DRIVER",
+        "CAR }o--|| PERSON",
         "insured for",
         "owned by",
         "leads to",
@@ -1357,6 +1355,11 @@ fn er_parser_complex_styled_example_falls_back_to_readable_relation_summary() {
             "complex styled ER example should keep {expected:?} visible:\n{rendered}"
         );
     }
+    assert_eq!(
+        rendered.matches("| NODE |").count(),
+        1,
+        "the routed self relation should keep one entity box:\n{rendered}"
+    );
 }
 
 #[test]

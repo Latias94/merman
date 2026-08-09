@@ -11,7 +11,6 @@ use crate::safe_text::try_build_normalized_label_lines;
 use crate::text::split_label_lines;
 use crate::text::{StyledLine, display_width_with_profile};
 use crate::{AsciiError, Result};
-use std::collections::HashSet;
 use std::rc::Rc;
 mod horizontal;
 mod layered;
@@ -82,7 +81,6 @@ impl RelationDocumentPlan {
         })
     }
 
-    #[cfg(test)]
     pub(crate) const fn extent(self) -> LogicalExtent {
         self.extent
     }
@@ -147,11 +145,458 @@ impl RelationDocumentPlan {
             .max()
             .unwrap_or(0);
         let actual = resources.grid_extent(width, lines.len())?;
-        debug_assert_eq!(actual.width(), self.extent.width());
-        debug_assert_eq!(actual.height(), self.extent.height());
-        debug_assert_eq!(actual.cells(), self.extent.cells());
+        if actual != self.extent {
+            return Err(grid_overflow(resources));
+        }
         Ok(())
     }
+}
+
+type RelationStackRowsMaterializer<'a> =
+    Box<dyn FnOnce(usize, &ResourceContext) -> Result<Vec<RelationGraphLine>> + 'a>;
+type RelationParallelRowsMaterializer<'a> =
+    Box<dyn FnOnce(&mut ResourceContext) -> Result<Vec<Vec<RelationGraphLine>>> + 'a>;
+type RelationSelfLoopRowsMaterializer<'a> =
+    Box<dyn FnOnce(&ResourceContext) -> Result<Vec<RelationSelfLoopRows>> + 'a>;
+
+/// One independently planned relation region. Geometry and fallback selection
+/// are fixed before the root document admits its aggregate extent; only the
+/// family-owned row materializers remain deferred.
+pub(crate) enum RelationRegionPlan<'a> {
+    Vertical {
+        plan: RelationStackPlan<'a>,
+        rows: RelationStackRowsMaterializer<'a>,
+    },
+    Parallel {
+        plan: RelationParallelPlan<'a>,
+        lanes: RelationParallelRowsMaterializer<'a>,
+    },
+    SelfLoops {
+        plan: RelationSelfLoopPlan<'a>,
+        rows: RelationSelfLoopRowsMaterializer<'a>,
+    },
+    Layered(LayeredRelationPaintPlan<'a>),
+    Horizontal(HorizontalRelationPaintPlan<'a>),
+    HorizontalStrip {
+        regions: Vec<RelationRegionPlan<'a>>,
+        gap: usize,
+        extent: LogicalExtent,
+    },
+    BoxStrip(RelationBoxStripPlan<'a>),
+    Summary(RelationSummaryPaintPlan<'a>),
+}
+
+impl RelationRegionPlan<'_> {
+    pub(crate) fn extent(&self) -> LogicalExtent {
+        match self {
+            Self::Vertical { plan, .. } => plan.extent(),
+            Self::Parallel { plan, .. } => plan.extent(),
+            Self::SelfLoops { plan, .. } => plan.extent(),
+            Self::Layered(plan) => plan.extent(),
+            Self::Horizontal(plan) => plan.extent(),
+            Self::HorizontalStrip { extent, .. } => *extent,
+            Self::BoxStrip(plan) => plan.extent(),
+            Self::Summary(plan) => plan.extent(),
+        }
+    }
+
+    fn paint(
+        self,
+        options: &AsciiRenderOptions,
+        resources: &mut ResourceContext,
+    ) -> Result<Vec<RelationGraphLine>> {
+        match self {
+            Self::Vertical { plan, rows } => plan.render_lines(resources, rows),
+            Self::Parallel { plan, lanes } => plan.render_lines(resources, lanes),
+            Self::SelfLoops { plan, rows } => plan.render_lines(resources, rows),
+            Self::Layered(plan) => plan.paint(options, resources),
+            Self::Horizontal(plan) => plan.paint(options, resources),
+            Self::HorizontalStrip {
+                regions,
+                gap,
+                extent,
+            } => paint_horizontal_relation_strip(regions, gap, extent, options, resources),
+            Self::BoxStrip(plan) => plan.paint(options.terminal_width_profile, resources),
+            Self::Summary(plan) => plan.paint(options, resources),
+        }
+    }
+
+    fn is_summary(&self) -> bool {
+        matches!(self, Self::Summary(_))
+    }
+
+    fn horizontal_strip<'a>(
+        mut regions: Vec<RelationRegionPlan<'a>>,
+        gap: usize,
+        resources: &ResourceContext,
+    ) -> Result<RelationRegionPlan<'a>> {
+        regions.retain(|region| region.extent().height() > 0);
+        let regions_width = regions.iter().try_fold(0usize, |width, region| {
+            resources.checked_grid_add(width, region.extent().width())
+        })?;
+        let gaps_width = resources.checked_grid_mul(gap, regions.len().saturating_sub(1))?;
+        let width = resources.checked_grid_add(regions_width, gaps_width)?;
+        let height = regions
+            .iter()
+            .map(RelationRegionPlan::extent)
+            .map(LogicalExtent::height)
+            .max()
+            .unwrap_or(0);
+        let extent = resources.grid_extent(width, height)?;
+        Ok(RelationRegionPlan::HorizontalStrip {
+            regions,
+            gap,
+            extent,
+        })
+    }
+}
+
+fn paint_horizontal_relation_strip(
+    regions: Vec<RelationRegionPlan<'_>>,
+    gap: usize,
+    extent: LogicalExtent,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+) -> Result<Vec<RelationGraphLine>> {
+    let mut blocks = Vec::new();
+    blocks
+        .try_reserve_exact(regions.len())
+        .map_err(|_| layout_allocation_failed())?;
+    for region in regions {
+        let expected = region.extent();
+        let lines = region.paint(options, resources)?;
+        if lines
+            .iter()
+            .any(|line| line.width_profile() != options.terminal_width_profile)
+            || relation_lines_extent(&lines, resources)? != expected
+        {
+            return Err(grid_overflow(resources));
+        }
+        blocks.push((expected, lines));
+    }
+
+    let mut rows = Vec::new();
+    rows.try_reserve_exact(extent.height())
+        .map_err(|_| layout_allocation_failed())?;
+    for row_index in 0..extent.height() {
+        let mut row = StyledLine::with_resources(options.terminal_width_profile, resources);
+        for (block_index, (block_extent, lines)) in blocks.iter().enumerate() {
+            if block_index > 0 {
+                row.try_push_spaces(gap)?;
+            }
+            let Some(line) = lines.get(row_index) else {
+                row.try_push_spaces(block_extent.width())?;
+                continue;
+            };
+            row.try_push_line(line.styled())?;
+            row.try_push_spaces(
+                block_extent
+                    .width()
+                    .checked_sub(line.width())
+                    .ok_or_else(|| grid_overflow(resources))?,
+            )?;
+        }
+        rows.push(RelationGraphLine::from_styled(row));
+    }
+    Ok(rows)
+}
+
+/// A vertically separated relation document admitted before any region creates
+/// rows or a canvas.
+pub(crate) struct RelationRenderPlan<'a> {
+    regions: Vec<RelationRegionPlan<'a>>,
+    extent: LogicalExtent,
+}
+
+impl<'a> RelationRenderPlan<'a> {
+    pub(crate) fn try_new(
+        mut regions: Vec<RelationRegionPlan<'a>>,
+        resources: &mut ResourceContext,
+    ) -> Result<Self> {
+        regions.retain(|region| region.extent().height() > 0);
+        let separators = regions.len().saturating_sub(1);
+        let height = regions.iter().try_fold(separators, |height, region| {
+            resources.checked_grid_add(height, region.extent().height())
+        })?;
+        let width = regions
+            .iter()
+            .map(RelationRegionPlan::extent)
+            .map(LogicalExtent::width)
+            .max()
+            .unwrap_or(0);
+        let extent = resources.grid_extent(width, height)?;
+        resources.charge_layout_work(extent.cells())?;
+        Ok(Self { regions, extent })
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn extent(&self) -> LogicalExtent {
+        self.extent
+    }
+
+    pub(crate) fn materialize(
+        self,
+        options: &AsciiRenderOptions,
+        resources: &mut ResourceContext,
+    ) -> Result<Vec<RelationGraphLine>> {
+        let mut joined = Vec::new();
+        joined
+            .try_reserve_exact(self.extent.height())
+            .map_err(|_| layout_allocation_failed())?;
+        for region in self.regions {
+            if !joined.is_empty() {
+                joined.push(RelationGraphLine::try_plain(
+                    "",
+                    options.terminal_width_profile,
+                    resources,
+                )?);
+            }
+            let expected = region.extent();
+            let lines = region.paint(options, resources)?;
+            if lines
+                .iter()
+                .any(|line| line.width_profile() != options.terminal_width_profile)
+                || relation_lines_extent(&lines, resources)? != expected
+            {
+                return Err(grid_overflow(resources));
+            }
+            joined.extend(lines);
+        }
+        if relation_lines_extent(&joined, resources)? != self.extent {
+            return Err(grid_overflow(resources));
+        }
+        Ok(joined)
+    }
+}
+
+pub(crate) enum RelationBoxStripPlan<'a> {
+    Stacked {
+        boxes: Vec<&'a RelationGraphBox>,
+        extent: LogicalExtent,
+    },
+    Horizontal {
+        boxes: Vec<&'a RelationGraphBox>,
+        direction: RelationGraphHorizontalDirection,
+        gap: usize,
+        width_profile: TerminalWidthProfile,
+        extent: LogicalExtent,
+    },
+}
+
+impl<'a> RelationBoxStripPlan<'a> {
+    pub(crate) fn stacked(
+        boxes: Vec<&'a RelationGraphBox>,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        let extent = stacked_box_ref_extent(&boxes, resources)?;
+        Ok(Self::Stacked { boxes, extent })
+    }
+
+    pub(crate) fn horizontal(
+        boxes: Vec<&'a RelationGraphBox>,
+        direction: RelationGraphHorizontalDirection,
+        gap: usize,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        let extent = horizontal_box_strip_ref_extent(&boxes, gap, resources)?;
+        Ok(Self::Horizontal {
+            boxes,
+            direction,
+            gap,
+            width_profile,
+            extent,
+        })
+    }
+
+    pub(crate) const fn extent(&self) -> LogicalExtent {
+        match self {
+            Self::Stacked { extent, .. } | Self::Horizontal { extent, .. } => *extent,
+        }
+    }
+
+    fn paint(
+        self,
+        width_profile: TerminalWidthProfile,
+        resources: &mut ResourceContext,
+    ) -> Result<Vec<RelationGraphLine>> {
+        match self {
+            Self::Stacked { boxes, .. } => stacked_box_ref_lines(&boxes, width_profile, resources),
+            Self::Horizontal {
+                boxes,
+                direction,
+                gap,
+                width_profile,
+                ..
+            } => horizontal_box_strip_lines(&boxes, direction, gap, width_profile, resources),
+        }
+    }
+}
+
+enum RelationSummaryBase<'a> {
+    Stacked(Vec<&'a RelationGraphBox>),
+    Horizontal {
+        boxes: Vec<&'a RelationGraphBox>,
+        direction: RelationGraphHorizontalDirection,
+        gap: usize,
+    },
+}
+
+pub(crate) struct RelationSummaryPaintPlan<'a> {
+    base: RelationSummaryBase<'a>,
+    rows: Vec<RelationGraphSummaryRow>,
+    reason: Option<LayeredRelationSummaryReason>,
+    document: RelationDocumentPlan,
+}
+
+impl<'a> RelationSummaryPaintPlan<'a> {
+    pub(crate) fn stacked(
+        boxes: Vec<&'a RelationGraphBox>,
+        rows: Vec<RelationGraphSummaryRow>,
+        reason: Option<LayeredRelationSummaryReason>,
+        options: &AsciiRenderOptions,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        let base_extent = stacked_box_ref_extent(&boxes, resources)?;
+        let summary_extent = relation_summary_extent(&rows, reason, options, resources)?;
+        let document = RelationDocumentPlan::new(
+            base_extent,
+            Some(summary_extent),
+            display_width_with_profile("relations:", options.terminal_width_profile),
+            resources,
+        )?;
+        Ok(Self {
+            base: RelationSummaryBase::Stacked(boxes),
+            rows,
+            reason,
+            document,
+        })
+    }
+
+    pub(crate) fn horizontal(
+        boxes: Vec<&'a RelationGraphBox>,
+        direction: RelationGraphHorizontalDirection,
+        gap: usize,
+        rows: Vec<RelationGraphSummaryRow>,
+        reason: Option<LayeredRelationSummaryReason>,
+        options: &AsciiRenderOptions,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        let base_extent = horizontal_box_strip_ref_extent(&boxes, gap, resources)?;
+        let summary_extent = relation_summary_extent(&rows, reason, options, resources)?;
+        let document = RelationDocumentPlan::new(
+            base_extent,
+            Some(summary_extent),
+            display_width_with_profile("relations:", options.terminal_width_profile),
+            resources,
+        )?;
+        Ok(Self {
+            base: RelationSummaryBase::Horizontal {
+                boxes,
+                direction,
+                gap,
+            },
+            rows,
+            reason,
+            document,
+        })
+    }
+
+    pub(crate) const fn extent(&self) -> LogicalExtent {
+        self.document.extent()
+    }
+
+    fn paint(
+        self,
+        options: &AsciiRenderOptions,
+        resources: &mut ResourceContext,
+    ) -> Result<Vec<RelationGraphLine>> {
+        let Self {
+            base,
+            rows,
+            reason,
+            document,
+        } = self;
+        match base {
+            RelationSummaryBase::Stacked(boxes) => document.materialize_with_section(
+                options,
+                resources,
+                |resources| {
+                    stacked_box_ref_lines(&boxes, options.terminal_width_profile, resources)
+                },
+                |resources| relation_summary_lines_for_rows(&rows, reason, options, resources),
+            ),
+            RelationSummaryBase::Horizontal {
+                boxes,
+                direction,
+                gap,
+            } => document.materialize_with_section(
+                options,
+                resources,
+                |resources| {
+                    horizontal_box_strip_lines(
+                        &boxes,
+                        direction,
+                        gap,
+                        options.terminal_width_profile,
+                        resources,
+                    )
+                },
+                |resources| relation_summary_lines_for_rows(&rows, reason, options, resources),
+            ),
+        }
+    }
+}
+
+pub(crate) struct LayeredRelationPaintPlan<'a> {
+    scene: LayeredRelationScene<'a>,
+    routes: Vec<LayeredRelationRoutePlan>,
+    extent: LogicalExtent,
+}
+
+impl<'a> LayeredRelationPaintPlan<'a> {
+    fn extent(&self) -> LogicalExtent {
+        self.extent
+    }
+
+    fn paint(
+        self,
+        options: &AsciiRenderOptions,
+        resources: &mut ResourceContext,
+    ) -> Result<Vec<RelationGraphLine>> {
+        let Self {
+            scene,
+            routes,
+            extent: _,
+        } = self;
+        let mut canvas = scene.canvas_with_boxes(options, resources)?;
+        for route in &routes {
+            route.draw_route_at(&mut canvas)?;
+        }
+        for route in &routes {
+            route.draw_overlays_at(&mut canvas)?;
+        }
+        let styled_lines = canvas.into_styled_lines_preserving_extent()?;
+        resources.charge_layout_work(styled_lines.len().max(1))?;
+        let mut rendered = Vec::new();
+        rendered
+            .try_reserve_exact(styled_lines.len())
+            .map_err(|_| layout_allocation_failed())?;
+        rendered.extend(styled_lines.into_iter().map(RelationGraphLine::from_styled));
+        Ok(rendered)
+    }
+}
+
+fn relation_lines_extent(
+    lines: &[RelationGraphLine],
+    resources: &ResourceContext,
+) -> Result<LogicalExtent> {
+    let width = lines
+        .iter()
+        .map(RelationGraphLine::width)
+        .max()
+        .unwrap_or(0);
+    resources.grid_extent(width, lines.len())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -177,8 +622,6 @@ pub(crate) struct RelationGraphLabel {
 
 pub(crate) trait RelationComponentAdapter<R> {
     fn build_edges(&self, relation: &R) -> LayeredRelationEdge;
-
-    fn is_same_endpoint_parallel(&self, relations: &[R]) -> bool;
 
     fn is_self_relation(&self, relation: &R) -> bool;
 
@@ -217,21 +660,20 @@ pub(crate) trait RelationComponentAdapter<R> {
         resources: &mut ResourceContext,
     ) -> Result<Vec<RelationOverlay>>;
 
-    fn render_vertical(
+    fn plan_vertical_region<'plan>(
         &self,
-        boxes: &[RelationGraphBox],
-        relation: &R,
-        options: &AsciiRenderOptions,
+        boxes: &[&'plan RelationGraphBox],
+        relation: &'plan R,
         resources: &mut ResourceContext,
-    ) -> Result<Vec<RelationGraphLine>>;
+    ) -> Result<RelationRegionPlan<'plan>>;
 
-    fn render_parallel(
+    fn plan_parallel_region<'plan>(
         &self,
-        boxes: &[RelationGraphBox],
-        relations: &[R],
+        boxes: Vec<&'plan RelationGraphBox>,
+        relations: Vec<&'plan R>,
         options: &AsciiRenderOptions,
         resources: &mut ResourceContext,
-    ) -> Result<Vec<RelationGraphLine>>;
+    ) -> Result<RelationRegionPlan<'plan>>;
 
     fn build_summary_row(
         &self,
@@ -310,6 +752,7 @@ pub(crate) struct RelationStackPlan<'a> {
     bottom: &'a RelationGraphBox,
     center: usize,
     relation_extent: LogicalExtent,
+    extent: LogicalExtent,
 }
 
 impl<'a> RelationStackPlan<'a> {
@@ -327,12 +770,18 @@ impl<'a> RelationStackPlan<'a> {
         );
         let center = vertical_center(top, bottom, extra_half_widths);
         let relation_extent = measure_rows(center, resources)?;
+        let extent = vertical_stack_extent(top, bottom, center, relation_extent, resources)?;
         Ok(Self {
             top,
             bottom,
             center,
             relation_extent,
+            extent,
         })
+    }
+
+    pub(crate) const fn extent(&self) -> LogicalExtent {
+        self.extent
     }
 
     pub(crate) fn render_lines(
@@ -340,8 +789,7 @@ impl<'a> RelationStackPlan<'a> {
         resources: &mut ResourceContext,
         materialize_rows: impl FnOnce(usize, &ResourceContext) -> Result<Vec<RelationGraphLine>>,
     ) -> Result<Vec<RelationGraphLine>> {
-        let extent = self.aggregate_extent(resources)?;
-        resources.charge_layout_work(extent.cells())?;
+        resources.charge_layout_work(self.extent.cells())?;
         let relation_lines = materialize_rows(self.center, resources)?;
         self.validate_relation_lines(&relation_lines, resources)?;
         assemble_vertical_stack_lines(
@@ -349,17 +797,7 @@ impl<'a> RelationStackPlan<'a> {
             self.bottom,
             self.center,
             relation_lines,
-            extent,
-            resources,
-        )
-    }
-
-    fn aggregate_extent(&self, resources: &ResourceContext) -> Result<LogicalExtent> {
-        vertical_stack_extent(
-            self.top,
-            self.bottom,
-            self.center,
-            self.relation_extent,
+            self.extent,
             resources,
         )
     }
@@ -416,6 +854,7 @@ pub(crate) struct RelationParallelPlan<'a> {
     lane_left: usize,
     lane_gap: usize,
     lane_extents: Vec<LogicalExtent>,
+    extent: LogicalExtent,
 }
 
 impl<'a> RelationParallelPlan<'a> {
@@ -444,6 +883,15 @@ impl<'a> RelationParallelPlan<'a> {
         let lane_center = lanes_width / 2;
         let center = (top.width / 2).max(bottom.width / 2).max(lane_center);
         let lane_left = center - lane_center;
+        let extent = parallel_relation_extent(
+            top,
+            bottom,
+            center,
+            lane_left,
+            lane_gap,
+            &lane_extents,
+            resources,
+        )?;
 
         Ok(Self {
             top,
@@ -452,7 +900,12 @@ impl<'a> RelationParallelPlan<'a> {
             lane_left,
             lane_gap,
             lane_extents,
+            extent,
         })
+    }
+
+    pub(crate) const fn extent(&self) -> LogicalExtent {
+        self.extent
     }
 
     /// Check that every lane's stem column lands on both endpoint box faces.
@@ -496,29 +949,21 @@ impl<'a> RelationParallelPlan<'a> {
         resources: &mut ResourceContext,
         materialize_lanes: impl FnOnce(&mut ResourceContext) -> Result<Vec<Vec<RelationGraphLine>>>,
     ) -> Result<Vec<RelationGraphLine>> {
-        let extent = self.aggregate_extent(resources)?;
-        resources.charge_layout_work(extent.cells())?;
+        resources.charge_layout_work(self.extent.cells())?;
         let lanes = materialize_lanes(resources)?;
         if lanes.len() != self.lane_extents.len() {
             return Err(grid_overflow(resources));
         }
         for (lane, planned) in lanes.iter().zip(&self.lane_extents) {
-            if lane.len() > planned.height()
+            let actual_width = lane.iter().map(RelationGraphLine::width).max().unwrap_or(1);
+            if lane.len() != planned.height()
+                || actual_width != planned.width().max(1)
                 || lane
                     .iter()
-                    .any(|line| line.width() > planned.width().max(1))
+                    .any(|line| line.width_profile() != self.top.width_profile())
             {
                 return Err(grid_overflow(resources));
             }
-            debug_assert_eq!(lane.len(), planned.height());
-            debug_assert_eq!(
-                lane.iter().map(RelationGraphLine::width).max().unwrap_or(1),
-                planned.width().max(1)
-            );
-            debug_assert!(
-                lane.iter()
-                    .all(|line| line.width_profile() == self.top.width_profile())
-            );
         }
 
         let mut relation_lines = Vec::new();
@@ -557,7 +1002,7 @@ impl<'a> RelationParallelPlan<'a> {
             self.bottom,
             self.center,
             relation_lines,
-            extent,
+            self.extent,
             resources,
         )
     }
@@ -569,33 +1014,43 @@ impl<'a> RelationParallelPlan<'a> {
             .max()
             .unwrap_or(0)
     }
+}
 
-    fn aggregate_extent(&self, resources: &ResourceContext) -> Result<LogicalExtent> {
-        let height = resources.checked_grid_add(
-            resources.checked_grid_add(self.top.height(), self.row_count())?,
-            self.bottom.height(),
-        )?;
-        let lanes_width = self.lane_extents.iter().try_fold(0usize, |total, extent| {
-            resources.checked_grid_add(total, extent.width().max(1))
-        })?;
-        let gaps_width =
-            resources.checked_grid_mul(self.lane_gap, self.lane_extents.len().saturating_sub(1))?;
-        let relation_width = resources.checked_grid_add(
-            self.lane_left,
-            resources.checked_grid_add(lanes_width, gaps_width)?,
-        )?;
-        let top_left = self
-            .center
-            .checked_sub(self.top.width() / 2)
-            .ok_or_else(|| grid_overflow(resources))?;
-        let bottom_left = self
-            .center
-            .checked_sub(self.bottom.width() / 2)
-            .ok_or_else(|| grid_overflow(resources))?;
-        let top_width = resources.checked_grid_add(top_left, self.top.width())?;
-        let bottom_width = resources.checked_grid_add(bottom_left, self.bottom.width())?;
-        resources.grid_extent(relation_width.max(top_width).max(bottom_width), height)
-    }
+fn parallel_relation_extent(
+    top: &RelationGraphBox,
+    bottom: &RelationGraphBox,
+    center: usize,
+    lane_left: usize,
+    lane_gap: usize,
+    lane_extents: &[LogicalExtent],
+    resources: &ResourceContext,
+) -> Result<LogicalExtent> {
+    let row_count = lane_extents
+        .iter()
+        .map(|extent| extent.height())
+        .max()
+        .unwrap_or(0);
+    let height = resources.checked_grid_add(
+        resources.checked_grid_add(top.height(), row_count)?,
+        bottom.height(),
+    )?;
+    let lanes_width = lane_extents.iter().try_fold(0usize, |total, extent| {
+        resources.checked_grid_add(total, extent.width().max(1))
+    })?;
+    let gaps_width = resources.checked_grid_mul(lane_gap, lane_extents.len().saturating_sub(1))?;
+    let relation_width = resources.checked_grid_add(
+        lane_left,
+        resources.checked_grid_add(lanes_width, gaps_width)?,
+    )?;
+    let top_left = center
+        .checked_sub(top.width() / 2)
+        .ok_or_else(|| grid_overflow(resources))?;
+    let bottom_left = center
+        .checked_sub(bottom.width() / 2)
+        .ok_or_else(|| grid_overflow(resources))?;
+    let top_width = resources.checked_grid_add(top_left, top.width())?;
+    let bottom_width = resources.checked_grid_add(bottom_left, bottom.width())?;
+    resources.grid_extent(relation_width.max(top_width).max(bottom_width), height)
 }
 
 impl RelationGraphLine {
@@ -1078,36 +1533,6 @@ fn stacked_box_ref_extent(
     resources.grid_extent(width, height)
 }
 
-fn join_component_line_groups(
-    groups: Vec<Vec<RelationGraphLine>>,
-    width_profile: TerminalWidthProfile,
-    resources: &mut ResourceContext,
-) -> Result<Vec<RelationGraphLine>> {
-    let separators = groups.len().saturating_sub(1);
-    let height = groups.iter().try_fold(separators, |total, group| {
-        resources.checked_grid_add(total, group.len())
-    })?;
-    let width = groups
-        .iter()
-        .flatten()
-        .map(RelationGraphLine::width)
-        .max()
-        .unwrap_or(0);
-    let extent = resources.grid_extent(width, height)?;
-    resources.charge_layout_work(extent.cells())?;
-    let mut joined = Vec::new();
-    joined
-        .try_reserve_exact(height)
-        .map_err(|_| layout_allocation_failed())?;
-    for group in groups {
-        if !joined.is_empty() {
-            joined.push(RelationGraphLine::try_plain("", width_profile, resources)?);
-        }
-        joined.extend(group);
-    }
-    Ok(joined)
-}
-
 fn stacked_boxes_height(boxes: &[RelationGraphBox], resources: &ResourceContext) -> Result<usize> {
     boxes
         .iter()
@@ -1153,363 +1578,215 @@ where
     }
 }
 
-pub(crate) fn render_relation_component_lines<R, A>(
-    boxes: &[RelationGraphBox],
-    relations: &[R],
+pub(crate) fn render_relation_component_lines<'plan, R, A>(
+    boxes: &'plan [RelationGraphBox],
+    relations: &'plan [R],
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
-    adapter: &A,
+    adapter: &'plan A,
 ) -> Result<Option<Vec<RelationGraphLine>>>
 where
-    A: RelationComponentAdapter<R>,
+    A: RelationComponentAdapter<R> + 'plan,
 {
     let edges = build_layered_edges(relations, adapter, resources)?;
     let layered_error = |error| adapter.layered_error(error);
     let components = relation_components(boxes, &edges, resources)
         .map_err(|error| error.into_ascii_error(layered_error))?;
-    if components.len() == 1 {
-        return render_relation_component(boxes, relations, options, resources, adapter).map(Some);
-    }
-    if let Some(rendered) = render_combined_relation_components(
-        boxes,
-        relations,
-        options,
-        resources,
-        adapter,
-        &components,
-        &edges,
-    )? {
-        return Ok(Some(rendered));
-    }
-
-    let mut rendered = Vec::new();
     resources.charge_layout_work(components.len().max(1))?;
-    rendered
+    let mut relation_regions = Vec::new();
+    relation_regions
         .try_reserve_exact(components.len())
         .map_err(|_| layout_allocation_failed())?;
-    for component in &components {
-        rendered.push(render_relation_component_from_plan(
-            boxes, relations, component, options, resources, adapter,
-        )?);
-    }
-
-    Ok(Some(join_component_line_groups(
-        rendered,
-        options.terminal_width_profile,
-        resources,
-    )?))
-}
-
-fn render_relation_component_from_plan<R, A>(
-    boxes: &[RelationGraphBox],
-    relations: &[R],
-    component: &RelationGraphComponent<'_>,
-    options: &AsciiRenderOptions,
-    resources: &mut ResourceContext,
-    adapter: &A,
-) -> Result<Vec<RelationGraphLine>>
-where
-    A: RelationComponentAdapter<R>,
-{
-    let relation_indices = component.edge_indices();
-    let selected_relations = match relation_indices {
-        [] => &relations[0..0],
-        [index] => std::slice::from_ref(
-            relations
-                .get(*index)
-                .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?,
-        ),
-        indices if indices.iter().copied().eq(0..relations.len()) => relations,
-        _ => {
-            return Err(adapter.layered_error(LayeredRelationError::UnrelatedBoxes));
-        }
-    };
-
-    render_relation_component_with_box_refs(
-        boxes,
-        component.boxes(),
-        selected_relations,
-        options,
-        resources,
-        adapter,
-    )
-}
-
-fn render_relation_component_with_box_refs<R, A>(
-    all_boxes: &[RelationGraphBox],
-    boxes: &[&RelationGraphBox],
-    relations: &[R],
-    options: &AsciiRenderOptions,
-    resources: &mut ResourceContext,
-    adapter: &A,
-) -> Result<Vec<RelationGraphLine>>
-where
-    A: RelationComponentAdapter<R>,
-{
-    if relations.is_empty() {
-        return stacked_box_ref_lines(boxes, options.terminal_width_profile, resources);
-    }
-    if relations.len() > 1
-        && relations
-            .iter()
-            .all(|relation| adapter.is_self_relation(relation))
-    {
-        let edge = adapter.build_edges(&relations[0]);
-        let same_endpoint = relations.iter().all(|relation| {
-            let next_edge = adapter.build_edges(relation);
-            next_edge.source_id() == edge.source_id() && next_edge.target_id() == edge.target_id()
-        });
-        if same_endpoint {
-            let relation_box = find_box_ref(boxes, edge.source_id())
-                .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
-            return render_relation_self_loops(
-                relation_box,
-                relations.iter(),
-                relations.len(),
-                adapter,
-                resources,
-            );
-        }
-    }
-    if relations.len() == 1 && adapter.is_self_relation(&relations[0]) {
-        let edge = adapter.build_edges(&relations[0]);
-        let relation_box = find_box_ref(boxes, edge.source_id())
-            .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
-        return render_relation_self_loops(
-            relation_box,
-            std::iter::once(&relations[0]),
-            1,
-            adapter,
-            resources,
-        );
-    }
-    if adapter.is_same_endpoint_parallel(relations) {
-        return adapter.render_parallel(all_boxes, relations, options, resources);
-    }
-    if relations.len() == 1 {
-        return adapter.render_vertical(all_boxes, &relations[0], options, resources);
-    }
-    render_layered_relation_component_ref_lines(
-        boxes,
-        relations,
-        options,
-        adapter.layered_horizontal_gap(),
-        resources,
-        adapter,
-    )
-}
-
-fn render_combined_relation_components<R, A>(
-    boxes: &[RelationGraphBox],
-    relations: &[R],
-    options: &AsciiRenderOptions,
-    resources: &mut ResourceContext,
-    adapter: &A,
-    components: &[RelationGraphComponent<'_>],
-    edges: &[LayeredRelationEdge],
-) -> Result<Option<Vec<RelationGraphLine>>>
-where
-    A: RelationComponentAdapter<R>,
-{
-    let relation_component_count = components
-        .iter()
-        .filter(|component| !component.edge_indices().is_empty())
-        .count();
-    if relation_component_count < 2 {
-        return Ok(None);
-    }
-
-    let relation_box_count = components
-        .iter()
-        .filter(|component| !component.edge_indices().is_empty())
-        .try_fold(0usize, |total, component| {
-            total
-                .checked_add(component.boxes().len())
-                .ok_or_else(|| work_overflow(resources))
-        })?;
-    resources.charge_layout_work(relation_box_count.max(1))?;
-    let mut relation_ids = HashSet::new();
-    relation_ids
-        .try_reserve(relation_box_count)
-        .map_err(|_| layout_allocation_failed())?;
-    for relation_box in components
-        .iter()
-        .filter(|component| !component.edge_indices().is_empty())
-        .flat_map(RelationGraphComponent::boxes)
-    {
-        relation_ids.insert(relation_box.id());
-    }
-    resources.charge_layout_work(relation_ids.len().max(1))?;
-    let mut relation_boxes = Vec::new();
-    relation_boxes
-        .try_reserve_exact(relation_ids.len())
-        .map_err(|_| layout_allocation_failed())?;
-    relation_boxes.extend(
-        boxes
-            .iter()
-            .filter(|relation_box| relation_ids.contains(relation_box.id())),
-    );
-
-    let combined = match render_layered_relation_component_ref_result(
-        &relation_boxes,
-        relations,
-        options,
-        adapter.layered_horizontal_gap(),
-        resources,
-        adapter,
-    )? {
-        Ok(rendered) => rendered,
-        Err(reason) => {
-            if split_summary_fallback_is_safe(components, edges) {
-                return Ok(None);
-            }
-            let mut rows = Vec::new();
-            rows.try_reserve_exact(relations.len())
-                .map_err(|_| layout_allocation_failed())?;
-            for relation in relations {
-                rows.push(adapter.build_summary_row(relation, reason)?);
-            }
-            let base_extent = stacked_box_ref_extent(&relation_boxes, resources)?;
-            render_relation_document_with_summary(
-                base_extent,
-                &rows,
-                Some(reason),
-                options,
-                resources,
-                |resources| {
-                    stacked_box_ref_lines(
-                        &relation_boxes,
-                        options.terminal_width_profile,
-                        resources,
-                    )
-                },
-            )?
-        }
-    };
-
-    let mut rendered = Vec::new();
-    resources.charge_layout_work(components.len().max(1))?;
-    rendered
+    let mut standalone_regions = Vec::new();
+    standalone_regions
         .try_reserve_exact(components.len())
         .map_err(|_| layout_allocation_failed())?;
-    rendered.push(combined);
-    for component in components
-        .iter()
-        .filter(|component| component.edge_indices().is_empty())
-    {
-        rendered.push(stacked_box_ref_lines(
-            component.boxes(),
-            options.terminal_width_profile,
-            resources,
-        )?);
+    for component in components {
+        let has_relations = !component.edge_indices().is_empty();
+        let region =
+            plan_relation_component_region(component, relations, options, resources, adapter)?;
+        if has_relations {
+            relation_regions.push(region);
+        } else {
+            standalone_regions.push(region);
+        }
     }
 
-    Ok(Some(join_component_line_groups(
-        rendered,
-        options.terminal_width_profile,
-        resources,
-    )?))
-}
-
-fn split_summary_fallback_is_safe(
-    components: &[RelationGraphComponent<'_>],
-    edges: &[LayeredRelationEdge],
-) -> bool {
-    components
-        .iter()
-        .filter(|component| !component.edge_indices().is_empty())
-        .all(|component| {
-            let [edge_index] = component.edge_indices() else {
-                return false;
-            };
-            let Some(edge) = edges.get(*edge_index) else {
-                return false;
-            };
-            edge.source_id() != edge.target_id()
-        })
-}
-
-fn render_relation_component<R, A>(
-    boxes: &[RelationGraphBox],
-    relations: &[R],
-    options: &AsciiRenderOptions,
-    resources: &mut ResourceContext,
-    adapter: &A,
-) -> Result<Vec<RelationGraphLine>>
-where
-    A: RelationComponentAdapter<R>,
-{
-    if relations.is_empty() {
-        return stacked_box_lines(boxes, options.terminal_width_profile, resources);
-    }
-    let has_self_relation = relations
-        .iter()
-        .any(|relation| adapter.is_self_relation(relation));
-    if has_self_relation
-        && relations
-            .iter()
-            .any(|relation| !adapter.is_self_relation(relation))
-    {
-        // A self-loop changes the visual box extent. Keep ordinary routes on
-        // the original box face by using the lossless relation summary for a
-        // mixed component instead of letting one overlay overwrite another.
-        return render_layered_relation_component_lines(
-            boxes,
-            relations,
-            options,
+    let mut regions = Vec::new();
+    regions
+        .try_reserve_exact(
+            relation_regions
+                .len()
+                .checked_add(standalone_regions.len())
+                .ok_or_else(|| work_overflow(resources))?,
+        )
+        .map_err(|_| layout_allocation_failed())?;
+    if relation_regions.len() > 1 && relation_regions.iter().all(|region| !region.is_summary()) {
+        regions.push(RelationRegionPlan::horizontal_strip(
+            relation_regions,
             adapter.layered_horizontal_gap(),
             resources,
+        )?);
+    } else {
+        regions.extend(relation_regions);
+    }
+    regions.extend(standalone_regions);
+    let plan = RelationRenderPlan::try_new(regions, resources)?;
+    Ok(Some(plan.materialize(options, resources)?))
+}
+
+fn plan_relation_component_region<'plan, R, A>(
+    component: RelationGraphComponent<'plan>,
+    relations: &'plan [R],
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    adapter: &'plan A,
+) -> Result<RelationRegionPlan<'plan>>
+where
+    A: RelationComponentAdapter<R> + 'plan,
+{
+    let (component_boxes, edge_indices) = component.into_parts();
+    let mut selected = Vec::new();
+    selected
+        .try_reserve_exact(edge_indices.len())
+        .map_err(|_| layout_allocation_failed())?;
+    for edge_index in edge_indices {
+        selected.push(
+            relations
+                .get(edge_index)
+                .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?,
+        );
+    }
+    if selected.is_empty() {
+        return Ok(RelationRegionPlan::BoxStrip(RelationBoxStripPlan::stacked(
+            component_boxes,
+            resources,
+        )?));
+    }
+
+    let has_self = selected
+        .iter()
+        .any(|relation| adapter.is_self_relation(*relation));
+    let has_non_self = selected
+        .iter()
+        .any(|relation| !adapter.is_self_relation(*relation));
+    if has_self && has_non_self {
+        return plan_relation_summary_region(
+            component_boxes,
+            selected,
+            LayeredRelationSummaryReason::RouteCollision,
+            options,
+            resources,
             adapter,
         );
     }
-    if relations.len() > 1
-        && relations
-            .iter()
-            .all(|relation| adapter.is_self_relation(relation))
-    {
-        let edge = adapter.build_edges(&relations[0]);
-        let same_endpoint = relations.iter().all(|relation| {
-            let next_edge = adapter.build_edges(relation);
-            next_edge.source_id() == edge.source_id() && next_edge.target_id() == edge.target_id()
+
+    if has_self {
+        let first_edge = adapter.build_edges(selected[0]);
+        let same_endpoint = selected.iter().all(|relation| {
+            let edge = adapter.build_edges(*relation);
+            edge.source_id() == first_edge.source_id() && edge.target_id() == first_edge.target_id()
         });
         if same_endpoint {
-            let relation_box = find_box(boxes, edge.source_id())
+            let relation_box = find_box_ref(&component_boxes, first_edge.source_id())
                 .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
-            return render_relation_self_loops(
-                relation_box,
-                relations.iter(),
-                relations.len(),
-                adapter,
-                resources,
-            );
+            return plan_relation_self_loop_region(relation_box, selected, adapter, resources);
         }
     }
-    if relations.len() == 1 && adapter.is_self_relation(&relations[0]) {
-        let edge = adapter.build_edges(&relations[0]);
-        let relation_box = find_box(boxes, edge.source_id())
-            .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
-        return render_relation_self_loops(
-            relation_box,
-            std::iter::once(&relations[0]),
-            1,
-            adapter,
-            resources,
-        );
+
+    if selected.len() > 1 && same_directed_endpoints(&selected, adapter) {
+        return adapter.plan_parallel_region(component_boxes, selected, options, resources);
     }
-    if adapter.is_same_endpoint_parallel(relations) {
-        return adapter.render_parallel(boxes, relations, options, resources);
+    if let [relation] = selected.as_slice() {
+        return adapter.plan_vertical_region(&component_boxes, relation, resources);
     }
-    if relations.len() == 1 {
-        return adapter.render_vertical(boxes, &relations[0], options, resources);
-    }
-    render_layered_relation_component_lines(
-        boxes,
-        relations,
+
+    match plan_layered_relation_component_ref_result(
+        &component_boxes,
+        &selected,
         options,
         adapter.layered_horizontal_gap(),
         resources,
         adapter,
-    )
+    )? {
+        Ok(plan) => Ok(RelationRegionPlan::Layered(plan)),
+        Err(reason) => plan_relation_summary_region(
+            component_boxes,
+            selected,
+            reason,
+            options,
+            resources,
+            adapter,
+        ),
+    }
+}
+
+fn same_directed_endpoints<R, A>(relations: &[&R], adapter: &A) -> bool
+where
+    A: RelationComponentAdapter<R>,
+{
+    let Some(first) = relations.first() else {
+        return false;
+    };
+    let first = adapter.build_edges(first);
+    relations.iter().skip(1).all(|relation| {
+        let edge = adapter.build_edges(*relation);
+        edge.source_id() == first.source_id() && edge.target_id() == first.target_id()
+    })
+}
+
+fn plan_relation_self_loop_region<'plan, R, A>(
+    relation_box: &'plan RelationGraphBox,
+    relations: Vec<&'plan R>,
+    adapter: &'plan A,
+    resources: &mut ResourceContext,
+) -> Result<RelationRegionPlan<'plan>>
+where
+    A: RelationComponentAdapter<R> + 'plan,
+{
+    let mut metrics = Vec::new();
+    metrics
+        .try_reserve_exact(relations.len())
+        .map_err(|_| layout_allocation_failed())?;
+    for relation in &relations {
+        metrics.push(adapter.self_loop_metrics(relation, resources)?);
+    }
+    let plan = RelationSelfLoopPlan::try_new(relation_box, metrics, resources)?;
+    Ok(RelationRegionPlan::SelfLoops {
+        plan,
+        rows: Box::new(move |resources| {
+            let mut loops = Vec::new();
+            loops
+                .try_reserve_exact(relations.len())
+                .map_err(|_| layout_allocation_failed())?;
+            for relation in relations {
+                loops.push(adapter.self_loop_rows(relation, resources)?);
+            }
+            Ok(loops)
+        }),
+    })
+}
+
+fn plan_relation_summary_region<'plan, R, A>(
+    boxes: Vec<&'plan RelationGraphBox>,
+    relations: Vec<&'plan R>,
+    reason: LayeredRelationSummaryReason,
+    options: &AsciiRenderOptions,
+    resources: &ResourceContext,
+    adapter: &A,
+) -> Result<RelationRegionPlan<'plan>>
+where
+    A: RelationComponentAdapter<R>,
+{
+    let mut rows = Vec::new();
+    rows.try_reserve_exact(relations.len())
+        .map_err(|_| layout_allocation_failed())?;
+    for relation in relations {
+        rows.push(adapter.build_summary_row(relation, reason)?);
+    }
+    Ok(RelationRegionPlan::Summary(
+        RelationSummaryPaintPlan::stacked(boxes, rows, Some(reason), options, resources)?,
+    ))
 }
 
 #[cfg(test)]
@@ -1535,6 +1812,7 @@ where
     render_lines_with_options(&lines, options, &mut resources)
 }
 
+#[cfg(test)]
 pub(crate) fn render_layered_relation_component_lines<R, A>(
     boxes: &[RelationGraphBox],
     relations: &[R],
@@ -1599,6 +1877,7 @@ pub(crate) fn render_relation_document_with_summary(
 /// Render a lossless relation summary for a component whose spatial plan is
 /// not safe to materialize. This is shared by family-owned parallel planners so
 /// they can reject invalid endpoint ports without duplicating section assembly.
+#[cfg(test)]
 pub(crate) fn render_relation_summary_component_lines<R>(
     boxes: &[RelationGraphBox],
     relations: &[R],
@@ -1624,93 +1903,7 @@ pub(crate) fn render_relation_summary_component_lines<R>(
     )
 }
 
-fn render_relation_summary_component_ref_lines<R>(
-    boxes: &[&RelationGraphBox],
-    relations: &[R],
-    options: &AsciiRenderOptions,
-    reason: LayeredRelationSummaryReason,
-    resources: &mut ResourceContext,
-    mut build_row: impl FnMut(&R) -> Result<RelationGraphSummaryRow>,
-) -> Result<Vec<RelationGraphLine>> {
-    let mut rows = Vec::new();
-    rows.try_reserve_exact(relations.len())
-        .map_err(|_| layout_allocation_failed())?;
-    for relation in relations {
-        rows.push(build_row(relation)?);
-    }
-    let base_extent = stacked_box_ref_extent(boxes, resources)?;
-    render_relation_document_with_summary(
-        base_extent,
-        &rows,
-        Some(reason),
-        options,
-        resources,
-        |resources| stacked_box_ref_lines(boxes, options.terminal_width_profile, resources),
-    )
-}
-
-fn render_layered_relation_component_ref_lines<R, A>(
-    boxes: &[&RelationGraphBox],
-    relations: &[R],
-    options: &AsciiRenderOptions,
-    horizontal_gap: usize,
-    resources: &mut ResourceContext,
-    adapter: &A,
-) -> Result<Vec<RelationGraphLine>>
-where
-    A: RelationComponentAdapter<R>,
-{
-    match render_layered_relation_component_ref_result(
-        boxes,
-        relations,
-        options,
-        horizontal_gap,
-        resources,
-        adapter,
-    )? {
-        Ok(rendered) => Ok(rendered),
-        Err(reason) => render_relation_summary_component_ref_lines(
-            boxes,
-            relations,
-            options,
-            reason,
-            resources,
-            |relation| adapter.build_summary_row(relation, reason),
-        ),
-    }
-}
-
-fn render_layered_relation_component_ref_result<R, A>(
-    boxes: &[&RelationGraphBox],
-    relations: &[R],
-    options: &AsciiRenderOptions,
-    horizontal_gap: usize,
-    resources: &mut ResourceContext,
-    adapter: &A,
-) -> Result<std::result::Result<Vec<RelationGraphLine>, LayeredRelationSummaryReason>>
-where
-    A: RelationComponentAdapter<R>,
-{
-    resources.charge_layout_work(boxes.len().max(1))?;
-    let mut projected_boxes = Vec::new();
-    projected_boxes
-        .try_reserve_exact(boxes.len())
-        .map_err(|_| layout_allocation_failed())?;
-    projected_boxes.extend(
-        boxes
-            .iter()
-            .map(|relation_box| relation_box.shared_projection()),
-    );
-    render_layered_relation_component_result(
-        &projected_boxes,
-        relations,
-        options,
-        horizontal_gap,
-        resources,
-        adapter,
-    )
-}
-
+#[cfg(test)]
 fn render_layered_relation_component_result<R, A>(
     boxes: &[RelationGraphBox],
     relations: &[R],
@@ -1722,17 +1915,74 @@ fn render_layered_relation_component_result<R, A>(
 where
     A: RelationComponentAdapter<R>,
 {
+    match plan_layered_relation_component_result(
+        boxes,
+        relations,
+        options,
+        horizontal_gap,
+        resources,
+        adapter,
+    )? {
+        Ok(plan) => Ok(Ok(plan.paint(options, resources)?)),
+        Err(reason) => Ok(Err(reason)),
+    }
+}
+
+#[cfg(test)]
+fn plan_layered_relation_component_result<'boxes, R, A>(
+    boxes: &'boxes [RelationGraphBox],
+    relations: &[R],
+    options: &AsciiRenderOptions,
+    horizontal_gap: usize,
+    resources: &mut ResourceContext,
+    adapter: &A,
+) -> Result<std::result::Result<LayeredRelationPaintPlan<'boxes>, LayeredRelationSummaryReason>>
+where
+    A: RelationComponentAdapter<R>,
+{
+    let box_refs = boxes.iter().collect::<Vec<_>>();
+    let relation_refs = relations.iter().collect::<Vec<_>>();
+    plan_layered_relation_component_ref_result(
+        &box_refs,
+        &relation_refs,
+        options,
+        horizontal_gap,
+        resources,
+        adapter,
+    )
+}
+
+fn plan_layered_relation_component_ref_result<'boxes, R, A>(
+    boxes: &[&'boxes RelationGraphBox],
+    relations: &[&R],
+    options: &AsciiRenderOptions,
+    horizontal_gap: usize,
+    resources: &mut ResourceContext,
+    adapter: &A,
+) -> Result<std::result::Result<LayeredRelationPaintPlan<'boxes>, LayeredRelationSummaryReason>>
+where
+    A: RelationComponentAdapter<R>,
+{
     let has_self_relation = relations
         .iter()
-        .any(|relation| adapter.is_self_relation(relation));
+        .any(|relation| adapter.is_self_relation(*relation));
     if has_self_relation
         && relations
             .iter()
-            .any(|relation| !adapter.is_self_relation(relation))
+            .any(|relation| !adapter.is_self_relation(*relation))
     {
         return Ok(Err(LayeredRelationSummaryReason::RouteCollision));
     }
-    let edges = build_layered_edges(relations, adapter, resources)?;
+    resources.charge_layout_work(relations.len().max(1))?;
+    let mut edges = Vec::new();
+    edges
+        .try_reserve_exact(relations.len())
+        .map_err(|_| layout_allocation_failed())?;
+    edges.extend(
+        relations
+            .iter()
+            .map(|relation| adapter.build_edges(*relation)),
+    );
     let scene = match plan_layered_relation_scene(
         boxes,
         edges,
@@ -1754,7 +2004,7 @@ where
         .try_reserve_exact(scene.draw_order().len())
         .map_err(|_| layout_allocation_failed())?;
     for (edge_index, lane_offset) in scene.draw_order().iter().copied() {
-        let relation = &relations[edge_index];
+        let relation = relations[edge_index];
         let style = adapter.layered_route_style(relation)?;
         let Some(route_plan) = scene.plan_edge_draw(
             edge_index,
@@ -1794,33 +2044,24 @@ where
             return Ok(Err(LayeredRelationSummaryReason::OverlayCollision));
         }
     }
-
-    let mut canvas = scene.canvas_with_boxes(options, resources)?;
-    let box_snapshot = scene.capture_box_snapshot(&canvas, resources)?;
-
-    for route_plan in &route_plans {
-        route_plan.draw_route_at(&mut canvas)?;
-    }
-    if !scene.box_snapshot_matches(&canvas, &box_snapshot, resources)? {
+    if route_plans
+        .iter()
+        .any(|route_plan| scene.route_overlaps_box(route_plan))
+    {
         return Ok(Err(LayeredRelationSummaryReason::RouteCollision));
     }
-
-    for route_plan in &route_plans {
-        route_plan.draw_overlays_at(&mut canvas)?;
-    }
-    if !scene.box_snapshot_matches(&canvas, &box_snapshot, resources)? {
+    if route_plans
+        .iter()
+        .any(|route_plan| scene.overlays_overlap_box(route_plan))
+    {
         return Ok(Err(LayeredRelationSummaryReason::OverlayCollision));
     }
-
-    drop(box_snapshot);
-    let styled_lines = canvas.into_styled_lines_trimmed()?;
-    let mut rendered = Vec::new();
-    resources.charge_layout_work(styled_lines.len().max(1))?;
-    rendered
-        .try_reserve_exact(styled_lines.len())
-        .map_err(|_| layout_allocation_failed())?;
-    rendered.extend(styled_lines.into_iter().map(RelationGraphLine::from_styled));
-    Ok(Ok(rendered))
+    let extent = resources.grid_extent(scene.width(), scene.height())?;
+    Ok(Ok(LayeredRelationPaintPlan {
+        scene,
+        routes: route_plans,
+        extent,
+    }))
 }
 
 /// Geometry-only self-loop inputs supplied by a diagram family.
@@ -1937,8 +2178,7 @@ impl<'a> RelationSelfLoopPlan<'a> {
         })
     }
 
-    #[cfg(test)]
-    pub(crate) fn extent(&self) -> LogicalExtent {
+    pub(crate) const fn extent(&self) -> LogicalExtent {
         self.extent
     }
 
@@ -2035,42 +2275,6 @@ fn render_parallel_self_loops(
         )?);
     }
     Ok(lines)
-}
-
-fn render_relation_self_loops<'relation, R, A>(
-    relation_box: &RelationGraphBox,
-    relations: impl IntoIterator<Item = &'relation R>,
-    relation_count: usize,
-    adapter: &A,
-    resources: &mut ResourceContext,
-) -> Result<Vec<RelationGraphLine>>
-where
-    R: 'relation,
-    A: RelationComponentAdapter<R>,
-{
-    let mut relation_refs = Vec::new();
-    relation_refs
-        .try_reserve_exact(relation_count)
-        .map_err(|_| layout_allocation_failed())?;
-    let mut metrics = Vec::new();
-    metrics
-        .try_reserve_exact(relation_count)
-        .map_err(|_| layout_allocation_failed())?;
-    for relation in relations {
-        relation_refs.push(relation);
-        metrics.push(adapter.self_loop_metrics(relation, resources)?);
-    }
-    let plan = RelationSelfLoopPlan::try_new(relation_box, metrics, resources)?;
-    plan.render_lines(resources, |resources| {
-        let mut loops = Vec::new();
-        loops
-            .try_reserve_exact(relation_refs.len())
-            .map_err(|_| layout_allocation_failed())?;
-        for relation in relation_refs {
-            loops.push(adapter.self_loop_rows(relation, resources)?);
-        }
-        Ok(loops)
-    })
 }
 
 pub(crate) struct RelationSelfLoopRows {
@@ -2459,7 +2663,10 @@ pub(crate) fn find_box<'a>(
     boxes.iter().find(|relation_box| relation_box.id() == id)
 }
 
-fn find_box_ref<'a>(boxes: &[&'a RelationGraphBox], id: &str) -> Option<&'a RelationGraphBox> {
+pub(crate) fn find_box_ref<'a>(
+    boxes: &[&'a RelationGraphBox],
+    id: &str,
+) -> Option<&'a RelationGraphBox> {
     boxes
         .iter()
         .copied()
@@ -2667,10 +2874,6 @@ mod tests {
             LayeredRelationEdge::new(relation.source_id(), relation.target_id(), 0, 0)
         }
 
-        fn is_same_endpoint_parallel(&self, _relations: &[R]) -> bool {
-            false
-        }
-
         fn is_self_relation(&self, relation: &R) -> bool {
             relation.source_id() == relation.target_id()
         }
@@ -2760,39 +2963,44 @@ mod tests {
             Ok(Vec::new())
         }
 
-        fn render_vertical(
+        fn plan_vertical_region<'plan>(
             &self,
-            boxes: &[RelationGraphBox],
-            relation: &R,
-            _options: &AsciiRenderOptions,
+            boxes: &[&'plan RelationGraphBox],
+            relation: &'plan R,
             resources: &mut ResourceContext,
-        ) -> Result<Vec<RelationGraphLine>> {
-            let top = find_box(boxes, relation.source_id()).ok_or_else(|| {
+        ) -> Result<RelationRegionPlan<'plan>> {
+            let top = find_box_ref(boxes, relation.source_id()).ok_or_else(|| {
                 <Self as RelationComponentAdapter<R>>::layered_error(
                     self,
                     LayeredRelationError::MissingEndpoint,
                 )
             })?;
-            let bottom = find_box(boxes, relation.target_id()).ok_or_else(|| {
+            let bottom = find_box_ref(boxes, relation.target_id()).ok_or_else(|| {
                 <Self as RelationComponentAdapter<R>>::layered_error(
                     self,
                     LayeredRelationError::MissingEndpoint,
                 )
             })?;
-            RelationStackPlan::try_new(top, bottom, &[], resources, |_center, resources| {
-                resources.grid_extent(0, 0)
-            })?
-            .render_lines(resources, |_center, _resources| Ok(Vec::new()))
+            let plan =
+                RelationStackPlan::try_new(top, bottom, &[], resources, |_center, resources| {
+                    resources.grid_extent(0, 0)
+                })?;
+            Ok(RelationRegionPlan::Vertical {
+                plan,
+                rows: Box::new(|_center, _resources| Ok(Vec::new())),
+            })
         }
 
-        fn render_parallel(
+        fn plan_parallel_region<'plan>(
             &self,
-            _boxes: &[RelationGraphBox],
-            _relations: &[R],
+            boxes: Vec<&'plan RelationGraphBox>,
+            _relations: Vec<&'plan R>,
             _options: &AsciiRenderOptions,
-            _resources: &mut ResourceContext,
-        ) -> Result<Vec<RelationGraphLine>> {
-            Ok(Vec::new())
+            resources: &mut ResourceContext,
+        ) -> Result<RelationRegionPlan<'plan>> {
+            Ok(RelationRegionPlan::BoxStrip(RelationBoxStripPlan::stacked(
+                boxes, resources,
+            )?))
         }
 
         fn build_summary_row(
@@ -2849,6 +3057,117 @@ mod tests {
                 4,
             ),
         ]
+    }
+
+    fn aggregate_test_regions<'a>(
+        wide_top: &'a RelationGraphBox,
+        wide_bottom: &'a RelationGraphBox,
+        narrow_top: &'a RelationGraphBox,
+        narrow_bottom: &'a RelationGraphBox,
+        first_called: &'a Cell<bool>,
+        second_called: &'a Cell<bool>,
+        resources: &ResourceContext,
+    ) -> Result<Vec<RelationRegionPlan<'a>>> {
+        let first = RelationStackPlan::try_new(
+            wide_top,
+            wide_bottom,
+            &[],
+            resources,
+            |center, resources| centered_row_blocks_extent(center, [(1, 1)], resources),
+        )?;
+        let second = RelationStackPlan::try_new(
+            narrow_top,
+            narrow_bottom,
+            &[],
+            resources,
+            |_center, resources| resources.grid_extent(0, 0),
+        )?;
+        Ok(vec![
+            RelationRegionPlan::Vertical {
+                plan: first,
+                rows: Box::new(move |center, resources| {
+                    first_called.set(true);
+                    Ok(vec![centered_text_line_with_role(
+                        "|",
+                        center,
+                        AsciiColorRole::EdgeLine,
+                        TerminalWidthProfile::Unicode,
+                        resources,
+                    )?])
+                }),
+            },
+            RelationRegionPlan::Vertical {
+                plan: second,
+                rows: Box::new(move |_center, _resources| {
+                    second_called.set(true);
+                    Ok(Vec::new())
+                }),
+            },
+        ])
+    }
+
+    #[test]
+    fn render_plan_admits_aggregate_extent_before_materializing_regions() -> Result<()> {
+        let options = options_with_grid_limit(30);
+        let mut resources = test_resources(&options);
+        let wide_top = RelationGraphBox::new("a".to_string(), vec!["aaaaa".to_string()], 5);
+        let wide_bottom = RelationGraphBox::new("b".to_string(), vec!["bbbbb".to_string()], 5);
+        let narrow_top = RelationGraphBox::new("c".to_string(), vec!["ccc".to_string()], 3);
+        let narrow_bottom = RelationGraphBox::new("d".to_string(), vec!["ddd".to_string()], 3);
+        let first_called = Cell::new(false);
+        let second_called = Cell::new(false);
+        let regions = aggregate_test_regions(
+            &wide_top,
+            &wide_bottom,
+            &narrow_top,
+            &narrow_bottom,
+            &first_called,
+            &second_called,
+            &resources,
+        )?;
+
+        let plan = RelationRenderPlan::try_new(regions, &mut resources)?;
+        assert_eq!(plan.extent(), resources.grid_extent(5, 6)?);
+        assert!(!first_called.get());
+        assert!(!second_called.get());
+        let lines = plan.materialize(&options, &mut resources)?;
+        assert_eq!(
+            relation_lines_extent(&lines, &resources)?,
+            resources.grid_extent(5, 6)?
+        );
+        assert!(first_called.get());
+        assert!(second_called.get());
+        Ok(())
+    }
+
+    #[test]
+    fn render_plan_rejects_aggregate_n_minus_one_before_materializing_regions() -> Result<()> {
+        let options = options_with_grid_limit(29);
+        let mut resources = test_resources(&options);
+        let wide_top = RelationGraphBox::new("a".to_string(), vec!["aaaaa".to_string()], 5);
+        let wide_bottom = RelationGraphBox::new("b".to_string(), vec!["bbbbb".to_string()], 5);
+        let narrow_top = RelationGraphBox::new("c".to_string(), vec!["ccc".to_string()], 3);
+        let narrow_bottom = RelationGraphBox::new("d".to_string(), vec!["ddd".to_string()], 3);
+        let first_called = Cell::new(false);
+        let second_called = Cell::new(false);
+        let regions = aggregate_test_regions(
+            &wide_top,
+            &wide_bottom,
+            &narrow_top,
+            &narrow_bottom,
+            &first_called,
+            &second_called,
+            &resources,
+        )?;
+
+        let error = match RelationRenderPlan::try_new(regions, &mut resources) {
+            Ok(_) => panic!("aggregate N-1 must fail before painting any region"),
+            Err(error) => error,
+        };
+        assert_grid_limit(error, 30, 29);
+        assert!(!first_called.get());
+        assert!(!second_called.get());
+        Ok(())
     }
 
     fn parallel_test_lane_extents(resources: &ResourceContext) -> Vec<LogicalExtent> {
@@ -3013,8 +3332,7 @@ mod tests {
         )
         .expect("relation row descriptor should fit before aggregate admission");
         assert_eq!(
-            plan.aggregate_extent(&resources)
-                .expect("stack aggregate should have a checked extent"),
+            plan.extent(),
             resources
                 .grid_extent(4, 6)
                 .expect("4 by 6 should fit the exact limit")
@@ -3038,22 +3356,22 @@ mod tests {
         let boxes = admission_test_boxes();
         let options = options_with_grid_limit(23);
         let mut resources = test_resources(&options);
-        let plan = RelationStackPlan::try_new(
+        let materialized = Cell::new(false);
+
+        let error = RelationStackPlan::try_new(
             &boxes[0],
             &boxes[1],
             &[],
             &resources,
             |center, resources| centered_row_blocks_extent(center, [(1, 1)], resources),
         )
-        .expect("relation row descriptor should fit before aggregate admission");
-        let materialized = Cell::new(false);
-
-        let error = plan
-            .render_lines(&mut resources, |center, resources| {
+        .and_then(|plan| {
+            plan.render_lines(&mut resources, |center, resources| {
                 materialized.set(true);
                 materialize_stack_test_rows(center, resources)
             })
-            .expect_err("4 by 6 relation stack must not fit 23 cells");
+        })
+        .expect_err("4 by 6 relation stack must not fit 23 cells");
 
         assert_grid_limit(error, 24, 23);
         assert!(!materialized.get());
@@ -3077,9 +3395,7 @@ mod tests {
             plan.ports_fit(&default_resources)
                 .expect("wide endpoints should accept both ports")
         );
-        let planned = plan
-            .aggregate_extent(&default_resources)
-            .expect("parallel aggregate should have a checked extent");
+        let planned = plan.extent();
         assert_eq!(
             (planned.width(), planned.height(), planned.cells()),
             (5, 4, 20)
@@ -3118,25 +3434,21 @@ mod tests {
         let bottom = RelationGraphBox::new("bottom".to_string(), vec!["vwxyz".to_string()], 5);
         let options = options_with_grid_limit(19);
         let mut resources = test_resources(&options);
-        let plan = RelationParallelPlan::new(
+        let materialized = Cell::new(false);
+        let error = RelationParallelPlan::new(
             &top,
             &bottom,
             parallel_test_lane_extents(&resources),
             2,
             &mut resources,
         )
-        .expect("individual lane extents should fit the N-1 aggregate limit");
-        assert!(
-            plan.ports_fit(&resources)
-                .expect("wide endpoints should accept both ports")
-        );
-        let materialized = Cell::new(false);
-        let error = plan
-            .render_lines(&mut resources, |resources| {
+        .and_then(|plan| {
+            plan.render_lines(&mut resources, |resources| {
                 materialized.set(true);
                 materialize_parallel_test_lanes(resources)
             })
-            .expect_err("5 by 4 parallel document must not fit 19 cells");
+        })
+        .expect_err("5 by 4 parallel document must not fit 19 cells");
 
         assert_grid_limit(error, 20, 19);
         assert!(!materialized.get());
@@ -3732,15 +4044,19 @@ mod tests {
         let two_line_edges = vec![LayeredRelationEdge::new("top", "bottom", 0, 2)];
 
         let options = AsciiRenderOptions::ascii();
+        let box_refs = boxes.iter().collect::<Vec<_>>();
         let mut resources = test_resources(&options);
-        let no_label_plan = plan_layered_relation_boxes(&boxes, &no_label_edges, 1, &mut resources)
-            .expect("unlabeled layered relation should plan");
+        let no_label_plan =
+            plan_layered_relation_boxes(&box_refs, &no_label_edges, 1, &mut resources)
+                .expect("unlabeled layered relation should plan");
         let mut resources = test_resources(&options);
-        let one_line_plan = plan_layered_relation_boxes(&boxes, &one_line_edges, 1, &mut resources)
-            .expect("single-line labeled relation should plan");
+        let one_line_plan =
+            plan_layered_relation_boxes(&box_refs, &one_line_edges, 1, &mut resources)
+                .expect("single-line labeled relation should plan");
         let mut resources = test_resources(&options);
-        let two_line_plan = plan_layered_relation_boxes(&boxes, &two_line_edges, 1, &mut resources)
-            .expect("multiline labeled relation should plan");
+        let two_line_plan =
+            plan_layered_relation_boxes(&box_refs, &two_line_edges, 1, &mut resources)
+                .expect("multiline labeled relation should plan");
 
         assert_eq!(no_label_plan.height(), 5);
         assert_eq!(one_line_plan.height(), 6);
@@ -3761,8 +4077,9 @@ mod tests {
         ];
 
         let options = AsciiRenderOptions::ascii();
+        let box_refs = boxes.iter().collect::<Vec<_>>();
         let mut resources = test_resources(&options);
-        let plan = plan_layered_relation_boxes(&boxes, &edges, 1, &mut resources)
+        let plan = plan_layered_relation_boxes(&box_refs, &edges, 1, &mut resources)
             .expect("cyclic plan should render");
 
         assert_eq!(plan.width(), 7);
@@ -3780,8 +4097,9 @@ mod tests {
         ];
 
         let options = AsciiRenderOptions::ascii();
+        let box_refs = boxes.iter().collect::<Vec<_>>();
         let mut resources = test_resources(&options);
-        let plan = plan_layered_relation_boxes(&boxes, &edges, 1, &mut resources)
+        let plan = plan_layered_relation_boxes(&box_refs, &edges, 1, &mut resources)
             .expect("bidirectional plan should render");
 
         assert_eq!(plan.width(), 7);

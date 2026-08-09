@@ -141,6 +141,21 @@ impl RelationOverlay {
         let left = center_x.checked_sub(width / 2)?;
         RelationOverlayBounds::new(left, y, width, height)
     }
+
+    pub(crate) fn overlaps_rect(
+        &self,
+        left: usize,
+        top: usize,
+        right: usize,
+        bottom: usize,
+    ) -> bool {
+        self.bounds().is_some_and(|bounds| {
+            bounds.left <= right
+                && left < bounds.right
+                && bounds.top <= bottom
+                && top < bounds.bottom
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -322,6 +337,107 @@ impl LayeredRelationRoutePlan {
             })
         })
     }
+
+    pub(crate) fn route_overlaps_rect(
+        &self,
+        left: usize,
+        top: usize,
+        right: usize,
+        bottom: usize,
+    ) -> bool {
+        let geometry = &self.geometry;
+        vertical_inclusive_overlaps_rect(
+            geometry.from_x,
+            geometry.source_path_start_y,
+            geometry.route_y,
+            left,
+            top,
+            right,
+            bottom,
+        ) || horizontal_inclusive_overlaps_rect(
+            geometry.from_x,
+            geometry.to_x,
+            geometry.route_y,
+            left,
+            top,
+            right,
+            bottom,
+        ) || vertical_exclusive_overlaps_rect(
+            geometry.to_x,
+            geometry.route_y,
+            geometry.target_path_end_y,
+            left,
+            top,
+            right,
+            bottom,
+        )
+    }
+
+    pub(crate) fn overlays_overlap_rect(
+        &self,
+        left: usize,
+        top: usize,
+        right: usize,
+        bottom: usize,
+    ) -> bool {
+        self.overlays
+            .iter()
+            .any(|overlay| overlay.overlaps_rect(left, top, right, bottom))
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn vertical_inclusive_overlaps_rect(
+    x: usize,
+    start_y: usize,
+    end_y: usize,
+    left: usize,
+    top: usize,
+    right: usize,
+    bottom: usize,
+) -> bool {
+    let segment_top = start_y.min(end_y);
+    let segment_bottom = start_y.max(end_y);
+    (left..=right).contains(&x) && segment_top <= bottom && top <= segment_bottom
+}
+
+#[allow(clippy::too_many_arguments)]
+fn vertical_exclusive_overlaps_rect(
+    x: usize,
+    start_y: usize,
+    end_y: usize,
+    left: usize,
+    top: usize,
+    right: usize,
+    bottom: usize,
+) -> bool {
+    if !(left..=right).contains(&x) || start_y == end_y {
+        return false;
+    }
+    let (segment_top, segment_bottom) = if start_y < end_y {
+        (start_y, end_y - 1)
+    } else {
+        let Some(segment_top) = end_y.checked_add(1) else {
+            return false;
+        };
+        (segment_top, start_y)
+    };
+    segment_top <= bottom && top <= segment_bottom
+}
+
+#[allow(clippy::too_many_arguments)]
+fn horizontal_inclusive_overlaps_rect(
+    start_x: usize,
+    end_x: usize,
+    y: usize,
+    left: usize,
+    top: usize,
+    right: usize,
+    bottom: usize,
+) -> bool {
+    let segment_left = start_x.min(end_x);
+    let segment_right = start_x.max(end_x);
+    (top..=bottom).contains(&y) && segment_left <= right && left <= segment_right
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

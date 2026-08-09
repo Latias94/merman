@@ -1,4 +1,4 @@
-use super::super::{RelationGraphBox, find_box};
+use super::super::{RelationGraphBox, find_box, find_box_ref};
 use super::lanes::parallel_lane_margin;
 use crate::AsciiError;
 use crate::canvas::Canvas;
@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 pub(crate) struct LayeredRelationEdge {
     from_id: String,
     to_id: String,
-    label_half_width: usize,
+    label_width: usize,
     label_line_count: usize,
 }
 
@@ -17,13 +17,13 @@ impl LayeredRelationEdge {
     pub(crate) fn new(
         from_id: impl Into<String>,
         to_id: impl Into<String>,
-        label_half_width: usize,
+        label_width: usize,
         label_line_count: usize,
     ) -> Self {
         Self {
             from_id: from_id.into(),
             to_id: to_id.into(),
-            label_half_width,
+            label_width,
             label_line_count,
         }
     }
@@ -98,6 +98,7 @@ impl PlacedRelationGraphBox<'_> {
         self.relation_box.width()
     }
 
+    #[cfg(test)]
     pub(crate) fn height(&self) -> usize {
         self.relation_box.height()
     }
@@ -170,7 +171,7 @@ impl<'a> LayeredRelationPlan<'a> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct RelationGraphComponent<'a> {
     boxes: Vec<&'a RelationGraphBox>,
     edge_indices: Vec<usize>,
@@ -183,6 +184,10 @@ impl<'a> RelationGraphComponent<'a> {
 
     pub(crate) fn edge_indices(&self) -> &[usize] {
         &self.edge_indices
+    }
+
+    pub(crate) fn into_parts(self) -> (Vec<&'a RelationGraphBox>, Vec<usize>) {
+        (self.boxes, self.edge_indices)
     }
 }
 
@@ -305,7 +310,7 @@ pub(crate) fn relation_components<'a>(
 }
 
 pub(crate) fn plan_layered_relation_boxes<'a>(
-    boxes: &'a [RelationGraphBox],
+    boxes: &[&'a RelationGraphBox],
     edges: &[LayeredRelationEdge],
     horizontal_gap: usize,
     resources: &mut ResourceContext,
@@ -322,7 +327,7 @@ pub(crate) fn plan_layered_relation_boxes<'a>(
 }
 
 fn layered_relation_levels(
-    boxes: &[RelationGraphBox],
+    boxes: &[&RelationGraphBox],
     edges: &[LayeredRelationEdge],
     resources: &mut ResourceContext,
 ) -> std::result::Result<HashMap<String, usize>, LayeredRelationPlanningError> {
@@ -337,8 +342,8 @@ fn layered_relation_levels(
         .map_err(|_| layout_allocation_failed())?;
 
     for edge in edges {
-        if find_box(boxes, edge.source_id()).is_none()
-            || find_box(boxes, edge.target_id()).is_none()
+        if find_box_ref(boxes, edge.source_id()).is_none()
+            || find_box_ref(boxes, edge.target_id()).is_none()
         {
             return Err(LayeredRelationError::MissingEndpoint.into());
         }
@@ -400,7 +405,7 @@ fn layered_relation_levels(
 }
 
 fn choose_ordered_layered_groups<'a>(
-    boxes: &'a [RelationGraphBox],
+    boxes: &[&'a RelationGraphBox],
     edges: &[LayeredRelationEdge],
     levels: &HashMap<String, usize>,
     resources: &mut ResourceContext,
@@ -632,7 +637,7 @@ fn crossing_layered_relation_count(
 }
 
 fn initial_layered_groups<'a>(
-    boxes: &'a [RelationGraphBox],
+    boxes: &[&'a RelationGraphBox],
     levels: &HashMap<String, usize>,
     resources: &ResourceContext,
 ) -> Result<Vec<Vec<&'a RelationGraphBox>>, LayeredRelationPlanningError> {
@@ -666,7 +671,7 @@ fn initial_layered_groups<'a>(
     }
     for relation_box in boxes {
         if let Some(level) = levels.get(relation_box.id()).copied() {
-            level_groups[level].push(relation_box);
+            level_groups[level].push(*relation_box);
         }
     }
 
@@ -845,13 +850,7 @@ fn place_layered_boxes<'a>(
             resources.checked_grid_mul(horizontal_gap, group.len().saturating_sub(1))?;
         group_widths.push(resources.checked_grid_add(boxes_width, gaps_width)?);
     }
-    let max_label_half_width = edges
-        .iter()
-        .map(|edge| edge.label_half_width)
-        .max()
-        .unwrap_or(0);
-    let label_width =
-        resources.checked_grid_add(resources.checked_grid_mul(max_label_half_width, 2)?, 1)?;
+    let max_label_width = edges.iter().map(|edge| edge.label_width).max().unwrap_or(0);
     let spanning_lane_margin = spanning_lane_margin(level_groups, edges, levels, resources)?;
     let spanning_margin = resources.checked_grid_mul(spanning_lane_margin, 2)?;
     let parallel_lane_margin = parallel_lane_margin(
@@ -868,7 +867,7 @@ fn place_layered_boxes<'a>(
                 .copied()
                 .max()
                 .unwrap_or(0)
-                .max(label_width),
+                .max(max_label_width),
             spanning_margin,
         )?,
         parallel_margin,

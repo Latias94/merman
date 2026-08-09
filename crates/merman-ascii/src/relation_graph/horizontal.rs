@@ -1,9 +1,9 @@
 use super::{
-    LayeredRelationEdge, LayeredRelationError, LayeredRelationSummaryReason,
+    LayeredRelationEdge, LayeredRelationError, LayeredRelationSummaryReason, RelationBoxStripPlan,
     RelationComponentAdapter, RelationGraphBox, RelationGraphLabel, RelationGraphLine,
-    RelationLineChars, build_layered_edges, grid_overflow, join_component_line_groups,
-    layout_allocation_failed, put_relation_char, relation_components, render_relation_self_loops,
-    try_share_relation_box_lines, work_overflow,
+    RelationLineChars, RelationRegionPlan, RelationRenderPlan, RelationSelfLoopPlan,
+    RelationSummaryPaintPlan, build_layered_edges, grid_overflow, layout_allocation_failed,
+    put_relation_char, relation_components, work_overflow,
 };
 use crate::Result;
 use crate::canvas::Canvas;
@@ -31,23 +31,53 @@ pub(crate) enum RelationPortSide {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HorizontalRelationEndpoint {
-    marker: Option<RelationGraphLine>,
+    marker: Option<HorizontalRelationMarker>,
     label: Option<RelationGraphLabel>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct HorizontalRelationMarker {
+    text: String,
+    width: usize,
+    role: AsciiColorRole,
+    width_profile: TerminalWidthProfile,
+}
+
+impl HorizontalRelationMarker {
+    pub(crate) fn new(
+        text: impl Into<String>,
+        role: AsciiColorRole,
+        width_profile: TerminalWidthProfile,
+    ) -> Self {
+        let text = text.into();
+        let width = crate::text::display_width_with_profile(&text, width_profile);
+        Self {
+            text,
+            width,
+            role,
+            width_profile,
+        }
+    }
+
+    fn draw_at(&self, canvas: &mut Canvas, x: usize, y: usize) -> Result<()> {
+        debug_assert_eq!(
+            self.width,
+            crate::text::display_width_with_profile(&self.text, self.width_profile)
+        );
+        canvas.write_text_role(x, y, &self.text, self.role)
+    }
 }
 
 impl HorizontalRelationEndpoint {
     pub(crate) fn new(
-        marker: Option<RelationGraphLine>,
+        marker: Option<HorizontalRelationMarker>,
         label: Option<RelationGraphLabel>,
     ) -> Self {
         Self { marker, label }
     }
 
     fn marker_width(&self) -> usize {
-        self.marker
-            .as_ref()
-            .map(RelationGraphLine::width)
-            .unwrap_or(0)
+        self.marker.as_ref().map(|marker| marker.width).unwrap_or(0)
     }
 
     fn label_width(&self) -> usize {
@@ -154,6 +184,55 @@ struct HorizontalEdgePlan {
     lane_y: usize,
 }
 
+struct HorizontalComponentPlanContext<'a, R, A> {
+    edges: &'a [LayeredRelationEdge],
+    relations: &'a [R],
+    direction: RelationGraphHorizontalDirection,
+    options: &'a AsciiRenderOptions,
+    adapter: &'a A,
+}
+
+pub(crate) struct HorizontalRelationPaintPlan<'a> {
+    nodes: Vec<HorizontalNode<'a>>,
+    edges: Vec<HorizontalEdgePlan>,
+    box_top: usize,
+    extent: LogicalExtent,
+}
+
+impl HorizontalRelationPaintPlan<'_> {
+    pub(crate) const fn extent(&self) -> LogicalExtent {
+        self.extent
+    }
+
+    pub(crate) fn paint(
+        self,
+        options: &AsciiRenderOptions,
+        resources: &mut ResourceContext,
+    ) -> Result<Vec<RelationGraphLine>> {
+        let mut canvas = Canvas::try_with_resources(
+            self.extent.width(),
+            self.extent.height(),
+            options.terminal_width_profile,
+            resources,
+        )?;
+        for edge in &self.edges {
+            draw_horizontal_edge(&mut canvas, &self.nodes, edge, self.box_top, resources)?;
+        }
+        for node in &self.nodes {
+            node.visual
+                .draw_at(&mut canvas, node.x, self.box_top, resources)?;
+        }
+
+        let styled_lines = canvas.into_styled_lines_preserving_extent()?;
+        let mut rendered = Vec::new();
+        rendered
+            .try_reserve_exact(styled_lines.len())
+            .map_err(|_| layout_allocation_failed())?;
+        rendered.extend(styled_lines.into_iter().map(RelationGraphLine::from_styled));
+        Ok(rendered)
+    }
+}
+
 impl HorizontalEdgePlan {
     fn physical_endpoints(
         &self,
@@ -200,55 +279,62 @@ where
         refs.try_reserve_exact(boxes.len())
             .map_err(|_| layout_allocation_failed())?;
         refs.extend(boxes);
-        return horizontal_box_strip_lines(
-            &refs,
+        let region = RelationRegionPlan::BoxStrip(RelationBoxStripPlan::horizontal(
+            refs,
             direction,
             adapter.layered_horizontal_gap(),
             options.terminal_width_profile,
             resources,
-        );
+        )?);
+        return RelationRenderPlan::try_new(vec![region], resources)?
+            .materialize(options, resources);
     }
 
     let edges = build_layered_edges(relations, adapter, resources)?;
     let components = relation_components(boxes, &edges, resources)
         .map_err(|error| error.into_ascii_error(|semantic| adapter.layered_error(semantic)))?;
-    let mut rendered_groups = Vec::new();
-    rendered_groups
+    let mut regions = Vec::new();
+    regions
         .try_reserve_exact(components.len())
         .map_err(|_| layout_allocation_failed())?;
     let mut standalone = Vec::new();
     standalone
         .try_reserve_exact(boxes.len())
         .map_err(|_| layout_allocation_failed())?;
+    let context = HorizontalComponentPlanContext {
+        edges: &edges,
+        relations,
+        direction,
+        options,
+        adapter,
+    };
 
     for component in &components {
         if component.edge_indices().is_empty() {
             standalone.extend(component.boxes().iter().copied());
             continue;
         }
-        rendered_groups.push(render_horizontal_component(
+        regions.push(plan_horizontal_component(
             component.boxes(),
             component.edge_indices(),
-            &edges,
-            relations,
-            direction,
-            options,
+            &context,
             resources,
-            adapter,
         )?);
     }
 
     if !standalone.is_empty() {
-        rendered_groups.push(horizontal_box_strip_lines(
-            &standalone,
-            direction,
-            adapter.layered_horizontal_gap(),
-            options.terminal_width_profile,
-            resources,
-        )?);
+        regions.push(RelationRegionPlan::BoxStrip(
+            RelationBoxStripPlan::horizontal(
+                standalone,
+                direction,
+                adapter.layered_horizontal_gap(),
+                options.terminal_width_profile,
+                resources,
+            )?,
+        ));
     }
 
-    join_component_line_groups(rendered_groups, options.terminal_width_profile, resources)
+    RelationRenderPlan::try_new(regions, resources)?.materialize(options, resources)
 }
 
 pub(crate) fn render_horizontal_box_strip_lines(
@@ -284,7 +370,7 @@ pub(crate) fn horizontal_box_strip_extent(
     resources.grid_extent(width, height)
 }
 
-fn horizontal_box_strip_ref_extent(
+pub(crate) fn horizontal_box_strip_ref_extent(
     boxes: &[&RelationGraphBox],
     gap: usize,
     resources: &ResourceContext,
@@ -302,20 +388,26 @@ fn horizontal_box_strip_ref_extent(
     resources.grid_extent(width, height)
 }
 
-fn render_horizontal_component<R, A>(
-    boxes: &[&RelationGraphBox],
+fn plan_horizontal_component<'plan, R, A>(
+    boxes: &[&'plan RelationGraphBox],
     edge_indices: &[usize],
-    edges: &[LayeredRelationEdge],
-    relations: &[R],
-    direction: RelationGraphHorizontalDirection,
-    options: &AsciiRenderOptions,
+    context: &HorizontalComponentPlanContext<'plan, R, A>,
     resources: &mut ResourceContext,
-    adapter: &A,
-) -> Result<Vec<RelationGraphLine>>
+) -> Result<RelationRegionPlan<'plan>>
 where
     A: RelationComponentAdapter<R>,
 {
-    let order = stable_horizontal_order(boxes, edge_indices, edges, direction, resources, adapter)?;
+    let adapter = context.adapter;
+    let relations = context.relations;
+    let options = context.options;
+    let order = stable_horizontal_order(
+        boxes,
+        edge_indices,
+        context.edges,
+        context.direction,
+        resources,
+        adapter,
+    )?;
     let self_relation_count = edge_indices.iter().try_fold(0usize, |count, edge_index| {
         let relation = relations
             .get(*edge_index)
@@ -327,15 +419,55 @@ where
         }
     })?;
     if self_relation_count > 0 && self_relation_count < edge_indices.len() {
-        return render_horizontal_relation_summary(
-            boxes,
-            &order,
-            edge_indices,
-            relations,
-            options,
-            resources,
-            adapter,
-        );
+        return Ok(RelationRegionPlan::Summary(
+            plan_horizontal_relation_summary(
+                boxes,
+                &order,
+                edge_indices,
+                relations,
+                options,
+                resources,
+                adapter,
+            )?,
+        ));
+    }
+    if self_relation_count == edge_indices.len() {
+        let &[box_index] = order.as_slice() else {
+            return Err(adapter.layered_error(LayeredRelationError::UnrelatedBoxes));
+        };
+        let relation_box = boxes
+            .get(box_index)
+            .copied()
+            .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
+        let mut relation_refs = Vec::new();
+        relation_refs
+            .try_reserve_exact(edge_indices.len())
+            .map_err(|_| layout_allocation_failed())?;
+        let mut metrics = Vec::new();
+        metrics
+            .try_reserve_exact(edge_indices.len())
+            .map_err(|_| layout_allocation_failed())?;
+        for edge_index in edge_indices {
+            let relation = relations
+                .get(*edge_index)
+                .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
+            relation_refs.push(relation);
+            metrics.push(adapter.self_loop_metrics(relation, resources)?);
+        }
+        let plan = RelationSelfLoopPlan::try_new(relation_box, metrics, resources)?;
+        return Ok(RelationRegionPlan::SelfLoops {
+            plan,
+            rows: Box::new(move |resources| {
+                let mut loops = Vec::new();
+                loops
+                    .try_reserve_exact(relation_refs.len())
+                    .map_err(|_| layout_allocation_failed())?;
+                for relation in relation_refs {
+                    loops.push(adapter.self_loop_rows(relation, resources)?);
+                }
+                Ok(loops)
+            }),
+        });
     }
     let mut nodes = Vec::new();
     nodes
@@ -343,42 +475,9 @@ where
         .map_err(|_| layout_allocation_failed())?;
     for box_index in order {
         let original = boxes[box_index];
-        let mut self_relations = Vec::new();
-        self_relations
-            .try_reserve_exact(edge_indices.len())
-            .map_err(|_| layout_allocation_failed())?;
-        for edge_index in edge_indices {
-            let relation = relations
-                .get(*edge_index)
-                .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
-            let edge = edges
-                .get(*edge_index)
-                .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
-            if adapter.is_self_relation(relation) && edge.source_id() == original.id() {
-                self_relations.push(relation);
-            }
-        }
-
-        let visual = if self_relations.is_empty() {
-            original.shared_projection()
-        } else {
-            let lines = render_relation_self_loops(
-                original,
-                self_relations.iter().copied(),
-                self_relations.len(),
-                adapter,
-                resources,
-            )?;
-            RelationGraphBox::from_rendered_lines(
-                original.id().to_string(),
-                lines,
-                options.terminal_width_profile,
-                resources,
-            )?
-        };
         nodes.push(HorizontalNode {
             original,
-            visual,
+            visual: original.shared_projection(),
             x: 0,
         });
     }
@@ -391,10 +490,8 @@ where
         let relation = relations
             .get(*edge_index)
             .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
-        if adapter.is_self_relation(relation) {
-            continue;
-        }
-        let edge = edges
+        let edge = context
+            .edges
             .get(*edge_index)
             .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
         let source_index = node_index(&nodes, edge.source_id())
@@ -418,20 +515,19 @@ where
     }
 
     if edge_plans.is_empty() {
-        if nodes.len() == 1 {
-            return try_share_relation_box_lines(&nodes[0].visual);
-        }
         let mut refs = Vec::new();
         refs.try_reserve_exact(nodes.len())
             .map_err(|_| layout_allocation_failed())?;
-        refs.extend(nodes.iter().map(|node| &node.visual));
-        return horizontal_box_strip_lines(
-            &refs,
-            RelationGraphHorizontalDirection::LeftRight,
-            adapter.layered_horizontal_gap(),
-            options.terminal_width_profile,
-            resources,
-        );
+        refs.extend(nodes.iter().map(|node| node.original));
+        return Ok(RelationRegionPlan::BoxStrip(
+            RelationBoxStripPlan::horizontal(
+                refs,
+                RelationGraphHorizontalDirection::LeftRight,
+                adapter.layered_horizontal_gap(),
+                options.terminal_width_profile,
+                resources,
+            )?,
+        ));
     }
 
     let mut gaps = Vec::new();
@@ -485,37 +581,26 @@ where
         .unwrap_or(0);
     let height = resources.checked_grid_add(box_top, box_height)?;
     let extent = resources.grid_extent(width, height)?;
-    resources.charge_layout_work(extent.cells())?;
-
-    let mut canvas =
-        Canvas::try_with_resources(width, height, options.terminal_width_profile, resources)?;
-    for edge_plan in &edge_plans {
-        draw_horizontal_edge(&mut canvas, &nodes, edge_plan, box_top, resources)?;
-    }
-    for node in &nodes {
-        node.visual
-            .draw_at(&mut canvas, node.x, box_top, resources)?;
-    }
-
-    let styled_lines = canvas.into_styled_lines_trimmed()?;
-    let mut rendered = Vec::new();
-    rendered
-        .try_reserve_exact(styled_lines.len())
-        .map_err(|_| layout_allocation_failed())?;
-    rendered.extend(styled_lines.into_iter().map(RelationGraphLine::from_styled));
-    Ok(rendered)
+    Ok(RelationRegionPlan::Horizontal(
+        HorizontalRelationPaintPlan {
+            nodes,
+            edges: edge_plans,
+            box_top,
+            extent,
+        },
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
-fn render_horizontal_relation_summary<R, A>(
-    boxes: &[&RelationGraphBox],
+fn plan_horizontal_relation_summary<'plan, R, A>(
+    boxes: &[&'plan RelationGraphBox],
     order: &[usize],
     edge_indices: &[usize],
     relations: &[R],
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
     adapter: &A,
-) -> Result<Vec<RelationGraphLine>>
+) -> Result<RelationSummaryPaintPlan<'plan>>
 where
     A: RelationComponentAdapter<R>,
 {
@@ -541,22 +626,14 @@ where
         rows.push(adapter.build_summary_row(relation, reason)?);
     }
     let gap = adapter.layered_horizontal_gap();
-    let base_extent = horizontal_box_strip_ref_extent(&ordered_boxes, gap, resources)?;
-    super::render_relation_document_with_summary(
-        base_extent,
-        &rows,
+    RelationSummaryPaintPlan::horizontal(
+        ordered_boxes,
+        RelationGraphHorizontalDirection::LeftRight,
+        gap,
+        rows,
         Some(reason),
         options,
         resources,
-        |resources| {
-            horizontal_box_strip_lines(
-                &ordered_boxes,
-                RelationGraphHorizontalDirection::LeftRight,
-                gap,
-                options.terminal_width_profile,
-                resources,
-            )
-        },
     )
 }
 
@@ -639,12 +716,9 @@ fn horizontal_span_between(
         return Err(grid_overflow(resources));
     }
     let mut span = *gaps.get(left).ok_or_else(|| grid_overflow(resources))?;
-    for index in left + 1..right {
-        span = resources.checked_grid_add(span, nodes[index].visual.width())?;
-        span = resources.checked_grid_add(
-            span,
-            *gaps.get(index).ok_or_else(|| grid_overflow(resources))?,
-        )?;
+    for (node, gap) in nodes.iter().zip(gaps).take(right).skip(left + 1) {
+        span = resources.checked_grid_add(span, node.visual.width())?;
+        span = resources.checked_grid_add(span, *gap)?;
     }
     Ok(span)
 }
@@ -809,7 +883,7 @@ fn draw_vertical_span(
     Ok(())
 }
 
-fn horizontal_box_strip_lines(
+pub(crate) fn horizontal_box_strip_lines(
     boxes: &[&RelationGraphBox],
     direction: RelationGraphHorizontalDirection,
     gap: usize,

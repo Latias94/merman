@@ -440,6 +440,7 @@ impl TerminalCell {
             .flatten()
     }
 
+    #[cfg(test)]
     pub(crate) fn style(self) -> Option<CanvasStyle> {
         (!self.is_continuation() && !self.style.is_plain()).then_some(self.style)
     }

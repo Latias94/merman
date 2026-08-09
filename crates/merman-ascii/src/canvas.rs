@@ -189,10 +189,12 @@ impl Canvas {
         self.index(x, y).and_then(|index| self.cells[index].color())
     }
 
+    #[cfg(test)]
     pub(crate) fn get_style(&self, x: usize, y: usize) -> Option<CanvasStyle> {
         self.index(x, y).and_then(|index| self.cells[index].style())
     }
 
+    #[cfg(test)]
     pub(crate) fn visit_plain_row_display_range(
         &self,
         x: usize,
@@ -399,7 +401,26 @@ impl Canvas {
         Ok(true)
     }
 
+    #[cfg(test)]
     pub(crate) fn into_styled_lines_trimmed(self) -> crate::Result<Vec<crate::text::StyledLine>> {
+        self.into_styled_lines(true)
+    }
+
+    /// Converts every canvas row without changing the admitted canvas extent.
+    ///
+    /// Planned renderers use this form when a parent document validates the
+    /// materialized region against its geometry. The final encoder remains
+    /// responsible for trimming unstyled trailing cells from visible output.
+    pub(crate) fn into_styled_lines_preserving_extent(
+        self,
+    ) -> crate::Result<Vec<crate::text::StyledLine>> {
+        self.into_styled_lines(false)
+    }
+
+    fn into_styled_lines(
+        self,
+        trim_trailing_cells: bool,
+    ) -> crate::Result<Vec<crate::text::StyledLine>> {
         if self.width == 0 || self.height == 0 {
             return Ok(Vec::new());
         }
@@ -408,7 +429,11 @@ impl Canvas {
             (0..self.cells.len())
                 .step_by(self.width)
                 .try_fold(0usize, |total, row_start| {
-                    let row_end = self.trimmed_row_end(row_start, row_start + self.width, true);
+                    let row_end = if trim_trailing_cells {
+                        self.trimmed_row_end(row_start, row_start + self.width, true)
+                    } else {
+                        row_start + self.width
+                    };
                     self.resources.checked_grid_add(total, row_end - row_start)
                 })?;
         let concurrent_cells = self
@@ -424,7 +449,11 @@ impl Canvas {
         })?;
         let line_resources = self.resources.scoped();
         for row_start in (0..self.cells.len()).step_by(self.width) {
-            let row_end = self.trimmed_row_end(row_start, row_start + self.width, true);
+            let row_end = if trim_trailing_cells {
+                self.trimmed_row_end(row_start, row_start + self.width, true)
+            } else {
+                row_start + self.width
+            };
             lines.push(
                 crate::text::StyledLine::try_from_surface_cells_with_resources(
                     &self.cells[row_start..row_end],

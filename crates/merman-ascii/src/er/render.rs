@@ -3,11 +3,12 @@ use crate::options::{AsciiCharset, AsciiRenderOptions, TerminalWidthProfile};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
 use crate::relation_graph::{
-    HorizontalRelationEndpoint, HorizontalRelationStyle, LayeredRelationEdge, LayeredRelationError,
-    LayeredRelationRouteStyle, RelationGraphBoxStyle, RelationGraphHorizontalDirection,
-    RelationGraphLabel, RelationGraphLine, RelationGraphSummaryRow, RelationLineChars,
-    RelationOverlay, RelationParallelPlan, RelationPortSide, RelationSelfLoopMetrics,
-    RelationStackPlan,
+    HorizontalRelationEndpoint, HorizontalRelationMarker, HorizontalRelationStyle,
+    LayeredRelationEdge, LayeredRelationError, LayeredRelationRouteStyle, RelationGraphBoxStyle,
+    RelationGraphHorizontalDirection, RelationGraphLabel, RelationGraphLine,
+    RelationGraphSummaryRow, RelationLineChars, RelationOverlay, RelationParallelPlan,
+    RelationPortSide, RelationRegionPlan, RelationSelfLoopMetrics, RelationStackPlan,
+    RelationSummaryPaintPlan,
 };
 #[cfg(test)]
 use crate::resource::AsciiResourceLimitId;
@@ -357,13 +358,6 @@ fn attribute_text(attribute: &ErAttributeRenderModel) -> String {
     text
 }
 
-fn find_box<'a>(boxes: &'a [RenderedEntityBox], id: &str) -> Result<&'a RenderedEntityBox> {
-    relation_graph::find_box(boxes, id).ok_or(AsciiError::UnsupportedFeature {
-        diagram_type: "er",
-        feature: "relationships with missing endpoint entities",
-    })
-}
-
 fn render_er_document_lines(
     lines: Vec<RelationGraphLine>,
     options: &AsciiRenderOptions,
@@ -390,14 +384,14 @@ fn render_horizontal_er_component_lines(
     )
 }
 
-fn render_vertical_relationship(
-    top: &RenderedEntityBox,
-    bottom: &RenderedEntityBox,
-    layout: &ErRelationLayout<'_>,
+fn plan_vertical_relationship<'plan>(
+    top: &'plan RenderedEntityBox,
+    bottom: &'plan RenderedEntityBox,
+    layout: &'plan ErRelationLayout<'_>,
     charset: ErCharset,
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
-) -> Result<Vec<RelationGraphLine>> {
+) -> Result<RelationRegionPlan<'plan>> {
     let relationship = layout.relationship;
     let top_cardinality = cardinality_marker(layout.top_cardinality, charset)?;
     let bottom_cardinality = cardinality_marker(layout.bottom_cardinality, charset)?;
@@ -429,16 +423,19 @@ fn render_vertical_relationship(
         },
     )?;
 
-    plan.render_lines(resources, |center, resources| {
-        er_relationship_rows(
-            top_cardinality,
-            bottom_cardinality,
-            line,
-            layout.label.as_ref(),
-            center,
-            width_profile,
-            resources,
-        )
+    Ok(RelationRegionPlan::Vertical {
+        plan,
+        rows: Box::new(move |center, resources| {
+            er_relationship_rows(
+                top_cardinality,
+                bottom_cardinality,
+                line,
+                layout.label.as_ref(),
+                center,
+                width_profile,
+                resources,
+            )
+        }),
     })
 }
 
@@ -526,36 +523,39 @@ fn er_relationship_rows(
     Ok(relation_lines)
 }
 
-fn is_same_endpoint_parallel_relationship(layouts: &[ErRelationLayout<'_>]) -> bool {
-    let Some(first) = layouts.first() else {
-        return false;
-    };
-    layouts.len() > 1
-        && layouts
-            .iter()
-            .all(|layout| layout.top_id == first.top_id && layout.bottom_id == first.bottom_id)
-}
-
-fn render_parallel_vertical_relationships(
-    boxes: &[RenderedEntityBox],
-    layouts: &[ErRelationLayout<'_>],
+fn plan_parallel_vertical_relationships<'plan>(
+    boxes: Vec<&'plan RenderedEntityBox>,
+    layouts: Vec<&'plan ErRelationLayout<'_>>,
     options: &AsciiRenderOptions,
     charset: ErCharset,
     width_profile: TerminalWidthProfile,
     entity_labels: &HashMap<String, String>,
     resources: &mut ResourceContext,
-) -> Result<Vec<RelationGraphLine>> {
-    let first = layouts.first().ok_or(AsciiError::UnsupportedFeature {
-        diagram_type: "er",
-        feature: "empty parallel ER relationship layout",
-    })?;
-    let top = find_box(boxes, first.top_id)?;
-    let bottom = find_box(boxes, first.bottom_id)?;
+) -> Result<RelationRegionPlan<'plan>> {
+    let first = layouts
+        .first()
+        .copied()
+        .ok_or(AsciiError::UnsupportedFeature {
+            diagram_type: "er",
+            feature: "empty parallel ER relationship layout",
+        })?;
+    let top = relation_graph::find_box_ref(&boxes, first.top_id).ok_or(
+        AsciiError::UnsupportedFeature {
+            diagram_type: "er",
+            feature: "relationships with missing endpoint entities",
+        },
+    )?;
+    let bottom = relation_graph::find_box_ref(&boxes, first.bottom_id).ok_or(
+        AsciiError::UnsupportedFeature {
+            diagram_type: "er",
+            feature: "relationships with missing endpoint entities",
+        },
+    )?;
     let mut lane_extents = Vec::new();
     lane_extents
         .try_reserve_exact(layouts.len())
         .map_err(|_| layout_allocation_failed())?;
-    for layout in layouts {
+    for layout in &layouts {
         lane_extents.push(parallel_er_lane_extent(
             layout,
             charset,
@@ -566,30 +566,35 @@ fn render_parallel_vertical_relationships(
     let plan = RelationParallelPlan::new(top, bottom, lane_extents, 2, resources)?;
 
     if !plan.ports_fit(resources)? {
-        return relation_graph::render_relation_summary_component_lines(
-            boxes,
-            layouts,
-            options,
-            relation_graph::LayeredRelationSummaryReason::RouteCollision,
-            resources,
-            |layout| er_relationship_summary_row(layout, entity_labels, charset),
-        );
-    }
-
-    plan.render_lines(resources, |resources| {
-        let mut lanes = Vec::new();
-        lanes
-            .try_reserve_exact(layouts.len())
+        let reason = relation_graph::LayeredRelationSummaryReason::RouteCollision;
+        let mut rows = Vec::new();
+        rows.try_reserve_exact(layouts.len())
             .map_err(|_| layout_allocation_failed())?;
         for layout in layouts {
-            lanes.push(parallel_er_lane_rows(
-                layout,
-                charset,
-                width_profile,
-                resources,
-            )?);
+            rows.push(er_relationship_summary_row(layout, entity_labels, charset)?);
         }
-        Ok(lanes)
+        return Ok(RelationRegionPlan::Summary(
+            RelationSummaryPaintPlan::stacked(boxes, rows, Some(reason), options, resources)?,
+        ));
+    }
+
+    Ok(RelationRegionPlan::Parallel {
+        plan,
+        lanes: Box::new(move |resources| {
+            let mut lanes = Vec::new();
+            lanes
+                .try_reserve_exact(layouts.len())
+                .map_err(|_| layout_allocation_failed())?;
+            for layout in layouts {
+                lanes.push(parallel_er_lane_rows(
+                    layout,
+                    charset,
+                    width_profile,
+                    resources,
+                )?);
+            }
+            Ok(lanes)
+        }),
     })
 }
 
@@ -728,7 +733,7 @@ fn er_layered_edge(layout: &ErRelationLayout<'_>) -> LayeredRelationEdge {
         layout
             .label
             .as_ref()
-            .map(RelationGraphLabel::half_width)
+            .map(RelationGraphLabel::width)
             .unwrap_or(0)
             .max(1),
         layout
@@ -751,15 +756,11 @@ fn er_layered_error(error: LayeredRelationError) -> AsciiError {
     }
 }
 
-impl<'a> relation_graph::RelationComponentAdapter<ErRelationLayout<'_>>
-    for ErRelationComponentAdapter<'a>
+impl<'adapter, 'relation> relation_graph::RelationComponentAdapter<ErRelationLayout<'relation>>
+    for ErRelationComponentAdapter<'adapter>
 {
     fn build_edges(&self, layout: &ErRelationLayout<'_>) -> LayeredRelationEdge {
         er_layered_edge(layout)
-    }
-
-    fn is_same_endpoint_parallel(&self, layouts: &[ErRelationLayout<'_>]) -> bool {
-        is_same_endpoint_parallel_relationship(layouts)
     }
 
     fn is_self_relation(&self, layout: &ErRelationLayout<'_>) -> bool {
@@ -799,20 +800,18 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationLayout<'_>>
         layout: &ErRelationLayout<'_>,
         source_side: RelationPortSide,
         target_side: RelationPortSide,
-        resources: &ResourceContext,
+        _resources: &ResourceContext,
     ) -> Result<HorizontalRelationStyle> {
-        let source_marker = RelationGraphLine::try_with_role(
+        let source_marker = HorizontalRelationMarker::new(
             horizontal_cardinality_marker(layout.top_cardinality, source_side, self.charset)?,
             AsciiColorRole::EdgeArrow,
             self.width_profile,
-            resources,
-        )?;
-        let target_marker = RelationGraphLine::try_with_role(
+        );
+        let target_marker = HorizontalRelationMarker::new(
             horizontal_cardinality_marker(layout.bottom_cardinality, target_side, self.charset)?,
             AsciiColorRole::EdgeArrow,
             self.width_profile,
-            resources,
-        )?;
+        );
         Ok(HorizontalRelationStyle::new(
             HorizontalRelationEndpoint::new(Some(source_marker), None),
             HorizontalRelationEndpoint::new(Some(target_marker), None),
@@ -885,18 +884,25 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationLayout<'_>>
         Ok(overlays)
     }
 
-    fn render_vertical(
+    fn plan_vertical_region<'plan>(
         &self,
-        boxes: &[RenderedEntityBox],
-        layout: &ErRelationLayout<'_>,
-        options: &AsciiRenderOptions,
+        boxes: &[&'plan RenderedEntityBox],
+        layout: &'plan ErRelationLayout<'relation>,
         resources: &mut ResourceContext,
-    ) -> Result<Vec<RelationGraphLine>> {
-        let top = find_box(boxes, layout.top_id)?;
-        let bottom = find_box(boxes, layout.bottom_id)?;
-
-        let _ = options;
-        render_vertical_relationship(
+    ) -> Result<RelationRegionPlan<'plan>> {
+        let top = relation_graph::find_box_ref(boxes, layout.top_id).ok_or(
+            AsciiError::UnsupportedFeature {
+                diagram_type: "er",
+                feature: "relationships with missing endpoint entities",
+            },
+        )?;
+        let bottom = relation_graph::find_box_ref(boxes, layout.bottom_id).ok_or(
+            AsciiError::UnsupportedFeature {
+                diagram_type: "er",
+                feature: "relationships with missing endpoint entities",
+            },
+        )?;
+        plan_vertical_relationship(
             top,
             bottom,
             layout,
@@ -906,15 +912,14 @@ impl<'a> relation_graph::RelationComponentAdapter<ErRelationLayout<'_>>
         )
     }
 
-    fn render_parallel(
+    fn plan_parallel_region<'plan>(
         &self,
-        boxes: &[RenderedEntityBox],
-        layouts: &[ErRelationLayout<'_>],
+        boxes: Vec<&'plan RenderedEntityBox>,
+        layouts: Vec<&'plan ErRelationLayout<'relation>>,
         options: &AsciiRenderOptions,
         resources: &mut ResourceContext,
-    ) -> Result<Vec<RelationGraphLine>> {
-        let _ = options;
-        render_parallel_vertical_relationships(
+    ) -> Result<RelationRegionPlan<'plan>> {
+        plan_parallel_vertical_relationships(
             boxes,
             layouts,
             options,
