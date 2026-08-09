@@ -1,6 +1,6 @@
 {
   "name": "@mermanjs/web-analysis",
-  "version": "0.8.0-alpha.5",
+  "version": "0.8.0-alpha.6",
   "description": "Browser-only Merman WebAssembly SDK for semantic analysis and detection.",
   "type": "module",
   "main": "./dist/package-entries/analysis.js",

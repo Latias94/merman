@@ -4,13 +4,27 @@ All notable changes to the Apple Swift package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## [0.8.0-alpha.6] - Unreleased
+
+### Breaking changes
+
+- Advanced UniFFI binding API from `3` to `4`. ASCII capability records now expose independent
+  semantic coverage and projection kind, and rename `summaryFallback` to
+  `structuredTextFallback`.
+- Updated structured ASCII resource diagnostics. Upgrade generated Swift sources and every native
+  XCFramework slice together; alpha.5 wrappers are not compatible with alpha.6 libraries.
+
+### Changed
+
+- Updated common-family ASCII projections and support metadata to the alpha.6 contract.
+
 ## [0.8.0-alpha.5] - 2026-08-09
 
 ### Breaking changes
 
 - Replaced the hand-written Swift C binding with direct generated UniFFI bindings. `Merman` now owns discovery and one-shot calls, while reusable work uses the single throwing `MermanEngine(optionsJson:services:)` constructor. The obsolete `MermanReusableEngine` name and facade factories are removed.
 - Removed all public C ABI structs, raw callback pointers, manual engine close methods, struct-size checks, and hand-maintained Swift capability/resource projections. Swift hosts now use generated UniFFI records, objects, and callback protocols only.
-- Replaced native ABI version checks with UniFFI binding API `4` and introduced runtime-contract schema `1`. Structured resource failures include a stable `cause` field; the generated binding rejects a mismatched native library through its contract and API checksum checks.
+- Replaced native ABI version checks with UniFFI binding API `3` and introduced runtime-contract schema `1`. Structured resource failures include a stable `cause` field; the generated binding rejects a mismatched native library through its contract and API checksum checks.
 - Replaced the C callback text-measurement API with generated `MermanTextMeasurer`. Return `nil` for an unhandled operation rather than populating a raw result buffer.
 - Made `MermanTextMeasurer` immutable after reusable-engine construction and removed generated callback mutation methods. Callback-free engines admit concurrent operations; callback engines report typed `.busy` or `.reentrantCall` errors without waiting.
 - Changed `lintRuleCatalog()` and `configurableLintRuleCatalog()` to throwing generated methods so feature-slim artifacts report a typed `analysis` missing-capability error instead of an empty catalog.
@@ -31,7 +45,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 - Added generated `resourceOptionsJson(profile:overrides:)` so Swift callers can select
   `interactive`, `constrained`, `trusted-native`, or `unbounded-for-trusted-input` without
   duplicating limit tables.
-- Added generated `presentationCatalogJson()` without changing the UniFFI API 4 version.
+- Added generated `presentationCatalogJson()` without changing the UniFFI API 3 version.
 
 ### Changed
 

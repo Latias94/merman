@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.8.0-alpha.6 - Unreleased
+
+Corresponds to the prepared merman workspace `0.8.0-alpha.6` candidate. See the
+[alpha.5 to alpha.6 upgrade guide](../../docs/release/ALPHA5_TO_ALPHA6_UPGRADE_GUIDE.md).
+
+### Breaking changes
+
+- Expanded ASCII capability records with independent semantic coverage and projection kind, and
+  renamed `summaryFallback` to `structuredTextFallback`. Upgrade the Dart package and bundled ABI 3
+  native artifacts together.
+
+### Changed
+
+- Updated structured ASCII resource diagnostics and common-family terminal projections.
+
 ## 0.8.0-alpha.5 - 2026-08-09
 
 Corresponds to merman workspace release `0.8.0-alpha.5`. See the [alpha.3 to alpha.5 upgrade guide](../../docs/release/ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md) for the complete cross-surface migration.

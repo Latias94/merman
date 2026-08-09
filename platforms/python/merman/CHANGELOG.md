@@ -4,13 +4,29 @@ All notable changes to the Python package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## [0.8.0a6] - Unreleased
+
+Corresponds to the prepared merman workspace `0.8.0-alpha.6` candidate.
+
+### Breaking changes
+
+- Advanced UniFFI binding API from `3` to `4`. ASCII capability records now expose
+  `semantic_coverage` and `primary_projection`, and rename `summary_fallback` to
+  `structured_text_fallback`.
+- Updated structured ASCII resource diagnostics. Upgrade the generated Python package and native
+  library together; alpha.5 and alpha.6 artifacts are not compatible.
+
+### Changed
+
+- Updated common-family ASCII projections and support metadata to the alpha.6 contract.
+
 ## [0.8.0a5] - 2026-08-09
 
 Corresponds to merman workspace release `0.8.0-alpha.5`.
 
 ### Breaking changes
 
-- Replaced the prerelease UniFFI ABI 2 surface with direct UniFFI binding API 4. Structured resource failures include a stable `cause` field, and ASCII capability records expose semantic coverage plus projection kind. The API remains independent from the native C ABI and text-measurement protocol; regenerate and deploy the generated Python package with its exact native library rather than mixing releases.
+- Replaced the prerelease UniFFI ABI 2 surface with direct UniFFI binding API 3. Structured resource failures include a stable `cause` field. The API remains independent from the native C ABI and text-measurement protocol; regenerate and deploy the generated Python package with its exact native library rather than mixing releases.
 - Renamed the discovery/one-shot facade to `Merman` and the reusable type to `MermanEngine`. Reusable engines now have one direct `MermanEngine(options_json, services)` constructor; the obsolete `MermanReusableEngine` name, facade factories, and callback-specialized constructors are removed.
 - Replaced the prerelease text-measurement callback records in place: requests now carry both a routing phase and one of 19 exact operations, and handled callbacks must return that operation's tagged result kind instead of only `width`/`height`/`line_count`; upgrade the Python wheel and bundled native library together and update custom measurers for operations `0..18`.
 - Made `MermanTextMeasurer` immutable after reusable-engine construction and removed `set_text_measurer()` / `clear_text_measurer()`. Callback-free engines admit concurrent operations; callback engines raise typed `BUSY` or `REENTRANT_CALL` errors without waiting.

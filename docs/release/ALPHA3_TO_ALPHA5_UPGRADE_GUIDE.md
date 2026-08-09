@@ -9,7 +9,7 @@ Alpha.5 is a broad prerelease upgrade, not a drop-in patch. It expands the Merma
 11.16, admits all 35 diagram families, replaces implementation-oriented feature bundles with
 observable capabilities, splits the browser SDK into standalone packages, and finalizes separate
 native transport contracts: C/Flutter use ABI 3, Android uses direct JNI transport API 1, and
-Apple/Python use UniFFI API 4.
+Apple/Python use UniFFI API 3.
 
 The practical upgrade rule is:
 
@@ -28,7 +28,7 @@ The practical upgrade rule is:
 | `@mermanjs/web/<subpath>` or `@mermanjs/web/pkg/**` | Replace the import with one standalone browser package. Subpaths and raw WASM files are no longer public API. |
 | Native C or Flutter bindings | Rebuild or upgrade the complete host package and migrate from ABI 2 to ABI 3. Reject an ABI mismatch during initialization. |
 | Android JNI/Kotlin | Upgrade the complete AAR and Kotlin sources together. The alpha.5 surface is direct `JNI_OnLoad`/`RegisterNatives` transport API 1, not the C ABI; do not link the old `libmerman_ffi.so` JNI path. |
-| Python or Apple bindings | Upgrade the generated UniFFI API 4 wrapper and matching native artifact together; resource errors now include a required `cause` field, and ASCII capability records expose semantic coverage plus projection kind. Do not mix alpha.3 and alpha.5 components. |
+| Python or Apple bindings | Upgrade the generated UniFFI API 3 wrapper and matching native artifact together; resource errors now include a required `cause` field. Do not mix alpha.3 and alpha.5 components. |
 | Analysis, editor, or LSP APIs | Follow the [Rust and embedding API migration](#rust-and-embedding-api-migration) section for exact type, method, ownership, and capability replacements. |
 | `render_svg_resvg_safe{,_sync}` or `svg_resvg_safe()` | Migrate to the typed `ResvgCompatibleSvg` boundaries described under [Rendering and option contracts](#rendering-and-option-contracts). No string-returning compatibility alias is retained. |
 | `assertSafeSvgForDom()` | Choose an explicit self-contained or navigable browser capability and retain its opaque admission until the real mount document is known. |
@@ -160,10 +160,6 @@ deliberately wants two independent WASM runtimes. See the
 [browser package guide](../../platforms/web/README.md) for initialization, Worker, and packaging
 details.
 
-The matching alpha.5 browser wrapper and WASM artifact report transport API `4`. This revision
-replaces the ASCII capability field `summary_fallback` with `structured_text_fallback` and adds
-`semantic_coverage` plus `primary_projection`; upgrade the package and its artifact together.
-
 `renderSvg()` still returns the Mermaid-parity SVG string. For direct insertion, prefer
 `renderSvgToElement(target, source)`, which uses the navigable policy and checks the target's actual
 owner document before replacement. Manual hosts must replace `assertSafeSvgForDom()` as follows:
@@ -177,7 +173,7 @@ owner document before replacement. Manual hosts must replace `assertSafeSvgForDo
 ## Native ABI migration
 
 Alpha.5 C and Flutter hosts use ABI 3. Android uses direct JNI transport API 1; Python and Apple
-use UniFFI API 4 from the matching native artifact. Resource failures include the stable `cause`
+use UniFFI API 3 from the matching native artifact. Resource failures include the required `cause`
 discriminator (`ceiling` or `arithmetic_overflow`) across these transports. Upgrade each language
 package and native artifact together; do not mix an alpha.3 generated wrapper with an alpha.5
 library. C/Flutter hosts validate ABI 3 and the generated runtime catalog, while Android validates
@@ -204,9 +200,6 @@ different wire boundary:
   during each engine constructor and return after the engine owns parsed state.
 - UniFFI services now use a zero-argument immutable builder. Replace positional optional service
   arguments with `MermanEngineServices().with_*` chains. Each builder call returns a new bundle.
-- UniFFI API 4 replaces `MermanAsciiCapability.summary_fallback` with
-  `structured_text_fallback` and adds `semantic_coverage` plus `primary_projection`. Use those two
-  dimensions for product filtering; `support_level` is only their derived compatibility label.
 - Use generic `execute` for the complete operation envelope, or the named helpers and `*Result`
   binary helpers when convenient. UniFFI output plans are open records: switch on `kind`, use the
   optional known payload, and preserve `raw_json`/`rawJson` for future kinds.
@@ -343,16 +336,6 @@ APIs that were never part of the alpha.3 release and can be ignored by tag-only 
 | `merman_core::diagrams::flowchart::FlowchartV2Model` | `FlowchartModel` |
 
 The Mermaid `flowchart-v2` diagram id and compatibility layout JSON `FlowchartV2` variant key are unchanged.
-
-### Typed Flowchart and ER render models
-
-- `merman_core::diagrams::flowchart::FlowEdge` now stores the authored arrow plus independent
-  `start_marker`, `end_marker`, `stroke_kind`, and `visibility` fields. Legacy serialized data is
-  accepted by the custom deserializer, but Rust struct literals must initialize the expanded public
-  shape. Prefer parser-produced values or construct all endpoint and stroke semantics explicitly.
-- `ErDiagramRenderModel::{classes, entities}` now use `indexmap::IndexMap` instead of
-  `std::collections::BTreeMap` so declaration order remains observable. Update explicit type
-  annotations, constructors, and helper signatures; key/value access remains map-like.
 
 ## What the refactor changes for users
 

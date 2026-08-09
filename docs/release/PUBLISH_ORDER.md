@@ -5,9 +5,9 @@ Last updated: 2026-08-09
 
 ## Version Decision
 
-Published workspace prerelease baseline: `0.8.0-alpha.4`.
+Published workspace prerelease baseline: `0.8.0-alpha.5`.
 
-Prepared workspace release candidate: `0.8.0-alpha.5`. This is a local prepare-state decision; it
+Prepared workspace release candidate: `0.8.0-alpha.6`. This is a local prepare-state decision; it
 does not authorize a tag, workflow dispatch, registry publication, or GitHub Release mutation.
 
 Rationale:
@@ -19,8 +19,8 @@ Rationale:
   integrations test one coherent version graph. The unpublished VS Code extension follows its own
   `0.1.x` version track and records the bundled workspace runtime separately.
 
-Workspace-coupled manifests are aligned to the prepared `0.8.0-alpha.5` candidate. Python package
-metadata uses the PEP 440 spelling `0.8.0a5`. The independently versioned VS Code extension, Typst
+Workspace-coupled manifests are aligned to the prepared `0.8.0-alpha.6` candidate. Python package
+metadata uses the PEP 440 spelling `0.8.0a6`. The independently versioned VS Code extension, Typst
 wrapper, and `roughr-merman` remain on their own release axes.
 
 ## Publish Order

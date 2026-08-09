@@ -4,6 +4,19 @@ All notable changes to the Android JNI package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## [0.8.0-alpha.6] - Unreleased
+
+### Breaking changes
+
+- Expanded ASCII capability records with independent semantic coverage and projection kind, and
+  renamed `summaryFallback` to `structuredTextFallback`. Upgrade the Kotlin package and native
+  slices together.
+
+### Changed
+
+- Updated structured ASCII resource diagnostics and the common-family terminal projections to the
+  alpha.6 runtime contract.
+
 ## [0.8.0-alpha.5] - 2026-08-09
 
 ### Breaking changes

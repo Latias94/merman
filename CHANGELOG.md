@@ -4,6 +4,40 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
+## [0.8.0-alpha.6] - Unreleased
+
+Alpha.6 is a deliberately breaking ASCII-rendering prerelease. It deepens terminal-native
+semantics for the common diagram families, separates diagrammatic projections from structured-text
+summaries, and makes resource admission and capability discovery explicit across Rust and binding
+surfaces. See the [alpha.5 to alpha.6 upgrade guide](docs/release/ALPHA5_TO_ALPHA6_UPGRADE_GUIDE.md).
+
+### Breaking changes
+
+- Replaced the single ASCII grid limit with a typed six-phase resource policy, changed ASCII error
+  and diagnostic records, and added an explicit terminal-width profile.
+- Expanded public Flowchart edge semantics and changed ER render-model collections to preserve
+  declaration order.
+- Advanced UniFFI binding API and browser WASM transport API from `3` to `4`. ASCII capability
+  records now expose semantic coverage and primary projection independently, and rename the old
+  summary fallback field to `structured_text_fallback`.
+- Refreshed ASCII output for Flowchart, Sequence, State, Class, ER, and XYChart. Consumers that
+  compare terminal output byte-for-byte must regenerate snapshots.
+
+### Added
+
+- Added typed terminal plans, grapheme-aware cell ownership, checked resource descriptors, and
+  parser-backed semantic evidence for the six diagrammatic ASCII families.
+- Added explicit structured-text projections for Gantt, GitGraph, Journey, Kanban, Mindmap, Packet,
+  Timeline, and TreeView, with documented field disposition and direct-model validation boundaries.
+
+### Fixed
+
+- Fixed direction, compound ownership, parallel/self-loop routing, marker, note, control-frame,
+  linear-axis, label, and declaration-order semantics across the common ASCII families.
+- Made public capability metadata, the Playground, Web catalogs, support documentation, and
+  reference evidence agree on which families are diagrammatic, structured text, partial, or
+  unsupported.
+
 ## [0.8.0-alpha.5] - 2026-08-09
 
 0.8.0-alpha.5 is a distribution and provenance follow-up to alpha.4. Rust, CLI, LSP, FFI, and WASM runtime contracts are unchanged from alpha.4; users already on alpha.4 can update the version without another code migration. Flutter, Python, Web, Android, and Apple users coming from alpha.3 should follow their package changelogs and the [alpha.3 to alpha.5 upgrade guide](docs/release/ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md).
@@ -32,7 +66,7 @@ The published alpha.4 surfaces are the Rust crates and official CLI/LSP GitHub b
 - Reworked `merman-cli` around explicit native `render` and `batch` workflows plus a pinned `mmdc@11.16.0` compatibility path, with recoverable transactional output, bounded resource acquisition, generated completions, and recursive man pages.
 - Made `merman-lsp` more reliable during rapid edits and request saturation by sharing versioned analysis, suppressing stale results, bounding retained work, and keeping valid small cancellation and exit controls reachable while input integrity is preserved. #26
 - Split browser delivery into lockstep full, render, analysis, editor, and ASCII packages, and rebuilt the Playground around isolated runtime, editor, compare, and benchmark lifecycles.
-- Replaced the C and Flutter ABI 2 path with generated ABI 3 contracts, moved Android to direct JNI transport API 1, and aligned Apple and Python UniFFI API 4 packages with the same runtime capability model.
+- Replaced the C and Flutter ABI 2 path with generated ABI 3 contracts, moved Android to direct JNI transport API 1, and aligned Apple and Python UniFFI API 3 packages with the same runtime capability model.
 - Reduced the dependency closure of analysis-only products and removed repeated work from Requirement, Mindmap, Kanban, Class, and layered-layout hot paths.
 
 ### Performance and footprint
@@ -50,7 +84,7 @@ The published alpha.4 surfaces are the Rust crates and official CLI/LSP GitHub b
 - Replaced the single `assertSafeSvgForDom()` browser assertion with distinct opaque self-contained and navigable admissions. Manual mounts must retain the matching admission through `prepareSelfContainedSvgForDomMount()` or `prepareNavigableSvgForDomMount()`; both revalidate the actual parsed root, and forged objects, structured clones, source/tree substitution, and the wrong capability are rejected at runtime.
 - Removed the historical Cargo and runtime registry profiles `full`, `tiny`, `core-full`, and `core_full`. Disable defaults when absence matters and select observable capability leaves such as `svg`, `layout-cytoscape`, `layout-elk`, `math`, `analysis`, or `ascii`.
 - Replaced public Chrono date/time values with project-owned `CivilDate`, `CivilDateTime`, `UtcOffset`, and `OffsetDateTime` types. Replace `chrono::NaiveDate` inputs and the removed `LocalTimeZone` conversion helpers with the checked constructors and resolution methods described in the upgrade guide. #37
-- Replaced the C and Flutter ABI 2 path with generated ABI 3, and replaced Android's legacy JNI-through-C-ABI path with direct JNI transport API 1. These native SDKs use Options JSON schema 2, opaque reusable engines, generic operation dispatch, typed missing-capability errors, and runtime capability/resource catalogs. Apple and Python use UniFFI binding API 4, whose resource error record includes the stable `cause` discriminator and whose ASCII capability record exposes semantic coverage plus projection kind; callers must upgrade each generated wrapper with its matching native artifact. Generic UniFFI options now belong in `MermanOperationRequest.options_json`.
+- Replaced the C and Flutter ABI 2 path with generated ABI 3, and replaced Android's legacy JNI-through-C-ABI path with direct JNI transport API 1. These native SDKs use Options JSON schema 2, opaque reusable engines, generic operation dispatch, typed missing-capability errors, and runtime capability/resource catalogs. Apple and Python use UniFFI binding API 3, whose resource error record includes the stable `cause` discriminator; callers must upgrade each generated wrapper with its matching native artifact. Generic UniFFI options now belong in `MermanOperationRequest.options_json`.
 - Resource-limit binding payloads now distinguish `ceiling` from `arithmetic_overflow` through the structured `details.resource.cause` field. Binding consumers must preserve the discriminator instead of classifying failures from display text; JavaScript `actual` and `max` counts are safe `number` values or canonical decimal `string` values for wider `u64` inputs.
 - Replaced `AnalysisResult` with sealed `AnalysisGeneration` values, explicit ready/rejected outcomes, policy-separated `AnalysisOptions`, parser-only facts schema 1, and cancellable caller-owned shared-source entry points. `SourceMap::line_starts()` / `source_arc()` are replaced by behavioral line queries and `shared_source()`; copy text only through the explicit `to_owned_text()` boundary. See the [Rust and embedding API migration](docs/release/ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md#rust-and-embedding-api-migration) section for exact replacements.
 - Replaced low-level rendering entry points and independent layout/SVG service selection with `HeadlessRenderer`, one `RenderSession`, and operation-owned `RenderEnvironment` policy. Migrate viewport fields to `container_width` / `container_height`, construct the now non-exhaustive `LayoutOptions` from its defaults/builders, use descriptor-driven resource profiles, and remove legacy Manatee and Flowchart ELK backend selectors.
@@ -60,7 +94,6 @@ The published alpha.4 surfaces are the Rust crates and official CLI/LSP GitHub b
 - Replaced the prerelease `HostThemeProfile` API and `host_theme` Options JSON group with four independent owners: `Presentation::with_theme(...)`, `Presentation::with_profile(...)`, top-level `site_config`, and `with_svg_pipeline(...)` / `svg`. The old Rust render helpers and host-theme preset discovery methods were removed directly rather than retained as deprecated aliases; use the artifact-aware `presentation-catalog` metadata payload for discovery.
 - Replaced the alpha.3 embedded LSP entry points with ordered `MermanLspService`, a one-time `MermanClientSocket::split()`, and transport-owned scheduling. Enable the `stdio` feature explicitly for the bundled server, send catalog/schema requests through the ordered service, and handle the exhaustive `StdioTermination::InputOverloaded` variant. #26 #33 #38
 - Typst calls now always enforce the `constrained` resource policy; caller-provided trusted or unbounded profiles and numeric overrides are replaced at the plugin boundary.
-- Expanded the public Flowchart `FlowEdge` model with independent endpoint marker, stroke, and visibility fields, and changed ER `classes` / `entities` collections from `BTreeMap` to declaration-ordered `IndexMap`. Rust callers using struct literals or explicit collection types must migrate as described in the upgrade guide.
 
 ### Added
 
