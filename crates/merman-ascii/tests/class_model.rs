@@ -29,6 +29,19 @@ fn render_class(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Resu
     render_model(&model, options)
 }
 
+fn assert_unsupported_class_model(model: &ClassDiagram, feature: &'static str) {
+    let error = merman_ascii::render_class(model, &AsciiRenderOptions::ascii())
+        .expect_err("class model should be rejected as unsupported");
+
+    assert_eq!(
+        error,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "class",
+            feature,
+        }
+    );
+}
+
 fn strip_ansi(input: &str) -> String {
     let mut output = String::new();
     let mut chars = input.chars().peekable();
@@ -264,6 +277,14 @@ fn class_parser_single_class_renders_unicode_box() {
 }
 
 #[test]
+fn class_render_model_rejects_relations_without_endpoint_classes() {
+    let mut model = parse_class_model("classDiagram\nclass A\nclass B\nA --> B : uses");
+    model.classes.clear();
+
+    assert_unsupported_class_model(&model, "relationships with missing endpoint classes");
+}
+
+#[test]
 fn class_terminal_width_profile_preserves_complex_graphemes_and_ambiguous_width() {
     let mut model = parse_class_model("classDiagram\nclass A");
     model
@@ -328,6 +349,40 @@ fn class_parser_members_and_methods_render_ascii_sections() {
             "+-------------------+\n",
         )
     );
+}
+
+#[test]
+fn class_render_model_reconstructs_members_when_display_text_is_empty() {
+    let mut model =
+        parse_class_model("classDiagram\nclass Service {\n  +value\n  #compute(input) Result\n}");
+    let class = model
+        .classes
+        .get_mut("Service")
+        .expect("Service class should exist");
+    let member = class
+        .members
+        .first_mut()
+        .expect("Service should have an attribute");
+    member.visibility = "+".to_string();
+    member.id = "value".to_string();
+    member.classifier = "$".to_string();
+    member.display_text.clear();
+    let method = class
+        .methods
+        .first_mut()
+        .expect("Service should have a method");
+    method.visibility = "#".to_string();
+    method.id = "compute".to_string();
+    method.parameters = "input".to_string();
+    method.return_type = "Result".to_string();
+    method.classifier = "*".to_string();
+    method.display_text.clear();
+
+    let rendered = merman_ascii::render_class(&model, &AsciiRenderOptions::ascii())
+        .expect("typed member fields should reconstruct a terminal display");
+
+    assert!(rendered.contains("+value$"), "{rendered}");
+    assert!(rendered.contains("#compute(input) : Result*"), "{rendered}");
 }
 
 #[test]
@@ -1045,6 +1100,22 @@ A --> B : ab",
         rendered.contains("ab") && rendered.contains("+---+"),
         "top-level class relationship should keep the routed layout:\n{rendered}"
     );
+    assert!(
+        rendered.contains("Empty"),
+        "an empty namespace should remain visible without degrading unrelated relations:\n{rendered}"
+    );
+}
+
+#[test]
+fn class_parser_standalone_empty_namespace_remains_visible() {
+    let rendered = render_class(
+        "classDiagram\nnamespace Empty {\n}",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("standalone empty namespace should render");
+
+    assert!(rendered.contains("Empty"), "{rendered}");
+    assert!(!rendered.contains("relations:"), "{rendered}");
 }
 
 #[test]
@@ -1438,7 +1509,13 @@ fn class_parser_self_relation_preserves_endpoint_labels_and_both_markers() {
     )
     .expect("two-sided self class relation should render");
 
-    for expected in ["source", "recursive", "target", "^", "v"] {
+    for expected in [
+        "endpoint 1: source",
+        "relation: recursive",
+        "endpoint 2: target",
+        "^",
+        "v",
+    ] {
         assert!(
             rendered.contains(expected),
             "self relation should preserve {expected:?} near its loop:\n{rendered}"

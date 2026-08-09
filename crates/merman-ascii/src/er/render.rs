@@ -153,6 +153,12 @@ pub(crate) fn render_er_diagram(
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     if model.entities.is_empty() {
+        if !model.relationships.is_empty() {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "er",
+                feature: "relationships with missing endpoint entities",
+            });
+        }
         return Ok(String::new());
     }
 
@@ -347,13 +353,17 @@ fn attribute_text(attribute: &ErAttributeRenderModel) -> String {
         if !text.is_empty() {
             text.push(' ');
         }
+        text.push_str("[keys: ");
         text.push_str(&attribute.keys.join(","));
+        text.push(']');
     }
     if !attribute.comment.is_empty() {
         if !text.is_empty() {
             text.push(' ');
         }
+        text.push_str("[comment: ");
         text.push_str(&attribute.comment);
+        text.push(']');
     }
     text
 }

@@ -241,6 +241,14 @@ fn er_parser_single_entity_renders_unicode_box() {
 }
 
 #[test]
+fn er_render_model_rejects_relationships_without_endpoint_entities() {
+    let mut model = parse_er_model("erDiagram\nA ||--|| B : owns");
+    model.entities.clear();
+
+    assert_unsupported_er_model(&model, "relationships with missing endpoint entities");
+}
+
+#[test]
 fn er_terminal_width_profile_preserves_complex_graphemes_and_ambiguous_width() {
     let mut model = parse_er_model("erDiagram\nA");
     model
@@ -296,12 +304,12 @@ fn er_parser_attributes_render_in_entity_section() {
     assert_eq!(
         rendered,
         concat!(
-            "+--------------+\n",
-            "| CUSTOMER     |\n",
-            "+--------------+\n",
-            "| string id PK |\n",
-            "| string name  |\n",
-            "+--------------+\n",
+            "+----------------------+\n",
+            "| CUSTOMER             |\n",
+            "+----------------------+\n",
+            "| string id [keys: PK] |\n",
+            "| string name          |\n",
+            "+----------------------+\n",
         )
     );
 }
@@ -315,15 +323,33 @@ fn er_parser_attribute_keys_and_comments_render_in_entity_section() {
     .expect("ER should render");
 
     for expected in [
-        "int id PK",
-        "int customer_id FK owner id",
-        "string email UK",
+        "int id [keys: PK]",
+        "int customer_id [keys: FK] [comment: owner id]",
+        "string email [keys: UK]",
     ] {
         assert!(
             rendered.contains(expected),
             "ER attribute details should keep {expected:?} visible:\n{rendered}"
         );
     }
+}
+
+#[test]
+fn er_attribute_keys_and_comments_have_distinct_terminal_roles() {
+    let key = render_er(
+        "erDiagram\nA {\n  string email UK\n}",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("ER key attribute should render");
+    let comment = render_er(
+        "erDiagram\nA {\n  string email \"UK\"\n}",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("ER comment attribute should render");
+
+    assert!(key.contains("string email [keys: UK]"), "{key}");
+    assert!(comment.contains("string email [comment: UK]"), "{comment}");
+    assert_ne!(key, comment, "key and comment semantics must not collide");
 }
 
 #[test]
@@ -335,10 +361,10 @@ fn er_local_semantic_fixture_covers_attributes_with_relationship() {
     for expected in [
         "CUSTOMER",
         "ORDER",
-        "string name PK",
-        "string email UK",
+        "string name [keys: PK]",
+        "string email [keys: UK]",
         "int age",
-        "int id PK",
+        "int id [keys: PK]",
         "string status",
         "places",
         "||",
@@ -1334,10 +1360,10 @@ fn er_parser_complex_styled_example_limits_summary_to_unroutable_component() {
 
     for expected in [
         "Book",
-        "string *title PK Title",
-        "string[] author-ref[name](1) FK Author ref",
+        "string *title [keys: PK] [comment: Title]",
+        "string[] author-ref[name](1) [keys: FK] [comment: Author ref]",
         "PAGE",
-        "int number PK",
+        "int number [keys: PK]",
         "CAR",
         "DRIVER",
         "PERSON",
@@ -1374,8 +1400,8 @@ fn er_local_semantic_fixture_covers_routed_schema_with_attributes() {
         "ORDER",
         "LINE_ITEM",
         "PRODUCT",
-        "string id PK",
-        "string email UK",
+        "string id [keys: PK]",
+        "string email [keys: UK]",
         "int quantity",
         "places",
         "contains",

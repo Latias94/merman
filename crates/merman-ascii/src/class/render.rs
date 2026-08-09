@@ -195,6 +195,21 @@ enum MarkerSide {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EndpointLabelRole {
+    First,
+    Second,
+}
+
+impl EndpointLabelRole {
+    const fn disclosure_prefix(self) -> &'static str {
+        match self {
+            Self::First => "endpoint 1: ",
+            Self::Second => "endpoint 2: ",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ClassDirection {
     TopDown,
     BottomUp,
@@ -250,6 +265,8 @@ struct RelationLayout<'a> {
     label: Option<RelationGraphLabel>,
     top_endpoint_label: Option<RelationGraphLabel>,
     bottom_endpoint_label: Option<RelationGraphLabel>,
+    top_endpoint_role: EndpointLabelRole,
+    bottom_endpoint_role: EndpointLabelRole,
 }
 
 impl RelationLayout<'_> {
@@ -263,6 +280,7 @@ impl RelationLayout<'_> {
             &mut self.top_endpoint_label,
             &mut self.bottom_endpoint_label,
         );
+        std::mem::swap(&mut self.top_endpoint_role, &mut self.bottom_endpoint_role);
     }
 }
 
@@ -291,10 +309,17 @@ pub(crate) fn render_class_diagram(
         model,
         options,
         charset,
+        direction,
         &namespace_facade_aliases,
         &mut resources,
     )?;
     if boxes.is_empty() {
+        if !model.relations.is_empty() {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "class",
+                feature: "relationships with missing endpoint classes",
+            });
+        }
         return relation_graph::render_stacked_boxes_with_options(&boxes, options, &mut resources);
     }
     let box_by_id = RenderedClassBoxIndex::new(&boxes, &mut resources)?;
@@ -511,6 +536,7 @@ fn render_class_boxes(
     model: &ClassDiagram,
     options: &AsciiRenderOptions,
     charset: ClassCharset,
+    direction: ClassDirection,
     namespace_facade_aliases: &HashMap<String, String>,
     resources: &mut ResourceContext,
 ) -> Result<Vec<RenderedClassBox>> {
@@ -519,6 +545,7 @@ fn render_class_boxes(
         .len()
         .checked_add(model.interfaces.len())
         .and_then(|value| value.checked_add(model.notes.len()))
+        .and_then(|value| value.checked_add(model.namespaces.len()))
         .ok_or_else(|| work_overflow(resources))?;
     let mut boxes = Vec::new();
     boxes
@@ -538,6 +565,16 @@ fn render_class_boxes(
     }
     for note in &model.notes {
         boxes.push(render_note_box(note, options, charset, resources)?);
+    }
+    for namespace in model.namespaces.values() {
+        boxes.push(render_namespace_container_box(
+            namespace,
+            Vec::new(),
+            options,
+            charset,
+            direction,
+            resources,
+        )?);
     }
     Ok(boxes)
 }
@@ -1286,7 +1323,24 @@ fn member_text(member: &ClassMember) -> String {
     if !member.display_text.is_empty() {
         return member.display_text.clone();
     }
-    member.id.clone()
+
+    let mut text = String::new();
+    text.push_str(&member.visibility);
+    text.push_str(&member.id);
+    if member.member_type == "method"
+        || !member.parameters.is_empty()
+        || !member.return_type.is_empty()
+    {
+        text.push('(');
+        text.push_str(member.parameters.trim());
+        text.push(')');
+        if !member.return_type.is_empty() {
+            text.push_str(" : ");
+            text.push_str(member.return_type.trim());
+        }
+    }
+    text.push_str(&member.classifier);
+    text
 }
 
 fn relation_layout<'a>(
@@ -1335,6 +1389,8 @@ fn relation_layout<'a>(
             label,
             top_endpoint_label: left_endpoint_label,
             bottom_endpoint_label: right_endpoint_label,
+            top_endpoint_role: EndpointLabelRole::First,
+            bottom_endpoint_role: EndpointLabelRole::Second,
         });
     }
 
@@ -1348,6 +1404,8 @@ fn relation_layout<'a>(
             label,
             top_endpoint_label: right_endpoint_label,
             bottom_endpoint_label: left_endpoint_label,
+            top_endpoint_role: EndpointLabelRole::Second,
+            bottom_endpoint_role: EndpointLabelRole::First,
         });
     }
 
@@ -1360,6 +1418,8 @@ fn relation_layout<'a>(
         label,
         top_endpoint_label: left_endpoint_label,
         bottom_endpoint_label: right_endpoint_label,
+        top_endpoint_role: EndpointLabelRole::First,
+        bottom_endpoint_role: EndpointLabelRole::Second,
     })
 }
 
@@ -1484,6 +1544,8 @@ fn note_relation_layouts_for_notes<'a>(
                 label: None,
                 top_endpoint_label: None,
                 bottom_endpoint_label: None,
+                top_endpoint_role: EndpointLabelRole::First,
+                bottom_endpoint_role: EndpointLabelRole::Second,
             });
         }
     }
@@ -2306,26 +2368,32 @@ fn self_loop_metrics_for_class_layout(
         .map(|marker| marker_char(marker, MarkerSide::Bottom, charset))
         .unwrap_or_else(|| line_char(layout.line, charset));
     let top_marker_width = relation_char_width(top_marker, width_profile);
-    let max_label_width = [
-        layout
-            .top_endpoint_label
-            .as_ref()
-            .map(RelationGraphLabel::width)
-            .unwrap_or(0),
-        layout
-            .label
-            .as_ref()
-            .map(RelationGraphLabel::width)
-            .unwrap_or(0),
-        layout
-            .bottom_endpoint_label
-            .as_ref()
-            .map(RelationGraphLabel::width)
-            .unwrap_or(0),
-    ]
-    .into_iter()
-    .max()
-    .unwrap_or(0);
+    let disclose_roles = class_self_loop_discloses_label_roles(layout);
+    let mut max_label_width = 0usize;
+    for (label, prefix) in [
+        (
+            layout.top_endpoint_label.as_ref(),
+            layout.top_endpoint_role.disclosure_prefix(),
+        ),
+        (layout.label.as_ref(), "relation: "),
+        (
+            layout.bottom_endpoint_label.as_ref(),
+            layout.bottom_endpoint_role.disclosure_prefix(),
+        ),
+    ] {
+        let Some(label) = label else {
+            continue;
+        };
+        let width = if disclose_roles {
+            resources.checked_grid_add(
+                display_width_with_profile(prefix, width_profile),
+                label.width(),
+            )?
+        } else {
+            label.width()
+        };
+        max_label_width = max_label_width.max(width);
+    }
     Ok(RelationSelfLoopMetrics::new(
         top_marker_width,
         max_label_width,
@@ -2405,19 +2473,47 @@ fn self_loop_rows_for_class_layout(
     label_lines
         .try_reserve_exact(label_line_count)
         .map_err(|_| layout_allocation_failed())?;
-    for label in [
-        layout.top_endpoint_label.as_ref(),
-        layout.label.as_ref(),
-        layout.bottom_endpoint_label.as_ref(),
-    ]
-    .into_iter()
-    .flatten()
-    {
-        label_lines.extend(relation_graph::label_lines_with_role(
-            label,
-            AsciiColorRole::EdgeLabel,
-            resources,
-        )?);
+    let disclose_roles = class_self_loop_discloses_label_roles(layout);
+    for (label, prefix) in [
+        (
+            layout.top_endpoint_label.as_ref(),
+            layout.top_endpoint_role.disclosure_prefix(),
+        ),
+        (layout.label.as_ref(), "relation: "),
+        (
+            layout.bottom_endpoint_label.as_ref(),
+            layout.bottom_endpoint_role.disclosure_prefix(),
+        ),
+    ] {
+        let Some(label) = label else {
+            continue;
+        };
+        if !disclose_roles {
+            label_lines.extend(relation_graph::label_lines_with_role(
+                label,
+                AsciiColorRole::EdgeLabel,
+                resources,
+            )?);
+            continue;
+        }
+        for line in label.lines() {
+            let capacity = prefix
+                .len()
+                .checked_add(line.len())
+                .ok_or_else(|| work_overflow(resources))?;
+            let mut disclosed = String::new();
+            disclosed
+                .try_reserve_exact(capacity)
+                .map_err(|_| layout_allocation_failed())?;
+            disclosed.push_str(prefix);
+            disclosed.push_str(line);
+            label_lines.push(RelationGraphLine::try_with_role(
+                &disclosed,
+                AsciiColorRole::EdgeLabel,
+                width_profile,
+                resources,
+            )?);
+        }
     }
 
     let tail_prefix = layout.top_marker.is_some().then(|| top_marker.clone());
@@ -2432,6 +2528,10 @@ fn self_loop_rows_for_class_layout(
         Some(prefix) => rows.with_tail_prefix(prefix),
         None => rows,
     })
+}
+
+fn class_self_loop_discloses_label_roles(layout: &RelationLayout<'_>) -> bool {
+    layout.top_endpoint_label.is_some() || layout.bottom_endpoint_label.is_some()
 }
 
 fn class_route_profile(layout: &RelationLayout<'_>) -> relation_graph::LayeredRelationRouteProfile {
