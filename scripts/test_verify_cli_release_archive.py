@@ -187,6 +187,8 @@ def valid_capabilities_payload(
             "id": output["id"],
             "description": output["description"],
             "media_type": output["media_type"],
+            "system_fonts": None,
+            "embedded_images": None,
         }
         for output in sorted(
             surface["outputs"],
@@ -194,6 +196,29 @@ def valid_capabilities_payload(
         )
         if output["capability"] in runtime_ids
     ]
+    for output in outputs:
+        if output["id"] not in {"jpeg", "pdf", "png"}:
+            continue
+        output["system_fonts"] = {
+            "source_id": "host-system",
+            "discovery": "first-use",
+            "cache_scope": "process-global",
+            "host_dependent": True,
+            "caller_configurable": False,
+            "resource_bounded": False,
+        }
+        output["embedded_images"] = {
+            "source_ids": ["data-url"],
+            "filesystem_access": False,
+            "network_access": False,
+            "caller_configurable": True,
+            "limits": {
+                "max_bytes_per_image": 16 * 1024 * 1024,
+                "max_total_bytes": 32 * 1024 * 1024,
+                "max_pixels_per_image": 16 * 1024 * 1024,
+                "max_total_pixels": 32 * 1024 * 1024,
+            },
+        }
     return {
         "schema_version": 2,
         "cli_contract_version": 3,
