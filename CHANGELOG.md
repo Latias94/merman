@@ -6,11 +6,25 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [0.8.0-alpha.5] - 2026-08-09
 
-0.8.0-alpha.5 completes Merman's Mermaid 11.16.1 language and rendering surface and gives CLI, editor, browser, Rust, and native-SDK users explicit product contracts. It is a deliberately breaking prerelease; use the [alpha.3 to alpha.5 upgrade guide](docs/release/ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md) for exact migrations.
+0.8.0-alpha.5 is a distribution and provenance follow-up to alpha.4. Rust, CLI, LSP, FFI, and WASM runtime contracts are unchanged from alpha.4; users already on alpha.4 can update the version without another code migration. Flutter, Python, Web, Android, and Apple users coming from alpha.3 should follow their package changelogs and the [alpha.3 to alpha.5 upgrade guide](docs/release/ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md).
 
-Rust crates and the lockstep browser packages use this workspace changelog. Package-specific details are available for [Android](platforms/android/CHANGELOG.md), [Apple](platforms/apple/CHANGELOG.md), [Flutter](platforms/flutter/CHANGELOG.md), [Python](platforms/python/merman/CHANGELOG.md), and the [VS Code extension](tools/vscode-extension/CHANGELOG.md).
+### Changed
 
-> **Publication note:** `0.8.0-alpha.4` was aborted before a complete release was produced. Some Rust crates with that version reached crates.io, but the release is unsupported and must not be used; `0.8.0-alpha.5` is the first complete supported release containing these changes.
+- Restored the ordinary single-tag release path after alpha.4 required an audited recovery descendant. Alpha.5 crates and GitHub binaries are generated from one canonical tagged source revision.
+- Made release-facing Rust dependency examples use exact prerelease versions; source-only Git commands are explicitly labeled and require a reviewed full commit.
+- Made partial publication recoverable without moving an accepted tag or republishing crates and artifacts that already reached their registry.
+
+### Fixed
+
+- Release verification now accepts valid PDF token spacing, LSP header forms, and notification ordering while retaining format signatures, bounded protocol framing, required responses, and real final-archive execution.
+- CLI and LSP cargo-dist archives include the project changelog, dual licenses, third-party notices, exact third-party license texts, and the package README; CLI archives also retain generated completion and manual-page assets.
+- Corrected release documentation that still described alpha.4 as unavailable after its crates and GitHub binaries had been recovered and published.
+
+## [0.8.0-alpha.4] - 2026-08-09
+
+0.8.0-alpha.4 completes Merman's Mermaid 11.16.1 language and rendering surface and gives CLI, editor, browser, Rust, and native-SDK users explicit product contracts. It is a deliberately breaking prerelease; users upgrading from alpha.3 can use the [alpha.3 to alpha.5 upgrade guide](docs/release/ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md) because alpha.5 does not change these runtime contracts.
+
+The published alpha.4 surfaces are the Rust crates and official CLI/LSP GitHub binaries. The source tree also prepared the lockstep browser and native wrapper contracts, but alpha.4 packages were not published to npm, pub.dev, PyPI, or the Android and Apple artifact channels; their package-local alpha.5 changelogs remain the release notes for those surfaces.
 
 ### Breaking changes
 
