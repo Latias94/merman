@@ -64,18 +64,40 @@ fn fixture_inventory_documents_v1_coverage_contract() {
 
     for expected in [
         "6fffb8e2714acab2c4cb41c78894fabbc62cee56",
-        "54 / 54 exact output matches",
-        "25 / 25 exact output matches",
+        "32 / 54 exact output matches; 22 named deterministic differences",
+        "13 / 25 exact output matches; 12 named deterministic differences",
         "12 / 12 normalized exact output matches",
         "5 / 5 normalized exact output matches",
-        "Graph/flowchart copied fixture parity: 79 / 79.",
+        "Graph/flowchart copied fixture exact subset: 45 / 79.",
+        "Graph/flowchart named deterministic differences: 34 / 79.",
         "Sequence copied fixture parity: 17 / 17.",
-        "Named copied fixture gaps: none.",
+        "GRAPH_FIXTURE_GAPS.md",
         "cargo nextest run -p merman-ascii fixture_inventory graph_fixture sequence_golden",
     ] {
         assert!(
             contract.contains(expected),
             "v1 coverage contract must mention `{expected}`"
+        );
+    }
+}
+
+#[test]
+fn fixture_inventory_documents_graph_exact_and_gap_disposition() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let gap_inventory =
+        fs::read_to_string(manifest_dir.join("tests/testdata/mermaid-ascii/GRAPH_FIXTURE_GAPS.md"))
+            .expect("graph fixture gap inventory must be readable");
+
+    for expected in [
+        "Copied corpus: 79 fixtures",
+        "Exact-output subset: 45 fixtures",
+        "Named intentional differences: 34 fixtures",
+        "Every exact fixture must still match byte-for-byte",
+        "Every named gap must still render successfully",
+    ] {
+        assert!(
+            gap_inventory.contains(expected),
+            "graph fixture gap inventory must mention `{expected}`"
         );
     }
 }

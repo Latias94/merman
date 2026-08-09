@@ -632,7 +632,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         ],
         limits: &[
             "browser hover tooltips are replaced by deterministic terminal disclosure",
-            "SVG pixel coordinates are quantized to terminal cells",
+            "typed chart coordinates are independently quantized by the terminal plan",
             "cross-series same-cell collisions use deterministic paint order plus exact disclosure",
         ],
         evidence: &[
