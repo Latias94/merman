@@ -40,6 +40,16 @@ pub struct JourneyRenderTask {
     #[serde(default)]
     pub people: Vec<String>,
     pub section: String,
+    /// Index of the authored section occurrence in `JourneyDiagramRenderModel::sections`.
+    ///
+    /// `None` represents a task without parser-backed occurrence ownership, including tasks
+    /// authored before any section and legacy direct models.
+    #[serde(
+        default,
+        rename = "sectionIndex",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub section_index: Option<usize>,
     #[serde(rename = "type")]
     pub task_type: String,
     pub task: String,
@@ -91,6 +101,7 @@ struct JourneyDb {
     acc_descr: String,
 
     current_section: String,
+    current_section_index: Option<usize>,
     sections: Vec<String>,
     tasks: Vec<JourneyRenderTask>,
 }
@@ -102,6 +113,7 @@ impl JourneyDb {
 
     fn add_section(&mut self, txt: &str) {
         self.current_section = txt.to_string();
+        self.current_section_index = Some(self.sections.len());
         self.sections.push(txt.to_string());
     }
 
@@ -143,6 +155,7 @@ impl JourneyDb {
             score_is_nan,
             people,
             section: self.current_section.clone(),
+            section_index: self.current_section_index,
             task_type: self.current_section.clone(),
             task: descr.to_string(),
         });
@@ -408,13 +421,23 @@ pub(crate) fn render_model_to_compat_json(
     if model.compatibility_output == CompatibilityOutputState::Empty {
         return Ok(json!({}));
     }
+    let mut tasks =
+        serde_json::to_value(&model.tasks).expect("Journey tasks must remain JSON-serializable");
+    for task in tasks
+        .as_array_mut()
+        .expect("Journey tasks must serialize to an array")
+    {
+        if let Some(task) = task.as_object_mut() {
+            task.remove("sectionIndex");
+        }
+    }
     Ok(json!({
         "type": meta.diagram_type,
         "title": &model.title,
         "accTitle": &model.acc_title,
         "accDescr": &model.acc_descr,
         "sections": &model.sections,
-        "tasks": &model.tasks,
+        "tasks": tasks,
         "actors": &model.actors,
     }))
 }
@@ -1333,6 +1356,45 @@ R task: 5:\n",
     }
 
     #[test]
+    fn journey_typed_tasks_retain_duplicate_section_occurrences() {
+        let source = concat!(
+            "journey\n",
+            "section Repeated\n",
+            "First: 5: Alice\n",
+            "section Repeated\n",
+            "Second: 3: Bob\n",
+        );
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("duplicate Journey sections should parse")
+            .expect("Journey source should be detected");
+        let crate::diagram::RenderSemanticModel::Journey(model) = parsed.model() else {
+            panic!("expected a Journey render model");
+        };
+
+        assert_eq!(
+            model.sections,
+            vec!["Repeated".to_string(), "Repeated".to_string()]
+        );
+        assert_eq!(
+            model
+                .tasks
+                .iter()
+                .map(|task| task.section_index)
+                .collect::<Vec<_>>(),
+            [Some(0), Some(1)]
+        );
+        assert_eq!(
+            serde_json::to_value(&model.tasks[0]).expect("typed task should serialize")["sectionIndex"],
+            json!(0)
+        );
+
+        let compat = render_model_to_compat_json(model, parsed.metadata())
+            .expect("Journey compatibility projection should serialize");
+        assert!(compat["tasks"][0].get("sectionIndex").is_none());
+    }
+
+    #[test]
     fn journey_db_tasks_and_actors_should_be_added_matches_upstream_spec() {
         let mut db = JourneyDb::default();
         db.clear();
@@ -1423,6 +1485,7 @@ R task: 5:\n",
         assert!(db.title.is_empty());
         assert!(db.acc_title.is_empty());
         assert!(db.acc_descr.is_empty());
+        assert!(db.current_section_index.is_none());
         assert!(db.sections.is_empty());
         assert!(db.tasks.is_empty());
         assert!(db.actors_sorted().is_empty());

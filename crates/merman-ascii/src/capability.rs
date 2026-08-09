@@ -592,6 +592,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         structured_text_fallback: false,
         supported_semantics: &[
             "hierarchical outline order",
+            "root and node identities with authored levels",
             "directory and file distinction",
             "ASCII and Unicode tree connectors",
             "icons classes and descriptions as text disclosure",
@@ -599,6 +600,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         limits: &[
             "outline output does not claim two-dimensional diagram geometry",
             "browser icons and CSS classes are disclosed rather than styled",
+            "duplicate node ids are rejected",
         ],
         evidence: &[
             AsciiCapabilityEvidence {

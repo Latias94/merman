@@ -22,6 +22,7 @@ mod packet;
 mod relation_graph;
 mod resource;
 mod safe_text;
+mod sectioned_text;
 mod sequence;
 mod state;
 mod style_color;

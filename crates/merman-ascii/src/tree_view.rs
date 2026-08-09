@@ -5,6 +5,7 @@ use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceCon
 use crate::safe_text::BudgetedTextDocument;
 use crate::text::display_width_with_profile;
 use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
+use std::collections::HashSet;
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
@@ -40,10 +41,12 @@ pub fn render_tree_view_diagram(
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     let mut document = BudgetedTextDocument::new(options);
+    validate_tree_view_model(&model.root, document.resources_mut())?;
     let chars = TreeViewChars::from_options(options);
     document.push_optional_line(model.title.as_deref())?;
     document.push_optional_prefixed_line("accTitle: ", model.acc_title.as_deref())?;
     document.push_optional_prefixed_line("accDescr: ", model.acc_descr.as_deref())?;
+    push_wrapped_node(&mut document, "", &model.root, options)?;
 
     let mut stack = Vec::new();
     for (index, child) in model.root.children.iter().enumerate().rev() {
@@ -121,6 +124,56 @@ pub fn render_tree_view_diagram(
     document.finish(options)
 }
 
+fn validate_tree_view_model(
+    root: &TreeViewNodeRenderModel,
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    let mut seen_ids = HashSet::new();
+    let mut stack = Vec::new();
+    resources.charge_layout_work(1)?;
+    stack
+        .try_reserve(1)
+        .map_err(|_| AsciiError::AllocationFailed {
+            phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+        })?;
+    stack.push((root, 0usize));
+
+    while let Some((node, depth)) = stack.pop() {
+        resources.check_nesting_depth(depth)?;
+        resources.charge_layout_work(1)?;
+        seen_ids
+            .try_reserve(1)
+            .map_err(|_| AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+            })?;
+        if !seen_ids.insert(node.id) {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "treeView",
+                feature: "duplicate node ids",
+            });
+        }
+
+        if node.children.is_empty() {
+            continue;
+        }
+        let child_depth = depth.checked_add(1).ok_or_else(|| {
+            resources
+                .policy()
+                .overflow(AsciiResourceLimitId::MaxNestingDepth)
+        })?;
+        resources.check_nesting_depth(child_depth)?;
+        resources.charge_layout_work(node.children.len())?;
+        stack
+            .try_reserve(node.children.len())
+            .map_err(|_| AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+            })?;
+        stack.extend(node.children.iter().rev().map(|child| (child, child_depth)));
+    }
+
+    Ok(())
+}
+
 struct TreeFrame<'a> {
     node: &'a TreeViewNodeRenderModel,
     prefix: String,
@@ -171,23 +224,24 @@ fn push_wrapped_node(
                 }
             }
 
+            line.push_str(" [id=")?;
+            line.write_fmt(format_args!("{}", node.id))?;
+            line.push_str(", level=")?;
+            line.write_fmt(format_args!("{}", node.level))?;
+
             let metadata = [
                 ("icon=", node.icon.as_deref()),
                 ("class=", node.css_class.as_deref()),
             ];
-            let mut emitted = false;
             for (key, value) in metadata
                 .into_iter()
                 .filter_map(|(key, value)| value.map(|value| (key, value)))
             {
-                line.push_str(if emitted { ", " } else { " [" })?;
+                line.push_str(", ")?;
                 line.push_str(key)?;
                 line.push_str(value)?;
-                emitted = true;
             }
-            if emitted {
-                line.push_str("]")?;
-            }
+            line.push_str("]")?;
             if let Some(description) = node.description.as_deref() {
                 line.push_str(" -- ")?;
                 line.push_str(description)?;
@@ -263,5 +317,28 @@ mod tests {
                     && details.actual == DEEP_NESTING
                     && details.max == DEEP_NESTING - 1
         ));
+    }
+
+    #[test]
+    fn tree_view_rejects_duplicate_node_ids_before_rendering() {
+        let model = TreeViewDiagramRenderModel {
+            root: node(
+                0,
+                "/",
+                vec![node(1, "first", Vec::new()), node(1, "second", Vec::new())],
+            ),
+            ..Default::default()
+        };
+
+        let error = render_tree_view_diagram(&model, &AsciiRenderOptions::ascii())
+            .expect_err("duplicate public node identities must not be rendered ambiguously");
+
+        assert_eq!(
+            error,
+            AsciiError::UnsupportedFeature {
+                diagram_type: "treeView",
+                feature: "duplicate node ids",
+            }
+        );
     }
 }

@@ -151,10 +151,11 @@ fn tree_view_render_model_renders_outline_summary() {
             "Project\n",
             "accTitle: Tree title\n",
             "accDescr: Tree description\n",
-            "|-- Root/\n",
-            "|   |-- Child 1\n",
-            "|   \\-- Child 2\n",
-            "\\-- Sibling",
+            "/ [id=0, level=-1]\n",
+            "|-- Root/ [id=1, level=0]\n",
+            "|   |-- Child 1 [id=2, level=1]\n",
+            "|   \\-- Child 2 [id=3, level=1]\n",
+            "\\-- Sibling [id=4, level=0]",
         )
     );
 }
@@ -200,16 +201,48 @@ fn tree_view_discloses_typed_fields_and_honors_unicode_connectors() {
     assert_eq!(
         ascii,
         concat!(
-            "\\-- src/ [icon=folder, class=highlight] -- source directory\n",
-            "    \\-- App.tsx [icon=react] -- main component",
+            "/ [id=0, level=-1]\n",
+            "\\-- src/ [id=1, level=0, icon=folder, class=highlight] -- source directory\n",
+            "    \\-- App.tsx [id=2, level=1, icon=react] -- main component",
         )
     );
     assert_eq!(
         unicode,
         concat!(
-            "└── src/ [icon=folder, class=highlight] -- source directory\n",
-            "    └── App.tsx [icon=react] -- main component",
+            "/ [id=0, level=-1]\n",
+            "└── src/ [id=1, level=0, icon=folder, class=highlight] -- source directory\n",
+            "    └── App.tsx [id=2, level=1, icon=react] -- main component",
         )
+    );
+}
+
+#[test]
+fn tree_view_rejects_duplicate_public_node_ids() {
+    let model = TreeViewDiagramRenderModel {
+        root: tree_node(
+            0,
+            -1,
+            "workspace",
+            vec![
+                tree_node(1, 0, "first", Vec::new()),
+                tree_node(1, 0, "second", Vec::new()),
+            ],
+        ),
+        ..Default::default()
+    };
+
+    let error = render_model(
+        &RenderSemanticModel::TreeView(model),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("duplicate TreeView identities must be rejected before projection");
+
+    assert_eq!(
+        error,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "treeView",
+            feature: "duplicate node ids",
+        }
     );
 }
 
@@ -367,6 +400,7 @@ fn timeline_render_model_renders_sections_tasks_and_events() {
         TimelineRenderTask {
             id: 0,
             section: "Planning".to_string(),
+            section_index: Some(0),
             task_type: "Planning".to_string(),
             task: "Design".to_string(),
             score: 0,
@@ -375,6 +409,7 @@ fn timeline_render_model_renders_sections_tasks_and_events() {
         TimelineRenderTask {
             id: 1,
             section: "Planning".to_string(),
+            section_index: Some(0),
             task_type: "Planning".to_string(),
             task: "Implement".to_string(),
             score: 3,
@@ -408,6 +443,7 @@ fn timeline_render_model_wraps_long_task_and_event_text() {
     model.tasks = vec![TimelineRenderTask {
             id: 0,
             section: "Planning".to_string(),
+            section_index: Some(0),
             task_type: "Planning".to_string(),
             task: "Design a very long integration event stream normalization workflow that still fits readable terminal output".to_string(),
             score: 0,
@@ -566,6 +602,7 @@ fn journey_render_model_renders_actors_sections_and_scores() {
             score_is_nan: false,
             people: vec!["Alice".to_string(), "Bob".to_string()],
             section: "Discovery".to_string(),
+            section_index: Some(0),
             task_type: "Discovery".to_string(),
             task: "Research".to_string(),
         },
@@ -574,6 +611,7 @@ fn journey_render_model_renders_actors_sections_and_scores() {
             score_is_nan: false,
             people: vec!["Bob".to_string()],
             section: "Discovery".to_string(),
+            section_index: Some(0),
             task_type: "Discovery".to_string(),
             task: "Ship".to_string(),
         },

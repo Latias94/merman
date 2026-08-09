@@ -1,9 +1,11 @@
 use crate::Result;
 use crate::options::AsciiRenderOptions;
-use crate::safe_text::BudgetedTextDocument;
+use crate::resource::ResourceContext;
+use crate::safe_text::{BudgetedTextDocument, charge_text_layout};
 use merman_core::diagrams::gantt::{
     GanttDiagramRenderModel, GanttRenderTask, GanttRenderTaskStart,
 };
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
@@ -14,46 +16,11 @@ pub fn render_gantt_diagram(
     local_time_zone: &merman_core::time::LocalTimeZone,
 ) -> Result<String> {
     let mut document = BudgetedTextDocument::new(options);
-    let mut task_ids = HashSet::new();
-    let mut task_sections = HashSet::new();
-    let mut task_section_order = Vec::new();
-    let mut tasks_by_section: HashMap<&str, Vec<&GanttRenderTask>> = HashMap::new();
-    task_ids
-        .try_reserve(model.tasks.len())
-        .map_err(|_| layout_allocation_error())?;
-    task_sections
-        .try_reserve(model.tasks.len())
-        .map_err(|_| layout_allocation_error())?;
-    task_section_order
-        .try_reserve(model.tasks.len())
-        .map_err(|_| layout_allocation_error())?;
-    tasks_by_section
-        .try_reserve(model.tasks.len())
-        .map_err(|_| layout_allocation_error())?;
-    for task in &model.tasks {
-        document.resources_mut().charge_layout_work(1)?;
-        document.preflight_text_work(&task.id)?;
-        if task.id.is_empty() {
-            return Err(crate::error::AsciiError::UnsupportedFeature {
-                diagram_type: "gantt",
-                feature: "empty task ids",
-            });
-        }
-        if !task_ids.insert(task.id.as_str()) {
-            return Err(crate::error::AsciiError::UnsupportedFeature {
-                diagram_type: "gantt",
-                feature: "duplicate task ids",
-            });
-        }
-        if task_sections.insert(task.section.as_str()) {
-            task_section_order.push(task.section.as_str());
-        }
-        let tasks = tasks_by_section.entry(task.section.as_str()).or_default();
-        tasks
-            .try_reserve(1)
-            .map_err(|_| layout_allocation_error())?;
-        tasks.push(task);
-    }
+    let task_index = admit_then_materialize_gantt_structure(
+        model,
+        document.resources_mut(),
+        |admission, resources| GanttTaskIndex::materialize(model, admission, resources),
+    )?;
 
     document.push_optional_line(model.title.as_deref())?;
     document.push_optional_prefixed_line("accTitle: ", model.acc_title.as_deref())?;
@@ -110,19 +77,15 @@ pub fn render_gantt_diagram(
         })?;
     }
 
-    if model.sections.is_empty() {
-        let mut current_section: Option<&str> = None;
-        for task in &model.tasks {
-            if current_section != Some(task.section.as_str()) {
-                current_section = Some(task.section.as_str());
-                push_section(&mut document, &task.section)?;
-            }
-            push_task(&mut document, task, local_time_zone)?;
-        }
-    } else {
+    if let Some(task_index) = task_index {
+        let GanttTaskIndex {
+            task_section_order,
+            tasks_by_section,
+            emitted_section_capacity,
+        } = task_index;
         let mut emitted_sections = HashSet::new();
         emitted_sections
-            .try_reserve(model.sections.len())
+            .try_reserve(emitted_section_capacity)
             .map_err(|_| layout_allocation_error())?;
 
         for section in &model.sections {
@@ -150,9 +113,143 @@ pub fn render_gantt_diagram(
                 }
             }
         }
+    } else {
+        let mut current_section: Option<&str> = None;
+        for task in &model.tasks {
+            if current_section != Some(task.section.as_str()) {
+                current_section = Some(task.section.as_str());
+                push_section(&mut document, &task.section)?;
+            }
+            push_task(&mut document, task, local_time_zone)?;
+        }
     }
 
     document.finish(options)
+}
+
+#[derive(Debug, Clone, Copy)]
+struct GanttStructureAdmission {
+    task_capacity: usize,
+    grouped: bool,
+}
+
+impl GanttStructureAdmission {
+    fn preflight(model: &GanttDiagramRenderModel, resources: &mut ResourceContext) -> Result<Self> {
+        let task_capacity = model.tasks.len();
+        let grouped = !model.sections.is_empty();
+
+        // The grouped path retains one slot per task in the id set, section-order vector,
+        // section map, and section task vectors. Its emitted-section set additionally admits the
+        // authored sections plus the worst case where every task names a distinct orphan section.
+        let allocation_work = if grouped {
+            let grouped_task_slots = resources.checked_work_mul(task_capacity, 3)?;
+            let emitted_section_slots =
+                resources.checked_work_add(model.sections.len(), task_capacity)?;
+            let indexed_task_slots =
+                resources.checked_work_add(task_capacity, grouped_task_slots)?;
+            resources.checked_work_add(indexed_task_slots, emitted_section_slots)?
+        } else {
+            task_capacity
+        };
+        resources.charge_layout_work(allocation_work)?;
+
+        // Hashing borrowed identifiers is allocation-free, but preflight their terminal-safety
+        // work before any input-sized container is allocated.
+        for section in &model.sections {
+            charge_text_layout(resources, section)?;
+        }
+        for task in &model.tasks {
+            resources.charge_layout_work(1)?;
+            charge_text_layout(resources, &task.id)?;
+            charge_text_layout(resources, &task.section)?;
+            if task.id.is_empty() {
+                return Err(crate::error::AsciiError::UnsupportedFeature {
+                    diagram_type: "gantt",
+                    feature: "empty task ids",
+                });
+            }
+        }
+
+        Ok(Self {
+            task_capacity,
+            grouped,
+        })
+    }
+}
+
+struct GanttTaskIndex<'model> {
+    task_section_order: Vec<&'model str>,
+    tasks_by_section: HashMap<&'model str, Vec<&'model GanttRenderTask>>,
+    emitted_section_capacity: usize,
+}
+
+impl<'model> GanttTaskIndex<'model> {
+    fn materialize(
+        model: &'model GanttDiagramRenderModel,
+        admission: GanttStructureAdmission,
+        resources: &mut ResourceContext,
+    ) -> Result<Option<Self>> {
+        let mut task_ids = HashSet::new();
+        task_ids
+            .try_reserve(admission.task_capacity)
+            .map_err(|_| layout_allocation_error())?;
+
+        let mut grouped_index = if admission.grouped {
+            let mut task_section_order = Vec::new();
+            let mut tasks_by_section = HashMap::new();
+            task_section_order
+                .try_reserve(admission.task_capacity)
+                .map_err(|_| layout_allocation_error())?;
+            tasks_by_section
+                .try_reserve(admission.task_capacity)
+                .map_err(|_| layout_allocation_error())?;
+            Some(Self {
+                task_section_order,
+                tasks_by_section,
+                emitted_section_capacity: 0,
+            })
+        } else {
+            None
+        };
+
+        for task in &model.tasks {
+            if !task_ids.insert(task.id.as_str()) {
+                return Err(crate::error::AsciiError::UnsupportedFeature {
+                    diagram_type: "gantt",
+                    feature: "duplicate task ids",
+                });
+            }
+            let Some(index) = grouped_index.as_mut() else {
+                continue;
+            };
+            let tasks = match index.tasks_by_section.entry(task.section.as_str()) {
+                Entry::Occupied(entry) => entry.into_mut(),
+                Entry::Vacant(entry) => {
+                    index.task_section_order.push(task.section.as_str());
+                    entry.insert(Vec::new())
+                }
+            };
+            tasks
+                .try_reserve(1)
+                .map_err(|_| layout_allocation_error())?;
+            tasks.push(task);
+        }
+
+        if let Some(index) = grouped_index.as_mut() {
+            index.emitted_section_capacity =
+                resources.checked_work_add(model.sections.len(), index.task_section_order.len())?;
+        }
+        Ok(grouped_index)
+    }
+}
+
+fn admit_then_materialize_gantt_structure<T>(
+    model: &GanttDiagramRenderModel,
+    resources: &mut ResourceContext,
+    materialize: impl FnOnce(GanttStructureAdmission, &mut ResourceContext) -> Result<T>,
+) -> Result<T> {
+    let admission = GanttStructureAdmission::preflight(model, resources)?;
+    materialize(admission, resources)
 }
 
 fn push_section(document: &mut BudgetedTextDocument, section: &str) -> Result<()> {
@@ -317,5 +414,95 @@ fn format_date(ms: i64, local_time_zone: &merman_core::time::LocalTimeZone) -> S
 fn layout_allocation_error() -> crate::error::AsciiError {
     crate::error::AsciiError::AllocationFailed {
         phase: crate::resource::AsciiResourceLimitPhase::LayoutWork.as_str(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::AsciiError;
+    use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
+    use merman_core::resources::ResourceProfile;
+    use std::cell::Cell;
+
+    fn direct_model() -> GanttDiagramRenderModel {
+        let mut model = GanttDiagramRenderModel::default();
+        model.sections = vec!["Build".to_string(), "Ship".to_string()];
+        model.tasks = vec![
+            GanttRenderTask {
+                id: "a".to_string(),
+                section: "Build".to_string(),
+                ..GanttRenderTask::default()
+            },
+            GanttRenderTask {
+                id: "b".to_string(),
+                section: "Orphan".to_string(),
+                ..GanttRenderTask::default()
+            },
+        ];
+        model
+    }
+
+    fn admission_work(model: &GanttDiagramRenderModel) -> usize {
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let mut resources = ResourceContext::new(policy);
+        admit_then_materialize_gantt_structure(model, &mut resources, |_, _| Ok(()))
+            .expect("unbounded Gantt admission should succeed");
+        resources.layout_work_used()
+    }
+
+    #[test]
+    fn gantt_admission_accepts_exact_work_before_materializing_index() {
+        let model = direct_model();
+        let exact_work = admission_work(&model);
+        assert_eq!(exact_work, 42);
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
+            .expect("exact Gantt admission work limit should be valid");
+        let mut resources = ResourceContext::new(policy);
+        let materialized = Cell::new(false);
+        let index = admit_then_materialize_gantt_structure(
+            &model,
+            &mut resources,
+            |admission, resources| {
+                materialized.set(true);
+                GanttTaskIndex::materialize(&model, admission, resources)
+            },
+        )
+        .expect("exact Gantt admission work should permit materialization");
+
+        assert!(materialized.get());
+        let index = index.expect("declared sections require a grouped task index");
+        assert_eq!(index.tasks_by_section.len(), 2);
+        assert_eq!(resources.layout_work_used(), exact_work);
+    }
+
+    #[test]
+    fn gantt_admission_rejects_max_minus_one_before_materializing_index() {
+        let model = direct_model();
+        let exact_work = admission_work(&model);
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
+            .expect("max-minus-one Gantt admission work limit should be valid");
+        let mut resources = ResourceContext::new(policy);
+        let materialized = Cell::new(false);
+        let error = admit_then_materialize_gantt_structure(
+            &model,
+            &mut resources,
+            |admission, resources| {
+                materialized.set(true);
+                GanttTaskIndex::materialize(&model, admission, resources).map(|_| ())
+            },
+        )
+        .expect_err("max-minus-one Gantt admission work should fail before materialization");
+
+        assert!(!materialized.get());
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual == exact_work
+                    && details.max == exact_work - 1
+        ));
     }
 }

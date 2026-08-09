@@ -1,6 +1,7 @@
 use crate::Result;
 use crate::options::AsciiRenderOptions;
 use crate::safe_text::BudgetedTextDocument;
+use crate::sectioned_text::{SectionedTextPlan, SectionedTextTask, plan_sectioned_text};
 use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyRenderTask};
 use std::collections::BTreeSet;
 
@@ -11,6 +12,12 @@ pub fn render_journey_diagram(
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     let mut document = BudgetedTextDocument::new(options);
+    let section_plan = plan_sectioned_text(
+        "journey",
+        &model.sections,
+        &model.tasks,
+        document.resources_mut(),
+    )?;
 
     document.push_optional_line(model.title.as_deref())?;
     document.push_optional_prefixed_line("accTitle: ", model.acc_title.as_deref())?;
@@ -44,30 +51,64 @@ pub fn render_journey_diagram(
     }
 
     if !model.sections.is_empty() {
-        for section in &model.sections {
+        for (section_index, section) in model.sections.iter().enumerate() {
             document.push_line_with(|line| {
                 line.push_str("section: ")?;
                 line.push_str(section)
             })?;
-            for task in model.tasks.iter().filter(|task| task.section == *section) {
-                push_task(&mut document, task)?;
+            for task_index in section_plan.tasks_for_section(section_index) {
+                push_task(&mut document, &model.tasks[*task_index])?;
             }
         }
-        for task in model.tasks.iter().filter(|task| {
-            !model
-                .sections
-                .iter()
-                .any(|section| section == &task.section)
-        }) {
-            push_task(&mut document, task)?;
-        }
-    } else {
-        for task in &model.tasks {
-            push_task(&mut document, task)?;
-        }
     }
+    push_orphan_tasks(&mut document, model, &section_plan)?;
 
     document.finish(options)
+}
+
+impl SectionedTextTask for JourneyRenderTask {
+    fn section_label(&self) -> &str {
+        &self.section
+    }
+
+    fn section_index(&self) -> Option<usize> {
+        self.section_index
+    }
+}
+
+fn push_orphan_tasks(
+    document: &mut BudgetedTextDocument,
+    model: &JourneyDiagramRenderModel,
+    section_plan: &SectionedTextPlan,
+) -> Result<()> {
+    let mut previous_section = None;
+    for task_index in section_plan.orphan_task_indices() {
+        let task = &model.tasks[*task_index];
+        // A section-less Mermaid journey is a valid flat list; keep its established projection
+        // while still disclosing empty ownership once sections are declared.
+        if task.section.is_empty() && model.sections.is_empty() {
+            push_task(document, task)?;
+            continue;
+        }
+        if previous_section != Some(task.section.as_str()) {
+            push_orphan_section(document, &task.section)?;
+            previous_section = Some(task.section.as_str());
+        }
+        push_task(document, task)?;
+    }
+    Ok(())
+}
+
+fn push_orphan_section(document: &mut BudgetedTextDocument, section: &str) -> Result<()> {
+    document.push_line_with(|line| {
+        line.push_str("section: ")?;
+        if section.is_empty() {
+            line.push_str("[unsectioned]")
+        } else {
+            line.push_str(section)?;
+            line.push_str(" [undeclared]")
+        }
+    })
 }
 
 fn collect_actors<'a>(
