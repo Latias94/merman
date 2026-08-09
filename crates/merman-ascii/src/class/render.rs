@@ -12,8 +12,9 @@ use crate::relation_graph::{
 };
 #[cfg(test)]
 use crate::resource::AsciiResourceLimitId;
-use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
+use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
 use crate::safe_text::{charge_text_layout, normalize_terminal_text};
+use crate::text::display_width_with_profile;
 use merman_core::entities::decode_html_entities_to_unicode;
 use merman_core::models::class_diagram::{
     ClassDiagram, ClassInterface, ClassMember, ClassNode, ClassNote, ClassRelation, Namespace,
@@ -336,8 +337,12 @@ pub(crate) fn render_class_diagram(
             return render_class_document_lines(lines, options, &mut resources);
         }
         if direction.is_reversed() {
-            let lines =
-                reversed_class_box_stack_lines(&boxes, options.terminal_width_profile, &resources)?;
+            let lines = relation_graph::stacked_box_lines_ordered(
+                &boxes,
+                options.terminal_width_profile,
+                true,
+                &mut resources,
+            )?;
             return render_class_document_lines(lines, options, &mut resources);
         }
         return relation_graph::render_stacked_boxes_with_options(&boxes, options, &mut resources);
@@ -439,28 +444,55 @@ fn render_namespaced_class_diagram(
             return render_class_document_lines(lines, options, resources);
         }
         if direction.is_reversed() {
-            let lines =
-                reversed_class_box_stack_lines(&boxes, options.terminal_width_profile, resources)?;
+            let lines = relation_graph::stacked_box_lines_ordered(
+                &boxes,
+                options.terminal_width_profile,
+                true,
+                resources,
+            )?;
             return render_class_document_lines(lines, options, resources);
         }
         return relation_graph::render_stacked_boxes_with_options(&boxes, options, resources);
     }
 
     if direction.is_horizontal() {
-        let mut lines = relation_graph::render_horizontal_box_strip_lines(
-            &boxes,
-            direction.horizontal_direction(),
-            CLASS_LEVEL_HORIZONTAL_GAP,
-            options.terminal_width_profile,
+        let gap = CLASS_LEVEL_HORIZONTAL_GAP;
+        let base_extent = relation_graph::horizontal_box_strip_extent(&boxes, gap, resources)?;
+        let lines = relation_graph::render_relation_document_with_summary(
+            base_extent,
+            &summary_rows,
+            None,
+            options,
             resources,
+            |resources| {
+                relation_graph::render_horizontal_box_strip_lines(
+                    &boxes,
+                    direction.horizontal_direction(),
+                    gap,
+                    options.terminal_width_profile,
+                    resources,
+                )
+            },
         )?;
-        append_class_summary_lines(&mut lines, &summary_rows, options, resources)?;
         return render_class_document_lines(lines, options, resources);
     }
     if direction.is_reversed() {
-        let mut lines =
-            reversed_class_box_stack_lines(&boxes, options.terminal_width_profile, resources)?;
-        append_class_summary_lines(&mut lines, &summary_rows, options, resources)?;
+        let base_extent = relation_graph::stacked_box_extent(&boxes, resources)?;
+        let lines = relation_graph::render_relation_document_with_summary(
+            base_extent,
+            &summary_rows,
+            None,
+            options,
+            resources,
+            |resources| {
+                relation_graph::stacked_box_lines_ordered(
+                    &boxes,
+                    options.terminal_width_profile,
+                    true,
+                    resources,
+                )
+            },
+        )?;
         return render_class_document_lines(lines, options, resources);
     }
 
@@ -1083,29 +1115,6 @@ fn render_class_document_lines(
     relation_graph::render_stacked_boxes_with_options(&[document], options, resources)
 }
 
-fn reversed_class_box_stack_lines(
-    boxes: &[RenderedClassBox],
-    width_profile: TerminalWidthProfile,
-    resources: &ResourceContext,
-) -> Result<Vec<RelationGraphLine>> {
-    let height = boxes
-        .iter()
-        .try_fold(boxes.len().saturating_sub(1), |height, relation_box| {
-            resources.checked_grid_add(height, relation_box.height())
-        })?;
-    let mut lines = Vec::new();
-    lines
-        .try_reserve_exact(height)
-        .map_err(|_| layout_allocation_failed())?;
-    for (index, relation_box) in boxes.iter().rev().enumerate() {
-        if index > 0 {
-            lines.push(RelationGraphLine::try_plain("", width_profile, resources)?);
-        }
-        lines.extend(relation_box.lines().iter().cloned());
-    }
-    Ok(lines)
-}
-
 fn render_horizontal_class_component_lines(
     boxes: &[RenderedClassBox],
     box_by_id: &RenderedClassBoxIndex<'_>,
@@ -1128,38 +1137,6 @@ fn render_horizontal_class_component_lines(
         resources,
         &adapter,
     )
-}
-
-fn append_class_summary_lines(
-    lines: &mut Vec<RelationGraphLine>,
-    rows: &[RelationGraphSummaryRow],
-    options: &AsciiRenderOptions,
-    resources: &mut ResourceContext,
-) -> Result<()> {
-    if rows.is_empty() {
-        return Ok(());
-    }
-    if !lines.is_empty() {
-        lines.push(RelationGraphLine::try_plain(
-            "",
-            options.terminal_width_profile,
-            resources,
-        )?);
-    }
-    lines.push(RelationGraphLine::try_with_role(
-        "relations:",
-        AsciiColorRole::MutedText,
-        options.terminal_width_profile,
-        resources,
-    )?);
-    lines.extend(relation_graph::relation_summary_rows_lines(
-        rows,
-        options,
-        None,
-        resources,
-        |row| Ok(row.clone()),
-    )?);
-    Ok(())
 }
 
 fn render_class_box(
@@ -1721,12 +1698,12 @@ fn render_parallel_vertical_relations(
     let reserve_bottom_endpoint_label = layouts
         .iter()
         .any(|layout| layout.bottom_endpoint_label.is_some());
-    let mut lanes = Vec::new();
-    lanes
+    let mut lane_extents = Vec::new();
+    lane_extents
         .try_reserve_exact(layouts.len())
         .map_err(|_| layout_allocation_failed())?;
     for layout in layouts {
-        lanes.push(parallel_class_lane_rows(
+        lane_extents.push(parallel_class_lane_extent(
             layout,
             charset,
             reserve_top_endpoint_label,
@@ -1735,7 +1712,7 @@ fn render_parallel_vertical_relations(
             resources,
         )?);
     }
-    let plan = RelationParallelPlan::new(top, bottom, lanes, 2, resources)?;
+    let plan = RelationParallelPlan::new(top, bottom, lane_extents, 2, resources)?;
 
     if !plan.ports_fit(resources)? {
         return relation_graph::render_relation_summary_component_lines(
@@ -1748,7 +1725,98 @@ fn render_parallel_vertical_relations(
         );
     }
 
-    plan.render_lines(resources)
+    plan.render_lines(resources, |resources| {
+        let mut lanes = Vec::new();
+        lanes
+            .try_reserve_exact(layouts.len())
+            .map_err(|_| layout_allocation_failed())?;
+        for layout in layouts {
+            lanes.push(parallel_class_lane_rows(
+                layout,
+                charset,
+                reserve_top_endpoint_label,
+                reserve_bottom_endpoint_label,
+                width_profile,
+                resources,
+            )?);
+        }
+        Ok(lanes)
+    })
+}
+
+fn parallel_class_lane_extent(
+    layout: &RelationLayout<'_>,
+    charset: ClassCharset,
+    reserve_top_endpoint_label: bool,
+    reserve_bottom_endpoint_label: bool,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<LogicalExtent> {
+    let top_label_height = layout
+        .top_endpoint_label
+        .as_ref()
+        .map(RelationGraphLabel::line_count)
+        .unwrap_or(usize::from(reserve_top_endpoint_label));
+    let central_label_height = layout
+        .label
+        .as_ref()
+        .map(RelationGraphLabel::line_count)
+        .unwrap_or(1);
+    let bottom_label_height = layout
+        .bottom_endpoint_label
+        .as_ref()
+        .map(RelationGraphLabel::line_count)
+        .unwrap_or(usize::from(reserve_bottom_endpoint_label));
+    let height = resources.checked_grid_add(top_label_height, central_label_height)?;
+    let height = resources.checked_grid_add(height, 2)?;
+    let height = resources.checked_grid_add(height, bottom_label_height)?;
+
+    let line_width = relation_char_width(line_char(layout.line, charset), width_profile);
+    let top_marker_width = layout
+        .top_marker
+        .map(|marker| {
+            relation_char_width(marker_char(marker, MarkerSide::Top, charset), width_profile)
+        })
+        .unwrap_or(0);
+    let bottom_marker_width = layout
+        .bottom_marker
+        .map(|marker| {
+            relation_char_width(
+                marker_char(marker, MarkerSide::Bottom, charset),
+                width_profile,
+            )
+        })
+        .unwrap_or(0);
+    let width = [
+        line_width,
+        top_marker_width,
+        bottom_marker_width,
+        layout
+            .top_endpoint_label
+            .as_ref()
+            .map(RelationGraphLabel::width)
+            .unwrap_or(0),
+        layout
+            .label
+            .as_ref()
+            .map(RelationGraphLabel::width)
+            .unwrap_or(0),
+        layout
+            .bottom_endpoint_label
+            .as_ref()
+            .map(RelationGraphLabel::width)
+            .unwrap_or(0),
+    ]
+    .into_iter()
+    .max()
+    .unwrap_or(1)
+    .max(1);
+    resources.grid_extent(width, height)
+}
+
+fn relation_char_width(ch: char, width_profile: TerminalWidthProfile) -> usize {
+    let mut encoded = [0; 4];
+    display_width_with_profile(ch.encode_utf8(&mut encoded), width_profile)
 }
 
 fn endpoint_label_lines_or_empty(

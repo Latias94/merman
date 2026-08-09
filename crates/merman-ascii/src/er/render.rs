@@ -10,7 +10,7 @@ use crate::relation_graph::{
 };
 #[cfg(test)]
 use crate::resource::AsciiResourceLimitId;
-use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
+use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
 use crate::safe_text::charge_text_layout;
 use crate::text::display_width_with_profile;
 use crate::{AsciiError, Result};
@@ -178,8 +178,12 @@ pub(crate) fn render_er_diagram(
             return render_er_document_lines(lines, options, &mut resources);
         }
         if direction.is_reversed() {
-            let lines =
-                reversed_er_box_stack_lines(&boxes, options.terminal_width_profile, &resources)?;
+            let lines = relation_graph::stacked_box_lines_ordered(
+                &boxes,
+                options.terminal_width_profile,
+                true,
+                &mut resources,
+            )?;
             return render_er_document_lines(lines, options, &mut resources);
         }
         return relation_graph::render_stacked_boxes_with_options(&boxes, options, &mut resources);
@@ -373,29 +377,6 @@ fn render_er_document_lines(
     relation_graph::render_stacked_boxes_with_options(&[document], options, resources)
 }
 
-fn reversed_er_box_stack_lines(
-    boxes: &[RenderedEntityBox],
-    width_profile: TerminalWidthProfile,
-    resources: &ResourceContext,
-) -> Result<Vec<RelationGraphLine>> {
-    let height = boxes
-        .iter()
-        .try_fold(boxes.len().saturating_sub(1), |height, relation_box| {
-            resources.checked_grid_add(height, relation_box.height())
-        })?;
-    let mut lines = Vec::new();
-    lines
-        .try_reserve_exact(height)
-        .map_err(|_| layout_allocation_failed())?;
-    for (index, relation_box) in boxes.iter().rev().enumerate() {
-        if index > 0 {
-            lines.push(RelationGraphLine::try_plain("", width_profile, resources)?);
-        }
-        lines.extend(relation_box.lines().iter().cloned());
-    }
-    Ok(lines)
-}
-
 fn render_horizontal_er_component_lines(
     boxes: &[RenderedEntityBox],
     layouts: &[ErRelationLayout<'_>],
@@ -530,19 +511,19 @@ fn render_parallel_vertical_relationships(
     })?;
     let top = find_box(boxes, first.top_id)?;
     let bottom = find_box(boxes, first.bottom_id)?;
-    let mut lanes = Vec::new();
-    lanes
+    let mut lane_extents = Vec::new();
+    lane_extents
         .try_reserve_exact(layouts.len())
         .map_err(|_| layout_allocation_failed())?;
     for layout in layouts {
-        lanes.push(parallel_er_lane_rows(
+        lane_extents.push(parallel_er_lane_extent(
             layout,
             charset,
             width_profile,
             resources,
         )?);
     }
-    let plan = RelationParallelPlan::new(top, bottom, lanes, 2, resources)?;
+    let plan = RelationParallelPlan::new(top, bottom, lane_extents, 2, resources)?;
 
     if !plan.ports_fit(resources)? {
         return relation_graph::render_relation_summary_component_lines(
@@ -555,7 +536,57 @@ fn render_parallel_vertical_relationships(
         );
     }
 
-    plan.render_lines(resources)
+    plan.render_lines(resources, |resources| {
+        let mut lanes = Vec::new();
+        lanes
+            .try_reserve_exact(layouts.len())
+            .map_err(|_| layout_allocation_failed())?;
+        for layout in layouts {
+            lanes.push(parallel_er_lane_rows(
+                layout,
+                charset,
+                width_profile,
+                resources,
+            )?);
+        }
+        Ok(lanes)
+    })
+}
+
+fn parallel_er_lane_extent(
+    layout: &ErRelationLayout<'_>,
+    charset: ErCharset,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<LogicalExtent> {
+    let top_cardinality = cardinality_marker(layout.top_cardinality, charset)?;
+    let bottom_cardinality = cardinality_marker(layout.bottom_cardinality, charset)?;
+    let relation = relationship_line(&layout.relationship.rel_spec.rel_type, charset)?;
+    let label_height = layout
+        .label
+        .as_ref()
+        .map(RelationGraphLabel::line_count)
+        .unwrap_or(1);
+    let height = resources.checked_grid_add(label_height, 3)?;
+    let relation_width = {
+        let mut encoded = [0; 4];
+        display_width_with_profile(relation.encode_utf8(&mut encoded), width_profile)
+    };
+    let width = [
+        display_width_with_profile(top_cardinality, width_profile),
+        display_width_with_profile(bottom_cardinality, width_profile),
+        relation_width,
+        layout
+            .label
+            .as_ref()
+            .map(RelationGraphLabel::width)
+            .unwrap_or(0),
+    ]
+    .into_iter()
+    .max()
+    .unwrap_or(1)
+    .max(1);
+    resources.grid_extent(width, height)
 }
 
 fn parallel_er_lane_rows(

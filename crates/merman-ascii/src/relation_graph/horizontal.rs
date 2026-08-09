@@ -2,14 +2,14 @@ use super::{
     LayeredRelationEdge, LayeredRelationError, LayeredRelationSummaryReason,
     RelationComponentAdapter, RelationGraphBox, RelationGraphLabel, RelationGraphLine,
     RelationLineChars, build_layered_edges, grid_overflow, join_component_line_groups,
-    layout_allocation_failed, put_relation_char, relation_components, relation_summary_rows_lines,
-    render_relation_self_loops, try_share_relation_box_lines, work_overflow,
+    layout_allocation_failed, put_relation_char, relation_components, render_relation_self_loops,
+    try_share_relation_box_lines, work_overflow,
 };
 use crate::Result;
 use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
-use crate::resource::ResourceContext;
+use crate::resource::{LogicalExtent, ResourceContext};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RelationGraphHorizontalDirection {
@@ -258,11 +258,48 @@ pub(crate) fn render_horizontal_box_strip_lines(
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
 ) -> Result<Vec<RelationGraphLine>> {
+    horizontal_box_strip_extent(boxes, gap, resources)?;
     let mut refs = Vec::new();
     refs.try_reserve_exact(boxes.len())
         .map_err(|_| layout_allocation_failed())?;
     refs.extend(boxes);
     horizontal_box_strip_lines(&refs, direction, gap, width_profile, resources)
+}
+
+pub(crate) fn horizontal_box_strip_extent(
+    boxes: &[RelationGraphBox],
+    gap: usize,
+    resources: &ResourceContext,
+) -> Result<LogicalExtent> {
+    let height = boxes
+        .iter()
+        .map(RelationGraphBox::height)
+        .max()
+        .unwrap_or(0);
+    let box_width = boxes.iter().try_fold(0usize, |width, relation_box| {
+        resources.checked_grid_add(width, relation_box.width())
+    })?;
+    let gap_width = resources.checked_grid_mul(boxes.len().saturating_sub(1), gap)?;
+    let width = resources.checked_grid_add(box_width, gap_width)?;
+    resources.grid_extent(width, height)
+}
+
+fn horizontal_box_strip_ref_extent(
+    boxes: &[&RelationGraphBox],
+    gap: usize,
+    resources: &ResourceContext,
+) -> Result<LogicalExtent> {
+    let height = boxes
+        .iter()
+        .map(|relation_box| relation_box.height())
+        .max()
+        .unwrap_or(0);
+    let box_width = boxes.iter().try_fold(0usize, |width, relation_box| {
+        resources.checked_grid_add(width, relation_box.width())
+    })?;
+    let gap_width = resources.checked_grid_mul(boxes.len().saturating_sub(1), gap)?;
+    let width = resources.checked_grid_add(box_width, gap_width)?;
+    resources.grid_extent(width, height)
 }
 
 fn render_horizontal_component<R, A>(
@@ -493,14 +530,6 @@ where
                 .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?,
         );
     }
-    let mut lines = horizontal_box_strip_lines(
-        &ordered_boxes,
-        RelationGraphHorizontalDirection::LeftRight,
-        adapter.layered_horizontal_gap(),
-        options.terminal_width_profile,
-        resources,
-    )?;
-
     let reason = LayeredRelationSummaryReason::RouteCollision;
     let mut rows = Vec::new();
     rows.try_reserve_exact(edge_indices.len())
@@ -511,25 +540,24 @@ where
             .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?;
         rows.push(adapter.build_summary_row(relation, reason)?);
     }
-    let summary_lines =
-        relation_summary_rows_lines(&rows, options, Some(reason), resources, |row| {
-            Ok(row.clone())
-        })?;
-    if !lines.is_empty() {
-        lines.push(RelationGraphLine::try_plain(
-            "",
-            options.terminal_width_profile,
-            resources,
-        )?);
-    }
-    lines.push(RelationGraphLine::try_with_role(
-        "relations:",
-        AsciiColorRole::MutedText,
-        options.terminal_width_profile,
+    let gap = adapter.layered_horizontal_gap();
+    let base_extent = horizontal_box_strip_ref_extent(&ordered_boxes, gap, resources)?;
+    super::render_relation_document_with_summary(
+        base_extent,
+        &rows,
+        Some(reason),
+        options,
         resources,
-    )?);
-    lines.extend(summary_lines);
-    Ok(lines)
+        |resources| {
+            horizontal_box_strip_lines(
+                &ordered_boxes,
+                RelationGraphHorizontalDirection::LeftRight,
+                gap,
+                options.terminal_width_profile,
+                resources,
+            )
+        },
+    )
 }
 
 fn stable_horizontal_order<R, A>(
@@ -788,17 +816,8 @@ fn horizontal_box_strip_lines(
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
 ) -> Result<Vec<RelationGraphLine>> {
-    let height = boxes
-        .iter()
-        .map(|relation_box| relation_box.height())
-        .max()
-        .unwrap_or(0);
-    let box_width = boxes.iter().try_fold(0usize, |width, relation_box| {
-        resources.checked_grid_add(width, relation_box.width())
-    })?;
-    let gap_width = resources.checked_grid_mul(boxes.len().saturating_sub(1), gap)?;
-    let width = resources.checked_grid_add(box_width, gap_width)?;
-    let extent = resources.grid_extent(width, height)?;
+    let extent = horizontal_box_strip_ref_extent(boxes, gap, resources)?;
+    let height = extent.height();
     resources.charge_layout_work(extent.cells())?;
     let mut lines = Vec::new();
     lines

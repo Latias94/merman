@@ -1,10 +1,8 @@
 use super::LayeredRelationSummaryReason;
-use super::{
-    RelationGraphBox, RelationGraphLabel, RelationGraphLine, render_stacked_boxes_with_section,
-};
+use super::{RelationGraphBox, RelationGraphLabel, RelationGraphLine, stacked_box_extent};
 use crate::color::AsciiColorRole;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
-use crate::resource::ResourceContext;
+use crate::resource::{LogicalExtent, ResourceContext};
 use crate::safe_text::SafeLine;
 use crate::text::display_width_with_profile;
 
@@ -46,34 +44,28 @@ pub(crate) fn render_stacked_boxes_with_relation_summary(
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
 ) -> crate::Result<String> {
-    let lines = relation_summary_lines(rows, reason, options, resources)?;
-    let header = RelationGraphLine::try_with_role(
-        "relations:",
-        AsciiColorRole::MutedText,
-        options.terminal_width_profile,
+    let base_extent = stacked_box_extent(boxes, resources)?;
+    let lines = super::render_relation_document_with_summary(
+        base_extent,
+        rows,
+        reason,
+        options,
         resources,
+        |resources| super::stacked_box_lines(boxes, options.terminal_width_profile, resources),
     )?;
-    render_stacked_boxes_with_section(boxes, header, &lines, options, resources)
+    super::render_lines_with_options(&lines, options, resources)
 }
 
-pub(crate) fn relation_summary_rows_lines<R>(
-    relations: &[R],
-    options: &AsciiRenderOptions,
+pub(crate) fn relation_summary_extent(
+    rows: &[RelationGraphSummaryRow],
     reason: Option<LayeredRelationSummaryReason>,
-    resources: &mut ResourceContext,
-    mut build_row: impl FnMut(&R) -> crate::Result<RelationGraphSummaryRow>,
-) -> crate::Result<Vec<RelationGraphLine>> {
-    let mut rows = Vec::new();
-    rows.try_reserve_exact(relations.len())
-        .map_err(|_| super::layout_allocation_failed())?;
-    for relation in relations {
-        rows.push(build_row(relation)?);
-    }
-
-    relation_summary_lines(&rows, reason, options, resources)
+    options: &AsciiRenderOptions,
+    resources: &ResourceContext,
+) -> crate::Result<LogicalExtent> {
+    Ok(measure_relation_summary(rows, reason, options, resources)?.extent)
 }
 
-fn relation_summary_lines(
+pub(crate) fn relation_summary_lines_for_rows(
     rows: &[RelationGraphSummaryRow],
     reason: Option<LayeredRelationSummaryReason>,
     options: &AsciiRenderOptions,
@@ -83,61 +75,25 @@ fn relation_summary_lines(
         return Ok(Vec::new());
     }
 
-    let source_width = rows
-        .iter()
-        .map(|row| display_width_with_profile(&row.source, options.terminal_width_profile))
-        .max()
-        .unwrap_or(0);
-    let connector_width = rows
-        .iter()
-        .map(|row| display_width_with_profile(&row.connector, options.terminal_width_profile))
-        .max()
-        .unwrap_or(0);
-    let target_width = rows
-        .iter()
-        .map(|row| display_width_with_profile(&row.target, options.terminal_width_profile))
-        .max()
-        .unwrap_or(0);
-    let base_width = resources.checked_grid_add(
-        resources.checked_grid_add(source_width, connector_width)?,
-        target_width,
-    )?;
-    let label_prefix_width = resources.checked_grid_add(base_width, 5)?;
-    let diagnostic = options
-        .relation_summary_diagnostics
-        .then_some(reason)
-        .flatten()
+    let measurement = measure_relation_summary(rows, reason, options, resources)?;
+    resources.charge_layout_work(measurement.extent.cells())?;
+
+    let source_width = measurement.source_width;
+    let connector_width = measurement.connector_width;
+    let target_width = measurement.target_width;
+    let label_prefix_width = measurement.label_prefix_width;
+    let diagnostic = measurement
+        .diagnostic_reason
         .map(|reason| format!("reason: {}", relation_summary_reason_text(reason)));
-    let mut height = usize::from(diagnostic.is_some());
-    let mut width = diagnostic
-        .as_deref()
-        .map(|line| display_width_with_profile(line, options.terminal_width_profile))
-        .unwrap_or(0);
-    for row in rows {
-        height = resources.checked_grid_add(height, 1)?;
-        let row_width = match row.label.as_ref() {
-            Some(label) if !label.lines().is_empty() => {
-                height =
-                    resources.checked_grid_add(height, label.lines().len().saturating_sub(1))?;
-                resources.checked_grid_add(label_prefix_width, label.width())?
-            }
-            _ => resources.checked_grid_add(base_width, 2)?,
-        };
-        width = width.max(row_width);
-    }
-    let extent = resources.grid_extent(width, height)?;
-    resources.charge_layout_work(extent.cells())?;
+    let height = measurement.extent.height();
 
     let mut lines = Vec::new();
     lines
         .try_reserve_exact(height)
         .map_err(|_| super::layout_allocation_failed())?;
-    if options.relation_summary_diagnostics
-        && let Some(reason) = reason
-    {
-        let diagnostic = format!("reason: {}", relation_summary_reason_text(reason));
+    if let Some(diagnostic) = diagnostic.as_deref() {
         lines.push(RelationGraphLine::try_with_role(
-            &diagnostic,
+            diagnostic,
             AsciiColorRole::MutedText,
             options.terminal_width_profile,
             resources,
@@ -196,6 +152,82 @@ fn relation_summary_lines(
     }
 
     Ok(lines)
+}
+
+#[derive(Debug, Clone, Copy)]
+struct RelationSummaryMeasurement {
+    extent: LogicalExtent,
+    source_width: usize,
+    connector_width: usize,
+    target_width: usize,
+    label_prefix_width: usize,
+    diagnostic_reason: Option<LayeredRelationSummaryReason>,
+}
+
+fn measure_relation_summary(
+    rows: &[RelationGraphSummaryRow],
+    reason: Option<LayeredRelationSummaryReason>,
+    options: &AsciiRenderOptions,
+    resources: &ResourceContext,
+) -> crate::Result<RelationSummaryMeasurement> {
+    let source_width = rows
+        .iter()
+        .map(|row| display_width_with_profile(&row.source, options.terminal_width_profile))
+        .max()
+        .unwrap_or(0);
+    let connector_width = rows
+        .iter()
+        .map(|row| display_width_with_profile(&row.connector, options.terminal_width_profile))
+        .max()
+        .unwrap_or(0);
+    let target_width = rows
+        .iter()
+        .map(|row| display_width_with_profile(&row.target, options.terminal_width_profile))
+        .max()
+        .unwrap_or(0);
+    let base_width = resources.checked_grid_add(
+        resources.checked_grid_add(source_width, connector_width)?,
+        target_width,
+    )?;
+    let label_prefix_width = resources.checked_grid_add(base_width, 5)?;
+    let diagnostic_reason = options
+        .relation_summary_diagnostics
+        .then_some(reason)
+        .flatten();
+    let diagnostic_width = if let Some(reason) = diagnostic_reason {
+        resources.checked_grid_add(
+            display_width_with_profile("reason: ", options.terminal_width_profile),
+            display_width_with_profile(
+                relation_summary_reason_text(reason),
+                options.terminal_width_profile,
+            ),
+        )?
+    } else {
+        0
+    };
+    let mut height = usize::from(diagnostic_reason.is_some());
+    let mut width = diagnostic_width;
+    for row in rows {
+        height = resources.checked_grid_add(height, 1)?;
+        let row_width = match row.label.as_ref() {
+            Some(label) if !label.lines().is_empty() => {
+                height =
+                    resources.checked_grid_add(height, label.lines().len().saturating_sub(1))?;
+                resources.checked_grid_add(label_prefix_width, label.width())?
+            }
+            _ => resources.checked_grid_add(base_width, 2)?,
+        };
+        width = width.max(row_width);
+    }
+    let extent = resources.grid_extent(width, height)?;
+    Ok(RelationSummaryMeasurement {
+        extent,
+        source_width,
+        connector_width,
+        target_width,
+        label_prefix_width,
+        diagnostic_reason,
+    })
 }
 
 fn relation_summary_reason_text(reason: LayeredRelationSummaryReason) -> &'static str {

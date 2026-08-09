@@ -3,7 +3,7 @@ use crate::color::AsciiColorRole;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 #[cfg(test)]
 use crate::resource::AsciiResourceLimitId;
-use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
+use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
 #[cfg(test)]
 use crate::safe_text::normalize_terminal_text;
 use crate::safe_text::try_build_normalized_label_lines;
@@ -38,6 +38,120 @@ pub(crate) struct RelationGraphBox {
     lines: Rc<Vec<RelationGraphLine>>,
     width: usize,
     width_profile: TerminalWidthProfile,
+}
+
+/// An admitted document assembly. Its materializer is intentionally supplied as
+/// a closure so no `Vec<RelationGraphLine>` can be allocated before the checked
+/// aggregate extent succeeds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RelationDocumentPlan {
+    extent: LogicalExtent,
+    has_section: bool,
+}
+
+impl RelationDocumentPlan {
+    pub(crate) fn new(
+        base: LogicalExtent,
+        section: Option<LogicalExtent>,
+        section_title_width: usize,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        let base = resources.grid_extent(base.width(), base.height())?;
+        let section = section
+            .map(|section| resources.grid_extent(section.width(), section.height()))
+            .transpose()?;
+        let (extent, has_section) = match section {
+            Some(section) => {
+                let has_section = section.height() > 0;
+                let separator = usize::from(base.height() > 0 && has_section);
+                let height = resources.checked_grid_add(base.height(), separator)?;
+                let height = resources.checked_grid_add(height, usize::from(has_section))?;
+                let height = resources.checked_grid_add(height, section.height())?;
+                let width = if has_section {
+                    base.width().max(section.width()).max(section_title_width)
+                } else {
+                    base.width().max(section.width())
+                };
+                (resources.grid_extent(width, height)?, has_section)
+            }
+            None => (base, false),
+        };
+        Ok(Self {
+            extent,
+            has_section,
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn extent(self) -> LogicalExtent {
+        self.extent
+    }
+
+    pub(crate) fn materialize(
+        self,
+        resources: &mut ResourceContext,
+        build_base: impl FnOnce(&mut ResourceContext) -> Result<Vec<RelationGraphLine>>,
+    ) -> Result<Vec<RelationGraphLine>> {
+        debug_assert!(!self.has_section);
+        let lines = build_base(resources)?;
+        self.check_materialized_extent(&lines, resources)?;
+        Ok(lines)
+    }
+
+    pub(crate) fn materialize_with_section(
+        self,
+        options: &AsciiRenderOptions,
+        resources: &mut ResourceContext,
+        build_base: impl FnOnce(&mut ResourceContext) -> Result<Vec<RelationGraphLine>>,
+        build_section: impl FnOnce(&mut ResourceContext) -> Result<Vec<RelationGraphLine>>,
+    ) -> Result<Vec<RelationGraphLine>> {
+        debug_assert!(self.has_section);
+        let mut lines = build_base(resources)?;
+        let additional = self
+            .extent
+            .height()
+            .checked_sub(lines.len())
+            .ok_or_else(|| resources.grid_overflow())?;
+        lines
+            .try_reserve_exact(additional)
+            .map_err(|_| layout_allocation_failed())?;
+        let section_lines = build_section(resources)?;
+        if !section_lines.is_empty() {
+            if !lines.is_empty() {
+                lines.push(RelationGraphLine::try_plain(
+                    "",
+                    options.terminal_width_profile,
+                    resources,
+                )?);
+            }
+            lines.push(RelationGraphLine::try_with_role(
+                "relations:",
+                AsciiColorRole::MutedText,
+                options.terminal_width_profile,
+                resources,
+            )?);
+            lines.extend(section_lines);
+        }
+        self.check_materialized_extent(&lines, resources)?;
+        Ok(lines)
+    }
+
+    fn check_materialized_extent(
+        self,
+        lines: &[RelationGraphLine],
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        let width = lines
+            .iter()
+            .map(RelationGraphLine::width)
+            .max()
+            .unwrap_or(0);
+        let actual = resources.grid_extent(width, lines.len())?;
+        debug_assert_eq!(actual.width(), self.extent.width());
+        debug_assert_eq!(actual.height(), self.extent.height());
+        debug_assert_eq!(actual.cells(), self.extent.cells());
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -229,6 +343,8 @@ impl<'a> RelationStackPlan<'a> {
     }
 }
 
+/// A geometry-only parallel plan. Family-owned styled rows are materialized only
+/// after port validation and aggregate grid admission succeed.
 #[derive(Debug)]
 pub(crate) struct RelationParallelPlan<'a> {
     top: &'a RelationGraphBox,
@@ -236,15 +352,14 @@ pub(crate) struct RelationParallelPlan<'a> {
     center: usize,
     lane_left: usize,
     lane_gap: usize,
-    lane_widths: Vec<usize>,
-    lanes: Vec<Vec<RelationGraphLine>>,
+    lane_extents: Vec<LogicalExtent>,
 }
 
 impl<'a> RelationParallelPlan<'a> {
     pub(crate) fn new(
         top: &'a RelationGraphBox,
         bottom: &'a RelationGraphBox,
-        lanes: Vec<Vec<RelationGraphLine>>,
+        lane_extents: Vec<LogicalExtent>,
         lane_gap: usize,
         resources: &mut ResourceContext,
     ) -> Result<Self> {
@@ -253,30 +368,14 @@ impl<'a> RelationParallelPlan<'a> {
             bottom.width_profile(),
             "parallel relation boxes must share one terminal width profile"
         );
-        debug_assert!(
-            lanes
-                .iter()
-                .flatten()
-                .all(|line| { line.width_profile() == top.width_profile() })
-        );
-        resources.charge_layout_work(lanes.len().max(1))?;
-        let mut lane_widths = Vec::new();
-        lane_widths
-            .try_reserve_exact(lanes.len())
-            .map_err(|_| layout_allocation_failed())?;
-        for lane in &lanes {
-            lane_widths.push(
-                lane.iter()
-                    .map(RelationGraphLine::width)
-                    .max()
-                    .unwrap_or(1)
-                    .max(1),
-            );
+        resources.charge_layout_work(lane_extents.len().max(1))?;
+        for lane_extent in &lane_extents {
+            resources.grid_extent(lane_extent.width().max(1), lane_extent.height())?;
         }
-        let lanes_content_width = lane_widths.iter().try_fold(0usize, |total, width| {
-            resources.checked_grid_add(total, *width)
+        let lanes_content_width = lane_extents.iter().try_fold(0usize, |total, extent| {
+            resources.checked_grid_add(total, extent.width().max(1))
         })?;
-        let gap_count = lane_widths.len().saturating_sub(1);
+        let gap_count = lane_extents.len().saturating_sub(1);
         let gaps_width = resources.checked_grid_mul(lane_gap, gap_count)?;
         let lanes_width = resources.checked_grid_add(lanes_content_width, gaps_width)?;
         let lane_center = lanes_width / 2;
@@ -289,8 +388,7 @@ impl<'a> RelationParallelPlan<'a> {
             center,
             lane_left,
             lane_gap,
-            lane_widths,
-            lanes,
+            lane_extents,
         })
     }
 
@@ -313,7 +411,8 @@ impl<'a> RelationParallelPlan<'a> {
             resources.checked_grid_add(bottom_left, self.bottom.width.saturating_sub(1))?;
 
         let mut lane_left = self.lane_left;
-        for (lane_index, lane_width) in self.lane_widths.iter().copied().enumerate() {
+        for (lane_index, lane_extent) in self.lane_extents.iter().copied().enumerate() {
+            let lane_width = lane_extent.width().max(1);
             let lane_anchor =
                 resources.checked_grid_add(lane_left, lane_width.saturating_sub(1) / 2)?;
             if !(top_left..=top_right).contains(&lane_anchor)
@@ -322,7 +421,7 @@ impl<'a> RelationParallelPlan<'a> {
                 return Ok(false);
             }
             lane_left = resources.checked_grid_add(lane_left, lane_width)?;
-            if lane_index + 1 < self.lane_widths.len() {
+            if lane_index + 1 < self.lane_extents.len() {
                 lane_left = resources.checked_grid_add(lane_left, self.lane_gap)?;
             }
         }
@@ -332,36 +431,46 @@ impl<'a> RelationParallelPlan<'a> {
     pub(crate) fn render_lines(
         &self,
         resources: &mut ResourceContext,
+        materialize_lanes: impl FnOnce(&mut ResourceContext) -> Result<Vec<Vec<RelationGraphLine>>>,
     ) -> Result<Vec<RelationGraphLine>> {
-        let mut relation_lines = Vec::new();
-        let row_count = self.lanes.iter().map(Vec::len).max().unwrap_or(0);
-        let height = resources.checked_grid_add(
-            resources.checked_grid_add(self.top.height(), row_count)?,
-            self.bottom.height(),
-        )?;
-        let lanes_width = self.lane_widths.iter().try_fold(0usize, |total, width| {
-            resources.checked_grid_add(total, *width)
-        })?;
-        let gaps_width =
-            resources.checked_grid_mul(self.lane_gap, self.lane_widths.len().saturating_sub(1))?;
-        let relation_width = resources.checked_grid_add(
-            self.lane_left,
-            resources.checked_grid_add(lanes_width, gaps_width)?,
-        )?;
-        let box_width = resources.checked_grid_add(self.center, self.center.max(1))?;
-        let extent = resources.grid_extent(relation_width.max(box_width), height)?;
+        let extent = self.aggregate_extent(resources)?;
         resources.charge_layout_work(extent.cells())?;
+        let lanes = materialize_lanes(resources)?;
+        if lanes.len() != self.lane_extents.len() {
+            return Err(grid_overflow(resources));
+        }
+        for (lane, planned) in lanes.iter().zip(&self.lane_extents) {
+            if lane.len() > planned.height()
+                || lane
+                    .iter()
+                    .any(|line| line.width() > planned.width().max(1))
+            {
+                return Err(grid_overflow(resources));
+            }
+            debug_assert_eq!(lane.len(), planned.height());
+            debug_assert_eq!(
+                lane.iter().map(RelationGraphLine::width).max().unwrap_or(1),
+                planned.width().max(1)
+            );
+            debug_assert!(
+                lane.iter()
+                    .all(|line| line.width_profile() == self.top.width_profile())
+            );
+        }
+
+        let mut relation_lines = Vec::new();
+        let row_count = self.row_count();
         relation_lines
             .try_reserve_exact(row_count)
             .map_err(|_| layout_allocation_failed())?;
         for row_index in 0..row_count {
             let mut line = StyledLine::with_resources(self.top.width_profile(), resources);
             line.try_push_spaces(self.lane_left)?;
-            for (lane_index, lane) in self.lanes.iter().enumerate() {
+            for (lane_index, lane) in lanes.iter().enumerate() {
                 if lane_index > 0 {
                     line.try_push_spaces(self.lane_gap)?;
                 }
-                let lane_width = self.lane_widths[lane_index];
+                let lane_width = self.lane_extents[lane_index].width().max(1);
                 let Some(cell) = lane.get(row_index) else {
                     line.try_push_spaces(lane_width)?;
                     continue;
@@ -387,6 +496,41 @@ impl<'a> RelationParallelPlan<'a> {
             relation_lines,
             resources,
         )
+    }
+
+    fn row_count(&self) -> usize {
+        self.lane_extents
+            .iter()
+            .map(|extent| extent.height())
+            .max()
+            .unwrap_or(0)
+    }
+
+    fn aggregate_extent(&self, resources: &ResourceContext) -> Result<LogicalExtent> {
+        let height = resources.checked_grid_add(
+            resources.checked_grid_add(self.top.height(), self.row_count())?,
+            self.bottom.height(),
+        )?;
+        let lanes_width = self.lane_extents.iter().try_fold(0usize, |total, extent| {
+            resources.checked_grid_add(total, extent.width().max(1))
+        })?;
+        let gaps_width =
+            resources.checked_grid_mul(self.lane_gap, self.lane_extents.len().saturating_sub(1))?;
+        let relation_width = resources.checked_grid_add(
+            self.lane_left,
+            resources.checked_grid_add(lanes_width, gaps_width)?,
+        )?;
+        let top_left = self
+            .center
+            .checked_sub(self.top.width() / 2)
+            .ok_or_else(|| grid_overflow(resources))?;
+        let bottom_left = self
+            .center
+            .checked_sub(self.bottom.width() / 2)
+            .ok_or_else(|| grid_overflow(resources))?;
+        let top_width = resources.checked_grid_add(top_left, self.top.width())?;
+        let bottom_width = resources.checked_grid_add(bottom_left, self.bottom.width())?;
+        resources.grid_extent(relation_width.max(top_width).max(bottom_width), height)
     }
 }
 
@@ -729,6 +873,7 @@ pub(crate) fn render_stacked_boxes_with_options(
     render_lines_with_options(&lines, options, resources)
 }
 
+#[cfg(test)]
 pub(crate) fn render_stacked_boxes_with_section(
     boxes: &[RelationGraphBox],
     section_title: RelationGraphLine,
@@ -791,13 +936,57 @@ pub(crate) fn stacked_box_lines(
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
 ) -> Result<Vec<RelationGraphLine>> {
-    let height = stacked_boxes_height(boxes, resources)?;
-    let width = boxes.iter().map(RelationGraphBox::width).max().unwrap_or(0);
-    let extent = resources.grid_extent(width, height)?;
+    stacked_box_lines_ordered(boxes, width_profile, false, resources)
+}
+
+pub(crate) fn stacked_box_lines_ordered(
+    boxes: &[RelationGraphBox],
+    width_profile: TerminalWidthProfile,
+    reverse: bool,
+    resources: &mut ResourceContext,
+) -> Result<Vec<RelationGraphLine>> {
+    let extent = stacked_box_extent(boxes, resources)?;
     resources.charge_layout_work(extent.cells())?;
     let mut lines = Vec::new();
     lines
-        .try_reserve_exact(height)
+        .try_reserve_exact(extent.height())
+        .map_err(|_| layout_allocation_failed())?;
+    let ordered = (0..boxes.len()).map(|index| {
+        let ordered_index = if reverse {
+            boxes.len() - index - 1
+        } else {
+            index
+        };
+        &boxes[ordered_index]
+    });
+    for (index, relation_box) in ordered.enumerate() {
+        if index > 0 {
+            lines.push(RelationGraphLine::try_plain("", width_profile, resources)?);
+        }
+        lines.extend(relation_box.lines.iter().map(RelationGraphLine::shared));
+    }
+    Ok(lines)
+}
+
+pub(crate) fn stacked_box_extent(
+    boxes: &[RelationGraphBox],
+    resources: &ResourceContext,
+) -> Result<LogicalExtent> {
+    let height = stacked_boxes_height(boxes, resources)?;
+    let width = boxes.iter().map(RelationGraphBox::width).max().unwrap_or(0);
+    resources.grid_extent(width, height)
+}
+
+fn stacked_box_ref_lines(
+    boxes: &[&RelationGraphBox],
+    width_profile: TerminalWidthProfile,
+    resources: &mut ResourceContext,
+) -> Result<Vec<RelationGraphLine>> {
+    let extent = stacked_box_ref_extent(boxes, resources)?;
+    resources.charge_layout_work(extent.cells())?;
+    let mut lines = Vec::new();
+    lines
+        .try_reserve_exact(extent.height())
         .map_err(|_| layout_allocation_failed())?;
     for (index, relation_box) in boxes.iter().enumerate() {
         if index > 0 {
@@ -808,11 +997,10 @@ pub(crate) fn stacked_box_lines(
     Ok(lines)
 }
 
-fn stacked_box_ref_lines(
+fn stacked_box_ref_extent(
     boxes: &[&RelationGraphBox],
-    width_profile: TerminalWidthProfile,
-    resources: &mut ResourceContext,
-) -> Result<Vec<RelationGraphLine>> {
+    resources: &ResourceContext,
+) -> Result<LogicalExtent> {
     let height = boxes
         .iter()
         .try_fold(boxes.len().saturating_sub(1), |height, relation_box| {
@@ -823,19 +1011,7 @@ fn stacked_box_ref_lines(
         .map(|relation_box| relation_box.width())
         .max()
         .unwrap_or(0);
-    let extent = resources.grid_extent(width, height)?;
-    resources.charge_layout_work(extent.cells())?;
-    let mut lines = Vec::new();
-    lines
-        .try_reserve_exact(height)
-        .map_err(|_| layout_allocation_failed())?;
-    for (index, relation_box) in boxes.iter().enumerate() {
-        if index > 0 {
-            lines.push(RelationGraphLine::try_plain("", width_profile, resources)?);
-        }
-        lines.extend(relation_box.lines.iter().map(RelationGraphLine::shared));
-    }
-    Ok(lines)
+    resources.grid_extent(width, height)
 }
 
 fn join_component_line_groups(
@@ -1123,32 +1299,27 @@ where
             if split_summary_fallback_is_safe(components, edges) {
                 return Ok(None);
             }
-            let mut lines =
-                stacked_box_ref_lines(&relation_boxes, options.terminal_width_profile, resources)?;
-            let summary_lines = relation_summary_rows_lines(
-                relations,
-                options,
+            let mut rows = Vec::new();
+            rows.try_reserve_exact(relations.len())
+                .map_err(|_| layout_allocation_failed())?;
+            for relation in relations {
+                rows.push(adapter.build_summary_row(relation, reason)?);
+            }
+            let base_extent = stacked_box_ref_extent(&relation_boxes, resources)?;
+            render_relation_document_with_summary(
+                base_extent,
+                &rows,
                 Some(reason),
+                options,
                 resources,
-                |relation| adapter.build_summary_row(relation, reason),
-            )?;
-            if !summary_lines.is_empty() {
-                if !lines.is_empty() {
-                    lines.push(RelationGraphLine::try_plain(
-                        "",
+                |resources| {
+                    stacked_box_ref_lines(
+                        &relation_boxes,
                         options.terminal_width_profile,
                         resources,
-                    )?);
-                }
-                lines.push(RelationGraphLine::try_with_role(
-                    "relations:",
-                    AsciiColorRole::MutedText,
-                    options.terminal_width_profile,
-                    resources,
-                )?);
-                lines.extend(summary_lines);
-            }
-            lines
+                    )
+                },
+            )?
         }
     };
 
@@ -1320,33 +1491,44 @@ where
         adapter,
     )? {
         Ok(rendered) => Ok(rendered),
-        Err(reason) => {
-            let mut lines = stacked_box_lines(boxes, options.terminal_width_profile, resources)?;
-            let summary_lines = relation_summary_rows_lines(
-                relations,
-                options,
-                Some(reason),
-                resources,
-                |relation| adapter.build_summary_row(relation, reason),
-            )?;
-            if !summary_lines.is_empty() {
-                if !lines.is_empty() {
-                    lines.push(RelationGraphLine::try_plain(
-                        "",
-                        options.terminal_width_profile,
-                        resources,
-                    )?);
-                }
-                lines.push(RelationGraphLine::try_with_role(
-                    "relations:",
-                    AsciiColorRole::MutedText,
-                    options.terminal_width_profile,
-                    resources,
-                )?);
-                lines.extend(summary_lines);
-            }
-            Ok(lines)
-        }
+        Err(reason) => render_relation_summary_component_lines(
+            boxes,
+            relations,
+            options,
+            reason,
+            resources,
+            |relation| adapter.build_summary_row(relation, reason),
+        ),
+    }
+}
+
+/// Admit a base relation block and an optional lossless summary as one logical
+/// document before either block allocates its terminal rows.
+pub(crate) fn render_relation_document_with_summary(
+    base_extent: LogicalExtent,
+    rows: &[RelationGraphSummaryRow],
+    reason: Option<LayeredRelationSummaryReason>,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+    build_base: impl FnOnce(&mut ResourceContext) -> Result<Vec<RelationGraphLine>>,
+) -> Result<Vec<RelationGraphLine>> {
+    let summary_extent = if rows.is_empty() {
+        None
+    } else {
+        Some(relation_summary_extent(rows, reason, options, resources)?)
+    };
+    let plan = RelationDocumentPlan::new(
+        base_extent,
+        summary_extent,
+        display_width_with_profile("relations:", options.terminal_width_profile),
+        resources,
+    )?;
+    if rows.is_empty() {
+        plan.materialize(resources, build_base)
+    } else {
+        plan.materialize_with_section(options, resources, build_base, |resources| {
+            relation_summary_lines_for_rows(rows, reason, options, resources)
+        })
     }
 }
 
@@ -1361,28 +1543,46 @@ pub(crate) fn render_relation_summary_component_lines<R>(
     resources: &mut ResourceContext,
     mut build_row: impl FnMut(&R) -> Result<RelationGraphSummaryRow>,
 ) -> Result<Vec<RelationGraphLine>> {
-    let mut lines = stacked_box_lines(boxes, options.terminal_width_profile, resources)?;
-    let summary_lines =
-        relation_summary_rows_lines(relations, options, Some(reason), resources, |relation| {
-            build_row(relation)
-        })?;
-    if !summary_lines.is_empty() {
-        if !lines.is_empty() {
-            lines.push(RelationGraphLine::try_plain(
-                "",
-                options.terminal_width_profile,
-                resources,
-            )?);
-        }
-        lines.push(RelationGraphLine::try_with_role(
-            "relations:",
-            AsciiColorRole::MutedText,
-            options.terminal_width_profile,
-            resources,
-        )?);
-        lines.extend(summary_lines);
+    let mut rows = Vec::new();
+    rows.try_reserve_exact(relations.len())
+        .map_err(|_| layout_allocation_failed())?;
+    for relation in relations {
+        rows.push(build_row(relation)?);
     }
-    Ok(lines)
+    let base_extent = stacked_box_extent(boxes, resources)?;
+    render_relation_document_with_summary(
+        base_extent,
+        &rows,
+        Some(reason),
+        options,
+        resources,
+        |resources| stacked_box_lines(boxes, options.terminal_width_profile, resources),
+    )
+}
+
+fn render_relation_summary_component_ref_lines<R>(
+    boxes: &[&RelationGraphBox],
+    relations: &[R],
+    options: &AsciiRenderOptions,
+    reason: LayeredRelationSummaryReason,
+    resources: &mut ResourceContext,
+    mut build_row: impl FnMut(&R) -> Result<RelationGraphSummaryRow>,
+) -> Result<Vec<RelationGraphLine>> {
+    let mut rows = Vec::new();
+    rows.try_reserve_exact(relations.len())
+        .map_err(|_| layout_allocation_failed())?;
+    for relation in relations {
+        rows.push(build_row(relation)?);
+    }
+    let base_extent = stacked_box_ref_extent(boxes, resources)?;
+    render_relation_document_with_summary(
+        base_extent,
+        &rows,
+        Some(reason),
+        options,
+        resources,
+        |resources| stacked_box_ref_lines(boxes, options.terminal_width_profile, resources),
+    )
 }
 
 fn render_layered_relation_component_ref_lines<R, A>(
@@ -1405,34 +1605,14 @@ where
         adapter,
     )? {
         Ok(rendered) => Ok(rendered),
-        Err(reason) => {
-            let mut lines =
-                stacked_box_ref_lines(boxes, options.terminal_width_profile, resources)?;
-            let summary_lines = relation_summary_rows_lines(
-                relations,
-                options,
-                Some(reason),
-                resources,
-                |relation| adapter.build_summary_row(relation, reason),
-            )?;
-            if !summary_lines.is_empty() {
-                if !lines.is_empty() {
-                    lines.push(RelationGraphLine::try_plain(
-                        "",
-                        options.terminal_width_profile,
-                        resources,
-                    )?);
-                }
-                lines.push(RelationGraphLine::try_with_role(
-                    "relations:",
-                    AsciiColorRole::MutedText,
-                    options.terminal_width_profile,
-                    resources,
-                )?);
-                lines.extend(summary_lines);
-            }
-            Ok(lines)
-        }
+        Err(reason) => render_relation_summary_component_ref_lines(
+            boxes,
+            relations,
+            options,
+            reason,
+            resources,
+            |relation| adapter.build_summary_row(relation, reason),
+        ),
     }
 }
 
@@ -2382,6 +2562,278 @@ mod tests {
 
     fn test_resources(options: &AsciiRenderOptions) -> ResourceContext {
         ResourceContext::new(options.resources)
+    }
+
+    fn options_with_grid_limit(max: usize) -> AsciiRenderOptions {
+        AsciiRenderOptions::ascii()
+            .with_resource_limit(AsciiResourceLimitId::MaxGridCells, max)
+            .expect("test grid limit should be valid")
+    }
+
+    fn assert_grid_limit(error: AsciiError, actual: usize, max: usize) {
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxGridCells
+                    && details.actual == actual
+                    && details.max == max
+        ));
+    }
+
+    fn admission_test_boxes() -> Vec<RelationGraphBox> {
+        vec![
+            RelationGraphBox::new(
+                "a".to_string(),
+                vec!["aaa".to_string(), "aaa".to_string()],
+                3,
+            ),
+            RelationGraphBox::new(
+                "b".to_string(),
+                vec!["bbbb".to_string(), "bbbb".to_string(), "bbbb".to_string()],
+                4,
+            ),
+        ]
+    }
+
+    fn parallel_test_lane_extents(resources: &ResourceContext) -> Vec<LogicalExtent> {
+        vec![
+            resources
+                .grid_extent(1, 2)
+                .expect("first lane extent should fit"),
+            resources
+                .grid_extent(1, 2)
+                .expect("second lane extent should fit"),
+        ]
+    }
+
+    fn materialize_parallel_test_lanes(
+        resources: &ResourceContext,
+    ) -> Result<Vec<Vec<RelationGraphLine>>> {
+        let width_profile = TerminalWidthProfile::Unicode;
+        Ok(vec![
+            vec![
+                RelationGraphLine::try_plain("^", width_profile, resources)?,
+                RelationGraphLine::try_plain("|", width_profile, resources)?,
+            ],
+            vec![
+                RelationGraphLine::try_plain("^", width_profile, resources)?,
+                RelationGraphLine::try_plain("|", width_profile, resources)?,
+            ],
+        ])
+    }
+
+    #[test]
+    fn parallel_plan_admits_odd_endpoint_extent_at_exact_limit_before_materializing() {
+        let top = RelationGraphBox::new("top".to_string(), vec!["abcde".to_string()], 5);
+        let bottom = RelationGraphBox::new("bottom".to_string(), vec!["vwxyz".to_string()], 5);
+        let default_options = AsciiRenderOptions::ascii();
+        let mut default_resources = test_resources(&default_options);
+        let plan = RelationParallelPlan::new(
+            &top,
+            &bottom,
+            parallel_test_lane_extents(&default_resources),
+            2,
+            &mut default_resources,
+        )
+        .expect("parallel geometry should plan from lane extents");
+        assert!(
+            plan.ports_fit(&default_resources)
+                .expect("wide endpoints should accept both ports")
+        );
+        let planned = plan
+            .aggregate_extent(&default_resources)
+            .expect("parallel aggregate should have a checked extent");
+        assert_eq!(
+            (planned.width(), planned.height(), planned.cells()),
+            (5, 4, 20)
+        );
+
+        let options = options_with_grid_limit(planned.cells());
+        let mut resources = test_resources(&options);
+        let plan = RelationParallelPlan::new(
+            &top,
+            &bottom,
+            parallel_test_lane_extents(&resources),
+            2,
+            &mut resources,
+        )
+        .expect("exact-limit parallel geometry should plan");
+        assert!(
+            plan.ports_fit(&resources)
+                .expect("wide endpoints should accept both ports")
+        );
+        let materialized = Cell::new(false);
+        let lines = plan
+            .render_lines(&mut resources, |resources| {
+                materialized.set(true);
+                materialize_parallel_test_lanes(resources)
+            })
+            .expect("5 by 4 parallel document should fit 20 cells");
+
+        assert!(materialized.get());
+        assert_eq!(lines.len(), 4);
+        assert_eq!(lines.iter().map(RelationGraphLine::width).max(), Some(5));
+    }
+
+    #[test]
+    fn parallel_plan_rejects_odd_endpoint_extent_at_n_minus_one_before_materializing() {
+        let top = RelationGraphBox::new("top".to_string(), vec!["abcde".to_string()], 5);
+        let bottom = RelationGraphBox::new("bottom".to_string(), vec!["vwxyz".to_string()], 5);
+        let options = options_with_grid_limit(19);
+        let mut resources = test_resources(&options);
+        let plan = RelationParallelPlan::new(
+            &top,
+            &bottom,
+            parallel_test_lane_extents(&resources),
+            2,
+            &mut resources,
+        )
+        .expect("individual lane extents should fit the N-1 aggregate limit");
+        assert!(
+            plan.ports_fit(&resources)
+                .expect("wide endpoints should accept both ports")
+        );
+        let materialized = Cell::new(false);
+        let error = plan
+            .render_lines(&mut resources, |resources| {
+                materialized.set(true);
+                materialize_parallel_test_lanes(resources)
+            })
+            .expect_err("5 by 4 parallel document must not fit 19 cells");
+
+        assert_grid_limit(error, 20, 19);
+        assert!(!materialized.get());
+    }
+
+    #[test]
+    fn stack_and_horizontal_strip_admit_exact_grid_extent() {
+        let boxes = admission_test_boxes();
+
+        let stack_options = options_with_grid_limit(24);
+        let mut stack_resources = test_resources(&stack_options);
+        let stack = stacked_box_lines_ordered(
+            &boxes,
+            stack_options.terminal_width_profile,
+            true,
+            &mut stack_resources,
+        )
+        .expect("4 by 6 reversed stack should fit 24 cells");
+        assert_eq!(stack.len(), 6);
+        assert_eq!(stack[0].width(), 4);
+        assert_eq!(stack[4].width(), 3);
+
+        let horizontal_options = options_with_grid_limit(27);
+        let horizontal_resources = test_resources(&horizontal_options);
+        let strip = render_horizontal_box_strip_lines(
+            &boxes,
+            RelationGraphHorizontalDirection::LeftRight,
+            2,
+            horizontal_options.terminal_width_profile,
+            &horizontal_resources,
+        )
+        .expect("9 by 3 horizontal strip should fit 27 cells");
+        assert_eq!(strip.len(), 3);
+        assert!(strip.iter().all(|line| line.width() == 9));
+    }
+
+    #[test]
+    fn stack_and_horizontal_strip_reject_grid_extent_at_n_minus_one() {
+        let boxes = admission_test_boxes();
+
+        let stack_options = options_with_grid_limit(23);
+        let mut stack_resources = test_resources(&stack_options);
+        let error = stacked_box_lines_ordered(
+            &boxes,
+            stack_options.terminal_width_profile,
+            true,
+            &mut stack_resources,
+        )
+        .expect_err("4 by 6 reversed stack must not fit 23 cells");
+        assert_grid_limit(error, 24, 23);
+
+        let horizontal_options = options_with_grid_limit(26);
+        let horizontal_resources = test_resources(&horizontal_options);
+        let error = render_horizontal_box_strip_lines(
+            &boxes,
+            RelationGraphHorizontalDirection::LeftRight,
+            2,
+            horizontal_options.terminal_width_profile,
+            &horizontal_resources,
+        )
+        .expect_err("9 by 3 horizontal strip must not fit 26 cells");
+        assert_grid_limit(error, 27, 26);
+    }
+
+    #[test]
+    fn relation_document_admits_exact_extent_before_materializing() {
+        let boxes = admission_test_boxes();
+        let rows = vec![RelationGraphSummaryRow::new("A", "-->", "B")];
+        let default_options = AsciiRenderOptions::ascii();
+        let default_resources = test_resources(&default_options);
+        let base_extent = stacked_box_extent(&boxes, &default_resources)
+            .expect("base stack should have a checked extent");
+        let summary_extent =
+            relation_summary_extent(&rows, None, &default_options, &default_resources)
+                .expect("summary should have a checked extent");
+        let planned =
+            RelationDocumentPlan::new(base_extent, Some(summary_extent), 10, &default_resources)
+                .expect("aggregate document should have a checked extent")
+                .extent();
+        assert_eq!(
+            (planned.width(), planned.height(), planned.cells()),
+            (10, 9, 90)
+        );
+
+        let exact = planned.cells();
+        let options = options_with_grid_limit(exact);
+        let mut resources = test_resources(&options);
+        let base_extent = stacked_box_extent(&boxes, &resources)
+            .expect("base stack should fit the aggregate limit");
+        let materialized = Cell::new(false);
+
+        let lines = render_relation_document_with_summary(
+            base_extent,
+            &rows,
+            None,
+            &options,
+            &mut resources,
+            |resources| {
+                materialized.set(true);
+                stacked_box_lines_ordered(&boxes, options.terminal_width_profile, true, resources)
+            },
+        )
+        .expect("10 by 9 aggregate document should fit 90 cells");
+
+        assert!(materialized.get());
+        assert_eq!(lines.len(), 9);
+        assert_eq!(lines.iter().map(RelationGraphLine::width).max(), Some(10));
+    }
+
+    #[test]
+    fn relation_document_rejects_n_minus_one_before_materializing() {
+        let boxes = admission_test_boxes();
+        let rows = vec![RelationGraphSummaryRow::new("A", "-->", "B")];
+        let options = options_with_grid_limit(89);
+        let mut resources = test_resources(&options);
+        let base_extent = stacked_box_extent(&boxes, &resources)
+            .expect("base stack should fit before aggregate admission");
+        let materialized = Cell::new(false);
+
+        let error = render_relation_document_with_summary(
+            base_extent,
+            &rows,
+            None,
+            &options,
+            &mut resources,
+            |resources| {
+                materialized.set(true);
+                stacked_box_lines_ordered(&boxes, options.terminal_width_profile, true, resources)
+            },
+        )
+        .expect_err("10 by 9 aggregate document must not fit 89 cells");
+
+        assert_grid_limit(error, 90, 89);
+        assert!(!materialized.get());
     }
 
     #[test]
