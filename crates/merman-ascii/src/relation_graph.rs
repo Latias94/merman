@@ -2295,7 +2295,7 @@ fn render_box(relation_box: &RelationGraphBox) -> String {
     rendered
 }
 
-fn render_lines_with_options(
+pub(crate) fn render_lines_with_options(
     lines: &[RelationGraphLine],
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,

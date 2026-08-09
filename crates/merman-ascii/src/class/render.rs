@@ -1106,13 +1106,7 @@ fn render_class_document_lines(
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
 ) -> Result<String> {
-    let document = RelationGraphBox::from_rendered_lines(
-        "class::directional-document".to_string(),
-        lines,
-        options.terminal_width_profile,
-        resources,
-    )?;
-    relation_graph::render_stacked_boxes_with_options(&[document], options, resources)
+    relation_graph::render_lines_with_options(&lines, options, resources)
 }
 
 fn render_horizontal_class_component_lines(

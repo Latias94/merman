@@ -368,13 +368,7 @@ fn render_er_document_lines(
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
 ) -> Result<String> {
-    let document = RelationGraphBox::from_rendered_lines(
-        "er::directional-document".to_string(),
-        lines,
-        options.terminal_width_profile,
-        resources,
-    )?;
-    relation_graph::render_stacked_boxes_with_options(&[document], options, resources)
+    relation_graph::render_lines_with_options(&lines, options, resources)
 }
 
 fn render_horizontal_er_component_lines(
