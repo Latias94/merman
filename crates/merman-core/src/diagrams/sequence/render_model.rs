@@ -258,7 +258,6 @@ pub enum SequenceMessageStroke {
 pub enum SequenceMessageMarker {
     #[default]
     None,
-    Open,
     Filled,
     Cross,
     Point,
@@ -351,8 +350,10 @@ impl SequenceSignalSemantics {
             LINETYPE_DOTTED => Some(Self::forward(Stroke::Dotted, Marker::Filled)),
             LINETYPE_SOLID_CROSS => Some(Self::forward(Stroke::Solid, Marker::Cross)),
             LINETYPE_DOTTED_CROSS => Some(Self::forward(Stroke::Dotted, Marker::Cross)),
-            LINETYPE_SOLID_OPEN => Some(Self::forward(Stroke::Solid, Marker::Open)),
-            LINETYPE_DOTTED_OPEN => Some(Self::forward(Stroke::Dotted, Marker::Open)),
+            // Mermaid calls these numeric line types "open", but 11.16.1 renders them as
+            // headless signals: the name distinguishes the grammar form, not an endpoint marker.
+            LINETYPE_SOLID_OPEN => Some(Self::forward(Stroke::Solid, Marker::None)),
+            LINETYPE_DOTTED_OPEN => Some(Self::forward(Stroke::Dotted, Marker::None)),
             LINETYPE_SOLID_POINT => Some(Self::forward(Stroke::Solid, Marker::Point)),
             LINETYPE_DOTTED_POINT => Some(Self::forward(Stroke::Dotted, Marker::Point)),
             LINETYPE_BIDIRECTIONAL_SOLID => Some(Self::bidirectional(Stroke::Solid)),

@@ -541,6 +541,41 @@ fn sequence_autonumber_accepts_decimal_start_and_step() {
 }
 
 #[test]
+fn sequence_autonumber_off_preserves_and_advances_hidden_state() {
+    let rendered = render_sequence(
+        r#"sequenceDiagram
+participant A
+participant B
+autonumber 10 5
+A->>B: Visible first
+autonumber off
+A->>B: Hidden first
+B-->>A: Hidden second
+autonumber
+A->>B: Visible resumed"#,
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("sequence autonumber visibility changes should render");
+    let normalized = normalize_sequence_output(&rendered);
+
+    assert!(
+        normalized.contains("10. Visible first"),
+        "expected configured autonumber start before disabling it:\n{normalized}"
+    );
+    assert!(
+        normalized.contains("Hidden first")
+            && !normalized.contains("15. Hidden first")
+            && normalized.contains("Hidden second")
+            && !normalized.contains("20. Hidden second"),
+        "hidden signals should advance the counter without displaying it:\n{normalized}"
+    );
+    assert!(
+        normalized.contains("25. Visible resumed"),
+        "reenabling autonumber should retain the counter and step across hidden signals:\n{normalized}"
+    );
+}
+
+#[test]
 fn sequence_notes_render_from_typed_model() {
     let rendered = render_sequence(
         "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: Start\nNote right of A: right\nNote left of B: left\nNote over A,B: over both\nB-->>A: Done",
@@ -1975,28 +2010,40 @@ fn sequence_local_semantic_fixture_covers_multiple_reference_messages() {
 }
 
 #[test]
-fn sequence_open_arrows_render_from_typed_model() {
+fn sequence_open_line_types_render_as_headless_signals() {
     let rendered = render_sequence(
-        "sequenceDiagram\nparticipant A\nparticipant B\nA->B: Open\nA-->B: Dotted\nB->A: Back",
+        "sequenceDiagram\nparticipant A\nparticipant B\nA->B: Headless\nA-->B: Dotted\nB->A: Back",
         &AsciiRenderOptions::unicode(),
     )
-    .expect("open arrow sequence messages should render");
+    .expect("headless sequence messages should render");
+    let lines = rendered.lines().collect::<Vec<_>>();
+    let signal_row_after = |label| {
+        lines
+            .get(first_line_index_containing(&rendered, label) + 1)
+            .copied()
+            .unwrap_or_else(|| panic!("missing signal row after {label:?}:\n{rendered}"))
+    };
+    let solid = signal_row_after("Headless");
+    let dotted = signal_row_after("Dotted");
+    let right_to_left = signal_row_after("Back");
 
     assert!(
-        rendered.contains("├────────>│"),
-        "solid open arrow should use an open Unicode arrow head:\n{rendered}"
+        solid.contains('├') && solid.contains('─') && solid.contains('│'),
+        "solid open line type should retain its stroke without an endpoint marker:\n{rendered}"
     );
     assert!(
-        rendered.contains("├┈┈┈┈┈┈┈┈>│"),
-        "dotted open arrow should use dotted line with an open Unicode arrow head:\n{rendered}"
+        dotted.contains('├') && dotted.contains('┈') && dotted.contains('│'),
+        "dotted open line type should retain its dotted stroke without a marker:\n{rendered}"
     );
     assert!(
-        rendered.contains("│<────────┤"),
-        "reverse open arrow should use an open Unicode arrow head:\n{rendered}"
+        right_to_left.contains('│') && right_to_left.contains('─') && right_to_left.contains('┤'),
+        "right-to-left open line type should remain headless:\n{rendered}"
     );
     assert!(
-        !rendered.contains("Open   │\n  ├────────►│"),
-        "open arrows must stay visually distinct from filled arrows:\n{rendered}"
+        !rendered
+            .chars()
+            .any(|ch| matches!(ch, '<' | '>' | '►' | '◄')),
+        "headless signals must not synthesize ASCII or Unicode arrowheads:\n{rendered}"
     );
 }
 

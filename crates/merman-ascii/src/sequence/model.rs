@@ -785,15 +785,29 @@ fn projection_allocation_failed() -> AsciiError {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct AutonumberState {
-    next: Option<f64>,
+    visible: bool,
+    next: f64,
     step: f64,
+}
+
+impl Default for AutonumberState {
+    fn default() -> Self {
+        Self {
+            visible: false,
+            next: 1.0,
+            step: 1.0,
+        }
+    }
 }
 
 impl AutonumberState {
     fn label(&mut self, text: &str) -> Result<String> {
-        if let Some(next) = self.next {
+        let next = self.next;
+        self.next = round_sequence_number(next + self.step);
+
+        if self.visible {
             let number = format_sequence_number(next);
             let label = if text.is_empty() {
                 number
@@ -812,7 +826,6 @@ impl AutonumberState {
                 label.push_str(text);
                 label
             };
-            self.next = Some(round_sequence_number(next + self.step));
             return Ok(label);
         }
         try_clone_projection_string(text)
@@ -840,12 +853,12 @@ fn consume_autonumber(message: &CoreSequenceMessage, state: &mut AutonumberState
         return false;
     }
 
-    if autonumber.visible {
-        state.next = Some(autonumber.start.unwrap_or(1.0));
-        state.step = autonumber.step.unwrap_or(1.0);
-    } else {
-        state.next = None;
-        state.step = 1.0;
+    if let Some(start) = autonumber.start {
+        state.next = start;
     }
+    if let Some(step) = autonumber.step {
+        state.step = step;
+    }
+    state.visible = autonumber.visible;
     true
 }

@@ -23,8 +23,6 @@ pub(super) struct SequenceChars {
     pub(super) tee_left: char,
     pub(super) filled_arrow_right: char,
     pub(super) filled_arrow_left: char,
-    pub(super) open_arrow_right: char,
-    pub(super) open_arrow_left: char,
     pub(super) solid_line: char,
     pub(super) dotted_line: char,
     pub(super) self_top_right: char,
@@ -50,8 +48,6 @@ impl SequenceChars {
                 tee_left: '+',
                 filled_arrow_right: '>',
                 filled_arrow_left: '<',
-                open_arrow_right: '>',
-                open_arrow_left: '<',
                 solid_line: '-',
                 dotted_line: '.',
                 self_top_right: '+',
@@ -73,8 +69,6 @@ impl SequenceChars {
                 tee_left: '┤',
                 filled_arrow_right: '►',
                 filled_arrow_left: '◄',
-                open_arrow_right: '>',
-                open_arrow_left: '<',
                 solid_line: '─',
                 dotted_line: '┈',
                 self_top_right: '┐',
@@ -88,7 +82,6 @@ impl SequenceChars {
         Some(match marker {
             SequenceArrowHead::None => return None,
             SequenceArrowHead::Filled => self.filled_arrow_right,
-            SequenceArrowHead::Open => self.open_arrow_right,
             SequenceArrowHead::Cross => self.destroyed_mark,
             SequenceArrowHead::Point => ')',
             SequenceArrowHead::FilledHalfTop => {
@@ -126,7 +119,6 @@ impl SequenceChars {
         Some(match marker {
             SequenceArrowHead::None => return None,
             SequenceArrowHead::Filled => self.filled_arrow_left,
-            SequenceArrowHead::Open => self.open_arrow_left,
             SequenceArrowHead::Cross => self.destroyed_mark,
             SequenceArrowHead::Point => '(',
             SequenceArrowHead::FilledHalfTop => {

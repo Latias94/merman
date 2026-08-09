@@ -163,7 +163,8 @@ Worker-->>Bob: Done"#;
 participant A
 participant B
 A->>B: filled
-A-->B: open dotted
+A->B: headless solid
+A-->B: headless dotted
 A-xB: cross
 A-)B: point
 A<<->>B: both
@@ -186,9 +187,15 @@ A--//B: dotted open half bottom"#,
                 SequenceMessageDirection::Forward,
             ),
             (
+                SequenceMessageStroke::Solid,
+                SequenceMessageMarker::None,
+                SequenceMessageMarker::None,
+                SequenceMessageDirection::Forward,
+            ),
+            (
                 SequenceMessageStroke::Dotted,
                 SequenceMessageMarker::None,
-                SequenceMessageMarker::Open,
+                SequenceMessageMarker::None,
                 SequenceMessageDirection::Forward,
             ),
             (

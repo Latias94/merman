@@ -5,6 +5,9 @@ use crate::sequence::{
     SEQUENCE_MESSAGE_WRAP_PADDING_SIDES, SequenceMathHeightMode, sequence_activation_stack_bounds,
     sequence_text_line_step_px,
 };
+use merman_core::diagrams::sequence::{
+    SequenceMessageDirection, SequenceMessageMarker, SequenceMessageStroke,
+};
 use rustc_hash::FxHashMap;
 use std::collections::BTreeMap;
 
@@ -42,6 +45,30 @@ fn marker_attr(attr_name: &str, diagram_id: &str, local_id: &str) -> String {
     )
 }
 
+fn endpoint_marker_local_id(
+    marker: SequenceMessageMarker,
+    source_endpoint: bool,
+) -> Option<&'static str> {
+    use SequenceMessageMarker as Marker;
+
+    match (marker, source_endpoint) {
+        (Marker::None, _) => None,
+        (Marker::Filled, _) => Some("arrowhead"),
+        (Marker::Cross, _) => Some("crosshead"),
+        (Marker::Point, _) => Some("filled-head"),
+        (Marker::FilledHalfTop, false) | (Marker::FilledHalfBottom, true) => {
+            Some("solidTopArrowHead")
+        }
+        (Marker::FilledHalfBottom, false) | (Marker::FilledHalfTop, true) => {
+            Some("solidBottomArrowHead")
+        }
+        (Marker::OpenHalfTop, false) | (Marker::OpenHalfBottom, true) => Some("stickTopArrowHead"),
+        (Marker::OpenHalfBottom, false) | (Marker::OpenHalfTop, true) => {
+            Some("stickBottomArrowHead")
+        }
+    }
+}
+
 fn message_data_attrs(msg_id: &str, from: &str, to: &str) -> String {
     format!(
         r#" data-et="message" data-id="i{msg_id}" data-from="{}" data-to="{}""#,
@@ -59,8 +86,9 @@ fn has_central_connection(msg: &merman_core::diagrams::sequence::SequenceMessage
     )
 }
 
-fn is_reverse_arrow_type(msg_type: i32) -> bool {
-    matches!(msg_type, 45 | 46 | 47 | 48 | 55 | 56 | 57 | 58)
+fn is_reverse_arrow_type(msg: &merman_core::diagrams::sequence::SequenceMessage) -> bool {
+    msg.signal_semantics()
+        .is_some_and(|semantics| semantics.direction == SequenceMessageDirection::Reverse)
 }
 
 fn actor_center_x(ctx: &SequenceMessageRenderContext<'_>, actor_id: &str) -> Option<f64> {
@@ -141,7 +169,7 @@ fn sequence_number_marker_x(
 
     Some(if is_self_message {
         from_bounds + 1.0
-    } else if is_reverse_arrow_type(msg.message_type) {
+    } else if is_reverse_arrow_type(msg) {
         if is_left_to_right {
             to_bounds - 1.0
         } else {
@@ -173,7 +201,7 @@ fn write_central_connection_circles(
         return;
     };
     let is_left_to_right = from_center <= to_center;
-    let is_reverse = is_reverse_arrow_type(msg.message_type);
+    let is_reverse = is_reverse_arrow_type(msg);
     let circle_offset = |is_left_to_right: bool, is_reverse: bool| {
         let base_offset = if is_left_to_right {
             CENTRAL_CONNECTION_CIRCLE_OFFSET
@@ -273,6 +301,13 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
             _ => {}
         }
 
+        let Some(signal_semantics) = msg.signal_semantics() else {
+            continue;
+        };
+        let current_sequence_number = sequence_number;
+        // Mermaid advances the sequence index for every signal, even while autonumber is hidden.
+        sequence_number = round_sequence_number(sequence_number + sequence_number_step);
+
         let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
             continue;
         };
@@ -354,29 +389,19 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
             }
         }
 
-        let class = match msg.message_type {
-            1 | 4 | 6 | 25 | 34 => "messageLine1",
-            _ => "messageLine0",
-        };
-        let style = match msg.message_type {
-            1 | 4 | 6 | 25 | 34 => r#" style="stroke-dasharray: 3, 3; fill: none;""#,
-            _ => r#" style="fill: none;""#,
+        let (class, style) = if signal_semantics.stroke == SequenceMessageStroke::Dotted {
+            (
+                "messageLine1",
+                r#" style="stroke-dasharray: 3, 3; fill: none;""#,
+            )
+        } else {
+            ("messageLine0", r#" style="fill: none;""#)
         };
 
-        let marker_start = match msg.message_type {
-            33 | 34 => Some(marker_attr("marker-start", ctx.diagram_id, "arrowhead")),
-            _ => None,
-        };
-        let marker_end = match msg.message_type {
-            // open arrow variants: no marker.
-            5 | 6 => None,
-            // cross arrow variants
-            3 | 4 => Some(marker_attr("marker-end", ctx.diagram_id, "crosshead")),
-            // filled-head variants
-            24 | 25 => Some(marker_attr("marker-end", ctx.diagram_id, "filled-head")),
-            // default arrowhead variants
-            _ => Some(marker_attr("marker-end", ctx.diagram_id, "arrowhead")),
-        };
+        let marker_start = endpoint_marker_local_id(signal_semantics.source_marker, true)
+            .map(|local_id| marker_attr("marker-start", ctx.diagram_id, local_id));
+        let marker_end = endpoint_marker_local_id(signal_semantics.target_marker, false)
+            .map(|local_id| marker_attr("marker-end", ctx.diagram_id, local_id));
         let data_attrs = message_data_attrs(&msg.id, from, to);
 
         // Mermaid uses `stroke="none"` and assigns actual stroke via CSS.
@@ -460,7 +485,7 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
         }
 
         if sequence_number_visible {
-            let sequence_number_text = format_sequence_number(sequence_number);
+            let sequence_number_text = format_sequence_number(current_sequence_number);
             let font_size = if sequence_number_text.len() > 5 {
                 "7px"
             } else if sequence_number_text.len() > 3 {
@@ -484,7 +509,6 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
                 y = fmt(y + 4.0),
                 n = sequence_number_text,
             );
-            sequence_number = round_sequence_number(sequence_number + sequence_number_step);
         }
 
         let _ = (from, to);

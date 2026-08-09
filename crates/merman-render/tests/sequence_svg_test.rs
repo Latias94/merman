@@ -1715,6 +1715,72 @@ Bob->>Alice:Again"#,
 }
 
 #[test]
+fn sequence_autonumber_off_preserves_and_advances_hidden_state() {
+    let svg = render_sequence_svg_from_text(
+        r#"sequenceDiagram
+participant A
+participant B
+autonumber 10 5
+A->>B: Visible first
+autonumber off
+A->>B: Hidden first
+B-->>A: Hidden second
+autonumber
+A->>B: Visible resumed"#,
+    );
+
+    assert_eq!(
+        text_rows_by_class(&svg, "sequenceNumber"),
+        vec!["10".to_string(), "25".to_string()],
+        "reenabling autonumber should preserve its step and include hidden signals in the counter"
+    );
+}
+
+#[test]
+fn sequence_open_line_types_render_without_svg_endpoint_markers() {
+    let svg = render_sequence_svg_from_text(
+        r#"sequenceDiagram
+participant A
+participant B
+A->B: Headless solid
+A-->B: Headless dotted
+A->>B: Filled"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+    let message = |id: &str| {
+        document
+            .descendants()
+            .find(|node| node.is_element() && node.attribute("data-id") == Some(id))
+            .unwrap_or_else(|| panic!("missing Sequence message {id}: {svg}"))
+    };
+
+    let solid_headless = message("i0");
+    assert_eq!(solid_headless.attribute("class"), Some("messageLine0"));
+    assert_eq!(solid_headless.attribute("marker-start"), None);
+    assert_eq!(solid_headless.attribute("marker-end"), None);
+
+    let dotted_headless = message("i1");
+    assert_eq!(dotted_headless.attribute("class"), Some("messageLine1"));
+    assert_eq!(dotted_headless.attribute("marker-start"), None);
+    assert_eq!(dotted_headless.attribute("marker-end"), None);
+    assert!(
+        dotted_headless
+            .attribute("style")
+            .is_some_and(|style| style.contains("stroke-dasharray: 3, 3")),
+        "dotted headless signal should preserve its stroke style: {svg}"
+    );
+
+    let filled = message("i2");
+    assert_eq!(filled.attribute("marker-start"), None);
+    assert!(
+        filled
+            .attribute("marker-end")
+            .is_some_and(|marker| marker.contains("-arrowhead)")),
+        "filled signal should retain its target marker: {svg}"
+    );
+}
+
+#[test]
 fn sequence_svg_honors_mermaid_11_15_theme_css_options() {
     let svg = render_sequence_svg_from_text_with_engine(
         legacy_init_theme_compat_engine(),

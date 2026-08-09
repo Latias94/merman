@@ -467,10 +467,9 @@ pub(super) fn render_self_message(
 
 fn validate_message_direction(message: &SequenceMessage) -> Result<()> {
     let valid = match message.direction {
-        SequenceMessageDirection::Forward => {
-            message.source_marker == SequenceArrowHead::None
-                && message.target_marker != SequenceArrowHead::None
-        }
+        // Mermaid's SOLID_OPEN/DOTTED_OPEN line types are authored forward signals with no
+        // endpoint marker, so forward direction cannot require a target marker.
+        SequenceMessageDirection::Forward => message.source_marker == SequenceArrowHead::None,
         SequenceMessageDirection::Reverse => {
             message.source_marker != SequenceArrowHead::None
                 && message.target_marker == SequenceArrowHead::None

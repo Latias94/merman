@@ -1373,8 +1373,6 @@ mod tests {
             tee_left: '+',
             filled_arrow_right: '>',
             filled_arrow_left: '<',
-            open_arrow_right: '>',
-            open_arrow_left: '<',
             solid_line: '-',
             dotted_line: '.',
             self_top_right: '+',
