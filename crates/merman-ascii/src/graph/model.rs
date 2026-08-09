@@ -42,6 +42,66 @@ pub(super) struct AsciiGraphNode {
     pub(super) label: String,
     pub(super) shape: GraphNodeShape,
     pub(super) style: GraphNodeStyle,
+    pub(super) semantics: GraphNodeSemantics,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct GraphNodeSemantics {
+    pub(crate) compartments: Option<GraphNodeCompartments>,
+    pub(crate) side_constraint: Option<GraphNodeSideConstraint>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GraphNodeCompartments {
+    pub(super) title: String,
+    pub(super) body: String,
+}
+
+impl GraphNodeCompartments {
+    pub(crate) fn new(title: impl Into<String>, body: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            body: body.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GraphNodeSideConstraint {
+    pub(super) anchor_id: String,
+    pub(super) side: GraphNodeSide,
+}
+
+impl GraphNodeSideConstraint {
+    pub(crate) fn new(anchor_id: impl Into<String>, side: GraphNodeSide) -> Self {
+        Self {
+            anchor_id: anchor_id.into(),
+            side,
+        }
+    }
+
+    pub(crate) fn anchor_id(&self) -> &str {
+        &self.anchor_id
+    }
+
+    pub(crate) const fn side(&self) -> GraphNodeSide {
+        self.side
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GraphNodeSide {
+    Left,
+    Right,
+}
+
+impl GraphNodeSide {
+    pub(crate) const fn reversed(self) -> Self {
+        match self {
+            Self::Left => Self::Right,
+            Self::Right => Self::Left,
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -54,6 +114,7 @@ pub(crate) struct GraphNodeStyle {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GraphNodeShape {
     Rect,
+    StateWithTitle,
     Rounded,
     Circle,
     Stadium,
@@ -247,11 +308,23 @@ impl AsciiGraph {
         shape: GraphNodeShape,
         style: GraphNodeStyle,
     ) {
+        self.add_node_with_semantics(id, label, shape, style, GraphNodeSemantics::default());
+    }
+
+    pub(crate) fn add_node_with_semantics(
+        &mut self,
+        id: impl Into<String>,
+        label: impl Into<String>,
+        shape: GraphNodeShape,
+        style: GraphNodeStyle,
+        semantics: GraphNodeSemantics,
+    ) {
         self.nodes.push(AsciiGraphNode {
             id: id.into(),
             label: label.into(),
             shape,
             style,
+            semantics,
         });
     }
 

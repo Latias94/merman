@@ -439,6 +439,7 @@ impl GraphNodeShapeSemantics {
                 height: framed_height,
             },
             GraphNodeShape::Rect
+            | GraphNodeShape::StateWithTitle
             | GraphNodeShape::Rounded
             | GraphNodeShape::Circle
             | GraphNodeShape::DoubleCircle

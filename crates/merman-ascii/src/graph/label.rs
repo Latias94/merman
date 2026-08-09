@@ -8,6 +8,7 @@ pub(super) struct GraphLabel {
     lines: Vec<String>,
     width: usize,
     width_profile: TerminalWidthProfile,
+    compartment_break_after: Option<usize>,
 }
 
 impl GraphLabel {
@@ -17,7 +18,19 @@ impl GraphLabel {
     }
 
     pub(super) fn new_with_profile(raw: &str, width_profile: TerminalWidthProfile) -> Self {
-        Self::from_lines(split_label_lines(raw), width_profile)
+        Self::from_lines(split_label_lines(raw), width_profile, None)
+    }
+
+    pub(super) fn compartmented_with_profile(
+        title: &str,
+        body: &str,
+        width_profile: TerminalWidthProfile,
+    ) -> Self {
+        let mut title_lines = split_label_lines(title);
+        let title_line_count = title_lines.len().max(1);
+        let body_lines = split_label_lines(body);
+        title_lines.extend(body_lines);
+        Self::from_lines(title_lines, width_profile, Some(title_line_count))
     }
 
     pub(super) fn wrapped_with_profile(
@@ -28,6 +41,7 @@ impl GraphLabel {
         Self::from_lines(
             wrap_label_lines_with_profile(raw, max_width, width_profile),
             width_profile,
+            None,
         )
     }
 
@@ -50,7 +64,15 @@ impl GraphLabel {
         self.lines.len() + (self.lines.len() - 1) * GRAPH_LABEL_LINE_GAP
     }
 
-    fn from_lines(mut lines: Vec<String>, width_profile: TerminalWidthProfile) -> Self {
+    pub(super) fn compartment_break_after(&self) -> Option<usize> {
+        self.compartment_break_after
+    }
+
+    fn from_lines(
+        mut lines: Vec<String>,
+        width_profile: TerminalWidthProfile,
+        compartment_break_after: Option<usize>,
+    ) -> Self {
         if lines.is_empty() {
             lines.push(String::new());
         }
@@ -63,6 +85,7 @@ impl GraphLabel {
             lines,
             width,
             width_profile,
+            compartment_break_after,
         }
     }
 }
@@ -119,5 +142,17 @@ mod tests {
 
         assert_eq!(unicode.width(), 3);
         assert_eq!(cjk.width(), 4);
+    }
+
+    #[test]
+    fn compartmented_label_keeps_multiline_title_boundary() {
+        let label = GraphLabel::compartmented_with_profile(
+            "Title<br>continued",
+            "Body<br>detail",
+            TerminalWidthProfile::Unicode,
+        );
+
+        assert_eq!(label.lines(), ["Title", "continued", "Body", "detail"]);
+        assert_eq!(label.compartment_break_after(), Some(2));
     }
 }

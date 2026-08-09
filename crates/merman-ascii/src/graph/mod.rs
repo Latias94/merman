@@ -16,7 +16,8 @@ pub(crate) use draw::render_graph;
 pub(crate) use draw::render_graph_with_resources;
 pub(crate) use model::{
     AsciiGraph, GraphDirection, GraphEdgeAttrs, GraphEdgeMarker, GraphGroupKind, GraphGroupStyle,
-    GraphNodeShape, GraphNodeStyle,
+    GraphNodeCompartments, GraphNodeSemantics, GraphNodeShape, GraphNodeSide,
+    GraphNodeSideConstraint, GraphNodeStyle,
 };
 
 #[cfg(test)]

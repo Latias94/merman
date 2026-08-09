@@ -77,6 +77,25 @@ pub(crate) fn render_graph_with_resources(
         for layout in &graph_layout.nodes {
             draw_node(&mut surface, layout, &charset, options)?;
         }
+    }
+
+    redraw_transformed_node_compartments(
+        &mut canvas,
+        &graph_layout.nodes,
+        &charset,
+        output_transform,
+        width,
+        height,
+    )?;
+
+    {
+        let mut surface = TransformedSurface::new(
+            &mut canvas,
+            output_transform,
+            width,
+            height,
+            options.terminal_width_profile,
+        );
         let mut route_drawing = routing::RouteDrawing::new(&mut surface, &mut route_cells);
         route_scene.paint_routes(&mut route_drawing)?;
     }
@@ -144,6 +163,7 @@ fn draw_node(
     paint_node_background(canvas, layout);
     match layout.shape {
         GraphNodeShape::Rect => draw_rect_node(canvas, layout, charset, options),
+        GraphNodeShape::StateWithTitle => draw_rect_node(canvas, layout, charset, options),
         GraphNodeShape::Rounded => draw_rounded_node(canvas, layout, charset, options),
         GraphNodeShape::Circle => draw_circle_node(canvas, layout, charset, options),
         GraphNodeShape::Stadium => draw_stadium_node(canvas, layout, charset, options),
@@ -1134,6 +1154,58 @@ fn write_centered_label(
     Ok(())
 }
 
+fn redraw_transformed_node_compartments(
+    canvas: &mut RawCanvas,
+    layouts: &[NodeLayout],
+    charset: &GraphCharset,
+    transform: OutputTransform,
+    width: usize,
+    height: usize,
+) -> Result<()> {
+    for layout in layouts {
+        if layout.shape != GraphNodeShape::StateWithTitle {
+            continue;
+        }
+        let Some(title_line_count) = layout.label.compartment_break_after() else {
+            continue;
+        };
+        let node_left = transform.text_x(layout.x, layout.width, width);
+        let node_top = match transform {
+            OutputTransform::VerticalMirror => transform.text_y(layout.bottom(), height),
+            OutputTransform::Identity | OutputTransform::HorizontalMirror => layout.y,
+        };
+        let node_right = node_left.saturating_add(layout.width.saturating_sub(1));
+        let node_bottom = node_top.saturating_add(layout.height.saturating_sub(1));
+        let divider_offset = title_line_count
+            .saturating_mul(GRAPH_LABEL_LINE_GAP + 1)
+            .saturating_sub(1);
+        let divider_y =
+            transformed_label_content_y(layout, transform, height).saturating_add(divider_offset);
+        if divider_y <= node_top || divider_y >= node_bottom {
+            continue;
+        }
+
+        set_node_border(
+            canvas,
+            node_left,
+            divider_y,
+            charset.compartment_left,
+            layout.style,
+        )?;
+        set_node_border(
+            canvas,
+            node_right,
+            divider_y,
+            charset.compartment_right,
+            layout.style,
+        )?;
+        for x in (node_left + 1)..node_right {
+            set_node_border(canvas, x, divider_y, charset.horizontal, layout.style)?;
+        }
+    }
+    Ok(())
+}
+
 fn redraw_transformed_node_labels(
     canvas: &mut Canvas<'_>,
     layouts: &[NodeLayout],
@@ -1168,20 +1240,9 @@ fn redraw_transformed_node_label(
     width: usize,
     height: usize,
 ) -> Result<()> {
-    let content_height = layout.label.content_height();
-    let content_y = if layout.shape == GraphNodeShape::Text {
-        layout.y
-    } else {
-        let inner_height = layout.height.saturating_sub(2);
-        layout.y + 1 + inner_height.saturating_sub(content_height) / 2
-    };
+    let content_y = label_content_y(layout);
     let line_step = GRAPH_LABEL_LINE_GAP + 1;
-    let line_count = layout.label.lines().len();
-    let last_line_y = content_y + line_count.saturating_sub(1) * line_step;
-    let transformed_content_y = match transform {
-        OutputTransform::VerticalMirror => height.saturating_sub(1).saturating_sub(last_line_y),
-        OutputTransform::Identity | OutputTransform::HorizontalMirror => content_y,
-    };
+    let transformed_content_y = transformed_label_content_y(layout, transform, height);
 
     for (line_index, line) in layout.label.lines().iter().enumerate() {
         let text_width = layout.label.line_width(line);
@@ -1203,6 +1264,35 @@ fn redraw_transformed_node_label(
         write_node_text(canvas, transformed_x, transformed_y, line, layout.style)?;
     }
     Ok(())
+}
+
+fn label_content_y(layout: &NodeLayout) -> usize {
+    if layout.shape == GraphNodeShape::Text {
+        layout.y
+    } else {
+        let inner_height = layout.height.saturating_sub(2);
+        layout.y + 1 + inner_height.saturating_sub(layout.label.content_height()) / 2
+    }
+}
+
+fn transformed_label_content_y(
+    layout: &NodeLayout,
+    transform: OutputTransform,
+    height: usize,
+) -> usize {
+    let content_y = label_content_y(layout);
+    let line_step = GRAPH_LABEL_LINE_GAP + 1;
+    let last_line_y = content_y
+        + layout
+            .label
+            .lines()
+            .len()
+            .saturating_sub(1)
+            .saturating_mul(line_step);
+    match transform {
+        OutputTransform::VerticalMirror => height.saturating_sub(1).saturating_sub(last_line_y),
+        OutputTransform::Identity | OutputTransform::HorizontalMirror => content_y,
+    }
 }
 
 fn clear_text_span(canvas: &mut Canvas<'_>, x: usize, y: usize, text_width: usize) -> Result<()> {

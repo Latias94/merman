@@ -1,5 +1,7 @@
 use super::super::label::GraphLabel;
-use super::super::model::{AsciiGraph, AsciiGraphEdge, AsciiGraphNode, GraphDirection};
+use super::super::model::{
+    AsciiGraph, AsciiGraphEdge, AsciiGraphNode, GraphDirection, GraphNodeSide,
+};
 use super::super::shape::{GraphNodeShapeSemantics, GraphNodeShapeSize};
 use super::groups;
 use super::{GridCoord, NodeLayout};
@@ -29,6 +31,12 @@ pub(super) type GridNodeLayoutParts = (Vec<NodeLayout>, AxisSizes, AxisSizes);
 struct RankedGridPlacements {
     nodes: Vec<GridCoord>,
     leaf_group_levels: Vec<Option<usize>>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ResolvedNodeSideConstraint {
+    anchor_node_index: usize,
+    side: GraphNodeSide,
 }
 
 struct DagreRankLevels {
@@ -203,12 +211,40 @@ fn place_ranked_grid_nodes(
     direction: GraphDirection,
     resources: &mut ResourceContext,
 ) -> Result<RankedGridPlacements> {
-    let rank_levels = dagre_rank_levels(graph, topology, direction, resources)?;
-    let parent_indices = rank_parent_indices(graph, &rank_levels.nodes, resources)?;
+    let resolved_side_constraints = resolve_node_side_constraints(graph, topology, resources)?;
+    let mut rank_levels = dagre_rank_levels(graph, topology, direction, resources)?;
+    apply_side_constraint_levels(
+        graph,
+        direction,
+        &resolved_side_constraints,
+        &mut rank_levels.nodes,
+        resources,
+    )?;
+    let parent_indices = rank_parent_indices(
+        graph,
+        &rank_levels.nodes,
+        direction,
+        &resolved_side_constraints,
+        resources,
+    )?;
     let mut placement_order = index_order(graph.nodes.len())?;
     charge_sort_work(placement_order.len(), resources)?;
-    placement_order
-        .sort_unstable_by_key(|node_index| (rank_levels.nodes[*node_index], *node_index));
+    placement_order.sort_unstable_by_key(|node_index| {
+        let cross_axis_key = if direction.canonical() == GraphDirection::TopDown {
+            resolved_side_constraints[*node_index]
+                .map(|constraint| {
+                    let side_order = match constraint.side {
+                        GraphNodeSide::Left => 0,
+                        GraphNodeSide::Right => 2,
+                    };
+                    (constraint.anchor_node_index, side_order, *node_index)
+                })
+                .unwrap_or((*node_index, 1, *node_index))
+        } else {
+            (*node_index, 1, *node_index)
+        };
+        (rank_levels.nodes[*node_index], cross_axis_key)
+    });
 
     let mut placements = Vec::new();
     try_reserve_vec(&mut placements, graph.nodes.len())?;
@@ -266,6 +302,8 @@ fn place_ranked_grid_nodes(
 fn rank_parent_indices(
     graph: &AsciiGraph,
     rank_levels: &[usize],
+    direction: GraphDirection,
+    resolved_side_constraints: &[Option<ResolvedNodeSideConstraint>],
     resources: &ResourceContext,
 ) -> Result<Vec<Vec<usize>>> {
     resources
@@ -275,12 +313,30 @@ fn rank_parent_indices(
     try_reserve_vec(&mut parents, graph.nodes.len())?;
     parents.resize_with(graph.nodes.len(), Vec::new);
     for edge in &graph.edges {
-        let (Some(from_index), Some(to_index)) = (
-            index_by_id.get(edge.from.as_str()).copied(),
-            index_by_id.get(edge.to.as_str()).copied(),
-        ) else {
-            continue;
-        };
+        let (from_index, to_index) =
+            if let Some((node_index, _, _)) = side_constraint_for_edge(graph, &index_by_id, edge) {
+                let Some(constraint) = resolved_side_constraints.get(node_index).copied().flatten()
+                else {
+                    continue;
+                };
+                if direction.canonical() == GraphDirection::TopDown {
+                    continue;
+                }
+                canonical_side_constraint_endpoints(
+                    graph.direction,
+                    node_index,
+                    constraint.anchor_node_index,
+                    constraint.side,
+                )
+            } else {
+                let (Some(from_index), Some(to_index)) = (
+                    index_by_id.get(edge.from.as_str()).copied(),
+                    index_by_id.get(edge.to.as_str()).copied(),
+                ) else {
+                    continue;
+                };
+                (from_index, to_index)
+            };
         if from_index == to_index || rank_levels[from_index] >= rank_levels[to_index] {
             continue;
         }
@@ -291,6 +347,107 @@ fn rank_parent_indices(
         incoming.push(from_index);
     }
     Ok(parents)
+}
+
+fn apply_side_constraint_levels(
+    graph: &AsciiGraph,
+    direction: GraphDirection,
+    resolved_side_constraints: &[Option<ResolvedNodeSideConstraint>],
+    rank_levels: &mut [usize],
+    resources: &ResourceContext,
+) -> Result<()> {
+    if direction.canonical() != GraphDirection::TopDown {
+        return Ok(());
+    }
+    resources.charge_layout_work(graph.nodes.len())?;
+    for (node_index, constraint) in resolved_side_constraints.iter().copied().enumerate() {
+        let Some(constraint) = constraint else {
+            continue;
+        };
+        let Some(anchor_level) = rank_levels.get(constraint.anchor_node_index).copied() else {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: graph.diagram_type(),
+                feature: "node side constraints with missing anchor ranks",
+            });
+        };
+        let Some(level) = rank_levels.get_mut(node_index) else {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: graph.diagram_type(),
+                feature: "node side constraints with missing node ranks",
+            });
+        };
+        *level = anchor_level;
+    }
+    Ok(())
+}
+
+fn resolve_node_side_constraints(
+    graph: &AsciiGraph,
+    topology: Option<&GraphGroupTopology<'_>>,
+    resources: &ResourceContext,
+) -> Result<Vec<Option<ResolvedNodeSideConstraint>>> {
+    resources.charge_layout_work(graph.nodes.len())?;
+    let node_index_by_id = node_indices_by_id(graph)?;
+    let has_group_anchor = graph.nodes.iter().any(|node| {
+        node.semantics
+            .side_constraint
+            .as_ref()
+            .is_some_and(|constraint| !node_index_by_id.contains_key(constraint.anchor_id.as_str()))
+    });
+    let group_anchors = if has_group_anchor {
+        Some(group_rank_anchors(
+            graph,
+            topology.ok_or(AsciiError::UnsupportedFeature {
+                diagram_type: graph.diagram_type(),
+                feature: "node side constraints with missing anchors",
+            })?,
+            resources,
+        )?)
+    } else {
+        None
+    };
+
+    let mut resolved = Vec::new();
+    try_reserve_vec(&mut resolved, graph.nodes.len())?;
+    for node in &graph.nodes {
+        let Some(constraint) = node.semantics.side_constraint.as_ref() else {
+            resolved.push(None);
+            continue;
+        };
+        let anchor_node_index =
+            if let Some(index) = node_index_by_id.get(constraint.anchor_id.as_str()).copied() {
+                index
+            } else {
+                let topology = topology.ok_or(AsciiError::UnsupportedFeature {
+                    diagram_type: graph.diagram_type(),
+                    feature: "node side constraints with missing anchors",
+                })?;
+                let Some(GraphEndpointIndex::Group(group_index)) =
+                    topology.endpoint_index(&constraint.anchor_id)
+                else {
+                    return Err(AsciiError::UnsupportedFeature {
+                        diagram_type: graph.diagram_type(),
+                        feature: "node side constraints with missing anchors",
+                    });
+                };
+                let Some(GroupRankAnchor::Node(index)) = group_anchors
+                    .as_deref()
+                    .and_then(|anchors| anchors.get(group_index))
+                    .copied()
+                else {
+                    return Err(AsciiError::UnsupportedFeature {
+                        diagram_type: graph.diagram_type(),
+                        feature: "node side constraints on empty groups",
+                    });
+                };
+                index
+            };
+        resolved.push(Some(ResolvedNodeSideConstraint {
+            anchor_node_index,
+            side: constraint.side,
+        }));
+    }
+    Ok(resolved)
 }
 
 fn preferred_parent_lane(
@@ -569,25 +726,50 @@ fn build_dagre_rank_graph(
     let edge_order = graphlib_edge_order(graph)?;
     for (ordinal, edge_index) in edge_order.into_iter().enumerate() {
         let edge = &graph.edges[edge_index];
-        let (Some(from_id), Some(to_id)) = (
-            rank_endpoint_id(
-                &edge.from,
+        let constrained_endpoints = side_constraint_for_edge(graph, &index_by_id, edge);
+        let (from_id, to_id) = if let Some((node_index, anchor_id, side)) = constrained_endpoints {
+            if direction.canonical() == GraphDirection::TopDown {
+                continue;
+            }
+            let Some(node_id) = node_ids.get(node_index).map(String::as_str) else {
+                continue;
+            };
+            let Some(anchor_id) = rank_endpoint_id(
+                anchor_id,
                 &index_by_id,
                 topology,
                 Some(group_anchors.as_slice()),
                 &node_ids,
                 &group_ids,
-            ),
-            rank_endpoint_id(
-                &edge.to,
-                &index_by_id,
-                topology,
-                Some(group_anchors.as_slice()),
-                &node_ids,
-                &group_ids,
-            ),
-        ) else {
-            continue;
+            ) else {
+                continue;
+            };
+            match canonical_side(graph.direction, side) {
+                GraphNodeSide::Left => (node_id, anchor_id),
+                GraphNodeSide::Right => (anchor_id, node_id),
+            }
+        } else {
+            let (Some(from_id), Some(to_id)) = (
+                rank_endpoint_id(
+                    &edge.from,
+                    &index_by_id,
+                    topology,
+                    Some(group_anchors.as_slice()),
+                    &node_ids,
+                    &group_ids,
+                ),
+                rank_endpoint_id(
+                    &edge.to,
+                    &index_by_id,
+                    topology,
+                    Some(group_anchors.as_slice()),
+                    &node_ids,
+                    &group_ids,
+                ),
+            ) else {
+                continue;
+            };
+            (from_id, to_id)
         };
         rank_graph.set_edge_named(
             from_id.to_string(),
@@ -607,6 +789,52 @@ fn build_dagre_rank_graph(
         group_ids,
         group_anchors,
     })
+}
+
+fn side_constraint_for_edge<'a>(
+    graph: &AsciiGraph,
+    index_by_id: &NodeIndexById<'_>,
+    edge: &'a AsciiGraphEdge,
+) -> Option<(usize, &'a str, GraphNodeSide)> {
+    for (node_endpoint, anchor_endpoint) in [
+        (edge.from.as_str(), edge.to.as_str()),
+        (edge.to.as_str(), edge.from.as_str()),
+    ] {
+        let Some(node_index) = index_by_id.get(node_endpoint).copied() else {
+            continue;
+        };
+        let Some(constraint) = graph
+            .nodes
+            .get(node_index)
+            .and_then(|node| node.semantics.side_constraint.as_ref())
+        else {
+            continue;
+        };
+        if anchor_endpoint == constraint.anchor_id {
+            return Some((node_index, anchor_endpoint, constraint.side));
+        }
+    }
+    None
+}
+
+fn canonical_side(graph_direction: GraphDirection, side: GraphNodeSide) -> GraphNodeSide {
+    if graph_direction == GraphDirection::RightLeft {
+        side.reversed()
+    } else {
+        side
+    }
+}
+
+fn canonical_side_constraint_endpoints(
+    graph_direction: GraphDirection,
+    node_index: usize,
+    anchor_index: usize,
+    side: GraphNodeSide,
+) -> (usize, usize) {
+    match canonical_side(graph_direction, side) {
+        GraphNodeSide::Left => (node_index, anchor_index),
+        GraphNodeSide::Right => (anchor_index, node_index),
+    }
 }
 
 fn graphlib_node_order(graph: &AsciiGraph, resources: &ResourceContext) -> Result<Vec<usize>> {
@@ -1269,7 +1497,7 @@ fn build_node_layouts(
     for (coord, node) in placements.into_iter().zip(graph.nodes.iter()) {
         layouts.push(NodeLayout {
             id: node.id.clone(),
-            label: GraphLabel::new_with_profile(&node.label, width_profile),
+            label: graph_node_label(node, width_profile),
             shape: node.shape,
             style: node.style,
             grid: coord,
@@ -1309,8 +1537,19 @@ fn node_shape_size(
     options: &AsciiRenderOptions,
     resources: &ResourceContext,
 ) -> Result<GraphNodeShapeSize> {
-    let label = GraphLabel::new_with_profile(&node.label, options.terminal_width_profile);
+    let label = graph_node_label(node, options.terminal_width_profile);
     GraphNodeShapeSemantics::new(node.shape).try_size_for_label(&label, options, resources)
+}
+
+fn graph_node_label(node: &AsciiGraphNode, width_profile: TerminalWidthProfile) -> GraphLabel {
+    match node.semantics.compartments.as_ref() {
+        Some(compartments) => GraphLabel::compartmented_with_profile(
+            &compartments.title,
+            &compartments.body,
+            width_profile,
+        ),
+        None => GraphLabel::new_with_profile(&node.label, width_profile),
+    }
 }
 
 fn checked_axis_total(axis_sizes: &AxisSizes, resources: &ResourceContext) -> Result<usize> {

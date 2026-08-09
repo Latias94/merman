@@ -1,4 +1,8 @@
 use merman_ascii::{AsciiColorMode, AsciiRenderOptions, render_model};
+use merman_core::diagram::RenderSemanticModel;
+use merman_core::diagrams::state::{
+    StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
+};
 use merman_core::{Engine, ParseOptions};
 use std::path::Path;
 
@@ -25,6 +29,42 @@ fn first_line_index_containing(rendered: &str, needle: &str) -> usize {
         .lines()
         .position(|line| line.contains(needle))
         .unwrap_or_else(|| panic!("missing {needle:?} in rendered fixture:\n{rendered}"))
+}
+
+fn text_position(rendered: &str, needle: &str) -> (usize, usize) {
+    rendered
+        .lines()
+        .enumerate()
+        .find_map(|(y, line)| line.find(needle).map(|x| (x, y)))
+        .unwrap_or_else(|| panic!("missing {needle:?} in rendered fixture:\n{rendered}"))
+}
+
+fn direct_state_node(
+    id: &str,
+    shape: &str,
+    parent_id: Option<&str>,
+    position: Option<&str>,
+) -> StateDiagramRenderNode {
+    StateDiagramRenderNode {
+        id: id.to_string(),
+        label_style: String::new(),
+        label: None,
+        description: None,
+        dom_id: String::new(),
+        is_group: shape == "noteGroup",
+        node_type: (shape == "noteGroup").then(|| "group".to_string()),
+        parent_id: parent_id.map(str::to_string),
+        css_classes: String::new(),
+        css_compiled_styles: Vec::new(),
+        css_styles: Vec::new(),
+        dir: None,
+        explicit_dir: None,
+        padding: None,
+        rx: None,
+        ry: None,
+        shape: shape.to_string(),
+        position: position.map(str::to_string),
+    }
 }
 
 fn strip_ansi(input: &str) -> String {
@@ -188,6 +228,61 @@ fn state_alias_description_renders_human_label() {
 }
 
 #[test]
+fn state_title_and_body_render_as_distinct_compartments() {
+    for (options, divider) in [
+        (AsciiRenderOptions::ascii(), '-'),
+        (AsciiRenderOptions::unicode(), '─'),
+    ] {
+        let rendered = render_state(
+            "stateDiagram-v2\nstate \"Power mode\" as Power: Running",
+            &options,
+        )
+        .expect("state title and body should render");
+
+        let title = text_position(&rendered, "Power mode");
+        let body = text_position(&rendered, "Running");
+        assert!(title.1 < body.1, "title must precede body:\n{rendered}");
+        assert!(
+            rendered
+                .lines()
+                .skip(title.1 + 1)
+                .take(body.1.saturating_sub(title.1 + 1))
+                .any(|line| line.contains(divider)),
+            "a structural divider must preserve title/body roles:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn direct_state_model_keeps_multiline_compartment_boundary_after_bt_mirroring() {
+    let mut titled = direct_state_node("Titled", "rectWithTitle", None, None);
+    titled.label = Some("Title one<br>Title two".into());
+    titled.description = Some(vec!["Body one<br>Body two".to_string()]);
+    let model = StateDiagramRenderModel {
+        direction: "BT".to_string(),
+        nodes: vec![titled],
+        ..StateDiagramRenderModel::default()
+    };
+
+    let rendered = render_model(
+        &RenderSemanticModel::State(model),
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("BT state compartments should render");
+
+    let title = text_position(&rendered, "Title two");
+    let body = text_position(&rendered, "Body one");
+    assert!(
+        rendered
+            .lines()
+            .skip(title.1 + 1)
+            .take(body.1.saturating_sub(title.1 + 1))
+            .any(|line| line.contains('─')),
+        "the mirrored divider must remain between multiline title and body roles:\n{rendered}"
+    );
+}
+
+#[test]
 fn state_composite_without_group_transition_renders_group_box() {
     let rendered = render_state(
         "stateDiagram-v2\nstate Parent {\n  Child\n}",
@@ -239,6 +334,139 @@ fn state_multiple_notes_preserve_text_and_side_ownership() {
     assert!(
         rendered.contains("left text") && rendered.contains("right text"),
         "both note payloads must survive typed projection:\n{rendered}"
+    );
+    let left = text_position(&rendered, "left text");
+    let state = text_position(&rendered, " A ");
+    let right = text_position(&rendered, "right text");
+    assert_eq!(
+        left.1, state.1,
+        "left note and state should share a horizontal lane:\n{rendered}"
+    );
+    assert_eq!(
+        state.1, right.1,
+        "state and right note should share a horizontal lane:\n{rendered}"
+    );
+    assert!(
+        left.0 < state.0 && state.0 < right.0,
+        "note side constraints must determine physical placement:\n{rendered}"
+    );
+}
+
+#[test]
+fn state_note_sides_remain_physical_across_root_directions() {
+    for direction in ["TB", "BT", "LR", "RL"] {
+        let rendered = render_state(
+            &format!(
+                concat!(
+                    "stateDiagram-v2\n",
+                    "direction {direction}\n",
+                    "A\n",
+                    "note left of A : left side\n",
+                    "note right of A : right side\n",
+                ),
+                direction = direction,
+            ),
+            &AsciiRenderOptions::unicode(),
+        )
+        .unwrap_or_else(|error| panic!("{direction} state notes should render: {error}"));
+
+        let left = text_position(&rendered, "left side");
+        let state = text_position(&rendered, " A ");
+        let right = text_position(&rendered, "right side");
+        assert!(
+            left.0 < state.0 && state.0 < right.0,
+            "{direction} must preserve physical note sides after transforms:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn state_composite_notes_anchor_outside_the_group_boundary() {
+    for direction in ["TB", "BT", "LR", "RL"] {
+        let rendered = render_state(
+            &format!(
+                concat!(
+                    "stateDiagram-v2\n",
+                    "direction {direction}\n",
+                    "state \"Composite\" as Parent {{\n",
+                    "  Child\n",
+                    "}}\n",
+                    "note left of Parent : left composite\n",
+                    "note right of Parent : right composite\n",
+                ),
+                direction = direction,
+            ),
+            &AsciiRenderOptions::unicode(),
+        )
+        .unwrap_or_else(|error| panic!("{direction} composite notes should render: {error}"));
+
+        let left = text_position(&rendered, "left composite");
+        let group = text_position(&rendered, "Composite");
+        let right = text_position(&rendered, "right composite");
+        assert!(
+            left.0 < group.0 && group.0 < right.0,
+            "{direction} composite note constraints should preserve both physical sides:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn direct_state_model_preserves_compartments_and_note_side_constraints() {
+    let mut titled = direct_state_node("Primary", "rectWithTitle", None, None);
+    titled.description = Some(vec!["Details".to_string()]);
+    let model = StateDiagramRenderModel {
+        direction: "TB".to_string(),
+        nodes: vec![
+            titled,
+            direct_state_node("right direct", "noteGroup", None, Some("right of")),
+            direct_state_node("right-note", "note", Some("right direct"), Some("right of")),
+            direct_state_node("left direct", "noteGroup", None, Some("left of")),
+            direct_state_node("left-note", "note", Some("left direct"), Some("left of")),
+        ],
+        edges: vec![
+            StateDiagramRenderEdge {
+                id: "right-edge".to_string(),
+                start: "Primary".to_string(),
+                end: "right-note".to_string(),
+                classes: "transition note-edge".to_string(),
+                arrow_type_end: String::new(),
+                label: String::new(),
+            },
+            StateDiagramRenderEdge {
+                id: "left-edge".to_string(),
+                start: "left-note".to_string(),
+                end: "Primary".to_string(),
+                classes: "transition note-edge".to_string(),
+                arrow_type_end: String::new(),
+                label: String::new(),
+            },
+        ],
+        ..StateDiagramRenderModel::default()
+    };
+
+    let rendered = render_model(
+        &RenderSemanticModel::State(model),
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("valid direct state model should render");
+
+    let title = text_position(&rendered, "Primary");
+    let body = text_position(&rendered, "Details");
+    assert!(
+        rendered
+            .lines()
+            .skip(title.1 + 1)
+            .take(body.1.saturating_sub(title.1 + 1))
+            .any(|line| line.contains('─')),
+        "direct-model title/body roles need a structural divider:\n{rendered}"
+    );
+
+    let left = text_position(&rendered, "left direct");
+    let state = text_position(&rendered, "Primary");
+    let right = text_position(&rendered, "right direct");
+    assert!(
+        left.0 < state.0 && state.0 < right.0,
+        "direct-model note side constraints must survive node reordering:\n{rendered}"
     );
 }
 

@@ -1,6 +1,6 @@
 use super::super::model::{
     AsciiGraph, AsciiGraphEdge, AsciiGraphGroup, AsciiGraphNode, GraphDirection, GraphEdgeMarker,
-    GraphEdgeStroke, GraphEdgeStyle, GraphGroupKind, GraphNodeShape, GraphNodeStyle,
+    GraphEdgeStroke, GraphEdgeStyle, GraphGroupKind, GraphNodeShape, GraphNodeSide, GraphNodeStyle,
 };
 use super::super::topology::{GraphEndpointIndex, GraphGroupTopology};
 use super::{GridCoord, GroupLayout, NodeLayout};
@@ -46,6 +46,7 @@ pub(super) fn apply_group_placement_adjustments(
         &placement_state.blocks,
         resources,
     )?;
+    reserve_group_left_constraint_space(graph, placements, topology, width_profile, resources)?;
     separate_external_nodes_from_groups(graph, placements, topology, width_profile, resources)?;
 
     if !placement_state_is_valid(
@@ -67,6 +68,7 @@ pub(super) fn apply_group_placement_adjustments(
             &placement_state.blocks,
             resources,
         )?;
+        reserve_group_left_constraint_space(graph, placements, topology, width_profile, resources)?;
         separate_external_nodes_from_groups(graph, placements, topology, width_profile, resources)?;
     }
 
@@ -80,6 +82,81 @@ pub(super) fn apply_group_placement_adjustments(
         separate_external_nodes_from_groups(graph, placements, topology, width_profile, resources)?;
     }
 
+    Ok(())
+}
+
+fn reserve_group_left_constraint_space(
+    graph: &AsciiGraph,
+    placements: &mut [GridCoord],
+    topology: &GraphGroupTopology<'_>,
+    width_profile: TerminalWidthProfile,
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    if graph.direction.canonical() != GraphDirection::TopDown {
+        return Ok(());
+    }
+
+    for (group_index, group) in graph.groups.iter().enumerate() {
+        resources.charge_layout_work(graph.nodes.len())?;
+        let mut fixed_left_nodes = try_bool_slots(graph.nodes.len())?;
+        let mut furthest_left_note_right = None::<isize>;
+        for (node_index, node) in graph.nodes.iter().enumerate() {
+            let is_left_constraint =
+                node.semantics
+                    .side_constraint
+                    .as_ref()
+                    .is_some_and(|constraint| {
+                        constraint.anchor_id() == group.id
+                            && constraint.side() == GraphNodeSide::Left
+                    });
+            if !is_left_constraint {
+                continue;
+            }
+            fixed_left_nodes[node_index] = true;
+            let Some(placement) = placements.get(node_index).copied() else {
+                continue;
+            };
+            let note_right = node_bounds(placement, resources)?.right;
+            furthest_left_note_right = Some(
+                furthest_left_note_right.map_or(note_right, |current| current.max(note_right)),
+            );
+        }
+        let Some(furthest_left_note_right) = furthest_left_note_right else {
+            continue;
+        };
+
+        let member_indices = group_member_indices(topology, group_index, resources)?;
+        let Some(group_bounds) = group_bounds_for_placements(
+            graph,
+            group_index,
+            &member_indices,
+            placements,
+            width_profile,
+            resources,
+        )?
+        else {
+            continue;
+        };
+        if furthest_left_note_right < group_bounds.x {
+            continue;
+        }
+        let shift = furthest_left_note_right
+            .checked_sub(group_bounds.x)
+            .and_then(|distance| distance.checked_add(1))
+            .and_then(|distance| usize::try_from(distance).ok())
+            .ok_or_else(|| {
+                resources
+                    .policy()
+                    .overflow(AsciiResourceLimitId::MaxGridCells)
+            })?;
+        for (node_index, placement) in placements.iter_mut().enumerate() {
+            if fixed_left_nodes.get(node_index).copied().unwrap_or(false) {
+                continue;
+            }
+            resources.charge_layout_work(1)?;
+            placement.x = resources.checked_grid_add(placement.x, shift)?;
+        }
+    }
     Ok(())
 }
 
@@ -1498,6 +1575,7 @@ fn build_group_override_graph(
             label: member.id.clone(),
             shape: GraphNodeShape::Rect,
             style: GraphNodeStyle::default(),
+            semantics: Default::default(),
         });
     }
 
