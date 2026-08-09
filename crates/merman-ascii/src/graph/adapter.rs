@@ -34,6 +34,9 @@ pub(crate) fn from_flowchart_model(
     graph.try_reserve_projection(model.nodes.len(), model.edges.len(), model.subgraphs.len())?;
 
     for node in &model.nodes {
+        if memberships.is_group_id(&node.id) {
+            continue;
+        }
         let resolved_shape = resolve_flowchart_node_shape(node.layout_shape.as_deref(), direction)?;
         let id = try_clone_projection_string(&node.id)?;
         let label = try_clone_projection_string(
@@ -191,6 +194,7 @@ fn preflight_flowchart_projection<'a>(
 #[derive(Debug)]
 struct FlowchartMembershipIndex<'a> {
     parent_group_by_member: HashMap<&'a str, usize>,
+    group_ids: HashSet<&'a str>,
 }
 
 impl<'a> FlowchartMembershipIndex<'a> {
@@ -205,7 +209,12 @@ impl<'a> FlowchartMembershipIndex<'a> {
         parent_group_by_member
             .try_reserve(member_count)
             .map_err(|_| projection_allocation_failed())?;
+        let mut group_ids = HashSet::new();
+        group_ids
+            .try_reserve(model.subgraphs.len())
+            .map_err(|_| projection_allocation_failed())?;
         for (parent_index, subgraph) in model.subgraphs.iter().enumerate() {
+            group_ids.insert(subgraph.id.as_str());
             for member in &subgraph.nodes {
                 // Preserve the former first-match parent semantics without rescanning candidates.
                 parent_group_by_member
@@ -216,6 +225,7 @@ impl<'a> FlowchartMembershipIndex<'a> {
 
         Ok(Self {
             parent_group_by_member,
+            group_ids,
         })
     }
 
@@ -225,6 +235,10 @@ impl<'a> FlowchartMembershipIndex<'a> {
 
     fn member_ids(&self) -> impl Iterator<Item = &'a str> + '_ {
         self.parent_group_by_member.keys().copied()
+    }
+
+    fn is_group_id(&self, endpoint_id: &str) -> bool {
+        self.group_ids.contains(endpoint_id)
     }
 }
 
@@ -369,7 +383,9 @@ fn validate_supported_flowchart_model(
     }
     for edge in &model.edges {
         resources.charge_layout_work(1)?;
-        if !node_ids.contains(edge.from.as_str()) || !node_ids.contains(edge.to.as_str()) {
+        if (!node_ids.contains(edge.from.as_str()) && !memberships.is_group_id(&edge.from))
+            || (!node_ids.contains(edge.to.as_str()) && !memberships.is_group_id(&edge.to))
+        {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: "flowchart",
                 feature: "edges with missing endpoint nodes",
@@ -377,17 +393,9 @@ fn validate_supported_flowchart_model(
         }
     }
 
-    let mut subgraph_ids = HashSet::new();
-    subgraph_ids
-        .try_reserve(model.subgraphs.len())
-        .map_err(|_| projection_allocation_failed())?;
-    for subgraph in &model.subgraphs {
-        resources.charge_layout_work(1)?;
-        subgraph_ids.insert(subgraph.id.as_str());
-    }
     for member_id in memberships.member_ids() {
         resources.charge_layout_work(1)?;
-        if !node_ids.contains(member_id) && !subgraph_ids.contains(member_id) {
+        if !node_ids.contains(member_id) && !memberships.is_group_id(member_id) {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: "flowchart",
                 feature: "subgraphs with missing member nodes",
@@ -443,6 +451,30 @@ mod tests {
             subgraphs: Vec::new(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
+        }
+    }
+
+    fn flow_edge(from: &str, to: &str) -> FlowEdge {
+        FlowEdge {
+            id: format!("edge-{from}-{to}"),
+            from: from.to_string(),
+            to: to.to_string(),
+            label: None,
+            label_type: None,
+            edge_type: Some("arrow_point".to_string()),
+            arrow: "-->".to_string(),
+            start_marker: FlowEdgeMarker::None,
+            end_marker: FlowEdgeMarker::Point,
+            is_user_defined_id: false,
+            stroke: Some("normal".to_string()),
+            stroke_kind: FlowEdgeStroke::Normal,
+            visibility: FlowEdgeVisibility::Visible,
+            interpolate: None,
+            classes: Vec::new(),
+            style: Vec::new(),
+            animate: None,
+            animation: None,
+            length: 1,
         }
     }
 
@@ -556,5 +588,48 @@ mod tests {
         assert_eq!(edge.start_marker, GraphEdgeMarker::Circle);
         assert_eq!(edge.end_marker, GraphEdgeMarker::Cross);
         assert_eq!(edge.stroke, GraphEdgeStroke::Invisible);
+    }
+
+    #[test]
+    fn flowchart_projection_assigns_colliding_endpoint_ids_to_subgraphs() {
+        let model = FlowchartModel {
+            keyword: "flowchart".to_string(),
+            acc_descr: None,
+            acc_title: None,
+            class_defs: Default::default(),
+            direction: Some("LR".to_string()),
+            edge_defaults: None,
+            vertex_calls: Vec::new(),
+            nodes: vec![
+                flow_node("A"),
+                flow_node("TOP"),
+                flow_node("member"),
+                flow_node("B"),
+            ],
+            edges: vec![flow_edge("A", "TOP"), flow_edge("TOP", "B")],
+            subgraphs: vec![FlowSubgraph {
+                id: "TOP".to_string(),
+                title: "Top Group".to_string(),
+                dir: Some("TB".to_string()),
+                has_explicit_dir: true,
+                label_type: None,
+                classes: Vec::new(),
+                styles: Vec::new(),
+                nodes: vec!["member".to_string()],
+            }],
+            tooltips: Default::default(),
+            warning_facts: Vec::new(),
+        };
+        let options = AsciiRenderOptions::ascii();
+        let mut resources = ResourceContext::new(options.resources);
+
+        let graph = from_flowchart_model(&model, &options, &mut resources)
+            .expect("subgraph endpoint projection should remain supported");
+
+        assert!(graph.nodes.iter().all(|node| node.id != "TOP"));
+        assert_eq!(graph.groups.len(), 1);
+        assert_eq!(graph.groups[0].id, "TOP");
+        assert_eq!(graph.edges[0].to, "TOP");
+        assert_eq!(graph.edges[1].from, "TOP");
     }
 }

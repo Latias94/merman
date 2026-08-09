@@ -11,9 +11,9 @@ This document describes the current `merman-ascii` flowchart support boundary. T
 | --- | --- | --- |
 | Diagram family | Supported | `flowchart`, `graph`, and `flowchart-v2` inputs that parse into `FlowchartModel`. |
 | Directions | Supported subset | `LR`, `TD`, Mermaid's `TB` alias, `BT`, and `RL` root directions. `BT` and `RL` are rendered as terminal-native output transforms of the TD/LR layouts. |
-| Node shape | Supported subset | Every pinned Mermaid 11.16.1 shape name has one explicit terminal disposition. Common rectangular/process, rounded, circle/double-circle/stadium, diamond/decision, subroutine, cylinder/database, hexagon, asymmetric/flag/paper-tape, trapezoid, lean-left/right, datastore, document/decorated-document, decorated-process, fork/join, choice, start/end, and text shapes have diagrammatic projections. Browser-only and unimplemented uncommon shapes fail explicitly instead of silently collapsing to rectangles. |
+| Node shape | Supported subset | Every pinned Mermaid 11.16.1 shape name has one explicit terminal disposition. Common rectangular/process, rounded, circle/double-circle/stadium, diamond/decision, subroutine, cylinder/database, hexagon, asymmetric, trapezoid, lean-left/right, datastore, document/decorated-document, decorated-process, fork/join, choice, start/end, and text shapes have diagrammatic projections. Manual-input, stored-data/bow-tie, and flag/paper-tape alias families have explicit terminal approximations that follow the pinned upstream handler groups. Browser-only and unimplemented uncommon shapes fail explicitly instead of silently collapsing to rectangles. |
 | Node labels | Supported subset | Text labels, Mermaid-ascii-compatible escaped newlines, and `<br>` line breaks. Missing labels fall back to node ids. |
-| Edges | Supported subset | Independent source/target point, circle, cross, or open markers; mixed and double-ended forms; visible normal/dotted/thick strokes; invisible layout constraints; explicit/generated edge identity; multiline labels; deterministic length spacing; and TD same-rank merge/skip edges in either horizontal direction. Endpoint markers are planned by route-cell identity and painted after route bodies so labels and later edges cannot silently erase them. Clear spans use direct horizontal ports when any label fits without covering a marker; obstructed or label-constrained spans use a bottom lane. |
+| Edges | Supported subset | Independent source/target point, circle, cross, or open markers; mixed and double-ended forms; visible normal/dotted/thick strokes; invisible layout constraints; explicit/generated edge identity; multiline labels; deterministic length spacing; and TD merge/skip edges. Endpoint markers remain unresolved until scene allocation assigns each owner an independent terminal berth. Labels keep their planned footprint when clear and otherwise use bounded route-local lanes that avoid endpoint markers, nodes, group borders/titles, and accepted labels. Clear spans use direct ports; obstructed spans use family-owned alternate lanes. |
 | Subgraphs | Supported subset | Titled group boxes, multiline title rows from explicit line breaks, automatic wrapping for long titles, nested groups, disconnected sibling groups, external nodes, and boundary-aware cross-boundary routing for the shipped `LR`-inside-`TD` subset. Boundary grid-path labels use planner-owned vertical transit-lane placement and reserve their planned canvas extent instead of being clipped at the original graph width. |
 | Layout | Supported subset | LR roots, child levels, multi-root graphs, fan-out/fan-in, self-loops, same-row back edges, crossing/backlink routes, TD branches, and subgraphs use a deterministic grid layout. |
 | Character sets | Supported | ASCII and Unicode box-drawing output via `AsciiRenderOptions::ascii()` and `unicode()`. |
@@ -28,7 +28,7 @@ approximations. These mappings are product behavior once shipped and should be s
 | Capability | Planned behavior | Notes |
 | --- | --- | --- |
 | Direction transforms | Supported subset. | `BT` vertically flips the TD layout; `RL` horizontally mirrors the LR layout. Node labels, edge labels, group titles, arrowheads, and Unicode connectors stay readable/oriented for the covered root-direction subset. |
-| Edge labels | Supported subset. | Labels render on routed edge paths, including multiline labels, for simple LR/TD edges, duplicate LR lanes, LR bidirectional lanes, and TD back-edge lanes. Placement may differ from SVG. |
+| Edge labels | Supported subset. | Labels render on routed edge paths, including multiline labels, for simple LR/TD edges, duplicate LR lanes, LR bidirectional lanes, and TD back-edge lanes. Placement may differ from SVG. The scene allocator keeps the original placement when clear, probes bounded route-local side lanes on collision, and returns an explicit error only when every non-destructive candidate is exhausted. |
 | Open edges | Supported subset. | Rendered as directionless connectors without arrowheads. |
 | Dotted edges | Supported subset. | ASCII uses `.`/`:`; Unicode uses box-drawing dotted line approximations. |
 | Thick edges | Supported subset. | ASCII uses `=`/`#` for horizontal/vertical thick lines; Unicode uses heavy box-drawing line characters. |
@@ -41,7 +41,10 @@ approximations. These mappings are product behavior once shipped and should be s
 | Subroutine shapes | Supported approximation. | Rendered as boxes with inner vertical rails. |
 | Cylinder/database shapes | Supported approximation. | Rendered as rounded boxes with an inner top separator. |
 | Lean left/right shapes | Supported approximation. | Rendered with mirrored slanted terminal outlines that keep the label centered. |
+| Manual-input shapes | Supported approximation. | `sl-rect`, `manual-input`, and `sloped-rectangle` share one sloped-top terminal projection, matching the pinned upstream alias handler. |
 | Datastore shapes | Supported approximation. | Rendered as a box with blanked side rails to approximate the database barrel. |
+| Stored-data shapes | Supported approximation. | `bow-rect`, `stored-data`, and `bow-tie-rectangle` share one concave-sided terminal projection instead of collapsing into datastore. |
+| Paper-tape shapes | Supported approximation. | `flag` and `paper-tape` share one wavy-edge projection because Mermaid assigns both names to the same handler. |
 | Document shapes | Supported approximation. | Rendered as a box with a folded bottom edge. |
 | Subgraphs | Supported subset. | Titled, multiline-title, wrapped-title, nested, disconnected, external-edge, and boundary-aware cross-boundary group layouts for the shipped `LR`-inside-`TD` subset are covered by parser/model tests, local semantic fixtures, and copied `mermaid-ascii` graph fixtures. |
 
@@ -75,7 +78,7 @@ reference implementation is only an implementation aid.
 | ANSI/HTML color roles | Ported | ADR 0067 added an opt-in color API, and flowchart now assigns semantic foreground/background roles after layout. | Covered by `flowchart_color_truecolor_emits_semantic_roles_without_changing_plain_text`, `flowchart_color_html_wraps_subgraph_roles_without_changing_plain_text`, and `flowchart_color_truecolor_preserves_roles_after_horizontal_mirror`. |
 | `classDef`, `class`, inline node styles, and `linkStyle` colors | Ported subset | The typed model preserves class/style/linkStyle declarations. The ASCII renderer maps safe terminal semantics: node/subgraph `color` to text/title, node/subgraph `stroke` to borders, node/subgraph `fill`/`background` to ANSI/HTML backgrounds, edge `stroke` to line/arrow foreground, and edge `color` to labels. | Covered by parser-backed `flowchart_style_color_*` tests. |
 | State diagram graph rendering | Split to state adapter | `stateDiagram` uses a different typed model, not `FlowchartModel`; it now renders through the state-to-graph adapter rather than the flowchart adapter. | See `STATE_SUPPORT.md`. |
-| Additional uncommon flowchart shapes | Ported subset | A canonical registry now assigns every pinned Mermaid 11.16.1 shape name an implemented, approximate, or unsupported terminal disposition. Common decorated document/process variants, flag, paper-tape, flow-perpendicular fork/join bars, choice, start/end, and text no longer silently reuse unrelated boxes. Icons, images, cross-family boxes, and unimplemented uncommon geometry remain explicit errors. | Add the remaining useful shape families one at a time with public `render_model` snapshots and visible port/footprint assertions. |
+| Additional uncommon flowchart shapes | Ported subset | One projection registry assigns every pinned Mermaid 11.16.1 shape name an implemented, approximate, or unsupported terminal disposition; draw and size behavior then come from the resolved `GraphNodeShape` instead of discarded duplicate decorator/port metadata. Upstream alias families for manual input, stored data, paper tape, filled-circle junctions, and label-only `labelRect` are preserved. Icons, images, cross-family boxes, and unimplemented uncommon geometry remain explicit errors. | Add the remaining useful shape families one at a time with public `render_model` snapshots and visible port/footprint assertions. |
 
 ## Known Limitations
 
@@ -85,20 +88,21 @@ reference implementation is only an implementation aid.
   horizontal direction, bent cross-column downward edges, and right-side back-edge label lanes for
   the copied fixture set. Same-rank spans use direct horizontal ports when clear and when any
   label fits without covering an arrowhead; otherwise they use the shared bottom lane.
-- Endpoint markers are collision-checked and route-cell owned, including declaration-order
-  permutations of the current skip-edge regressions. Dense multi-edge scenes still need the global
-  occupancy allocator tracked by `A-GRAPH-030`; this unit does not claim arbitrary collision-free
-  routing.
-- Top-down ranks remain declaration-order sensitive until the pinned Dagre rank seam replaces the
-  current ASCII-only ranker (`A-GRAPH-040`).
+- Endpoint markers are independently allocated even for same-glyph/same-color owners, and edge
+  labels use scene-level protected footprints with bounded local relocation. Route-body candidates,
+  legal shared segments, and mixed-stroke crossing ownership still need the remaining
+  `A-GRAPH-030` scene-allocation work; this does not yet claim arbitrary collision-free routing.
+- Node ranks use the shared Dagre-compatible acyclic/nesting/ranker phases and retain `minlen`,
+  cycle ownership, compound constraints, and root direction. Local subgraph direction transforms
+  reapply forward cross-boundary rank constraints after moving the group block.
 - `BT` and `RL` remain root-direction transforms only.
 - `FlowSubgraph.dir` now ships nested local-direction overrides for the exercised flowchart
   combinations, including the current boundary-aware cross-boundary cases. Add new unsupported
   combinations only when a concrete Mermaid/parser case proves they are still missing.
 - Boundary grid-path labels reserve canvas extent and are attached to planner-selected vertical
-  transit lanes for the shipped `LR`-inside-`TD` subset. General graph labels still do not have a
-  global label layout engine; new dense or ambiguous route families should add explicit route-plan
-  policy before admitting complex fixtures.
+  transit lanes for the shipped `LR`-inside-`TD` subset. General labels share protected scene
+  footprints, while dense route families still need explicit route-candidate policy before new
+  complex fixtures are admitted.
 - Subgraph titles preserve explicit line breaks (`<br>`/escaped newline/model newline) and wrap
   long titles inside the current group box width.
 - Mermaid classes/styles are rendered only for terminal-safe color properties in opt-in ANSI/HTML

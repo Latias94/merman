@@ -7,8 +7,8 @@ use super::super::label::{
     routed_label_right_of_vertical_route_placement_for_text,
 };
 use super::super::path::{
-    GridPathPortPolicy, Port, PortPair, StepDirection, merge_grid_path,
-    route_grid_path_with_resources, step_direction,
+    GridPathPortPolicy, Port, PortPair, StepDirection, route_grid_path_with_resources,
+    step_direction,
 };
 use super::{
     MarkerAnchor, MarkerAnchors, PlannedCellId, PlannedRouteCells, PlannedRouteLabel,
@@ -169,7 +169,6 @@ pub(super) fn plan_left_right_grid_path_route_with_options_and_resources(
         return Ok(None);
     }
 
-    let path = merge_grid_path(path);
     let segment = options.segment;
     let (mut cells, lines_drawn, line_dirs, first_line_cell, last_line_cell) =
         plan_grid_path(graph_layout, &path, edge, charset, segment, resources)?;

@@ -5,6 +5,12 @@ use super::model::AsciiGraph;
 use crate::error::{AsciiError, Result};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(super) enum GraphEndpointIndex {
+    Node(usize),
+    Group(usize),
+}
+
 #[derive(Debug)]
 pub(super) struct GraphGroupTopology<'a> {
     graph: &'a AsciiGraph,
@@ -52,8 +58,7 @@ impl<'a> GraphGroupTopology<'a> {
                     parent_index_by_group
                         .entry(child_index)
                         .or_insert(group_index);
-                }
-                if node_index_by_id.contains_key(member.as_str()) {
+                } else if node_index_by_id.contains_key(member.as_str()) {
                     direct_group_index_by_node
                         .entry(member.as_str())
                         .or_insert(group_index);
@@ -82,6 +87,12 @@ impl<'a> GraphGroupTopology<'a> {
 
     pub(super) fn node_index(&self, node_id: &str) -> Option<usize> {
         self.node_index_by_id.get(node_id).copied()
+    }
+
+    pub(super) fn endpoint_index(&self, endpoint_id: &str) -> Option<GraphEndpointIndex> {
+        self.group_index(endpoint_id)
+            .map(GraphEndpointIndex::Group)
+            .or_else(|| self.node_index(endpoint_id).map(GraphEndpointIndex::Node))
     }
 
     pub(super) fn direct_node_group_index(&self, node_id: &str) -> Option<usize> {
@@ -113,16 +124,20 @@ impl<'a> GraphGroupTopology<'a> {
 
             for member in &group.nodes {
                 resources.charge_layout_work(1)?;
-                if let Some(node_index) = self.node_index(member) {
-                    try_reserve_hash_set(&mut indices, 1)?;
-                    indices.insert(node_index);
-                } else if let Some(child_group_index) = self.group_index(member) {
-                    push_group_frame(
-                        &mut stack,
-                        child_group_index,
-                        next_nesting_depth(depth, resources)?,
-                        resources,
-                    )?;
+                match self.endpoint_index(member) {
+                    Some(GraphEndpointIndex::Node(node_index)) => {
+                        try_reserve_hash_set(&mut indices, 1)?;
+                        indices.insert(node_index);
+                    }
+                    Some(GraphEndpointIndex::Group(child_group_index)) => {
+                        push_group_frame(
+                            &mut stack,
+                            child_group_index,
+                            next_nesting_depth(depth, resources)?,
+                            resources,
+                        )?;
+                    }
+                    None => {}
                 }
             }
         }
@@ -143,9 +158,8 @@ impl<'a> GraphGroupTopology<'a> {
     ) -> Result<HashSet<usize>> {
         let mut groups = HashSet::new();
         let mut stack = Vec::new();
-        if let Some(group_index) = self.group_index(endpoint) {
-            push_group_frame(&mut stack, group_index, 1, resources)?;
-        }
+        // A group endpoint is a compound node in its parent's scope; the group does not contain
+        // itself. Its parent memberships are already indexed under the group id.
         if let Some(container_indices) = self.container_group_indices_by_member.get(endpoint) {
             for group_index in container_indices.iter().copied() {
                 push_group_frame(&mut stack, group_index, 1, resources)?;
@@ -302,5 +316,65 @@ mod tests {
         assert_eq!(details.actual, exact_work);
         assert_eq!(details.max, exact_work - 1);
         assert_eq!(below_resources.layout_work_used(), 0);
+    }
+
+    #[test]
+    fn endpoint_index_assigns_colliding_ids_to_groups() {
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        graph.add_node("group", "Placeholder");
+        graph.add_node("member", "Member");
+        graph.add_group_with_style(
+            "group",
+            "Group",
+            None,
+            vec!["member".to_string()],
+            GraphGroupStyle::default(),
+        );
+        let mut resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
+            ResourceProfile::UnboundedForTrustedInput,
+        ));
+
+        let topology = GraphGroupTopology::try_new(&graph, &mut resources)
+            .expect("colliding legacy endpoint ids should remain indexable");
+
+        assert_eq!(
+            topology.endpoint_index("group"),
+            Some(GraphEndpointIndex::Group(0))
+        );
+        assert_eq!(
+            topology.endpoint_index("member"),
+            Some(GraphEndpointIndex::Node(1))
+        );
+    }
+
+    #[test]
+    fn group_endpoints_belong_to_their_parent_scope_not_their_own_contents() {
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        graph.add_node("member", "Member");
+        graph.add_group_with_style(
+            "child",
+            "Child",
+            None,
+            vec!["member".to_string()],
+            GraphGroupStyle::default(),
+        );
+        graph.add_group_with_style(
+            "parent",
+            "Parent",
+            None,
+            vec!["child".to_string()],
+            GraphGroupStyle::default(),
+        );
+        let mut resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
+            ResourceProfile::UnboundedForTrustedInput,
+        ));
+        let topology = GraphGroupTopology::try_new(&graph, &mut resources)
+            .expect("nested group topology should be valid");
+
+        let containing = topology
+            .groups_containing_endpoint("child", &mut resources)
+            .expect("group endpoint scope should be bounded");
+
+        assert_eq!(containing, HashSet::from([1]));
     }
 }

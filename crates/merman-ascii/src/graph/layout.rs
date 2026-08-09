@@ -65,7 +65,7 @@ pub(super) struct GridCoord {
     pub(super) y: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) struct CanvasCoord {
     pub(super) x: usize,
     pub(super) y: usize,

@@ -149,13 +149,28 @@ pub(super) fn plan_same_rank_bottom_lane_route_with_resources(
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
+    plan_same_rank_bottom_lane_route_with_index_and_resources(from, to, edge, 0, charset, resources)
+}
+
+pub(super) fn plan_same_rank_bottom_lane_route_with_index_and_resources(
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    lane_index: usize,
+    charset: &GraphCharset,
+    resources: &mut ResourceContext,
+) -> Result<Option<RoutePlan>> {
     let start_x = from.center_x();
     let end_x = to.center_x();
     if from.center_y() != to.center_y() || start_x == end_x {
         return Ok(None);
     }
 
-    let bottom_y = from.bottom() + 2;
+    let lane_offset = resources.checked_grid_mul(lane_index, 2)?;
+    let bottom_y = resources.checked_grid_add(
+        resources.checked_grid_add(from.bottom().max(to.bottom()), 2)?,
+        lane_offset,
+    )?;
     let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
     let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
     let min_x = start_x.min(end_x);
@@ -207,13 +222,15 @@ pub(super) fn plan_same_rank_bottom_lane_route_with_resources(
     )
     .into_iter()
     .collect();
+    let minimum_width = resources.checked_grid_add(max_x, 3)?;
+    let minimum_height = resources.checked_grid_add(bottom_y, 1)?;
 
     Ok(Some(RoutePlan::with_min_canvas_extent(
         cells.into_vec(),
         labels,
         MarkerAnchors::new(start_anchor, end_anchor),
-        max_x + 3,
-        bottom_y + 1,
+        minimum_width,
+        minimum_height,
     )))
 }
 

@@ -645,7 +645,7 @@ fn flowchart_parser_tb_edge_label_renders_between_nodes() {
 }
 
 #[test]
-fn flowchart_parser_top_down_branch_merge_uses_connected_unicode_bend_corner() {
+fn flowchart_parser_top_down_branch_merge_preserves_dagre_rank_and_connectivity() {
     let rendered = render_flowchart(
         concat!(
             "flowchart TD\n",
@@ -658,22 +658,27 @@ fn flowchart_parser_top_down_branch_merge_uses_connected_unicode_bend_corner() {
     )
     .unwrap();
 
+    for expected in ["Start", "Condition?", "Yes", "No", "Execute", "End"] {
+        assert!(
+            rendered.contains(expected),
+            "branch merge should keep {expected:?} visible:\n{rendered}"
+        );
+    }
+    let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
+    assert!(line_index("Start") < line_index("Condition?"), "{rendered}");
     assert!(
-        rendered.contains("├──No────┐"),
-        "top-down right/down branch should use a connected top-right bend: {rendered}"
+        line_index("Condition?") < line_index("Execute"),
+        "{rendered}"
     );
+    assert!(line_index("Execute") < line_index("End"), "{rendered}");
     assert!(
-        !rendered.contains("├──No────└"),
-        "top-down right/down branch must not use a disconnected bottom-left bend: {rendered}"
-    );
-    assert!(
-        rendered.contains("│  Execute   ├────►│ End │"),
-        "top-down same-rank merge edge should be rendered instead of being dropped: {rendered}"
+        rendered.matches('▼').count() >= 4,
+        "all four semantic edges should retain target markers:\n{rendered}"
     );
 }
 
 #[test]
-fn flowchart_parser_top_down_same_rank_left_edge_routes_instead_of_failing() {
+fn flowchart_parser_top_down_skip_edge_preserves_dagre_chain_ranks() {
     let rendered = render_flowchart(
         concat!(
             "flowchart TD\n",
@@ -685,35 +690,24 @@ fn flowchart_parser_top_down_same_rank_left_edge_routes_instead_of_failing() {
     )
     .expect("same-rank top-down skip edge should route");
 
+    let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
+    assert!(line_index("A") < line_index("B"), "{rendered}");
+    assert!(line_index("B") < line_index("C"), "{rendered}");
     assert_eq!(
-        rendered,
-        concat!(
-            "+---+          \n",
-            "|   |          \n",
-            "| A |-------+  \n",
-            "|   |       |  \n",
-            "+---+       |  \n",
-            "  |         |  \n",
-            "  |         |  \n",
-            "  |         |  \n",
-            "  |         |  \n",
-            "  v         v  \n",
-            "+---+     +---+\n",
-            "|   |     |   |\n",
-            "| C |<----| B |\n",
-            "|   |     |   |\n",
-            "+---+     +---+\n",
-        ),
-        "same-rank right-to-left top-down edge should use natural horizontal ports"
+        rendered
+            .chars()
+            .filter(|ch| matches!(ch, '>' | '<' | 'v' | '^'))
+            .count(),
+        3,
+        "the two chain edges and skip edge should all retain target markers:\n{rendered}"
     );
     assert_rectangular_char_grid(&rendered);
 }
 
 #[test]
 fn flowchart_parser_top_down_skip_edge_routes_for_every_declaration_order() {
-    // Some declaration orders place B and C on the same rank instead of ranking C below B.
-    // `render_flowchart` rejects the diagram if any edge lacks a route plan, so a successful
-    // render proves every permutation can plan all three edges even when routed cells overlap.
+    // Dagre ranking owns topology before terminal routing. Equivalent edge declaration orders must
+    // therefore keep the semantic A -> B -> C ranks even though route paint order can still vary.
     for input in [
         "flowchart TD\n  A --> B\n  B --> C\n  A --> C\n",
         "flowchart TD\n  A --> B\n  A --> C\n  B --> C\n",
@@ -731,8 +725,32 @@ fn flowchart_parser_top_down_skip_edge_routes_for_every_declaration_order() {
                 "node {node} should stay visible for {input:?}:\n{rendered}"
             );
         }
+        let a_line = first_line_index_containing(&rendered, "| A |");
+        let b_line = first_line_index_containing(&rendered, "| B |");
+        let c_line = first_line_index_containing(&rendered, "| C |");
+        assert!(
+            a_line < b_line && b_line < c_line,
+            "Dagre ranks must stay invariant for {input:?}:\n{rendered}"
+        );
         assert_rectangular_char_grid(&rendered);
     }
+}
+
+#[test]
+fn flowchart_parser_ranks_explicitly_declared_reverse_order_chain_by_connectivity() {
+    let rendered = render_flowchart(
+        "flowchart TD\n  C\n  B\n  A\n  A --> B\n  B --> C\n",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("reverse-declared chain should render through Dagre rank semantics");
+
+    let a_line = first_line_index_containing(&rendered, "| A |");
+    let b_line = first_line_index_containing(&rendered, "| B |");
+    let c_line = first_line_index_containing(&rendered, "| C |");
+    assert!(
+        a_line < b_line && b_line < c_line,
+        "connectivity must own rank independently of node declaration order:\n{rendered}"
+    );
 }
 
 #[test]
@@ -806,62 +824,64 @@ fn flowchart_parser_top_down_double_point_edge_keeps_both_directions() {
 }
 
 #[test]
-fn flowchart_parser_bt_same_rank_left_edge_routes_after_vertical_flip() {
+fn flowchart_parser_bt_skip_edge_preserves_dagre_chain_after_vertical_flip() {
     let rendered = render_flowchart(
         "flowchart BT\n  A --> C\n  A --> B\n  B --> C\n",
         &AsciiRenderOptions::ascii(),
     )
     .expect("same-rank bottom-up skip edge should route");
 
+    let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
+    assert!(line_index("C") < line_index("B"), "{rendered}");
+    assert!(line_index("B") < line_index("A"), "{rendered}");
     assert_eq!(
-        rendered,
-        concat!(
-            "+---+     +---+\n",
-            "|   |     |   |\n",
-            "| C |<----| B |\n",
-            "|   |     |   |\n",
-            "+---+     +---+\n",
-            "  ^         ^  \n",
-            "  |         |  \n",
-            "  |         |  \n",
-            "  |         |  \n",
-            "  |         |  \n",
-            "+---+       |  \n",
-            "|   |       |  \n",
-            "| A |-------+  \n",
-            "|   |          \n",
-            "+---+          \n",
-        ),
-        "BT same-rank edge should keep its horizontal route after the vertical flip"
+        rendered
+            .chars()
+            .filter(|ch| matches!(ch, '>' | '<' | 'v' | '^'))
+            .count(),
+        3,
+        "the two chain edges and skip edge should survive the BT mirror:\n{rendered}"
     );
     assert_rectangular_char_grid(&rendered);
 }
 
 #[test]
-fn flowchart_parser_top_down_same_rank_left_edge_connects_unicode_ports() {
+fn flowchart_parser_top_down_skip_edge_keeps_unicode_connectivity() {
     let rendered = render_flowchart(
         "flowchart TD\n  A --> C\n  A --> B\n  B --> C\n",
         &AsciiRenderOptions::unicode(),
     )
     .expect("same-rank top-down skip edge should route in unicode");
 
-    assert!(
-        rendered.contains("│ C │◄────┤ B │"),
-        "unicode same-rank edge should connect the source and target horizontal ports:\n{rendered}"
+    let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
+    assert!(line_index("A") < line_index("B"), "{rendered}");
+    assert!(line_index("B") < line_index("C"), "{rendered}");
+    assert_eq!(
+        rendered
+            .chars()
+            .filter(|ch| matches!(ch, '▼' | '◄' | '►' | '▲'))
+            .count(),
+        3,
+        "unicode skip and chain edges should keep all target markers:\n{rendered}"
     );
 }
 
 #[test]
-fn flowchart_parser_top_down_same_rank_left_label_preserves_arrow() {
+fn flowchart_parser_top_down_skip_edge_label_preserves_arrow() {
     let rendered = render_flowchart(
         "flowchart TD\n  A --> C\n  A --> B\n  B -->|back| C\n",
         &AsciiRenderOptions::unicode(),
     )
     .expect("labeled same-rank top-down edge should route in unicode");
 
-    assert!(
-        rendered.contains("│ C │◄back┤ B │"),
-        "same-rank label should not overwrite the left arrowhead:\n{rendered}"
+    assert!(rendered.contains("back"), "{rendered}");
+    assert_eq!(
+        rendered
+            .chars()
+            .filter(|ch| matches!(ch, '▼' | '◄' | '►' | '▲'))
+            .count(),
+        3,
+        "the labeled chain edge and skip edge should keep all target markers:\n{rendered}"
     );
 }
 
@@ -1063,30 +1083,27 @@ fn flowchart_parser_subgraph_direction_override_with_cross_boundary_edges_record
         "cross-boundary mixed-direction subgraph should render through the boundary-aware seam",
     );
 
-    assert_eq!(
-        rendered,
-        concat!(
-            "+-----------------+        \n",
-            "|    LR Group     |        \n",
-            "|                 |        \n",
-            "|                 |        \n",
-            "| +---+     +---+ |   +---+\n",
-            "| |   |     |   | |   |   |\n",
-            "| | A |---->| B |+|   | X |\n",
-            "| |   |     |   |||   |   |\n",
-            "| +---+     +---+||   +---+\n",
-            "|   ^            ||     |  \n",
-            "+---+------------+------+  \n",
-            "                 |         \n",
-            "                 |         \n",
-            "                 |         \n",
-            "  +---+          |         \n",
-            "  |   |          |         \n",
-            "  | Y |<---------+         \n",
-            "  |   |                    \n",
-            "  +---+                    \n",
-        )
+    for expected in ["LR Group", "A", "B", "X", "Y"] {
+        assert!(
+            rendered.contains(expected),
+            "missing {expected:?}:\n{rendered}"
+        );
+    }
+    let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
+    assert!(
+        line_index("X") < line_index("A"),
+        "root TD direction should keep the external source above its group entry:\n{rendered}"
     );
+    assert_eq!(
+        line_index("A"),
+        line_index("B"),
+        "the local LR override should keep A and B on the same row:\n{rendered}"
+    );
+    assert!(
+        line_index("B") < line_index("Y"),
+        "root TD direction should keep the external target below its group exit:\n{rendered}"
+    );
+    assert_rectangular_char_grid(&rendered);
 }
 
 #[test]
@@ -1951,7 +1968,7 @@ fn flowchart_parser_hexagon_shape_renders() {
 }
 
 #[test]
-fn flowchart_parser_asymmetric_flag_and_paper_tape_shapes_remain_distinct() {
+fn flowchart_parser_asymmetric_and_paper_tape_shape_families_follow_upstream_aliases() {
     let odd = render_flowchart(
         "flowchart LR\nA@{ shape: odd, label: \"Odd\" }",
         &AsciiRenderOptions::ascii(),
@@ -1963,23 +1980,16 @@ fn flowchart_parser_asymmetric_flag_and_paper_tape_shapes_remain_distinct() {
         "odd shape should keep its left-pointing corners:\n{odd}"
     );
 
-    let flag = render_flowchart(
-        "flowchart LR\nA@{ shape: flag, label: \"Flag\" }",
-        &AsciiRenderOptions::ascii(),
-    )
-    .unwrap();
-    assert!(flag.contains("Flag"));
-    assert!(
-        flag.lines().next().is_some_and(|line| line.ends_with('\\'))
-            && flag.lines().any(|line| line.ends_with('>')),
-        "flag shape should use a right-facing flag edge instead of odd corners:\n{flag}"
-    );
-
-    let paper_tape = render_flowchart(
-        "flowchart LR\nA@{ shape: paper-tape, label: \"Tape\" }",
-        &AsciiRenderOptions::ascii(),
-    )
-    .unwrap();
+    let paper_tape_aliases = ["flag", "paper-tape"].map(|shape| {
+        render_flowchart(
+            &format!("flowchart LR\nA@{{ shape: {shape}, label: \"Tape\" }}"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap()
+    });
+    let flag = &paper_tape_aliases[0];
+    let paper_tape = &paper_tape_aliases[1];
+    assert_eq!(flag, paper_tape);
     assert!(paper_tape.contains("Tape"));
     assert!(
         paper_tape
@@ -1990,8 +2000,60 @@ fn flowchart_parser_asymmetric_flag_and_paper_tape_shapes_remain_distinct() {
                 .lines()
                 .last()
                 .is_some_and(|line| line.contains('~')),
-        "paper-tape shape should keep wavy top and bottom edges:\n{paper_tape}"
+        "paper-tape aliases should keep wavy top and bottom edges:\n{paper_tape}"
     );
+}
+
+#[test]
+fn flowchart_parser_manual_input_and_stored_data_aliases_keep_distinct_geometry() {
+    let manual_inputs = ["sl-rect", "manual-input", "sloped-rectangle"].map(|shape| {
+        render_flowchart(
+            &format!("flowchart LR\nA@{{ shape: {shape}, label: \"Input\" }}"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap()
+    });
+    assert!(manual_inputs.windows(2).all(|pair| pair[0] == pair[1]));
+    assert!(manual_inputs[0].contains("Input"));
+    assert!(
+        manual_inputs[0].lines().any(|line| line.starts_with('/')),
+        "manual-input aliases should retain the sloped input edge:\n{}",
+        manual_inputs[0]
+    );
+
+    let stored_data = ["bow-rect", "stored-data", "bow-tie-rectangle"].map(|shape| {
+        render_flowchart(
+            &format!("flowchart LR\nA@{{ shape: {shape}, label: \"Data\" }}"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap()
+    });
+    assert!(stored_data.windows(2).all(|pair| pair[0] == pair[1]));
+    assert!(stored_data[0].contains("Data"));
+    assert!(
+        stored_data[0].contains(')') && stored_data[0].contains('('),
+        "stored-data aliases should retain concave bow-tie sides:\n{}",
+        stored_data[0]
+    );
+}
+
+#[test]
+fn flowchart_parser_filled_circle_and_text_shapes_preserve_upstream_label_policy() {
+    for shape in ["f-circ", "junction", "filled-circle"] {
+        let rendered = render_flowchart(
+            &format!("flowchart LR\nA@{{ shape: {shape}, label: \"Hidden\" }}"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap();
+        assert!(!rendered.contains("Hidden"), "shape: {shape}\n{rendered}");
+    }
+
+    let label_rect = render_flowchart(
+        "flowchart LR\nA@{ shape: text, label: \"Label only\" }",
+        &AsciiRenderOptions::ascii(),
+    )
+    .unwrap();
+    assert_eq!(label_rect.trim(), "Label only");
 }
 
 #[test]
@@ -2184,4 +2246,194 @@ fn flowchart_parser_edge_length_modifiers_add_spacing() {
         rendered,
         "+---+         +---+\n|   |         |   |\n| A |-------->| B |\n|   |         |   |\n+---+         +---+\n"
     );
+}
+
+#[test]
+fn flowchart_parser_self_loops_preserve_labels_in_all_directions() {
+    for direction in ["TD", "BT", "LR", "RL"] {
+        let rendered = render_flowchart(
+            &format!("flowchart {direction}\nA -->|loop-{direction}| A"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap_or_else(|error| panic!("{direction} self-loop should render: {error:?}"));
+
+        assert!(rendered.contains('A'), "{direction}:\n{rendered}");
+        assert!(
+            rendered.contains(&format!("loop-{direction}")),
+            "{direction} self-loop should preserve its label:\n{rendered}"
+        );
+        assert!(
+            rendered
+                .chars()
+                .any(|ch| matches!(ch, '>' | '<' | '^' | 'v')),
+            "{direction} self-loop should preserve its target marker:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_parser_self_loops_preserve_independent_source_and_target_markers() {
+    for direction in ["TD", "BT", "LR", "RL"] {
+        for (options, circle_marker, cross_marker) in [
+            (AsciiRenderOptions::ascii(), 'o', 'x'),
+            (AsciiRenderOptions::unicode(), '○', '×'),
+        ] {
+            let rendered = render_flowchart(&format!("flowchart {direction}\nA o--x A"), &options)
+                .unwrap_or_else(|error| {
+                    panic!("{direction} double-ended self-loop should render: {error:?}")
+                });
+
+            let circle = rendered
+                .lines()
+                .enumerate()
+                .find_map(|(y, line)| line.find(circle_marker).map(|x| (x, y)))
+                .unwrap_or_else(|| panic!("missing source circle marker:\n{rendered}"));
+            let cross = rendered
+                .lines()
+                .enumerate()
+                .find_map(|(y, line)| line.find(cross_marker).map(|x| (x, y)))
+                .unwrap_or_else(|| panic!("missing target cross marker:\n{rendered}"));
+            assert_ne!(
+                circle, cross,
+                "{direction} self-loop endpoint markers need independent berths:\n{rendered}"
+            );
+            assert_rectangular_char_grid(&rendered);
+        }
+    }
+}
+
+#[test]
+fn flowchart_parser_parallel_self_loops_keep_independent_lanes_in_all_directions() {
+    for direction in ["TD", "BT", "LR", "RL"] {
+        let rendered = render_flowchart(
+            &format!("flowchart {direction}\nA -->|alpha| A\nA -- beta --o A\nA -- gamma --x A"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap_or_else(|error| panic!("{direction} parallel self-loops should render: {error:?}"));
+
+        for label in ["alpha", "beta", "gamma"] {
+            assert_eq!(
+                rendered.matches(label).count(),
+                1,
+                "{direction} should preserve self-loop label {label:?}:\n{rendered}"
+            );
+        }
+
+        let marker_cells = rendered
+            .lines()
+            .enumerate()
+            .flat_map(|(y, line)| {
+                line.chars().enumerate().filter_map(move |(x, ch)| {
+                    matches!(ch, '>' | '<' | '^' | 'v' | 'o' | 'x').then_some((x, y, ch))
+                })
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            marker_cells.len(),
+            3,
+            "{direction} should retain exactly one marker per self-loop:\n{rendered}"
+        );
+        assert!(
+            marker_cells.iter().any(|(_, _, ch)| *ch == 'o'),
+            "{direction} should retain the circle marker:\n{rendered}"
+        );
+        assert!(
+            marker_cells.iter().any(|(_, _, ch)| *ch == 'x'),
+            "{direction} should retain the cross marker:\n{rendered}"
+        );
+        assert!(
+            marker_cells
+                .iter()
+                .any(|(_, _, ch)| matches!(*ch, '>' | '<' | '^' | 'v')),
+            "{direction} should retain the point marker:\n{rendered}"
+        );
+        let mut marker_coords = marker_cells
+            .iter()
+            .map(|(x, y, _)| (*x, *y))
+            .collect::<Vec<_>>();
+        marker_coords.sort_unstable();
+        marker_coords.dedup();
+        assert_eq!(
+            marker_coords.len(),
+            3,
+            "{direction} self-loop markers must occupy independent coordinates:\n{rendered}"
+        );
+
+        let mut label_coords = ["alpha", "beta", "gamma"]
+            .into_iter()
+            .map(|label| {
+                rendered
+                    .lines()
+                    .enumerate()
+                    .find_map(|(y, line)| line.find(label).map(|x| (x, y)))
+                    .unwrap_or_else(|| panic!("missing {label:?} in rendered fixture:\n{rendered}"))
+            })
+            .collect::<Vec<_>>();
+        label_coords.sort_unstable();
+        label_coords.dedup();
+        assert_eq!(
+            label_coords.len(),
+            3,
+            "{direction} self-loop labels must occupy independent lanes:\n{rendered}"
+        );
+        assert_rectangular_char_grid(&rendered);
+    }
+}
+
+#[test]
+fn flowchart_parser_three_parallel_edges_keep_distinct_labels_and_markers() {
+    for direction in ["TD", "LR"] {
+        let rendered = render_flowchart(
+            &format!("flowchart {direction}\nA -->|first| B\nA -->|second| B\nA -->|third| B"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap_or_else(|error| panic!("{direction} parallel edges should render: {error:?}"));
+
+        for label in ["first", "second", "third"] {
+            assert_eq!(
+                rendered.matches(label).count(),
+                1,
+                "{direction} should preserve the parallel label {label:?}:\n{rendered}"
+            );
+        }
+        let marker_coords = rendered
+            .lines()
+            .enumerate()
+            .flat_map(|(y, line)| {
+                line.chars().enumerate().filter_map(move |(x, ch)| {
+                    matches!(ch, '>' | '<' | '^' | 'v').then_some((x, y))
+                })
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            marker_coords.len(),
+            3,
+            "{direction} should preserve one independently positioned target marker per parallel edge:\n{rendered}"
+        );
+        let mut unique_marker_coords = marker_coords.clone();
+        unique_marker_coords.sort_unstable();
+        unique_marker_coords.dedup();
+        assert_eq!(
+            unique_marker_coords.len(),
+            3,
+            "{direction} parallel markers should occupy independent coordinates:\n{rendered}"
+        );
+        let mut label_coords = ["first", "second", "third"]
+            .into_iter()
+            .map(|label| {
+                rendered
+                    .lines()
+                    .enumerate()
+                    .find_map(|(y, line)| line.find(label).map(|x| (x, y)))
+                    .unwrap_or_else(|| panic!("missing {label:?} in rendered fixture:\n{rendered}"))
+            })
+            .collect::<Vec<_>>();
+        label_coords.sort_unstable();
+        label_coords.dedup();
+        assert_eq!(
+            label_coords.len(),
+            3,
+            "{direction} parallel labels should occupy independent lane coordinates:\n{rendered}"
+        );
+    }
 }

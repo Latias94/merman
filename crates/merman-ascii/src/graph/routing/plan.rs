@@ -7,8 +7,11 @@ use crate::canvas::CanvasColor;
 use crate::color::{AsciiColorRole, AsciiRgb};
 use crate::error::{AsciiError, Result};
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
+use std::collections::HashMap;
 
 mod boundary;
+mod candidates;
+mod compound;
 mod edges;
 mod grid;
 mod left_right;
@@ -16,9 +19,12 @@ mod same_rank;
 mod select;
 mod top_down;
 
+pub(super) use candidates::{EdgeRouteCandidates, plan_edge_route_candidates_with_topology};
+#[cfg(test)]
+pub(super) use select::EdgeRoutePlan;
+pub(super) use select::EdgeRouteRequest;
 #[cfg(test)]
 pub(super) use select::plan_edge_route;
-pub(super) use select::{EdgeRoutePlan, EdgeRouteRequest, plan_edge_route_with_topology};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct RoutePlan {
@@ -26,6 +32,8 @@ pub(super) struct RoutePlan {
     pub(super) labels: Vec<PlannedRouteLabel>,
     pub(super) style: GraphEdgeStyle,
     anchors: MarkerAnchors,
+    start_marker: GraphEdgeMarker,
+    end_marker: GraphEdgeMarker,
     min_canvas_extent: CanvasExtent,
 }
 
@@ -56,6 +64,22 @@ pub(super) struct MarkerAnchors {
     end: MarkerAnchor,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum MarkerEndpoint {
+    Start,
+    End,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct MarkerCandidate {
+    pub(super) cell: PlannedCellId,
+    pub(super) coord: CanvasCoord,
+    pub(super) point_direction: StepDirection,
+    pub(super) is_primary: bool,
+}
+
+pub(super) const MAX_MARKER_CANDIDATES: usize = 8;
+
 impl MarkerAnchors {
     pub(super) const fn new(start: MarkerAnchor, end: MarkerAnchor) -> Self {
         Self { start, end }
@@ -73,6 +97,8 @@ impl RoutePlan {
             labels,
             style: GraphEdgeStyle::default(),
             anchors,
+            start_marker: GraphEdgeMarker::Open,
+            end_marker: GraphEdgeMarker::Open,
             min_canvas_extent: CanvasExtent::default(),
         }
     }
@@ -97,6 +123,14 @@ impl RoutePlan {
         self
     }
 
+    pub(super) fn with_segment(mut self, segment: PlannedRouteSegment) -> Self {
+        for cell in &mut self.cells {
+            cell.segment = segment;
+        }
+        self
+    }
+
+    #[cfg(test)]
     pub(super) fn with_markers(
         mut self,
         start_marker: GraphEdgeMarker,
@@ -104,6 +138,7 @@ impl RoutePlan {
         charset: &GraphCharset,
         diagram_type: &'static str,
     ) -> Result<Self> {
+        self = self.with_marker_requests(start_marker, end_marker, diagram_type)?;
         let start_coord = self.marker_coord(self.anchors.start, diagram_type)?;
         let end_coord = self.marker_coord(self.anchors.end, diagram_type)?;
         if start_marker != GraphEdgeMarker::Open
@@ -116,9 +151,243 @@ impl RoutePlan {
             });
         }
 
-        self.materialize_marker(self.anchors.start, start_marker, charset, diagram_type)?;
-        self.materialize_marker(self.anchors.end, end_marker, charset, diagram_type)?;
+        self.materialize_marker_at(
+            MarkerEndpoint::Start,
+            MarkerCandidate {
+                cell: self.anchors.start.cell,
+                coord: start_coord,
+                point_direction: self.anchors.start.point_direction,
+                is_primary: true,
+            },
+            charset,
+            diagram_type,
+        )?;
+        self.materialize_marker_at(
+            MarkerEndpoint::End,
+            MarkerCandidate {
+                cell: self.anchors.end.cell,
+                coord: end_coord,
+                point_direction: self.anchors.end.point_direction,
+                is_primary: true,
+            },
+            charset,
+            diagram_type,
+        )?;
         Ok(self)
+    }
+
+    pub(super) fn with_marker_requests(
+        mut self,
+        start_marker: GraphEdgeMarker,
+        end_marker: GraphEdgeMarker,
+        diagram_type: &'static str,
+    ) -> Result<Self> {
+        if start_marker != GraphEdgeMarker::Open {
+            self.marker_coord(self.anchors.start, diagram_type)?;
+        }
+        if end_marker != GraphEdgeMarker::Open {
+            self.marker_coord(self.anchors.end, diagram_type)?;
+        }
+        self.start_marker = start_marker;
+        self.end_marker = end_marker;
+        Ok(self)
+    }
+
+    pub(super) fn materialized_marker_cell(
+        &self,
+        endpoint: MarkerEndpoint,
+        diagram_type: &'static str,
+    ) -> Result<Option<&PlannedRouteCell>> {
+        let (marker, anchor) = match endpoint {
+            MarkerEndpoint::Start => (self.start_marker, self.anchors.start),
+            MarkerEndpoint::End => (self.end_marker, self.anchors.end),
+        };
+        if marker == GraphEdgeMarker::Open {
+            return Ok(None);
+        }
+        let cell = self
+            .cells
+            .get(anchor.cell.0)
+            .ok_or(AsciiError::UnsupportedFeature {
+                diagram_type,
+                feature: "routes with missing endpoint marker cells",
+            })?;
+        if cell.kind != PlannedRouteCellKind::EdgeArrow {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type,
+                feature: "routes with unmaterialized endpoint markers",
+            });
+        }
+        Ok(Some(cell))
+    }
+
+    pub(super) fn marker_candidates(
+        &self,
+        endpoint: MarkerEndpoint,
+        diagram_type: &'static str,
+        resources: &mut ResourceContext,
+    ) -> Result<Vec<MarkerCandidate>> {
+        let (marker, anchor) = match endpoint {
+            MarkerEndpoint::Start => (self.start_marker, self.anchors.start),
+            MarkerEndpoint::End => (self.end_marker, self.anchors.end),
+        };
+        if marker == GraphEdgeMarker::Open {
+            return Ok(Vec::new());
+        }
+
+        let primary_candidate = self.terminal_candidate(endpoint, diagram_type)?;
+        let primary = self.cells[primary_candidate.cell.0];
+
+        let mut coordinate_index = HashMap::new();
+        coordinate_index
+            .try_reserve(self.cells.len())
+            .map_err(|_| AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+            })?;
+        for (index, cell) in self.cells.iter().enumerate() {
+            resources.charge_layout_work(1)?;
+            coordinate_index
+                .entry(cell.coord)
+                .or_insert(PlannedCellId(index));
+        }
+
+        let mut candidates = Vec::new();
+        candidates
+            .try_reserve(self.cells.len().min(8))
+            .map_err(|_| AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+            })?;
+        candidates.push(primary_candidate);
+
+        let other_anchor = match endpoint {
+            MarkerEndpoint::Start => self.anchors.end,
+            MarkerEndpoint::End => self.anchors.start,
+        };
+        let mut candidate_coord = primary.coord;
+        for _ in 0..self.cells.len() {
+            if candidates.len() >= MAX_MARKER_CANDIDATES {
+                break;
+            }
+            resources.charge_layout_work(1)?;
+            let Some(next_coord) =
+                marker_relocation_step(candidate_coord, anchor.point_direction, resources)?
+            else {
+                break;
+            };
+            let Some(candidate_id) = coordinate_index.get(&next_coord).copied() else {
+                break;
+            };
+            if candidate_id == other_anchor.cell {
+                break;
+            }
+            candidate_coord = next_coord;
+            let candidate = self.cells[candidate_id.0];
+            if candidate.segment != primary.segment
+                || marker_candidate_has_perpendicular_neighbor(
+                    candidate.coord,
+                    anchor.point_direction,
+                    &coordinate_index,
+                )
+            {
+                break;
+            }
+            candidates
+                .try_reserve(1)
+                .map_err(|_| AsciiError::AllocationFailed {
+                    phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+                })?;
+            candidates.push(MarkerCandidate {
+                cell: candidate_id,
+                coord: candidate.coord,
+                point_direction: anchor.point_direction,
+                is_primary: false,
+            });
+        }
+
+        match endpoint {
+            MarkerEndpoint::Start => {
+                let Some(first_index) = anchor.cell.0.checked_add(1) else {
+                    return Ok(candidates);
+                };
+                for candidate_index in first_index..self.cells.len() {
+                    if candidates.len() >= MAX_MARKER_CANDIDATES {
+                        break;
+                    }
+                    resources.charge_layout_work(1)?;
+                    append_ordered_marker_candidate(
+                        self,
+                        candidate_index,
+                        candidate_index - 1,
+                        other_anchor,
+                        primary.segment,
+                        &coordinate_index,
+                        &mut candidates,
+                    )?;
+                }
+            }
+            MarkerEndpoint::End => {
+                for candidate_index in (0..anchor.cell.0).rev() {
+                    if candidates.len() >= MAX_MARKER_CANDIDATES {
+                        break;
+                    }
+                    resources.charge_layout_work(1)?;
+                    append_ordered_marker_candidate(
+                        self,
+                        candidate_index,
+                        candidate_index + 1,
+                        other_anchor,
+                        primary.segment,
+                        &coordinate_index,
+                        &mut candidates,
+                    )?;
+                }
+            }
+        }
+
+        Ok(candidates)
+    }
+
+    pub(super) fn terminal_candidate(
+        &self,
+        endpoint: MarkerEndpoint,
+        diagram_type: &'static str,
+    ) -> Result<MarkerCandidate> {
+        let anchor = match endpoint {
+            MarkerEndpoint::Start => self.anchors.start,
+            MarkerEndpoint::End => self.anchors.end,
+        };
+        let coord = self.marker_coord(anchor, diagram_type)?;
+        Ok(MarkerCandidate {
+            cell: anchor.cell,
+            coord,
+            point_direction: anchor.point_direction,
+            is_primary: true,
+        })
+    }
+
+    pub(super) fn materialize_marker_at(
+        &mut self,
+        endpoint: MarkerEndpoint,
+        candidate: MarkerCandidate,
+        charset: &GraphCharset,
+        diagram_type: &'static str,
+    ) -> Result<()> {
+        let marker = match endpoint {
+            MarkerEndpoint::Start => {
+                self.anchors.start = MarkerAnchor::new(candidate.cell, candidate.point_direction);
+                self.start_marker
+            }
+            MarkerEndpoint::End => {
+                self.anchors.end = MarkerAnchor::new(candidate.cell, candidate.point_direction);
+                self.end_marker
+            }
+        };
+        self.materialize_marker(
+            MarkerAnchor::new(candidate.cell, candidate.point_direction),
+            marker,
+            charset,
+            diagram_type,
+        )
     }
 
     fn marker_coord(
@@ -154,7 +423,8 @@ impl RoutePlan {
             })?;
         cell.ch = marker_char(marker, point_char(anchor.point_direction, charset), charset);
         cell.kind = PlannedRouteCellKind::EdgeArrow;
-        cell.paint = PlannedRoutePaint::role(AsciiColorRole::EdgeArrow);
+        cell.paint = PlannedRoutePaint::role(AsciiColorRole::EdgeArrow)
+            .with_edge_style(PlannedRouteCellKind::EdgeArrow, self.style);
         Ok(())
     }
 
@@ -170,6 +440,8 @@ impl RoutePlan {
             labels,
             style: GraphEdgeStyle::default(),
             anchors,
+            start_marker: GraphEdgeMarker::Open,
+            end_marker: GraphEdgeMarker::Open,
             min_canvas_extent: CanvasExtent { width, height },
         }
     }
@@ -205,6 +477,128 @@ impl RoutePlan {
 
         Ok((width, height))
     }
+}
+
+fn append_ordered_marker_candidate(
+    plan: &RoutePlan,
+    candidate_index: usize,
+    closer_index: usize,
+    other_anchor: MarkerAnchor,
+    primary_segment: PlannedRouteSegment,
+    coordinate_index: &HashMap<CanvasCoord, PlannedCellId>,
+    candidates: &mut Vec<MarkerCandidate>,
+) -> Result<()> {
+    let candidate_id = PlannedCellId(candidate_index);
+    if candidate_id == other_anchor.cell {
+        return Ok(());
+    }
+    let (Some(candidate), Some(closer)) = (
+        plan.cells.get(candidate_index).copied(),
+        plan.cells.get(closer_index).copied(),
+    ) else {
+        return Ok(());
+    };
+    if candidate.segment != primary_segment
+        || candidates
+            .iter()
+            .any(|existing| existing.coord == candidate.coord)
+    {
+        return Ok(());
+    }
+    let Some(point_direction) = step_direction_between(candidate.coord, closer.coord) else {
+        return Ok(());
+    };
+    if marker_candidate_has_perpendicular_neighbor(
+        candidate.coord,
+        point_direction,
+        coordinate_index,
+    ) {
+        return Ok(());
+    }
+    candidates
+        .try_reserve(1)
+        .map_err(|_| AsciiError::AllocationFailed {
+            phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+        })?;
+    candidates.push(MarkerCandidate {
+        cell: candidate_id,
+        coord: candidate.coord,
+        point_direction,
+        is_primary: false,
+    });
+    Ok(())
+}
+
+fn step_direction_between(from: CanvasCoord, toward: CanvasCoord) -> Option<StepDirection> {
+    if from.x.abs_diff(toward.x) + from.y.abs_diff(toward.y) != 1 {
+        return None;
+    }
+    match (from.x.cmp(&toward.x), from.y.cmp(&toward.y)) {
+        (std::cmp::Ordering::Equal, std::cmp::Ordering::Greater) => Some(StepDirection::Up),
+        (std::cmp::Ordering::Equal, std::cmp::Ordering::Less) => Some(StepDirection::Down),
+        (std::cmp::Ordering::Greater, std::cmp::Ordering::Equal) => Some(StepDirection::Left),
+        (std::cmp::Ordering::Less, std::cmp::Ordering::Equal) => Some(StepDirection::Right),
+        _ => None,
+    }
+}
+
+fn marker_relocation_step(
+    coord: CanvasCoord,
+    point_direction: StepDirection,
+    resources: &ResourceContext,
+) -> Result<Option<CanvasCoord>> {
+    Ok(match point_direction {
+        StepDirection::Up => Some(CanvasCoord {
+            x: coord.x,
+            y: resources.checked_grid_add(coord.y, 1)?,
+        }),
+        StepDirection::Right => coord
+            .x
+            .checked_sub(1)
+            .map(|x| CanvasCoord { x, y: coord.y }),
+        StepDirection::Down => coord
+            .y
+            .checked_sub(1)
+            .map(|y| CanvasCoord { x: coord.x, y }),
+        StepDirection::Left => Some(CanvasCoord {
+            x: resources.checked_grid_add(coord.x, 1)?,
+            y: coord.y,
+        }),
+    })
+}
+
+fn marker_candidate_has_perpendicular_neighbor(
+    coord: CanvasCoord,
+    point_direction: StepDirection,
+    coordinate_index: &HashMap<CanvasCoord, PlannedCellId>,
+) -> bool {
+    let neighbors = match point_direction {
+        StepDirection::Up | StepDirection::Down => [
+            coord
+                .x
+                .checked_sub(1)
+                .map(|x| CanvasCoord { x, y: coord.y }),
+            coord
+                .x
+                .checked_add(1)
+                .map(|x| CanvasCoord { x, y: coord.y }),
+        ],
+        StepDirection::Left | StepDirection::Right => [
+            coord
+                .y
+                .checked_sub(1)
+                .map(|y| CanvasCoord { x: coord.x, y }),
+            coord
+                .y
+                .checked_add(1)
+                .map(|y| CanvasCoord { x: coord.x, y }),
+        ],
+    };
+
+    neighbors
+        .into_iter()
+        .flatten()
+        .any(|neighbor| coordinate_index.contains_key(&neighbor))
 }
 
 #[cfg(test)]
@@ -256,6 +650,13 @@ pub(super) struct PlannedRouteCell {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct PlannedCellId(usize);
+
+impl PlannedCellId {
+    #[cfg(test)]
+    pub(super) const fn new(index: usize) -> Self {
+        Self(index)
+    }
+}
 
 #[derive(Debug, Default)]
 struct PlannedRouteCells {
@@ -312,11 +713,12 @@ pub(super) enum PlannedRouteCellKind {
     EdgeArrow,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub(super) struct PlannedRouteLabel {
     pub(super) text: RoutedLabelText,
     pub(super) placement: RoutedLabelPlacement,
     pub(super) paint: PlannedRoutePaint,
+    pub(super) anchor: LabelAnchor,
 }
 
 impl PlannedRouteLabel {
@@ -325,8 +727,46 @@ impl PlannedRouteLabel {
             text,
             placement,
             paint: PlannedRoutePaint::role(AsciiColorRole::EdgeLabel),
+            anchor: LabelAnchor::PlacementHint(CanvasCoord {
+                x: placement.x(),
+                y: placement.y(),
+            }),
         }
     }
+
+    fn with_host_segment(
+        text: RoutedLabelText,
+        placement: RoutedLabelPlacement,
+        start: CanvasCoord,
+        end: CanvasCoord,
+    ) -> Self {
+        Self {
+            anchor: LabelAnchor::Segment {
+                start,
+                end,
+                route_segment: None,
+            },
+            ..Self::new(text, placement)
+        }
+    }
+}
+
+impl PartialEq for PlannedRouteLabel {
+    fn eq(&self, other: &Self) -> bool {
+        self.text == other.text && self.placement == other.placement && self.paint == other.paint
+    }
+}
+
+impl Eq for PlannedRouteLabel {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum LabelAnchor {
+    Segment {
+        start: CanvasCoord,
+        end: CanvasCoord,
+        route_segment: Option<PlannedRouteSegment>,
+    },
+    PlacementHint(CanvasCoord),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -406,7 +846,9 @@ fn planned_label(
 ) -> Option<PlannedRouteLabel> {
     let text = RoutedLabelText::new_with_profile(label?, charset.width_profile)?;
     let placement = routed_label_placement_for_text(start, end, &text)?;
-    Some(PlannedRouteLabel::new(text, placement))
+    Some(PlannedRouteLabel::with_host_segment(
+        text, placement, start, end,
+    ))
 }
 
 fn route_turn_char(previous: StepDirection, next: StepDirection, charset: &GraphCharset) -> char {
@@ -428,6 +870,36 @@ fn route_turn_char(previous: StepDirection, next: StepDirection, charset: &Graph
             charset.corner_down_right
         }
         _ => '+',
+    }
+}
+
+#[cfg(test)]
+mod u6_tests {
+    use super::*;
+    use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
+    use merman_core::resources::ResourceProfile;
+
+    #[test]
+    fn marker_relocation_reports_checked_grid_overflow() {
+        let resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
+            ResourceProfile::UnboundedForTrustedInput,
+        ));
+
+        let error = marker_relocation_step(
+            CanvasCoord {
+                x: usize::MAX,
+                y: 0,
+            },
+            StepDirection::Left,
+            &resources,
+        )
+        .expect_err("marker relocation must not turn coordinate overflow into berth exhaustion");
+
+        let AsciiError::ResourceLimitExceeded(details) = error else {
+            panic!("expected a grid resource error, got {error:?}");
+        };
+        assert_eq!(details.limit, AsciiResourceLimitId::MaxGridCells);
+        assert_eq!(details.actual, usize::MAX);
     }
 }
 

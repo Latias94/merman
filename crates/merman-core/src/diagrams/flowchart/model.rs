@@ -262,8 +262,12 @@ impl<'de> Deserialize<'de> for FlowEdge {
         D: Deserializer<'de>,
     {
         let wire = FlowEdgeWire::deserialize(deserializer)?;
-        let (legacy_start_marker, legacy_end_marker) =
-            markers_from_compatibility_fields(&wire.arrow, wire.edge_type.as_deref());
+        let label_is_present = wire.label.is_some();
+        let (legacy_start_marker, legacy_end_marker) = markers_from_compatibility_fields(
+            &wire.arrow,
+            wire.edge_type.as_deref(),
+            label_is_present,
+        );
         let legacy_stroke_kind = stroke_from_compatibility_field(wire.stroke.as_deref());
         let legacy_visibility = visibility_from_compatibility_field(wire.stroke.as_deref());
 
@@ -294,29 +298,31 @@ impl<'de> Deserialize<'de> for FlowEdge {
 fn markers_from_compatibility_fields(
     arrow: &str,
     edge_type: Option<&str>,
+    label_is_present: bool,
 ) -> (FlowEdgeMarker, FlowEdgeMarker) {
-    if let Some(edge_type) = edge_type {
-        let marker = marker_from_compatibility_edge_type(edge_type).unwrap_or_default();
-        let start_marker = if edge_type.starts_with("double_") {
-            marker
-        } else {
-            FlowEdgeMarker::None
-        };
-        return (start_marker, marker);
-    }
-
     let arrow = arrow.trim();
-    let end_marker = arrow
-        .chars()
-        .next_back()
-        .and_then(marker_from_end_char)
-        .unwrap_or_default();
-    let start_marker = arrow
-        .chars()
-        .next()
-        .and_then(marker_from_start_char)
-        .filter(|marker| *marker == end_marker)
-        .unwrap_or_default();
+    let compatibility_marker = edge_type.and_then(marker_from_compatibility_edge_type);
+    let end_marker = compatibility_marker.unwrap_or_else(|| {
+        arrow
+            .chars()
+            .next_back()
+            .and_then(marker_from_end_char)
+            .unwrap_or_default()
+    });
+    let start_marker = if edge_type.is_some_and(|edge_type| edge_type.starts_with("double_")) {
+        compatibility_marker.unwrap_or_default()
+    } else if label_is_present {
+        // Mermaid's split-label lexer can leave the label's final `o` or `x` at the beginning of
+        // the compatibility `arrow` field (for example `--No-->` becomes `o-->`). Only an
+        // unlabeled edge proves that `arrow` contains the complete authored operator.
+        FlowEdgeMarker::None
+    } else {
+        arrow
+            .chars()
+            .next()
+            .and_then(marker_from_start_char)
+            .unwrap_or_default()
+    };
     (start_marker, end_marker)
 }
 

@@ -1,6 +1,10 @@
 use super::super::layout::{GridCoord, NodeLayout};
-use crate::error::Result;
+use crate::error::{AsciiError, Result};
+use crate::resource::AsciiResourceLimitPhase;
 use crate::resource::ResourceContext;
+use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::hash::Hash;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum GridPathPortPolicy {
@@ -100,9 +104,13 @@ fn plan_grid_path_for_ports(
 ) -> Result<Option<GridPathRoute>> {
     let start = from.grid_for_port(ports.start, resources)?;
     let target = to.grid_for_port(ports.end, resources)?;
-    Ok(find_grid_path(layouts, start, target, resources)?
-        .map(merge_grid_path)
-        .map(|path| GridPathRoute { path, ports }))
+    let Some(path) = find_grid_path(layouts, start, target, resources)? else {
+        return Ok(None);
+    };
+    Ok(Some(GridPathRoute {
+        path: merge_grid_path(path, resources)?,
+        ports,
+    }))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -244,21 +252,37 @@ fn find_grid_path(
     })?;
     let max_x = resources.checked_grid_add(max_x, 6)?;
     let max_y = resources.checked_grid_add(max_y, 6)?;
-    let mut open = vec![(start, 0usize)];
-    let mut cost_so_far = std::collections::HashMap::from([(start, 0usize)]);
-    let mut came_from = std::collections::HashMap::<GridCoord, GridCoord>::new();
+    let occupied = occupied_grid_cells(layouts, resources)?;
+    let mut open = BinaryHeap::new();
+    let mut cost_so_far = HashMap::new();
+    let mut came_from = HashMap::<GridCoord, GridCoord>::new();
+    open.try_reserve(1)
+        .map_err(|_| layout_allocation_failed())?;
+    try_reserve_hash_map(&mut cost_so_far, 1)?;
+    cost_so_far.insert(start, 0usize);
+    open.push(OpenEntry {
+        coord: start,
+        cost: 0,
+        priority: grid_heuristic(start, target, resources)?,
+        sequence: 0,
+    });
+    let mut sequence = 0usize;
 
-    while !open.is_empty() {
-        resources.charge_layout_work(open.len())?;
-        let best_index = open
-            .iter()
-            .enumerate()
-            .min_by_key(|(_, (_, priority))| *priority)
-            .map(|(index, _)| index)
-            .unwrap_or_default();
-        let (current, _) = open.remove(best_index);
+    while let Some(entry) = open.pop() {
+        resources.charge_layout_work(1)?;
+        let current = entry.coord;
+        if cost_so_far
+            .get(&current)
+            .is_some_and(|known| entry.cost > *known)
+        {
+            continue;
+        }
         if current == target {
-            let mut path = vec![current];
+            let path_capacity = resources.checked_work_add(entry.cost, 1)?;
+            let mut path = Vec::new();
+            path.try_reserve(path_capacity)
+                .map_err(|_| layout_allocation_failed())?;
+            path.push(current);
             let mut cursor = current;
             while let Some(previous) = came_from.get(&cursor).copied() {
                 resources.charge_layout_work(1)?;
@@ -269,11 +293,9 @@ fn find_grid_path(
             return Ok(Some(path));
         }
 
-        let neighbors = grid_neighbors(current, max_x, max_y);
-        let occupancy_work = resources.checked_work_mul(neighbors.len(), layouts.len().max(1))?;
-        resources.charge_layout_work(occupancy_work)?;
-        for next in neighbors {
-            if grid_occupied(layouts, next) && next != target {
+        for next in grid_neighbors(current, max_x, max_y).into_iter().flatten() {
+            resources.charge_layout_work(1)?;
+            if occupied.contains(&next) && next != target {
                 continue;
             }
 
@@ -282,10 +304,22 @@ fn find_grid_path(
                 .get(&next)
                 .is_none_or(|current_cost| new_cost < *current_cost)
             {
+                if !cost_so_far.contains_key(&next) {
+                    try_reserve_hash_map(&mut cost_so_far, 1)?;
+                    try_reserve_hash_map(&mut came_from, 1)?;
+                }
                 cost_so_far.insert(next, new_cost);
                 let priority = resources
                     .checked_work_add(new_cost, grid_heuristic(next, target, resources)?)?;
-                open.push((next, priority));
+                sequence = resources.checked_work_add(sequence, 1)?;
+                open.try_reserve(1)
+                    .map_err(|_| layout_allocation_failed())?;
+                open.push(OpenEntry {
+                    coord: next,
+                    cost: new_cost,
+                    priority,
+                    sequence,
+                });
                 came_from.insert(next, current);
             }
         }
@@ -294,70 +328,103 @@ fn find_grid_path(
     Ok(None)
 }
 
-fn grid_neighbors(coord: GridCoord, max_x: usize, max_y: usize) -> Vec<GridCoord> {
-    let mut neighbors = Vec::with_capacity(4);
-    if coord.x < max_x {
-        neighbors.push(GridCoord {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct OpenEntry {
+    coord: GridCoord,
+    cost: usize,
+    priority: usize,
+    sequence: usize,
+}
+
+impl Ord for OpenEntry {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other
+            .priority
+            .cmp(&self.priority)
+            .then_with(|| other.cost.cmp(&self.cost))
+            .then_with(|| other.sequence.cmp(&self.sequence))
+            .then_with(|| other.coord.y.cmp(&self.coord.y))
+            .then_with(|| other.coord.x.cmp(&self.coord.x))
+    }
+}
+
+impl PartialOrd for OpenEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+fn occupied_grid_cells(
+    layouts: &[NodeLayout],
+    resources: &mut ResourceContext,
+) -> Result<HashSet<GridCoord>> {
+    const NODE_GRID_FOOTPRINT: usize = 9;
+    let capacity = resources.checked_work_mul(layouts.len(), NODE_GRID_FOOTPRINT)?;
+    let mut occupied = HashSet::new();
+    occupied
+        .try_reserve(capacity)
+        .map_err(|_| layout_allocation_failed())?;
+    for layout in layouts {
+        for y_offset in 0..=2 {
+            for x_offset in 0..=2 {
+                resources.charge_layout_work(1)?;
+                occupied.insert(GridCoord {
+                    x: resources.checked_grid_add(layout.grid.x, x_offset)?,
+                    y: resources.checked_grid_add(layout.grid.y, y_offset)?,
+                });
+            }
+        }
+    }
+    Ok(occupied)
+}
+
+fn try_reserve_hash_map<K: Eq + Hash, V>(map: &mut HashMap<K, V>, additional: usize) -> Result<()> {
+    map.try_reserve(additional)
+        .map_err(|_| layout_allocation_failed())
+}
+
+fn layout_allocation_failed() -> AsciiError {
+    AsciiError::AllocationFailed {
+        phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+    }
+}
+
+fn grid_neighbors(coord: GridCoord, max_x: usize, max_y: usize) -> [Option<GridCoord>; 4] {
+    [
+        (coord.x < max_x).then(|| GridCoord {
             x: coord.x + 1,
             y: coord.y,
-        });
-    }
-    if coord.x > 0 {
-        neighbors.push(GridCoord {
-            x: coord.x - 1,
-            y: coord.y,
-        });
-    }
-    if coord.y < max_y {
-        neighbors.push(GridCoord {
+        }),
+        coord.x.checked_sub(1).map(|x| GridCoord { x, y: coord.y }),
+        (coord.y < max_y).then(|| GridCoord {
             x: coord.x,
             y: coord.y + 1,
-        });
-    }
-    if coord.y > 0 {
-        neighbors.push(GridCoord {
-            x: coord.x,
-            y: coord.y - 1,
-        });
-    }
-    neighbors
+        }),
+        coord.y.checked_sub(1).map(|y| GridCoord { x: coord.x, y }),
+    ]
 }
 
 fn grid_heuristic(a: GridCoord, b: GridCoord, resources: &ResourceContext) -> Result<usize> {
     let dx = a.x.abs_diff(b.x);
     let dy = a.y.abs_diff(b.y);
-    if dx == 0 || dy == 0 {
-        dx.checked_add(dy)
-    } else {
-        dx.checked_add(dy)
-            .and_then(|distance| distance.checked_add(1))
-    }
-    .ok_or_else(|| resources.grid_overflow())
+    dx.checked_add(dy).ok_or_else(|| resources.grid_overflow())
 }
 
-fn grid_occupied(layouts: &[NodeLayout], coord: GridCoord) -> bool {
-    layouts.iter().any(|layout| {
-        layout
-            .grid
-            .x
-            .checked_add(2)
-            .is_some_and(|right| (layout.grid.x..=right).contains(&coord.x))
-            && layout
-                .grid
-                .y
-                .checked_add(2)
-                .is_some_and(|bottom| (layout.grid.y..=bottom).contains(&coord.y))
-    })
-}
-
-pub(super) fn merge_grid_path(path: Vec<GridCoord>) -> Vec<GridCoord> {
+fn merge_grid_path(
+    path: Vec<GridCoord>,
+    resources: &mut ResourceContext,
+) -> Result<Vec<GridCoord>> {
     if path.len() <= 2 {
-        return path;
+        return Ok(path);
     }
 
-    let mut merged = Vec::with_capacity(path.len());
+    let mut merged = Vec::new();
+    merged
+        .try_reserve(path.len())
+        .map_err(|_| layout_allocation_failed())?;
     merged.push(path[0]);
     for window in path.windows(3) {
+        resources.charge_layout_work(1)?;
         let previous = step_direction(window[0], window[1]);
         let next = step_direction(window[1], window[2]);
         if previous != next {
@@ -365,7 +432,7 @@ pub(super) fn merge_grid_path(path: Vec<GridCoord>) -> Vec<GridCoord> {
         }
     }
     merged.push(*path.last().expect("path has at least one element"));
-    merged
+    Ok(merged)
 }
 
 pub(super) fn step_direction(from: GridCoord, to: GridCoord) -> StepDirection {
@@ -460,6 +527,33 @@ mod tests {
         };
         assert_eq!(details.limit, AsciiResourceLimitId::MaxLayoutWorkUnits);
         assert!(details.actual > details.max);
+    }
+
+    #[test]
+    fn heap_search_is_deterministic_for_equal_cost_detours() {
+        let from = node("from", 0, 3);
+        let blocker = node("blocker", 4, 3);
+        let to = node("to", 8, 3);
+        let layouts = vec![from.clone(), blocker, to.clone()];
+
+        let expected = route_grid_path(
+            &layouts,
+            &from,
+            &to,
+            GridPathPortPolicy::Fixed(PortPair::new(Port::Right, Port::Left)),
+        )
+        .expect("one of the equal-cost detours should be reachable");
+
+        for _ in 0..16 {
+            let actual = route_grid_path(
+                &layouts,
+                &from,
+                &to,
+                GridPathPortPolicy::Fixed(PortPair::new(Port::Right, Port::Left)),
+            )
+            .expect("repeated equal-cost routing should stay reachable");
+            assert_eq!(actual, expected);
+        }
     }
 
     fn node(id: &str, grid_x: usize, grid_y: usize) -> NodeLayout {

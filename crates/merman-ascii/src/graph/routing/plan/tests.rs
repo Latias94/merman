@@ -4,7 +4,7 @@ use super::grid::{
 use super::left_right::{
     plan_left_right_down_route, plan_left_right_down_then_right_route,
     plan_left_right_reverse_over_self_loop_route, plan_left_right_right_then_up_route,
-    plan_left_right_self_loop_route,
+    plan_left_right_self_loop_route, plan_left_right_self_loop_route_with_resources,
 };
 use super::same_rank::{plan_same_rank_bottom_lane_route, plan_same_rank_direct_route};
 use super::top_down::{
@@ -75,16 +75,17 @@ fn planned_route_cells_debit_before_materializing_exact_and_max_minus_one() {
 #[test]
 fn edge_route_selects_left_right_parallel_bottom_lane() {
     let options = AsciiRenderOptions::ascii();
-    let layout = left_right_layout(&[("a", "b"), ("a", "b")], &options);
+    let layout = left_right_layout(&[("a", "b"), ("a", "b"), ("a", "b")], &options);
     let from = layout_node(&layout, "a");
     let to = layout_node(&layout, "b");
     let edges = vec![
         edge(Some("parallel"), GraphEdgeArrow::Point),
         edge(Some("parallel"), GraphEdgeArrow::Point),
+        edge(Some("parallel"), GraphEdgeArrow::Point),
     ];
     let charset = GraphCharset::for_options(&options);
 
-    let selected = plan_edge_route(EdgeRouteRequest {
+    let second = plan_edge_route(EdgeRouteRequest {
         graph: &AsciiGraph::new(GraphDirection::LeftRight),
         graph_layout: &layout,
         edges: &edges,
@@ -95,9 +96,147 @@ fn edge_route_selects_left_right_parallel_bottom_lane() {
         charset: &charset,
     })
     .unwrap();
+    let third = plan_edge_route(EdgeRouteRequest {
+        graph: &AsciiGraph::new(GraphDirection::LeftRight),
+        graph_layout: &layout,
+        edges: &edges,
+        from,
+        to,
+        edge_index: 2,
+        edge: &edges[2],
+        charset: &charset,
+    })
+    .unwrap();
     let expected = plan_same_rank_bottom_lane_route(from, to, &edges[1], &charset).unwrap();
 
-    assert_eq!(selected, expected);
+    assert_eq!(second, expected);
+    let second_lane_y = second
+        .cells
+        .iter()
+        .map(|cell| cell.coord.y)
+        .max()
+        .expect("second edge should have route cells");
+    let third_lane_y = third
+        .cells
+        .iter()
+        .map(|cell| cell.coord.y)
+        .max()
+        .expect("third edge should have route cells");
+    assert_eq!(third_lane_y, second_lane_y + 2);
+    let second_marker = second
+        .cells
+        .iter()
+        .find(|cell| cell.kind == PlannedRouteCellKind::EdgeArrow)
+        .expect("second edge should retain its marker");
+    let third_marker = third
+        .cells
+        .iter()
+        .find(|cell| cell.kind == PlannedRouteCellKind::EdgeArrow)
+        .expect("third edge should retain its marker");
+    assert_ne!(second_marker.coord, third_marker.coord);
+    assert_ne!(
+        second.labels[0].placement.y(),
+        third.labels[0].placement.y()
+    );
+}
+
+#[test]
+fn edge_route_assigns_parallel_self_loops_distinct_lanes_and_marker_berths() {
+    let options = AsciiRenderOptions::ascii();
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    graph.add_node("a", "A");
+    let layout = layout_graph(&graph, &options);
+    let from = layout_node(&layout, "a");
+    let edges = vec![
+        edge_between("a", "a", Some("alpha"), GraphEdgeArrow::Point),
+        edge_between("a", "a", Some("beta"), GraphEdgeArrow::Circle),
+        edge_between("a", "a", Some("gamma"), GraphEdgeArrow::Cross),
+    ];
+    let charset = GraphCharset::for_options(&options);
+
+    let plans = edges
+        .iter()
+        .enumerate()
+        .map(|(edge_index, edge)| {
+            plan_edge_route(EdgeRouteRequest {
+                graph: &graph,
+                graph_layout: &layout,
+                edges: &edges,
+                from,
+                to: from,
+                edge_index,
+                edge,
+                charset: &charset,
+            })
+            .unwrap()
+        })
+        .collect::<Vec<_>>();
+
+    let lane_bounds = plans
+        .iter()
+        .map(|plan| {
+            (
+                plan.cells.iter().map(|cell| cell.coord.x).max().unwrap(),
+                plan.cells.iter().map(|cell| cell.coord.y).max().unwrap(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(lane_bounds[1], (lane_bounds[0].0 + 2, lane_bounds[0].1 + 2));
+    assert_eq!(lane_bounds[2], (lane_bounds[1].0 + 2, lane_bounds[1].1 + 2));
+
+    let markers = plans
+        .iter()
+        .map(|plan| {
+            plan.cells
+                .iter()
+                .find(|cell| cell.kind == PlannedRouteCellKind::EdgeArrow)
+                .expect("each self-loop should retain one target marker")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        markers.iter().map(|cell| cell.ch).collect::<Vec<_>>(),
+        vec!['^', 'o', 'x']
+    );
+    assert_eq!(markers[1].coord.y, markers[0].coord.y);
+    assert_eq!(markers[2].coord.y, markers[1].coord.y);
+    assert_eq!(markers[1].coord.x, markers[0].coord.x + 1);
+    assert_eq!(markers[2].coord.x, markers[1].coord.x + 1);
+
+    let label_rows = plans
+        .iter()
+        .map(|plan| plan.labels[0].placement.y())
+        .collect::<Vec<_>>();
+    assert_ne!(label_rows[0], label_rows[1]);
+    assert_ne!(label_rows[1], label_rows[2]);
+    assert_ne!(label_rows[0], label_rows[2]);
+}
+
+#[test]
+fn parallel_self_loop_lane_index_reports_checked_grid_overflow() {
+    let from = node("a", 0, 0, 3, 3);
+    let layouts = vec![from.clone()];
+    let edge = edge_between("a", "a", None, GraphEdgeArrow::Point);
+    let edges = vec![edge.clone()];
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+    let mut resources = crate::resource::ResourceContext::new(AsciiResourcePolicy::for_profile(
+        ResourceProfile::UnboundedForTrustedInput,
+    ));
+
+    let error = plan_left_right_self_loop_route_with_resources(
+        &layouts,
+        &edges,
+        &from,
+        &edge,
+        usize::MAX,
+        &charset,
+        &mut resources,
+    )
+    .expect_err("parallel self-loop lane multiplication should remain checked");
+
+    let crate::AsciiError::ResourceLimitExceeded(details) = error else {
+        panic!("expected a grid resource error, got {error:?}");
+    };
+    assert_eq!(details.limit, AsciiResourceLimitId::MaxGridCells);
 }
 
 #[test]
@@ -152,6 +291,81 @@ fn edge_route_selects_top_down_back_route() {
     let expected = plan_top_down_back_route(&from, &to, &edge, &charset).unwrap();
 
     assert_eq!(selected, expected);
+}
+
+#[test]
+fn top_down_skip_edge_uses_side_bypass_before_direct_route() {
+    let options = AsciiRenderOptions::ascii();
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    for id in ["a", "b", "c"] {
+        graph.add_node(id, id.to_ascii_uppercase());
+    }
+    graph.add_edge("a", "c");
+    graph.add_edge("a", "b");
+    graph.add_edge("b", "c");
+    let layout = layout_graph(&graph, &options);
+    let edge_index = graph
+        .edges
+        .iter()
+        .position(|edge| edge.from == "a" && edge.to == "c")
+        .expect("skip edge should be present");
+    let edge = &graph.edges[edge_index];
+    let from = layout_node(&layout, "a");
+    let to = layout_node(&layout, "c");
+    let charset = GraphCharset::for_options(&options);
+
+    let selected = plan_edge_route(EdgeRouteRequest {
+        graph: &graph,
+        graph_layout: &layout,
+        edges: &graph.edges,
+        from,
+        to,
+        edge_index,
+        edge,
+        charset: &charset,
+    })
+    .expect("top-down skip edge should route around the occupied rank");
+    let direct = plan_top_down_direct_route(from, to, edge, &charset)
+        .expect("the direct route should be geometrically constructible for comparison");
+
+    assert_ne!(selected, direct);
+    assert!(
+        selected
+            .cells
+            .iter()
+            .any(|cell| cell.coord.x != from.center_x()),
+        "skip edge should leave the source centerline before reaching the target:\n{selected:?}"
+    );
+}
+
+#[test]
+fn adjacent_top_down_edge_remains_direct() {
+    let options = AsciiRenderOptions::ascii();
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_edge("a", "b");
+    let layout = layout_graph(&graph, &options);
+    let edge = &graph.edges[0];
+    let from = layout_node(&layout, "a");
+    let to = layout_node(&layout, "b");
+    let charset = GraphCharset::for_options(&options);
+
+    let selected = plan_edge_route(EdgeRouteRequest {
+        graph: &graph,
+        graph_layout: &layout,
+        edges: &graph.edges,
+        from,
+        to,
+        edge_index: 0,
+        edge,
+        charset: &charset,
+    })
+    .expect("adjacent top-down edge should route");
+    let direct = plan_top_down_direct_route(from, to, edge, &charset)
+        .expect("adjacent top-down edge should have a direct route");
+
+    assert_eq!(selected, direct);
 }
 
 #[test]
@@ -1065,7 +1279,7 @@ fn left_right_reverse_over_self_loop_route_plans_target_side_lane() {
 fn left_right_self_loop_route_plans_loop_and_arrow() {
     let from = node("a", 0, 0, 3, 3);
     let layouts = vec![from.clone()];
-    let edge = edge_between("a", "a", None, GraphEdgeArrow::Point);
+    let edge = edge_between("a", "a", Some("loop"), GraphEdgeArrow::Point);
     let edges = vec![edge.clone()];
     let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
 
@@ -1086,7 +1300,13 @@ fn left_right_self_loop_route_plans_loop_and_arrow() {
             cell(1, 3, '^', PlannedRouteCellKind::EdgeArrow),
         ]
     );
-    assert!(plan.labels.is_empty());
+    assert_eq!(
+        plan.labels,
+        vec![PlannedRouteLabel::new(
+            RoutedLabelText::new("loop").expect("single-line label should exist"),
+            RoutedLabelPlacement::new(0, 4, 4),
+        )]
+    );
 }
 
 #[test]

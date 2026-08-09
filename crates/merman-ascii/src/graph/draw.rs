@@ -25,7 +25,7 @@ pub(crate) fn render_graph_with_resources(
     resources: &mut ResourceContext,
 ) -> Result<String> {
     options.validate()?;
-    if graph.nodes.is_empty() {
+    if graph.nodes.is_empty() && graph.groups.is_empty() {
         return Ok(String::new());
     }
 
@@ -153,7 +153,9 @@ fn draw_node(
         GraphNodeShape::Cylinder => draw_cylinder_node(canvas, layout, charset, options),
         GraphNodeShape::LeanRight => draw_lean_node(canvas, layout, charset, options, true),
         GraphNodeShape::LeanLeft => draw_lean_node(canvas, layout, charset, options, false),
+        GraphNodeShape::ManualInput => draw_manual_input_node(canvas, layout, charset),
         GraphNodeShape::Datastore => draw_datastore_node(canvas, layout, charset, options),
+        GraphNodeShape::BowTie => draw_bow_tie_node(canvas, layout, charset),
         GraphNodeShape::Document => draw_document_node(canvas, layout, charset, options),
         GraphNodeShape::StackedDocument => {
             draw_stacked_document_node(canvas, layout, charset, options)
@@ -165,7 +167,6 @@ fn draw_node(
         GraphNodeShape::StackedRect => draw_stacked_rect_node(canvas, layout, charset, options),
         GraphNodeShape::LinedRect => draw_lined_rect_node(canvas, layout, charset, options),
         GraphNodeShape::TaggedRect => draw_tagged_rect_node(canvas, layout, charset, options),
-        GraphNodeShape::Flag => draw_flag_node(canvas, layout, charset, options),
         GraphNodeShape::PaperTape => draw_paper_tape_node(canvas, layout, charset, options),
         GraphNodeShape::Text => Ok(()),
         GraphNodeShape::Hexagon => draw_hexagon_node(canvas, layout, charset, options),
@@ -880,17 +881,53 @@ fn draw_tagged_decorator(canvas: &mut Canvas<'_>, layout: &NodeLayout) -> Result
     Ok(())
 }
 
-fn draw_flag_node(
+fn draw_manual_input_node(
     canvas: &mut Canvas<'_>,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
 ) -> Result<()> {
-    draw_rect_node(canvas, layout, charset, options)?;
     let right = layout.right();
-    set_node_border(canvas, right, layout.y, '\\', layout.style)?;
-    set_node_border(canvas, right, layout.center_y(), '>', layout.style)?;
-    set_node_border(canvas, right, layout.bottom(), '/', layout.style)
+    let bottom = layout.bottom();
+    let sloped_left_y = (layout.y + 1).min(bottom);
+
+    set_node_border(canvas, layout.x, sloped_left_y, '/', layout.style)?;
+    set_node_border(canvas, right, layout.y, charset.top_right, layout.style)?;
+    set_node_border(canvas, layout.x, bottom, charset.bottom_left, layout.style)?;
+    set_node_border(canvas, right, bottom, charset.bottom_right, layout.style)?;
+    for x in (layout.x + 1)..right {
+        set_node_border(canvas, x, layout.y, charset.horizontal, layout.style)?;
+        set_node_border(canvas, x, bottom, charset.horizontal, layout.style)?;
+    }
+    for y in (sloped_left_y + 1)..bottom {
+        set_node_border(canvas, layout.x, y, charset.vertical, layout.style)?;
+    }
+    for y in (layout.y + 1)..bottom {
+        set_node_border(canvas, right, y, charset.vertical, layout.style)?;
+    }
+    Ok(())
+}
+
+fn draw_bow_tie_node(
+    canvas: &mut Canvas<'_>,
+    layout: &NodeLayout,
+    charset: &GraphCharset,
+) -> Result<()> {
+    let right = layout.right();
+    let bottom = layout.bottom();
+
+    set_node_border(canvas, layout.x, layout.y, charset.top_left, layout.style)?;
+    set_node_border(canvas, right, layout.y, charset.top_right, layout.style)?;
+    set_node_border(canvas, layout.x, bottom, charset.bottom_left, layout.style)?;
+    set_node_border(canvas, right, bottom, charset.bottom_right, layout.style)?;
+    for x in (layout.x + 1)..right {
+        set_node_border(canvas, x, layout.y, charset.horizontal, layout.style)?;
+        set_node_border(canvas, x, bottom, charset.horizontal, layout.style)?;
+    }
+    for y in (layout.y + 1)..bottom {
+        set_node_border(canvas, layout.x, y, ')', layout.style)?;
+        set_node_border(canvas, right, y, '(', layout.style)?;
+    }
+    Ok(())
 }
 
 fn draw_paper_tape_node(

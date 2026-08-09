@@ -9,6 +9,7 @@ pub(super) use super::boundary::EdgeBoundaryContext;
 #[cfg(test)]
 pub(super) use super::boundary::edge_boundary_context;
 use super::boundary::edge_boundary_context_with_resources;
+use super::compound::plan_compound_endpoint_route_with_resources;
 use super::edges::parallel_edge_index;
 use super::grid::{
     GridRouteOptions, plan_left_right_grid_path_route_with_options_and_resources,
@@ -22,14 +23,15 @@ use super::left_right::{
     plan_left_right_self_loop_route_with_resources,
 };
 use super::same_rank::{
+    plan_same_rank_bottom_lane_route_with_index_and_resources,
     plan_same_rank_bottom_lane_route_with_resources, plan_same_rank_direct_route_with_resources,
 };
 use super::top_down::{
     plan_top_down_back_route_with_resources, plan_top_down_bent_route_with_resources,
-    plan_top_down_bent_side_entry_route_with_resources, plan_top_down_direct_route_with_resources,
-    plan_top_down_side_entry_route_with_resources,
+    plan_top_down_direct_route_with_resources, plan_top_down_side_entry_route_with_resources,
 };
 use crate::error::Result;
+use crate::graph::topology::GraphEndpointIndex;
 use crate::resource::ResourceContext;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -135,6 +137,28 @@ pub(in crate::graph::routing) fn plan_edge_route_with_topology(
 ) -> Result<EdgeRoutePlan> {
     let boundary =
         edge_boundary_context_with_resources(request.graph, request.edge, topology, resources)?;
+    if let Some(topology) = topology {
+        let from_is_group = matches!(
+            topology.endpoint_index(&request.edge.from),
+            Some(GraphEndpointIndex::Group(_))
+        );
+        let to_is_group = matches!(
+            topology.endpoint_index(&request.edge.to),
+            Some(GraphEndpointIndex::Group(_))
+        );
+        if (from_is_group || to_is_group)
+            && let Some(plan) = plan_compound_endpoint_route_with_resources(
+                request.from,
+                request.to,
+                request.edge,
+                parallel_edge_index(request.edges, request.edge_index),
+                request.charset,
+                resources,
+            )?
+        {
+            return Ok(EdgeRoutePlan::Routed(plan));
+        }
+    }
     if let Some(plan) = plan_boundary_route(boundary, request, resources)? {
         return Ok(EdgeRoutePlan::Routed(plan));
     }
@@ -144,6 +168,12 @@ pub(in crate::graph::routing) fn plan_edge_route_with_topology(
         GraphDirection::TopDown => plan_top_down_route(request, resources)?,
         GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
     };
+    let plan = plan.map(|plan| match boundary {
+        EdgeBoundaryContext::Entering { .. } | EdgeBoundaryContext::Leaving { .. } => {
+            plan.with_segment(PlannedRouteSegment::Boundary)
+        }
+        EdgeBoundaryContext::External { .. } | EdgeBoundaryContext::Internal { .. } => plan,
+    });
 
     Ok(match plan {
         Some(plan) => EdgeRoutePlan::Routed(plan),
@@ -162,6 +192,7 @@ fn plan_left_right_route(
     let to = request.to;
     let edge = request.edge;
     let charset = request.charset;
+    let parallel_index = parallel_edge_index(request.edges, request.edge_index);
 
     if from.id == to.id {
         return plan_left_right_self_loop_route_with_resources(
@@ -169,14 +200,31 @@ fn plan_left_right_route(
             request.edges,
             from,
             edge,
+            parallel_index,
             charset,
             resources,
         );
     }
 
-    let parallel_index = parallel_edge_index(request.edges, request.edge_index);
-    if from.center_y() == to.center_y() && from.x < to.x && parallel_index > 0 {
-        return plan_same_rank_bottom_lane_route_with_resources(from, to, edge, charset, resources);
+    if parallel_index > 0 {
+        if from.center_y() == to.center_y() {
+            return plan_same_rank_bottom_lane_route_with_index_and_resources(
+                from,
+                to,
+                edge,
+                parallel_index - 1,
+                charset,
+                resources,
+            );
+        }
+        return plan_compound_endpoint_route_with_resources(
+            from,
+            to,
+            edge,
+            parallel_index - 1,
+            charset,
+            resources,
+        );
     }
 
     if from.center_y() == to.center_y() && from.x > to.x {
@@ -190,7 +238,14 @@ fn plan_left_right_route(
                 resources,
             );
         }
-        return plan_same_rank_bottom_lane_route_with_resources(from, to, edge, charset, resources);
+        return plan_same_rank_bottom_lane_route_with_index_and_resources(
+            from,
+            to,
+            edge,
+            parallel_index,
+            charset,
+            resources,
+        );
     }
 
     if from.center_y() == to.center_y()
@@ -257,6 +312,40 @@ fn plan_top_down_route(
     let to = request.to;
     let edge = request.edge;
     let charset = request.charset;
+    let parallel_index = parallel_edge_index(request.edges, request.edge_index);
+
+    if from.id == to.id {
+        return plan_left_right_self_loop_route_with_resources(
+            &request.graph_layout.nodes,
+            request.edges,
+            from,
+            edge,
+            parallel_index,
+            charset,
+            resources,
+        );
+    }
+
+    if parallel_index > 0 {
+        if from.center_y() == to.center_y() {
+            return plan_same_rank_bottom_lane_route_with_index_and_resources(
+                from,
+                to,
+                edge,
+                parallel_index - 1,
+                charset,
+                resources,
+            );
+        }
+        return plan_compound_endpoint_route_with_resources(
+            from,
+            to,
+            edge,
+            parallel_index - 1,
+            charset,
+            resources,
+        );
+    }
 
     if from.center_y() > to.center_y() {
         return plan_top_down_back_route_with_resources(from, to, edge, charset, resources);
@@ -280,18 +369,79 @@ fn plan_top_down_route(
         return plan_same_rank_bottom_lane_route_with_resources(from, to, edge, charset, resources);
     }
 
+    if top_down_skips_occupied_rank(&request.graph_layout.nodes, from, to, resources)? {
+        return plan_left_right_grid_path_route_with_options_and_resources(
+            request.graph_layout,
+            from,
+            to,
+            edge,
+            charset,
+            GridRouteOptions::with_fixed_ports(Port::Right, Port::Right),
+            resources,
+        );
+    }
+
     if from.center_x() != to.center_x() {
-        if target_has_direct_top_entry(request)
-            && let Some(plan) = plan_top_down_bent_side_entry_route_with_resources(
-                from, to, edge, charset, resources,
-            )?
-        {
-            return Ok(Some(plan));
+        let source_reserves_bottom = source_has_direct_bottom_exit(request);
+        let target_reserves_top = target_has_direct_top_entry(request);
+        if source_reserves_bottom || target_reserves_top {
+            let (start_port, end_port) = match (source_reserves_bottom, target_reserves_top) {
+                (true, true) => (Port::Right, Port::Right),
+                (true, false) => (Port::Right, Port::Up),
+                (false, true) => (Port::Down, Port::Right),
+                (false, false) => unreachable!(),
+            };
+            return plan_left_right_grid_path_route_with_options_and_resources(
+                request.graph_layout,
+                from,
+                to,
+                edge,
+                charset,
+                GridRouteOptions::with_fixed_ports(start_port, end_port),
+                resources,
+            );
         }
         return plan_top_down_bent_route_with_resources(from, to, edge, charset, resources);
     }
 
     plan_top_down_direct_route_with_resources(from, to, edge, charset, resources)
+}
+
+fn top_down_skips_occupied_rank(
+    nodes: &[NodeLayout],
+    from: &NodeLayout,
+    to: &NodeLayout,
+    resources: &mut ResourceContext,
+) -> Result<bool> {
+    resources.charge_layout_work(nodes.len())?;
+    Ok(from.grid.y < to.grid.y
+        && nodes.iter().any(|node| {
+            node.id != from.id
+                && node.id != to.id
+                && from.grid.y < node.grid.y
+                && node.grid.y < to.grid.y
+        }))
+}
+
+fn source_has_direct_bottom_exit(request: EdgeRouteRequest<'_>) -> bool {
+    request
+        .edges
+        .iter()
+        .enumerate()
+        .filter(|(index, edge)| {
+            *index != request.edge_index && edge.stroke.is_visible() && edge.from == request.from.id
+        })
+        .any(|(_, edge)| {
+            request
+                .graph_layout
+                .nodes
+                .iter()
+                .find(|layout| layout.id == edge.to)
+                .is_some_and(|target| {
+                    request.from.center_y() < target.center_y()
+                        && request.from.center_x() == target.center_x()
+                })
+        })
 }
 
 fn target_has_direct_top_entry(request: EdgeRouteRequest<'_>) -> bool {

@@ -331,6 +331,7 @@ pub(super) fn plan_left_right_self_loop_route(
             edges,
             from,
             edge,
+            0,
             charset,
             &mut resources,
         ),
@@ -344,13 +345,20 @@ pub(super) fn plan_left_right_self_loop_route_with_resources(
     edges: &[AsciiGraphEdge],
     from: &NodeLayout,
     edge: &AsciiGraphEdge,
+    parallel_index: usize,
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
     let y = from.center_y();
-    let loop_x = self_loop_right_x(layouts, from);
-    let bottom_y = self_loop_bottom_y_for_edges(layouts, edges, from);
-    if loop_x <= from.right() || bottom_y <= y + 1 {
+    let lane_offset = resources.checked_grid_mul(parallel_index, 2)?;
+    let loop_x = resources.checked_grid_add(self_loop_right_x(layouts, from), lane_offset)?;
+    let bottom_y = resources.checked_grid_add(
+        self_loop_bottom_y_for_edges(layouts, edges, from),
+        lane_offset,
+    )?;
+    let marker_x = resources.checked_grid_add(from.center_x(), parallel_index)?;
+    let minimum_bottom_y = resources.checked_grid_add(y, 1)?;
+    if loop_x <= from.right() || marker_x >= loop_x || bottom_y <= minimum_bottom_y {
         return Ok(None);
     }
 
@@ -367,7 +375,8 @@ pub(super) fn plan_left_right_self_loop_route_with_resources(
         } else {
             None
         };
-    for x in (from.right() + 1)..loop_x {
+    let first_loop_x = resources.checked_grid_add(from.right(), 1)?;
+    for x in first_loop_x..loop_x {
         cells.try_push(resources, || route_cell(x, y, horizontal))?;
     }
     let top_corner = if self_loop_has_right_neighbor(layouts, from) {
@@ -387,37 +396,54 @@ pub(super) fn plan_left_right_self_loop_route_with_resources(
     };
     start_anchor = start_anchor.or(top_corner_anchor);
 
-    for line_y in (y + 1)..bottom_y {
+    let first_loop_y = resources.checked_grid_add(y, 1)?;
+    for line_y in first_loop_y..bottom_y {
         cells.try_push(resources, || route_cell(loop_x, line_y, vertical))?;
     }
     cells.try_push(resources, || {
         route_cell(loop_x, bottom_y, charset.bottom_right)
     })?;
 
-    for x in (from.center_x() + 1)..loop_x {
+    let first_bottom_x = resources.checked_grid_add(marker_x, 1)?;
+    for x in first_bottom_x..loop_x {
         cells.try_push(resources, || route_cell(x, bottom_y, horizontal))?;
     }
     cells.try_push(resources, || {
-        route_cell(from.center_x(), bottom_y, charset.corner_down_right)
+        route_cell(marker_x, bottom_y, charset.corner_down_right)
     })?;
 
-    let arrow_y = from.bottom() + 1;
-    for line_y in (arrow_y + 1)..bottom_y {
-        cells.try_push(resources, || route_cell(from.center_x(), line_y, vertical))?;
+    let arrow_y = resources.checked_grid_add(from.bottom(), 1)?;
+    let first_return_y = resources.checked_grid_add(arrow_y, 1)?;
+    for line_y in first_return_y..bottom_y {
+        cells.try_push(resources, || route_cell(marker_x, line_y, vertical))?;
     }
     let end_anchor = cells.try_push_anchor(
         resources,
-        || edge_line_cell(from.center_x(), arrow_y, vertical),
+        || edge_line_cell(marker_x, arrow_y, vertical),
         StepDirection::Up,
     )?;
 
     let Some(start_anchor) = start_anchor else {
         return Ok(None);
     };
+    let labels = planned_label(
+        edge.label.as_deref(),
+        CanvasCoord {
+            x: marker_x,
+            y: bottom_y,
+        },
+        CanvasCoord {
+            x: loop_x,
+            y: bottom_y,
+        },
+        charset,
+    )
+    .into_iter()
+    .collect();
 
     Ok(Some(RoutePlan::new(
         cells.into_vec(),
-        Vec::new(),
+        labels,
         MarkerAnchors::new(start_anchor, end_anchor),
     )))
 }

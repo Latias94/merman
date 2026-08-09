@@ -745,7 +745,7 @@ fn flowchart_typed_edge_fields_round_trip_while_legacy_json_keeps_aggregate_sema
     wire.remove("visibility");
     let legacy_edge: FlowEdge =
         serde_json::from_value(typed_json).expect("deserialize legacy edge JSON");
-    assert_eq!(legacy_edge.start_marker, Marker::None);
+    assert_eq!(legacy_edge.start_marker, Marker::Circle);
     assert_eq!(legacy_edge.end_marker, Marker::Cross);
     assert_eq!(legacy_edge.stroke_kind, Stroke::Normal);
     assert_eq!(legacy_edge.visibility, Visibility::Visible);
@@ -810,6 +810,32 @@ fn flowchart_legacy_edge_json_does_not_invent_a_source_marker_from_split_label_l
         serde_json::from_value(legacy_json).expect("deserialize legacy edge JSON");
     assert_eq!(legacy_edge.start_marker, Marker::None);
     assert_eq!(legacy_edge.end_marker, Marker::Point);
+}
+
+#[test]
+fn flowchart_legacy_edge_json_recovers_unlabeled_mixed_source_markers() {
+    use crate::diagrams::flowchart::{FlowEdge, FlowEdgeMarker as Marker};
+
+    for (diagram, expected_start, expected_end) in [
+        ("graph LR;A o--x B;", Marker::Circle, Marker::Cross),
+        ("graph LR;A x--o B;", Marker::Cross, Marker::Circle),
+    ] {
+        let model = parse_typed_flowchart(diagram);
+        let mut legacy_json = serde_json::to_value(&model.edges[0]).expect("serialize typed edge");
+        let legacy_wire = legacy_json.as_object_mut().expect("edge object");
+        legacy_wire.remove("startMarker");
+        legacy_wire.remove("endMarker");
+        legacy_wire.remove("strokeKind");
+        legacy_wire.remove("visibility");
+
+        let legacy_edge: FlowEdge =
+            serde_json::from_value(legacy_json).expect("deserialize legacy edge JSON");
+        assert_eq!(
+            legacy_edge.start_marker, expected_start,
+            "diagram: {diagram}"
+        );
+        assert_eq!(legacy_edge.end_marker, expected_end, "diagram: {diagram}");
+    }
 }
 
 #[test]

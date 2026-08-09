@@ -5,15 +5,9 @@ use crate::options::AsciiRenderOptions;
 use crate::resource::ResourceContext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum GraphNodeShapeFidelity {
-    Diagrammatic,
-    Approximation,
-    Unsupported,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GraphNodeShapeProjection {
     Fixed(GraphNodeShape),
+    Approximate(GraphNodeShape),
     PerpendicularForkJoin,
     Unsupported,
 }
@@ -24,51 +18,16 @@ enum GraphNodeLabelPolicy {
     Suppress,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum GraphNodeShapeDecorator {
-    None,
-    Stacked,
-    Lined,
-    Tagged,
-    Flag,
-    PaperTape,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum GraphNodePortPolicy {
-    Boundary,
-    Radial,
-    Diamond,
-    SynchronizationBar,
-    None,
-}
-
 #[derive(Debug, Clone, Copy)]
 struct GraphNodeShapeDefinition {
     names: &'static [&'static str],
-    fidelity: GraphNodeShapeFidelity,
     projection: GraphNodeShapeProjection,
     label_policy: GraphNodeLabelPolicy,
-    decorator: GraphNodeShapeDecorator,
-    port_policy: GraphNodePortPolicy,
 }
 
 impl GraphNodeShapeDefinition {
     fn contains(self, name: &str) -> bool {
         self.names.contains(&name)
-    }
-
-    fn contract_is_consistent(self) -> bool {
-        match (self.fidelity, self.projection, self.port_policy) {
-            (
-                GraphNodeShapeFidelity::Unsupported,
-                GraphNodeShapeProjection::Unsupported,
-                GraphNodePortPolicy::None,
-            ) => true,
-            (GraphNodeShapeFidelity::Unsupported, _, _)
-            | (_, GraphNodeShapeProjection::Unsupported, _) => false,
-            _ => true,
-        }
     }
 }
 
@@ -87,294 +46,210 @@ impl ResolvedGraphNodeShape {
     }
 }
 
+macro_rules! shape_definition {
+    ($names:expr, $projection:expr, $label_policy:expr) => {
+        GraphNodeShapeDefinition {
+            names: $names,
+            projection: $projection,
+            label_policy: $label_policy,
+        }
+    };
+}
+
 const GRAPH_NODE_SHAPE_DEFINITIONS: &[GraphNodeShapeDefinition] = &[
-    GraphNodeShapeDefinition {
-        names: &[
+    shape_definition!(
+        &[
             "rect",
             "rectangle",
             "square",
             "squareRect",
             "proc",
-            "process",
-            "labelRect",
+            "process"
         ],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::Rect),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::None,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &["roundedRect", "rounded", "event", "ellipse"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::Rounded),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::None,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &["circle", "circ"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::Circle),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::None,
-        port_policy: GraphNodePortPolicy::Radial,
-    },
-    GraphNodeShapeDefinition {
-        names: &["stadium", "terminal", "pill"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::Stadium),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::None,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &["doublecircle", "dbl-circ", "double-circle"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::DoubleCircle),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::None,
-        port_policy: GraphNodePortPolicy::Radial,
-    },
-    GraphNodeShapeDefinition {
-        names: &["diamond", "question", "diam", "decision"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::Diamond),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::None,
-        port_policy: GraphNodePortPolicy::Diamond,
-    },
-    GraphNodeShapeDefinition {
-        names: &[
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::Rect),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["roundedRect", "rounded", "event", "ellipse"],
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::Rounded),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["circle", "circ"],
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::Circle),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["stadium", "terminal", "pill"],
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::Stadium),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["doublecircle", "dbl-circ", "double-circle"],
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::DoubleCircle),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["diamond", "question", "diam", "decision"],
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::Diamond),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &[
             "subroutine",
             "fr-rect",
             "subproc",
             "subprocess",
-            "framed-rectangle",
+            "framed-rectangle"
         ],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::Subroutine),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::Lined,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &["cylinder", "cyl", "db", "database"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::Cylinder),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::None,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &[
-            "lean_right",
-            "lean-r",
-            "lean-right",
-            "in-out",
-            "sl-rect",
-            "sloped-rectangle",
-        ],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::LeanRight),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::None,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &["lean_left", "lean-l", "lean-left", "out-in"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::LeanLeft),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::None,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &["datastore", "data-store", "stored-data"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::Datastore),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::None,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &["doc", "document"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::Document),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::None,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &["docs", "documents", "st-doc", "stacked-document"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::StackedDocument),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::Stacked,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &["lin-doc", "lined-document"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::LinedDocument),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::Lined,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &["tag-doc", "tagged-document"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::TaggedDocument),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::Tagged,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &["st-rect", "stacked-rectangle", "processes", "procs"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::StackedRect),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::Stacked,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &[
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::Subroutine),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["cylinder", "cyl", "db", "database"],
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::Cylinder),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["lean_right", "lean-r", "lean-right", "in-out"],
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::LeanRight),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["lean_left", "lean-l", "lean-left", "out-in"],
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::LeanLeft),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["sl-rect", "manual-input", "sloped-rectangle"],
+        GraphNodeShapeProjection::Approximate(GraphNodeShape::ManualInput),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["datastore", "data-store"],
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::Datastore),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["bow-rect", "stored-data", "bow-tie-rectangle"],
+        GraphNodeShapeProjection::Approximate(GraphNodeShape::BowTie),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["doc", "document"],
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::Document),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["docs", "documents", "st-doc", "stacked-document"],
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::StackedDocument),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["lin-doc", "lined-document"],
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::LinedDocument),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["tag-doc", "tagged-document"],
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::TaggedDocument),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["st-rect", "stacked-rectangle", "processes", "procs"],
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::StackedRect),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &[
             "lin-rect",
             "lin-proc",
             "lined-process",
             "lined-rectangle",
-            "shaded-process",
+            "shaded-process"
         ],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::LinedRect),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::Lined,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &["tag-rect", "tag-proc", "tagged-process", "tagged-rectangle"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::TaggedRect),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::Tagged,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &["hexagon", "hex", "prepare"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::Hexagon),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::None,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &["odd", "rect_left_inv_arrow"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::Asymmetric),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::None,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &["flag"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::Flag),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::Flag,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &["paper-tape"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::PaperTape),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::PaperTape,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &["choice"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::Choice),
-        label_policy: GraphNodeLabelPolicy::Suppress,
-        decorator: GraphNodeShapeDecorator::None,
-        port_policy: GraphNodePortPolicy::Diamond,
-    },
-    GraphNodeShapeDefinition {
-        names: &["fork", "join", "forkJoin"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::PerpendicularForkJoin,
-        label_policy: GraphNodeLabelPolicy::Suppress,
-        decorator: GraphNodeShapeDecorator::None,
-        port_policy: GraphNodePortPolicy::SynchronizationBar,
-    },
-    GraphNodeShapeDefinition {
-        names: &[
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::LinedRect),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["tag-rect", "tag-proc", "tagged-process", "tagged-rectangle"],
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::TaggedRect),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["hexagon", "hex", "prepare"],
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::Hexagon),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["odd", "rect_left_inv_arrow"],
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::Asymmetric),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["flag", "paper-tape"],
+        GraphNodeShapeProjection::Approximate(GraphNodeShape::PaperTape),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["choice"],
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::Choice),
+        GraphNodeLabelPolicy::Suppress
+    ),
+    shape_definition!(
+        &["fork", "join", "forkJoin"],
+        GraphNodeShapeProjection::PerpendicularForkJoin,
+        GraphNodeLabelPolicy::Suppress
+    ),
+    shape_definition!(
+        &[
             "start",
             "small-circle",
             "sm-circ",
             "stateStart",
             "f-circ",
+            "junction",
             "filled-circle",
         ],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::StateStart),
-        label_policy: GraphNodeLabelPolicy::Suppress,
-        decorator: GraphNodeShapeDecorator::None,
-        port_policy: GraphNodePortPolicy::Radial,
-    },
-    GraphNodeShapeDefinition {
-        names: &["stop", "framed-circle", "fr-circ", "stateEnd"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::StateEnd),
-        label_policy: GraphNodeLabelPolicy::Suppress,
-        decorator: GraphNodeShapeDecorator::None,
-        port_policy: GraphNodePortPolicy::Radial,
-    },
-    GraphNodeShapeDefinition {
-        names: &["trapezoid", "trap-b", "priority", "trapezoid-bottom"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::Trapezoid),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::None,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &[
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::StateStart),
+        GraphNodeLabelPolicy::Suppress
+    ),
+    shape_definition!(
+        &["stop", "framed-circle", "fr-circ", "stateEnd"],
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::StateEnd),
+        GraphNodeLabelPolicy::Suppress
+    ),
+    shape_definition!(
+        &["trapezoid", "trap-b", "priority", "trapezoid-bottom"],
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::Trapezoid),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &[
             "inv_trapezoid",
             "inv-trapezoid",
             "trap-t",
             "manual",
-            "trapezoid-top",
+            "trapezoid-top"
         ],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::TrapezoidAlt),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::None,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &["text"],
-        fidelity: GraphNodeShapeFidelity::Diagrammatic,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::Text),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::None,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &["state"],
-        fidelity: GraphNodeShapeFidelity::Approximation,
-        projection: GraphNodeShapeProjection::Fixed(GraphNodeShape::Rounded),
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::None,
-        port_policy: GraphNodePortPolicy::Boundary,
-    },
-    GraphNodeShapeDefinition {
-        names: &[
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::TrapezoidAlt),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["text", "labelRect"],
+        GraphNodeShapeProjection::Fixed(GraphNodeShape::Text),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["state"],
+        GraphNodeShapeProjection::Approximate(GraphNodeShape::Rounded),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &[
             "anchor",
             "bang",
             "bolt",
-            "bow-rect",
-            "bow-tie-rectangle",
             "brace",
             "brace-l",
             "brace-r",
@@ -412,14 +287,12 @@ const GRAPH_NODE_SHAPE_DEFINITIONS: &[GraphNodeShapeDefinition] = &[
             "iconSquare",
             "imageSquare",
             "internal-storage",
-            "junction",
             "kanbanItem",
             "lightning-bolt",
             "lin-cyl",
             "lined-cylinder",
             "loop-limit",
             "manual-file",
-            "manual-input",
             "mindmapCircle",
             "notch-pent",
             "notch-rect",
@@ -434,12 +307,9 @@ const GRAPH_NODE_SHAPE_DEFINITIONS: &[GraphNodeShapeDefinition] = &[
             "win-pane",
             "window-pane",
         ],
-        fidelity: GraphNodeShapeFidelity::Unsupported,
-        projection: GraphNodeShapeProjection::Unsupported,
-        label_policy: GraphNodeLabelPolicy::Preserve,
-        decorator: GraphNodeShapeDecorator::None,
-        port_policy: GraphNodePortPolicy::None,
-    },
+        GraphNodeShapeProjection::Unsupported,
+        GraphNodeLabelPolicy::Preserve
+    ),
 ];
 
 pub(super) fn resolve_flowchart_node_shape(
@@ -457,14 +327,10 @@ pub(super) fn resolve_flowchart_node_shape(
             feature: "unknown flowchart node shapes",
         });
     };
-    debug_assert!(definition.contract_is_consistent());
-    let _terminal_contract = (
-        definition.fidelity,
-        definition.decorator,
-        definition.port_policy,
-    );
     let shape = match definition.projection {
-        GraphNodeShapeProjection::Fixed(shape) => shape,
+        GraphNodeShapeProjection::Fixed(shape) | GraphNodeShapeProjection::Approximate(shape) => {
+            shape
+        }
         GraphNodeShapeProjection::PerpendicularForkJoin => match direction.canonical() {
             GraphDirection::LeftRight => GraphNodeShape::ForkJoinVertical,
             GraphDirection::TopDown => GraphNodeShape::ForkJoinHorizontal,
@@ -554,15 +420,16 @@ impl GraphNodeShapeSemantics {
             GraphNodeShape::LinedRect
             | GraphNodeShape::TaggedRect
             | GraphNodeShape::LinedDocument
-            | GraphNodeShape::TaggedDocument
-            | GraphNodeShape::Flag => GraphNodeShapeSize {
+            | GraphNodeShape::TaggedDocument => GraphNodeShapeSize {
                 width: resources.checked_grid_add(framed_width, 2)?,
                 height: framed_height,
             },
-            GraphNodeShape::PaperTape => GraphNodeShapeSize {
-                width: framed_width,
-                height: framed_height,
-            },
+            GraphNodeShape::ManualInput | GraphNodeShape::BowTie | GraphNodeShape::PaperTape => {
+                GraphNodeShapeSize {
+                    width: framed_width,
+                    height: framed_height,
+                }
+            }
             GraphNodeShape::Text => GraphNodeShapeSize {
                 width: label.width().max(1),
                 height: label.content_height().max(1),
@@ -631,7 +498,6 @@ mod tests {
     fn shape_registry_is_unique_and_covers_every_pinned_mermaid_name() {
         let mut registered = HashSet::new();
         for definition in GRAPH_NODE_SHAPE_DEFINITIONS {
-            assert!(definition.contract_is_consistent());
             for name in definition.names {
                 assert!(
                     registered.insert(*name),
@@ -664,6 +530,50 @@ mod tests {
             resolve_flowchart_node_shape(Some("join"), GraphDirection::TopDown).unwrap();
         assert_eq!(top_down_fork.shape, GraphNodeShape::ForkJoinHorizontal);
         assert_eq!(top_down_fork.projected_label("implementation id"), "");
+    }
+
+    #[test]
+    fn shape_registry_preserves_upstream_alias_handler_families() {
+        let alias_families = [
+            (
+                &["sl-rect", "manual-input", "sloped-rectangle"] as &[&str],
+                GraphNodeShape::ManualInput,
+                "Label only",
+            ),
+            (
+                &["bow-rect", "stored-data", "bow-tie-rectangle"],
+                GraphNodeShape::BowTie,
+                "Label only",
+            ),
+            (
+                &["flag", "paper-tape"],
+                GraphNodeShape::PaperTape,
+                "Label only",
+            ),
+            (
+                &["f-circ", "junction", "filled-circle"],
+                GraphNodeShape::StateStart,
+                "",
+            ),
+            (&["text", "labelRect"], GraphNodeShape::Text, "Label only"),
+        ];
+
+        for (aliases, expected_shape, expected_label) in alias_families {
+            for alias in aliases {
+                let resolved =
+                    resolve_flowchart_node_shape(Some(alias), GraphDirection::LeftRight).unwrap();
+                assert_eq!(resolved.shape, expected_shape, "alias: {alias}");
+                assert_eq!(
+                    resolved.projected_label("Label only"),
+                    expected_label,
+                    "alias: {alias}"
+                );
+            }
+        }
+
+        let datastore =
+            resolve_flowchart_node_shape(Some("data-store"), GraphDirection::LeftRight).unwrap();
+        assert_eq!(datastore.shape, GraphNodeShape::Datastore);
     }
 
     #[test]
