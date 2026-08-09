@@ -63,12 +63,15 @@ is exceeded.
 | Mindmap | Partial | Structured text | Hierarchical nodes, stable ids, labels, cycles/disconnected components, and shape/icon/section disclosure as an outline. | Rich browser node geometry is not reproduced; duplicate ids/edges and missing endpoints are rejected. |
 | Packet | Partial | Structured text | Bit ranges and labels in ordered terminal rows. | Output does not preserve spatial bit widths; browser-oriented styling is not represented. |
 | Timeline | Partial | Structured text | Direction, sections, and events in ordered grouped text. | Does not draw Mermaid timeline geometry; parser bookkeeping score is omitted. |
-| TreeView | Partial | Structured text | Hierarchy, file/directory types, charset-aware connectors, and icon/class/description disclosure. | It is an outline rather than two-dimensional diagram geometry; browser icons and CSS classes are disclosed rather than styled. |
+| TreeView | Partial | Structured text | Root and node identities, authored levels, hierarchy, file/directory types, charset-aware connectors, and icon/class/description disclosure. | It is an outline rather than two-dimensional diagram geometry; duplicate node ids are rejected, and browser icons/CSS classes are disclosed rather than styled. |
 
 ## Unsupported Families
 
 These families may parse or render to SVG elsewhere in `merman`, but they are not currently exposed
-as ASCII/Unicode render targets:
+as ASCII/Unicode render targets. Railroad, Requirement, Ishikawa, and Quadrant have completed the
+R34 evaluation rather than merely waiting in an unclassified backlog; the tracked
+[Phase 0-3 and admission report](ASCII_PHASE_GATE_REPORT.md) records their representative tasks,
+fixtures, spatial facts, StructuredText comparison, and 80/100/120-column rejection matrices.
 
 | Mermaid family | ASCII status | Notes |
 | --- | --- | --- |
@@ -78,12 +81,12 @@ as ASCII/Unicode render targets:
 | Cynefin | Unsupported | No terminal projection has been admitted. |
 | Event Modeling | Unsupported | No terminal projection has been admitted. |
 | Info | Unsupported | Not useful as terminal diagram output today. |
-| Ishikawa | Unsupported | No terminal fishbone projection has been admitted. |
+| Ishikawa | Unsupported | [R34 evaluation rejected the current depth-limited prototype](ASCII_PHASE_GATE_REPORT.md#ishikawa-r34); its typical case adds spatial value, but dense recursive ownership is incomplete. |
 | Pie | Unsupported | No terminal pie/chart approximation yet. |
-| Quadrant | Unsupported | No terminal quadrant chart yet. |
+| Quadrant | Unsupported | [R34 evaluation rejected the current collision prototype](ASCII_PHASE_GATE_REPORT.md#quadrant-r34); small/typical cases add spatial value, but dense relative order collapses at all required widths. |
 | Radar | Unsupported | No terminal radar approximation yet. |
-| Railroad | Unsupported | No terminal grammar-diagram projection has been admitted. |
-| Requirement | Unsupported | Requirement diagrams are SVG-focused today. |
+| Railroad | Unsupported | [R34 evaluation rejected the current route-expansion prototype](ASCII_PHASE_GATE_REPORT.md#railroad-r34); choice paths are visible, but repetition loops and dense shared prefixes are not. |
+| Requirement | Unsupported | [R34 evaluation rejected the current tree-expansion prototype](ASCII_PHASE_GATE_REPORT.md#requirement-r34); single relations are exact, but dense convergences lose shared endpoint ownership. |
 | Sankey | Unsupported | Flow widths are SVG-specific. |
 | Treemap | Unsupported | Rectangle packing is SVG-specific. |
 | Venn | Unsupported | No terminal set-overlap projection has been admitted. |

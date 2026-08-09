@@ -24,6 +24,12 @@ product boundary.
 - Mindmap, TreeView, Timeline, Gantt, Journey, Kanban, Packet, and GitGraph now render as compact
   structured-text projections; keep those projections readable and headless rather than
   browser-shaped.
+- The Phase 0-3 evidence and R34 admission decisions are tracked in
+  `docs/rendering/ASCII_PHASE_GATE_REPORT.md`. Railroad, Requirement, Ishikawa, and Quadrant remain
+  Unsupported because each current prototype fails at least one required dense or typed-topology
+  case at 80/100/120 columns; Ishikawa typical and Quadrant small/typical still demonstrate useful
+  spatial signals. This is a current-cycle admission result, not a claim of permanent terminal
+  unsuitability.
 - CJK/emoji terminal-cell coverage is semantic, not byte-exact: primitive cell ownership plus
   Flowchart, Sequence, Class, ER, and XYChart tests prove visibility/alignment without copying
   reference spacing.
@@ -116,6 +122,7 @@ expected output.
 | Timeline / Gantt | Not part of the reference scope. | Broader schedule renderers can suggest readable summary patterns. | Readable rows that preserve sections, tasks, spans, and flags. | Favor honest text summaries over pseudo-graphs. |
 | Journey / Kanban | Not part of the reference scope. | Broader board renderers can suggest grouping and actor/card metadata patterns. | Readable structured-text reports that preserve section order, actor order, and card metadata. | Keep the projection stable and compact. |
 | Packet / GitGraph | Not part of the reference scope. | Broader process-diagram examples can suggest readable lane reports. | Readable structured-text reports that preserve ranges, parents, tags, commit order, and warnings. | Favor traceable text over decorative pseudo-graphs. |
+| Railroad / Requirement / Ishikawa / Quadrant | Not part of the pinned ASCII oracle. | No reference output is accepted as Mermaid byte authority for these families. | Typed core models exist, but ASCII dispatch and exhaustive capability metadata remain explicitly Unsupported. | The tracked R34 report executes source-backed test-private spatial prototypes at 80/100/120 columns: each family has a concrete dense-case failure, while Ishikawa typical and Quadrant small/typical retain positive design signals. A future complete spatial vertical slice may reopen admission. |
 
 ## Intentional Differences
 
@@ -139,3 +146,6 @@ expected output.
   keep explicit crossing, port-fit, route, and overlay boundaries. Resource budgets remain typed hard
   errors rather than summary selectors.
 - XYChart dense-layout policy beyond the shipped compact plot and `values:` disclosure rows.
+- Railroad, Requirement, Ishikawa, and Quadrant remain breadth candidates only after a new proposal
+  supplies the complete spatial and width evidence required by
+  `docs/rendering/ASCII_PHASE_GATE_REPORT.md`; summary-only output does not clear that gate.
