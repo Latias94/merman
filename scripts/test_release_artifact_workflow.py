@@ -39,6 +39,22 @@ class ReleaseArtifactWorkflowTests(unittest.TestCase):
     def job(self, job_id: str) -> dict:
         return workflow_job(self.workflow, job_id)
 
+    def assert_step_compares_observed_sha_to(
+        self,
+        job: dict,
+        expected_sha: str,
+    ) -> dict:
+        matches = [
+            (step, name)
+            for step in job["steps"]
+            for name, value in step.get("env", {}).items()
+            if value == expected_sha
+        ]
+        self.assertEqual(len(matches), 1)
+        step, variable = matches[0]
+        self.assertIn(f'"$observed" != "${variable}"', step["run"])
+        return step
+
     def test_every_action_is_pinned_to_one_commit(self) -> None:
         for job_id, job in self.workflow["jobs"].items():
             for step in job["steps"]:
@@ -49,13 +65,16 @@ class ReleaseArtifactWorkflowTests(unittest.TestCase):
 
     def test_plan_binds_the_canonical_tag_to_one_commit(self) -> None:
         job = self.job("plan")
-        validate = workflow_step(job, name="Validate release tag")["run"]
+        validate = workflow_step(job, step_id="source")["run"]
         install = workflow_step(job, name="Install dist")
 
-        self.assertEqual(job["outputs"]["source_sha"], "${{ steps.release.outputs.source_sha }}")
+        self.assertEqual(job["outputs"]["source_sha"], "${{ steps.source.outputs.source_sha }}")
+        self.assertEqual(job["outputs"]["tag_sha"], "${{ steps.source.outputs.tag_sha }}")
         self.assertIn('refs/tags/$RELEASE_TAG^{commit}', validate)
         self.assertIn("git rev-parse HEAD", validate)
+        self.assertIn('"$source_sha" != "$tag_sha"', validate)
         self.assertIn("source_sha=", validate)
+        self.assertIn("tag_sha=", validate)
         self.assertIn("sha256sum --check", install["run"])
         self.assertEqual(
             install["env"]["DIST_INSTALLER_SHA256"],
@@ -259,7 +278,10 @@ class ReleaseArtifactWorkflowTests(unittest.TestCase):
     def test_attestation_is_pinned_least_privilege_and_environment_protected(self) -> None:
         job = self.job("attest-release-assets")
         download = workflow_step(job, name="Download verified release bundle")
-        tag = workflow_step(job, name="Verify release tag still resolves to the source commit")
+        tag = self.assert_step_compares_observed_sha_to(
+            job,
+            "${{ needs.plan.outputs.tag_sha }}",
+        )
         attest = workflow_step(job, name="Attest verified release assets")
 
         self.assertEqual(job["environment"], "github-release")
@@ -275,13 +297,15 @@ class ReleaseArtifactWorkflowTests(unittest.TestCase):
         self.assertRegex(download["uses"], FULL_SHA_ACTION)
         self.assertRegex(attest["uses"], FULL_SHA_ACTION)
         self.assertIn("commits/$RELEASE_TAG", tag["run"])
-        self.assertIn('"$observed" != "$SOURCE_SHA"', tag["run"])
         self.assertEqual(attest["with"]["subject-path"], "verified-release-assets/*")
 
     def test_host_uploads_the_same_pinned_bundle_without_repacking(self) -> None:
         job = self.job("host")
         download = workflow_step(job, name="Download GitHub Artifacts")
-        tag = workflow_step(job, name="Verify release tag still resolves to the source commit")
+        tag = self.assert_step_compares_observed_sha_to(
+            job,
+            "${{ needs.plan.outputs.tag_sha }}",
+        )
         create = workflow_step(job, name="Create GitHub Release")["run"]
 
         self.assertEqual(job["permissions"], {"contents": "write"})

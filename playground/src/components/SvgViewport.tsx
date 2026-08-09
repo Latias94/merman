@@ -528,6 +528,7 @@ export function SvgViewport({
       current?.preview === preview ? null : current,
     );
     root.replaceChildren(node);
+    stabilizeInheritedSvgColor(node, host);
     setNavigableAnchorsEnabled(root, navigationEnabledRef.current);
     const requested = requestedPresentationRef.current;
     if (requested.preview !== preview) return;
@@ -906,6 +907,19 @@ export function SvgViewport({
 
 function normalizeMountError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
+}
+
+function stabilizeInheritedSvgColor(node: Element, host: HTMLElement): void {
+  if (!(node instanceof SVGSVGElement)) return;
+  const view = node.ownerDocument.defaultView;
+  if (!view) return;
+
+  const svgStyle = view.getComputedStyle(node);
+  if (svgStyle.color !== view.getComputedStyle(host).color) return;
+  const fill = svgStyle.fill.trim();
+  if (!fill || !view.CSS.supports("color", fill)) return;
+
+  node.style.setProperty("color", fill);
 }
 
 function internalController(

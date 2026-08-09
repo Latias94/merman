@@ -79,7 +79,7 @@ Keep release smoke tests strict about user-observable behavior and loose about v
 
 Resolve the intended commit to a 40-character `SOURCE_SHA`. Use the exact preflight dispatch from `docs/release/RELEASING.md`, passing that immutable SHA instead of a branch. Wait for every job and diagnose failures before tagging. A local build is not a substitute for preflight.
 
-Preparation is complete when version projections and release notes are committed, the release-ready check passes, and preflight is green for the exact version and `SOURCE_SHA`.
+Preparation is complete when version projections and release notes are committed, the release-ready check passes, preflight is green for the exact version and `SOURCE_SHA`, and every tag-triggered package fits the current registry upload constraints. Treat an exit-zero package dry-run that reports a server-enforced size or content hint as unresolved release evidence.
 
 Apple source compatibility is a compiler-floor contract. The Swift 5.9/Xcode 15.2 CI job must pass for the exact source commit; a newer Swift compiler does not prove that floor. GitHub's `macos-14` hosted image starts retirement brownouts on 2026-10-05 and retires on 2026-11-02, so move this exact check to a maintained runner or toolchain before the brownouts. If no equivalent runner is available, block Apple shipping instead of weakening or silently skipping the check.
 
@@ -121,4 +121,7 @@ Diagnosis and local fixes are `prepare` work. Rerunning a publisher, uploading a
 - GitHub Release jobs without checkout need `GH_REPO`.
 - cargo-dist workflow changes require `dist generate --check`.
 - `npm pack --json` output must not be contaminated by lifecycle logs.
+- Workflow contract tests should follow stable step IDs and provenance data flow; display labels and local variable names are not release invariants.
+- Recovery admission should require a non-empty subset of allowed paths plus semantic and trusted-source checks, not require every allowed path to change.
+- `dart pub publish --dry-run` can succeed while reporting a package too large for server upload. Inspect its final compressed size before tagging; split the package surface instead of silently dropping documented targets.
 - Typst compatibility includes README version mapping, not only size gates.
