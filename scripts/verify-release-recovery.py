@@ -101,6 +101,17 @@ def blob_oid(root: Path, revision: str, relative: str) -> str:
     return run_git(root, "rev-parse", f"{revision}:{relative}").stdout.strip()
 
 
+def verify_recovery_paths(changed: tuple[str, ...]) -> None:
+    if not changed:
+        raise RecoveryVerificationError("recovery commit does not change any admitted path")
+
+    unexpected = tuple(sorted(set(changed).difference(RECOVERY_PATHS)))
+    if unexpected:
+        raise RecoveryVerificationError(
+            "recovery commit changes unexpected paths: " + ", ".join(unexpected)
+        )
+
+
 def verify_recovery(
     repo_root: Path,
     *,
@@ -137,10 +148,7 @@ def verify_recovery(
             if line
         )
     )
-    if changed != RECOVERY_PATHS:
-        raise RecoveryVerificationError(
-            "recovery commit changes an unexpected path set: " + ", ".join(changed)
-        )
+    verify_recovery_paths(changed)
 
     for relative in EXPECTED_DIST_INCLUDES:
         verify_manifest_recovery(root, tag_sha, relative)
