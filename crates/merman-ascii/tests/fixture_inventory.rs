@@ -191,6 +191,8 @@ fn imported_common_family_fixture_admission_is_reproducible() {
             root.display()
         );
 
+        let mut rendered_count = 0usize;
+        let mut rejected_invalid_count = 0usize;
         for path in fixtures {
             let file_name = path
                 .file_name()
@@ -206,6 +208,7 @@ fn imported_common_family_fixture_admission_is_reproducible() {
                         .is_err(),
                     "the documented upstream-invalid local stress fixture must stay excluded"
                 );
+                rejected_invalid_count += 1;
                 continue;
             }
 
@@ -228,11 +231,28 @@ fn imported_common_family_fixture_admission_is_reproducible() {
                 Ok(())
             })();
 
-            if let Err(error) = result {
-                let relative = path.strip_prefix(&workspace_root).unwrap_or(&path);
-                failures.push(format!("{}: {error}", relative.display()));
+            match result {
+                Ok(()) => rendered_count += 1,
+                Err(error) => {
+                    let relative = path.strip_prefix(&workspace_root).unwrap_or(&path);
+                    failures.push(format!("{}: {error}", relative.display()));
+                }
             }
         }
+
+        let expected_invalid_count = usize::from(*directory == "sequence");
+        assert_eq!(
+            rejected_invalid_count,
+            expected_invalid_count,
+            "intentional-invalid fixture count drifted for {}",
+            root.display()
+        );
+        assert_eq!(
+            rendered_count,
+            expected_count - expected_invalid_count,
+            "rendered fixture count drifted for {}",
+            root.display()
+        );
     }
 
     assert!(
