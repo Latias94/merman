@@ -6,85 +6,14 @@ use crate::{
 };
 use std::collections::VecDeque;
 
-use super::{
-    LINETYPE_BIDIRECTIONAL_DOTTED, LINETYPE_BIDIRECTIONAL_SOLID, LINETYPE_DOTTED,
-    LINETYPE_DOTTED_CROSS, LINETYPE_DOTTED_OPEN, LINETYPE_DOTTED_POINT, LINETYPE_SOLID,
-    LINETYPE_SOLID_ARROW_BOTTOM_REVERSE, LINETYPE_SOLID_ARROW_BOTTOM_REVERSE_DOTTED,
-    LINETYPE_SOLID_ARROW_TOP_REVERSE, LINETYPE_SOLID_ARROW_TOP_REVERSE_DOTTED,
-    LINETYPE_SOLID_BOTTOM, LINETYPE_SOLID_BOTTOM_DOTTED, LINETYPE_SOLID_CROSS, LINETYPE_SOLID_OPEN,
-    LINETYPE_SOLID_POINT, LINETYPE_SOLID_TOP, LINETYPE_SOLID_TOP_DOTTED,
-    LINETYPE_STICK_ARROW_BOTTOM_REVERSE, LINETYPE_STICK_ARROW_BOTTOM_REVERSE_DOTTED,
-    LINETYPE_STICK_ARROW_TOP_REVERSE, LINETYPE_STICK_ARROW_TOP_REVERSE_DOTTED,
-    LINETYPE_STICK_BOTTOM, LINETYPE_STICK_BOTTOM_DOTTED, LINETYPE_STICK_TOP,
-    LINETYPE_STICK_TOP_DOTTED,
+mod actor;
+
+#[cfg(test)]
+use actor::HALF_ARROW_TYPES;
+use actor::{
+    ActorBoundary, config_followed_by_alias, is_ecmascript_whitespace, scan_actor, signal_type_at,
+    trim_ecmascript, trim_end_ecmascript, trim_start_ecmascript,
 };
-
-const HALF_ARROW_TYPES: [(&str, i32); 16] = [
-    ("--|\\", LINETYPE_SOLID_TOP_DOTTED),
-    ("--|/", LINETYPE_SOLID_BOTTOM_DOTTED),
-    ("--\\\\", LINETYPE_STICK_TOP_DOTTED),
-    ("--//", LINETYPE_STICK_BOTTOM_DOTTED),
-    ("/|--", LINETYPE_SOLID_ARROW_TOP_REVERSE_DOTTED),
-    ("\\|--", LINETYPE_SOLID_ARROW_BOTTOM_REVERSE_DOTTED),
-    ("//--", LINETYPE_STICK_ARROW_TOP_REVERSE_DOTTED),
-    ("\\\\--", LINETYPE_STICK_ARROW_BOTTOM_REVERSE_DOTTED),
-    ("-|\\", LINETYPE_SOLID_TOP),
-    ("-|/", LINETYPE_SOLID_BOTTOM),
-    ("-\\\\", LINETYPE_STICK_TOP),
-    ("-//", LINETYPE_STICK_BOTTOM),
-    ("/|-", LINETYPE_SOLID_ARROW_TOP_REVERSE),
-    ("\\|-", LINETYPE_SOLID_ARROW_BOTTOM_REVERSE),
-    ("//-", LINETYPE_STICK_ARROW_TOP_REVERSE),
-    ("\\\\-", LINETYPE_STICK_ARROW_BOTTOM_REVERSE),
-];
-
-fn half_arrow_type(rest: &str) -> Option<(usize, i32)> {
-    HALF_ARROW_TYPES
-        .iter()
-        .find_map(|(arrow, ty)| rest.starts_with(arrow).then_some((arrow.len(), *ty)))
-}
-
-fn is_ecmascript_whitespace(ch: char) -> bool {
-    matches!(
-        ch,
-        '\u{0009}'
-            | '\u{000A}'
-            | '\u{000B}'
-            | '\u{000C}'
-            | '\u{000D}'
-            | '\u{0020}'
-            | '\u{00A0}'
-            | '\u{1680}'
-            | '\u{2000}'
-            ..='\u{200A}'
-                | '\u{2028}'
-                | '\u{2029}'
-                | '\u{202F}'
-                | '\u{205F}'
-                | '\u{3000}'
-                | '\u{FEFF}'
-    )
-}
-
-fn trim_start_ecmascript(value: &str) -> &str {
-    value.trim_start_matches(is_ecmascript_whitespace)
-}
-
-fn trim_end_ecmascript(value: &str) -> &str {
-    value.trim_end_matches(is_ecmascript_whitespace)
-}
-
-fn trim_ecmascript(value: &str) -> &str {
-    value.trim_matches(is_ecmascript_whitespace)
-}
-
-fn declaration_id_allows_config(actor_id: &str) -> bool {
-    !actor_id.is_empty()
-        && actor_id.chars().all(|ch| {
-            !is_ecmascript_whitespace(ch)
-                && !matches!(ch, '<' | '=' | '>' | '-' | ':' | ',' | ';' | '@')
-        })
-}
 
 #[derive(Debug, Clone)]
 pub(crate) enum Tok {
@@ -172,15 +101,6 @@ enum LineLexemeKind {
     String,
     Color,
     Style,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ActorBoundary {
-    Declaration,
-    StatementEnd,
-    Text,
-    TextOrComma,
-    SignalSource,
 }
 
 pub(super) struct Lexer<'input> {
@@ -723,33 +643,7 @@ impl<'input> Lexer<'input> {
 
     fn lex_signal_type(&mut self) -> Option<(usize, Tok, usize)> {
         let start = self.pos;
-        let rest = &self.input[self.pos..];
-
-        let (len, ty) = if let Some(half_arrow) = half_arrow_type(rest) {
-            half_arrow
-        } else if rest.starts_with("<<-->>") {
-            (6, LINETYPE_BIDIRECTIONAL_DOTTED)
-        } else if rest.starts_with("<<->>") {
-            (5, LINETYPE_BIDIRECTIONAL_SOLID)
-        } else if rest.starts_with("-->>") {
-            (4, LINETYPE_DOTTED)
-        } else if rest.starts_with("->>") {
-            (3, LINETYPE_SOLID)
-        } else if rest.starts_with("-->") {
-            (3, LINETYPE_DOTTED_OPEN)
-        } else if rest.starts_with("->") {
-            (2, LINETYPE_SOLID_OPEN)
-        } else if rest.starts_with("--x") {
-            (3, LINETYPE_DOTTED_CROSS)
-        } else if rest.starts_with("-x") {
-            (2, LINETYPE_SOLID_CROSS)
-        } else if rest.starts_with("--)") {
-            (3, LINETYPE_DOTTED_POINT)
-        } else if rest.starts_with("-)") {
-            (2, LINETYPE_SOLID_POINT)
-        } else {
-            return None;
-        };
+        let (len, ty) = signal_type_at(self.input, self.pos)?;
 
         self.pos += len;
         Some((start, Tok::SignalType(ty), self.pos))
@@ -851,7 +745,7 @@ impl<'input> Lexer<'input> {
         let end = self.pos + rel_end;
         let s = trim_ecmascript(&self.input[self.pos..end]).to_string();
         self.pos = end + 1;
-        self.declaration_alias_pending = self.config_followed_by_alias();
+        self.declaration_alias_pending = config_followed_by_alias(self.input, self.pos);
         self.push_lexeme(EditorLexemeKind::Style, start, self.pos);
         Some(Ok((start, Tok::Config(s), self.pos)))
     }
@@ -871,133 +765,14 @@ impl<'input> Lexer<'input> {
 
     fn lex_actor_with_boundary(&mut self, boundary: ActorBoundary) -> Option<(usize, Tok, usize)> {
         let start = self.pos;
-        let mut end = self.pos;
-        let bytes = self.input.as_bytes();
-        let uses_id_rules = matches!(
-            boundary,
-            ActorBoundary::Declaration | ActorBoundary::StatementEnd
-        );
-
-        while end < self.input.len() {
-            if !self.input.is_char_boundary(end) {
-                end += 1;
-                continue;
-            }
-            if !uses_id_rules && self.peek_signal_type_at(end) {
-                break;
-            }
-            if !uses_id_rules && self.input[end..].starts_with("--") {
-                break;
-            }
-            let ch = self.input[end..].chars().next()?;
-            let b = bytes[end];
-            if b == b'\n' || b == b';' || b == b',' || b == b':' || b == b'<' || b == b'>' {
-                break;
-            }
-            if uses_id_rules {
-                if b == b'@' {
-                    break;
-                }
-                if boundary == ActorBoundary::Declaration
-                    && is_ecmascript_whitespace(ch)
-                    && self.declaration_alias_starts_at(start, end)
-                {
-                    break;
-                }
-            } else {
-                if b == b'+' || b == b'/' || b == b'\\' || b == b')' {
-                    break;
-                }
-                if boundary == ActorBoundary::Text && end == start && b == b'-' {
-                    // After a signal, a leading single dash is the deactivation modifier, not
-                    // part of the target actor id.
-                    break;
-                }
-                if b == b'(' {
-                    if boundary == ActorBoundary::SignalSource
-                        && self.central_suffix_precedes_signal(end)
-                    {
-                        end += 2;
-                        continue;
-                    }
-                    break;
-                }
-            }
-
-            end += ch.len_utf8();
-        }
-
-        let mut trimmed_end = end;
-        while trimmed_end > start {
-            let Some(ch) = self.input[start..trimmed_end].chars().next_back() else {
-                break;
-            };
-            if !is_ecmascript_whitespace(ch) {
-                break;
-            }
-            trimmed_end -= ch.len_utf8();
-        }
-        if trimmed_end == start {
-            return None;
-        }
-
-        let s = trim_start_ecmascript(&self.input[start..trimmed_end]).to_string();
-        self.pos = end;
+        let scan = scan_actor(self.input, start, boundary)?;
+        let actor = scan.text.to_string();
+        self.pos = scan.scan_end;
         if boundary == ActorBoundary::Declaration {
             self.declaration_alias_pending = true;
-            self.declaration_config_allowed = declaration_id_allows_config(&s);
+            self.declaration_config_allowed = scan.config_allowed;
         }
-        Some((start, Tok::Actor(s), trimmed_end))
-    }
-
-    fn config_followed_by_alias(&self) -> bool {
-        let mut alias_start = self.pos;
-        let mut saw_whitespace = false;
-        while let Some(ch) = self.input[alias_start..].chars().next() {
-            if ch == '\n' || !is_ecmascript_whitespace(ch) {
-                break;
-            }
-            saw_whitespace = true;
-            alias_start += ch.len_utf8();
-        }
-        saw_whitespace
-            && self.starts_with_ci_at(alias_start, "as")
-            && self.char_at_is_ecmascript_whitespace(alias_start + "as".len())
-    }
-
-    fn central_suffix_precedes_signal(&self, position: usize) -> bool {
-        if !self.input[position..].starts_with("()") {
-            return false;
-        }
-        let mut signal_start = position + 2;
-        while let Some(ch) = self.input[signal_start..].chars().next() {
-            if ch == '\n' || !is_ecmascript_whitespace(ch) {
-                break;
-            }
-            signal_start += ch.len_utf8();
-        }
-        self.peek_signal_type_at(signal_start)
-    }
-
-    fn declaration_alias_starts_at(&self, actor_start: usize, whitespace_start: usize) -> bool {
-        if self.input[actor_start..whitespace_start]
-            .chars()
-            .any(is_ecmascript_whitespace)
-        {
-            return false;
-        }
-
-        let mut alias_start = whitespace_start;
-        while let Some(ch) = self.input[alias_start..].chars().next() {
-            if !is_ecmascript_whitespace(ch) || ch == '\n' {
-                break;
-            }
-            alias_start += ch.len_utf8();
-        }
-        if !self.starts_with_ci_at(alias_start, "as") {
-            return false;
-        }
-        self.char_at_is_ecmascript_whitespace(alias_start + 2)
+        Some((start, Tok::Actor(actor), scan.token_end))
     }
 
     fn char_at_is_inline_whitespace(&self, position: usize) -> bool {
@@ -1125,18 +900,7 @@ impl<'input> Lexer<'input> {
     }
 
     fn peek_signal_type_at(&self, pos: usize) -> bool {
-        let rest = &self.input[pos..];
-        half_arrow_type(rest).is_some()
-            || rest.starts_with("<<-->>")
-            || rest.starts_with("<<->>")
-            || rest.starts_with("-->>")
-            || rest.starts_with("->>")
-            || rest.starts_with("-->")
-            || rest.starts_with("->")
-            || rest.starts_with("--x")
-            || rest.starts_with("-x")
-            || rest.starts_with("--)")
-            || rest.starts_with("-)")
+        signal_type_at(self.input, pos).is_some()
     }
 
     fn note_emitted_token(&mut self, tok: &Tok) {
