@@ -1293,7 +1293,7 @@ final class MermanBindingOperationExpectation {
     );
 
     out.push_str(
-        "const Map<String, MermanBindingCapabilitySpec>\n    mermanBindingCapabilitySpecs =\n    <String, MermanBindingCapabilitySpec>{\n",
+        "const Map<String, MermanBindingCapabilitySpec> mermanBindingCapabilitySpecs =\n    <String, MermanBindingCapabilitySpec>{\n",
     );
     for spec in &projections.capabilities {
         writeln!(out, "  {:?}: MermanBindingCapabilitySpec(", spec.id).unwrap();
@@ -2026,6 +2026,9 @@ mod tests {
         assert!(dart.contains("mermanBindingOperationExpectations"));
         assert!(dart.contains("abstract final class MermanBindingMetadataId"));
         assert!(dart.contains("static const String supportedDiagrams = \"supported-diagrams\";"));
+        assert!(dart.contains(
+            "const Map<String, MermanBindingCapabilitySpec> mermanBindingCapabilitySpecs =\n"
+        ));
     }
 
     #[test]
