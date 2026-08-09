@@ -1,6 +1,7 @@
-use super::model::{ACTIVE_END_MESSAGE_TYPE, ACTIVE_START_MESSAGE_TYPE, NOTE_MESSAGE_TYPE};
 use crate::error::{AsciiError, Result};
-use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
+use merman_core::diagrams::sequence::{
+    SequenceCentralDecoration, SequenceDiagramRenderModel, SequenceMessageKind,
+};
 
 pub(super) fn validate_supported_sequence_model(model: &SequenceDiagramRenderModel) -> Result<()> {
     if model
@@ -28,7 +29,7 @@ pub(super) fn validate_supported_sequence_model(model: &SequenceDiagramRenderMod
     let note_message_count = model
         .messages
         .iter()
-        .filter(|message| message.message_type == NOTE_MESSAGE_TYPE)
+        .filter(|message| message.semantic_kind() == SequenceMessageKind::Note)
         .count();
     if !model.notes.is_empty() && note_message_count < model.notes.len() {
         return Err(AsciiError::UnsupportedFeature {
@@ -39,22 +40,23 @@ pub(super) fn validate_supported_sequence_model(model: &SequenceDiagramRenderMod
 
     let has_activation_events = model.messages.iter().any(|message| {
         matches!(
-            message.message_type,
-            ACTIVE_START_MESSAGE_TYPE | ACTIVE_END_MESSAGE_TYPE
+            message.semantic_kind(),
+            SequenceMessageKind::ActivationStart | SequenceMessageKind::ActivationEnd
         )
     });
-    if model.messages.iter().any(|message| message.activate) && !has_activation_events {
+    if model.messages.iter().any(|message| {
+        message.activate && message.central_decoration() == Some(SequenceCentralDecoration::None)
+    }) && !has_activation_events
+    {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
             feature: "activations without state events",
         });
     }
 
-    if model
-        .messages
-        .iter()
-        .any(|message| message.message_type != NOTE_MESSAGE_TYPE && message.placement.is_some())
-    {
+    if model.messages.iter().any(|message| {
+        message.semantic_kind() != SequenceMessageKind::Note && message.placement.is_some()
+    }) {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
             feature: "message placement",

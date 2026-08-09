@@ -2001,6 +2001,85 @@ fn sequence_open_arrows_render_from_typed_model() {
 }
 
 #[test]
+fn sequence_extended_signal_markers_render_from_typed_endpoint_semantics() {
+    let rendered = render_sequence(
+        r#"sequenceDiagram
+participant A
+participant B
+A-)B: Async point
+A<<->>B: Bidirectional
+A-|\B: Filled half
+A/|-B: Reverse half
+A--//B: Open half
+A--)A: Self async"#,
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("extended sequence signal markers should render");
+
+    for label in [
+        "Async point",
+        "Bidirectional",
+        "Filled half",
+        "Reverse half",
+        "Open half",
+        "Self async",
+    ] {
+        assert!(
+            rendered.contains(label),
+            "extended signal label {label:?} should remain visible:\n{rendered}"
+        );
+    }
+    assert!(
+        rendered.contains(')'),
+        "async point markers should remain distinct:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("├◄") && rendered.contains("►│"),
+        "bidirectional messages should paint both endpoint markers:\n{rendered}"
+    );
+    assert!(
+        rendered.contains('◢') && rendered.contains('◣'),
+        "forward and reverse filled half markers should retain endpoint ownership:\n{rendered}"
+    );
+    assert!(
+        rendered.contains('╱'),
+        "open half markers should remain distinct from filled halves:\n{rendered}"
+    );
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.contains('┈') && line.contains('(')),
+        "dotted self messages should preserve their point marker and stroke:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_central_marker_records_are_suppressed_without_skipping_autonumbers() {
+    let rendered = render_sequence(
+        r#"sequenceDiagram
+participant A
+participant B
+autonumber
+A->>()B: Target central
+A()->>B: Source central
+B()->>()A: Dual central"#,
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("central connection decorations should render");
+
+    for numbered_label in ["1. Target central", "2. Source central", "3. Dual central"] {
+        assert!(
+            rendered.contains(numbered_label),
+            "central marker records must not consume autonumbers for {numbered_label:?}:\n{rendered}"
+        );
+    }
+    assert!(
+        rendered.matches('○').count() >= 4,
+        "target, source, and dual central decorations should remain visible:\n{rendered}"
+    );
+}
+
+#[test]
 fn sequence_titles_render_above_participants() {
     let rendered = render_sequence(
         "sequenceDiagram\ntitle: Setup\nparticipant A\nparticipant B\nA->>B: Hi",
@@ -2201,7 +2280,7 @@ fn sequence_other_model_features_are_explicitly_unsupported() {
     cases.push((model, "messages with unknown actors"));
 
     let mut model = basic_sequence_model();
-    model.messages.push(message(Some("A"), Some("A"), 42));
+    model.messages.push(message(Some("A"), Some("A"), 99));
     cases.push((model, "message types"));
 
     for (model, feature) in cases {

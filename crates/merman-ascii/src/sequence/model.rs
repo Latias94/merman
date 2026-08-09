@@ -6,20 +6,15 @@ use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceCon
 use crate::safe_text::{charge_text_layout, try_build_normalized_label_lines};
 use crate::style_color::{CssColor, parse_css_color, parse_css_color_value};
 use merman_core::diagrams::sequence::{
-    SequenceDiagramRenderModel, SequenceMessage as CoreSequenceMessage, SequenceMessagePayload,
+    SequenceCentralDecoration as CoreSequenceCentralDecoration, SequenceDiagramRenderModel,
+    SequenceMessage as CoreSequenceMessage,
+    SequenceMessageDirection as CoreSequenceMessageDirection,
+    SequenceMessageKind as CoreSequenceMessageKind,
+    SequenceMessageMarker as CoreSequenceMessageMarker, SequenceMessagePayload,
+    SequenceMessageStroke as CoreSequenceMessageStroke,
 };
 use std::collections::HashMap;
 
-const AUTONUMBER_MESSAGE_TYPE: i32 = 26;
-pub(super) const NOTE_MESSAGE_TYPE: i32 = 2;
-pub(super) const ACTIVE_START_MESSAGE_TYPE: i32 = 17;
-pub(super) const ACTIVE_END_MESSAGE_TYPE: i32 = 18;
-const SOLID_FILLED_MESSAGE_TYPE: i32 = 0;
-const DOTTED_FILLED_MESSAGE_TYPE: i32 = 1;
-const SOLID_CROSS_MESSAGE_TYPE: i32 = 3;
-const DOTTED_CROSS_MESSAGE_TYPE: i32 = 4;
-const SOLID_OPEN_MESSAGE_TYPE: i32 = 5;
-const DOTTED_OPEN_MESSAGE_TYPE: i32 = 6;
 const LOOP_START_MESSAGE_TYPE: i32 = 10;
 const LOOP_END_MESSAGE_TYPE: i32 = 11;
 const ALT_START_MESSAGE_TYPE: i32 = 12;
@@ -213,21 +208,16 @@ pub(super) struct SequenceMessage {
     pub(super) label: String,
     pub(super) wrap: bool,
     pub(super) style: SequenceLineStyle,
-    pub(super) arrow: SequenceArrowHead,
+    pub(super) source_marker: SequenceArrowHead,
+    pub(super) target_marker: SequenceArrowHead,
+    pub(super) direction: SequenceMessageDirection,
+    pub(super) central_decoration: SequenceCentralDecoration,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SequenceLineStyle {
-    Solid,
-    Dotted,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SequenceArrowHead {
-    Filled,
-    Open,
-    Cross,
-}
+pub(super) type SequenceLineStyle = CoreSequenceMessageStroke;
+pub(super) type SequenceArrowHead = CoreSequenceMessageMarker;
+pub(super) type SequenceMessageDirection = CoreSequenceMessageDirection;
+pub(super) type SequenceCentralDecoration = CoreSequenceCentralDecoration;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SequenceNote {
@@ -384,7 +374,12 @@ pub(crate) fn from_sequence_model(
     let mut autonumber = AutonumberState::default();
 
     for (model_index, message) in model.messages.iter().enumerate() {
+        let semantic_kind = message.semantic_kind();
         if consume_autonumber(message, &mut autonumber) {
+            continue;
+        }
+
+        if semantic_kind == CoreSequenceMessageKind::CentralDecorationRecord {
             continue;
         }
 
@@ -394,8 +389,8 @@ pub(crate) fn from_sequence_model(
         }
 
         if matches!(
-            message.message_type,
-            ACTIVE_START_MESSAGE_TYPE | ACTIVE_END_MESSAGE_TYPE
+            semantic_kind,
+            CoreSequenceMessageKind::ActivationStart | CoreSequenceMessageKind::ActivationEnd
         ) {
             let actor = message
                 .from
@@ -410,7 +405,7 @@ pub(crate) fn from_sequence_model(
                     diagram_type: "sequence",
                     feature: "messages with unknown actors",
                 })?;
-            let event = if message.message_type == ACTIVE_START_MESSAGE_TYPE {
+            let event = if semantic_kind == CoreSequenceMessageKind::ActivationStart {
                 SequenceEvent::ActivationStart { actor, model_index }
             } else {
                 SequenceEvent::ActivationEnd { actor, model_index }
@@ -447,7 +442,7 @@ pub(crate) fn from_sequence_model(
                 feature: "messages with unknown actors",
             })?;
 
-        if message.message_type == NOTE_MESSAGE_TYPE {
+        if semantic_kind == CoreSequenceMessageKind::Note {
             let placement = SequenceNotePlacement::from_model(message.placement)?;
             let label = message.message_text();
             events.push(SequenceEvent::Note(SequenceNote {
@@ -461,20 +456,26 @@ pub(crate) fn from_sequence_model(
             continue;
         }
 
-        let (style, arrow) = match message.message_type {
-            SOLID_FILLED_MESSAGE_TYPE => (SequenceLineStyle::Solid, SequenceArrowHead::Filled),
-            DOTTED_FILLED_MESSAGE_TYPE => (SequenceLineStyle::Dotted, SequenceArrowHead::Filled),
-            SOLID_CROSS_MESSAGE_TYPE => (SequenceLineStyle::Solid, SequenceArrowHead::Cross),
-            DOTTED_CROSS_MESSAGE_TYPE => (SequenceLineStyle::Dotted, SequenceArrowHead::Cross),
-            SOLID_OPEN_MESSAGE_TYPE => (SequenceLineStyle::Solid, SequenceArrowHead::Open),
-            DOTTED_OPEN_MESSAGE_TYPE => (SequenceLineStyle::Dotted, SequenceArrowHead::Open),
-            _ => {
-                return Err(AsciiError::UnsupportedFeature {
+        if semantic_kind != CoreSequenceMessageKind::Signal {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "sequence",
+                feature: "message types",
+            });
+        }
+
+        let semantics = message
+            .signal_semantics()
+            .ok_or(AsciiError::UnsupportedFeature {
+                diagram_type: "sequence",
+                feature: "message types",
+            })?;
+        let central_decoration =
+            message
+                .central_decoration()
+                .ok_or(AsciiError::UnsupportedFeature {
                     diagram_type: "sequence",
-                    feature: "message types",
-                });
-            }
-        };
+                    feature: "central connection types",
+                })?;
         let label = autonumber.label(message.message_text())?;
 
         events.push(SequenceEvent::Message(SequenceMessage {
@@ -483,8 +484,11 @@ pub(crate) fn from_sequence_model(
             to,
             label,
             wrap: message.wrap,
-            style,
-            arrow,
+            style: semantics.stroke,
+            source_marker: semantics.source_marker,
+            target_marker: semantics.target_marker,
+            direction: semantics.direction,
+            central_decoration,
         }));
     }
 
@@ -832,7 +836,7 @@ fn consume_autonumber(message: &CoreSequenceMessage, state: &mut AutonumberState
         return false;
     };
 
-    if message.message_type != AUTONUMBER_MESSAGE_TYPE {
+    if message.semantic_kind() != CoreSequenceMessageKind::Autonumber {
         return false;
     }
 

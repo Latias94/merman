@@ -948,6 +948,7 @@ mod tests {
             dotted_line: '.',
             self_top_right: '+',
             self_bottom: '+',
+            unicode_markers: false,
         }
     }
 }

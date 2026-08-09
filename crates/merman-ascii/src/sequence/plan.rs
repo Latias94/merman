@@ -927,9 +927,9 @@ mod tests {
     use crate::resource::AsciiResourceLimitId;
     use crate::sequence::layout::calculate_layout;
     use crate::sequence::model::{
-        SequenceActorLifecycle, SequenceArrowHead, SequenceControlSeparator, SequenceControlStart,
-        SequenceEvent, SequenceLineStyle, SequenceMessage, SequenceParticipant,
-        SequenceParticipantLabel,
+        SequenceActorLifecycle, SequenceArrowHead, SequenceCentralDecoration,
+        SequenceControlSeparator, SequenceControlStart, SequenceEvent, SequenceLineStyle,
+        SequenceMessage, SequenceMessageDirection, SequenceParticipant, SequenceParticipantLabel,
     };
 
     #[test]
@@ -1163,7 +1163,10 @@ mod tests {
             label: "done".to_string(),
             wrap: false,
             style: SequenceLineStyle::Solid,
-            arrow: SequenceArrowHead::Filled,
+            source_marker: SequenceArrowHead::None,
+            target_marker: SequenceArrowHead::Filled,
+            direction: SequenceMessageDirection::Forward,
+            central_decoration: SequenceCentralDecoration::None,
         });
         let step = plan
             .advance(&diagram, &message, 4, &mut resources)
@@ -1189,7 +1192,10 @@ mod tests {
             label: "next batch".to_string(),
             wrap: false,
             style: SequenceLineStyle::Solid,
-            arrow: SequenceArrowHead::Filled,
+            source_marker: SequenceArrowHead::None,
+            target_marker: SequenceArrowHead::Filled,
+            direction: SequenceMessageDirection::Forward,
+            central_decoration: SequenceCentralDecoration::None,
         };
         let visible_actors = [true, true];
         let mut measuring = ResourceContext::new(base.resources);
@@ -1373,6 +1379,7 @@ mod tests {
             dotted_line: '.',
             self_top_right: '+',
             self_bottom: '+',
+            unicode_markers: false,
         }
     }
 }

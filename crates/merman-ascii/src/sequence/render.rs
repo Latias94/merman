@@ -29,6 +29,7 @@ pub(super) struct SequenceChars {
     pub(super) dotted_line: char,
     pub(super) self_top_right: char,
     pub(super) self_bottom: char,
+    pub(super) unicode_markers: bool,
 }
 
 impl SequenceChars {
@@ -55,6 +56,7 @@ impl SequenceChars {
                 dotted_line: '.',
                 self_top_right: '+',
                 self_bottom: '+',
+                unicode_markers: false,
             },
             AsciiCharset::Unicode => Self {
                 top_left: '┌',
@@ -77,24 +79,89 @@ impl SequenceChars {
                 dotted_line: '┈',
                 self_top_right: '┐',
                 self_bottom: '┘',
+                unicode_markers: true,
             },
         }
     }
 
-    pub(super) fn arrow_right(self, arrow: SequenceArrowHead) -> char {
-        match arrow {
+    pub(super) fn arrow_right(self, marker: SequenceArrowHead) -> Option<char> {
+        Some(match marker {
+            SequenceArrowHead::None => return None,
             SequenceArrowHead::Filled => self.filled_arrow_right,
             SequenceArrowHead::Open => self.open_arrow_right,
             SequenceArrowHead::Cross => self.destroyed_mark,
-        }
+            SequenceArrowHead::Point => ')',
+            SequenceArrowHead::FilledHalfTop => {
+                if self.unicode_markers {
+                    '◢'
+                } else {
+                    '\\'
+                }
+            }
+            SequenceArrowHead::FilledHalfBottom => {
+                if self.unicode_markers {
+                    '◥'
+                } else {
+                    '/'
+                }
+            }
+            SequenceArrowHead::OpenHalfTop => {
+                if self.unicode_markers {
+                    '╲'
+                } else {
+                    '\\'
+                }
+            }
+            SequenceArrowHead::OpenHalfBottom => {
+                if self.unicode_markers {
+                    '╱'
+                } else {
+                    '/'
+                }
+            }
+        })
     }
 
-    pub(super) fn arrow_left(self, arrow: SequenceArrowHead) -> char {
-        match arrow {
+    pub(super) fn arrow_left(self, marker: SequenceArrowHead) -> Option<char> {
+        Some(match marker {
+            SequenceArrowHead::None => return None,
             SequenceArrowHead::Filled => self.filled_arrow_left,
             SequenceArrowHead::Open => self.open_arrow_left,
             SequenceArrowHead::Cross => self.destroyed_mark,
-        }
+            SequenceArrowHead::Point => '(',
+            SequenceArrowHead::FilledHalfTop => {
+                if self.unicode_markers {
+                    '◣'
+                } else {
+                    '/'
+                }
+            }
+            SequenceArrowHead::FilledHalfBottom => {
+                if self.unicode_markers {
+                    '◤'
+                } else {
+                    '\\'
+                }
+            }
+            SequenceArrowHead::OpenHalfTop => {
+                if self.unicode_markers {
+                    '╱'
+                } else {
+                    '/'
+                }
+            }
+            SequenceArrowHead::OpenHalfBottom => {
+                if self.unicode_markers {
+                    '╲'
+                } else {
+                    '\\'
+                }
+            }
+        })
+    }
+
+    pub(super) fn central_decoration(self) -> char {
+        if self.unicode_markers { '○' } else { 'o' }
     }
 }
 

@@ -6,23 +6,36 @@ use crate::{
 };
 use std::collections::VecDeque;
 
+use super::{
+    LINETYPE_BIDIRECTIONAL_DOTTED, LINETYPE_BIDIRECTIONAL_SOLID, LINETYPE_DOTTED,
+    LINETYPE_DOTTED_CROSS, LINETYPE_DOTTED_OPEN, LINETYPE_DOTTED_POINT, LINETYPE_SOLID,
+    LINETYPE_SOLID_ARROW_BOTTOM_REVERSE, LINETYPE_SOLID_ARROW_BOTTOM_REVERSE_DOTTED,
+    LINETYPE_SOLID_ARROW_TOP_REVERSE, LINETYPE_SOLID_ARROW_TOP_REVERSE_DOTTED,
+    LINETYPE_SOLID_BOTTOM, LINETYPE_SOLID_BOTTOM_DOTTED, LINETYPE_SOLID_CROSS, LINETYPE_SOLID_OPEN,
+    LINETYPE_SOLID_POINT, LINETYPE_SOLID_TOP, LINETYPE_SOLID_TOP_DOTTED,
+    LINETYPE_STICK_ARROW_BOTTOM_REVERSE, LINETYPE_STICK_ARROW_BOTTOM_REVERSE_DOTTED,
+    LINETYPE_STICK_ARROW_TOP_REVERSE, LINETYPE_STICK_ARROW_TOP_REVERSE_DOTTED,
+    LINETYPE_STICK_BOTTOM, LINETYPE_STICK_BOTTOM_DOTTED, LINETYPE_STICK_TOP,
+    LINETYPE_STICK_TOP_DOTTED,
+};
+
 const HALF_ARROW_TYPES: [(&str, i32); 16] = [
-    ("--|\\", 51),
-    ("--|/", 52),
-    ("--\\\\", 53),
-    ("--//", 54),
-    ("/|--", 55),
-    ("\\|--", 56),
-    ("//--", 57),
-    ("\\\\--", 58),
-    ("-|\\", 41),
-    ("-|/", 42),
-    ("-\\\\", 43),
-    ("-//", 44),
-    ("/|-", 45),
-    ("\\|-", 46),
-    ("//-", 47),
-    ("\\\\-", 48),
+    ("--|\\", LINETYPE_SOLID_TOP_DOTTED),
+    ("--|/", LINETYPE_SOLID_BOTTOM_DOTTED),
+    ("--\\\\", LINETYPE_STICK_TOP_DOTTED),
+    ("--//", LINETYPE_STICK_BOTTOM_DOTTED),
+    ("/|--", LINETYPE_SOLID_ARROW_TOP_REVERSE_DOTTED),
+    ("\\|--", LINETYPE_SOLID_ARROW_BOTTOM_REVERSE_DOTTED),
+    ("//--", LINETYPE_STICK_ARROW_TOP_REVERSE_DOTTED),
+    ("\\\\--", LINETYPE_STICK_ARROW_BOTTOM_REVERSE_DOTTED),
+    ("-|\\", LINETYPE_SOLID_TOP),
+    ("-|/", LINETYPE_SOLID_BOTTOM),
+    ("-\\\\", LINETYPE_STICK_TOP),
+    ("-//", LINETYPE_STICK_BOTTOM),
+    ("/|-", LINETYPE_SOLID_ARROW_TOP_REVERSE),
+    ("\\|-", LINETYPE_SOLID_ARROW_BOTTOM_REVERSE),
+    ("//-", LINETYPE_STICK_ARROW_TOP_REVERSE),
+    ("\\\\-", LINETYPE_STICK_ARROW_BOTTOM_REVERSE),
 ];
 
 fn half_arrow_type(rest: &str) -> Option<(usize, i32)> {
@@ -654,25 +667,25 @@ impl<'input> Lexer<'input> {
         let (len, ty) = if let Some(half_arrow) = half_arrow_type(rest) {
             half_arrow
         } else if rest.starts_with("<<-->>") {
-            (6, 34)
+            (6, LINETYPE_BIDIRECTIONAL_DOTTED)
         } else if rest.starts_with("<<->>") {
-            (5, 33)
+            (5, LINETYPE_BIDIRECTIONAL_SOLID)
         } else if rest.starts_with("-->>") {
-            (4, 1)
+            (4, LINETYPE_DOTTED)
         } else if rest.starts_with("->>") {
-            (3, 0)
+            (3, LINETYPE_SOLID)
         } else if rest.starts_with("-->") {
-            (3, 6)
+            (3, LINETYPE_DOTTED_OPEN)
         } else if rest.starts_with("->") {
-            (2, 5)
+            (2, LINETYPE_SOLID_OPEN)
         } else if rest.starts_with("--x") {
-            (3, 4)
+            (3, LINETYPE_DOTTED_CROSS)
         } else if rest.starts_with("-x") {
-            (2, 3)
+            (2, LINETYPE_SOLID_CROSS)
         } else if rest.starts_with("--)") {
-            (3, 25)
+            (3, LINETYPE_DOTTED_POINT)
         } else if rest.starts_with("-)") {
-            (2, 24)
+            (2, LINETYPE_SOLID_POINT)
         } else {
             return None;
         };
@@ -791,6 +804,9 @@ impl<'input> Lexer<'input> {
         let bytes = self.input.as_bytes();
 
         while end < self.input.len() {
+            if half_arrow_type(&self.input[end..]).is_some() {
+                break;
+            }
             let b = bytes[end];
             if b.is_ascii_whitespace()
                 || b == b'\n'
@@ -1175,16 +1191,20 @@ mod tests {
     #[test]
     fn lexes_all_upstream_half_arrow_variants() {
         for (arrow, expected_type) in super::HALF_ARROW_TYPES {
-            let input = format!("A {arrow} B: message");
-            let signal_types: Vec<_> = Lexer::new(&input)
-                .map(|event| event.expect("sequence token").1)
-                .filter_map(|token| match token {
-                    Tok::SignalType(signal_type) => Some(signal_type),
-                    _ => None,
-                })
-                .collect();
+            for input in [
+                format!("A {arrow} B: message"),
+                format!("A{arrow}B: message"),
+            ] {
+                let signal_types: Vec<_> = Lexer::new(&input)
+                    .map(|event| event.expect("sequence token").1)
+                    .filter_map(|token| match token {
+                        Tok::SignalType(signal_type) => Some(signal_type),
+                        _ => None,
+                    })
+                    .collect();
 
-            assert_eq!(signal_types, vec![expected_type], "{arrow}");
+                assert_eq!(signal_types, vec![expected_type], "{input}");
+            }
         }
     }
 }

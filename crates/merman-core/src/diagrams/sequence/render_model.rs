@@ -2,7 +2,25 @@ use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{Map, Number, Value};
 use std::collections::BTreeMap;
 
-use super::{PLACEMENT_LEFT_OF, PLACEMENT_OVER, PLACEMENT_RIGHT_OF};
+use super::{
+    LINETYPE_ACTIVE_END, LINETYPE_ACTIVE_START, LINETYPE_ALT_ELSE, LINETYPE_ALT_END,
+    LINETYPE_ALT_START, LINETYPE_AUTONUMBER, LINETYPE_BIDIRECTIONAL_DOTTED,
+    LINETYPE_BIDIRECTIONAL_SOLID, LINETYPE_BREAK_END, LINETYPE_BREAK_START,
+    LINETYPE_CENTRAL_CONNECTION, LINETYPE_CENTRAL_CONNECTION_DUAL,
+    LINETYPE_CENTRAL_CONNECTION_REVERSE, LINETYPE_CRITICAL_END, LINETYPE_CRITICAL_OPTION,
+    LINETYPE_CRITICAL_START, LINETYPE_DOTTED, LINETYPE_DOTTED_CROSS, LINETYPE_DOTTED_OPEN,
+    LINETYPE_DOTTED_POINT, LINETYPE_LOOP_END, LINETYPE_LOOP_START, LINETYPE_NOTE, LINETYPE_OPT_END,
+    LINETYPE_OPT_START, LINETYPE_PAR_AND, LINETYPE_PAR_END, LINETYPE_PAR_OVER_START,
+    LINETYPE_PAR_START, LINETYPE_RECT_END, LINETYPE_RECT_START, LINETYPE_SOLID,
+    LINETYPE_SOLID_ARROW_BOTTOM_REVERSE, LINETYPE_SOLID_ARROW_BOTTOM_REVERSE_DOTTED,
+    LINETYPE_SOLID_ARROW_TOP_REVERSE, LINETYPE_SOLID_ARROW_TOP_REVERSE_DOTTED,
+    LINETYPE_SOLID_BOTTOM, LINETYPE_SOLID_BOTTOM_DOTTED, LINETYPE_SOLID_CROSS, LINETYPE_SOLID_OPEN,
+    LINETYPE_SOLID_POINT, LINETYPE_SOLID_TOP, LINETYPE_SOLID_TOP_DOTTED,
+    LINETYPE_STICK_ARROW_BOTTOM_REVERSE, LINETYPE_STICK_ARROW_BOTTOM_REVERSE_DOTTED,
+    LINETYPE_STICK_ARROW_TOP_REVERSE, LINETYPE_STICK_ARROW_TOP_REVERSE_DOTTED,
+    LINETYPE_STICK_BOTTOM, LINETYPE_STICK_BOTTOM_DOTTED, LINETYPE_STICK_TOP,
+    LINETYPE_STICK_TOP_DOTTED, PLACEMENT_LEFT_OF, PLACEMENT_OVER, PLACEMENT_RIGHT_OF,
+};
 use crate::ParseMetadata;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -225,6 +243,161 @@ pub struct SequenceActor {
     pub properties: serde_json::Map<String, Value>,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+/// Stroke pattern of a drawable Mermaid sequence signal.
+pub enum SequenceMessageStroke {
+    #[default]
+    Solid,
+    Dotted,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+/// Marker owned by one authored endpoint of a Mermaid sequence signal.
+pub enum SequenceMessageMarker {
+    #[default]
+    None,
+    Open,
+    Filled,
+    Cross,
+    Point,
+    FilledHalfTop,
+    FilledHalfBottom,
+    OpenHalfTop,
+    OpenHalfBottom,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+/// Semantic direction of the signal relative to its authored `from` and `to` actors.
+pub enum SequenceMessageDirection {
+    #[default]
+    Forward,
+    Reverse,
+    Bidirectional,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+/// Optional central-connection decoration attached to authored signal endpoints.
+pub enum SequenceCentralDecoration {
+    #[default]
+    None,
+    Source,
+    Target,
+    Both,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+/// Typed role of one Mermaid compatibility `messages` record.
+pub enum SequenceMessageKind {
+    Signal,
+    Note,
+    ActivationStart,
+    ActivationEnd,
+    Autonumber,
+    Control,
+    CentralDecorationRecord,
+    #[default]
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+/// Lossless terminal-facing projection of Mermaid's numeric signal line types.
+pub struct SequenceSignalSemantics {
+    pub stroke: SequenceMessageStroke,
+    pub source_marker: SequenceMessageMarker,
+    pub target_marker: SequenceMessageMarker,
+    pub direction: SequenceMessageDirection,
+}
+
+impl SequenceSignalSemantics {
+    const fn forward(stroke: SequenceMessageStroke, target_marker: SequenceMessageMarker) -> Self {
+        Self {
+            stroke,
+            source_marker: SequenceMessageMarker::None,
+            target_marker,
+            direction: SequenceMessageDirection::Forward,
+        }
+    }
+
+    const fn reverse(stroke: SequenceMessageStroke, source_marker: SequenceMessageMarker) -> Self {
+        Self {
+            stroke,
+            source_marker,
+            target_marker: SequenceMessageMarker::None,
+            direction: SequenceMessageDirection::Reverse,
+        }
+    }
+
+    const fn bidirectional(stroke: SequenceMessageStroke) -> Self {
+        Self {
+            stroke,
+            source_marker: SequenceMessageMarker::Filled,
+            target_marker: SequenceMessageMarker::Filled,
+            direction: SequenceMessageDirection::Bidirectional,
+        }
+    }
+
+    fn from_message_type(message_type: i32) -> Option<Self> {
+        use SequenceMessageMarker as Marker;
+        use SequenceMessageStroke as Stroke;
+
+        match message_type {
+            LINETYPE_SOLID => Some(Self::forward(Stroke::Solid, Marker::Filled)),
+            LINETYPE_DOTTED => Some(Self::forward(Stroke::Dotted, Marker::Filled)),
+            LINETYPE_SOLID_CROSS => Some(Self::forward(Stroke::Solid, Marker::Cross)),
+            LINETYPE_DOTTED_CROSS => Some(Self::forward(Stroke::Dotted, Marker::Cross)),
+            LINETYPE_SOLID_OPEN => Some(Self::forward(Stroke::Solid, Marker::Open)),
+            LINETYPE_DOTTED_OPEN => Some(Self::forward(Stroke::Dotted, Marker::Open)),
+            LINETYPE_SOLID_POINT => Some(Self::forward(Stroke::Solid, Marker::Point)),
+            LINETYPE_DOTTED_POINT => Some(Self::forward(Stroke::Dotted, Marker::Point)),
+            LINETYPE_BIDIRECTIONAL_SOLID => Some(Self::bidirectional(Stroke::Solid)),
+            LINETYPE_BIDIRECTIONAL_DOTTED => Some(Self::bidirectional(Stroke::Dotted)),
+            LINETYPE_SOLID_TOP => Some(Self::forward(Stroke::Solid, Marker::FilledHalfTop)),
+            LINETYPE_SOLID_BOTTOM => Some(Self::forward(Stroke::Solid, Marker::FilledHalfBottom)),
+            LINETYPE_STICK_TOP => Some(Self::forward(Stroke::Solid, Marker::OpenHalfTop)),
+            LINETYPE_STICK_BOTTOM => Some(Self::forward(Stroke::Solid, Marker::OpenHalfBottom)),
+            LINETYPE_SOLID_TOP_DOTTED => Some(Self::forward(Stroke::Dotted, Marker::FilledHalfTop)),
+            LINETYPE_SOLID_BOTTOM_DOTTED => {
+                Some(Self::forward(Stroke::Dotted, Marker::FilledHalfBottom))
+            }
+            LINETYPE_STICK_TOP_DOTTED => Some(Self::forward(Stroke::Dotted, Marker::OpenHalfTop)),
+            LINETYPE_STICK_BOTTOM_DOTTED => {
+                Some(Self::forward(Stroke::Dotted, Marker::OpenHalfBottom))
+            }
+            LINETYPE_SOLID_ARROW_TOP_REVERSE => {
+                Some(Self::reverse(Stroke::Solid, Marker::FilledHalfTop))
+            }
+            LINETYPE_SOLID_ARROW_BOTTOM_REVERSE => {
+                Some(Self::reverse(Stroke::Solid, Marker::FilledHalfBottom))
+            }
+            LINETYPE_STICK_ARROW_TOP_REVERSE => {
+                Some(Self::reverse(Stroke::Solid, Marker::OpenHalfTop))
+            }
+            LINETYPE_STICK_ARROW_BOTTOM_REVERSE => {
+                Some(Self::reverse(Stroke::Solid, Marker::OpenHalfBottom))
+            }
+            LINETYPE_SOLID_ARROW_TOP_REVERSE_DOTTED => {
+                Some(Self::reverse(Stroke::Dotted, Marker::FilledHalfTop))
+            }
+            LINETYPE_SOLID_ARROW_BOTTOM_REVERSE_DOTTED => {
+                Some(Self::reverse(Stroke::Dotted, Marker::FilledHalfBottom))
+            }
+            LINETYPE_STICK_ARROW_TOP_REVERSE_DOTTED => {
+                Some(Self::reverse(Stroke::Dotted, Marker::OpenHalfTop))
+            }
+            LINETYPE_STICK_ARROW_BOTTOM_REVERSE_DOTTED => {
+                Some(Self::reverse(Stroke::Dotted, Marker::OpenHalfBottom))
+            }
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SequenceMessage {
     pub id: String,
@@ -252,6 +425,55 @@ pub struct SequenceMessage {
 impl SequenceMessage {
     pub fn message_text(&self) -> &str {
         self.message.as_text()
+    }
+
+    pub fn semantic_kind(&self) -> SequenceMessageKind {
+        if self.signal_semantics().is_some() {
+            return SequenceMessageKind::Signal;
+        }
+
+        match self.message_type {
+            LINETYPE_NOTE => SequenceMessageKind::Note,
+            LINETYPE_ACTIVE_START => SequenceMessageKind::ActivationStart,
+            LINETYPE_ACTIVE_END => SequenceMessageKind::ActivationEnd,
+            LINETYPE_AUTONUMBER => SequenceMessageKind::Autonumber,
+            LINETYPE_CENTRAL_CONNECTION
+            | LINETYPE_CENTRAL_CONNECTION_REVERSE
+            | LINETYPE_CENTRAL_CONNECTION_DUAL => SequenceMessageKind::CentralDecorationRecord,
+            LINETYPE_LOOP_START
+            | LINETYPE_LOOP_END
+            | LINETYPE_ALT_START
+            | LINETYPE_ALT_ELSE
+            | LINETYPE_ALT_END
+            | LINETYPE_OPT_START
+            | LINETYPE_OPT_END
+            | LINETYPE_PAR_START
+            | LINETYPE_PAR_AND
+            | LINETYPE_PAR_END
+            | LINETYPE_RECT_START
+            | LINETYPE_RECT_END
+            | LINETYPE_CRITICAL_START
+            | LINETYPE_CRITICAL_OPTION
+            | LINETYPE_CRITICAL_END
+            | LINETYPE_BREAK_START
+            | LINETYPE_BREAK_END
+            | LINETYPE_PAR_OVER_START => SequenceMessageKind::Control,
+            _ => SequenceMessageKind::Unknown,
+        }
+    }
+
+    pub fn signal_semantics(&self) -> Option<SequenceSignalSemantics> {
+        SequenceSignalSemantics::from_message_type(self.message_type)
+    }
+
+    pub fn central_decoration(&self) -> Option<SequenceCentralDecoration> {
+        match self.central_connection {
+            0 => Some(SequenceCentralDecoration::None),
+            LINETYPE_CENTRAL_CONNECTION => Some(SequenceCentralDecoration::Target),
+            LINETYPE_CENTRAL_CONNECTION_REVERSE => Some(SequenceCentralDecoration::Source),
+            LINETYPE_CENTRAL_CONNECTION_DUAL => Some(SequenceCentralDecoration::Both),
+            _ => None,
+        }
     }
 }
 

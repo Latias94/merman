@@ -6,7 +6,10 @@ use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceCon
 use crate::text::{display_width_with_profile, wrap_display_lines_with_profile};
 
 use super::layout::SequenceLayout;
-use super::model::{SequenceArrowHead, SequenceLineStyle, SequenceMessage};
+use super::model::{
+    SequenceArrowHead, SequenceCentralDecoration, SequenceLineStyle, SequenceMessage,
+    SequenceMessageDirection,
+};
 use super::render::{
     SequenceChars, build_lifeline_line, lifeline_char, lifeline_role, retained_lifeline_width,
 };
@@ -181,10 +184,12 @@ pub(super) fn render_message(
         SequenceLineStyle::Solid => chars.solid_line,
         SequenceLineStyle::Dotted => chars.dotted_line,
     };
+    validate_message_direction(message)?;
 
     if from < to {
         let line_start = resources.checked_grid_add(from, 1)?;
-        let arrow_x = to.checked_sub(1).ok_or_else(invalid_message_geometry)?;
+        let source_marker_x = line_start;
+        let target_marker_x = to.checked_sub(1).ok_or_else(invalid_message_geometry)?;
         if destroyed_actors.contains(&message.from) {
             line.try_set_role(from, chars.destroyed_mark, AsciiColorRole::EdgeArrow)?;
         } else {
@@ -193,15 +198,24 @@ pub(super) fn render_message(
         for x in line_start..to {
             line.try_set_role(x, style, AsciiColorRole::EdgeLine)?;
         }
-        if destroyed_actors.contains(&message.to) && message.arrow == SequenceArrowHead::Cross {
-            line.try_set_role(arrow_x, style, AsciiColorRole::EdgeLine)?;
-        } else {
-            line.try_set_role(
-                arrow_x,
-                chars.arrow_right(message.arrow),
-                AsciiColorRole::EdgeArrow,
-            )?;
-        }
+        paint_endpoint_marker(
+            &mut line,
+            source_marker_x,
+            message.source_marker,
+            false,
+            destroyed_actors.contains(&message.from),
+            style,
+            chars,
+        )?;
+        paint_endpoint_marker(
+            &mut line,
+            target_marker_x,
+            message.target_marker,
+            true,
+            destroyed_actors.contains(&message.to),
+            style,
+            chars,
+        )?;
         if destroyed_actors.contains(&message.to) {
             line.try_set_role(to, chars.destroyed_mark, AsciiColorRole::EdgeArrow)?;
         } else {
@@ -211,9 +225,11 @@ pub(super) fn render_message(
                 lifeline_role(message.to, active_counts),
             )?;
         }
+        paint_central_decorations(&mut line, message, from, to, destroyed_actors, chars)?;
     } else {
-        let arrow_x = resources.checked_grid_add(to, 1)?;
+        let target_marker_x = resources.checked_grid_add(to, 1)?;
         let line_start = resources.checked_grid_add(to, 2)?;
+        let source_marker_x = from.checked_sub(1).ok_or_else(invalid_message_geometry)?;
         if destroyed_actors.contains(&message.to) {
             line.try_set_role(to, chars.destroyed_mark, AsciiColorRole::EdgeArrow)?;
         } else {
@@ -223,23 +239,34 @@ pub(super) fn render_message(
                 lifeline_role(message.to, active_counts),
             )?;
         }
-        if destroyed_actors.contains(&message.to) && message.arrow == SequenceArrowHead::Cross {
-            line.try_set_role(arrow_x, style, AsciiColorRole::EdgeLine)?;
-        } else {
-            line.try_set_role(
-                arrow_x,
-                chars.arrow_left(message.arrow),
-                AsciiColorRole::EdgeArrow,
-            )?;
-        }
+        line.try_set_role(target_marker_x, style, AsciiColorRole::EdgeLine)?;
         for x in line_start..from {
             line.try_set_role(x, style, AsciiColorRole::EdgeLine)?;
         }
+        paint_endpoint_marker(
+            &mut line,
+            target_marker_x,
+            message.target_marker,
+            false,
+            destroyed_actors.contains(&message.to),
+            style,
+            chars,
+        )?;
+        paint_endpoint_marker(
+            &mut line,
+            source_marker_x,
+            message.source_marker,
+            true,
+            destroyed_actors.contains(&message.from),
+            style,
+            chars,
+        )?;
         if destroyed_actors.contains(&message.from) {
             line.try_set_role(from, chars.destroyed_mark, AsciiColorRole::EdgeArrow)?;
         } else {
             line.try_set_role(from, chars.tee_left, AsciiColorRole::Junction)?;
         }
+        paint_central_decorations(&mut line, message, from, to, destroyed_actors, chars)?;
     }
     lines.push(trim_right(line)?);
     Ok(lines)
@@ -348,15 +375,38 @@ pub(super) fn render_self_message(
     let loop_right_offset = width.checked_sub(1).ok_or_else(invalid_message_geometry)?;
     let loop_right = resources.checked_grid_add(center, loop_right_offset)?;
     let arrow_x = resources.checked_grid_add(center, 1)?;
+    let style = match message.style {
+        SequenceLineStyle::Solid => chars.solid_line,
+        SequenceLineStyle::Dotted => chars.dotted_line,
+    };
+    validate_message_direction(message)?;
     top.try_set_role(center, chars.tee_right, AsciiColorRole::Junction)?;
     for offset in 1..width {
         top.try_set_role(
             resources.checked_grid_add(center, offset)?,
-            chars.horizontal,
+            style,
             AsciiColorRole::EdgeLine,
         )?;
     }
     top.try_set_role(loop_right, chars.self_top_right, AsciiColorRole::EdgeLine)?;
+    paint_endpoint_marker(
+        &mut top,
+        arrow_x,
+        message.source_marker,
+        false,
+        destroyed_actors.contains(&message.from),
+        style,
+        chars,
+    )?;
+    if has_source_central_decoration(message.central_decoration)
+        && !destroyed_actors.contains(&message.from)
+    {
+        top.try_set_role(
+            center,
+            chars.central_decoration(),
+            AsciiColorRole::EdgeArrow,
+        )?;
+    }
     lines.push(trim_right(top)?);
 
     let mut middle = ensure_self_width(
@@ -383,22 +433,129 @@ pub(super) fn render_self_message(
             lifeline_role(message.from, active_counts),
         )?;
     }
-    bottom.try_set_role(
-        arrow_x,
-        chars.arrow_left(message.arrow),
-        AsciiColorRole::EdgeArrow,
-    )?;
+    bottom.try_set_role(arrow_x, style, AsciiColorRole::EdgeLine)?;
     for offset in 2..loop_right_offset {
         bottom.try_set_role(
             resources.checked_grid_add(center, offset)?,
-            chars.horizontal,
+            style,
             AsciiColorRole::EdgeLine,
         )?;
     }
     bottom.try_set_role(loop_right, chars.self_bottom, AsciiColorRole::EdgeLine)?;
+    paint_endpoint_marker(
+        &mut bottom,
+        arrow_x,
+        message.target_marker,
+        false,
+        destroyed_actors.contains(&message.to),
+        style,
+        chars,
+    )?;
+    if has_target_central_decoration(message.central_decoration)
+        && !destroyed_actors.contains(&message.to)
+    {
+        bottom.try_set_role(
+            center,
+            chars.central_decoration(),
+            AsciiColorRole::EdgeArrow,
+        )?;
+    }
     lines.push(trim_right(bottom)?);
 
     Ok(lines)
+}
+
+fn validate_message_direction(message: &SequenceMessage) -> Result<()> {
+    let valid = match message.direction {
+        SequenceMessageDirection::Forward => {
+            message.source_marker == SequenceArrowHead::None
+                && message.target_marker != SequenceArrowHead::None
+        }
+        SequenceMessageDirection::Reverse => {
+            message.source_marker != SequenceArrowHead::None
+                && message.target_marker == SequenceArrowHead::None
+        }
+        SequenceMessageDirection::Bidirectional => {
+            message.source_marker != SequenceArrowHead::None
+                && message.target_marker != SequenceArrowHead::None
+        }
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(AsciiError::UnsupportedFeature {
+            diagram_type: "sequence",
+            feature: "message marker direction",
+        })
+    }
+}
+
+fn paint_endpoint_marker(
+    line: &mut SequenceLine,
+    x: usize,
+    marker: SequenceArrowHead,
+    points_right: bool,
+    endpoint_destroyed: bool,
+    style: char,
+    chars: &SequenceChars,
+) -> Result<()> {
+    if endpoint_destroyed && marker == SequenceArrowHead::Cross {
+        line.try_set_role(x, style, AsciiColorRole::EdgeLine)?;
+        return Ok(());
+    }
+
+    let marker = if points_right {
+        chars.arrow_right(marker)
+    } else {
+        chars.arrow_left(marker)
+    };
+    if let Some(marker) = marker {
+        line.try_set_role(x, marker, AsciiColorRole::EdgeArrow)?;
+    }
+    Ok(())
+}
+
+fn paint_central_decorations(
+    line: &mut SequenceLine,
+    message: &SequenceMessage,
+    source_x: usize,
+    target_x: usize,
+    destroyed_actors: &[usize],
+    chars: &SequenceChars,
+) -> Result<()> {
+    if has_source_central_decoration(message.central_decoration)
+        && !destroyed_actors.contains(&message.from)
+    {
+        line.try_set_role(
+            source_x,
+            chars.central_decoration(),
+            AsciiColorRole::EdgeArrow,
+        )?;
+    }
+    if has_target_central_decoration(message.central_decoration)
+        && !destroyed_actors.contains(&message.to)
+    {
+        line.try_set_role(
+            target_x,
+            chars.central_decoration(),
+            AsciiColorRole::EdgeArrow,
+        )?;
+    }
+    Ok(())
+}
+
+fn has_source_central_decoration(decoration: SequenceCentralDecoration) -> bool {
+    matches!(
+        decoration,
+        SequenceCentralDecoration::Source | SequenceCentralDecoration::Both
+    )
+}
+
+fn has_target_central_decoration(decoration: SequenceCentralDecoration) -> bool {
+    matches!(
+        decoration,
+        SequenceCentralDecoration::Target | SequenceCentralDecoration::Both
+    )
 }
 
 fn charge_row_work(resources: &mut ResourceContext, width: usize, height: usize) -> Result<()> {
