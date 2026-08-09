@@ -322,6 +322,32 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("scripts/release-version.py npm-dist-tag", validate_job)
         self.assertNotIn("is_release_version()", validate_job)
 
+    def test_release_preflight_checks_out_trusted_version_parser_before_validation(
+        self,
+    ) -> None:
+        validate_job = workflow_job(
+            workflow_document(WORKFLOW_ROOT / "release-preflight.yml"),
+            "validate-inputs",
+        )
+        input_step = workflow_step(validate_job, name="Validate release inputs")
+        trusted_checkouts = [
+            step
+            for step in checkout_steps(validate_job)
+            if step["with"].get("ref") == "${{ github.workflow_sha }}"
+        ]
+
+        self.assertEqual(len(trusted_checkouts), 1)
+        trusted_checkout = trusted_checkouts[0]
+        self.assertEqual(trusted_checkout["with"].get("persist-credentials"), "false")
+        self.assertLess(
+            validate_job["steps"].index(trusted_checkout),
+            validate_job["steps"].index(input_step),
+        )
+        self.assertIn(
+            "scripts/release-version.py canonical",
+            input_step["run"],
+        )
+
     def test_native_release_workflows_pin_tag_commit_and_tree_before_building(
         self,
     ) -> None:

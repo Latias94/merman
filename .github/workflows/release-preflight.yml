@@ -29,6 +29,12 @@ jobs:
       release_tag: ${{ steps.release.outputs.release_tag }}
       version: ${{ steps.release.outputs.version }}
     steps:
+      - name: Check out trusted release tooling
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+
       - name: Validate release inputs
         id: release
         shell: bash
