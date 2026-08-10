@@ -519,9 +519,23 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         )
 
         self.assertIn(
-            'dart run example/smoke.dart "macos/Libraries/libmerman_ffi.dylib"',
+            "find macos/MermanFFI.xcframework -type f -name 'libmerman_ffi.dylib'",
             build_job,
         )
+        self.assertIn('dart run example/smoke.dart "$MACOS_LIBRARY"', build_job)
+
+    def test_flutter_release_gates_the_compressed_pub_package_size(self) -> None:
+        cases = (
+            (WORKFLOW_ROOT / "release-flutter.yml", "build"),
+            (WORKFLOW_ROOT / "release-preflight.yml", "flutter-dry-run"),
+        )
+
+        for workflow, job_id in cases:
+            job = job_contract_text(workflow, job_id)
+            with self.subTest(workflow=workflow.name):
+                self.assertIn("verify_flutter_pub_package.py", job)
+                self.assertIn("--max-compressed-mb 99", job)
+                self.assertNotIn("dart pub publish --dry-run", job)
 
     def test_android_release_jobs_install_the_exact_pinned_ndk_revision(self) -> None:
         release_jobs = [

@@ -5,6 +5,26 @@ Status: inconclusive. Neither private Node candidate is an admitted or supported
 This is an internal U14 evidence record. It does not add `@mermanjs/node` to a release surface,
 capability descriptor, package manifest, user guide, or changelog.
 
+The measurements below predate the current size-first candidate recipe, which omits the
+unadvertised math capability. They remain valid only for their recorded source revision and must
+not be used as current artifact-size or transport-admission evidence. The next comparison must
+rebuild both transports from the current SVG-plus-layout recipe.
+
+## Current size-only recipe decision
+
+A matched same-source Node-WASM experiment compared the old static-SVG recipe with the same
+transport and layout backends after removing only `math`:
+
+| Recipe | Raw WASM | Gzip | Resolved normal packages |
+| --- | ---: | ---: | ---: |
+| SVG + Cytoscape + ELK + math | 17,764,180 B | 6,446,727 B | 186 |
+| SVG + Cytoscape + ELK | 14,699,455 B | 5,326,637 B | 127 |
+
+The current recipe is 17.25% smaller raw, 17.37% smaller under gzip, and removes 59 resolved
+packages while retaining the same callable operation set. Rust transport tests and all Node
+package-contract tests pass. This admits the smaller private recipe only; it does not change the
+transport-admission result below or publish a Node package.
+
 ## Decision
 
 The Node-targeted WASM and napi-rs candidates both built, packed, installed, and ran on the local

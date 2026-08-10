@@ -714,5 +714,7 @@ jobs:
         run: |
           flutter pub get
           flutter analyze
-          dart format --set-exit-if-changed lib example
-          dart pub publish --dry-run
+          dart format --set-exit-if-changed lib example tool
+          python3 ../../scripts/verify_flutter_pub_package.py \
+            --package-root . \
+            --max-compressed-mb 99

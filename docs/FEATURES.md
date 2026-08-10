@@ -83,7 +83,9 @@ select their own direct leaf set instead.
 | Python embedding | `merman` on PyPI | Use the generated UniFFI wheel for the selected platform |
 
 Node/SSG transport remains a private admission candidate, so there is no public
-`@mermanjs/node` package to select yet. Browser WASM is not a supported Node transport.
+`@mermanjs/node` package to select yet. Its current deterministic static-SVG recipe contains SVG
+and both layout backends, but not math, analysis, ASCII, or binary export. Browser WASM is not a
+supported Node transport.
 
 ## Rust examples
 
@@ -259,7 +261,7 @@ await initMerman();
 const svg = renderSvg("flowchart TD\n  A --> B");
 ```
 
-For a native registry install, Python provides the shortest complete SDK path:
+For a native registry install, Python provides the shortest default SDK path:
 
 ```sh
 python -m pip install --pre merman
@@ -271,6 +273,12 @@ import merman
 engine = merman.MermanEngine(None, None)
 svg = engine.render_svg("flowchart TD\n  A --> B", None)
 ```
+
+The default Android, Apple, Python, and Flutter native packages include SVG, both supported layout
+engines, ASCII, analysis, validation, and document analysis. They omit math, PNG, JPEG, PDF, and
+native runtime adapters to reduce distributed binary size. Their generated APIs keep those
+operation names for custom current-contract libraries; inspect the runtime catalog and handle typed
+missing-capability errors before exposing optional output choices.
 
 Flutter uses `flutter pub add 'merman:^0.8.0-alpha.5'` and `Merman.open()`. Android consumes the
 matching release AAR through `implementation(files(...))`; its Kotlin surface is direct JNI

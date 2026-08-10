@@ -186,7 +186,6 @@ jobs:
 
       - name: Verify Flutter native artifacts
         run: |
-          test -f platforms/flutter/macos/Libraries/libmerman_ffi.dylib
           test -d platforms/flutter/macos/MermanFFI.xcframework
           test -f platforms/flutter/windows/merman_ffi.dll
           test -f platforms/flutter/linux/lib/x86_64/libmerman_ffi.so
@@ -212,8 +211,12 @@ jobs:
           flutter analyze
           dart format --set-exit-if-changed lib example tool
           dart run tool/abi3_contract_test.dart
-          dart run example/smoke.dart "macos/Libraries/libmerman_ffi.dylib"
-          dart pub publish --dry-run
+          MACOS_LIBRARY="$(find macos/MermanFFI.xcframework -type f -name 'libmerman_ffi.dylib' -print -quit)"
+          test -n "$MACOS_LIBRARY"
+          dart run example/smoke.dart "$MACOS_LIBRARY"
+          python3 ../../scripts/verify_flutter_pub_package.py \
+            --package-root . \
+            --max-compressed-mb 99
 
       - name: Verify legal material projections
         run: python3 scripts/sync-release-legal-materials.py --check

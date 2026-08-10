@@ -184,18 +184,15 @@ internal val MERMAN_BINDING_OPERATION_EXPECTATIONS: List<MermanBindingOperationE
 )
 
 internal val MERMAN_ANDROID_ARTIFACT_EXPECTATION = MermanBindingArtifactExpectation(
-    capabilityIds = listOf("analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone"),
-    outputIds = listOf("ascii", "jpeg", "pdf", "png", "svg"),
-    systemAdapterIds = listOf("system-clock", "system-random", "system-timezone"),
-    operationIds = listOf("analysis-facts-json", "analysis-json", "ascii", "document-analysis-facts-json", "document-analysis-json", "jpeg", "layout-json", "pdf", "png", "semantic-json", "svg", "svg-plan-json", "validation-json"),
+    capabilityIds = listOf("analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"),
+    outputIds = listOf("ascii", "svg"),
+    systemAdapterIds = listOf(),
+    operationIds = listOf("analysis-facts-json", "analysis-json", "ascii", "document-analysis-facts-json", "document-analysis-json", "layout-json", "semantic-json", "svg", "svg-plan-json", "validation-json"),
     metadataIds = listOf("ascii-capabilities", "diagram-family-capabilities", "lint-rule-catalog", "presentation-catalog", "supported-diagrams", "supported-themes"),
 )
 
 internal val MERMAN_ANDROID_OUTPUT_CONTRACT_JSON_BY_ID: Map<String, String> = mapOf(
     "ascii" to "{\"id\":\"ascii\",\"media_type\":\"text/plain; charset=utf-8\",\"system_fonts\":null,\"embedded_images\":null}",
-    "jpeg" to "{\"id\":\"jpeg\",\"media_type\":\"image/jpeg\",\"system_fonts\":{\"source_id\":\"host-system\",\"discovery\":\"first-use\",\"cache_scope\":\"process-global\",\"host_dependent\":true,\"caller_configurable\":false,\"resource_bounded\":false},\"embedded_images\":{\"source_ids\":[\"data-url\"],\"filesystem_access\":false,\"network_access\":false,\"caller_configurable\":true,\"limits\":{\"max_bytes_per_image\":16777216,\"max_total_bytes\":33554432,\"max_pixels_per_image\":16777216,\"max_total_pixels\":33554432}}}",
-    "pdf" to "{\"id\":\"pdf\",\"media_type\":\"application/pdf\",\"system_fonts\":{\"source_id\":\"host-system\",\"discovery\":\"first-use\",\"cache_scope\":\"process-global\",\"host_dependent\":true,\"caller_configurable\":false,\"resource_bounded\":false},\"embedded_images\":{\"source_ids\":[\"data-url\"],\"filesystem_access\":false,\"network_access\":false,\"caller_configurable\":true,\"limits\":{\"max_bytes_per_image\":16777216,\"max_total_bytes\":33554432,\"max_pixels_per_image\":16777216,\"max_total_pixels\":33554432}}}",
-    "png" to "{\"id\":\"png\",\"media_type\":\"image/png\",\"system_fonts\":{\"source_id\":\"host-system\",\"discovery\":\"first-use\",\"cache_scope\":\"process-global\",\"host_dependent\":true,\"caller_configurable\":false,\"resource_bounded\":false},\"embedded_images\":{\"source_ids\":[\"data-url\"],\"filesystem_access\":false,\"network_access\":false,\"caller_configurable\":true,\"limits\":{\"max_bytes_per_image\":16777216,\"max_total_bytes\":33554432,\"max_pixels_per_image\":16777216,\"max_total_pixels\":33554432}}}",
     "svg" to "{\"id\":\"svg\",\"media_type\":\"image/svg+xml\",\"system_fonts\":null,\"embedded_images\":null}",
 )
 

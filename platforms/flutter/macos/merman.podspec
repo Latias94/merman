@@ -16,7 +16,7 @@ Pod::Spec.new do |s|
 
   s.source_files     = 'merman/Sources/merman/**/*.swift'
   s.dependency       'FlutterMacOS'
-  s.vendored_libraries = 'Libraries/libmerman_ffi.dylib'
+  s.vendored_libraries = 'MermanFFI.xcframework/*/libmerman_ffi.dylib'
 
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',

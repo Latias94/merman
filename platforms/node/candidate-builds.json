@@ -7,7 +7,6 @@
     "capabilities": [
       "layout-cytoscape",
       "layout-elk",
-      "math",
       "svg"
     ]
   },

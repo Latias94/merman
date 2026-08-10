@@ -17,7 +17,11 @@ The candidates are deliberately separate:
 - `node-wasm` is built from `crates/merman-node` with `wasm-pack --target nodejs`. It never loads `@mermanjs/web` or an artifact from `platforms/web`.
 - `napi` is built from the same crate and shared operation bridge with napi-rs. Each native package owns one target-specific `merman.node` file.
 
-Both candidates resolve the same private static-SVG recipe and append only their transport leaf. The
+Both candidates resolve the same private static-SVG recipe and append only their transport leaf.
+The recipe contains SVG plus the Cytoscape and ELK layout backends; it deliberately omits math,
+binary export, analysis, and ASCII capabilities that the candidate interface does not expose as
+separate product workflows. A math-bearing diagram therefore produces the shared typed
+`missing-capability` result instead of pulling the RaTeX closure into every candidate binary. The
 recipe is checked against the canonical capability descriptor; it is not a published Merman
 artifact profile. Each build receipt binds the current `Cargo.lock`, resolved dependency closure,
 exact target and features, complete artifact file set, verifier inputs, transport identity, runtime

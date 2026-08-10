@@ -316,7 +316,7 @@ Each smoke run owns an independent temporary directory under `target/typst-packa
 
 The built package contains `merman_typst_plugin.manifest.json`, which is the verified artifact-recipe provenance, and `merman_package.manifest.json`, which binds that artifact to the exact frozen wrapper and legal-material tree. Packaging stages only snapshot bytes, verifies the complete file shape and contents, then rechecks live source identity immediately before atomically replacing the version directory.
 
-The sole package profile, `publish`, enables SVG rendering, analysis, the complete Mermaid language catalog, and the Cytoscape and ELK layout backends. There are no alternate bridge-only or SVG-only package profiles. Maintainer experiments use direct Cargo features and do not create another package identity or release recipe.
+The sole package profile, `publish`, enables SVG rendering, analysis, the complete Mermaid language catalog, and the Cytoscape and ELK layout backends. There are no alternate bridge-only or SVG-only package profiles. ASCII, PNG, JPEG, and PDF are not compiled because this wrapper exposes no operation for those outputs. Maintainer experiments use direct Cargo features and do not create another package identity or release recipe.
 
 ## Current Limits
 

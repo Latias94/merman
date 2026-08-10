@@ -147,7 +147,7 @@ class NativeSdkRecipeTests(unittest.TestCase):
         build = run_capture.call_args
         self.assertEqual(
             build.args[0][:4],
-            ["cargo", "build", "--profile", "native-sdk"],
+            ["cargo", "build", "--profile", "native-distribution"],
         )
         self.assertIn("--locked", build.args[0])
         self.assertEqual(

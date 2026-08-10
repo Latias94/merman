@@ -28,30 +28,30 @@ for current Mermaid parity.
 ## Generate Locally
 
 `scripts/build-python-uniffi-wheel.py` resolves the `python-uniffi-native` artifact profile. It
-builds the release cdylib with the complete direct feature list, then runs a separate generator with
-only `binding-generation` against that production library. The builder rejects hosts
+builds the release cdylib with the default native direct feature list, then runs a separate
+generator with only `binding-generation` against that production library. The builder rejects hosts
 outside the profile's published target set and replaces the package scaffold's release-set legal
 report with the checked-in single-target report before building the wheel.
 
 ```bash
-cargo build -p merman-uniffi --release --no-default-features \
-  --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime'
+cargo build -p merman-uniffi --profile native-distribution --no-default-features \
+  --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
 cargo run -p merman-uniffi --no-default-features \
   --features binding-generation --example generate_python_package -- \
-  --cdylib target/release/libmerman_uniffi.dylib \
+  --cdylib target/native-distribution/libmerman_uniffi.dylib \
   --package-dir platforms/python/merman
 ```
 
-`native-runtime` is atomic on UniFFI artifacts and compiles the clock, time-zone, and random
-adapters together. Generated runtime discovery still exposes the concrete `system-clock`,
-`system-timezone`, and `system-random` adapter IDs; the Cargo aggregate is not a Python capability
-name.
+The default wheel is deterministic and omits `native-runtime`. Custom UniFFI artifacts may enable
+that atomic feature to compile the clock, time-zone, and random adapters together. Generated
+runtime discovery exposes the concrete `system-clock`, `system-timezone`, and `system-random`
+adapter IDs only when present; the Cargo aggregate is not a Python capability name.
 
 On Windows PowerShell, use the same command on one line:
 
 ```powershell
-cargo build -p merman-uniffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime'
-cargo run -p merman-uniffi --no-default-features --features binding-generation --example generate_python_package -- --cdylib target/release/merman_uniffi.dll --package-dir platforms/python/merman
+cargo build -p merman-uniffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
+cargo run -p merman-uniffi --no-default-features --features binding-generation --example generate_python_package -- --cdylib target/native-distribution/merman_uniffi.dll --package-dir platforms/python/merman
 ```
 
 ## API
@@ -75,9 +75,6 @@ assert catalog["transport_api_version"] == api.binding_api_version()
 assert "svg" in capabilities["capability_ids"]
 
 svg = api.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
-png = api.render_png("flowchart TD\nA[Hello] --> B[World]", None)
-jpeg = api.render_jpeg("flowchart TD\nA[Hello] --> B[World]", None)
-pdf = api.render_pdf("flowchart TD\nA[Hello] --> B[World]", None)
 ascii_text = api.render_ascii("flowchart TD\nA[Hello] --> B[World]", None)
 semantic_json = api.parse_json("flowchart TD\nA[Hello] --> B[World]", None)
 layout_json = api.layout_json("flowchart TD\nA[Hello] --> B[World]", None)
@@ -120,6 +117,10 @@ try:
 finally:
     engine.close()
 ```
+
+The default wheel omits math, PNG, JPEG, and PDF. Their generated methods remain available for a
+custom current-contract library and otherwise raise `MermanError.Binding` with
+`MermanErrorKind.MISSING_CAPABILITY` plus the exact capability ID.
 
 Errors are exposed through the generated `MermanError` type. `MermanError.Binding` carries the
 underlying status code/name, `MermanErrorKind`, optional `capability_id`, optional

@@ -9,8 +9,9 @@ For a supported Node or SSG integration today, invoke `merman-cli` as a child pr
 
 `createNodeEngine()` returns `MermanEngine`. The candidate is deterministic-only and text-only;
 `renderSvg`, `svgPlanJson`, `metadataJson`, and generic string-result execution share the same strict
-native/WASM transport contract. Transport identity/version checks establish compatibility, not
-authentication.
+native/WASM transport contract. Its private recipe includes SVG and both layout backends, but not
+math or binary export; unsupported diagrams keep the shared typed capability error. Transport
+identity/version checks establish compatibility, not authentication.
 
 Queued operations are bounded. `AbortSignal` can cancel queued work but does not preempt executing
 Rust work. `dispose()` drains executing work, rejects pending work, and is idempotent.

@@ -167,6 +167,19 @@ debug-assertions = false
 overflow-checks = false
 rpath = false
 
+[profile.native-distribution]
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1
+debug = false
+strip = "symbols"
+panic = "unwind"
+incremental = false
+debug-assertions = false
+overflow-checks = false
+rpath = false
+
 [profile.wasm-size]
 inherits = "release"
 opt-level = "z"

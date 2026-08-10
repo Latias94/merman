@@ -17,9 +17,9 @@ recipe_field() {
     python3 "$REPO_ROOT/scripts/artifact_profile_recipe.py" "$RECIPE_PROFILE" --field "$1"
 }
 
-NATIVE_SDK_PROFILE="$(recipe_field profile)"
-NATIVE_SDK_TARGET="$(recipe_field target)"
-NATIVE_SDK_LIBRARY_STEM="${NATIVE_SDK_TARGET//-/_}"
+NATIVE_CARGO_PROFILE="$(recipe_field profile)"
+NATIVE_LIBRARY_TARGET="$(recipe_field target)"
+NATIVE_LIBRARY_STEM="${NATIVE_LIBRARY_TARGET//-/_}"
 
 for ARG in "$@"; do
     case "$ARG" in
@@ -85,7 +85,7 @@ build_staticlib() {
     python3 "$REPO_ROOT/scripts/artifact_profile_recipe.py" "$RECIPE_PROFILE" \
         --build --locked --target-triple "$target"
     if [[ -z "$METADATA_LIBRARY" ]]; then
-        METADATA_LIBRARY="$REPO_ROOT/target/$target/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.a"
+        METADATA_LIBRARY="$REPO_ROOT/target/$target/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.a"
     fi
 }
 
@@ -93,7 +93,7 @@ copy_staticlib() {
     local target="$1"
     local dest="$2"
     mkdir -p "$(dirname "$dest")"
-    cp "$REPO_ROOT/target/$target/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.a" "$dest"
+    cp "$REPO_ROOT/target/$target/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.a" "$dest"
 }
 
 generate_swift_bindings() {
@@ -139,19 +139,19 @@ XC_ARGS=()
 
 if "$BUILD_IOS"; then
     build_staticlib aarch64-apple-ios
-    copy_staticlib aarch64-apple-ios "$OUT_DIR/ios-arm64/lib$NATIVE_SDK_LIBRARY_STEM.a"
+    copy_staticlib aarch64-apple-ios "$OUT_DIR/ios-arm64/lib$NATIVE_LIBRARY_STEM.a"
 
     build_staticlib aarch64-apple-ios-sim
     build_staticlib x86_64-apple-ios
     mkdir -p "$OUT_DIR/ios-simulator"
     lipo -create \
-        "$REPO_ROOT/target/aarch64-apple-ios-sim/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.a" \
-        "$REPO_ROOT/target/x86_64-apple-ios/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.a" \
-        -output "$OUT_DIR/ios-simulator/lib$NATIVE_SDK_LIBRARY_STEM.a"
+        "$REPO_ROOT/target/aarch64-apple-ios-sim/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.a" \
+        "$REPO_ROOT/target/x86_64-apple-ios/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.a" \
+        -output "$OUT_DIR/ios-simulator/lib$NATIVE_LIBRARY_STEM.a"
 
     XC_ARGS+=(
-        -library "$OUT_DIR/ios-arm64/lib$NATIVE_SDK_LIBRARY_STEM.a" -headers "$INCLUDE_DIR"
-        -library "$OUT_DIR/ios-simulator/lib$NATIVE_SDK_LIBRARY_STEM.a" -headers "$INCLUDE_DIR"
+        -library "$OUT_DIR/ios-arm64/lib$NATIVE_LIBRARY_STEM.a" -headers "$INCLUDE_DIR"
+        -library "$OUT_DIR/ios-simulator/lib$NATIVE_LIBRARY_STEM.a" -headers "$INCLUDE_DIR"
     )
 fi
 
@@ -160,10 +160,10 @@ if "$BUILD_MACOS"; then
     build_staticlib x86_64-apple-darwin
     mkdir -p "$OUT_DIR/macos"
     lipo -create \
-        "$REPO_ROOT/target/aarch64-apple-darwin/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.a" \
-        "$REPO_ROOT/target/x86_64-apple-darwin/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.a" \
-        -output "$OUT_DIR/macos/lib$NATIVE_SDK_LIBRARY_STEM.a"
-    XC_ARGS+=(-library "$OUT_DIR/macos/lib$NATIVE_SDK_LIBRARY_STEM.a" -headers "$INCLUDE_DIR")
+        "$REPO_ROOT/target/aarch64-apple-darwin/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.a" \
+        "$REPO_ROOT/target/x86_64-apple-darwin/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.a" \
+        -output "$OUT_DIR/macos/lib$NATIVE_LIBRARY_STEM.a"
+    XC_ARGS+=(-library "$OUT_DIR/macos/lib$NATIVE_LIBRARY_STEM.a" -headers "$INCLUDE_DIR")
 fi
 
 if [[ "${#XC_ARGS[@]}" -eq 0 ]]; then

@@ -51,6 +51,8 @@ final semantic = result.jsonObject;
 
 `MermanOperationResult` contains the requested `operation`, returned `mediaType`, copied Dart-owned `bytes`, and decoded operation `metadata`. `utf8Text` and `jsonObject` are decoding conveniences. Named methods for SVG, PNG, JPEG, PDF, ASCII, semantic/layout/analysis JSON, document analysis, and validation are projections over the same `execute` path.
 
+The pub.dev package's prebuilt libraries select the default native SKU: SVG, semantic JSON, layout JSON, both native layout engines, ASCII, analysis, validation, and document analysis. They omit `math`, `png`, `jpeg`, `pdf`, and `native-runtime` so one package can carry the Android, Apple, Linux, and Windows target matrix within the registry size limit. The generated Dart operation vocabulary remains unchanged for custom current-contract libraries; unavailable bundled operations use the existing typed `missing-capability` result.
+
 Native failures use `MermanException` and machine-readable `MermanErrorKind`. Unknown operation codes throw `MermanUnknownOperationException`; valid operations whose artifact lacks a backend throw `MermanMissingCapabilityException` with the exact `capabilityId`. `MermanBusyException` and `MermanReentrantCallException` preserve the two nonblocking engine-admission failures. Resource failures expose optional typed `resourceDetails` with the stable cause (`ceiling` or `arithmetic_overflow`), limit ID, phase, actual value, effective maximum, and selected profile.
 
 ## ABI Discovery
@@ -208,19 +210,20 @@ See [host text measurement](HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi) for cach
 | --- | --- |
 | Android | `libmerman_ffi.so` for `arm64-v8a` and `x86_64` |
 | iOS | Dynamic `MermanFFI.xcframework` |
-| macOS | Universal dylib and SwiftPM XCFramework |
+| macOS | One dynamic `MermanFFI.xcframework` for CocoaPods and SwiftPM |
 | Linux | Target-specific `libmerman_ffi.so` |
 | Windows | `merman_ffi.dll` |
 
-Flutter uses owner-specific C ABI recipes. Android selects `flutter-android-native`; iOS and desktop select their corresponding target-set recipes. These recipes package `merman-ffi` directly. The Kotlin AAR's JNI transport remains structurally isolated in `merman-android-jni`, and Python's UniFFI transport is not part of the Dart call path.
+Flutter uses owner-specific C ABI recipes. Android selects `flutter-android-native`; iOS and desktop select their corresponding target-set recipes. These recipes package `merman-ffi` directly with the size-oriented `native-distribution` Cargo profile and the shared default native feature set. The Kotlin AAR's JNI transport remains structurally isolated in `merman-android-jni`, and Python's UniFFI transport is not part of the Dart call path.
 
 ```sh
-cargo build -p merman-ffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime'
+cargo build -p merman-ffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
 ```
 
-`native-runtime` is the C binding's atomic clock, time-zone, and random adapter feature. The
-loaded runtime catalog still reports those adapters by their concrete `system-clock`,
-`system-timezone`, and `system-random` IDs; Flutter hosts should not treat the Cargo aggregate as a
+The bundled artifacts are deterministic and contain no system adapters. Custom source builds may
+add the C binding's atomic `native-runtime` feature for clock, time-zone, and random adapters. The
+loaded runtime catalog reports those adapters by their concrete `system-clock`, `system-timezone`,
+and `system-random` IDs only when present; Flutter hosts should not treat the Cargo aggregate as a
 runtime capability ID.
 
 Android slices are assembled by `platforms/android/build-android.py --artifact-profile flutter-android-native`; iOS and desktop helpers are `platforms/flutter/build-ios.sh` and `platforms/flutter/build-desktop.sh`. Flutter Web is not supported because this package uses `dart:ffi`; use `@mermanjs/web` in browsers.
@@ -228,21 +231,22 @@ Android slices are assembled by `platforms/android/build-android.py --artifact-p
 ## Local Verification
 
 ```sh
-cargo build -p merman-ffi --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime'
+cargo build -p merman-ffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
 cd platforms/flutter
 flutter pub get
 dart run ffigen --config ffigen.yaml
 dart format --set-exit-if-changed lib example tool
 flutter analyze
 dart run tool/abi3_contract_test.dart
-dart run example/smoke.dart ../../target/debug/libmerman_ffi.dylib
+dart run example/smoke.dart ../../target/native-distribution/libmerman_ffi.dylib
 ```
 
 Use `.so` on Linux and `.dll` on Windows. The local contract test validates the current complete ABI
 3 table boundary, runtime-catalog and typed metadata relations, package-version projection,
 BUSY/REENTRANT decoding, and malformed native error payloads. The real-library smoke intentionally
-does one service-backed SVG render through icon packs and host text measurement, then closes the
-engine. Owner-local Rust and Dart contract tests carry the exhaustive operation and lifecycle cases.
+exercises service-backed SVG, ASCII, and analysis, verifies typed absence for the three binary
+exporters, then closes the engine. Owner-local Rust and Dart contract tests carry the exhaustive
+operation and lifecycle cases.
 
 The repository-wide gate checks generated declaration freshness and the desktop smoke. Android
 packaging has its own direct entry point:

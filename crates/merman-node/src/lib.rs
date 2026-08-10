@@ -16,9 +16,6 @@ compile_error!("the Node candidates require the static layout-cytoscape capabili
 #[cfg(not(feature = "layout-elk"))]
 compile_error!("the Node candidates require the static layout-elk capability recipe");
 
-#[cfg(not(feature = "math"))]
-compile_error!("the Node candidates require the static math capability recipe");
-
 #[cfg(all(feature = "transport-napi", feature = "transport-wasm"))]
 compile_error!("select exactly one Node transport candidate");
 

@@ -29,38 +29,29 @@ const UNIFFI_PYTHON_OUTPUT: &str = "crates/merman-uniffi/python/binding_contract
 const PYTHON_OUTPUT: &str = "platforms/python/merman/src/merman/_binding_contract.py";
 const KOTLIN_OUTPUT: &str = "platforms/android/src/main/kotlin/io/merman/MermanBindingContract.kt";
 const DART_OUTPUT: &str = "platforms/flutter/lib/src/generated/binding_contract.dart";
-const FULL_NODE_OPERATIONS: &[OperationKey] = &[
+const NODE_STATIC_SVG_OPERATIONS: &[OperationKey] = &[
     OperationKey::LayoutJson,
     OperationKey::SemanticJson,
     OperationKey::Svg,
     OperationKey::SvgPlanJson,
 ];
-const FULL_NODE_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
-    CapabilityKey::LayoutCytoscape,
-    CapabilityKey::LayoutElk,
-    CapabilityKey::Math,
-];
-const FULL_NATIVE_OPERATIONS: &[OperationKey] = &[
+const NODE_STATIC_SVG_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] =
+    &[CapabilityKey::LayoutCytoscape, CapabilityKey::LayoutElk];
+const DEFAULT_NATIVE_PREBUILT_OPERATIONS: &[OperationKey] = &[
     OperationKey::AnalysisFactsJson,
     OperationKey::AnalysisJson,
     OperationKey::Ascii,
     OperationKey::DocumentAnalysisFactsJson,
     OperationKey::DocumentAnalysisJson,
-    OperationKey::Jpeg,
     OperationKey::LayoutJson,
-    OperationKey::Pdf,
-    OperationKey::Png,
     OperationKey::SemanticJson,
     OperationKey::Svg,
     OperationKey::SvgPlanJson,
     OperationKey::ValidationJson,
 ];
-const FULL_NATIVE_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
-    CapabilityKey::LayoutCytoscape,
-    CapabilityKey::LayoutElk,
-    CapabilityKey::Math,
-];
-const FULL_NATIVE_CONSTRUCTOR_SERVICES: &[ConstructorServiceKey] = &[
+const DEFAULT_NATIVE_PREBUILT_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] =
+    &[CapabilityKey::LayoutCytoscape, CapabilityKey::LayoutElk];
+const DEFAULT_NATIVE_PREBUILT_CONSTRUCTOR_SERVICES: &[ConstructorServiceKey] = &[
     ConstructorServiceKey::HostTextMeasurement,
     ConstructorServiceKey::IconRegistry,
 ];
@@ -294,8 +285,8 @@ fn artifact_profile_projection(
 fn node_artifact_profile_projection(target: TargetKey) -> BindingArtifactProfileProjection {
     artifact_profile_projection(
         ArtifactContractSpec::new(target, BindingTransportKey::Node)
-            .with_operations(FULL_NODE_OPERATIONS)
-            .with_supplemental_capabilities(FULL_NODE_SUPPLEMENTAL_CAPABILITIES)
+            .with_operations(NODE_STATIC_SVG_OPERATIONS)
+            .with_supplemental_capabilities(NODE_STATIC_SVG_SUPPLEMENTAL_CAPABILITIES)
             .with_all_available_metadata()
             .with_runtime_policy_exposure(RuntimePolicyExposure::DeterministicOnly)
             .materialize(),
@@ -305,12 +296,11 @@ fn node_artifact_profile_projection(target: TargetKey) -> BindingArtifactProfile
 fn android_artifact_profile_projection() -> BindingArtifactProfileProjection {
     artifact_profile_projection(
         ArtifactContractSpec::new(TargetKey::Native, BindingTransportKey::AndroidJni)
-            .with_operations(FULL_NATIVE_OPERATIONS)
-            .with_supplemental_capabilities(FULL_NATIVE_SUPPLEMENTAL_CAPABILITIES)
+            .with_operations(DEFAULT_NATIVE_PREBUILT_OPERATIONS)
+            .with_supplemental_capabilities(DEFAULT_NATIVE_PREBUILT_SUPPLEMENTAL_CAPABILITIES)
             .with_all_available_metadata()
-            .with_constructor_services(FULL_NATIVE_CONSTRUCTOR_SERVICES)
+            .with_constructor_services(DEFAULT_NATIVE_PREBUILT_CONSTRUCTOR_SERVICES)
             .with_runtime_policy_exposure(RuntimePolicyExposure::BindingOptions)
-            .with_native_runtime()
             .materialize(),
     )
 }

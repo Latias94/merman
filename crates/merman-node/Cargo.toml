@@ -16,7 +16,6 @@ default = []
 svg = ["merman-bindings-core/svg"]
 layout-cytoscape = ["svg", "merman-bindings-core/layout-cytoscape"]
 layout-elk = ["svg", "merman-bindings-core/layout-elk"]
-math = ["svg", "merman-bindings-core/math"]
 transport-napi = ["dep:napi", "dep:napi-build", "dep:napi-derive"]
 transport-wasm = ["dep:wasm-bindgen"]
 

@@ -69,20 +69,18 @@ reference cycle.
 
 ## Build Profiles
 
-`merman-uniffi` has no default features. The complete native language SDK artifact lists analysis,
-ASCII, SVG, PNG, JPEG, PDF, Cytoscape and ELK layouts, RaTeX math, and the binding-owned
-`native-runtime` aggregate. That aggregate atomically compiles the native clock, time-zone, and
-random adapters. Timing is not part of the UniFFI artifact contract.
-`binding-generation` is only for foreign-language
+`merman-uniffi` has no default features. The default Python and Apple prebuilt SKU selects
+analysis, ASCII, SVG, and both Cytoscape and ELK layouts. It omits PNG, JPEG, PDF, RaTeX math, and
+the binding-owned `native-runtime` aggregate. `binding-generation` is only for foreign-language
 generation and does not belong in a distributed runtime artifact.
 
 ```bash
-cargo build -p merman-uniffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime'
+cargo build -p merman-uniffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
 ```
 
-Small artifacts can select `analysis`, `ascii`, `svg`, `png`, `jpeg`, `pdf`,
-`layout-cytoscape`, `layout-elk`, and `math` independently. Add `native-runtime` only when the
-complete native runtime policy is required; UniFFI does not expose partial adapter feature sets.
+Custom artifacts can select `analysis`, `ascii`, `svg`, `png`, `jpeg`, `pdf`,
+`layout-cytoscape`, `layout-elk`, and `math` independently. Add `native-runtime` only when native
+clock, time-zone, and random behavior is required; UniFFI does not expose partial adapter feature sets.
 `png`, `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, and `math` all imply `svg`.
 Runtime discovery still reports `system-clock`, `system-timezone`, and `system-random` as concrete
 adapter IDs rather than exposing the Cargo aggregate as a capability.
@@ -93,10 +91,10 @@ The repository ships a Python package layout. Generate it from the exact cdylib 
 packaged:
 
 ```bash
-cargo build -p merman-uniffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime'
+cargo build -p merman-uniffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
 cargo run -p merman-uniffi --no-default-features --features binding-generation \
   --example generate_python_package -- \
-  --cdylib target/release/libmerman_uniffi.dylib \
+  --cdylib target/native-distribution/libmerman_uniffi.dylib \
   --package-dir platforms/python/merman
 ```
 

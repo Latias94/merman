@@ -13,8 +13,8 @@ The descriptor-owned `c-abi-native` profile is the exact recipe for the complete
 used by release examples and Flutter packaging.
 
 ```sh
-# Full native SDK artifact.
-cargo build -p merman-ffi --release --no-default-features --features svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime
+# Complete C ABI reference artifact; platform prebuilts use their own default SKU.
+cargo build -p merman-ffi --profile native-sdk --no-default-features --features svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime
 
 # Smaller explicit artifacts.
 cargo build -p merman-ffi --release --no-default-features --features svg

@@ -209,15 +209,15 @@ function runtimeCatalog(overrides = {}) {
       { id: "binding-result", version: 1 },
       { id: "operation-metadata", version: 1 },
     ],
-    metadata_ids: metadataIds(["layout-cytoscape", "layout-elk", "math", "svg"]),
+    metadata_ids: metadataIds(["layout-cytoscape", "layout-elk", "svg"]),
     option_group_ids: optionGroupIds(
-      ["layout-cytoscape", "layout-elk", "math", "svg"],
+      ["layout-cytoscape", "layout-elk", "svg"],
       { usesSvgPipeline: true },
     ),
     constructor_service_ids: [],
     constructor_service_contracts: [],
     capabilities: {
-      capability_ids: ["layout-cytoscape", "layout-elk", "math", "svg"],
+      capability_ids: ["layout-cytoscape", "layout-elk", "svg"],
       output_ids: ["svg"],
       operation_ids: ["layout-json", "semantic-json", "svg", "svg-plan-json"],
       system_adapter_ids: [],
@@ -284,7 +284,6 @@ test("runtime catalog accepts additive fields within schema 1", async () => {
   assert.deepEqual(engine.runtimeCatalog.capabilities.capability_ids, [
     "layout-cytoscape",
     "layout-elk",
-    "math",
     "svg",
   ]);
   assert.equal(engine.runtimeCatalog.output_contracts[0].future_output_metadata, true);
