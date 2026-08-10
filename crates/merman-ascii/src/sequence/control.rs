@@ -1,29 +1,30 @@
 use super::model::SequenceControlKind;
 use super::render::SequenceChars;
-use super::text::{SequenceLine, blank_line, charge_text_work, padded_line, trim_right};
+use super::text::{SequenceLine, blank_line, padded_line, trim_right};
 use crate::color::{AsciiColorRole, AsciiRgb};
 use crate::error::{AsciiError, Result};
 use crate::options::TerminalWidthProfile;
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
-use crate::text::display_width_with_profile;
+use crate::safe_text::NormalizedLabelPlan;
+use crate::safe_text::{LabelBreakPolicy, try_plan_normalized_label_lines_with_policy};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct SequenceControlFrame {
+pub(super) struct SequenceControlFrame<'a> {
     pub(super) kind: SequenceControlKind,
-    pub(super) label: String,
+    pub(super) label: &'a str,
     pub(super) background: Option<AsciiRgb>,
     pub(super) start_row: usize,
-    pub(super) separators: Vec<SequenceControlFrameSeparator>,
+    pub(super) separators: Vec<SequenceControlFrameSeparator<'a>>,
     pub(super) end_row: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct SequenceControlFrameSeparator {
-    pub(super) label: String,
+pub(super) struct SequenceControlFrameSeparator<'a> {
+    pub(super) label: &'a str,
     pub(super) row: usize,
 }
 
-impl SequenceControlFrame {
+impl SequenceControlFrame<'_> {
     pub(super) fn current_section_start_row(&self) -> usize {
         self.separators
             .last()
@@ -65,6 +66,115 @@ struct SequenceControlFramePlan {
     total_width: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct SequenceControlTitlePlan<'a> {
+    keyword: &'static str,
+    label: &'a str,
+    label_plan: Option<NormalizedLabelPlan>,
+    width: usize,
+    capacity: usize,
+}
+
+impl<'a> SequenceControlTitlePlan<'a> {
+    fn try_new(
+        keyword: &'static str,
+        label: &'a str,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        resources.charge_layout_work(keyword.len().max(1))?;
+        let label_plan = if label.is_empty() {
+            None
+        } else {
+            let plan = try_plan_normalized_label_lines_with_policy(
+                label,
+                width_profile,
+                false,
+                None,
+                LabelBreakPolicy::VisibleLine,
+                resources,
+            )?
+            .ok_or_else(invalid_control_frame)?;
+            plan.check_materialization_limits(resources)?;
+            Some(plan)
+        };
+        let label_metrics = label_plan.map(NormalizedLabelPlan::metrics);
+        let separator_bytes = if label.is_empty() { 2 } else { 3 };
+        let capacity = keyword
+            .len()
+            .checked_add(label_metrics.map_or(0, |metrics| metrics.materialized_bytes))
+            .and_then(|length| length.checked_add(separator_bytes))
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+        resources.check(AsciiResourceLimitId::MaxOutputBytes, capacity)?;
+
+        let mut width = resources.checked_grid_add(keyword.len(), 2)?;
+        if let Some(label_metrics) = label_metrics {
+            width = resources.checked_grid_add(
+                width,
+                resources.checked_grid_add(label_metrics.max_width, 1)?,
+            )?;
+        }
+        Ok(Self {
+            keyword,
+            label,
+            label_plan,
+            width,
+            capacity,
+        })
+    }
+
+    const fn width(self) -> usize {
+        self.width
+    }
+
+    fn materialize(self, resources: &ResourceContext) -> Result<String> {
+        self.materialize_with(resources, || {})
+    }
+
+    fn materialize_with(
+        self,
+        resources: &ResourceContext,
+        before_materialize: impl FnOnce(),
+    ) -> Result<String> {
+        resources.charge_layout_work(self.capacity.max(1))?;
+        before_materialize();
+        let label = match self.label_plan {
+            Some(plan) => {
+                let (mut lines, _) = plan.materialize(self.label, resources)?.into_parts();
+                if lines.len() != 1 {
+                    return Err(invalid_control_frame());
+                }
+                Some(lines.pop().ok_or_else(invalid_control_frame)?)
+            }
+            None => None,
+        };
+        let mut title = String::new();
+        title
+            .try_reserve_exact(self.capacity)
+            .map_err(|_| allocation_failed())?;
+        title.push(' ');
+        title.push_str(self.keyword);
+        if let Some(label) = label.as_deref() {
+            title.push(' ');
+            title.push_str(label);
+        }
+        title.push(' ');
+        if title.len() != self.capacity {
+            return Err(invalid_control_frame());
+        }
+        Ok(title)
+    }
+
+    #[cfg(test)]
+    fn materialize_with_probe(
+        self,
+        resources: &ResourceContext,
+        materialized: &std::cell::Cell<bool>,
+    ) -> Result<String> {
+        self.materialize_with(resources, || materialized.set(true))
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct SequenceControlOutputAdmission {
     height: usize,
@@ -75,7 +185,7 @@ struct SequenceControlOutputAdmission {
 
 pub(super) fn render_sequence_control_frames(
     lines: Vec<SequenceLine>,
-    frames: &[SequenceControlFrame],
+    frames: &[SequenceControlFrame<'_>],
     chars: &SequenceChars,
     resources: &mut ResourceContext,
 ) -> Result<Vec<SequenceLine>> {
@@ -200,7 +310,7 @@ pub(super) fn render_sequence_control_frames(
 fn render_frame_node_iterative(
     node_index: usize,
     forest: &SequenceControlFrameForest,
-    frames: &[SequenceControlFrame],
+    frames: &[SequenceControlFrame<'_>],
     frame_plans: &[SequenceControlFramePlan],
     lines: &mut [Option<SequenceLine>],
     chars: &SequenceChars,
@@ -295,7 +405,7 @@ fn render_frame_node_iterative(
 
 fn plan_control_frames(
     forest: &SequenceControlFrameForest,
-    frames: &[SequenceControlFrame],
+    frames: &[SequenceControlFrame<'_>],
     lines: &[SequenceLine],
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
@@ -321,10 +431,6 @@ fn plan_control_frames(
         let frame = frames
             .get(node.frame_index)
             .ok_or_else(invalid_control_frame)?;
-        charge_text_work(&frame.label, width_profile, resources)?;
-        for separator in &frame.separators {
-            charge_text_work(&separator.label, width_profile, resources)?;
-        }
         let (body_rows, max_content_width) =
             planned_frame_body_extent(node_index, forest, frames, lines, &pending, resources)?;
         let width = frame_width(frame, max_content_width, inset, width_profile, resources)?;
@@ -356,7 +462,7 @@ fn plan_control_frames(
 fn planned_frame_body_extent(
     node_index: usize,
     forest: &SequenceControlFrameForest,
-    frames: &[SequenceControlFrame],
+    frames: &[SequenceControlFrame<'_>],
     lines: &[SequenceLine],
     frame_plans: &[Option<SequenceControlFramePlan>],
     resources: &mut ResourceContext,
@@ -420,7 +526,7 @@ fn planned_frame_body_extent(
 fn admit_control_output(
     lines: &[SequenceLine],
     forest: &SequenceControlFrameForest,
-    frames: &[SequenceControlFrame],
+    frames: &[SequenceControlFrame<'_>],
     frame_plans: &[SequenceControlFramePlan],
     resources: &mut ResourceContext,
 ) -> Result<SequenceControlOutputAdmission> {
@@ -518,7 +624,7 @@ impl SequenceControlOutputAdmission {
 fn render_frame_body_iterative(
     node_index: usize,
     forest: &SequenceControlFrameForest,
-    frames: &[SequenceControlFrame],
+    frames: &[SequenceControlFrame<'_>],
     lines: &mut [Option<SequenceLine>],
     rendered_nodes: &mut [Option<Vec<SequenceLine>>],
     planned_rows: usize,
@@ -608,7 +714,7 @@ fn render_frame_body_iterative(
 }
 
 fn control_frame_tree(
-    frames: &[SequenceControlFrame],
+    frames: &[SequenceControlFrame<'_>],
     line_count: usize,
     resources: &mut ResourceContext,
 ) -> Result<SequenceControlFrameForest> {
@@ -690,26 +796,25 @@ fn control_frame_tree(
     Ok(forest)
 }
 
-fn valid_frame_end_row(frame: &SequenceControlFrame, line_count: usize) -> Option<usize> {
+fn valid_frame_end_row(frame: &SequenceControlFrame<'_>, line_count: usize) -> Option<usize> {
     let end_row = frame.end_row?;
     (frame.start_row < line_count && end_row < line_count && frame.start_row <= end_row)
         .then_some(end_row)
 }
 
 fn frame_width(
-    frame: &SequenceControlFrame,
+    frame: &SequenceControlFrame<'_>,
     max_content_width: usize,
     inset: usize,
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
 ) -> Result<usize> {
     let max_row_width = max_content_width.saturating_sub(inset);
-    let title = frame_title(frame, resources)?;
-    let title_width = display_width_with_profile(&title, width_profile);
+    let title_width = frame_title_plan(frame, width_profile, resources)?.width();
     let mut separator_width = 0;
     for separator in &frame.separators {
-        let title = separator_title(frame, separator, resources)?;
-        separator_width = separator_width.max(display_width_with_profile(&title, width_profile));
+        separator_width = separator_width
+            .max(separator_title_plan(frame, separator, width_profile, resources)?.width());
     }
 
     Ok(resources
@@ -720,14 +825,14 @@ fn frame_width(
 }
 
 fn render_top_border(
-    frame: &SequenceControlFrame,
+    frame: &SequenceControlFrame<'_>,
     inset: usize,
     width: usize,
     chars: &SequenceChars,
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
 ) -> Result<SequenceLine> {
-    let title = frame_title(frame, resources)?;
+    let title = frame_title_plan(frame, width_profile, resources)?.materialize(resources)?;
     render_border_row(
         chars.top_left,
         chars.top_right,
@@ -763,15 +868,16 @@ fn render_bottom_border(
 }
 
 fn render_separator_border(
-    frame: &SequenceControlFrame,
-    separator: &SequenceControlFrameSeparator,
+    frame: &SequenceControlFrame<'_>,
+    separator: &SequenceControlFrameSeparator<'_>,
     inset: usize,
     width: usize,
     chars: &SequenceChars,
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
 ) -> Result<SequenceLine> {
-    let title = separator_title(frame, separator, resources)?;
+    let title =
+        separator_title_plan(frame, separator, width_profile, resources)?.materialize(resources)?;
     render_border_row(
         chars.tee_right,
         chars.tee_left,
@@ -884,44 +990,29 @@ fn paint_row_background_if_unset(
     }
 }
 
-fn frame_title(frame: &SequenceControlFrame, resources: &ResourceContext) -> Result<String> {
-    control_title(frame.kind.keyword(), &frame.label, resources)
+fn frame_title_plan<'a>(
+    frame: &SequenceControlFrame<'a>,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<SequenceControlTitlePlan<'a>> {
+    SequenceControlTitlePlan::try_new(frame.kind.keyword(), frame.label, width_profile, resources)
 }
 
-fn separator_title(
-    frame: &SequenceControlFrame,
-    separator: &SequenceControlFrameSeparator,
+fn separator_title_plan<'a>(
+    frame: &SequenceControlFrame<'_>,
+    separator: &SequenceControlFrameSeparator<'a>,
+    width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
-) -> Result<String> {
-    control_title(
+) -> Result<SequenceControlTitlePlan<'a>> {
+    SequenceControlTitlePlan::try_new(
         frame
             .kind
             .separator_keyword()
             .unwrap_or_else(|| frame.kind.keyword()),
-        &separator.label,
+        separator.label,
+        width_profile,
         resources,
     )
-}
-
-fn control_title(keyword: &str, label: &str, resources: &ResourceContext) -> Result<String> {
-    let separator_bytes = if label.is_empty() { 2 } else { 3 };
-    let capacity = keyword
-        .len()
-        .checked_add(label.len())
-        .and_then(|length| length.checked_add(separator_bytes))
-        .ok_or_else(|| work_overflow(resources))?;
-    let mut title = String::new();
-    title
-        .try_reserve_exact(capacity)
-        .map_err(|_| allocation_failed())?;
-    title.push(' ');
-    title.push_str(keyword);
-    if !label.is_empty() {
-        title.push(' ');
-        title.push_str(label);
-    }
-    title.push(' ');
-    Ok(title)
 }
 
 fn extend_taken_lines(
@@ -972,6 +1063,8 @@ fn allocation_failed() -> AsciiError {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+
     use super::*;
     use crate::resource::AsciiResourcePolicy;
     #[cfg(not(target_arch = "wasm32"))]
@@ -988,7 +1081,7 @@ mod tests {
         let frames = vec![
             SequenceControlFrame {
                 kind: SequenceControlKind::Loop,
-                label: String::new(),
+                label: "",
                 background: None,
                 start_row: 0,
                 separators: Vec::new(),
@@ -996,7 +1089,7 @@ mod tests {
             },
             SequenceControlFrame {
                 kind: SequenceControlKind::Opt,
-                label: String::new(),
+                label: "",
                 background: None,
                 start_row: 0,
                 separators: Vec::new(),
@@ -1037,6 +1130,73 @@ mod tests {
         }
     }
 
+    #[test]
+    fn control_title_materialization_follows_aggregate_grid_admission() {
+        let exact_materialized = Cell::new(false);
+        admit_and_materialize_control_title(84, &exact_materialized)
+            .expect("the exact 14x6 aggregate control extent should be admitted");
+        assert!(exact_materialized.get());
+
+        let below_materialized = Cell::new(false);
+        let error = admit_and_materialize_control_title(83, &below_materialized)
+            .expect_err("the aggregate control extent should exceed the limit by one cell");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxGridCells
+                    && details.actual == 84
+                    && details.max == 83
+        ));
+        assert!(!below_materialized.get());
+    }
+
+    fn admit_and_materialize_control_title(
+        maximum: usize,
+        materialized: &Cell<bool>,
+    ) -> Result<()> {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGridCells, maximum)
+            .expect("the aggregate control grid limit override should be valid");
+        let mut resources = ResourceContext::new(policy);
+        let lines = vec![
+            blank_line(4, TerminalWidthProfile::Unicode, &resources)?,
+            blank_line(4, TerminalWidthProfile::Unicode, &resources)?,
+        ];
+        let frames = vec![
+            SequenceControlFrame {
+                kind: SequenceControlKind::Loop,
+                label: "batch",
+                background: None,
+                start_row: 0,
+                separators: Vec::new(),
+                end_row: Some(0),
+            },
+            SequenceControlFrame {
+                kind: SequenceControlKind::Loop,
+                label: "batch",
+                background: None,
+                start_row: 1,
+                separators: Vec::new(),
+                end_row: Some(1),
+            },
+        ];
+        let forest = control_frame_tree(&frames, lines.len(), &mut resources)?;
+        let frame_plans = plan_control_frames(
+            &forest,
+            &frames,
+            &lines,
+            TerminalWidthProfile::Unicode,
+            &mut resources,
+        )?;
+        let admission =
+            admit_control_output(&lines, &forest, &frames, &frame_plans, &mut resources)?;
+        assert_eq!(admission.max_width, 14);
+        assert_eq!(admission.height, 6);
+        frame_title_plan(&frames[0], TerminalWidthProfile::Unicode, &resources)?
+            .materialize_with_probe(&resources, materialized)?;
+        Ok(())
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn deeply_nested_frames_render_on_a_small_stack() {
@@ -1054,7 +1214,7 @@ mod tests {
                 let frames = vec![
                     SequenceControlFrame {
                         kind: SequenceControlKind::Loop,
-                        label: String::new(),
+                        label: "",
                         background: None,
                         start_row: 0,
                         separators: Vec::new(),
@@ -1089,7 +1249,7 @@ mod tests {
         let frames = vec![
             SequenceControlFrame {
                 kind: SequenceControlKind::Loop,
-                label: String::new(),
+                label: "",
                 background: None,
                 start_row: 0,
                 separators: Vec::new(),
@@ -1097,7 +1257,7 @@ mod tests {
             },
             SequenceControlFrame {
                 kind: SequenceControlKind::Loop,
-                label: String::new(),
+                label: "",
                 background: None,
                 start_row: 1,
                 separators: Vec::new(),

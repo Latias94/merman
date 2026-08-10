@@ -33,15 +33,18 @@ struct SequenceRowStep<'event> {
 }
 
 #[derive(Debug)]
-struct SequenceRowPlanner {
+struct SequenceRowPlanner<'diagram> {
     active_counts: Vec<usize>,
     visible_actors: Vec<bool>,
-    control_frames: Vec<SequenceControlFrame>,
+    control_frames: Vec<SequenceControlFrame<'diagram>>,
     active_control_frames: Vec<usize>,
 }
 
-impl SequenceRowPlanner {
-    fn new(diagram: &AsciiSequenceDiagram, resources: &mut ResourceContext) -> Result<Self> {
+impl<'diagram> SequenceRowPlanner<'diagram> {
+    fn new(
+        diagram: &'diagram AsciiSequenceDiagram,
+        resources: &mut ResourceContext,
+    ) -> Result<Self> {
         resources.charge_layout_work(diagram.participants.len())?;
         resources.charge_layout_work(diagram.lifecycles.len())?;
         resources.grid_extent(diagram.participants.len().max(diagram.lifecycles.len()), 1)?;
@@ -70,13 +73,13 @@ impl SequenceRowPlanner {
         &self.visible_actors
     }
 
-    fn advance<'event>(
+    fn advance(
         &mut self,
-        diagram: &AsciiSequenceDiagram,
-        event: &'event SequenceEvent,
+        diagram: &'diagram AsciiSequenceDiagram,
+        event: &'diagram SequenceEvent,
         current_row: usize,
         resources: &mut ResourceContext,
-    ) -> Result<Option<SequenceRowStep<'event>>> {
+    ) -> Result<Option<SequenceRowStep<'diagram>>> {
         resources.charge_layout_work(1)?;
         match event {
             SequenceEvent::ActivationStart { actor, .. } => {
@@ -99,7 +102,6 @@ impl SequenceRowPlanner {
                 Ok(None)
             }
             SequenceEvent::ControlStart(start) => {
-                charge_text_work(&start.label, TerminalWidthProfile::Unicode, resources)?;
                 let depth = self
                     .active_control_frames
                     .len()
@@ -109,7 +111,6 @@ impl SequenceRowPlanner {
                 let frame_index = self.control_frames.len();
                 let frame_count = resources.checked_grid_add(frame_index, 1)?;
                 resources.grid_extent(frame_count, 1)?;
-                let label = try_clone_string(&start.label)?;
                 self.control_frames
                     .try_reserve(1)
                     .map_err(|_| allocation_failed())?;
@@ -118,7 +119,7 @@ impl SequenceRowPlanner {
                     .map_err(|_| allocation_failed())?;
                 self.control_frames.push(SequenceControlFrame {
                     kind: start.kind,
-                    label,
+                    label: &start.label,
                     background: start.background,
                     start_row: current_row,
                     separators: Vec::new(),
@@ -128,7 +129,6 @@ impl SequenceRowPlanner {
                 Ok(None)
             }
             SequenceEvent::ControlSeparator(separator) => {
-                charge_text_work(&separator.label, TerminalWidthProfile::Unicode, resources)?;
                 let Some(frame_index) = self.active_control_frames.last().copied() else {
                     return Err(unsupported("control block ordering"));
                 };
@@ -138,13 +138,12 @@ impl SequenceRowPlanner {
                 }
                 let separator_count = resources.checked_grid_add(frame.separators.len(), 1)?;
                 resources.grid_extent(separator_count, 1)?;
-                let label = try_clone_string(&separator.label)?;
                 frame
                     .separators
                     .try_reserve(1)
                     .map_err(|_| allocation_failed())?;
                 frame.separators.push(SequenceControlFrameSeparator {
-                    label,
+                    label: &separator.label,
                     row: current_row,
                 });
                 Ok(None)
@@ -197,7 +196,7 @@ impl SequenceRowPlanner {
         }
     }
 
-    fn finish(self) -> Result<Vec<SequenceControlFrame>> {
+    fn finish(self) -> Result<Vec<SequenceControlFrame<'diagram>>> {
         if !self.active_control_frames.is_empty() {
             return Err(unsupported("control block ordering"));
         }
@@ -452,7 +451,7 @@ impl<'diagram, 'layout, 'chars> SequenceRowEmitter<'diagram, 'layout, 'chars> {
 
     fn finish(
         mut self,
-        planner: &SequenceRowPlanner,
+        planner: &SequenceRowPlanner<'_>,
         mirror_actors: bool,
         resources: &mut ResourceContext,
     ) -> Result<Vec<SequenceLine>> {
@@ -541,14 +540,14 @@ impl<'diagram, 'layout, 'chars> SequenceRowEmitter<'diagram, 'layout, 'chars> {
 }
 
 #[derive(Debug)]
-pub(super) struct SequenceRowPlan {
+pub(super) struct SequenceRowPlan<'diagram> {
     lines: Vec<SequenceLine>,
-    control_frames: Vec<SequenceControlFrame>,
+    control_frames: Vec<SequenceControlFrame<'diagram>>,
 }
 
-impl SequenceRowPlan {
+impl<'diagram> SequenceRowPlan<'diagram> {
     pub(super) fn build(
-        diagram: &AsciiSequenceDiagram,
+        diagram: &'diagram AsciiSequenceDiagram,
         layout: &SequenceLayout,
         chars: &SequenceChars,
         mirror_actors: bool,
@@ -966,15 +965,6 @@ fn try_clone_slice<T: Copy>(source: &[T]) -> Result<Vec<T>> {
     Ok(cloned)
 }
 
-fn try_clone_string(source: &str) -> Result<String> {
-    let mut cloned = String::new();
-    cloned
-        .try_reserve_exact(source.len())
-        .map_err(|_| allocation_failed())?;
-    cloned.push_str(source);
-    Ok(cloned)
-}
-
 fn allocation_failed() -> AsciiError {
     AsciiError::allocation_failed(AsciiResourceLimitPhase::LayoutWork.as_str())
 }
@@ -1032,38 +1022,30 @@ mod tests {
     #[test]
     fn event_plan_accepts_empty_control_sections() {
         let diagram = diagram(1);
+        let control_start = SequenceEvent::ControlStart(SequenceControlStart {
+            model_index: 0,
+            kind: SequenceControlKind::Alt,
+            label: "choice".to_string(),
+            background: None,
+        });
+        let control_separator = SequenceEvent::ControlSeparator(SequenceControlSeparator {
+            model_index: 1,
+            kind: SequenceControlKind::Alt,
+            label: "other".to_string(),
+        });
         let mut resources = test_resources();
         let mut plan = SequenceRowPlanner::new(&diagram, &mut resources).unwrap();
 
         assert!(
-            plan.advance(
-                &diagram,
-                &SequenceEvent::ControlStart(SequenceControlStart {
-                    model_index: 0,
-                    kind: SequenceControlKind::Alt,
-                    label: "choice".to_string(),
-                    background: None,
-                }),
-                3,
-                &mut resources,
-            )
-            .unwrap()
-            .is_none()
+            plan.advance(&diagram, &control_start, 3, &mut resources,)
+                .unwrap()
+                .is_none()
         );
 
         assert!(
-            plan.advance(
-                &diagram,
-                &SequenceEvent::ControlSeparator(SequenceControlSeparator {
-                    model_index: 1,
-                    kind: SequenceControlKind::Alt,
-                    label: "other".to_string(),
-                }),
-                3,
-                &mut resources,
-            )
-            .unwrap()
-            .is_none()
+            plan.advance(&diagram, &control_separator, 3, &mut resources,)
+                .unwrap()
+                .is_none()
         );
         assert!(
             plan.advance(
@@ -1088,38 +1070,30 @@ mod tests {
     #[test]
     fn event_plan_tracks_nested_control_frames() {
         let diagram = diagram(2);
+        let outer_start = SequenceEvent::ControlStart(SequenceControlStart {
+            model_index: 0,
+            kind: SequenceControlKind::Loop,
+            label: "outer".to_string(),
+            background: None,
+        });
+        let inner_start = SequenceEvent::ControlStart(SequenceControlStart {
+            model_index: 1,
+            kind: SequenceControlKind::Opt,
+            label: "inner".to_string(),
+            background: None,
+        });
         let mut resources = test_resources();
         let mut plan = SequenceRowPlanner::new(&diagram, &mut resources).unwrap();
 
         assert!(
-            plan.advance(
-                &diagram,
-                &SequenceEvent::ControlStart(SequenceControlStart {
-                    model_index: 0,
-                    kind: SequenceControlKind::Loop,
-                    label: "outer".to_string(),
-                    background: None,
-                }),
-                3,
-                &mut resources,
-            )
-            .unwrap()
-            .is_none()
+            plan.advance(&diagram, &outer_start, 3, &mut resources,)
+                .unwrap()
+                .is_none()
         );
         assert!(
-            plan.advance(
-                &diagram,
-                &SequenceEvent::ControlStart(SequenceControlStart {
-                    model_index: 1,
-                    kind: SequenceControlKind::Opt,
-                    label: "inner".to_string(),
-                    background: None,
-                }),
-                3,
-                &mut resources,
-            )
-            .unwrap()
-            .is_none()
+            plan.advance(&diagram, &inner_start, 3, &mut resources,)
+                .unwrap()
+                .is_none()
         );
         assert!(
             plan.advance(
@@ -1161,37 +1135,29 @@ mod tests {
     #[test]
     fn event_plan_rejects_control_nesting_before_push() {
         let diagram = diagram(1);
+        let outer_start = SequenceEvent::ControlStart(SequenceControlStart {
+            model_index: 0,
+            kind: SequenceControlKind::Loop,
+            label: "outer".to_string(),
+            background: None,
+        });
+        let inner_start = SequenceEvent::ControlStart(SequenceControlStart {
+            model_index: 1,
+            kind: SequenceControlKind::Opt,
+            label: "inner".to_string(),
+            background: None,
+        });
         let options = AsciiRenderOptions::ascii()
             .with_resource_limit(AsciiResourceLimitId::MaxNestingDepth, 1)
             .unwrap();
         let mut resources = ResourceContext::new(options.resources);
         let mut plan = SequenceRowPlanner::new(&diagram, &mut resources).unwrap();
 
-        plan.advance(
-            &diagram,
-            &SequenceEvent::ControlStart(SequenceControlStart {
-                model_index: 0,
-                kind: SequenceControlKind::Loop,
-                label: "outer".to_string(),
-                background: None,
-            }),
-            3,
-            &mut resources,
-        )
-        .unwrap();
+        plan.advance(&diagram, &outer_start, 3, &mut resources)
+            .unwrap();
 
         let error = plan
-            .advance(
-                &diagram,
-                &SequenceEvent::ControlStart(SequenceControlStart {
-                    model_index: 1,
-                    kind: SequenceControlKind::Opt,
-                    label: "inner".to_string(),
-                    background: None,
-                }),
-                3,
-                &mut resources,
-            )
+            .advance(&diagram, &inner_start, 3, &mut resources)
             .unwrap_err();
 
         assert!(matches!(
