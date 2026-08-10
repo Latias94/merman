@@ -296,6 +296,7 @@ fn push_task(
         line.push_str(&task.task)?;
         line.push_str(" [id=")?;
         line.push_str(&task.id)?;
+        line.write_fmt(format_args!(", order={}", task.order))?;
         line.push_str(", range=")?;
         line.push_str(&start)?;
         line.push_str(" -> ")?;

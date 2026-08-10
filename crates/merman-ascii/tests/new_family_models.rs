@@ -588,11 +588,39 @@ fn gantt_render_model_renders_sections_tasks_and_flags() {
             "section: Empty\n",
             "section: Empty\n",
             "section: Build\n",
-            "  - Implement [id=task-1, range=+292278994-08-17T07:12:55.000 ->\n",
+            "  - Implement [id=task-1, order=0, range=+292278994-08-17T07:12:55.000 ->\n",
             "    +292278994-08-17T07:12:55.001, renderEnd=+292278994-08-17T07:12:55.002,\n",
             "    flags=milestone, active, done, crit, vert]",
         )
     );
+}
+
+#[test]
+fn gantt_direct_model_discloses_task_order() {
+    let mut model = GanttDiagramRenderModel::default();
+    model.tasks = vec![
+        GanttRenderTask {
+            id: "first".to_string(),
+            task: "First".to_string(),
+            order: 7,
+            ..Default::default()
+        },
+        GanttRenderTask {
+            id: "second".to_string(),
+            task: "Second".to_string(),
+            order: 3,
+            ..Default::default()
+        },
+    ];
+
+    let rendered = render(RenderSemanticModel::Gantt(model.clone()));
+    assert!(rendered.contains("First [id=first, order=7,"));
+    assert!(rendered.contains("Second [id=second, order=3,"));
+
+    model.tasks[0].order = 3;
+    model.tasks[1].order = 7;
+    let reordered = render(RenderSemanticModel::Gantt(model));
+    assert_ne!(rendered, reordered, "task order must remain recoverable");
 }
 
 #[test]
