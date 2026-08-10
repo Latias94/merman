@@ -28,16 +28,19 @@ for current Mermaid parity.
 ## Generate Locally
 
 `scripts/build-python-uniffi-wheel.py` resolves the `python-uniffi-native` artifact profile. It
-builds the release cdylib with the default native direct feature list, then runs a separate
-generator with only `binding-generation` against that production library. The builder rejects hosts
-outside the profile's published target set and replaces the package scaffold's release-set legal
-report with the checked-in single-target report before building the wheel.
+builds the release library set with the default native direct feature list, then runs a separate
+generator with only `binding-generation`. UniFFI metadata is read from the matching Rust `rlib`,
+because fully stripped ELF cdylibs intentionally omit the metadata symbol table; the generated
+package still embeds the size-optimized production cdylib. The builder rejects hosts outside the
+profile's published target set and replaces the package scaffold's release-set legal report with
+the checked-in single-target report before building the wheel.
 
 ```bash
 cargo build -p merman-uniffi --profile native-distribution --no-default-features \
   --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
 cargo run -p merman-uniffi --no-default-features \
   --features binding-generation --example generate_python_package -- \
+  --metadata-library target/native-distribution/libmerman_uniffi.rlib \
   --cdylib target/native-distribution/libmerman_uniffi.dylib \
   --package-dir platforms/python/merman
 ```
@@ -51,7 +54,7 @@ On Windows PowerShell, use the same command on one line:
 
 ```powershell
 cargo build -p merman-uniffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
-cargo run -p merman-uniffi --no-default-features --features binding-generation --example generate_python_package -- --cdylib target/native-distribution/merman_uniffi.dll --package-dir platforms/python/merman
+cargo run -p merman-uniffi --no-default-features --features binding-generation --example generate_python_package -- --metadata-library target/native-distribution/libmerman_uniffi.rlib --cdylib target/native-distribution/merman_uniffi.dll --package-dir platforms/python/merman
 ```
 
 ## API

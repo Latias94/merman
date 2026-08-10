@@ -374,9 +374,11 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         wheel_builder.validate_python_native_recipe(recipe)
         target = "aarch64-apple-darwin"
         production = cargo_build_args(recipe, target=target)
+        metadata_library = wheel_builder.production_metadata_library_path(recipe, target)
         cdylib = wheel_builder.production_cdylib_path(recipe, target)
         generator = wheel_builder.python_generator_args(
             recipe,
+            metadata_library,
             cdylib,
             Path("/tmp/merman-python-package"),
         )
@@ -394,8 +396,24 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             / "libmerman_uniffi.dylib",
         )
         self.assertEqual(
+            metadata_library,
+            wheel_builder.REPO_ROOT
+            / "target"
+            / target
+            / recipe.cargo_profile
+            / "libmerman_uniffi.rlib",
+        )
+        self.assertEqual(
             generator[generator.index("--features") + 1],
             "binding-generation",
+        )
+        self.assertEqual(
+            generator[generator.index("--metadata-library") + 1],
+            str(metadata_library),
+        )
+        self.assertEqual(
+            generator[generator.index("--cdylib") + 1],
+            str(cdylib),
         )
         self.assertNotIn("--profile", generator)
 
@@ -405,7 +423,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             features=("svg",),
             cargo_profile="release",
             default_features=True,
-            crate_types=("cdylib",),
+            crate_types=("cdylib", "rlib"),
         )
 
         wheel_builder.validate_python_native_recipe(recipe)
@@ -474,6 +492,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             source = root / "source-package"
             staged = root / "staged-package"
             wheel_dir = root / "wheels"
+            metadata_library = root / "libmerman_uniffi.rlib"
             cdylib = root / "libmerman_uniffi.so"
             wheel = wheel_dir / "merman-0.0.0-py3-none-linux_x86_64.whl"
             source.mkdir()
@@ -481,6 +500,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             example.parent.mkdir()
             example.write_text("print('smoke')\n", encoding="utf-8")
             staged.mkdir()
+            metadata_library.write_bytes(b"metadata")
             cdylib.write_bytes(b"native")
             venv_python = root / "venv" / "python"
             args = SimpleNamespace(
@@ -503,6 +523,11 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                     wheel_builder,
                     "select_python_wheel_target",
                     return_value="x86_64-unknown-linux-gnu",
+                ),
+                mock.patch.object(
+                    wheel_builder,
+                    "production_metadata_library_path",
+                    return_value=metadata_library,
                 ),
                 mock.patch.object(wheel_builder, "production_cdylib_path", return_value=cdylib),
                 mock.patch.object(
@@ -536,6 +561,14 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         )
         self.assertIn(str(staged), generator_command)
         self.assertNotIn(str(source), generator_command)
+        self.assertEqual(
+            generator_command[generator_command.index("--metadata-library") + 1],
+            str(metadata_library),
+        )
+        self.assertEqual(
+            generator_command[generator_command.index("--cdylib") + 1],
+            str(cdylib),
+        )
         self.assertIn(str(staged), wheel_command)
         self.assertNotIn(str(source), wheel_command)
         self.assertEqual(
