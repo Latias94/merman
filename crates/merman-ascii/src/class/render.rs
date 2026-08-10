@@ -27,7 +27,7 @@ mod namespace;
 
 use namespace::{
     has_renderable_namespaces, namespace_facade_aliases, render_namespace_container_box,
-    render_namespaced_class_diagram,
+    render_namespaced_class_diagram, validate_class_namespace_ownership,
 };
 
 const CLASS_LEVEL_HORIZONTAL_GAP: usize = 4;
@@ -294,6 +294,7 @@ pub(crate) fn render_class_diagram(
     let direction = ClassDirection::try_from_model(&model.direction)?;
     let namespace_facade_aliases = namespace_facade_aliases(model)?;
     validate_class_references(model, &namespace_facade_aliases, &mut resources)?;
+    validate_class_namespace_ownership(model, &mut resources)?;
     if has_renderable_namespaces(model) {
         return render_namespaced_class_diagram(
             model,

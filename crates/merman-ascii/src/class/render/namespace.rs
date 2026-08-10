@@ -36,6 +36,102 @@ pub(super) fn has_renderable_namespaces(model: &ClassDiagram) -> bool {
     })
 }
 
+pub(super) fn validate_class_namespace_ownership(
+    model: &ClassDiagram,
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    resources.charge_layout_work(model.namespaces.len())?;
+    let mut class_membership_capacity = 0usize;
+    let mut note_membership_capacity = 0usize;
+    for namespace in model.namespaces.values() {
+        class_membership_capacity = class_membership_capacity
+            .checked_add(namespace.class_ids.len())
+            .ok_or_else(|| work_overflow(resources))?;
+        note_membership_capacity = note_membership_capacity
+            .checked_add(namespace.note_ids.len())
+            .ok_or_else(|| work_overflow(resources))?;
+    }
+    let validation_work = class_membership_capacity
+        .checked_add(note_membership_capacity)
+        .and_then(|value| value.checked_add(model.classes.len()))
+        .and_then(|value| value.checked_add(model.notes.len()))
+        .ok_or_else(|| work_overflow(resources))?;
+    resources.charge_layout_work(validation_work)?;
+
+    let mut class_owners = HashMap::new();
+    class_owners
+        .try_reserve(class_membership_capacity)
+        .map_err(|_| layout_allocation_failed())?;
+    let mut note_owners = HashMap::new();
+    note_owners
+        .try_reserve(note_membership_capacity)
+        .map_err(|_| layout_allocation_failed())?;
+    let mut notes_by_id = HashMap::new();
+    notes_by_id
+        .try_reserve(model.notes.len())
+        .map_err(|_| layout_allocation_failed())?;
+    notes_by_id.extend(model.notes.iter().map(|note| (note.id.as_str(), note)));
+
+    for (namespace_key, namespace) in &model.namespaces {
+        if namespace_key != &namespace.id
+            || namespace
+                .parent
+                .as_deref()
+                .is_some_and(|parent| !model.namespaces.contains_key(parent))
+        {
+            return Err(inconsistent_class_namespace_ownership());
+        }
+
+        for class_id in &namespace.class_ids {
+            let Some(class) = model.classes.get(class_id) else {
+                return Err(inconsistent_class_namespace_ownership());
+            };
+            if class.parent.as_deref() != Some(namespace.id.as_str())
+                || class_owners
+                    .insert(class_id.as_str(), namespace.id.as_str())
+                    .is_some()
+            {
+                return Err(inconsistent_class_namespace_ownership());
+            }
+        }
+
+        for note_id in &namespace.note_ids {
+            let Some(note) = notes_by_id.get(note_id.as_str()).copied() else {
+                return Err(inconsistent_class_namespace_ownership());
+            };
+            if note.parent.as_deref() != Some(namespace.id.as_str())
+                || note_owners
+                    .insert(note_id.as_str(), namespace.id.as_str())
+                    .is_some()
+            {
+                return Err(inconsistent_class_namespace_ownership());
+            }
+        }
+    }
+
+    for (class_key, class) in &model.classes {
+        if class_key != &class.id
+            || class_owners.get(class_key.as_str()).copied() != class.parent.as_deref()
+        {
+            return Err(inconsistent_class_namespace_ownership());
+        }
+    }
+    for note in &model.notes {
+        if note_owners.get(note.id.as_str()).copied() != note.parent.as_deref() {
+            return Err(inconsistent_class_namespace_ownership());
+        }
+    }
+
+    Ok(())
+}
+
+fn inconsistent_class_namespace_ownership() -> AsciiError {
+    AsciiError::UnsupportedFeature {
+        diagram_type: "class",
+        feature: "inconsistent class namespace ownership",
+    }
+}
+
 pub(super) fn render_namespaced_class_diagram(
     model: &ClassDiagram,
     options: &AsciiRenderOptions,

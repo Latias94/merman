@@ -305,6 +305,34 @@ fn class_render_model_rejects_missing_note_targets_before_namespace_rendering() 
 }
 
 #[test]
+fn class_render_model_rejects_inconsistent_namespace_class_ownership() {
+    let mut model = parse_class_model("classDiagram\nnamespace Domain {\n  class A\n}");
+    model
+        .namespaces
+        .get_mut("Domain")
+        .expect("Domain namespace should exist")
+        .class_ids
+        .clear();
+
+    assert_unsupported_class_model(&model, "inconsistent class namespace ownership");
+}
+
+#[test]
+fn class_render_model_rejects_inconsistent_namespace_note_ownership() {
+    let mut model = parse_class_model(
+        "classDiagram\nnamespace Domain {\n  class A\n  note for A \"linked\"\n}",
+    );
+    model
+        .namespaces
+        .get_mut("Domain")
+        .expect("Domain namespace should exist")
+        .note_ids
+        .clear();
+
+    assert_unsupported_class_model(&model, "inconsistent class namespace ownership");
+}
+
+#[test]
 fn class_render_model_rejects_duplicate_rendered_ids() {
     let mut model = parse_class_model("classDiagram\nclass A\nclass B");
     model.classes.get_mut("B").expect("class B should exist").id = "A".to_string();
