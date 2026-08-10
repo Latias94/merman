@@ -14,9 +14,10 @@ use crate::session::analysis::request::{AnalysisBuildError, AnalysisBuildRequest
 use crate::snapshot::{DocumentAnalysisContext, DocumentSnapshot, SnapshotContext};
 use merman_analysis::{
     AnalysisCancellationToken, AnalysisOptions, AnalysisPayload, AnalysisResourceLimit,
-    AnalysisRuleConfig, AnalysisRuleProfile, Analyzer, DiagnosticSeverity, FenceSemanticItem,
-    FenceSemanticRole, FenceTextIndex, FenceTextIndexSource, source_limit_diagnostic_span,
+    AnalysisRuleConfig, AnalysisRuleProfile, Analyzer, DiagnosticSeverity, FenceTextIndex,
+    FenceTextIndexSource, source_limit_diagnostic_span,
 };
+use merman_core::{EditorSemanticRole, EditorSemanticSymbol};
 use merman_editor_core::DocumentKind;
 use tower_lsp_server::ls_types::{
     Position, Range, SemanticToken, TextDocumentContentChangeEvent, Uri,
@@ -27,11 +28,11 @@ static CUSTOM_ASYNC_SESSION_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 static REPEATED_DIAGNOSTIC_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 
 trait FenceTextIndexTestExt {
-    fn outline_items(&self) -> Vec<&FenceSemanticItem>;
+    fn outline_items(&self) -> Vec<&EditorSemanticSymbol>;
 }
 
 impl FenceTextIndexTestExt for FenceTextIndex {
-    fn outline_items(&self) -> Vec<&FenceSemanticItem> {
+    fn outline_items(&self) -> Vec<&EditorSemanticSymbol> {
         self.semantic_items()
             .iter()
             .filter(|item| item.role.contributes_outline())
@@ -2777,13 +2778,13 @@ fn sequence_payload_facts_do_not_pollute_completion_ids() {
         index
             .semantic_items()
             .iter()
-            .any(|item| item.name == "Alice" && item.role == FenceSemanticRole::Entity)
+            .any(|item| item.name == "Alice" && item.role == EditorSemanticRole::Entity)
     );
     assert!(
         index
             .semantic_items()
             .iter()
-            .any(|item| item.name == "Bob" && item.role == FenceSemanticRole::Entity)
+            .any(|item| item.name == "Bob" && item.role == EditorSemanticRole::Entity)
     );
     for payload in [
         "Diagram Title",
@@ -2800,7 +2801,7 @@ fn sequence_payload_facts_do_not_pollute_completion_ids() {
             index
                 .semantic_items()
                 .iter()
-                .any(|item| item.name == payload && item.role == FenceSemanticRole::Payload),
+                .any(|item| item.name == payload && item.role == EditorSemanticRole::Payload),
             "sequence payload {payload:?} was not retained as a semantic item"
         );
     }
@@ -2871,13 +2872,13 @@ fn architecture_documents_use_parser_facts() {
         index
             .semantic_items()
             .iter()
-            .any(|item| item.name == "Platform" && item.role == FenceSemanticRole::Payload)
+            .any(|item| item.name == "Platform" && item.role == EditorSemanticRole::Payload)
     );
     assert!(
         index
             .semantic_items()
             .iter()
-            .any(|item| item.name == "API" && item.role == FenceSemanticRole::Payload)
+            .any(|item| item.name == "API" && item.role == EditorSemanticRole::Payload)
     );
 }
 
@@ -2909,7 +2910,7 @@ fn radar_documents_use_parser_facts() {
         index
             .semantic_items()
             .iter()
-            .any(|item| item.name == "Axis A" && item.role == FenceSemanticRole::Payload)
+            .any(|item| item.name == "Axis A" && item.role == EditorSemanticRole::Payload)
     );
 }
 
@@ -2941,13 +2942,13 @@ fn treemap_documents_use_parser_facts() {
         index
             .semantic_items()
             .iter()
-            .any(|item| item.name == "highlight" && item.role == FenceSemanticRole::Outline)
+            .any(|item| item.name == "highlight" && item.role == EditorSemanticRole::Outline)
     );
     assert!(
         index
             .semantic_items()
             .iter()
-            .any(|item| item.name == "42" && item.role == FenceSemanticRole::Payload)
+            .any(|item| item.name == "42" && item.role == EditorSemanticRole::Payload)
     );
 }
 
@@ -2982,14 +2983,14 @@ fn block_documents_use_parser_facts() {
         index
             .semantic_items()
             .iter()
-            .any(|item| item.name == "hot" && item.role == FenceSemanticRole::Outline)
+            .any(|item| item.name == "hot" && item.role == EditorSemanticRole::Outline)
     );
     for payload in ["Group label", "Start", "edge label", "End", "go", "right"] {
         assert!(
             index
                 .semantic_items()
                 .iter()
-                .any(|item| item.name == payload && item.role == FenceSemanticRole::Payload),
+                .any(|item| item.name == payload && item.role == EditorSemanticRole::Payload),
             "missing block payload semantic item {payload:?}"
         );
     }
@@ -3045,7 +3046,7 @@ fn c4_documents_use_parser_facts() {
             index
                 .semantic_items()
                 .iter()
-                .any(|item| item.name == payload && item.role == FenceSemanticRole::Payload),
+                .any(|item| item.name == payload && item.role == EditorSemanticRole::Payload),
             "missing C4 payload semantic item {payload:?}"
         );
         assert!(!index.node_ids().any(|candidate| candidate == payload));
@@ -3096,7 +3097,7 @@ fn zenuml_documents_use_parser_facts() {
             index
                 .semantic_items()
                 .iter()
-                .any(|item| item.name == payload && item.role == FenceSemanticRole::Payload),
+                .any(|item| item.name == payload && item.role == EditorSemanticRole::Payload),
             "missing ZenUML payload semantic item {payload:?}"
         );
         assert!(!index.node_ids().any(|candidate| candidate == payload));
@@ -3110,7 +3111,7 @@ fn newer_family_documents_keep_parser_facts_when_recovered() {
             "gitGraph",
             concat!("gitGraph\n", "commit id:\"C1\"\n", "commit id:\"broken\n",),
             "C1",
-            FenceSemanticRole::Entity,
+            EditorSemanticRole::Entity,
         ),
         (
             "radar",
@@ -3121,7 +3122,7 @@ fn newer_family_documents_keep_parser_facts_when_recovered() {
                 "curve broken\n",
             ),
             "A",
-            FenceSemanticRole::Entity,
+            EditorSemanticRole::Entity,
         ),
         (
             "kanban",
@@ -3132,7 +3133,7 @@ fn newer_family_documents_keep_parser_facts_when_recovered() {
                 "      broken[unfinished\n",
             ),
             "child1",
-            FenceSemanticRole::Entity,
+            EditorSemanticRole::Entity,
         ),
         (
             "treemap",
@@ -3143,7 +3144,7 @@ fn newer_family_documents_keep_parser_facts_when_recovered() {
                 "\"Broken\":\n",
             ),
             "Leaf",
-            FenceSemanticRole::Entity,
+            EditorSemanticRole::Entity,
         ),
         (
             "block",
@@ -3153,7 +3154,7 @@ fn newer_family_documents_keep_parser_facts_when_recovered() {
                 "    A[\"Start\"]\n",
             ),
             "A",
-            FenceSemanticRole::Entity,
+            EditorSemanticRole::Entity,
         ),
         (
             "c4",
@@ -3163,7 +3164,7 @@ fn newer_family_documents_keep_parser_facts_when_recovered() {
                 "NotAMacro customer\n",
             ),
             "customer",
-            FenceSemanticRole::Entity,
+            EditorSemanticRole::Entity,
         ),
         (
             "wardley",
@@ -3173,7 +3174,7 @@ fn newer_family_documents_keep_parser_facts_when_recovered() {
                 "component Broken [\n",
             ),
             "API",
-            FenceSemanticRole::Entity,
+            EditorSemanticRole::Entity,
         ),
         (
             "zenuml",
@@ -3184,7 +3185,7 @@ fn newer_family_documents_keep_parser_facts_when_recovered() {
                 "Alice->Bob: Hi\n",
             ),
             "Alice",
-            FenceSemanticRole::Entity,
+            EditorSemanticRole::Entity,
         ),
     ] {
         let mut store = SessionState::new();

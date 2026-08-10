@@ -2,6 +2,7 @@ use merman_analysis::{
     AnalysisDiagnostic, AnalysisFactsPayload, AnalysisPayload, Analyzer, DiagnosticCategory,
     SourceDescriptor, SourceMap,
 };
+use merman_core::EditorRenamePolicy;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
@@ -214,7 +215,7 @@ fn analysis_facts_v2_disables_rename_when_compatible_payload_omits_policy() {
         .expect("a compatible facts v2 payload should remain readable");
     assert_eq!(
         payload.diagrams[0].syntax.semantic_items[0].rename_policy,
-        merman_analysis::FenceRenamePolicy::None
+        EditorRenamePolicy::None
     );
 }
 
@@ -226,6 +227,39 @@ fn analysis_facts_v2_writers_always_emit_rename_policy() {
             .get("rename_policy")
             .is_some()
     );
+}
+
+#[test]
+fn analysis_facts_projects_class_definition_to_outline_wire_role() {
+    let value = serde_json::to_value(
+        Analyzer::new().analyze_facts("flowchart TD\nclassDef hot fill:#f00;\nA:::hot\n"),
+    )
+    .expect("serialize class-definition facts");
+    let syntax = &value["diagrams"][0]["syntax"];
+    let class_definition = syntax["semantic_items"]
+        .as_array()
+        .and_then(|items| items.iter().find(|item| item["name"] == "hot"))
+        .expect("class definition semantic item");
+
+    assert_eq!(class_definition["role"], json!("outline"));
+    assert!(
+        syntax["class_names"]
+            .as_array()
+            .is_some_and(|names| names.iter().any(|name| name == "hot"))
+    );
+    assert!(
+        syntax["outline_items"]
+            .as_array()
+            .is_some_and(|items| items.iter().any(|item| item["name"] == "hot"))
+    );
+    assert!(!value.to_string().contains("class_definition"));
+
+    let mut invalid = value;
+    invalid["diagrams"][0]["syntax"]["semantic_items"][0]["role"] =
+        json!("class_definition");
+    let error = serde_json::from_value::<AnalysisFactsPayload>(invalid)
+        .expect_err("class_definition must stay out of the wire schema");
+    assert!(error.to_string().contains("class_definition"));
 }
 
 #[test]

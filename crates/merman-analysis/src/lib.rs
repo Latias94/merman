@@ -39,9 +39,7 @@ pub use document::{
     source_descriptor_for_markdown_path, source_descriptor_for_uri, source_language,
 };
 pub use editor::{
-    ByteSpan, EditorSymbolKind, FenceCursorCompletionKind, FenceCursorContext, FenceExpectedSyntax,
-    FenceExpectedSyntaxKind, FenceReferenceGroup, FenceRenamePolicy, FenceSemanticItem,
-    FenceSemanticRole, FenceTextIndex, FenceTextIndexSource,
+    ByteSpan, FenceCursorCompletionKind, FenceCursorContext, FenceTextIndex, FenceTextIndexSource,
 };
 pub use options_json::{
     AnalysisOptionsJson, AnalysisOptionsJsonError, LintOptionsJson, LintRuleSeverityOverrideJson,
@@ -54,10 +52,11 @@ pub use payload::{
 };
 pub use result::{
     AnalysisCaptureOutcome, AnalysisDiagramFacts, AnalysisDiagramSyntaxFacts,
-    AnalysisExpectedSyntaxFacts, AnalysisFactSpan, AnalysisFactsPayload,
-    AnalysisFenceDelimiterFacts, AnalysisGeneration, AnalysisLineItemFacts, AnalysisReferenceFacts,
-    AnalysisRejection, AnalysisResourceLimit, AnalysisSemanticItemFacts, AnalysisSyntaxFacts,
-    AnalyzedDiagram, DiagramParseDisposition,
+    AnalysisEditorSymbolKind, AnalysisExpectedSyntaxFacts, AnalysisExpectedSyntaxKind,
+    AnalysisFactSpan, AnalysisFactsPayload, AnalysisFenceDelimiterFacts, AnalysisGeneration,
+    AnalysisLineItemFacts, AnalysisReferenceFacts, AnalysisRejection, AnalysisResourceLimit,
+    AnalysisSemanticItemFacts, AnalysisSemanticRole, AnalysisSyntaxFacts, AnalyzedDiagram,
+    DiagramParseDisposition,
 };
 pub use rules::{
     AnalysisRuleConfig, AnalysisRuleConfigError, AnalysisRuleProfile,

@@ -1,7 +1,7 @@
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{Position, Range};
-use merman_analysis::{FenceCursorCompletionKind, FenceExpectedSyntaxKind, FenceTextIndexSource};
-use merman_core::preprocess::split_frontmatter_block;
+use merman_analysis::{FenceCursorCompletionKind, FenceTextIndexSource};
+use merman_core::{EditorExpectedSyntaxKind, preprocess::split_frontmatter_block};
 
 #[derive(Debug)]
 pub struct CompletionContext<'a> {
@@ -14,7 +14,7 @@ pub struct CompletionContext<'a> {
     source_start: bool,
     directive_prefix: Option<&'static str>,
     comment_or_directive_line: bool,
-    expected_syntax: Option<FenceExpectedSyntaxKind>,
+    expected_syntax: Option<EditorExpectedSyntaxKind>,
     expected_syntax_span: Option<(usize, usize)>,
     completion_kinds: Vec<FenceCursorCompletionKind>,
 }
@@ -93,7 +93,7 @@ impl<'a> CompletionContext<'a> {
     pub fn direction_value_range(&self) -> Option<Range> {
         if matches!(
             self.expected_syntax,
-            Some(FenceExpectedSyntaxKind::Direction)
+            Some(EditorExpectedSyntaxKind::DirectionValue)
         ) && let Some((start, end)) = self.expected_syntax_span
         {
             return self.range_for_offsets(start, end);
@@ -103,7 +103,7 @@ impl<'a> CompletionContext<'a> {
     }
 
     pub fn operator_range(&self) -> Option<Range> {
-        (self.expected_syntax == Some(FenceExpectedSyntaxKind::Operator))
+        (self.expected_syntax == Some(EditorExpectedSyntaxKind::Operator))
             .then_some(self.expected_syntax_span)
             .flatten()
             .and_then(|(start, end)| self.range_for_offsets(start, end))
@@ -131,7 +131,7 @@ impl<'a> CompletionContext<'a> {
     }
 
     pub fn shape_trigger_range(&self) -> Option<Range> {
-        (self.expected_syntax == Some(FenceExpectedSyntaxKind::ShapeTrigger))
+        (self.expected_syntax == Some(EditorExpectedSyntaxKind::ShapeTrigger))
             .then_some(self.expected_syntax_span)
             .flatten()
             .and_then(|(start, end)| self.range_for_offsets(start, end))
@@ -155,7 +155,7 @@ impl<'a> CompletionContext<'a> {
 
     pub fn offer_direction_items(&self) -> bool {
         if let Some(expected) = self.expected_syntax {
-            return matches!(expected, FenceExpectedSyntaxKind::Direction);
+            return matches!(expected, EditorExpectedSyntaxKind::DirectionValue);
         }
 
         self.offers(FenceCursorCompletionKind::Direction)
@@ -165,7 +165,7 @@ impl<'a> CompletionContext<'a> {
         if let Some(expected) = self.expected_syntax {
             return matches!(
                 expected,
-                FenceExpectedSyntaxKind::Shape | FenceExpectedSyntaxKind::ShapeTrigger
+                EditorExpectedSyntaxKind::ShapeValue | EditorExpectedSyntaxKind::ShapeTrigger
             );
         }
 
@@ -176,7 +176,7 @@ impl<'a> CompletionContext<'a> {
         if let Some(expected) = self.expected_syntax {
             return matches!(
                 expected,
-                FenceExpectedSyntaxKind::NodeIdentifier | FenceExpectedSyntaxKind::IdList
+                EditorExpectedSyntaxKind::NodeIdentifier | EditorExpectedSyntaxKind::IdList
             );
         }
 
@@ -250,7 +250,7 @@ impl<'a> CompletionContext<'a> {
     }
 
     pub fn is_parser_controlled_payload(&self) -> bool {
-        self.expected_syntax == Some(FenceExpectedSyntaxKind::Payload)
+        self.expected_syntax == Some(EditorExpectedSyntaxKind::Payload)
     }
 
     pub fn directive_prefix(&self) -> Option<&'static str> {
@@ -260,7 +260,7 @@ impl<'a> CompletionContext<'a> {
     pub fn node_text_edit_range(&self) -> Option<Range> {
         if matches!(
             self.expected_syntax,
-            Some(FenceExpectedSyntaxKind::NodeIdentifier | FenceExpectedSyntaxKind::IdList)
+            Some(EditorExpectedSyntaxKind::NodeIdentifier | EditorExpectedSyntaxKind::IdList)
         ) && let Some((start, end)) = self.expected_syntax_span
         {
             return self.range_for_offsets(start, end);
@@ -308,7 +308,7 @@ impl<'a> CompletionContext<'a> {
     }
 
     fn shape_value_edit_parts(&self) -> Option<(Range, bool, bool)> {
-        (self.expected_syntax == Some(FenceExpectedSyntaxKind::Shape))
+        (self.expected_syntax == Some(EditorExpectedSyntaxKind::ShapeValue))
             .then_some(())
             .and_then(|()| self.shape_value_edit_parts_from_expected_span())
     }

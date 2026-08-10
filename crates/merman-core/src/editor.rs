@@ -345,7 +345,7 @@ impl SourceSpan {
 }
 
 /// Protocol-independent symbol classification for editor-facing consumers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EditorSemanticKind {
     Class,
     Event,
@@ -657,7 +657,7 @@ impl EditorSemanticDiagnostic {
 }
 
 /// Parser-known syntax category that is expected at a source span.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EditorExpectedSyntaxKind {
     IdList,
     NodeIdentifier,
@@ -669,7 +669,7 @@ pub enum EditorExpectedSyntaxKind {
 }
 
 /// Parser-produced cursor context hint for completion and other editor features.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EditorExpectedSyntax {
     pub kind: EditorExpectedSyntaxKind,
     pub span: SourceSpan,

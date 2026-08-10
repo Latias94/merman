@@ -1,7 +1,8 @@
-use merman_analysis::{FenceSemanticItem, FenceSemanticRole, FenceTextIndex, FenceTextIndexSource};
+use merman_analysis::{FenceTextIndex, FenceTextIndexSource};
+use merman_core::{EditorSemanticRole, EditorSemanticSymbol};
 use merman_editor_core::{DocumentKind, DocumentWorkspace};
 
-fn outline_items(index: &FenceTextIndex) -> impl Iterator<Item = &FenceSemanticItem> {
+fn outline_items(index: &FenceTextIndex) -> impl Iterator<Item = &EditorSemanticSymbol> {
     index
         .semantic_items()
         .iter()
@@ -420,6 +421,6 @@ fn capability_matrix_families_are_parser_backed_in_editor_core() {
         index
             .semantic_items()
             .iter()
-            .any(|item| item.name == "A" && item.role == FenceSemanticRole::Entity)
+            .any(|item| item.name == "A" && item.role == EditorSemanticRole::Entity)
     );
 }

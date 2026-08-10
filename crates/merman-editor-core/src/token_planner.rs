@@ -1,8 +1,11 @@
 use crate::generated::{PlannedTokenKind, PlannedTokenModifier, TokenOverlayKind};
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::Range;
-use merman_analysis::{ByteSpan, EditorSymbolKind, FenceSemanticRole, SourceMap};
-use merman_core::{EditorLexemeFailure, EditorLexemeKind, EditorLexemeModifier};
+use merman_analysis::{ByteSpan, SourceMap};
+use merman_core::{
+    EditorLexemeFailure, EditorLexemeKind, EditorLexemeModifier, EditorSemanticKind,
+    EditorSemanticRole,
+};
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -447,7 +450,14 @@ fn collect_fence_candidates(
     }
 
     for item in fence.text_index().semantic_items() {
-        let span = absolute_fence_span(snapshot, fence, item.selection)?;
+        let span = absolute_fence_span(
+            snapshot,
+            fence,
+            ByteSpan {
+                start: item.selection.start,
+                end: item.selection.end,
+            },
+        )?;
         if requested.is_some_and(|requested| !requested.overlaps(span)) {
             continue;
         }
@@ -922,34 +932,38 @@ const fn planned_modifier_for_lexeme(modifier: EditorLexemeModifier) -> PlannedT
     }
 }
 
-const fn planned_kind_for_symbol(kind: EditorSymbolKind) -> PlannedTokenKind {
+const fn planned_kind_for_symbol(kind: EditorSemanticKind) -> PlannedTokenKind {
     match kind {
-        EditorSymbolKind::Class => PlannedTokenKind::Class,
-        EditorSymbolKind::Event => PlannedTokenKind::Event,
-        EditorSymbolKind::Function => PlannedTokenKind::Function,
-        EditorSymbolKind::Module | EditorSymbolKind::Namespace | EditorSymbolKind::Package => {
-            PlannedTokenKind::Namespace
+        EditorSemanticKind::Class => PlannedTokenKind::Class,
+        EditorSemanticKind::Event => PlannedTokenKind::Event,
+        EditorSemanticKind::Function => PlannedTokenKind::Function,
+        EditorSemanticKind::Module
+        | EditorSemanticKind::Namespace
+        | EditorSemanticKind::Package => PlannedTokenKind::Namespace,
+        EditorSemanticKind::Object | EditorSemanticKind::Variable => PlannedTokenKind::Variable,
+        EditorSemanticKind::Property => PlannedTokenKind::Property,
+        EditorSemanticKind::String => PlannedTokenKind::String,
+        EditorSemanticKind::Struct => PlannedTokenKind::Struct,
+    }
+}
+
+const fn planned_modifier_for_role(role: EditorSemanticRole) -> PlannedTokenModifier {
+    match role {
+        EditorSemanticRole::Entity => PlannedTokenModifier::Entity,
+        EditorSemanticRole::ClassDefinition | EditorSemanticRole::Outline => {
+            PlannedTokenModifier::Outline
         }
-        EditorSymbolKind::Object | EditorSymbolKind::Variable => PlannedTokenKind::Variable,
-        EditorSymbolKind::Property => PlannedTokenKind::Property,
-        EditorSymbolKind::String => PlannedTokenKind::String,
-        EditorSymbolKind::Struct => PlannedTokenKind::Struct,
+        EditorSemanticRole::Payload => PlannedTokenModifier::Payload,
     }
 }
 
-const fn planned_modifier_for_role(role: FenceSemanticRole) -> PlannedTokenModifier {
+const fn token_overlay_for_role(role: EditorSemanticRole) -> TokenOverlayKind {
     match role {
-        FenceSemanticRole::Entity => PlannedTokenModifier::Entity,
-        FenceSemanticRole::Outline => PlannedTokenModifier::Outline,
-        FenceSemanticRole::Payload => PlannedTokenModifier::Payload,
-    }
-}
-
-const fn token_overlay_for_role(role: FenceSemanticRole) -> TokenOverlayKind {
-    match role {
-        FenceSemanticRole::Entity => TokenOverlayKind::SemanticEntity,
-        FenceSemanticRole::Outline => TokenOverlayKind::SemanticOutline,
-        FenceSemanticRole::Payload => TokenOverlayKind::SemanticPayload,
+        EditorSemanticRole::Entity => TokenOverlayKind::SemanticEntity,
+        EditorSemanticRole::ClassDefinition | EditorSemanticRole::Outline => {
+            TokenOverlayKind::SemanticOutline
+        }
+        EditorSemanticRole::Payload => TokenOverlayKind::SemanticPayload,
     }
 }
 
@@ -1163,30 +1177,34 @@ mod tests {
             assert_eq!(planned.code(), code);
         }
         let semantic_mappings = [
-            (EditorSymbolKind::Namespace, PlannedTokenKind::Namespace, 15),
-            (EditorSymbolKind::Class, PlannedTokenKind::Class, 16),
-            (EditorSymbolKind::Struct, PlannedTokenKind::Struct, 17),
-            (EditorSymbolKind::Variable, PlannedTokenKind::Variable, 18),
-            (EditorSymbolKind::Property, PlannedTokenKind::Property, 19),
-            (EditorSymbolKind::Event, PlannedTokenKind::Event, 20),
-            (EditorSymbolKind::Function, PlannedTokenKind::Function, 21),
+            (
+                EditorSemanticKind::Namespace,
+                PlannedTokenKind::Namespace,
+                15,
+            ),
+            (EditorSemanticKind::Class, PlannedTokenKind::Class, 16),
+            (EditorSemanticKind::Struct, PlannedTokenKind::Struct, 17),
+            (EditorSemanticKind::Variable, PlannedTokenKind::Variable, 18),
+            (EditorSemanticKind::Property, PlannedTokenKind::Property, 19),
+            (EditorSemanticKind::Event, PlannedTokenKind::Event, 20),
+            (EditorSemanticKind::Function, PlannedTokenKind::Function, 21),
         ];
         for (symbol, planned, code) in semantic_mappings {
             assert_eq!(planned_kind_for_symbol(symbol), planned);
             assert_eq!(planned.code(), code);
         }
         for symbol in [
-            EditorSymbolKind::Module,
-            EditorSymbolKind::Namespace,
-            EditorSymbolKind::Package,
+            EditorSemanticKind::Module,
+            EditorSemanticKind::Namespace,
+            EditorSemanticKind::Package,
         ] {
             assert_eq!(planned_kind_for_symbol(symbol), PlannedTokenKind::Namespace);
         }
-        for symbol in [EditorSymbolKind::Object, EditorSymbolKind::Variable] {
+        for symbol in [EditorSemanticKind::Object, EditorSemanticKind::Variable] {
             assert_eq!(planned_kind_for_symbol(symbol), PlannedTokenKind::Variable);
         }
         assert_eq!(
-            planned_kind_for_symbol(EditorSymbolKind::String),
+            planned_kind_for_symbol(EditorSemanticKind::String),
             PlannedTokenKind::String
         );
         for (index, modifier) in [

@@ -2,10 +2,10 @@ use crate::binding_error_to_js;
 #[cfg(test)]
 use merman_analysis::AnalysisPayload;
 use merman_analysis::{
-    AnalysisOptions, AnalysisRejection, Analyzer, EditorSymbolKind, FenceTextIndexSource,
-    SourceDescriptor, Summary,
+    AnalysisOptions, AnalysisRejection, Analyzer, FenceTextIndexSource, SourceDescriptor, Summary,
 };
 use merman_bindings_core::{BindingError, BindingStatus};
+use merman_core::EditorSemanticKind;
 use merman_editor_core::{
     DiagramDetectionValidity, DocumentAnalysisContext, DocumentKind, DocumentSnapshot,
     DocumentWorkspace, EditorDiagnostic, EditorDiagramDetection, EditorDocumentSymbol, EditorHover,
@@ -1027,19 +1027,19 @@ fn code_actions_for_diagnostics(
         .collect()
 }
 
-fn symbol_kind_name(kind: EditorSymbolKind) -> &'static str {
+fn symbol_kind_name(kind: EditorSemanticKind) -> &'static str {
     match kind {
-        EditorSymbolKind::Class => "class",
-        EditorSymbolKind::Event => "event",
-        EditorSymbolKind::Function => "function",
-        EditorSymbolKind::Module => "module",
-        EditorSymbolKind::Namespace => "namespace",
-        EditorSymbolKind::Object => "object",
-        EditorSymbolKind::Package => "package",
-        EditorSymbolKind::Property => "property",
-        EditorSymbolKind::String => "string",
-        EditorSymbolKind::Struct => "struct",
-        EditorSymbolKind::Variable => "variable",
+        EditorSemanticKind::Class => "class",
+        EditorSemanticKind::Event => "event",
+        EditorSemanticKind::Function => "function",
+        EditorSemanticKind::Module => "module",
+        EditorSemanticKind::Namespace => "namespace",
+        EditorSemanticKind::Object => "object",
+        EditorSemanticKind::Package => "package",
+        EditorSemanticKind::Property => "property",
+        EditorSemanticKind::String => "string",
+        EditorSemanticKind::Struct => "struct",
+        EditorSemanticKind::Variable => "variable",
     }
 }
 

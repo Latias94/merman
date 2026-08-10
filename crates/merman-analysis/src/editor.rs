@@ -5,6 +5,10 @@ use std::sync::Arc;
 use crate::retained_weight::{
     ARC_ALLOCATION_OVERHEAD, RetainedWeight, conservative_btree_entry_bytes,
 };
+use merman_core::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticKind, EditorSemanticRole,
+    EditorSemanticSymbol, SourceSpan,
+};
 use serde::{Deserialize, Serialize};
 
 mod core_facts;
@@ -29,96 +33,14 @@ impl ByteSpan {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EditorSymbolKind {
-    Class,
-    Event,
-    Function,
-    Module,
-    Namespace,
-    Object,
-    Package,
-    Property,
-    String,
-    Struct,
-    Variable,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum FenceSemanticRole {
-    Entity,
-    Outline,
-    Payload,
-}
-
-impl FenceSemanticRole {
-    pub const fn contributes_outline(self) -> bool {
-        matches!(self, Self::Entity | Self::Outline)
-    }
-}
-
-pub use merman_core::EditorRenamePolicy as FenceRenamePolicy;
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct FenceSemanticItem {
-    pub name: String,
-    pub detail: Option<String>,
-    pub kind: EditorSymbolKind,
-    pub role: FenceSemanticRole,
-    pub rename_policy: FenceRenamePolicy,
-    pub span: ByteSpan,
-    pub selection: ByteSpan,
-}
-
-impl FenceSemanticItem {
-    pub fn new(
-        name: impl Into<String>,
-        detail: Option<String>,
-        kind: EditorSymbolKind,
-        role: FenceSemanticRole,
-        span: ByteSpan,
-        selection: ByteSpan,
-    ) -> Self {
-        Self {
-            name: name.into(),
-            detail,
-            kind,
-            role,
-            rename_policy: if role == FenceSemanticRole::Entity {
-                FenceRenamePolicy::Identifier
-            } else {
-                FenceRenamePolicy::None
-            },
-            span,
-            selection,
-        }
-    }
-
-    pub fn with_rename_policy(mut self, rename_policy: FenceRenamePolicy) -> Self {
-        self.rename_policy = rename_policy;
-        self
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct FenceReferenceGroup {
-    pub name: String,
-    pub kind: EditorSymbolKind,
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct FenceReferenceGroup {
+    pub(crate) name: String,
+    pub(crate) kind: EditorSemanticKind,
 }
 
 impl FenceReferenceGroup {
-    pub fn new(name: impl Into<String>, kind: EditorSymbolKind) -> Self {
-        Self {
-            name: name.into(),
-            kind,
-        }
-    }
-
-    pub fn from_semantic_item(item: &FenceSemanticItem) -> Self {
+    pub(crate) fn from_semantic_item(item: &EditorSemanticSymbol) -> Self {
         Self {
             name: item.name.clone(),
             kind: item.kind,
@@ -166,24 +88,6 @@ pub enum FenceCursorCompletionKind {
     NodeIdentifier,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum FenceExpectedSyntaxKind {
-    IdList,
-    NodeIdentifier,
-    Operator,
-    Shape,
-    ShapeTrigger,
-    Direction,
-    Payload,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FenceExpectedSyntax {
-    pub kind: FenceExpectedSyntaxKind,
-    pub span: ByteSpan,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FenceCursorContext {
     prefix: String,
@@ -193,7 +97,7 @@ pub struct FenceCursorContext {
     source_start: bool,
     directive_prefix: Option<&'static str>,
     comment_or_directive_line: bool,
-    expected_syntax: Option<FenceExpectedSyntaxKind>,
+    expected_syntax: Option<EditorExpectedSyntaxKind>,
     expected_syntax_span: Option<ByteSpan>,
     completion_kinds: Vec<FenceCursorCompletionKind>,
 }
@@ -231,7 +135,7 @@ impl FenceCursorContext {
         self.comment_or_directive_line
     }
 
-    pub fn expected_syntax(&self) -> Option<FenceExpectedSyntaxKind> {
+    pub fn expected_syntax(&self) -> Option<EditorExpectedSyntaxKind> {
         self.expected_syntax
     }
 
@@ -357,14 +261,12 @@ fn populate_subtree_max_ends<T>(entries: &mut [PointIntervalEntry<T>]) -> Option
 
 #[derive(Debug, Default)]
 pub(super) struct FenceTextIndexData {
-    pub(super) node_ids: BTreeSet<String>,
-    pub(super) class_names: BTreeSet<String>,
     pub(super) directive_prefixes: BTreeSet<String>,
     pub(super) references: BTreeMap<FenceReferenceGroup, Vec<ByteSpan>>,
-    pub(super) semantic_items: Vec<FenceSemanticItem>,
+    pub(super) semantic_items: Vec<EditorSemanticSymbol>,
     pub(super) lexemes: Vec<merman_core::EditorLexeme>,
     pub(super) lexeme_failure: Option<merman_core::EditorLexemeFailure>,
-    pub(super) expected_syntax: Vec<FenceExpectedSyntax>,
+    pub(super) expected_syntax: Vec<EditorExpectedSyntax>,
     pub(super) completion_vocabulary: merman_core::EditorCompletionVocabulary,
     pub(super) source: FenceTextIndexSource,
     semantic_point_index: PointIntervalIndex<usize>,
@@ -382,8 +284,8 @@ impl FenceTextIndexData {
             if semantic_item_id.is_multiple_of(128) {
                 cancellation.checkpoint()?;
             }
-            semantic_intervals.push((item.span, semantic_item_id));
-            if item.role == FenceSemanticRole::Entity {
+            semantic_intervals.push((byte_span_from_source(item.span), semantic_item_id));
+            if item.role == EditorSemanticRole::Entity {
                 let group = FenceReferenceGroup::from_semantic_item(item);
                 if self.references.contains_key(&group) {
                     reference_item_ids.entry(group).or_insert(semantic_item_id);
@@ -431,15 +333,13 @@ impl FenceTextIndexData {
         let mut weight = RetainedWeight::new(
             ARC_ALLOCATION_OVERHEAD.saturating_add(size_of::<FenceTextIndexData>()),
         );
-        for values in [&self.node_ids, &self.class_names, &self.directive_prefixes] {
-            weight.add(
-                values
-                    .len()
-                    .saturating_mul(conservative_btree_entry_bytes::<String, ()>()),
-            );
-            for value in values {
-                weight.add_string(value);
-            }
+        weight.add(
+            self.directive_prefixes
+                .len()
+                .saturating_mul(conservative_btree_entry_bytes::<String, ()>()),
+        );
+        for value in &self.directive_prefixes {
+            weight.add_string(value);
         }
         weight.add(
             self.references
@@ -453,13 +353,13 @@ impl FenceTextIndexData {
             weight.add_string(&group.name);
             weight.add_array::<ByteSpan>(spans.capacity());
         }
-        weight.add_array::<FenceSemanticItem>(self.semantic_items.capacity());
+        weight.add_array::<EditorSemanticSymbol>(self.semantic_items.capacity());
         for item in &self.semantic_items {
             weight.add_string(&item.name);
             weight.add_optional_string(&item.detail);
         }
         weight.add_array::<merman_core::EditorLexeme>(self.lexemes.capacity());
-        weight.add_array::<FenceExpectedSyntax>(self.expected_syntax.capacity());
+        weight.add_array::<EditorExpectedSyntax>(self.expected_syntax.capacity());
         weight.add_array::<PointIntervalEntry<usize>>(self.semantic_point_index.entries.capacity());
         weight.add_array::<PointIntervalEntry<ReferenceIntervalId>>(
             self.reference_point_index.entries.capacity(),
@@ -497,11 +397,15 @@ impl FenceTextIndex {
     }
 
     pub fn node_ids(&self) -> impl Iterator<Item = &String> {
-        self.data.node_ids.iter()
+        sorted_unique_semantic_names(&self.data.semantic_items, |role| {
+            role == EditorSemanticRole::Entity
+        })
     }
 
     pub fn class_names(&self) -> impl Iterator<Item = &String> {
-        self.data.class_names.iter()
+        sorted_unique_semantic_names(&self.data.semantic_items, |role| {
+            role == EditorSemanticRole::ClassDefinition
+        })
     }
 
     pub fn directive_prefixes(&self) -> impl Iterator<Item = &String> {
@@ -530,22 +434,25 @@ impl FenceTextIndex {
             .unwrap_or(&[])
     }
 
-    pub fn first_reference_span_for_item(&self, item: &FenceSemanticItem) -> Option<ByteSpan> {
+    pub fn first_reference_span_for_item(&self, item: &EditorSemanticSymbol) -> Option<ByteSpan> {
         self.first_reference_span_in_group(&FenceReferenceGroup::from_semantic_item(item))
     }
 
-    pub fn reference_spans_for_item(&self, item: &FenceSemanticItem) -> &[ByteSpan] {
+    pub fn reference_spans_for_item(&self, item: &EditorSemanticSymbol) -> &[ByteSpan] {
         self.reference_spans_in_group(&FenceReferenceGroup::from_semantic_item(item))
     }
 
-    pub fn first_reference_span_in_group(&self, group: &FenceReferenceGroup) -> Option<ByteSpan> {
+    pub(crate) fn first_reference_span_in_group(
+        &self,
+        group: &FenceReferenceGroup,
+    ) -> Option<ByteSpan> {
         self.data
             .references
             .get(group)
             .and_then(|spans| spans.first().copied())
     }
 
-    pub fn reference_spans_in_group(&self, group: &FenceReferenceGroup) -> &[ByteSpan] {
+    pub(crate) fn reference_spans_in_group(&self, group: &FenceReferenceGroup) -> &[ByteSpan] {
         self.data
             .references
             .get(group)
@@ -553,7 +460,7 @@ impl FenceTextIndex {
             .unwrap_or(&[])
     }
 
-    pub fn references(&self) -> impl Iterator<Item = (&FenceReferenceGroup, &[ByteSpan])> {
+    pub(crate) fn references(&self) -> impl Iterator<Item = (&FenceReferenceGroup, &[ByteSpan])> {
         self.data
             .references
             .iter()
@@ -567,17 +474,17 @@ impl FenceTextIndex {
         Some((item.name.clone(), span))
     }
 
-    pub fn semantic_item_at_offset(&self, offset: usize) -> Option<&FenceSemanticItem> {
+    pub fn semantic_item_at_offset(&self, offset: usize) -> Option<&EditorSemanticSymbol> {
         let (item_id, _) = self.semantic_item_id_at_offset_indexed(offset);
         self.data.semantic_items.get(item_id?)
     }
 
-    pub fn entity_item_at_offset(&self, offset: usize) -> Option<&FenceSemanticItem> {
+    pub fn entity_item_at_offset(&self, offset: usize) -> Option<&EditorSemanticSymbol> {
         self.semantic_item_at_offset(offset)
-            .filter(|item| item.role == FenceSemanticRole::Entity)
+            .filter(|item| item.role == EditorSemanticRole::Entity)
     }
 
-    pub fn semantic_items(&self) -> &[FenceSemanticItem] {
+    pub fn semantic_items(&self) -> &[EditorSemanticSymbol] {
         &self.data.semantic_items
     }
 
@@ -589,7 +496,7 @@ impl FenceTextIndex {
         self.data.lexeme_failure
     }
 
-    pub fn expected_syntax(&self) -> &[FenceExpectedSyntax] {
+    pub fn expected_syntax(&self) -> &[EditorExpectedSyntax] {
         &self.data.expected_syntax
     }
 
@@ -614,7 +521,8 @@ impl FenceTextIndex {
             .or_else(|| self.expected_syntax_after_immediate_line_ending(text, cursor))
             .copied();
         let expected_syntax_kind = expected_syntax.map(|expected| expected.kind);
-        let expected_syntax_span = expected_syntax.map(|expected| expected.span);
+        let expected_syntax_span =
+            expected_syntax.map(|expected| byte_span_from_source(expected.span));
 
         if let Some(expected_syntax) = expected_syntax_kind {
             apply_expected_syntax_to_completion(expected_syntax, &mut completion_kinds);
@@ -644,11 +552,11 @@ impl FenceTextIndex {
         }
     }
 
-    fn expected_syntax_at_offset(&self, offset: usize) -> Option<&FenceExpectedSyntax> {
+    fn expected_syntax_at_offset(&self, offset: usize) -> Option<&EditorExpectedSyntax> {
         self.data
             .expected_syntax
             .iter()
-            .filter(|expected| expected.span.contains_inclusive_end(offset))
+            .filter(|expected| byte_span_from_source(expected.span).contains_inclusive_end(offset))
             .min_by(|left, right| {
                 let left_len = left.span.end.saturating_sub(left.span.start);
                 let right_len = right.span.end.saturating_sub(right.span.start);
@@ -664,7 +572,7 @@ impl FenceTextIndex {
         &self,
         text: &str,
         cursor: usize,
-    ) -> Option<&FenceExpectedSyntax> {
+    ) -> Option<&EditorExpectedSyntax> {
         let bytes = text.as_bytes();
         let line_ending_len = match bytes.get(cursor).copied() {
             Some(b'\r') if bytes.get(cursor + 1) == Some(&b'\n') => 2,
@@ -734,7 +642,9 @@ impl FenceTextIndex {
     #[cfg(test)]
     fn semantic_item_id_at_offset_linear(&self, offset: usize) -> Option<usize> {
         (0..self.data.semantic_items.len())
-            .filter(|item_id| self.data.semantic_items[*item_id].span.contains(offset))
+            .filter(|item_id| {
+                byte_span_from_source(self.data.semantic_items[*item_id].span).contains(offset)
+            })
             .min_by(|left_id, right_id| {
                 let left = &self.data.semantic_items[*left_id];
                 let right = &self.data.semantic_items[*right_id];
@@ -763,7 +673,7 @@ impl FenceTextIndex {
             .enumerate()
             .find_map(|(group_ordinal, (group, spans))| {
                 let semantic_item_id = self.data.semantic_items.iter().position(|item| {
-                    item.role == FenceSemanticRole::Entity
+                    item.role == EditorSemanticRole::Entity
                         && item.name == group.name
                         && item.kind == group.kind
                 })?;
@@ -784,6 +694,27 @@ impl FenceTextIndex {
                     })
             })
     }
+}
+
+fn byte_span_from_source(span: SourceSpan) -> ByteSpan {
+    ByteSpan {
+        start: span.start,
+        end: span.end,
+    }
+}
+
+fn sorted_unique_semantic_names(
+    items: &[EditorSemanticSymbol],
+    predicate: impl Fn(EditorSemanticRole) -> bool,
+) -> std::vec::IntoIter<&String> {
+    let mut names = items
+        .iter()
+        .filter(|item| predicate(item.role))
+        .map(|item| &item.name)
+        .collect::<Vec<_>>();
+    names.sort_unstable();
+    names.dedup();
+    names.into_iter()
 }
 
 fn clamp_to_char_boundary(text: &str, offset: usize) -> usize {
@@ -882,35 +813,35 @@ fn diagram_header_prefix_matches(prefix: &str) -> bool {
 }
 
 fn apply_expected_syntax_to_completion(
-    expected: FenceExpectedSyntaxKind,
+    expected: EditorExpectedSyntaxKind,
     completion_kinds: &mut Vec<FenceCursorCompletionKind>,
 ) {
     match expected {
-        FenceExpectedSyntaxKind::IdList => {
+        EditorExpectedSyntaxKind::IdList => {
             completion_kinds.clear();
             completion_kinds.push(FenceCursorCompletionKind::NodeIdentifier);
         }
-        FenceExpectedSyntaxKind::NodeIdentifier => {
+        EditorExpectedSyntaxKind::NodeIdentifier => {
             completion_kinds.clear();
             completion_kinds.push(FenceCursorCompletionKind::NodeIdentifier);
         }
-        FenceExpectedSyntaxKind::Operator => {
+        EditorExpectedSyntaxKind::Operator => {
             completion_kinds.clear();
             completion_kinds.push(FenceCursorCompletionKind::Operator);
         }
-        FenceExpectedSyntaxKind::Shape => {
+        EditorExpectedSyntaxKind::ShapeValue => {
             completion_kinds.clear();
             completion_kinds.push(FenceCursorCompletionKind::Shape);
         }
-        FenceExpectedSyntaxKind::ShapeTrigger => {
+        EditorExpectedSyntaxKind::ShapeTrigger => {
             completion_kinds.clear();
             completion_kinds.push(FenceCursorCompletionKind::Shape);
         }
-        FenceExpectedSyntaxKind::Direction => {
+        EditorExpectedSyntaxKind::DirectionValue => {
             completion_kinds.clear();
             completion_kinds.push(FenceCursorCompletionKind::Direction);
         }
-        FenceExpectedSyntaxKind::Payload => completion_kinds.clear(),
+        EditorExpectedSyntaxKind::Payload => completion_kinds.clear(),
     }
 }
 

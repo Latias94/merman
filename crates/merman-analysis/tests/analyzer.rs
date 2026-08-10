@@ -1,12 +1,12 @@
 use merman_analysis::{
-    ANALYSIS_FACTS_PAYLOAD_VERSION, ANALYSIS_PAYLOAD_VERSION, AnalysisOptions,
-    AnalysisResourceLimit, AnalysisRuleConfig, AnalysisRuleProfile, AnalysisStatus, Analyzer,
-    DiagnosticCategory, DiagnosticSeverity, FenceExpectedSyntaxKind, FenceTextIndexSource,
+    ANALYSIS_FACTS_PAYLOAD_VERSION, ANALYSIS_PAYLOAD_VERSION, AnalysisExpectedSyntaxKind,
+    AnalysisOptions, AnalysisResourceLimit, AnalysisRuleConfig, AnalysisRuleProfile,
+    AnalysisStatus, Analyzer, DiagnosticCategory, DiagnosticSeverity, FenceTextIndexSource,
     SourceDescriptor, analyze_document_facts,
     document::{analyze_document, analyze_document_generation},
     source_descriptor_for_markdown_path,
 };
-use merman_core::EditorLexemeProducerKind;
+use merman_core::{EditorExpectedSyntaxKind, EditorLexemeProducerKind};
 
 fn analyze(source: &str) -> merman_analysis::AnalysisPayload {
     Analyzer::new().analyze(source)
@@ -484,7 +484,7 @@ fn analysis_generation_exposes_expected_syntax_facts_for_invalid_input() {
             .text_index
             .expected_syntax()
             .iter()
-            .any(|expected| expected.kind == FenceExpectedSyntaxKind::Shape)
+            .any(|expected| expected.kind == EditorExpectedSyntaxKind::ShapeValue)
     );
 }
 
@@ -526,7 +526,7 @@ fn document_analysis_generation_keeps_local_fence_syntax_facts() {
             .text_index
             .expected_syntax()
             .iter()
-            .any(|expected| expected.kind == FenceExpectedSyntaxKind::Shape)
+            .any(|expected| expected.kind == EditorExpectedSyntaxKind::ShapeValue)
     );
 }
 
@@ -619,7 +619,7 @@ fn document_analysis_facts_payload_exposes_parser_backed_fence_facts() {
     let shape_expectation = syntax
         .expected_syntax
         .iter()
-        .find(|expected| expected.kind == FenceExpectedSyntaxKind::Shape)
+        .find(|expected| expected.kind == AnalysisExpectedSyntaxKind::Shape)
         .expect("shape expectation");
     assert_eq!(
         shape_expectation

@@ -1,10 +1,7 @@
-use super::{
-    ByteSpan, EditorSymbolKind, FenceCursorCompletionKind, FenceExpectedSyntaxKind,
-    FenceRenamePolicy, FenceSemanticRole, FenceTextIndex, FenceTextIndexSource,
-};
+use super::{ByteSpan, FenceCursorCompletionKind, FenceTextIndex, FenceTextIndexSource};
 use merman_core::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenamePolicy, EditorSemanticFacts,
+    EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, SourceSpan,
 };
 
 fn facts_expecting(kind: EditorExpectedSyntaxKind, span: SourceSpan) -> EditorSemanticFacts {
@@ -43,7 +40,7 @@ fn payload(
     )
 }
 
-fn outline_items(index: &FenceTextIndex) -> impl Iterator<Item = &super::FenceSemanticItem> {
+fn outline_items(index: &FenceTextIndex) -> impl Iterator<Item = &EditorSemanticSymbol> {
     index
         .semantic_items()
         .iter()
@@ -64,18 +61,18 @@ fn byte_span_contains_half_open_ranges_and_empty_insertions() {
 
 #[test]
 fn rename_policies_validate_family_owned_lexical_forms() {
-    assert!(FenceRenamePolicy::Identifier.accepts("node-alpha_1"));
-    assert!(!FenceRenamePolicy::Identifier.accepts("node alpha"));
+    assert!(EditorRenamePolicy::Identifier.accepts("node-alpha_1"));
+    assert!(!EditorRenamePolicy::Identifier.accepts("node alpha"));
 
-    assert!(FenceRenamePolicy::QualifiedIdentifier.accepts("Sales.Order_1"));
-    assert!(!FenceRenamePolicy::QualifiedIdentifier.accepts("1Sales.Order"));
-    assert!(!FenceRenamePolicy::QualifiedIdentifier.accepts("Sales..Order"));
-    assert!(FenceRenamePolicy::EventModelingId.accepts("Order_1"));
-    assert!(!FenceRenamePolicy::EventModelingId.accepts("Sales.Order"));
+    assert!(EditorRenamePolicy::QualifiedIdentifier.accepts("Sales.Order_1"));
+    assert!(!EditorRenamePolicy::QualifiedIdentifier.accepts("1Sales.Order"));
+    assert!(!EditorRenamePolicy::QualifiedIdentifier.accepts("Sales..Order"));
+    assert!(EditorRenamePolicy::EventModelingId.accepts("Order_1"));
+    assert!(!EditorRenamePolicy::EventModelingId.accepts("Sales.Order"));
 
-    assert!(FenceRenamePolicy::EventModelingFrameId.accepts("007"));
-    assert!(!FenceRenamePolicy::EventModelingFrameId.accepts("1000"));
-    assert!(!FenceRenamePolicy::None.is_renameable());
+    assert!(EditorRenamePolicy::EventModelingFrameId.accepts("007"));
+    assert!(!EditorRenamePolicy::EventModelingFrameId.accepts("1000"));
+    assert!(!EditorRenamePolicy::None.is_renameable());
 }
 
 #[test]
@@ -202,7 +199,7 @@ fn cursor_context_uses_parser_expected_payload_to_suppress_generic_completion() 
 
     assert_eq!(
         context.expected_syntax(),
-        Some(FenceExpectedSyntaxKind::Payload)
+        Some(EditorExpectedSyntaxKind::Payload)
     );
     assert!(context.completion_kinds().is_empty());
     assert!(!context.offers(FenceCursorCompletionKind::NodeIdentifier));
@@ -228,7 +225,7 @@ fn cursor_context_uses_parser_expected_node_identifier_to_override_generic_compl
 
     assert_eq!(
         context.expected_syntax(),
-        Some(FenceExpectedSyntaxKind::NodeIdentifier)
+        Some(EditorExpectedSyntaxKind::NodeIdentifier)
     );
     assert_eq!(
         context.completion_kinds(),
@@ -251,7 +248,7 @@ fn cursor_context_projects_eof_insertions_before_trailing_line_endings() {
 
         assert_eq!(
             context.expected_syntax(),
-            Some(FenceExpectedSyntaxKind::NodeIdentifier),
+            Some(EditorExpectedSyntaxKind::NodeIdentifier),
             "line ending {line_ending:?}"
         );
         assert!(context.offers(FenceCursorCompletionKind::NodeIdentifier));
@@ -272,7 +269,7 @@ fn cursor_context_uses_parser_expected_shape_value_to_override_generic_completio
 
     assert_eq!(
         context.expected_syntax(),
-        Some(FenceExpectedSyntaxKind::Shape)
+        Some(EditorExpectedSyntaxKind::ShapeValue)
     );
     assert_eq!(
         context.completion_kinds(),
@@ -296,7 +293,7 @@ fn cursor_context_uses_parser_expected_shape_trigger_to_override_generic_complet
 
     assert_eq!(
         context.expected_syntax(),
-        Some(FenceExpectedSyntaxKind::ShapeTrigger)
+        Some(EditorExpectedSyntaxKind::ShapeTrigger)
     );
     assert_eq!(
         context.completion_kinds(),
@@ -320,7 +317,7 @@ fn cursor_context_uses_parser_expected_direction_value_to_override_generic_compl
 
     assert_eq!(
         context.expected_syntax(),
-        Some(FenceExpectedSyntaxKind::Direction)
+        Some(EditorExpectedSyntaxKind::DirectionValue)
     );
     assert_eq!(
         context.completion_kinds(),
@@ -344,7 +341,7 @@ fn cursor_context_uses_parser_expected_id_list_to_override_directive_completion(
 
     assert_eq!(
         context.expected_syntax(),
-        Some(FenceExpectedSyntaxKind::IdList)
+        Some(EditorExpectedSyntaxKind::IdList)
     );
     assert_eq!(
         context.completion_kinds(),
@@ -431,12 +428,12 @@ fn typed_reference_groups_separate_same_name_different_kinds() {
     let module_item = index
         .semantic_items()
         .iter()
-        .find(|item| item.kind == EditorSymbolKind::Module)
+        .find(|item| item.kind == EditorSemanticKind::Module)
         .unwrap();
     let property_item = index
         .semantic_items()
         .iter()
-        .find(|item| item.kind == EditorSymbolKind::Property)
+        .find(|item| item.kind == EditorSemanticKind::Property)
         .unwrap();
 
     assert_eq!(
@@ -484,13 +481,13 @@ fn text_index_skips_payload_only_core_facts_for_completion() {
         index
             .semantic_items()
             .iter()
-            .any(|item| item.name == "section" && item.role == FenceSemanticRole::Outline)
+            .any(|item| item.name == "section" && item.role == EditorSemanticRole::Outline)
     );
     assert!(
         index
             .semantic_items()
             .iter()
-            .any(|item| item.name == "PK" && item.role == FenceSemanticRole::Payload)
+            .any(|item| item.name == "PK" && item.role == EditorSemanticRole::Payload)
     );
     assert_eq!(
         index
@@ -611,7 +608,7 @@ fn indexed_semantic_lookup_preserves_full_ties_and_post_selection_entity_filteri
     );
     assert_eq!(
         index.semantic_item_at_offset(8).map(|item| item.role),
-        Some(FenceSemanticRole::Payload),
+        Some(EditorSemanticRole::Payload),
         "a complete tie must keep the first canonical item"
     );
     assert_eq!(index.entity_item_at_offset(8), None);

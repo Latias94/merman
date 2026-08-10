@@ -1,8 +1,8 @@
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{DocumentUri, Position, Range};
-use merman_analysis::{
-    ByteSpan, EditorSymbolKind, FenceRenamePolicy, FenceSemanticItem, FenceTextIndexSource,
-    SourceMap,
+use merman_analysis::{ByteSpan, FenceTextIndexSource, SourceMap};
+use merman_core::{
+    EditorRenamePolicy, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, SourceSpan,
 };
 use std::collections::HashMap;
 use std::fmt;
@@ -11,7 +11,7 @@ use std::fmt;
 struct OutlineItem {
     name: String,
     detail: Option<String>,
-    kind: EditorSymbolKind,
+    kind: EditorSemanticKind,
     fact_source: FenceTextIndexSource,
     span: ByteSpan,
     selection: ByteSpan,
@@ -169,9 +169,13 @@ pub fn selection_range(
         push_selection_span(
             &mut spans,
             absolute_offset,
-            absolute_span(fence, item.selection),
+            absolute_source_span(fence, item.selection),
         );
-        push_selection_span(&mut spans, absolute_offset, absolute_span(fence, item.span));
+        push_selection_span(
+            &mut spans,
+            absolute_offset,
+            absolute_source_span(fence, item.span),
+        );
     }
 
     if let Some(item) = outline.find_deepest(absolute_offset) {
@@ -330,10 +334,10 @@ pub fn prepare_rename(
     let fence = snapshot.fence_at_position(position)?;
     let offset = fence_relative_offset(snapshot, fence, position)?;
     let item = fence.text_index().entity_item_at_offset(offset)?;
-    if !rename_group_allows(fence, item, FenceRenamePolicy::is_renameable) {
+    if !rename_group_allows(fence, item, EditorRenamePolicy::is_renameable) {
         return None;
     }
-    let selection = absolute_span(fence, item.selection);
+    let selection = absolute_source_span(fence, item.selection);
     let range = range_from_span(snapshot.source_map(), selection)?;
     let placeholder = snapshot
         .text()
@@ -369,7 +373,7 @@ pub fn rename(
 fn rename_edits(
     snapshot: &DocumentSnapshot,
     fence: &FenceSnapshot,
-    item: &FenceSemanticItem,
+    item: &EditorSemanticSymbol,
     new_name: &str,
 ) -> Option<EditorWorkspaceEdit> {
     let spans = fence.text_index().reference_spans_for_item(item);
@@ -398,15 +402,15 @@ fn rename_edits(
 
 fn rename_group_allows(
     fence: &FenceSnapshot,
-    item: &FenceSemanticItem,
-    predicate: impl Fn(FenceRenamePolicy) -> bool,
+    item: &EditorSemanticSymbol,
+    predicate: impl Fn(EditorRenamePolicy) -> bool,
 ) -> bool {
     fence
         .text_index()
         .semantic_items()
         .iter()
         .filter(|candidate| {
-            candidate.role == merman_analysis::FenceSemanticRole::Entity
+            candidate.role == EditorSemanticRole::Entity
                 && candidate.name == item.name
                 && candidate.kind == item.kind
         })
@@ -447,14 +451,14 @@ fn outline_children(fence: &FenceSnapshot) -> Vec<OutlineItem> {
         .collect()
 }
 
-fn outline_item_from_semantic(fence: &FenceSnapshot, item: &FenceSemanticItem) -> OutlineItem {
+fn outline_item_from_semantic(fence: &FenceSnapshot, item: &EditorSemanticSymbol) -> OutlineItem {
     OutlineItem {
         name: item.name.clone(),
         detail: item.detail.clone(),
         kind: item.kind,
         fact_source: fence.text_index().source(),
-        span: absolute_span(fence, item.span),
-        selection: absolute_span(fence, item.selection),
+        span: absolute_source_span(fence, item.span),
+        selection: absolute_source_span(fence, item.selection),
         children: Vec::new(),
     }
 }
@@ -525,6 +529,16 @@ fn absolute_span(fence: &FenceSnapshot, span: ByteSpan) -> ByteSpan {
         start: fence.body_range().start + span.start,
         end: fence.body_range().start + span.end,
     }
+}
+
+fn absolute_source_span(fence: &FenceSnapshot, span: SourceSpan) -> ByteSpan {
+    absolute_span(
+        fence,
+        ByteSpan {
+            start: span.start,
+            end: span.end,
+        },
+    )
 }
 
 fn push_selection_span(spans: &mut Vec<ByteSpan>, offset: usize, span: ByteSpan) {
@@ -604,16 +618,16 @@ fn fence_detail(fence: &FenceSnapshot) -> Option<String> {
     }
 }
 
-fn generic_kind(diagram_type: Option<&str>) -> EditorSymbolKind {
+fn generic_kind(diagram_type: Option<&str>) -> EditorSemanticKind {
     match diagram_type {
-        Some("sequence") => EditorSymbolKind::Event,
-        Some("state") => EditorSymbolKind::Class,
-        Some("mindmap") => EditorSymbolKind::Namespace,
-        Some("class") => EditorSymbolKind::Class,
-        Some("er") => EditorSymbolKind::Struct,
-        Some("block") => EditorSymbolKind::Object,
-        Some("flowchart-v2") | Some("flowchart-elk") => EditorSymbolKind::Module,
-        _ => EditorSymbolKind::Variable,
+        Some("sequence") => EditorSemanticKind::Event,
+        Some("state") => EditorSemanticKind::Class,
+        Some("mindmap") => EditorSemanticKind::Namespace,
+        Some("class") => EditorSemanticKind::Class,
+        Some("er") => EditorSemanticKind::Struct,
+        Some("block") => EditorSemanticKind::Object,
+        Some("flowchart-v2") | Some("flowchart-elk") => EditorSemanticKind::Module,
+        _ => EditorSemanticKind::Variable,
     }
 }
 
@@ -652,7 +666,7 @@ fn compare_range(left: &Range, right: &Range) -> std::cmp::Ordering {
 pub struct EditorDocumentSymbol {
     pub name: String,
     pub detail: Option<String>,
-    pub kind: EditorSymbolKind,
+    pub kind: EditorSemanticKind,
     pub fact_source: FenceTextIndexSource,
     pub range: Range,
     pub selection_range: Range,
@@ -681,7 +695,7 @@ pub enum EditorFoldingRangeKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditorSymbolInformation {
     pub name: String,
-    pub kind: EditorSymbolKind,
+    pub kind: EditorSemanticKind,
     pub fact_source: FenceTextIndexSource,
     pub location: EditorLocation,
     pub container_name: Option<String>,

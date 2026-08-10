@@ -1,12 +1,16 @@
 use crate::analyzer::{AnalysisDiagnosticPolicy, AnalysisEnvironmentIdentity, Analyzer};
 use crate::diagnostic_projection::{DiagnosticCandidate, append_projected_diagnostic_candidates};
-use crate::editor::FenceExpectedSyntax;
+use crate::editor::FenceReferenceGroup;
 use crate::payload::DiagnosticRetainedWeight;
 use crate::{
     ANALYSIS_FACTS_PAYLOAD_VERSION, AnalysisCancellationToken, AnalysisCancelled,
     AnalysisDiagnostic, AnalysisPayload, DocumentDiagram, DocumentDiagramKind, FenceDelimiter,
-    FenceDelimiterSpans, FenceMarker, FenceReferenceGroup, FenceSemanticItem, FenceTextIndex,
-    FenceTextIndexSource, SharedTextSlice, SourceDescriptor, SourceMap, Summary,
+    FenceDelimiterSpans, FenceMarker, FenceTextIndex, FenceTextIndexSource, SharedTextSlice,
+    SourceDescriptor, SourceMap, Summary,
+};
+use merman_core::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenamePolicy, EditorSemanticKind,
+    EditorSemanticRole, EditorSemanticSymbol, SourceSpan,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -673,10 +677,94 @@ impl AnalysisDiagramSyntaxFacts {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnalysisEditorSymbolKind {
+    Class,
+    Event,
+    Function,
+    Module,
+    Namespace,
+    Object,
+    Package,
+    Property,
+    String,
+    Struct,
+    Variable,
+}
+
+impl From<EditorSemanticKind> for AnalysisEditorSymbolKind {
+    fn from(kind: EditorSemanticKind) -> Self {
+        match kind {
+            EditorSemanticKind::Class => Self::Class,
+            EditorSemanticKind::Event => Self::Event,
+            EditorSemanticKind::Function => Self::Function,
+            EditorSemanticKind::Module => Self::Module,
+            EditorSemanticKind::Namespace => Self::Namespace,
+            EditorSemanticKind::Object => Self::Object,
+            EditorSemanticKind::Package => Self::Package,
+            EditorSemanticKind::Property => Self::Property,
+            EditorSemanticKind::String => Self::String,
+            EditorSemanticKind::Struct => Self::Struct,
+            EditorSemanticKind::Variable => Self::Variable,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnalysisSemanticRole {
+    Entity,
+    Outline,
+    Payload,
+}
+
+impl AnalysisSemanticRole {
+    pub const fn contributes_outline(self) -> bool {
+        matches!(self, Self::Entity | Self::Outline)
+    }
+}
+
+impl From<EditorSemanticRole> for AnalysisSemanticRole {
+    fn from(role: EditorSemanticRole) -> Self {
+        match role {
+            EditorSemanticRole::Entity => Self::Entity,
+            EditorSemanticRole::ClassDefinition | EditorSemanticRole::Outline => Self::Outline,
+            EditorSemanticRole::Payload => Self::Payload,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnalysisExpectedSyntaxKind {
+    IdList,
+    NodeIdentifier,
+    Operator,
+    Shape,
+    ShapeTrigger,
+    Direction,
+    Payload,
+}
+
+impl From<EditorExpectedSyntaxKind> for AnalysisExpectedSyntaxKind {
+    fn from(kind: EditorExpectedSyntaxKind) -> Self {
+        match kind {
+            EditorExpectedSyntaxKind::IdList => Self::IdList,
+            EditorExpectedSyntaxKind::NodeIdentifier => Self::NodeIdentifier,
+            EditorExpectedSyntaxKind::Operator => Self::Operator,
+            EditorExpectedSyntaxKind::ShapeValue => Self::Shape,
+            EditorExpectedSyntaxKind::ShapeTrigger => Self::ShapeTrigger,
+            EditorExpectedSyntaxKind::DirectionValue => Self::Direction,
+            EditorExpectedSyntaxKind::Payload => Self::Payload,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnalysisReferenceFacts {
     pub name: String,
-    pub kind: crate::EditorSymbolKind,
+    pub kind: AnalysisEditorSymbolKind,
     pub spans: Vec<AnalysisFactSpan>,
 }
 
@@ -689,7 +777,7 @@ impl AnalysisReferenceFacts {
     ) -> Self {
         Self {
             name: group.name.clone(),
-            kind: group.kind,
+            kind: group.kind.into(),
             spans: spans
                 .iter()
                 .copied()
@@ -703,19 +791,19 @@ impl AnalysisReferenceFacts {
 pub struct AnalysisLineItemFacts {
     pub name: String,
     pub detail: Option<String>,
-    pub kind: crate::EditorSymbolKind,
+    pub kind: AnalysisEditorSymbolKind,
     pub span: AnalysisFactSpan,
     pub selection: AnalysisFactSpan,
 }
 
 impl AnalysisLineItemFacts {
-    fn from_item(item: &FenceSemanticItem, source_map: &SourceMap, body_start: usize) -> Self {
+    fn from_item(item: &EditorSemanticSymbol, source_map: &SourceMap, body_start: usize) -> Self {
         Self {
             name: item.name.clone(),
             detail: item.detail.clone(),
-            kind: item.kind,
-            span: AnalysisFactSpan::from_local(item.span, source_map, body_start),
-            selection: AnalysisFactSpan::from_local(item.selection, source_map, body_start),
+            kind: item.kind.into(),
+            span: AnalysisFactSpan::from_source(item.span, source_map, body_start),
+            selection: AnalysisFactSpan::from_source(item.selection, source_map, body_start),
         }
     }
 }
@@ -724,47 +812,47 @@ impl AnalysisLineItemFacts {
 pub struct AnalysisSemanticItemFacts {
     pub name: String,
     pub detail: Option<String>,
-    pub kind: crate::EditorSymbolKind,
-    pub role: crate::FenceSemanticRole,
+    pub kind: AnalysisEditorSymbolKind,
+    pub role: AnalysisSemanticRole,
     #[serde(default = "missing_rename_policy")]
-    pub rename_policy: crate::FenceRenamePolicy,
+    pub rename_policy: EditorRenamePolicy,
     pub span: AnalysisFactSpan,
     pub selection: AnalysisFactSpan,
 }
 
-fn missing_rename_policy() -> crate::FenceRenamePolicy {
-    crate::FenceRenamePolicy::None
+fn missing_rename_policy() -> EditorRenamePolicy {
+    EditorRenamePolicy::None
 }
 
 impl AnalysisSemanticItemFacts {
-    fn from_item(item: &FenceSemanticItem, source_map: &SourceMap, body_start: usize) -> Self {
+    fn from_item(item: &EditorSemanticSymbol, source_map: &SourceMap, body_start: usize) -> Self {
         Self {
             name: item.name.clone(),
             detail: item.detail.clone(),
-            kind: item.kind,
-            role: item.role,
+            kind: item.kind.into(),
+            role: item.role.into(),
             rename_policy: item.rename_policy,
-            span: AnalysisFactSpan::from_local(item.span, source_map, body_start),
-            selection: AnalysisFactSpan::from_local(item.selection, source_map, body_start),
+            span: AnalysisFactSpan::from_source(item.span, source_map, body_start),
+            selection: AnalysisFactSpan::from_source(item.selection, source_map, body_start),
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnalysisExpectedSyntaxFacts {
-    pub kind: crate::FenceExpectedSyntaxKind,
+    pub kind: AnalysisExpectedSyntaxKind,
     pub span: AnalysisFactSpan,
 }
 
 impl AnalysisExpectedSyntaxFacts {
     fn from_expected(
-        expected: &FenceExpectedSyntax,
+        expected: &EditorExpectedSyntax,
         source_map: &SourceMap,
         body_start: usize,
     ) -> Self {
         Self {
-            kind: expected.kind,
-            span: AnalysisFactSpan::from_local(expected.span, source_map, body_start),
+            kind: expected.kind.into(),
+            span: AnalysisFactSpan::from_source(expected.span, source_map, body_start),
         }
     }
 }
@@ -776,6 +864,17 @@ pub struct AnalysisFactSpan {
 }
 
 impl AnalysisFactSpan {
+    fn from_source(local: SourceSpan, source_map: &SourceMap, body_start: usize) -> Self {
+        Self::from_local(
+            crate::ByteSpan {
+                start: local.start,
+                end: local.end,
+            },
+            source_map,
+            body_start,
+        )
+    }
+
     fn from_local(local: crate::ByteSpan, source_map: &SourceMap, body_start: usize) -> Self {
         let document_start = body_start.saturating_add(local.start);
         let document_end = body_start.saturating_add(local.end);

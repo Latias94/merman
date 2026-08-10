@@ -4,11 +4,10 @@ use crate::protocol::{
     generated_markdown_to_plain_text, location_to_lsp, range_to_lsp,
 };
 use crate::snapshot::DocumentSnapshot;
-use merman_analysis::EditorSymbolKind;
 use merman_editor_core::{
     EditorDocumentSymbol, EditorFoldingRange, EditorFoldingRangeKind, EditorHover,
-    EditorPrepareRename, EditorSelectionRange, EditorWorkspaceEdit, RenameError,
-    document_symbols as core_document_symbols, folding_ranges as core_folding_ranges,
+    EditorPrepareRename, EditorSelectionRange, EditorSemanticKind, EditorWorkspaceEdit,
+    RenameError, document_symbols as core_document_symbols, folding_ranges as core_folding_ranges,
     goto_definition as core_goto_definition, hover as core_hover,
     prepare_rename as core_prepare_rename, references as core_references, rename as core_rename,
     selection_ranges as core_selection_ranges,
@@ -310,19 +309,19 @@ fn rename_error_to_lsp(error: RenameError) -> Error {
     Error::invalid_params(error.to_string())
 }
 
-fn symbol_kind(kind: EditorSymbolKind) -> SymbolKind {
+fn symbol_kind(kind: EditorSemanticKind) -> SymbolKind {
     match kind {
-        EditorSymbolKind::Class => SymbolKind::CLASS,
-        EditorSymbolKind::Event => SymbolKind::EVENT,
-        EditorSymbolKind::Function => SymbolKind::FUNCTION,
-        EditorSymbolKind::Module => SymbolKind::MODULE,
-        EditorSymbolKind::Namespace => SymbolKind::NAMESPACE,
-        EditorSymbolKind::Object => SymbolKind::OBJECT,
-        EditorSymbolKind::Package => SymbolKind::PACKAGE,
-        EditorSymbolKind::Property => SymbolKind::PROPERTY,
-        EditorSymbolKind::String => SymbolKind::STRING,
-        EditorSymbolKind::Struct => SymbolKind::STRUCT,
-        EditorSymbolKind::Variable => SymbolKind::VARIABLE,
+        EditorSemanticKind::Class => SymbolKind::CLASS,
+        EditorSemanticKind::Event => SymbolKind::EVENT,
+        EditorSemanticKind::Function => SymbolKind::FUNCTION,
+        EditorSemanticKind::Module => SymbolKind::MODULE,
+        EditorSemanticKind::Namespace => SymbolKind::NAMESPACE,
+        EditorSemanticKind::Object => SymbolKind::OBJECT,
+        EditorSemanticKind::Package => SymbolKind::PACKAGE,
+        EditorSemanticKind::Property => SymbolKind::PROPERTY,
+        EditorSemanticKind::String => SymbolKind::STRING,
+        EditorSemanticKind::Struct => SymbolKind::STRUCT,
+        EditorSemanticKind::Variable => SymbolKind::VARIABLE,
     }
 }
 

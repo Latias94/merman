@@ -37,6 +37,7 @@ pub use generated::{
     SemanticTokenPackedDescriptor, TokenOverlayKind, semantic_token_descriptor,
 };
 pub use merman_analysis::FenceTextIndexSource;
+pub use merman_core::{EditorSemanticKind, EditorSemanticRole};
 pub use snapshot::{
     DiagramDetectionValidity, DocumentSnapshot, DocumentSnapshotError, EditorDiagramDetection,
     FenceSnapshot,
