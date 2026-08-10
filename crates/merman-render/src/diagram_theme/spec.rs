@@ -7,7 +7,6 @@ use super::admission::ThemeRequirements;
 use super::canvas::CanvasSpec;
 use super::effects::DiagramEffectSet;
 use super::semantic::ThemeRuleSet;
-use super::tokens::FrozenLegacyThemeCompatibility;
 use super::typography::TypographySpec;
 use super::{FontCatalogSpec, ThemeCompileValidationError};
 
@@ -230,7 +229,6 @@ pub struct DiagramThemeSpec {
     effects: DiagramEffectSet,
     assets: ThemeAssets,
     requirements: ThemeRequirements,
-    frozen_legacy_compatibility: Option<FrozenLegacyThemeCompatibility>,
 }
 
 impl Default for DiagramThemeSpec {
@@ -243,7 +241,6 @@ impl Default for DiagramThemeSpec {
             effects: DiagramEffectSet::default(),
             assets: ThemeAssets::default(),
             requirements: ThemeRequirements::default(),
-            frozen_legacy_compatibility: None,
         }
     }
 }
@@ -288,14 +285,6 @@ impl DiagramThemeSpec {
         self
     }
 
-    pub(super) fn with_frozen_legacy_compatibility(
-        mut self,
-        compatibility: FrozenLegacyThemeCompatibility,
-    ) -> Self {
-        self.frozen_legacy_compatibility = Some(compatibility);
-        self
-    }
-
     pub const fn mermaid(&self) -> &MermaidThemeCompatibility {
         &self.mermaid
     }
@@ -322,12 +311,6 @@ impl DiagramThemeSpec {
 
     pub const fn requirements(&self) -> &ThemeRequirements {
         &self.requirements
-    }
-
-    pub(super) const fn frozen_legacy_compatibility(
-        &self,
-    ) -> Option<&FrozenLegacyThemeCompatibility> {
-        self.frozen_legacy_compatibility.as_ref()
     }
 
     pub(crate) fn validate(&self) -> Result<(), ThemeCompileValidationError> {

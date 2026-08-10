@@ -14,7 +14,6 @@ use super::canvas::CanvasPaint;
 use super::family_program::{FamilyThemeProgram, FamilyThemeProgramCache};
 use super::resolved::ResolvedThemeStyle;
 use super::semantic::{ThemeTarget, ThemeVariant};
-use super::tokens::FrozenLegacyThemeCompatibility;
 use super::typography::{Specified, TextStyle};
 
 pub(super) const CONTRIBUTION_ID_PREFIX: &str = "merman.legacy-family-theme.v1.";
@@ -232,10 +231,6 @@ fn compile_selected_family(
         }
         RenderFamilyKind::State => {}
     }
-    // Legacy palette/config values are deliberately appended after direct family mappings. The
-    // local builder admits each assignment path once, so direct mappings deterministically win
-    // without passing duplicate assignments to the core overlay.
-    compile_frozen_legacy_family(&mut builder, spec, family_programs, family);
     let (overlay, contribution_ids) = builder.finish();
     #[cfg(not(test))]
     let _ = &contribution_ids;
@@ -853,10 +848,7 @@ fn compile_journey_family(
     contributions.add_palette(
         "task.palette",
         reader.palette(ThemeTarget::JourneyTask),
-        PaletteProjection::Journey {
-            task_limit: 8,
-            actor_limit: 0,
-        },
+        PaletteProjection::Journey { task_limit: 8 },
     );
     contributions.finish_into(builder);
 }
@@ -867,14 +859,13 @@ fn compile_text_family(
     family_programs: &FamilyThemeProgramCache,
     family: RenderFamilyKind,
 ) {
-    // Only the family-neutral Text and Title targets are direct here. Renderer-specific keys for
-    // Venn, Packet, Treemap, C4, and similar families remain frozen legacy compatibility until a
-    // typed target exists for them.
+    // Only the family-neutral Text and Title targets are direct here. Renderer-specific roles
+    // remain unsupported until the public theme model has typed targets for them.
     let reader = FamilyStyleReader::new(spec, family_programs, family);
     let mut contributions = FamilyContributions::new(family);
     contributions.add_typography(reader.base_typography());
     // Packet has no typed consumer for the family-neutral Text/Title compatibility variables.
-    // Keep its renderer-specific frozen packet roles instead of writing unused global values.
+    // Avoid writing unused global values until those renderer-specific roles are modeled.
     if family != RenderFamilyKind::Packet {
         contributions.add_theme_variables(
             "text.fill",
@@ -884,435 +875,6 @@ fn compile_text_family(
             ],
         );
     }
-    contributions.finish_into(builder);
-}
-
-fn compile_frozen_legacy_family(
-    builder: &mut OverlayBuilder,
-    spec: &DiagramThemeSpec,
-    family_programs: &FamilyThemeProgramCache,
-    family: RenderFamilyKind,
-) {
-    let Some(frozen) = spec.frozen_legacy_compatibility() else {
-        return;
-    };
-    let color = |value: &super::canvas::ThemeColorValue| value.as_css();
-    let palette = || frozen.series.iter().map(color).collect::<Vec<_>>();
-    let text = color(&frozen.text);
-
-    match family {
-        RenderFamilyKind::Gantt => {
-            let mut contributions = FamilyContributions::new(family);
-            contributions.add_theme_variables(
-                "frozen.sections",
-                [
-                    ("sectionBkgColor", Some(color(&frozen.cluster_background))),
-                    ("sectionBkgColor2", Some(color(&frozen.surface_muted))),
-                    ("altSectionBkgColor", Some(color(&frozen.canvas))),
-                    ("gridColor", Some(color(&frozen.border))),
-                    ("excludeBkgColor", Some(color(&frozen.surface_alt))),
-                ],
-            );
-            contributions.finish_into(builder);
-        }
-        RenderFamilyKind::Kanban => {
-            let mut contributions = FamilyContributions::new(family);
-            if !family_has_palette_or_resolved_fill(
-                spec,
-                family_programs,
-                family,
-                ThemeTarget::Task,
-            ) {
-                contributions.add_palette(
-                    "frozen.series.color-scale",
-                    Some(palette()),
-                    PaletteProjection::ColorScale { limit: 12 },
-                );
-                contributions.add_palette(
-                    "frozen.series.git",
-                    Some(palette()),
-                    PaletteProjection::Git { limit: 12 },
-                );
-            }
-            contributions.finish_into(builder);
-        }
-        RenderFamilyKind::Requirement => {
-            let mut contributions = FamilyContributions::new(family);
-            contributions.add_theme_variables(
-                "frozen.relation-label",
-                [
-                    (
-                        "relationLabelBackground",
-                        Some(color(&frozen.edge_label_background)),
-                    ),
-                    (
-                        "requirementEdgeLabelBackground",
-                        Some(color(&frozen.edge_label_background)),
-                    ),
-                    (
-                        "edgeLabelBackground",
-                        Some(color(&frozen.edge_label_background)),
-                    ),
-                ],
-            );
-            contributions.finish_into(builder);
-        }
-        RenderFamilyKind::Class => {
-            let mut contributions = FamilyContributions::new(family);
-            contributions.add_theme_variables(
-                "frozen.note",
-                [
-                    ("noteBkgColor", Some(color(&frozen.note_background))),
-                    ("noteBorderColor", Some(color(&frozen.note_border))),
-                    ("noteTextColor", Some(color(&frozen.note_text))),
-                ],
-            );
-            contributions.finish_into(builder);
-        }
-        RenderFamilyKind::Mindmap => {
-            let mut contributions = FamilyContributions::new(family);
-            if !family_has_palette_or_resolved_fill(
-                spec,
-                family_programs,
-                family,
-                ThemeTarget::Node,
-            ) {
-                contributions.add_palette(
-                    "frozen.series",
-                    Some(palette()),
-                    PaletteProjection::ColorScale { limit: 12 },
-                );
-            }
-            contributions.finish_into(builder);
-        }
-        RenderFamilyKind::Timeline
-            if !family_has_palette_or_resolved_fill(
-                spec,
-                family_programs,
-                family,
-                ThemeTarget::TimelineEvent,
-            ) =>
-        {
-            let mut contributions = FamilyContributions::new(family);
-            contributions.add_palette(
-                "frozen.series",
-                Some(palette()),
-                PaletteProjection::ColorScale { limit: 12 },
-            );
-            contributions.finish_into(builder);
-        }
-        RenderFamilyKind::GitGraph => {
-            let mut contributions = FamilyContributions::new(family);
-            if !family_has_palette_or_resolved_fill(
-                spec,
-                family_programs,
-                family,
-                ThemeTarget::Node,
-            ) {
-                contributions.add_palette(
-                    "frozen.series",
-                    Some(palette()),
-                    PaletteProjection::Git { limit: 64 },
-                );
-            }
-            contributions.finish_into(builder);
-        }
-        RenderFamilyKind::Pie if !has_direct_pie_palette(spec, family_programs) => {
-            let mut contributions = FamilyContributions::new(family);
-            contributions.add_palette(
-                "frozen.series",
-                Some(palette()),
-                PaletteProjection::Pie { limit: 12 },
-            );
-            contributions.finish_into(builder);
-        }
-        RenderFamilyKind::QuadrantChart => {
-            let mut contributions = FamilyContributions::new(family);
-            contributions.add_theme_variables(
-                "frozen.quadrants",
-                [
-                    ("quadrant1Fill", Some(color(&frozen.surface))),
-                    ("quadrant2Fill", Some(color(&frozen.surface_alt))),
-                    ("quadrant3Fill", Some(color(&frozen.canvas))),
-                    ("quadrant4Fill", Some(color(&frozen.surface_muted))),
-                ],
-            );
-            contributions.finish_into(builder);
-        }
-        RenderFamilyKind::Radar => {
-            let mut contributions = FamilyContributions::new(family);
-            let mut radar_config = Map::new();
-            radar_config.insert(
-                "graticuleColor".to_string(),
-                Value::String(color(&frozen.border)),
-            );
-            contributions.add_root_object("frozen.graticule", "radar", radar_config);
-            if !family_has_palette_or_resolved_fill(
-                spec,
-                family_programs,
-                family,
-                ThemeTarget::ChartSeries,
-            ) {
-                contributions.add_palette(
-                    "frozen.series",
-                    Some(palette()),
-                    PaletteProjection::ColorScale { limit: 12 },
-                );
-            }
-            contributions.finish_into(builder);
-        }
-        RenderFamilyKind::Journey => {
-            let mut contributions = FamilyContributions::new(family);
-            if !family_has_palette_or_resolved_fill(
-                spec,
-                family_programs,
-                family,
-                ThemeTarget::JourneyTask,
-            ) {
-                contributions.add_palette(
-                    "frozen.series.tasks",
-                    Some(palette()),
-                    PaletteProjection::Journey {
-                        task_limit: 8,
-                        actor_limit: 0,
-                    },
-                );
-            }
-            contributions.add_palette(
-                "frozen.series.actors",
-                Some(palette()),
-                PaletteProjection::Journey {
-                    task_limit: 0,
-                    actor_limit: 6,
-                },
-            );
-            contributions.add_theme_variables(
-                "frozen.roles",
-                [
-                    ("lineColor", Some(color(&frozen.line))),
-                    ("arrowheadColor", Some(color(&frozen.accent))),
-                    (
-                        "edgeLabelBackground",
-                        Some(color(&frozen.edge_label_background)),
-                    ),
-                    ("faceColor", Some(color(&frozen.surface))),
-                    ("tertiaryColor", Some(color(&frozen.surface_alt))),
-                    ("border2", Some(color(&frozen.cluster_border))),
-                ],
-            );
-            contributions.finish_into(builder);
-        }
-        RenderFamilyKind::Venn => {
-            let mut contributions = FamilyContributions::new(family);
-            contributions.add_palette(
-                "frozen.series",
-                Some(palette()),
-                PaletteProjection::Venn { limit: 8 },
-            );
-            contributions.add_theme_variables(
-                "frozen.roles",
-                [
-                    ("background", Some(color(&frozen.canvas))),
-                    ("primaryColor", Some(color(&frozen.surface))),
-                    ("vennTitleTextColor", Some(text.clone())),
-                    ("vennSetTextColor", Some(text.clone())),
-                ],
-            );
-            contributions.finish_into(builder);
-        }
-        RenderFamilyKind::Sankey => {
-            let mut contributions = FamilyContributions::new(family);
-            contributions.add_theme_variables(
-                "frozen.label-background",
-                [("mainBkg", Some(color(&frozen.surface)))],
-            );
-            contributions.finish_into(builder);
-        }
-        RenderFamilyKind::Packet => compile_frozen_packet(builder, frozen),
-        RenderFamilyKind::Treemap => compile_frozen_treemap(builder, frozen, &palette()),
-        RenderFamilyKind::EventModeling => {
-            compile_frozen_event_modeling(builder, frozen, &palette())
-        }
-        RenderFamilyKind::C4 => compile_frozen_c4(builder, frozen),
-        RenderFamilyKind::Architecture => compile_frozen_architecture(builder, frozen),
-        RenderFamilyKind::Ishikawa => compile_frozen_ishikawa(builder, frozen),
-        _ => {}
-    }
-}
-
-fn family_has_palette_or_resolved_fill(
-    spec: &DiagramThemeSpec,
-    family_programs: &FamilyThemeProgramCache,
-    family: RenderFamilyKind,
-    target: ThemeTarget,
-) -> bool {
-    let reader = FamilyStyleReader::new(spec, family_programs, family);
-    reader.has_palette(target)
-        || !matches!(
-            reader.fill_resolution(target),
-            LegacyPaintResolution::Unspecified
-        )
-}
-
-fn has_direct_pie_palette(
-    spec: &DiagramThemeSpec,
-    family_programs: &FamilyThemeProgramCache,
-) -> bool {
-    let reader = FamilyStyleReader::new(spec, family_programs, RenderFamilyKind::Pie);
-    reader.has_palette(ThemeTarget::PieSlice)
-        || !matches!(
-            reader.fill_resolution(ThemeTarget::PieSlice),
-            LegacyPaintResolution::Unspecified
-        )
-}
-
-fn compile_frozen_packet(builder: &mut OverlayBuilder, frozen: &FrozenLegacyThemeCompatibility) {
-    let mut packet = Map::new();
-    for (key, value) in [
-        ("startByteColor", frozen.line.as_css()),
-        ("endByteColor", frozen.border.as_css()),
-        ("labelColor", frozen.text.as_css()),
-        ("titleColor", frozen.text.as_css()),
-        ("blockStrokeColor", frozen.border.as_css()),
-        ("blockFillColor", frozen.surface.as_css()),
-    ] {
-        packet.insert(key.to_string(), Value::String(value));
-    }
-    let mut contributions = FamilyContributions::new(RenderFamilyKind::Packet);
-    contributions.add_root_object("frozen.packet", "packet", packet);
-    contributions.finish_into(builder);
-}
-
-fn compile_frozen_treemap(
-    builder: &mut OverlayBuilder,
-    frozen: &FrozenLegacyThemeCompatibility,
-    palette: &[String],
-) {
-    let mut treemap = Map::new();
-    for (key, value) in [
-        ("titleColor", frozen.text.as_css()),
-        ("labelColor", frozen.text.as_css()),
-        ("valueColor", frozen.subtle_text.as_css()),
-        ("sectionStrokeColor", frozen.border.as_css()),
-        ("sectionFillColor", frozen.surface_alt.as_css()),
-        ("leafStrokeColor", frozen.border.as_css()),
-        ("leafFillColor", frozen.surface.as_css()),
-    ] {
-        treemap.insert(key.to_string(), Value::String(value));
-    }
-    let mut contributions = FamilyContributions::new(RenderFamilyKind::Treemap);
-    contributions.add_root_object("frozen.treemap", "treemap", treemap);
-    contributions.add_palette(
-        "frozen.series",
-        Some(palette.to_vec()),
-        PaletteProjection::ColorScale { limit: 12 },
-    );
-    contributions.finish_into(builder);
-}
-
-fn compile_frozen_event_modeling(
-    builder: &mut OverlayBuilder,
-    frozen: &FrozenLegacyThemeCompatibility,
-    palette: &[String],
-) {
-    let palette_color = |index: usize, fallback: &super::canvas::ThemeColorValue| {
-        palette
-            .get(index)
-            .cloned()
-            .unwrap_or_else(|| fallback.as_css())
-    };
-    let mut variables = Map::new();
-    for (key, value) in [
-        ("emProcessorFill", palette_color(3, &frozen.surface_alt)),
-        ("emProcessorStroke", frozen.border.as_css()),
-        ("emReadModelFill", palette_color(1, &frozen.success)),
-        ("emReadModelStroke", frozen.success.as_css()),
-        ("emCommandFill", palette_color(0, &frozen.surface_alt)),
-        ("emCommandStroke", frozen.line.as_css()),
-        ("emEventFill", palette_color(2, &frozen.warning)),
-        ("emEventStroke", frozen.warning.as_css()),
-        ("emUiFill", frozen.surface.as_css()),
-        ("emUiStroke", frozen.border.as_css()),
-        ("emRelationStroke", frozen.line.as_css()),
-        ("emArrowhead", frozen.accent.as_css()),
-        ("emSwimlaneBackground", frozen.cluster_background.as_css()),
-        (
-            "emSwimlaneBackgroundOdd",
-            frozen.cluster_background.as_css(),
-        ),
-        ("emSwimlaneBackgroundStroke", frozen.cluster_border.as_css()),
-    ] {
-        variables.insert(key.to_string(), Value::String(value));
-    }
-    let mut contributions = FamilyContributions::new(RenderFamilyKind::EventModeling);
-    contributions.add_theme_variable_map("frozen.event-modeling", variables);
-    contributions.finish_into(builder);
-}
-
-fn compile_frozen_c4(builder: &mut OverlayBuilder, frozen: &FrozenLegacyThemeCompatibility) {
-    let mut c4 = Map::new();
-    for prefix in [
-        "person",
-        "system",
-        "system_db",
-        "system_queue",
-        "container",
-        "container_db",
-        "container_queue",
-        "component",
-        "component_db",
-        "component_queue",
-        "external_person",
-        "external_system",
-        "external_system_db",
-        "external_system_queue",
-        "external_container",
-        "external_container_db",
-        "external_container_queue",
-        "external_component",
-        "external_component_db",
-        "external_component_queue",
-    ] {
-        c4.insert(
-            format!("{prefix}_bg_color"),
-            Value::String(frozen.surface.as_css()),
-        );
-        c4.insert(
-            format!("{prefix}_border_color"),
-            Value::String(frozen.border.as_css()),
-        );
-    }
-    let mut contributions = FamilyContributions::new(RenderFamilyKind::C4);
-    contributions.add_root_object("frozen.c4", "c4", c4);
-    contributions.finish_into(builder);
-}
-
-fn compile_frozen_architecture(
-    builder: &mut OverlayBuilder,
-    frozen: &FrozenLegacyThemeCompatibility,
-) {
-    let mut contributions = FamilyContributions::new(RenderFamilyKind::Architecture);
-    contributions.add_theme_variables(
-        "frozen.architecture",
-        [
-            ("archEdgeColor", Some(frozen.line.as_css())),
-            ("archEdgeArrowColor", Some(frozen.accent.as_css())),
-            ("archGroupBorderColor", Some(frozen.cluster_border.as_css())),
-        ],
-    );
-    contributions.finish_into(builder);
-}
-
-fn compile_frozen_ishikawa(builder: &mut OverlayBuilder, frozen: &FrozenLegacyThemeCompatibility) {
-    let mut contributions = FamilyContributions::new(RenderFamilyKind::Ishikawa);
-    contributions.add_theme_variables(
-        "frozen.ishikawa",
-        [
-            ("lineColor", Some(frozen.line.as_css())),
-            ("mainBkg", Some(frozen.surface.as_css())),
-            ("primaryColor", Some(frozen.surface.as_css())),
-        ],
-    );
     contributions.finish_into(builder);
 }
 
@@ -1406,10 +968,6 @@ impl<'a> FamilyStyleReader<'a> {
         )
     }
 
-    fn has_palette(&self, target: ThemeTarget) -> bool {
-        self.program.ordinal_palette_index(target).is_some()
-    }
-
     fn stroke_or_fill_resolution(&self, target: ThemeTarget) -> LegacyPaintResolution {
         let style = self.style(target);
         match LegacyPaintResolution::from_property(style.stroke_resolution()) {
@@ -1423,22 +981,10 @@ impl<'a> FamilyStyleReader<'a> {
 
 #[derive(Debug, Clone, Copy)]
 enum PaletteProjection {
-    ColorScale {
-        limit: usize,
-    },
-    Git {
-        limit: usize,
-    },
-    Pie {
-        limit: usize,
-    },
-    Journey {
-        task_limit: usize,
-        actor_limit: usize,
-    },
-    Venn {
-        limit: usize,
-    },
+    ColorScale { limit: usize },
+    Git { limit: usize },
+    Pie { limit: usize },
+    Journey { task_limit: usize },
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1544,15 +1090,6 @@ impl FamilyContributions {
         self.add_patch(mapping, root);
     }
 
-    fn add_theme_variable_map(&mut self, mapping: &'static str, variables: Map<String, Value>) {
-        if variables.is_empty() {
-            return;
-        }
-        let mut root = Map::new();
-        root.insert("themeVariables".to_string(), Value::Object(variables));
-        self.add_patch(mapping, root);
-    }
-
     fn add_root_object(
         &mut self,
         mapping: &'static str,
@@ -1593,20 +1130,9 @@ impl FamilyContributions {
                     variables.insert(format!("pie{}", index + 1), Value::String(color.clone()));
                 }
             }
-            PaletteProjection::Journey {
-                task_limit,
-                actor_limit,
-            } => {
+            PaletteProjection::Journey { task_limit } => {
                 for (index, color) in palette.iter().take(task_limit).enumerate() {
                     variables.insert(format!("fillType{index}"), Value::String(color.clone()));
-                }
-                for (index, color) in palette.iter().take(actor_limit).enumerate() {
-                    variables.insert(format!("actor{index}"), Value::String(color.clone()));
-                }
-            }
-            PaletteProjection::Venn { limit } => {
-                for (index, color) in palette.iter().take(limit).enumerate() {
-                    variables.insert(format!("venn{}", index + 1), Value::String(color.clone()));
                 }
             }
         }
@@ -1782,16 +1308,6 @@ mod tests {
     );
     const JOURNEY_FIXTURE: &str =
         include_str!("../../../../fixtures/journey/upstream_tasks_and_people.mmd");
-    const VENN_FIXTURE: &str = include_str!(
-        "../../../../fixtures/venn/upstream_cypress_venn_handdrawn_three_set_title_015.mmd"
-    );
-    const PACKET_FIXTURE: &str = include_str!(
-        "../../../../fixtures/packet/upstream_cypress_packet_spec_should_render_a_complex_packet_diagram_004.mmd"
-    );
-    const C4_FIXTURE: &str =
-        include_str!("../../../../fixtures/c4/upstream_docs_c4_c4_diagrams_001.mmd");
-    const EVENT_MODELING_FIXTURE: &str =
-        include_str!("../../../../fixtures/eventmodeling/upstream_docs_eventmodeling_minimum.mmd");
 
     fn bridge(spec: &DiagramThemeSpec) -> LegacyFamilyThemeBridge {
         LegacyFamilyThemeBridge::new(
@@ -1907,10 +1423,15 @@ mod tests {
     #[test]
     fn provider_compiles_only_the_selected_family_and_reuses_its_artifact() {
         let spec = Arc::new(
-            super::super::ThemeTokens::default()
-                .with_text("#f8fafc")
-                .expect("valid text color")
-                .into_theme_spec(),
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default().with_fill(solid("#f8fafc")),
+                    )
+                    .for_family(RenderFamilyKind::Flowchart),
+                ),
+            ),
         );
         let family_programs = Arc::new(FamilyThemeProgramCache::default());
         let bridge = LegacyFamilyThemeBridge::new(Arc::clone(&spec), Arc::clone(&family_programs));
@@ -1955,182 +1476,48 @@ mod tests {
     }
 
     #[test]
-    fn direct_family_palettes_suppress_overlapping_frozen_palette_fallbacks() {
-        let base = super::super::ThemeTokens::default().into_theme_spec();
+    fn direct_family_palettes_create_family_local_contributions() {
         let palette = super::super::OrdinalPalette::new([
             super::super::ThemeColorValue::parse("#ef4444").expect("valid palette color"),
             super::super::ThemeColorValue::parse("#22c55e").expect("valid palette color"),
         ])
         .expect("non-empty palette");
-        let styles = base
-            .styles()
-            .clone()
+        let styles = ThemeRuleSet::default()
             .with_ordinal_palette(ThemeTarget::Node, palette.clone())
             .with_ordinal_palette(ThemeTarget::Task, palette);
-        let spec = base.with_styles(styles);
+        let spec = DiagramThemeSpec::new().with_styles(styles);
         let bridge = bridge(&spec);
 
-        for (family, direct_id, frozen_id) in [
+        for (family, direct_id) in [
             (
                 RenderFamilyKind::Mindmap,
                 "merman.legacy-family-theme.v1.mindmap.node.palette",
-                "merman.legacy-family-theme.v1.mindmap.frozen.series",
             ),
             (
                 RenderFamilyKind::GitGraph,
                 "merman.legacy-family-theme.v1.gitGraph.node.palette",
-                "merman.legacy-family-theme.v1.gitGraph.frozen.series",
             ),
             (
                 RenderFamilyKind::Kanban,
                 "merman.legacy-family-theme.v1.kanban.task.palette.color-scale",
-                "merman.legacy-family-theme.v1.kanban.frozen.series.color-scale",
             ),
         ] {
             let artifact = bridge.compile_for_family(family);
             assert!(artifact.contribution_ids.contains(direct_id));
-            assert!(!artifact.contribution_ids.contains(frozen_id));
         }
     }
 
     #[test]
-    fn explicit_fill_clear_blocks_frozen_palette_fallbacks() {
-        let base = super::super::ThemeTokens::default().into_theme_spec();
-        let rules_without_palettes = base
-            .styles()
-            .rules()
-            .iter()
-            .cloned()
-            .fold(ThemeRuleSet::default(), ThemeRuleSet::with_rule);
-
-        for (family, target, frozen_ids, retained_frozen_id) in [
-            (
-                RenderFamilyKind::Mindmap,
-                ThemeTarget::Node,
-                &["merman.legacy-family-theme.v1.mindmap.frozen.series"][..],
-                None,
-            ),
-            (
-                RenderFamilyKind::GitGraph,
-                ThemeTarget::Node,
-                &["merman.legacy-family-theme.v1.gitGraph.frozen.series"][..],
-                None,
-            ),
-            (
-                RenderFamilyKind::Kanban,
-                ThemeTarget::Task,
-                &[
-                    "merman.legacy-family-theme.v1.kanban.frozen.series.color-scale",
-                    "merman.legacy-family-theme.v1.kanban.frozen.series.git",
-                ][..],
-                None,
-            ),
-            (
-                RenderFamilyKind::Timeline,
-                ThemeTarget::TimelineEvent,
-                &["merman.legacy-family-theme.v1.timeline.frozen.series"][..],
-                None,
-            ),
-            (
-                RenderFamilyKind::Radar,
-                ThemeTarget::ChartSeries,
-                &["merman.legacy-family-theme.v1.radar.frozen.series"][..],
-                Some("merman.legacy-family-theme.v1.radar.frozen.graticule"),
-            ),
-            (
-                RenderFamilyKind::Journey,
-                ThemeTarget::JourneyTask,
-                &["merman.legacy-family-theme.v1.journey.frozen.series.tasks"][..],
-                Some("merman.legacy-family-theme.v1.journey.frozen.series.actors"),
-            ),
-        ] {
-            let mut clear = ThemeStylePatch::default();
-            clear.paint.fill = Specified::Clear;
-            let spec = base.clone().with_styles(
-                rules_without_palettes
-                    .clone()
-                    .with_rule(ThemeRule::new(target, clear).for_family(family)),
-            );
-            let artifact = bridge(&spec).compile_for_family(family);
-
-            for frozen_id in frozen_ids {
-                assert!(
-                    !artifact.contribution_ids.contains(*frozen_id),
-                    "{family} must not revive `{frozen_id}` after an explicit fill clear"
-                );
-            }
-            if let Some(retained_frozen_id) = retained_frozen_id {
-                assert!(artifact.contribution_ids.contains(retained_frozen_id));
-            }
-        }
-    }
-
-    #[test]
-    fn unsupported_fill_blocks_frozen_palette_fallback() {
-        let base = super::super::ThemeTokens::default().into_theme_spec();
-        let gradient = CanvasPaint::LinearGradient(
-            super::super::LinearGradient::new(
-                0.0,
-                [
-                    super::super::GradientStop::new(
-                        0.0,
-                        super::super::ThemeColorValue::parse("#ef4444").expect("valid first stop"),
-                    )
-                    .expect("valid first stop"),
-                    super::super::GradientStop::new(
-                        1.0,
-                        super::super::ThemeColorValue::parse("#3b82f6").expect("valid second stop"),
-                    )
-                    .expect("valid second stop"),
-                ],
-            )
-            .expect("valid test gradient"),
-        );
-        let styles = base
-            .styles()
-            .rules()
-            .iter()
-            .cloned()
-            .fold(ThemeRuleSet::default(), ThemeRuleSet::with_rule)
-            .with_rule(
-                ThemeRule::new(
-                    ThemeTarget::Node,
-                    ThemeStylePatch::default().with_fill(gradient),
-                )
-                .for_family(RenderFamilyKind::Mindmap),
-            );
-        let spec = base.with_styles(styles);
-        let artifact = bridge(&spec).compile_for_family(RenderFamilyKind::Mindmap);
-
-        assert!(
-            !artifact
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.mindmap.node.fill")
-        );
-        assert!(
-            !artifact
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.mindmap.frozen.series")
-        );
-    }
-
-    #[test]
-    fn explicit_journey_task_solid_fill_blocks_frozen_palette_fallback() {
-        let base = super::super::ThemeTokens::default().into_theme_spec();
-        let styles = base
-            .styles()
-            .rules()
-            .iter()
-            .cloned()
-            .fold(ThemeRuleSet::default(), ThemeRuleSet::with_rule)
-            .with_rule(
+    fn explicit_journey_task_fill_creates_a_direct_contribution() {
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
                 ThemeRule::new(
                     ThemeTarget::JourneyTask,
                     ThemeStylePatch::default().with_fill(solid("#ef4444")),
                 )
                 .for_family(RenderFamilyKind::Journey),
-            );
-        let spec = base.with_styles(styles);
+            ),
+        );
         let artifact = bridge(&spec).compile_for_family(RenderFamilyKind::Journey);
 
         assert!(
@@ -2138,82 +1525,15 @@ mod tests {
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.journey.task.paint-text")
         );
-        assert!(
-            !artifact
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.journey.frozen.series.tasks")
-        );
-        assert!(
-            artifact
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.journey.frozen.series.actors")
-        );
     }
 
     #[test]
-    fn explicit_journey_task_non_solid_fill_blocks_frozen_palette_fallback() {
-        let base = super::super::ThemeTokens::default().into_theme_spec();
-        let gradient = CanvasPaint::LinearGradient(
-            super::super::LinearGradient::new(
-                0.0,
-                [
-                    super::super::GradientStop::new(
-                        0.0,
-                        super::super::ThemeColorValue::parse("#ef4444").expect("valid first stop"),
-                    )
-                    .expect("valid first stop"),
-                    super::super::GradientStop::new(
-                        1.0,
-                        super::super::ThemeColorValue::parse("#3b82f6").expect("valid second stop"),
-                    )
-                    .expect("valid second stop"),
-                ],
-            )
-            .expect("valid test gradient"),
-        );
-        let styles = base
-            .styles()
-            .rules()
-            .iter()
-            .cloned()
-            .fold(ThemeRuleSet::default(), ThemeRuleSet::with_rule)
-            .with_rule(
-                ThemeRule::new(
-                    ThemeTarget::JourneyTask,
-                    ThemeStylePatch::default().with_fill(gradient),
-                )
-                .for_family(RenderFamilyKind::Journey),
-            );
-        let spec = base.with_styles(styles);
-        let artifact = bridge(&spec).compile_for_family(RenderFamilyKind::Journey);
-
-        assert!(
-            !artifact
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.journey.frozen.series.tasks")
-        );
-        assert!(
-            artifact
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.journey.frozen.series.actors")
-        );
-    }
-
-    #[test]
-    fn explicit_pie_slice_clear_blocks_frozen_palette_fallback() {
-        let base = super::super::ThemeTokens::default().into_theme_spec();
+    fn explicit_pie_slice_clear_does_not_create_a_direct_palette() {
         let mut clear = ThemeStylePatch::default();
         clear.paint.fill = Specified::Clear;
-        let styles = base
-            .styles()
-            .rules()
-            .iter()
-            .cloned()
-            .fold(ThemeRuleSet::default(), ThemeRuleSet::with_rule)
-            .with_rule(
-                ThemeRule::new(ThemeTarget::PieSlice, clear).for_family(RenderFamilyKind::Pie),
-            );
-        let spec = base.with_styles(styles);
+        let spec = DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+            ThemeRule::new(ThemeTarget::PieSlice, clear).for_family(RenderFamilyKind::Pie),
+        ));
         let bridge = bridge(&spec);
         let artifact = bridge.compile_for_family(RenderFamilyKind::Pie);
 
@@ -2221,11 +1541,6 @@ mod tests {
             !artifact
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.pie.slice.palette")
-        );
-        assert!(
-            !artifact
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.pie.frozen.series")
         );
     }
 
@@ -2323,7 +1638,7 @@ mod tests {
     }
 
     #[test]
-    fn family_typography_is_local_and_preserves_the_frozen_patch_shape() {
+    fn family_typography_is_local_and_preserves_the_patch_shape() {
         let sequence_typography = TextStyle::default()
             .with_font_stack(
                 super::super::FontStack::new(["Inter", "sans-serif"]).expect("valid font stack"),
@@ -2436,13 +1751,13 @@ mod tests {
         direct.add_theme_variables("direct", [("primaryColor", Some("#ef4444".to_string()))]);
         direct.finish_into(&mut builder);
 
-        let mut frozen = FamilyContributions::new(RenderFamilyKind::Flowchart);
-        frozen.add_theme_variables("frozen", [("primaryColor", Some("#22c55e".to_string()))]);
-        frozen.finish_into(&mut builder);
+        let mut duplicate = FamilyContributions::new(RenderFamilyKind::Flowchart);
+        duplicate.add_theme_variables("duplicate", [("primaryColor", Some("#22c55e".to_string()))]);
+        duplicate.finish_into(&mut builder);
 
         let (_, contribution_ids) = builder.finish();
         assert!(contribution_ids.contains("merman.legacy-family-theme.v1.flowchart.direct"));
-        assert!(!contribution_ids.contains("merman.legacy-family-theme.v1.flowchart.frozen"));
+        assert!(!contribution_ids.contains("merman.legacy-family-theme.v1.flowchart.duplicate"));
     }
 
     #[test]
@@ -2469,7 +1784,7 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_paint_also_blocks_legacy_fallback() {
+    fn unsupported_paint_does_not_create_a_direct_assignment() {
         let gradient = CanvasPaint::LinearGradient(
             super::super::LinearGradient::new(
                 0.0,
@@ -2501,47 +1816,21 @@ mod tests {
     }
 
     #[test]
-    fn frozen_legacy_corpus_never_reads_family_scoped_rules() {
-        let base = super::super::ThemeTokens::default().into_theme_spec();
-        let styles = base.styles().clone().with_rule(
-            ThemeRule::new(
-                ThemeTarget::Node,
-                ThemeStylePatch::default().with_fill(solid("#ef4444")),
-            )
-            .for_family(RenderFamilyKind::Flowchart),
-        );
-        let spec = base.with_styles(styles);
-
-        let packet = parse(&spec, PACKET_FIXTURE);
-        assert_eq!(
-            packet.effective_config.get_str("packet.blockFillColor"),
-            Some("#f8fafc")
-        );
-        assert!(fallback_contribution_count(&packet) > 0);
-
-        let manual =
-            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
-                ThemeTarget::Node,
-                ThemeStylePatch::default().with_fill(solid("#ef4444")),
-            )));
-        let packet = parse(&manual, PACKET_FIXTURE);
-        assert_ne!(
-            packet.effective_config.get_str("packet.blockFillColor"),
-            Some("#ef4444")
-        );
-        assert_eq!(fallback_contribution_count(&packet), 0);
-    }
-
-    #[test]
-    fn direct_clear_never_revives_the_frozen_surface() {
-        let base = super::super::ThemeTokens::default().into_theme_spec();
+    fn family_clear_blocks_an_inherited_public_fill() {
         let mut clear = ThemeStylePatch::default();
         clear.paint.fill = Specified::Clear;
         clear.stroke.paint = Specified::Clear;
-        let styles = base.styles().clone().with_rule(
-            ThemeRule::new(ThemeTarget::Node, clear).for_family(RenderFamilyKind::Flowchart),
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default()
+                .with_rule(ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default().with_fill(solid("#f8fafc")),
+                ))
+                .with_rule(
+                    ThemeRule::new(ThemeTarget::Node, clear)
+                        .for_family(RenderFamilyKind::Flowchart),
+                ),
         );
-        let spec = base.with_styles(styles);
 
         let flowchart = parse(&spec, "flowchart LR\nA --> B\n");
         assert_ne!(
@@ -2554,7 +1843,58 @@ mod tests {
 
     #[test]
     fn task_and_requirement_families_use_their_own_programs() {
-        let spec = super::super::ThemeTokens::default().into_theme_spec();
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default()
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Task,
+                        ThemeStylePatch::default()
+                            .with_fill(solid("#f8fafc"))
+                            .with_stroke(solid("#94a3b8")),
+                    )
+                    .for_family(RenderFamilyKind::Gantt),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Task,
+                        ThemeStylePatch::default()
+                            .with_fill(solid("#f1f5f9"))
+                            .with_stroke(solid("#64748b")),
+                    )
+                    .for_family(RenderFamilyKind::Gantt)
+                    .with_variant(ThemeVariant::Active),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Task,
+                        ThemeStylePatch::default().with_stroke(solid("#059669")),
+                    )
+                    .for_family(RenderFamilyKind::Gantt)
+                    .with_variant(ThemeVariant::Success),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Task,
+                        ThemeStylePatch::default().with_stroke(solid("#dc2626")),
+                    )
+                    .for_family(RenderFamilyKind::Gantt)
+                    .with_variant(ThemeVariant::Error),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Requirement,
+                        ThemeStylePatch::default().with_fill(solid("#f8fafc")),
+                    )
+                    .for_family(RenderFamilyKind::Requirement),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Relation,
+                        ThemeStylePatch::default().with_stroke(solid("#64748b")),
+                    )
+                    .for_family(RenderFamilyKind::Requirement),
+                ),
+        );
         let gantt = parse(&spec, GANTT_FIXTURE);
         assert_eq!(
             gantt
@@ -2599,8 +1939,20 @@ mod tests {
     }
 
     #[test]
-    fn direct_family_palettes_precede_frozen_palette_fallbacks() {
-        let spec = super::super::ThemeTokens::default().into_theme_spec();
+    fn direct_family_palettes_are_projected_from_public_rules() {
+        let palette = super::super::OrdinalPalette::new([
+            super::super::ThemeColorValue::parse("#2563eb").expect("valid palette color"),
+            super::super::ThemeColorValue::parse("#16a34a").expect("valid palette color"),
+            super::super::ThemeColorValue::parse("#d97706").expect("valid palette color"),
+            super::super::ThemeColorValue::parse("#9333ea").expect("valid palette color"),
+        ])
+        .expect("non-empty palette");
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default()
+                .with_ordinal_palette(ThemeTarget::PieSlice, palette.clone())
+                .with_ordinal_palette(ThemeTarget::ChartSeries, palette.clone())
+                .with_ordinal_palette(ThemeTarget::JourneyTask, palette),
+        );
 
         let pie = parse(&spec, PIE_FIXTURE);
         assert_eq!(
@@ -2622,62 +1974,7 @@ mod tests {
             journey.effective_config.get_str("themeVariables.fillType0"),
             Some("#2563eb")
         );
-        assert_eq!(
-            journey.effective_config.get_str("themeVariables.actor0"),
-            Some("#2563eb")
-        );
-        assert!(fallback_contribution_count(&journey) >= 2);
-    }
-
-    #[test]
-    fn frozen_only_families_receive_named_local_contributions() {
-        let spec = super::super::ThemeTokens::default().into_theme_spec();
-
-        let venn = parse(&spec, VENN_FIXTURE);
-        assert_eq!(
-            venn.effective_config.get_str("themeVariables.venn1"),
-            Some("#2563eb")
-        );
-        assert!(fallback_contribution_count(&venn) > 0);
-
-        let sankey = parse(&spec, "sankey\nSource,Target,1\n");
-        assert_eq!(
-            sankey.effective_config.get_str("themeVariables.mainBkg"),
-            Some("#f8fafc")
-        );
-        assert!(fallback_contribution_count(&sankey) > 0);
-
-        let c4 = parse(&spec, C4_FIXTURE);
-        assert_eq!(
-            c4.effective_config.get_str("c4.person_bg_color"),
-            Some("#f8fafc")
-        );
-        assert_eq!(
-            c4.effective_config
-                .get_str("c4.external_component_border_color"),
-            Some("#94a3b8")
-        );
-        assert!(fallback_contribution_count(&c4) > 0);
-
-        let event_modeling = parse(&spec, EVENT_MODELING_FIXTURE);
-        assert_eq!(
-            event_modeling
-                .effective_config
-                .get_str("themeVariables.emRelationStroke"),
-            Some("#64748b")
-        );
-        assert_eq!(
-            event_modeling
-                .effective_config
-                .get_str("themeVariables.emArrowhead"),
-            Some("#2563eb")
-        );
-        assert_eq!(
-            event_modeling
-                .effective_config
-                .get_str("themeVariables.emSwimlaneBackgroundOdd"),
-            Some("#f1f5f9")
-        );
+        assert!(fallback_contribution_count(&journey) > 0);
     }
 
     #[test]

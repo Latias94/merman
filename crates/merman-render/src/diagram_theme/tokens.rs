@@ -37,60 +37,6 @@ pub struct ThemeTokens {
     typography: TypographySpec,
 }
 
-/// Frozen compatibility values retained only for the temporary family bridge.
-///
-/// Arbitrary theme specs cannot construct this record. It is emitted only by `ThemeTokens`, so
-/// family-scoped rules never become cross-family Mermaid variables while built-in presets retain
-/// their pre-cutover appearance on families that do not yet have typed consumers.
-#[derive(Debug, Clone, PartialEq)]
-pub(super) struct FrozenLegacyThemeCompatibility {
-    pub(super) canvas: ThemeColorValue,
-    pub(super) surface: ThemeColorValue,
-    pub(super) surface_alt: ThemeColorValue,
-    pub(super) surface_muted: ThemeColorValue,
-    pub(super) text: ThemeColorValue,
-    pub(super) subtle_text: ThemeColorValue,
-    pub(super) border: ThemeColorValue,
-    pub(super) line: ThemeColorValue,
-    pub(super) accent: ThemeColorValue,
-    pub(super) edge_label_background: ThemeColorValue,
-    pub(super) cluster_background: ThemeColorValue,
-    pub(super) cluster_border: ThemeColorValue,
-    pub(super) note_background: ThemeColorValue,
-    pub(super) note_border: ThemeColorValue,
-    pub(super) note_text: ThemeColorValue,
-    pub(super) error: ThemeColorValue,
-    pub(super) warning: ThemeColorValue,
-    pub(super) success: ThemeColorValue,
-    pub(super) series: Vec<ThemeColorValue>,
-}
-
-impl From<&ThemeTokens> for FrozenLegacyThemeCompatibility {
-    fn from(tokens: &ThemeTokens) -> Self {
-        Self {
-            canvas: tokens.canvas.clone(),
-            surface: tokens.surface.clone(),
-            surface_alt: tokens.surface_alt.clone(),
-            surface_muted: tokens.surface_muted.clone(),
-            text: tokens.text.clone(),
-            subtle_text: tokens.subtle_text.clone(),
-            border: tokens.border.clone(),
-            line: tokens.line.clone(),
-            accent: tokens.accent.clone(),
-            edge_label_background: tokens.edge_label_background.clone(),
-            cluster_background: tokens.cluster_background.clone(),
-            cluster_border: tokens.cluster_border.clone(),
-            note_background: tokens.note_background.clone(),
-            note_border: tokens.note_border.clone(),
-            note_text: tokens.note_text.clone(),
-            error: tokens.error.clone(),
-            warning: tokens.warning.clone(),
-            success: tokens.success.clone(),
-            series: tokens.series.clone(),
-        }
-    }
-}
-
 impl Default for ThemeTokens {
     fn default() -> Self {
         Self {
@@ -338,7 +284,6 @@ impl ThemeTokens {
     }
 
     pub fn into_theme_spec(self) -> DiagramThemeSpec {
-        let frozen_legacy_compatibility = FrozenLegacyThemeCompatibility::from(&self);
         let fill = |color: &ThemeColorValue| {
             ThemeStylePatch::default().with_fill(CanvasPaint::Solid(color.clone()))
         };
@@ -560,7 +505,6 @@ impl ThemeTokens {
             .with_typography(typography)
             .with_styles(styles)
             .with_canvas(canvas)
-            .with_frozen_legacy_compatibility(frozen_legacy_compatibility)
     }
 
     pub fn typography(&self) -> &TypographySpec {
