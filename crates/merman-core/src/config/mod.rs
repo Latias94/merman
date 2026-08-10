@@ -1,6 +1,18 @@
+mod overlay;
+
+pub(crate) use overlay::ConfigOverlayApplication;
+#[cfg(test)]
+pub(crate) use overlay::ConfigOverlayField;
+pub(crate) use overlay::ConfigOverlayLane;
+pub(crate) use overlay::{
+    ConfigOverlayContribution, ConfigOverlayError, ConfigOverlayProvenance,
+    PostDetectionConfigOverlay, PostDetectionConfigOverlayProvider,
+};
+
 use crate::{ParseControl, ParseControlResult};
 use serde_json::{Map, Value};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::fmt;
 use std::mem::size_of;
 use std::sync::Arc;
 
@@ -29,8 +41,348 @@ pub(crate) fn apply_hardened_site_policy(config: &mut MermaidConfig) {
     );
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct MermaidConfig(Arc<Value>);
+#[derive(Clone)]
+pub struct MermaidConfig {
+    value: Arc<Value>,
+    overlay_provenance: ConfigOverlayProvenance,
+    theme_compatibility: Option<ThemeCompatibilityState>,
+    mutation_paths: Arc<BTreeMap<Arc<str>, u64>>,
+    mutation_revision: u64,
+}
+
+const MAX_THEME_COMPATIBILITY_VARIABLES: usize = 512;
+const MAX_THEME_COMPATIBILITY_IDENTIFIER_BYTES: usize = 128;
+const MAX_THEME_COMPATIBILITY_STRING_BYTES: usize = 1024;
+const MAX_THEME_COMPATIBILITY_NUMBER_ABS: f64 = 1_000_000_000.0;
+
+/// Validation failure while constructing a [`ThemeParseBinding`].
+///
+/// The binding boundary deliberately accepts only Mermaid's bounded compatibility subset. Rich
+/// renderer behavior belongs to the typed theme recipe instead of this upstream-config lane.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub(crate) enum ThemeParseBindingError {
+    #[error("theme compatibility config must be an object")]
+    InvalidRoot,
+    #[error("unsupported theme compatibility field `{field}`")]
+    UnsupportedField { field: String },
+    #[error("invalid theme compatibility value for `{field}`")]
+    InvalidValue { field: &'static str },
+    #[error("theme compatibility limit exceeded for `{field}`")]
+    LimitExceeded { field: &'static str },
+}
+
+/// Opaque, normalized pairing of a compiled recipe identity and its Mermaid compatibility input.
+///
+/// This is metadata only; it is never serialized into Mermaid's configuration value. Its
+/// constructor owns both pieces so an engine cannot install a recipe assertion with arbitrary
+/// compatibility JSON, and a render session can compare the full parse contract.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ThemeParseBinding {
+    recipe_identity: [u8; 32],
+    compatibility_config: Arc<Value>,
+}
+
+impl ThemeParseBinding {
+    /// Validates and canonicalizes the restricted Mermaid compatibility input for one recipe.
+    pub(crate) fn try_new(
+        recipe_identity: [u8; 32],
+        compatibility_config: MermaidConfig,
+    ) -> Result<Self, ThemeParseBindingError> {
+        Ok(Self {
+            recipe_identity,
+            compatibility_config: Arc::new(normalize_theme_compatibility_config(
+                compatibility_config.as_value(),
+            )?),
+        })
+    }
+
+    pub(crate) const fn recipe_identity(&self) -> &[u8; 32] {
+        &self.recipe_identity
+    }
+
+    fn into_tracking_config(self) -> MermaidConfig {
+        let ownership = ThemeCompatibilityOwnership::from_config(
+            self.clone(),
+            self.compatibility_config.as_ref(),
+        );
+        MermaidConfig {
+            value: self.compatibility_config,
+            overlay_provenance: ConfigOverlayProvenance::default(),
+            theme_compatibility: Some(ThemeCompatibilityState::Tracking(Arc::new(ownership))),
+            mutation_paths: Arc::new(BTreeMap::new()),
+            mutation_revision: 0,
+        }
+    }
+}
+
+fn normalize_theme_compatibility_config(config: &Value) -> Result<Value, ThemeParseBindingError> {
+    let root = config
+        .as_object()
+        .ok_or(ThemeParseBindingError::InvalidRoot)?;
+    for key in root.keys() {
+        if !matches!(key.as_str(), "theme" | "darkMode" | "themeVariables") {
+            return Err(ThemeParseBindingError::UnsupportedField { field: key.clone() });
+        }
+    }
+
+    let mut normalized = Map::new();
+    if let Some(theme) = root.get("theme") {
+        let Value::String(theme) = theme else {
+            return Err(ThemeParseBindingError::InvalidValue { field: "theme" });
+        };
+        normalized.insert(
+            "theme".to_string(),
+            Value::String(normalize_theme_compatibility_identifier(theme, "theme")?),
+        );
+    }
+
+    let root_dark_mode = root
+        .get("darkMode")
+        .map(|value| match value {
+            Value::Bool(value) => Ok(*value),
+            _ => Err(ThemeParseBindingError::InvalidValue { field: "darkMode" }),
+        })
+        .transpose()?;
+    let mut variables = BTreeMap::new();
+    let mut variable_dark_mode = None;
+    if let Some(raw_variables) = root.get("themeVariables") {
+        let Value::Object(raw_variables) = raw_variables else {
+            return Err(ThemeParseBindingError::InvalidValue {
+                field: "themeVariables",
+            });
+        };
+        let mut variable_count = 0usize;
+        for (raw_key, raw_value) in raw_variables {
+            let key = normalize_theme_compatibility_identifier(raw_key, "themeVariables.key")?;
+            if key == "darkMode" {
+                let Value::Bool(value) = raw_value else {
+                    return Err(ThemeParseBindingError::InvalidValue {
+                        field: "themeVariables.darkMode",
+                    });
+                };
+                variable_dark_mode = Some(*value);
+                continue;
+            }
+            variable_count = variable_count.saturating_add(1);
+            if variable_count > MAX_THEME_COMPATIBILITY_VARIABLES {
+                return Err(ThemeParseBindingError::LimitExceeded {
+                    field: "themeVariables",
+                });
+            }
+            let value = normalize_theme_compatibility_scalar(raw_value)?;
+            if variables.insert(key, value).is_some() {
+                return Err(ThemeParseBindingError::InvalidValue {
+                    field: "themeVariables.key",
+                });
+            }
+        }
+    }
+
+    let dark_mode = match (root_dark_mode, variable_dark_mode) {
+        (Some(root), Some(variable)) if root != variable => {
+            return Err(ThemeParseBindingError::InvalidValue { field: "darkMode" });
+        }
+        (Some(value), _) | (_, Some(value)) => Some(value),
+        (None, None) => None,
+    };
+    if let Some(dark_mode) = dark_mode {
+        normalized.insert("darkMode".to_string(), Value::Bool(dark_mode));
+        variables.insert("darkMode".to_string(), Value::Bool(dark_mode));
+    }
+    if !variables.is_empty() {
+        normalized.insert(
+            "themeVariables".to_string(),
+            Value::Object(variables.into_iter().collect()),
+        );
+    }
+    Ok(Value::Object(normalized))
+}
+
+fn normalize_theme_compatibility_identifier(
+    value: &str,
+    field: &'static str,
+) -> Result<String, ThemeParseBindingError> {
+    let normalized = value.trim();
+    if normalized.is_empty()
+        || normalized.len() > MAX_THEME_COMPATIBILITY_IDENTIFIER_BYTES
+        || normalized.chars().any(|character| {
+            character.is_control()
+                || !(character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+        })
+    {
+        return Err(ThemeParseBindingError::InvalidValue { field });
+    }
+    Ok(normalized.to_string())
+}
+
+fn normalize_theme_compatibility_scalar(value: &Value) -> Result<Value, ThemeParseBindingError> {
+    match value {
+        Value::String(value) => {
+            let normalized = value.trim();
+            if normalized.is_empty() || normalized.len() > MAX_THEME_COMPATIBILITY_STRING_BYTES {
+                return Err(ThemeParseBindingError::InvalidValue {
+                    field: "themeVariables.value",
+                });
+            }
+            Ok(Value::String(normalized.to_string()))
+        }
+        Value::Number(value) => {
+            let value = value.as_f64().ok_or(ThemeParseBindingError::InvalidValue {
+                field: "themeVariables.value",
+            })?;
+            if !value.is_finite() || value.abs() > MAX_THEME_COMPATIBILITY_NUMBER_ABS {
+                return Err(ThemeParseBindingError::InvalidValue {
+                    field: "themeVariables.value",
+                });
+            }
+            let value = if value == 0.0 { 0.0 } else { value };
+            Ok(Value::Number(
+                serde_json::Number::from_f64(value).expect("finite number checked above"),
+            ))
+        }
+        Value::Bool(value) => Ok(Value::Bool(*value)),
+        Value::Null | Value::Array(_) | Value::Object(_) => {
+            Err(ThemeParseBindingError::InvalidValue {
+                field: "themeVariables.value",
+            })
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+enum ThemeCompatibilityState {
+    Tracking(Arc<ThemeCompatibilityOwnership>),
+    Frozen {
+        binding: ThemeParseBinding,
+        surviving_field_count: usize,
+    },
+}
+
+#[derive(Debug, Clone)]
+struct ThemeCompatibilityOwnership {
+    binding: ThemeParseBinding,
+    fields: Vec<ThemeCompatibilityFieldOwnership>,
+}
+
+#[derive(Debug, Clone)]
+struct ThemeCompatibilityFieldOwnership {
+    paths: Vec<ThemeCompatibilityPathOwnership>,
+}
+
+#[derive(Debug, Clone)]
+struct ThemeCompatibilityPathOwnership {
+    path: Arc<str>,
+    expected: Value,
+    owned: bool,
+}
+
+impl ThemeCompatibilityOwnership {
+    fn from_config(binding: ThemeParseBinding, config: &Value) -> Self {
+        let mut fields = Vec::new();
+        let Some(root) = config.as_object() else {
+            return Self { binding, fields };
+        };
+
+        if root.contains_key("theme") {
+            fields.push(ThemeCompatibilityFieldOwnership::new([(
+                "theme",
+                root.get("theme").expect("theme key checked above").clone(),
+            )]));
+        }
+
+        let variables = root.get("themeVariables").and_then(Value::as_object);
+        if root.contains_key("darkMode")
+            || variables.is_some_and(|variables| variables.contains_key("darkMode"))
+        {
+            let expected = root
+                .get("darkMode")
+                .or_else(|| variables.and_then(|variables| variables.get("darkMode")))
+                .expect("darkMode key checked above")
+                .clone();
+            fields.push(ThemeCompatibilityFieldOwnership::new([
+                ("darkMode", expected.clone()),
+                ("themeVariables.darkMode", expected),
+            ]));
+        }
+
+        if let Some(variables) = variables {
+            fields.extend(
+                variables
+                    .keys()
+                    .filter(|key| key.as_str() != "darkMode")
+                    .map(|key| {
+                        ThemeCompatibilityFieldOwnership::new([(
+                            format!("themeVariables.{key}"),
+                            variables
+                                .get(key)
+                                .expect("variable key came from themeVariables")
+                                .clone(),
+                        )])
+                    }),
+            );
+        }
+
+        Self { binding, fields }
+    }
+
+    fn shadow_path(&mut self, dotted_path: &str) {
+        for field in &mut self.fields {
+            for path in &mut field.paths {
+                if path.owned && dotted_paths_overlap(&path.path, dotted_path) {
+                    path.owned = false;
+                }
+            }
+        }
+    }
+
+    fn surviving_field_count(&self, final_config: &Value) -> usize {
+        self.fields
+            .iter()
+            .filter(|field| {
+                field.paths.iter().any(|path| {
+                    path.owned
+                        && value_at_dotted_path(final_config, &path.path) == Some(&path.expected)
+                })
+            })
+            .count()
+    }
+}
+
+impl ThemeCompatibilityFieldOwnership {
+    fn new<I, P>(paths: I) -> Self
+    where
+        I: IntoIterator<Item = (P, Value)>,
+        P: Into<Arc<str>>,
+    {
+        Self {
+            paths: paths
+                .into_iter()
+                .map(|(path, expected)| ThemeCompatibilityPathOwnership {
+                    path: path.into(),
+                    expected,
+                    owned: true,
+                })
+                .collect(),
+        }
+    }
+}
+
+impl fmt::Debug for MermaidConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("MermaidConfig")
+            .field(&self.value)
+            .finish()
+    }
+}
+
+impl PartialEq for MermaidConfig {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
+}
 
 impl Default for MermaidConfig {
     fn default() -> Self {
@@ -40,15 +392,21 @@ impl Default for MermaidConfig {
 
 impl MermaidConfig {
     pub fn empty_object() -> Self {
-        Self(Arc::new(Value::Object(Map::new())))
+        Self::from_value(Value::Object(Map::new()))
     }
 
     pub fn from_value(value: Value) -> Self {
-        Self(Arc::new(value))
+        Self {
+            value: Arc::new(value),
+            overlay_provenance: ConfigOverlayProvenance::default(),
+            theme_compatibility: None,
+            mutation_paths: Arc::new(BTreeMap::new()),
+            mutation_revision: 0,
+        }
     }
 
     pub fn as_value(&self) -> &Value {
-        self.0.as_ref()
+        self.value.as_ref()
     }
 
     /// Clones this config without recursion while enforcing a retained-size and nesting budget.
@@ -73,16 +431,84 @@ impl MermaidConfig {
         matches!(self.as_value(), Value::Object(map) if map.is_empty())
     }
 
+    pub(crate) fn has_tracking_theme_compatibility(&self) -> bool {
+        matches!(
+            self.theme_compatibility,
+            Some(ThemeCompatibilityState::Tracking(_))
+        )
+    }
+
     pub(crate) fn ptr_eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
+        Arc::ptr_eq(&self.value, &other.value)
+    }
+
+    pub(crate) fn overlay_provenance(&self) -> &ConfigOverlayProvenance {
+        &self.overlay_provenance
+    }
+
+    pub(crate) fn set_overlay_provenance(&mut self, provenance: ConfigOverlayProvenance) {
+        self.overlay_provenance = provenance;
+    }
+
+    pub(crate) fn theme_parse_binding(&self) -> Option<&ThemeParseBinding> {
+        match self.theme_compatibility.as_ref() {
+            Some(ThemeCompatibilityState::Frozen { binding, .. }) => Some(binding),
+            Some(ThemeCompatibilityState::Tracking(_)) | None => None,
+        }
+    }
+
+    /// Returns explicit Mermaid compatibility fields still owned by the parsed theme.
+    pub(crate) fn mermaid_compatibility_residual_count(&self) -> usize {
+        match self.theme_compatibility.as_ref() {
+            Some(ThemeCompatibilityState::Frozen {
+                surviving_field_count,
+                ..
+            }) => *surviving_field_count,
+            Some(ThemeCompatibilityState::Tracking(_)) | None => 0,
+        }
+    }
+
+    pub(crate) fn from_theme_parse_binding(binding: ThemeParseBinding) -> Self {
+        binding.into_tracking_config()
+    }
+
+    pub(crate) fn adopt_tracking_theme_compatibility_from(&mut self, source: &mut Self) {
+        let Some(state @ ThemeCompatibilityState::Tracking(_)) = source.theme_compatibility.take()
+        else {
+            return;
+        };
+        self.theme_compatibility = Some(state);
+    }
+
+    pub(crate) fn freeze_theme_compatibility(&mut self) {
+        let Some(ThemeCompatibilityState::Tracking(ownership)) = self.theme_compatibility.take()
+        else {
+            return;
+        };
+        self.theme_compatibility = Some(ThemeCompatibilityState::Frozen {
+            binding: ownership.binding.clone(),
+            surviving_field_count: ownership.surviving_field_count(self.as_value()),
+        });
+    }
+
+    pub(crate) fn path_was_mutated_after(&self, before: &Self, dotted_path: &str) -> bool {
+        self.mutation_paths.iter().any(|(candidate, revision)| {
+            before
+                .mutation_paths
+                .get(candidate)
+                .is_none_or(|before_revision| revision > before_revision)
+                && dotted_paths_overlap(candidate.as_ref(), dotted_path)
+        })
     }
 
     pub fn as_value_mut(&mut self) -> &mut Value {
+        self.shadow_theme_compatibility_path("");
+        self.record_mutation("");
         self.value_mut()
     }
 
     pub fn get_str(&self, dotted_path: &str) -> Option<&str> {
-        let mut cur: &Value = self.0.as_ref();
+        let mut cur: &Value = self.value.as_ref();
         for segment in dotted_path.split('.') {
             cur = cur.as_object()?.get(segment)?;
         }
@@ -90,7 +516,7 @@ impl MermaidConfig {
     }
 
     pub fn get_bool(&self, dotted_path: &str) -> Option<bool> {
-        let mut cur: &Value = self.0.as_ref();
+        let mut cur: &Value = self.value.as_ref();
         for segment in dotted_path.split('.') {
             cur = cur.as_object()?.get(segment)?;
         }
@@ -98,6 +524,21 @@ impl MermaidConfig {
     }
 
     pub fn set_value(&mut self, dotted_path: &str, value: Value) {
+        self.shadow_theme_compatibility_path(dotted_path);
+        self.record_mutation(dotted_path);
+        self.set_value_without_theme_compatibility_shadow(dotted_path, value);
+    }
+
+    pub(crate) fn set_value_preserving_theme_compatibility(
+        &mut self,
+        dotted_path: &str,
+        value: Value,
+    ) {
+        self.record_mutation(dotted_path);
+        self.set_value_without_theme_compatibility_shadow(dotted_path, value);
+    }
+
+    fn set_value_without_theme_compatibility_shadow(&mut self, dotted_path: &str, value: Value) {
         let root_value = self.value_mut();
         // Be defensive: callers can construct `MermaidConfig` from any JSON value via
         // `from_value`. Mermaid configs are objects; if we see a non-object here, coerce it
@@ -130,16 +571,19 @@ impl MermaidConfig {
     }
 
     pub fn deep_merge(&mut self, other: &Value) {
-        let Value::Object(m) = other else {
-            let base = self.value_mut();
-            deep_merge_value(base, other);
-            return;
-        };
-        if m.is_empty() {
+        // Preserve Mermaid's existing empty-object no-op. In particular, an empty patch must not
+        // coerce a null root into an empty object or claim ownership of the whole configuration.
+        if matches!(other, Value::Object(map) if map.is_empty()) {
             return;
         }
-        let base = self.value_mut();
-        deep_merge_value(base, other);
+        let mutation_paths = {
+            let base = self.value_mut();
+            deep_merge_value_with_mutation_paths(base, other)
+        };
+        for path in mutation_paths {
+            self.shadow_theme_compatibility_path(&path);
+            self.record_mutation(&path);
+        }
     }
 
     pub(crate) fn secure_filtered_overrides(&self, overrides: &MermaidConfig) -> MermaidConfig {
@@ -149,16 +593,54 @@ impl MermaidConfig {
     }
 
     fn value_mut(&mut self) -> &mut Value {
-        if Arc::strong_count(&self.0) != 1 || Arc::weak_count(&self.0) != 0 {
-            self.0 = Arc::new(clone_value_nonrecursive(self.0.as_ref()));
+        if Arc::strong_count(&self.value) != 1 || Arc::weak_count(&self.value) != 0 {
+            self.value = Arc::new(clone_value_nonrecursive(self.value.as_ref()));
         }
-        Arc::make_mut(&mut self.0)
+        Arc::make_mut(&mut self.value)
     }
+
+    fn record_mutation(&mut self, dotted_path: &str) {
+        self.mutation_revision = self.mutation_revision.saturating_add(1);
+        Arc::make_mut(&mut self.mutation_paths)
+            .insert(Arc::from(dotted_path), self.mutation_revision);
+    }
+
+    fn shadow_theme_compatibility_path(&mut self, dotted_path: &str) {
+        match self.theme_compatibility.as_mut() {
+            Some(ThemeCompatibilityState::Tracking(ownership)) => {
+                Arc::make_mut(ownership).shadow_path(dotted_path);
+            }
+            Some(ThemeCompatibilityState::Frozen { .. }) => {
+                self.theme_compatibility = None;
+            }
+            None => {}
+        }
+    }
+}
+
+fn dotted_paths_overlap(left: &str, right: &str) -> bool {
+    left.is_empty()
+        || right.is_empty()
+        || left == right
+        || left
+            .strip_prefix(right)
+            .is_some_and(|suffix| suffix.starts_with('.'))
+        || right
+            .strip_prefix(left)
+            .is_some_and(|suffix| suffix.starts_with('.'))
+}
+
+fn value_at_dotted_path<'a>(value: &'a Value, dotted_path: &str) -> Option<&'a Value> {
+    let mut current = value;
+    for segment in dotted_path.split('.') {
+        current = current.as_object()?.get(segment)?;
+    }
+    Some(current)
 }
 
 impl Drop for MermaidConfig {
     fn drop(&mut self) {
-        if let Some(value) = Arc::get_mut(&mut self.0) {
+        if let Some(value) = Arc::get_mut(&mut self.value) {
             let old = std::mem::replace(value, Value::Null);
             drop_value_nonrecursive(old);
         }
@@ -241,18 +723,42 @@ pub(crate) fn mirror_legacy_font_family_into_theme_variables_value(value: &mut V
     }
 }
 
-fn deep_merge_value(base: &mut Value, incoming: &Value) {
+fn deep_merge_value_with_mutation_paths(base: &mut Value, incoming: &Value) -> BTreeSet<String> {
     // Mermaid 11.16.1 uses `assignWithDepth(dst, src)` with its default depth of two for site,
-    // frontmatter, and directive configuration. Keep that bounded traversal instead of turning
-    // configuration merging into an unbounded recursive deep merge.
-    assign_with_depth(base, incoming, 2);
+    // frontmatter, and directive configuration. Record ownership from that same execution rather
+    // than maintaining a second approximation of which assignments were effective.
+    let mut mutation_paths = BTreeSet::new();
+    let mut path = Vec::new();
+    assign_with_depth_recording(base, incoming, 2, &mut path, &mut |segments| {
+        mutation_paths.insert(segments.join("."));
+    });
+    mutation_paths
 }
 
-fn assign_with_depth(destination: &mut Value, source: &Value, depth: usize) {
+fn assign_with_depth_recording<'a, F>(
+    destination: &mut Value,
+    source: &'a Value,
+    depth: usize,
+    path: &mut Vec<&'a str>,
+    record_mutation: &mut F,
+) where
+    F: FnMut(&[&str]),
+{
     if let Value::Array(source_items) = source {
         match destination {
-            Value::Array(destination_items) => merge_arrays(destination_items, source_items),
-            Value::Object(_) => merge_array_of_sources(destination, source_items, depth),
+            Value::Array(destination_items) => {
+                if !source_items.is_empty() {
+                    record_mutation(path);
+                }
+                merge_arrays(destination_items, source_items);
+            }
+            Value::Object(_) => merge_array_of_sources_recording(
+                destination,
+                source_items,
+                depth,
+                path,
+                record_mutation,
+            ),
             Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
         }
         return;
@@ -262,6 +768,7 @@ fn assign_with_depth(destination: &mut Value, source: &Value, depth: usize) {
         // Mermaid 11.16.1 treats a null destination as an absent value and returns the source.
         // Mutating the slot in place is the JSON equivalent of the caller assigning that return
         // value back to the parent property.
+        record_mutation(path);
         replace_value_nonrecursive(destination, clone_value_nonrecursive(source));
         return;
     }
@@ -272,7 +779,7 @@ fn assign_with_depth(destination: &mut Value, source: &Value, depth: usize) {
     }
 
     if depth == 0 {
-        object_assign(destination, source);
+        object_assign_recording(destination, source, path, record_mutation);
         return;
     }
 
@@ -284,13 +791,29 @@ fn assign_with_depth(destination: &mut Value, source: &Value, depth: usize) {
         if is_non_null_js_object(source_child) {
             match destination_map.get_mut(key) {
                 Some(destination_child) if is_js_object(destination_child) => {
-                    assign_with_depth(destination_child, source_child, depth - 1);
+                    path.push(key);
+                    assign_with_depth_recording(
+                        destination_child,
+                        source_child,
+                        depth - 1,
+                        path,
+                        record_mutation,
+                    );
+                    path.pop();
                 }
                 Some(_) => {}
                 None => {
                     destination_map.insert(key.clone(), empty_container_for(source_child));
                     if let Some(destination_child) = destination_map.get_mut(key) {
-                        assign_with_depth(destination_child, source_child, depth - 1);
+                        path.push(key);
+                        assign_with_depth_recording(
+                            destination_child,
+                            source_child,
+                            depth - 1,
+                            path,
+                            record_mutation,
+                        );
+                        path.pop();
                     }
                 }
             }
@@ -299,18 +822,29 @@ fn assign_with_depth(destination: &mut Value, source: &Value, depth: usize) {
                 .get(key)
                 .is_none_or(|value| !is_js_object(value))
         {
+            path.push(key);
+            record_mutation(path);
+            path.pop();
             insert_cloned(destination_map, key, source_child);
         }
     }
 }
 
-fn merge_array_of_sources(destination: &mut Value, source_items: &[Value], depth: usize) {
+fn merge_array_of_sources_recording<'a, F>(
+    destination: &mut Value,
+    source_items: &'a [Value],
+    depth: usize,
+    path: &mut Vec<&'a str>,
+    record_mutation: &mut F,
+) where
+    F: FnMut(&[&str]),
+{
     let mut stack = source_items.iter().rev().collect::<Vec<_>>();
     while let Some(source) = stack.pop() {
         if let Value::Array(items) = source {
             stack.extend(items.iter().rev());
         } else {
-            assign_with_depth(destination, source, depth);
+            assign_with_depth_recording(destination, source, depth, path, record_mutation);
         }
     }
 }
@@ -327,10 +861,20 @@ fn merge_arrays(destination: &mut Vec<Value>, source: &[Value]) {
     }
 }
 
-fn object_assign(destination: &mut Value, source: &Value) {
+fn object_assign_recording<'a, F>(
+    destination: &mut Value,
+    source: &'a Value,
+    path: &mut Vec<&'a str>,
+    record_mutation: &mut F,
+) where
+    F: FnMut(&[&str]),
+{
     match (destination, source) {
         (Value::Object(destination_map), Value::Object(source_map)) => {
             for (key, source_child) in source_map {
+                path.push(key);
+                record_mutation(path);
+                path.pop();
                 insert_cloned(destination_map, key, source_child);
             }
         }
@@ -339,6 +883,7 @@ fn object_assign(destination: &mut Value, source: &Value) {
         // unrepresentable object-to-array case unchanged.
         (Value::Array(_), Value::Object(_)) => {}
         (destination, source) => {
+            record_mutation(path);
             replace_value_nonrecursive(destination, clone_value_nonrecursive(source));
         }
     }
@@ -550,6 +1095,22 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn dotted_path_overlap_is_symmetric_for_parent_and_child_paths() {
+        assert!(dotted_paths_overlap(
+            "themeVariables",
+            "themeVariables.darkMode"
+        ));
+        assert!(dotted_paths_overlap(
+            "themeVariables.darkMode",
+            "themeVariables"
+        ));
+        assert!(!dotted_paths_overlap(
+            "themeVariables.darkMode",
+            "themeVariables.useGradient"
+        ));
+    }
+
+    #[test]
     fn mirror_legacy_font_family_populates_missing_theme_variable() {
         let mut cfg = MermaidConfig::from_value(json!({
             "fontFamily": "Courier"
@@ -605,6 +1166,15 @@ mod tests {
 
         config.deep_merge(&Value::Null);
         assert_eq!(config.get_str("theme"), Some("default"));
+    }
+
+    #[test]
+    fn deep_merge_empty_object_is_a_noop_for_a_null_root() {
+        let mut config = MermaidConfig::from_value(Value::Null);
+
+        config.deep_merge(&json!({}));
+
+        assert_eq!(config.as_value(), &Value::Null);
     }
 
     #[test]

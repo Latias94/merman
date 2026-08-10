@@ -1226,11 +1226,11 @@ impl PreparedTextLabelEvidence {
         }
     }
 
-    pub const fn source_range(&self) -> TextByteRange {
+    pub(crate) const fn source_range(&self) -> TextByteRange {
         self.source_range
     }
 
-    pub const fn visible_range(&self) -> TextByteRange {
+    pub(crate) const fn visible_range(&self) -> TextByteRange {
         self.visible_range
     }
 
@@ -1265,7 +1265,7 @@ impl PreparedTextLabelLedgerEntry {
         self.catalog_fingerprint
     }
 
-    pub const fn request_digest(&self) -> TextLayoutRequestDigest {
+    pub(crate) const fn request_digest(&self) -> TextLayoutRequestDigest {
         self.request_digest
     }
 
@@ -1273,16 +1273,26 @@ impl PreparedTextLabelLedgerEntry {
         self.provenance
     }
 
-    pub fn projection_spans(&self) -> &[SourceVisibleSpan] {
+    pub(crate) fn projection_spans(&self) -> &[SourceVisibleSpan] {
         &self.projection_spans
     }
 
-    pub fn line_ranges(&self) -> &[TextByteRange] {
+    pub(crate) fn line_ranges(&self) -> &[TextByteRange] {
         &self.line_ranges
     }
 
     pub fn evidence(&self) -> &[PreparedTextLabelEvidence] {
         &self.runs
+    }
+
+    /// Returns the number of prepared output lines retained for native export verification.
+    pub fn line_count(&self) -> usize {
+        self.line_ranges.len()
+    }
+
+    /// Returns the admitted font sources actually used by this emitted label.
+    pub fn used_font_sources(&self) -> impl Iterator<Item = FontSource> + '_ {
+        self.runs.iter().map(PreparedTextLabelEvidence::font_source)
     }
 }
 
@@ -2276,12 +2286,6 @@ impl fmt::Debug for PreparedTextLayoutResponse {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreparedTextLayoutReport {
     catalog_fingerprint: FontCatalogFingerprint,
-    contract_version: u32,
-    candidate_count: usize,
-    backend: TextLayoutBackendIdentity,
-    capabilities: TextLayoutCapabilities,
-    font_source: FontSource,
-    session_token: TextLayoutSessionToken,
     face_count: usize,
     used_font_sources: Arc<[FontSource]>,
     used_fallbacks: Arc<[HostMeasurementFallback]>,
@@ -2293,30 +2297,6 @@ pub struct PreparedTextLayoutReport {
 impl PreparedTextLayoutReport {
     pub const fn catalog_fingerprint(&self) -> FontCatalogFingerprint {
         self.catalog_fingerprint
-    }
-
-    pub const fn contract_version(&self) -> u32 {
-        self.contract_version
-    }
-
-    pub const fn candidate_count(&self) -> usize {
-        self.candidate_count
-    }
-
-    pub const fn backend(&self) -> &TextLayoutBackendIdentity {
-        &self.backend
-    }
-
-    pub const fn capabilities(&self) -> TextLayoutCapabilities {
-        self.capabilities
-    }
-
-    pub const fn font_source(&self) -> FontSource {
-        self.font_source
-    }
-
-    pub const fn session_token(&self) -> TextLayoutSessionToken {
-        self.session_token
     }
 
     pub const fn face_count(&self) -> usize {
@@ -2705,7 +2685,6 @@ impl PreparedTextLayout {
     }
 
     pub(crate) fn report(&self) -> PreparedTextLayoutReport {
-        let primary = self.primary_candidate();
         let usage = self
             .usage
             .lock()
@@ -2729,12 +2708,6 @@ impl PreparedTextLayout {
         }
         PreparedTextLayoutReport {
             catalog_fingerprint: self.catalog_fingerprint,
-            contract_version: self.contract_version,
-            candidate_count: self.candidates.len(),
-            backend: primary.backend.clone(),
-            capabilities: primary.capabilities,
-            font_source: primary.font_source,
-            session_token: primary.session_token,
             face_count: self.catalog.faces().len(),
             used_font_sources: used_font_sources.into_iter().collect::<Vec<_>>().into(),
             used_fallbacks: used_fallbacks.into_iter().collect::<Vec<_>>().into(),
@@ -2992,10 +2965,46 @@ impl fmt::Debug for TextLayoutSessionToken {
     }
 }
 
-/// Errors raised before a catalog-backed layout session is admitted.
+/// Stable, coarse failure category exposed by render-session reports.
+///
+/// Backend protocol details remain internal until the optional host-assurance boundary is proven.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, thiserror::Error)]
+#[non_exhaustive]
+pub enum TextLayoutFailure {
+    #[error("text layout input is invalid")]
+    InvalidInput,
+    #[error("text layout exceeded a resource limit")]
+    ResourceLimitExceeded,
+    #[error("text layout could not resolve an admitted font or glyph")]
+    FontUnavailable,
+    #[error("the selected label mode is not supported by prepared text layout")]
+    UnsupportedLabelMode,
+    #[error("host-dependent text layout cannot satisfy strict portability")]
+    HostDependentNotPortable,
+    #[error("the text layout backend is unavailable")]
+    BackendUnavailable,
+    #[error("the text layout backend returned invalid evidence")]
+    InvalidBackendEvidence,
+}
+
+impl TextLayoutFailure {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::InvalidInput => "invalid-input",
+            Self::ResourceLimitExceeded => "resource-limit-exceeded",
+            Self::FontUnavailable => "font-unavailable",
+            Self::UnsupportedLabelMode => "unsupported-label-mode",
+            Self::HostDependentNotPortable => "host-dependent-not-portable",
+            Self::BackendUnavailable => "backend-unavailable",
+            Self::InvalidBackendEvidence => "invalid-backend-evidence",
+        }
+    }
+}
+
+/// Internal errors raised before a catalog-backed layout session is admitted.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
-pub enum TextLayoutError {
+pub(crate) enum TextLayoutError {
     #[error("text layout backend name and version must be non-empty")]
     InvalidBackendIdentity,
     #[error("text layout request field `{0}` is invalid")]
@@ -3044,6 +3053,38 @@ pub enum TextLayoutError {
     BackendRejected,
     #[error("text layout backend timed out while preparing the catalog")]
     BackendTimeout,
+}
+
+impl From<&TextLayoutError> for TextLayoutFailure {
+    fn from(error: &TextLayoutError) -> Self {
+        match error {
+            TextLayoutError::InvalidRequest(_)
+            | TextLayoutError::InvalidFeature
+            | TextLayoutError::InvalidVariation => Self::InvalidInput,
+            TextLayoutError::LimitExceeded(_) => Self::ResourceLimitExceeded,
+            TextLayoutError::NoUsableFace
+            | TextLayoutError::FontSourceUnavailable
+            | TextLayoutError::FontFamilyUnavailable
+            | TextLayoutError::GlyphUnavailable => Self::FontUnavailable,
+            TextLayoutError::UnsupportedPreparedTextPath(_) => Self::UnsupportedLabelMode,
+            TextLayoutError::HostDependentNotPortable => Self::HostDependentNotPortable,
+            TextLayoutError::BackendRejected | TextLayoutError::BackendTimeout => {
+                Self::BackendUnavailable
+            }
+            TextLayoutError::InvalidBackendIdentity
+            | TextLayoutError::CatalogFingerprintMismatch
+            | TextLayoutError::BackendIdentityMismatch
+            | TextLayoutError::CapabilityNotAttested(_)
+            | TextLayoutError::LoadedFaceEvidenceMismatch
+            | TextLayoutError::InvalidSessionToken
+            | TextLayoutError::RequestDigestMismatch
+            | TextLayoutError::SessionTokenMismatch
+            | TextLayoutError::BackendInvalidated
+            | TextLayoutError::RunEvidenceMismatch
+            | TextLayoutError::UnsupportedContract { .. }
+            | TextLayoutError::InvalidPreparedText => Self::InvalidBackendEvidence,
+        }
+    }
 }
 
 pub(crate) fn text_projection_layout_error(error: TextProjectionError) -> TextLayoutError {

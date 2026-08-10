@@ -4,7 +4,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::diagram_theme::{LineHeight, ResolvedDiagramTheme, ThemeTarget, ThemeVariant};
+use crate::diagram_theme::{LineHeight, ThemeTextStyle};
 use crate::entities::decode_mermaid_entities_for_render_text;
 use crate::text::{
     PendingPreparedTextLabelLedgerEntry, PrepareTextRequest, PreparedText, PreparedTextLabelFamily,
@@ -37,9 +37,7 @@ pub(crate) struct StateLabelMetricsRequest<'a> {
     pub(crate) source_kind: StateLabelSourceKind,
     pub(crate) measurer: &'a dyn TextMeasurer,
     pub(crate) style: &'a TextStyle,
-    pub(crate) target: ThemeTarget,
-    pub(crate) variant: ThemeVariant,
-    pub(crate) ordinal: Option<usize>,
+    pub(crate) typography: Option<&'a ThemeTextStyle>,
     pub(crate) max_width_px: Option<f64>,
     pub(crate) wrap_mode: WrapMode,
     pub(crate) break_long_words: bool,
@@ -176,20 +174,15 @@ impl<T> StateLabelSlots<T> {
 pub(crate) struct StateLabelSidecarBuilder {
     prepared_active: bool,
     prepared_text_layout: Option<PreparedTextLayout>,
-    resolved_theme: Option<ResolvedDiagramTheme>,
     labels: RefCell<StateLabelSlots<PreparedStateLabel>>,
     prepared_error: RefCell<Option<TextLayoutError>>,
 }
 
 impl StateLabelSidecarBuilder {
-    pub(crate) fn new(
-        prepared_text_layout: Option<&PreparedTextLayout>,
-        resolved_theme: Option<&ResolvedDiagramTheme>,
-    ) -> Self {
+    pub(crate) fn new(prepared_text_layout: Option<&PreparedTextLayout>) -> Self {
         Self {
             prepared_active: prepared_text_layout.is_some(),
             prepared_text_layout: prepared_text_layout.cloned(),
-            resolved_theme: resolved_theme.cloned(),
             ..Self::default()
         }
     }
@@ -236,14 +229,12 @@ impl StateLabelSidecarBuilder {
             )?,
             StateLabelSourceKind::Plain => decode_mermaid_entities_for_render_text(request.text),
         };
-        let theme =
-            self.resolved_theme
-                .as_ref()
-                .ok_or(TextLayoutError::UnsupportedPreparedTextPath(
-                    "structured_typography",
-                ))?;
-        let resolved = theme.text_style(request.target, request.variant, request.ordinal);
-        let typography = merge_prepared_text_typography(resolved.typography(), request.style)?
+        let typography = request
+            .typography
+            .ok_or(TextLayoutError::UnsupportedPreparedTextPath(
+                "structured_typography",
+            ))?;
+        let typography = merge_prepared_text_typography(typography, request.style)?
             .with_line_height(match request.wrap_mode {
                 WrapMode::HtmlLike => LineHeight::Multiplier(1.5),
                 WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => LineHeight::Multiplier(1.1),
@@ -463,5 +454,180 @@ fn validate_source(
         Ok(())
     } else {
         Err(TextLayoutError::RequestDigestMismatch)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagram_theme::{
+        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, FontAssetSpec, FontCatalogSpec,
+        FontSourcePolicy, FontStack, OrdinalSelector, ResolvedDiagramTheme, Specified,
+        TextStylePatch, ThemeAssets, ThemeRule, ThemeRuleSet, ThemeStylePatch, TypographySpec,
+    };
+    use crate::render_family::RenderFamilyKind;
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+    use crate::text::{DeterministicTextMeasurer, NativeTextLayoutBackend, PrepareCatalogRequest};
+    use merman_core::diagrams::state::{StateDiagramRenderModel, StateDiagramRenderNode};
+    use serde_json::json;
+
+    fn prepared_state_fixture() -> (
+        PreparedTextLayout,
+        ResolvedDiagramTheme,
+        StateDiagramRenderModel,
+    ) {
+        let bytes = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
+        ));
+        let catalog = FontCatalogSpec::new([FontAssetSpec::new("excalifont", bytes)]);
+        let typography = ThemeTextStyle::default().with_font_stack(
+            FontStack::single("Excalifont").expect("fixture font stack should be valid"),
+        );
+        let ordinal = OrdinalSelector::exact(1).unwrap();
+        let mut generic_text = TextStylePatch::default();
+        generic_text.font_size_px = Specified::Value(19.0);
+        let mut state_label = TextStylePatch::default();
+        state_label.font_size_px = Specified::Value(23.0);
+        let rules = ThemeRuleSet::default()
+            .with_rule(
+                ThemeRule::new(
+                    crate::diagram_theme::ThemeTarget::State,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+                )
+                .with_ordinal(ordinal.clone()),
+            )
+            .with_rule(
+                ThemeRule::new(
+                    crate::diagram_theme::ThemeTarget::State,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#22c55e").unwrap()),
+                )
+                .with_ordinal(ordinal.clone()),
+            )
+            .with_rule(
+                ThemeRule::new(
+                    crate::diagram_theme::ThemeTarget::Text,
+                    ThemeStylePatch {
+                        typography: generic_text,
+                        ..ThemeStylePatch::default()
+                    },
+                )
+                .with_ordinal(ordinal.clone()),
+            )
+            .with_rule(
+                ThemeRule::new(
+                    crate::diagram_theme::ThemeTarget::StateLabel,
+                    ThemeStylePatch {
+                        typography: state_label,
+                        ..ThemeStylePatch::default()
+                    },
+                )
+                .with_ordinal(ordinal),
+            );
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_typography(TypographySpec::default().with_default(typography))
+                    .with_assets(ThemeAssets::default().with_font_catalog(catalog))
+                    .with_styles(rules),
+            )
+            .expect("fixture theme should compile");
+        let prepared = NativeTextLayoutBackend::default()
+            .prepare(&PrepareCatalogRequest::new(
+                theme.font_catalog().clone(),
+                FontSourcePolicy::embedded_only(),
+            ))
+            .expect("fixture catalog should prepare");
+        let resolved = theme.resolve(RenderFamilyKind::State);
+        let model = StateDiagramRenderModel {
+            nodes: vec![StateDiagramRenderNode {
+                id: "Ready".to_string(),
+                label_style: String::new(),
+                label: Some(json!("Ready")),
+                description: None,
+                dom_id: "state-Ready-0".to_string(),
+                is_group: false,
+                node_type: None,
+                parent_id: None,
+                css_classes: String::new(),
+                css_compiled_styles: Vec::new(),
+                css_styles: Vec::new(),
+                dir: None,
+                explicit_dir: None,
+                padding: Some(8.0),
+                rx: Some(0.0),
+                ry: Some(0.0),
+                shape: "rect".to_string(),
+                position: None,
+            }],
+            ..StateDiagramRenderModel::default()
+        };
+        (prepared, resolved, model)
+    }
+
+    #[test]
+    fn prepared_state_label_reuses_metered_plan_typography_without_theme_lookup() {
+        let (prepared, resolved, model) = prepared_state_fixture();
+        let work_meter =
+            OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let (plan, _) = crate::state::StateStylePlan::resolve_with_evidence(
+            &model,
+            &json!({}),
+            Some(&resolved),
+            None,
+            &work_meter,
+        )
+        .expect("resolve metered State style plan");
+        assert_eq!(work_meter.used(), 4);
+        let node = plan.node("Ready").expect("prepared State node style");
+        let measurer = DeterministicTextMeasurer::default();
+        let sidecar = StateLabelSidecarBuilder::new(Some(&prepared));
+
+        let measurement = sidecar.measure_for_layout(StateLabelMetricsRequest {
+            owner: StateLabelOwner::Node("Ready"),
+            text: "Ready",
+            source_kind: StateLabelSourceKind::Markdown,
+            measurer: &measurer,
+            style: node.text_style(),
+            typography: node.text_typography(),
+            max_width_px: Some(180.0),
+            wrap_mode: WrapMode::SvgLike,
+            break_long_words: true,
+        });
+        let sidecar = sidecar.finish();
+
+        assert!(measurement.metrics.width > 0.0);
+        assert!(sidecar.prepared_error().is_none());
+        assert!(sidecar.node("Ready").is_some());
+        assert_eq!(work_meter.used(), 4);
+    }
+
+    #[test]
+    fn prepared_state_label_without_planned_typography_remains_fail_closed() {
+        let (prepared, _, _) = prepared_state_fixture();
+        let measurer = DeterministicTextMeasurer::default();
+        let style = TextStyle::default();
+        let sidecar = StateLabelSidecarBuilder::new(Some(&prepared));
+
+        let measurement = sidecar.measure_for_layout(StateLabelMetricsRequest {
+            owner: StateLabelOwner::Node("Ready"),
+            text: "Ready",
+            source_kind: StateLabelSourceKind::Markdown,
+            measurer: &measurer,
+            style: &style,
+            typography: None,
+            max_width_px: Some(180.0),
+            wrap_mode: WrapMode::SvgLike,
+            break_long_words: true,
+        });
+        let sidecar = sidecar.finish();
+
+        assert_eq!(measurement.metrics.width, 0.0);
+        assert!(matches!(
+            sidecar.prepared_error(),
+            Some(TextLayoutError::UnsupportedPreparedTextPath(
+                "structured_typography"
+            ))
+        ));
     }
 }

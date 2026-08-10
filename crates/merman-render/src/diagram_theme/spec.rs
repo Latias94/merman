@@ -7,6 +7,7 @@ use super::admission::ThemeRequirements;
 use super::canvas::CanvasSpec;
 use super::effects::DiagramEffectSet;
 use super::semantic::ThemeRuleSet;
+use super::tokens::FrozenLegacyThemeCompatibility;
 use super::typography::TypographySpec;
 use super::{FontCatalogSpec, ThemeCompileValidationError};
 
@@ -63,11 +64,16 @@ impl MermaidThemeCompatibility {
         Ok(self)
     }
 
-    pub fn with_dark_mode(mut self, dark_mode: bool) -> Self {
-        self.dark_mode = Some(dark_mode);
-        self
+    /// Sets Mermaid's mirrored root and `themeVariables.darkMode` compatibility value.
+    /// Repeating the same value is idempotent; assigning a conflicting value fails closed.
+    pub fn with_dark_mode(self, dark_mode: bool) -> Result<Self, ThemeCompileValidationError> {
+        self.with_canonical_dark_mode(dark_mode, "mermaid.darkMode")
     }
 
+    /// Adds one upstream Mermaid `themeVariables` scalar.
+    ///
+    /// `darkMode` is reserved and must be a boolean. It is normalized into the same canonical
+    /// slot as [`Self::with_dark_mode`] so the root and `themeVariables` views cannot diverge.
     pub fn with_variable(
         mut self,
         key: impl Into<String>,
@@ -75,6 +81,14 @@ impl MermaidThemeCompatibility {
     ) -> Result<Self, ThemeCompileValidationError> {
         let key = validate_identifier(key.into(), "mermaid.theme_variables.key")?;
         let value = validate_theme_value(value.into(), "mermaid.theme_variables.value")?;
+        if key == "darkMode" {
+            let MermaidThemeValue::Boolean(dark_mode) = value else {
+                return Err(ThemeCompileValidationError::InvalidValue {
+                    field: "mermaid.theme_variables.darkMode",
+                });
+            };
+            return self.with_canonical_dark_mode(dark_mode, "mermaid.theme_variables.darkMode");
+        }
         self.variables.insert(key, value);
         Ok(self)
     }
@@ -101,16 +115,16 @@ impl MermaidThemeCompatibility {
         if let Some(dark_mode) = self.dark_mode {
             root.insert("darkMode".to_string(), Value::Bool(dark_mode));
         }
-        if !self.variables.is_empty() {
-            root.insert(
-                "themeVariables".to_string(),
-                Value::Object(
-                    self.variables
-                        .iter()
-                        .map(|(key, value)| (key.clone(), value.to_json()))
-                        .collect(),
-                ),
-            );
+        let mut variables = self
+            .variables
+            .iter()
+            .map(|(key, value)| (key.clone(), value.to_json()))
+            .collect::<Map<_, _>>();
+        if let Some(dark_mode) = self.dark_mode {
+            variables.insert("darkMode".to_string(), Value::Bool(dark_mode));
+        }
+        if !variables.is_empty() {
+            root.insert("themeVariables".to_string(), Value::Object(variables));
         }
         MermaidConfig::from_value(Value::Object(root))
     }
@@ -128,7 +142,24 @@ impl MermaidThemeCompatibility {
             validate_identifier(key.clone(), "mermaid.theme_variables.key")?;
             validate_theme_value(value.clone(), "mermaid.theme_variables.value")?;
         }
+        if self.variables.contains_key("darkMode") {
+            return Err(ThemeCompileValidationError::InvalidValue {
+                field: "mermaid.theme_variables.darkMode",
+            });
+        }
         Ok(())
+    }
+
+    fn with_canonical_dark_mode(
+        mut self,
+        dark_mode: bool,
+        field: &'static str,
+    ) -> Result<Self, ThemeCompileValidationError> {
+        if self.dark_mode.is_some_and(|current| current != dark_mode) {
+            return Err(ThemeCompileValidationError::InvalidValue { field });
+        }
+        self.dark_mode = Some(dark_mode);
+        Ok(self)
     }
 }
 
@@ -186,6 +217,7 @@ pub struct DiagramThemeSpec {
     effects: DiagramEffectSet,
     assets: ThemeAssets,
     requirements: ThemeRequirements,
+    frozen_legacy_compatibility: Option<FrozenLegacyThemeCompatibility>,
 }
 
 impl Default for DiagramThemeSpec {
@@ -198,6 +230,7 @@ impl Default for DiagramThemeSpec {
             effects: DiagramEffectSet::default(),
             assets: ThemeAssets::default(),
             requirements: ThemeRequirements::default(),
+            frozen_legacy_compatibility: None,
         }
     }
 }
@@ -242,6 +275,14 @@ impl DiagramThemeSpec {
         self
     }
 
+    pub(super) fn with_frozen_legacy_compatibility(
+        mut self,
+        compatibility: FrozenLegacyThemeCompatibility,
+    ) -> Self {
+        self.frozen_legacy_compatibility = Some(compatibility);
+        self
+    }
+
     pub const fn mermaid(&self) -> &MermaidThemeCompatibility {
         &self.mermaid
     }
@@ -268,6 +309,12 @@ impl DiagramThemeSpec {
 
     pub const fn requirements(&self) -> &ThemeRequirements {
         &self.requirements
+    }
+
+    pub(super) const fn frozen_legacy_compatibility(
+        &self,
+    ) -> Option<&FrozenLegacyThemeCompatibility> {
+        self.frozen_legacy_compatibility.as_ref()
     }
 
     pub(crate) fn validate(&self) -> Result<(), ThemeCompileValidationError> {
@@ -361,6 +408,7 @@ mod tests {
             .unwrap();
 
         let config = compatibility.to_mermaid_config();
+        assert_eq!(config.get_bool("darkMode"), Some(true));
         let variables = config
             .as_value()
             .get("themeVariables")
@@ -372,6 +420,101 @@ mod tests {
             variables.get("primaryColor"),
             Some(&Value::String("#123456".to_string()))
         );
+    }
+
+    #[test]
+    fn matching_dark_mode_inputs_are_canonicalized_independent_of_builder_order() {
+        let root_then_variable = MermaidThemeCompatibility::default()
+            .with_dark_mode(true)
+            .unwrap()
+            .with_variable("darkMode", true)
+            .unwrap();
+        let variable_then_root = MermaidThemeCompatibility::default()
+            .with_variable("darkMode", true)
+            .unwrap()
+            .with_dark_mode(true)
+            .unwrap();
+
+        for compatibility in [&root_then_variable, &variable_then_root] {
+            compatibility.validate().unwrap();
+            assert!(compatibility.variables().all(|(key, _)| key != "darkMode"));
+            assert_eq!(
+                compatibility.to_mermaid_config().as_value(),
+                &serde_json::json!({
+                    "darkMode": true,
+                    "themeVariables": { "darkMode": true }
+                })
+            );
+        }
+
+        let compiler = crate::diagram_theme::DiagramThemeCompiler::new();
+        let first = compiler
+            .compile(DiagramThemeSpec::new().with_mermaid_compatibility(root_then_variable))
+            .unwrap();
+        let second = compiler
+            .compile(DiagramThemeSpec::new().with_mermaid_compatibility(variable_then_root))
+            .unwrap();
+        assert_eq!(first.recipe_fingerprint(), second.recipe_fingerprint());
+    }
+
+    #[test]
+    fn conflicting_dark_mode_inputs_cannot_be_constructed() {
+        let variable_error = MermaidThemeCompatibility::default()
+            .with_dark_mode(true)
+            .unwrap()
+            .with_variable("darkMode", false)
+            .unwrap_err();
+        assert_eq!(
+            variable_error,
+            ThemeCompileValidationError::InvalidValue {
+                field: "mermaid.theme_variables.darkMode"
+            }
+        );
+
+        let root_error = MermaidThemeCompatibility::default()
+            .with_variable("darkMode", false)
+            .unwrap()
+            .with_dark_mode(true)
+            .unwrap_err();
+        assert_eq!(
+            root_error,
+            ThemeCompileValidationError::InvalidValue {
+                field: "mermaid.darkMode"
+            }
+        );
+
+        let non_boolean_error = MermaidThemeCompatibility::default()
+            .with_variable("darkMode", "true")
+            .unwrap_err();
+        assert_eq!(
+            non_boolean_error,
+            ThemeCompileValidationError::InvalidValue {
+                field: "mermaid.theme_variables.darkMode"
+            }
+        );
+    }
+
+    #[test]
+    fn non_canonical_dark_mode_state_still_fails_closed_during_theme_compilation() {
+        let compatibility = MermaidThemeCompatibility {
+            theme: None,
+            dark_mode: Some(true),
+            variables: BTreeMap::from([(
+                "darkMode".to_string(),
+                MermaidThemeValue::Boolean(false),
+            )]),
+        };
+        let error = crate::diagram_theme::DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_mermaid_compatibility(compatibility))
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            crate::diagram_theme::ThemeCompileError::Validation(
+                ThemeCompileValidationError::InvalidValue {
+                    field: "mermaid.theme_variables.darkMode"
+                }
+            )
+        ));
     }
 
     #[test]

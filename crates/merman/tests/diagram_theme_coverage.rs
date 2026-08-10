@@ -1,8 +1,8 @@
 #![cfg(feature = "svg")]
 
 use merman::svg::{
-    CanvasPaint, CssOverridePolicy, DiagramThemeCompiler, HeadlessRenderer, SvgOutputPolicy,
-    SvgPipelinePreset, ThemePreset,
+    CssOverridePolicy, DiagramThemeCompiler, HeadlessRenderer, SvgOutputPolicy, SvgPipelinePreset,
+    ThemePreset,
 };
 
 const USER_GITGRAPH_THEME_REGRESSION: &str = r#"gitGraph
@@ -62,13 +62,10 @@ fn themed_renderer(preset: ThemePreset, name: &str) -> HeadlessRenderer {
     let theme = DiagramThemeCompiler::new()
         .compile_preset(preset)
         .expect("built-in theme preset should compile");
-    let CanvasPaint::Solid(background) = theme.spec().canvas().base() else {
-        panic!("built-in theme presets must define a solid canvas")
-    };
     let pipeline = SvgOutputPolicy {
         preset: SvgPipelinePreset::ResvgSafe,
         css_override_policy: CssOverridePolicy::StripExistingImportant,
-        root_background_color: Some(background.as_css()),
+        root_background_color: None,
         drop_native_duplicate_fallbacks: false,
         scoped_css: None,
     }

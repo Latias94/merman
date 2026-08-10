@@ -1,7 +1,18 @@
 # ADR 0077: Presentation, Theme, Mermaid Config, And SVG Output Ownership
 
-- Status: accepted
+- Status: superseded
 - Date: 2026-08-02
+- Superseded: 2026-08-10 by the alpha.4 typed diagram-theme architecture
+
+> [!IMPORTANT]
+> This ADR records an interim prerelease design and is not the current API contract. Alpha.4
+> removed `HostTheme`, `PresentationProfile::MermanModern`, `presentation.*`, and the associated
+> profile/aspect discovery surface. The current experimental path is
+> `DiagramThemeSpec`/`ThemePreset` -> `DiagramThemeCompiler` -> `DiagramTheme` ->
+> `HeadlessRenderer::with_theme`, with official Mermaid configuration, layout, runtime policy, and
+> SVG output kept in their existing independent owners. Options JSON uses top-level `theme` with
+> exactly one `preset` or complete `spec`. No mixed product-profile compatibility alias remains,
+> and the C6 cross-family SVG/PNG/PDF portability matrix is not yet proven.
 
 ## Context
 

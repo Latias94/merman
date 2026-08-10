@@ -942,7 +942,7 @@ mod tests {
         model: &StateSvgModel,
         config: &serde_json::Value,
     ) -> crate::state::StateStylePlan {
-        crate::state::StateStylePlan::resolve(model, config, None)
+        crate::state::StateStylePlan::resolve_unthemed(model, config)
     }
 
     #[test]

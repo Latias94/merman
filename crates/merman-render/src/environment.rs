@@ -12,10 +12,11 @@ use crate::svg::IconRegistry;
 use crate::text::{
     DeterministicTextMeasurer, FontMetricsTable, NativeTextLayoutBackend, PrepareCatalogRequest,
     PreparedTextLayout, PreparedTextLayoutBuilder, PreparedTextLayoutReport, TextLayoutBackend,
-    TextLayoutError, TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer,
-    WrapMode, estimate_line_width_px, round_to_1_64_px,
+    TextLayoutError, TextLayoutFailure, TextMeasurer, TextMetrics, TextStyle,
+    VendoredFontMetricsTextMeasurer, WrapMode, estimate_line_width_px, round_to_1_64_px,
 };
 use crate::{RenderCapability, RenderCapabilityPolicy};
+use merman_core::__private::ThemeCompatibilityRecipe;
 use merman_core::runtime::{OperationContext, OperationTiming, RuntimePolicy, RuntimePolicyError};
 use merman_core::time::LocalTimeZoneProvenance;
 use std::fmt;
@@ -1633,11 +1634,11 @@ impl RenderEnvironment {
         self
     }
 
-    /// Installs the versioned catalog preparation backend used by custom-font themes.
+    /// Installs the provisional catalog preparation backend used by custom-font themes.
     ///
-    /// The default is the operation-local pure-Rust `rustybuzz` backend. Host integrations can
-    /// provide a browser/native backend that attests the same request/result contract.
-    pub fn with_text_layout_backend(mut self, backend: Arc<dyn TextLayoutBackend>) -> Self {
+    /// The external backend contract remains crate-private until its C4b assurance boundary is
+    /// complete. Production environments use the built-in operation-local `rustybuzz` backend.
+    pub(crate) fn with_text_layout_backend(mut self, backend: Arc<dyn TextLayoutBackend>) -> Self {
         self.text_layout_backend = ConfiguredTextLayoutBackend::External(backend);
         self
     }
@@ -1783,6 +1784,9 @@ impl RenderEnvironment {
         theme_resources: SessionThemeResources,
     ) -> Result<RenderSession, RenderEnvironmentError> {
         let operation_context = self.runtime_policy.begin_operation()?;
+        let theme_compatibility_recipe = theme_resources
+            .theme()
+            .map(|theme| theme.parse_compatibility().recipe().clone());
         let (prepared_text_layout, text_layout_error) = self.prepare_text_layout(&theme_resources);
         let trusted_theme_lanes = theme_resources
             .admission()
@@ -1802,6 +1806,7 @@ impl RenderEnvironment {
             work_meter: Arc::new(OperationWorkMeter::new(self.resource_policy)),
             trusted_theme_lanes,
             trusted_theme_lane_usage: AtomicU64::new(0),
+            theme_compatibility_recipe,
             theme_resources,
         })
     }
@@ -2009,6 +2014,7 @@ pub struct RenderSession {
     work_meter: Arc<OperationWorkMeter>,
     trusted_theme_lanes: TrustedThemeLanes,
     trusted_theme_lane_usage: AtomicU64,
+    theme_compatibility_recipe: Option<ThemeCompatibilityRecipe>,
     theme_resources: SessionThemeResources,
 }
 
@@ -2027,7 +2033,7 @@ impl RenderSession {
     }
 
     /// Returns a bounded preparation failure, if a custom catalog could not be attested.
-    pub fn text_layout_error(&self) -> Option<&TextLayoutError> {
+    pub(crate) fn text_layout_error(&self) -> Option<&TextLayoutError> {
         self.text_layout_error.as_ref()
     }
 
@@ -2073,6 +2079,10 @@ impl RenderSession {
 
     pub fn theme_recipe_fingerprint(&self) -> Option<ThemeRecipeFingerprint> {
         self.theme().map(DiagramTheme::recipe_fingerprint)
+    }
+
+    pub(crate) fn theme_compatibility_recipe(&self) -> Option<&ThemeCompatibilityRecipe> {
+        self.theme_compatibility_recipe.as_ref()
     }
 
     pub fn theme_recipe_report(&self) -> Option<&ThemeRecipeReport> {
@@ -2173,7 +2183,7 @@ impl RenderSession {
                 .prepared_text_layout
                 .as_ref()
                 .map(PreparedTextLayout::report),
-            text_layout_error: self.text_layout_error.clone(),
+            text_layout_failure: self.text_layout_error.as_ref().map(TextLayoutFailure::from),
             trusted_theme_lanes: self.trusted_theme_lanes.clone(),
             used_trusted_theme_lanes: self.used_trusted_theme_lanes(),
         }
@@ -2194,7 +2204,7 @@ pub struct RenderSessionReport {
     font_catalog_fingerprint: FontCatalogFingerprint,
     font_source_policy: FontSourcePolicy,
     prepared_text_layout: Option<PreparedTextLayoutReport>,
-    text_layout_error: Option<TextLayoutError>,
+    text_layout_failure: Option<TextLayoutFailure>,
     trusted_theme_lanes: TrustedThemeLanes,
     used_trusted_theme_lanes: TrustedThemeLanes,
 }
@@ -2254,8 +2264,8 @@ impl RenderSessionReport {
         self.prepared_text_layout.as_ref()
     }
 
-    pub fn text_layout_error(&self) -> Option<&TextLayoutError> {
-        self.text_layout_error.as_ref()
+    pub const fn text_layout_failure(&self) -> Option<TextLayoutFailure> {
+        self.text_layout_failure
     }
 
     pub const fn font_source_policy(&self) -> &FontSourcePolicy {
@@ -3774,7 +3784,7 @@ mod tests {
                 .catalog_fingerprint(),
             catalog.fingerprint()
         );
-        assert!(report.text_layout_error().is_none());
+        assert!(report.text_layout_failure().is_none());
     }
 
     fn mismatched_catalog_backend() -> (FontCatalog, CachedPreparedBackend) {
@@ -3848,8 +3858,7 @@ mod tests {
             .prepare_text(&request)
             .expect("the native fallback should prepare the label");
         let report = layout.report();
-        assert_eq!(report.candidate_count(), 1);
-        assert_eq!(report.backend().name(), "merman.native-rustybuzz");
+        assert!(report.face_count() > 0);
         assert_eq!(
             report.used_fallbacks(),
             &[HostMeasurementFallback::NativeCatalog]

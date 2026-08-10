@@ -64,6 +64,18 @@ pub mod zenuml;
 
 pub use render_family::RenderFamilyKind;
 
+/// Workspace-internal facade seams that are scheduled for deletion after family cutover.
+#[doc(hidden)]
+pub mod __private {
+    /// Installs a compiled theme's explicit Mermaid compatibility and selected-family bridge.
+    pub fn install_parse_compatibility(
+        theme: &crate::diagram_theme::DiagramTheme,
+        engine: merman_core::Engine,
+    ) -> merman_core::Engine {
+        merman_core::__private::install_theme_compatibility(engine, theme.parse_compatibility())
+    }
+}
+
 /// Reports whether the Cytoscape-derived layout backend is present in this compiled renderer.
 pub const fn layout_cytoscape_available() -> bool {
     cfg!(feature = "layout-cytoscape")
@@ -202,6 +214,20 @@ pub enum Error {
         first_residual: crate::family::FamilyThemeResidual,
     },
     #[error(
+        "portable theme rendering rejected {residual_count} legacy Mermaid compatibility contribution(s) for `{family_kind}`"
+    )]
+    LegacyFamilyThemeCompatibility {
+        family_kind: RenderFamilyKind,
+        residual_count: usize,
+    },
+    #[error(
+        "portable theme rendering rejected {residual_count} explicit Mermaid compatibility field(s) for `{family_kind}`"
+    )]
+    MermaidThemeCompatibility {
+        family_kind: RenderFamilyKind,
+        residual_count: usize,
+    },
+    #[error(
         "portable theme rendering cannot evaluate structured family styles for unadapted family `{family_kind}`"
     )]
     UnadaptedFamilyTheme { family_kind: RenderFamilyKind },
@@ -223,8 +249,10 @@ pub enum Error {
     },
     #[error("invalid semantic model: {message}")]
     InvalidModel { message: String },
+    #[error("parsed diagram is bound to a different theme session")]
+    ThemeParseBindingMismatch,
     #[error(transparent)]
-    TextLayout(#[from] crate::text::TextLayoutError),
+    TextLayout(crate::text::TextLayoutFailure),
     #[error(transparent)]
     ThemeAdmission(#[from] crate::diagram_theme::ThemeAdmissionError),
     #[error(
@@ -252,6 +280,12 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl From<crate::text::TextLayoutError> for Error {
+    fn from(error: crate::text::TextLayoutError) -> Self {
+        Self::TextLayout(crate::text::TextLayoutFailure::from(&error))
+    }
+}
 
 impl From<dugong::LayoutError> for Error {
     fn from(error: dugong::LayoutError) -> Self {

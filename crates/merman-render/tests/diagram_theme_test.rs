@@ -1,10 +1,9 @@
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, FontAssetSpec, FontCatalogSpec, FontStack,
-    TextLayoutCapability, TextTransform, ThemeAssets, ThemeCapability, ThemeColorValue,
-    ThemePreset, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle,
-    ThemeTokens, ThemeVariant, TypographySpec, theme_preset_descriptors,
+    TextLayoutCapability, TextTransform, ThemeAssets, ThemeCapability, ThemePreset, ThemeRule,
+    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeTokens, TypographySpec,
+    theme_preset_descriptors,
 };
-use merman_render::family::RenderFamilyKind;
 
 #[test]
 fn theme_catalog_contains_only_visual_presets() {
@@ -32,61 +31,9 @@ fn theme_catalog_contains_only_visual_presets() {
 #[test]
 fn built_in_presets_compile_without_selecting_layout_or_look() {
     for preset in ThemePreset::ALL {
-        let theme = DiagramThemeCompiler::new()
+        DiagramThemeCompiler::new()
             .compile_preset(preset)
             .expect("built-in theme preset should compile");
-        let config = theme.mermaid_config();
-
-        assert_eq!(config.get_str("theme"), Some("base"));
-        assert_eq!(
-            config.get_bool("darkMode"),
-            Some(preset.is_dark()),
-            "{} dark-mode compatibility value",
-            preset.id()
-        );
-        assert_eq!(config.get_str("look"), None);
-        assert_eq!(config.get_str("flowchart.defaultRenderer"), None);
-    }
-}
-
-#[test]
-fn built_in_presets_publish_stable_semantic_representatives() {
-    let expected = [
-        (ThemePreset::EditorLight, "#ffffff", "#64748b", "#2563eb"),
-        (ThemePreset::EditorDark, "#0f172a", "#94a3b8", "#60a5fa"),
-        (ThemePreset::OneDark, "#282c34", "#61afef", "#61afef"),
-        (ThemePreset::GruvboxLight, "#fbf1c7", "#7c6f64", "#458588"),
-        (ThemePreset::GruvboxDark, "#282828", "#d5c4a1", "#83a598"),
-        (ThemePreset::AyuLight, "#fcfcfc", "#5c6166", "#55b4d4"),
-        (ThemePreset::AyuDark, "#0b0e14", "#59c2ff", "#59c2ff"),
-    ];
-
-    for (preset, canvas, line, first_series) in expected {
-        let theme = DiagramThemeCompiler::new()
-            .compile_preset(preset)
-            .expect("built-in theme preset should compile");
-        assert_eq!(
-            solid_color(theme.spec().canvas().base()).as_deref(),
-            Some(canvas)
-        );
-
-        let flowchart = theme.resolve(RenderFamilyKind::Flowchart);
-        assert_eq!(
-            flowchart
-                .style(ThemeTarget::Edge, ThemeVariant::Default, None)
-                .stroke()
-                .and_then(solid_color)
-                .as_deref(),
-            Some(line)
-        );
-        let chart = theme.resolve(RenderFamilyKind::XyChart);
-        assert_eq!(
-            chart
-                .series_color(ThemeTarget::ChartSeries, 1)
-                .map(ThemeColorValue::as_css)
-                .as_deref(),
-            Some(first_series)
-        );
     }
 }
 
@@ -168,11 +115,4 @@ fn typography_defaults_and_semantic_paints_have_fine_grained_requirements() {
             .report()
             .requires_capability(ThemeCapability::SolidPaint)
     );
-}
-
-fn solid_color(paint: &CanvasPaint) -> Option<String> {
-    match paint {
-        CanvasPaint::Solid(color) => Some(color.as_css()),
-        _ => None,
-    }
 }

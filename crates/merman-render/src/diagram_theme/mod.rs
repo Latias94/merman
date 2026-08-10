@@ -7,8 +7,10 @@ mod canonical;
 mod canvas;
 mod compiler;
 mod effects;
+mod family_program;
+mod legacy_family_theme_bridge;
 mod mechanisms;
-mod mermaid_projection;
+mod mermaid_compatibility;
 mod presets;
 mod resolved;
 mod resources;
@@ -51,9 +53,7 @@ pub use effects::{
 pub use presets::{
     ThemePreset, ThemePresetDescriptor, ThemePresetParseError, theme_preset_descriptors,
 };
-pub use resolved::{
-    ResolvedDiagramTheme, ResolvedProperty, ResolvedThemeStyle, ResolvedTypography,
-};
+pub(crate) use resolved::{ResolvedDiagramTheme, ResolvedProperty, ResolvedThemeStyle};
 pub(crate) use resolved::{ResolvedStyleProperty, ThemeTypographyProperty};
 pub use resources::{
     MAX_FONT_ALIASES_HARD_CAP, MAX_FONT_ASSET_COMPRESSED_BYTES_HARD_CAP,
@@ -169,8 +169,8 @@ impl DiagramTheme {
         self.0.recipe_fingerprint
     }
 
-    pub fn spec(&self) -> &DiagramThemeSpec {
-        &self.0.spec
+    pub(crate) fn spec(&self) -> &DiagramThemeSpec {
+        self.0.spec.as_ref()
     }
 
     pub fn font_catalog(&self) -> &FontCatalog {
@@ -181,12 +181,30 @@ impl DiagramTheme {
         &self.0.report
     }
 
-    pub fn resolve(&self, family: crate::render_family::RenderFamilyKind) -> ResolvedDiagramTheme {
+    pub(crate) fn resolve(
+        &self,
+        family: crate::render_family::RenderFamilyKind,
+    ) -> ResolvedDiagramTheme {
         ResolvedDiagramTheme::new(self.clone(), family)
     }
 
-    pub fn mermaid_config(&self) -> &merman_core::MermaidConfig {
-        &self.0.mermaid_config
+    fn family_program(
+        &self,
+        family: crate::render_family::RenderFamilyKind,
+    ) -> Arc<family_program::FamilyThemeProgram> {
+        self.0.family_programs.get_or_compile(self.spec(), family)
+    }
+
+    pub(crate) fn parse_compatibility(&self) -> &merman_core::__private::ThemeCompatibilityPlan {
+        &self.0.parse_compatibility
+    }
+
+    #[cfg(test)]
+    pub(crate) fn install_parse_compatibility(
+        &self,
+        engine: merman_core::Engine,
+    ) -> merman_core::Engine {
+        crate::__private::install_parse_compatibility(self, engine)
     }
 
     pub(crate) fn requirements(&self) -> &ThemeRequirements {
@@ -213,10 +231,11 @@ impl DiagramTheme {
 
 #[derive(Debug)]
 pub(crate) struct CompiledDiagramTheme {
-    spec: DiagramThemeSpec,
+    spec: Arc<DiagramThemeSpec>,
     catalog: FontCatalog,
     requirements: ThemeRequirements,
-    mermaid_config: merman_core::MermaidConfig,
+    parse_compatibility: merman_core::__private::ThemeCompatibilityPlan,
+    family_programs: Arc<family_program::FamilyThemeProgramCache>,
     recipe_fingerprint: ThemeRecipeFingerprint,
     report: ThemeRecipeReport,
 }
@@ -293,17 +312,21 @@ mod tests {
                 .report()
                 .requires_capability(ThemeCapability::Typography)
         );
+        let mermaid_config = first.spec().mermaid().to_mermaid_config();
         assert_eq!(
-            first
-                .mermaid_config()
-                .get_str("themeVariables.primaryColor"),
-            Some("#1e293b")
+            mermaid_config.get_str("theme"),
+            None,
+            "theme selection stays in explicit Mermaid compatibility inputs; typed themes use the family bridge only as a residual"
         );
         assert_eq!(
-            first
-                .mermaid_config()
-                .get_str("themeVariables.stateLabelColor"),
-            Some("#f8fafc")
+            mermaid_config.get_str("themeVariables.primaryColor"),
+            None,
+            "typed semantic values must not enter the global Mermaid compatibility lane"
+        );
+        assert_eq!(
+            mermaid_config.get_bool("themeVariables.darkMode"),
+            None,
+            "typed token colors do not infer an official Mermaid darkMode input"
         );
 
         let flowchart = first.resolve(RenderFamilyKind::Flowchart);

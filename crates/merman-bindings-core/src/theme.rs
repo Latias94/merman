@@ -232,7 +232,9 @@ impl BindingMermaidCompatibilityJson {
                 .map_err(|error| theme_value_error("theme.spec.mermaid.theme", error))?;
         }
         if let Some(dark_mode) = self.dark_mode {
-            compatibility = compatibility.with_dark_mode(dark_mode);
+            compatibility = compatibility
+                .with_dark_mode(dark_mode)
+                .map_err(|error| theme_value_error("theme.spec.mermaid.dark_mode", error))?;
         }
         for (key, value) in &self.variables {
             let value =
@@ -1733,16 +1735,26 @@ mod tests {
             }
         }))
         .unwrap();
-        let theme = compile_theme_with(&DiagramThemeCompiler::new(), Some(&spec))
-            .unwrap()
+        let compiler = DiagramThemeCompiler::new();
+        let typed = spec
+            .spec
+            .as_ref()
+            .expect("structured spec")
+            .to_theme_spec(compiler.resource_policy())
             .unwrap();
-        let rule = &theme.spec().styles().rules()[0];
+        let rule = &typed.styles().rules()[0];
         assert!(matches!(rule.style().paint.fill, Specified::Clear));
         assert!(matches!(rule.style().stroke.paint, Specified::Clear));
         assert!(matches!(
             rule.style().typography.font_stack,
             Specified::Clear
         ));
+        let theme = compile_theme_with(&compiler, Some(&spec)).unwrap().unwrap();
+        assert!(
+            theme
+                .report()
+                .requires_capability(ThemeCapability::SemanticRules)
+        );
     }
 
     #[test]
@@ -1836,7 +1848,7 @@ mod tests {
     #[test]
     fn standalone_theme_selection_uses_the_binding_schema_and_recipe_compiler() {
         let theme = compile_theme_selection_json(br#"{"preset":"editor-dark"}"#).unwrap();
-        assert_eq!(theme.mermaid_config().get_bool("darkMode"), Some(true));
+        assert_ne!(theme.recipe_fingerprint().as_bytes(), &[0; 32]);
 
         let theme = compile_theme_selection_json_with(
             &DiagramThemeCompiler::new(),
@@ -1876,18 +1888,17 @@ mod tests {
         let theme = compile_theme_with(&DiagramThemeCompiler::new(), Some(&spec))
             .unwrap()
             .unwrap();
-        let variables = theme
-            .mermaid_config()
-            .as_value()
-            .get("themeVariables")
-            .and_then(Value::as_object)
-            .expect("theme variables object");
-        assert_eq!(variables.get("fontSize"), Some(&Value::from(16.0)));
-        assert_eq!(variables.get("darkMode"), Some(&Value::Bool(true)));
-        assert_eq!(
-            variables.get("primaryColor"),
-            Some(&Value::String("#123456".to_string()))
-        );
+        let compiler = DiagramThemeCompiler::new();
+        let typed = spec
+            .spec
+            .as_ref()
+            .expect("structured spec")
+            .to_theme_spec(compiler.resource_policy())
+            .unwrap();
+        let compatibility = typed.mermaid();
+        assert_eq!(compatibility.dark_mode(), Some(true));
+        assert_eq!(compatibility.variables().count(), 3);
+        assert!(theme.recipe_fingerprint().as_bytes() != &[0; 32]);
     }
 
     #[test]

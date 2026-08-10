@@ -338,10 +338,6 @@ impl TextStyle {
         validate_finite(self.letter_spacing_px, "typography.letter_spacing_px")?;
         validate_finite(self.word_spacing_px, "typography.word_spacing_px")
     }
-
-    pub(crate) fn to_mermaid_values(&self) -> (String, String) {
-        (self.font_stack.as_css(), format_number(self.font_size_px))
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -526,9 +522,4 @@ fn apply_specified<T: Clone>(value: &Specified<T>, target: &mut T, base: &T) {
         Specified::Clear => *target = base.clone(),
         Specified::Value(value) => *target = value.clone(),
     }
-}
-
-fn format_number(value: f32) -> String {
-    let mut buffer = ryu_js::Buffer::new();
-    buffer.format_finite(f64::from(value)).to_string()
 }

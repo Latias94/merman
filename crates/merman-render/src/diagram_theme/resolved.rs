@@ -1,7 +1,9 @@
 use crate::render_family::RenderFamilyKind;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use super::canvas::{CanvasPaint, InsetsPx, ThemeColorValue};
+use super::family_program::FamilyThemeProgram;
 use super::semantic::{
     OrdinalSelector, StrokeLineCap, StrokeLineJoin, ThemeRule, ThemeStylePatch, ThemeTarget,
     ThemeVariant,
@@ -12,17 +14,15 @@ use super::typography::{Specified, TextStyle, TextStylePatch};
 pub(crate) struct ThemeRuleOrigin {
     rule_index: usize,
     target: ThemeTarget,
-    family: Option<RenderFamilyKind>,
     variant: Option<ThemeVariant>,
     ordinal: Option<OrdinalSelector>,
 }
 
 impl ThemeRuleOrigin {
-    fn new(rule_index: usize, rule: &ThemeRule) -> Self {
+    pub(super) fn new(rule_index: usize, rule: &ThemeRule) -> Self {
         Self {
             rule_index,
             target: rule.target(),
-            family: rule.family(),
             variant: rule.variant(),
             ordinal: rule.ordinal(),
         }
@@ -32,12 +32,9 @@ impl ThemeRuleOrigin {
         self.rule_index
     }
 
+    #[cfg(test)]
     pub(crate) const fn target(self) -> ThemeTarget {
         self.target
-    }
-
-    pub(crate) const fn family(self) -> Option<RenderFamilyKind> {
-        self.family
     }
 
     pub(crate) const fn variant(self) -> Option<ThemeVariant> {
@@ -46,6 +43,10 @@ impl ThemeRuleOrigin {
 
     pub(crate) const fn ordinal(self) -> Option<OrdinalSelector> {
         self.ordinal
+    }
+
+    fn supersedes(self, current: Option<Self>) -> bool {
+        current.is_none_or(|current| self.rule_index >= current.rule_index)
     }
 }
 
@@ -75,11 +76,20 @@ impl<T> ResolvedProperty<T> {
     where
         T: Clone,
     {
-        if specified.is_unspecified() {
+        if specified.is_unspecified() || !origin.supersedes(self.winner) {
             return;
         }
         self.specified = specified.clone();
         self.winner = Some(origin);
+    }
+
+    fn merge_from(&mut self, other: &Self)
+    where
+        T: Clone,
+    {
+        if let Some(origin) = other.winner {
+            self.apply(&other.specified, origin);
+        }
     }
 
     pub const fn specified(&self) -> &Specified<T> {
@@ -147,7 +157,7 @@ impl PartialEq for ResolvedTypography {
 }
 
 impl ResolvedTypography {
-    fn new(base: TextStyle) -> Self {
+    pub(super) fn new(base: TextStyle) -> Self {
         Self {
             computed: base.clone(),
             base,
@@ -245,6 +255,95 @@ impl ResolvedTypography {
         self.patch.apply_to(&mut self.computed, &self.base);
     }
 
+    fn merge_from(&mut self, other: &Self) {
+        merge_typography_property(
+            &other.patch.font_stack,
+            ThemeTypographyProperty::FontStack,
+            other,
+            &mut self.patch.font_stack,
+            &mut self.winners,
+        );
+        merge_typography_property(
+            &other.patch.font_size_px,
+            ThemeTypographyProperty::FontSize,
+            other,
+            &mut self.patch.font_size_px,
+            &mut self.winners,
+        );
+        merge_typography_property(
+            &other.patch.font_weight,
+            ThemeTypographyProperty::FontWeight,
+            other,
+            &mut self.patch.font_weight,
+            &mut self.winners,
+        );
+        merge_typography_property(
+            &other.patch.font_style,
+            ThemeTypographyProperty::FontStyle,
+            other,
+            &mut self.patch.font_style,
+            &mut self.winners,
+        );
+        merge_typography_property(
+            &other.patch.line_height,
+            ThemeTypographyProperty::LineHeight,
+            other,
+            &mut self.patch.line_height,
+            &mut self.winners,
+        );
+        merge_typography_property(
+            &other.patch.letter_spacing_px,
+            ThemeTypographyProperty::LetterSpacing,
+            other,
+            &mut self.patch.letter_spacing_px,
+            &mut self.winners,
+        );
+        merge_typography_property(
+            &other.patch.word_spacing_px,
+            ThemeTypographyProperty::WordSpacing,
+            other,
+            &mut self.patch.word_spacing_px,
+            &mut self.winners,
+        );
+        merge_typography_property(
+            &other.patch.transform,
+            ThemeTypographyProperty::Transform,
+            other,
+            &mut self.patch.transform,
+            &mut self.winners,
+        );
+        merge_typography_property(
+            &other.patch.decoration,
+            ThemeTypographyProperty::Decoration,
+            other,
+            &mut self.patch.decoration,
+            &mut self.winners,
+        );
+        merge_typography_property(
+            &other.patch.text_align,
+            ThemeTypographyProperty::TextAlign,
+            other,
+            &mut self.patch.text_align,
+            &mut self.winners,
+        );
+        merge_typography_property(
+            &other.patch.white_space,
+            ThemeTypographyProperty::WhiteSpace,
+            other,
+            &mut self.patch.white_space,
+            &mut self.winners,
+        );
+        merge_typography_property(
+            &other.patch.wrap,
+            ThemeTypographyProperty::Wrap,
+            other,
+            &mut self.patch.wrap,
+            &mut self.winners,
+        );
+        self.computed = self.base.clone();
+        self.patch.apply_to(&mut self.computed, &self.base);
+    }
+
     pub const fn base(&self) -> &TextStyle {
         &self.base
     }
@@ -269,14 +368,26 @@ fn apply_typography_property<T: Clone>(
     origin: ThemeRuleOrigin,
     winners: &mut BTreeMap<ThemeTypographyProperty, ThemeRuleOrigin>,
 ) {
-    if incoming.is_unspecified() {
+    if incoming.is_unspecified() || !origin.supersedes(winners.get(&property).copied()) {
         return;
     }
     *resolved = incoming.clone();
     winners.insert(property, origin);
 }
 
-#[derive(Debug, Clone, PartialEq)]
+fn merge_typography_property<T: Clone>(
+    incoming: &Specified<T>,
+    property: ThemeTypographyProperty,
+    incoming_style: &ResolvedTypography,
+    resolved: &mut Specified<T>,
+    winners: &mut BTreeMap<ThemeTypographyProperty, ThemeRuleOrigin>,
+) {
+    if let Some(origin) = incoming_style.winner(property) {
+        apply_typography_property(incoming, resolved, property, origin, winners);
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct ResolvedThemeStyle {
     fill: ResolvedProperty<CanvasPaint>,
     stroke: ResolvedProperty<CanvasPaint>,
@@ -291,10 +402,29 @@ pub struct ResolvedThemeStyle {
     padding: ResolvedProperty<InsetsPx>,
     typography: ResolvedTypography,
     effect: ResolvedProperty<String>,
+    matched_rule_indices: BTreeSet<usize>,
+}
+
+impl PartialEq for ResolvedThemeStyle {
+    fn eq(&self, other: &Self) -> bool {
+        self.fill == other.fill
+            && self.stroke == other.stroke
+            && self.stroke_width == other.stroke_width
+            && self.stroke_dasharray == other.stroke_dasharray
+            && self.stroke_linecap == other.stroke_linecap
+            && self.stroke_linejoin == other.stroke_linejoin
+            && self.opacity == other.opacity
+            && self.fill_opacity == other.fill_opacity
+            && self.stroke_opacity == other.stroke_opacity
+            && self.radius == other.radius
+            && self.padding == other.padding
+            && self.typography == other.typography
+            && self.effect == other.effect
+    }
 }
 
 impl ResolvedThemeStyle {
-    fn new(typography: TextStyle) -> Self {
+    pub(super) fn new(typography: TextStyle) -> Self {
         Self {
             fill: ResolvedProperty::default(),
             stroke: ResolvedProperty::default(),
@@ -309,10 +439,14 @@ impl ResolvedThemeStyle {
             padding: ResolvedProperty::default(),
             typography: ResolvedTypography::new(typography),
             effect: ResolvedProperty::default(),
+            matched_rule_indices: BTreeSet::new(),
         }
     }
 
-    fn apply(&mut self, patch: &ThemeStylePatch, origin: ThemeRuleOrigin) {
+    pub(super) fn apply(&mut self, patch: &ThemeStylePatch, origin: ThemeRuleOrigin) {
+        if !patch.is_empty() {
+            self.matched_rule_indices.insert(origin.rule_index());
+        }
         self.fill.apply(&patch.paint.fill, origin);
         self.stroke.apply(&patch.stroke.paint, origin);
         self.stroke_width.apply(&patch.stroke.width, origin);
@@ -327,6 +461,24 @@ impl ResolvedThemeStyle {
         self.padding.apply(&patch.spacing.padding, origin);
         self.typography.apply(&patch.typography, origin);
         self.effect.apply(&patch.effects.effect, origin);
+    }
+
+    pub(super) fn merge_from(&mut self, other: &Self) {
+        self.fill.merge_from(&other.fill);
+        self.stroke.merge_from(&other.stroke);
+        self.stroke_width.merge_from(&other.stroke_width);
+        self.stroke_dasharray.merge_from(&other.stroke_dasharray);
+        self.stroke_linecap.merge_from(&other.stroke_linecap);
+        self.stroke_linejoin.merge_from(&other.stroke_linejoin);
+        self.opacity.merge_from(&other.opacity);
+        self.fill_opacity.merge_from(&other.fill_opacity);
+        self.stroke_opacity.merge_from(&other.stroke_opacity);
+        self.radius.merge_from(&other.radius);
+        self.padding.merge_from(&other.padding);
+        self.typography.merge_from(&other.typography);
+        self.effect.merge_from(&other.effect);
+        self.matched_rule_indices
+            .extend(other.matched_rule_indices.iter().copied());
     }
 
     pub const fn fill(&self) -> Option<&CanvasPaint> {
@@ -376,6 +528,10 @@ impl ResolvedThemeStyle {
             }
         }
         winners
+    }
+
+    pub(crate) fn matched_rule_indices(&self) -> impl Iterator<Item = usize> + '_ {
+        self.matched_rule_indices.iter().copied()
     }
 
     pub const fn stroke(&self) -> Option<&CanvasPaint> {
@@ -508,53 +664,16 @@ impl ResolvedThemeStyle {
 pub struct ResolvedDiagramTheme {
     theme: super::DiagramTheme,
     family: RenderFamilyKind,
-    base_typography: TextStyle,
-    rule_indices: BTreeMap<ThemeTarget, Vec<usize>>,
-    ordinal_palette_indices: BTreeMap<ThemeTarget, usize>,
-    effect_binding_indices: Vec<usize>,
+    program: Arc<FamilyThemeProgram>,
 }
 
 impl ResolvedDiagramTheme {
     pub(crate) fn new(theme: super::DiagramTheme, family: RenderFamilyKind) -> Self {
-        let spec = theme.spec();
-        let base_typography = spec.typography().family_style(family).clone();
-        let mut rule_indices = BTreeMap::<ThemeTarget, Vec<usize>>::new();
-        for (index, rule) in spec.styles().rules().iter().enumerate() {
-            if rule.target() != ThemeTarget::Canvas
-                && rule.target().valid_for(family)
-                && rule.family().is_none_or(|expected| expected == family)
-            {
-                rule_indices.entry(rule.target()).or_default().push(index);
-            }
-        }
-        let ordinal_palette_indices = spec
-            .styles()
-            .ordinal_palettes()
-            .iter()
-            .enumerate()
-            .filter_map(|(index, (target, _))| {
-                (*target != ThemeTarget::Canvas && target.valid_for(family))
-                    .then_some((*target, index))
-            })
-            .collect();
-        let effect_binding_indices = spec
-            .effects()
-            .bindings()
-            .iter()
-            .enumerate()
-            .filter_map(|(index, binding)| {
-                (binding.target() != ThemeTarget::Canvas && binding.target().valid_for(family))
-                    .then_some(index)
-            })
-            .collect();
-
+        let program = theme.family_program(family);
         Self {
             theme,
             family,
-            base_typography,
-            rule_indices,
-            ordinal_palette_indices,
-            effect_binding_indices,
+            program,
         }
     }
 
@@ -562,39 +681,39 @@ impl ResolvedDiagramTheme {
         self.family
     }
 
-    pub const fn typography(&self) -> &TextStyle {
-        &self.base_typography
+    pub fn typography(&self) -> &TextStyle {
+        self.program.base_typography()
     }
 
+    #[cfg(test)]
     pub(crate) fn has_family_style_requirements(&self) -> bool {
-        self.base_typography != TextStyle::default()
-            || !self.rule_indices.is_empty()
-            || !self.ordinal_palette_indices.is_empty()
-            || !self.effect_binding_indices.is_empty()
+        self.program.has_family_style_requirements()
     }
 
     pub(crate) fn effect_bindings(
         &self,
     ) -> impl ExactSizeIterator<Item = &super::effects::EffectBinding> + '_ {
-        self.effect_binding_indices
+        self.program
+            .effect_binding_indices()
             .iter()
             .map(|index| &self.theme.spec().effects().bindings()[*index])
     }
 
     pub(crate) fn family_rules(&self) -> impl Iterator<Item = (usize, &ThemeRule)> + '_ {
-        self.rule_indices
-            .values()
-            .flat_map(|indices| indices.iter().copied())
+        self.program
+            .rule_indices()
+            .iter()
+            .copied()
             .map(|index| (index, &self.theme.spec().styles().rules()[index]))
     }
 
     pub(crate) fn family_ordinal_palette_targets(&self) -> impl Iterator<Item = ThemeTarget> + '_ {
-        self.ordinal_palette_indices.keys().copied()
+        self.program.ordinal_palette_targets()
     }
 
     pub(crate) fn family_mechanism_keys(&self) -> Vec<super::application::FamilyThemeMechanismKey> {
         let mut keys = Vec::new();
-        if self.base_typography != TextStyle::default() {
+        if self.typography() != &TextStyle::default() {
             keys.push(super::application::FamilyThemeMechanismKey::Typography);
         }
         keys.extend(self.family_rules().map(|(index, rule)| {
@@ -623,50 +742,50 @@ impl ResolvedDiagramTheme {
         variant: ThemeVariant,
         ordinal: Option<usize>,
     ) -> ResolvedThemeStyle {
-        let Some(indices) = self.rule_indices.get(&target) else {
-            return ResolvedThemeStyle::new(self.base_typography.clone());
-        };
-        let rules = self.theme.spec().styles().rules();
-        resolve_matching_rules(
-            &self.base_typography,
-            indices
-                .iter()
-                .map(|index| (*index, &rules[*index]))
-                .filter(|(_, rule)| rule.applies_to(self.family, variant, ordinal)),
+        self.program
+            .resolve_style(self.theme.spec(), target, variant, ordinal)
+    }
+
+    pub(crate) fn style_with_work_meter(
+        &self,
+        target: ThemeTarget,
+        variant: ThemeVariant,
+        ordinal: Option<usize>,
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> Result<ResolvedThemeStyle, crate::resources::ResourceLimitExceeded> {
+        self.program.resolve_style_with_work_meter(
+            self.theme.spec(),
+            target,
+            variant,
+            ordinal,
+            work_meter,
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn text_style(
         &self,
         target: ThemeTarget,
         variant: ThemeVariant,
         ordinal: Option<usize>,
     ) -> ResolvedThemeStyle {
-        let mut indices = self
-            .rule_indices
-            .get(&ThemeTarget::Text)
-            .into_iter()
-            .flatten()
-            .copied()
-            .collect::<Vec<_>>();
-        if target != ThemeTarget::Text {
-            indices.extend(
-                self.rule_indices
-                    .get(&target)
-                    .into_iter()
-                    .flatten()
-                    .copied(),
-            );
-        }
-        indices.sort_unstable();
-        indices.dedup();
-        let rules = self.theme.spec().styles().rules();
-        resolve_matching_rules(
-            &self.base_typography,
-            indices
-                .into_iter()
-                .map(|index| (index, &rules[index]))
-                .filter(|(_, rule)| rule.applies_to(self.family, variant, ordinal)),
+        self.program
+            .resolve_text_style(self.theme.spec(), target, variant, ordinal)
+    }
+
+    pub(crate) fn text_style_with_work_meter(
+        &self,
+        target: ThemeTarget,
+        variant: ThemeVariant,
+        ordinal: Option<usize>,
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> Result<ResolvedThemeStyle, crate::resources::ResourceLimitExceeded> {
+        self.program.resolve_text_style_with_work_meter(
+            self.theme.spec(),
+            target,
+            variant,
+            ordinal,
+            work_meter,
         )
     }
 
@@ -675,17 +794,15 @@ impl ResolvedDiagramTheme {
         target: ThemeTarget,
         one_based_index: usize,
     ) -> Option<&ThemeColorValue> {
-        let index = *self.ordinal_palette_indices.get(&target)?;
+        let index = self.program.ordinal_palette_index(target)?;
         self.theme.spec().styles().ordinal_palettes()[index]
             .1
             .color_for(one_based_index)
     }
 }
 
-/// Resolves unscoped rules directly from a spec for the transitional Mermaid compatibility lane.
-///
-/// Explicit family scopes belong exclusively to the selected family's typed adapter. Projecting
-/// them into global Mermaid variables would let one family alter every other renderer.
+/// Independent rule-order oracle used to verify the compiled family program in tests.
+#[cfg(test)]
 pub(crate) fn resolve_style(
     spec: &super::DiagramThemeSpec,
     family: RenderFamilyKind,
@@ -702,13 +819,13 @@ pub(crate) fn resolve_style(
             .enumerate()
             .filter(|(_, rule)| {
                 target.valid_for(family)
-                    && rule.family().is_none()
                     && rule.target() == target
                     && rule.applies_to(family, variant, ordinal)
             }),
     )
 }
 
+#[cfg(test)]
 fn resolve_matching_rules<'a>(
     base_typography: &TextStyle,
     rules: impl Iterator<Item = (usize, &'a ThemeRule)>,
@@ -728,6 +845,7 @@ mod tests {
         EffectGraph, EffectInput, EffectPrimitive, FilterRegion, OrdinalPalette, OrdinalSelector,
         ThemeRule, ThemeRuleSet,
     };
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
 
     #[test]
     fn family_resolution_indexes_only_applicable_rules_and_palettes() {
@@ -965,6 +1083,183 @@ mod tests {
             Specified::Unspecified
         ));
         assert_eq!(active.stroke_resolution().winner(), None);
+    }
+
+    #[test]
+    fn compiled_program_preserves_static_and_ordinal_source_order_per_property() {
+        let ordinal_fill = CanvasPaint::solid("#ef4444").expect("valid ordinal fill");
+        let late_fill = CanvasPaint::solid("#2563eb").expect("valid late fill");
+        let mut ordinal_patch = ThemeStylePatch::default().with_fill(ordinal_fill);
+        ordinal_patch.typography.font_size_px = Specified::Value(24.0);
+        let mut late_static_patch = ThemeStylePatch::default().with_fill(late_fill.clone());
+        late_static_patch.typography.font_size_px = Specified::Clear;
+        let rules = ThemeRuleSet::default()
+            .with_rule(
+                ThemeRule::new(ThemeTarget::Node, ordinal_patch)
+                    .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+            )
+            .with_rule(ThemeRule::new(ThemeTarget::Node, late_static_patch));
+        let resolved = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .expect("compile interleaved theme")
+            .resolve(RenderFamilyKind::Flowchart)
+            .style(ThemeTarget::Node, ThemeVariant::Default, Some(1));
+
+        assert_eq!(resolved.fill(), Some(&late_fill));
+        assert_eq!(resolved.fill_resolution().winner().unwrap().rule_index(), 1);
+        assert!(matches!(
+            resolved.typography_resolution().patch().font_size_px,
+            Specified::Clear
+        ));
+        assert_eq!(
+            resolved
+                .typography_resolution()
+                .winner(ThemeTypographyProperty::FontSize)
+                .unwrap()
+                .rule_index(),
+            1
+        );
+    }
+
+    #[test]
+    fn compiled_text_program_merges_text_and_target_rules_by_original_origin() {
+        let early_fill = CanvasPaint::solid("#0ea5e9").expect("valid early fill");
+        let late_fill = CanvasPaint::solid("#a855f7").expect("valid late fill");
+        let mut target_patch = ThemeStylePatch::default().with_fill(early_fill);
+        target_patch.typography.font_size_px = Specified::Value(18.0);
+        let mut text_ordinal_patch = ThemeStylePatch::default();
+        text_ordinal_patch.typography.font_size_px = Specified::Value(20.0);
+        let late_text_patch = ThemeStylePatch::default().with_fill(late_fill.clone());
+        let rules = ThemeRuleSet::default()
+            .with_rule(ThemeRule::new(ThemeTarget::NodeLabel, target_patch))
+            .with_rule(
+                ThemeRule::new(ThemeTarget::Text, text_ordinal_patch)
+                    .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+            )
+            .with_rule(ThemeRule::new(ThemeTarget::Text, late_text_patch));
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .expect("compile text-target theme");
+        let resolved = theme.resolve(RenderFamilyKind::Flowchart).text_style(
+            ThemeTarget::NodeLabel,
+            ThemeVariant::Default,
+            Some(1),
+        );
+
+        assert_eq!(resolved.fill(), Some(&late_fill));
+        let fill_origin = resolved.fill_resolution().winner().unwrap();
+        assert_eq!(fill_origin.rule_index(), 2);
+        assert_eq!(fill_origin.target(), ThemeTarget::Text);
+        assert_eq!(fill_origin.ordinal(), None);
+        assert_eq!(resolved.typography().font_size_px(), 20.0);
+        let font_size_origin = resolved
+            .typography_resolution()
+            .winner(ThemeTypographyProperty::FontSize)
+            .unwrap();
+        assert_eq!(font_size_origin.rule_index(), 1);
+        assert_eq!(font_size_origin.target(), ThemeTarget::Text);
+        assert_eq!(font_size_origin.ordinal(), Some(OrdinalSelector::Exact(1)));
+    }
+
+    #[test]
+    fn metered_program_charges_only_selected_ordinal_candidates() {
+        let patch = || {
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#0ea5e9").expect("valid fill"))
+        };
+        let rules = ThemeRuleSet::default()
+            .with_rule(ThemeRule::new(ThemeTarget::Node, patch()))
+            .with_rule(
+                ThemeRule::new(ThemeTarget::Node, patch())
+                    .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+            )
+            .with_rule(
+                ThemeRule::new(ThemeTarget::Node, patch())
+                    .with_variant(ThemeVariant::Active)
+                    .with_ordinal(OrdinalSelector::exact(2).unwrap()),
+            )
+            .with_rule(
+                ThemeRule::new(ThemeTarget::Node, patch())
+                    .with_variant(ThemeVariant::Selected)
+                    .with_ordinal(OrdinalSelector::exact(3).unwrap()),
+            )
+            .with_rule(
+                ThemeRule::new(ThemeTarget::Text, patch())
+                    .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+            )
+            .with_rule(
+                ThemeRule::new(ThemeTarget::NodeLabel, patch())
+                    .with_variant(ThemeVariant::Active)
+                    .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+            );
+        let resolved = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .expect("compile metered theme")
+            .resolve(RenderFamilyKind::Flowchart);
+        let work_meter =
+            OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+
+        resolved
+            .style_with_work_meter(ThemeTarget::Node, ThemeVariant::Active, None, &work_meter)
+            .expect("static-only query");
+        assert_eq!(work_meter.used(), 0);
+
+        resolved
+            .style_with_work_meter(
+                ThemeTarget::Node,
+                ThemeVariant::Active,
+                Some(99),
+                &work_meter,
+            )
+            .expect("bounded ordinal query");
+        assert_eq!(work_meter.used(), 2);
+
+        resolved
+            .text_style_with_work_meter(
+                ThemeTarget::NodeLabel,
+                ThemeVariant::Active,
+                Some(99),
+                &work_meter,
+            )
+            .expect("bounded text ordinal query");
+        assert_eq!(work_meter.used(), 4);
+    }
+
+    #[test]
+    fn rejected_ordinal_charge_does_not_advance_the_operation_meter() {
+        let patch = || {
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#0ea5e9").expect("valid fill"))
+        };
+        let rules = ThemeRuleSet::default()
+            .with_rule(
+                ThemeRule::new(ThemeTarget::Node, patch())
+                    .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+            )
+            .with_rule(
+                ThemeRule::new(ThemeTarget::Node, patch())
+                    .with_variant(ThemeVariant::Active)
+                    .with_ordinal(OrdinalSelector::exact(2).unwrap()),
+            );
+        let resolved = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .expect("compile bounded theme")
+            .resolve(RenderFamilyKind::Flowchart);
+        let mut policy = RenderResourcePolicy::unbounded_for_trusted_input();
+        policy
+            .apply_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
+            .expect("set work limit");
+        let work_meter = OperationWorkMeter::new(policy);
+
+        assert!(
+            resolved
+                .style_with_work_meter(
+                    ThemeTarget::Node,
+                    ThemeVariant::Active,
+                    Some(1),
+                    &work_meter,
+                )
+                .is_err()
+        );
+        assert_eq!(work_meter.used(), 0);
     }
 
     #[test]

@@ -712,8 +712,10 @@ impl<'a> ParsePipeline<'a> {
         }
 
         let has_config_overrides = !pre.config.is_empty_object();
-        let mut effective_config = self.effective_config_before_detect(&pre.config);
+        let (mut effective_config, effective_source_config) =
+            self.effective_config_before_detect(&pre.config);
         let cached_effective_config = (!has_config_overrides).then(|| effective_config.clone());
+        let config_before_detection = effective_config.clone();
 
         let diagram_type = match self.engine.registry.detect_type_precleaned_controlled(
             pre.code(),
@@ -729,6 +731,13 @@ impl<'a> ParsePipeline<'a> {
             &pre.config,
             &mut effective_config,
         );
+        let overlay_application = self.apply_post_detection_config_overlay(
+            &diagram_type,
+            &effective_source_config,
+            &config_before_detection,
+            &mut effective_config,
+            control,
+        )?;
         if has_config_overrides {
             if let Err(error) = theme::apply_theme_defaults(&mut effective_config) {
                 return Ok(Err(error.into()));
@@ -746,6 +755,9 @@ impl<'a> ParsePipeline<'a> {
                 return Ok(Err(error.into()));
             }
         }
+        let overlay_provenance = overlay_application.finalize(&effective_config);
+        effective_config.set_overlay_provenance(overlay_provenance);
+        effective_config.freeze_theme_compatibility();
 
         control.checkpoint()?;
         let title = sanitized_title(pre.title.as_deref(), &effective_config);
@@ -784,9 +796,18 @@ impl<'a> ParsePipeline<'a> {
         }
 
         let has_config_overrides = !pre.config.is_empty_object();
-        let mut effective_config = self.effective_config_before_detect(&pre.config);
+        let (mut effective_config, effective_source_config) =
+            self.effective_config_before_detect(&pre.config);
         let cached_effective_config = (!has_config_overrides).then(|| effective_config.clone());
+        let config_before_detection = effective_config.clone();
         family::apply_diagram_type_config_effects(diagram_type, &pre.config, &mut effective_config);
+        let overlay_application = self.apply_post_detection_config_overlay(
+            diagram_type,
+            &effective_source_config,
+            &config_before_detection,
+            &mut effective_config,
+            control,
+        )?;
         if has_config_overrides {
             if let Err(error) = theme::apply_theme_defaults(&mut effective_config) {
                 return Ok(Err(error.into()));
@@ -804,6 +825,9 @@ impl<'a> ParsePipeline<'a> {
                 return Ok(Err(error.into()));
             }
         }
+        let overlay_provenance = overlay_application.finalize(&effective_config);
+        effective_config.set_overlay_provenance(overlay_provenance);
+        effective_config.freeze_theme_compatibility();
 
         control.checkpoint()?;
         let title = sanitized_title(pre.title.as_deref(), &effective_config);
@@ -888,15 +912,89 @@ impl<'a> ParsePipeline<'a> {
         runtime::with_operation_context(&context, || f(&context))
     }
 
-    fn effective_config_before_detect(&self, overrides: &MermaidConfig) -> MermaidConfig {
+    fn effective_config_before_detect(
+        &self,
+        overrides: &MermaidConfig,
+    ) -> (MermaidConfig, MermaidConfig) {
         if overrides.is_empty_object() {
-            return self.engine.site_config.clone();
+            return (
+                self.engine.site_config.clone(),
+                MermaidConfig::empty_object(),
+            );
         }
 
         let mut effective_config = self.engine.site_config.clone();
         let effective_overrides = effective_config.secure_filtered_overrides(overrides);
         effective_config.deep_merge(effective_overrides.as_value());
-        effective_config
+        (effective_config, effective_overrides)
+    }
+
+    fn apply_post_detection_config_overlay(
+        &self,
+        diagram_type: &str,
+        effective_source_config: &MermaidConfig,
+        config_before_detection: &MermaidConfig,
+        effective_config: &mut MermaidConfig,
+        control: &ParseControl,
+    ) -> ParseControlResult<crate::config::ConfigOverlayApplication> {
+        let mut application = crate::config::ConfigOverlayApplication::default();
+        let Some(family) = Self::post_detection_render_family(diagram_type, effective_config)
+        else {
+            return Ok(application);
+        };
+        if let Some(overlay) = &self.engine.post_detection_config_overlay {
+            overlay.apply_family_controlled_in_lane(
+                family,
+                &self.engine.site_config_overrides,
+                effective_source_config,
+                config_before_detection,
+                effective_config,
+                &mut application,
+                crate::config::ConfigOverlayLane::Host,
+                control,
+            )?;
+        }
+        let fallback_overlay = match &self.engine.fallback_post_detection_config_overlay {
+            #[cfg(test)]
+            Some(crate::FallbackPostDetectionConfigOverlay::Static(overlay)) => {
+                Some(std::sync::Arc::clone(overlay))
+            }
+            Some(crate::FallbackPostDetectionConfigOverlay::Provider(provider)) => {
+                control.checkpoint()?;
+                let overlay = provider.overlay_for_family(family, control)?;
+                control.checkpoint()?;
+                overlay
+            }
+            None => None,
+        };
+        if let Some(overlay) = fallback_overlay {
+            overlay.apply_family_controlled_in_lane(
+                family,
+                &self.engine.fallback_overlay_explicit_config,
+                effective_source_config,
+                config_before_detection,
+                effective_config,
+                &mut application,
+                crate::config::ConfigOverlayLane::Fallback,
+                control,
+            )?;
+        }
+        Ok(application)
+    }
+
+    fn post_detection_render_family(
+        diagram_type: &str,
+        effective_config: &MermaidConfig,
+    ) -> Option<&'static str> {
+        let logical_family = family::diagram_type_family_kind(diagram_type)?;
+        if matches!(logical_family, "flowchart" | "swimlane") {
+            return Some(if effective_config.get_str("layout") == Some("swimlane") {
+                "swimlane"
+            } else {
+                "flowchart"
+            });
+        }
+        Some(logical_family)
     }
 }
 

@@ -191,9 +191,9 @@ The freeze is stage-specific rather than one condition that expires too early:
 | C3 | Complete for the current render session | `RenderEnvironment` owns runtime ceilings, sessions freeze the effective intersection, and themes cannot widen host policy. |
 | C4a | Complete for the deterministic native boundary | Native rustybuzz shaping rejects `.notdef`, wrapping reuses retained cluster advances, and Flowchart/State sidecars freeze only labels consumed by real SVG emission. Public SVG remains token-free while the sealed private SVG carries exact base-or-contiguous-line label tokens. PNG/JPEG/PDF verify the final token-associated face/source set against the retained per-label ledger and can produce `Portable` only from the owned catalog path. Exact final fallback byte ranges remain an explicit `usvg` integration hook, not inferred evidence. |
 | C4b | Partial infrastructure retained; optional assurance deferred | Session-private fallback candidates, basic response admission, and usage reporting may remain, but no further general host-protocol expansion should precede C5/C6 proof. External backend output remains `HostDependent` unless an explicit independent host trust authority is later designed and admitted. |
-| C5 | Ready; execution is next | Compiler validation bounds semantic rules, ordinal palettes, and palette colors, family resolution pre-indexes rules by target, and explicitly family-scoped rules no longer enter the transitional projection. The explicit compatibility/legacy bridge split, post-detection precedence provenance, compatibility residuals, static program consolidation, dynamic work metering, and State/`{Flowchart, Swimlane}`/Sequence cutover remain open. |
+| C5 | In progress; stages 1-2 converged, stage 3 partial | Explicit Mermaid compatibility now comes only from `spec.mermaid()`. The transitional bridge is family-local, runs after detection, preserves explicit site/source/detector ownership, and records compatibility residuals that strict portability rejects. `FamilyThemeProgram` premerges static rules, retains source-order winners, meters only ordinal candidates, and State consumes the metered program directly. Final surviving compatibility provenance and parse/session theme binding are now convergence gates; `{Flowchart, Swimlane}` and Sequence still use the bridge and remain the next cutovers. |
 | C6 | Not yet proven | The representative themes do not yet have a Flowchart/State/Sequence by SVG/PNG/PDF positive-output matrix. |
-| C7a | Frozen | Do not freeze the native theme recipe/token Rust, Options, binding, CLI, or preset surface before C1-C3, C4a, C5, and C6 close. |
+| C7a | Not eligible; intentionally blocked | Do not freeze the native theme recipe/token Rust, Options, binding, CLI, or preset surface before C1-C3, C4a, C5, and C6 close. Existing preset/CLI/binding selectors remain alpha inputs, not a completed compatibility promise. |
 | C4b/C7b | Deferred by design | External-host assurance fields and remaining family/preset breadth freeze only after C4b closes. |
 
 ## Implementation Units
@@ -349,22 +349,25 @@ The freeze is stage-specific rather than one condition that expires too early:
 - **Covers:** R3-R8, R17-R24, R33, R38-R41, R46.
 - **Approach:** Converge in four internal stages rather than deleting the current projection in one
   step:
-  1. Split the compiled theme into a thin explicit Mermaid compatibility config derived only from
-     `spec.mermaid()` and a clearly named transitional `LegacyFamilyThemeBridge`.
-  2. Add a post-detection/pre-family-parse config hook and preserve configuration provenance through
+  1. **Complete.** Split the compiled theme into a thin explicit Mermaid compatibility config
+     derived only from `spec.mermaid()` and a clearly named transitional
+     `LegacyFamilyThemeBridge`.
+  2. **Complete.** Add a post-detection/pre-family-parse config hook and preserve configuration
+     provenance through
      `merman-core` parsing metadata. The facade supplies a read-only `FamilyCompatibilityOverlay`;
      `merman-core` remains generic and does not depend on render-theme types. Apply layers in the
      tested Mermaid order without letting bridge defaults override explicit `spec.mermaid()`,
      renderer/site, frontmatter, or init directives; emit `LegacyCompatibility` residual evidence
      directly from overlay provenance rather than inferring it from final values. Strict portability
      rejects that evidence.
-  3. Compile semantic rules into the single bounded `FamilyThemeProgram`, premerge static matches,
-     meter the
-     remaining ordinal work, and cut over State, `{Flowchart, Swimlane}`, and Sequence in that order.
+  3. **Partial.** Compile semantic rules into the single bounded `FamilyThemeProgram`, premerge
+     static matches, meter the remaining ordinal work, and cut over State, `{Flowchart, Swimlane}`,
+     and Sequence in that order. The program and State cutover are complete; the other primary
+     families remain on the explicitly residual bridge.
   4. Remove the default-typography path from the bridge only after direct Flowchart/Swimlane and
      Sequence layout/emission consumption is proven. Keep the bridge for every remaining
      `LegacyCompatibility` mechanism until C7b migrates or explicitly drops that mechanism.
-- **Files:** `crates/merman-render/src/diagram_theme/mermaid_projection.rs`,
+- **Files:** `crates/merman-render/src/diagram_theme/mermaid_compatibility.rs`,
   `crates/merman-render/src/diagram_theme/semantic.rs`,
   `crates/merman-render/src/diagram_theme/resolved.rs`, compiled-theme/session internals,
   `crates/merman-core/src/lib.rs`, `crates/merman-core/src/parse_pipeline.rs`, parsed metadata,

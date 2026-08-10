@@ -1,7 +1,7 @@
 # Binding Options JSON
 
 Status: experimental shared binding contract.
-Last updated: 2026-08-01
+Last updated: 2026-08-10
 
 All public binding surfaces accept an optional `options_json` string. Passing null, `None`, `nil`,
 or an empty string uses defaults. The same JSON contract is shared by the C ABI, Android JNI, Apple
@@ -29,22 +29,8 @@ than translated implicitly.
   "runtime_policy": "deterministic",
   "fixed_today": "2026-02-15",
   "fixed_local_offset_minutes": 0,
-  "presentation": {
-    "profile": "merman-modern",
-    "theme": {
-      "preset": "one-dark",
-      "appearance": "dark",
-      "font_family": "Inter, system-ui, sans-serif",
-      "roles": {
-        "canvas": "#0f172a",
-        "surface": "#111827",
-        "text": "#e5e7eb",
-        "border": "#475569",
-        "line": "#94a3b8",
-        "success": "#34d399"
-      },
-      "series_palette": ["#60a5fa", "#34d399", "#f59e0b"]
-    }
+  "theme": {
+    "preset": "one-dark"
   },
   "site_config": {
     "theme": "base",
@@ -159,7 +145,7 @@ Every field is optional.
 | `runtime_policy` | string | `deterministic` | `deterministic` or `native`. The native policy is an explicit opt-in and fails with a typed missing-capability error unless the artifact contains the required system clock, time-zone, and random adapters. |
 | `fixed_today` | string | selected policy date | Overrides the selected policy's local "today" date with a canonical signed-32-bit civil date. Years `0000` through `9999` use `YYYY-MM-DD`; later years use `+YEAR-MM-DD`, and negative years use `-YEAR-MM-DD`. The deterministic policy otherwise uses `1970-01-01`; the native policy reads the system date. |
 | `fixed_local_offset_minutes` | integer | selected policy time zone | Replaces the selected policy's time-zone rules with one fixed offset in minutes. The deterministic policy otherwise uses UTC; the native policy uses discovered system time-zone rules. |
-| `presentation` | object | none | Optional first-party presentation profile plus independent host semantic theme data. |
+| `theme` | object or null | none | Experimental complete compiled diagram theme: exactly one `preset` or `spec`. |
 | `site_config` | object | defaults | Mermaid site configuration merged onto the pinned Mermaid defaults before diagram directives are applied. |
 | `parse` | object | defaults | Parse behavior. |
 | `ascii` | object | defaults | ASCII/Unicode text rendering behavior. |
@@ -284,44 +270,95 @@ theme selection, `themeVariables`, and Mermaid `themeCSS`:
 does not apply host palette replacement or product-specific CSS postprocessing; use explicit host
 postprocessing for editor-specific colors.
 
-## Presentation
+## Diagram Theme
 
-`presentation` has two independent inputs: an optional first-party product profile and an optional host semantic theme. It does not own raw Mermaid configuration or SVG postprocessing. Default rendering is unchanged when `presentation` is omitted or empty.
+Alpha.4's top-level `theme` field is an experimental closed selection for one complete compiled
+diagram theme. It must be `null` or an object containing exactly one of `preset` and `spec`.
+`{}`, both members, and a null `preset`/`spec` payload are rejected. A successful compilation
+validates the bounded recipe and reports its requirements; it is not proof of the unfinished
+cross-family, cross-target portability matrix.
+
+`theme.preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`,
+`gruvbox-dark`, `ayu-light`, and `ayu-dark`. The value compiles the corresponding Rust
+`ThemePreset`. It does not select `look: neo`, Flowchart ELK, an SVG pipeline, or a product
+profile.
+
+`theme.spec` compiles one complete `DiagramThemeSpec`. Its supported top-level fields are:
+
+| Field | Purpose |
+| --- | --- |
+| `mermaid` | Bounded Mermaid compatibility: `theme` (`default`, `forest`, `dark`, `neutral`, or `base`), `dark_mode`, and scalar `variables`. |
+| `typography` | Default and family-specific text styles. |
+| `styles` | Tagged semantic rules and ordinal palettes. `null` inside a style patch explicitly clears that property. |
+| `canvas` | Base paint, bounded layers, and bleed. |
+| `effects` | Tagged bounded filter graphs and semantic bindings. |
+| `requirements` | Required theme and text-layout capability IDs. |
+| `assets` | Embedded font catalog, aliases, generic-family mappings, sources, and embedding requirements. |
+
+The binding schema rejects unknown nested fields. Mermaid compatibility variables accept only
+strings, finite numbers, or booleans. Raw `themeCSS`, `look`, renderer choice, layout, and SVG
+output policy do not belong in `theme.spec.mermaid`; use their explicit owners instead.
 
 ```json
 {
-  "presentation": {
-    "profile": "merman-modern",
-    "theme": {
-      "preset": "one-dark",
-      "appearance": "dark",
-      "font_family": "Inter, system-ui, sans-serif",
-      "font_size": "14px",
-      "roles": {
-        "canvas": "#0f172a",
-        "surface": "#111827",
-        "surface-alt": "#1f2937",
-        "text": "#e5e7eb",
-        "subtle-text": "#cbd5e1",
-        "border": "#475569",
-        "line": "#94a3b8",
-        "note-background": "#422006",
-        "note-border": "#f59e0b",
-        "success": "#34d399"
+  "theme": {
+    "spec": {
+      "mermaid": {
+        "theme": "base",
+        "dark_mode": true,
+        "variables": {
+          "primaryColor": "#2563eb"
+        }
       },
-      "series_palette": ["#60a5fa", "#34d399", "#f59e0b"]
+      "typography": {
+        "default": {
+          "font_stack": ["Inter", "system-ui", "sans-serif"],
+          "font_size_px": 14,
+          "line_height": 1.4
+        }
+      },
+      "styles": [
+        {
+          "kind": "rule",
+          "target": "node",
+          "family": "flowchart",
+          "style": {
+            "fill": "#111827",
+            "stroke": { "paint": "#60a5fa", "width": 2 }
+          }
+        },
+        {
+          "kind": "ordinal-palette",
+          "target": "chart-series",
+          "colors": ["#60a5fa", "#34d399", "#f59e0b"]
+        }
+      ],
+      "canvas": { "base": "#0f172a", "bleed": 8 },
+      "effects": [],
+      "requirements": { "capabilities": ["semantic-rules"] }
     }
   }
 }
 ```
 
-`presentation.profile` currently accepts `merman-modern`. The profile selects Neo look, an ELK default for ordinary Flowcharts, and Merman-owned Flowchart SVG presentation. It also supplies a Redux/slate visual fallback only when neither `presentation.theme` nor a later top-level `site_config.theme` owns the appearance. A selected profile is not rejected during Options parsing merely because ELK is absent: `svg-plan-json` reports each profile aspect independently, and only a Flowchart whose final effective renderer still needs ELK is blocked.
+Theme selection is not part of the generic request deep merge. For a reusable engine, omitted
+`theme` inherits the constructor's compiled value, `theme: null` clears it, and a request
+`preset` or `spec` replaces it as one complete value. Requests cannot raise the constructor's
+theme admission or resource policies.
 
-`presentation.theme.preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`, `gruvbox-dark`, `ayu-light`, or `ayu-dark`. `presentation.theme.appearance` accepts `light` or `dark`. Role keys use the stable kebab-case semantic IDs published by the Rust theme owner, such as `surface-alt`, `subtle-text`, and `edge-label-background`; unknown role IDs fail closed.
+Raw Mermaid overrides belong at top-level `site_config`; output choices belong under `svg`.
+`presentation` and `host_theme` are removed groups and return migration-oriented errors. Use
+top-level `theme`, `site_config`, explicit layout configuration, and `svg` as independent owners.
 
-Raw Mermaid overrides belong at top-level `site_config`. Output choices belong under `svg`. The removed `host_theme` group returns a migration-oriented error naming `presentation.theme`, `site_config`, and `svg`; nested `output`, `theme_variables`, and `site_config` fields are not accepted under `presentation.theme`.
+Mermaid configuration precedence is the base engine config, the compiled theme's explicit
+Mermaid compatibility values, top-level `site_config`, then diagram frontmatter and directives
+subject to hardened secure keys. Typed semantic rules, typography, canvas, effects, and assets are
+resolved by the consuming family/document/output stages rather than being flattened into a second
+Mermaid JSON cascade.
 
-Merge precedence is the engine's base config, presentation profile behavior defaults, the conditional profile visual fallback, explicit `presentation.theme`, top-level `site_config`, then diagram frontmatter and directives subject to hardened secure keys. A non-empty `site_config.theme` replaces the profile visual fallback; a partial `themeVariables` object without `theme` overlays it. In a reusable engine request, omitted or empty presentation values inherit the constructor presentation through normal deep overlay semantics.
+Use the artifact's `theme-catalog` metadata entry to discover preset IDs, semantic targets,
+capabilities, font IDs, and resource limits. This is particularly important for artifacts that do
+not compile every SVG capability.
 
 ## Parse Options
 

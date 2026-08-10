@@ -623,6 +623,7 @@ impl ThemeRule {
         self.style.validate()
     }
 
+    #[cfg(test)]
     pub(crate) fn applies_to(
         &self,
         family: RenderFamilyKind,

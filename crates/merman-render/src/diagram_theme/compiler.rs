@@ -67,9 +67,23 @@ impl DiagramThemeCompiler {
             .clone()
             .with_required_capabilities(inferred_capabilities)
             .with_required_text_capabilities(inferred_text_capabilities);
+        let spec = Arc::new(spec);
         let mermaid_config = compile_mermaid_config(&spec);
+        let family_programs = Arc::new(super::family_program::FamilyThemeProgramCache::default());
+        let legacy_family_theme_bridge =
+            super::legacy_family_theme_bridge::LegacyFamilyThemeBridge::new(
+                Arc::clone(&spec),
+                Arc::clone(&family_programs),
+            );
         let fingerprint =
             super::canonical::recipe_fingerprint(&spec, &catalog, &effective_requirements);
+        let parse_compatibility_bridge = legacy_family_theme_bridge.clone();
+        let parse_compatibility = merman_core::__private::ThemeCompatibilityPlan::try_new(
+            fingerprint,
+            mermaid_config,
+            move |family, control| parse_compatibility_bridge.overlay_for_family(family, control),
+        )
+        .expect("compiled Mermaid compatibility must satisfy the core plan contract");
         let report = ThemeRecipeReport::compiled(
             ThemeRecipeFingerprint::from_bytes(fingerprint),
             catalog.fingerprint(),
@@ -84,7 +98,8 @@ impl DiagramThemeCompiler {
             spec,
             catalog,
             requirements: effective_requirements,
-            mermaid_config,
+            parse_compatibility,
+            family_programs,
             recipe_fingerprint: ThemeRecipeFingerprint::from_bytes(fingerprint),
             report,
         })))
@@ -165,7 +180,7 @@ pub enum ThemeCompileError {
 }
 
 fn compile_mermaid_config(spec: &DiagramThemeSpec) -> MermaidConfig {
-    super::mermaid_projection::compile(spec)
+    super::mermaid_compatibility::compile(spec)
 }
 
 #[cfg(test)]

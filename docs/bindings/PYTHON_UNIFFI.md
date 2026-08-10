@@ -95,7 +95,7 @@ validation = api.validate("flowchart TD\nA[Hello] --> B[World]", None)
 diagrams = api.supported_diagrams()
 ascii_capabilities = api.ascii_capabilities()
 themes = api.supported_themes()
-presentation_catalog = json.loads(api.presentation_catalog_json())
+theme_catalog = json.loads(api.theme_catalog_json())
 family_capabilities = api.diagram_family_capabilities()
 lint_rules = api.lint_rule_catalog()
 

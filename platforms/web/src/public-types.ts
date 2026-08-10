@@ -218,7 +218,7 @@ export interface DiagramThemeSpec {
 export interface MermaidThemeCompatibility {
   theme?: "default" | "forest" | "dark" | "neutral" | "base";
   dark_mode?: boolean;
-  variables?: Record<string, string>;
+  variables?: Record<string, string | number | boolean>;
 }
 
 export interface ThemeTypographySpec {

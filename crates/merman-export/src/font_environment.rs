@@ -488,7 +488,7 @@ impl From<&PreparedTextLabelLedgerEntry> for PreparedLabelExpectation {
             id: entry.id(),
             catalog_fingerprint: entry.catalog_fingerprint(),
             provenance: entry.provenance(),
-            line_count: entry.line_ranges().len(),
+            line_count: entry.line_count(),
             faces: entry
                 .evidence()
                 .iter()

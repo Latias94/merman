@@ -52,8 +52,9 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
   - CLI coverage exercises the local Iconify JSON loader through `SvgRenderOptions` into TreeView;
     renderer code performs no filesystem, package-manager, or network access
   - theme roles `iconColor`, `descriptionColor`, `highlightBg`, and `highlightStroke` are covered by
-    `PresentationTheme` tests; full config-pipeline admission for those newer theme fields remains
-    tracked separately from TreeView parser/model parity
+    renderer-local `MermaidThemeAdapter` tests; structured `DiagramTheme` consumption and
+    config-pipeline admission for those newer theme fields remain tracked separately from TreeView
+    parser/model parity
 
 ## Fixture Coverage
 

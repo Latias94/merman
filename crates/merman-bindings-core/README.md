@@ -73,7 +73,14 @@ This example requires the `svg` feature. An explicit `environment.text_measureme
 { "svg": { "pipeline": "resvg-safe" } }
 ```
 
-Editor previews can supply a semantic host theme under `presentation.theme`, select an optional first-party product profile under `presentation.profile`, or enable `drop_native_duplicate_fallbacks` when duplicate native/fallback labels are visible in the host surface. Raw Mermaid overrides remain top-level `site_config`, while SVG pipeline and postprocessing choices remain under `svg`.
+Editor previews can select one experimental compiled diagram theme through top-level `theme`, using
+exactly one `preset` or complete typed `spec`. The binding compiler maps that value to the same
+`DiagramThemeSpec` / `ThemePreset` model used by Rust and installs the resulting immutable
+`DiagramTheme` on the renderer. Raw Mermaid overrides remain top-level `site_config`, while layout,
+environment, and SVG postprocessing choices retain their independent owners. The removed
+`presentation` and `host_theme` groups are rejected rather than treated as compatibility aliases.
+Theme compilation reports requirements; it does not by itself prove the unfinished cross-family,
+cross-output portability matrix.
 
 Hosts that inline SVG in a browser and want fallback text while retaining the original `<foreignObject>` nodes can use `"readable"` instead. PNG, JPEG, and PDF are available through the same generic binding operation route when their output capability is compiled; their format-specific resource limits remain part of the selected resource policy.
 

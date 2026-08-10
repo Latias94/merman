@@ -1,47 +1,62 @@
 # Diagram Theme Coverage
 
-This ledger tracks how supported SVG diagram families consume Mermaid theme variables and presentation theme roles. It is intentionally semantic: tests should assert visible SVG theme signals or document why a family cannot be covered through generic roles yet.
+This ledger tracks how the alpha.4 experimental `DiagramTheme` pipeline reaches supported SVG
+families. It distinguishes direct typed consumption from the temporary Mermaid compatibility
+bridge. A bridge mapping is useful rendering coverage, but it is not evidence that the typed
+mechanism was applied by the family and must not be counted as portable output proof.
 
-Default parity output remains unchanged. Host theme behavior is opt-in.
+Default Mermaid-parity output remains unchanged. A compiled theme is opt-in, and the removed
+`PresentationTheme`/`HostTheme` APIs are not compatibility aliases.
 
-Field-level config merge and parser-entry evidence live in `docs/alignment/CONFIG_FRONTMATTER_SUPPORT.md`.
-This ledger only records the SVG/theme consumption layer and the visible residuals for admitted
-families.
+Field-level config merge and parser-entry evidence live in
+`docs/alignment/CONFIG_FRONTMATTER_SUPPORT.md`. Source-style precedence lives in
+`docs/alignment/MERMAID_THEME_STYLE_PRECEDENCE.md`. This ledger covers only the current
+theme-to-family path and its visible residuals.
 
-| Diagram family | Current theme path | Presentation theme status | Residual / follow-up |
+## Current Paths
+
+| Diagram family | Current theme path | Evidence status | Residual / follow-up |
 | --- | --- | --- | --- |
-| Flowchart | `PresentationTheme::node_diagram()` via `crates/merman-render/src/svg/parity/flowchart/css.rs` | Covered for node, text, border, line, cluster, edge label roles. | KaTeX and some special-shape details still have local hard-coded defaults. |
-| Block | Reuses node diagram theme in `crates/merman-render/src/svg/parity/block.rs` | Covered for node, edge, cluster roles, and resvg-safe fallback label text inheritance. | Cluster background follows Mermaid's fade semantics (`rgba(..., 0.5)`) rather than emitting the raw role color. |
-| Class | `PresentationTheme::class_diagram()` in `crates/merman-render/src/svg/parity/class/css.rs` | Covered for class text, node, border, cluster, note roles. | Note, gradient, and shadow roles are still partly scattered. |
-| Sequence | `PresentationTheme::sequence_diagram()` in `crates/merman-render/src/svg/parity/sequence/css.rs` | Covered for actor, signal, note, label box, activation roles. | Some visible SVG attributes rely on CSS override rather than initialized themed attrs. |
-| State | `PresentationTheme::state_diagram()` in `crates/merman-render/src/svg/parity/state/style.rs` | Covered for transition, state, label, note, special-state roles. | Marker fill remains mostly CSS-driven. |
-| ER | Shared ER CSS and resolved `theme_token` reads | Covered for entity box, relationship line, text, and border signals. | Needs an `er_diagram()` view for marker, row fill, and shadow roles. |
-| Requirement | Shared requirement CSS and visible node attrs in `crates/merman-render/src/svg/parity/requirement.rs` | Covered for requirement node surface, border, text, and relationship line roles. | Requirement-specific status/risk decorations may need additional semantic roles later. |
-| Architecture | Architecture CSS reads `archEdge*` and `archGroup*` variables | Covered for edge and group border roles. | Built-in icon foreground/background is not fully themeable. |
-| C4 | C4 renderer reads `c4.*` config defaults | Partially covered by theme-generated `c4.*_bg_color` and `*_border_color`. | C4 needs dedicated semantic roles for external/container/component text and boundary styling. |
-| Mindmap | Final resolved `git*` and `cScale*` token reads | Covered through series palette bridge. | Family rendering projects the core-resolved scale without deriving a second palette. |
-| Kanban | Local `git*` and `cScale*` palette reads | Covered through series palette bridge and common roles. | Disabled states and root background remain local defaults. |
-| Timeline | `PresentationTheme::timeline()` | Covered through `cScale*`, `git*`, text, and line variables. | Some visible line attrs still have local black defaults. |
-| GitGraph | Final resolved `git*` and `gitBranchLabel*` token reads | Covered through series palette bridge. | Merge/cherry-pick inner marks keep fixed colors. |
-| XY Chart | `PresentationTheme::xychart()` and `xyChart.plotColorPalette` | Covered through `xyChart.plotColorPalette`, axis roles, and text roles. | Data label color has a separate fallback path. |
-| Quadrant Chart | `PresentationTheme::quadrantchart()` during layout | Covered through quadrant fill/text/border variables. | SVG stage is layout-driven and does not carry a separate theme view. |
-| Pie | Pie CSS and final resolved `pie1..pie12` theme variables | Covered through series palette bridge and pie text/border roles. | Layout and legend consume one resolved scale; the renderer does not derive another palette. |
-| Sankey | `sankey.*` config and default Tableau palette | Not generically covered by series palette. | Node colors are keyed by node id; use raw `sankey.nodeColors` or SVG postprocessing. |
-| Radar | Local `SvgTheme` reads `radar.*` and `cScale*` | Covered through generated `radar.*`, series palette, and common roles. | Needs a `RadarTheme` view in `PresentationTheme` to reduce local reads. |
-| Treemap | `treemap.*` config and `cScale*` labels | Covered through generated `treemap.*` and common roles. | Needs a `TreemapTheme` view to reduce local reads. |
-| Venn | Local `venn*` and text variables | Covered through series palette bridge and common text roles. | Needs a `VennTheme` view for text and fill readability. |
-| Gantt | Shared Gantt CSS variables | Covered for task, done, critical, section, text, and grid roles. | Needs a `GanttTheme` view and visible axis attr cleanup. |
-| Journey | Local `fillType*` and `actor*` reads | Covered through series palette bridge and common roles. | Activity line and actor stroke still include fixed colors. |
-| Packet | `packet.*` diagram config | Covered through generated packet text, block, and byte colors. | Packet base CSS does not yet use common theme roles directly. |
-| Tree View | `PresentationTheme::tree_view()` | Covered through nested `themeVariables.treeView.labelColor` and `lineColor`. | No fallback from common `textColor` without semantic theme mapping. |
-| Ishikawa | `PresentationTheme::ishikawa()` | Covered for line, fill, text, font roles. | Theme surface is intentionally narrow. |
-| EventModeling | `PresentationTheme::eventmodeling()` | Covered through common and `em*` roles for lanes, UI, command, event, read model, and relations. | The theme compiler should grow more explicit Event Modeling role mapping if needed. |
-| Info | Static informational SVG plus common CSS | Low coverage required. | Include in common smoke only. |
-| Error | Internal diagnostic diagram | Not in current bundled theme coverage. | Consider diagnostic dark-theme readability separately. |
+| State | Direct crate-private `ResolvedDiagramTheme` consumption in `state/style_plan.rs` and `state/label_artifact.rs`, including semantic targets, ordinal resolution, typography, and source-style provenance | Typed family adapter | The representative State output is one part of C6; it does not prove the complete Flowchart/State/Sequence by SVG/PNG/PDF matrix. |
+| Flowchart and Swimlane | A family-local program is prepared with the render operation; label artifacts consume typed theme data, while remaining Mermaid/CSS surfaces still receive a family-scoped compatibility overlay | Partial typed adapter plus legacy compatibility | Complete geometry, source-style, canvas/effect, and SVG/PNG/PDF evidence remains open before C6 can close. |
+| Sequence | `LegacyFamilyThemeBridge` maps actor, signal, note, activation, loop, and label targets into family-scoped Mermaid variables | Legacy compatibility | Sequence must consume the typed program directly and provide the third representative vertical slice before positive C6 claims. |
+| Class and Block | Node-family semantic targets are projected through `LegacyFamilyThemeBridge`; renderers continue to consume final Mermaid variables and CSS | Legacy compatibility | Source/property provenance and family-owned typed emission are not yet complete. |
+| Mindmap, Tree View, and GitGraph | Node/palette targets are projected through the family-local compatibility bridge, then consumed through final resolved Mermaid variables | Legacy compatibility | Palette projection is not direct ordinal-palette evidence at the SVG consumer. |
+| Gantt and Kanban | Task, status, text, line, and palette targets are projected through the task-family bridge | Legacy compatibility | Family-local fixed colors and status details still require typed classification. |
+| Requirement and ER | Dedicated bridge mappings produce the Mermaid variables consumed by the current renderers | Legacy compatibility | Marker, row, status/risk, and source-style channels still need direct typed evidence. |
+| Pie, XY Chart, Quadrant Chart, and Radar | Chart and ordinal targets are projected through dedicated bridge mappings | Legacy compatibility | A visible palette in SVG is not proof that the typed ordinal mechanism survived every layout/output stage. |
+| Timeline and Journey | Dedicated bridge mappings project text, line, activity, actor, and series values | Legacy compatibility | Some visible attributes retain family-local fallbacks. |
+| Architecture, C4, Packet, Treemap, Ishikawa, EventModeling, Venn, and Sankey | The bridge supplies bounded text plus frozen family-specific compatibility values where available | Legacy compatibility | These families are outside the current C6 representative matrix and retain varying amounts of raw Mermaid-token consumption. |
+| Info, Error, ZenUML, Cynefin, Wardley, and Railroad | Text-only or no-op compatibility contribution, depending on the family surface | Minimal compatibility | No positive typed visual-theme claim is made for these families. |
+
+The compatibility bridge is deliberately family-local and runs only after detection. It never
+projects one family's semantic targets into unrelated renderers. Its contribution IDs and
+residuals remain observable so strict portability can reject legacy compatibility instead of
+silently treating it as typed application.
+
+## Portability Boundary
+
+Theme compilation validates one bounded recipe, freezes its fingerprint, and reports required
+capabilities and text-layout capabilities. Later stages own different facts:
+
+| Stage | Evidence owned by the stage |
+| --- | --- |
+| Compile | Valid typed recipe, resource bounds, and declared/inferred requirements |
+| Family/document | Actual family applicability, property winners, compatibility/source residuals, root paint/effects, and prepared text evidence |
+| Export | Target-specific resource closure and SVG/PNG/JPEG/PDF admission |
+
+These stages are monotonic: a later stage may preserve or weaken earlier evidence, but an
+unevaluated family or output cannot be upgraded to portable. C6 is not yet proven because the
+representative Flowchart/State/Sequence by SVG/PNG/PDF positive-output matrix is incomplete.
 
 ## Gates
 
-- Every new supported SVG diagram family must be added to this ledger.
-- Feature-bearing theme work should include a focused SVG test under `crates/merman/tests/` or `crates/merman-render/tests/`.
-- A test should assert colors on the DOM surface that currently consumes the role, not only that a color string exists somewhere in the SVG.
-- Accepted residuals must be described in the table instead of hidden by comparator normalization.
+- Every family cutover must replace a compatibility contribution with direct typed consumption and
+  retain a residual for any mechanism that is still bridged or unsupported.
+- Feature-bearing theme work must include focused family/document evidence under
+  `crates/merman-render/tests/` or `crates/merman/tests/`.
+- Tests must assert the DOM or exported surface that consumes the value, not only that a color or
+  capability ID exists in the compiled recipe.
+- Source-owned styles, raw `themeCSS`, custom postprocessors, host-dependent measurement, and
+  browser-only behavior must retain their explicit evidence grades.
+- Accepted residuals must be described instead of hidden by comparator normalization.

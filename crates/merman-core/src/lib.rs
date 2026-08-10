@@ -10,7 +10,7 @@ pub mod baseline;
 pub mod common;
 pub mod common_db;
 mod compatibility_json;
-pub mod config;
+mod config;
 pub mod detect;
 pub mod diagram;
 pub mod diagrams;
@@ -37,6 +37,9 @@ pub mod utils;
 mod yaml_config;
 
 pub use config::MermaidConfig;
+#[cfg(test)]
+use config::{ConfigOverlayProvenance, ThemeParseBinding};
+use config::{PostDetectionConfigOverlay, PostDetectionConfigOverlayProvider};
 pub use detect::{Detector, DetectorRegistry};
 pub use diagram::{
     BLOCK_WIDTH_WARNING_RULE_ID, BuiltinRenderSemantic, CustomJsonProvenance,
@@ -63,6 +66,231 @@ pub use parse_control::{ParseCancelled, ParseControl, ParseControlResult};
 pub use preprocess::{
     PreprocessResult, PreprocessedSource, preprocess_diagram, preprocess_diagram_with_known_type,
 };
+
+/// Workspace-internal compatibility seam used while typed family adapters replace the legacy
+/// Mermaid config bridge.
+///
+/// This module is intentionally outside Merman's supported API. Its opaque plans and evidence
+/// keep the temporary overlay graph, provider trait, contribution identifiers, and parse binding
+/// private to `merman-core`.
+#[doc(hidden)]
+pub mod __private {
+    use std::fmt;
+    use std::sync::Arc;
+
+    use crate::config::{
+        ConfigOverlayContribution, ConfigOverlayError, PostDetectionConfigOverlay,
+        PostDetectionConfigOverlayProvider, ThemeParseBinding, ThemeParseBindingError,
+    };
+    use crate::{
+        Engine, FallbackPostDetectionConfigOverlay, MermaidConfig, ParseControl,
+        ParseControlResult, ParseMetadata,
+    };
+
+    /// Opaque normalized identity for one compiled theme's parse compatibility contract.
+    #[derive(Clone, PartialEq, Eq)]
+    pub struct ThemeCompatibilityRecipe(ThemeParseBinding);
+
+    impl fmt::Debug for ThemeCompatibilityRecipe {
+        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter
+                .debug_struct("ThemeCompatibilityRecipe")
+                .field("recipe_identity", &self.0.recipe_identity())
+                .finish_non_exhaustive()
+        }
+    }
+
+    /// Invalid bounded Mermaid compatibility input for an internal compiled theme.
+    #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+    #[error(transparent)]
+    pub struct ThemeCompatibilityPlanError(#[from] ThemeParseBindingError);
+
+    /// Invalid bounded family compatibility contribution.
+    #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+    #[error(transparent)]
+    pub struct ThemeCompatibilityOverlayError(#[from] ConfigOverlayError);
+
+    /// Opaque selected-family overlay returned by a lazy compatibility resolver.
+    #[derive(Debug, Clone)]
+    pub struct ThemeFamilyCompatibilityOverlay(Arc<PostDetectionConfigOverlay>);
+
+    impl Default for ThemeFamilyCompatibilityOverlay {
+        fn default() -> Self {
+            Self(Arc::new(PostDetectionConfigOverlay::new()))
+        }
+    }
+
+    impl ThemeFamilyCompatibilityOverlay {
+        pub fn is_empty(&self) -> bool {
+            self.0.is_empty()
+        }
+    }
+
+    /// Bounded builder for one selected family's temporary compatibility contributions.
+    #[derive(Debug)]
+    pub struct ThemeFamilyCompatibilityOverlayBuilder {
+        family: String,
+        contribution_prefix: String,
+        overlay: PostDetectionConfigOverlay,
+    }
+
+    impl ThemeFamilyCompatibilityOverlayBuilder {
+        pub fn new(family: impl Into<String>, contribution_prefix: impl Into<String>) -> Self {
+            Self {
+                family: family.into(),
+                contribution_prefix: contribution_prefix.into(),
+                overlay: PostDetectionConfigOverlay::new(),
+            }
+        }
+
+        pub fn try_push(
+            &mut self,
+            contribution_label: &str,
+            patch: MermaidConfig,
+        ) -> Result<(), ThemeCompatibilityOverlayError> {
+            let opaque_id = format!(
+                "{}{}.{}",
+                self.contribution_prefix, self.family, contribution_label
+            );
+            let contribution = ConfigOverlayContribution::new(opaque_id, patch)?;
+            self.overlay = std::mem::take(&mut self.overlay)
+                .with_family_contribution(self.family.clone(), contribution)?;
+            Ok(())
+        }
+
+        pub fn finish(self) -> ThemeFamilyCompatibilityOverlay {
+            ThemeFamilyCompatibilityOverlay(Arc::new(self.overlay))
+        }
+    }
+
+    type ThemeCompatibilityResolver = dyn Fn(&str, &ParseControl) -> ParseControlResult<Option<ThemeFamilyCompatibilityOverlay>>
+        + Send
+        + Sync;
+
+    struct ThemeCompatibilityProvider {
+        resolver: Arc<ThemeCompatibilityResolver>,
+    }
+
+    impl fmt::Debug for ThemeCompatibilityProvider {
+        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter
+                .debug_struct("ThemeCompatibilityProvider")
+                .finish_non_exhaustive()
+        }
+    }
+
+    impl PostDetectionConfigOverlayProvider for ThemeCompatibilityProvider {
+        fn overlay_for_family(
+            &self,
+            family: &str,
+            control: &ParseControl,
+        ) -> ParseControlResult<Option<Arc<PostDetectionConfigOverlay>>> {
+            (self.resolver)(family, control).map(|overlay| overlay.map(|overlay| overlay.0))
+        }
+    }
+
+    /// Opaque parse/install plan owned by one compiled diagram theme.
+    #[derive(Clone)]
+    pub struct ThemeCompatibilityPlan {
+        recipe: ThemeCompatibilityRecipe,
+        provider: Arc<dyn PostDetectionConfigOverlayProvider>,
+    }
+
+    impl fmt::Debug for ThemeCompatibilityPlan {
+        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter
+                .debug_struct("ThemeCompatibilityPlan")
+                .field("recipe", &self.recipe)
+                .finish_non_exhaustive()
+        }
+    }
+
+    impl ThemeCompatibilityPlan {
+        pub fn try_new(
+            recipe_identity: [u8; 32],
+            compatibility_config: MermaidConfig,
+            resolver: impl Fn(
+                &str,
+                &ParseControl,
+            )
+                -> ParseControlResult<Option<ThemeFamilyCompatibilityOverlay>>
+            + Send
+            + Sync
+            + 'static,
+        ) -> Result<Self, ThemeCompatibilityPlanError> {
+            let recipe = ThemeCompatibilityRecipe(ThemeParseBinding::try_new(
+                recipe_identity,
+                compatibility_config,
+            )?);
+            Ok(Self {
+                recipe,
+                provider: Arc::new(ThemeCompatibilityProvider {
+                    resolver: Arc::new(resolver),
+                }),
+            })
+        }
+
+        pub fn recipe(&self) -> &ThemeCompatibilityRecipe {
+            &self.recipe
+        }
+    }
+
+    /// Installs one compiled theme's complete parse compatibility plan on an engine.
+    pub fn install_theme_compatibility(
+        mut engine: Engine,
+        plan: &ThemeCompatibilityPlan,
+    ) -> Engine {
+        engine.theme_compatibility_config = Some(MermaidConfig::from_theme_parse_binding(
+            plan.recipe.0.clone(),
+        ));
+        engine.rebuild_site_config();
+        engine.fallback_post_detection_config_overlay = Some(
+            FallbackPostDetectionConfigOverlay::Provider(Arc::clone(&plan.provider)),
+        );
+        engine
+    }
+
+    /// Opaque parse evidence consumed by the render session admission boundary.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct ThemeParseEvidence {
+        recipe: Option<ThemeCompatibilityRecipe>,
+        mermaid_residual_count: usize,
+        fallback_contribution_count: usize,
+    }
+
+    impl ThemeParseEvidence {
+        pub fn matches_recipe(&self, recipe: Option<&ThemeCompatibilityRecipe>) -> bool {
+            self.recipe.as_ref() == recipe
+        }
+
+        pub const fn mermaid_residual_count(&self) -> usize {
+            self.mermaid_residual_count
+        }
+
+        pub const fn fallback_contribution_count(&self) -> usize {
+            self.fallback_contribution_count
+        }
+    }
+
+    /// Freezes the compatibility identity and coarse residual evidence of a parsed artifact.
+    pub fn theme_parse_evidence(metadata: &ParseMetadata) -> ThemeParseEvidence {
+        ThemeParseEvidence {
+            recipe: metadata
+                .effective_config
+                .theme_parse_binding()
+                .cloned()
+                .map(ThemeCompatibilityRecipe),
+            mermaid_residual_count: metadata
+                .effective_config
+                .mermaid_compatibility_residual_count(),
+            fallback_contribution_count: metadata
+                .effective_config
+                .overlay_provenance()
+                .fallback_contribution_ids()
+                .count(),
+        }
+    }
+}
 
 /// Maximum nested diagram/include depth accepted by recursive parsers.
 pub const MAX_DIAGRAM_NESTING_DEPTH: usize = 256;
@@ -112,6 +340,12 @@ fn merge_site_config_override(target: &mut MermaidConfig, mut site_config: Merma
     }
 }
 
+fn merge_theme_compatibility_config(target: &mut MermaidConfig, mut theme_config: MermaidConfig) {
+    config::mirror_legacy_font_family_into_theme_variables(&mut theme_config);
+    target.deep_merge(theme_config.as_value());
+    target.adopt_tracking_theme_compatibility_from(&mut theme_config);
+}
+
 fn generated_default_effective_config()
 -> std::result::Result<MermaidConfig, theme_color::ColorError> {
     static DEFAULT_EFFECTIVE_CONFIG: std::sync::OnceLock<
@@ -159,16 +393,51 @@ pub struct ParseMetadata {
     pub title: Option<String>,
 }
 
+impl ParseMetadata {
+    /// Returns the post-detection compatibility contributions that survived higher-priority config
+    /// layers for this parse operation.
+    #[cfg(test)]
+    pub(crate) fn config_overlay_provenance(&self) -> &ConfigOverlayProvenance {
+        self.effective_config.overlay_provenance()
+    }
+
+    /// Returns the compiled theme recipe bound to this parsed artifact, when present.
+    #[cfg(test)]
+    pub(crate) fn theme_parse_binding(&self) -> Option<&ThemeParseBinding> {
+        self.effective_config.theme_parse_binding()
+    }
+
+    /// Returns explicit Mermaid compatibility fields still owned by the parsed theme.
+    #[cfg(test)]
+    pub(crate) fn mermaid_compatibility_residual_count(&self) -> usize {
+        self.effective_config.mermaid_compatibility_residual_count()
+    }
+}
+
 /// Headless Mermaid parser engine.
 ///
 /// An engine owns detector/parser registries and a site-level Mermaid configuration. It is cheap
 /// to clone when callers need per-request option variants.
+#[derive(Debug, Clone)]
+enum FallbackPostDetectionConfigOverlay {
+    #[cfg(test)]
+    Static(std::sync::Arc<PostDetectionConfigOverlay>),
+    Provider(std::sync::Arc<dyn PostDetectionConfigOverlayProvider>),
+}
+
 #[derive(Debug, Clone)]
 pub struct Engine {
     registry: DetectorRegistry,
     diagram_registry: DiagramRegistry,
     render_diagram_registry: RenderDiagramRegistry,
     site_config: MermaidConfig,
+    site_config_overrides: MermaidConfig,
+    theme_compatibility_config: Option<MermaidConfig>,
+    fallback_overlay_explicit_config: MermaidConfig,
+    // Keep the overlay graph finite by giving each owner exactly one bounded lane. The host lane
+    // is evaluated first; the theme compatibility lane can only fill paths the host did not own.
+    post_detection_config_overlay: Option<std::sync::Arc<PostDetectionConfigOverlay>>,
+    fallback_post_detection_config_overlay: Option<FallbackPostDetectionConfigOverlay>,
     default_effective_config: std::result::Result<MermaidConfig, theme_color::ColorError>,
     runtime_policy: runtime::RuntimePolicy,
 }
@@ -183,6 +452,11 @@ impl Default for Engine {
             diagram_registry: DiagramRegistry::pinned_mermaid_baseline(),
             render_diagram_registry: RenderDiagramRegistry::pinned_mermaid_baseline(),
             site_config,
+            site_config_overrides: MermaidConfig::empty_object(),
+            theme_compatibility_config: None,
+            fallback_overlay_explicit_config: MermaidConfig::empty_object(),
+            post_detection_config_overlay: None,
+            fallback_post_detection_config_overlay: None,
             default_effective_config,
             runtime_policy: runtime::RuntimePolicy::deterministic(),
         }
@@ -262,12 +536,57 @@ impl Engine {
 
     /// Applies site-level Mermaid config defaults.
     pub fn with_site_config(mut self, site_config: MermaidConfig) -> Self {
-        if site_config.is_empty_object() {
+        if site_config.is_empty_object() && !site_config.has_tracking_theme_compatibility() {
             return self;
         }
-        // Merge overrides onto Mermaid schema defaults so detectors keep working.
-        merge_site_config_override(&mut self.site_config, site_config);
-        self.default_effective_config = build_default_effective_config(&self.site_config);
+        merge_site_config_override(&mut self.site_config_overrides, site_config);
+        self.rebuild_site_config();
+        self
+    }
+
+    /// Installs the lower-priority Mermaid compatibility layer for one compiled theme.
+    ///
+    /// Existing and future host site config remains authoritative over this layer. The metadata
+    /// binding is frozen into parsed artifacts so render sessions cannot consume a parse created
+    /// by another theme recipe.
+    #[cfg(test)]
+    pub(crate) fn with_theme_compatibility(mut self, binding: ThemeParseBinding) -> Self {
+        self.theme_compatibility_config = Some(MermaidConfig::from_theme_parse_binding(binding));
+        self.rebuild_site_config();
+        self
+    }
+
+    /// Replaces the high-priority host-owned overlay lane applied after diagram detection.
+    #[cfg(test)]
+    pub(crate) fn with_post_detection_config_overlay(
+        mut self,
+        overlay: PostDetectionConfigOverlay,
+    ) -> Self {
+        self.post_detection_config_overlay =
+            (!overlay.is_empty()).then(|| std::sync::Arc::new(overlay));
+        self
+    }
+
+    /// Replaces the fallback overlay lane without changing the host-owned lane.
+    #[cfg(test)]
+    pub(crate) fn with_fallback_post_detection_config_overlay(
+        mut self,
+        overlay: PostDetectionConfigOverlay,
+    ) -> Self {
+        self.fallback_post_detection_config_overlay = (!overlay.is_empty())
+            .then(|| FallbackPostDetectionConfigOverlay::Static(std::sync::Arc::new(overlay)));
+        self
+    }
+
+    /// Replaces the static fallback lane with a family-lazy provider.
+    #[cfg(test)]
+    pub(crate) fn with_fallback_post_detection_config_overlay_provider(
+        mut self,
+        provider: impl PostDetectionConfigOverlayProvider + 'static,
+    ) -> Self {
+        self.fallback_post_detection_config_overlay = Some(
+            FallbackPostDetectionConfigOverlay::Provider(std::sync::Arc::new(provider)),
+        );
         self
     }
 
@@ -276,12 +595,26 @@ impl Engine {
     /// `None` restores the pinned Mermaid defaults. An explicit config is merged onto those
     /// defaults without inheriting values from the engine's previous site config.
     pub fn with_exact_site_config(mut self, site_config: Option<MermaidConfig>) -> Self {
-        self.site_config = generated::default_site_config();
+        self.site_config_overrides = MermaidConfig::empty_object();
         if let Some(site_config) = site_config {
-            merge_site_config_override(&mut self.site_config, site_config);
+            merge_site_config_override(&mut self.site_config_overrides, site_config);
         }
-        self.default_effective_config = build_default_effective_config(&self.site_config);
+        self.rebuild_site_config();
         self
+    }
+
+    fn rebuild_site_config(&mut self) {
+        let mut site_config = generated::default_site_config();
+        let mut fallback_overlay_explicit_config = MermaidConfig::empty_object();
+        if let Some(theme_config) = self.theme_compatibility_config.clone() {
+            fallback_overlay_explicit_config.deep_merge(theme_config.as_value());
+            merge_theme_compatibility_config(&mut site_config, theme_config);
+        }
+        fallback_overlay_explicit_config.deep_merge(self.site_config_overrides.as_value());
+        merge_site_config_override(&mut site_config, self.site_config_overrides.clone());
+        self.default_effective_config = build_default_effective_config(&site_config);
+        self.site_config = site_config;
+        self.fallback_overlay_explicit_config = fallback_overlay_explicit_config;
     }
 
     /// Returns the detector registry used for automatic diagram type detection.

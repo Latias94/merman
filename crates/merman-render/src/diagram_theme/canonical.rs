@@ -7,6 +7,7 @@ use super::semantic::{
     OrdinalSelector, StrokeLineCap, StrokeLineJoin, ThemeRuleSet, ThemeStylePatch,
 };
 use super::spec::{DiagramThemeSpec, MermaidThemeCompatibility, MermaidThemeValue};
+use super::tokens::FrozenLegacyThemeCompatibility;
 use super::typography::{
     LineHeight, Specified, TextAlign, TextDecoration, TextStyle, TextStylePatch, TextTransform,
     TypographySpec, WhiteSpace, WrapMode,
@@ -28,6 +29,15 @@ pub(crate) fn recipe_fingerprint(
     encoder.field("styles", |encoder| encode_rule_set(encoder, spec.styles()));
     encoder.field("canvas", |encoder| encode_canvas(encoder, spec.canvas()));
     encoder.field("effects", |encoder| encode_effects(encoder, spec.effects()));
+    encoder.field("frozen-legacy-compatibility", |encoder| {
+        match spec.frozen_legacy_compatibility() {
+            Some(compatibility) => {
+                encoder.byte(1);
+                encode_frozen_legacy_compatibility(encoder, compatibility);
+            }
+            None => encoder.byte(0),
+        }
+    });
     encoder.field("font-catalog", |encoder| {
         encoder.bytes(catalog.fingerprint().as_bytes())
     });
@@ -50,6 +60,68 @@ pub(crate) fn recipe_fingerprint(
         });
     });
     encoder.finish()
+}
+
+fn encode_frozen_legacy_compatibility(
+    encoder: &mut CanonicalEncoder,
+    compatibility: &FrozenLegacyThemeCompatibility,
+) {
+    encoder.field("canvas", |encoder| {
+        encode_color(encoder, &compatibility.canvas)
+    });
+    encoder.field("surface", |encoder| {
+        encode_color(encoder, &compatibility.surface)
+    });
+    encoder.field("surface-alt", |encoder| {
+        encode_color(encoder, &compatibility.surface_alt)
+    });
+    encoder.field("surface-muted", |encoder| {
+        encode_color(encoder, &compatibility.surface_muted)
+    });
+    encoder.field("text", |encoder| encode_color(encoder, &compatibility.text));
+    encoder.field("subtle-text", |encoder| {
+        encode_color(encoder, &compatibility.subtle_text)
+    });
+    encoder.field("border", |encoder| {
+        encode_color(encoder, &compatibility.border)
+    });
+    encoder.field("line", |encoder| encode_color(encoder, &compatibility.line));
+    encoder.field("accent", |encoder| {
+        encode_color(encoder, &compatibility.accent)
+    });
+    encoder.field("edge-label-background", |encoder| {
+        encode_color(encoder, &compatibility.edge_label_background)
+    });
+    encoder.field("cluster-background", |encoder| {
+        encode_color(encoder, &compatibility.cluster_background)
+    });
+    encoder.field("cluster-border", |encoder| {
+        encode_color(encoder, &compatibility.cluster_border)
+    });
+    encoder.field("note-background", |encoder| {
+        encode_color(encoder, &compatibility.note_background)
+    });
+    encoder.field("note-border", |encoder| {
+        encode_color(encoder, &compatibility.note_border)
+    });
+    encoder.field("note-text", |encoder| {
+        encode_color(encoder, &compatibility.note_text)
+    });
+    encoder.field("error", |encoder| {
+        encode_color(encoder, &compatibility.error)
+    });
+    encoder.field("warning", |encoder| {
+        encode_color(encoder, &compatibility.warning)
+    });
+    encoder.field("success", |encoder| {
+        encode_color(encoder, &compatibility.success)
+    });
+    encoder.field("series", |encoder| {
+        encoder.sequence_len(compatibility.series.len());
+        for color in &compatibility.series {
+            encode_color(encoder, color);
+        }
+    });
 }
 
 fn encode_mermaid(encoder: &mut CanonicalEncoder, mermaid: &MermaidThemeCompatibility) {
@@ -670,7 +742,7 @@ mod tests {
         FilterRegion, FontAssetSpec, FontCatalogSpec, GradientStop, LinearGradient,
         MermaidThemeCompatibility, OrdinalPalette, PatternSpec, RadialGradient, StrokeLineCap,
         StrokeLineJoin, ThemeAssets, ThemeCapability, ThemeCompileValidationError, ThemeRule,
-        ThemeRuleSet, ThemeTarget, ThemeVariant, TypographySpec,
+        ThemeRuleSet, ThemeTarget, ThemeTokens, ThemeVariant, TypographySpec,
     };
 
     fn compile(spec: DiagramThemeSpec) -> super::super::ThemeRecipeFingerprint {
@@ -836,6 +908,19 @@ mod tests {
     }
 
     #[test]
+    fn frozen_legacy_compatibility_is_part_of_recipe_identity() {
+        let left = FrozenLegacyThemeCompatibility::from(&ThemeTokens::default());
+        let mut right = left.clone();
+        right.series[0] = color("#ef4444");
+
+        assert_recipe_field_changes(
+            "frozen-legacy-compatibility.series",
+            DiagramThemeSpec::new().with_frozen_legacy_compatibility(left),
+            DiagramThemeSpec::new().with_frozen_legacy_compatibility(right),
+        );
+    }
+
+    #[test]
     fn canonical_recipe_preserves_rule_and_layer_order() {
         let red = ThemeStylePatch::default().with_fill(CanvasPaint::Solid(color("#ef4444")));
         let blue = ThemeStylePatch::default().with_fill(CanvasPaint::Solid(color("#3b82f6")));
@@ -909,10 +994,14 @@ mod tests {
         assert_recipe_field_changes(
             "mermaid.dark_mode",
             DiagramThemeSpec::new().with_mermaid_compatibility(
-                MermaidThemeCompatibility::default().with_dark_mode(false),
+                MermaidThemeCompatibility::default()
+                    .with_dark_mode(false)
+                    .unwrap(),
             ),
             DiagramThemeSpec::new().with_mermaid_compatibility(
-                MermaidThemeCompatibility::default().with_dark_mode(true),
+                MermaidThemeCompatibility::default()
+                    .with_dark_mode(true)
+                    .unwrap(),
             ),
         );
         assert_recipe_field_changes(
@@ -2205,6 +2294,7 @@ mod tests {
         let mermaid = DiagramThemeSpec::new().with_mermaid_compatibility(
             MermaidThemeCompatibility::default()
                 .with_dark_mode(true)
+                .unwrap()
                 .with_variable("primaryColor", "#112233")
                 .unwrap(),
         );

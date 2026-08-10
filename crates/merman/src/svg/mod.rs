@@ -48,7 +48,35 @@ use std::sync::OnceLock;
 pub use merman_core::runtime::{
     OperationContext, RuntimePolicy, RuntimePolicyError, RuntimeValueSource,
 };
-pub use merman_render::diagram_theme::*;
+pub use merman_render::diagram_theme::{
+    BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramTheme,
+    DiagramThemeCompiler, DiagramThemeSpec, EffectBinding, EffectGraph, EffectInput,
+    EffectPrimitive, FamilyThemeMechanismKey, FilterRegion, FontAsset, FontAssetFingerprint,
+    FontAssetIdError, FontAssetSpec, FontCatalog, FontCatalogError, FontCatalogFingerprint,
+    FontCatalogSpec, FontContainer, FontEmbeddingPermissions, FontEmbeddingRequirement,
+    FontFaceMetadata, FontFamilyAlias, FontSource, FontSourcePolicy, FontStack, FontStyle,
+    GenericFontFamily, GradientStop, HostMeasurementFallback, HostMeasurementFallbackPolicy,
+    InsetsPx, LineHeight, LinearGradient, MAX_FONT_ALIASES_HARD_CAP,
+    MAX_FONT_ASSET_COMPRESSED_BYTES_HARD_CAP, MAX_FONT_ASSET_DECODED_BYTES_HARD_CAP,
+    MAX_FONT_ASSETS_HARD_CAP, MAX_FONT_CATALOG_DECODED_BYTES_HARD_CAP,
+    MAX_FONT_DECODED_EXPANSION_RATIO_HARD_CAP, MAX_FONT_FACES_HARD_CAP, MAX_FONT_TABLES_HARD_CAP,
+    MAX_THEME_BASE64_BYTES_HARD_CAP, MAX_THEME_ENCODED_BYTES_HARD_CAP, MermaidThemeCompatibility,
+    MermaidThemeValue, OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, RadialGradient,
+    RootThemeEvaluation, RootThemeMechanism, RootThemeMechanismEvidence, RootThemeMechanismKey,
+    RootThemeReport, RootThemeResidual, RootThemeResidualReason, RootThemeVerification, Specified,
+    StrokeLineCap, StrokeLineJoin, THEME_RESOURCE_LIMIT_COUNT, THEME_RESOURCE_LIMIT_DESCRIPTORS,
+    TextAlign, TextDecoration, TextLayoutCapability, TextStylePatch, TextTransform,
+    ThemeAdmissionError, ThemeAdmissionPolicy, ThemeAssets, ThemeCapability, ThemeColorValue,
+    ThemeCompileError, ThemeCompileValidationError, ThemeEffectPatch, ThemeGeometryPatch,
+    ThemeHostAdmissionReport, ThemeLength, ThemePaintPatch, ThemePortabilityRequirement,
+    ThemePreset, ThemePresetDescriptor, ThemePresetParseError, ThemeRecipeFingerprint,
+    ThemeRecipeReport, ThemeRequirements, ThemeResourceLimitDescriptor, ThemeResourceLimitExceeded,
+    ThemeResourceLimitId, ThemeResourceLimitOverride, ThemeResourceLimitOverrideError,
+    ThemeResourceLimitPhase, ThemeResourcePolicy, ThemeResourcePolicyRestrictionError, ThemeRule,
+    ThemeRuleSet, ThemeSpacingPatch, ThemeStrokePatch, ThemeStylePatch, ThemeTarget,
+    ThemeTextStyle, ThemeTokens, ThemeVariant, ThemeWrapMode, TrustedThemeLane, TrustedThemeLanes,
+    TypographySpec, WhiteSpace, theme_preset_descriptors, theme_resource_limit_descriptors,
+};
 pub use merman_render::environment::{
     HostFallbackReason, HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
     HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId, RenderEnvironment,
@@ -86,13 +114,7 @@ pub use merman_render::svg::{
     icon_registry_resource_limit_descriptors,
 };
 pub use merman_render::text::{
-    DeterministicTextMeasurer, NativeTextLayoutBackend, PrepareCatalogRequest, PrepareTextRequest,
-    PreparedTextBackendRequest, PreparedTextBackendSession, PreparedTextCallBinding,
-    PreparedTextFaceSlot, PreparedTextLayoutReport, PreparedTextLayoutResponse,
-    PreparedTextLineResponse, PreparedTextResponse, PreparedTextRunResponse, PreparedTextWrap,
-    SourceVisibleSpan, TEXT_LAYOUT_CONTRACT_VERSION, TextByteRange, TextLayoutBackend,
-    TextLayoutBackendIdentity, TextLayoutCapabilities, TextLayoutDirection, TextLayoutError,
-    TextLayoutFaceEvidence, TextLayoutRequestDigest, TextLayoutSessionToken, TextMeasurer,
+    DeterministicTextMeasurer, PreparedTextLayoutReport, TextLayoutFailure, TextMeasurer,
     TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
 };
 pub use merman_render::{
@@ -1735,6 +1757,155 @@ flowchart TD
     }
 
     #[test]
+    fn legacy_flowchart_bridge_is_visible_but_never_verified_as_typed_application() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Node,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#ef4444").expect("valid test color"),
+                            ),
+                        )
+                        .for_family(RenderFamilyKind::Flowchart),
+                    ),
+                ),
+            )
+            .expect("custom theme should compile");
+        let renderer = HeadlessRenderer::new()
+            .with_theme(theme)
+            .with_diagram_id("legacy-flowchart-theme");
+
+        let rendered = renderer
+            .render_svg_report_sync("flowchart TD\n  A[Themed]")
+            .expect("render should succeed in best-effort mode")
+            .expect("flowchart should be detected");
+        let report = rendered.report().family_style_report();
+
+        assert!(rendered.svg().contains("#ef4444"), "{}", rendered.svg());
+        assert_eq!(report.verification(), FamilyStyleVerification::Unverified);
+        assert!(report.compatibility_residual_count() > 0);
+        assert!(report.theme_applied_mechanisms().is_empty());
+    }
+
+    #[test]
+    fn portable_flowchart_theme_rejects_the_temporary_legacy_bridge_before_layout() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Node,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#ef4444").expect("valid test color"),
+                            ),
+                        )
+                        .for_family(RenderFamilyKind::Flowchart),
+                    ),
+                ),
+            )
+            .expect("custom theme should compile");
+        let environment = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
+        let renderer =
+            HeadlessRenderer::from_engine_and_environment(merman_core::Engine::new(), environment)
+                .with_theme(theme);
+
+        let error = match renderer.render_svg_report_sync("flowchart TD\n  A[Themed]") {
+            Ok(_) => panic!("strict portability must reject compatibility projection"),
+            Err(error) => error,
+        };
+
+        assert!(matches!(
+            error,
+            HeadlessError::Render(RenderError::LegacyFamilyThemeCompatibility {
+                family_kind: RenderFamilyKind::Flowchart,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn explicit_mermaid_ownership_suppresses_noop_legacy_contributions() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Node,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#ef4444").expect("valid test color"),
+                            ),
+                        )
+                        .for_family(RenderFamilyKind::Flowchart),
+                    ),
+                ),
+            )
+            .expect("custom theme should compile");
+        let renderer = HeadlessRenderer::new().with_theme(theme).with_site_config(
+            merman_core::MermaidConfig::from_value(json!({
+                "theme": "base",
+                "themeVariables": {
+                    "primaryColor": "#abcdef",
+                    "mainBkg": "#abcdef"
+                }
+            })),
+        );
+
+        let rendered = renderer
+            .render_svg_report_sync("flowchart TD\n  A[Explicit]")
+            .expect("render should succeed")
+            .expect("flowchart should be detected");
+
+        assert!(rendered.svg().contains("#abcdef"), "{}", rendered.svg());
+        assert!(
+            rendered
+                .report()
+                .family_style_report()
+                .compatibility_residual_count()
+                == 0
+        );
+    }
+
+    #[test]
+    fn state_typed_consumer_does_not_enter_the_legacy_bridge() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::State,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#2563eb").expect("valid test color"),
+                            ),
+                        )
+                        .for_family(RenderFamilyKind::State),
+                    ),
+                ),
+            )
+            .expect("custom theme should compile");
+        let renderer = HeadlessRenderer::new().with_theme(theme);
+
+        let rendered = renderer
+            .render_svg_report_sync("stateDiagram-v2\n  [*] --> Active\n  state Active")
+            .expect("render should succeed")
+            .expect("state diagram should be detected");
+        let report = rendered.report().family_style_report();
+
+        assert_eq!(report.compatibility_residual_count(), 0);
+        assert!(report.theme_applied_mechanisms().iter().any(|mechanism| {
+            matches!(
+                mechanism,
+                merman_render::diagram_theme::FamilyThemeMechanismKey::Rule {
+                    target: ThemeTarget::State,
+                    ..
+                }
+            )
+        }));
+    }
+
+    #[test]
     fn headless_renderer_fixed_time_controls_semantic_parse_and_gantt_svg() {
         let source = r#"gantt
 dateFormat MM-DD
@@ -1989,7 +2160,7 @@ impl HeadlessRenderer {
         self.materialized_engine.get_or_init(|| {
             let mut engine = self.base_engine.clone();
             if let Some(theme) = &self.theme {
-                engine = engine.with_site_config(theme.mermaid_config().clone());
+                engine = merman_render::__private::install_parse_compatibility(theme, engine);
             }
             for site_config in &self.site_config_layers {
                 engine = engine.with_site_config(site_config.clone());

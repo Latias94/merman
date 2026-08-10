@@ -1,16 +1,13 @@
 use merman::svg::{
     BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, DiagramTheme, DiagramThemeCompiler,
     DiagramThemeSpec, DocumentResidualReason, DocumentResidualStage, FontAssetSpec,
-    FontCatalogSpec, FontSource, FontSourcePolicy, FontStack, GradientStop, HeadlessRenderer,
-    HostMeasurementFallback, HostMeasurementFallbackPolicy, LinearGradient,
-    NativeTextLayoutBackend, PrepareCatalogRequest, PreparedTextLayoutResponse, RenderEnvironment,
-    RenderExecutionPath, RenderFamilyKind, SvgPipeline, SvgPipelinePreset, TargetAdmissionReason,
-    TargetAdmissionStatus, TextLayoutBackend, TextLayoutBackendIdentity, TextLayoutCapabilities,
-    TextLayoutError, ThemeAssets, ThemeColorValue, ThemePreset, ThemeRule, ThemeRuleSet,
+    FontCatalogSpec, FontSource, FontStack, GradientStop, HeadlessError, HeadlessRenderer,
+    LinearGradient, RenderEnvironment, RenderError, RenderExecutionPath, RenderFamilyKind,
+    SvgPipeline, SvgPipelinePreset, TargetAdmissionReason, TargetAdmissionStatus,
+    TextLayoutFailure, ThemeAssets, ThemeColorValue, ThemePreset, ThemeRule, ThemeRuleSet,
     ThemeStylePatch, ThemeTarget, ThemeTextStyle, TrustedThemeLane, TypographySpec,
 };
 use merman::{Engine, MermaidConfig};
-use std::sync::Arc;
 
 fn compile_preset(preset: ThemePreset) -> DiagramTheme {
     DiagramThemeCompiler::new()
@@ -18,7 +15,7 @@ fn compile_preset(preset: ThemePreset) -> DiagramTheme {
         .expect("theme preset should compile")
 }
 
-fn embedded_font_theme() -> DiagramTheme {
+fn embedded_font_theme_spec() -> DiagramThemeSpec {
     let latin = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
@@ -34,51 +31,15 @@ fn embedded_font_theme() -> DiagramTheme {
     let typography = ThemeTextStyle::default().with_font_stack(
         FontStack::new(["Excalifont", "Xiaolai SC"]).expect("fixture font stack should be valid"),
     );
-    let spec = DiagramThemeSpec::new()
+    DiagramThemeSpec::new()
         .with_typography(TypographySpec::default().with_default(typography))
-        .with_assets(ThemeAssets::default().with_font_catalog(catalog));
+        .with_assets(ThemeAssets::default().with_font_catalog(catalog))
+}
 
+fn embedded_font_theme() -> DiagramTheme {
     DiagramThemeCompiler::new()
-        .compile(spec)
+        .compile(embedded_font_theme_spec())
         .expect("embedded font theme should compile")
-}
-
-struct CachedPreparedBackend {
-    identity: TextLayoutBackendIdentity,
-    capabilities: TextLayoutCapabilities,
-    response: PreparedTextLayoutResponse,
-}
-
-impl TextLayoutBackend for CachedPreparedBackend {
-    fn identity(&self) -> &TextLayoutBackendIdentity {
-        &self.identity
-    }
-
-    fn capabilities(&self) -> TextLayoutCapabilities {
-        self.capabilities
-    }
-
-    fn prepare_catalog(
-        &self,
-        _request: &PrepareCatalogRequest,
-    ) -> Result<PreparedTextLayoutResponse, TextLayoutError> {
-        Ok(self.response.clone())
-    }
-}
-
-fn cached_external_backend(theme: &DiagramTheme) -> CachedPreparedBackend {
-    let native = NativeTextLayoutBackend::default();
-    let response = native
-        .prepare_catalog(&PrepareCatalogRequest::new(
-            theme.font_catalog().clone(),
-            FontSourcePolicy::embedded_only(),
-        ))
-        .expect("fixture catalog should prepare");
-    CachedPreparedBackend {
-        identity: response.backend().clone(),
-        capabilities: response.capabilities(),
-        response,
-    }
 }
 
 #[test]
@@ -673,7 +634,6 @@ fn root_blend_layer_is_explicitly_admitted_by_native_targets() {
 stateDiagram-v2
 state "Portable blend" as Ready
 Ready --> Done : Native targets"#;
-    let base = embedded_font_theme();
     let canvas = CanvasSpec::transparent()
         .with_layer(
             CanvasLayer::new(CanvasPaint::solid("#22d3ee").expect("valid layer paint"))
@@ -683,7 +643,7 @@ Ready --> Done : Native targets"#;
         )
         .expect("bounded root layer");
     let theme = DiagramThemeCompiler::new()
-        .compile(base.spec().clone().with_canvas(canvas))
+        .compile(embedded_font_theme_spec().with_canvas(canvas))
         .expect("root blend theme should compile");
 
     let (_, png_report) = HeadlessRenderer::new()
@@ -774,7 +734,12 @@ Ready --> Done"#;
         .render_document_sync(SOURCE)
         .expect_err("rich State Markdown is not admitted by the portable text path yet");
 
-    assert!(error.to_string().contains("state_markdown_label"));
+    assert!(matches!(
+        error,
+        HeadlessError::Render(RenderError::TextLayout(
+            TextLayoutFailure::UnsupportedLabelMode
+        ))
+    ));
 }
 
 #[test]
@@ -789,88 +754,12 @@ Ready --> Done"#;
         .render_document_sync(SOURCE)
         .expect_err("State diagram titles require signed prepared bbox evidence");
 
-    assert!(error.to_string().contains("state_diagram_title_bbox_y"));
-}
-
-#[test]
-fn external_prepared_text_use_is_retained_as_host_dependent_document_evidence() {
-    const SOURCE: &str = r#"%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": false}}}%%
-flowchart LR
-A[Host layout] --> B[Ready]"#;
-    let theme = embedded_font_theme();
-    let environment = RenderEnvironment::deterministic()
-        .with_text_layout_backend(Arc::new(cached_external_backend(&theme)))
-        .with_theme_measurement_fallbacks(
-            HostMeasurementFallbackPolicy::new([HostMeasurementFallback::AcceptHostDependent])
-                .expect("single fallback is valid"),
-        );
-    let document = HeadlessRenderer::new()
-        .with_environment(environment)
-        .with_theme(theme)
-        .render_document_sync(SOURCE)
-        .expect("host-dependent custom font document should render")
-        .expect("flowchart should be detected");
-
-    let prepared = document
-        .report()
-        .prepared_text_layout()
-        .expect("external prepared layout should be retained");
-    assert_eq!(prepared.used_font_sources(), &[FontSource::Embedded]);
-    assert!(prepared.is_host_dependent());
-    assert_eq!(
-        document.document_report().prepared_text_used_font_sources(),
-        &[FontSource::Embedded]
-    );
-    assert!(document.document_report().prepared_text_is_host_dependent());
-    assert_ne!(
-        document.svg_target_admission().status(),
-        TargetAdmissionStatus::Portable
-    );
-    assert!(
-        document
-            .svg_target_admission()
-            .reasons()
-            .contains(&TargetAdmissionReason::PreparedHostBackend)
-    );
-}
-
-#[test]
-fn external_state_prepared_text_use_remains_host_dependent() {
-    const SOURCE: &str = r#"%%{init: {"htmlLabels": false}}%%
-stateDiagram-v2
-state "Host State layout" as Ready
-Ready --> Done : Host edge"#;
-    let theme = embedded_font_theme();
-    let environment = RenderEnvironment::deterministic()
-        .with_text_layout_backend(Arc::new(cached_external_backend(&theme)))
-        .with_theme_measurement_fallbacks(
-            HostMeasurementFallbackPolicy::new([HostMeasurementFallback::AcceptHostDependent])
-                .expect("single fallback is valid"),
-        );
-    let document = HeadlessRenderer::new()
-        .with_environment(environment)
-        .with_theme(theme)
-        .render_document_sync(SOURCE)
-        .expect("host-dependent State document should render")
-        .expect("State diagram should be detected");
-
-    let prepared = document
-        .report()
-        .prepared_text_layout()
-        .expect("external State prepared layout should be retained");
-    assert_eq!(prepared.used_font_sources(), &[FontSource::Embedded]);
-    assert!(prepared.is_host_dependent());
-    assert!(document.document_report().prepared_text_is_host_dependent());
-    assert_ne!(
-        document.svg_target_admission().status(),
-        TargetAdmissionStatus::Portable
-    );
-    assert!(
-        document
-            .svg_target_admission()
-            .reasons()
-            .contains(&TargetAdmissionReason::PreparedHostBackend)
-    );
+    assert!(matches!(
+        error,
+        HeadlessError::Render(RenderError::TextLayout(
+            TextLayoutFailure::UnsupportedLabelMode
+        ))
+    ));
 }
 
 #[test]

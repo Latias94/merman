@@ -135,7 +135,29 @@
 //! `PdfPagePolicy::FitCssWidth` to model the CSS-pixel viewport used by browser-style `--pdfFit`
 //! exports.
 
-pub use merman_core::*;
+pub use merman_core::{
+    BLOCK_WIDTH_WARNING_RULE_ID, BuiltinRenderSemantic, CustomJsonProvenance,
+    CustomJsonRenderModel, CustomJsonRenderParser, Detector, DetectorRegistry,
+    DiagramFamilyCapability, DiagramFamilyId, DiagramHeaderFact, DiagramParseOutcome,
+    DiagramParseSnapshot, DiagramRegistry, DiagramSemanticParser, DiagramWarningFact,
+    EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
+    EditorExpectedSyntaxKind, EditorLexeme, EditorLexemeFailure, EditorLexemeKind,
+    EditorLexemeModifier, EditorLexemeModifiers, EditorLexemeProducer, EditorLexemeProducerKind,
+    EditorRenamePolicy, EditorSemanticCompleteness, EditorSemanticDiagnostic,
+    EditorSemanticDiagnosticKind, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
+    EditorSemanticSymbol, Engine, Error, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+    FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
+    MAX_DIAGRAM_NESTING_DEPTH, MermaidConfig, ParseCancelled, ParseControl, ParseControlResult,
+    ParseDiagnostic, ParseDiagnosticSpanKind, ParseMetadata, ParseOptions, ParsedDiagram,
+    ParsedDiagramRender, ParsedEditorFacts, PreprocessResult, PreprocessedSource,
+    RenderDiagramRegistry, RenderSemanticModel, Result, SourceSpan, diagram_family_capabilities,
+    diagram_header_facts, diagram_type_family_kind, diagram_type_metadata_id,
+    diagram_type_render_model_kind, preprocess_diagram, preprocess_diagram_with_known_type,
+    supported_diagrams, supported_themes,
+};
+pub use merman_core::{
+    baseline, detect, diagram, diagrams, error, models, preprocess, resources, runtime, time,
+};
 
 /// Error from the one-shot [`render_svg`] facade.
 ///

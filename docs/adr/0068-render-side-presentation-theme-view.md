@@ -1,8 +1,8 @@
-# ADR 0068: Ordered Theme Resolution And Render Presentation Views
+# ADR 0068: Ordered Theme Resolution And Family Theme Views
 
 - Status: accepted
 - Date: 2026-06-03
-- Last amended: 2026-07-20
+- Last amended: 2026-08-10
 
 ## Context
 
@@ -54,11 +54,13 @@ boundaries or change emitted SVG.
    is identical, but they may not silently broaden or narrow their protocol. In particular,
    Railroad's CSS whitelist and the hex-only RoughJS boundary are not Khroma theme operations.
 
-5. `merman-render` exposes `PresentationTheme` and focused family views. They convert resolved
-   tokens into typography, surfaces, borders, lines, notes, labels, and diagram-specific roles.
-   Direct raw JSON access is reserved for exact Mermaid tokens that cannot be represented by an
-   existing role; repeated fallback logic should deepen the shared view instead. Raw value accessors
-   use `theme_token` terminology so they cannot be confused with color evaluation.
+5. `merman-render` compiles each `DiagramThemeSpec` into a cached, family-local theme program and
+   resolves a crate-private `ResolvedDiagramTheme` for the detected family. Typed family adapters
+   consume semantic targets, typography, ordinal palettes, and source-style provenance directly.
+   Families not yet cut over use a temporary compatibility bridge whose residuals remain visible;
+   the bridge is not a second public theme API. Direct raw JSON access is reserved for exact
+   Mermaid tokens that have not yet been moved to typed targets. Raw value accessors retain
+   `theme_token` terminology so they cannot be confused with color evaluation.
 
 6. Theme changes are verified in separate lanes:
    - a generated artifact records the pinned Mermaid package hash, source tag, source commit,
@@ -86,8 +88,9 @@ boundaries or change emitted SVG.
   compatibility fallbacks.
 - Browser inheritance and export fallbacks can differ intentionally without comparator
   normalization or family-specific patches.
-- Renderer views remain deep only when they remove shared policy or meaningful duplication; layout
-  constants and truly family-local semantics stay with the family.
+- Family theme programs remain deep only when they remove shared policy or meaningful duplication;
+  layout constants and truly family-local semantics stay with the family. The former
+  `PresentationTheme` name is removed and is not a public compatibility alias.
 
 ## Rejected Alternatives
 

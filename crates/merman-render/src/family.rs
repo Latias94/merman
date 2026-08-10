@@ -162,6 +162,7 @@ pub enum FamilyThemeResidualReason {
     UnsupportedGeometry,
     UnsupportedEffect,
     UnsupportedOrdinalPalette,
+    OutputVisibilityFiltered,
 }
 
 impl FamilyThemeResidualReason {
@@ -172,6 +173,7 @@ impl FamilyThemeResidualReason {
             Self::UnsupportedGeometry => "unsupported-geometry",
             Self::UnsupportedEffect => "unsupported-effect",
             Self::UnsupportedOrdinalPalette => "unsupported-ordinal-palette",
+            Self::OutputVisibilityFiltered => "output-visibility-filtered",
         }
     }
 }
@@ -357,6 +359,8 @@ pub struct FamilyStyleReport {
     theme_applied: Vec<FamilyThemeMechanismKey>,
     theme_not_applicable: Vec<FamilyThemeMechanismKey>,
     theme_residuals: Vec<FamilyThemeResidual>,
+    compatibility_residual_count: usize,
+    mermaid_compatibility_residual_count: usize,
     residuals: Vec<FamilyStyleResidual>,
 }
 
@@ -383,6 +387,8 @@ impl FamilyStyleReport {
             theme_applied: plan.theme_evidence.applied.clone(),
             theme_not_applicable: plan.theme_evidence.not_applicable.clone(),
             theme_residuals: plan.theme_evidence.residuals.clone(),
+            compatibility_residual_count: plan.compatibility_residual_count,
+            mermaid_compatibility_residual_count: plan.mermaid_compatibility_residual_count,
             residuals,
         }
     }
@@ -420,6 +426,17 @@ impl FamilyStyleReport {
         &self.theme_residuals
     }
 
+    /// Returns temporary family-local Mermaid compatibility contributions used by this operation.
+    pub const fn compatibility_residual_count(&self) -> usize {
+        self.compatibility_residual_count
+    }
+
+    /// Returns explicit Mermaid compatibility fields that survived the final config cascade.
+    #[doc(hidden)]
+    pub const fn mermaid_compatibility_residual_count(&self) -> usize {
+        self.mermaid_compatibility_residual_count
+    }
+
     pub fn theme_coverage_complete(&self) -> bool {
         let required = self
             .theme_required
@@ -455,6 +472,10 @@ impl FamilyStyleReport {
     }
 
     pub fn verification(&self) -> FamilyStyleVerification {
+        if self.compatibility_residual_count != 0 || self.mermaid_compatibility_residual_count != 0
+        {
+            return FamilyStyleVerification::Unverified;
+        }
         match self.evaluation {
             FamilyStyleEvaluation::NotApplicable => FamilyStyleVerification::NotApplicable,
             FamilyStyleEvaluation::Unadapted => FamilyStyleVerification::Unadapted,
@@ -475,6 +496,18 @@ impl FamilyStyleReport {
     }
 
     fn ensure_portable(&self) -> Result<()> {
+        if self.compatibility_residual_count != 0 {
+            return Err(Error::LegacyFamilyThemeCompatibility {
+                family_kind: self.family_kind,
+                residual_count: self.compatibility_residual_count,
+            });
+        }
+        if self.mermaid_compatibility_residual_count != 0 {
+            return Err(Error::MermaidThemeCompatibility {
+                family_kind: self.family_kind,
+                residual_count: self.mermaid_compatibility_residual_count,
+            });
+        }
         match self.verification() {
             FamilyStyleVerification::NotApplicable | FamilyStyleVerification::Verified => Ok(()),
             FamilyStyleVerification::Unadapted => Err(Error::UnadaptedFamilyTheme {
@@ -628,6 +661,17 @@ impl FamilyThemeEvidence {
         }
     }
 
+    fn mark_output_visibility_filtered(&mut self) {
+        for key in std::mem::take(&mut self.applied) {
+            if !self.residuals.iter().any(|residual| residual.key == key) {
+                self.residuals.push(FamilyThemeResidual {
+                    key,
+                    reason: FamilyThemeResidualReason::OutputVisibilityFiltered,
+                });
+            }
+        }
+    }
+
     fn is_accounted(&self, key: &FamilyThemeMechanismKey) -> bool {
         self.applied.contains(key)
             || self.not_applicable.contains(key)
@@ -662,6 +706,8 @@ pub(crate) struct ResolvedFamilyStylePlan {
     family_kind: RenderFamilyKind,
     resolved_theme: Option<Box<ResolvedDiagramTheme>>,
     theme_evidence: FamilyThemeEvidence,
+    compatibility_residual_count: usize,
+    mermaid_compatibility_residual_count: usize,
     payload: FamilyStylePayload,
 }
 
@@ -680,6 +726,8 @@ impl ResolvedFamilyStylePlan {
             family_kind,
             resolved_theme,
             theme_evidence,
+            compatibility_residual_count: 0,
+            mermaid_compatibility_residual_count: 0,
             payload,
         }
     }
@@ -689,6 +737,7 @@ impl ResolvedFamilyStylePlan {
         model: &merman_core::diagrams::state::StateDiagramRenderModel,
         effective_config: &serde_json::Value,
         title: Option<&str>,
+        work_meter: &crate::resources::OperationWorkMeter,
     ) -> Result<()> {
         debug_assert_eq!(self.family_kind, RenderFamilyKind::State);
         let (plan, theme_evidence) = crate::state::StateStylePlan::resolve_with_evidence(
@@ -696,10 +745,25 @@ impl ResolvedFamilyStylePlan {
             effective_config,
             self.resolved_theme.as_deref(),
             title,
-        );
+            work_meter,
+        )?;
         self.theme_evidence = theme_evidence;
         self.payload = FamilyStylePayload::State(Box::new(plan));
         Ok(())
+    }
+
+    fn observe_compatibility(&mut self, metadata: &merman_core::ParseMetadata) {
+        let evidence = merman_core::__private::theme_parse_evidence(metadata);
+        self.mermaid_compatibility_residual_count = evidence.mermaid_residual_count();
+        self.compatibility_residual_count = evidence.fallback_contribution_count();
+    }
+
+    fn observe_output_visibility(&mut self, debug: &SvgDebugOptions) {
+        if self.family_kind == RenderFamilyKind::State
+            && (!debug.include_nodes || !debug.include_edges)
+        {
+            self.theme_evidence.mark_output_visibility_filtered();
+        }
     }
 
     fn ensure_portable(&self, portability: ThemePortabilityRequirement) -> Result<()> {
@@ -810,6 +874,7 @@ impl FamilyRenderContext {
         self.style_plan.family_kind()
     }
 
+    #[cfg(test)]
     fn resolved_theme(&self) -> Option<&ResolvedDiagramTheme> {
         self.style_plan.resolved_theme()
     }
@@ -828,7 +893,20 @@ impl FamilyRenderContext {
         effective_config: &serde_json::Value,
         title: Option<&str>,
     ) -> Result<()> {
-        self.style_plan.adapt_state(model, effective_config, title)
+        self.style_plan.adapt_state(
+            model,
+            effective_config,
+            title,
+            self.session.work_meter().as_ref(),
+        )
+    }
+
+    fn observe_compatibility(&mut self, metadata: &merman_core::ParseMetadata) {
+        self.style_plan.observe_compatibility(metadata);
+    }
+
+    fn observe_output_visibility(&mut self, debug: &SvgDebugOptions) {
+        self.style_plan.observe_output_visibility(debug);
     }
 
     fn ensure_portable(&self) -> Result<()> {
@@ -1698,8 +1776,10 @@ impl FamilyRenderArtifact {
             metadata,
             compatibility_projection: _,
             family: _,
-            context,
+            mut context,
         } = self;
+        context.observe_output_visibility(debug);
+        context.ensure_portable()?;
         let (tokenized_svg, root_theme) = rendered.into_parts();
         let (svg, prepared_text_svg) =
             crate::svg::partition_prepared_text_label_ids(tokenized_svg, &prepared_text_ledger)?;
@@ -1945,6 +2025,11 @@ fn validate_render_input(
 ) -> Result<RenderFamilyKind> {
     let meta = parsed.metadata();
     let model = parsed.model();
+    if !merman_core::__private::theme_parse_evidence(meta)
+        .matches_recipe(session.theme_compatibility_recipe())
+    {
+        return Err(Error::ThemeParseBindingMismatch);
+    }
     let diagram_type = meta.diagram_type.as_str();
     if let RenderSemanticModel::CustomJson(custom) = model {
         return Err(Error::NonRenderableCustomModel {
@@ -2017,12 +2102,13 @@ fn prepare_class_family(
 fn prepare_class_render(
     parsed: ParsedDiagramRender,
     options: &LayoutOptions,
-    context: FamilyRenderContext,
+    mut context: FamilyRenderContext,
 ) -> Result<FamilyRenderArtifact> {
     let (meta, model) = parsed.into_parts();
     let RenderSemanticModel::Class(model) = model else {
         unreachable!("Class render dispatch requires a Class semantic model")
     };
+    context.observe_compatibility(&meta);
     context.ensure_portable()?;
     let diagram_type = meta.diagram_type.as_str();
     let execution = LayoutExecution::new(options, context.execution());
@@ -2079,6 +2165,7 @@ fn prepare_non_class_render(
     let diagram_type = meta.diagram_type.as_str();
     let effective_config = meta.effective_config.as_value();
     let title = meta.title.as_deref();
+    context.observe_compatibility(&meta);
     if let RenderSemanticModel::State(model) = &model {
         context.adapt_state(model, effective_config, title)?;
     }
@@ -2106,10 +2193,8 @@ fn prepare_non_class_render(
             })?)
         }
         RenderSemanticModel::State(model) => {
-            let label_sidecar = crate::state::StateLabelSidecarBuilder::new(
-                execution.prepared_text_layout(),
-                execution.resolved_theme(),
-            );
+            let label_sidecar =
+                crate::state::StateLabelSidecarBuilder::new(execution.prepared_text_layout());
             if title.is_some_and(|title| !title.trim().is_empty()) {
                 label_sidecar.reject_unsupported("state_diagram_title_bbox_y");
             }
@@ -2477,9 +2562,10 @@ mod tests {
     use super::*;
     use crate::diagram_theme::{
         BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, DiagramThemeCompiler, DiagramThemeSpec,
-        GradientStop, LinearGradient, OrdinalPalette, RootThemeEvaluation, RootThemeMechanismKey,
-        RootThemeVerification, ThemeCapability, ThemeColorValue, ThemeRule, ThemeRuleSet,
-        ThemeStylePatch, ThemeTarget, ThemeTextStyle, TypographySpec,
+        GradientStop, LinearGradient, MermaidThemeCompatibility, OrdinalPalette,
+        RootThemeEvaluation, RootThemeMechanismKey, RootThemeVerification, ThemeCapability,
+        ThemeColorValue, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle,
+        TypographySpec,
     };
     #[cfg(feature = "layout-cytoscape")]
     use std::sync::Arc;
@@ -2495,7 +2581,13 @@ mod tests {
     };
     use crate::svg::SvgPipelinePreset;
     use crate::text::{TextMetrics, WrapMode};
-    use merman_core::{CustomJsonProvenance, CustomJsonRenderModel, Engine, ParseOptions};
+    use merman_core::__private::{
+        ThemeCompatibilityPlan, ThemeFamilyCompatibilityOverlayBuilder,
+        install_theme_compatibility, theme_parse_evidence,
+    };
+    use merman_core::{
+        CustomJsonProvenance, CustomJsonRenderModel, Engine, MermaidConfig, ParseOptions,
+    };
     use serde_json::{Value, json};
 
     fn custom_semantic_parser(
@@ -2538,6 +2630,8 @@ mod tests {
             theme_applied: applied,
             theme_not_applicable: Vec::new(),
             theme_residuals,
+            compatibility_residual_count: 0,
+            mermaid_compatibility_residual_count: 0,
             residuals: Vec::new(),
         }
     }
@@ -2616,6 +2710,113 @@ mod tests {
             error.incomplete_family_theme(),
             Some((RenderFamilyKind::State, 1, 0))
         );
+
+        let mut mermaid_compatibility =
+            family_report(FamilyStyleEvaluation::NotApplicable, vec![], vec![], vec![]);
+        mermaid_compatibility.mermaid_compatibility_residual_count = 1;
+        assert_eq!(
+            mermaid_compatibility.verification(),
+            FamilyStyleVerification::Unverified
+        );
+        assert!(matches!(
+            mermaid_compatibility.ensure_portable(),
+            Err(Error::MermaidThemeCompatibility {
+                family_kind: RenderFamilyKind::State,
+                residual_count: 1,
+            })
+        ));
+    }
+
+    #[test]
+    fn require_portable_rejects_explicit_mermaid_compatibility_in_the_low_level_api() {
+        let compatibility = MermaidThemeCompatibility::default()
+            .with_variable("primaryColor", "#ef4444")
+            .expect("valid Mermaid compatibility value");
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_mermaid_compatibility(compatibility))
+            .expect("compile explicit Mermaid compatibility theme");
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "stateDiagram-v2\nReady --> Done\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("State source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict portable session");
+
+        let error = match prepare(parsed, &LayoutOptions::default(), session) {
+            Ok(_) => {
+                panic!("strict low-level rendering must reject explicit Mermaid compatibility")
+            }
+            Err(error) => error,
+        };
+        assert!(matches!(
+            error,
+            Error::MermaidThemeCompatibility {
+                family_kind: RenderFamilyKind::State,
+                residual_count: 1,
+            }
+        ));
+    }
+
+    #[test]
+    fn unknown_fallback_contributions_are_always_portability_residuals() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new())
+            .expect("compile empty typed theme");
+        let mut overlay =
+            ThemeFamilyCompatibilityOverlayBuilder::new("state", "test.compatibility.");
+        overlay
+            .try_push(
+                "unknown-fallback",
+                MermaidConfig::from_value(json!({
+                    "state": {"titleTopMargin": 77}
+                })),
+            )
+            .expect("bounded fallback contribution");
+        let overlay = overlay.finish();
+        let plan = ThemeCompatibilityPlan::try_new(
+            *theme.recipe_fingerprint().as_bytes(),
+            MermaidConfig::empty_object(),
+            move |family, _control| Ok((family == "state").then(|| overlay.clone())),
+        )
+        .expect("bounded compatibility plan");
+        let parsed = install_theme_compatibility(Engine::new(), &plan)
+            .parse_diagram_for_render_model_sync(
+                "stateDiagram-v2\nReady --> Done\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("State source should produce a render model");
+        assert_eq!(
+            parsed.metadata().effective_config.as_value()["state"]["titleTopMargin"],
+            json!(77)
+        );
+        assert_eq!(
+            theme_parse_evidence(parsed.metadata()).fallback_contribution_count(),
+            1
+        );
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict portable session");
+
+        let error = match prepare(parsed, &LayoutOptions::default(), session) {
+            Ok(_) => panic!("unknown fallback config must remain an explicit residual"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            error,
+            Error::LegacyFamilyThemeCompatibility {
+                family_kind: RenderFamilyKind::State,
+                residual_count: 1,
+                ..
+            }
+        ));
     }
 
     struct RejectingTextLayoutBackend {
@@ -2669,7 +2870,7 @@ mod tests {
         let prepared_report = session_report
             .prepared_text_layout()
             .expect("native fallback should prepare the custom catalog");
-        assert_eq!(prepared_report.backend().name(), "merman.native-rustybuzz");
+        assert!(prepared_report.face_count() > 0);
         assert_eq!(prepared_report.failed_attempt_count(), 1);
 
         let parsed = Engine::new()
@@ -2736,7 +2937,8 @@ mod tests {
         ];
 
         for (engine, source, expected_family) in cases {
-            let parsed = engine
+            let parsed = theme
+                .install_parse_compatibility(engine)
                 .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
                 .unwrap()
                 .expect("family fixture should produce a render model");
@@ -2768,7 +2970,8 @@ mod tests {
         let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
             json!({ "layout": "swimlane" }),
         ));
-        let parsed = engine
+        let parsed = theme
+            .install_parse_compatibility(engine)
             .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
             .unwrap()
             .expect("flowchart source should produce a render model");
@@ -2845,6 +3048,8 @@ mod tests {
                 theme_applied: Vec::new(),
                 theme_not_applicable: Vec::new(),
                 theme_residuals: Vec::new(),
+                compatibility_residual_count: 0,
+                mermaid_compatibility_residual_count: 0,
                 residuals: Vec::new(),
             }
         );
@@ -2868,7 +3073,8 @@ mod tests {
         let theme = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new().with_canvas(canvas))
             .expect("compile layered canvas theme");
-        let parsed = Engine::new()
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
             .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model");
@@ -2925,7 +3131,8 @@ mod tests {
                     .with_canvas(CanvasSpec::solid("#111827").expect("valid canvas base")),
             )
             .expect("compile solid canvas theme");
-        let parsed = Engine::new()
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
             .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model");
@@ -2965,7 +3172,8 @@ mod tests {
                 .report()
                 .requires_capability(ThemeCapability::TransparentPaint)
         );
-        let parsed = Engine::new()
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
             .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model");
@@ -2999,7 +3207,8 @@ mod tests {
                     .with_canvas(CanvasSpec::solid("#111827").expect("valid canvas paint")),
             )
             .expect("compile root canvas theme");
-        let parsed = Engine::new()
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
             .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model");
@@ -3034,7 +3243,8 @@ mod tests {
                     .with_canvas(CanvasSpec::solid("#111827").expect("valid canvas paint")),
             )
             .expect("compile root canvas theme");
-        let parsed = Engine::new()
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
             .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model");
@@ -3073,7 +3283,8 @@ mod tests {
         let theme = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new().with_canvas(canvas))
             .expect("compile layered canvas theme");
-        let parsed = Engine::new()
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
             .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model");
@@ -3188,7 +3399,8 @@ mod tests {
         let theme = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new().with_canvas(canvas))
             .expect("compile layered canvas theme");
-        let parsed = Engine::new()
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
             .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model");
@@ -3224,7 +3436,8 @@ mod tests {
         let theme = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new().with_canvas(canvas))
             .expect("compile gradient theme");
-        let parsed = Engine::new()
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
             .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model");
@@ -3252,7 +3465,7 @@ mod tests {
     }
 
     #[test]
-    fn environment_portability_ceiling_rejects_an_unadapted_family() {
+    fn environment_portability_ceiling_rejects_legacy_family_compatibility() {
         let fill = CanvasPaint::solid("#ef4444").expect("valid node fill");
         let theme = DiagramThemeCompiler::new()
             .compile(
@@ -3267,7 +3480,8 @@ mod tests {
                 ),
             )
             .expect("compile strict Flowchart theme");
-        let parsed = Engine::new()
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
             .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
             .unwrap()
             .expect("Flowchart source should produce a render model");
@@ -3277,13 +3491,16 @@ mod tests {
             .expect("begin strict portable render session");
 
         let error = match prepare(parsed, &LayoutOptions::default(), session) {
-            Ok(_) => panic!("strict portability must reject an unadapted Flowchart theme"),
+            Ok(_) => panic!("strict portability must reject Flowchart compatibility projection"),
             Err(error) => error,
         };
-        assert_eq!(
-            error.unadapted_family_theme(),
-            Some(RenderFamilyKind::Flowchart)
-        );
+        assert!(matches!(
+            error,
+            Error::LegacyFamilyThemeCompatibility {
+                family_kind: RenderFamilyKind::Flowchart,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -3356,7 +3573,8 @@ mod tests {
                 )),
             )
             .expect("compile gradient theme");
-        let parsed = Engine::new()
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
             .parse_diagram_for_render_model_sync(
                 "stateDiagram-v2\n[*] --> Ready\nReady --> [*]\n",
                 ParseOptions::strict(),
@@ -3402,7 +3620,8 @@ mod tests {
                 ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::State, palette),
             ))
             .expect("compile ordinal State theme");
-        let parsed = Engine::new()
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
             .parse_diagram_for_render_model_sync(
                 "stateDiagram-v2\n[*] --> Ready\nReady --> [*]\n",
                 ParseOptions::strict(),
@@ -3444,6 +3663,164 @@ mod tests {
     }
 
     #[test]
+    fn state_debug_visibility_filters_downgrade_applied_theme_evidence() {
+        let node_theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::State,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#ef4444").expect("valid State fill")),
+                    )),
+                ),
+            )
+            .expect("compile State node theme");
+        let node_parsed = node_theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "stateDiagram-v2\nReady --> Done\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("State source should produce a render model");
+        let mut node_debug = SvgDebugOptions::default();
+        node_debug.include_nodes = false;
+        let node_rendered = prepare(
+            node_parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&node_theme)
+                .expect("begin themed session"),
+        )
+        .expect("prepare State node theme")
+        .render_svg(&SvgRenderOptions::default(), &node_debug)
+        .expect("render filtered State SVG");
+
+        let node_key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::State,
+        };
+        assert!(!node_rendered.svg().contains("#ef4444"));
+        assert_eq!(
+            node_rendered.style_report().verification(),
+            FamilyStyleVerification::Unverified
+        );
+        assert!(
+            !node_rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .contains(&node_key)
+        );
+        assert!(
+            node_rendered
+                .style_report()
+                .theme_residuals()
+                .iter()
+                .any(|residual| {
+                    residual.key() == &node_key
+                        && residual.reason() == FamilyThemeResidualReason::OutputVisibilityFiltered
+                })
+        );
+
+        let edge_theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Transition,
+                        ThemeStylePatch::default().with_stroke(
+                            CanvasPaint::solid("#ec4899").expect("valid transition stroke"),
+                        ),
+                    ),
+                )),
+            )
+            .expect("compile State transition theme");
+        let edge_parsed = edge_theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "stateDiagram-v2\nReady --> Done\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("State source should produce a render model");
+        let mut edge_debug = SvgDebugOptions::default();
+        edge_debug.include_edges = false;
+        let edge_rendered = prepare(
+            edge_parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&edge_theme)
+                .expect("begin themed session"),
+        )
+        .expect("prepare State transition theme")
+        .render_svg(&SvgRenderOptions::default(), &edge_debug)
+        .expect("render filtered State SVG");
+
+        let edge_key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Transition,
+        };
+        assert!(!edge_rendered.svg().contains("#ec4899"));
+        assert!(
+            edge_rendered
+                .style_report()
+                .theme_residuals()
+                .iter()
+                .any(|residual| {
+                    residual.key() == &edge_key
+                        && residual.reason() == FamilyThemeResidualReason::OutputVisibilityFiltered
+                })
+        );
+    }
+
+    #[test]
+    fn require_portable_rechecks_state_theme_after_debug_visibility_filter() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::State,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#ef4444").expect("valid State fill")),
+                    )),
+                ),
+            )
+            .expect("compile strict State theme");
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "stateDiagram-v2\nReady --> Done\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("State source should produce a render model");
+        let artifact = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict themed session"),
+        )
+        .expect("complete strict State preparation before output filtering");
+        let mut debug = SvgDebugOptions::default();
+        debug.include_nodes = false;
+
+        let error = match artifact.render_svg(&SvgRenderOptions::default(), &debug) {
+            Ok(_) => panic!("filtered State output must not retain portable family evidence"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            error,
+            Error::UnverifiedFamilyTheme {
+                family_kind: RenderFamilyKind::State,
+                residual_count: 1,
+                first_residual,
+            } if first_residual.reason()
+                == FamilyThemeResidualReason::OutputVisibilityFiltered
+        ));
+    }
+
+    #[test]
     fn state_family_typography_is_shared_by_layout_and_terminal_svg() {
         let typography = ThemeTextStyle::default()
             .with_font_size_px(26.0)
@@ -3454,7 +3831,8 @@ mod tests {
                     .with_typography(TypographySpec::default().with_default(typography)),
             )
             .expect("compile State typography theme");
-        let parsed = Engine::new()
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
             .parse_diagram_for_render_model_sync(
                 "---\ntitle: Architecture\n---\nstateDiagram-v2\n[*] --> Ready\nReady --> Done\n",
                 ParseOptions::strict(),
@@ -3507,7 +3885,8 @@ mod tests {
                 ),
             )
             .expect("compile Note theme");
-        let parsed = Engine::new()
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
             .parse_diagram_for_render_model_sync(
                 "stateDiagram-v2\n[*] --> Ready\nReady --> [*]\n",
                 ParseOptions::strict(),
@@ -3576,7 +3955,8 @@ mod tests {
                 )),
             )
             .expect("compile gradient theme");
-        let parsed = Engine::new()
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
             .parse_diagram_for_render_model_sync(
                 "stateDiagram-v2\n[*] --> Ready\nReady --> [*]\n",
                 ParseOptions::strict(),
@@ -3608,7 +3988,8 @@ mod tests {
         let theme = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new())
             .expect("compile portable theme recipe");
-        let parsed = Engine::new()
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
             .parse_diagram_for_render_model_sync(
                 "stateDiagram-v2\nclassDef broken font-size:not-a-size\n[*] --> Ready:::broken\nReady --> [*]\n",
                 ParseOptions::strict(),
@@ -3632,6 +4013,171 @@ mod tests {
         assert_eq!(residual.owner_id(), "Ready");
         assert_eq!(residual.property(), Some("font-size"));
         assert_eq!(residual.reason(), FamilyStyleResidualReason::InvalidValue);
+    }
+
+    #[test]
+    fn parsed_theme_binding_must_match_render_session_theme() {
+        let compiler = DiagramThemeCompiler::new();
+        let parsed_theme = compiler
+            .compile_preset(crate::diagram_theme::ThemePreset::EditorDark)
+            .expect("parse theme should compile");
+        let render_theme = compiler
+            .compile_preset(crate::diagram_theme::ThemePreset::EditorLight)
+            .expect("render theme should compile");
+        let parsed = parsed_theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "stateDiagram-v2\n[*] --> Ready\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("State source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_theme(&render_theme)
+            .expect("render session should start");
+
+        let error = match prepare(parsed, &LayoutOptions::default(), session) {
+            Ok(_) => panic!("a parsed artifact must not cross theme sessions"),
+            Err(error) => error,
+        };
+        assert!(matches!(error, Error::ThemeParseBindingMismatch));
+    }
+
+    #[test]
+    fn recipe_identity_cannot_be_paired_with_a_different_compatibility_config() {
+        let theme = DiagramThemeCompiler::new()
+            .compile_preset(crate::diagram_theme::ThemePreset::EditorDark)
+            .expect("theme should compile");
+        for compatibility in [
+            merman_core::MermaidConfig::empty_object(),
+            merman_core::MermaidConfig::from_value(json!({
+                "theme": "base",
+                "darkMode": false,
+                "themeVariables": {"darkMode": false}
+            })),
+        ] {
+            let plan = ThemeCompatibilityPlan::try_new(
+                *theme.recipe_fingerprint().as_bytes(),
+                compatibility,
+                |_family, _control| Ok(None),
+            )
+            .expect("bounded compatibility config");
+            let parsed = install_theme_compatibility(Engine::new(), &plan)
+                .parse_diagram_for_render_model_sync(
+                    "stateDiagram-v2\n[*] --> Ready\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .expect("State source should produce a render model");
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&theme)
+                .expect("render session should start");
+
+            let error = match prepare(parsed, &LayoutOptions::default(), session) {
+                Ok(_) => panic!("compatibility config is part of the parse binding"),
+                Err(error) => error,
+            };
+            assert!(matches!(error, Error::ThemeParseBindingMismatch));
+        }
+    }
+
+    #[test]
+    fn themed_and_unthemed_parse_session_transitions_are_fail_closed() {
+        let theme = DiagramThemeCompiler::new()
+            .compile_preset(crate::diagram_theme::ThemePreset::EditorDark)
+            .expect("theme should compile");
+
+        let themed_parse = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "stateDiagram-v2\n[*] --> Ready\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("themed State source should produce a render model");
+        let unthemed_session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("unthemed render session should start");
+        assert!(matches!(
+            prepare(themed_parse, &LayoutOptions::default(), unthemed_session),
+            Err(Error::ThemeParseBindingMismatch)
+        ));
+
+        let unthemed_parse = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "stateDiagram-v2\n[*] --> Ready\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("unthemed State source should produce a render model");
+        let themed_session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_theme(&theme)
+            .expect("themed render session should start");
+        assert!(matches!(
+            prepare(unthemed_parse, &LayoutOptions::default(), themed_session),
+            Err(Error::ThemeParseBindingMismatch)
+        ));
+
+        let unthemed_parse = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "stateDiagram-v2\n[*] --> Ready\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("unthemed State source should produce a render model");
+        let unthemed_session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("unthemed render session should start");
+        prepare(unthemed_parse, &LayoutOptions::default(), unthemed_session)
+            .expect("unthemed parses remain valid in unthemed sessions");
+    }
+
+    #[test]
+    fn equivalent_theme_instances_retain_selected_family_compatibility_evidence() {
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#ef4444").expect("valid node fill")),
+                )
+                .for_family(RenderFamilyKind::Flowchart),
+            ),
+        );
+        let compiler = DiagramThemeCompiler::new();
+        let parse_theme = compiler
+            .compile(spec.clone())
+            .expect("parse theme should compile");
+        let render_theme = compiler
+            .compile(spec)
+            .expect("equivalent render theme should compile");
+        assert_eq!(
+            parse_theme.recipe_fingerprint(),
+            render_theme.recipe_fingerprint()
+        );
+
+        let parsed = parse_theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
+            .unwrap()
+            .expect("Flowchart source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&render_theme)
+            .expect("equivalent render session should start");
+
+        let error = match prepare(parsed, &LayoutOptions::default(), session) {
+            Ok(_) => panic!("strict portability must retain the parsed compatibility residual"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            error,
+            Error::LegacyFamilyThemeCompatibility {
+                family_kind: RenderFamilyKind::Flowchart,
+                residual_count: 1,
+                ..
+            }
+        ));
     }
 
     #[test]

@@ -28,7 +28,7 @@ versions, named metadata IDs, sorted capability/output/operation/adapter IDs, te
 availability, complete resource-to-operation relations, and agreement between the table and catalog
 package versions before it becomes usable.
 
-Detailed registries remain separate from that flat catalog. `supportedDiagrams()`, `asciiCapabilities()`, `diagramFamilyCapabilities()`, `lintRuleCatalog()`, `supportedThemes()`, and `presentationCatalog()` call the generic appended ABI 3 `metadata_collect` slot and return immutable typed Dart values. This keeps the metadata surface extensible without adding per-catalog native symbols or copying detailed catalogs into the runtime catalog.
+Detailed registries remain separate from that flat catalog. `supportedDiagrams()`, `asciiCapabilities()`, `diagramFamilyCapabilities()`, `lintRuleCatalog()`, `supportedThemes()`, and `themeCatalog()` call the generic appended ABI 3 `metadata_collect` slot and return immutable typed Dart values. The theme catalog describes the experimental alpha.4 `ThemePreset` and typed semantic-theme vocabulary for the selected artifact. This keeps the metadata surface extensible without adding per-catalog native symbols or copying detailed catalogs into the runtime catalog.
 
 The generated `MermanResourceLimitId` describes the complete catalog vocabulary. `MermanResourceOverrideId` is the narrower set accepted by `MermanResourceOptionsBuilder`, whose profile is optional so reusable requests can inherit their constructor ceiling. The generated values intentionally do not duplicate the loaded artifact's descriptive metadata or budget table.
 

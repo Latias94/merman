@@ -481,7 +481,7 @@ fn finish_theme_defaults(
 ) -> Result<(), ColorError> {
     let explicit = theme_variables_map(config);
     let resolution = ThemeResolution::new(theme, explicit, tv)?;
-    config.set_value(
+    config.set_value_preserving_theme_compatibility(
         "themeVariables",
         Value::Object(resolution.into_resolved_variables()),
     );
@@ -1267,7 +1267,7 @@ pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) -> Result<(), Col
     let raw = theme_variables_map(config);
     program.validate_evaluated_inputs(&raw)?;
     let explicit = program.normalize_overrides(raw);
-    config.set_value("themeVariables", Value::Object(explicit));
+    config.set_value_preserving_theme_compatibility("themeVariables", Value::Object(explicit));
     program.execute(config)
 }
 

@@ -135,6 +135,8 @@ impl RenderOperationReport {
 pub enum DocumentResidualStage {
     RootTheme,
     FamilyTheme,
+    FamilyCompatibility,
+    MermaidCompatibility,
     SourceStyle,
     TextLayout,
     TrustedLane,
@@ -146,6 +148,8 @@ impl DocumentResidualStage {
         match self {
             Self::RootTheme => "root-theme",
             Self::FamilyTheme => "family-theme",
+            Self::FamilyCompatibility => "family-compatibility",
+            Self::MermaidCompatibility => "mermaid-compatibility",
             Self::SourceStyle => "source-style",
             Self::TextLayout => "text-layout",
             Self::TrustedLane => "trusted-lane",
@@ -470,6 +474,14 @@ impl DocumentRenderReport {
         }
 
         let family = operation.family_style_report();
+        let compatibility_count = family.compatibility_residual_count();
+        if compatibility_count != 0 {
+            residuals.push(DocumentResidual {
+                stage: DocumentResidualStage::FamilyCompatibility,
+                reason: DocumentResidualReason::Unverified,
+                count: compatibility_count,
+            });
+        }
         match family.verification() {
             FamilyStyleVerification::NotApplicable | FamilyStyleVerification::Verified => {}
             FamilyStyleVerification::Unadapted => residuals.push(DocumentResidual {
@@ -508,7 +520,7 @@ impl DocumentRenderReport {
         if operation
             .family
             .session_report()
-            .text_layout_error()
+            .text_layout_failure()
             .is_some()
         {
             residuals.push(DocumentResidual {
@@ -523,13 +535,21 @@ impl DocumentRenderReport {
                 && operation
                     .family
                     .session_report()
-                    .text_layout_error()
+                    .text_layout_failure()
                     .is_none()
         }) {
             residuals.push(DocumentResidual {
                 stage: DocumentResidualStage::TextLayout,
                 reason: DocumentResidualReason::Incomplete,
                 count: 0,
+            });
+        }
+        let mermaid_compatibility_count = family.mermaid_compatibility_residual_count();
+        if mermaid_compatibility_count != 0 {
+            residuals.push(DocumentResidual {
+                stage: DocumentResidualStage::MermaidCompatibility,
+                reason: DocumentResidualReason::Unverified,
+                count: mermaid_compatibility_count,
             });
         }
         let used_trusted_lanes = operation
@@ -564,8 +584,7 @@ impl DocumentRenderReport {
         let mut prepared_text_used_font_sources = Vec::new();
         for source in prepared_text_ledger
             .iter()
-            .flat_map(|entry| entry.evidence())
-            .map(merman_render::text::PreparedTextLabelEvidence::font_source)
+            .flat_map(|entry| entry.used_font_sources())
         {
             if !prepared_text_used_font_sources.contains(&source) {
                 prepared_text_used_font_sources.push(source);
@@ -1794,6 +1813,45 @@ pub(super) fn resource_limit_error(err: ResourceLimitExceeded) -> super::Headles
 mod tests {
     use super::*;
 
+    fn legacy_flowchart_bridge_theme() -> crate::svg::DiagramTheme {
+        crate::svg::DiagramThemeCompiler::new()
+            .compile(
+                crate::svg::DiagramThemeSpec::new().with_styles(
+                    crate::svg::ThemeRuleSet::default().with_rule(
+                        crate::svg::ThemeRule::new(
+                            crate::svg::ThemeTarget::Node,
+                            crate::svg::ThemeStylePatch::default().with_fill(
+                                crate::svg::CanvasPaint::solid("#ef4444")
+                                    .expect("valid test color"),
+                            ),
+                        )
+                        .for_family(crate::svg::RenderFamilyKind::Flowchart),
+                    ),
+                ),
+            )
+            .expect("legacy Flowchart bridge theme should compile")
+    }
+
+    fn explicit_mermaid_variable_theme() -> crate::svg::DiagramTheme {
+        let compatibility = crate::svg::MermaidThemeCompatibility::default()
+            .with_variable("useGradient", true)
+            .expect("bounded Mermaid compatibility variable");
+        crate::svg::DiagramThemeCompiler::new()
+            .compile(crate::svg::DiagramThemeSpec::new().with_mermaid_compatibility(compatibility))
+            .expect("Mermaid compatibility theme should compile")
+    }
+
+    fn explicit_mermaid_root_theme() -> crate::svg::DiagramTheme {
+        let compatibility = crate::svg::MermaidThemeCompatibility::default()
+            .with_theme("dark")
+            .expect("bounded Mermaid theme id")
+            .with_dark_mode(true)
+            .expect("canonical Mermaid dark-mode value");
+        crate::svg::DiagramThemeCompiler::new()
+            .compile(crate::svg::DiagramThemeSpec::new().with_mermaid_compatibility(compatibility))
+            .expect("Mermaid root compatibility theme should compile")
+    }
+
     #[test]
     fn terminal_svg_metadata_ignores_nested_element_descriptions() {
         let metadata = SvgOutputMetadata::from_svg(
@@ -1806,6 +1864,231 @@ mod tests {
 
         assert_eq!(metadata.title(), Some("Diagram title"));
         assert_eq!(metadata.description(), Some("Diagram description"));
+    }
+
+    #[test]
+    fn legacy_family_compatibility_is_a_terminal_document_residual() {
+        let document = crate::svg::HeadlessRenderer::new()
+            .with_theme(legacy_flowchart_bridge_theme())
+            .render_document_sync("flowchart TD\n  A[Themed]")
+            .expect("best-effort render should succeed")
+            .expect("Flowchart source should be detected");
+        let compatibility_count = document
+            .family_style_report()
+            .compatibility_residual_count();
+
+        assert_ne!(compatibility_count, 0);
+        assert!(
+            document
+                .document_report()
+                .residuals()
+                .iter()
+                .any(|residual| {
+                    residual.stage() == DocumentResidualStage::FamilyCompatibility
+                        && residual.reason() == DocumentResidualReason::Unverified
+                        && residual.count() == compatibility_count
+                })
+        );
+
+        let admission = document.svg_target_admission();
+        assert_eq!(admission.status(), TargetAdmissionStatus::Rejected);
+        assert!(
+            admission
+                .reasons()
+                .contains(&TargetAdmissionReason::DocumentResidual)
+        );
+    }
+
+    #[test]
+    fn explicit_mermaid_variables_are_terminal_document_residuals() {
+        let document = crate::svg::HeadlessRenderer::new()
+            .with_theme(explicit_mermaid_variable_theme())
+            .render_document_sync("stateDiagram-v2\n  [*] --> Ready")
+            .expect("best-effort render should succeed")
+            .expect("State source should be detected");
+
+        assert!(
+            document
+                .document_report()
+                .residuals()
+                .iter()
+                .any(|residual| {
+                    residual.stage() == DocumentResidualStage::MermaidCompatibility
+                        && residual.reason() == DocumentResidualReason::Unverified
+                        && residual.count() == 1
+                })
+        );
+        assert_eq!(
+            document.svg_target_admission().status(),
+            TargetAdmissionStatus::Rejected
+        );
+    }
+
+    #[test]
+    fn explicit_mermaid_root_fields_are_terminal_document_residuals() {
+        let document = crate::svg::HeadlessRenderer::new()
+            .with_theme(explicit_mermaid_root_theme())
+            .render_document_sync("stateDiagram-v2\n  [*] --> Ready")
+            .expect("best-effort render should succeed")
+            .expect("State source should be detected");
+
+        assert!(
+            document
+                .document_report()
+                .residuals()
+                .iter()
+                .any(|residual| {
+                    residual.stage() == DocumentResidualStage::MermaidCompatibility
+                        && residual.reason() == DocumentResidualReason::Unverified
+                        && residual.count() == 2
+                })
+        );
+        assert_eq!(
+            document.svg_target_admission().status(),
+            TargetAdmissionStatus::Rejected
+        );
+    }
+
+    #[test]
+    fn overridden_mermaid_variable_is_not_a_terminal_document_residual() {
+        let document = crate::svg::HeadlessRenderer::new()
+            .with_theme(explicit_mermaid_variable_theme())
+            .with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
+                "themeVariables": { "useGradient": false }
+            })))
+            .render_document_sync("stateDiagram-v2\n  [*] --> Ready")
+            .expect("best-effort render should succeed")
+            .expect("State source should be detected");
+
+        assert!(
+            document
+                .document_report()
+                .residuals()
+                .iter()
+                .all(|residual| residual.stage() != DocumentResidualStage::MermaidCompatibility)
+        );
+    }
+
+    #[test]
+    fn same_value_site_override_owns_mermaid_compatibility_field() {
+        let document = crate::svg::HeadlessRenderer::new()
+            .with_theme(explicit_mermaid_variable_theme())
+            .with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
+                "themeVariables": { "useGradient": true }
+            })))
+            .render_document_sync("stateDiagram-v2\n  [*] --> Ready")
+            .expect("best-effort render should succeed")
+            .expect("State source should be detected");
+
+        assert!(
+            document
+                .document_report()
+                .residuals()
+                .iter()
+                .all(|residual| residual.stage() != DocumentResidualStage::MermaidCompatibility)
+        );
+    }
+
+    #[test]
+    fn same_value_source_override_owns_mermaid_compatibility_field() {
+        let document = crate::svg::HeadlessRenderer::new()
+            .with_theme(explicit_mermaid_variable_theme())
+            .with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
+                "secure": []
+            })))
+            .render_document_sync(
+                "%%{init: {\"themeVariables\": {\"useGradient\": true}}}%%\nstateDiagram-v2\n  [*] --> Ready",
+            )
+            .expect("best-effort render should succeed")
+            .expect("State source should be detected");
+
+        assert!(
+            document
+                .document_report()
+                .residuals()
+                .iter()
+                .all(|residual| residual.stage() != DocumentResidualStage::MermaidCompatibility)
+        );
+    }
+
+    #[test]
+    fn base_engine_host_config_outranks_compiled_theme_compatibility() {
+        let base_engine = merman_core::Engine::new().with_site_config(
+            merman_core::MermaidConfig::from_value(serde_json::json!({
+                "themeVariables": { "useGradient": true }
+            })),
+        );
+        let document = crate::svg::HeadlessRenderer::new()
+            .with_engine(base_engine)
+            .with_theme(explicit_mermaid_variable_theme())
+            .render_document_sync("stateDiagram-v2\n  [*] --> Ready")
+            .expect("best-effort render should succeed")
+            .expect("State source should be detected");
+
+        assert!(
+            document
+                .document_report()
+                .residuals()
+                .iter()
+                .all(|residual| residual.stage() != DocumentResidualStage::MermaidCompatibility)
+        );
+    }
+
+    #[test]
+    fn overridden_mermaid_root_fields_are_not_terminal_document_residuals() {
+        let document = crate::svg::HeadlessRenderer::new()
+            .with_theme(explicit_mermaid_root_theme())
+            .with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
+                "theme": "neutral",
+                "darkMode": false,
+                "themeVariables": { "darkMode": false }
+            })))
+            .render_document_sync("stateDiagram-v2\n  [*] --> Ready")
+            .expect("best-effort render should succeed")
+            .expect("State source should be detected");
+
+        assert!(
+            document
+                .document_report()
+                .residuals()
+                .iter()
+                .all(|residual| residual.stage() != DocumentResidualStage::MermaidCompatibility)
+        );
+    }
+
+    #[cfg(feature = "png")]
+    #[test]
+    fn legacy_family_compatibility_rejects_every_native_target() {
+        let document = crate::svg::HeadlessRenderer::new()
+            .with_theme(legacy_flowchart_bridge_theme())
+            .render_document_sync("flowchart TD\n  A[Themed]")
+            .expect("best-effort render should succeed")
+            .expect("Flowchart source should be detected");
+        let report = document.document_report().clone();
+        let export = merman_export::prepare_raster(
+            document.sealed_svg(),
+            &merman_export::RasterOptions::default(),
+        )
+        .expect("native raster preflight should succeed");
+        let fonts = export
+            .report_for_output(merman_export::RasterOutputKind::Png)
+            .fonts();
+
+        for target in [
+            RenderTargetKind::Png,
+            RenderTargetKind::Jpeg,
+            RenderTargetKind::Pdf,
+        ] {
+            let admission = report.admit_native(target, report.resource_fingerprint(), fonts);
+
+            assert_eq!(admission.status(), TargetAdmissionStatus::Rejected);
+            assert!(
+                admission
+                    .reasons()
+                    .contains(&TargetAdmissionReason::DocumentResidual),
+                "{target} admission must retain the compatibility document residual"
+            );
+        }
     }
 
     #[cfg(feature = "png")]

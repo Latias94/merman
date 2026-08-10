@@ -50,7 +50,7 @@ impl ThemePreset {
             .ok_or_else(|| ThemePresetParseError { id: id.to_string() })
     }
 
-    pub fn spec(self) -> DiagramThemeSpec {
+    pub(crate) fn spec(self) -> DiagramThemeSpec {
         let palette = preset_palette(self);
         let tokens = ThemeTokens::default()
             .with_canvas(palette.canvas)
@@ -78,9 +78,14 @@ impl ThemePreset {
             .and_then(|tokens| tokens.with_success(palette.success))
             .and_then(|tokens| tokens.with_series(palette.series))
             .expect("built-in theme preset values are statically valid");
-        tokens.into_theme_spec().with_mermaid_compatibility(
-            MermaidThemeCompatibility::default().with_dark_mode(self.is_dark()),
-        )
+        let compatibility = MermaidThemeCompatibility::default()
+            .with_theme("base")
+            .expect("built-in Mermaid compatibility values are statically valid")
+            .with_dark_mode(self.is_dark())
+            .expect("built-in Mermaid dark mode is not conflicting");
+        tokens
+            .into_theme_spec()
+            .with_mermaid_compatibility(compatibility)
     }
 }
 
@@ -375,5 +380,101 @@ fn preset_palette(preset: ThemePreset) -> PresetPalette {
                 "#e6b673",
             ],
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagram_theme::{
+        CanvasPaint, DiagramThemeCompiler, ResolvedDiagramTheme, ThemeColorValue, ThemeTarget,
+        ThemeVariant,
+    };
+    use crate::render_family::RenderFamilyKind;
+
+    fn solid_color(paint: &CanvasPaint) -> Option<String> {
+        match paint {
+            CanvasPaint::Solid(color) => Some(color.as_css()),
+            _ => None,
+        }
+    }
+
+    fn compiled(preset: ThemePreset) -> (crate::diagram_theme::DiagramTheme, ResolvedDiagramTheme) {
+        let theme = DiagramThemeCompiler::new()
+            .compile_preset(preset)
+            .expect("built-in theme preset should compile");
+        let resolved = theme.resolve(RenderFamilyKind::Flowchart);
+        (theme, resolved)
+    }
+
+    #[test]
+    fn built_in_presets_keep_mermaid_compatibility_without_layout_or_look() {
+        for preset in ThemePreset::ALL {
+            let (theme, _) = compiled(preset);
+            let config = theme.spec().mermaid().to_mermaid_config();
+
+            assert_eq!(config.get_str("theme"), Some("base"));
+            assert_eq!(
+                config.get_bool("darkMode"),
+                Some(preset.is_dark()),
+                "{} dark-mode compatibility value",
+                preset.id()
+            );
+            assert_eq!(config.get_str("look"), None);
+            assert_eq!(config.get_str("flowchart.defaultRenderer"), None);
+        }
+    }
+
+    #[test]
+    fn built_in_presets_publish_stable_semantic_representatives() {
+        let expected = [
+            (ThemePreset::EditorLight, "#ffffff", "#64748b", "#2563eb"),
+            (ThemePreset::EditorDark, "#0f172a", "#94a3b8", "#60a5fa"),
+            (ThemePreset::OneDark, "#282c34", "#61afef", "#61afef"),
+            (ThemePreset::GruvboxLight, "#fbf1c7", "#7c6f64", "#458588"),
+            (ThemePreset::GruvboxDark, "#282828", "#d5c4a1", "#83a598"),
+            (ThemePreset::AyuLight, "#fcfcfc", "#5c6166", "#55b4d4"),
+            (ThemePreset::AyuDark, "#0b0e14", "#59c2ff", "#59c2ff"),
+        ];
+
+        for (preset, canvas, line, first_series) in expected {
+            let (theme, flowchart) = compiled(preset);
+            assert_eq!(
+                solid_color(theme.spec().canvas().base()).as_deref(),
+                Some(canvas)
+            );
+            assert_eq!(
+                flowchart
+                    .style(ThemeTarget::Edge, ThemeVariant::Default, None)
+                    .stroke()
+                    .and_then(solid_color)
+                    .as_deref(),
+                Some(line)
+            );
+            let chart = theme.resolve(RenderFamilyKind::XyChart);
+            assert_eq!(
+                chart
+                    .series_color(ThemeTarget::ChartSeries, 1)
+                    .map(ThemeColorValue::as_css)
+                    .as_deref(),
+                Some(first_series)
+            );
+            let mindmap = theme.resolve(RenderFamilyKind::Mindmap);
+            assert_eq!(
+                mindmap
+                    .series_color(ThemeTarget::Node, 1)
+                    .map(ThemeColorValue::as_css)
+                    .as_deref(),
+                Some(first_series)
+            );
+            let kanban = theme.resolve(RenderFamilyKind::Kanban);
+            assert_eq!(
+                kanban
+                    .series_color(ThemeTarget::Task, 1)
+                    .map(ThemeColorValue::as_css)
+                    .as_deref(),
+                Some(first_series)
+            );
+        }
     }
 }

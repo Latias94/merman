@@ -1,7 +1,7 @@
 //! State diagram layout implementation (stateDiagram-v2).
 
 use crate::dagre::self_loop::compact_self_loop_geometry;
-use crate::diagram_theme::{ThemeTarget, ThemeVariant};
+use crate::diagram_theme::ThemeTextStyle;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{
     Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, StateDiagramLayout,
@@ -175,8 +175,8 @@ fn edge_label_metrics(
     label: &str,
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
+    text_typography: Option<&ThemeTextStyle>,
     wrap_mode: WrapMode,
-    label_ordinal: Option<usize>,
     sidecar: Option<&super::StateLabelSidecarBuilder>,
 ) -> (f64, f64) {
     if label.trim().is_empty() {
@@ -189,9 +189,7 @@ fn edge_label_metrics(
         source_kind: super::StateLabelSourceKind::Markdown,
         measurer,
         style: text_style,
-        target: ThemeTarget::TransitionLabel,
-        variant: ThemeVariant::Default,
-        ordinal: label_ordinal,
+        typography: text_typography,
         max_width_px: Some(wrapping_width),
         wrap_mode,
         break_long_words: true,
@@ -226,20 +224,17 @@ fn node_label_metrics(
     wrapping_width: f64,
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
+    text_typography: Option<&ThemeTextStyle>,
     wrap_mode: WrapMode,
-    node_style: Option<&super::StateNodeStylePlan>,
     sidecar: Option<&super::StateLabelSidecarBuilder>,
 ) -> (f64, f64) {
-    let (target, variant, ordinal) = node_label_binding(node_style);
     let request = super::StateLabelMetricsRequest {
         owner: super::StateLabelOwner::Node(node_id),
         text: label,
         source_kind: super::StateLabelSourceKind::Markdown,
         measurer,
         style: text_style,
-        target,
-        variant,
-        ordinal,
+        typography: text_typography,
         max_width_px: Some(wrapping_width),
         wrap_mode,
         break_long_words: true,
@@ -267,22 +262,19 @@ fn title_label_metrics(
     label: &str,
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
+    text_typography: Option<&ThemeTextStyle>,
     wrap_mode: WrapMode,
-    node_style: Option<&super::StateNodeStylePlan>,
     sidecar: Option<&super::StateLabelSidecarBuilder>,
 ) -> (f64, f64) {
     // Mermaid state diagram cluster titles use `createLabel(...)` (nowrap) rather than
     // `createText(...)` (width constrained).
-    let (target, variant, ordinal) = node_label_binding(node_style);
     let request = super::StateLabelMetricsRequest {
         owner,
         text: label,
         source_kind: super::StateLabelSourceKind::Plain,
         measurer,
         style: text_style,
-        target,
-        variant,
-        ordinal,
+        typography: text_typography,
         max_width_px: None,
         wrap_mode,
         break_long_words: false,
@@ -306,15 +298,6 @@ fn title_label_metrics(
         .metrics;
 
     (metrics.width.max(0.0), metrics.height.max(0.0))
-}
-
-fn node_label_binding(
-    node_style: Option<&super::StateNodeStylePlan>,
-) -> (ThemeTarget, ThemeVariant, Option<usize>) {
-    node_style.map_or(
-        (ThemeTarget::StateLabel, ThemeVariant::Default, None),
-        |style| (style.label_target(), style.variant(), style.label_ordinal()),
-    )
 }
 
 fn extract_descendants(
@@ -1522,6 +1505,9 @@ fn build_state_diagram_dagre_input(
             let node_text_style = node_style
                 .map(super::StateNodeStylePlan::text_style)
                 .unwrap_or(&text_style);
+            let node_text_typography = node_style
+                .and_then(super::StateNodeStylePlan::text_typography)
+                .or_else(|| style_plan.base_text_typography());
             let padding = node_style
                 .and_then(super::StateNodeStylePlan::padding_override)
                 .or(n.padding)
@@ -1555,8 +1541,8 @@ fn build_state_diagram_dagre_input(
                         wrapping_width,
                         measurer,
                         node_text_style,
+                        node_text_typography,
                         wrap_mode,
-                        node_style,
                         label_sidecar,
                     );
                     (tw + padding * 2.0, th + padding * 2.0)
@@ -1572,8 +1558,8 @@ fn build_state_diagram_dagre_input(
                         &label_text,
                         measurer,
                         node_text_style,
+                        node_text_typography,
                         WrapMode::HtmlLike,
-                        node_style,
                         label_sidecar,
                     );
                     let (desc_w, desc_h) = title_label_metrics(
@@ -1581,8 +1567,8 @@ fn build_state_diagram_dagre_input(
                         &desc,
                         measurer,
                         node_text_style,
+                        node_text_typography,
                         WrapMode::HtmlLike,
-                        node_style,
                         label_sidecar,
                     );
 
@@ -1598,8 +1584,8 @@ fn build_state_diagram_dagre_input(
                         wrapping_width,
                         measurer,
                         node_text_style,
+                        node_text_typography,
                         wrap_mode,
-                        node_style,
                         label_sidecar,
                     );
                     // Mermaid converts `rect` into `roundedRect` when rx/ry is set.
@@ -1648,21 +1634,21 @@ fn build_state_diagram_dagre_input(
         {
             continue;
         }
-        let edge_text_style = style_plan
-            .edge(&e.id)
+        let edge_style = style_plan.edge(&e.id);
+        let edge_text_style = edge_style
             .map(super::StateEdgeStylePlan::text_style)
             .unwrap_or_else(|| style_plan.transition_text_style());
-        let label_ordinal = style_plan
-            .edge(&e.id)
-            .and_then(super::StateEdgeStylePlan::label_ordinal);
+        let edge_text_typography = edge_style
+            .and_then(super::StateEdgeStylePlan::text_typography)
+            .or_else(|| style_plan.transition_text_typography());
         let canonical_label = e.label.trim();
         let (lw, lh) = edge_label_metrics(
             &e.id,
             canonical_label,
             measurer,
             edge_text_style,
+            edge_text_typography,
             wrap_mode,
-            label_ordinal,
             label_sidecar,
         );
         let mut base = EdgeLabel {
@@ -1931,19 +1917,19 @@ fn layout_state_diagram_inner(
         let cluster_text_style = node_style
             .map(super::StateNodeStylePlan::cluster_text_style)
             .unwrap_or_else(|| style_plan.composite_text_style());
+        let cluster_text_typography = node_style
+            .and_then(super::StateNodeStylePlan::text_typography)
+            .or_else(|| style_plan.composite_text_typography());
         let (tw, th) = if title.trim().is_empty() {
             (0.0, 0.0)
         } else if n.shape == "noteGroup" {
-            let (target, variant, ordinal) = node_label_binding(node_style);
             let request = super::StateLabelMetricsRequest {
                 owner: super::StateLabelOwner::ClusterTitle(&n.id),
                 text: &title,
                 source_kind: super::StateLabelSourceKind::Markdown,
                 measurer,
                 style: cluster_text_style,
-                target,
-                variant,
-                ordinal,
+                typography: cluster_text_typography,
                 max_width_px: Some(wrapping_width),
                 wrap_mode,
                 break_long_words: true,
@@ -1967,8 +1953,8 @@ fn layout_state_diagram_inner(
                 &title,
                 measurer,
                 cluster_text_style,
+                cluster_text_typography,
                 wrap_mode,
-                node_style,
                 label_sidecar,
             )
         };
@@ -2479,7 +2465,7 @@ pub fn debug_build_state_diagram_dagre_graph(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<Graph<NodeLabel, EdgeLabel, GraphLabel>> {
-    let style_plan = super::StateStylePlan::resolve(model, effective_config, None);
+    let style_plan = super::StateStylePlan::resolve_unthemed(model, effective_config);
     Ok(
         build_state_diagram_dagre_input(model, effective_config, &style_plan, measurer, None)?
             .graph,
@@ -2519,10 +2505,9 @@ mod tests {
         let RenderSemanticModel::State(model) = parsed.model() else {
             panic!("expected State render model");
         };
-        let style_plan = crate::state::StateStylePlan::resolve(
+        let style_plan = crate::state::StateStylePlan::resolve_unthemed(
             model,
             parsed.metadata().effective_config.as_value(),
-            None,
         );
         let input = build_state_diagram_dagre_input(
             model,
@@ -2582,8 +2567,8 @@ mod tests {
                 "edge",
                 &measurer,
                 &style,
-                WrapMode::HtmlLike,
                 None,
+                WrapMode::HtmlLike,
                 None,
             ),
             (73.123_456_789, 17.25)
@@ -2595,8 +2580,8 @@ mod tests {
                 180.0,
                 &measurer,
                 &style,
-                WrapMode::HtmlLike,
                 None,
+                WrapMode::HtmlLike,
                 None,
             ),
             (73.123_456_789, 17.25)
@@ -2607,8 +2592,8 @@ mod tests {
                 "title",
                 &measurer,
                 &style,
-                WrapMode::HtmlLike,
                 None,
+                WrapMode::HtmlLike,
                 None,
             ),
             (73.123_456_789, 17.25)
@@ -2629,8 +2614,8 @@ mod tests {
                 "edge",
                 &measurer,
                 &style,
-                WrapMode::HtmlLike,
                 None,
+                WrapMode::HtmlLike,
                 None,
             ),
             (250.123_456_789, 17.25)
@@ -2642,8 +2627,8 @@ mod tests {
                 180.0,
                 &measurer,
                 &style,
-                WrapMode::HtmlLike,
                 None,
+                WrapMode::HtmlLike,
                 None,
             ),
             (250.123_456_789, 17.25)
@@ -2654,8 +2639,8 @@ mod tests {
                 "edge",
                 &measurer,
                 &style,
-                WrapMode::SvgLike,
                 None,
+                WrapMode::SvgLike,
                 None,
             ),
             (254.123_456_789, 21.25)
