@@ -1626,8 +1626,19 @@ fn parse_git_graph_command(
 }
 
 pub(crate) fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    parse_git_graph_with_warning_facts(code, meta).map(family::WarningSemanticParse::into_model)
+}
+
+pub(crate) fn parse_git_graph_with_warning_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<family::WarningSemanticParse> {
     let model = parse_git_graph_semantic_source(code, meta)?.model;
-    render_model_to_compat_json(&model, meta)
+    let compatibility = render_model_to_compat_json(&model, meta)?;
+    Ok(family::WarningSemanticParse::new(
+        compatibility,
+        model.warning_facts,
+    ))
 }
 
 pub(crate) fn parse_git_graph_json_and_editor_facts(
@@ -1636,12 +1647,14 @@ pub(crate) fn parse_git_graph_json_and_editor_facts(
     control: &crate::ParseControl,
 ) -> crate::ParseControlResult<family::CombinedSemanticParse> {
     control.checkpoint()?;
-    let parsed = family::CombinedSemanticParse::from_construction(
+    let parsed = family::CombinedSemanticParse::from_construction_with_warning_facts(
         construct_git_graph_semantic_source_controlled(code, meta, control)?,
         |source| {
+            let compatibility = render_model_to_compat_json(&source.model, meta);
             (
-                render_model_to_compat_json(&source.model, meta),
+                compatibility,
                 source.editor_facts,
+                source.model.warning_facts,
             )
         },
         |failure| (*failure.error, *failure.editor_facts),

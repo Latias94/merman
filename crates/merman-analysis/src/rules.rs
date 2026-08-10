@@ -13,7 +13,6 @@ use merman_core::{
     preprocess::{SourceConfigEvidence, SourceConfigOrigin},
 };
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter};
@@ -928,14 +927,14 @@ pub(crate) fn parsed_source_lint_diagnostics(
 #[cfg(test)]
 pub(crate) fn semantic_warning_diagnostics(
     diagram_type: &str,
-    model: &Value,
+    warning_facts: &[DiagramWarningFact],
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
 ) -> Vec<AnalysisDiagnostic> {
     let cancellation = crate::AnalysisCancellationToken::new();
     semantic_warning_diagnostics_cancellable(
         diagram_type,
-        model,
+        warning_facts,
         source_map,
         rule_config,
         &cancellation,
@@ -945,17 +944,13 @@ pub(crate) fn semantic_warning_diagnostics(
 
 pub(crate) fn semantic_warning_diagnostics_cancellable(
     diagram_type: &str,
-    model: &Value,
+    warning_facts: &[DiagramWarningFact],
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<Vec<AnalysisDiagnostic>, crate::AnalysisCancelled> {
     cancellation.checkpoint()?;
     let span = source_map.whole_source_span_cancellable(cancellation)?.ok();
-    let Some(warning_facts) = deserialize_warning_facts_cancellable(model, cancellation)? else {
-        return Ok(Vec::new());
-    };
-    cancellation.checkpoint()?;
 
     semantic_warning_fact_diagnostics_cancellable(
         diagram_type,
@@ -969,13 +964,13 @@ pub(crate) fn semantic_warning_diagnostics_cancellable(
 
 pub(crate) fn semantic_warning_candidates_cancellable(
     diagram_type: &str,
-    model: &Value,
+    warning_facts: &[DiagramWarningFact],
     source_map: &SourceMap,
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<Vec<DiagnosticCandidate>, crate::AnalysisCancelled> {
     let diagnostics = semantic_warning_diagnostics_cancellable(
         diagram_type,
-        model,
+        warning_facts,
         source_map,
         capture_rule_config(),
         cancellation,
@@ -983,29 +978,9 @@ pub(crate) fn semantic_warning_candidates_cancellable(
     candidates_from_diagnostics_cancellable(diagnostics, cancellation)
 }
 
-fn deserialize_warning_facts_cancellable(
-    model: &Value,
-    cancellation: &crate::AnalysisCancellationToken,
-) -> Result<Option<Vec<DiagramWarningFact>>, crate::AnalysisCancelled> {
-    let Some(values) = model.get("warningFacts").and_then(Value::as_array) else {
-        return Ok(None);
-    };
-
-    let mut facts = Vec::with_capacity(values.len());
-    for value in values {
-        cancellation.checkpoint()?;
-        let Ok(fact) = DiagramWarningFact::deserialize(value) else {
-            return Ok(None);
-        };
-        facts.push(fact);
-    }
-    cancellation.checkpoint()?;
-    Ok(Some(facts))
-}
-
 fn semantic_warning_fact_diagnostics_cancellable(
     diagram_type: &str,
-    warning_facts: Vec<DiagramWarningFact>,
+    warning_facts: &[DiagramWarningFact],
     fallback_span: Option<DiagnosticSpan>,
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
@@ -1013,7 +988,7 @@ fn semantic_warning_fact_diagnostics_cancellable(
 ) -> Result<Vec<AnalysisDiagnostic>, crate::AnalysisCancelled> {
     let mut diagnostics = Vec::with_capacity(warning_facts.len());
 
-    for (fact_index, fact) in warning_facts.into_iter().enumerate() {
+    for (fact_index, fact) in warning_facts.iter().enumerate() {
         if fact_index.is_multiple_of(128) {
             cancellation.checkpoint()?;
         }
@@ -1049,20 +1024,20 @@ fn semantic_warning_fact_diagnostics_cancellable(
 
 fn warning_for_fact_cancellable(
     diagram_type: &str,
-    fact: DiagramWarningFact,
+    fact: &DiagramWarningFact,
     fallback_span: Option<DiagnosticSpan>,
     source_map: &SourceMap,
     descriptor: RuleDescriptor,
     rule_config: &AnalysisRuleConfig,
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<AnalysisDiagnostic, crate::AnalysisCancelled> {
-    let span = warning_fact_span_cancellable(&fact, source_map, fallback_span, cancellation)?;
-    let fix = warning_fact_fix_cancellable(&fact, descriptor, source_map, cancellation)?;
+    let span = warning_fact_span_cancellable(fact, source_map, fallback_span, cancellation)?;
+    let fix = warning_fact_fix_cancellable(fact, descriptor, source_map, cancellation)?;
     let mut diagnostic = AnalysisDiagnostic::new(
         descriptor.id,
         rule_config.severity_for(descriptor),
         descriptor.category,
-        fact.message,
+        fact.message.clone(),
     )
     .with_diagram_type(diagram_type);
 

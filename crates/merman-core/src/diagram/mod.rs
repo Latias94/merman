@@ -183,7 +183,12 @@ pub enum ParsedEditorFacts {
 /// Semantic result retained by one editor-facing diagram parse operation.
 #[derive(Debug)]
 pub enum DiagramParseOutcome {
-    Parsed(Value),
+    Parsed {
+        /// Mermaid-compatible semantic JSON retained for existing projections.
+        model: Value,
+        /// Parser-owned warning facts after preprocessing spans have been remapped once.
+        warning_facts: Vec<DiagramWarningFact>,
+    },
     Failed(Error),
     /// Family construction panicked after preprocessing produced valid metadata.
     Panicked(String),
@@ -193,7 +198,7 @@ impl DiagramParseOutcome {
     /// Returns the semantic model when family construction succeeded.
     pub fn parsed_model(&self) -> Option<&Value> {
         match self {
-            Self::Parsed(model) => Some(model),
+            Self::Parsed { model, .. } => Some(model),
             Self::Failed(_) | Self::Panicked(_) => None,
         }
     }
@@ -201,8 +206,9 @@ impl DiagramParseOutcome {
 
 /// One preprocessing, detection, and family-construction operation for editor consumers.
 ///
-/// Metadata, semantic output or its original error, and recovery facts are retained together so
-/// downstream analysis cannot reconstruct failure state by parsing the source again.
+/// Metadata, semantic output or its original error, typed warnings, and recovery facts are
+/// retained together so downstream analysis cannot reconstruct parser state from compatibility
+/// JSON or by parsing the source again.
 #[derive(Debug)]
 pub struct DiagramParseSnapshot {
     meta: ParseMetadata,

@@ -1059,14 +1059,12 @@ pub(crate) fn parse_block_json_and_editor_facts(
     control: &ParseControl,
 ) -> ParseControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_block_semantic_source(code, meta, control)?;
-    let parsed = crate::family::CombinedSemanticParse::from_construction(
+    let parsed = crate::family::CombinedSemanticParse::from_construction_with_warning_facts(
         construction,
         |source| {
             let model = block_db_to_render_model(&source.db);
-            (
-                render_model_to_compat_json(&model, meta),
-                source.editor_facts,
-            )
+            let compatibility = render_model_to_compat_json(&model, meta);
+            (compatibility, source.editor_facts, model.warning_facts)
         },
         BlockParseFailure::into_error_and_editor_facts,
     );
@@ -2459,11 +2457,22 @@ pub(crate) fn render_model_to_compat_json(
 }
 
 pub(crate) fn parse_block(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    parse_block_with_warning_facts(code, meta).map(crate::family::WarningSemanticParse::into_model)
+}
+
+pub(crate) fn parse_block_with_warning_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<crate::family::WarningSemanticParse> {
     let source = construct_block_semantic_source(code, meta, &ParseControl::new())
         .expect("a private parse control cannot be cancelled")
         .map_err(|failure| *failure.error)?;
     let model = block_db_to_render_model(&source.db);
-    render_model_to_compat_json(&model, meta)
+    let compatibility = render_model_to_compat_json(&model, meta)?;
+    Ok(crate::family::WarningSemanticParse::new(
+        compatibility,
+        model.warning_facts,
+    ))
 }
 #[cfg(test)]
 mod tests {

@@ -15,6 +15,7 @@ use diagram::{
     DiagramWarningFact, ParsedDiagram, ParsedDiagramRender, ParsedEditorFacts, RegistryOwner,
     RenderSemanticModel, RenderSemanticParseOutput, ResolvedRenderParser, ResolvedSemanticParser,
 };
+use serde::Deserialize;
 use serde_json::Value;
 
 fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
@@ -36,6 +37,40 @@ pub(crate) enum ParseSource<'a> {
 enum PreprocessPath {
     PublicParse,
     Render,
+}
+
+struct CompatibilitySemanticParse {
+    model: Value,
+    warnings: CompatibilityWarnings,
+}
+
+enum CompatibilityWarnings {
+    Typed(Vec<DiagramWarningFact>),
+    BuiltInWithoutWarnings,
+    CustomJson,
+}
+
+impl CompatibilitySemanticParse {
+    fn built_in(model: Value, warning_facts: Vec<DiagramWarningFact>) -> Self {
+        Self {
+            model,
+            warnings: CompatibilityWarnings::Typed(warning_facts),
+        }
+    }
+
+    fn built_in_without_warnings(model: Value) -> Self {
+        Self {
+            model,
+            warnings: CompatibilityWarnings::BuiltInWithoutWarnings,
+        }
+    }
+
+    fn custom(model: Value) -> Self {
+        Self {
+            model,
+            warnings: CompatibilityWarnings::CustomJson,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -205,20 +240,46 @@ impl<'a> ParsePipeline<'a> {
         self.parse_model(
             timing,
             PreprocessPath::PublicParse,
-            |pipeline, code, meta| {
-                diagram::parse_or_unsupported(
-                    &pipeline.engine.diagram_registry,
-                    &meta.diagram_type,
-                    code,
-                    meta,
-                )
+            Self::parse_compatibility_semantic,
+            |parsed, config| {
+                common_db::apply_common_db_sanitization(&mut parsed.model, config);
             },
-            common_db::apply_common_db_sanitization,
             error_diagram::suppressed_error_diagram,
-            |meta, model| ParsedDiagram { meta, model },
-            Self::remap_value_warning_facts,
+            |meta, parsed| ParsedDiagram {
+                meta,
+                model: parsed.model,
+            },
+            Self::remap_compatibility_semantic_warnings,
             |_| None,
         )
+    }
+
+    fn parse_compatibility_semantic(
+        &self,
+        code: &str,
+        meta: &ParseMetadata,
+    ) -> Result<CompatibilitySemanticParse> {
+        let Some(parser) = self.engine.diagram_registry.resolve(&meta.diagram_type) else {
+            return Err(Error::UnsupportedDiagram {
+                diagram_type: meta.diagram_type.clone(),
+            });
+        };
+        match parser {
+            ResolvedSemanticParser::BuiltIn(parser) => {
+                if let Some(parser) = family::warning_semantic_parser(&meta.diagram_type) {
+                    let (model, warning_facts) = parser(code, meta)?.into_parts();
+                    Ok(CompatibilitySemanticParse::built_in(model, warning_facts))
+                } else {
+                    parser(code, meta).map(CompatibilitySemanticParse::built_in_without_warnings)
+                }
+            }
+            ResolvedSemanticParser::Custom(parser) => {
+                let control = ParseControl::new();
+                parser(code, meta, &control)
+                    .map_err(Error::from)?
+                    .map(CompatibilitySemanticParse::custom)
+            }
+        }
     }
 
     pub(crate) fn parse_editor_snapshot(
@@ -301,39 +362,44 @@ impl<'a> ParsePipeline<'a> {
 
         let parse_start = operation_timing.map(runtime::OperationTiming::start);
         let parse_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
-            || -> ParseControlResult<(Result<Value>, Option<EditorSemanticFacts>)> {
+            || -> ParseControlResult<(
+                Result<Value>,
+                Option<EditorSemanticFacts>,
+                Vec<DiagramWarningFact>,
+            )> {
                 let parsed = match resolved {
                     Some(ResolvedSemanticParser::BuiltIn(parser)) => {
                         if let Some(parser) = combined {
                             control.checkpoint()?;
                             let parsed = parser(editor_input, &meta, control)?;
                             control.checkpoint()?;
-                            let (model, editor_facts) = parsed.into_parts();
-                            (model, Some(editor_facts))
+                            let (model, editor_facts, warning_facts) = parsed.into_parts();
+                            (model, Some(editor_facts), warning_facts)
                         } else {
                             control.checkpoint()?;
                             let model = parser(editor_input, &meta);
                             control.checkpoint()?;
-                            (model, None)
+                            (model, None, Vec::new())
                         }
                     }
                     Some(ResolvedSemanticParser::Custom(parser)) => {
                         control.checkpoint()?;
                         let model = parser(editor_input, &meta, control)?;
                         control.checkpoint()?;
-                        (model, None)
+                        (model, None, Vec::new())
                     }
                     None => (
                         Err(Error::UnsupportedDiagram {
                             diagram_type: meta.diagram_type.clone(),
                         }),
                         None,
+                        Vec::new(),
                     ),
                 };
                 Ok(parsed)
             },
         ));
-        let (model_result, combined_facts) = match parse_result {
+        let (model_result, combined_facts, mut warning_facts) = match parse_result {
             Ok(parsed) => parsed?,
             Err(payload) => {
                 return Ok(DiagramSnapshotCapture::Snapshot(Some(
@@ -377,7 +443,21 @@ impl<'a> ParsePipeline<'a> {
         common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
         control.checkpoint()?;
         let sanitize = sanitize_start.map(runtime::OperationTimer::elapsed);
-        Self::remap_value_warning_facts(&mut model, &source_map);
+        let custom_warning_adapter_succeeded = if matches!(owner, Some(RegistryOwner::Custom)) {
+            match Self::decode_custom_warning_facts_controlled(&model, control)? {
+                Some(custom_warning_facts) => {
+                    warning_facts = custom_warning_facts;
+                    true
+                }
+                None => false,
+            }
+        } else {
+            false
+        };
+        Self::remap_warning_facts_controlled(&mut warning_facts, &source_map, control)?;
+        if matches!(owner, Some(RegistryOwner::BuiltIn)) || custom_warning_adapter_succeeded {
+            Self::sync_compatibility_warning_facts(&mut model, &warning_facts);
+        }
         control.checkpoint()?;
         timing.log_success(ParseTimingSuccess {
             total_start,
@@ -395,7 +475,10 @@ impl<'a> ParsePipeline<'a> {
         Ok(DiagramSnapshotCapture::Snapshot(Some(
             DiagramParseSnapshot::new(
                 meta,
-                DiagramParseOutcome::Parsed(model),
+                DiagramParseOutcome::Parsed {
+                    model,
+                    warning_facts,
+                },
                 editor_facts,
                 source_config,
                 recovered_incomplete_directive,
@@ -565,7 +648,25 @@ impl<'a> ParsePipeline<'a> {
         Ok(Some(finish(meta, model)))
     }
 
-    fn remap_value_warning_facts(
+    fn remap_compatibility_semantic_warnings(
+        parsed: &mut CompatibilitySemanticParse,
+        source_map: &EditorParseSourceMap<'_>,
+    ) {
+        match &mut parsed.warnings {
+            CompatibilityWarnings::Typed(warning_facts) => {
+                for fact in warning_facts.iter_mut() {
+                    Self::remap_warning_fact_spans(fact, source_map);
+                }
+                Self::sync_compatibility_warning_facts(&mut parsed.model, warning_facts);
+            }
+            CompatibilityWarnings::BuiltInWithoutWarnings => {}
+            CompatibilityWarnings::CustomJson => {
+                Self::remap_custom_compatibility_json_warning_facts(&mut parsed.model, source_map);
+            }
+        }
+    }
+
+    fn remap_custom_compatibility_json_warning_facts(
         model: &mut serde_json::Value,
         source_map: &EditorParseSourceMap<'_>,
     ) {
@@ -583,6 +684,51 @@ impl<'a> ParsePipeline<'a> {
         }
 
         *warning_facts_value = serde_json::json!(warning_facts);
+    }
+
+    fn decode_custom_warning_facts_controlled(
+        model: &Value,
+        control: &ParseControl,
+    ) -> ParseControlResult<Option<Vec<DiagramWarningFact>>> {
+        let Some(values) = model.get("warningFacts").and_then(Value::as_array) else {
+            return Ok(None);
+        };
+
+        let mut warning_facts = Vec::with_capacity(values.len());
+        for (index, value) in values.iter().enumerate() {
+            if index.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            let Ok(fact) = DiagramWarningFact::deserialize(value) else {
+                return Ok(None);
+            };
+            warning_facts.push(fact);
+        }
+        control.checkpoint()?;
+        Ok(Some(warning_facts))
+    }
+
+    fn remap_warning_facts_controlled(
+        warning_facts: &mut [DiagramWarningFact],
+        source_map: &EditorParseSourceMap<'_>,
+        control: &ParseControl,
+    ) -> ParseControlResult<()> {
+        for (index, fact) in warning_facts.iter_mut().enumerate() {
+            if index.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            Self::remap_warning_fact_spans(fact, source_map);
+        }
+        control.checkpoint()?;
+        Ok(())
+    }
+
+    fn sync_compatibility_warning_facts(model: &mut Value, warning_facts: &[DiagramWarningFact]) {
+        let Some(value) = model.get_mut("warningFacts") else {
+            return;
+        };
+        *value = serde_json::to_value(warning_facts)
+            .expect("diagram warning facts must remain JSON-serializable");
     }
 
     fn remap_warning_fact_spans(

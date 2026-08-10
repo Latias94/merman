@@ -138,8 +138,20 @@ struct FlowchartSemanticSource {
 }
 
 pub(crate) fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    parse_flowchart_with_warning_facts(code, meta)
+        .map(crate::family::WarningSemanticParse::into_model)
+}
+
+pub(crate) fn parse_flowchart_with_warning_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<crate::family::WarningSemanticParse> {
     let model = parse_flowchart_semantic_source(code, meta)?.into_render_model(meta)?;
-    render_model_to_compat_json(&model, meta)
+    let compatibility = render_model_to_compat_json(&model, meta)?;
+    Ok(crate::family::WarningSemanticParse::new(
+        compatibility,
+        model.warning_facts,
+    ))
 }
 
 pub(crate) fn parse_flowchart_json_and_editor_facts(
@@ -167,17 +179,20 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
             )?;
             collect_expected_syntax_from_tokens(&code, trace.editor_tokens(), &mut facts, control)?;
             facts.replace_family_lexemes(trace.lexemes);
-            let model = match parse_flowchart_semantic_source_from_ast_controlled(
+            let (model, warning_facts) = match parse_flowchart_semantic_source_from_ast_controlled(
                 ast, acc_title, acc_descr, meta, control,
             )? {
                 Ok(source) => match source.into_render_model_controlled(meta, control)? {
-                    Ok(model) => render_model_to_compat_json(&model, meta),
-                    Err(error) => Err(error),
+                    Ok(model) => {
+                        let compatibility = render_model_to_compat_json(&model, meta);
+                        (compatibility, model.warning_facts)
+                    }
+                    Err(error) => (Err(error), Vec::new()),
                 },
-                Err(error) => Err(error),
+                Err(error) => (Err(error), Vec::new()),
             };
             control.checkpoint()?;
-            Ok((model, facts))
+            Ok((model, facts, warning_facts))
         }
         Err(error) => {
             let facts = flowchart_recovery_facts(
@@ -194,7 +209,7 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
             Err(crate::family::CombinedSemanticFailure::new(error, facts))
         }
     };
-    let parsed = crate::family::CombinedSemanticParse::from_construction(
+    let parsed = crate::family::CombinedSemanticParse::from_construction_with_warning_facts(
         construction,
         |parts| parts,
         crate::family::CombinedSemanticFailure::into_parts,

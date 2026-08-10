@@ -9,8 +9,8 @@ use crate::diagram::{
     RenderSemanticParseOutput,
 };
 use crate::{
-    EditorSemanticFacts, Error, MermaidConfig, ParseControl, ParseControlResult, ParseMetadata,
-    Result,
+    DiagramWarningFact, EditorSemanticFacts, Error, MermaidConfig, ParseControl,
+    ParseControlResult, ParseMetadata, Result,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -22,13 +22,41 @@ pub(crate) type CombinedSemanticParser = fn(
     control: &ParseControl,
 ) -> ParseControlResult<CombinedSemanticParse>;
 
+pub(crate) type WarningSemanticParser =
+    fn(code: &str, meta: &ParseMetadata) -> Result<WarningSemanticParse>;
+
+/// Built-in compatibility JSON paired with the typed warnings that produced its warning field.
+pub(crate) struct WarningSemanticParse {
+    model: Value,
+    warning_facts: Vec<DiagramWarningFact>,
+}
+
+impl WarningSemanticParse {
+    pub(crate) fn new(model: Value, warning_facts: Vec<DiagramWarningFact>) -> Self {
+        Self {
+            model,
+            warning_facts,
+        }
+    }
+
+    pub(crate) fn into_model(self) -> Value {
+        self.model
+    }
+
+    pub(crate) fn into_parts(self) -> (Value, Vec<DiagramWarningFact>) {
+        (self.model, self.warning_facts)
+    }
+}
+
 /// Closed result of one family semantic construction.
 ///
-/// A failed construction still owns the parser-derived editor facts produced before the error.
-/// This prevents callers from invoking a second recovery parser over the same source.
+/// A successful construction hands typed warnings directly to the operation snapshot. A failed
+/// construction still owns the parser-derived editor facts produced before the error. This
+/// prevents callers from invoking a second recovery parser over the same source.
 pub(crate) struct CombinedSemanticParse {
     model: Result<Value>,
     editor_facts: EditorSemanticFacts,
+    warning_facts: Vec<DiagramWarningFact>,
 }
 
 /// Closed failure handoff produced after a family has retained its recovery journal.
@@ -135,6 +163,7 @@ impl CombinedSemanticParse {
                 Self {
                     model,
                     editor_facts,
+                    warning_facts: Vec::new(),
                 }
             }
             Err(parse_failure) => {
@@ -142,13 +171,41 @@ impl CombinedSemanticParse {
                 Self {
                     model: Err(error),
                     editor_facts,
+                    warning_facts: Vec::new(),
                 }
             }
         }
     }
 
-    pub(crate) fn into_parts(self) -> (Result<Value>, EditorSemanticFacts) {
-        (self.model, self.editor_facts)
+    pub(crate) fn from_construction_with_warning_facts<S, F>(
+        construction: std::result::Result<S, F>,
+        success: impl FnOnce(S) -> (Result<Value>, EditorSemanticFacts, Vec<DiagramWarningFact>),
+        failure: impl FnOnce(F) -> (Error, EditorSemanticFacts),
+    ) -> Self {
+        match construction {
+            Ok(source) => {
+                let (model, editor_facts, warning_facts) = success(source);
+                Self {
+                    model,
+                    editor_facts,
+                    warning_facts,
+                }
+            }
+            Err(parse_failure) => {
+                let (error, editor_facts) = failure(parse_failure);
+                Self {
+                    model: Err(error),
+                    editor_facts,
+                    warning_facts: Vec::new(),
+                }
+            }
+        }
+    }
+
+    pub(crate) fn into_parts(
+        self,
+    ) -> (Result<Value>, EditorSemanticFacts, Vec<DiagramWarningFact>) {
+        (self.model, self.editor_facts, self.warning_facts)
     }
 }
 
@@ -161,7 +218,7 @@ pub(crate) mod test_support {
     pub(crate) fn into_result(
         parsed: ParseControlResult<CombinedSemanticParse>,
     ) -> std::result::Result<(Value, EditorSemanticFacts), Error> {
-        let (model, editor_facts) = parsed
+        let (model, editor_facts, _) = parsed
             .expect("a private parse control cannot be cancelled")
             .into_parts();
         model.map(|model| (model, editor_facts))
@@ -410,6 +467,10 @@ pub(crate) fn combined_parser(diagram_type: &str) -> Option<CombinedSemanticPars
     combined_parser_facts()
         .iter()
         .find_map(|fact| (fact.id == diagram_type).then_some(fact.parser))
+}
+
+pub(crate) fn warning_semantic_parser(diagram_type: &str) -> Option<WarningSemanticParser> {
+    find_variant(diagram_type).and_then(|(_, variant)| variant.warning_semantic)
 }
 
 pub(crate) fn supported_diagram_metadata_ids() -> &'static [&'static str] {
@@ -726,6 +787,7 @@ struct FamilyVariantDefinition {
     catalog_order: u16,
     detector: Option<Ordered<DetectorFn>>,
     semantic: Option<Ordered<BuiltInDiagramSemanticParser>>,
+    warning_semantic: Option<WarningSemanticParser>,
     combined: Option<Ordered<CombinedSemanticParser>>,
     typed_render: Option<Ordered<BuiltInRenderSemanticParser>>,
     render_model_kind: Option<&'static str>,
@@ -755,6 +817,7 @@ macro_rules! variant {
         catalog_order: $catalog_order:literal,
         detector: $detector:expr,
         semantic: $semantic:expr,
+        $(warning_semantic: $warning_semantic:expr,)?
         combined: $combined:expr,
         typed: $typed:expr,
         render_kind: $render_kind:expr,
@@ -769,6 +832,7 @@ macro_rules! variant {
             catalog_order: $catalog_order,
             detector: $detector,
             semantic: $semantic,
+            warning_semantic: variant!(@warning_semantic $($warning_semantic)?),
             combined: $combined,
             typed_render: $typed,
             render_model_kind: $render_kind,
@@ -778,6 +842,12 @@ macro_rules! variant {
             known_type_effect: $known_effect,
             default_effect: $default_effect,
         }
+    };
+    (@warning_semantic) => {
+        None
+    };
+    (@warning_semantic $warning_semantic:expr) => {
+        Some($warning_semantic)
     };
 }
 
@@ -955,6 +1025,7 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
         catalog_order: 2,
         detector: Some(ordered(2, crate::detect::detector_flowchart_elk)),
         semantic: Some(ordered(3, crate::diagrams::flowchart::parse_flowchart)),
+        warning_semantic: crate::diagrams::flowchart::parse_flowchart_with_warning_facts,
         combined: Some(ordered(2, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
         typed: Some(ordered(7, render_flowchart)),
         render_kind: Some("flowchart"),
@@ -969,6 +1040,7 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
         catalog_order: 17,
         detector: Some(ordered(17, crate::detect::detector_flowchart_v2)),
         semantic: Some(ordered(1, crate::diagrams::flowchart::parse_flowchart)),
+        warning_semantic: crate::diagrams::flowchart::parse_flowchart_with_warning_facts,
         combined: Some(ordered(0, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
         typed: Some(ordered(5, render_flowchart)),
         render_kind: Some("flowchart"),
@@ -983,6 +1055,7 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
         catalog_order: 18,
         detector: Some(ordered(18, crate::detect::detector_flowchart_dagre_d3_graph)),
         semantic: Some(ordered(2, crate::diagrams::flowchart::parse_flowchart)),
+        warning_semantic: crate::diagrams::flowchart::parse_flowchart_with_warning_facts,
         combined: Some(ordered(1, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
         typed: Some(ordered(6, render_flowchart)),
         render_kind: Some("flowchart"),
@@ -999,6 +1072,7 @@ const SWIMLANE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     catalog_order: 16,
     detector: Some(ordered(16, crate::detect::detector_swimlane)),
     semantic: Some(ordered(9, crate::diagrams::flowchart::parse_flowchart)),
+    warning_semantic: crate::diagrams::flowchart::parse_flowchart_with_warning_facts,
     combined: Some(ordered(3, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
     typed: Some(ordered(39, render_flowchart)),
     render_kind: Some("flowchart"),
@@ -1241,6 +1315,7 @@ const GIT_GRAPH_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     catalog_order: 20,
     detector: Some(ordered(20, crate::detect::detector_git_graph)),
     semantic: Some(ordered(29, crate::diagrams::git_graph::parse_git_graph)),
+    warning_semantic: crate::diagrams::git_graph::parse_git_graph_with_warning_facts,
     combined: Some(ordered(15, crate::diagrams::git_graph::parse_git_graph_json_and_editor_facts)),
     typed: Some(ordered(33, render_git_graph)),
     render_kind: Some("gitGraph"),
@@ -1362,6 +1437,7 @@ const BLOCK_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     catalog_order: 28,
     detector: Some(ordered(28, crate::detect::detector_block)),
     semantic: Some(ordered(28, crate::diagrams::block::parse_block)),
+    warning_semantic: crate::diagrams::block::parse_block_with_warning_facts,
     combined: Some(ordered(37, crate::diagrams::block::parse_block_json_and_editor_facts)),
     typed: Some(ordered(28, render_block)),
     render_kind: Some("block"),

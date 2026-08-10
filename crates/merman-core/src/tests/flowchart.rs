@@ -2797,6 +2797,57 @@ fn parse_flowchart_warning_fact_span_uses_context_after_frontmatter_and_entity_p
 }
 
 #[test]
+fn warning_producing_flowchart_variants_register_typed_compatibility_sidecars() {
+    let engine = Engine::new();
+    let cases = [
+        ("flowchart-elk", "flowchart-elk\nA-->B\n", "flowchart-elk"),
+        ("flowchart-v2", "flowchart\nA-->B\n", "flowchart"),
+        ("flowchart", "flowchart\nA-->B\n", "flowchart"),
+        ("swimlane", "swimlane-beta\nA-->B\n", "swimlane-beta"),
+    ];
+
+    for (diagram_type, source, keyword) in cases {
+        assert!(
+            crate::family::warning_semantic_parser(diagram_type).is_some(),
+            "{diagram_type} must register its typed warning compatibility parser"
+        );
+
+        let snapshot = engine
+            .parse_diagram_snapshot_with_type_sync(diagram_type, source)
+            .unwrap()
+            .unwrap();
+        let DiagramParseOutcome::Parsed {
+            model,
+            warning_facts,
+        } = snapshot.outcome()
+        else {
+            panic!("{diagram_type} warning fixture must parse");
+        };
+        let public = engine
+            .parse_diagram_with_type_sync(diagram_type, source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(warning_facts.len(), 1, "{diagram_type}");
+        assert_eq!(
+            warning_facts[0].span,
+            Some(SourceSpan::new(0, keyword.len())),
+            "{diagram_type}"
+        );
+        assert_eq!(
+            model["warningFacts"],
+            json!(warning_facts),
+            "{diagram_type}"
+        );
+        assert_eq!(
+            public.model["warningFacts"],
+            json!(warning_facts),
+            "{diagram_type}"
+        );
+    }
+}
+
+#[test]
 fn parse_flowchart_editor_facts_preserve_parser_node_id_spans() {
     let engine = Engine::new();
     let text = "flowchart TD\nA-->B\n";

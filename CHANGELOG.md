@@ -11,6 +11,7 @@ The next workspace release remains in development. This section records only com
 ### Breaking changes
 
 - Default Android, Apple, Python, and Flutter native artifacts now bundle SVG, Cytoscape and ELK layouts, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native clock/time-zone/random adapters. Generated wrapper methods remain stable and report typed missing-capability or unsupported-operation errors; consumers that need an omitted operation must build a current-contract custom native library.
+- `DiagramParseOutcome::Parsed(Value)` is now `DiagramParseOutcome::Parsed { model, warning_facts }`. Rust editor integrations should match the struct variant and consume the parser-owned typed warning facts instead of decoding the compatibility model's `warningFacts` field.
 
 ### Added
 

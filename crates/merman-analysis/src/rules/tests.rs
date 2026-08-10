@@ -1,6 +1,10 @@
 use super::*;
 use serde_json::json;
 
+fn warning_fact(rule_id: &str, message: &str) -> DiagramWarningFact {
+    DiagramWarningFact::new(rule_id, message)
+}
+
 #[test]
 fn source_lint_prefers_init_directive_and_provides_fix() {
     let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
@@ -807,14 +811,10 @@ fn rule_config_can_disable_block_warning_rules() {
 
     let diagnostics = semantic_warning_diagnostics(
         "block",
-        &json!({
-            "warningFacts": [
-                {
-                    "ruleId": BLOCK_WIDTH_WARNING_RULE_ID,
-                    "message": "Block A exceeds configured column width 1"
-                }
-            ]
-        }),
+        &[warning_fact(
+            BLOCK_WIDTH_WARNING_RULE_ID,
+            "Block A exceeds configured column width 1",
+        )],
         &source_map,
         &config,
     );
@@ -829,14 +829,10 @@ fn semantic_warning_facts_use_rule_ids_when_present() {
 
     let diagnostics = semantic_warning_diagnostics(
         "block",
-        &json!({
-            "warningFacts": [
-                {
-                    "ruleId": BLOCK_WIDTH_WARNING_RULE_ID,
-                    "message": "Block A exceeds configured column width 1"
-                }
-            ]
-        }),
+        &[warning_fact(
+            BLOCK_WIDTH_WARNING_RULE_ID,
+            "Block A exceeds configured column width 1",
+        )],
         &source_map,
         &AnalysisRuleConfig::default(),
     );
@@ -854,16 +850,12 @@ fn semantic_warning_facts_map_flowchart_missing_direction_rule_id() {
 
     let diagnostics = semantic_warning_diagnostics(
         "flowchart-v2",
-        &json!({
-            "warningFacts": [
-                {
-                    "ruleId": FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
-                    "message": "flowchart headers should declare an explicit direction",
-                    "span": { "start": 0, "end": 9 },
-                    "fixSpan": { "start": 9, "end": 9 }
-                }
-            ]
-        }),
+        &[warning_fact(
+            FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+            "flowchart headers should declare an explicit direction",
+        )
+        .with_span(merman_core::SourceSpan::new(0, 9))
+        .with_fix_span(merman_core::SourceSpan::new(9, 9))],
         &source_map,
         &config,
     );
@@ -893,15 +885,11 @@ fn semantic_warning_facts_map_flowchart_unknown_style_target_rule_id() {
 
     let diagnostics = semantic_warning_diagnostics(
         "flowchart-v2",
-        &json!({
-            "warningFacts": [
-                {
-                    "ruleId": FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
-                    "message": "Style applied to unknown node \"Q\". This may indicate a typo. The node will be created automatically.",
-                    "span": { "start": 19, "end": 20 }
-                }
-            ]
-        }),
+        &[warning_fact(
+            FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
+            "Style applied to unknown node \"Q\". This may indicate a typo. The node will be created automatically.",
+        )
+        .with_span(merman_core::SourceSpan::new(19, 20))],
         &source_map,
         &AnalysisRuleConfig::default(),
     );
@@ -921,16 +909,12 @@ fn semantic_authoring_warning_facts_are_not_enabled_by_core_profile() {
 
     let diagnostics = semantic_warning_diagnostics(
         "flowchart-v2",
-        &json!({
-            "warningFacts": [
-                {
-                    "ruleId": FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
-                    "message": "flowchart headers should declare an explicit direction",
-                    "span": { "start": 0, "end": 9 },
-                    "fixSpan": { "start": 9, "end": 9 }
-                }
-            ]
-        }),
+        &[warning_fact(
+            FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+            "flowchart headers should declare an explicit direction",
+        )
+        .with_span(merman_core::SourceSpan::new(0, 9))
+        .with_fix_span(merman_core::SourceSpan::new(9, 9))],
         &source_map,
         &AnalysisRuleConfig::default(),
     );
@@ -948,14 +932,10 @@ fn rule_config_can_override_block_warning_severity() {
 
     let diagnostics = semantic_warning_diagnostics(
         "block",
-        &json!({
-            "warningFacts": [
-                {
-                    "ruleId": BLOCK_WIDTH_WARNING_RULE_ID,
-                    "message": "Block A exceeds configured column width 1"
-                }
-            ]
-        }),
+        &[warning_fact(
+            BLOCK_WIDTH_WARNING_RULE_ID,
+            "Block A exceeds configured column width 1",
+        )],
         &source_map,
         &config,
     );
@@ -1306,14 +1286,10 @@ fn semantic_warning_facts_use_rule_ids_even_when_messages_differ() {
 
     let diagnostics = semantic_warning_diagnostics(
         "block",
-        &json!({
-            "warningFacts": [
-                {
-                    "ruleId": BLOCK_WIDTH_WARNING_RULE_ID,
-                    "message": "this message does not need to mention width"
-                }
-            ]
-        }),
+        &[warning_fact(
+            BLOCK_WIDTH_WARNING_RULE_ID,
+            "this message does not need to mention width",
+        )],
         &source_map,
         &AnalysisRuleConfig::default(),
     );
@@ -1329,14 +1305,10 @@ fn semantic_warning_facts_surface_unknown_rule_ids_as_internal_errors() {
 
     let diagnostics = semantic_warning_diagnostics(
         "block",
-        &json!({
-            "warningFacts": [
-                {
-                    "ruleId": "merman.block.unregistered_warning",
-                    "message": "Block A emitted a future warning"
-                }
-            ]
-        }),
+        &[warning_fact(
+            "merman.block.unregistered_warning",
+            "Block A emitted a future warning",
+        )],
         &source_map,
         &AnalysisRuleConfig::default(),
     );
@@ -1357,20 +1329,20 @@ fn semantic_warning_fact_projection_observes_cancellation_between_facts() {
     source_map
         .whole_source_span()
         .expect("prewarm the line metric cache");
-    let warning = json!({
-        "ruleId": FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
-        "message": "Use an explicit direction"
-    });
-    let model = json!({
-        "warningFacts": vec![warning; 1_024]
-    });
+    let warning_facts = vec![
+        warning_fact(
+            FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+            "Use an explicit direction",
+        );
+        1_024
+    ];
     let cancellation = crate::AnalysisCancellationToken::new();
     cancellation.cancel_after_checkpoints(8);
 
     assert!(matches!(
         semantic_warning_diagnostics_cancellable(
             "flowchart-v2",
-            &model,
+            &warning_facts,
             &source_map,
             &AnalysisRuleConfig::default(),
             &cancellation,
@@ -1378,31 +1350,6 @@ fn semantic_warning_fact_projection_observes_cancellation_between_facts() {
         Err(crate::AnalysisCancelled)
     ));
     assert!(cancellation.is_cancelled());
-}
-
-#[test]
-fn malformed_warning_fact_keeps_projection_all_or_nothing() {
-    let source = "flowchart TD\nA-->B\n";
-    let source_map = SourceMap::new(source);
-    let model = json!({
-        "warningFacts": [
-            {
-                "ruleId": FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
-                "message": "Use an explicit direction"
-            },
-            null
-        ]
-    });
-
-    assert!(
-        semantic_warning_diagnostics(
-            "flowchart-v2",
-            &model,
-            &source_map,
-            &AnalysisRuleConfig::default(),
-        )
-        .is_empty()
-    );
 }
 
 #[test]

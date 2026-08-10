@@ -12,8 +12,9 @@ use crate::{
     SourceDescriptor, SourceKind, SourceMap,
 };
 use merman_core::{
-    DiagramParseOutcome, DiagramSnapshotCapture, EditorSemanticFacts, Engine, Error as CoreError,
-    MermaidConfig, ParseMetadata, ParsedEditorFacts, preprocess::SourceConfigEvidence,
+    DiagramParseOutcome, DiagramSnapshotCapture, DiagramWarningFact, EditorSemanticFacts, Engine,
+    Error as CoreError, MermaidConfig, ParseMetadata, ParsedEditorFacts,
+    preprocess::SourceConfigEvidence,
 };
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -695,9 +696,13 @@ impl Analyzer {
                         ParsedEditorFacts::Unavailable => None,
                     };
                     match outcome {
-                        DiagramParseOutcome::Parsed(model) => DiagramAnalysisEvidence::Parsed {
+                        DiagramParseOutcome::Parsed {
+                            model,
+                            warning_facts,
+                        } => DiagramAnalysisEvidence::Parsed {
                             metadata: meta,
                             model,
+                            warning_facts,
                             editor_facts,
                             source_config,
                         },
@@ -809,6 +814,7 @@ impl Analyzer {
             DiagramAnalysisEvidence::Parsed {
                 metadata,
                 model,
+                warning_facts,
                 editor_facts,
                 source_config,
                 ..
@@ -818,8 +824,11 @@ impl Analyzer {
                     metadata,
                     editor_facts: editor_facts.as_ref(),
                 },
-                model,
-                source_config,
+                ParsedDiagramCaptureInput {
+                    model,
+                    warning_facts,
+                    source_config,
+                },
                 source_lints,
                 mode,
                 cancellation,
@@ -855,8 +864,11 @@ impl Analyzer {
         let source_config = SourceConfigEvidence::default();
         self.analyze_parsed_diagram_cancellable(
             input,
-            model,
-            &source_config,
+            ParsedDiagramCaptureInput {
+                model,
+                warning_facts: &[],
+                source_config: &source_config,
+            },
             candidates_from_diagnostics(diagnostics),
             mode,
             &cancellation,
@@ -867,8 +879,7 @@ impl Analyzer {
     fn analyze_parsed_diagram_cancellable(
         &self,
         input: DiagramCaptureInput<'_>,
-        model: &serde_json::Value,
-        source_config: &SourceConfigEvidence,
+        parsed: ParsedDiagramCaptureInput<'_>,
         mut candidates: Vec<DiagnosticCandidate>,
         mode: CaptureMode,
         cancellation: &AnalysisCancellationToken,
@@ -878,6 +889,11 @@ impl Analyzer {
             metadata,
             editor_facts,
         } = input;
+        let ParsedDiagramCaptureInput {
+            model,
+            warning_facts,
+            source_config,
+        } = parsed;
         cancellation.checkpoint()?;
         let diagram_type = metadata.diagram_type.as_str();
         candidates.extend(crate::rules::parsed_source_lint_candidates_cancellable(
@@ -888,7 +904,7 @@ impl Analyzer {
         )?);
         candidates.extend(crate::rules::semantic_warning_candidates_cancellable(
             diagram_type,
-            model,
+            warning_facts,
             source_map,
             cancellation,
         )?);
@@ -1141,6 +1157,7 @@ enum DiagramAnalysisEvidence {
     Parsed {
         metadata: ParseMetadata,
         model: serde_json::Value,
+        warning_facts: Vec<DiagramWarningFact>,
         editor_facts: Option<EditorSemanticFacts>,
         source_config: SourceConfigEvidence,
     },
@@ -1210,6 +1227,13 @@ struct DiagramCaptureInput<'a> {
     source_map: &'a SourceMap,
     metadata: &'a ParseMetadata,
     editor_facts: Option<&'a EditorSemanticFacts>,
+}
+
+#[derive(Clone, Copy)]
+struct ParsedDiagramCaptureInput<'a> {
+    model: &'a serde_json::Value,
+    warning_facts: &'a [DiagramWarningFact],
+    source_config: &'a SourceConfigEvidence,
 }
 
 impl CaptureMode {

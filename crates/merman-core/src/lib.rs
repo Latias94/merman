@@ -418,12 +418,16 @@ impl Engine {
             .parse_json(parse_pipeline::ParseTiming::Json)
     }
 
-    /// Captures semantic JSON or its original error and parser-backed editor facts in one operation.
+    /// Captures semantic JSON or its original error, parser-owned typed warning facts, and
+    /// parser-backed editor facts in one operation.
     ///
     /// This is intended for editor integrations that need both diagnostics/facts and the
     /// Mermaid-compatible model. Once preprocessing and detection succeed, family parse errors and
-    /// panics are retained inside the snapshot alongside metadata and recovery facts. Consumers
-    /// must project that failure state directly rather than parsing the source again.
+    /// panics are retained inside the snapshot alongside metadata and recovery facts. Successful
+    /// snapshots expose warnings through the `warning_facts` field of
+    /// [`DiagramParseOutcome::Parsed`]; consumers should not decode the compatibility model's
+    /// `warningFacts` field. Consumers must project a retained failure state directly rather than
+    /// parsing the source again.
     /// Error suppression is deliberately absent from this API; suppression remains limited to
     /// model-producing JSON and render facades.
     pub fn parse_diagram_snapshot_sync(&self, text: &str) -> Result<Option<DiagramParseSnapshot>> {
@@ -459,9 +463,9 @@ impl Engine {
 
     /// Captures one editor-facing parse operation when the diagram type is already known.
     ///
-    /// This has the same closed snapshot contract as [`Engine::parse_diagram_snapshot_sync`], but
-    /// skips automatic detection. Family parse failures and panics remain inside the returned
-    /// snapshot.
+    /// This has the same closed snapshot contract, including parser-owned typed warning facts, as
+    /// [`Engine::parse_diagram_snapshot_sync`], but skips automatic detection. Family parse
+    /// failures and panics remain inside the returned snapshot.
     pub fn parse_diagram_snapshot_with_type_sync(
         &self,
         diagram_type: &str,
