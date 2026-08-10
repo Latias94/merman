@@ -1,4 +1,4 @@
-use super::super::super::label::GraphLabel;
+use super::super::super::label::{GraphLabel, GraphLabelMetrics};
 use super::super::super::model::{AsciiGraph, AsciiGraphGroup, GraphDirection, GraphGroupKind};
 use super::super::super::topology::GraphGroupTopology;
 use super::super::grid;
@@ -73,28 +73,47 @@ pub(super) fn empty_group_minimum_size(
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
 ) -> Result<(usize, usize)> {
-    let title = empty_group_title(group, width_profile);
-    empty_group_minimum_size_for_title(group, &title, resources)
+    let title = empty_group_title_metrics(group, width_profile, resources)?;
+    empty_group_minimum_size_for_metrics(group, title, resources)
 }
 
-fn empty_group_title(group: &AsciiGraphGroup, width_profile: TerminalWidthProfile) -> GraphLabel {
+fn empty_group_title(
+    group: &AsciiGraphGroup,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<GraphLabel> {
     match group.kind {
-        GraphGroupKind::Container => GraphLabel::new_with_profile(&group.title, width_profile),
-        GraphGroupKind::Divider => GraphLabel::new_with_profile("", width_profile),
+        GraphGroupKind::Container => {
+            GraphLabel::try_new_with_profile(&group.title, width_profile, resources)
+        }
+        GraphGroupKind::Divider => Ok(GraphLabel::empty_with_profile(width_profile)),
     }
 }
 
-fn empty_group_minimum_size_for_title(
+fn empty_group_title_metrics(
     group: &AsciiGraphGroup,
-    title: &GraphLabel,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<GraphLabelMetrics> {
+    match group.kind {
+        GraphGroupKind::Container => {
+            GraphLabel::try_measure_with_profile(&group.title, width_profile, resources)
+        }
+        GraphGroupKind::Divider => {
+            GraphLabel::try_measure_with_profile("", width_profile, resources)
+        }
+    }
+}
+
+fn empty_group_minimum_size_for_metrics(
+    group: &AsciiGraphGroup,
+    title: GraphLabelMetrics,
     resources: &ResourceContext,
 ) -> Result<(usize, usize)> {
     match group.kind {
         GraphGroupKind::Container => Ok((
-            resources.checked_grid_add(title.width().max(1), 2)?.max(3),
-            resources
-                .checked_grid_add(title.content_height(), 3)?
-                .max(4),
+            resources.checked_grid_add(title.width.max(1), 2)?.max(3),
+            resources.checked_grid_add(title.content_height, 3)?.max(4),
         )),
         // Divider groups still need a non-degenerate perimeter when they are edge endpoints.
         GraphGroupKind::Divider => Ok((3, 3)),
@@ -243,7 +262,7 @@ pub(super) fn layout_groups(
             }
         }
         let (title, bounds) = if let Some(member_bounds) = member_bounds {
-            let title = group_title_for_layout(
+            let title_metrics = group_title_metrics_for_layout(
                 group,
                 member_bounds.x,
                 member_bounds.right,
@@ -252,17 +271,25 @@ pub(super) fn layout_groups(
             )?;
             let bounds = group_layout_bounds_for_members(
                 group,
-                &title,
+                title_metrics,
                 member_bounds.x,
                 member_bounds.y,
                 member_bounds.right,
                 member_bounds.bottom,
                 resources,
             )?;
+            let title = group_title_for_layout(
+                group,
+                member_bounds.x,
+                member_bounds.right,
+                width_profile,
+                resources,
+            )?;
             (title, bounds)
         } else {
-            let title = empty_group_title(group, width_profile);
-            let (width, height) = empty_group_minimum_size_for_title(group, &title, resources)?;
+            let title_metrics = empty_group_title_metrics(group, width_profile, resources)?;
+            let (width, height) =
+                empty_group_minimum_size_for_metrics(group, title_metrics, resources)?;
             let (x, y) = empty_group_origin(
                 graph,
                 topology,
@@ -276,6 +303,7 @@ pub(super) fn layout_groups(
                 &group_layout_index_by_graph_index,
                 resources,
             )?;
+            let title = empty_group_title(group, width_profile, resources)?;
             (
                 title,
                 group_layout_bounds_from_size(x, y, width, height, resources)?,
@@ -573,12 +601,13 @@ fn empty_group_ancestor_insets(
         let top_inset = match parent_group.kind {
             GraphGroupKind::Container => {
                 let title_width = child_width.saturating_sub(2).max(1);
-                let title = GraphLabel::wrapped_with_profile(
+                let title = GraphLabel::try_measure_wrapped_with_profile(
                     &parent_group.title,
                     title_width,
                     width_profile,
-                );
-                resources.checked_grid_add(title.content_height(), 3)?
+                    resources,
+                )?;
+                resources.checked_grid_add(title.content_height, 3)?
             }
             GraphGroupKind::Divider => 1,
         };
@@ -686,9 +715,14 @@ pub(super) fn raw_group_bounds_for_members(
                 .and_then(|width| usize::try_from(width).ok())
                 .ok_or_else(|| grid_overflow(resources))?
                 .max(1);
-            let title = GraphLabel::wrapped_with_profile(&group.title, title_width, width_profile);
+            let title = GraphLabel::try_measure_wrapped_with_profile(
+                &group.title,
+                title_width,
+                width_profile,
+                resources,
+            )?;
             let title_space = title
-                .content_height()
+                .content_height
                 .checked_add(3)
                 .ok_or_else(|| grid_overflow(resources))?;
             let title_space = isize::try_from(title_space).map_err(|_| grid_overflow(resources))?;
@@ -916,19 +950,45 @@ fn group_title_for_layout(
             let member_width = max_right
                 .checked_sub(min_x)
                 .ok_or_else(|| grid_overflow(resources))?;
-            GraphLabel::wrapped_with_profile(
+            GraphLabel::try_wrapped_with_profile(
                 &group.title,
                 resources.checked_grid_add(member_width, 3)?.max(1),
                 width_profile,
+                resources,
+            )?
+        }
+        GraphGroupKind::Divider => GraphLabel::empty_with_profile(width_profile),
+    })
+}
+
+fn group_title_metrics_for_layout(
+    group: &AsciiGraphGroup,
+    min_x: usize,
+    max_right: usize,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<GraphLabelMetrics> {
+    match group.kind {
+        GraphGroupKind::Container => {
+            let member_width = max_right
+                .checked_sub(min_x)
+                .ok_or_else(|| grid_overflow(resources))?;
+            GraphLabel::try_measure_wrapped_with_profile(
+                &group.title,
+                resources.checked_grid_add(member_width, 3)?.max(1),
+                width_profile,
+                resources,
             )
         }
-        GraphGroupKind::Divider => GraphLabel::new_with_profile("", width_profile),
-    })
+        GraphGroupKind::Divider => {
+            GraphLabel::try_measure_with_profile("", width_profile, resources)
+        }
+    }
 }
 
 fn group_layout_bounds_for_members(
     group: &AsciiGraphGroup,
-    title: &GraphLabel,
+    title: GraphLabelMetrics,
     min_x: usize,
     min_y: usize,
     max_right: usize,
@@ -940,7 +1000,7 @@ fn group_layout_bounds_for_members(
 
     Ok(match group.kind {
         GraphGroupKind::Container => {
-            let title_space = resources.checked_grid_add(title.content_height(), 3)?;
+            let title_space = resources.checked_grid_add(title.content_height, 3)?;
             GroupLayoutBounds {
                 x,
                 y: min_y.saturating_sub(title_space),
@@ -1021,7 +1081,7 @@ mod tests {
     }
 
     #[test]
-    fn indexed_group_bounds_accept_exact_work_and_reject_max_minus_one() {
+    fn indexed_group_bounds_account_for_exact_work_and_reject_max_minus_one() {
         let mut graph = AsciiGraph::new(GraphDirection::TopDown);
         graph.add_node("a", "A");
         graph.add_node("b", "B");
@@ -1045,12 +1105,18 @@ mod tests {
         let topology = GraphGroupTopology::try_new(&graph, &mut topology_resources)
             .expect("group topology should build");
 
-        let member_count = graph
-            .groups
-            .iter()
-            .map(|group| group.nodes.len())
-            .sum::<usize>();
-        let exact_work = layouts.len() + member_count + graph.groups.len() * 2;
+        let mut measured_resources = ResourceContext::new(unbounded);
+        layout_groups(
+            &graph,
+            &layouts,
+            &topology,
+            TerminalWidthProfile::Unicode,
+            &mut measured_resources,
+        )
+        .expect("unbounded indexed group-bound work should pass");
+        let exact_work = measured_resources.layout_work_used();
+        assert!(exact_work > 0);
+
         let exact_policy = unbounded
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
             .expect("exact layout-work limit should be valid");
@@ -1077,14 +1143,13 @@ mod tests {
             TerminalWidthProfile::Unicode,
             &mut below_resources,
         )
-        .expect_err("max-minus-one work should fail before layout-index allocation");
+        .expect_err("max-minus-one indexed group-bound work should fail");
         let AsciiError::ResourceLimitExceeded(details) = error else {
             panic!("expected a layout-work resource error, got {error:?}");
         };
         assert_eq!(details.limit, AsciiResourceLimitId::MaxLayoutWorkUnits);
         assert_eq!(details.actual, exact_work);
         assert_eq!(details.max, exact_work - 1);
-        assert_eq!(below_resources.layout_work_used(), 0);
     }
 
     #[test]

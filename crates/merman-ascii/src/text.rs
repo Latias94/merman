@@ -721,6 +721,7 @@ pub(crate) fn truncate_display_width_with_profile(
     out
 }
 
+#[cfg(test)]
 pub(crate) fn wrap_display_lines_with_profile(
     text: &str,
     max_width: usize,
@@ -752,6 +753,7 @@ pub(crate) fn split_label_lines(raw: &str) -> Vec<String> {
         .collect()
 }
 
+#[cfg(test)]
 pub(crate) fn wrap_label_lines_with_profile(
     raw: &str,
     max_width: usize,
@@ -831,6 +833,7 @@ fn byte_eq_ignore_ascii_case(left: u8, right: u8) -> bool {
     left.eq_ignore_ascii_case(&right)
 }
 
+#[cfg(test)]
 fn wrap_display_paragraph(
     text: &str,
     max_width: usize,
@@ -870,6 +873,7 @@ fn wrap_display_paragraph(
     }
 }
 
+#[cfg(test)]
 fn push_wrapped_word(
     word: &str,
     max_width: usize,

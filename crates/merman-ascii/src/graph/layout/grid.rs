@@ -172,6 +172,7 @@ fn layout_left_right_grid_nodes(
         &column_widths,
         &row_heights,
         options.terminal_width_profile,
+        resources,
     )?;
 
     Ok((layouts, column_widths, row_heights))
@@ -1295,6 +1296,7 @@ fn layout_top_down_grid_nodes(
         &column_widths,
         &row_heights,
         options.terminal_width_profile,
+        resources,
     )?;
 
     Ok((layouts, column_widths, row_heights))
@@ -1505,13 +1507,14 @@ fn build_node_layouts(
     column_widths: &AxisSizes,
     row_heights: &AxisSizes,
     width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
 ) -> Result<Vec<NodeLayout>> {
     let mut layouts = Vec::new();
     try_reserve_vec(&mut layouts, placements.len())?;
     for (coord, node) in placements.into_iter().zip(graph.nodes.iter()) {
         layouts.push(NodeLayout {
             id: node.id.clone(),
-            label: graph_node_label(node, width_profile),
+            label: graph_node_label(node, width_profile, resources)?,
             shape: node.shape,
             style: node.style,
             grid: coord,
@@ -1576,14 +1579,19 @@ fn graph_node_label_metrics(
     }
 }
 
-fn graph_node_label(node: &AsciiGraphNode, width_profile: TerminalWidthProfile) -> GraphLabel {
+fn graph_node_label(
+    node: &AsciiGraphNode,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<GraphLabel> {
     match node.semantics.compartments.as_ref() {
-        Some(compartments) => GraphLabel::compartmented_with_profile(
+        Some(compartments) => GraphLabel::try_compartmented_with_profile(
             &compartments.title,
             &compartments.body,
             width_profile,
+            resources,
         ),
-        None => GraphLabel::new_with_profile(&node.label, width_profile),
+        None => GraphLabel::try_new_with_profile(&node.label, width_profile, resources),
     }
 }
 

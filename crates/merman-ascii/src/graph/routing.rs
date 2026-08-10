@@ -506,7 +506,7 @@ fn endpoint_layout(
 fn group_endpoint_layout(group: &GroupLayout, charset: &GraphCharset) -> NodeLayout {
     NodeLayout {
         id: group.id.clone(),
-        label: GraphLabel::new_with_profile("", charset.width_profile),
+        label: GraphLabel::empty_with_profile(charset.width_profile),
         shape: GraphNodeShape::Rect,
         style: GraphNodeStyle::default(),
         grid: GridCoord { x: 0, y: 0 },

@@ -1,7 +1,12 @@
 use crate::options::TerminalWidthProfile;
-use crate::resource::ResourceContext;
-use crate::safe_text::try_measure_normalized_label_lines;
-use crate::text::{display_width_with_profile, split_label_lines, wrap_label_lines_with_profile};
+use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
+use crate::safe_text::{
+    LabelBreakPolicy, NormalizedLabelPlan, try_measure_normalized_label_lines,
+    try_plan_normalized_label_lines_with_policy,
+};
+use crate::text::display_width_with_profile;
+#[cfg(test)]
+use crate::text::{split_label_lines, wrap_label_lines_with_profile};
 
 pub(super) const GRAPH_LABEL_LINE_GAP: usize = 1;
 
@@ -22,13 +27,31 @@ pub(super) struct GraphLabel {
 impl GraphLabel {
     #[cfg(test)]
     pub(super) fn new(raw: &str) -> Self {
-        Self::new_with_profile(raw, TerminalWidthProfile::Unicode)
+        let resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
+            merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
+        ));
+        Self::try_new_with_profile(raw, TerminalWidthProfile::Unicode, &resources)
+            .expect("test graph labels should fit the unbounded policy")
     }
 
+    #[cfg(test)]
     pub(super) fn new_with_profile(raw: &str, width_profile: TerminalWidthProfile) -> Self {
         Self::from_lines(split_label_lines(raw), width_profile, None)
     }
 
+    pub(super) fn empty_with_profile(width_profile: TerminalWidthProfile) -> Self {
+        Self::from_lines(vec![String::new()], width_profile, None)
+    }
+
+    pub(super) fn try_new_with_profile(
+        raw: &str,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> crate::Result<Self> {
+        Self::try_single_with_profile(raw, None, width_profile, resources, || {})
+    }
+
+    #[cfg(test)]
     pub(super) fn compartmented_with_profile(
         title: &str,
         body: &str,
@@ -41,6 +64,43 @@ impl GraphLabel {
         Self::from_lines(title_lines, width_profile, Some(title_line_count))
     }
 
+    pub(super) fn try_compartmented_with_profile(
+        title: &str,
+        body: &str,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> crate::Result<Self> {
+        let title_plan = required_label_plan(title, None, width_profile, resources)?;
+        let body_plan = required_label_plan(body, None, width_profile, resources)?;
+        let title_metrics = title_plan.metrics();
+        let body_metrics = body_plan.metrics();
+        let line_count = title_metrics
+            .line_count
+            .checked_add(body_metrics.line_count)
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+        let width = title_metrics.max_width.max(body_metrics.max_width);
+        resources.grid_extent(width.max(1), line_count)?;
+        let materialized_bytes = title_metrics
+            .materialized_bytes
+            .checked_add(body_metrics.materialized_bytes)
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+        resources.check(AsciiResourceLimitId::MaxOutputBytes, materialized_bytes)?;
+
+        let (mut title_lines, title_width) = title_plan.materialize(title, resources)?.into_parts();
+        title_lines
+            .try_reserve_exact(body_metrics.line_count)
+            .map_err(|_| label_allocation_failed())?;
+        let (mut body_lines, body_width) = body_plan.materialize(body, resources)?.into_parts();
+        title_lines.append(&mut body_lines);
+        Ok(Self {
+            lines: title_lines,
+            width: title_width.max(body_width),
+            width_profile,
+            compartment_break_after: Some(title_metrics.line_count.max(1)),
+        })
+    }
+
+    #[cfg(test)]
     pub(super) fn wrapped_with_profile(
         raw: &str,
         max_width: usize,
@@ -53,10 +113,20 @@ impl GraphLabel {
         )
     }
 
+    pub(super) fn try_wrapped_with_profile(
+        raw: &str,
+        max_width: usize,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> crate::Result<Self> {
+        Self::try_single_with_profile(raw, Some(max_width), width_profile, resources, || {})
+    }
+
     pub(super) fn lines(&self) -> &[String] {
         &self.lines
     }
 
+    #[cfg(test)]
     pub(super) fn width(&self) -> usize {
         self.width
     }
@@ -99,6 +169,17 @@ impl GraphLabel {
                 .map(|metrics| metrics.max_width)
                 .unwrap_or_default(),
         )
+    }
+
+    pub(super) fn try_measure_wrapped_with_profile(
+        raw: &str,
+        max_width: usize,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> crate::Result<GraphLabelMetrics> {
+        let metrics =
+            required_label_plan(raw, Some(max_width), width_profile, resources)?.metrics();
+        graph_label_metrics(metrics.max_width, metrics.line_count, resources)
     }
 
     pub(super) fn try_measure_compartmented_with_profile(
@@ -146,6 +227,64 @@ impl GraphLabel {
             compartment_break_after,
         }
     }
+
+    fn try_single_with_profile(
+        raw: &str,
+        wrap_width: Option<usize>,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+        before_materialize: impl FnOnce(),
+    ) -> crate::Result<Self> {
+        let plan = required_label_plan(raw, wrap_width, width_profile, resources)?;
+        let metrics = plan.metrics();
+        resources.grid_extent(metrics.max_width.max(1), metrics.line_count)?;
+        plan.check_materialization_limits(resources)?;
+        before_materialize();
+        let (lines, width) = plan.materialize(raw, resources)?.into_parts();
+        Ok(Self {
+            lines,
+            width,
+            width_profile,
+            compartment_break_after: None,
+        })
+    }
+
+    #[cfg(test)]
+    fn try_wrapped_with_probe(
+        raw: &str,
+        max_width: usize,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+        materialized: &std::cell::Cell<bool>,
+    ) -> crate::Result<Self> {
+        Self::try_single_with_profile(raw, Some(max_width), width_profile, resources, || {
+            materialized.set(true)
+        })
+    }
+}
+
+fn required_label_plan(
+    raw: &str,
+    wrap_width: Option<usize>,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> crate::Result<NormalizedLabelPlan> {
+    try_plan_normalized_label_lines_with_policy(
+        raw,
+        width_profile,
+        false,
+        wrap_width,
+        LabelBreakPolicy::MermaidLabelBreaks,
+        resources,
+    )?
+    .ok_or(crate::error::AsciiError::UnsupportedFeature {
+        diagram_type: "flowchart",
+        feature: "empty graph label plan",
+    })
+}
+
+fn label_allocation_failed() -> crate::error::AsciiError {
+    crate::error::AsciiError::allocation_failed(AsciiResourceLimitPhase::Document.as_str())
 }
 
 fn graph_label_metrics(
@@ -168,7 +307,10 @@ fn graph_label_metrics(
 #[cfg(test)]
 mod tests {
     use super::GraphLabel;
-    use crate::TerminalWidthProfile;
+    use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy, ResourceContext};
+    use crate::{AsciiError, TerminalWidthProfile};
+    use merman_core::resources::ResourceProfile;
+    use std::cell::Cell;
 
     #[test]
     fn graph_label_splits_html_breaks() {
@@ -208,6 +350,52 @@ mod tests {
         assert_eq!(label.lines(), ["Alpha", "Beta", "", "Gamma", "Delta"]);
         assert_eq!(label.width(), 5);
         assert_eq!(label.content_height(), 9);
+    }
+
+    #[test]
+    fn wrapped_label_admits_exact_grid_before_materializing_rows() {
+        const REQUIRED_CELLS: usize = 25;
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let exact_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxGridCells, REQUIRED_CELLS)
+            .expect("exact graph-label grid limit should be valid");
+        let exact_resources = ResourceContext::new(exact_policy);
+        let exact_materialized = Cell::new(false);
+
+        let label = GraphLabel::try_wrapped_with_probe(
+            "Alpha Beta<br><br>Gamma Delta",
+            6,
+            TerminalWidthProfile::Unicode,
+            &exact_resources,
+            &exact_materialized,
+        )
+        .expect("exact graph-label extent should permit materialization");
+
+        assert_eq!(label.lines(), ["Alpha", "Beta", "", "Gamma", "Delta"]);
+        assert!(exact_materialized.get());
+
+        let below_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxGridCells, REQUIRED_CELLS - 1)
+            .expect("max-minus-one graph-label grid limit should be valid");
+        let below_resources = ResourceContext::new(below_policy);
+        let below_materialized = Cell::new(false);
+        let error = GraphLabel::try_wrapped_with_probe(
+            "Alpha Beta<br><br>Gamma Delta",
+            6,
+            TerminalWidthProfile::Unicode,
+            &below_resources,
+            &below_materialized,
+        )
+        .expect_err("max-minus-one graph-label extent should reject before materialization");
+
+        assert!(!below_materialized.get());
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxGridCells
+                    && details.actual == REQUIRED_CELLS
+                    && details.max == REQUIRED_CELLS - 1
+        ));
     }
 
     #[test]
