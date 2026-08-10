@@ -1366,12 +1366,22 @@ fn apply_vertical_edge_spacing(
         options.graph_padding_y,
         resources.checked_grid_mul(edge.length.saturating_sub(1), 2)?,
     )?;
+    let label_width = if from.x == to.x {
+        edge.label
+            .as_deref()
+            .map(|label| {
+                GraphLabel::try_measure_width_with_profile(
+                    label,
+                    options.terminal_width_profile,
+                    resources,
+                )
+            })
+            .transpose()?
+    } else {
+        None
+    };
     set_axis_size(row_heights, from.y.max(to.y) - 1, length_gap);
-    if from.x == to.x
-        && let Some(label) = edge.label.as_deref()
-    {
-        let label_width =
-            GraphLabel::new_with_profile(label, options.terminal_width_profile).width();
+    if let Some(label_width) = label_width {
         set_axis_size(
             column_widths,
             from.x + 1,
@@ -1402,7 +1412,11 @@ fn apply_horizontal_edge_spacing(
         .as_deref()
         .map(|label| {
             resources.checked_grid_add(
-                GraphLabel::new_with_profile(label, options.terminal_width_profile).width(),
+                GraphLabel::try_measure_width_with_profile(
+                    label,
+                    options.terminal_width_profile,
+                    resources,
+                )?,
                 2,
             )
         })
@@ -1618,6 +1632,100 @@ mod tests {
         ResourceContext::new(AsciiResourcePolicy::for_profile(
             ResourceProfile::UnboundedForTrustedInput,
         ))
+    }
+
+    fn apply_test_edge_label_spacing(
+        direction: GraphDirection,
+        edge: &AsciiGraphEdge,
+        options: &AsciiRenderOptions,
+        column_widths: &mut AxisSizes,
+        row_heights: &mut AxisSizes,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        match direction {
+            GraphDirection::LeftRight => apply_horizontal_edge_spacing(
+                edge,
+                GridCoord { x: 0, y: 0 },
+                GridCoord { x: 4, y: 0 },
+                options,
+                column_widths,
+                resources,
+            ),
+            GraphDirection::TopDown => apply_vertical_edge_spacing(
+                edge,
+                GridCoord { x: 0, y: 0 },
+                GridCoord { x: 0, y: 4 },
+                options,
+                column_widths,
+                row_heights,
+                resources,
+            ),
+            GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn edge_label_spacing_preflights_exact_work_before_axis_updates() {
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        graph.add_edge("source", "target");
+        graph.edges[0].label = Some("A<br>B".to_string());
+        let edge = &graph.edges[0];
+        let options = AsciiRenderOptions::ascii();
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+
+        for direction in [GraphDirection::LeftRight, GraphDirection::TopDown] {
+            let measured_resources = ResourceContext::new(unbounded);
+            apply_test_edge_label_spacing(
+                direction,
+                edge,
+                &options,
+                &mut AxisSizes::new(),
+                &mut AxisSizes::new(),
+                &measured_resources,
+            )
+            .expect("unbounded label spacing should pass");
+            let exact_work = measured_resources.layout_work_used();
+            assert!(exact_work > 0, "edge label scans must debit layout work");
+
+            let exact_policy = unbounded
+                .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
+                .expect("layout work limit should be valid");
+            let exact_resources = ResourceContext::new(exact_policy);
+            apply_test_edge_label_spacing(
+                direction,
+                edge,
+                &options,
+                &mut AxisSizes::new(),
+                &mut AxisSizes::new(),
+                &exact_resources,
+            )
+            .expect("edge label spacing should pass at the exact work limit");
+            assert_eq!(exact_resources.layout_work_used(), exact_work);
+
+            let below_policy = unbounded
+                .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
+                .expect("layout work limit should be valid");
+            let below_resources = ResourceContext::new(below_policy);
+            let mut column_widths = AxisSizes::new();
+            let mut row_heights = AxisSizes::new();
+            let error = apply_test_edge_label_spacing(
+                direction,
+                edge,
+                &options,
+                &mut column_widths,
+                &mut row_heights,
+                &below_resources,
+            )
+            .expect_err("max-minus-one work must reject edge label spacing");
+            let AsciiError::ResourceLimitExceeded(details) = error else {
+                panic!("expected a layout-work resource error, got {error:?}");
+            };
+            assert_eq!(details.limit, AsciiResourceLimitId::MaxLayoutWorkUnits);
+            assert_eq!(details.actual, exact_work);
+            assert_eq!(details.max, exact_work - 1);
+            assert!(column_widths.is_empty());
+            assert!(row_heights.is_empty());
+        }
     }
 
     #[test]

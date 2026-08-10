@@ -89,6 +89,18 @@ impl GraphLabel {
         graph_label_metrics(metrics.max_width, metrics.line_count, resources)
     }
 
+    pub(super) fn try_measure_width_with_profile(
+        raw: &str,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> crate::Result<usize> {
+        Ok(
+            try_measure_normalized_label_lines(raw, width_profile, false, resources)?
+                .map(|metrics| metrics.max_width)
+                .unwrap_or_default(),
+        )
+    }
+
     pub(super) fn try_measure_compartmented_with_profile(
         title: &str,
         body: &str,
