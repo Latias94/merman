@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   candidateDependencyClosure,
+  candidateBuildEnvironment,
   candidateBuildInvocation,
   collectLocalInputEntries,
   resolveCandidateRuntimeContract,
@@ -66,6 +67,17 @@ test("candidate builds project its private capability recipe plus one transport"
     assert.equal(invocation.args.includes("-j1"), true);
     assert.equal(invocation.args.join(" ").includes("rust-static-svg"), false);
   }
+});
+
+test("x64 musl candidate build selects the musl linker", () => {
+  const recipe = resolveCandidateRecipe("napi", "linux-x64-musl");
+  const key = "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER";
+
+  assert.equal(candidateBuildEnvironment(recipe, {})[key], "musl-gcc");
+  assert.equal(
+    candidateBuildEnvironment(recipe, { [key]: "/opt/musl/bin/musl-gcc" })[key],
+    "/opt/musl/bin/musl-gcc",
+  );
 });
 
 test("candidate runtime outputs follow explicit binding operation ownership", () => {
