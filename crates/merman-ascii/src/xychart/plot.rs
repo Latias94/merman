@@ -388,6 +388,7 @@ pub(super) struct SeriesDatum {
     pub(super) x: String,
     pub(super) value: Option<f64>,
     pub(super) point_label: Option<String>,
+    authored_x: bool,
     slot: usize,
     normalized_x: Option<f64>,
     pub(super) x_clipped: bool,
@@ -547,6 +548,8 @@ impl TerminalChartPlan {
         } else {
             &self.category_labels
         };
+        let implicit_band_domain =
+            matches!(&self.x_axis, AxisPlan::Band { categories } if categories.is_empty());
         for (index, category) in axis_labels.iter().enumerate() {
             resources.charge_layout_work(1)?;
             if !horizontal
@@ -570,7 +573,8 @@ impl TerminalChartPlan {
             }
             for (index, datum) in series.data.iter().enumerate() {
                 resources.charge_layout_work(1)?;
-                if datum.value.is_none()
+                if (implicit_band_domain && datum.authored_x)
+                    || datum.value.is_none()
                     || datum.point_label.is_some()
                     || datum
                         .value
@@ -871,6 +875,7 @@ fn build_series_plan(
                 x,
                 value: Some(value),
                 point_label: normalized_point_label(plot.point_labels.get(index)),
+                authored_x: false,
                 slot,
                 normalized_x,
                 x_clipped,
@@ -885,6 +890,7 @@ fn build_series_plan(
                 x: x.clone(),
                 value: *value,
                 point_label: normalized_point_label(plot.point_labels.get(index)),
+                authored_x: !x.trim().is_empty(),
                 slot,
                 normalized_x,
                 x_clipped,
@@ -1613,6 +1619,7 @@ mod tests {
             x: String::new(),
             value: Some(0.0),
             point_label: None,
+            authored_x: false,
             slot: 0,
             normalized_x: Some(normalized_x),
             x_clipped: false,
