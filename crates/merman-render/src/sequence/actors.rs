@@ -52,10 +52,9 @@ pub(super) struct SequenceActorLayoutPlan<'a> {
 }
 
 pub(super) struct SequenceActorLifecycleContext<'a> {
+    pub(super) model: &'a SequenceDiagramRenderModel,
     pub(super) actor_index: &'a HashMap<&'a str, usize>,
     pub(super) actor_base_heights: &'a [f64],
-    pub(super) created_actors: &'a BTreeMap<String, usize>,
-    pub(super) destroyed_actors: &'a BTreeMap<String, usize>,
     pub(super) actor_height: f64,
 }
 
@@ -450,11 +449,7 @@ fn actor_left_x(
         }
 
         // Mermaid widens the margin before a created actor by `actor.width / 2`.
-        if ctx
-            .model
-            .created_actors
-            .contains_key(&ctx.model.actor_order[i])
-        {
+        if ctx.model.created_actor_message_index_at(i).is_some() {
             prev_margin += w / 2.0;
         }
         let x = prev_width + prev_margin;
@@ -514,11 +509,13 @@ impl<'a> SequenceActorLifecycle<'a> {
     }
 
     pub(super) fn created_actor_index(&self, actor_id: &str) -> Option<usize> {
-        self.ctx.created_actors.get(actor_id).copied()
+        let actor_index = self.ctx.actor_index.get(actor_id).copied()?;
+        self.ctx.model.created_actor_message_index_at(actor_index)
     }
 
     pub(super) fn destroyed_actor_index(&self, actor_id: &str) -> Option<usize> {
-        self.ctx.destroyed_actors.get(actor_id).copied()
+        let actor_index = self.ctx.actor_index.get(actor_id).copied()?;
+        self.ctx.model.destroyed_actor_message_index_at(actor_index)
     }
 
     pub(super) fn created_top_center_y(&self, actor_id: &str) -> Option<f64> {

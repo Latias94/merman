@@ -439,6 +439,7 @@ mod tests {
             notes: Vec::new(),
             created_actors: BTreeMap::new(),
             destroyed_actors: BTreeMap::new(),
+            actor_lifecycles: None,
         }
     }
 

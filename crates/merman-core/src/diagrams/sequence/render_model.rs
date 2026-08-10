@@ -42,6 +42,19 @@ pub struct SequenceDiagramRenderModel {
     pub created_actors: BTreeMap<String, usize>,
     #[serde(rename = "destroyedActors", default)]
     pub destroyed_actors: BTreeMap<String, usize>,
+    #[serde(
+        rename = "actorLifecycles",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    /// Parser-resolved lifecycle message ownership.
+    ///
+    /// Mermaid's compatibility maps retain declaration anchors, while its
+    /// `AddMessage` state machine decides which later signal actually consumes
+    /// each pending create or destroy request. Parser-backed models store that
+    /// resolved truth in actor-order slots here. `None` is reserved for
+    /// legacy/direct typed models that only provide the compatibility maps.
+    pub actor_lifecycles: Option<Vec<SequenceActorLifecycle>>,
 }
 
 impl SequenceDiagramRenderModel {
@@ -89,6 +102,67 @@ impl SequenceDiagramRenderModel {
         root.insert("constants".to_string(), Value::Object(constants));
 
         Value::Object(root)
+    }
+
+    /// Returns the lifecycle message ownership for one actor.
+    ///
+    /// Parser-backed models use the resolved `AddMessage` projection. Legacy
+    /// direct models fall back to Mermaid's compatibility anchor maps.
+    pub fn actor_lifecycle(&self, actor_id: &str) -> Option<SequenceActorLifecycle> {
+        match &self.actor_lifecycles {
+            Some(_) => self
+                .actor_order
+                .iter()
+                .position(|id| id == actor_id)
+                .and_then(|index| self.actor_lifecycle_at(index)),
+            None => {
+                let lifecycle = SequenceActorLifecycle {
+                    created_at: self.created_actors.get(actor_id).copied(),
+                    destroyed_at: self.destroyed_actors.get(actor_id).copied(),
+                };
+                (lifecycle != SequenceActorLifecycle::default()).then_some(lifecycle)
+            }
+        }
+    }
+
+    /// Returns one actor's parser-resolved lifecycle by normalized actor order.
+    pub fn actor_lifecycle_at(&self, actor_index: usize) -> Option<SequenceActorLifecycle> {
+        match &self.actor_lifecycles {
+            Some(lifecycles) => lifecycles
+                .get(actor_index)
+                .copied()
+                .filter(|lifecycle| *lifecycle != SequenceActorLifecycle::default()),
+            None => self
+                .actor_order
+                .get(actor_index)
+                .and_then(|actor_id| self.actor_lifecycle(actor_id)),
+        }
+    }
+
+    /// Returns the effective creation index by normalized actor order.
+    pub fn created_actor_message_index_at(&self, actor_index: usize) -> Option<usize> {
+        self.actor_lifecycle_at(actor_index)?.created_at
+    }
+
+    /// Returns the effective destruction index by normalized actor order.
+    pub fn destroyed_actor_message_index_at(&self, actor_index: usize) -> Option<usize> {
+        self.actor_lifecycle_at(actor_index)?.destroyed_at
+    }
+
+    /// Returns the effective creation index.
+    ///
+    /// Parser-backed models return the consuming signal index. Legacy direct
+    /// models may return the compatibility declaration anchor instead.
+    pub fn created_actor_message_index(&self, actor_id: &str) -> Option<usize> {
+        self.actor_lifecycle(actor_id)?.created_at
+    }
+
+    /// Returns the effective destruction index.
+    ///
+    /// Parser-backed models return the consuming signal index. Legacy direct
+    /// models may return the compatibility declaration anchor instead.
+    pub fn destroyed_actor_message_index(&self, actor_id: &str) -> Option<usize> {
+        self.actor_lifecycle(actor_id)?.destroyed_at
     }
 }
 
@@ -241,6 +315,16 @@ pub struct SequenceActor {
     pub links: serde_json::Map<String, Value>,
     #[serde(default)]
     pub properties: serde_json::Map<String, Value>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+/// Signal indices that consumed one actor's pending Mermaid lifecycle requests.
+pub struct SequenceActorLifecycle {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destroyed_at: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

@@ -1405,6 +1405,93 @@ fn sequence_actor_lifecycle_adjustment_survives_block_close() {
 }
 
 #[test]
+fn sequence_svg_uses_resolved_add_message_lifecycle_ownership() {
+    let layout = layout_sequence_from_environment(
+        concat!(
+            "sequenceDiagram\n",
+            "participant A\n",
+            "participant C\n",
+            "create participant B\n",
+            "destroy A\n",
+            "loop pending\n",
+            "Note over C: pending\n",
+            "end\n",
+            "autonumber\n",
+            "activate C\n",
+            "deactivate C\n",
+            "C->>B: create\n",
+            "A--xC: destroy\n",
+        ),
+        &RenderEnvironment::deterministic(),
+    );
+    let actor = |id: &str| {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("missing lifecycle actor {id}"))
+    };
+
+    assert!(
+        actor("actor-top-B").y > actor("actor-top-A").y.max(actor("actor-top-C").y),
+        "the create signal after intervening records must own B's top actor"
+    );
+    assert!(
+        actor("actor-bottom-A").y < actor("actor-bottom-B").y.min(actor("actor-bottom-C").y),
+        "the signal following the shared create anchor must own A's destruction"
+    );
+}
+
+#[test]
+fn sequence_svg_supersedes_consecutive_same_kind_lifecycle_declarations() {
+    let created = layout_sequence_from_environment(
+        concat!(
+            "sequenceDiagram\n",
+            "participant A\n",
+            "create participant B\n",
+            "create participant C\n",
+            "A->>C: create\n",
+        ),
+        &RenderEnvironment::deterministic(),
+    );
+    let created_actor = |id: &str| {
+        created
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("missing created actor {id}"))
+    };
+    assert_eq!(
+        created_actor("actor-top-B").y,
+        created_actor("actor-top-A").y
+    );
+    assert!(created_actor("actor-top-C").y > created_actor("actor-top-A").y);
+
+    let destroyed = layout_sequence_from_environment(
+        concat!(
+            "sequenceDiagram\n",
+            "participant A\n",
+            "participant B\n",
+            "destroy A\n",
+            "destroy B\n",
+            "A--xB: destroy\n",
+        ),
+        &RenderEnvironment::deterministic(),
+    );
+    let destroyed_actor = |id: &str| {
+        destroyed
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("missing destroyed actor {id}"))
+    };
+    assert!(
+        destroyed_actor("actor-bottom-B").y < destroyed_actor("actor-bottom-A").y,
+        "only the latest pending destroy declaration should shorten its actor lifeline"
+    );
+}
+
+#[test]
 fn sequence_font_size_precedence_matches_fresh_mermaid_11_16_root() {
     let svg = render_sequence_svg_from_fixture_with_options(
         "stress_sequence_font_size_precedence_090.mmd",

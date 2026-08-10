@@ -80,10 +80,9 @@ impl<'a> SequenceLayoutLoopState<'a> {
     fn new(ctx: &SequenceLayoutGraphContext<'a>) -> Self {
         let activation_state = SequenceActivationState::new(ctx.activation_width);
         let actor_lifecycle = SequenceActorLifecycle::new(SequenceActorLifecycleContext {
+            model: ctx.model,
             actor_index: ctx.actor_index,
             actor_base_heights: ctx.actor_base_heights,
-            created_actors: &ctx.model.created_actors,
-            destroyed_actors: &ctx.model.destroyed_actors,
             actor_height: ctx.actor_height,
         });
         let (bounds_start_x, bounds_stop_x) = ctx

@@ -2,7 +2,8 @@ use super::projection_allocation_failed;
 use crate::error::{AsciiError, Result};
 use crate::resource::ResourceContext;
 use merman_core::diagrams::sequence::{
-    SequenceDiagramRenderModel, SequenceMessageKind as CoreSequenceMessageKind,
+    SequenceActorLifecycle as CoreSequenceActorLifecycle, SequenceDiagramRenderModel,
+    SequenceMessageKind as CoreSequenceMessageKind,
 };
 use std::collections::HashMap;
 
@@ -29,6 +30,77 @@ struct SequenceLifecycleRequest<'a> {
 }
 
 pub(super) fn resolve_actor_lifecycles(
+    model: &SequenceDiagramRenderModel,
+    participant_index: &HashMap<&str, usize>,
+    resources: &mut ResourceContext,
+) -> Result<Vec<SequenceActorLifecycle>> {
+    if let Some(lifecycles) = &model.actor_lifecycles {
+        return project_resolved_actor_lifecycles(model, lifecycles, participant_index, resources);
+    }
+
+    resolve_compatibility_actor_lifecycles(model, participant_index, resources)
+}
+
+fn project_resolved_actor_lifecycles(
+    model: &SequenceDiagramRenderModel,
+    resolved: &[CoreSequenceActorLifecycle],
+    participant_index: &HashMap<&str, usize>,
+    resources: &mut ResourceContext,
+) -> Result<Vec<SequenceActorLifecycle>> {
+    let edge_count = resolved.iter().try_fold(0usize, |count, lifecycle| {
+        let count =
+            resources.checked_work_add(count, usize::from(lifecycle.created_at.is_some()))?;
+        resources.checked_work_add(count, usize::from(lifecycle.destroyed_at.is_some()))
+    })?;
+    // Visit every sidecar slot once to count owned edges and once to validate
+    // and project it. Each present lifecycle edge adds one signal lookup.
+    let resolved_work = resources.checked_work_mul(resolved.len(), 2)?;
+    let work = resources.checked_work_add(participant_index.len(), resolved_work)?;
+    let work = resources.checked_work_add(work, edge_count)?;
+    resources.charge_layout_work(work)?;
+
+    let mut lifecycles = Vec::new();
+    lifecycles
+        .try_reserve_exact(participant_index.len())
+        .map_err(|_| projection_allocation_failed())?;
+    lifecycles.resize(participant_index.len(), SequenceActorLifecycle::default());
+    if resolved.len() != model.actor_order.len() || resolved.len() != participant_index.len() {
+        return Err(sequence_lifecycle_feature("actor lifecycle actors"));
+    }
+
+    for (actor_index, lifecycle) in resolved.iter().enumerate() {
+        let actor_id = model
+            .actor_order
+            .get(actor_index)
+            .ok_or_else(|| sequence_lifecycle_feature("actor lifecycle actors"))?;
+        if actor_lifecycle_index(participant_index, actor_id, "actor lifecycle actors")?
+            != actor_index
+        {
+            return Err(sequence_lifecycle_feature("actor lifecycle actors"));
+        }
+        if let Some(model_index) = lifecycle.created_at {
+            let message = resolved_lifecycle_signal(model, model_index)?;
+            if message.to.as_deref() != Some(actor_id.as_str()) {
+                return Err(sequence_lifecycle_feature("actor creation messages"));
+            }
+            lifecycles[actor_index].created_at = Some(model_index);
+        }
+        if let Some(model_index) = lifecycle.destroyed_at {
+            let message = resolved_lifecycle_signal(model, model_index)?;
+            if message.from.as_deref() != Some(actor_id.as_str())
+                && message.to.as_deref() != Some(actor_id.as_str())
+            {
+                return Err(sequence_lifecycle_feature("actor destruction messages"));
+            }
+            lifecycles[actor_index].destroyed_at = Some(model_index);
+        }
+        validate_lifecycle_order(std::slice::from_ref(&lifecycles[actor_index]))?;
+    }
+
+    Ok(lifecycles)
+}
+
+fn resolve_compatibility_actor_lifecycles(
     model: &SequenceDiagramRenderModel,
     participant_index: &HashMap<&str, usize>,
     resources: &mut ResourceContext,
@@ -148,7 +220,30 @@ pub(super) fn resolve_actor_lifecycles(
         return Err(sequence_lifecycle_feature("actor destruction messages"));
     }
 
-    for lifecycle in &lifecycles {
+    validate_lifecycle_order(&lifecycles)?;
+
+    Ok(lifecycles)
+}
+
+fn resolved_lifecycle_signal(
+    model: &SequenceDiagramRenderModel,
+    model_index: usize,
+) -> Result<&merman_core::diagrams::sequence::SequenceMessage> {
+    let message = model
+        .messages
+        .get(model_index)
+        .ok_or(AsciiError::UnsupportedFeature {
+            diagram_type: "sequence",
+            feature: "actor lifecycle message indices",
+        })?;
+    if message.semantic_kind() != CoreSequenceMessageKind::Signal {
+        return Err(sequence_lifecycle_feature("actor lifecycle message kinds"));
+    }
+    Ok(message)
+}
+
+fn validate_lifecycle_order(lifecycles: &[SequenceActorLifecycle]) -> Result<()> {
+    for lifecycle in lifecycles {
         if let (Some(created_at), Some(destroyed_at)) =
             (lifecycle.created_at, lifecycle.destroyed_at)
             && destroyed_at <= created_at
@@ -156,8 +251,7 @@ pub(super) fn resolve_actor_lifecycles(
             return Err(sequence_lifecycle_feature("actor lifecycle order"));
         }
     }
-
-    Ok(lifecycles)
+    Ok(())
 }
 
 fn register_pending_lifecycle<'a>(
@@ -294,5 +388,28 @@ mod tests {
                     && details.max == total_work - 1
         ));
         assert_eq!(below_resources.layout_work_used(), 0);
+    }
+
+    #[test]
+    fn resolved_actor_lifecycles_require_actor_order_alignment() {
+        let mut model = shared_anchor_model();
+        model
+            .actor_lifecycles
+            .as_mut()
+            .expect("parser-backed model should expose resolved lifecycle truth")
+            .pop();
+        let participant_index = participant_index(&model);
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let mut resources = ResourceContext::new(policy);
+
+        let error = resolve_actor_lifecycles(&model, &participant_index, &mut resources)
+            .expect_err("misaligned lifecycle sidecars must be rejected");
+        assert!(matches!(
+            error,
+            AsciiError::UnsupportedFeature {
+                diagram_type: "sequence",
+                feature: "actor lifecycle actors",
+            }
+        ));
     }
 }

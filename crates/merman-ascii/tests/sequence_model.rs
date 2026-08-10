@@ -193,6 +193,7 @@ fn basic_sequence_model() -> SequenceDiagramRenderModel {
         notes: Vec::new(),
         created_actors: Default::default(),
         destroyed_actors: Default::default(),
+        actor_lifecycles: None,
     }
 }
 

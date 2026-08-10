@@ -39,6 +39,12 @@ or WASM artifact; versions from alpha.5 and alpha.6 are not wire-compatible.
   them in Rust struct literals; use `GanttTaskStartConstraint::{PreviousTaskEnd, Fixed, After}` and
   `GanttTaskEndConstraint::{Unspecified, Fixed, Duration, Until}` instead of recovering authored
   constraints from the compatibility `raw` strings.
+- `SequenceDiagramRenderModel` now carries `actor_lifecycles`. Parser-produced models set this to a
+  vector aligned with `actor_order`; each entry records the actual signal that consumed a pending
+  create or destroy request. Rust struct literals must initialize the field, normally with `None`
+  for legacy direct models or `Some(...)` when supplying parser-resolved ownership. Typed Serde
+  includes `actorLifecycles`; Mermaid compatibility JSON keeps the existing `createdActors` and
+  `destroyedActors` shape unchanged.
 - Mindmap direct models now treat `MindmapDiagramRenderNode::id` as the internal topology key used
   by edge endpoints and `node_id` as the authored identity disclosed in StructuredText. Populate a
   unique, non-empty `node_id` for every node; missing or duplicate authored identities are rejected.

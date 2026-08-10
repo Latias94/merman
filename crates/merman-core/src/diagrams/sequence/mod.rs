@@ -83,10 +83,10 @@ pub(crate) use parse::{
 pub(crate) use render_model::render_model_to_compat_json;
 // Keep terminal consumers on the typed projection instead of duplicating LINETYPE decoding.
 pub use render_model::{
-    SequenceActor, SequenceAutonumber, SequenceBox, SequenceCentralDecoration,
-    SequenceDiagramRenderModel, SequenceMessage, SequenceMessageDirection, SequenceMessageKind,
-    SequenceMessageMarker, SequenceMessagePayload, SequenceMessageStroke, SequenceNote,
-    SequenceSignalSemantics,
+    SequenceActor, SequenceActorLifecycle, SequenceAutonumber, SequenceBox,
+    SequenceCentralDecoration, SequenceDiagramRenderModel, SequenceMessage,
+    SequenceMessageDirection, SequenceMessageKind, SequenceMessageMarker, SequenceMessagePayload,
+    SequenceMessageStroke, SequenceNote, SequenceSignalSemantics,
 };
 
 #[cfg(test)]
@@ -153,6 +153,103 @@ Worker-->>Bob: Done"#;
             render_model_to_compat_json(model, typed.metadata()).unwrap(),
             compat.model
         );
+    }
+
+    #[test]
+    fn typed_render_model_resolves_add_message_lifecycle_ownership() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                concat!(
+                    "sequenceDiagram\n",
+                    "participant A\n",
+                    "participant C\n",
+                    "create participant B\n",
+                    "destroy A\n",
+                    "loop pending\n",
+                    "Note over C: pending\n",
+                    "end\n",
+                    "autonumber\n",
+                    "activate C\n",
+                    "deactivate C\n",
+                    "C->>B: create\n",
+                    "A--xC: destroy\n",
+                ),
+                ParseOptions::strict(),
+            )
+            .expect("parse should succeed")
+            .expect("sequence diagram should be detected");
+        let RenderSemanticModel::Sequence(model) = parsed.model() else {
+            panic!("expected typed Sequence render model");
+        };
+
+        assert_eq!(model.created_actors.get("B"), Some(&0));
+        assert_eq!(model.destroyed_actors.get("A"), Some(&0));
+        assert_eq!(model.created_actor_message_index("B"), Some(6));
+        assert_eq!(model.destroyed_actor_message_index("A"), Some(7));
+
+        let typed_json =
+            serde_json::to_value(model).expect("typed lifecycle truth should serialize");
+        assert!(typed_json.get("actorLifecycles").is_some());
+        let round_trip: super::SequenceDiagramRenderModel =
+            serde_json::from_value(typed_json).expect("typed lifecycle truth should deserialize");
+        assert_eq!(round_trip.created_actor_message_index("B"), Some(6));
+        assert_eq!(round_trip.destroyed_actor_message_index("A"), Some(7));
+
+        let compat = render_model_to_compat_json(model, parsed.metadata())
+            .expect("compatibility projection should succeed");
+        assert!(compat.get("actorLifecycles").is_none());
+    }
+
+    #[test]
+    fn consecutive_lifecycle_declarations_keep_only_the_latest_pending_actor() {
+        for (source, consumed_actor, superseded_actor, created) in [
+            (
+                concat!(
+                    "sequenceDiagram\n",
+                    "participant A\n",
+                    "create participant B\n",
+                    "create participant C\n",
+                    "A->>C: create\n",
+                ),
+                "C",
+                "B",
+                true,
+            ),
+            (
+                concat!(
+                    "sequenceDiagram\n",
+                    "participant A\n",
+                    "participant B\n",
+                    "destroy A\n",
+                    "destroy B\n",
+                    "A--xB: destroy\n",
+                ),
+                "B",
+                "A",
+                false,
+            ),
+        ] {
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .expect("consecutive lifecycle declarations should parse")
+                .expect("sequence diagram should be detected");
+            let RenderSemanticModel::Sequence(model) = parsed.model() else {
+                panic!("expected typed Sequence render model");
+            };
+
+            let consumed_index = if created {
+                model.created_actor_message_index(consumed_actor)
+            } else {
+                model.destroyed_actor_message_index(consumed_actor)
+            };
+            let superseded_index = if created {
+                model.created_actor_message_index(superseded_actor)
+            } else {
+                model.destroyed_actor_message_index(superseded_actor)
+            };
+            assert_eq!(consumed_index, Some(0));
+            assert_eq!(superseded_index, None);
+        }
     }
 
     #[test]
