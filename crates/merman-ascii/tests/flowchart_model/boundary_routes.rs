@@ -27,10 +27,9 @@ fn flowchart_local_semantic_fixture_covers_nested_direction_boundary_routes() {
         line_index("Start") < line_index("Entry"),
         "root TD direction should keep Start above the outer group entry:\n{rendered}"
     );
-    assert_eq!(
-        line_index("Entry"),
-        line_index("Validate"),
-        "outer LR override should keep Entry and Validate on the same row:\n{rendered}"
+    assert!(
+        line_index("Entry") < line_index("Validate"),
+        "the outer boundary edges should disable its local LR override:\n{rendered}"
     );
     assert!(
         line_index("Validate") < line_index("Persist"),
@@ -72,15 +71,13 @@ fn flowchart_local_semantic_fixture_covers_multiple_boundary_routes() {
         line_index("Audit") < line_index("Validate"),
         "second entering boundary edge should preserve root TD ordering:\n{rendered}"
     );
-    assert_eq!(
-        line_index("Ingest"),
-        line_index("Validate"),
-        "subgraph LR override should keep Ingest and Validate on the same row:\n{rendered}"
+    assert!(
+        line_index("Ingest") < line_index("Validate"),
+        "external edges should disable the Pipeline LR override:\n{rendered}"
     );
-    assert_eq!(
-        line_index("Validate"),
-        line_index("Publish"),
-        "subgraph LR override should keep Validate and Publish on the same row:\n{rendered}"
+    assert!(
+        line_index("Validate") < line_index("Publish"),
+        "the Pipeline members should follow the root TD ordering:\n{rendered}"
     );
     assert!(
         line_index("Publish") < line_index("Success"),
@@ -418,7 +415,7 @@ fn flowchart_local_semantic_fixture_covers_ampersand_fanin_and_fanout() {
 }
 
 #[test]
-fn flowchart_parser_explicit_td_sibling_group_preserves_local_order_after_external_edges() {
+fn flowchart_parser_sibling_groups_with_external_edges_use_the_root_direction() {
     let rendered = render_flowchart(
         concat!(
             "flowchart TD\n",
@@ -427,15 +424,14 @@ fn flowchart_parser_explicit_td_sibling_group_preserves_local_order_after_extern
             "    A[Alpha] --> B[Beta]\n",
             "end\n",
             "subgraph right [Right Group]\n",
-            "    direction TD\n",
+            "    direction RL\n",
             "    C[Gamma] --> D[Delta]\n",
             "end\n",
             "B -- handoff --> C\n",
-            "A -- audit --> D\n",
         ),
         &AsciiRenderOptions::ascii(),
     )
-    .expect("explicit TD sibling group should render with external edges");
+    .expect("externally connected sibling groups should render with the root direction");
 
     for expected in [
         "Left Group",
@@ -445,7 +441,6 @@ fn flowchart_parser_explicit_td_sibling_group_preserves_local_order_after_extern
         "Gamma",
         "Delta",
         "handoff",
-        "audit",
     ] {
         assert!(
             rendered.contains(expected),
@@ -455,13 +450,12 @@ fn flowchart_parser_explicit_td_sibling_group_preserves_local_order_after_extern
 
     let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
 
-    assert_eq!(
-        line_index("Alpha"),
-        line_index("Beta"),
-        "left sibling LR group should keep Alpha and Beta on the same row:\n{rendered}"
+    assert!(
+        line_index("Alpha") < line_index("Beta"),
+        "external edges should disable the left sibling LR override:\n{rendered}"
     );
     assert!(
         line_index("Gamma") < line_index("Delta"),
-        "explicit right sibling TD group should keep Gamma above Delta despite external edges:\n{rendered}"
+        "external edges should disable the right sibling RL override:\n{rendered}"
     );
 }

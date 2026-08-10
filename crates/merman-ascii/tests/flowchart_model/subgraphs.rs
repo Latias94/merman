@@ -307,8 +307,7 @@ fn flowchart_root_and_local_reverse_directions_compose_once() {
 }
 
 #[test]
-fn flowchart_parser_subgraph_direction_override_with_cross_boundary_edges_records_boundary_aware_baseline()
- {
+fn flowchart_parser_subgraph_direction_override_is_ignored_with_cross_boundary_edges() {
     let rendered = render_flowchart(
         concat!(
             "flowchart TD\n",
@@ -321,11 +320,9 @@ fn flowchart_parser_subgraph_direction_override_with_cross_boundary_edges_record
         ),
         &AsciiRenderOptions::ascii(),
     )
-    .expect(
-        "cross-boundary mixed-direction subgraph should render through the boundary-aware seam",
-    );
+    .expect("cross-boundary subgraph should render with the root direction");
 
-    for expected in ["LR Group", "A", "B", "X", "Y"] {
+    for expected in ["LR", "Group", "A", "B", "X", "Y"] {
         assert!(
             rendered.contains(expected),
             "missing {expected:?}:\n{rendered}"
@@ -336,10 +333,9 @@ fn flowchart_parser_subgraph_direction_override_with_cross_boundary_edges_record
         line_index("X") < line_index("A"),
         "root TD direction should keep the external source above its group entry:\n{rendered}"
     );
-    assert_eq!(
-        line_index("A"),
-        line_index("B"),
-        "the local LR override should keep A and B on the same row:\n{rendered}"
+    assert!(
+        line_index("A") < line_index("B"),
+        "the external connections should disable the local LR override:\n{rendered}"
     );
     assert!(
         line_index("B") < line_index("Y"),

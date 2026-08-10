@@ -25,6 +25,12 @@ pub(super) fn apply_group_placement_adjustments(
     let endpoint_index =
         GroupEndpointIndex::try_new(graph, topology, &original_root_axis, resources)?;
     let mut disabled_overrides = try_bool_slots(graph.groups.len())?;
+    disable_flowchart_external_connection_overrides(
+        graph,
+        topology,
+        &mut disabled_overrides,
+        resources,
+    )?;
     let placement_context = GroupPlacementContext {
         graph,
         topology,
@@ -82,6 +88,50 @@ pub(super) fn apply_group_placement_adjustments(
         separate_external_nodes_from_groups(graph, placements, topology, width_profile, resources)?;
     }
 
+    Ok(())
+}
+
+fn disable_flowchart_external_connection_overrides(
+    graph: &AsciiGraph,
+    topology: &GraphGroupTopology<'_>,
+    disabled_overrides: &mut [bool],
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    if graph.diagram_type() != "flowchart" {
+        return Ok(());
+    }
+
+    for edge in &graph.edges {
+        let mut source_scope = topology.groups_containing_endpoint(&edge.from, resources)?;
+        let mut target_scope = topology.groups_containing_endpoint(&edge.to, resources)?;
+        include_group_endpoint_scope(topology, &edge.from, &mut source_scope)?;
+        include_group_endpoint_scope(topology, &edge.to, &mut target_scope)?;
+
+        resources.charge_layout_work(graph.groups.len())?;
+        for group_index in 0..graph.groups.len() {
+            if source_scope.contains(&group_index) ^ target_scope.contains(&group_index)
+                && let Some(disabled) = disabled_overrides.get_mut(group_index)
+            {
+                *disabled = true;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn include_group_endpoint_scope(
+    topology: &GraphGroupTopology<'_>,
+    endpoint: &str,
+    scope: &mut HashSet<usize>,
+) -> Result<()> {
+    let Some(GraphEndpointIndex::Group(group_index)) = topology.endpoint_index(endpoint) else {
+        return Ok(());
+    };
+    scope
+        .try_reserve(1)
+        .map_err(|_| layout_work_allocation_failed())?;
+    scope.insert(group_index);
     Ok(())
 }
 
@@ -2010,6 +2060,74 @@ mod tests {
         ResourceContext::new(AsciiResourcePolicy::for_profile(
             ResourceProfile::UnboundedForTrustedInput,
         ))
+    }
+
+    #[test]
+    fn flowchart_external_connection_override_scan_has_an_exact_work_boundary() {
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        graph.add_node("a", "A");
+        graph.add_node("b", "B");
+        graph.add_node("outside", "Outside");
+        graph.add_group_with_style(
+            "group",
+            "Group",
+            Some(GraphDirection::LeftRight),
+            vec!["a".to_string(), "b".to_string()],
+            GraphGroupStyle::default(),
+        );
+        graph.add_edge("a", "b");
+        graph.add_edge("b", "outside");
+
+        let mut topology_resources = unbounded_resources();
+        let topology = GraphGroupTopology::try_new(&graph, &mut topology_resources)
+            .expect("group topology should be valid");
+        let mut measured_resources = unbounded_resources();
+        let mut measured_disabled = vec![false; graph.groups.len()];
+        disable_flowchart_external_connection_overrides(
+            &graph,
+            &topology,
+            &mut measured_disabled,
+            &mut measured_resources,
+        )
+        .expect("unbounded external-connection scan should pass");
+        assert_eq!(measured_disabled, vec![true]);
+        let required_work = measured_resources.layout_work_used();
+        assert!(required_work > 0);
+
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let exact_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, required_work)
+            .expect("exact external-connection work limit should be valid");
+        let mut exact_resources = ResourceContext::new(exact_policy);
+        let mut exact_disabled = vec![false; graph.groups.len()];
+        disable_flowchart_external_connection_overrides(
+            &graph,
+            &topology,
+            &mut exact_disabled,
+            &mut exact_resources,
+        )
+        .expect("exact external-connection work should pass");
+        assert_eq!(exact_disabled, vec![true]);
+
+        let below_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, required_work - 1)
+            .expect("max-minus-one external-connection work limit should be valid");
+        let mut below_resources = ResourceContext::new(below_policy);
+        let mut below_disabled = vec![false; graph.groups.len()];
+        let error = disable_flowchart_external_connection_overrides(
+            &graph,
+            &topology,
+            &mut below_disabled,
+            &mut below_resources,
+        )
+        .expect_err("max-minus-one external-connection work should reject");
+        assert!(matches!(
+            error,
+            crate::error::AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual == required_work
+                    && details.max == required_work - 1
+        ));
     }
 
     #[test]
