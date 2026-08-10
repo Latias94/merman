@@ -1103,6 +1103,8 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertEqual(musl["if"], "matrix.target == 'linux-x64-musl'")
         self.assertIn("platforms/node/Dockerfile.musl", musl["run"])
         self.assertIn("node:24-alpine", musl["run"])
+        self.assertIn("sh -c '", musl["run"])
+        self.assertNotIn("sh -lc '", musl["run"])
         self.assertIn("scripts/node_package_group.py create-manifest", contract_text(package_group))
         self.assertIn("scripts/node_package_group.py verify-artifact", contract_text(package_group))
 
@@ -1179,6 +1181,8 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         musl = workflow_step(platform, name="Build, package, and smoke musl target")
         self.assertEqual(musl["if"], "matrix.target == 'linux-x64-musl'")
         self.assertIn("platforms/node/Dockerfile.musl", musl["run"])
+        self.assertIn("sh -c '", musl["run"])
+        self.assertNotIn("sh -lc '", musl["run"])
         self.assertIn("scripts/node_package_group.py create-manifest", pack["run"])
         self.assertIn("scripts/node_package_group.py verify-artifact", pack["run"])
         self.assertIn("scripts/node_package_group.py reconcile", pack["run"])

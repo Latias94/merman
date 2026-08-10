@@ -624,7 +624,7 @@ jobs:
             -v "$RUNNER_TEMP:/runner-temp" \
             -w /work \
             merman-node-musl:ci \
-            sh -lc '
+            sh -c '
               set -eu
               git config --global --add safe.directory /work
               npm ci --prefix platforms/node
