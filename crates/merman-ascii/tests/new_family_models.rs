@@ -154,11 +154,11 @@ fn tree_view_render_model_renders_outline_summary() {
             "Project\n",
             "accTitle: Tree title\n",
             "accDescr: Tree description\n",
-            "/ [id=0, level=-1]\n",
-            "|-- Root/ [id=1, level=0]\n",
-            "|   |-- Child 1 [id=2, level=1]\n",
-            "|   \\-- Child 2 [id=3, level=1]\n",
-            "\\-- Sibling [id=4, level=0]",
+            "[directory] / [id=0, level=-1]\n",
+            "|-- [directory] Root/ [id=1, level=0]\n",
+            "|   |-- [file] Child 1 [id=2, level=1]\n",
+            "|   \\-- [file] Child 2 [id=3, level=1]\n",
+            "\\-- [file] Sibling [id=4, level=0]",
         )
     );
 }
@@ -204,19 +204,52 @@ fn tree_view_discloses_typed_fields_and_honors_unicode_connectors() {
     assert_eq!(
         ascii,
         concat!(
-            "/ [id=0, level=-1]\n",
-            "\\-- src/ [id=1, level=0, icon=folder, class=highlight] -- source directory\n",
-            "    \\-- App.tsx [id=2, level=1, icon=react] -- main component",
+            "[directory] / [id=0, level=-1]\n",
+            "\\-- [directory] src/ [id=1, level=0, icon=folder, class=highlight] -- source\n",
+            "    directory\n",
+            "    \\-- [file] App.tsx [id=2, level=1, icon=react] -- main component",
         )
     );
     assert_eq!(
         unicode,
         concat!(
-            "/ [id=0, level=-1]\n",
-            "└── src/ [id=1, level=0, icon=folder, class=highlight] -- source directory\n",
-            "    └── App.tsx [id=2, level=1, icon=react] -- main component",
+            "[directory] / [id=0, level=-1]\n",
+            "└── [directory] src/ [id=1, level=0, icon=folder, class=highlight] -- source\n",
+            "    directory\n",
+            "    └── [file] App.tsx [id=2, level=1, icon=react] -- main component",
         )
     );
+}
+
+#[test]
+fn tree_view_distinguishes_trailing_slash_files_from_directories() {
+    let file = TreeViewNodeRenderModel {
+        id: 1,
+        level: 0,
+        name: "src/".to_string(),
+        node_type: "file".to_string(),
+        ..Default::default()
+    };
+    let directory = TreeViewNodeRenderModel {
+        node_type: "directory".to_string(),
+        ..file.clone()
+    };
+
+    let file_model = TreeViewDiagramRenderModel {
+        root: file,
+        ..Default::default()
+    };
+    let directory_model = TreeViewDiagramRenderModel {
+        root: directory,
+        ..Default::default()
+    };
+
+    let file_rendered = render(RenderSemanticModel::TreeView(file_model));
+    let directory_rendered = render(RenderSemanticModel::TreeView(directory_model));
+
+    assert!(file_rendered.starts_with("[file] src/ "));
+    assert!(directory_rendered.starts_with("[directory] src/ "));
+    assert_ne!(file_rendered, directory_rendered);
 }
 
 #[test]

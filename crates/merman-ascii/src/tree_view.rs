@@ -213,15 +213,18 @@ fn push_wrapped_node(
         &continuation_prefix,
         SUMMARY_WRAP_WIDTH,
         |line| {
-            line.push_str(&node.name)?;
             match node.node_type.as_str() {
-                "directory" if !node.name.ends_with('/') => line.push_str("/")?,
-                "file" | "directory" => {}
+                "file" => line.push_str("[file] ")?,
+                "directory" => line.push_str("[directory] ")?,
                 node_type => {
-                    line.push_str(" [type=")?;
+                    line.push_str("[type=")?;
                     line.push_str(node_type)?;
-                    line.push_str("]")?;
+                    line.push_str("] ")?;
                 }
+            }
+            line.push_str(&node.name)?;
+            if node.node_type == "directory" && !node.name.ends_with('/') {
+                line.push_str("/")?;
             }
 
             line.push_str(" [id=")?;
