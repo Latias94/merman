@@ -4,16 +4,19 @@ use super::{
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
-use crate::text::{display_width_with_profile, split_label_lines, wrap_label_lines_with_profile};
+use crate::safe_text::{
+    LabelBreakPolicy, NormalizedLabelPlan, try_plan_normalized_label_lines_with_policy,
+};
+use crate::text::display_width_with_profile;
 
 use super::layout::SequenceLayout;
 use super::model::{AsciiSequenceDiagram, SequenceEvent, SequenceNote, SequenceNotePlacement};
 use super::render::{SequenceChars, render_overlay_row, retained_lifeline_width};
-use super::text::{SequenceBatchExtent, SequenceLine, blank_line, charge_text_work};
+use super::text::{SequenceBatchExtent, SequenceLine, blank_line};
 
 #[derive(Debug)]
 pub(super) struct PreparedNoteRows {
-    label_lines: Vec<String>,
+    label_plan: NormalizedLabelPlan,
     inner_width: usize,
     left: usize,
     extent: SequenceBatchExtent,
@@ -22,6 +25,18 @@ pub(super) struct PreparedNoteRows {
 impl PreparedNoteRows {
     pub(super) const fn extent(&self) -> SequenceBatchExtent {
         self.extent
+    }
+
+    #[cfg(test)]
+    fn materialize_label_with_probe(
+        &self,
+        raw: &str,
+        resources: &ResourceContext,
+        materialized: &std::cell::Cell<bool>,
+    ) -> Result<()> {
+        self.label_plan
+            .materialize_with_probe(raw, resources, materialized)?;
+        Ok(())
     }
 }
 
@@ -92,18 +107,22 @@ pub(super) fn prepare_note_rows(
     visible_actors: &[bool],
     resources: &mut ResourceContext,
 ) -> Result<PreparedNoteRows> {
-    charge_text_work(&note.label, layout.width_profile, resources)?;
-    let label_lines = note_label_lines(note, layout);
-    let label_width = label_lines
-        .iter()
-        .map(|line| display_width_with_profile(line, layout.width_profile))
-        .max()
-        .unwrap_or(0);
+    let label_plan = note_label_plan(note, layout, resources)?;
+    label_plan.check_materialization_limits(resources)?;
+    let label_metrics = label_plan.metrics();
     let mut inner_width = resources
-        .checked_grid_add(label_width, BOX_PADDING_LEFT_RIGHT)?
+        .checked_grid_add(label_metrics.max_width, BOX_PADDING_LEFT_RIGHT)?
         .max(MIN_BOX_WIDTH);
-    let from = layout.participant_centers[note.from];
-    let to = layout.participant_centers[note.to];
+    let from = layout
+        .participant_centers
+        .get(note.from)
+        .copied()
+        .ok_or_else(invalid_note_geometry)?;
+    let to = layout
+        .participant_centers
+        .get(note.to)
+        .copied()
+        .ok_or_else(invalid_note_geometry)?;
 
     let left = match note.placement {
         SequenceNotePlacement::LeftOf => {
@@ -129,7 +148,7 @@ pub(super) fn prepare_note_rows(
         }
     };
 
-    let row_count = resources.checked_grid_add(label_lines.len(), 2)?;
+    let row_count = resources.checked_grid_add(label_metrics.line_count, 2)?;
     let note_width = resources.checked_grid_add(inner_width, BOX_BORDER_WIDTH)?;
     let overlay_right = resources.checked_grid_add(left, note_width)?;
     let max_width = resources
@@ -142,7 +161,7 @@ pub(super) fn prepare_note_rows(
         retained_lifeline_width(layout, visible_actors, resources)?.max(overlay_right);
     let extent = SequenceBatchExtent::uniform(row_count, max_width, retained_width, resources)?;
     Ok(PreparedNoteRows {
-        label_lines,
+        label_plan,
         inner_width,
         left,
         extent,
@@ -151,6 +170,7 @@ pub(super) fn prepare_note_rows(
 
 pub(super) fn render_note(
     prepared: PreparedNoteRows,
+    note: &SequenceNote,
     layout: &SequenceLayout,
     chars: &SequenceChars,
     active_counts: &[usize],
@@ -158,11 +178,15 @@ pub(super) fn render_note(
     resources: &mut ResourceContext,
 ) -> Result<Vec<SequenceLine>> {
     let PreparedNoteRows {
-        label_lines,
+        label_plan,
         inner_width,
         left,
         extent,
     } = prepared;
+    let label_lines = label_plan
+        .materialize(&note.label, resources)?
+        .into_parts()
+        .0;
     let row_count = extent.height();
     let note_width = resources.checked_grid_add(inner_width, BOX_BORDER_WIDTH)?;
 
@@ -271,11 +295,9 @@ fn note_inner_width(
     layout: &SequenceLayout,
     resources: &ResourceContext,
 ) -> Result<usize> {
-    let label_width = note_label_lines(note, layout)
-        .iter()
-        .map(|line| display_width_with_profile(line, layout.width_profile))
-        .max()
-        .unwrap_or(0);
+    let label_width = note_label_plan(note, layout, resources)?
+        .metrics()
+        .max_width;
     let mut inner_width = resources
         .checked_grid_add(label_width, BOX_PADDING_LEFT_RIGHT)?
         .max(MIN_BOX_WIDTH);
@@ -295,16 +317,92 @@ fn note_inner_width(
     Ok(inner_width)
 }
 
-fn note_label_lines(note: &SequenceNote, layout: &SequenceLayout) -> Vec<String> {
-    if !note.wrap {
-        return split_label_lines(&note.label);
+fn note_label_plan(
+    note: &SequenceNote,
+    layout: &SequenceLayout,
+    resources: &ResourceContext,
+) -> Result<NormalizedLabelPlan> {
+    let wrap_width = if note.wrap {
+        let from = layout
+            .participant_centers
+            .get(note.from)
+            .copied()
+            .ok_or_else(invalid_note_geometry)?;
+        let to = layout
+            .participant_centers
+            .get(note.to)
+            .copied()
+            .ok_or_else(invalid_note_geometry)?;
+        Some(from.abs_diff(to).max(NOTE_WRAP_TEXT_WIDTH))
+    } else {
+        None
+    };
+    try_plan_normalized_label_lines_with_policy(
+        &note.label,
+        layout.width_profile,
+        false,
+        wrap_width,
+        LabelBreakPolicy::MermaidLabelBreaks,
+        resources,
+    )
+    .and_then(|plan| plan.ok_or_else(invalid_note_geometry))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell;
+
+    use super::*;
+    use crate::options::TerminalWidthProfile;
+    use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
+
+    #[test]
+    fn note_grid_admission_precedes_label_materialization() {
+        let exact_materialized = Cell::new(false);
+        prepare_and_materialize_note_with_grid_limit(44, &exact_materialized)
+            .expect("the exact 11x4 note extent should be admitted");
+        assert!(exact_materialized.get());
+
+        let below_materialized = Cell::new(false);
+        let error = prepare_and_materialize_note_with_grid_limit(43, &below_materialized)
+            .expect_err("the note extent should exceed the limit by one cell");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxGridCells
+                    && details.actual == 44
+                    && details.max == 43
+        ));
+        assert!(!below_materialized.get());
     }
 
-    let span_width =
-        layout.participant_centers[note.from].abs_diff(layout.participant_centers[note.to]);
-    wrap_label_lines_with_profile(
-        &note.label,
-        span_width.max(NOTE_WRAP_TEXT_WIDTH),
-        layout.width_profile,
-    )
+    fn prepare_and_materialize_note_with_grid_limit(
+        maximum: usize,
+        materialized: &Cell<bool>,
+    ) -> Result<()> {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGridCells, maximum)
+            .expect("the note grid limit override should be valid");
+        let mut resources = ResourceContext::new(policy);
+        let layout = SequenceLayout {
+            participant_widths: vec![3],
+            participant_centers: vec![5],
+            total_width: 10,
+            message_spacing: 1,
+            self_message_width: 1,
+            width_profile: TerminalWidthProfile::Unicode,
+        };
+        let note = SequenceNote {
+            model_index: 0,
+            from: 0,
+            to: 0,
+            label: "one<br>two".to_string(),
+            wrap: false,
+            placement: SequenceNotePlacement::Over,
+        };
+        let prepared = prepare_note_rows(&note, &layout, &[true], &mut resources)?;
+        assert_eq!(prepared.extent().materialized_width(), 11);
+        assert_eq!(prepared.extent().height(), 4);
+        prepared.materialize_label_with_probe(&note.label, &resources, materialized)
+    }
 }

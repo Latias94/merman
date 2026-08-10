@@ -432,6 +432,7 @@ impl<'diagram, 'layout, 'chars> SequenceRowEmitter<'diagram, 'layout, 'chars> {
                 let reservation = self.reserve_batch(prepared.extent(), resources)?;
                 let lines = render_note(
                     prepared,
+                    note,
                     self.layout,
                     self.chars,
                     &step.active_counts,

@@ -5,17 +5,16 @@ use super::{
 use crate::color::{AsciiColorRole, AsciiRgb};
 use crate::error::{AsciiError, Result};
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
-use crate::text::{
-    display_width_with_profile, split_label_lines, truncate_display_width_with_profile,
-    wrap_label_lines_with_profile,
+use crate::safe_text::{
+    LabelBreakPolicy, NormalizedLabelPlan, try_plan_normalized_label_lines_with_policy,
 };
+use crate::text::{display_width_with_profile, truncate_display_width_with_profile};
 
 use super::layout::SequenceLayout;
 use super::model::{AsciiSequenceDiagram, SequenceGroupBox};
 use super::render::SequenceChars;
 use super::text::{
-    SequenceBatchExtent, SequenceExtentLedger, SequenceLine, blank_line, charge_text_work,
-    trim_right,
+    SequenceBatchExtent, SequenceExtentLedger, SequenceLine, blank_line, trim_right,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,11 +23,44 @@ struct SequenceGroupBoxBounds {
     right: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct PreparedSequenceGroupBox {
+#[derive(Debug)]
+struct PreparedSequenceGroupBox<'a> {
     bounds: SequenceGroupBoxBounds,
-    label_lines: Vec<String>,
+    label: Option<&'a str>,
+    label_plan: Option<NormalizedLabelPlan>,
     background: Option<AsciiRgb>,
+}
+
+impl PreparedSequenceGroupBox<'_> {
+    fn label_line_count(&self) -> usize {
+        self.label_plan
+            .map(NormalizedLabelPlan::metrics)
+            .map_or(0, |metrics| metrics.line_count)
+    }
+
+    #[cfg(test)]
+    fn materialize_label_with_probe(
+        &self,
+        resources: &ResourceContext,
+        materialized: &std::cell::Cell<bool>,
+    ) -> Result<()> {
+        match (self.label, self.label_plan) {
+            (Some(label), Some(plan)) => {
+                plan.materialize_with_probe(label, resources, materialized)?;
+                Ok(())
+            }
+            (None, None) => Ok(()),
+            _ => Err(invalid_box_geometry()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SequenceBoxCanvasPlan {
+    label_extra_rows: usize,
+    width: usize,
+    height: usize,
+    output_batch: SequenceBatchExtent,
 }
 
 pub(super) fn render_sequence_boxes(
@@ -59,44 +91,39 @@ pub(super) fn render_sequence_boxes(
             resources,
         )?);
     }
-    let label_extra_rows = boxes
-        .iter()
-        .map(|sequence_box| sequence_box.label_lines.len().saturating_sub(1))
-        .max()
-        .unwrap_or(0);
-    let mut box_width = 0;
-    for sequence_box in &boxes {
-        box_width = box_width.max(resources.checked_grid_add(sequence_box.bounds.right, 1)?);
-    }
-    let width = content_width.max(box_width);
-    let height = resources.checked_grid_add(
-        resources.checked_grid_add(lines.len(), label_extra_rows)?,
-        2,
-    )?;
-    resources.grid_extent(width, height)?;
-    charge_work_product(resources, width, height)?;
-    let output_batch =
-        planned_box_output_extent(&lines, label_extra_rows, box_width, width, resources)?;
+    let canvas_plan = plan_sequence_box_canvas(&lines, &boxes, content_width, resources)?;
     let mut output_extent = SequenceExtentLedger::default();
-    let output_reservation = output_extent.reserve(output_batch, resources)?;
+    let output_reservation = output_extent.reserve(canvas_plan.output_batch, resources)?;
 
     let mut canvas = Vec::new();
     canvas
-        .try_reserve_exact(height)
+        .try_reserve_exact(canvas_plan.height)
         .map_err(|_| allocation_failed())?;
-    canvas.push(blank_line(width, layout.width_profile, resources)?);
-    for _ in 0..label_extra_rows {
-        canvas.push(blank_line(width, layout.width_profile, resources)?);
+    canvas.push(blank_line(
+        canvas_plan.width,
+        layout.width_profile,
+        resources,
+    )?);
+    for _ in 0..canvas_plan.label_extra_rows {
+        canvas.push(blank_line(
+            canvas_plan.width,
+            layout.width_profile,
+            resources,
+        )?);
     }
     for line in lines {
         let mut row = blank_line(0, layout.width_profile, resources)?;
         row.try_push_spaces(SEQUENCE_BOX_CONTENT_OFFSET)?;
         row.try_push_line(&line)?;
         row.try_push_spaces(SEQUENCE_BOX_CONTENT_OFFSET)?;
-        row.try_pad_to(width)?;
+        row.try_pad_to(canvas_plan.width)?;
         canvas.push(row);
     }
-    canvas.push(blank_line(width, layout.width_profile, resources)?);
+    canvas.push(blank_line(
+        canvas_plan.width,
+        layout.width_profile,
+        resources,
+    )?);
 
     for sequence_box in boxes {
         draw_sequence_box(&mut canvas, sequence_box, chars, resources)?;
@@ -111,6 +138,38 @@ pub(super) fn render_sequence_boxes(
     }
     output_reservation.commit(&mut output_extent, &rendered, resources)?;
     Ok(rendered)
+}
+
+fn plan_sequence_box_canvas(
+    lines: &[SequenceLine],
+    boxes: &[PreparedSequenceGroupBox<'_>],
+    content_width: usize,
+    resources: &mut ResourceContext,
+) -> Result<SequenceBoxCanvasPlan> {
+    let label_extra_rows = boxes
+        .iter()
+        .map(|sequence_box| sequence_box.label_line_count().saturating_sub(1))
+        .max()
+        .unwrap_or(0);
+    let mut box_width = 0;
+    for sequence_box in boxes {
+        box_width = box_width.max(resources.checked_grid_add(sequence_box.bounds.right, 1)?);
+    }
+    let width = content_width.max(box_width);
+    let height = resources.checked_grid_add(
+        resources.checked_grid_add(lines.len(), label_extra_rows)?,
+        2,
+    )?;
+    resources.grid_extent(width, height)?;
+    charge_work_product(resources, width, height)?;
+    let output_batch =
+        planned_box_output_extent(lines, label_extra_rows, box_width, width, resources)?;
+    Ok(SequenceBoxCanvasPlan {
+        label_extra_rows,
+        width,
+        height,
+        output_batch,
+    })
 }
 
 fn planned_box_output_extent(
@@ -137,23 +196,44 @@ fn planned_box_output_extent(
     )
 }
 
-fn prepare_sequence_box(
-    sequence_box: &SequenceGroupBox,
+fn prepare_sequence_box<'a>(
+    sequence_box: &'a SequenceGroupBox,
     layout: &SequenceLayout,
     content_width: usize,
     resources: &mut ResourceContext,
-) -> Result<PreparedSequenceGroupBox> {
-    let mut bounds = sequence_box_bounds(sequence_box, layout, content_width, resources)?;
+) -> Result<PreparedSequenceGroupBox<'a>> {
+    let full_width_label_width = if sequence_box.actor_indices.is_empty() {
+        match sequence_box.label.as_deref() {
+            Some(label) => {
+                resources.charge_layout_work(label.len().max(1))?;
+                display_width_with_profile(label, layout.width_profile)
+            }
+            None => 0,
+        }
+    } else {
+        0
+    };
+    let mut bounds = sequence_box_bounds(
+        sequence_box,
+        layout,
+        content_width,
+        full_width_label_width,
+        resources,
+    )?;
     let label_margin = resources.checked_grid_mul(2, SEQUENCE_BOX_LABEL_MARGIN)?;
     let label_left = resources.checked_grid_add(bounds.left, label_margin)?;
     let label_width = bounds.right.saturating_sub(label_left).max(1);
-    let label_lines =
-        sequence_box_label_lines(sequence_box, label_width, layout.width_profile, resources)?;
+    let wrap_width = sequence_box
+        .wrap
+        .then_some(label_width.max(SEQUENCE_BOX_WRAP_TEXT_WIDTH));
+    let label_plan = sequence_box_label_plan(sequence_box, wrap_width, layout, resources)?;
+    if let Some(plan) = label_plan {
+        plan.check_materialization_limits(resources)?;
+    }
 
-    if let Some(max_label_width) = label_lines
-        .iter()
-        .map(|line| display_width_with_profile(line, layout.width_profile))
-        .max()
+    if let Some(max_label_width) = label_plan
+        .map(NormalizedLabelPlan::metrics)
+        .map(|m| m.max_width)
     {
         let label_right = resources.checked_grid_add(
             resources.checked_grid_add(bounds.left, max_label_width)?,
@@ -164,7 +244,8 @@ fn prepare_sequence_box(
 
     Ok(PreparedSequenceGroupBox {
         bounds,
-        label_lines,
+        label: sequence_box.label.as_deref(),
+        label_plan,
         background: sequence_box.background,
     })
 }
@@ -173,15 +254,11 @@ fn sequence_box_bounds(
     sequence_box: &SequenceGroupBox,
     layout: &SequenceLayout,
     content_width: usize,
+    label_width: usize,
     resources: &ResourceContext,
 ) -> Result<SequenceGroupBoxBounds> {
     if sequence_box.actor_indices.is_empty() {
-        return sequence_box_full_width_bounds(
-            content_width,
-            sequence_box,
-            layout.width_profile,
-            resources,
-        );
+        return sequence_box_full_width_bounds(content_width, label_width, resources);
     }
 
     sequence_box_actor_bounds(sequence_box, layout, content_width, resources)
@@ -189,18 +266,13 @@ fn sequence_box_bounds(
 
 fn sequence_box_full_width_bounds(
     content_width: usize,
-    sequence_box: &SequenceGroupBox,
-    width_profile: crate::options::TerminalWidthProfile,
+    label_width: usize,
     resources: &ResourceContext,
 ) -> Result<SequenceGroupBoxBounds> {
-    let label_width = if let Some(label) = sequence_box.label.as_ref() {
-        resources.checked_grid_add(
-            display_width_with_profile(label, width_profile),
-            resources.checked_grid_mul(2, SEQUENCE_BOX_LABEL_MARGIN)?,
-        )?
-    } else {
-        0
-    };
+    let label_width = resources.checked_grid_add(
+        label_width,
+        resources.checked_grid_mul(2, SEQUENCE_BOX_LABEL_MARGIN)?,
+    )?;
     let minimum_width =
         resources.checked_grid_add(resources.checked_grid_mul(SEQUENCE_BOX_LABEL_MARGIN, 2)?, 1)?;
     let right = content_width.max(label_width).max(minimum_width);
@@ -250,31 +322,28 @@ fn sequence_box_actor_bounds(
     Ok(SequenceGroupBoxBounds { left, right })
 }
 
-fn sequence_box_label_lines(
+fn sequence_box_label_plan(
     sequence_box: &SequenceGroupBox,
-    label_width: usize,
-    width_profile: crate::options::TerminalWidthProfile,
-    resources: &mut ResourceContext,
-) -> Result<Vec<String>> {
+    wrap_width: Option<usize>,
+    layout: &SequenceLayout,
+    resources: &ResourceContext,
+) -> Result<Option<NormalizedLabelPlan>> {
     let Some(label) = &sequence_box.label else {
-        return Ok(Vec::new());
+        return Ok(None);
     };
-    charge_text_work(label, width_profile, resources)?;
-
-    if sequence_box.wrap {
-        Ok(wrap_label_lines_with_profile(
-            label,
-            label_width.max(SEQUENCE_BOX_WRAP_TEXT_WIDTH),
-            width_profile,
-        ))
-    } else {
-        Ok(split_label_lines(label))
-    }
+    try_plan_normalized_label_lines_with_policy(
+        label,
+        layout.width_profile,
+        false,
+        wrap_width,
+        LabelBreakPolicy::MermaidLabelBreaks,
+        resources,
+    )
 }
 
 fn draw_sequence_box(
     canvas: &mut [SequenceLine],
-    sequence_box: PreparedSequenceGroupBox,
+    sequence_box: PreparedSequenceGroupBox<'_>,
     chars: &SequenceChars,
     resources: &mut ResourceContext,
 ) -> Result<()> {
@@ -319,7 +388,12 @@ fn draw_sequence_box(
         draw_background_vertical(row, bounds.right, chars.vertical)?;
     }
 
-    for (line_index, line) in sequence_box.label_lines.iter().enumerate() {
+    let label_lines = match (sequence_box.label, sequence_box.label_plan) {
+        (Some(label), Some(plan)) => plan.materialize(label, resources)?.into_parts().0,
+        (None, None) => Vec::new(),
+        _ => return Err(invalid_box_geometry()),
+    };
+    for (line_index, line) in label_lines.iter().enumerate() {
         let Some(row) = canvas.get_mut(line_index) else {
             break;
         };
@@ -408,6 +482,8 @@ fn allocation_failed() -> AsciiError {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+
     use super::*;
     use crate::options::TerminalWidthProfile;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
@@ -432,6 +508,51 @@ mod tests {
         }
     }
 
+    #[test]
+    fn box_grid_admission_precedes_label_materialization() {
+        let exact_materialized = Cell::new(false);
+        prepare_and_materialize_box_with_grid_limit(60, &exact_materialized)
+            .expect("the exact 15x4 labeled box extent should be admitted");
+        assert!(exact_materialized.get());
+
+        let below_materialized = Cell::new(false);
+        let error = prepare_and_materialize_box_with_grid_limit(59, &below_materialized)
+            .expect_err("the labeled box extent should exceed the limit by one cell");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxGridCells
+                    && details.actual == 60
+                    && details.max == 59
+        ));
+        assert!(!below_materialized.get());
+    }
+
+    fn prepare_and_materialize_box_with_grid_limit(
+        maximum: usize,
+        materialized: &Cell<bool>,
+    ) -> Result<()> {
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxGridCells, maximum)
+            .expect("the box grid limit override should be valid");
+        let mut resources = ResourceContext::new(policy);
+        let layout = empty_layout();
+        let sequence_box = SequenceGroupBox {
+            actor_indices: Vec::new(),
+            label: Some("one<br>two".to_string()),
+            background: None,
+            wrap: false,
+        };
+        let lines = vec![blank_line(4, layout.width_profile, &resources)?];
+        let content_width = 8;
+        let prepared = prepare_sequence_box(&sequence_box, &layout, content_width, &mut resources)?;
+        let boxes = vec![prepared];
+        let canvas_plan = plan_sequence_box_canvas(&lines, &boxes, content_width, &mut resources)?;
+        assert_eq!(canvas_plan.width, 15);
+        assert_eq!(canvas_plan.height, 4);
+        boxes[0].materialize_label_with_probe(&resources, materialized)
+    }
+
     fn render_full_width_box_with_limit(
         limit: AsciiResourceLimitId,
         maximum: usize,
@@ -452,17 +573,21 @@ mod tests {
             }],
             events: Vec::new(),
         };
-        let layout = SequenceLayout {
+        let layout = empty_layout();
+        let lines = vec![blank_line(4, layout.width_profile, &resources)?];
+
+        render_sequence_boxes(lines, &diagram, &layout, &ascii_chars(), &mut resources)
+    }
+
+    fn empty_layout() -> SequenceLayout {
+        SequenceLayout {
             participant_widths: Vec::new(),
             participant_centers: Vec::new(),
             total_width: 0,
             message_spacing: 1,
             self_message_width: 1,
             width_profile: TerminalWidthProfile::Unicode,
-        };
-        let lines = vec![blank_line(4, layout.width_profile, &resources)?];
-
-        render_sequence_boxes(lines, &diagram, &layout, &ascii_chars(), &mut resources)
+        }
     }
 
     fn ascii_chars() -> SequenceChars {
