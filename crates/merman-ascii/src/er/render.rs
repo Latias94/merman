@@ -19,7 +19,7 @@ use crate::{AsciiError, Result};
 use merman_core::diagrams::er::{
     ErAttributeRenderModel, ErDiagramRenderModel, ErEntityRenderModel, ErRelationshipRenderModel,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 const ER_LEVEL_HORIZONTAL_GAP: usize = 4;
 
@@ -165,6 +165,7 @@ pub(crate) fn render_er_diagram(
     let mut resources = ResourceContext::new(options.resources);
     preflight_er_text(model, &mut resources)?;
     charge_er_model_work(model, &mut resources)?;
+    validate_unique_er_entity_ids(model, &mut resources)?;
     let charset = ErCharset::for_options(options);
     let direction = ErDirection::try_from_model(&model.direction)?;
     let mut boxes = Vec::new();
@@ -217,6 +218,25 @@ pub(crate) fn render_er_diagram(
         direction,
         &mut resources,
     )
+}
+
+fn validate_unique_er_entity_ids(
+    model: &ErDiagramRenderModel,
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    resources.charge_layout_work(model.entities.len())?;
+    let mut ids = HashSet::new();
+    ids.try_reserve(model.entities.len())
+        .map_err(|_| layout_allocation_failed())?;
+    for entity in model.entities.values() {
+        if !ids.insert(entity.id.as_str()) {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "er",
+                feature: "duplicate rendered ER entity ids",
+            });
+        }
+    }
+    Ok(())
 }
 
 fn render_er_components(

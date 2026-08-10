@@ -21,7 +21,7 @@ use merman_core::entities::decode_html_entities_to_unicode;
 use merman_core::models::class_diagram::{
     ClassDiagram, ClassInterface, ClassMember, ClassNode, ClassNote, ClassRelation,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 mod namespace;
 
@@ -289,6 +289,7 @@ pub(crate) fn render_class_diagram(
     let mut resources = ResourceContext::new(options.resources);
     preflight_class_text(model, &mut resources)?;
     charge_class_model_work(model, &mut resources)?;
+    validate_unique_class_render_ids(model, &mut resources)?;
     let charset = ClassCharset::for_options(options);
     let direction = ClassDirection::try_from_model(&model.direction)?;
     let namespace_facade_aliases = namespace_facade_aliases(model)?;
@@ -394,6 +395,50 @@ pub(crate) fn render_class_diagram(
         charset,
         &mut resources,
     )
+}
+
+fn validate_unique_class_render_ids(
+    model: &ClassDiagram,
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    let capacity = model
+        .classes
+        .len()
+        .checked_add(model.interfaces.len())
+        .and_then(|value| value.checked_add(model.notes.len()))
+        .and_then(|value| value.checked_add(model.namespaces.len()))
+        .ok_or_else(|| work_overflow(resources))?;
+    resources.charge_layout_work(capacity)?;
+
+    let mut ids = HashSet::new();
+    ids.try_reserve(capacity)
+        .map_err(|_| layout_allocation_failed())?;
+    let rendered_ids = model
+        .classes
+        .values()
+        .map(|class| class.id.as_str())
+        .chain(
+            model
+                .interfaces
+                .iter()
+                .map(|interface| interface.id.as_str()),
+        )
+        .chain(model.notes.iter().map(|note| note.id.as_str()))
+        .chain(
+            model
+                .namespaces
+                .values()
+                .map(|namespace| namespace.id.as_str()),
+        );
+    for id in rendered_ids {
+        if !ids.insert(id) {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "class",
+                feature: "duplicate rendered class ids",
+            });
+        }
+    }
+    Ok(())
 }
 
 fn render_class_boxes(
