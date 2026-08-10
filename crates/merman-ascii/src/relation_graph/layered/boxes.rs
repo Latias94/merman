@@ -224,14 +224,8 @@ pub(crate) fn relation_components<'a>(
 
         incident_ids.insert(edge.source_id());
         incident_ids.insert(edge.target_id());
-        neighbors
-            .entry(edge.source_id())
-            .or_default()
-            .push(edge.target_id());
-        neighbors
-            .entry(edge.target_id())
-            .or_default()
-            .push(edge.source_id());
+        try_push_adjacency(&mut neighbors, edge.source_id(), edge.target_id())?;
+        try_push_adjacency(&mut neighbors, edge.target_id(), edge.source_id())?;
     }
 
     let mut components = Vec::new();
@@ -336,7 +330,7 @@ fn layered_relation_levels(
     incident
         .try_reserve(boxes.len())
         .map_err(|_| layout_allocation_failed())?;
-    let mut outgoing = HashMap::<String, Vec<String>>::new();
+    let mut outgoing = HashMap::<&str, Vec<&str>>::new();
     outgoing
         .try_reserve(boxes.len())
         .map_err(|_| layout_allocation_failed())?;
@@ -350,10 +344,7 @@ fn layered_relation_levels(
 
         incident.insert(edge.source_id().to_string());
         incident.insert(edge.target_id().to_string());
-        outgoing
-            .entry(edge.source_id().to_string())
-            .or_default()
-            .push(edge.target_id().to_string());
+        try_push_adjacency(&mut outgoing, edge.source_id(), edge.target_id())?;
     }
 
     if incident.len() != boxes.len() {
@@ -378,10 +369,10 @@ fn layered_relation_levels(
     while let Some(id) = queue.pop_front() {
         resources.charge_layout_work(1)?;
         let current_level = levels.get(&id).copied().unwrap_or(0);
-        let Some(children) = outgoing.get(&id) else {
+        let Some(children) = outgoing.get(id.as_str()) else {
             continue;
         };
-        for child_id in children {
+        for &child_id in children {
             resources.charge_layout_work(1)?;
             let next_level = current_level
                 .checked_add(1)
@@ -395,8 +386,8 @@ fn layered_relation_levels(
                 None => true,
             };
             if should_update {
-                levels.insert(child_id.clone(), next_level);
-                queue.push_back(child_id.clone());
+                levels.insert(child_id.to_string(), next_level);
+                queue.push_back(child_id.to_string());
             }
         }
     }
@@ -1025,6 +1016,19 @@ fn nesting_overflow(resources: &ResourceContext) -> AsciiError {
 
 fn layout_allocation_failed() -> AsciiError {
     AsciiError::allocation_failed(AsciiResourceLimitPhase::LayoutWork.as_str())
+}
+
+fn try_push_adjacency<'a>(
+    adjacency: &mut HashMap<&'a str, Vec<&'a str>>,
+    source: &'a str,
+    target: &'a str,
+) -> std::result::Result<(), LayeredRelationPlanningError> {
+    let neighbors = adjacency.entry(source).or_default();
+    neighbors
+        .try_reserve(1)
+        .map_err(|_| layout_allocation_failed())?;
+    neighbors.push(target);
+    Ok(())
 }
 
 #[cfg(test)]
