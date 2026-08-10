@@ -4,7 +4,7 @@ Browser-only Merman package for parser-backed editor intelligence. Use it from a
 
 ## Install
 
-This package first ships with Merman `0.8.0-alpha.5`. After that version appears in npm, install the current alpha:
+This package belongs to the experimental Merman `0.8.0-alpha.5` browser group. Install the current alpha and verify the resolved version and provenance before depending on prerelease-only behavior:
 
 ```sh
 npm install @mermanjs/web-editor@alpha

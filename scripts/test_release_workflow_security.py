@@ -43,9 +43,11 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_ROOT = ROOT / ".github" / "workflows"
 WEB_WORKSPACE_PACKAGE_JSON = ROOT / "platforms" / "web" / "package.json"
 WEB_DESCRIPTOR_JSON = ROOT / "platforms" / "web" / "web-surface-descriptor.json"
+NODE_DESCRIPTOR_JSON = ROOT / "platforms" / "node" / "package-surfaces.json"
 NPM_CONFIG_PATHS = [
     ROOT / ".npmrc",
     ROOT / "platforms" / "web" / ".npmrc",
+    ROOT / "platforms" / "node" / ".npmrc",
 ]
 RELEASE_WORKFLOWS = sorted(WORKFLOW_ROOT.glob("release-*.yml"))
 TAG_BOUND_SOURCE_WORKFLOWS = [
@@ -58,6 +60,7 @@ PUBLISH_WORKFLOWS = [
     WORKFLOW_ROOT / "release.yml",
     WORKFLOW_ROOT / "release-crates.yml",
     WORKFLOW_ROOT / "release-web.yml",
+    WORKFLOW_ROOT / "release-node.yml",
     *TAG_BOUND_SOURCE_WORKFLOWS,
 ]
 SOURCE_REF_WORKFLOWS = sorted(
@@ -720,13 +723,13 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 )
                 self.assertNotIn("source_ref", outputs)
 
-    def test_only_release_preflight_accepts_full_sha_source_ref_values(self) -> None:
+    def test_preflight_and_node_release_accept_full_sha_source_ref_values(self) -> None:
         full_sha = "0123456789abcdef0123456789abcdef01234567"
         for path in SOURCE_REF_WORKFLOWS:
             with self.subTest(workflow=path.name):
                 result, outputs = run_workflow_validation(path, source_ref=full_sha)
 
-                if path.name == "release-preflight.yml":
+                if path.name in {"release-preflight.yml", "release-node.yml"}:
                     self.assertEqual(
                         result.returncode,
                         0,
@@ -1069,6 +1072,74 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertEqual(report["if"], "${{ always() }}")
         self.assertEqual(report["with"]["name"], "merman-web-npm-reconciliation-report")
 
+    def test_release_node_builds_real_targets_and_publishes_verified_tarballs_only(self) -> None:
+        workflow = parse_workflow_structure(WORKFLOW_ROOT / "release-node.yml")
+        validate = workflow_job(workflow, "validate-inputs")
+        platform = workflow_job(workflow, "platform")
+        package_group = workflow_job(workflow, "package-group")
+        publish = workflow_job(workflow, "publish")
+        validate_text = contract_text(validate)
+        publish_text = contract_text(publish)
+
+        self.assertIn('[[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]', validate_text)
+        self.assertIn("ref: ${{ steps.release.outputs.source_ref }}", validate_text)
+        self.assertIn("source_tree: ${{ steps.source.outputs.source_tree }}", validate_text)
+
+        matrix = platform["matrix_include"]
+        self.assertEqual(
+            {(entry["target"], entry["runner"]) for entry in matrix},
+            {
+                ("darwin-arm64", "macos-15"),
+                ("darwin-x64", "macos-15-intel"),
+                ("linux-x64-gnu", "ubuntu-24.04"),
+                ("linux-x64-musl", "ubuntu-24.04"),
+                ("win32-x64-msvc", "windows-2025-vs2026"),
+            },
+        )
+        self.assertIn("Build and probe native package", contract_text(platform))
+        self.assertIn("Pack and install-smoke target package", contract_text(platform))
+        self.assertIn("node:24-alpine", contract_text(platform))
+        self.assertIn("scripts/node_package_group.py create-manifest", contract_text(package_group))
+        self.assertIn("scripts/node_package_group.py verify-artifact", contract_text(package_group))
+
+        self.assertEqual(publish["environment"], "npm")
+        self.assertIn("id-token: write", publish_text)
+        self.assertIn("Checkout trusted release verifier", publish_text)
+        self.assertIn("Checkout immutable package descriptor", publish_text)
+        self.assertIn("trusted/scripts/node_package_group.py verify-artifact", publish_text)
+        self.assertIn("trusted/scripts/node_package_group.py reconcile", publish_text)
+        self.assertNotIn("npm publish", publish_text)
+        for forbidden in [
+            "NPM_TOKEN",
+            "NODE_AUTH_TOKEN",
+            "npm ci",
+            "npm run",
+            "cargo ",
+            "build:candidate",
+        ]:
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, publish_text)
+
+    def test_node_package_metadata_is_a_public_lockstep_alpha_group(self) -> None:
+        descriptor = json.loads(NODE_DESCRIPTOR_JSON.read_text(encoding="utf-8"))
+        self.assertEqual(descriptor["admission_status"], "public-alpha")
+        entries = [descriptor["root"], *descriptor["targets"]]
+        for entry in entries:
+            manifest = json.loads(
+                (ROOT / "platforms" / "node" / entry["directory"] / "package.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            with self.subTest(package=entry["name"]):
+                self.assertEqual(manifest["name"], entry["name"])
+                self.assertIsNot(manifest.get("private"), True)
+                self.assertEqual(manifest["publishConfig"]["access"], "public")
+                self.assertEqual(
+                    manifest["repository"]["url"],
+                    "git+https://github.com/Latias94/merman.git",
+                )
+                assert_no_npm_provenance_disable(self, json.dumps(manifest, sort_keys=True))
+
     def test_release_preflight_packs_and_verifies_the_web_package_group(self) -> None:
         workflow = parse_workflow_structure(WORKFLOW_ROOT / "release-preflight.yml")
         preflight = workflow_job(workflow, "web-npm-dry-run")
@@ -1082,6 +1153,29 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("--source-sha \"$source_sha\"", pack["run"])
         self.assertIn("--target-dist-tag staging", pack["run"])
         self.assertNotIn("npm pack --dry-run", pack["run"])
+
+    def test_release_preflight_builds_and_verifies_every_node_package_target(self) -> None:
+        workflow = parse_workflow_structure(WORKFLOW_ROOT / "release-preflight.yml")
+        platform = workflow_job(workflow, "node-platform-package")
+        group = workflow_job(workflow, "node-npm-dry-run")
+        pack = workflow_step(group, name="Pack and verify Node package group dry-run")
+
+        self.assertEqual(
+            {entry["target"] for entry in platform["matrix_include"]},
+            {
+                "darwin-arm64",
+                "darwin-x64",
+                "linux-x64-gnu",
+                "linux-x64-musl",
+                "win32-x64-msvc",
+            },
+        )
+        self.assertIn("Build and probe Node native package", contract_text(platform))
+        self.assertIn("Pack and install-smoke Node native package", contract_text(platform))
+        self.assertIn("scripts/node_package_group.py create-manifest", pack["run"])
+        self.assertIn("scripts/node_package_group.py verify-artifact", pack["run"])
+        self.assertIn("scripts/node_package_group.py reconcile", pack["run"])
+        self.assertIn("--dry-run", pack["run"])
 
     def test_release_preflight_can_pin_an_immutable_dispatch_sha(self) -> None:
         workflow = parse_workflow_structure(WORKFLOW_ROOT / "release-preflight.yml")

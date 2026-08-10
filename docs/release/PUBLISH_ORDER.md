@@ -7,8 +7,10 @@ Last updated: 2026-08-10
 
 Published workspace prerelease baseline: `0.8.0-alpha.5`.
 
-No later workspace release candidate is currently selected. Source changes after the alpha.5 tag
-remain unreleased until the maintainer authorizes another version and release scope.
+The next workspace release remains in development and has no selected version yet. For npm flow
+testing only, the browser and Node package groups may publish `0.8.0-alpha.5` from a reviewed,
+immutable source commit that is newer than the workspace `v0.8.0-alpha.5` tag. Their provenance
+must identify that exact commit, and documentation must not imply cross-channel byte identity.
 
 Rationale:
 
@@ -19,10 +21,11 @@ Rationale:
   integrations test one coherent version graph. The unpublished VS Code extension follows its own
   `0.1.x` version track and records the bundled workspace runtime separately.
 
-Workspace-coupled manifests remain aligned to the published `0.8.0-alpha.5` baseline. Python
-package metadata uses the PEP 440 spelling `0.8.0a5`, but manifest alignment does not prove that a
-surface reached its registry. The independently versioned VS Code extension, Typst wrapper, and
-`roughr-merman` remain on their own release axes.
+Workspace-coupled manifests remain aligned to `0.8.0-alpha.5`. Python package metadata uses the
+PEP 440 spelling `0.8.0a5`, but manifest alignment does not prove that a surface reached its
+registry or that separately published alpha.5 channels share one source snapshot. The
+independently versioned VS Code extension, Typst wrapper, and `roughr-merman` remain on their own
+release axes.
 
 ## Publish Order
 
@@ -91,6 +94,29 @@ topological order. After the selected source revision has passed release preflig
 `@mermanjs/web-editor`, `@mermanjs/web-ascii`, and `@mermanjs/web-render`. The workflow publishes
 missing exact versions to a staging tag, verifies every member, then promotes the requested public
 tag as a recoverable group operation.
+
+The first version of a new split Web package cannot use npm Trusted Publishing before the package
+exists. Run `release-web.yml` without publication, download the verified package-group artifact,
+publish only the missing exact tarballs under its staging tag with a maintainer's 2FA-protected npm
+credential, configure Trusted Publishing for those package names, then rerun the workflow with
+publication enabled. Do not keep the bootstrap credential in GitHub Actions.
+
+## Node Native Package Group
+
+The experimental Node package is also a lockstep npm group, but it is native rather than browser
+WASM: `@mermanjs/node`, `@mermanjs/node-darwin-arm64`, `@mermanjs/node-darwin-x64`,
+`@mermanjs/node-linux-x64-gnu`, `@mermanjs/node-linux-x64-musl`, and
+`@mermanjs/node-win32-x64-msvc`. Run `release-node.yml` against a reviewed immutable source commit
+after the matching preflight succeeds. It builds and installs every native target, publishes
+missing exact versions under a staging tag in platform-first order, verifies registry integrity,
+then promotes the requested tag with the root loader last.
+
+The first version of each npm package cannot use npm Trusted Publishing before the package exists.
+For that one bootstrap, download the verified group artifact from a non-publishing run, publish the
+five platform tarballs and then the loader under the workflow's staging tag with a maintainer's
+2FA-protected npm credential, configure Trusted Publishing for all six package names, and rerun
+`release-node.yml` with publishing enabled. Thereafter the workflow owns reconciled publishing and
+provenance; do not keep an npm token in GitHub Actions.
 
 ## Pre-Publish Gates
 

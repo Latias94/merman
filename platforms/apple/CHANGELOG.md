@@ -8,15 +8,11 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ### Breaking changes
 
-- The default XCFramework now bundles SVG, both layout engines, ASCII, analysis, validation, and
-  document analysis, while omitting math, PNG, JPEG, PDF, and native runtime adapters. Generated
-  helpers remain available for custom artifacts; the bundled library reports typed capability
-  absence instead of carrying every optional backend.
+- The default XCFramework now bundles SVG, both layout engines, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native runtime adapters. Generated helpers remain available for custom artifacts; the bundled library reports typed capability absence instead of carrying every optional backend.
 
 ### Changed
 
-- Kept Apple static-library slices on the `native-sdk` profile after a same-source link comparison
-  showed the size-oriented dynamic-library profile produced a larger final Swift executable.
+- Kept Apple static-library slices on the `native-sdk` profile after a same-source link comparison showed the size-oriented dynamic-library profile produced a larger final Swift executable.
 
 ## [0.8.0-alpha.5] - 2026-08-09
 

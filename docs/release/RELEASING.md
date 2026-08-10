@@ -25,14 +25,16 @@ is zero.
 | `release-flutter.yml` | `merman` with injected Android, iOS, macOS, Windows, and Linux native artifacts | pub.dev |
 | `release-android.yml` | `merman-android-<tag>.aar` | GitHub Release |
 | `release-web.yml` | admitted `@mermanjs/web` browser package group | npm |
+| `release-node.yml` | experimental `@mermanjs/node` loader and five native platform packages | npm |
 | `vscode-extension.yml` | Platform-specific `merman-vscode` VSIX artifacts | GitHub Actions artifacts |
 | `homebrew.yml` | Nothing; Homebrew/core formula health check only | Homebrew |
 
 Most platform publish workflows are manual `workflow_dispatch` workflows. Python, Android, and
 Apple accept a `release_tag`, resolve the matching immutable tag commit and tree, and build all
 artifacts from that source. The workflow definition may be dispatched from `main`, but `main` is
-never an artifact source for those releases. Web and VS Code still expose an explicit `source_ref`
-for their owner-specific recovery flows. Flutter is the exception: pub.dev automated publishing
+never an artifact source for those releases. Web, Node, and VS Code expose an explicit `source_ref`
+for owner-specific prerelease or recovery flows; their workflows resolve it to an immutable commit
+before building. Flutter is the exception: pub.dev automated publishing
 only accepts GitHub Actions runs triggered by a pushed git tag, so `release-flutter.yml` publishes
 from the `v*` tag push and uses manual runs for validation only. The crates.io workflow is
 idempotent for already-published crate versions, so a rerun can continue after a partial publish
@@ -48,7 +50,7 @@ dependencies in the same release have become visible in crates.io.
 | crates.io incident yank | Dedicated `CARGO_REGISTRY_YANK_TOKEN` secret with yank permission in the `crates.io` environment |
 | pub.dev | Trusted Publishing / OIDC configured for `merman`, this repository, `release-flutter.yml`, and the release tag pattern |
 | PyPI | Trusted Publishing / OIDC configured for `merman` and `release-python.yml` |
-| npm | Trusted Publishing / OIDC configured for every admitted `@mermanjs/web*` package, this repository, `release-web.yml`, and the `npm` environment |
+| npm | Trusted Publishing / OIDC configured for every admitted `@mermanjs/web*` and `@mermanjs/node*` package, this repository, its owning release workflow, and the `npm` environment |
 | GitHub Release assets | `GITHUB_TOKEN` from Actions |
 | VS Code Marketplace | Not configured. Marketplace publishing would need `VSCE_PAT`, an explicit publish job, and VSIX provenance verification before enabling. |
 
@@ -77,7 +79,25 @@ The public browser packages are `@mermanjs/web`, `@mermanjs/web-analysis`,
 `@mermanjs/web-editor`, `@mermanjs/web-ascii`, and `@mermanjs/web-render`. Configure npm Trusted
 Publishing for every package in that lockstep group with workflow file `release-web.yml` and GitHub
 environment `npm`. Trusted publishes automatically include npm provenance; the workflow does not
-need `--provenance`.
+need `--provenance`. For any package name that does not yet exist, first run the workflow without
+publication, publish only the verified missing tarball under the workflow staging tag with a
+maintainer's 2FA-protected credential, configure its trusted publisher, and rerun the workflow with
+publication enabled. Do not add the bootstrap credential to GitHub Actions.
+
+The experimental native Node group is `@mermanjs/node`, `@mermanjs/node-darwin-arm64`,
+`@mermanjs/node-darwin-x64`, `@mermanjs/node-linux-x64-gnu`,
+`@mermanjs/node-linux-x64-musl`, and `@mermanjs/node-win32-x64-msvc`. Its workflow builds and
+install-smokes each actual target, packages platform binaries before the root loader, and uses the
+same staging-tag plus integrity-reconciliation boundary as the browser group. npm only allows a
+trusted publisher to be configured for an existing package, so the first release of each new Node
+package requires the documented one-time, 2FA-protected bootstrap from the verified workflow
+artifact; configure OIDC for all six names immediately afterward. Do not add a persistent npm token
+to the repository workflow.
+
+For an npm-only alpha test, `release-node.yml` treats `release_tag` as the package version label and
+`source_ref` as the build source. The source may be a reviewed full commit SHA newer than the
+same-named workspace tag; the workflow records the resolved commit in the package-group manifest,
+and release notes must not claim that separately published channels are byte-identical.
 
 The npm publish job is intentionally narrow: it runs on GitHub-hosted Ubuntu with Node 24, enters
 the `npm` environment, requests `id-token: write`, checks out only `github.workflow_sha` without
@@ -108,9 +128,10 @@ a repository-maintained status cache.
 
 ## Version Checklist
 
-`Cargo.toml` `[workspace.package].version` is the sole authority for a workspace release. Prepare
-the projection in an exclusive Git worktree, then verify every checked-in path without supplying a
-second version value:
+`Cargo.toml` `[workspace.package].version` is the sole authority for a workspace release. While no
+next version is selected, keep the root changelog at `[Unreleased]` and leave the workspace version
+unchanged. After the maintainer selects a version, prepare the projection in an exclusive Git
+worktree, then verify every checked-in path without supplying a second version value:
 
 ```bash
 python3 scripts/release-version.py set --version <version>
@@ -119,7 +140,7 @@ python3 scripts/release-version.py
 
 The gate discovers workspace members and validates their inherited package versions, internal workspace dependency requirements, `Cargo.lock`, Web package and lock metadata, the Playground's local Web lock, the fuzz-workspace lock, Python's PEP 440 projection, Android and Flutter manifests, CocoaPods metadata, and iOS framework bundle versions.
 
-Keep the target Changelog entry marked `Unreleased` during ordinary preparation. Immediately before the immutable preflight, replace it with the intended tag date in `YYYY-MM-DD` form and verify that its version matches the workspace release authority. Do not tag an `Unreleased` entry or reuse a date from an abandoned release attempt.
+Keep the target Changelog entry marked `Unreleased` during ordinary preparation. Use an unversioned `[Unreleased]` heading while the next workspace version is undecided, then add the selected version before release preflight. Immediately before the immutable preflight, replace `Unreleased` with the intended tag date in `YYYY-MM-DD` form and verify that its version matches the workspace release authority. Do not tag an `Unreleased` entry or reuse a date from an abandoned release attempt.
 
 Treat the root `CHANGELOG.md` as the canonical project-wide release narrative and package changelogs as audience-specific projections of the same release delta. Update only the package changelogs for surfaces included in the release; do not copy the complete root entry or create one changelog per Rust crate.
 
@@ -171,7 +192,7 @@ gh workflow run release-preflight.yml -f version="$VERSION" -f source_ref="$SOUR
 
 The preflight workflow verifies release versions, package file lists, registry-independent Rust
 crate publish dry-runs, Python wheels, Android AAR builds, Apple XCFramework builds, the web npm
-package dry-run, platform VSIX packaging, and Flutter
+package dry-run, Node native package-group build/install smokes, platform VSIX packaging, and Flutter
 `dart pub publish --dry-run`. It does not publish to any registry.
 
 Release-archive smoke tests should verify user-observable contracts rather than incidental representation choices. Accept legal binary token and whitespace forms, and allow valid asynchronous notification ordering while still requiring bounded output, the expected protocol responses, successful exit, and exact archive contents. Reproduce failures against the final archive before changing product code.
@@ -241,6 +262,23 @@ Normal Web releases must use `release-web.yml`. It stages every missing exact pa
 checks every tarball integrity, and only then moves the requested `alpha`, `beta`, `rc`, or `latest`
 tag as a recoverable group operation. Do not publish a member manually: a bare `npm publish` can
 leave the package group on divergent versions or tags.
+
+For local Node package validation on the current host:
+
+```bash
+cd platforms/node
+npm ci
+npm test
+npm run check:packages
+package_root="$(mktemp -d)"
+node scripts/assemble-packages.mjs --loader-only --output-root "$package_root"
+npm pack "$package_root/node" --dry-run
+```
+
+The release preflight and `release-node.yml` remain responsible for building, installing, and
+render-smoke-testing all five native targets. A local host build does not substitute for that
+matrix. Normal Node releases publish the five platform packages before the root loader and verify
+the exact package-group integrity before moving the public prerelease tag.
 
 For local VS Code VSIX validation:
 
@@ -333,6 +371,7 @@ gh workflow run release-python.yml -f release_tag="$RELEASE_TAG" -f publish_to_p
 gh workflow run release-android.yml -f release_tag="$RELEASE_TAG"
 gh workflow run release-apple.yml -f release_tag="$RELEASE_TAG"
 gh workflow run release-web.yml -f release_tag="$RELEASE_TAG" -f source_ref="$RELEASE_TAG" -f publish_to_npm=true
+gh workflow run release-node.yml -f release_tag="$RELEASE_TAG" -f source_ref="$SOURCE_SHA" -f publish_to_npm=true
 gh workflow run vscode-extension.yml -f source_ref="$RELEASE_TAG"
 gh workflow run homebrew.yml
 ```
