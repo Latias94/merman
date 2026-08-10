@@ -17,7 +17,7 @@ use rustybuzz::{
     Direction as BuzzDirection, Feature, Language, Script as BuzzScript, UnicodeBuffer, Variation,
 };
 use std::borrow::Cow;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -3783,7 +3783,6 @@ struct NativeCatalogTextMeasurer {
     language: Option<Language>,
     features: Vec<Feature>,
     variations: Vec<Variation>,
-    coverage_cache: Mutex<Vec<HashMap<char, bool>>>,
 }
 
 #[derive(Clone)]
@@ -4014,7 +4013,7 @@ impl ProjectionSpanCursor {
             if visible.start() < start
                 || visible.end() > end
                 || visible.start() != atom_cursor
-                || visible.end() <= visible.start()
+                || visible.end() < visible.start()
             {
                 return Err(TextLayoutError::InvalidPreparedText);
             }
@@ -4516,7 +4515,6 @@ impl NativeCatalogTextMeasurer {
         if faces.is_empty() {
             return Err(TextLayoutError::NoUsableFace);
         }
-        let face_count = faces.len();
         Ok(Self {
             faces,
             catalog: request.catalog().clone(),
@@ -4526,7 +4524,6 @@ impl NativeCatalogTextMeasurer {
             language: None,
             features: Vec::new(),
             variations: Vec::new(),
-            coverage_cache: Mutex::new(vec![HashMap::new(); face_count]),
         })
     }
 
@@ -4705,14 +4702,11 @@ impl NativeCatalogTextMeasurer {
 
     fn choose_face_index(&self, text: &str, selector: &FaceSelector) -> Option<usize> {
         let script = self.script.or_else(|| cluster_script(text));
+        // Keep legacy measurement on the same cluster-shaping coverage rule as prepared text.
+        // A separate scalar CMap cache cannot prove shaped coverage and grows across labels.
         self.candidate_face_indices(selector)
             .into_iter()
             .find(|index| {
-                if let Some(character) = single_unicode_scalar(text)
-                    && !self.face_covers_scalar(*index, character)
-                {
-                    return false;
-                }
                 self.face_shapes_cluster(
                     *index,
                     text,
@@ -4763,26 +4757,6 @@ impl NativeCatalogTextMeasurer {
         work.record_coverage_cache_insertion()?;
         coverage_cache.insert(span_index, coverage_lane, selected)?;
         Ok(selected)
-    }
-
-    fn face_covers_scalar(&self, face_index: usize, character: char) -> bool {
-        if is_default_ignorable(character) {
-            return true;
-        }
-        let mut cache = self
-            .coverage_cache
-            .lock()
-            .expect("text coverage cache is not poisoned");
-        if let Some(covers) = cache[face_index].get(&character) {
-            return *covers;
-        }
-        let face = &self.faces[face_index];
-        let covers = ttf_parser::Face::parse(&face.data, face.face_index)
-            .ok()
-            .and_then(|parsed| parsed.glyph_index(character))
-            .is_some();
-        cache[face_index].insert(character, covers);
-        covers
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -4935,6 +4909,9 @@ impl NativeCatalogTextMeasurer {
             let visible = span.visible();
             if visible.start() < line_visible_start || visible.end() > line_visible_end {
                 return Err(TextLayoutError::InvalidPreparedText);
+            }
+            if visible.start() == visible.end() {
+                continue;
             }
             let atom_start = visible.start() - line_visible_start;
             let atom_end = visible.end() - line_visible_start;
@@ -5657,12 +5634,6 @@ fn parse_font_weight(value: &str) -> u16 {
         "lighter" => 300,
         value => value.parse::<u16>().unwrap_or(400).clamp(1, 1000),
     }
-}
-
-fn single_unicode_scalar(value: &str) -> Option<char> {
-    let mut characters = value.chars();
-    let character = characters.next()?;
-    characters.next().is_none().then_some(character)
 }
 
 fn is_default_ignorable(character: char) -> bool {
@@ -6687,13 +6658,14 @@ mod tests {
         let typography = ThemeTextStyle::default()
             .with_font_stack(FontStack::single("Excalifont").expect("fixture family is valid"));
 
-        for (text, wrap) in [
+        for (text, wrap, expects_metrics_fanout) in [
             (
                 "a".repeat(8_192),
                 PreparedTextWrap::SvgLike {
                     max_width_px: Some(32.0),
                     break_long_words: true,
                 },
+                true,
             ),
             (
                 "alpha ".repeat(1_365),
@@ -6701,12 +6673,14 @@ mod tests {
                     max_width_px: Some(1_000_000.0),
                     break_long_words: true,
                 },
+                false,
             ),
             (
                 "alpha-beta ".repeat(744),
                 PreparedTextWrap::HtmlLike {
                     max_width_px: Some(1_000_000.0),
                 },
+                false,
             ),
         ] {
             let request = PrepareTextRequest::new(text, typography.clone()).with_wrap(wrap);
@@ -6726,6 +6700,9 @@ mod tests {
             );
             assert_eq!(work.wrapping_line_ranges, 1);
             assert_eq!(work.metrics_line_ranges, response.lines().len());
+            if expects_metrics_fanout {
+                assert!(work.metrics_line_ranges > work.wrapping_line_ranges);
+            }
             assert!(
                 work.wrapping_span_visits
                     <= projection_spans.saturating_add(work.wrapping_line_ranges.saturating_mul(2))
@@ -6738,10 +6715,55 @@ mod tests {
     }
 
     #[test]
+    fn native_wrapping_span_cursor_visits_multiline_projection_linearly() {
+        let catalog_request =
+            PrepareCatalogRequest::new(mixed_catalog(), FontSourcePolicy::embedded_only());
+        let layout = NativeTextLayoutBackend::default()
+            .prepare(&catalog_request)
+            .expect("native backend should prepare fixture catalog");
+        let measurer = NativeCatalogTextMeasurer::new(&catalog_request, FontSource::Embedded)
+            .expect("fixture catalog should construct the native measurer");
+        let typography = ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("Excalifont").expect("fixture family is valid"));
+        let source_line_count = 512;
+        let text = vec!["alpha"; source_line_count].join("\n");
+        let request =
+            PrepareTextRequest::new(text, typography).with_wrap(PreparedTextWrap::SvgLike {
+                max_width_px: Some(1_000_000.0),
+                break_long_words: true,
+            });
+        let backend_request = backend_request_for(&layout, &request);
+        let projection_spans = backend_request.projection().spans().len();
+        let (response, work) = measurer
+            .prepare_structured_text_with_work(&backend_request)
+            .expect("multiline fixture should prepare linearly");
+
+        assert_eq!(work.wrapping_line_ranges, source_line_count);
+        assert_eq!(response.lines().len(), source_line_count);
+        assert!(
+            work.wrapping_span_visits
+                <= projection_spans.saturating_add(work.wrapping_line_ranges.saturating_mul(2))
+        );
+    }
+
+    #[test]
     fn projection_span_cursor_preserves_gaps_empty_lines_and_expanded_atoms() {
-        let projection = TextProjection::new("a\n\nß", ThemeTextTransform::Uppercase)
-            .expect("projection should build");
-        assert_eq!(projection.visible(), "A\n\nSS");
+        let source = "a  b\n\nß";
+        let projection = TextProjection::from_parts(
+            Arc::from(source),
+            Arc::from("A B\n\nSS"),
+            vec![
+                SourceVisibleSpan::new(TextByteRange::new(0, 1), TextByteRange::new(0, 1)),
+                SourceVisibleSpan::new(TextByteRange::new(1, 2), TextByteRange::new(1, 2)),
+                SourceVisibleSpan::new(TextByteRange::new(2, 3), TextByteRange::new(2, 2)),
+                SourceVisibleSpan::new(TextByteRange::new(3, 4), TextByteRange::new(2, 3)),
+                SourceVisibleSpan::new(TextByteRange::new(4, 5), TextByteRange::new(3, 4)),
+                SourceVisibleSpan::new(TextByteRange::new(5, 6), TextByteRange::new(4, 5)),
+                SourceVisibleSpan::new(TextByteRange::new(6, 8), TextByteRange::new(5, 7)),
+            ],
+        )
+        .expect("projection with folded whitespace should build");
+        assert_eq!(projection.visible(), "A B\n\nSS");
         let lines = split_projected_visible_lines(projection.visible());
         assert_eq!(
             lines
@@ -6749,9 +6771,9 @@ mod tests {
                 .map(|line| line.visible_range())
                 .collect::<Vec<_>>(),
             vec![
-                TextByteRange::new(0, 1),
-                TextByteRange::new(2, 2),
-                TextByteRange::new(3, 5),
+                TextByteRange::new(0, 3),
+                TextByteRange::new(4, 4),
+                TextByteRange::new(5, 7),
             ]
         );
 
@@ -6770,9 +6792,9 @@ mod tests {
             .collect::<Result<Vec<_>, _>>()
             .expect("ordered projected lines should admit");
 
-        assert_eq!(ranges[0].len(), 1);
+        assert_eq!(ranges[0], 0..4);
         assert!(ranges[1].is_empty());
-        assert_eq!(ranges[2].len(), 1);
+        assert_eq!(ranges[2], 6..7);
         assert_eq!(work.metrics_line_ranges, lines.len());
         assert!(
             work.metrics_span_visits
@@ -6780,6 +6802,49 @@ mod tests {
                     .spans()
                     .len()
                     .saturating_add(lines.len().saturating_mul(2))
+        );
+
+        let catalog_request =
+            PrepareCatalogRequest::new(mixed_catalog(), FontSourcePolicy::embedded_only());
+        let layout = NativeTextLayoutBackend::default()
+            .prepare(&catalog_request)
+            .expect("native backend should prepare fixture catalog");
+        let measurer = NativeCatalogTextMeasurer::new(&catalog_request, FontSource::Embedded)
+            .expect("fixture catalog should construct the native measurer");
+        let typography = ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("Excalifont").expect("fixture family is valid"))
+            .with_transform(ThemeTextTransform::Uppercase);
+        let request =
+            PrepareTextRequest::new(source, typography).with_wrap(PreparedTextWrap::SvgLike {
+                max_width_px: Some(1_000_000.0),
+                break_long_words: true,
+            });
+        let binding = backend_request_for(&layout, &request).binding().clone();
+        let backend_request =
+            PreparedTextBackendRequest::from_projection(binding, &request, projection)
+                .expect("custom test projection should match the request source");
+        let projection_spans = backend_request.projection().spans().len();
+        let (response, work) = measurer
+            .prepare_structured_text_with_work(&backend_request)
+            .expect("zero-length projection spans should not be shaped as visible atoms");
+
+        assert_eq!(
+            response
+                .lines()
+                .iter()
+                .map(PreparedTextLineResponse::text)
+                .collect::<Vec<_>>(),
+            ["A B", "", "SS"]
+        );
+        assert_eq!(work.wrapping_line_ranges, 3);
+        assert_eq!(work.metrics_line_ranges, 3);
+        assert!(
+            work.wrapping_span_visits
+                <= projection_spans.saturating_add(work.wrapping_line_ranges.saturating_mul(2))
+        );
+        assert!(
+            work.metrics_span_visits
+                <= projection_spans.saturating_add(work.metrics_line_ranges.saturating_mul(2))
         );
     }
 
