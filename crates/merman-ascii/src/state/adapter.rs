@@ -224,7 +224,14 @@ fn projection_allocation_failed() -> AsciiError {
 }
 
 fn validate_supported_state_model(model: &StateDiagramRenderModel) -> Result<()> {
+    let mut node_ids = HashSet::new();
+    node_ids
+        .try_reserve(model.nodes.len())
+        .map_err(|_| projection_allocation_failed())?;
     for node in &model.nodes {
+        if !node_ids.insert(node.id.as_str()) {
+            return Err(unsupported("duplicate node ids"));
+        }
         validate_supported_state_node(node)?;
     }
 
