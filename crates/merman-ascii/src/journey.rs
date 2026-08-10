@@ -1,9 +1,10 @@
 use crate::Result;
+use crate::error::AsciiError;
 use crate::options::AsciiRenderOptions;
+use crate::resource::AsciiResourceLimitPhase;
 use crate::safe_text::BudgetedTextDocument;
 use crate::sectioned_text::{SectionedTextPlan, SectionedTextTask, plan_sectioned_text};
 use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyRenderTask};
-use std::collections::BTreeSet;
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
 
@@ -26,7 +27,7 @@ pub fn render_journey_diagram(
     let actors = if model.actors.is_empty() {
         collect_actors(&model.tasks, &mut document)?
     } else {
-        BTreeSet::new()
+        Vec::new()
     };
     if !model.actors.is_empty() || !actors.is_empty() {
         document.push_line_with(|line| {
@@ -114,17 +115,22 @@ fn push_orphan_section(document: &mut BudgetedTextDocument, section: &str) -> Re
 fn collect_actors<'a>(
     tasks: &'a [JourneyRenderTask],
     document: &mut BudgetedTextDocument,
-) -> Result<BTreeSet<&'a str>> {
-    let mut set = BTreeSet::new();
+) -> Result<Vec<&'a str>> {
+    let mut actors = Vec::new();
     for task in tasks {
         for actor in &task.people {
             if !actor.is_empty() {
                 document.preflight_text_work(actor)?;
-                set.insert(actor.as_str());
+                actors.try_reserve(1).map_err(|_| {
+                    AsciiError::allocation_failed(AsciiResourceLimitPhase::LayoutWork.as_str())
+                })?;
+                actors.push(actor.as_str());
             }
         }
     }
-    Ok(set)
+    actors.sort_unstable();
+    actors.dedup();
+    Ok(actors)
 }
 
 fn push_task(document: &mut BudgetedTextDocument, task: &JourneyRenderTask) -> Result<()> {
