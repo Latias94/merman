@@ -224,16 +224,17 @@ fn projection_allocation_failed() -> AsciiError {
 }
 
 fn validate_supported_state_model(model: &StateDiagramRenderModel) -> Result<()> {
-    let mut node_ids = HashSet::new();
-    node_ids
+    let mut node_by_id = HashMap::new();
+    node_by_id
         .try_reserve(model.nodes.len())
         .map_err(|_| projection_allocation_failed())?;
     for node in &model.nodes {
-        if !node_ids.insert(node.id.as_str()) {
+        if node_by_id.insert(node.id.as_str(), node).is_some() {
             return Err(unsupported("duplicate node ids"));
         }
         validate_supported_state_node(node)?;
     }
+    validate_state_parent_ownership(model, &node_by_id)?;
 
     for edge in &model.edges {
         if !edge.arrow_type_end.is_empty()
@@ -243,6 +244,41 @@ fn validate_supported_state_model(model: &StateDiagramRenderModel) -> Result<()>
             )
         {
             return Err(unsupported("state arrow types"));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_state_parent_ownership(
+    model: &StateDiagramRenderModel,
+    node_by_id: &HashMap<&str, &StateDiagramRenderNode>,
+) -> Result<()> {
+    for node in &model.nodes {
+        let Some(parent_id) = node.parent_id.as_deref() else {
+            continue;
+        };
+        let parent = node_by_id
+            .get(parent_id)
+            .copied()
+            .ok_or_else(|| unsupported("unknown state parent ids"))?;
+        if !parent.is_group {
+            return Err(unsupported("state parents that are not groups"));
+        }
+    }
+
+    for node in &model.nodes {
+        let mut parent_id = node.parent_id.as_deref();
+        for _ in 0..model.nodes.len() {
+            let Some(current_parent_id) = parent_id else {
+                break;
+            };
+            parent_id = node_by_id
+                .get(current_parent_id)
+                .and_then(|parent| parent.parent_id.as_deref());
+        }
+        if parent_id.is_some() {
+            return Err(unsupported("cyclic state parent ids"));
         }
     }
 
