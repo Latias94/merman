@@ -285,6 +285,26 @@ fn class_render_model_rejects_relations_without_endpoint_classes() {
 }
 
 #[test]
+fn class_render_model_rejects_missing_relation_endpoints_before_namespace_rendering() {
+    let mut model = parse_class_model(
+        "classDiagram\nnamespace Domain {\n  class A\n}\nclass B\nA --> B : uses",
+    );
+    model.relations[0].id2 = "Missing".to_string();
+
+    assert_unsupported_class_model(&model, "relationships with missing endpoint classes");
+}
+
+#[test]
+fn class_render_model_rejects_missing_note_targets_before_namespace_rendering() {
+    let mut model = parse_class_model(
+        "classDiagram\nnamespace Domain {\n  class A\n  note for A \"linked\"\n}",
+    );
+    model.notes[0].class_id = Some("Missing".to_string());
+
+    assert_unsupported_class_model(&model, "notes with missing target classes");
+}
+
+#[test]
 fn class_render_model_rejects_duplicate_rendered_ids() {
     let mut model = parse_class_model("classDiagram\nclass A\nclass B");
     model.classes.get_mut("B").expect("class B should exist").id = "A".to_string();

@@ -293,6 +293,7 @@ pub(crate) fn render_class_diagram(
     let charset = ClassCharset::for_options(options);
     let direction = ClassDirection::try_from_model(&model.direction)?;
     let namespace_facade_aliases = namespace_facade_aliases(model)?;
+    validate_class_references(model, &namespace_facade_aliases, &mut resources)?;
     if has_renderable_namespaces(model) {
         return render_namespaced_class_diagram(
             model,
@@ -438,6 +439,59 @@ fn validate_unique_class_render_ids(
             });
         }
     }
+    Ok(())
+}
+
+fn validate_class_references(
+    model: &ClassDiagram,
+    namespace_facade_aliases: &HashMap<String, String>,
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    let endpoint_capacity = model
+        .classes
+        .len()
+        .checked_add(model.interfaces.len())
+        .ok_or_else(|| work_overflow(resources))?;
+    resources.charge_layout_work(endpoint_capacity)?;
+
+    let mut endpoint_ids = HashSet::new();
+    endpoint_ids
+        .try_reserve(endpoint_capacity)
+        .map_err(|_| layout_allocation_failed())?;
+    endpoint_ids.extend(model.classes.values().map(|class| class.id.as_str()));
+    endpoint_ids.extend(
+        model
+            .interfaces
+            .iter()
+            .map(|interface| interface.id.as_str()),
+    );
+
+    for relation in &model.relations {
+        resources.charge_layout_work(2)?;
+        let left_id = relation_endpoint_id(namespace_facade_aliases, relation.id1.as_str());
+        let right_id = relation_endpoint_id(namespace_facade_aliases, relation.id2.as_str());
+        if !endpoint_ids.contains(left_id) || !endpoint_ids.contains(right_id) {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "class",
+                feature: "relationships with missing endpoint classes",
+            });
+        }
+    }
+
+    for note in &model.notes {
+        let Some(target_id) = note.class_id.as_deref() else {
+            continue;
+        };
+        resources.charge_layout_work(1)?;
+        let target_id = relation_endpoint_id(namespace_facade_aliases, target_id);
+        if !endpoint_ids.contains(target_id) {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "class",
+                feature: "notes with missing target classes",
+            });
+        }
+    }
+
     Ok(())
 }
 
