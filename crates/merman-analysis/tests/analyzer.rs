@@ -832,6 +832,129 @@ fn prefer_frontmatter_config_for_init_directives_is_a_recommended_hint() {
 }
 
 #[test]
+fn source_config_diagnostics_and_fixes_keep_original_crlf_unicode_coordinates() {
+    struct Case<'a> {
+        label: &'a str,
+        source: &'a str,
+        rule_id: &'a str,
+        expected_text: &'a str,
+        expected_line: usize,
+        expected_character: usize,
+        expected_fix_replacement: Option<&'a str>,
+        recommended: bool,
+    }
+
+    let cases = [
+        Case {
+            label: "directive keyword fix",
+            source: concat!(
+                "%% 前置 🤓\r\n",
+                "%%{ initialize: { \"theme\": \"dark\" } }%%\r\n",
+                "flowchart TD\r\n",
+                "A-->B\r\n",
+            ),
+            rule_id: "merman.authoring.config.prefer_init_directive",
+            expected_text: "initialize",
+            expected_line: 1,
+            expected_character: 4,
+            expected_fix_replacement: Some("init"),
+            recommended: true,
+        },
+        Case {
+            label: "frontmatter config key",
+            source: concat!(
+                "---\r\n",
+                "title: \"中文 🤓\"\r\n",
+                "config:\r\n",
+                "  flowchart:\r\n",
+                "    htmlLabels: false\r\n",
+                "---\r\n",
+                "flowchart TD\r\n",
+                "A-->B\r\n",
+            ),
+            rule_id: "merman.compatibility.config.deprecated_flowchart_html_labels",
+            expected_text: "htmlLabels",
+            expected_line: 4,
+            expected_character: 4,
+            expected_fix_replacement: None,
+            recommended: false,
+        },
+    ];
+
+    for case in cases {
+        let options = if case.recommended {
+            AnalysisOptions::default().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_profile(AnalysisRuleProfile::Recommended)
+                    .with_rule_disabled("merman.authoring.config.prefer_frontmatter_config")
+                    .expect("test rule id should be configurable"),
+            )
+        } else {
+            AnalysisOptions::default()
+        };
+        let payload = Analyzer::with_options(options).analyze(case.source);
+        let diagnostic = payload
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.id == case.rule_id)
+            .unwrap_or_else(|| panic!("missing {} diagnostic", case.label));
+        let span = diagnostic
+            .span
+            .as_ref()
+            .unwrap_or_else(|| panic!("missing {} span", case.label));
+
+        assert_eq!(
+            &case.source[span.byte_start..span.byte_end],
+            case.expected_text,
+            "{} source slice",
+            case.label
+        );
+        assert_eq!(
+            span.byte_start,
+            case.source
+                .find(case.expected_text)
+                .unwrap_or_else(|| panic!("missing {} source text", case.label)),
+            "{} byte start",
+            case.label
+        );
+        assert_eq!(
+            span.lsp_range.start.line, case.expected_line,
+            "{}",
+            case.label
+        );
+        assert_eq!(
+            span.lsp_range.start.character, case.expected_character,
+            "{}",
+            case.label
+        );
+        assert_eq!(
+            span.lsp_range.end.line, case.expected_line,
+            "{}",
+            case.label
+        );
+        assert_eq!(
+            span.lsp_range.end.character,
+            case.expected_character + case.expected_text.encode_utf16().count(),
+            "{}",
+            case.label
+        );
+
+        match case.expected_fix_replacement {
+            Some(replacement) => {
+                let edit = diagnostic
+                    .fixes
+                    .iter()
+                    .flat_map(|fix| fix.edits.iter())
+                    .find(|edit| edit.replacement == replacement)
+                    .unwrap_or_else(|| panic!("missing {} fix edit", case.label));
+                assert_eq!(edit.span, *span, "{} fix span", case.label);
+            }
+            None => assert!(diagnostic.fixes.is_empty(), "{}", case.label),
+        }
+    }
+}
+
+#[test]
 fn class_html_labels_config_is_not_a_core_compatibility_warning() {
     let source = "%%{init: { \"class\": { \"htmlLabels\": true } }}%%\nclassDiagram\nA <|-- B\n";
     let payload = analyze(source);

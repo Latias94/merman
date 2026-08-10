@@ -26,6 +26,38 @@ fn completion_offers_known_node_ids_with_text_edits() {
 }
 
 #[test]
+fn completion_at_eof_preserves_unicode_ranges_across_line_endings() {
+    for (label, line_ending) in [("lf", "\n"), ("crlf", "\r\n"), ("cr", "\r")] {
+        let final_line = "target[\"🤓\"] -->";
+        let source = ["flowchart TD", "alpha-->beta", final_line].join(line_ending);
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                format!("file:///tmp/completion-{label}.mmd"),
+                1,
+                source,
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
+        let cursor = Position::new(2, final_line.encode_utf16().count());
+        let completion = completion_for_snapshot(&snapshot, cursor);
+        let item = completion
+            .items
+            .iter()
+            .find(|item| item.label == "alpha")
+            .unwrap_or_else(|| panic!("missing Unicode node completion for {label}"));
+        let edit = item
+            .text_edit
+            .as_ref()
+            .unwrap_or_else(|| panic!("missing Unicode node edit for {label}"));
+
+        assert_eq!(edit.new_text, "alpha", "{label}");
+        assert_eq!(edit.range.start, cursor, "{label}");
+        assert_eq!(edit.range.end, cursor, "{label}");
+    }
+}
+
+#[test]
 fn completion_offers_node_ids_for_directive_targets() {
     let mut workspace = DocumentWorkspace::new();
     let snapshot = workspace
