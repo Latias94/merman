@@ -17,7 +17,7 @@ Read:
 - the top entry of `CHANGELOG.md`
 - the `Version Checklist` in `docs/release/RELEASING.md`
 
-Before changing anything, identify the target version, immutable source commit, release channel, and intended publish surfaces.
+Before changing anything, classify the work as development, a workspace release, or an explicitly authorized channel-only prerelease test. Identify the immutable source commit, package version when applicable, release channel, and intended publish surfaces. Do not invent the next workspace version merely because one channel needs packaging work.
 
 ## Authorization Boundary
 
@@ -31,13 +31,23 @@ Treat the request as `prepare` unless the maintainer explicitly authorizes `ship
 
 If scope is incomplete, report what is ready and stop before the first external mutation.
 
+## Channel-Only Prerelease Tests
+
+Use this path only when the maintainer explicitly authorizes one channel to test publication under an existing prerelease version without claiming a new workspace release.
+
+- Keep the package manifest, embedded runtime catalog, and package-group version exact and consistent.
+- Resolve `source_ref` to a reviewed 40-character commit and bind that SHA into the verified package-group manifest and registry provenance.
+- Treat a same-named workspace tag as a different publication snapshot when its commit differs. State that boundary in current release documentation and avoid cross-channel byte-identity claims.
+- Keep unrelated tag-triggered crates, binaries, and language-binding publishers out of scope. A channel-only test never authorizes moving a tag or republishing another registry.
+- Keep external registry mutation behind the ordinary `ship` authorization boundary even when non-publishing preflight and tarball generation are green.
+
 ## Prepare
 
 ### Release Notes
 
 Write the changelog for users:
 
-- Keep an in-progress entry as `## [version] - Unreleased`; immediately before immutable preflight, replace `Unreleased` with the intended tag date in `YYYY-MM-DD` form.
+- While the next workspace version is unselected, keep the root entry as `## [Unreleased]`. Once the maintainer selects a workspace version, rename it to `## [version] - Unreleased`; immediately before immutable preflight, replace `Unreleased` with the intended tag date in `YYYY-MM-DD` form.
 - Treat the root `CHANGELOG.md` as the canonical project-wide release narrative. For every intended publish surface that owns a package-local changelog, update that file as a curated projection of the same release delta: include only changes, migrations, compatibility notes, and verified performance claims that affect that package's users.
 - Keep workspace-coupled package changelog entries at `Unreleased` during preparation, then stamp them with the same intended tag date as the root entry immediately before immutable preflight. Independently versioned surfaces keep their own version and publication date.
 - Review `platforms/flutter/CHANGELOG.md`, `platforms/python/merman/CHANGELOG.md`, `platforms/android/CHANGELOG.md`, and `platforms/apple/CHANGELOG.md` when their surfaces are in scope. Review `tools/vscode-extension/CHANGELOG.md` only for the extension's independent release. Do not create per-crate changelogs or copy the complete root entry into every package.
@@ -50,6 +60,8 @@ Write the changelog for users:
 
 Treat `Cargo.toml` `[workspace.package].version` as the workspace release authority. Use the exact projection and validation commands in the `Version Checklist` of `docs/release/RELEASING.md`.
 
+Run the version projection only after the maintainer selects the next workspace version. A channel-only npm alpha test may reuse the current workspace prerelease version from a newer reviewed commit without selecting the next workspace release; keep the root changelog at `Unreleased` and leave workspace versions unchanged.
+
 Do not hand-edit generated version projections. If the command is interrupted, preserve the partial diff and rerun the same command; the workspace authority is written last.
 
 README files are ordinary documentation and are not generated version projections. Before immutable preflight, perform a release-state documentation pass across the root README, every package README shipped by an authorized surface, and the closest installation guides:
@@ -60,10 +72,11 @@ README files are ordinary documentation and are not generated version projection
 - Remove stale future tense such as “after this version is published”, old published baselines, and candidate wording once external publication evidence exists.
 - Review package-local READMEs included by `cargo package`, cargo-dist, npm, Python, Flutter, Apple, Android, Typst, or VSIX packaging, not only the repository root README.
 
-Use a focused search before preflight and again after partial-release recovery:
+Use a broad README version search before preflight and again after every publication or recovery:
 
 ```bash
-rg -n 'published registry packages can still|candidate from Git|After alpha\.[0-9]+ is published|git\s*=\s*"https://github\.com/Latias94/merman' \
+rg -n --glob '**/README.md' \
+  '0\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+|published registry packages can still|candidate from Git|[Aa]fter .*is published|[Ww]hen .*is published|git\s*=\s*"https://github\.com/Latias94/merman' \
   README.md crates docs/rendering platforms packages tools
 ```
 
@@ -103,6 +116,18 @@ Use direct GitHub, registry, and artifact evidence documented in `docs/release/R
 - `main` remains green after any release-workflow repair.
 
 Workflow success is not publication evidence. Registry and GitHub state must agree with the release contract.
+
+### Post-Publication Documentation Reconciliation
+
+Treat each registry and artifact channel independently. After any successful publication or
+recovery, query the owning registry or GitHub Release, update current installation commands and
+availability prose only for the surfaces that actually published, and move
+`docs/release/PUBLISH_ORDER.md` from candidate state to the published workspace baseline when the
+Rust release lands. Rerun the broad README version search above and account for every match.
+
+Do not report the release complete while a current README installation command names an older
+workspace prerelease or current prose says the published target is unavailable. Commit the
+documentation reconciliation before completion, or report it as explicit unfinished release work.
 
 ## Recovery
 

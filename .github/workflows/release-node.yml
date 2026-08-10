@@ -1,0 +1,404 @@
+name: Release Node package group (npm)
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Version label to publish, for example v0.8.0-alpha.5"
+        required: true
+        type: string
+      source_ref:
+        description: "Reviewed full commit SHA, main, or a matching release tag to build from"
+        required: true
+        default: "main"
+        type: string
+      publish_to_npm:
+        description: "Publish and promote the verified @mermanjs/node package group"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate-inputs:
+    name: validate-inputs
+    runs-on: ubuntu-24.04
+    outputs:
+      source_sha: ${{ steps.source.outputs.source_sha }}
+      source_tree: ${{ steps.source.outputs.source_tree }}
+      source_ref: ${{ steps.release.outputs.source_ref }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      version: ${{ steps.release.outputs.version }}
+      npm_dist_tag: ${{ steps.release.outputs.npm_dist_tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+
+      - name: Validate release input
+        id: release
+        shell: bash
+        env:
+          DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
+          DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          set -euo pipefail
+          RELEASE_TAG="$DISPATCH_RELEASE_TAG"
+          SOURCE_REF="$DISPATCH_SOURCE_REF"
+          version="$(python3 scripts/release-version.py canonical --version "$RELEASE_TAG")"
+          test "$RELEASE_TAG" = "v$version"
+          npm_dist_tag="$(python3 scripts/release-version.py npm-dist-tag --version "$RELEASE_TAG")"
+
+          test -n "$SOURCE_REF"
+          [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || {
+            echo "::error::source_ref must be a single line" >&2
+            exit 1
+          }
+          if [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            validated_source_ref="$SOURCE_REF"
+          elif [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
+            validated_source_ref="$SOURCE_REF"
+          elif [[ "$SOURCE_REF" == "$RELEASE_TAG" || "$SOURCE_REF" == "refs/tags/$RELEASE_TAG" ]]; then
+            validated_source_ref="refs/tags/$RELEASE_TAG"
+          else
+            echo "::error::source_ref tag must match release_tag; source_ref must be a full commit SHA, main, refs/heads/main, a matching release tag, or refs/tags/<release-tag>." >&2
+            exit 1
+          fi
+          {
+            printf 'source_ref=%s\n' "$validated_source_ref"
+            printf 'release_tag=%s\n' "$RELEASE_TAG"
+            printf 'version=%s\n' "$version"
+            printf 'npm_dist_tag=%s\n' "$npm_dist_tag"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.release.outputs.source_ref }}
+          path: release-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Resolve immutable release source
+        id: source
+        shell: bash
+        env:
+          EXPECTED_SOURCE_REF: ${{ steps.release.outputs.source_ref }}
+        run: |
+          set -euo pipefail
+          source_sha="$(git -C release-source rev-parse 'HEAD^{commit}')"
+          source_tree="$(git -C release-source rev-parse 'HEAD^{tree}')"
+          if [[ "$EXPECTED_SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            test "$source_sha" = "$EXPECTED_SOURCE_REF"
+          fi
+          {
+            printf 'source_sha=%s\n' "$source_sha"
+            printf 'source_tree=%s\n' "$source_tree"
+          } >> "$GITHUB_OUTPUT"
+
+  loader:
+    needs: validate-inputs
+    name: loader package
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Verify pinned release source and versions
+        env:
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          SOURCE_TREE: ${{ needs.validate-inputs.outputs.source_tree }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse 'HEAD^{commit}')" = "$SOURCE_SHA"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE"
+          python3 scripts/release-version.py check --version "$VERSION"
+          python3 scripts/sync-release-legal-materials.py --check
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: platforms/node/package-lock.json
+
+      - name: Verify Node package contracts
+        run: |
+          npm ci --prefix platforms/node
+          npm test --prefix platforms/node
+          npm run --prefix platforms/node check:packages
+
+      - name: Pack loader package
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_root="$RUNNER_TEMP/node-loader-package"
+          artifact_dir="$RUNNER_TEMP/node-loader-artifact"
+          node platforms/node/scripts/assemble-packages.mjs \
+            --loader-only \
+            --output-root "$package_root"
+          mkdir -p "$artifact_dir"
+          npm pack "$package_root/node" \
+            --json \
+            --pack-destination "$artifact_dir" > "$RUNNER_TEMP/node-loader-pack.json"
+          test "$(find "$artifact_dir" -maxdepth 1 -name '*.tgz' -type f | wc -l | tr -d ' ')" = 1
+
+      - name: Upload loader package
+        uses: actions/upload-artifact@v6
+        with:
+          name: merman-node-npm-loader
+          path: ${{ runner.temp }}/node-loader-artifact/*.tgz
+          if-no-files-found: error
+
+  platform:
+    needs: validate-inputs
+    name: platform (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            runner: macos-15
+            rust_target: aarch64-apple-darwin
+          - target: darwin-x64
+            runner: macos-15-intel
+            rust_target: x86_64-apple-darwin
+          - target: linux-x64-gnu
+            runner: ubuntu-24.04
+            rust_target: x86_64-unknown-linux-gnu
+          - target: linux-x64-musl
+            runner: ubuntu-24.04
+            rust_target: x86_64-unknown-linux-musl
+          - target: win32-x64-msvc
+            runner: windows-2025-vs2026
+            rust_target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Verify pinned release source and versions
+        env:
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          SOURCE_TREE: ${{ needs.validate-inputs.outputs.source_tree }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse 'HEAD^{commit}')" = "$SOURCE_SHA"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE"
+          python3 scripts/release-version.py check --version "$VERSION"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/merman-node
+
+      - name: Install musl linker
+        if: matrix.target == 'linux-x64-musl'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: platforms/node/package-lock.json
+
+      - name: Install pinned Node build dependencies
+        run: npm ci --prefix platforms/node
+
+      - name: Build and probe native package
+        run: npm run --prefix platforms/node build:candidate -- --candidate napi --target "${{ matrix.target }}"
+
+      - name: Assemble and verify target package
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          package_root="$RUNNER_TEMP/node-packages"
+          node platforms/node/scripts/assemble-packages.mjs \
+            --target "$TARGET" \
+            --output-root "$package_root"
+          npm run --prefix platforms/node check:packages -- --packed-root "$package_root"
+
+      - name: Pack and install-smoke target package
+        env:
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          package_root="$RUNNER_TEMP/node-packages"
+          artifact_dir="$RUNNER_TEMP/node-platform-artifact"
+          smoke_tarballs="$RUNNER_TEMP/node-smoke-tarballs"
+          mkdir -p "$artifact_dir" "$smoke_tarballs"
+          npm pack "$package_root/node" --json --pack-destination "$smoke_tarballs" > "$RUNNER_TEMP/node-root-pack.json"
+          npm pack "$package_root/$TARGET" --json --pack-destination "$artifact_dir" > "$RUNNER_TEMP/node-target-pack.json"
+          cp "$artifact_dir"/*.tgz "$smoke_tarballs/"
+          test "$(find "$artifact_dir" -maxdepth 1 -name '*.tgz' -type f | wc -l | tr -d ' ')" = 1
+
+          if [[ "$TARGET" == "linux-x64-musl" ]]; then
+            docker run --rm \
+              -e VERSION="$VERSION" \
+              -e TARGET="$TARGET" \
+              -v "$smoke_tarballs:/artifacts:ro" \
+              -v "$GITHUB_WORKSPACE/platforms/node/scripts/smoke-installed-package.mjs:/smoke-installed-package.mjs:ro" \
+              node:24-alpine \
+              sh -lc 'mkdir /smoke && cd /smoke && npm init -y >/dev/null && npm install --ignore-scripts --no-audit --no-fund /artifacts/*.tgz >/dev/null && node /smoke-installed-package.mjs --project /smoke --version "$VERSION" --target "$TARGET"'
+          else
+            smoke_root="$RUNNER_TEMP/node-install-smoke"
+            mkdir -p "$smoke_root"
+            cd "$smoke_root"
+            npm init -y >/dev/null
+            npm install --ignore-scripts --no-audit --no-fund "$smoke_tarballs"/*.tgz >/dev/null
+            node "$GITHUB_WORKSPACE/platforms/node/scripts/smoke-installed-package.mjs" \
+              --project "$smoke_root" \
+              --version "$VERSION" \
+              --target "$TARGET"
+          fi
+
+      - name: Upload target package
+        uses: actions/upload-artifact@v6
+        with:
+          name: merman-node-npm-${{ matrix.target }}
+          path: ${{ runner.temp }}/node-platform-artifact/*.tgz
+          if-no-files-found: error
+
+  package-group:
+    needs:
+      - validate-inputs
+      - loader
+      - platform
+    name: verified package group
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Download all Node npm packages
+        uses: actions/download-artifact@v7
+        with:
+          pattern: merman-node-npm-*
+          path: target/node-npm-package-group
+          merge-multiple: true
+
+      - name: Create and verify Node package group manifest
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          NPM_DIST_TAG: ${{ needs.validate-inputs.outputs.npm_dist_tag }}
+        run: |
+          set -euo pipefail
+          python3 scripts/node_package_group.py create-manifest \
+            --artifact-dir target/node-npm-package-group \
+            --descriptor platforms/node/package-surfaces.json \
+            --version "$VERSION" \
+            --source-sha "$SOURCE_SHA" \
+            --target-dist-tag "$NPM_DIST_TAG"
+          python3 scripts/node_package_group.py verify-artifact \
+            --manifest target/node-npm-package-group/node-package-group.json \
+            --artifact-dir target/node-npm-package-group \
+            --descriptor platforms/node/package-surfaces.json \
+            --version "$VERSION" \
+            --source-sha "$SOURCE_SHA" \
+            --target-dist-tag "$NPM_DIST_TAG"
+
+      - name: Upload verified Node package group
+        uses: actions/upload-artifact@v6
+        with:
+          name: merman-node-npm-package-group
+          path: target/node-npm-package-group
+          if-no-files-found: error
+
+  publish:
+    needs:
+      - validate-inputs
+      - package-group
+    if: ${{ inputs.publish_to_npm }}
+    name: publish npm package group
+    runs-on: ubuntu-24.04
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout trusted release verifier
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: trusted
+          persist-credentials: false
+
+      - name: Checkout immutable package descriptor
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          path: release-source
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Download verified Node package group
+        uses: actions/download-artifact@v7
+        with:
+          name: merman-node-npm-package-group
+          path: target/node-npm-package-group
+
+      - name: Verify downloaded Node package group
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          NPM_DIST_TAG: ${{ needs.validate-inputs.outputs.npm_dist_tag }}
+        run: |
+          set -euo pipefail
+          python3 trusted/scripts/node_package_group.py verify-artifact \
+            --manifest target/node-npm-package-group/node-package-group.json \
+            --artifact-dir target/node-npm-package-group \
+            --descriptor release-source/platforms/node/package-surfaces.json \
+            --version "$VERSION" \
+            --source-sha "$SOURCE_SHA" \
+            --target-dist-tag "$NPM_DIST_TAG"
+
+      - name: Reconcile npm package group
+        run: |
+          set -euo pipefail
+          python3 trusted/scripts/node_package_group.py reconcile \
+            --manifest target/node-npm-package-group/node-package-group.json \
+            --artifact-dir target/node-npm-package-group \
+            --descriptor release-source/platforms/node/package-surfaces.json \
+            --registry https://registry.npmjs.org \
+            --report target/node-npm-package-group/reconciliation-report.json
+
+      - name: Upload npm reconciliation report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: merman-node-npm-reconciliation-report
+          path: target/node-npm-package-group/reconciliation-report.json
+          if-no-files-found: warn

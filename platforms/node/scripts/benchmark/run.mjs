@@ -218,7 +218,7 @@ export function runComparison(options) {
                 `${workloadDrift.join(", ")} fixed SVG workload evidence differs in geometry or raw bytes across Node transports; the report records each comparison explicitly.`,
               ]
             : []),
-          "This host contributes one target result only; U14 admission requires runtime CI evidence for every shipped target.",
+          "This host contributes one target result only; stable admission requires runtime CI evidence for every shipped target.",
         ],
       },
     };

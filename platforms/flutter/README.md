@@ -2,7 +2,7 @@
 
 [![pub package](https://img.shields.io/pub/v/merman.svg)](https://pub.dev/packages/merman) [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT) [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/Latias94/merman/blob/main/LICENSE-APACHE)
 
-Render and analyze Mermaid diagrams in Flutter without a browser or JavaScript runtime. The plugin is a Dart-friendly facade over Merman's native ABI 3 table and ships the native library for its supported Flutter targets.
+Parse, analyze, lay out, and render Mermaid diagrams in Flutter without a browser or JavaScript runtime. The plugin is a Dart-friendly facade over Merman's native ABI 3 table and ships size-oriented native libraries for its supported Flutter targets.
 
 > `Merman.open()` accepts only the exact native package version bundled with this Dart release. `Merman.openPath(...)` may load another package version, but both entry points require the current complete ABI 3 table, runtime catalog fields, metadata and payload schemas, and service constructor. Historical partial ABI 3 producers and ABI 2 are not fallback paths.
 
@@ -55,7 +55,9 @@ print(output.metadata.runtimePolicy);
 print(output.metadata.rawJson); // Includes additive fields from newer producers.
 ```
 
-Convenience methods are projections over `execute` and cover all 13 generated operations, including `analysisFactsJson` and `svgPlanJson`. `renderPng`, `renderJpeg`, and `renderPdf` retain their simple byte-returning forms; the matching `renderPngResult`, `renderJpegResult`, and `renderPdfResult` methods expose metadata and effective resource-limited output plans. Known raster and PDF plans have typed classes, while a future plan kind becomes `MermanUnknownOutputPlan` with preserved JSON.
+Convenience methods are projections over `execute` and cover all 13 generated ABI operations, including `analysisFactsJson` and `svgPlanJson`. `renderPng`, `renderJpeg`, and `renderPdf` retain their simple byte-returning forms; the matching `renderPngResult`, `renderJpegResult`, and `renderPdfResult` methods expose metadata and effective resource-limited output plans. Known raster and PDF plans have typed classes, while a future plan kind becomes `MermanUnknownOutputPlan` with preserved JSON.
+
+The libraries bundled on pub.dev provide SVG, semantic and layout JSON, both native layout engines, ASCII, analysis, validation, and document analysis. They intentionally omit math, PNG, JPEG, PDF, and native runtime adapters to keep the five-platform package small. The corresponding Dart methods remain part of the generated ABI facade for a current-contract custom library loaded with `Merman.openPath(...)` or `Merman.fromDynamicLibrary(...)`; against the bundled library, unavailable outputs raise `MermanMissingCapabilityException` with capability `math`, `png`, `jpeg`, or `pdf` as appropriate.
 
 A native artifact can intentionally omit some outputs. Inspect `merman.runtimeCatalog` before enabling optional UI or export paths; an unavailable operation raises `MermanUnsupportedOperationException` rather than silently falling back. `MermanUnknownOperationException` identifies an ID outside the generated ABI vocabulary; `MermanMissingCapabilityException.capabilityId` identifies the backend absent from a valid native request.
 
@@ -96,7 +98,7 @@ try {
 }
 ```
 
-Omitting `runtime_policy` keeps the engine deterministic even when the packaged library is built with the atomic `native-runtime` feature. Set `"runtime_policy":"native"` only when the operation should consult the host clock, time-zone rules, and random source. Runtime discovery still reports the concrete `system-clock`, `system-timezone`, and `system-random` adapter IDs. A custom artifact without `native-runtime` raises `MermanUnsupportedOperationException` when native policy is requested.
+The packaged library is deterministic and does not include native clock, time-zone, or random adapters. A custom artifact may enable the atomic `native-runtime` feature and then select `"runtime_policy":"native"`. The bundled artifact raises `MermanUnsupportedOperationException` when native policy is requested, and runtime discovery reports concrete adapter IDs only when they are present.
 
 Use `constrained` for untrusted or multi-tenant input, `interactive` for cooperative local editing, and `trusted-native` for local native automation. `MermanResourceOptionsBuilder` produces the shared resource-options fragment. Its profile is optional: omit it for a reusable request that must inherit its constructor ceiling, and use `MermanResourceOverrideId` for limits. The runtime catalog is the source of truth for compiled capabilities, accepted option groups, constructor services, service limits, and enforced operation limits. See the [options contract](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md) for the complete schema.
 
@@ -183,7 +185,7 @@ Set the usual reusable pipeline in `MermanEngine(optionsJson: ...)`. Override it
 | --- | --- |
 | Android | `arm64-v8a` and `x86_64` shared libraries |
 | iOS | Dynamic `MermanFFI.xcframework` |
-| macOS | Universal dylib for CocoaPods and XCFramework for SwiftPM |
+| macOS | One dynamic `MermanFFI.xcframework` for CocoaPods and SwiftPM |
 | Linux | x86_64 or aarch64 shared library, depending on the release artifact |
 | Windows | x86_64 DLL |
 
@@ -199,13 +201,13 @@ matching header/table contract. Application code uses `merman.dart` and never ne
 or record definitions.
 
 ```sh
-cargo build -p merman-ffi --no-default-features --features svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime
+cargo build -p merman-ffi --profile native-distribution --no-default-features --features svg,analysis,ascii,layout-cytoscape,layout-elk
 cd platforms/flutter
 flutter pub get
 dart run ffigen --config ffigen.yaml
 flutter analyze
 dart run tool/abi3_contract_test.dart
-dart run example/smoke.dart ../../target/debug/libmerman_ffi.dylib
+dart run example/smoke.dart ../../target/native-distribution/libmerman_ffi.dylib
 ```
 
 Use `.so` on Linux and `.dll` on Windows. CI regenerates the binding, rejects a stale checked-in result, runs analyzer and deterministic malformed-error fuzz coverage, then exercises the facade against a real native library. Native artifact assembly and platform packaging are documented in the [Flutter/Dart FFI guide](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md).

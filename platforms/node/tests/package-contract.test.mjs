@@ -14,15 +14,16 @@ import { assembleNativePackages } from "../scripts/assemble-packages.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-test("private candidate manifests preserve the intended napi package shape", async () => {
+test("public alpha manifests preserve the intended napi package shape", async () => {
   const descriptor = JSON.parse(
     await readFile(path.join(nodeRoot, "package-surfaces.json"), "utf8"),
   );
   const inspected = await inspectPackageManifests(nodeRoot, descriptor);
 
-  assert.equal(descriptor.admission_status, "candidate");
+  assert.equal(descriptor.admission_status, "public-alpha");
   assert.equal(inspected.root.manifest.name, "@mermanjs/node");
-  assert.equal(inspected.root.manifest.private, true);
+  assert.equal(inspected.root.manifest.private, undefined);
+  assert.equal(inspected.root.manifest.publishConfig.access, "public");
   assert.deepEqual(inspected.root.nodeFiles, []);
   assert.deepEqual(inspected.root.wasmFiles, []);
   assert.equal(inspected.root.hasLifecycleDownload, false);
@@ -41,7 +42,8 @@ test("private candidate manifests preserve the intended napi package shape", asy
     expectedTargets,
   );
   for (const item of inspected.targets) {
-    assert.equal(item.manifest.private, true);
+    assert.equal(item.manifest.private, undefined);
+    assert.equal(item.manifest.publishConfig.access, "public");
     assert.equal(item.manifest.engines.node, descriptor.node_engine);
     assert.equal(item.nodeArtifact, "merman.node");
     assert.equal(item.manifest.version, descriptor.version);
@@ -124,10 +126,11 @@ test("candidate recipes pin the approved napi baseline and an explicit Node WASM
     await readFile(path.join(nodeRoot, "candidate-builds.json"), "utf8"),
   );
   assert.equal(recipes.schema_version, 3);
+  assert.equal(recipes.status, "napi-selected-for-alpha");
   assert.deepEqual(recipes.capability_recipe, {
     descriptor: "capabilities/feature-surface-v1.json",
     target: "native",
-    capabilities: ["layout-cytoscape", "layout-elk", "math", "svg"],
+    capabilities: ["layout-cytoscape", "layout-elk", "svg"],
   });
   assert.equal(recipes.cargo.default_features, false);
   assert.equal("features" in recipes.cargo, false);

@@ -2,6 +2,7 @@ import merman
 
 
 SOURCE = 'flowchart TD\nA@{ icon: "smoke:rocket", label: "Hello" } --> B[World]'
+BASIC_SOURCE = "flowchart TD\nA[Hello] --> B[World]"
 
 
 def require(condition: bool, message: str) -> None:
@@ -42,10 +43,60 @@ def main() -> None:
     engine = merman.MermanEngine(
         '{"resources":{"profile":"constrained"}}', services
     )
+    catalog = merman.get_runtime_catalog(api)
+    capabilities = set(catalog["capabilities"]["capability_ids"])
+    require(
+        {
+            "analysis",
+            "ascii",
+            "layout-cytoscape",
+            "layout-elk",
+            "svg",
+        }.issubset(capabilities),
+        "default native capabilities are incomplete",
+    )
+    require(
+        not {
+            "jpeg",
+            "math",
+            "pdf",
+            "png",
+            "system-clock",
+            "system-random",
+            "system-timezone",
+        }.intersection(capabilities),
+        "default native artifact includes specialist capabilities",
+    )
     svg = engine.render_svg(SOURCE, None)
     require("<svg" in svg and "Hello" in svg, "SVG smoke failed")
     require('data-icon="python-smoke"' in svg, "icon service smoke failed")
     require(measurer.calls > 0, "host text measurer was not called")
+    require("Hello" in engine.render_ascii(BASIC_SOURCE, None), "ASCII smoke failed")
+    require(engine.analyze_json(BASIC_SOURCE, None), "analysis smoke failed")
+
+    for capability_id, operation in (
+        ("png", lambda: engine.render_png(SOURCE, None)),
+        ("jpeg", lambda: engine.render_jpeg(SOURCE, None)),
+        ("pdf", lambda: engine.render_pdf(SOURCE, None)),
+        (
+            "math",
+            lambda: engine.render_svg(
+                'flowchart TD\nA["$$x^2$$"] --> B', None
+            ),
+        ),
+    ):
+        try:
+            operation()
+        except merman.MermanError.Binding as error:
+            require(
+                error.kind == merman.MermanErrorKind.MISSING_CAPABILITY
+                and error.capability_id == capability_id,
+                f"{capability_id} failure lost its missing-capability contract",
+            )
+        else:
+            raise RuntimeError(
+                f"default native artifact unexpectedly supports {capability_id}"
+            )
 
     try:
         engine.render_svg(

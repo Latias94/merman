@@ -10,7 +10,7 @@ Parse, analyze, lay out, and render Mermaid diagrams in Android apps without a W
 - Java 17 toolchain
 - `arm64-v8a` or `x86_64`
 
-At load time, the wrapper validates the runtime catalog schema, transport API, native package metadata, Options JSON schema, both binding payload schemas, capability implications, callable operation/output/metadata relations, output policies, resource profiles, and the text-measurement protocol rather than relying on C ABI symbols or per-method JNI name lookup. The published Android AAR is one complete native SKU: every known ID in the generated artifact contract must be present in stable sorted order. Unknown future IDs and fields remain additive and are preserved. The optional option-group and constructor-service sections may be omitted only for legacy schema-1 producers; when present, their known IDs and contracts must match the generated Android contract. Exact package-version equality is not checked, so always ship the Kotlin classes and native library from the same AAR.
+At load time, the wrapper validates the runtime catalog schema, transport API, native package metadata, Options JSON schema, both binding payload schemas, capability implications, callable operation/output/metadata relations, output policies, resource profiles, and the text-measurement protocol rather than relying on C ABI symbols or per-method JNI name lookup. The published Android AAR carries the default native prebuilt SKU: SVG, both layout engines, ASCII, analysis, validation, and document analysis. Every known ID in that generated artifact contract must be present in stable sorted order. Unknown future IDs and fields remain additive and are preserved. The optional option-group and constructor-service sections may be omitted only for legacy schema-1 producers; when present, their known IDs and contracts must match the generated Android contract. Exact package-version equality is not checked, so always ship the Kotlin classes and native library from the same AAR.
 
 ## Add A Release AAR
 
@@ -47,29 +47,26 @@ Then add `implementation(project(":merman-android"))`. No Maven coordinates are 
 
 ```kotlin
 import io.merman.Merman
-import io.merman.MermanRasterOutputPlan
 
 val source = "flowchart TD\nA[Hello] --> B[World]"
 val svg = Merman.renderSvg(source)
 check(svg.startsWith("<svg"))
 ```
 
-Use the generic API when the host chooses output dynamically:
+Use the generic API when the host chooses an available operation dynamically:
 
 ```kotlin
-val result = Merman.execute("png", source)
-check(result.operationId == "png")
-check(result.mediaType == "image/png")
-check(result.metadata.operationId == "png")
-check(result.metadata.outputPlan is MermanRasterOutputPlan)
-val bytes = result.data
+val result = Merman.execute("ascii", source)
+check(result.operationId == "ascii")
+check(result.mediaType == "text/plain; charset=utf-8")
+val text = result.data.toString(Charsets.UTF_8)
 ```
 
-`Merman` is the discovery and one-shot facade. Convenience methods cover SVG, ASCII, PNG, JPEG, PDF, semantic JSON, layout JSON, analysis facts, SVG planning, validation, and document analysis. `metadataJson(id)` is the generic metadata path for every ID advertised by `runtimeCatalogJson()`. Calls are blocking; invoke substantial work from a background dispatcher. Native failures throw `MermanException` with a structured Merman error payload. Use `kind` to distinguish `UNKNOWN_OPERATION`, `MISSING_CAPABILITY`, `BUSY`, and `REENTRANT_CALL`; `capabilityId` is non-null only for `MISSING_CAPABILITY` and is the stable descriptor ID. Resource failures expose optional typed `resourceDetails` with the stable limit ID, phase, actual value, effective maximum, and selected profile.
+`Merman` is the discovery and one-shot facade. Convenience methods cover SVG, ASCII, PNG, JPEG, PDF, semantic JSON, layout JSON, analysis facts, SVG planning, validation, and document analysis. The default AAR supports SVG, ASCII, semantic/layout operations, analysis, validation, and document analysis. Math-bearing SVG and PNG, JPEG, or PDF helpers remain available for source-built artifacts that enable those capabilities; the default AAR reports `MISSING_CAPABILITY` with the exact capability ID. `metadataJson(id)` is the generic metadata path for every ID advertised by `runtimeCatalogJson()`. Calls are blocking; invoke substantial work from a background dispatcher. Native failures throw `MermanException` with a structured Merman error payload. Use `kind` to distinguish `UNKNOWN_OPERATION`, `MISSING_CAPABILITY`, `BUSY`, and `REENTRANT_CALL`; `capabilityId` is non-null only for `MISSING_CAPABILITY` and is the stable descriptor ID. Resource failures expose optional typed `resourceDetails` with the stable limit ID, phase, actual value, effective maximum, and selected profile.
 
 Resource failures also expose the stable `cause` discriminator (`ceiling` or `arithmetic_overflow`).
 
-Binary helpers retain both ergonomic forms. `renderPng`, `renderJpeg`, and `renderPdf` return bytes; their corresponding `*Result` methods retain the complete envelope and typed effective output plan. Unknown future output-plan kinds are preserved as `MermanUnknownOutputPlan` together with their raw JSON.
+When a custom artifact enables binary exports, `renderPng`, `renderJpeg`, and `renderPdf` return bytes while their corresponding `*Result` methods retain the complete envelope and typed effective output plan. Unknown future output-plan kinds are preserved as `MermanUnknownOutputPlan` together with their raw JSON.
 
 ## Options And Capabilities
 
@@ -84,9 +81,9 @@ val svg = Merman.renderSvg(
 
 `MermanResourceOptionsBuilder` emits Options JSON schema `2`. Its profile is unset by default so reusable request overlays inherit their constructor ceiling; limits accept only `MermanResourceOverrideId`, while `MermanResourceLimitId` describes the full runtime catalog.
 
-An omitted `runtime_policy` is deterministic even though the normal Android artifact is built with the atomic `native-runtime` feature. Add `"runtime_policy":"native"` only when an operation should use Android's clock, time-zone rules, and random source. Runtime discovery continues to report the concrete `system-clock`, `system-timezone`, and `system-random` adapter IDs; a custom artifact without `native-runtime` fails with a typed unsupported-operation error.
+The default AAR is deterministic and does not bundle native clock, time-zone, or random adapters. A source build may enable the atomic `native-runtime` feature and then select `"runtime_policy":"native"`; requesting native policy from the default AAR fails with a typed unsupported-operation error. Runtime discovery reports concrete adapter IDs only when the loaded artifact contains them.
 
-Use `Merman.runtimeCatalogJson()` to inspect the loaded artifact's exact options and payload schemas, full native capability/output/operation/metadata surface, constructor-owned services, and resource-to-operation mappings. Use `Merman.presentationCatalogJson()` for the open-ended theme preset, presentation profile, aspect, and capability-availability catalog instead of maintaining a Kotlin enum. Hosts should still query the loaded catalogs before exposing optional choices; a capability-focused or slim Android producer is intentionally rejected by the published full-SKU validator.
+Use `Merman.runtimeCatalogJson()` to inspect the loaded artifact's exact options and payload schemas, capability/output/operation/metadata surface, constructor-owned services, and resource-to-operation mappings. Use `Merman.presentationCatalogJson()` for the open-ended theme preset, presentation profile, aspect, and capability-availability catalog instead of maintaining a Kotlin enum. Hosts should query the loaded catalogs before exposing optional choices. A custom Android build that changes the selected SKU must regenerate and package its matching Kotlin artifact contract with the native library.
 
 `analyzeJson` and `analyzeDocumentJson` return diagnostics schema `1`; document facts also use their independently defined schema `1`. These payload schemas are independent of Android transport version. Pass full Markdown/MDX-like content plus a URI to document analysis:
 
@@ -160,7 +157,7 @@ Icon bodies are treated as untrusted input and are bounded, XML-validated, deter
 python3 platforms/android/build-android.py --install-missing-ndk --assemble-aar
 ```
 
-The helper uses the checked-in Gradle Wrapper, pinned JDK 17/NDK toolchain, and explicit native SDK capability profile. Before packaging, NDK `llvm-nm` verifies that the JNI library exports `JNI_OnLoad` and does not export `merman_get_native_api`. A connected-device JNI smoke is available through `--only-android-instrumentation-smoke`.
+The helper uses the checked-in Gradle Wrapper, pinned JDK 17/NDK toolchain, and exact default native artifact profile. Before packaging, NDK `llvm-nm` verifies that the JNI library exports `JNI_OnLoad` and does not export `merman_get_native_api`. A connected-device JNI smoke is available through `--only-android-instrumentation-smoke`.
 
 ## Documentation And Releases
 

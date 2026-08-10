@@ -32,8 +32,8 @@ python3 scripts/artifact_profile_recipe.py c-abi-native --build --locked
 The committed `c-abi-native` artifact profile owns the complete host C ABI recipe, and Flutter owns separate C ABI target-set recipes. The Kotlin Android AAR uses the independent, internal `merman-android-jni` crate instead of this crate.
 
 ```sh
-# Canonical native SDK artifact: SVG, analysis, ASCII, PNG, JPEG, PDF, layouts, math, and native adapters.
-cargo build -p merman-ffi --release --no-default-features --features svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime
+# Complete C ABI reference artifact: SVG, analysis, ASCII, exports, layouts, math, and native adapters.
+cargo build -p merman-ffi --profile native-sdk --no-default-features --features svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime
 
 # A semantic-only embedding.
 cargo build -p merman-ffi --release --no-default-features

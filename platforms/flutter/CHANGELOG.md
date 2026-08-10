@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+Corresponds to the next merman workspace release, which remains in development.
+
+### Breaking changes
+
+- The native libraries bundled on pub.dev now provide SVG, both layout engines, ASCII, analysis, validation, and document analysis. Math, PNG, JPEG, PDF, and native runtime adapters require a current-contract custom library loaded through `Merman.openPath(...)` or `Merman.fromDynamicLibrary(...)`; bundled calls fail with typed missing-capability or unsupported-operation errors.
+
+### Changed
+
+- Flutter native builds now consume the shared size-oriented default native artifact recipe, package the macOS library only through its XCFramework, and enforce the pub.dev compressed-upload budget during release preflight.
+
 ## 0.8.0-alpha.5 - 2026-08-09
 
 Corresponds to merman workspace release `0.8.0-alpha.5`. See the [alpha.3 to alpha.5 upgrade guide](../../docs/release/ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md) for the complete cross-surface migration.
@@ -21,7 +33,7 @@ Corresponds to merman workspace release `0.8.0-alpha.5`. See the [alpha.3 to alp
 ### Changed
 
 - Updated the bundled engine to the Mermaid 11.16.1 compatibility baseline and the shared 35-family parser, layout, SVG, theme, editor, and resource-limit contracts.
-- Flutter native builds now consume the exact artifact recipe; Apple slices compile-check the complete public C headers, and the pub package carries the project license, source provenance, and exact third-party license texts.
+- Flutter native builds consume the exact artifact recipe; Apple slices compile-check the complete public C headers, and the pub package carries the project license, source provenance, and exact third-party license texts.
 
 ## 0.8.0-alpha.3 - 2026-07-09
 

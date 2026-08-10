@@ -45,6 +45,10 @@ Changing an imported or exported function, its WebAssembly signature, or one of 
 
 There are no bridge-only or render-only package profiles. Maintainers can build direct Cargo feature leaves for local closure experiments, but those combinations are not named product identities, publication choices, or release evidence. Mermaid configuration, sanitization, detection, and semantic parsing are invariant core behavior; a missing layout backend produces a typed capability error only when a diagram requires it.
 
+ASCII, PNG, JPEG, and PDF are not compiled into the publish artifact because Typst ABI 2 has no
+callable operation for those outputs. Adding an unreachable capability would only enlarge the
+plugin and its dependency closure.
+
 RaTeX math is not supported by the Typst plugin. Its current dependency closure uses browser system-font discovery, which violates the zero-browser-import Typst boundary. A future math admission must pass separate import and behavior gates before it updates the one canonical artifact recipe.
 
 The exact Typst dependency gate admits `json5`, `lol_html`, and `url` as measured pure-Rust parts of invariant Mermaid language, configuration, and sanitization semantics. It continues to reject browser bindings and system adapters. The artifact size budget and final module import check bound this admitted closure.

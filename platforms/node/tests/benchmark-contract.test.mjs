@@ -51,7 +51,7 @@ const STATIC_SVG_OPTION_GROUP_IDS = BINDING_OPTION_GROUP_SPECS
       spec.always_available ||
       spec.requires_svg_pipeline ||
       spec.any_capability_ids.some((id) =>
-        ["layout-cytoscape", "layout-elk", "math", "svg"].includes(id)
+        ["layout-cytoscape", "layout-elk", "svg"].includes(id)
       ),
   )
   .map((spec) => spec.id);
@@ -59,7 +59,7 @@ const STATIC_SVG_METADATA_IDS = METADATA_SPECS
   .filter(
     (spec) =>
       spec.required_capability_id === null ||
-      ["layout-cytoscape", "layout-elk", "math", "svg"].includes(
+      ["layout-cytoscape", "layout-elk", "svg"].includes(
         spec.required_capability_id,
       ),
   )
@@ -171,7 +171,7 @@ const CAPABILITY_RECIPE = {
   capability_recipe: {
     descriptor: "capabilities/feature-surface-v1.json",
     target: "native",
-    capabilities: ["layout-cytoscape", "layout-elk", "math", "svg"],
+    capabilities: ["layout-cytoscape", "layout-elk", "svg"],
   },
 };
 const CAPABILITY_RECIPE_DIGEST = digestJson(CAPABILITY_RECIPE);
@@ -189,7 +189,7 @@ const RUNTIME_CATALOG = {
   constructor_service_ids: [],
   constructor_service_contracts: [],
   capabilities: {
-    capability_ids: ["layout-cytoscape", "layout-elk", "math", "svg"],
+    capability_ids: ["layout-cytoscape", "layout-elk", "svg"],
     output_ids: ["svg"],
     operation_ids: ["layout-json", "semantic-json", "svg", "svg-plan-json"],
     system_adapter_ids: [],
@@ -1081,7 +1081,6 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
       features: [
         "layout-cytoscape",
         "layout-elk",
-        "math",
         "svg",
         "transport-napi",
       ],
@@ -1219,7 +1218,6 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
   profileAsFeature.config.features = [
     "layout-cytoscape",
     "layout-elk",
-    "math",
     "rust-static-svg",
     "transport-napi",
   ];

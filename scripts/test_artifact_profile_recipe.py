@@ -40,7 +40,7 @@ WHEEL_BUILDER_SPEC.loader.exec_module(wheel_builder)
 
 
 class ArtifactProfileRecipeTests(unittest.TestCase):
-    def test_native_sdk_profile_owns_the_release_optimization_policy(self) -> None:
+    def test_native_distribution_profiles_own_their_release_optimization_policies(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         with (repo_root / "Cargo.toml").open("rb") as handle:
             workspace = tomllib.load(handle)
@@ -61,30 +61,45 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                 "rpath": False,
             },
         )
+        self.assertEqual(
+            workspace["profile"]["native-distribution"],
+            {
+                "inherits": "release",
+                "opt-level": "s",
+                "lto": True,
+                "codegen-units": 1,
+                "debug": False,
+                "strip": "symbols",
+                "panic": "unwind",
+                "incremental": False,
+                "debug-assertions": False,
+                "overflow-checks": False,
+                "rpath": False,
+            },
+        )
 
     def test_committed_native_recipes_have_owner_specific_structure(self) -> None:
-        expected_packages = {
-            "android-native": "merman-android-jni",
-            "apple-uniffi-native": "merman-uniffi",
-            "c-abi-native": "merman-ffi",
-            "flutter-android-native": "merman-ffi",
-            "flutter-desktop-native": "merman-ffi",
-            "flutter-ios-native": "merman-ffi",
-            "python-uniffi-native": "merman-uniffi",
+        expected_recipes = {
+            "android-native": ("merman-android-jni", "native-distribution"),
+            "apple-uniffi-native": ("merman-uniffi", "native-sdk"),
+            "c-abi-native": ("merman-ffi", "native-sdk"),
+            "flutter-android-native": ("merman-ffi", "native-distribution"),
+            "flutter-desktop-native": ("merman-ffi", "native-distribution"),
+            "flutter-ios-native": ("merman-ffi", "native-distribution"),
+            "python-uniffi-native": ("merman-uniffi", "native-distribution"),
         }
-        for profile_id, package in expected_packages.items():
+        for profile_id, (package, cargo_profile) in expected_recipes.items():
             with self.subTest(profile_id=profile_id):
                 recipe = load_artifact_profile(profile_id)
                 self.assertEqual(recipe.package, package)
-                self.assertEqual(recipe.cargo_profile, "native-sdk")
+                self.assertEqual(recipe.cargo_profile, cargo_profile)
                 self.assertFalse(recipe.default_features)
                 self.assertTrue(recipe.features)
 
-    def test_all_public_native_sdk_profiles_share_one_full_sku(self) -> None:
+    def test_prebuilt_native_profiles_share_one_default_sku(self) -> None:
         profile_ids = (
             "android-native",
             "apple-uniffi-native",
-            "c-abi-native",
             "flutter-android-native",
             "flutter-desktop-native",
             "flutter-ios-native",
@@ -96,6 +111,16 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         profiles = {profile["id"]: profile for profile in descriptor["profiles"]}
         baseline = profiles[profile_ids[0]]
 
+        self.assertEqual(
+            baseline["cargo"]["features"],
+            ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+        )
+        self.assertEqual(
+            baseline["expected"]["capabilities"],
+            ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+        )
+        self.assertEqual(baseline["expected"]["outputs"], ["ascii", "svg"])
+
         for profile_id in profile_ids[1:]:
             with self.subTest(profile_id=profile_id):
                 candidate = profiles[profile_id]
@@ -105,18 +130,40 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                 )
                 self.assertEqual(candidate["expected"], baseline["expected"])
 
-    def test_native_sdk_commands_reject_profile_environment_overrides(self) -> None:
+    def test_c_abi_reference_profile_remains_complete(self) -> None:
         recipe = load_artifact_profile("c-abi-native")
-        override = {"CARGO_PROFILE_NATIVE_SDK_OPT_LEVEL": "z"}
-
-        with (
-            mock.patch.dict(os.environ, override, clear=False),
-            self.assertRaisesRegex(
-                RuntimeError,
-                "CARGO_PROFILE_NATIVE_SDK_OPT_LEVEL",
+        self.assertEqual(
+            recipe.features,
+            (
+                "analysis",
+                "ascii",
+                "jpeg",
+                "layout-cytoscape",
+                "layout-elk",
+                "math",
+                "native-runtime",
+                "pdf",
+                "png",
+                "svg",
             ),
-        ):
-            cargo_build_args(recipe)
+        )
+
+    def test_repository_native_commands_reject_profile_environment_overrides(self) -> None:
+        cases = (
+            ("c-abi-native", "CARGO_PROFILE_NATIVE_SDK_OPT_LEVEL"),
+            (
+                "flutter-desktop-native",
+                "CARGO_PROFILE_NATIVE_DISTRIBUTION_OPT_LEVEL",
+            ),
+        )
+        for profile_id, variable in cases:
+            recipe = load_artifact_profile(profile_id)
+            with (
+                self.subTest(profile_id=profile_id),
+                mock.patch.dict(os.environ, {variable: "z"}, clear=False),
+                self.assertRaisesRegex(RuntimeError, variable),
+            ):
+                cargo_build_args(recipe)
 
     def test_flutter_recipes_own_exact_cross_platform_target_sets(self) -> None:
         expected_targets = {
@@ -142,7 +189,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                 recipe = load_artifact_profile(profile_id)
                 self.assertEqual(recipe.package, "merman-ffi")
                 self.assertEqual(recipe.manifest, "crates/merman-ffi/Cargo.toml")
-                self.assertEqual(recipe.cargo_profile, "native-sdk")
+                self.assertEqual(recipe.cargo_profile, "native-distribution")
                 self.assertFalse(recipe.default_features)
                 self.assertEqual(recipe.build_target_kind, "target-set")
                 self.assertEqual(recipe.build_targets, triples)
@@ -162,7 +209,14 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         self.assertEqual(android.target_name, "merman_android_jni")
         self.assertEqual(android.crate_types, ("cdylib",))
         self.assertEqual(android.features, flutter.features)
-        self.assertEqual(flutter.features, c_abi.features)
+        self.assertNotEqual(android.features, c_abi.features)
+        self.assertIn("analysis", flutter.features)
+        self.assertIn("ascii", flutter.features)
+        self.assertNotIn("jpeg", flutter.features)
+        self.assertNotIn("math", flutter.features)
+        self.assertNotIn("native-runtime", flutter.features)
+        self.assertNotIn("pdf", flutter.features)
+        self.assertNotIn("png", flutter.features)
 
     def test_native_shell_consumers_validate_the_committed_recipe_at_runtime(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
@@ -320,9 +374,11 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         wheel_builder.validate_python_native_recipe(recipe)
         target = "aarch64-apple-darwin"
         production = cargo_build_args(recipe, target=target)
+        metadata_library = wheel_builder.production_metadata_library_path(recipe, target)
         cdylib = wheel_builder.production_cdylib_path(recipe, target)
         generator = wheel_builder.python_generator_args(
             recipe,
+            metadata_library,
             cdylib,
             Path("/tmp/merman-python-package"),
         )
@@ -340,8 +396,24 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             / "libmerman_uniffi.dylib",
         )
         self.assertEqual(
+            metadata_library,
+            wheel_builder.REPO_ROOT
+            / "target"
+            / target
+            / recipe.cargo_profile
+            / "libmerman_uniffi.rlib",
+        )
+        self.assertEqual(
             generator[generator.index("--features") + 1],
             "binding-generation",
+        )
+        self.assertEqual(
+            generator[generator.index("--metadata-library") + 1],
+            str(metadata_library),
+        )
+        self.assertEqual(
+            generator[generator.index("--cdylib") + 1],
+            str(cdylib),
         )
         self.assertNotIn("--profile", generator)
 
@@ -351,7 +423,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             features=("svg",),
             cargo_profile="release",
             default_features=True,
-            crate_types=("cdylib",),
+            crate_types=("cdylib", "rlib"),
         )
 
         wheel_builder.validate_python_native_recipe(recipe)
@@ -420,6 +492,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             source = root / "source-package"
             staged = root / "staged-package"
             wheel_dir = root / "wheels"
+            metadata_library = root / "libmerman_uniffi.rlib"
             cdylib = root / "libmerman_uniffi.so"
             wheel = wheel_dir / "merman-0.0.0-py3-none-linux_x86_64.whl"
             source.mkdir()
@@ -427,6 +500,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             example.parent.mkdir()
             example.write_text("print('smoke')\n", encoding="utf-8")
             staged.mkdir()
+            metadata_library.write_bytes(b"metadata")
             cdylib.write_bytes(b"native")
             venv_python = root / "venv" / "python"
             args = SimpleNamespace(
@@ -449,6 +523,11 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                     wheel_builder,
                     "select_python_wheel_target",
                     return_value="x86_64-unknown-linux-gnu",
+                ),
+                mock.patch.object(
+                    wheel_builder,
+                    "production_metadata_library_path",
+                    return_value=metadata_library,
                 ),
                 mock.patch.object(wheel_builder, "production_cdylib_path", return_value=cdylib),
                 mock.patch.object(
@@ -482,6 +561,14 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         )
         self.assertIn(str(staged), generator_command)
         self.assertNotIn(str(source), generator_command)
+        self.assertEqual(
+            generator_command[generator_command.index("--metadata-library") + 1],
+            str(metadata_library),
+        )
+        self.assertEqual(
+            generator_command[generator_command.index("--cdylib") + 1],
+            str(cdylib),
+        )
         self.assertIn(str(staged), wheel_command)
         self.assertNotIn(str(source), wheel_command)
         self.assertEqual(

@@ -48,14 +48,14 @@ These are headless `merman-cli` outputs. The [Playground](https://frankorz.com/m
 ## Quick Start
 
 > [!IMPORTANT]
-> This README describes the unreleased `0.8.0-alpha.5` source contract. The current crates.io and GitHub binary release is `0.8.0-alpha.4`. Commands labeled as source installs require a reviewed full commit before use in CI or production.
+> This README describes the current development source. Rust crates and GitHub CLI/LSP artifacts are published at `0.8.0-alpha.5`; npm alpha-flow tests may use a newer commit with the same experimental prerelease version, while language-binding channels publish independently and may trail it. Verify the selected channel and provenance before installing it. Commands labeled as source installs require a reviewed full commit before use in CI or production.
 
 ### Rust
 
-Add the published alpha.4 crate:
+Add the exact workspace prerelease:
 
 ```sh
-cargo add merman@0.8.0-alpha.4
+cargo add merman@0.8.0-alpha.5
 ```
 
 Render one Mermaid source string without constructing a renderer:
@@ -85,18 +85,12 @@ Choose the narrowest Rust entry point that owns the task:
 
 The task-oriented [Rust examples](https://github.com/Latias94/merman/tree/main/crates/merman/examples) are self-contained files that can be copied into another crate. They cover one-shot SVG, same-DOM embedding, renderer reuse, PNG and terminal output, semantic and layout inspection, deterministic dates, site configuration, presentation themes, and consumer-specific SVG pipelines.
 
-When alpha.5 is published, its registry dependency will be:
-
-```sh
-cargo add merman@0.8.0-alpha.5
-```
-
 ### Command Line
 
 Install the published complete CLI and render a diagram:
 
 ```sh
-cargo install merman-cli --version 0.8.0-alpha.4 --locked
+cargo install merman-cli --version 0.8.0-alpha.5 --locked
 printf 'flowchart LR\n  Source --> Merman --> SVG\n' | \
   merman-cli render - --output diagram.svg
 ```
@@ -141,7 +135,29 @@ The call returns the rendered SVG string in `svg`; it does not mutate the page.
 
 The browser package does not provide a Node.js or SSR fallback. See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md) for Worker lifecycle, custom WASM loading, and resource policy.
 
-The npm alpha channel can trail this source tree. Check the installed package version before using an alpha.5-only contract.
+The npm alpha channel can trail this source tree. Check the installed package version and provenance before depending on prerelease-only behavior.
+
+### Node.js And Static-Site Builds
+
+Install the experimental native loader on Node.js 22 or newer:
+
+```sh
+npm install @mermanjs/node@alpha
+```
+
+```js
+import { createNodeEngine } from "@mermanjs/node";
+
+const engine = await createNodeEngine();
+try {
+  const svg = await engine.renderSvg("flowchart TD\nA --> B");
+  console.log(svg);
+} finally {
+  await engine.dispose();
+}
+```
+
+The loader selects one exact-version native package for supported macOS arm64/x64, Linux x64 glibc/musl, or Windows x64 MSVC hosts. It provides deterministic SVG with Cytoscape and ELK layouts; it does not download binaries during installation or fall back to browser WASM.
 
 ### Pin Unreleased Source
 
@@ -158,6 +174,7 @@ cargo add merman --git https://github.com/Latias94/merman --rev FULL_COMMIT_SHA
 | --- | --- |
 | Render from Rust | [`merman`](https://crates.io/crates/merman) |
 | Render from a shell, CI job, or docs build | [`merman-cli`](https://crates.io/crates/merman-cli) or the [stable Homebrew formula](https://formulae.brew.sh/formula/merman-cli) |
+| Render in Node.js or a static-site build | Experimental [`@mermanjs/node`](https://github.com/Latias94/merman/blob/main/platforms/node#readme) |
 | Render in a browser with SVG only | [`@mermanjs/web-render`](https://github.com/Latias94/merman/blob/main/platforms/web/packages/render/README.md) |
 | Combine browser rendering, analysis, ASCII, and editor APIs | [`@mermanjs/web`](https://www.npmjs.com/package/@mermanjs/web) |
 | Analyze Mermaid without SVG | [`merman-analysis`](https://crates.io/crates/merman-analysis) |
@@ -183,7 +200,7 @@ Cargo features select observable capabilities and output backends, not diagram f
 | Terminal output | `default-features = false, features = ["ascii"]` |
 | Binary export | Add only the required `png`, `jpeg`, or `pdf` features |
 
-For the alpha.5 source contract, a basic SVG dependency is:
+For the published alpha.5 Rust contract, a basic SVG dependency is:
 
 ```toml
 [dependencies]

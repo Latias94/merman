@@ -15,6 +15,7 @@ installation command.
 | A ready-to-run language server | `merman-lsp` | GitHub Release archive or crates.io |
 | Rustdoc Mermaid fences | `merman-rustdoc` | crates.io |
 | Browser SVG, analysis, ASCII, or editor SDK | one `@mermanjs/web*` package | npm package group |
+| Native Node.js / static-site SVG rendering | `@mermanjs/node` | npm package group (alpha) |
 | Python host integration | `merman` | PyPI and release wheels |
 | Flutter/Dart host integration | `merman` | pub.dev |
 | Android host integration | `io.merman:merman-android` | GitHub Release AAR |
@@ -24,6 +25,13 @@ installation command.
 
 Foundational Rust implementation crates are not product entry points. Homebrew/core owns formula
 publication; this repository only validates the external formula after a stable release.
+
+Android, Apple, Python, and Flutter share one default prebuilt native capability SKU: SVG, semantic
+and layout operations, both supported layout engines, ASCII, analysis, validation, and document
+analysis. Math, PNG, JPEG, PDF, and native runtime adapters remain available to custom source
+builds but are not bundled in the default packages. The C ABI crate has no default features, so
+custom embedders can select semantic-only, SVG-only, export-capable, or complete builds. LSP
+remains a separate executable product and is not linked into any native binding artifact.
 
 ## Release Delivery
 
@@ -37,7 +45,10 @@ The repository-owned delivery routes are:
 6. GitHub Release AAR for Android.
 7. lockstep npm publishing for the admitted `@mermanjs/web` browser package group through
    `release-web.yml` after Trusted Publishing setup.
-8. Platform VSIX artifacts for the independently versioned VS Code extension through
+8. lockstep npm publishing for `@mermanjs/node` and its five native platform packages through
+   `release-node.yml`. Node is an experimental alpha surface; it requires first-publish bootstrap
+   before npm Trusted Publishing can take over.
+9. Platform VSIX artifacts for the independently versioned VS Code extension through
    `vscode-extension.yml`; Marketplace publishing needs an explicit release decision and credentials
    before it is enabled.
 
@@ -55,10 +66,13 @@ Merman CI keeps publication separate from validation:
   examples aligned.
 - `platform-script-syntax` checks Python, Apple, and Flutter shell entry points.
 - `python-uniffi-wheel` builds and imports a local Python UniFFI wheel.
-- The platform binding gate runs Flutter dependency resolution, generated-binding drift checks, static analysis, formatting, ABI contract tests, and a native Dart smoke against the exact desktop artifact recipe.
+- The platform binding gate runs Flutter dependency resolution, generated-binding drift checks, static analysis, formatting, ABI contract tests, and a native Dart smoke against the exact desktop artifact recipe. Release preflight also rejects a package whose Dart-reported compressed size exceeds 99 MB.
 - `apple-uniffi-smoke` builds `Merman.xcframework` and validates the generated UniFFI Swift package.
 - `web-npm-dry-run` builds each admitted TypeScript/WASM package, verifies its package projection,
   then packs and verifies the complete lockstep npm group without publishing it.
+- `release-node.yml` builds, packs, installs, and renders the public Node loader through its real
+  macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 native package. Its publisher receives
+  verified tarballs only and reconciles the platform packages before promoting the loader's dist-tag.
 - `vscode-extension.yml` and the VS Code preflight job build platform runtime binaries, package a
   VSIX, and verify package contents, target platform, stable manifest version, and pre-release
   marker.
@@ -121,28 +135,34 @@ Current release semantics are intentionally explicit:
 
 ## Native Prebuilt SKU Policy
 
-Python, Apple, Android, and Flutter releases currently ship one full prebuilt native SDK SKU per
-surface. The C ABI is published as the source-only `merman-ffi` crate; its native artifact profile
-defines reproducible host reference libraries, not a downloadable binary SDK. These are
-intentional product boundaries, not inferences from the Rust facade default. Source users can
-select `complete-svg` or direct feature leaves; release recipes select the full leaf set explicitly
-through their artifact profiles.
+Python, Apple, Android, and Flutter releases ship the same default native prebuilt SKU through
+surface-owned transports. Its direct features are `analysis`, `ascii`, `layout-cytoscape`,
+`layout-elk`, and `svg`; its outputs are ASCII and SVG. It omits math, binary export, and native
+runtime adapters to keep common downloads materially smaller. The generated wrappers still expose
+the complete operation vocabulary, while runtime discovery and typed missing-capability errors
+describe the loaded artifact precisely.
 
-Do not add a `full`/`svg` prebuilt matrix solely because both source closures compile. A proposed
-SVG-only native SKU must identify concrete consumer demand and set its material-improvement
-threshold before collecting evidence. The proposal must compare the existing full artifact and the
-candidate from the same revision, target, toolchain, and machine; measure final stripped library or
-framework bytes and packaged artifact bytes; run the existing installation and output smokes; and
-record runtime memory only where the selected platform has a stable, representative measurement
-method. The proposal must also own package naming, legal closure, update policy, and CI for the
-extra SKU.
+The C ABI is published as the source-only `merman-ffi` crate. Its `c-abi-native` artifact profile
+continues to build the complete host reference library for ABI and output-path verification, not a
+downloadable default binary SDK. Source users may select `complete-svg`, individual export leaves,
+`native-runtime`, or any other valid direct feature combination.
 
-As of 2026-07-26, the repository has no comparable all-target record of final package bytes,
-smoke-process peak RSS, and cold-start behavior for a complete-SVG candidate versus each full
-native SDK. Therefore no second native SKU is admitted by this refactor; source-level Cargo
-closure differences alone are not release evidence. Keep this comparison in the proposal that
-introduces the candidate; do not add a standing PR or release gate until maintainers have accepted
-a second SKU and a stable budget.
+The corresponding cross-language recipes are intentionally not identical when their interfaces
+differ:
+
+| Surface | Compiled capabilities | Product rationale |
+| --- | --- | --- |
+| Android, Apple, Python, Flutter | analysis, ASCII, SVG, Cytoscape, ELK | Shared default native prebuilt SKU. |
+| Typst | analysis, SVG, Cytoscape, ELK | Matches the five-function Typst ABI; no callable ASCII or binary-export operation, and no admitted math backend. |
+| Node alpha package group | SVG, Cytoscape, ELK | Matches the deterministic static-SVG interface; specialist capabilities remain out of the prebuilt download. |
+| Browser packages | package-specific | `web-full` and `web-render` keep math, while dedicated packages own analysis, editor, and ASCII workflows. |
+| C ABI source reference | complete | Exercises every ABI/output path for custom embedders without defining a default binary download. |
+
+Do not add another prebuilt matrix solely because another source closure compiles. A proposed SKU
+must identify a distinct consumer workflow and compare final artifacts from the same revision,
+target, toolchain, and machine. It must also own package naming, installation smokes, legal closure,
+update policy, and release CI. See ADR-0079 for the accepted default boundary and its matched
+library-size evidence.
 
 ## Release Gates By Surface
 
@@ -155,6 +175,7 @@ a second SKU and a stable budget.
 | Browser artifact evidence | The selected Web artifact profiles have current raw, stripped, gzip, and Brotli measurements; do not substitute a legacy feature-profile name. |
 | Browser/Typst size evidence | The owner-specific Web and Typst size commands share one budget catalog and together cover every admitted artifact exactly once. |
 | Typst transport | The sole `publish` package profile consumes the canonical `typst-wasm` artifact recipe and proves plugin ABI 2, dependency closure, size, provenance, package contents, and examples. Its admitted `json5`, `lol_html`, and `url` dependencies remain measured pure-Rust parts of invariant Mermaid semantics. |
+| Node npm alpha package group | The selected N-API recipe, generated wire contract, runtime catalog, package contracts, exact-version optional dependencies, build receipts, packed tarballs, and five real-target install/render smokes agree. |
 
 ## WASM Size Matrix
 

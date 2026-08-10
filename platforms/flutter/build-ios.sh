@@ -14,9 +14,9 @@ recipe_field() {
     python3 "$REPO_ROOT/scripts/artifact_profile_recipe.py" "$RECIPE_PROFILE" --field "$1"
 }
 
-NATIVE_SDK_PROFILE="$(recipe_field profile)"
-NATIVE_SDK_TARGET="$(recipe_field target)"
-NATIVE_SDK_LIBRARY_STEM="${NATIVE_SDK_TARGET//-/_}"
+NATIVE_CARGO_PROFILE="$(recipe_field profile)"
+NATIVE_LIBRARY_TARGET="$(recipe_field target)"
+NATIVE_LIBRARY_STEM="${NATIVE_LIBRARY_TARGET//-/_}"
 
 if [[ "${MERMAN_CHECK_RECIPE_ONLY:-false}" == "true" ]]; then
     exit 0
@@ -167,13 +167,13 @@ build_cdylib aarch64-apple-ios-sim
 build_cdylib x86_64-apple-ios
 
 make_framework \
-    "$REPO_ROOT/target/aarch64-apple-ios/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.dylib" \
+    "$REPO_ROOT/target/aarch64-apple-ios/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.dylib" \
     "$OUT_DIR/ios-arm64/$FRAMEWORK_NAME.framework"
 
 mkdir -p "$OUT_DIR/ios-simulator"
 lipo -create \
-    "$REPO_ROOT/target/aarch64-apple-ios-sim/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.dylib" \
-    "$REPO_ROOT/target/x86_64-apple-ios/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.dylib" \
+    "$REPO_ROOT/target/aarch64-apple-ios-sim/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.dylib" \
+    "$REPO_ROOT/target/x86_64-apple-ios/$NATIVE_CARGO_PROFILE/lib$NATIVE_LIBRARY_STEM.dylib" \
     -output "$OUT_DIR/ios-simulator/$FRAMEWORK_NAME"
 
 make_framework \

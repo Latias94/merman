@@ -1,8 +1,7 @@
 {
   "name": "@mermanjs/node",
   "version": "0.8.0-alpha.5",
-  "private": true,
-  "description": "Private Merman Node/SSG candidate loader pending U14 evidence admission.",
+  "description": "Experimental native Node.js and static-site rendering bindings for Merman.",
   "type": "module",
   "engines": {
     "node": ">=22.0.0"
@@ -15,7 +14,24 @@
       "import": "./dist/index.mjs"
     }
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Latias94/merman.git"
+  },
+  "homepage": "https://github.com/Latias94/merman/tree/main/platforms/node#readme",
+  "keywords": [
+    "mermaid",
+    "diagram",
+    "svg",
+    "node",
+    "ssg",
+    "napi"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
+    "CHANGELOG.md",
     "dist",
     "LICENSE-APACHE",
     "LICENSE-MIT",

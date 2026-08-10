@@ -920,13 +920,13 @@ function parseArgs(args) {
 function assertDescriptor() {
   if (
     descriptor.schema_version !== 3 ||
-    descriptor.status !== "private-evaluation" ||
+    descriptor.status !== "napi-selected-for-alpha" ||
     descriptor.cargo.default_features !== false ||
     descriptor.cargo.manifest !== "crates/merman-node/Cargo.toml" ||
     descriptor.capability_recipe?.descriptor !== "capabilities/feature-surface-v1.json" ||
     descriptor.capability_recipe?.target !== "native" ||
     packageSurface.schema_version !== 1 ||
-    packageSurface.admission_status !== "candidate" ||
+    packageSurface.admission_status !== "public-alpha" ||
     typeof packageSurface.version !== "string" ||
     packageSurface.version.length === 0
   ) {
