@@ -1145,7 +1145,8 @@ impl<'layout> SceneOccupancy<'layout> {
                     owner,
                     endpoint,
                     candidate,
-                ) {
+                    resources,
+                )? {
                     MarkerCandidateDisposition::Available => {
                         available = resources.checked_work_add(available, 1)?;
                         predecessor = Some(candidate);
@@ -1276,59 +1277,80 @@ impl<'layout> SceneOccupancy<'layout> {
         owner: &RouteOwner,
         endpoint: MarkerEndpoint,
         candidate: MarkerCandidate,
-    ) -> MarkerCandidateDisposition {
+        resources: &mut ResourceContext,
+    ) -> Result<MarkerCandidateDisposition> {
         let endpoint_id = owner.endpoint_id(endpoint);
-        if !self.protected.iter().all(|protected| {
-            !protected.shape.contains(candidate.coord)
+        for protected in &self.protected {
+            resources.charge_layout_work(1)?;
+            let allowed = !protected.shape.contains(candidate.coord)
                 || (candidate.is_primary()
                     && (protected.allows_endpoint_port(endpoint_id, candidate.coord)
                         || (protected.kind == ProtectedKind::GroupBorder
                             && (protected.allows_endpoint_port(&owner.from, candidate.coord)
-                                || protected.allows_endpoint_port(&owner.to, candidate.coord)))))
-        }) {
-            return MarkerCandidateDisposition::Blocked;
+                                || protected.allows_endpoint_port(&owner.to, candidate.coord)))));
+            if !allowed {
+                return Ok(MarkerCandidateDisposition::Blocked);
+            }
         }
 
         if let Some(marker) = self.markers.get(&candidate.coord) {
-            return if marker_occupant_is_compatible(
-                existing_routes,
-                *marker,
-                endpoint_id,
-                candidate.point_direction,
-            ) {
-                MarkerCandidateDisposition::CompatiblePassThrough
-            } else {
-                MarkerCandidateDisposition::Blocked
-            };
+            return Ok(
+                if marker_occupant_is_compatible(
+                    existing_routes,
+                    *marker,
+                    endpoint_id,
+                    candidate.point_direction,
+                ) {
+                    MarkerCandidateDisposition::CompatiblePassThrough
+                } else {
+                    MarkerCandidateDisposition::Blocked
+                },
+            );
         }
 
         let claims = self.terminal_claims.get(&candidate.coord);
-        let compatible_claim = |claim: &TerminalClaim| {
-            terminal_claim_is_compatible(
-                existing_routes,
-                claim,
-                endpoint_id,
-                candidate.point_direction,
-            )
-        };
-        if claims.is_some_and(|claims| claims.iter().any(|claim| !compatible_claim(claim))) {
-            return MarkerCandidateDisposition::Blocked;
+        if let Some(claims) = claims {
+            for claim in claims {
+                resources.charge_layout_work(1)?;
+                if !terminal_claim_is_compatible(
+                    existing_routes,
+                    claim,
+                    endpoint_id,
+                    candidate.point_direction,
+                ) {
+                    return Ok(MarkerCandidateDisposition::Blocked);
+                }
+            }
         }
-        let available = self.route_cells.get(&candidate.coord).is_none_or(|cell| {
+
+        if let Some(cell) = self.route_cells.get(&candidate.coord) {
             let Some(claims) = claims else {
-                return false;
+                return Ok(MarkerCandidateDisposition::Blocked);
             };
-            cell.owners.iter().all(|cell_owner| {
-                claims.iter().any(|claim| {
-                    claim.route_index == cell_owner.route_index && compatible_claim(claim)
-                })
-            })
-        });
-        if available {
-            MarkerCandidateDisposition::Available
-        } else {
-            MarkerCandidateDisposition::Blocked
+            for cell_owner in &cell.owners {
+                resources.charge_layout_work(1)?;
+                let mut matched = false;
+                for claim in claims {
+                    resources.charge_layout_work(1)?;
+                    if claim.route_index == cell_owner.route_index
+                        && terminal_claim_is_compatible(
+                            existing_routes,
+                            claim,
+                            endpoint_id,
+                            candidate.point_direction,
+                        )
+                    {
+                        matched = true;
+                        break;
+                    }
+                }
+                if !matched {
+                    return Ok(MarkerCandidateDisposition::Blocked);
+                }
+            }
         }
+
+        Ok(MarkerCandidateDisposition::Available)
     }
 
     fn commit_route(
@@ -2751,6 +2773,96 @@ mod tests {
             score.is_some(),
             "routes incident to the same authored endpoint may share its terminal corridor"
         );
+    }
+
+    #[test]
+    fn marker_candidate_preflight_charges_every_shared_owner_claim_scan() {
+        const ROUTE_COUNT: usize = 4;
+        const EXPECTED_WORK: usize = ROUTE_COUNT * 2 + ROUTE_COUNT * (ROUTE_COUNT + 1) / 2;
+
+        let options = AsciiRenderOptions::ascii();
+        let graph_layout = layout_graph(&AsciiGraph::new(GraphDirection::TopDown), &options);
+        let existing_routes = (0..ROUTE_COUNT)
+            .map(|route_index| {
+                PreparedRoute::for_test_with_endpoints(
+                    marker_request_plan(GraphEdgeMarker::Point, 3),
+                    route_index,
+                    "source",
+                    "target",
+                )
+            })
+            .collect::<Vec<_>>();
+        let candidate_route = PreparedRoute::for_test_with_endpoints(
+            marker_request_plan(GraphEdgeMarker::Point, 3),
+            ROUTE_COUNT,
+            "source",
+            "target",
+        );
+        let candidate = candidate_route
+            .plan
+            .terminal_candidate(MarkerEndpoint::End, "flowchart")
+            .expect("test marker route should expose a terminal candidate");
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let mut setup_resources = ResourceContext::new(unbounded);
+        let occupancy = SceneOccupancy::try_new(
+            &existing_routes,
+            &graph_layout,
+            &mut setup_resources,
+            "flowchart",
+        )
+        .expect("shared terminal routes should build occupancy");
+
+        let mut measured_resources = ResourceContext::new(unbounded);
+        let disposition = occupancy
+            .marker_candidate_disposition_before_commit(
+                &existing_routes,
+                &candidate_route.owner,
+                MarkerEndpoint::End,
+                candidate,
+                &mut measured_resources,
+            )
+            .expect("unbounded shared-terminal scan should pass");
+        assert_eq!(disposition, MarkerCandidateDisposition::Available);
+        assert_eq!(measured_resources.layout_work_used(), EXPECTED_WORK);
+
+        let exact_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, EXPECTED_WORK)
+            .expect("exact marker-scan work limit should be valid");
+        let mut exact_resources = ResourceContext::new(exact_policy);
+        assert_eq!(
+            occupancy
+                .marker_candidate_disposition_before_commit(
+                    &existing_routes,
+                    &candidate_route.owner,
+                    MarkerEndpoint::End,
+                    candidate,
+                    &mut exact_resources,
+                )
+                .expect("exact marker-scan work should pass"),
+            MarkerCandidateDisposition::Available
+        );
+        assert_eq!(exact_resources.layout_work_used(), EXPECTED_WORK);
+
+        let below_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, EXPECTED_WORK - 1)
+            .expect("max-minus-one marker-scan work limit should be valid");
+        let mut below_resources = ResourceContext::new(below_policy);
+        let error = occupancy
+            .marker_candidate_disposition_before_commit(
+                &existing_routes,
+                &candidate_route.owner,
+                MarkerEndpoint::End,
+                candidate,
+                &mut below_resources,
+            )
+            .expect_err("max-minus-one marker-scan work should reject");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual == EXPECTED_WORK
+                    && details.max == EXPECTED_WORK - 1
+        ));
     }
 
     #[test]
