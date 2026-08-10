@@ -7,6 +7,7 @@ Corresponds to the next merman workspace release, which remains in development.
 ### Breaking changes
 
 - The native libraries bundled on pub.dev now provide SVG, both layout engines, ASCII, analysis, validation, and document analysis. Math, PNG, JPEG, PDF, and native runtime adapters require a current-contract custom library loaded through `Merman.openPath(...)` or `Merman.fromDynamicLibrary(...)`; bundled calls fail with typed missing-capability or unsupported-operation errors.
+- The next workspace release will publish analysis facts schema 2 and remove the unused Flowchart-only rich graph; regenerate facts consumers together with the matching native artifact.
 
 ### Changed
 
@@ -22,7 +23,7 @@ Corresponds to merman workspace release `0.8.0-alpha.5`. See the [alpha.3 to alp
 - Split the public SDK into a stateless `Merman` discovery/one-shot facade and a directly constructed, explicitly closeable `MermanEngine`. Replace `MermanReusableEngine`, `Merman.reusableEngine(...)`, engine-owning `Merman` instances, `dispose()`, and callback-specialized facade constructors.
 - Moved host text measurement and icon packs into immutable constructor-owned `MermanEngineServices`. The post-construction callback API is removed; callback-enabled engines report typed `BUSY` or `REENTRANT` failures, and engine close is retryable and idempotent.
 - Replaced format-specific option envelopes with generic `optionsJson` and Options JSON schema `2`. Rename viewport fields to `container_width` / `container_height`, move text/math selectors under `environment`, move semantic theme values under `presentation.theme`, use top-level `site_config` and `svg`, remove the legacy Flowchart ELK selector, and use documented kebab-case values.
-- Replaced parser-backed document facts with schema 2, removing the Flowchart-only rich graph, raw operation metadata maps with typed `MermanOperationMetadata` / `MermanOutputPlan` values, and closed operation/resource enums with generated open value objects. Iterate `.knownValues`, preserve unknown output plans through `rawJson`, and use `presentationCatalog()` instead of `supportedHostThemePresets()`.
+- Replaced parser-backed document facts with their final schema 1 shape, raw operation metadata maps with typed `MermanOperationMetadata` / `MermanOutputPlan` values, and closed operation/resource enums with generated open value objects. Iterate `.knownValues`, preserve unknown output plans through `rawJson`, and use `presentationCatalog()` instead of `supportedHostThemePresets()`.
 
 ### Added
 

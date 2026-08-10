@@ -4,7 +4,8 @@
 - Date: 2026-07-18
 - Amended: 2026-07-23 (package-surface projection delegated to ADR-0076); 2026-08-05
   (benchmark phase, plan, lifecycle, corpus evidence, explicit WASM ownership, and browser
-  validation contracts unified)
+  validation contracts unified); 2026-08-10 (facts schema 2 break and Flowchart-rich projection
+  deletion recorded as a coordinated Unreleased migration)
 - Baselines: Mermaid `11.16.0@7c0cafcf`, native ABI `3`, editor-token and diagnostics schema `1`, facts schema `2`
 
 These version fields describe the first public contract shapes after the 0.8 refactor. Their
