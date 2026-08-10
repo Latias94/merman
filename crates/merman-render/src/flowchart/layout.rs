@@ -24,12 +24,14 @@ use super::{
     FlowEdge, FlowSubgraph, FlowchartModel, FlowchartRenderLabelSources, FlowchartRenderModelRef,
 };
 use super::{
-    FlowchartLabelMetricsRequest, FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder,
-    FlowchartSvgWidthMode, flowchart_apply_html_node_class_box_metrics,
-    flowchart_effective_edge_label_text_style, flowchart_effective_text_style_for_classes,
-    flowchart_effective_text_style_for_node_classes, flowchart_node_svg_width_mode,
-    measure_flowchart_svg_label_for_layout,
-    measure_flowchart_svg_label_for_layout_with_metrics_style,
+    FlowchartLabelMetricsRequest, FlowchartLabelTypographyOverrides, FlowchartSvgLabelOwner,
+    FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
+    flowchart_apply_html_node_class_box_metrics,
+    flowchart_effective_edge_label_text_style_with_provenance,
+    flowchart_effective_text_style_for_classes_with_provenance,
+    flowchart_effective_text_style_for_node_classes_with_provenance, flowchart_node_svg_width_mode,
+    measure_flowchart_svg_label_for_layout_with_metrics_style_and_typography_overrides,
+    measure_flowchart_svg_label_for_layout_with_typography_overrides,
 };
 
 type FlowSubgraphIndex<'a> = HashMap<&'a str, &'a FlowSubgraph>;
@@ -1642,7 +1644,7 @@ fn layout_flowchart_with_model(
         }
         let raw_label = model.node_label_for_render(n).unwrap_or(&n.id);
         let label_type = n.label_type.as_deref().unwrap_or("text");
-        let node_text_style = flowchart_effective_text_style_for_node_classes(
+        let node_text_style = flowchart_effective_text_style_for_node_classes_with_provenance(
             node_label_base_style,
             &model.class_defs,
             &n.classes,
@@ -1654,7 +1656,7 @@ fn layout_flowchart_with_model(
             node_wrap_mode,
             n.layout_shape.as_deref().unwrap_or("squareRect"),
         );
-        let mut metrics = measure_flowchart_svg_label_for_layout(
+        let mut metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
             svg_label_sidecar,
             Some(FlowchartSvgLabelOwner::Node(node_index)),
             Some(n.id.as_str()),
@@ -1668,6 +1670,7 @@ fn layout_flowchart_with_model(
                 config: effective_config,
                 math_renderer,
             },
+            FlowchartLabelTypographyOverrides::same(&node_text_style.prepared_text_overrides),
             svg_width_mode,
         );
         if node_wrap_mode == WrapMode::HtmlLike && edge_html_labels {
@@ -1709,7 +1712,7 @@ fn layout_flowchart_with_model(
             continue;
         }
         let label_type = sg.label_type.as_deref().unwrap_or("text");
-        let sg_text_style = flowchart_effective_text_style_for_node_classes(
+        let sg_text_style = flowchart_effective_text_style_for_node_classes_with_provenance(
             cluster_label_base_style,
             &model.class_defs,
             &sg.classes,
@@ -1720,7 +1723,7 @@ fn layout_flowchart_with_model(
         // probes use `flowchart.wrappingWidth` and `getComputedTextLength()`, while the final label
         // dimensions come from `getBBox()`. Selecting `ComputedLength` here would add a post-wrap
         // per-line measurement pass that is absent upstream.
-        let mut metrics = measure_flowchart_svg_label_for_layout(
+        let mut metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
             svg_label_sidecar,
             Some(FlowchartSvgLabelOwner::EmptySubgraphNode(subgraph_index)),
             Some(sg.id.as_str()),
@@ -1734,6 +1737,7 @@ fn layout_flowchart_with_model(
                 config: effective_config,
                 math_renderer,
             },
+            FlowchartLabelTypographyOverrides::same(&sg_text_style.prepared_text_overrides),
             FlowchartSvgWidthMode::Bbox,
         );
         if node_wrap_mode == WrapMode::HtmlLike && edge_html_labels {
@@ -1993,7 +1997,7 @@ fn layout_flowchart_with_model(
         if edge_label_is_non_empty(model, e) {
             let label_text = model.edge_label_for_render(e).unwrap_or_default();
             let label_type = e.label_type.as_deref().unwrap_or("text");
-            let edge_text_style = flowchart_effective_edge_label_text_style(
+            let edge_text_style = flowchart_effective_edge_label_text_style_with_provenance(
                 edge_label_base_style,
                 &model.class_defs,
                 &e.classes,
@@ -2012,7 +2016,7 @@ fn layout_flowchart_with_model(
                 let render_id = self_loop_meta
                     .as_ref()
                     .map_or(e.id.as_str(), |meta| meta.logical_edge_id.as_str());
-                measure_flowchart_svg_label_for_layout_with_metrics_style(
+                measure_flowchart_svg_label_for_layout_with_metrics_style_and_typography_overrides(
                     svg_label_sidecar,
                     Some(FlowchartSvgLabelOwner::Edge(*edge_owner_index)),
                     Some(render_id),
@@ -2028,10 +2032,13 @@ fn layout_flowchart_with_model(
                         math_renderer,
                     },
                     edge_text_style.as_ref(),
+                    FlowchartLabelTypographyOverrides::metrics_only(
+                        &edge_text_style.prepared_text_overrides,
+                    ),
                     FlowchartSvgWidthMode::Bbox,
                 )
             } else {
-                measure_flowchart_svg_label_for_layout(
+                measure_flowchart_svg_label_for_layout_with_typography_overrides(
                     svg_label_sidecar,
                     Some(FlowchartSvgLabelOwner::Edge(*edge_owner_index)),
                     Some(e.id.as_str()),
@@ -2045,6 +2052,9 @@ fn layout_flowchart_with_model(
                         config: effective_config,
                         math_renderer,
                     },
+                    FlowchartLabelTypographyOverrides::same(
+                        &edge_text_style.prepared_text_overrides,
+                    ),
                     FlowchartSvgWidthMode::Bbox,
                 )
             };
@@ -2196,14 +2206,14 @@ fn layout_flowchart_with_model(
         } else {
             ctx.text_style
         };
-        let text_style = flowchart_effective_text_style_for_classes(
+        let text_style = flowchart_effective_text_style_for_classes_with_provenance(
             base_style,
             ctx.class_defs,
             &sg.classes,
             &sg.styles,
         );
         let owner = Some(FlowchartSvgLabelOwner::SubgraphTitle(subgraph_index));
-        let metrics = measure_flowchart_svg_label_for_layout(
+        let metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
             ctx.svg_label_sidecar,
             owner,
             Some(id),
@@ -2217,6 +2227,7 @@ fn layout_flowchart_with_model(
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
             },
+            FlowchartLabelTypographyOverrides::same(&text_style.prepared_text_overrides),
             FlowchartSvgWidthMode::Bbox,
         );
         Some((metrics.width.max(1.0), metrics.height.max(1.0)))
@@ -3309,14 +3320,14 @@ fn layout_flowchart_with_model(
             } else {
                 ctx.text_style
             };
-            let text_style = flowchart_effective_text_style_for_classes(
+            let text_style = flowchart_effective_text_style_for_classes_with_provenance(
                 base_style,
                 ctx.class_defs,
                 &sg.classes,
                 &sg.styles,
             );
             let owner = Some(FlowchartSvgLabelOwner::SubgraphTitle(subgraph_index));
-            let title_metrics = measure_flowchart_svg_label_for_layout(
+            let title_metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
                 ctx.svg_label_sidecar,
                 owner,
                 owner.map(|_| sg.id.as_str()),
@@ -3330,6 +3341,7 @@ fn layout_flowchart_with_model(
                     config: ctx.config,
                     math_renderer: ctx.math_renderer,
                 },
+                FlowchartLabelTypographyOverrides::same(&text_style.prepared_text_overrides),
                 FlowchartSvgWidthMode::Bbox,
             );
             let mut rect = if let Some(r) = content {
@@ -3421,7 +3433,7 @@ fn layout_flowchart_with_model(
         } else {
             ctx.text_style
         };
-        let text_style = flowchart_effective_text_style_for_classes(
+        let text_style = flowchart_effective_text_style_for_classes_with_provenance(
             base_style,
             ctx.class_defs,
             &sg.classes,
@@ -3432,7 +3444,7 @@ fn layout_flowchart_with_model(
             .get(sg.id.as_str())
             .copied()
             .map(FlowchartSvgLabelOwner::SubgraphTitle);
-        let title_metrics = measure_flowchart_svg_label_for_layout(
+        let title_metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
             ctx.svg_label_sidecar,
             owner,
             Some(sg.id.as_str()),
@@ -3446,6 +3458,7 @@ fn layout_flowchart_with_model(
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
             },
+            FlowchartLabelTypographyOverrides::same(&text_style.prepared_text_overrides),
             FlowchartSvgWidthMode::Bbox,
         );
         let title_w = title_metrics.width.max(1.0);
@@ -3568,13 +3581,13 @@ fn layout_flowchart_with_model(
         } else {
             &text_style
         };
-        let title_text_style = flowchart_effective_text_style_for_classes(
+        let title_text_style = flowchart_effective_text_style_for_classes_with_provenance(
             base_style,
             &model.class_defs,
             &sg.classes,
             &sg.styles,
         );
-        let title_metrics = measure_flowchart_svg_label_for_layout(
+        let title_metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
             svg_label_sidecar,
             Some(FlowchartSvgLabelOwner::SubgraphTitle(subgraph_index)),
             Some(sg.id.as_str()),
@@ -3588,6 +3601,7 @@ fn layout_flowchart_with_model(
                 config: effective_config,
                 math_renderer,
             },
+            FlowchartLabelTypographyOverrides::same(&title_text_style.prepared_text_overrides),
             FlowchartSvgWidthMode::Bbox,
         );
         let title_label = LayoutLabel {

@@ -1,4 +1,3 @@
-use cssparser::{Parser, ParserInput};
 use indexmap::IndexMap;
 use merman_core::diagrams::state::{
     StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
@@ -8,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use crate::diagram_theme::{
-    CanvasPaint, FamilyThemeMechanismKey, FontStack, FontStyle, PreparedSourceStyleDeclaration,
+    CanvasPaint, FamilyThemeMechanismKey, FontStyle, PreparedSourceStyleDeclaration,
     ResolvedDiagramTheme, ResolvedProperty, ResolvedStyleProperty, ResolvedThemeStyle,
     SourceStyleChannel, SourceStyleDeclaration, SourceStyleOrigin, SourceStyleProvenance,
     SourceStyleResidual, SourceStyleResidualReason, Specified, TextStylePatch, ThemeTarget,
@@ -31,6 +30,7 @@ use crate::theme::MermaidThemeAdapter;
 pub(crate) struct ResolvedLabelTypography {
     text_style: TextStyle,
     prepared_typography: Option<ThemeTextStyle>,
+    source_font_stack: Option<crate::text::ParsedCssFontStack>,
 }
 
 impl ResolvedLabelTypography {
@@ -38,6 +38,7 @@ impl ResolvedLabelTypography {
         Self {
             text_style,
             prepared_typography,
+            source_font_stack: None,
         }
     }
 
@@ -49,12 +50,19 @@ impl ResolvedLabelTypography {
         self.prepared_typography.as_ref()
     }
 
-    fn apply_font_family(&mut self, stack: FontStack) {
+    pub(crate) const fn source_font_stack(&self) -> Option<&crate::text::ParsedCssFontStack> {
+        self.source_font_stack.as_ref()
+    }
+
+    fn apply_font_family(&mut self, stack: crate::text::ParsedCssFontStack) {
         let css = stack.as_css();
         self.text_style.font_family = Some(css);
         if let Some(typography) = self.prepared_typography.as_mut() {
-            *typography = typography.clone().with_font_stack(stack);
+            *typography = typography
+                .clone()
+                .with_font_stack(stack.font_stack().clone());
         }
+        self.source_font_stack = Some(stack);
     }
 
     fn apply_font_size(&mut self, value: f64) -> bool {
@@ -2426,7 +2434,7 @@ fn apply_source_text_property(
     let value = declaration.value().trim();
     match declaration.property() {
         "font-family" if is_safe_css_font_family_value(value) && !value.is_empty() => {
-            if let Some(stack) = parse_source_font_stack(value) {
+            if let Some(stack) = crate::text::parse_css_font_stack(value) {
                 typography.apply_font_family(stack);
                 true
             } else {
@@ -2505,54 +2513,9 @@ fn apply_source_text_property(
     }
 }
 
-fn parse_source_font_stack(value: &str) -> Option<FontStack> {
-    let mut input = ParserInput::new(value);
-    let mut parser = Parser::new(&mut input);
-    let mut families = Vec::new();
-
-    while !parser.is_exhausted() {
-        let family = if let Ok(value) = parser.try_parse(|input| input.expect_string_cloned()) {
-            value.to_string()
-        } else {
-            let first = parser.expect_ident_cloned().ok()?;
-            let mut components = vec![first.to_string()];
-            while let Ok(component) = parser.try_parse(|input| input.expect_ident_cloned()) {
-                components.push(component.to_string());
-            }
-            if components.iter().any(|component| {
-                matches!(
-                    component.to_ascii_lowercase().as_str(),
-                    "inherit" | "initial" | "revert" | "revert-layer" | "unset"
-                )
-            }) {
-                return None;
-            }
-            components.join(" ")
-        };
-        families.push(family);
-        if parser.is_exhausted() {
-            break;
-        }
-        parser.expect_comma().ok()?;
-        if parser.is_exhausted() {
-            return None;
-        }
-    }
-
-    FontStack::new(families).ok()
-}
-
 fn resolve_source_font_weight(value: &str, inherited: Option<&str>) -> u16 {
-    let value = value.trim().to_ascii_lowercase();
-    match value.as_str() {
-        "normal" => 400,
-        "bold" => 700,
-        "bolder" => relative_font_weight(inherited_font_weight(inherited), true),
-        "lighter" => relative_font_weight(inherited_font_weight(inherited), false),
-        _ => value
-            .parse::<u16>()
-            .expect("font-weight was validated before resolution"),
-    }
+    crate::text::resolve_css_font_weight(value, inherited_font_weight(inherited))
+        .expect("font-weight was validated before resolution")
 }
 
 fn inherited_font_weight(value: Option<&str>) -> u16 {
@@ -2561,19 +2524,6 @@ fn inherited_font_weight(value: Option<&str>) -> u16 {
         Some("lighter") => 300,
         Some("normal") | None => 400,
         Some(value) => value.parse::<u16>().unwrap_or(400).clamp(1, 1000),
-    }
-}
-
-fn relative_font_weight(inherited: u16, bolder: bool) -> u16 {
-    let canonical = (((u32::from(inherited) + 50) / 100) * 100).clamp(100, 900);
-    match (canonical, bolder) {
-        (100..=300, true) => 400,
-        (400..=500, true) => 700,
-        (600..=900, true) => 900,
-        (100..=500, false) => 100,
-        (600..=700, false) => 400,
-        (800..=900, false) => 700,
-        _ => 400,
     }
 }
 
@@ -3026,16 +2976,17 @@ mod tests {
 
     #[test]
     fn source_font_stack_rejects_unquoted_css_wide_keywords_in_any_position() {
-        assert!(parse_source_font_stack("Excalifont, inherit").is_none());
-        assert!(parse_source_font_stack("initial, Excalifont").is_none());
-        assert!(parse_source_font_stack("Family unset, serif").is_none());
+        assert!(crate::text::parse_css_font_stack("Excalifont, inherit").is_none());
+        assert!(crate::text::parse_css_font_stack("initial, Excalifont").is_none());
+        assert!(crate::text::parse_css_font_stack("Family unset, serif").is_none());
 
-        let quoted = parse_source_font_stack("\"inherit\", Excalifont")
+        let quoted = crate::text::parse_css_font_stack("\"inherit\", Excalifont")
             .expect("quoted CSS-wide text remains a valid family name");
         assert_eq!(
             quoted.families(),
             &["inherit".to_string(), "Excalifont".to_string()]
         );
+        assert_eq!(quoted.as_css(), "\"inherit\", \"Excalifont\"");
     }
 
     #[test]

@@ -136,18 +136,38 @@ impl FontStack {
         self.families
             .iter()
             .map(|family| {
-                if family
+                if is_css_generic_family(family) {
+                    family.to_ascii_lowercase()
+                } else if family
                     .chars()
                     .all(|character| character.is_ascii_alphanumeric() || character == '-')
+                    && !is_css_wide_keyword(family)
                 {
                     family.clone()
                 } else {
-                    format!("\"{}\"", family.replace('"', "\\\""))
+                    let mut serialized = String::new();
+                    cssparser::serialize_string(family, &mut serialized)
+                        .expect("serializing a CSS string into String cannot fail");
+                    serialized
                 }
             })
             .collect::<Vec<_>>()
             .join(", ")
     }
+}
+
+fn is_css_generic_family(value: &str) -> bool {
+    matches!(
+        value.to_ascii_lowercase().as_str(),
+        "serif" | "sans-serif" | "monospace" | "cursive" | "fantasy" | "system-ui"
+    )
+}
+
+fn is_css_wide_keyword(value: &str) -> bool {
+    matches!(
+        value.to_ascii_lowercase().as_str(),
+        "inherit" | "initial" | "revert" | "revert-layer" | "unset"
+    )
 }
 
 impl Default for FontStack {

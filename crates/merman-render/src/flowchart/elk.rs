@@ -20,12 +20,14 @@ use super::config::{FlowchartConfigView, FlowchartLayoutSettings};
 use super::label::compute_bounds;
 use super::node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
 use super::{
-    FlowchartLabelMetricsRequest, FlowchartRenderModelRef, FlowchartSvgLabelOwner,
-    FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
-    flowchart_apply_html_node_class_box_metrics, flowchart_effective_edge_label_text_style,
-    flowchart_effective_text_style_for_classes, flowchart_effective_text_style_for_node_classes,
-    flowchart_node_svg_width_mode, measure_flowchart_svg_label_for_layout,
-    measure_flowchart_svg_label_for_layout_with_metrics_style,
+    FlowchartLabelMetricsRequest, FlowchartLabelTypographyOverrides, FlowchartRenderModelRef,
+    FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
+    flowchart_apply_html_node_class_box_metrics,
+    flowchart_effective_edge_label_text_style_with_provenance,
+    flowchart_effective_text_style_for_classes_with_provenance,
+    flowchart_effective_text_style_for_node_classes_with_provenance, flowchart_node_svg_width_mode,
+    measure_flowchart_svg_label_for_layout_with_metrics_style_and_typography_overrides,
+    measure_flowchart_svg_label_for_layout_with_typography_overrides,
 };
 
 pub(crate) struct FlowchartElkLayoutExecution<'a> {
@@ -1554,7 +1556,7 @@ fn subgraph_label(
 ) -> Option<elk::Label> {
     let label_type = sg.label_type.as_deref().unwrap_or("text");
     let title = ctx.model.subgraph_title_for_render(semantic_index, sg);
-    let text_style = flowchart_effective_text_style_for_classes(
+    let text_style = flowchart_effective_text_style_for_classes_with_provenance(
         ctx.cluster_label_base_style,
         &ctx.model.class_defs,
         &sg.classes,
@@ -1563,7 +1565,7 @@ fn subgraph_label(
     // ELK sizes a temporary group label with Flowchart wrappingWidth, while the final cluster SVG
     // uses an unbounded createLabel call. Those are different layout operations, so only the
     // shared source projection can be reused once the render-side binding matches.
-    let metrics = measure_flowchart_svg_label_for_layout(
+    let metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
         ctx.svg_label_sidecar,
         Some(FlowchartSvgLabelOwner::SubgraphTitle(semantic_index)),
         Some(sg.id.as_str()),
@@ -1577,8 +1579,28 @@ fn subgraph_label(
             config: ctx.effective_config,
             math_renderer: ctx.math_renderer,
         },
+        FlowchartLabelTypographyOverrides::same(&text_style.prepared_text_overrides),
         FlowchartSvgWidthMode::Bbox,
     );
+    if let Some(sidecar) = ctx.svg_label_sidecar {
+        sidecar.prepare_for_emission_with_typography_overrides(
+            FlowchartSvgLabelOwner::SubgraphTitle(semantic_index),
+            sg.id.as_str(),
+            FlowchartLabelMetricsRequest {
+                measurer: ctx.measurer,
+                raw_label: title,
+                label_type,
+                style: text_style.as_ref(),
+                max_width_px: None,
+                wrap_mode: ctx.cluster_wrap_mode,
+                config: ctx.effective_config,
+                math_renderer: ctx.math_renderer,
+            },
+            FlowchartLabelTypographyOverrides::same(&text_style.prepared_text_overrides),
+            true,
+            FlowchartSvgWidthMode::Bbox,
+        );
+    }
     Some(elk::Label {
         width: metrics.width.max(1.0),
         height: (metrics.height - 2.0).max(1.0),
@@ -1592,7 +1614,7 @@ fn node_dimensions_and_label(
 ) -> (f64, f64, elk::Label) {
     let raw_label = ctx.model.node_label_for_render(node).unwrap_or(&node.id);
     let label_type = node.label_type.as_deref().unwrap_or("text");
-    let node_text_style = flowchart_effective_text_style_for_node_classes(
+    let node_text_style = flowchart_effective_text_style_for_node_classes_with_provenance(
         ctx.node_label_base_style,
         &ctx.model.class_defs,
         &node.classes,
@@ -1604,7 +1626,7 @@ fn node_dimensions_and_label(
         ctx.node_wrap_mode,
         node.layout_shape.as_deref().unwrap_or("squareRect"),
     );
-    let mut metrics = measure_flowchart_svg_label_for_layout(
+    let mut metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
         ctx.svg_label_sidecar,
         Some(owner),
         Some(node.id.as_str()),
@@ -1618,6 +1640,7 @@ fn node_dimensions_and_label(
             config: ctx.effective_config,
             math_renderer: ctx.math_renderer,
         },
+        FlowchartLabelTypographyOverrides::same(&node_text_style.prepared_text_overrides),
         svg_width_mode,
     );
     if ctx.node_wrap_mode == WrapMode::HtmlLike && ctx.class_html_labels {
@@ -1668,7 +1691,7 @@ fn edge_label(
         .edge_defaults
         .as_ref()
         .map_or(&[][..], |defaults| defaults.style.as_slice());
-    let edge_text_style = flowchart_effective_edge_label_text_style(
+    let edge_text_style = flowchart_effective_edge_label_text_style_with_provenance(
         ctx.edge_label_base_style,
         &ctx.model.class_defs,
         &edge.classes,
@@ -1684,7 +1707,7 @@ fn edge_label(
             ctx.edge_wrap_mode,
         )
     } else if ctx.edge_wrap_mode == WrapMode::SvgLike {
-        measure_flowchart_svg_label_for_layout_with_metrics_style(
+        measure_flowchart_svg_label_for_layout_with_metrics_style_and_typography_overrides(
             ctx.svg_label_sidecar,
             Some(owner),
             Some(edge.id.as_str()),
@@ -1700,10 +1723,13 @@ fn edge_label(
                 math_renderer: ctx.math_renderer,
             },
             edge_text_style.as_ref(),
+            FlowchartLabelTypographyOverrides::metrics_only(
+                &edge_text_style.prepared_text_overrides,
+            ),
             FlowchartSvgWidthMode::Bbox,
         )
     } else {
-        measure_flowchart_svg_label_for_layout(
+        measure_flowchart_svg_label_for_layout_with_typography_overrides(
             ctx.svg_label_sidecar,
             Some(owner),
             Some(edge.id.as_str()),
@@ -1717,6 +1743,7 @@ fn edge_label(
                 config: ctx.effective_config,
                 math_renderer: ctx.math_renderer,
             },
+            FlowchartLabelTypographyOverrides::same(&edge_text_style.prepared_text_overrides),
             FlowchartSvgWidthMode::Bbox,
         )
     };
@@ -1899,6 +1926,95 @@ mod tests {
             sidecar.subgraph_title_owner("Group"),
             Some(FlowchartSvgLabelOwner::SubgraphTitle(0)),
             "ELK must retain the source projection even though bounded layout metrics cannot be reused by unbounded SVG emission"
+        );
+    }
+
+    #[test]
+    fn elk_cluster_title_retains_the_exact_native_emission_binding() {
+        let bytes = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
+        ));
+        let typography = crate::diagram_theme::ThemeTextStyle::default()
+            .with_font_stack(crate::diagram_theme::FontStack::single("Excalifont").unwrap());
+        let theme = crate::diagram_theme::DiagramThemeCompiler::new()
+            .compile(
+                crate::diagram_theme::DiagramThemeSpec::new()
+                    .with_typography(
+                        crate::diagram_theme::TypographySpec::default().with_default(typography),
+                    )
+                    .with_assets(
+                        crate::diagram_theme::ThemeAssets::default().with_font_catalog(
+                            crate::diagram_theme::FontCatalogSpec::new([
+                                crate::diagram_theme::FontAssetSpec::new("excalifont", bytes),
+                            ]),
+                        ),
+                    ),
+            )
+            .expect("fixture theme should compile");
+        let prepared = crate::text::NativeTextLayoutBackend::default()
+            .prepare(&crate::text::PrepareCatalogRequest::new(
+                theme.font_catalog().clone(),
+                crate::diagram_theme::FontSourcePolicy::embedded_only(),
+            ))
+            .expect("fixture catalog should prepare");
+        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::Flowchart);
+        let mut model = model(vec![node("A", Some("alpha"), None)], Vec::new());
+        model.subgraphs.push(subgraph(
+            "Portable cluster".to_string(),
+            vec!["A".to_string()],
+        ));
+        let config = MermaidConfig::from_value(json!({
+            "htmlLabels": false,
+            "flowchart": {"htmlLabels": false, "wrappingWidth": 72}
+        }));
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("deterministic session");
+        let measurer = session.text_measurer(crate::environment::TextMeasurementPhase::Layout);
+        let builder = FlowchartSvgLabelSidecarBuilder::new(Some(&prepared), Some(&resolved));
+
+        build_flowchart_elk_graph_with_render_labels_and_work_control(
+            &model,
+            &FlowchartRenderLabelSources::default(),
+            &config,
+            &measurer,
+            None,
+            Some(&builder),
+            None,
+        )
+        .expect("build ELK graph");
+        let sidecar = builder.finish();
+        assert_eq!(sidecar.prepared_error(), None);
+        let owner = sidecar
+            .subgraph_title_owner("Portable cluster")
+            .expect("cluster title owner");
+        let settings = FlowchartConfigView::new(config.as_value()).layout_settings();
+        let style = flowchart_effective_text_style_for_classes_with_provenance(
+            &settings.text_style,
+            &model.class_defs,
+            &model.subgraphs[0].classes,
+            &model.subgraphs[0].styles,
+        );
+        let plan = crate::flowchart::FlowchartSvgLabelRenderPlan::new(
+            Some(&sidecar),
+            Some(owner),
+            "Portable cluster",
+            &measurer,
+            style.as_ref(),
+            None,
+            true,
+            FlowchartSvgWidthMode::Bbox,
+        );
+
+        assert!(matches!(
+            plan,
+            crate::flowchart::FlowchartSvgLabelRenderPlan::Prepared { .. }
+        ));
+        assert!(plan.prepared_text_label_id().is_some());
+        assert!(
+            plan.merge_emission_font_style(None)
+                .is_some_and(|style| style.contains("font-family:\"Excalifont\""))
         );
     }
 

@@ -5166,6 +5166,58 @@ A labeled@-->|edge semantic owner wraps alpha beta gamma delta epsilon| B[Second
     }
 
     #[test]
+    fn custom_catalog_swimlane_group_title_fails_closed_until_markdown_is_prepared() {
+        let bytes = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
+        ));
+        let typography = ThemeTextStyle::default()
+            .with_font_stack(crate::diagram_theme::FontStack::single("Excalifont").unwrap());
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_typography(TypographySpec::default().with_default(typography))
+                    .with_assets(
+                        crate::diagram_theme::ThemeAssets::default().with_font_catalog(
+                            crate::diagram_theme::FontCatalogSpec::new([
+                                crate::diagram_theme::FontAssetSpec::new("excalifont", bytes),
+                            ]),
+                        ),
+                    ),
+            )
+            .expect("fixture theme should compile");
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                r#"---
+config:
+  layout: swimlane
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart LR
+subgraph Lane[Portable lane]
+  A[Node]
+end
+"#,
+                ParseOptions::strict(),
+            )
+            .expect("parse Swimlane")
+            .expect("detect Swimlane");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_theme(&theme)
+            .expect("begin themed session");
+
+        assert!(matches!(
+            prepare(parsed, &LayoutOptions::default(), session),
+            Err(Error::TextLayout(
+                crate::text::TextLayoutFailure::UnsupportedLabelMode
+            ))
+        ));
+    }
+
+    #[test]
     fn flowchart_special_shape_intersections_reuse_layout_label_metrics() {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(

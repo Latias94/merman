@@ -8,15 +8,16 @@
 use super::{TextMeasurer, TextMetrics, TextStyle, WrapMode, split_html_br_lines};
 use crate::diagram_theme::{
     FontAssetFingerprint, FontCatalog, FontCatalogFingerprint, FontFaceMetadata, FontSource,
-    FontSourcePolicy, FontStyle, GenericFontFamily, HostMeasurementFallback, LineHeight,
+    FontSourcePolicy, FontStack, FontStyle, GenericFontFamily, HostMeasurementFallback, LineHeight,
     MAX_FONT_FACES_HARD_CAP, TextTransform as ThemeTextTransform, ThemePortabilityRequirement,
     ThemeTextStyle, WhiteSpace,
 };
+use cssparser::{Delimiter, Parser, ParserInput};
 use rustybuzz::{
     Direction as BuzzDirection, Feature, Language, Script as BuzzScript, UnicodeBuffer, Variation,
 };
 use std::borrow::Cow;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -50,8 +51,9 @@ pub(crate) fn merge_prepared_text_typography(
     legacy: &TextStyle,
 ) -> Result<ThemeTextStyle, TextLayoutError> {
     let mut typography = base.clone();
-    // The CSS family is a compatibility projection of the structured theme. Re-parsing it here
-    // could select a face outside the catalog retained by the prepared-text session.
+    // `TextStyle.font_family` also carries Mermaid's compatibility base font. Callers that know
+    // a family came from an explicit source declaration apply it through the provenance-aware
+    // helper below instead of treating every compatibility value as user-authored.
     if !legacy.font_size.is_finite() || legacy.font_size <= 0.0 {
         return Err(TextLayoutError::InvalidRequest("font_size"));
     }
@@ -59,8 +61,12 @@ pub(crate) fn merge_prepared_text_typography(
         .with_font_size_px(legacy.font_size as f32)
         .map_err(|_| TextLayoutError::InvalidRequest("font_size"))?;
     if let Some(font_weight) = legacy.font_weight.as_deref() {
+        let inherited_weight = typography.font_weight();
         typography = typography
-            .with_font_weight(parse_legacy_font_weight(font_weight))
+            .with_font_weight(
+                resolve_css_font_weight(font_weight, inherited_weight)
+                    .ok_or(TextLayoutError::InvalidRequest("font_weight"))?,
+            )
             .map_err(|_| TextLayoutError::InvalidRequest("font_weight"))?;
     }
     if let Some(font_style) = legacy.font_style.as_deref() {
@@ -75,12 +81,424 @@ pub(crate) fn merge_prepared_text_typography(
     Ok(typography)
 }
 
-fn parse_legacy_font_weight(value: &str) -> u16 {
+/// Final source-owned CSS typography declarations that affect prepared text geometry or content.
+///
+/// Values remain in CSS form until the inherited/theme typography is known. This preserves the
+/// cascade while keeping CSS parsing and admission inside the text-layout boundary.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct PreparedTextCssTypographyOverrides {
+    font_family: Option<String>,
+    line_height: Option<String>,
+    letter_spacing: Option<String>,
+    word_spacing: Option<String>,
+    text_transform: Option<String>,
+    unsupported_layout_property: Option<&'static str>,
+}
+
+impl PreparedTextCssTypographyOverrides {
+    pub(crate) fn observe_declaration(&mut self, property: &str, value: &str) {
+        match property.trim().to_ascii_lowercase().as_str() {
+            "font-family" if crate::mermaid_style::is_safe_css_font_family_value(value) => {
+                self.font_family = Some(value.trim().to_string());
+            }
+            "line-height" => self.line_height = Some(value.trim().to_string()),
+            "letter-spacing" => self.letter_spacing = Some(value.trim().to_string()),
+            "word-spacing" => self.word_spacing = Some(value.trim().to_string()),
+            "text-transform" => self.text_transform = Some(value.trim().to_string()),
+            "white-space" | "word-wrap" | "word-break" | "overflow-wrap" | "hyphens" => {
+                self.unsupported_layout_property = Some("source_text_layout");
+            }
+            _ => {}
+        }
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self == &Self::default()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn font_family(&self) -> Option<&str> {
+        self.font_family.as_deref()
+    }
+}
+
+pub(crate) fn merge_prepared_text_typography_with_css_overrides(
+    base: &ThemeTextStyle,
+    legacy: &TextStyle,
+    overrides: Option<&PreparedTextCssTypographyOverrides>,
+) -> Result<PreparedTextTypographyRequest, TextLayoutError> {
+    let mut typography = merge_prepared_text_typography(base, legacy)?;
+    let overrides = overrides.filter(|overrides| !overrides.is_empty());
+    if overrides.is_some_and(|overrides| overrides.unsupported_layout_property.is_some()) {
+        return Err(TextLayoutError::UnsupportedPreparedTextPath(
+            "source_text_layout",
+        ));
+    }
+    let css_font_stack = overrides
+        .and_then(|overrides| overrides.font_family.as_deref())
+        .map(|font_family| {
+            parse_css_font_stack(font_family).ok_or(TextLayoutError::InvalidRequest("font_family"))
+        })
+        .transpose()?;
+    if let Some(stack) = &css_font_stack {
+        typography = typography.with_font_stack(stack.font_stack().clone());
+    }
+    let font_size_px = typography.font_size_px();
+    if let Some(value) = overrides.and_then(|overrides| overrides.line_height.as_deref()) {
+        typography = typography
+            .with_line_height(parse_css_line_height(value)?)
+            .map_err(|_| TextLayoutError::InvalidRequest("line_height"))?;
+    }
+    if let Some(value) = overrides.and_then(|overrides| overrides.letter_spacing.as_deref()) {
+        typography = typography
+            .with_letter_spacing_px(parse_css_spacing_px(value, font_size_px, "letter_spacing")?)
+            .map_err(|_| TextLayoutError::InvalidRequest("letter_spacing"))?;
+    }
+    if let Some(value) = overrides.and_then(|overrides| overrides.word_spacing.as_deref()) {
+        typography = typography
+            .with_word_spacing_px(parse_css_spacing_px(value, font_size_px, "word_spacing")?)
+            .map_err(|_| TextLayoutError::InvalidRequest("word_spacing"))?;
+    }
+    if let Some(value) = overrides.and_then(|overrides| overrides.text_transform.as_deref()) {
+        typography = typography.with_transform(parse_css_text_transform(value)?);
+    }
+    Ok(PreparedTextTypographyRequest {
+        typography,
+        css_font_stack,
+    })
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum CssTypographyScalar {
+    Number(f32),
+    Percentage(f32),
+    Px(f32),
+    Em(f32),
+    Rem(f32),
+    Ident(String),
+}
+
+fn parse_css_typography_scalar(value: &str) -> Option<CssTypographyScalar> {
+    use cssparser::Token;
+
+    let mut input = ParserInput::new(value);
+    let mut parser = Parser::new(&mut input);
+    let scalar = match parser.next().ok()?.clone() {
+        Token::Number { value, .. } => CssTypographyScalar::Number(value),
+        Token::Percentage { unit_value, .. } => CssTypographyScalar::Percentage(unit_value),
+        Token::Dimension { value, unit, .. } if unit.eq_ignore_ascii_case("px") => {
+            CssTypographyScalar::Px(value)
+        }
+        Token::Dimension { value, unit, .. } if unit.eq_ignore_ascii_case("em") => {
+            CssTypographyScalar::Em(value)
+        }
+        Token::Dimension { value, unit, .. } if unit.eq_ignore_ascii_case("rem") => {
+            CssTypographyScalar::Rem(value)
+        }
+        Token::Ident(value) => CssTypographyScalar::Ident(value.to_ascii_lowercase()),
+        _ => return None,
+    };
+    parser.expect_exhausted().ok()?;
+    Some(scalar)
+}
+
+fn parse_css_line_height(value: &str) -> Result<LineHeight, TextLayoutError> {
+    let line_height = match parse_css_typography_scalar(value) {
+        Some(CssTypographyScalar::Ident(value)) if value == "normal" => LineHeight::Normal,
+        Some(CssTypographyScalar::Number(value)) if value.is_finite() && value > 0.0 => {
+            LineHeight::Multiplier(value)
+        }
+        Some(CssTypographyScalar::Percentage(value)) if value.is_finite() && value > 0.0 => {
+            LineHeight::Multiplier(value)
+        }
+        Some(CssTypographyScalar::Px(value)) if value.is_finite() && value > 0.0 => {
+            LineHeight::Px(value)
+        }
+        Some(CssTypographyScalar::Em(value)) if value.is_finite() && value > 0.0 => {
+            LineHeight::Multiplier(value)
+        }
+        _ => return Err(TextLayoutError::InvalidRequest("line_height")),
+    };
+    Ok(line_height)
+}
+
+fn parse_css_spacing_px(
+    value: &str,
+    font_size_px: f32,
+    field: &'static str,
+) -> Result<f32, TextLayoutError> {
+    let value = match parse_css_typography_scalar(value) {
+        Some(CssTypographyScalar::Ident(value)) if value == "normal" => 0.0,
+        Some(CssTypographyScalar::Number(value)) if value == 0.0 => 0.0,
+        Some(CssTypographyScalar::Px(value)) => value,
+        Some(CssTypographyScalar::Em(value)) => value * font_size_px,
+        _ => return Err(TextLayoutError::InvalidRequest(field)),
+    };
+    value
+        .is_finite()
+        .then_some(value)
+        .ok_or(TextLayoutError::InvalidRequest(field))
+}
+
+fn parse_css_text_transform(value: &str) -> Result<ThemeTextTransform, TextLayoutError> {
+    match parse_css_typography_scalar(value) {
+        Some(CssTypographyScalar::Ident(value)) if value == "none" => Ok(ThemeTextTransform::None),
+        Some(CssTypographyScalar::Ident(value)) if value == "uppercase" => {
+            Ok(ThemeTextTransform::Uppercase)
+        }
+        Some(CssTypographyScalar::Ident(value)) if value == "lowercase" => {
+            Ok(ThemeTextTransform::Lowercase)
+        }
+        Some(CssTypographyScalar::Ident(value)) if value == "capitalize" => {
+            Ok(ThemeTextTransform::Capitalize)
+        }
+        _ => Err(TextLayoutError::InvalidRequest("text_transform")),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ParsedCssFontStack {
+    font_stack: FontStack,
+    generic_families: BTreeMap<usize, GenericFontFamily>,
+}
+
+impl ParsedCssFontStack {
+    pub(crate) const fn font_stack(&self) -> &FontStack {
+        &self.font_stack
+    }
+
+    pub(crate) fn families(&self) -> &[String] {
+        self.font_stack.families()
+    }
+
+    fn generic_family(&self, index: usize) -> Option<GenericFontFamily> {
+        self.generic_families.get(&index).copied()
+    }
+
+    pub(crate) fn as_css(&self) -> String {
+        let mut out = String::new();
+        for (index, family) in self.font_stack.families().iter().enumerate() {
+            if index > 0 {
+                out.push_str(", ");
+            }
+            if self.generic_family(index).is_some() {
+                out.push_str(family);
+            } else {
+                cssparser::serialize_string(family, &mut out)
+                    .expect("serializing a CSS string into String cannot fail");
+            }
+        }
+        out
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct PreparedTextTypographyRequest {
+    typography: ThemeTextStyle,
+    css_font_stack: Option<ParsedCssFontStack>,
+}
+
+impl PreparedTextTypographyRequest {
+    const fn typography(&self) -> &ThemeTextStyle {
+        &self.typography
+    }
+
+    const fn css_font_stack(&self) -> Option<&ParsedCssFontStack> {
+        self.css_font_stack.as_ref()
+    }
+}
+
+pub(crate) fn parse_css_font_stack(value: &str) -> Option<ParsedCssFontStack> {
+    let mut input = ParserInput::new(value);
+    let mut parser = Parser::new(&mut input);
+    let mut families = Vec::new();
+    let mut generic_families = BTreeMap::new();
+
+    while !parser.is_exhausted() {
+        let family_index = families.len();
+        let family = if let Ok(value) = parser.try_parse(|input| input.expect_string_cloned()) {
+            value.to_string()
+        } else {
+            let first = parser.expect_ident_cloned().ok()?;
+            let mut components = vec![first.to_string()];
+            while let Ok(component) = parser.try_parse(|input| input.expect_ident_cloned()) {
+                components.push(component.to_string());
+            }
+            if components.iter().any(|component| {
+                matches!(
+                    component.to_ascii_lowercase().as_str(),
+                    "inherit" | "initial" | "revert" | "revert-layer" | "unset"
+                )
+            }) {
+                return None;
+            }
+            if components.len() == 1
+                && let Some(generic) = GenericFontFamily::from_css_keyword(&components[0])
+            {
+                generic_families.insert(family_index, generic);
+            }
+            components.join(" ")
+        };
+        families.push(family);
+        if parser.is_exhausted() {
+            break;
+        }
+        parser.expect_comma().ok()?;
+        if parser.is_exhausted() {
+            return None;
+        }
+    }
+
+    Some(ParsedCssFontStack {
+        font_stack: FontStack::new(families).ok()?,
+        generic_families,
+    })
+}
+
+/// One catalog-admitted font decision shared by native shaping and label emission.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct CatalogAdmittedTextStyle {
+    typography: ThemeTextStyle,
+    catalog_fingerprint: FontCatalogFingerprint,
+}
+
+impl CatalogAdmittedTextStyle {
+    pub(crate) const fn typography(&self) -> &ThemeTextStyle {
+        &self.typography
+    }
+
+    pub(crate) const fn catalog_fingerprint(&self) -> FontCatalogFingerprint {
+        self.catalog_fingerprint
+    }
+
+    pub(crate) fn line_height_em(&self) -> f64 {
+        let value = match self.typography.line_height() {
+            LineHeight::Normal => 1.2,
+            LineHeight::Multiplier(value) => f64::from(value),
+            LineHeight::Px(value) => f64::from(value) / f64::from(self.typography.font_size_px()),
+        };
+        (value * 1_000_000.0).round() / 1_000_000.0
+    }
+
+    pub(crate) fn merge_emission_font_style(&self, existing: Option<&str>) -> String {
+        self.merge_emission_font_style_with_transform(existing, false)
+    }
+
+    /// Merges admitted typography after Flowchart has materialized its visible text transform.
+    pub(crate) fn merge_materialized_emission_font_style(&self, existing: Option<&str>) -> String {
+        self.merge_emission_font_style_with_transform(existing, true)
+    }
+
+    fn merge_emission_font_style_with_transform(
+        &self,
+        existing: Option<&str>,
+        remove_text_transform: bool,
+    ) -> String {
+        use std::fmt::Write as _;
+
+        let mut style =
+            retain_non_font_declarations(existing.unwrap_or_default(), remove_text_transform);
+        if !style.is_empty() {
+            style.push(';');
+        }
+        let _ = write!(
+            style,
+            "font-family:{} !important;font-size:{}px !important;font-weight:{} !important;font-style:{} !important;line-height:{} !important;letter-spacing:{}px !important;word-spacing:{}px !important",
+            catalog_font_stack_css(self.typography.font_stack()),
+            self.typography.font_size_px(),
+            self.typography.font_weight(),
+            self.typography.font_style().id(),
+            self.line_height_em(),
+            self.typography.letter_spacing_px(),
+            self.typography.word_spacing_px(),
+        );
+        style
+    }
+}
+
+fn catalog_font_stack_css(stack: &FontStack) -> String {
+    let mut out = String::new();
+    for (index, family) in stack.families().iter().enumerate() {
+        if index > 0 {
+            out.push_str(", ");
+        }
+        cssparser::serialize_string(family, &mut out)
+            .expect("serializing a CSS string into String cannot fail");
+    }
+    out
+}
+
+fn retain_non_font_declarations(existing: &str, remove_text_transform: bool) -> String {
+    let mut input = ParserInput::new(existing);
+    let mut parser = Parser::new(&mut input);
+    let mut retained = String::new();
+
+    while !parser.is_exhausted() {
+        let start = parser.position();
+        let property = parser.parse_until_after(Delimiter::Semicolon, |declaration| {
+            let property = declaration.expect_ident_cloned()?.to_string();
+            declaration.expect_colon()?;
+            while declaration.next_including_whitespace().is_ok() {}
+            Ok::<_, cssparser::ParseError<'_, ()>>(property)
+        });
+        let raw = parser
+            .slice(start..parser.position())
+            .trim()
+            .trim_end_matches(';')
+            .trim();
+        let is_admitted_property = property.as_ref().is_ok_and(|property| {
+            matches!(
+                property.to_ascii_lowercase().as_str(),
+                "font-family"
+                    | "font-size"
+                    | "font-weight"
+                    | "font-style"
+                    | "line-height"
+                    | "letter-spacing"
+                    | "word-spacing"
+            )
+        }) || (remove_text_transform
+            && property
+                .as_ref()
+                .is_ok_and(|property| property.eq_ignore_ascii_case("text-transform")));
+        if !raw.is_empty() && !is_admitted_property {
+            if !retained.is_empty() {
+                retained.push(';');
+            }
+            retained.push_str(raw);
+        }
+    }
+    retained
+}
+
+pub(crate) fn resolve_css_font_weight(value: &str, inherited: u16) -> Option<u16> {
     match value.trim().to_ascii_lowercase().as_str() {
-        "normal" => 400,
-        "bold" | "bolder" => 700,
-        "lighter" => 300,
-        value => value.parse::<u16>().unwrap_or(400).clamp(1, 1000),
+        "normal" => Some(400),
+        "bold" => Some(700),
+        "bolder" => Some(relative_font_weight(inherited, true)),
+        "lighter" => Some(relative_font_weight(inherited, false)),
+        value => value
+            .parse::<u16>()
+            .ok()
+            .filter(|weight| (1..=1000).contains(weight)),
+    }
+}
+
+fn relative_font_weight(inherited: u16, bolder: bool) -> u16 {
+    match (inherited, bolder) {
+        (1..=99, true) => 400,
+        (1..=99, false) => inherited,
+        (100..=349, true) => 400,
+        (100..=349, false) => 100,
+        (350..=549, true) => 700,
+        (350..=549, false) => 100,
+        (550..=749, true) => 900,
+        (550..=749, false) => 400,
+        (750..=899, true) => 900,
+        (750..=899, false) => 700,
+        (900..=1000, true) => inherited,
+        (900..=1000, false) => 700,
+        _ => inherited,
     }
 }
 
@@ -2584,6 +3002,56 @@ impl PreparedTextLayout {
         &self.catalog
     }
 
+    pub(crate) fn admit_typography(
+        &self,
+        requested: &ThemeTextStyle,
+    ) -> Result<CatalogAdmittedTextStyle, TextLayoutError> {
+        self.admit_typography_with_css_font_stack(requested, None)
+    }
+
+    pub(crate) fn admit_typography_request(
+        &self,
+        requested: &PreparedTextTypographyRequest,
+    ) -> Result<CatalogAdmittedTextStyle, TextLayoutError> {
+        self.admit_typography_with_css_font_stack(
+            requested.typography(),
+            requested.css_font_stack(),
+        )
+    }
+
+    pub(crate) fn admit_typography_with_css_font_stack(
+        &self,
+        requested: &ThemeTextStyle,
+        css_font_stack: Option<&ParsedCssFontStack>,
+    ) -> Result<CatalogAdmittedTextStyle, TextLayoutError> {
+        let font_stack = if let Some(css_font_stack) = css_font_stack {
+            let mut admitted = Vec::new();
+            let mut admitted_keys = BTreeSet::new();
+            for (index, family) in css_font_stack.families().iter().enumerate() {
+                let canonical = if let Some(generic) = css_font_stack.generic_family(index) {
+                    self.catalog.generic_family(generic)
+                } else {
+                    self.catalog.canonical_named_family_name(family)
+                };
+                let Some(canonical) = canonical else {
+                    continue;
+                };
+                let key = canonical.to_lowercase();
+                if admitted_keys.insert(key) {
+                    admitted.push(canonical.to_string());
+                }
+            }
+            FontStack::new(admitted).ok()
+        } else {
+            self.catalog.admit_font_stack(requested.font_stack())
+        }
+        .ok_or(TextLayoutError::FontFamilyUnavailable)?;
+        Ok(CatalogAdmittedTextStyle {
+            typography: requested.clone().with_font_stack(font_stack),
+            catalog_fingerprint: self.catalog_fingerprint,
+        })
+    }
+
     pub(crate) const fn catalog_fingerprint(&self) -> FontCatalogFingerprint {
         self.catalog_fingerprint
     }
@@ -3306,8 +3774,7 @@ struct PreparedFace {
 
 struct NativeCatalogTextMeasurer {
     faces: Vec<PreparedFace>,
-    aliases: Vec<(String, String)>,
-    generic_families: Vec<(GenericFontFamily, String)>,
+    catalog: FontCatalog,
     font_source: FontSource,
     // These fields are retained only for the legacy TextMeasurer compatibility adapter. New
     // custom-font callers use PrepareTextRequest, which carries all shaping settings per label.
@@ -4049,31 +4516,10 @@ impl NativeCatalogTextMeasurer {
         if faces.is_empty() {
             return Err(TextLayoutError::NoUsableFace);
         }
-        let aliases = request
-            .catalog()
-            .aliases()
-            .iter()
-            .map(|alias| {
-                (
-                    normalize_family(alias.alias()),
-                    normalize_family(alias.target()),
-                )
-            })
-            .collect();
-        let generic_families = GenericFontFamily::ALL
-            .into_iter()
-            .filter_map(|family| {
-                request
-                    .catalog()
-                    .generic_family(family)
-                    .map(|target| (family, normalize_family(target)))
-            })
-            .collect();
         let face_count = faces.len();
         Ok(Self {
             faces,
-            aliases,
-            generic_families,
+            catalog: request.catalog().clone(),
             font_source,
             direction: TextLayoutDirection::Auto,
             script: None,
@@ -4120,7 +4566,12 @@ impl NativeCatalogTextMeasurer {
             .font_stack()
             .families()
             .iter()
-            .map(|family| self.resolve_family(&normalize_family(family)))
+            .map(|family| {
+                self.catalog
+                    .canonical_named_family_name(family)
+                    .map(normalize_family)
+                    .unwrap_or_else(|| normalize_family(family))
+            })
             .collect::<Vec<_>>();
         let has_catalog_family = resolved_families
             .iter()
@@ -4369,20 +4820,10 @@ impl NativeCatalogTextMeasurer {
     }
 
     fn resolve_family<'a>(&'a self, family: &'a str) -> String {
-        if let Some((_, target)) = self.aliases.iter().find(|(alias, _)| alias == family) {
-            return target.clone();
-        }
-        if let Some(generic) = GenericFontFamily::ALL
-            .into_iter()
-            .find(|generic| generic.id() == family)
-            && let Some((_, target)) = self
-                .generic_families
-                .iter()
-                .find(|(candidate, _)| candidate == &generic)
-        {
-            return target.clone();
-        }
-        family.to_string()
+        self.catalog
+            .canonical_family_name(family)
+            .map(normalize_family)
+            .unwrap_or_else(|| family.to_string())
     }
 
     fn shape_line(&self, text: &str, style: &TextStyle) -> ShapedLineMetrics {
@@ -5517,6 +5958,92 @@ mod tests {
         .expect("fixture catalog should compile")
     }
 
+    #[test]
+    fn css_font_admission_distinguishes_generic_keywords_from_named_families() {
+        let latin = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
+        ));
+        let catalog = FontCatalogSpec::new([FontAssetSpec::new("latin", latin)])
+            .with_generic_family(GenericFontFamily::Cursive, "Excalifont")
+            .compile(&ThemeResourcePolicy::interactive())
+            .expect("fixture catalog should compile");
+        let layout = NativeTextLayoutBackend::default()
+            .prepare(&PrepareCatalogRequest::new(
+                catalog,
+                FontSourcePolicy::embedded_only(),
+            ))
+            .expect("fixture catalog should prepare");
+        let unquoted = parse_css_font_stack("cursive").expect("generic CSS family");
+        let quoted = parse_css_font_stack("\"cursive\"").expect("named CSS family");
+        let requested = ThemeTextStyle::default().with_font_stack(unquoted.font_stack().clone());
+
+        let raw_request =
+            PrepareTextRequest::new("alpha", requested.clone()).with_family_normalized_projection();
+        assert!(matches!(
+            layout.prepare_text(&raw_request),
+            Err(TextLayoutError::FontFamilyUnavailable)
+        ));
+
+        let admitted = layout
+            .admit_typography_with_css_font_stack(&requested, Some(&unquoted))
+            .expect("unquoted generic should use the catalog mapping");
+        assert_eq!(
+            admitted.typography().font_stack().families(),
+            &["Excalifont".to_string()]
+        );
+        assert_eq!(
+            layout.admit_typography_with_css_font_stack(&requested, Some(&quoted)),
+            Err(TextLayoutError::FontFamilyUnavailable),
+            "quoted generic text is a named family and must not use the generic mapping"
+        );
+        layout
+            .prepare_text(
+                &PrepareTextRequest::new("alpha", admitted.typography().clone())
+                    .with_family_normalized_projection(),
+            )
+            .expect("admitted generic typography should shape through its canonical family");
+    }
+
+    #[test]
+    fn admitted_typography_serializes_named_fonts_and_all_measured_spacing() {
+        let catalog = mixed_catalog();
+        let layout = NativeTextLayoutBackend::default()
+            .prepare(&PrepareCatalogRequest::new(
+                catalog,
+                FontSourcePolicy::embedded_only(),
+            ))
+            .expect("fixture catalog should prepare");
+        let typography = ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("Excalifont").unwrap())
+            .with_font_size_px(20.0)
+            .unwrap()
+            .with_line_height(LineHeight::Multiplier(1.4))
+            .unwrap()
+            .with_letter_spacing_px(1.5)
+            .unwrap()
+            .with_word_spacing_px(2.5)
+            .unwrap();
+        let admitted = layout
+            .admit_typography(&typography)
+            .expect("catalog owns the requested family");
+        let style = admitted.merge_emission_font_style(Some(
+            "font-family:Arial;line-height:9;letter-spacing:8px;color:#123456",
+        ));
+
+        assert!(style.contains("color:#123456"), "{style}");
+        assert!(
+            style.contains("font-family:\"Excalifont\" !important"),
+            "{style}"
+        );
+        assert!(style.contains("line-height:1.4 !important"), "{style}");
+        assert!(style.contains("letter-spacing:1.5px !important"), "{style}");
+        assert!(style.contains("word-spacing:2.5px !important"), "{style}");
+        assert!(!style.contains("font-family:Arial"), "{style}");
+        assert!(!style.contains("line-height:9"), "{style}");
+        assert!((admitted.line_height_em() - 1.4).abs() < 1e-6);
+    }
+
     fn distinct_catalog_fingerprint() -> FontCatalogFingerprint {
         let latin = include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -6509,5 +7036,27 @@ mod tests {
                 supported: TEXT_LAYOUT_CONTRACT_VERSION,
             }
         );
+    }
+
+    #[test]
+    fn relative_legacy_font_weights_resolve_against_the_theme_weight() {
+        for (inherited, bolder, lighter) in [
+            (1, 400, 1),
+            (99, 400, 99),
+            (100, 400, 100),
+            (349, 400, 100),
+            (350, 700, 100),
+            (549, 700, 100),
+            (550, 900, 400),
+            (749, 900, 400),
+            (750, 900, 700),
+            (899, 900, 700),
+            (900, 900, 700),
+            (1000, 1000, 700),
+        ] {
+            assert_eq!(resolve_css_font_weight("bolder", inherited), Some(bolder));
+            assert_eq!(resolve_css_font_weight("lighter", inherited), Some(lighter));
+        }
+        assert_eq!(resolve_css_font_weight("calc(400)", 400), None);
     }
 }

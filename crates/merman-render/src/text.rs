@@ -50,6 +50,14 @@ pub(crate) use metrics::{
     measure_wrapped_markdown_with_inline_styles, measure_xhtml_label_fragment,
     mermaid_markdown_to_wrapped_word_lines,
 };
+pub(crate) use prepared::{
+    CatalogAdmittedTextStyle, ParsedCssFontStack, PendingPreparedTextLabelLedgerEntry,
+    PreparedText, PreparedTextCssTypographyOverrides, PreparedTextLabelFamily, PreparedTextLayout,
+    PreparedTextLayoutBuilder, PreparedTextLayoutResponse, TextLayoutBackend,
+    TextLayoutBackendIdentity, TextLayoutCapabilities, TextLayoutError, TextProjection,
+    merge_prepared_text_typography_with_css_overrides, parse_css_font_stack,
+    resolve_css_font_weight, text_projection_layout_error,
+};
 #[cfg(feature = "fuzzing")]
 #[doc(hidden)]
 pub use prepared::{
@@ -59,12 +67,6 @@ pub use prepared::{
 #[cfg(not(feature = "fuzzing"))]
 pub(crate) use prepared::{
     NativeTextLayoutBackend, PrepareCatalogRequest, PrepareTextRequest, PreparedTextWrap,
-};
-pub(crate) use prepared::{
-    PendingPreparedTextLabelLedgerEntry, PreparedText, PreparedTextLabelFamily, PreparedTextLayout,
-    PreparedTextLayoutBuilder, PreparedTextLayoutResponse, TextLayoutBackend,
-    TextLayoutBackendIdentity, TextLayoutCapabilities, TextLayoutError, TextProjection,
-    merge_prepared_text_typography, text_projection_layout_error,
 };
 #[doc(hidden)]
 pub use prepared::{

@@ -422,7 +422,24 @@ pub(crate) fn write_flowchart_svg_label_plan(
     include_style: bool,
 ) {
     let lines = plan.wrapped_lines();
-    if let Some(label_id) = plan.prepared_text_label_id() {
+    let label_id = plan.prepared_text_label_id();
+    if let Some(style) = plan.merge_emission_font_style(include_style.then_some("")) {
+        if let Some(label_id) = label_id {
+            crate::svg::parity::label::write_prepared_svg_text_source_word_lines_with_style(
+                out,
+                &lines,
+                &style,
+                false,
+                label_id,
+                true,
+                plan.line_height_em(),
+            );
+        } else {
+            crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
+                out, &lines, &style, false,
+            );
+        }
+    } else if let Some(label_id) = label_id {
         crate::svg::parity::label::write_prepared_svg_text_source_word_lines(
             out,
             &lines,
@@ -441,12 +458,22 @@ pub(crate) fn write_flowchart_svg_label_plan_centered_with_style(
     style: &str,
 ) {
     let lines = plan.wrapped_lines();
-    if let Some(label_id) = plan.prepared_text_label_id() {
+    let label_id = plan.prepared_text_label_id();
+    let admitted_style = plan.merge_emission_font_style(Some(style));
+    let inherits_admitted_font = admitted_style.is_some();
+    let style = admitted_style.unwrap_or_else(|| style.to_string());
+    if let Some(label_id) = label_id {
         crate::svg::parity::label::write_prepared_svg_text_source_word_lines_with_style(
-            out, &lines, style, true, label_id,
+            out,
+            &lines,
+            &style,
+            true,
+            label_id,
+            inherits_admitted_font,
+            plan.line_height_em(),
         );
     } else {
-        write_flowchart_svg_source_word_lines_centered_with_style(out, &lines, style);
+        write_flowchart_svg_source_word_lines_centered_with_style(out, &lines, &style);
     }
 }
 

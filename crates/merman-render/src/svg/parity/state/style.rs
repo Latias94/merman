@@ -692,10 +692,8 @@ pub(super) fn state_prepared_node_label_html_with_style(
     prepared: &crate::state::PreparedStateLabel,
     span_style: Option<&str>,
 ) -> String {
-    let style_attr = span_style
-        .filter(|style| !style.is_empty())
-        .map(|style| format!(r#" style="{}""#, escape_xml_display(style)))
-        .unwrap_or_default();
+    let style = prepared.merge_emission_font_style(span_style);
+    let style_attr = format!(r#" style="{}""#, escape_xml_display(&style));
     format!(
         r#"<span{} class="nodeLabel markdown-node-label"><p>{}</p></span>"#,
         style_attr,
@@ -786,8 +784,10 @@ pub(super) fn state_node_label_plain_html(raw: &str) -> String {
 pub(super) fn state_prepared_node_label_plain_html(
     prepared: &crate::state::PreparedStateLabel,
 ) -> String {
+    let style = prepared.merge_emission_font_style(None);
     format!(
-        r#"<span class="nodeLabel"><p>{}</p></span>"#,
+        r#"<span class="nodeLabel" style="{}"><p>{}</p></span>"#,
+        escape_xml_display(&style),
         state_prepared_html_lines(prepared),
     )
 }
@@ -799,7 +799,12 @@ pub(super) fn state_edge_label_html(raw: &str) -> String {
 pub(super) fn state_prepared_edge_label_html(
     prepared: &crate::state::PreparedStateLabel,
 ) -> String {
-    format!("<p>{}</p>", state_prepared_html_lines(prepared))
+    let style = prepared.merge_emission_font_style(None);
+    format!(
+        r#"<p style="{}">{}</p>"#,
+        escape_xml_display(&style),
+        state_prepared_html_lines(prepared)
+    )
 }
 
 pub(super) fn state_prepared_html_label_token_attr(
@@ -871,10 +876,11 @@ pub(crate) fn state_prepared_svg_text_label(
     center_text: bool,
     style_attr: Option<&str>,
 ) -> String {
+    let style_attr = prepared.merge_emission_font_style(style_attr);
     state_svg_text_label_lines(
         prepared.wrapped_lines(),
         center_text,
-        style_attr,
+        Some(&style_attr),
         prepared.label_id_for_emission(),
     )
 }

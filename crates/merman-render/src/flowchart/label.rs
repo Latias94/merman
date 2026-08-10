@@ -456,7 +456,7 @@ impl FlowchartSvgLabelSource {
 
             let mut row = Vec::<String>::new();
             let mut row_source_line = None;
-            let mut last_word = None::<(FlowchartSourceWordId, usize)>;
+            let mut last_word = None::<FlowchartSourceWordId>;
             while let Some(atom) = projection.atoms.get(atom_cursor) {
                 if atom.visible_range.start >= visible_range.end {
                     break;
@@ -470,34 +470,49 @@ impl FlowchartSvgLabelSource {
                     .plain_pieces
                     .get(atom.source_pieces.clone())
                     .ok_or(TextLayoutError::InvalidPreparedText)?;
-                for piece in pieces {
-                    let Some(word_id) = piece.word else {
-                        continue;
-                    };
+                let word_id = pieces.iter().find_map(|piece| piece.word);
+                if pieces.iter().any(|piece| piece.word != word_id) {
+                    return Err(TextLayoutError::InvalidPreparedText);
+                }
+                if let Some(word_id) = word_id {
                     if row_source_line.is_some_and(|line| line != word_id.line) {
                         return Err(TextLayoutError::InvalidPreparedText);
                     }
                     row_source_line = Some(word_id.line);
-                    let source_word = self
-                        .source_lines
-                        .get(word_id.line)
-                        .and_then(|line| line.get(word_id.word))
-                        .ok_or(TextLayoutError::InvalidPreparedText)?;
-                    let fragment = source_word
-                        .get(piece.source_range.clone())
-                        .ok_or(TextLayoutError::InvalidPreparedText)?;
-                    if let Some((last_word_id, last_source_end)) = last_word
-                        && last_word_id == word_id
-                        && last_source_end == piece.source_range.start
-                    {
+                    let fragment = if atom.entity_id.is_some() {
+                        let source_word = self
+                            .source_lines
+                            .get(word_id.line)
+                            .and_then(|line| line.get(word_id.word))
+                            .ok_or(TextLayoutError::InvalidPreparedText)?;
+                        let mut authored = String::new();
+                        let mut previous_range = None;
+                        for piece in pieces {
+                            if previous_range.as_ref() == Some(&piece.source_range) {
+                                continue;
+                            }
+                            let source = source_word
+                                .get(piece.source_range.clone())
+                                .ok_or(TextLayoutError::InvalidPreparedText)?;
+                            authored.push_str(source);
+                            previous_range = Some(piece.source_range.clone());
+                        }
+                        authored
+                    } else {
+                        visible
+                            .get(atom.visible_range.clone())
+                            .ok_or(TextLayoutError::InvalidPreparedText)?
+                            .to_string()
+                    };
+                    if last_word == Some(word_id) {
                         let Some(last) = row.last_mut() else {
                             return Err(TextLayoutError::InvalidPreparedText);
                         };
-                        last.push_str(fragment);
+                        last.push_str(&fragment);
                     } else {
-                        row.push(fragment.to_string());
+                        row.push(fragment);
                     }
-                    last_word = Some((word_id, piece.source_range.end));
+                    last_word = Some(word_id);
                 }
                 atom_cursor += 1;
             }
@@ -1569,7 +1584,7 @@ mod tests {
             source
                 .project_visible_ranges(&projection, &[0..7, 8..10])
                 .expect("whole transform atoms should reproject"),
-            vec![vec!["straße".to_string()], vec!["ß".to_string()]]
+            vec![vec!["STRASSE".to_string()], vec!["SS".to_string()]]
         );
         assert_eq!(
             source

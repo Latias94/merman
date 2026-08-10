@@ -130,11 +130,17 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
         "label"
     };
     if !ctx.node_html_labels {
+        let label_group_style = prepared_svg_label
+            .as_ref()
+            .and_then(|plan| {
+                plan.merge_emission_font_style(Some(compiled_styles.label_style.as_str()))
+            })
+            .unwrap_or_else(|| compiled_styles.label_style.clone());
         let _ = write!(
             out,
             r#"<g class="{}" style="{}" transform="translate({},{})"><rect/><g><rect class="background" style="stroke: none"/>"#,
             label_group_class,
-            escape_xml_display(&compiled_styles.label_style),
+            escape_xml_display(&label_group_style),
             fmt_display(label.dx),
             fmt_display(-metrics.height / 2.0 + label_dy)
         );

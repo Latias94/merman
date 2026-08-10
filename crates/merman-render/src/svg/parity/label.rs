@@ -15,8 +15,17 @@ fn write_svg_text_inner_word(
     word_index: usize,
     word: &str,
     entity_mode: SvgTextEntityMode,
+    reset_font_style: bool,
 ) {
-    out.push_str(r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal">"#);
+    out.push_str("<tspan");
+    if reset_font_style {
+        out.push_str(r#" font-style="normal""#);
+    }
+    out.push_str(r#" class="text-inner-tspan""#);
+    if reset_font_style {
+        out.push_str(r#" font-weight="normal""#);
+    }
+    out.push('>');
     if word_index > 0 {
         out.push(' ');
     }
@@ -66,6 +75,8 @@ pub(in crate::svg::parity) fn write_svg_text_source_word_lines(
         include_style.then_some(""),
         center_text,
         None,
+        true,
+        1.1,
     );
 }
 
@@ -75,7 +86,7 @@ pub(in crate::svg::parity) fn write_svg_text_source_word_lines_with_style(
     style: &str,
     center_text: bool,
 ) {
-    write_svg_text_source_word_lines_impl(out, lines, Some(style), center_text, None);
+    write_svg_text_source_word_lines_impl(out, lines, Some(style), center_text, None, true, 1.1);
 }
 
 pub(in crate::svg::parity) fn write_prepared_svg_text_source_word_lines(
@@ -91,6 +102,8 @@ pub(in crate::svg::parity) fn write_prepared_svg_text_source_word_lines(
         include_style.then_some(""),
         center_text,
         Some(label_id),
+        true,
+        1.1,
     );
 }
 
@@ -100,8 +113,18 @@ pub(in crate::svg::parity) fn write_prepared_svg_text_source_word_lines_with_sty
     style: &str,
     center_text: bool,
     label_id: PreparedTextLabelId,
+    inherit_font_style: bool,
+    line_height_em: f64,
 ) {
-    write_svg_text_source_word_lines_impl(out, lines, Some(style), center_text, Some(label_id));
+    write_svg_text_source_word_lines_impl(
+        out,
+        lines,
+        Some(style),
+        center_text,
+        Some(label_id),
+        !inherit_font_style,
+        line_height_em,
+    );
 }
 
 fn write_svg_text_source_word_lines_impl(
@@ -110,19 +133,27 @@ fn write_svg_text_source_word_lines_impl(
     style: Option<&str>,
     center_text: bool,
     label_id: Option<PreparedTextLabelId>,
+    reset_inner_font_style: bool,
+    line_height_em: f64,
 ) {
     open_svg_text(out, style, center_text, label_id);
 
     if lines.len() == 1 && lines[0].is_empty() {
-        write_empty_tspan(out, center_text, true);
+        write_empty_tspan(out, center_text, true, line_height_em);
         out.push_str("</text>");
         return;
     }
 
     for (line_index, words) in lines.iter().enumerate() {
-        open_tspan(out, line_index, center_text, true);
+        open_tspan(out, line_index, center_text, true, line_height_em);
         for (word_index, word) in words.iter().enumerate() {
-            write_svg_text_inner_word(out, word_index, word, SvgTextEntityMode::CreateTextSource);
+            write_svg_text_inner_word(
+                out,
+                word_index,
+                word,
+                SvgTextEntityMode::CreateTextSource,
+                reset_inner_font_style,
+            );
         }
         out.push_str("</tspan>");
     }
@@ -157,24 +188,44 @@ fn outer_tspan_class(include_row_class: bool) -> &'static str {
     }
 }
 
-fn write_empty_tspan(out: &mut String, center_text: bool, include_row_class: bool) {
+fn normalized_em(value: f64) -> f64 {
+    (value * 1_000_000.0).round() / 1_000_000.0
+}
+
+fn write_empty_tspan(
+    out: &mut String,
+    center_text: bool,
+    include_row_class: bool,
+    line_height_em: f64,
+) {
     let outer_class = outer_tspan_class(include_row_class);
+    let initial_y_em = 1.0 - line_height_em;
     if center_text {
         let _ = write!(
             out,
-            r#"<tspan class="{}" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"/>"#,
-            outer_class
+            r#"<tspan class="{}" x="0" y="{}em" dy="{}em" text-anchor="middle"/>"#,
+            outer_class,
+            fmt_display(normalized_em(initial_y_em)),
+            fmt_display(normalized_em(line_height_em)),
         );
     } else {
         let _ = write!(
             out,
-            r#"<tspan class="{}" x="0" y="-0.1em" dy="1.1em"/>"#,
-            outer_class
+            r#"<tspan class="{}" x="0" y="{}em" dy="{}em"/>"#,
+            outer_class,
+            fmt_display(normalized_em(initial_y_em)),
+            fmt_display(normalized_em(line_height_em)),
         );
     }
 }
 
-fn open_tspan(out: &mut String, index: usize, center_text: bool, include_row_class: bool) {
+fn open_tspan(
+    out: &mut String,
+    index: usize,
+    center_text: bool,
+    include_row_class: bool,
+    line_height_em: f64,
+) {
     let text_anchor = if center_text {
         r#" text-anchor="middle""#
     } else {
@@ -182,21 +233,24 @@ fn open_tspan(out: &mut String, index: usize, center_text: bool, include_row_cla
     };
     let outer_class = outer_tspan_class(include_row_class);
     if index == 0 {
+        let initial_y_em = 1.0 - line_height_em;
         let _ = write!(
             out,
-            r#"<tspan class="{}" x="0" y="-0.1em" dy="1.1em"{}>"#,
-            outer_class, text_anchor
+            r#"<tspan class="{}" x="0" y="{}em" dy="{}em"{}>"#,
+            outer_class,
+            fmt_display(normalized_em(initial_y_em)),
+            fmt_display(normalized_em(line_height_em)),
+            text_anchor,
         );
     } else {
-        let y_em = if index == 1 {
-            "1em".to_string()
-        } else {
-            format!("{:.1}em", 1.0 + (index as f64 - 1.0) * 1.1)
-        };
+        let y_em = 1.0 + (index as f64 - 1.0) * line_height_em;
         let _ = write!(
             out,
-            r#"<tspan class="{}" x="0" y="{}" dy="1.1em"{}>"#,
-            outer_class, y_em, text_anchor
+            r#"<tspan class="{}" x="0" y="{}em" dy="{}em"{}>"#,
+            outer_class,
+            fmt_display(normalized_em(y_em)),
+            fmt_display(normalized_em(line_height_em)),
+            text_anchor,
         );
     }
 }
@@ -216,15 +270,15 @@ fn write_svg_text_impl(
         crate::text::WrapMode::SvgLike,
     );
     if lines.len() == 1 && lines[0].is_empty() {
-        write_empty_tspan(out, center_text, include_row_class);
+        write_empty_tspan(out, center_text, include_row_class, 1.1);
         out.push_str("</text>");
         return;
     }
 
     for (index, line) in lines.iter().enumerate() {
-        open_tspan(out, index, center_text, include_row_class);
+        open_tspan(out, index, center_text, include_row_class, 1.1);
         for (word_index, word) in crate::text::non_markdown_svg_words(line).enumerate() {
-            write_svg_text_inner_word(out, word_index, word, entity_mode);
+            write_svg_text_inner_word(out, word_index, word, entity_mode, true);
         }
         out.push_str("</tspan>");
     }
@@ -301,13 +355,13 @@ fn write_svg_text_markdown_lines(
     open_svg_text(out, include_style.then_some(""), center_text, None);
 
     if lines.len() == 1 && lines[0].is_empty() {
-        write_empty_tspan(out, center_text, include_row_class);
+        write_empty_tspan(out, center_text, include_row_class, 1.1);
         out.push_str("</text>");
         return;
     }
 
     for (index, words) in lines.iter().enumerate() {
-        open_tspan(out, index, center_text, include_row_class);
+        open_tspan(out, index, center_text, include_row_class, 1.1);
 
         for (word_index, (word, is_strong, is_em)) in words.iter().enumerate() {
             let font_style = if *is_em { "italic" } else { "normal" };
@@ -430,7 +484,10 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_create_text_s
 
 #[cfg(test)]
 mod tests {
-    use super::{write_svg_text_centered, write_svg_text_source_word_lines};
+    use super::{
+        write_prepared_svg_text_source_word_lines_with_style, write_svg_text_centered,
+        write_svg_text_source_word_lines,
+    };
 
     #[test]
     fn non_markdown_svg_text_uses_ecmascript_whitespace_boundaries() {
@@ -502,6 +559,31 @@ mod tests {
         );
 
         assert_eq!(svg.matches(r#"class="row text-outer-tspan""#).count(), 3);
+    }
+
+    #[test]
+    fn prepared_svg_rows_use_the_admitted_line_height() {
+        let mut svg = String::new();
+        write_prepared_svg_text_source_word_lines_with_style(
+            &mut svg,
+            &[
+                vec!["alpha".to_string()],
+                vec!["beta".to_string()],
+                vec!["gamma".to_string()],
+            ],
+            "line-height:1.4 !important",
+            false,
+            crate::text::PreparedTextLabelId::new(
+                crate::text::PreparedTextLabelFamily::Flowchart,
+                1,
+            ),
+            true,
+            1.4,
+        );
+
+        assert!(svg.contains(r#"y="-0.4em" dy="1.4em""#), "{svg}");
+        assert!(svg.contains(r#"y="1em" dy="1.4em""#), "{svg}");
+        assert!(svg.contains(r#"y="2.4em" dy="1.4em""#), "{svg}");
     }
 
     #[test]

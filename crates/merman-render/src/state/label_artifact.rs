@@ -7,9 +7,9 @@ use std::sync::Arc;
 use crate::diagram_theme::LineHeight;
 use crate::entities::decode_mermaid_entities_for_render_text;
 use crate::text::{
-    PendingPreparedTextLabelLedgerEntry, PrepareTextRequest, PreparedText, PreparedTextLabelFamily,
-    PreparedTextLabelId, PreparedTextLabelLedgerEntry, PreparedTextLayout, PreparedTextWrap,
-    TextLayoutError, TextMeasurer, TextMetrics, WrapMode,
+    CatalogAdmittedTextStyle, PendingPreparedTextLabelLedgerEntry, PrepareTextRequest,
+    PreparedText, PreparedTextLabelFamily, PreparedTextLabelId, PreparedTextLabelLedgerEntry,
+    PreparedTextLayout, PreparedTextWrap, TextLayoutError, TextMeasurer, TextMetrics, WrapMode,
 };
 
 use super::{
@@ -48,6 +48,7 @@ pub(crate) struct StateLabelMetricsRequest<'a> {
 pub(crate) struct PreparedStateLabel {
     semantic_source: Arc<str>,
     prepared: PreparedText,
+    admitted_typography: CatalogAdmittedTextStyle,
     uses_html_wrapping_table: bool,
     pending_label_entry: Option<PendingPreparedTextLabelLedgerEntry>,
     label_entry: Option<PreparedTextLabelLedgerEntry>,
@@ -69,6 +70,10 @@ impl PreparedStateLabel {
 
     pub(crate) fn matches_semantic_source(&self, source: &str) -> bool {
         self.semantic_source.as_ref() == source
+    }
+
+    pub(crate) fn merge_emission_font_style(&self, existing: Option<&str>) -> String {
+        self.admitted_typography.merge_emission_font_style(existing)
     }
 
     fn bind_label_id(&mut self, key: u32) -> bool {
@@ -238,6 +243,15 @@ impl StateLabelSidecarBuilder {
                 WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => LineHeight::Multiplier(1.1),
             })
             .map_err(|_| TextLayoutError::InvalidRequest("line_height"))?;
+        let admitted_typography = layout.admit_typography_with_css_font_stack(
+            &typography,
+            request.typography.source_font_stack(),
+        )?;
+        debug_assert_eq!(
+            admitted_typography.catalog_fingerprint(),
+            layout.catalog_fingerprint(),
+            "prepared State typography must remain bound to the active catalog"
+        );
         let wrap = match request.wrap_mode {
             WrapMode::SvgLike => PreparedTextWrap::SvgLike {
                 max_width_px: normalized_width(request.max_width_px),
@@ -249,9 +263,12 @@ impl StateLabelSidecarBuilder {
             },
         };
         let prepared = layout.prepare_text(
-            &PrepareTextRequest::new(prepared_source.as_ref(), typography)
-                .with_family_normalized_projection()
-                .with_wrap(wrap),
+            &PrepareTextRequest::new(
+                prepared_source.as_ref(),
+                admitted_typography.typography().clone(),
+            )
+            .with_family_normalized_projection()
+            .with_wrap(wrap),
         )?;
         let pending_label_entry = prepared
             .label_ledger_entry()
@@ -265,6 +282,7 @@ impl StateLabelSidecarBuilder {
         Ok(PreparedStateLabel {
             semantic_source: Arc::from(request.text),
             prepared,
+            admitted_typography,
             uses_html_wrapping_table,
             pending_label_entry: Some(pending_label_entry),
             label_entry: None,
@@ -494,7 +512,7 @@ mod tests {
         ));
         let catalog = FontCatalogSpec::new([FontAssetSpec::new("excalifont", bytes)]);
         let typography = ThemeTextStyle::default().with_font_stack(
-            FontStack::single("Excalifont").expect("fixture font stack should be valid"),
+            FontStack::new(["Arial", "Excalifont"]).expect("fixture font stack should be valid"),
         );
         let ordinal = OrdinalSelector::exact(1).unwrap();
         let mut generic_text = TextStylePatch::default();
@@ -610,7 +628,12 @@ mod tests {
 
         assert!(measurement.metrics.width > 0.0);
         assert!(sidecar.prepared_error().is_none());
-        assert!(sidecar.node("Ready").is_some());
+        let prepared_label = sidecar.node("Ready").expect("prepared State label");
+        let emission_style =
+            prepared_label.merge_emission_font_style(Some(node.label_style_attr()));
+        assert!(emission_style.contains("font-family:\"Excalifont\" !important"));
+        assert!(!emission_style.contains("Arial"));
+        assert!(emission_style.contains("font-size:23px !important"));
         assert_eq!(work_meter.used(), 4);
     }
 

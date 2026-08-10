@@ -15,6 +15,7 @@ use super::admission::{
     FontCatalogKind, FontEmbeddingRequirement, FontSource, ThemeAdmissionError,
 };
 use super::resources::{ThemeResourceLimitExceeded, ThemeResourcePolicy};
+use super::typography::FontStack;
 
 const FONT_CATALOG_FINGERPRINT_DOMAIN: &[u8] = b"merman-font-catalog-v1";
 const FONT_ASSET_FINGERPRINT_DOMAIN: &[u8] = b"merman-font-asset-v1";
@@ -122,6 +123,12 @@ impl GenericFontFamily {
             Self::Fantasy => "fantasy",
             Self::SystemUi => "system-ui",
         }
+    }
+
+    pub(crate) fn from_css_keyword(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|family| family.id().eq_ignore_ascii_case(value))
     }
 }
 
@@ -401,6 +408,8 @@ struct FontCatalogInner {
     faces: Vec<FontFaceMetadata>,
     aliases: Vec<FontFamilyAlias>,
     generic_families: BTreeMap<GenericFontFamily, String>,
+    named_family_names: BTreeMap<String, String>,
+    resolved_family_names: BTreeMap<String, String>,
     available_sources: BTreeSet<FontSource>,
     embedding: FontEmbeddingRequirement,
     fingerprint: FontCatalogFingerprint,
@@ -420,6 +429,8 @@ impl FontCatalog {
             faces: Vec::new(),
             aliases: Vec::new(),
             generic_families: BTreeMap::new(),
+            named_family_names: BTreeMap::new(),
+            resolved_family_names: BTreeMap::new(),
             available_sources: [FontSource::System].into_iter().collect(),
             embedding: FontEmbeddingRequirement::NoEmbedding,
             fingerprint: FontCatalogFingerprint(hasher.finalize().into()),
@@ -456,6 +467,35 @@ impl FontCatalog {
 
     pub(crate) fn kind(&self) -> FontCatalogKind {
         self.0.kind
+    }
+
+    pub(crate) fn canonical_family_name(&self, requested: &str) -> Option<&str> {
+        self.0
+            .resolved_family_names
+            .get(&normalize_family_key(requested))
+            .map(String::as_str)
+    }
+
+    pub(crate) fn canonical_named_family_name(&self, requested: &str) -> Option<&str> {
+        self.0
+            .named_family_names
+            .get(&normalize_family_key(requested))
+            .map(String::as_str)
+    }
+
+    pub(crate) fn admit_font_stack(&self, requested: &FontStack) -> Option<FontStack> {
+        let mut admitted = Vec::new();
+        let mut admitted_keys = BTreeSet::new();
+        for family in requested.families() {
+            let Some(canonical) = self.canonical_family_name(family) else {
+                continue;
+            };
+            let key = normalize_family_key(canonical);
+            if admitted_keys.insert(key) {
+                admitted.push(canonical.to_string());
+            }
+        }
+        FontStack::new(admitted).ok()
     }
 }
 
@@ -563,6 +603,9 @@ fn compile_font_catalog(
     let families = collect_family_names(&faces)?;
     let aliases = compile_aliases(spec.aliases, &families)?;
     let generic_families = compile_generic_families(spec.generic_families, &families, &aliases)?;
+    let named_family_names = compile_named_family_names(&families, &aliases);
+    let resolved_family_names =
+        compile_resolved_family_names(&families, &aliases, &generic_families);
     let fingerprint = hash_font_catalog(
         &assets,
         &faces,
@@ -578,10 +621,56 @@ fn compile_font_catalog(
         faces,
         aliases,
         generic_families,
+        named_family_names,
+        resolved_family_names,
         available_sources: spec.available_sources,
         embedding: spec.embedding,
         fingerprint,
     })))
+}
+
+fn compile_named_family_names(
+    families: &BTreeMap<String, String>,
+    aliases: &[FontFamilyAlias],
+) -> BTreeMap<String, String> {
+    let mut resolved = BTreeMap::new();
+    for alias in aliases {
+        resolved.insert(
+            normalize_family_key(alias.alias()),
+            alias.target().to_string(),
+        );
+    }
+    for (key, family) in families {
+        resolved
+            .entry(key.clone())
+            .or_insert_with(|| family.clone());
+    }
+    resolved
+}
+
+fn compile_resolved_family_names(
+    families: &BTreeMap<String, String>,
+    aliases: &[FontFamilyAlias],
+    generic_families: &BTreeMap<GenericFontFamily, String>,
+) -> BTreeMap<String, String> {
+    let mut resolved = BTreeMap::new();
+    for alias in aliases {
+        resolved.insert(
+            normalize_family_key(alias.alias()),
+            alias.target().to_string(),
+        );
+    }
+    for (generic, target) in generic_families {
+        resolved
+            .entry(generic.id().to_string())
+            .or_insert_with(|| target.clone());
+    }
+    for (key, family) in families {
+        resolved
+            .entry(key.clone())
+            .or_insert_with(|| family.clone());
+    }
+    resolved
 }
 
 fn canonicalize_font_asset(
@@ -781,7 +870,10 @@ fn compile_aliases(
         validate_family_name(&alias.target)
             .map_err(|_| FontCatalogError::InvalidAliasTarget { index })?;
         let alias_key = normalize_family_key(&alias.alias);
-        if families.contains_key(&alias_key) || compiled.contains_key(&alias_key) {
+        if GenericFontFamily::from_css_keyword(&alias_key).is_some()
+            || families.contains_key(&alias_key)
+            || compiled.contains_key(&alias_key)
+        {
             return Err(FontCatalogError::AliasCollision { alias: alias.alias });
         }
         let target_key = normalize_family_key(&alias.target);
@@ -2160,6 +2252,17 @@ mod tests {
             catalog.generic_family(GenericFontFamily::Cursive),
             Some("Excalifont")
         );
+        let requested = FontStack::new(["Arial", "Sketch", "cursive", "Excalifont"])
+            .expect("fixture stack should be valid");
+        let admitted = catalog
+            .admit_font_stack(&requested)
+            .expect("at least one requested family belongs to the catalog");
+        assert_eq!(admitted.families(), &["Excalifont".to_string()]);
+        assert!(
+            catalog
+                .admit_font_stack(&FontStack::single("Arial").unwrap())
+                .is_none()
+        );
 
         let unknown_alias = excalifont_spec().with_alias("Sketch", "Missing");
         assert!(matches!(
@@ -2175,6 +2278,15 @@ mod tests {
             Err(FontCatalogError::DuplicateGenericFamily {
                 family: GenericFontFamily::Cursive
             })
+        ));
+
+        let generic_keyword_alias = excalifont_spec().with_alias("cursive", "Excalifont");
+        assert!(matches!(
+            compile_font_catalog(
+                generic_keyword_alias,
+                &ThemeResourcePolicy::interactive()
+            ),
+            Err(FontCatalogError::AliasCollision { alias }) if alias == "cursive"
         ));
     }
 

@@ -1,12 +1,13 @@
 use super::config::{DEFAULT_LANE_ID, DEFAULT_LANE_PADDING, GROUP_PADDING};
 use super::working::{WorkingEdge, WorkingLayout, WorkingNode, WorkingNodeKind};
 use crate::flowchart::{
-    FlowchartConfigView, FlowchartLabelMetricsRequest, FlowchartRenderModelRef,
-    FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
-    NodeLayoutDimensionsRequest, flowchart_effective_text_style_for_classes,
-    flowchart_effective_text_style_for_node_classes, flowchart_label_metrics_for_layout,
-    flowchart_node_svg_width_mode, flowchart_swimlane_label_rect_text_style,
-    measure_flowchart_svg_label_for_layout, node_layout_dimensions,
+    FlowchartConfigView, FlowchartLabelMetricsRequest, FlowchartLabelTypographyOverrides,
+    FlowchartRenderModelRef, FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder,
+    FlowchartSvgWidthMode, NodeLayoutDimensionsRequest, flowchart_effective_text_style_for_classes,
+    flowchart_effective_text_style_for_node_classes_with_provenance,
+    flowchart_label_is_empty_for_render, flowchart_label_metrics_for_layout,
+    flowchart_node_svg_width_mode, flowchart_swimlane_label_rect_text_style_with_provenance,
+    measure_flowchart_svg_label_for_layout_with_typography_overrides, node_layout_dimensions,
 };
 use crate::math::MathRenderer;
 use crate::model::SwimlaneDirection;
@@ -56,7 +57,7 @@ fn measure_content_node(
     } else {
         &ctx.settings.text_style
     };
-    let style = flowchart_effective_text_style_for_node_classes(
+    let style = flowchart_effective_text_style_for_node_classes_with_provenance(
         base_style,
         &ctx.model.class_defs,
         &node.classes,
@@ -71,7 +72,7 @@ fn measure_content_node(
         wrap_mode,
         node.layout_shape.as_deref().unwrap_or("squareRect"),
     );
-    let metrics = measure_flowchart_svg_label_for_layout(
+    let metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
         ctx.svg_label_sidecar,
         owner,
         owner.map(|_| node.id.as_str()),
@@ -85,6 +86,7 @@ fn measure_content_node(
             config: ctx.config,
             math_renderer: ctx.math_renderer,
         },
+        FlowchartLabelTypographyOverrides::same(&style.prepared_text_overrides),
         svg_width_mode,
     );
 
@@ -154,12 +156,15 @@ fn measure_edge_label(
         .edge_defaults
         .as_ref()
         .map_or(&[][..], |defaults| defaults.style.as_slice());
-    let style =
-        flowchart_swimlane_label_rect_text_style(base_style, default_edge_styles, &edge.style);
+    let style = flowchart_swimlane_label_rect_text_style_with_provenance(
+        base_style,
+        default_edge_styles,
+        &edge.style,
+    );
     let label = render_label;
     let semantic_label = edge.label.as_deref().unwrap_or_default();
     let label_type = "text";
-    let metrics = measure_flowchart_svg_label_for_layout(
+    let metrics = measure_flowchart_svg_label_for_layout_with_typography_overrides(
         ctx.svg_label_sidecar,
         Some(owner),
         Some(edge.id.as_str()),
@@ -173,6 +178,7 @@ fn measure_edge_label(
             config: ctx.config,
             math_renderer: ctx.math_renderer,
         },
+        FlowchartLabelTypographyOverrides::same(&style.prepared_text_overrides),
         FlowchartSvgWidthMode::Bbox,
     );
 
@@ -218,6 +224,13 @@ fn measure_group_title(
     render_title: &str,
     ctx: &MeasureContext<'_>,
 ) -> (f64, f64) {
+    if !flowchart_label_is_empty_for_render(render_title)
+        && ctx
+            .svg_label_sidecar
+            .is_some_and(|sidecar| sidecar.reject_unsupported_prepared_path("swimlane_group_title"))
+    {
+        return (0.0, 0.0);
+    }
     // The dedicated Mermaid Swimlane cluster renderer reads `flowchart.htmlLabels` directly.
     // This deliberately differs from ordinary Flowchart clusters, which use the effective
     // root-first compatibility setting.

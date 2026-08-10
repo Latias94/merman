@@ -98,12 +98,17 @@ pub(crate) use shapes::{
 };
 pub(crate) use style::{
     flowchart_apply_html_node_class_box_metrics, flowchart_effective_edge_label_text_style,
+    flowchart_effective_edge_label_text_style_with_provenance,
     flowchart_effective_node_class_names, flowchart_effective_text_style_for_classes,
-    flowchart_effective_text_style_for_node_classes, flowchart_split_mermaid_style_decls,
-    flowchart_swimlane_label_rect_text_style,
+    flowchart_effective_text_style_for_classes_with_provenance,
+    flowchart_effective_text_style_for_node_classes,
+    flowchart_effective_text_style_for_node_classes_with_provenance,
+    flowchart_split_mermaid_style_decls, flowchart_swimlane_label_rect_text_style,
+    flowchart_swimlane_label_rect_text_style_with_provenance,
 };
 pub(crate) use svg_label_artifact::{
-    FlowchartSvgLabelOwner, FlowchartSvgLabelRenderPlan, FlowchartSvgLabelSidecar,
-    FlowchartSvgLabelSidecarBuilder, measure_flowchart_svg_label_for_layout,
-    measure_flowchart_svg_label_for_layout_with_metrics_style,
+    FlowchartLabelTypographyOverrides, FlowchartSvgLabelOwner, FlowchartSvgLabelRenderPlan,
+    FlowchartSvgLabelSidecar, FlowchartSvgLabelSidecarBuilder,
+    measure_flowchart_svg_label_for_layout_with_metrics_style_and_typography_overrides,
+    measure_flowchart_svg_label_for_layout_with_typography_overrides,
 };
