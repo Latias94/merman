@@ -1,6 +1,5 @@
 use super::{
-    ByteSpan, EditorSymbolKind, FenceExpectedSyntax, FenceExpectedSyntaxKind, FenceLexeme,
-    FenceLexemeFailure, FenceLexemeKind, FenceLexemeModifier, FenceReferenceGroup,
+    ByteSpan, EditorSymbolKind, FenceExpectedSyntax, FenceExpectedSyntaxKind, FenceReferenceGroup,
     FenceSemanticItem, FenceSemanticRole, FenceTextIndex, FenceTextIndexData, FenceTextIndexSource,
 };
 
@@ -25,24 +24,13 @@ pub(super) fn from_core_facts_cancellable(
         source,
         ..FenceTextIndexData::default()
     };
-    index.lexeme_failure = facts.lexeme_failure().map(lexeme_failure_from_core);
+    index.lexeme_failure = facts.lexeme_failure();
     index.lexemes.reserve(facts.lexemes().len());
     for (lexeme_index, lexeme) in facts.lexemes().iter().enumerate() {
         if lexeme_index.is_multiple_of(128) {
             cancellation.checkpoint()?;
         }
-        index.lexemes.push(FenceLexeme {
-            kind: lexeme_kind_from_core(lexeme.kind()),
-            modifiers: lexeme
-                .modifiers()
-                .iter()
-                .map(lexeme_modifier_from_core)
-                .collect(),
-            span: ByteSpan {
-                start: lexeme.span().start,
-                end: lexeme.span().end,
-            },
-        });
+        index.lexemes.push(*lexeme);
     }
     index
         .directive_prefixes
@@ -119,67 +107,6 @@ pub(super) fn from_core_facts_cancellable(
     index.build_point_indexes(cancellation)?;
     cancellation.checkpoint()?;
     Ok(FenceTextIndex::from_data(index))
-}
-
-fn lexeme_kind_from_core(kind: merman_core::EditorLexemeKind) -> FenceLexemeKind {
-    match kind {
-        merman_core::EditorLexemeKind::Keyword => FenceLexemeKind::Keyword,
-        merman_core::EditorLexemeKind::Comment => FenceLexemeKind::Comment,
-        merman_core::EditorLexemeKind::Operator => FenceLexemeKind::Operator,
-        merman_core::EditorLexemeKind::Delimiter => FenceLexemeKind::Delimiter,
-        merman_core::EditorLexemeKind::Identifier => FenceLexemeKind::Identifier,
-        merman_core::EditorLexemeKind::Number => FenceLexemeKind::Number,
-        merman_core::EditorLexemeKind::Date => FenceLexemeKind::Date,
-        merman_core::EditorLexemeKind::Duration => FenceLexemeKind::Duration,
-        merman_core::EditorLexemeKind::Boolean => FenceLexemeKind::Boolean,
-        merman_core::EditorLexemeKind::String => FenceLexemeKind::String,
-        merman_core::EditorLexemeKind::Style => FenceLexemeKind::Style,
-        merman_core::EditorLexemeKind::Color => FenceLexemeKind::Color,
-        merman_core::EditorLexemeKind::Literal => FenceLexemeKind::Literal,
-        merman_core::EditorLexemeKind::Frontmatter => FenceLexemeKind::Frontmatter,
-        merman_core::EditorLexemeKind::Directive => FenceLexemeKind::Directive,
-    }
-}
-
-fn lexeme_modifier_from_core(modifier: merman_core::EditorLexemeModifier) -> FenceLexemeModifier {
-    match modifier {
-        merman_core::EditorLexemeModifier::Declaration => FenceLexemeModifier::Declaration,
-        merman_core::EditorLexemeModifier::Definition => FenceLexemeModifier::Definition,
-        merman_core::EditorLexemeModifier::Reference => FenceLexemeModifier::Reference,
-        merman_core::EditorLexemeModifier::Readonly => FenceLexemeModifier::Readonly,
-        merman_core::EditorLexemeModifier::Documentation => FenceLexemeModifier::Documentation,
-        merman_core::EditorLexemeModifier::DefaultLibrary => FenceLexemeModifier::DefaultLibrary,
-    }
-}
-
-fn lexeme_failure_from_core(failure: merman_core::EditorLexemeFailure) -> FenceLexemeFailure {
-    match failure {
-        merman_core::EditorLexemeFailure::InvalidSpan { span } => FenceLexemeFailure::InvalidSpan {
-            span: ByteSpan {
-                start: span.start,
-                end: span.end,
-            },
-        },
-        merman_core::EditorLexemeFailure::Overlap { left, right } => FenceLexemeFailure::Overlap {
-            left: ByteSpan {
-                start: left.start,
-                end: left.end,
-            },
-            right: ByteSpan {
-                start: right.start,
-                end: right.end,
-            },
-        },
-        merman_core::EditorLexemeFailure::InvalidProvenance => {
-            FenceLexemeFailure::InvalidProvenance
-        }
-        merman_core::EditorLexemeFailure::UnknownModifierBits { bits } => {
-            FenceLexemeFailure::UnknownModifierBits { bits }
-        }
-        merman_core::EditorLexemeFailure::DuplicateModifiers { bits } => {
-            FenceLexemeFailure::DuplicateModifiers { bits }
-        }
-    }
 }
 
 fn editor_kind_from_core(kind: merman_core::EditorSemanticKind) -> EditorSymbolKind {

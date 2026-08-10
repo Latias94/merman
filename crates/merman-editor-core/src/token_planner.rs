@@ -1,10 +1,8 @@
 use crate::generated::{PlannedTokenKind, PlannedTokenModifier, TokenOverlayKind};
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::Range;
-use merman_analysis::{
-    ByteSpan, EditorSymbolKind, FenceLexemeFailure, FenceLexemeKind, FenceLexemeModifier,
-    FenceSemanticRole, SourceMap,
-};
+use merman_analysis::{ByteSpan, EditorSymbolKind, FenceSemanticRole, SourceMap};
+use merman_core::{EditorLexemeFailure, EditorLexemeKind, EditorLexemeModifier};
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,7 +65,7 @@ pub enum TokenPlanError {
     },
     UpstreamLexemeFailure {
         fence_index: usize,
-        failure: FenceLexemeFailure,
+        failure: EditorLexemeFailure,
     },
     InvalidSpan {
         span: ByteSpan,
@@ -411,7 +409,15 @@ fn collect_fence_candidates(
 
     let mut previous_lexeme: Option<ByteSpan> = None;
     for lexeme in fence.text_index().lexemes() {
-        let span = absolute_fence_span(snapshot, fence, lexeme.span)?;
+        let relative = lexeme.span();
+        let span = absolute_fence_span(
+            snapshot,
+            fence,
+            ByteSpan {
+                start: relative.start,
+                end: relative.end,
+            },
+        )?;
         if requested.is_some_and(|requested| !requested.overlaps(span)) {
             continue;
         }
@@ -432,13 +438,9 @@ fn collect_fence_candidates(
         previous_lexeme = Some(span);
         candidates.push(TokenCandidate {
             span,
-            kind: planned_kind_for_lexeme(lexeme.kind),
+            kind: planned_kind_for_lexeme(lexeme.kind()),
             modifier_bits: pack_modifier_bits(
-                lexeme
-                    .modifiers
-                    .iter()
-                    .copied()
-                    .map(planned_modifier_for_lexeme),
+                lexeme.modifiers().iter().map(planned_modifier_for_lexeme),
             ),
             origin: TokenOverlayKind::Lexeme,
         });
@@ -462,7 +464,7 @@ fn collect_fence_candidates(
 
 fn reject_upstream_lexeme_failure(
     fence_index: usize,
-    failure: Option<FenceLexemeFailure>,
+    failure: Option<EditorLexemeFailure>,
 ) -> Result<(), TokenPlanError> {
     match failure {
         Some(failure) => Err(TokenPlanError::UpstreamLexemeFailure {
@@ -889,34 +891,34 @@ fn pack_tokens(tokens: &[PlannedToken]) -> Vec<u32> {
     packed
 }
 
-const fn planned_kind_for_lexeme(kind: FenceLexemeKind) -> PlannedTokenKind {
+const fn planned_kind_for_lexeme(kind: EditorLexemeKind) -> PlannedTokenKind {
     match kind {
-        FenceLexemeKind::Keyword => PlannedTokenKind::Keyword,
-        FenceLexemeKind::Comment => PlannedTokenKind::Comment,
-        FenceLexemeKind::Operator => PlannedTokenKind::Operator,
-        FenceLexemeKind::Delimiter => PlannedTokenKind::Delimiter,
-        FenceLexemeKind::Identifier => PlannedTokenKind::Identifier,
-        FenceLexemeKind::Number => PlannedTokenKind::Number,
-        FenceLexemeKind::Date => PlannedTokenKind::Date,
-        FenceLexemeKind::Duration => PlannedTokenKind::Duration,
-        FenceLexemeKind::Boolean => PlannedTokenKind::Boolean,
-        FenceLexemeKind::String => PlannedTokenKind::String,
-        FenceLexemeKind::Style => PlannedTokenKind::Style,
-        FenceLexemeKind::Color => PlannedTokenKind::Color,
-        FenceLexemeKind::Literal => PlannedTokenKind::Literal,
-        FenceLexemeKind::Frontmatter => PlannedTokenKind::Frontmatter,
-        FenceLexemeKind::Directive => PlannedTokenKind::Directive,
+        EditorLexemeKind::Keyword => PlannedTokenKind::Keyword,
+        EditorLexemeKind::Comment => PlannedTokenKind::Comment,
+        EditorLexemeKind::Operator => PlannedTokenKind::Operator,
+        EditorLexemeKind::Delimiter => PlannedTokenKind::Delimiter,
+        EditorLexemeKind::Identifier => PlannedTokenKind::Identifier,
+        EditorLexemeKind::Number => PlannedTokenKind::Number,
+        EditorLexemeKind::Date => PlannedTokenKind::Date,
+        EditorLexemeKind::Duration => PlannedTokenKind::Duration,
+        EditorLexemeKind::Boolean => PlannedTokenKind::Boolean,
+        EditorLexemeKind::String => PlannedTokenKind::String,
+        EditorLexemeKind::Style => PlannedTokenKind::Style,
+        EditorLexemeKind::Color => PlannedTokenKind::Color,
+        EditorLexemeKind::Literal => PlannedTokenKind::Literal,
+        EditorLexemeKind::Frontmatter => PlannedTokenKind::Frontmatter,
+        EditorLexemeKind::Directive => PlannedTokenKind::Directive,
     }
 }
 
-const fn planned_modifier_for_lexeme(modifier: FenceLexemeModifier) -> PlannedTokenModifier {
+const fn planned_modifier_for_lexeme(modifier: EditorLexemeModifier) -> PlannedTokenModifier {
     match modifier {
-        FenceLexemeModifier::Declaration => PlannedTokenModifier::Declaration,
-        FenceLexemeModifier::Definition => PlannedTokenModifier::Definition,
-        FenceLexemeModifier::Reference => PlannedTokenModifier::Reference,
-        FenceLexemeModifier::Readonly => PlannedTokenModifier::Readonly,
-        FenceLexemeModifier::Documentation => PlannedTokenModifier::Documentation,
-        FenceLexemeModifier::DefaultLibrary => PlannedTokenModifier::DefaultLibrary,
+        EditorLexemeModifier::Declaration => PlannedTokenModifier::Declaration,
+        EditorLexemeModifier::Definition => PlannedTokenModifier::Definition,
+        EditorLexemeModifier::Reference => PlannedTokenModifier::Reference,
+        EditorLexemeModifier::Readonly => PlannedTokenModifier::Readonly,
+        EditorLexemeModifier::Documentation => PlannedTokenModifier::Documentation,
+        EditorLexemeModifier::DefaultLibrary => PlannedTokenModifier::DefaultLibrary,
     }
 }
 
@@ -1132,25 +1134,29 @@ mod tests {
     #[test]
     fn descriptor_codes_and_lexeme_mapping_are_exact() {
         let mappings = [
-            (FenceLexemeKind::Keyword, PlannedTokenKind::Keyword, 0),
-            (FenceLexemeKind::Comment, PlannedTokenKind::Comment, 1),
-            (FenceLexemeKind::Operator, PlannedTokenKind::Operator, 2),
-            (FenceLexemeKind::Delimiter, PlannedTokenKind::Delimiter, 3),
-            (FenceLexemeKind::Identifier, PlannedTokenKind::Identifier, 4),
-            (FenceLexemeKind::Number, PlannedTokenKind::Number, 5),
-            (FenceLexemeKind::Date, PlannedTokenKind::Date, 6),
-            (FenceLexemeKind::Duration, PlannedTokenKind::Duration, 7),
-            (FenceLexemeKind::Boolean, PlannedTokenKind::Boolean, 8),
-            (FenceLexemeKind::String, PlannedTokenKind::String, 9),
-            (FenceLexemeKind::Style, PlannedTokenKind::Style, 10),
-            (FenceLexemeKind::Color, PlannedTokenKind::Color, 11),
-            (FenceLexemeKind::Literal, PlannedTokenKind::Literal, 12),
+            (EditorLexemeKind::Keyword, PlannedTokenKind::Keyword, 0),
+            (EditorLexemeKind::Comment, PlannedTokenKind::Comment, 1),
+            (EditorLexemeKind::Operator, PlannedTokenKind::Operator, 2),
+            (EditorLexemeKind::Delimiter, PlannedTokenKind::Delimiter, 3),
             (
-                FenceLexemeKind::Frontmatter,
+                EditorLexemeKind::Identifier,
+                PlannedTokenKind::Identifier,
+                4,
+            ),
+            (EditorLexemeKind::Number, PlannedTokenKind::Number, 5),
+            (EditorLexemeKind::Date, PlannedTokenKind::Date, 6),
+            (EditorLexemeKind::Duration, PlannedTokenKind::Duration, 7),
+            (EditorLexemeKind::Boolean, PlannedTokenKind::Boolean, 8),
+            (EditorLexemeKind::String, PlannedTokenKind::String, 9),
+            (EditorLexemeKind::Style, PlannedTokenKind::Style, 10),
+            (EditorLexemeKind::Color, PlannedTokenKind::Color, 11),
+            (EditorLexemeKind::Literal, PlannedTokenKind::Literal, 12),
+            (
+                EditorLexemeKind::Frontmatter,
                 PlannedTokenKind::Frontmatter,
                 13,
             ),
-            (FenceLexemeKind::Directive, PlannedTokenKind::Directive, 14),
+            (EditorLexemeKind::Directive, PlannedTokenKind::Directive, 14),
         ];
         for (lexeme, planned, code) in mappings {
             assert_eq!(planned_kind_for_lexeme(lexeme), planned);
@@ -1201,27 +1207,27 @@ mod tests {
         }
         for (lexeme, planned) in [
             (
-                FenceLexemeModifier::Declaration,
+                EditorLexemeModifier::Declaration,
                 PlannedTokenModifier::Declaration,
             ),
             (
-                FenceLexemeModifier::Definition,
+                EditorLexemeModifier::Definition,
                 PlannedTokenModifier::Definition,
             ),
             (
-                FenceLexemeModifier::Reference,
+                EditorLexemeModifier::Reference,
                 PlannedTokenModifier::Reference,
             ),
             (
-                FenceLexemeModifier::Readonly,
+                EditorLexemeModifier::Readonly,
                 PlannedTokenModifier::Readonly,
             ),
             (
-                FenceLexemeModifier::Documentation,
+                EditorLexemeModifier::Documentation,
                 PlannedTokenModifier::Documentation,
             ),
             (
-                FenceLexemeModifier::DefaultLibrary,
+                EditorLexemeModifier::DefaultLibrary,
                 PlannedTokenModifier::DefaultLibrary,
             ),
         ] {
@@ -1231,7 +1237,7 @@ mod tests {
 
     #[test]
     fn upstream_lexeme_failure_is_monotonic_and_blocks_planning() {
-        let failure = FenceLexemeFailure::InvalidProvenance;
+        let failure = EditorLexemeFailure::InvalidProvenance;
         assert_eq!(
             reject_upstream_lexeme_failure(7, Some(failure)),
             Err(TokenPlanError::UpstreamLexemeFailure {
