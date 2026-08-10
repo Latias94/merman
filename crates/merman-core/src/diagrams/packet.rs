@@ -521,18 +521,25 @@ fn get_next_fitting_block(
             "Packet row boundary exceeds the supported integer range.".to_string(),
         )
     })?;
-    let first_bits = row_end.checked_sub(block.start).ok_or_else(|| {
-        Error::diagram_parse_fallback(
-            "packet".to_string(),
-            "Packet block width arithmetic overflowed.".to_string(),
-        )
-    })?;
-    let second_bits = block.end.checked_sub(row_start).ok_or_else(|| {
-        Error::diagram_parse_fallback(
-            "packet".to_string(),
-            "Packet block width arithmetic overflowed.".to_string(),
-        )
-    })?;
+    let first_bits = row_end
+        .checked_sub(block.start)
+        .and_then(|value| value.checked_add(1))
+        .ok_or_else(|| {
+            Error::diagram_parse_fallback(
+                "packet".to_string(),
+                "Packet block width arithmetic overflowed.".to_string(),
+            )
+        })?;
+    let second_bits = block
+        .end
+        .checked_sub(row_start)
+        .and_then(|value| value.checked_add(1))
+        .ok_or_else(|| {
+            Error::diagram_parse_fallback(
+                "packet".to_string(),
+                "Packet block width arithmetic overflowed.".to_string(),
+            )
+        })?;
     Ok((
         PacketRenderBlock {
             start: block.start,
@@ -1167,7 +1174,7 @@ accDescr: Packet accDescription
                   "start": 0
                 },
                 {
-                  "bits": 20,
+                  "bits": 21,
                   "end": 31,
                   "label": "multiple",
                   "start": 11
@@ -1175,7 +1182,7 @@ accDescr: Packet accDescription
               ],
               [
                 {
-                  "bits": 31,
+                  "bits": 32,
                   "end": 63,
                   "label": "multiple",
                   "start": 32
@@ -1183,7 +1190,7 @@ accDescr: Packet accDescription
               ],
               [
                 {
-                  "bits": 26,
+                  "bits": 27,
                   "end": 90,
                   "label": "multiple",
                   "start": 64
@@ -1212,7 +1219,7 @@ accDescr: Packet accDescription
                   "start": 0
                 },
                 {
-                  "bits": 14,
+                  "bits": 15,
                   "end": 31,
                   "label": "multiple",
                   "start": 17
@@ -1220,7 +1227,7 @@ accDescr: Packet accDescription
               ],
               [
                 {
-                  "bits": 31,
+                  "bits": 32,
                   "end": 63,
                   "label": "multiple",
                   "start": 32

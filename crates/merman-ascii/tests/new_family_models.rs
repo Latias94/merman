@@ -1051,7 +1051,7 @@ fn packet_render_model_renders_rows_and_ranges() {
 }
 
 #[test]
-fn packet_parser_split_blocks_render_upstream_split_bit_counts() {
+fn packet_parser_split_blocks_render_inclusive_bit_counts() {
     let rendered = render_parsed(
         r#"packet
 0-10: "test"
@@ -1064,12 +1064,36 @@ fn packet_parser_split_blocks_render_upstream_split_bit_counts() {
         concat!(
             "row 1:\n",
             "  - range=[0..10] bits=11 label(bytes=4)=\"test\"\n",
-            "  - range=[11..31] bits=20 label(bytes=8)=\"multiple\"\n",
+            "  - range=[11..31] bits=21 label(bytes=8)=\"multiple\"\n",
             "row 2:\n",
-            "  - range=[32..63] bits=31 label(bytes=8)=\"multiple\"\n",
+            "  - range=[32..63] bits=32 label(bytes=8)=\"multiple\"\n",
             "row 3:\n",
-            "  - range=[64..90] bits=26 label(bytes=8)=\"multiple\"",
+            "  - range=[64..90] bits=27 label(bytes=8)=\"multiple\"",
         )
+    );
+}
+
+#[test]
+fn packet_render_model_rejects_noninclusive_bit_counts() {
+    let mut model = PacketDiagramRenderModel::default();
+    model.packet = vec![vec![PacketRenderBlock {
+        start: 11,
+        end: 31,
+        bits: 20,
+        label: "multiple".to_string(),
+    }]];
+
+    let error = render_model(
+        &RenderSemanticModel::Packet(model),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("packet range width must be validated before rendering");
+    assert_eq!(
+        error,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "packet",
+            feature: "packet block bit count does not match inclusive range",
+        }
     );
 }
 

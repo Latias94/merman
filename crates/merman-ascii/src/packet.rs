@@ -1,5 +1,7 @@
 use crate::Result;
+use crate::error::AsciiError;
 use crate::options::AsciiRenderOptions;
+use crate::resource::ResourceContext;
 use crate::safe_text::BudgetedTextDocument;
 use merman_core::diagrams::packet::PacketDiagramRenderModel;
 
@@ -8,6 +10,7 @@ pub fn render_packet_diagram(
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     let mut document = BudgetedTextDocument::new(options);
+    validate_packet_blocks(model, document.resources_mut())?;
 
     push_optional_framed_line(&mut document, "title", model.title.as_deref())?;
     push_optional_framed_line(&mut document, "accTitle", model.acc_title.as_deref())?;
@@ -32,6 +35,50 @@ pub fn render_packet_diagram(
     }
 
     document.finish(options)
+}
+
+fn validate_packet_blocks(
+    model: &PacketDiagramRenderModel,
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    let block_count = model
+        .packet
+        .iter()
+        .try_fold(0usize, |total, row| total.checked_add(row.len()));
+    let block_count = block_count.ok_or_else(|| resources.work_overflow())?;
+    resources.charge_layout_work(block_count)?;
+
+    for row in &model.packet {
+        for block in row {
+            if block.start > block.end {
+                return Err(AsciiError::UnsupportedFeature {
+                    diagram_type: "packet",
+                    feature: "packet blocks with end before start",
+                });
+            }
+            let expected_bits = block
+                .end
+                .checked_sub(block.start)
+                .and_then(|value| value.checked_add(1))
+                .ok_or(AsciiError::UnsupportedFeature {
+                    diagram_type: "packet",
+                    feature: "packet block range overflow",
+                })?;
+            if block.bits <= 0 {
+                return Err(AsciiError::UnsupportedFeature {
+                    diagram_type: "packet",
+                    feature: "packet blocks must have positive bit counts",
+                });
+            }
+            if block.bits != expected_bits {
+                return Err(AsciiError::UnsupportedFeature {
+                    diagram_type: "packet",
+                    feature: "packet block bit count does not match inclusive range",
+                });
+            }
+        }
+    }
+    Ok(())
 }
 
 fn push_optional_framed_line(
