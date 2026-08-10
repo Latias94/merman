@@ -903,6 +903,14 @@ style ORDER fill:#eee
         important_start + "important".len()
     );
 
+    let class_definition_start = text.rfind("important").unwrap();
+    let class_definition = symbol_at("important", class_definition_start);
+    assert_eq!(class_definition.role, EditorSemanticRole::ClassDefinition);
+    assert_eq!(
+        class_definition.detail.as_deref(),
+        Some("er class definition")
+    );
+
     assert!(facts.directive_prefixes.iter().any(|p| p == "class"));
     assert!(facts.directive_prefixes.iter().any(|p| p == "classDef"));
     assert!(facts.directive_prefixes.iter().any(|p| p == "style"));

@@ -1027,7 +1027,7 @@ click Running "https://example.com/run" "Run details""#;
                 && symbol.detail.as_deref() == Some("state class definition")
         })
         .unwrap();
-    assert_eq!(active_style.role, EditorSemanticRole::Outline);
+    assert_eq!(active_style.role, EditorSemanticRole::ClassDefinition);
     assert_eq!(active_style.selection.start, active_style_start);
 
     let idle_class_target = facts

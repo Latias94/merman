@@ -955,10 +955,6 @@ fn diagram_header_prefix_matches(prefix: &str) -> bool {
         .any(|fact| fact.label.starts_with(prefix))
 }
 
-fn is_class_definition_detail(detail: Option<&str>) -> bool {
-    detail.is_some_and(|detail| detail.ends_with("class definition"))
-}
-
 fn apply_expected_syntax_to_completion(
     expected: FenceExpectedSyntaxKind,
     completion_kinds: &mut Vec<FenceCursorCompletionKind>,

@@ -2,7 +2,6 @@ use super::{
     ByteSpan, EditorSymbolKind, FenceExpectedSyntax, FenceExpectedSyntaxKind, FenceLexeme,
     FenceLexemeFailure, FenceLexemeKind, FenceLexemeModifier, FenceReferenceGroup,
     FenceSemanticItem, FenceSemanticRole, FenceTextIndex, FenceTextIndexData, FenceTextIndexSource,
-    is_class_definition_detail,
 };
 
 #[cfg(test)]
@@ -68,7 +67,7 @@ pub(super) fn from_core_facts_cancellable(
         }
         let role = symbol.role;
         let kind = editor_kind_from_core(symbol.kind);
-        let is_class_definition = is_class_definition_detail(symbol.detail.as_deref());
+        let is_class_definition = role.is_class_definition();
         if is_class_definition {
             index.class_names.insert(symbol.name.clone());
         }
@@ -221,6 +220,9 @@ fn editor_kind_from_core(kind: merman_core::EditorSemanticKind) -> EditorSymbolK
 fn semantic_role_from_core(role: merman_core::EditorSemanticRole) -> FenceSemanticRole {
     match role {
         merman_core::EditorSemanticRole::Entity => FenceSemanticRole::Entity,
+        // Class definitions retain their typed core role for completion/index ownership, while
+        // the existing facts wire contract projects them to the historical outline role.
+        merman_core::EditorSemanticRole::ClassDefinition => FenceSemanticRole::Outline,
         merman_core::EditorSemanticRole::Outline => FenceSemanticRole::Outline,
         merman_core::EditorSemanticRole::Payload => FenceSemanticRole::Payload,
     }

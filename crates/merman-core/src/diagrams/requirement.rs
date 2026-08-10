@@ -519,6 +519,13 @@ fn emit_parsed_requirement_ids(
                 statement_span,
                 id.selection,
             ),
+            EditorSemanticRole::ClassDefinition => EditorSemanticSymbol::class_definition(
+                id.value.clone(),
+                Some(detail.to_string()),
+                kind,
+                statement_span,
+                id.selection,
+            ),
             EditorSemanticRole::Payload => EditorSemanticSymbol::payload(
                 id.value.clone(),
                 Some(detail.to_string()),
@@ -1227,7 +1234,7 @@ fn emit_requirement_class_def(
         statement_span,
         "requirement class definition",
         EditorSemanticKind::Property,
-        EditorSemanticRole::Outline,
+        EditorSemanticRole::ClassDefinition,
     );
     emit_parsed_requirement_styles(facts, &statement.styles, "requirement class style");
 }

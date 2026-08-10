@@ -383,7 +383,7 @@ fn parser_backed_class_definitions_are_not_node_id_completions() {
         SourceSpan::new(13, 14),
         SourceSpan::new(13, 14),
     ));
-    facts.push_symbol(EditorSemanticSymbol::outline(
+    facts.push_symbol(EditorSemanticSymbol::class_definition(
         "hot",
         Some("flowchart class definition".to_string()),
         EditorSemanticKind::Property,

@@ -968,7 +968,7 @@ fn push_block_entity(
     ));
 }
 
-fn push_block_outline(
+fn push_block_class_definition(
     facts: &mut EditorSemanticFacts,
     text: BlockSpannedText,
     detail: &str,
@@ -977,7 +977,7 @@ fn push_block_outline(
     if text.text.is_empty() {
         return;
     }
-    facts.push_symbol(EditorSemanticSymbol::outline(
+    facts.push_symbol(EditorSemanticSymbol::class_definition(
         text.text,
         Some(detail.to_string()),
         kind,
@@ -1732,7 +1732,7 @@ impl<'input, 'control> Parser<'input, 'control> {
             );
         }
         self.record_lexeme(EditorLexemeKind::Style, css.span);
-        push_block_outline(
+        push_block_class_definition(
             &mut self.editor_facts,
             id.clone(),
             "block class definition",
@@ -2744,6 +2744,19 @@ C<["Route"]>(left,down)
             assert_eq!(symbol.span, SourceSpan::new(start, start + name.len()));
             assert_eq!(symbol.selection, symbol.span);
         }
+
+        let class_definition = facts
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.name == "important"
+                    && symbol.detail.as_deref() == Some("block class definition")
+            })
+            .expect("block class definition fact");
+        assert_eq!(
+            class_definition.role,
+            crate::EditorSemanticRole::ClassDefinition
+        );
 
         let class_ids_start = text.find("A,B important").unwrap();
         assert!(facts.expected_syntax.iter().any(|expected| {

@@ -1111,7 +1111,7 @@ fn push_flowchart_classdef_stmt_facts(facts: &mut EditorSemanticFacts, stmt: &Cl
             "flowchart class definition",
             EditorSemanticKind::Property,
             Some(span),
-            EditorSemanticRole::Outline,
+            EditorSemanticRole::ClassDefinition,
         );
     }
     if let (Some(text), Some(span)) = (stmt.styles_text.as_deref(), stmt.styles_span) {

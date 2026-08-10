@@ -665,13 +665,15 @@ impl<'a> ClassEditorFactCollector<'a> {
         };
         let selection = selection_span_for_class_name(self.code, &symbol.name, symbol.span);
         match expected {
-            ExpectedClassName::ClassDef => facts.push_symbol(EditorSemanticSymbol::outline(
-                symbol.name,
-                Some(detail.to_string()),
-                kind,
-                symbol.span,
-                selection,
-            )),
+            ExpectedClassName::ClassDef => {
+                facts.push_symbol(EditorSemanticSymbol::class_definition(
+                    symbol.name,
+                    Some(detail.to_string()),
+                    kind,
+                    symbol.span,
+                    selection,
+                ))
+            }
             ExpectedClassName::CssClassReference | ExpectedClassName::InlineClassReference => {
                 facts.push_symbol(EditorSemanticSymbol::payload(
                     symbol.name,

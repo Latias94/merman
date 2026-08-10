@@ -298,7 +298,7 @@ enum StateEditorEvent {
         detail: &'static str,
         kind: EditorSemanticKind,
     },
-    Outline {
+    ClassDefinition {
         name: String,
         selection: SourceSpan,
         detail: &'static str,
@@ -332,12 +332,12 @@ impl StateEditorEvent {
                 selection,
                 selection,
             )),
-            Self::Outline {
+            Self::ClassDefinition {
                 name,
                 selection,
                 detail,
                 kind,
-            } => facts.push_symbol(EditorSemanticSymbol::outline(
+            } => facts.push_symbol(EditorSemanticSymbol::class_definition(
                 name,
                 Some(detail.to_string()),
                 kind,
@@ -589,7 +589,7 @@ impl StateTokenFactCollector<'_> {
                     EditorExpectedSyntaxKind::Payload,
                     SourceSpan::new(start, end),
                 );
-                push_state_outline_event(
+                push_state_class_definition_event(
                     events,
                     id,
                     start,
@@ -842,7 +842,7 @@ fn push_state_entity_event_with_selection(
     });
 }
 
-fn push_state_outline_event(
+fn push_state_class_definition_event(
     events: &mut Vec<StateEditorEvent>,
     name: String,
     start: usize,
@@ -855,7 +855,7 @@ fn push_state_outline_event(
     }
 
     let selection = SourceSpan::new(start, end);
-    events.push(StateEditorEvent::Outline {
+    events.push(StateEditorEvent::ClassDefinition {
         name,
         selection,
         detail,

@@ -366,6 +366,9 @@ pub enum EditorSemanticRole {
     /// Addressable diagram entity: appears in completion, navigation, and outline surfaces.
     #[default]
     Entity,
+    /// A parser-declared CSS/class definition. It participates in class completion and outline
+    /// projection, but is not a diagram-node entity or a reference/rename target.
+    ClassDefinition,
     /// Structural symbol that belongs in outline/hover, but is not a graph-node completion item.
     Outline,
     /// Span-rich parser payload for lint or future semantic consumers; not projected into LSP
@@ -493,7 +496,7 @@ impl EditorCompletionVocabulary {
 
 impl EditorSemanticRole {
     pub fn contributes_completion(self) -> bool {
-        matches!(self, Self::Entity)
+        matches!(self, Self::Entity | Self::ClassDefinition)
     }
 
     pub fn contributes_references(self) -> bool {
@@ -501,7 +504,11 @@ impl EditorSemanticRole {
     }
 
     pub fn contributes_outline(self) -> bool {
-        matches!(self, Self::Entity | Self::Outline)
+        matches!(self, Self::Entity | Self::ClassDefinition | Self::Outline)
+    }
+
+    pub const fn is_class_definition(self) -> bool {
+        matches!(self, Self::ClassDefinition)
     }
 }
 
@@ -548,6 +555,23 @@ impl EditorSemanticSymbol {
             detail,
             kind,
             EditorSemanticRole::Outline,
+            span,
+            selection,
+        )
+    }
+
+    pub fn class_definition(
+        name: impl Into<String>,
+        detail: Option<String>,
+        kind: EditorSemanticKind,
+        span: SourceSpan,
+        selection: SourceSpan,
+    ) -> Self {
+        Self::with_role(
+            name,
+            detail,
+            kind,
+            EditorSemanticRole::ClassDefinition,
             span,
             selection,
         )
@@ -1108,7 +1132,8 @@ mod tests {
     use super::{
         EditorLexeme, EditorLexemeFailure, EditorLexemeJournal, EditorLexemeKind,
         EditorLexemeModifier, EditorLexemeModifiers, EditorLexemeProducerKind, EditorRenamePolicy,
-        EditorSemanticFacts, lalrpop_parse_diagnostic,
+        EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol,
+        lalrpop_parse_diagnostic,
     };
     use crate::{ParseControl, ParseDiagnosticSpanKind};
 
@@ -1165,6 +1190,26 @@ mod tests {
             );
         }
         assert!(serde_json::from_str::<EditorRenamePolicy>("\"unknown\"").is_err());
+    }
+
+    #[test]
+    fn class_definition_role_is_typed_completion_without_reference_identity() {
+        let role = EditorSemanticRole::ClassDefinition;
+        assert!(role.contributes_completion());
+        assert!(!role.contributes_references());
+        assert!(role.contributes_outline());
+        assert!(role.is_class_definition());
+
+        let span = crate::SourceSpan::new(0, 3);
+        let symbol = EditorSemanticSymbol::class_definition(
+            "hot",
+            Some("display text may change".to_string()),
+            EditorSemanticKind::Class,
+            span,
+            span,
+        );
+        assert_eq!(symbol.role, role);
+        assert_eq!(symbol.rename_policy, EditorRenamePolicy::None);
     }
 
     #[test]

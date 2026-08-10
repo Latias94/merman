@@ -3089,7 +3089,7 @@ fn parse_flowchart_editor_facts_emit_directive_payload_spans() {
 
     let class_def_start = text.find("classDef hot").unwrap() + "classDef ".len();
     let class_def = symbol_at("hot", "flowchart class definition", class_def_start);
-    assert_eq!(class_def.role, EditorSemanticRole::Outline);
+    assert_eq!(class_def.role, EditorSemanticRole::ClassDefinition);
     assert_eq!(class_def.kind, EditorSemanticKind::Property);
 
     let class_def_style_start = text.find("fill:#f00,stroke:#333").unwrap();
@@ -3161,7 +3161,7 @@ fn parse_flowchart_editor_facts_recover_directive_payload_spans() {
     let class_def_start = text.find("classDef hot").unwrap() + "classDef ".len();
     assert_eq!(
         symbol_at("hot", "flowchart class definition", class_def_start).role,
-        EditorSemanticRole::Outline
+        EditorSemanticRole::ClassDefinition
     );
 
     let class_def_style_start = text.find("fill:#f00,stroke:#333").unwrap();

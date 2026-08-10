@@ -826,13 +826,23 @@ impl ErEditorFactCollector {
             if id.name.is_empty() {
                 continue;
             }
-            facts.push_symbol(EditorSemanticSymbol::new(
-                id.name,
-                Some(detail.to_string()),
-                kind,
-                id.span,
-                id.span,
-            ));
+            let symbol = match expected {
+                Some(ExpectedErIdList::ClassDef) => EditorSemanticSymbol::class_definition(
+                    id.name,
+                    Some(detail.to_string()),
+                    kind,
+                    id.span,
+                    id.span,
+                ),
+                _ => EditorSemanticSymbol::new(
+                    id.name,
+                    Some(detail.to_string()),
+                    kind,
+                    id.span,
+                    id.span,
+                ),
+            };
+            facts.push_symbol(symbol);
         }
 
         if matches!(expected, Some(ExpectedErIdList::ClassEntities)) {

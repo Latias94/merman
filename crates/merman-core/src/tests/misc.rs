@@ -2453,7 +2453,7 @@ style req,elem fill:#ffa,stroke:#000
             first_class_def_start,
         )
         .role,
-        EditorSemanticRole::Outline
+        EditorSemanticRole::ClassDefinition
     );
     assert_eq!(
         symbol_at(
@@ -2462,7 +2462,7 @@ style req,elem fill:#ffa,stroke:#000
             second_class_def_start,
         )
         .role,
-        EditorSemanticRole::Outline
+        EditorSemanticRole::ClassDefinition
     );
 
     let class_stmt_start = text.find("class req,elem").unwrap();
