@@ -3,21 +3,6 @@ use crate::rules::{
 };
 use crate::{AnalysisDiagnostic, AnalysisRejection, AnalysisStatus, SourceDescriptor};
 
-pub(crate) fn source_limit_rejection(
-    source: &str,
-    descriptor: SourceDescriptor,
-    max_source_bytes: Option<usize>,
-) -> Option<AnalysisRejection> {
-    let limit = max_source_bytes?;
-    let diagnostics = source_limit_diagnostics(source, max_source_bytes)?;
-    Some(AnalysisRejection::source_limit(
-        descriptor,
-        diagnostics,
-        source.len(),
-        limit,
-    ))
-}
-
 pub(crate) fn source_limit_rejection_cancellable(
     source: &str,
     descriptor: &SourceDescriptor,
@@ -39,23 +24,6 @@ pub(crate) fn source_limit_rejection_cancellable(
         source.len(),
         limit,
     )))
-}
-
-pub(crate) fn source_limit_diagnostics(
-    source: &str,
-    max_source_bytes: Option<usize>,
-) -> Option<Vec<AnalysisDiagnostic>> {
-    let limit = max_source_bytes?;
-    if source.len() <= limit {
-        return None;
-    }
-
-    Some(vec![source_limit_diagnostic(source, limit)])
-}
-
-fn source_limit_diagnostic(source: &str, limit: usize) -> AnalysisDiagnostic {
-    let span = source_limit_diagnostic_span(source);
-    source_limit_diagnostic_for_len_and_span(source.len(), limit, span)
 }
 
 /// Captures the exact whole-source coordinates needed to report a rejected source without retaining

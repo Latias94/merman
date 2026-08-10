@@ -1,7 +1,10 @@
 use crate::{
     AnalysisDiagnostic, AnalysisStatus, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit,
     DiagnosticSeverity, DiagnosticSpan, SourceMap,
-    diagnostic_projection::{DiagnosticCandidate, rule_candidate_without_default_span},
+    diagnostic_projection::{
+        DiagnosticCandidate, append_diagnostic_candidates_cancellable,
+        rule_candidate_without_default_span,
+    },
 };
 use merman_core::{
     BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
@@ -759,7 +762,8 @@ pub(crate) fn source_lint_candidates_cancellable(
         init_directive_alias_candidates_cancellable(source_map, source_config, cancellation)?;
     let mut candidates = alias_candidates;
     cancellation.checkpoint()?;
-    candidates.extend(
+    append_diagnostic_candidates_cancellable(
+        &mut candidates,
         prefer_frontmatter_config_candidates_with_config_cancellable(
             source,
             source_map,
@@ -767,21 +771,26 @@ pub(crate) fn source_lint_candidates_cancellable(
             source_config,
             cancellation,
         )?,
-    );
-    cancellation.checkpoint()?;
-    candidates.extend(deprecated_flowchart_html_labels_candidates(
-        source_map,
-        &DEPRECATED_FLOWCHART_HTML_LABELS_INIT_CONFIG_PATHS,
-        &DEPRECATED_FLOWCHART_HTML_LABELS_FRONTMATTER_CONFIG_PATHS,
-        source_config,
         cancellation,
-    )?);
+    )?;
     cancellation.checkpoint()?;
-    candidates.extend(deprecated_external_diagram_loading_candidates(
-        source_map,
-        source_config,
+    append_diagnostic_candidates_cancellable(
+        &mut candidates,
+        deprecated_flowchart_html_labels_candidates(
+            source_map,
+            &DEPRECATED_FLOWCHART_HTML_LABELS_INIT_CONFIG_PATHS,
+            &DEPRECATED_FLOWCHART_HTML_LABELS_FRONTMATTER_CONFIG_PATHS,
+            source_config,
+            cancellation,
+        )?,
         cancellation,
-    )?);
+    )?;
+    cancellation.checkpoint()?;
+    append_diagnostic_candidates_cancellable(
+        &mut candidates,
+        deprecated_external_diagram_loading_candidates(source_map, source_config, cancellation)?,
+        cancellation,
+    )?;
     cancellation.checkpoint()?;
     Ok(candidates)
 }

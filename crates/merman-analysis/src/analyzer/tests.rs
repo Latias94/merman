@@ -19,6 +19,29 @@ static MARKDOWN_CUSTOM_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 static MARKDOWN_PARTIAL_CAPTURE_CALLS: AtomicUsize = AtomicUsize::new(0);
 static REJECTED_SOURCE_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 
+fn capture_document_diagram_for_test(
+    analyzer: &Analyzer,
+    source: &str,
+    mode: super::CaptureMode,
+) -> super::CapturedDiagram {
+    let source = Arc::<str>::from(source);
+    let descriptor = SourceDescriptor::diagram();
+    let source_map = SourceMap::new(Arc::clone(&source));
+    let diagram = crate::document::whole_document_diagram(source, &descriptor);
+    let operation_analyzer = analyzer
+        .try_for_operation()
+        .expect("fixture operation should be admitted");
+    let cancellation = AnalysisCancellationToken::new();
+    operation_analyzer
+        .capture_document_diagram_cancellable(
+            &diagram,
+            &source_map,
+            mode,
+            super::CaptureCancellation::RecoverParserCancellation(&cancellation),
+        )
+        .expect("a private analysis cancellation token cannot be cancelled")
+}
+
 fn detect_captured_config_fixture(source: &str, _config: &mut merman_core::MermaidConfig) -> bool {
     source.trim_start().starts_with("captured-config-fixture")
 }
@@ -533,48 +556,38 @@ fn assert_single_remapped_flowchart_parse_error(source: &str, line: usize, colum
 #[test]
 fn diagnostics_only_capture_does_not_materialize_syntax_indexes() {
     let analyzer = Analyzer::new();
-    let captured =
-        analyzer.capture_local("flowchart TD\nA-->B\n", super::CaptureMode::DiagnosticsOnly);
+    let captured = capture_document_diagram_for_test(
+        &analyzer,
+        "flowchart TD\nA-->B\n",
+        super::CaptureMode::DiagnosticsOnly,
+    );
 
+    assert!(captured.syntax.is_none());
     assert!(
-        captured
-            .project_diagnostics(analyzer.options().diagnostic_policy())
-            .is_empty()
+        crate::diagnostic_projection::materialize_diagnostic_candidates(
+            &captured.candidates,
+            analyzer.options().diagnostic_policy(),
+        )
+        .is_empty()
     );
-    assert_eq!(
-        captured.syntax.diagram_type.as_deref(),
-        Some("flowchart-v2")
-    );
-    assert_eq!(captured.syntax.source(), FenceTextIndexSource::Unavailable);
-    assert!(captured.syntax.flowchart.is_none());
-    assert!(captured.syntax.text_index.node_ids().next().is_none());
-    assert!(captured.syntax.text_index.semantic_items().is_empty());
 }
 
 #[test]
 fn rich_capture_materializes_parser_syntax_indexes() {
     let analyzer = Analyzer::new();
-    let captured = analyzer.capture_local("flowchart TD\nA-->B\n", super::CaptureMode::RichFacts);
+    let captured = capture_document_diagram_for_test(
+        &analyzer,
+        "flowchart TD\nA-->B\n",
+        super::CaptureMode::RichFacts,
+    );
+    let syntax = captured.syntax.as_ref().expect("rich capture syntax");
 
-    assert_eq!(
-        captured.syntax.diagram_type.as_deref(),
-        Some("flowchart-v2")
-    );
-    assert_eq!(
-        captured.syntax.source(),
-        FenceTextIndexSource::ParserComplete
-    );
-    assert!(captured.syntax.flowchart.is_some());
+    assert_eq!(syntax.diagram_type.as_deref(), Some("flowchart-v2"));
+    assert_eq!(syntax.source(), FenceTextIndexSource::ParserComplete);
+    assert!(syntax.flowchart.is_some());
+    assert!(syntax.text_index.node_ids().any(|node_id| node_id == "A"));
     assert!(
-        captured
-            .syntax
-            .text_index
-            .node_ids()
-            .any(|node_id| node_id == "A")
-    );
-    assert!(
-        captured
-            .syntax
+        syntax
             .text_index
             .semantic_items()
             .iter()
@@ -688,8 +701,18 @@ fn rich_capture_retains_flowchart_facts_projection_failure_candidate() {
         super::CaptureMode::RichFacts,
     );
 
-    assert!(captured.syntax.flowchart.is_none());
-    let diagnostics = captured.project_diagnostics(analyzer.options().diagnostic_policy());
+    assert!(
+        captured
+            .syntax
+            .as_ref()
+            .expect("rich capture syntax")
+            .flowchart
+            .is_none()
+    );
+    let diagnostics = crate::diagnostic_projection::materialize_diagnostic_candidates(
+        &captured.candidates,
+        analyzer.options().diagnostic_policy(),
+    );
     let diagnostic = diagnostics
         .iter()
         .find(|diagnostic| diagnostic.id == crate::rules::FLOWCHART_FACTS_PROJECTION_RULE_ID)
@@ -747,7 +770,7 @@ fn diagnostic_reprojection_reuses_the_canonical_flowchart_projection_failure() {
     );
     let diagram = crate::AnalyzedDiagram::from_document_diagram(
         &document,
-        captured.syntax,
+        captured.syntax.expect("rich capture syntax"),
         captured.candidates,
         crate::DiagramParseDisposition::Parsed,
     );
@@ -840,19 +863,17 @@ fn diagnostics_only_capture_reports_the_canonical_flowchart_projection_failure()
         Vec::new(),
         super::CaptureMode::DiagnosticsOnly,
     );
-    let diagnostics = captured.project_diagnostics(analyzer.options().diagnostic_policy());
+    let diagnostics = crate::diagnostic_projection::materialize_diagnostic_candidates(
+        &captured.candidates,
+        analyzer.options().diagnostic_policy(),
+    );
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(
         diagnostics[0].id,
         crate::rules::FLOWCHART_FACTS_PROJECTION_RULE_ID
     );
-    assert_eq!(
-        captured.syntax.diagram_type.as_deref(),
-        Some("flowchart-v2")
-    );
-    assert_eq!(captured.syntax.source(), FenceTextIndexSource::Unavailable);
-    assert!(captured.syntax.flowchart.is_none());
+    assert!(captured.syntax.is_none());
 }
 
 #[test]
@@ -2017,11 +2038,13 @@ fn markdown_fallback_recovery_is_scoped_per_fence_and_decorated_last() {
             )),
             recovery.with_recovery_kind(merman_core::EditorSemanticDiagnosticKind::ParserRecovery),
         ];
-        let candidates = crate::document::normalize_document_diagnostic_candidates(
+        let candidates = crate::document::normalize_document_diagnostic_candidates_cancellable(
             document.source_map(),
             diagram,
             candidates,
-        );
+            &AnalysisCancellationToken::new(),
+        )
+        .expect("a private analysis cancellation token cannot be cancelled");
         analyzed.push(crate::AnalyzedDiagram::from_document_diagram(
             diagram,
             crate::AnalysisSyntaxFacts::unavailable(Some("flowchart-v2".to_string())),

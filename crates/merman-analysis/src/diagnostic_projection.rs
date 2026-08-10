@@ -241,6 +241,21 @@ pub(crate) fn materialize_diagnostic_candidates(
         .expect("a private analysis cancellation token cannot be cancelled")
 }
 
+pub(crate) fn append_diagnostic_candidates_cancellable(
+    target: &mut Vec<DiagnosticCandidate>,
+    candidates: Vec<DiagnosticCandidate>,
+    cancellation: &AnalysisCancellationToken,
+) -> Result<(), AnalysisCancelled> {
+    for (index, candidate) in candidates.into_iter().enumerate() {
+        if index.is_multiple_of(128) {
+            cancellation.checkpoint()?;
+        }
+        target.push(candidate);
+    }
+    cancellation.checkpoint()?;
+    Ok(())
+}
+
 fn candidate_enabled(
     candidate: &DiagnosticCandidate,
     rule_config: &crate::rules::AnalysisRuleConfig,
@@ -563,5 +578,80 @@ mod tests {
             RECOVERY_COUNT
         );
         assert_eq!(diagnostics.last().unwrap().message, "tail");
+    }
+
+    #[test]
+    fn candidate_retained_weight_counts_dynamic_fields_and_shared_fix_edits_once() {
+        fn retained_weight(candidates: &[DiagnosticCandidate]) -> usize {
+            let mut weight = crate::payload::DiagnosticRetainedWeight::default();
+            for candidate in candidates {
+                candidate.add_estimated_owned_heap_bytes(&mut weight);
+            }
+            weight.finish()
+        }
+
+        let span = SourceMap::new("flowchart TD\nA-->B\n")
+            .whole_source_span()
+            .expect("fixture span");
+        let base = DiagnosticCandidate::new(INVALID_THEME_COLOR_RULE, "message");
+        let rich = DiagnosticCandidate::new(
+            INVALID_THEME_COLOR_RULE,
+            "candidate message allocation".repeat(8),
+        )
+        .with_diagram_type("flowchart-v2".repeat(8))
+        .with_help("candidate help allocation".repeat(8))
+        .with_related(DiagnosticRelated {
+            message: "related allocation".repeat(8),
+            span: Some(span),
+        })
+        .with_fix(DiagnosticFix::new(
+            "fix allocation".repeat(8),
+            vec![crate::DiagnosticFixEdit::new(
+                span,
+                "replacement allocation".repeat(8),
+            )],
+        ));
+
+        assert!(retained_weight(&[rich]) > retained_weight(&[base]));
+
+        let make_fix = || {
+            DiagnosticFix::new(
+                "shared fix allocation".repeat(8),
+                vec![crate::DiagnosticFixEdit::new(
+                    span,
+                    "shared replacement allocation".repeat(8),
+                )],
+            )
+        };
+        let shared_fix = make_fix();
+        let shared = [
+            DiagnosticCandidate::new(INVALID_THEME_COLOR_RULE, "first")
+                .with_fix(shared_fix.clone()),
+            DiagnosticCandidate::new(INVALID_THEME_COLOR_RULE, "second").with_fix(shared_fix),
+        ];
+        let distinct = [
+            DiagnosticCandidate::new(INVALID_THEME_COLOR_RULE, "first").with_fix(make_fix()),
+            DiagnosticCandidate::new(INVALID_THEME_COLOR_RULE, "second").with_fix(make_fix()),
+        ];
+
+        assert!(retained_weight(&distinct) > retained_weight(&shared));
+    }
+
+    #[test]
+    fn candidate_append_observes_cancellation_during_large_moves() {
+        let candidates = (0..1_024)
+            .map(|index| {
+                DiagnosticCandidate::new(INVALID_THEME_COLOR_RULE, format!("candidate {index}"))
+            })
+            .collect();
+        let cancellation = AnalysisCancellationToken::new();
+        cancellation.cancel_after_checkpoints(2);
+        let mut appended = Vec::new();
+
+        assert!(matches!(
+            append_diagnostic_candidates_cancellable(&mut appended, candidates, &cancellation,),
+            Err(AnalysisCancelled)
+        ));
+        assert!(appended.len() < 1_024);
     }
 }
