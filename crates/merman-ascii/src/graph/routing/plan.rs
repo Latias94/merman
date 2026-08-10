@@ -212,7 +212,7 @@ impl RoutePlan {
                 diagram_type,
                 feature: "routes with missing endpoint marker cells",
             })?;
-        if cell.kind != PlannedRouteCellKind::EdgeArrow {
+        if cell.retired || cell.kind != PlannedRouteCellKind::EdgeArrow {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type,
                 feature: "routes with unmaterialized endpoint markers",
@@ -304,46 +304,6 @@ impl RoutePlan {
             });
         }
 
-        match endpoint {
-            MarkerEndpoint::Start => {
-                let Some(first_index) = anchor.cell.0.checked_add(1) else {
-                    return Ok(candidates);
-                };
-                for candidate_index in first_index..self.cells.len() {
-                    if candidates.len() >= MAX_MARKER_CANDIDATES {
-                        break;
-                    }
-                    resources.charge_layout_work(1)?;
-                    append_ordered_marker_candidate(
-                        self,
-                        candidate_index,
-                        candidate_index - 1,
-                        other_anchor,
-                        primary.segment,
-                        &coordinate_index,
-                        &mut candidates,
-                    )?;
-                }
-            }
-            MarkerEndpoint::End => {
-                for candidate_index in (0..anchor.cell.0).rev() {
-                    if candidates.len() >= MAX_MARKER_CANDIDATES {
-                        break;
-                    }
-                    resources.charge_layout_work(1)?;
-                    append_ordered_marker_candidate(
-                        self,
-                        candidate_index,
-                        candidate_index + 1,
-                        other_anchor,
-                        primary.segment,
-                        &coordinate_index,
-                        &mut candidates,
-                    )?;
-                }
-            }
-        }
-
         Ok(candidates)
     }
 
@@ -365,6 +325,14 @@ impl RoutePlan {
         })
     }
 
+    pub(super) const fn marker_point_direction(&self, endpoint: MarkerEndpoint) -> StepDirection {
+        match endpoint {
+            MarkerEndpoint::Start => self.anchors.start.point_direction,
+            MarkerEndpoint::End => self.anchors.end.point_direction,
+        }
+    }
+
+    #[cfg(test)]
     pub(super) fn materialize_marker_at(
         &mut self,
         endpoint: MarkerEndpoint,
@@ -372,6 +340,34 @@ impl RoutePlan {
         charset: &GraphCharset,
         diagram_type: &'static str,
     ) -> Result<()> {
+        self.materialize_marker_with_retired_tail(endpoint, candidate, &[], charset, diagram_type)
+    }
+
+    pub(super) fn materialize_marker_with_retired_tail(
+        &mut self,
+        endpoint: MarkerEndpoint,
+        candidate: MarkerCandidate,
+        retired_tail: &[MarkerCandidate],
+        charset: &GraphCharset,
+        diagram_type: &'static str,
+    ) -> Result<()> {
+        for retired in retired_tail {
+            if retired.cell == candidate.cell {
+                return Err(AsciiError::UnsupportedFeature {
+                    diagram_type,
+                    feature: "endpoint marker retirement includes selected berth",
+                });
+            }
+            let cell =
+                self.cells
+                    .get_mut(retired.cell.0)
+                    .ok_or(AsciiError::UnsupportedFeature {
+                        diagram_type,
+                        feature: "routes with missing retired terminal cells",
+                    })?;
+            cell.retired = true;
+        }
+
         let marker = match endpoint {
             MarkerEndpoint::Start => {
                 self.anchors.start = MarkerAnchor::new(candidate.cell, candidate.point_direction);
@@ -421,6 +417,12 @@ impl RoutePlan {
                 diagram_type,
                 feature: "routes with missing endpoint marker cells",
             })?;
+        if cell.retired {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type,
+                feature: "endpoint marker selected on a retired terminal cell",
+            });
+        }
         cell.ch = marker_char(marker, point_char(anchor.point_direction, charset), charset);
         cell.kind = PlannedRouteCellKind::EdgeArrow;
         cell.paint = PlannedRoutePaint::role(AsciiColorRole::EdgeArrow)
@@ -462,7 +464,7 @@ impl RoutePlan {
         let mut width = self.min_canvas_extent.width;
         let mut height = self.min_canvas_extent.height;
 
-        for cell in &self.cells {
+        for cell in self.cells.iter().filter(|cell| !cell.retired) {
             width = width.max(resources.checked_grid_add(cell.coord.x, 1)?);
             height = height.max(resources.checked_grid_add(cell.coord.y, 1)?);
         }
@@ -476,69 +478,6 @@ impl RoutePlan {
         }
 
         Ok((width, height))
-    }
-}
-
-fn append_ordered_marker_candidate(
-    plan: &RoutePlan,
-    candidate_index: usize,
-    closer_index: usize,
-    other_anchor: MarkerAnchor,
-    primary_segment: PlannedRouteSegment,
-    coordinate_index: &HashMap<CanvasCoord, PlannedCellId>,
-    candidates: &mut Vec<MarkerCandidate>,
-) -> Result<()> {
-    let candidate_id = PlannedCellId(candidate_index);
-    if candidate_id == other_anchor.cell {
-        return Ok(());
-    }
-    let (Some(candidate), Some(closer)) = (
-        plan.cells.get(candidate_index).copied(),
-        plan.cells.get(closer_index).copied(),
-    ) else {
-        return Ok(());
-    };
-    if candidate.segment != primary_segment
-        || candidates
-            .iter()
-            .any(|existing| existing.coord == candidate.coord)
-    {
-        return Ok(());
-    }
-    let Some(point_direction) = step_direction_between(candidate.coord, closer.coord) else {
-        return Ok(());
-    };
-    if marker_candidate_has_perpendicular_neighbor(
-        candidate.coord,
-        point_direction,
-        coordinate_index,
-    ) {
-        return Ok(());
-    }
-    candidates
-        .try_reserve(1)
-        .map_err(|_| AsciiError::AllocationFailed {
-            phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
-        })?;
-    candidates.push(MarkerCandidate {
-        cell: candidate_id,
-        coord: candidate.coord,
-        point_direction,
-        is_primary: false,
-    });
-    Ok(())
-}
-
-fn step_direction_between(from: CanvasCoord, toward: CanvasCoord) -> Option<StepDirection> {
-    if from.x.abs_diff(toward.x) + from.y.abs_diff(toward.y) != 1 {
-        return None;
-    }
-    match (from.x.cmp(&toward.x), from.y.cmp(&toward.y)) {
-        (std::cmp::Ordering::Equal, std::cmp::Ordering::Greater) => Some(StepDirection::Up),
-        (std::cmp::Ordering::Equal, std::cmp::Ordering::Less) => Some(StepDirection::Down),
-        (std::cmp::Ordering::Greater, std::cmp::Ordering::Equal) => Some(StepDirection::Left),
-        (std::cmp::Ordering::Less, std::cmp::Ordering::Equal) => Some(StepDirection::Right),
-        _ => None,
     }
 }
 
@@ -646,13 +585,13 @@ pub(super) struct PlannedRouteCell {
     pub(super) kind: PlannedRouteCellKind,
     pub(super) segment: PlannedRouteSegment,
     pub(super) paint: PlannedRoutePaint,
+    pub(super) retired: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct PlannedCellId(usize);
 
 impl PlannedCellId {
-    #[cfg(test)]
     pub(super) const fn new(index: usize) -> Self {
         Self(index)
     }
@@ -816,6 +755,7 @@ fn route_cell_in_segment(
         kind: PlannedRouteCellKind::RouteCell,
         segment,
         paint: PlannedRoutePaint::role(AsciiColorRole::EdgeLine),
+        retired: false,
     }
 }
 
@@ -835,6 +775,7 @@ fn edge_line_cell_in_segment(
         kind: PlannedRouteCellKind::EdgeLine,
         segment,
         paint: PlannedRoutePaint::role(AsciiColorRole::EdgeLine),
+        retired: false,
     }
 }
 

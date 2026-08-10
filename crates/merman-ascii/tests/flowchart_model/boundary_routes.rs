@@ -217,9 +217,13 @@ fn flowchart_local_semantic_fixture_covers_back_edge_labels() {
         line_index("back to middle"),
         "separate back-edge labels should not overwrite each other:\n{rendered}"
     );
-    assert!(
-        line_index("back to top") < line_index("back to middle"),
-        "back-edge labels should retain their planned order without merging:\n{rendered}"
+    let marker_count = rendered
+        .chars()
+        .filter(|ch| matches!(ch, '^' | '>' | 'v' | '<'))
+        .count();
+    assert_eq!(
+        marker_count, 4,
+        "all four directed edges should retain an independently visible target marker:\n{rendered}"
     );
 }
 

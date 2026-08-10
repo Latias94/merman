@@ -1612,6 +1612,7 @@ fn cell(x: usize, y: usize, ch: char, kind: PlannedRouteCellKind) -> PlannedRout
                 AsciiColorRole::EdgeLine
             }
         }),
+        retired: false,
     }
 }
 
