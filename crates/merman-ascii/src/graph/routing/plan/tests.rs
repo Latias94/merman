@@ -18,8 +18,8 @@ use crate::graph::charset::GraphCharset;
 use crate::graph::label::GraphLabel;
 use crate::graph::layout::{GraphLayout, GridCoord, NodeLayout, layout_graph};
 use crate::graph::model::{
-    AsciiGraph, AsciiGraphEdge, GraphDirection, GraphEdgeArrow, GraphEdgeStroke, GraphEdgeStyle,
-    GraphNodeShape, GraphNodeStyle,
+    AsciiGraph, AsciiGraphEdge, GraphDirection, GraphEdgeArrow, GraphEdgeMarker, GraphEdgeStroke,
+    GraphEdgeStyle, GraphNodeShape, GraphNodeStyle,
 };
 use crate::graph::routing::label::RoutedLabelPlacement;
 use crate::graph::routing::label::RoutedLabelText;
@@ -70,6 +70,56 @@ fn planned_route_cells_debit_before_materializing_exact_and_max_minus_one() {
     assert_eq!(details.limit, AsciiResourceLimitId::MaxLayoutWorkUnits);
     assert_eq!(details.actual, 2);
     assert_eq!(details.max, 1);
+}
+
+#[test]
+fn marker_candidates_carry_the_contiguous_route_local_terminal_tail() {
+    let plan = RoutePlan::new(
+        (0..4)
+            .map(|x| cell(x, 0, '-', PlannedRouteCellKind::RouteCell))
+            .collect(),
+        Vec::new(),
+        MarkerAnchors::new(
+            MarkerAnchor::new(PlannedCellId::new(0), StepDirection::Left),
+            MarkerAnchor::new(PlannedCellId::new(3), StepDirection::Right),
+        ),
+    )
+    .with_marker_requests(GraphEdgeMarker::Open, GraphEdgeMarker::Point, "flowchart")
+    .unwrap();
+    let mut resources = unbounded_route_resources();
+
+    let candidates = plan
+        .marker_candidates(MarkerEndpoint::End, "flowchart", &mut resources)
+        .unwrap();
+
+    assert_eq!(candidates.len(), 3);
+    assert!(candidates[0].terminal_tail().is_empty());
+    assert_eq!(candidates[1].terminal_tail(), &[PlannedCellId::new(3)]);
+    assert_eq!(
+        candidates[2].terminal_tail(),
+        &[PlannedCellId::new(3), PlannedCellId::new(2)]
+    );
+    assert!(candidates[1].follows_terminal_predecessor(candidates[0]));
+    assert!(candidates[2].follows_terminal_predecessor(candidates[1]));
+}
+
+#[test]
+fn self_loop_marker_candidates_stop_before_the_terminal_corner() {
+    let from = node("a", 0, 0, 3, 3);
+    let layouts = vec![from.clone()];
+    let edge = edge_between("a", "a", None, GraphEdgeArrow::Point);
+    let edges = vec![edge.clone()];
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+    let plan = plan_left_right_self_loop_route(&layouts, &edges, &from, &edge, &charset).unwrap();
+    let mut resources = unbounded_route_resources();
+
+    let candidates = plan
+        .marker_candidates(MarkerEndpoint::End, "flowchart", &mut resources)
+        .unwrap();
+
+    assert_eq!(candidates.len(), 1);
+    assert!(candidates[0].is_primary());
+    assert!(candidates[0].terminal_tail().is_empty());
 }
 
 #[test]
@@ -1612,7 +1662,6 @@ fn cell(x: usize, y: usize, ch: char, kind: PlannedRouteCellKind) -> PlannedRout
                 AsciiColorRole::EdgeLine
             }
         }),
-        retired: false,
     }
 }
 

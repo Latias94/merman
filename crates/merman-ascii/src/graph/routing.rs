@@ -319,7 +319,7 @@ pub(super) fn prepare_route_scene_with_resources(
     let mut planned_cell_count = 0usize;
     for route in &routes {
         planned_cell_count = planned_cell_count
-            .checked_add(route.plan.cells.iter().filter(|cell| !cell.retired).count())
+            .checked_add(route.plan.active_cells().count())
             .ok_or_else(|| {
                 resources
                     .policy()
@@ -524,7 +524,7 @@ fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) -> Result<
 }
 
 fn paint_route_plan_body(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) -> Result<()> {
-    for cell in plan.cells.iter().filter(|cell| !cell.retired) {
+    for (_, cell) in plan.active_cells() {
         match cell.kind {
             PlannedRouteCellKind::EdgeLine => set_edge_cell_with_paint(
                 drawing.canvas,
@@ -548,7 +548,7 @@ fn paint_route_plan_body(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) -> Re
 }
 
 fn paint_route_plan_markers(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) -> Result<()> {
-    for cell in plan.cells.iter().filter(|cell| !cell.retired) {
+    for (_, cell) in plan.active_cells() {
         if cell.kind == PlannedRouteCellKind::EdgeArrow {
             set_edge_cell_with_paint(
                 drawing.canvas,
@@ -586,7 +586,10 @@ fn allocate_marker_berths(
                 .plan
                 .marker_candidates(endpoint, diagram_type, resources)?;
             if !candidates.is_empty() {
-                for candidate in candidates.iter().filter(|candidate| !candidate.is_primary) {
+                for candidate in candidates
+                    .iter()
+                    .filter(|candidate| !candidate.is_primary())
+                {
                     resources.charge_layout_work(1)?;
                     occupancy.register_terminal_claim(
                         candidate.coord,
@@ -625,8 +628,12 @@ fn allocate_marker_berths(
 
     for marker in pending {
         let mut selected = None;
-        for (candidate_index, candidate) in marker.candidates.iter().copied().enumerate() {
+        let mut predecessor = None;
+        for candidate in marker.candidates.iter().copied() {
             resources.charge_layout_work(1)?;
+            if !marker_candidate_continues_chain(predecessor, candidate) {
+                break;
+            }
             match occupancy.marker_candidate_disposition(
                 routes,
                 marker.route_index,
@@ -635,31 +642,30 @@ fn allocate_marker_berths(
                 resources,
             )? {
                 MarkerCandidateDisposition::Available => {
-                    selected = Some((candidate_index, candidate));
+                    selected = Some(candidate);
                     break;
                 }
-                MarkerCandidateDisposition::CompatiblePassThrough => {}
+                MarkerCandidateDisposition::CompatiblePassThrough => {
+                    predecessor = Some(candidate);
+                }
                 MarkerCandidateDisposition::Blocked => break,
             }
         }
-        let Some((candidate_index, candidate)) = selected else {
+        let Some(candidate) = selected else {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type,
                 feature: "independent endpoint marker berth exhausted",
             });
         };
-        routes[marker.route_index]
-            .plan
-            .materialize_marker_with_retired_tail(
-                marker.endpoint,
-                candidate,
-                &marker.candidates[..candidate_index],
-                charset,
-                diagram_type,
-            )?;
-        occupancy.retire_route_terminal_tail(
+        routes[marker.route_index].plan.materialize_marker_at(
+            marker.endpoint,
+            candidate,
+            charset,
+            diagram_type,
+        )?;
+        occupancy.suppress_route_terminal_tail(
             marker.route_index,
-            &marker.candidates[..candidate_index],
+            candidate.terminal_tail(),
             &routes[marker.route_index].plan,
             resources,
             diagram_type,
@@ -697,6 +703,16 @@ enum MarkerCandidateDisposition {
     Blocked,
 }
 
+fn marker_candidate_continues_chain(
+    predecessor: Option<MarkerCandidate>,
+    candidate: MarkerCandidate,
+) -> bool {
+    match predecessor {
+        Some(predecessor) => candidate.follows_terminal_predecessor(predecessor),
+        None => candidate.is_primary(),
+    }
+}
+
 const fn marker_endpoint_order(endpoint: MarkerEndpoint) -> u8 {
     match endpoint {
         MarkerEndpoint::Start => 0,
@@ -714,6 +730,43 @@ fn marker_occupant_is_compatible(
         route.owner.endpoint_id(marker.endpoint) == endpoint_id
             && route.plan.marker_point_direction(marker.endpoint) == point_direction
     })
+}
+
+fn terminal_claim_is_compatible(
+    routes: &[PreparedRoute],
+    claim: &TerminalClaim,
+    endpoint_id: &str,
+    point_direction: StepDirection,
+) -> bool {
+    claim.point_direction == point_direction
+        && routes
+            .get(claim.route_index)
+            .is_some_and(|route| route.owner.endpoint_id(claim.endpoint) == endpoint_id)
+}
+
+fn terminal_claims_allow_route_cell(
+    existing_routes: &[PreparedRoute],
+    owner: &RouteOwner,
+    claims: &[TerminalClaim],
+    resources: &mut ResourceContext,
+) -> Result<bool> {
+    for endpoint_id in [&owner.from, &owner.to] {
+        let mut all_incident_to_endpoint = true;
+        for claim in claims {
+            resources.charge_layout_work(1)?;
+            if !existing_routes
+                .get(claim.route_index)
+                .is_some_and(|route| route.owner.endpoint_id(claim.endpoint) == endpoint_id)
+            {
+                all_incident_to_endpoint = false;
+                break;
+            }
+        }
+        if all_incident_to_endpoint {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1045,7 +1098,7 @@ impl<'layout> SceneOccupancy<'layout> {
     ) -> Result<Option<RouteCandidateScore>> {
         let mut shared_cells = 0usize;
 
-        for cell in plan.cells.iter().filter(|cell| !cell.retired) {
+        for (_, cell) in plan.active_cells() {
             resources.charge_layout_work(self.protected.len().max(1))?;
             let crosses_reserved = self.protected.iter().any(|protected| {
                 let is_endpoint_port = protected.allows_endpoint_port(&owner.from, cell.coord)
@@ -1057,6 +1110,11 @@ impl<'layout> SceneOccupancy<'layout> {
                 protected.shape.contains(cell.coord) && !is_endpoint_port && !is_owned_group_border
             });
             if crosses_reserved {
+                return Ok(None);
+            }
+            if let Some(claims) = self.terminal_claims.get(&cell.coord)
+                && !terminal_claims_allow_route_cell(existing_routes, owner, claims, resources)?
+            {
                 return Ok(None);
             }
             if self.route_cells.contains_key(&cell.coord) {
@@ -1076,8 +1134,12 @@ impl<'layout> SceneOccupancy<'layout> {
                 continue;
             }
             let mut available = 0usize;
+            let mut predecessor = None;
             for candidate in candidates.iter().copied() {
                 resources.charge_layout_work(1)?;
+                if !marker_candidate_continues_chain(predecessor, candidate) {
+                    break;
+                }
                 match self.marker_candidate_disposition_before_commit(
                     existing_routes,
                     owner,
@@ -1086,8 +1148,11 @@ impl<'layout> SceneOccupancy<'layout> {
                 ) {
                     MarkerCandidateDisposition::Available => {
                         available = resources.checked_work_add(available, 1)?;
+                        predecessor = Some(candidate);
                     }
-                    MarkerCandidateDisposition::CompatiblePassThrough => {}
+                    MarkerCandidateDisposition::CompatiblePassThrough => {
+                        predecessor = Some(candidate);
+                    }
                     MarkerCandidateDisposition::Blocked => break,
                 }
             }
@@ -1100,7 +1165,7 @@ impl<'layout> SceneOccupancy<'layout> {
             )?;
         }
 
-        let cell_count = plan.cells.len();
+        let cell_count = plan.active_cells().count();
         let total_cost = resources.checked_work_add(cell_count, shared_cells)?;
         Ok(Some(RouteCandidateScore {
             total_cost,
@@ -1119,20 +1184,16 @@ impl<'layout> SceneOccupancy<'layout> {
             return Ok(true);
         }
 
-        let route_bounds =
-            plan.cells
-                .iter()
-                .filter(|cell| !cell.retired)
-                .fold(None, |bounds, cell| {
-                    let mut bounds = bounds.unwrap_or(RouteBounds {
-                        min_x: cell.coord.x,
-                        max_x: cell.coord.x,
-                        min_y: cell.coord.y,
-                        max_y: cell.coord.y,
-                    });
-                    bounds.include(cell.coord);
-                    Some(bounds)
-                });
+        let route_bounds = plan.active_cells().fold(None, |bounds, (_, cell)| {
+            let mut bounds = bounds.unwrap_or(RouteBounds {
+                min_x: cell.coord.x,
+                max_x: cell.coord.x,
+                min_y: cell.coord.y,
+                max_y: cell.coord.y,
+            });
+            bounds.include(cell.coord);
+            Some(bounds)
+        });
 
         for label in &plan.labels {
             resources.charge_layout_work(1)?;
@@ -1200,7 +1261,7 @@ impl<'layout> SceneOccupancy<'layout> {
         }
 
         resources.charge_layout_work(plan.cells.len())?;
-        if plan.cells.iter().filter(|cell| !cell.retired).any(|cell| {
+        if plan.active_cells().any(|(_, cell)| {
             candidate.contains(cell.coord.x, cell.coord.y)
                 && !label_anchor_contains(anchor, cell.coord, cell.segment)
         }) {
@@ -1219,7 +1280,7 @@ impl<'layout> SceneOccupancy<'layout> {
         let endpoint_id = owner.endpoint_id(endpoint);
         if !self.protected.iter().all(|protected| {
             !protected.shape.contains(candidate.coord)
-                || (candidate.is_primary
+                || (candidate.is_primary()
                     && (protected.allows_endpoint_port(endpoint_id, candidate.coord)
                         || (protected.kind == ProtectedKind::GroupBorder
                             && (protected.allows_endpoint_port(&owner.from, candidate.coord)
@@ -1243,10 +1304,12 @@ impl<'layout> SceneOccupancy<'layout> {
 
         let claims = self.terminal_claims.get(&candidate.coord);
         let compatible_claim = |claim: &TerminalClaim| {
-            claim.point_direction == candidate.point_direction
-                && existing_routes
-                    .get(claim.route_index)
-                    .is_some_and(|route| route.owner.endpoint_id(claim.endpoint) == endpoint_id)
+            terminal_claim_is_compatible(
+                existing_routes,
+                claim,
+                endpoint_id,
+                candidate.point_direction,
+            )
         };
         if claims.is_some_and(|claims| claims.iter().any(|claim| !compatible_claim(claim))) {
             return MarkerCandidateDisposition::Blocked;
@@ -1280,7 +1343,10 @@ impl<'layout> SceneOccupancy<'layout> {
         let mut bounds: Option<RouteBounds> = None;
         for (cell_index, cell) in route.plan.cells.iter().enumerate() {
             resources.charge_layout_work(1)?;
-            if cell.retired {
+            if route
+                .plan
+                .is_cell_suppressed(PlannedCellId::new(cell_index))
+            {
                 continue;
             }
             match &mut bounds {
@@ -1335,23 +1401,23 @@ impl<'layout> SceneOccupancy<'layout> {
     }
 
     fn register_terminal_claim(&mut self, coord: CanvasCoord, claim: TerminalClaim) -> Result<()> {
-        match self.terminal_claims.entry(coord) {
-            Entry::Occupied(mut occupied) => {
-                occupied
-                    .get_mut()
-                    .try_reserve(1)
-                    .map_err(|_| layout_allocation_failed())?;
-                occupied.get_mut().push(claim);
-            }
-            Entry::Vacant(vacant) => {
-                let mut claims = Vec::new();
-                claims
-                    .try_reserve(1)
-                    .map_err(|_| layout_allocation_failed())?;
-                claims.push(claim);
-                vacant.insert(claims);
-            }
+        if let Some(claims) = self.terminal_claims.get_mut(&coord) {
+            claims
+                .try_reserve(1)
+                .map_err(|_| layout_allocation_failed())?;
+            claims.push(claim);
+            return Ok(());
         }
+
+        self.terminal_claims
+            .try_reserve(1)
+            .map_err(|_| layout_allocation_failed())?;
+        let mut claims = Vec::new();
+        claims
+            .try_reserve(1)
+            .map_err(|_| layout_allocation_failed())?;
+        claims.push(claim);
+        self.terminal_claims.insert(coord, claims);
         Ok(())
     }
 
@@ -1478,7 +1544,7 @@ impl<'layout> SceneOccupancy<'layout> {
         for protected in &self.protected {
             resources.charge_layout_work(1)?;
             if protected.shape.contains(candidate.coord)
-                && !(candidate.is_primary
+                && !(candidate.is_primary()
                     && (protected.allows_endpoint_port(endpoint_id, candidate.coord)
                         || (protected.kind == ProtectedKind::GroupBorder
                             && (protected.allows_endpoint_port(
@@ -1536,8 +1602,12 @@ impl<'layout> SceneOccupancy<'layout> {
             resources.charge_layout_work(claims.len())?;
             let compatible = claims.iter().any(|claim| {
                 claim.route_index == owner.route_index
-                    && claim.point_direction == candidate.point_direction
-                    && routes[claim.route_index].owner.endpoint_id(claim.endpoint) == endpoint_id
+                    && terminal_claim_is_compatible(
+                        routes,
+                        claim,
+                        endpoint_id,
+                        candidate.point_direction,
+                    )
             });
             if !compatible {
                 return Ok(MarkerCandidateDisposition::Blocked);
@@ -1546,40 +1616,46 @@ impl<'layout> SceneOccupancy<'layout> {
         Ok(MarkerCandidateDisposition::Available)
     }
 
-    fn retire_route_terminal_tail(
+    fn suppress_route_terminal_tail(
         &mut self,
         route_index: usize,
-        retired_tail: &[MarkerCandidate],
+        suppressed_tail: &[PlannedCellId],
         plan: &RoutePlan,
         resources: &mut ResourceContext,
         diagram_type: &'static str,
     ) -> Result<()> {
-        if retired_tail.is_empty() {
+        if suppressed_tail.is_empty() {
             return Ok(());
         }
 
-        for retired in retired_tail {
+        for suppressed in suppressed_tail {
+            let Some(cell) = plan.cells.get(suppressed.index()) else {
+                return Err(AsciiError::UnsupportedFeature {
+                    diagram_type,
+                    feature: "routes with missing suppressed terminal cells",
+                });
+            };
             let mut remove_coord = false;
-            if let Some(occupancy) = self.route_cells.get_mut(&retired.coord) {
+            if let Some(occupancy) = self.route_cells.get_mut(&cell.coord) {
                 resources.charge_layout_work(occupancy.owners.len())?;
                 occupancy
                     .owners
-                    .retain(|owner| owner.route_index != route_index || owner.cell != retired.cell);
+                    .retain(|owner| owner.route_index != route_index || owner.cell != *suppressed);
                 remove_coord = occupancy.owners.is_empty();
             }
             if remove_coord {
-                self.route_cells.remove(&retired.coord);
+                self.route_cells.remove(&cell.coord);
             }
         }
 
         let Some(bounds_slot) = self.route_bounds.get_mut(route_index) else {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type,
-                feature: "route terminal retirement without owned bounds",
+                feature: "route terminal suppression without owned bounds",
             });
         };
         let mut bounds: Option<RouteBounds> = None;
-        for cell in plan.cells.iter().filter(|cell| !cell.retired) {
+        for (_, cell) in plan.active_cells() {
             resources.charge_layout_work(1)?;
             match &mut bounds {
                 Some(bounds) => bounds.include(cell.coord),
@@ -1780,7 +1856,7 @@ fn resolve_label_anchor(
     };
 
     let mut selected = None;
-    for cell in plan.cells.iter().filter(|cell| !cell.retired) {
+    for (_, cell) in plan.active_cells() {
         resources.charge_layout_work(1)?;
         let distance = original.point_distance(cell.coord, resources)?;
         let hint_distance = resources
@@ -2326,15 +2402,26 @@ mod tests {
     }
 
     #[test]
-    fn relocated_marker_retires_only_its_route_local_terminal_tail() {
+    fn relocated_marker_suppresses_only_its_route_local_terminal_tail() {
         let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
         let mut routes = vec![
             PreparedRoute::for_test(marker_request_plan(GraphEdgeMarker::Circle, 3), 0),
             PreparedRoute::for_test(marker_request_plan(GraphEdgeMarker::Cross, 3), 1),
         ];
         let mut resources = unbounded_resources();
+        let options = AsciiRenderOptions::ascii();
+        let graph_layout = layout_graph(&AsciiGraph::new(GraphDirection::TopDown), &options);
+        let mut occupancy =
+            SceneOccupancy::try_new(&routes, &graph_layout, &mut resources, "flowchart").unwrap();
 
-        allocate_test_marker_berths(&mut routes, &charset, &mut resources).unwrap();
+        allocate_marker_berths(
+            &mut routes,
+            &mut occupancy,
+            &charset,
+            &mut resources,
+            "flowchart",
+        )
+        .unwrap();
 
         let mut local_canvas = RawCanvas::with_width_profile(3, 1, TerminalWidthProfile::Unicode);
         let mut local_cells = RouteCells::new();
@@ -2343,6 +2430,23 @@ mod tests {
             &routes[1].plan,
         )
         .unwrap();
+        assert!(routes[1].plan.is_cell_suppressed(PlannedCellId::new(2)));
+        assert!(!routes[0].plan.is_cell_suppressed(PlannedCellId::new(2)));
+        let shared_owners = &occupancy
+            .route_cells
+            .get(&CanvasCoord { x: 2, y: 0 })
+            .expect("the unsuppressed route must retain the shared coordinate")
+            .owners;
+        assert!(
+            shared_owners
+                .iter()
+                .any(|owner| { owner.route_index == 0 && owner.cell == PlannedCellId::new(2) })
+        );
+        assert!(
+            !shared_owners
+                .iter()
+                .any(|owner| { owner.route_index == 1 && owner.cell == PlannedCellId::new(2) })
+        );
         assert_eq!(local_canvas.get(0, 0), Some('-'));
         assert_eq!(local_canvas.get(1, 0), Some('x'));
         assert_eq!(
@@ -2365,8 +2469,57 @@ mod tests {
         assert_eq!(
             shared_canvas.get(2, 0),
             Some('o'),
-            "retiring one route's terminal tail must preserve the other route's marker ownership"
+            "suppressing one route's terminal tail must preserve the other route's marker ownership"
         );
+    }
+
+    #[test]
+    fn relocated_marker_suppresses_a_three_cell_mixed_body_tail() {
+        let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+        let mut plan = RoutePlan::new(
+            vec![
+                planned_cell(0, 0, '-', PlannedRouteCellKind::EdgeLine),
+                planned_cell(1, 0, '-', PlannedRouteCellKind::RouteCell),
+                planned_cell(2, 0, '-', PlannedRouteCellKind::EdgeLine),
+                planned_cell(3, 0, '-', PlannedRouteCellKind::RouteCell),
+                planned_cell(4, 0, '-', PlannedRouteCellKind::EdgeLine),
+            ],
+            Vec::new(),
+            MarkerAnchors::new(
+                MarkerAnchor::new(PlannedCellId::new(0), StepDirection::Left),
+                MarkerAnchor::new(PlannedCellId::new(4), StepDirection::Right),
+            ),
+        )
+        .with_marker_requests(GraphEdgeMarker::Open, GraphEdgeMarker::Point, "flowchart")
+        .unwrap();
+        let mut resources = unbounded_resources();
+        let candidates = plan
+            .marker_candidates(MarkerEndpoint::End, "flowchart", &mut resources)
+            .unwrap();
+        let candidate = candidates[3];
+
+        plan.materialize_marker_at(MarkerEndpoint::End, candidate, &charset, "flowchart")
+            .unwrap();
+
+        let mut canvas = RawCanvas::with_width_profile(5, 1, TerminalWidthProfile::Unicode);
+        let mut route_cells = RouteCells::new();
+        paint_route_plan(&mut RouteDrawing::new(&mut canvas, &mut route_cells), &plan).unwrap();
+        assert_eq!(
+            candidate.terminal_tail(),
+            &[
+                PlannedCellId::new(4),
+                PlannedCellId::new(3),
+                PlannedCellId::new(2),
+            ]
+        );
+        for suppressed in candidate.terminal_tail() {
+            assert!(plan.is_cell_suppressed(*suppressed));
+        }
+        assert_eq!(canvas.get(0, 0), Some('-'));
+        assert_eq!(canvas.get(1, 0), Some('>'));
+        assert_eq!(canvas.get(2, 0), Some(' '));
+        assert_eq!(canvas.get(3, 0), Some(' '));
+        assert_eq!(canvas.get(4, 0), Some(' '));
     }
 
     #[test]
@@ -2398,9 +2551,8 @@ mod tests {
             assert!(
                 route
                     .plan
-                    .cells
-                    .iter()
-                    .filter(|cell| !cell.retired)
+                    .active_cells()
+                    .map(|(_, cell)| cell)
                     .all(|cell| cell.coord.x <= marker_x),
                 "each route must terminate at its independently allocated marker"
             );
@@ -2505,6 +2657,136 @@ mod tests {
         assert!(
             score.is_none(),
             "an unrelated crossing at the terminal must force another route candidate"
+        );
+    }
+
+    #[test]
+    fn route_score_rejects_a_later_crossing_of_a_reserved_primary_terminal() {
+        let options = AsciiRenderOptions::ascii();
+        let graph_layout = layout_graph(&AsciiGraph::new(GraphDirection::TopDown), &options);
+        let existing_routes = vec![PreparedRoute::for_test_with_endpoints(
+            marker_request_plan_at_y(GraphEdgeMarker::Point, 3, 1),
+            0,
+            "source",
+            "target",
+        )];
+        let crossing_route = PreparedRoute::for_test_with_endpoints(
+            vertical_route_plan_at_x(2),
+            1,
+            "other-a",
+            "other-b",
+        );
+        let fallback_route = PreparedRoute::for_test_with_endpoints(
+            vertical_route_plan_at_x(3),
+            1,
+            "other-a",
+            "other-b",
+        );
+        let mut resources = unbounded_resources();
+        let occupancy =
+            SceneOccupancy::try_new(&existing_routes, &graph_layout, &mut resources, "flowchart")
+                .unwrap();
+
+        let crossing_score = occupancy
+            .score_route(
+                &existing_routes,
+                &crossing_route.plan,
+                &crossing_route.owner,
+                &mut resources,
+                "flowchart",
+            )
+            .unwrap();
+        let fallback_score = occupancy
+            .score_route(
+                &existing_routes,
+                &fallback_route.plan,
+                &fallback_route.owner,
+                &mut resources,
+                "flowchart",
+            )
+            .unwrap();
+
+        assert!(
+            crossing_score.is_none(),
+            "a later route must not overwrite an already committed primary terminal corridor"
+        );
+        assert!(
+            fallback_score.is_some(),
+            "rejecting the crossing candidate must leave a clear fallback admissible"
+        );
+    }
+
+    #[test]
+    fn route_score_allows_an_incident_route_to_share_a_terminal_corridor() {
+        let options = AsciiRenderOptions::ascii();
+        let graph_layout = layout_graph(&AsciiGraph::new(GraphDirection::TopDown), &options);
+        let existing_routes = vec![PreparedRoute::for_test_with_endpoints(
+            marker_request_plan_at_y(GraphEdgeMarker::Point, 3, 1),
+            0,
+            "source",
+            "shared",
+        )];
+        let incident_route = PreparedRoute::for_test_with_endpoints(
+            vertical_route_plan_at_x(2),
+            1,
+            "shared",
+            "other",
+        );
+        let mut resources = unbounded_resources();
+        let occupancy =
+            SceneOccupancy::try_new(&existing_routes, &graph_layout, &mut resources, "flowchart")
+                .unwrap();
+
+        let score = occupancy
+            .score_route(
+                &existing_routes,
+                &incident_route.plan,
+                &incident_route.owner,
+                &mut resources,
+                "flowchart",
+            )
+            .unwrap();
+
+        assert!(
+            score.is_some(),
+            "routes incident to the same authored endpoint may share its terminal corridor"
+        );
+    }
+
+    #[test]
+    fn route_score_does_not_reserve_an_unused_secondary_marker_corridor() {
+        let options = AsciiRenderOptions::ascii();
+        let graph_layout = layout_graph(&AsciiGraph::new(GraphDirection::TopDown), &options);
+        let existing_routes = vec![PreparedRoute::for_test_with_endpoints(
+            marker_request_plan_at_y(GraphEdgeMarker::Circle, 4, 1),
+            0,
+            "source",
+            "target",
+        )];
+        let crossing_route = PreparedRoute::for_test_with_endpoints(
+            vertical_route_plan_at_x(2),
+            1,
+            "other-a",
+            "other-b",
+        );
+        let mut resources = unbounded_resources();
+        let occupancy =
+            SceneOccupancy::try_new(&existing_routes, &graph_layout, &mut resources, "flowchart")
+                .unwrap();
+
+        let crossing_score = occupancy
+            .score_route(
+                &existing_routes,
+                &crossing_route.plan,
+                &crossing_route.owner,
+                &mut resources,
+                "flowchart",
+            )
+            .unwrap();
+
+        assert!(
+            crossing_score.is_some(),
+            "an unused fallback marker berth must not reject an otherwise valid crossing route"
         );
     }
 
@@ -2814,8 +3096,12 @@ mod tests {
     }
 
     fn marker_request_plan(marker: GraphEdgeMarker, length: usize) -> RoutePlan {
+        marker_request_plan_at_y(marker, length, 0)
+    }
+
+    fn marker_request_plan_at_y(marker: GraphEdgeMarker, length: usize, y: usize) -> RoutePlan {
         let cells = (0..length)
-            .map(|x| planned_cell(x, 0, '-', PlannedRouteCellKind::EdgeLine))
+            .map(|x| planned_cell(x, y, '-', PlannedRouteCellKind::EdgeLine))
             .collect::<Vec<_>>();
         let start = MarkerAnchor::new(PlannedCellId::new(0), StepDirection::Left);
         let end = MarkerAnchor::new(
@@ -2825,6 +3111,19 @@ mod tests {
         RoutePlan::new(cells, Vec::new(), MarkerAnchors::new(start, end))
             .with_marker_requests(GraphEdgeMarker::Open, marker, "flowchart")
             .unwrap()
+    }
+
+    fn vertical_route_plan_at_x(x: usize) -> RoutePlan {
+        RoutePlan::new(
+            (0..=2)
+                .map(|y| planned_cell(x, y, '|', PlannedRouteCellKind::EdgeLine))
+                .collect(),
+            Vec::new(),
+            MarkerAnchors::new(
+                MarkerAnchor::new(PlannedCellId::new(0), StepDirection::Up),
+                MarkerAnchor::new(PlannedCellId::new(2), StepDirection::Down),
+            ),
+        )
     }
 
     fn labeled_plan(x: usize, y: usize, text: &str) -> RoutePlan {
@@ -3296,7 +3595,6 @@ mod tests {
                     AsciiColorRole::EdgeLine
                 }
             }),
-            retired: false,
         }
     }
 }

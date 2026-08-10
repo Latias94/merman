@@ -7,7 +7,7 @@ use crate::canvas::CanvasColor;
 use crate::color::{AsciiColorRole, AsciiRgb};
 use crate::error::{AsciiError, Result};
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 mod boundary;
 mod candidates;
@@ -34,6 +34,7 @@ pub(super) struct RoutePlan {
     anchors: MarkerAnchors,
     start_marker: GraphEdgeMarker,
     end_marker: GraphEdgeMarker,
+    suppressed_cells: HashSet<PlannedCellId>,
     min_canvas_extent: CanvasExtent,
 }
 
@@ -70,15 +71,65 @@ pub(super) enum MarkerEndpoint {
     End,
 }
 
+pub(super) const MAX_MARKER_CANDIDATES: usize = 8;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MarkerTerminalTail {
+    cells: [PlannedCellId; MAX_MARKER_CANDIDATES],
+    len: usize,
+}
+
+impl MarkerTerminalTail {
+    const fn empty() -> Self {
+        Self {
+            cells: [PlannedCellId(0); MAX_MARKER_CANDIDATES],
+            len: 0,
+        }
+    }
+
+    fn with_appended(mut self, cell: PlannedCellId) -> Option<Self> {
+        let slot = self.cells.get_mut(self.len)?;
+        *slot = cell;
+        self.len += 1;
+        Some(self)
+    }
+
+    fn as_slice(&self) -> &[PlannedCellId] {
+        &self.cells[..self.len]
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct MarkerCandidate {
     pub(super) cell: PlannedCellId,
     pub(super) coord: CanvasCoord,
     pub(super) point_direction: StepDirection,
-    pub(super) is_primary: bool,
+    terminal_tail: MarkerTerminalTail,
 }
 
-pub(super) const MAX_MARKER_CANDIDATES: usize = 8;
+impl MarkerCandidate {
+    pub(super) fn is_primary(&self) -> bool {
+        self.terminal_tail.as_slice().is_empty()
+    }
+
+    pub(super) fn terminal_tail(&self) -> &[PlannedCellId] {
+        self.terminal_tail.as_slice()
+    }
+
+    pub(super) fn follows_terminal_predecessor(self, predecessor: Self) -> bool {
+        let Some((last, prefix)) = self.terminal_tail.as_slice().split_last() else {
+            return false;
+        };
+        *last == predecessor.cell
+            && prefix == predecessor.terminal_tail.as_slice()
+            && self.point_direction == predecessor.point_direction
+            && marker_candidate_is_immediately_inward(
+                predecessor.coord,
+                self.coord,
+                self.point_direction,
+            )
+    }
+}
 
 impl MarkerAnchors {
     pub(super) const fn new(start: MarkerAnchor, end: MarkerAnchor) -> Self {
@@ -99,6 +150,7 @@ impl RoutePlan {
             anchors,
             start_marker: GraphEdgeMarker::Open,
             end_marker: GraphEdgeMarker::Open,
+            suppressed_cells: HashSet::new(),
             min_canvas_extent: CanvasExtent::default(),
         }
     }
@@ -157,7 +209,7 @@ impl RoutePlan {
                 cell: self.anchors.start.cell,
                 coord: start_coord,
                 point_direction: self.anchors.start.point_direction,
-                is_primary: true,
+                terminal_tail: MarkerTerminalTail::empty(),
             },
             charset,
             diagram_type,
@@ -168,7 +220,7 @@ impl RoutePlan {
                 cell: self.anchors.end.cell,
                 coord: end_coord,
                 point_direction: self.anchors.end.point_direction,
-                is_primary: true,
+                terminal_tail: MarkerTerminalTail::empty(),
             },
             charset,
             diagram_type,
@@ -212,7 +264,7 @@ impl RoutePlan {
                 diagram_type,
                 feature: "routes with missing endpoint marker cells",
             })?;
-        if cell.retired || cell.kind != PlannedRouteCellKind::EdgeArrow {
+        if self.is_cell_suppressed(anchor.cell) || cell.kind != PlannedRouteCellKind::EdgeArrow {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type,
                 feature: "routes with unmaterialized endpoint markers",
@@ -238,7 +290,7 @@ impl RoutePlan {
         let primary_candidate = self.terminal_candidate(endpoint, diagram_type)?;
         let primary = self.cells[primary_candidate.cell.0];
 
-        let mut coordinate_index = HashMap::new();
+        let mut coordinate_index = HashMap::<CanvasCoord, Option<PlannedCellId>>::new();
         coordinate_index
             .try_reserve(self.cells.len())
             .map_err(|_| AsciiError::AllocationFailed {
@@ -248,12 +300,13 @@ impl RoutePlan {
             resources.charge_layout_work(1)?;
             coordinate_index
                 .entry(cell.coord)
-                .or_insert(PlannedCellId(index));
+                .and_modify(|existing| *existing = None)
+                .or_insert(Some(PlannedCellId(index)));
         }
 
         let mut candidates = Vec::new();
         candidates
-            .try_reserve(self.cells.len().min(8))
+            .try_reserve(self.cells.len().min(MAX_MARKER_CANDIDATES))
             .map_err(|_| AsciiError::AllocationFailed {
                 phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
             })?;
@@ -263,32 +316,44 @@ impl RoutePlan {
             MarkerEndpoint::Start => self.anchors.end,
             MarkerEndpoint::End => self.anchors.start,
         };
-        let mut candidate_coord = primary.coord;
+        let mut predecessor = primary_candidate;
         for _ in 0..self.cells.len() {
             if candidates.len() >= MAX_MARKER_CANDIDATES {
                 break;
             }
             resources.charge_layout_work(1)?;
             let Some(next_coord) =
-                marker_relocation_step(candidate_coord, anchor.point_direction, resources)?
+                marker_relocation_step(predecessor.coord, anchor.point_direction, resources)?
             else {
                 break;
             };
-            let Some(candidate_id) = coordinate_index.get(&next_coord).copied() else {
+            let Some(candidate_id) = coordinate_index.get(&next_coord).copied().flatten() else {
                 break;
             };
-            if candidate_id == other_anchor.cell {
+            if candidate_id == other_anchor.cell || self.is_cell_suppressed(candidate_id) {
                 break;
             }
-            candidate_coord = next_coord;
-            let candidate = self.cells[candidate_id.0];
-            if candidate.segment != primary.segment
+            let candidate_cell = self.cells[candidate_id.0];
+            if candidate_cell.segment != primary.segment
                 || marker_candidate_has_perpendicular_neighbor(
-                    candidate.coord,
+                    candidate_cell.coord,
                     anchor.point_direction,
                     &coordinate_index,
                 )
             {
+                break;
+            }
+            let Some(terminal_tail) = predecessor.terminal_tail.with_appended(predecessor.cell)
+            else {
+                break;
+            };
+            let candidate = MarkerCandidate {
+                cell: candidate_id,
+                coord: candidate_cell.coord,
+                point_direction: anchor.point_direction,
+                terminal_tail,
+            };
+            if !candidate.follows_terminal_predecessor(predecessor) {
                 break;
             }
             candidates
@@ -296,12 +361,8 @@ impl RoutePlan {
                 .map_err(|_| AsciiError::AllocationFailed {
                     phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
                 })?;
-            candidates.push(MarkerCandidate {
-                cell: candidate_id,
-                coord: candidate.coord,
-                point_direction: anchor.point_direction,
-                is_primary: false,
-            });
+            candidates.push(candidate);
+            predecessor = candidate;
         }
 
         Ok(candidates)
@@ -321,7 +382,7 @@ impl RoutePlan {
             cell: anchor.cell,
             coord,
             point_direction: anchor.point_direction,
-            is_primary: true,
+            terminal_tail: MarkerTerminalTail::empty(),
         })
     }
 
@@ -332,7 +393,6 @@ impl RoutePlan {
         }
     }
 
-    #[cfg(test)]
     pub(super) fn materialize_marker_at(
         &mut self,
         endpoint: MarkerEndpoint,
@@ -340,33 +400,39 @@ impl RoutePlan {
         charset: &GraphCharset,
         diagram_type: &'static str,
     ) -> Result<()> {
-        self.materialize_marker_with_retired_tail(endpoint, candidate, &[], charset, diagram_type)
-    }
-
-    pub(super) fn materialize_marker_with_retired_tail(
-        &mut self,
-        endpoint: MarkerEndpoint,
-        candidate: MarkerCandidate,
-        retired_tail: &[MarkerCandidate],
-        charset: &GraphCharset,
-        diagram_type: &'static str,
-    ) -> Result<()> {
-        for retired in retired_tail {
-            if retired.cell == candidate.cell {
+        if candidate.terminal_tail().contains(&candidate.cell) {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type,
+                feature: "endpoint marker suppression includes selected berth",
+            });
+        }
+        for suppressed in candidate.terminal_tail() {
+            if self.cells.get(suppressed.0).is_none() {
                 return Err(AsciiError::UnsupportedFeature {
                     diagram_type,
-                    feature: "endpoint marker retirement includes selected berth",
+                    feature: "routes with missing suppressed terminal cells",
                 });
             }
-            let cell =
-                self.cells
-                    .get_mut(retired.cell.0)
-                    .ok_or(AsciiError::UnsupportedFeature {
-                        diagram_type,
-                        feature: "routes with missing retired terminal cells",
-                    })?;
-            cell.retired = true;
         }
+        if self.cells.get(candidate.cell.0).is_none() {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type,
+                feature: "routes with missing endpoint marker cells",
+            });
+        }
+        if self.is_cell_suppressed(candidate.cell) {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type,
+                feature: "endpoint marker selected on a suppressed terminal cell",
+            });
+        }
+        self.suppressed_cells
+            .try_reserve(candidate.terminal_tail().len())
+            .map_err(|_| AsciiError::AllocationFailed {
+                phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
+            })?;
+        self.suppressed_cells
+            .extend(candidate.terminal_tail().iter().copied());
 
         let marker = match endpoint {
             MarkerEndpoint::Start => {
@@ -417,12 +483,6 @@ impl RoutePlan {
                 diagram_type,
                 feature: "routes with missing endpoint marker cells",
             })?;
-        if cell.retired {
-            return Err(AsciiError::UnsupportedFeature {
-                diagram_type,
-                feature: "endpoint marker selected on a retired terminal cell",
-            });
-        }
         cell.ch = marker_char(marker, point_char(anchor.point_direction, charset), charset);
         cell.kind = PlannedRouteCellKind::EdgeArrow;
         cell.paint = PlannedRoutePaint::role(AsciiColorRole::EdgeArrow)
@@ -444,8 +504,20 @@ impl RoutePlan {
             anchors,
             start_marker: GraphEdgeMarker::Open,
             end_marker: GraphEdgeMarker::Open,
+            suppressed_cells: HashSet::new(),
             min_canvas_extent: CanvasExtent { width, height },
         }
+    }
+
+    pub(super) fn active_cells(&self) -> impl Iterator<Item = (PlannedCellId, &PlannedRouteCell)> {
+        self.cells.iter().enumerate().filter_map(|(index, cell)| {
+            let cell_id = PlannedCellId(index);
+            (!self.is_cell_suppressed(cell_id)).then_some((cell_id, cell))
+        })
+    }
+
+    pub(super) fn is_cell_suppressed(&self, cell: PlannedCellId) -> bool {
+        self.suppressed_cells.contains(&cell)
     }
 
     #[cfg(test)]
@@ -464,7 +536,7 @@ impl RoutePlan {
         let mut width = self.min_canvas_extent.width;
         let mut height = self.min_canvas_extent.height;
 
-        for cell in self.cells.iter().filter(|cell| !cell.retired) {
+        for (_, cell) in self.active_cells() {
             width = width.max(resources.checked_grid_add(cell.coord.x, 1)?);
             height = height.max(resources.checked_grid_add(cell.coord.y, 1)?);
         }
@@ -506,10 +578,31 @@ fn marker_relocation_step(
     })
 }
 
+fn marker_candidate_is_immediately_inward(
+    predecessor: CanvasCoord,
+    candidate: CanvasCoord,
+    point_direction: StepDirection,
+) -> bool {
+    match point_direction {
+        StepDirection::Up => {
+            predecessor.x == candidate.x && predecessor.y.checked_add(1) == Some(candidate.y)
+        }
+        StepDirection::Right => {
+            predecessor.y == candidate.y && predecessor.x.checked_sub(1) == Some(candidate.x)
+        }
+        StepDirection::Down => {
+            predecessor.x == candidate.x && predecessor.y.checked_sub(1) == Some(candidate.y)
+        }
+        StepDirection::Left => {
+            predecessor.y == candidate.y && predecessor.x.checked_add(1) == Some(candidate.x)
+        }
+    }
+}
+
 fn marker_candidate_has_perpendicular_neighbor(
     coord: CanvasCoord,
     point_direction: StepDirection,
-    coordinate_index: &HashMap<CanvasCoord, PlannedCellId>,
+    coordinate_index: &HashMap<CanvasCoord, Option<PlannedCellId>>,
 ) -> bool {
     let neighbors = match point_direction {
         StepDirection::Up | StepDirection::Down => [
@@ -585,15 +678,18 @@ pub(super) struct PlannedRouteCell {
     pub(super) kind: PlannedRouteCellKind,
     pub(super) segment: PlannedRouteSegment,
     pub(super) paint: PlannedRoutePaint,
-    pub(super) retired: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) struct PlannedCellId(usize);
 
 impl PlannedCellId {
     pub(super) const fn new(index: usize) -> Self {
         Self(index)
+    }
+
+    pub(super) const fn index(self) -> usize {
+        self.0
     }
 }
 
@@ -755,7 +851,6 @@ fn route_cell_in_segment(
         kind: PlannedRouteCellKind::RouteCell,
         segment,
         paint: PlannedRoutePaint::role(AsciiColorRole::EdgeLine),
-        retired: false,
     }
 }
 
@@ -775,7 +870,6 @@ fn edge_line_cell_in_segment(
         kind: PlannedRouteCellKind::EdgeLine,
         segment,
         paint: PlannedRoutePaint::role(AsciiColorRole::EdgeLine),
-        retired: false,
     }
 }
 
