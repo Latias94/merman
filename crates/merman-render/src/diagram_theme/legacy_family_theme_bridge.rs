@@ -9,12 +9,15 @@ use serde_json::{Map, Value};
 
 use crate::render_family::RenderFamilyKind;
 
-use super::DiagramThemeSpec;
 use super::canvas::CanvasPaint;
+use super::family_mechanism_matrix::FamilyThemeRuleFacet;
 use super::family_program::{FamilyThemeProgram, FamilyThemeProgramCache};
-use super::resolved::ResolvedThemeStyle;
+use super::resolved::{ResolvedProperty, ResolvedThemeStyle, ThemeTypographyProperty};
 use super::semantic::{ThemeTarget, ThemeVariant};
 use super::typography::{Specified, TextStyle};
+
+#[cfg(test)]
+use super::DiagramThemeSpec;
 
 pub(super) const CONTRIBUTION_ID_PREFIX: &str = "merman.legacy-family-theme.v1.";
 const MAX_LEGACY_ASSIGNMENT_STRING_BYTES: usize = 4 * 1024;
@@ -31,7 +34,6 @@ pub(super) struct LegacyFamilyThemeBridge {
 
 #[derive(Debug)]
 struct LegacyFamilyThemeBridgeInner {
-    spec: Arc<DiagramThemeSpec>,
     family_programs: Arc<FamilyThemeProgramCache>,
     artifacts: Mutex<HashMap<RenderFamilyKind, Arc<LegacyFamilyThemeArtifact>>>,
 }
@@ -44,13 +46,9 @@ struct LegacyFamilyThemeArtifact {
 }
 
 impl LegacyFamilyThemeBridge {
-    pub(super) fn new(
-        spec: Arc<DiagramThemeSpec>,
-        family_programs: Arc<FamilyThemeProgramCache>,
-    ) -> Self {
+    pub(super) fn new(family_programs: Arc<FamilyThemeProgramCache>) -> Self {
         Self {
             inner: Arc::new(LegacyFamilyThemeBridgeInner {
-                spec,
                 family_programs,
                 artifacts: Mutex::new(HashMap::new()),
             }),
@@ -66,11 +64,7 @@ impl LegacyFamilyThemeBridge {
         artifacts
             .entry(family)
             .or_insert_with(|| {
-                Arc::new(compile_selected_family(
-                    &self.inner.spec,
-                    &self.inner.family_programs,
-                    family,
-                ))
+                Arc::new(compile_selected_family(&self.inner.family_programs, family))
             })
             .clone()
     }
@@ -110,7 +104,7 @@ impl LegacyFamilyThemeBridge {
         control: &ParseControl,
     ) -> ParseControlResult<Option<ThemeFamilyCompatibilityOverlay>> {
         control.checkpoint()?;
-        let Some(family) = render_family_from_core_name(family) else {
+        let Some(family) = RenderFamilyKind::from_str(family) else {
             return Ok(None);
         };
         // State owns its compatibility path in the typed adapter and must never be projected
@@ -130,51 +124,10 @@ fn contribution_family(opaque_id: &str) -> Option<RenderFamilyKind> {
         .strip_prefix(CONTRIBUTION_ID_PREFIX)?
         .split_once('.')?
         .0;
-    render_family_from_core_name(family)
-}
-
-fn render_family_from_core_name(name: &str) -> Option<RenderFamilyKind> {
-    [
-        RenderFamilyKind::Error,
-        RenderFamilyKind::Mindmap,
-        RenderFamilyKind::State,
-        RenderFamilyKind::Sequence,
-        RenderFamilyKind::Zenuml,
-        RenderFamilyKind::Flowchart,
-        RenderFamilyKind::Swimlane,
-        RenderFamilyKind::Architecture,
-        RenderFamilyKind::Class,
-        RenderFamilyKind::C4,
-        RenderFamilyKind::Cynefin,
-        RenderFamilyKind::Wardley,
-        RenderFamilyKind::Railroad,
-        RenderFamilyKind::Kanban,
-        RenderFamilyKind::Gantt,
-        RenderFamilyKind::Pie,
-        RenderFamilyKind::Packet,
-        RenderFamilyKind::Timeline,
-        RenderFamilyKind::Journey,
-        RenderFamilyKind::Requirement,
-        RenderFamilyKind::Sankey,
-        RenderFamilyKind::Radar,
-        RenderFamilyKind::Info,
-        RenderFamilyKind::Treemap,
-        RenderFamilyKind::Block,
-        RenderFamilyKind::Er,
-        RenderFamilyKind::QuadrantChart,
-        RenderFamilyKind::XyChart,
-        RenderFamilyKind::GitGraph,
-        RenderFamilyKind::TreeView,
-        RenderFamilyKind::Ishikawa,
-        RenderFamilyKind::EventModeling,
-        RenderFamilyKind::Venn,
-    ]
-    .into_iter()
-    .find(|candidate| candidate.as_str() == name)
+    RenderFamilyKind::from_str(family)
 }
 
 fn compile_selected_family(
-    spec: &DiagramThemeSpec,
     family_programs: &FamilyThemeProgramCache,
     family: RenderFamilyKind,
 ) -> LegacyFamilyThemeArtifact {
@@ -187,31 +140,31 @@ fn compile_selected_family(
         | RenderFamilyKind::TreeView
         | RenderFamilyKind::Block
         | RenderFamilyKind::GitGraph => {
-            compile_node_family(&mut builder, spec, family_programs, family);
+            compile_node_family(&mut builder, family_programs, family);
         }
         RenderFamilyKind::Sequence => {
-            compile_sequence_family(&mut builder, spec, family_programs);
+            compile_sequence_family(&mut builder, family_programs);
         }
         RenderFamilyKind::Gantt | RenderFamilyKind::Kanban => {
-            compile_task_family(&mut builder, spec, family_programs, family);
+            compile_task_family(&mut builder, family_programs, family);
         }
         RenderFamilyKind::Requirement => {
-            compile_requirement_family(&mut builder, spec, family_programs);
+            compile_requirement_family(&mut builder, family_programs);
         }
         RenderFamilyKind::Er => {
-            compile_er_family(&mut builder, spec, family_programs);
+            compile_er_family(&mut builder, family_programs);
         }
         RenderFamilyKind::Pie => {
-            compile_pie_family(&mut builder, spec, family_programs);
+            compile_pie_family(&mut builder, family_programs);
         }
         RenderFamilyKind::XyChart | RenderFamilyKind::QuadrantChart | RenderFamilyKind::Radar => {
-            compile_chart_family(&mut builder, spec, family_programs, family);
+            compile_chart_family(&mut builder, family_programs, family);
         }
         RenderFamilyKind::Timeline => {
-            compile_timeline_family(&mut builder, spec, family_programs);
+            compile_timeline_family(&mut builder, family_programs);
         }
         RenderFamilyKind::Journey => {
-            compile_journey_family(&mut builder, spec, family_programs);
+            compile_journey_family(&mut builder, family_programs);
         }
         RenderFamilyKind::Error
         | RenderFamilyKind::Zenuml
@@ -227,7 +180,7 @@ fn compile_selected_family(
         | RenderFamilyKind::Ishikawa
         | RenderFamilyKind::EventModeling
         | RenderFamilyKind::Venn => {
-            compile_text_family(&mut builder, spec, family_programs, family);
+            compile_text_family(&mut builder, family_programs, family);
         }
         RenderFamilyKind::State => {}
     }
@@ -243,14 +196,13 @@ fn compile_selected_family(
 
 fn compile_node_family(
     builder: &mut OverlayBuilder,
-    spec: &DiagramThemeSpec,
     family_programs: &FamilyThemeProgramCache,
     family: RenderFamilyKind,
 ) {
-    let reader = FamilyStyleReader::new(spec, family_programs, family);
+    let reader = FamilyStyleReader::new(family_programs, family);
     let mut contributions = FamilyContributions::new(family);
 
-    contributions.add_typography(reader.base_typography());
+    contributions.add_typography(&reader);
     contributions.add_theme_variables(
         "node.fill",
         [
@@ -402,14 +354,13 @@ fn compile_node_family(
 
 fn compile_sequence_family(
     builder: &mut OverlayBuilder,
-    spec: &DiagramThemeSpec,
     family_programs: &FamilyThemeProgramCache,
 ) {
     let family = RenderFamilyKind::Sequence;
-    let reader = FamilyStyleReader::new(spec, family_programs, family);
+    let reader = FamilyStyleReader::new(family_programs, family);
     let mut contributions = FamilyContributions::new(family);
 
-    contributions.add_typography(reader.base_typography());
+    contributions.add_typography(&reader);
     contributions.add_theme_variables(
         "actor.fill",
         [("actorBkg", reader.fill(ThemeTarget::Actor))],
@@ -488,14 +439,13 @@ fn compile_sequence_family(
 
 fn compile_task_family(
     builder: &mut OverlayBuilder,
-    spec: &DiagramThemeSpec,
     family_programs: &FamilyThemeProgramCache,
     family: RenderFamilyKind,
 ) {
-    let reader = FamilyStyleReader::new(spec, family_programs, family);
+    let reader = FamilyStyleReader::new(family_programs, family);
     let mut contributions = FamilyContributions::new(family);
 
-    contributions.add_typography(reader.base_typography());
+    contributions.add_typography(&reader);
     contributions.add_theme_variables(
         "text.fill",
         [
@@ -585,14 +535,13 @@ fn compile_task_family(
 
 fn compile_requirement_family(
     builder: &mut OverlayBuilder,
-    spec: &DiagramThemeSpec,
     family_programs: &FamilyThemeProgramCache,
 ) {
     let family = RenderFamilyKind::Requirement;
-    let reader = FamilyStyleReader::new(spec, family_programs, family);
+    let reader = FamilyStyleReader::new(family_programs, family);
     let mut contributions = FamilyContributions::new(family);
 
-    contributions.add_typography(reader.base_typography());
+    contributions.add_typography(&reader);
     contributions.add_theme_variables(
         "requirement.paint",
         [
@@ -642,16 +591,12 @@ fn compile_requirement_family(
     contributions.finish_into(builder);
 }
 
-fn compile_er_family(
-    builder: &mut OverlayBuilder,
-    spec: &DiagramThemeSpec,
-    family_programs: &FamilyThemeProgramCache,
-) {
+fn compile_er_family(builder: &mut OverlayBuilder, family_programs: &FamilyThemeProgramCache) {
     let family = RenderFamilyKind::Er;
-    let reader = FamilyStyleReader::new(spec, family_programs, family);
+    let reader = FamilyStyleReader::new(family_programs, family);
     let mut contributions = FamilyContributions::new(family);
 
-    contributions.add_typography(reader.base_typography());
+    contributions.add_typography(&reader);
     contributions.add_theme_variables(
         "entity.paint",
         [
@@ -689,16 +634,12 @@ fn compile_er_family(
     contributions.finish_into(builder);
 }
 
-fn compile_pie_family(
-    builder: &mut OverlayBuilder,
-    spec: &DiagramThemeSpec,
-    family_programs: &FamilyThemeProgramCache,
-) {
+fn compile_pie_family(builder: &mut OverlayBuilder, family_programs: &FamilyThemeProgramCache) {
     let family = RenderFamilyKind::Pie;
-    let reader = FamilyStyleReader::new(spec, family_programs, family);
+    let reader = FamilyStyleReader::new(family_programs, family);
     let mut contributions = FamilyContributions::new(family);
 
-    contributions.add_typography(reader.base_typography());
+    contributions.add_typography(&reader);
     contributions.add_theme_variables(
         "text.fill",
         [
@@ -728,17 +669,16 @@ fn compile_pie_family(
 
 fn compile_chart_family(
     builder: &mut OverlayBuilder,
-    spec: &DiagramThemeSpec,
     family_programs: &FamilyThemeProgramCache,
     family: RenderFamilyKind,
 ) {
-    let reader = FamilyStyleReader::new(spec, family_programs, family);
+    let reader = FamilyStyleReader::new(family_programs, family);
     let mut contributions = FamilyContributions::new(family);
     let text = reader.text_fill(ThemeTarget::Text);
     let title = reader.text_fill(ThemeTarget::Title);
     let axis_text = reader.text_fill(ThemeTarget::Axis);
     let axis_line = reader.stroke_or_fill(ThemeTarget::Axis);
-    contributions.add_typography(reader.base_typography());
+    contributions.add_typography(&reader);
     match family {
         RenderFamilyKind::XyChart => {
             let palette = reader.palette(ThemeTarget::ChartSeries);
@@ -803,13 +743,12 @@ fn compile_chart_family(
 
 fn compile_timeline_family(
     builder: &mut OverlayBuilder,
-    spec: &DiagramThemeSpec,
     family_programs: &FamilyThemeProgramCache,
 ) {
     let family = RenderFamilyKind::Timeline;
-    let reader = FamilyStyleReader::new(spec, family_programs, family);
+    let reader = FamilyStyleReader::new(family_programs, family);
     let mut contributions = FamilyContributions::new(family);
-    contributions.add_typography(reader.base_typography());
+    contributions.add_typography(&reader);
     contributions.add_theme_variables(
         "event.paint-text",
         [
@@ -827,15 +766,11 @@ fn compile_timeline_family(
     contributions.finish_into(builder);
 }
 
-fn compile_journey_family(
-    builder: &mut OverlayBuilder,
-    spec: &DiagramThemeSpec,
-    family_programs: &FamilyThemeProgramCache,
-) {
+fn compile_journey_family(builder: &mut OverlayBuilder, family_programs: &FamilyThemeProgramCache) {
     let family = RenderFamilyKind::Journey;
-    let reader = FamilyStyleReader::new(spec, family_programs, family);
+    let reader = FamilyStyleReader::new(family_programs, family);
     let mut contributions = FamilyContributions::new(family);
-    contributions.add_typography(reader.base_typography());
+    contributions.add_typography(&reader);
     contributions.add_theme_variables(
         "task.paint-text",
         [
@@ -855,15 +790,14 @@ fn compile_journey_family(
 
 fn compile_text_family(
     builder: &mut OverlayBuilder,
-    spec: &DiagramThemeSpec,
     family_programs: &FamilyThemeProgramCache,
     family: RenderFamilyKind,
 ) {
     // Only the family-neutral Text and Title targets are direct here. Renderer-specific roles
     // remain unsupported until the public theme model has typed targets for them.
-    let reader = FamilyStyleReader::new(spec, family_programs, family);
+    let reader = FamilyStyleReader::new(family_programs, family);
     let mut contributions = FamilyContributions::new(family);
-    contributions.add_typography(reader.base_typography());
+    contributions.add_typography(&reader);
     // Packet has no typed consumer for the family-neutral Text/Title compatibility variables.
     // Avoid writing unused global values until those renderer-specific roles are modeled.
     if family != RenderFamilyKind::Packet {
@@ -878,20 +812,14 @@ fn compile_text_family(
     contributions.finish_into(builder);
 }
 
-struct FamilyStyleReader<'a> {
-    spec: &'a DiagramThemeSpec,
+struct FamilyStyleReader {
     program: Arc<FamilyThemeProgram>,
 }
 
-impl<'a> FamilyStyleReader<'a> {
-    fn new(
-        spec: &'a DiagramThemeSpec,
-        family_programs: &FamilyThemeProgramCache,
-        family: RenderFamilyKind,
-    ) -> Self {
+impl FamilyStyleReader {
+    fn new(family_programs: &FamilyThemeProgramCache, family: RenderFamilyKind) -> Self {
         Self {
-            spec,
-            program: family_programs.get_or_compile(spec, family),
+            program: family_programs.get_or_compile(family),
         }
     }
 
@@ -899,17 +827,21 @@ impl<'a> FamilyStyleReader<'a> {
         self.program.base_typography()
     }
 
+    fn has_legacy_base_typography(&self, property: ThemeTypographyProperty) -> bool {
+        self.program.has_legacy_base_typography(property)
+    }
+
     fn style(&self, target: ThemeTarget) -> ResolvedThemeStyle {
         self.style_variant(target, ThemeVariant::Default)
     }
 
     fn style_variant(&self, target: ThemeTarget, variant: ThemeVariant) -> ResolvedThemeStyle {
-        self.program.resolve_style(self.spec, target, variant, None)
+        self.program.resolve_style(target, variant, None)
     }
 
     fn text_style(&self, target: ThemeTarget) -> ResolvedThemeStyle {
         self.program
-            .resolve_text_style(self.spec, target, ThemeVariant::Default, None)
+            .resolve_text_style(target, ThemeVariant::Default, None)
     }
 
     fn fill(&self, target: ThemeTarget) -> Option<String> {
@@ -917,8 +849,11 @@ impl<'a> FamilyStyleReader<'a> {
     }
 
     fn fill_variant(&self, target: ThemeTarget, variant: ThemeVariant) -> Option<String> {
-        LegacyPaintResolution::from_property(self.style_variant(target, variant).fill_resolution())
-            .into_value()
+        self.paint_resolution(
+            self.style_variant(target, variant).fill_resolution(),
+            FamilyThemeRuleFacet::fill,
+        )
+        .into_value()
     }
 
     fn stroke(&self, target: ThemeTarget) -> Option<String> {
@@ -926,8 +861,9 @@ impl<'a> FamilyStyleReader<'a> {
     }
 
     fn stroke_variant(&self, target: ThemeTarget, variant: ThemeVariant) -> Option<String> {
-        LegacyPaintResolution::from_property(
+        self.paint_resolution(
             self.style_variant(target, variant).stroke_resolution(),
+            FamilyThemeRuleFacet::stroke,
         )
         .into_value()
     }
@@ -945,22 +881,34 @@ impl<'a> FamilyStyleReader<'a> {
     }
 
     fn text_fill(&self, target: ThemeTarget) -> Option<String> {
-        LegacyPaintResolution::from_property(self.text_style(target).fill_resolution()).into_value()
+        self.paint_resolution(
+            self.text_style(target).fill_resolution(),
+            FamilyThemeRuleFacet::fill,
+        )
+        .into_value()
     }
 
     fn fill_resolution(&self, target: ThemeTarget) -> LegacyPaintResolution {
-        LegacyPaintResolution::from_property(self.style(target).fill_resolution())
+        self.paint_resolution(
+            self.style(target).fill_resolution(),
+            FamilyThemeRuleFacet::fill,
+        )
     }
 
     fn stroke_resolution(&self, target: ThemeTarget) -> LegacyPaintResolution {
-        LegacyPaintResolution::from_property(self.style(target).stroke_resolution())
+        self.paint_resolution(
+            self.style(target).stroke_resolution(),
+            FamilyThemeRuleFacet::stroke,
+        )
     }
 
     fn palette(&self, target: ThemeTarget) -> Option<Vec<String>> {
-        let palette_index = self.program.ordinal_palette_index(target)?;
+        if !self.program.has_legacy_ordinal_palette(target) {
+            return None;
+        }
         Some(
-            self.spec.styles().ordinal_palettes()[palette_index]
-                .1
+            self.program
+                .ordinal_palette(target)?
                 .colors()
                 .iter()
                 .map(super::canvas::ThemeColorValue::as_css)
@@ -970,12 +918,32 @@ impl<'a> FamilyStyleReader<'a> {
 
     fn stroke_or_fill_resolution(&self, target: ThemeTarget) -> LegacyPaintResolution {
         let style = self.style(target);
-        match LegacyPaintResolution::from_property(style.stroke_resolution()) {
+        match self.paint_resolution(style.stroke_resolution(), FamilyThemeRuleFacet::stroke) {
             LegacyPaintResolution::Unspecified => {
-                LegacyPaintResolution::from_property(style.fill_resolution())
+                self.paint_resolution(style.fill_resolution(), FamilyThemeRuleFacet::fill)
             }
             stroke => stroke,
         }
+    }
+
+    fn paint_resolution(
+        &self,
+        property: &ResolvedProperty<CanvasPaint>,
+        facet: fn(&Specified<CanvasPaint>) -> Option<FamilyThemeRuleFacet>,
+    ) -> LegacyPaintResolution {
+        let Some(origin) = property.winner() else {
+            return LegacyPaintResolution::Unspecified;
+        };
+        let Some(facet) = facet(property.specified()) else {
+            return LegacyPaintResolution::Unspecified;
+        };
+        if !self
+            .program
+            .has_legacy_rule_facet(origin.rule_index(), facet)
+        {
+            return LegacyPaintResolution::Suppressed;
+        }
+        LegacyPaintResolution::from_property(property)
     }
 }
 
@@ -1039,20 +1007,27 @@ impl FamilyContributions {
         }
     }
 
-    fn add_typography(&mut self, typography: &TextStyle) {
-        if typography == &TextStyle::default() {
-            return;
-        }
-        let font_family = typography.font_stack().as_css();
-        if font_family.len() > 4 * 1024 {
-            return;
-        }
-        let font_size = format!("{}px", typography.font_size_px());
+    fn add_typography(&mut self, reader: &FamilyStyleReader) {
+        let typography = reader.base_typography();
         let mut variables = Map::new();
-        variables.insert("fontFamily".to_string(), Value::String(font_family.clone()));
-        variables.insert("fontSize".to_string(), Value::String(font_size));
         let mut root = Map::new();
-        root.insert("fontFamily".to_string(), Value::String(font_family));
+        if reader.has_legacy_base_typography(ThemeTypographyProperty::FontStack) {
+            let font_family = typography.font_stack().as_css();
+            if font_family.len() > MAX_LEGACY_ASSIGNMENT_STRING_BYTES {
+                return;
+            }
+            variables.insert("fontFamily".to_string(), Value::String(font_family.clone()));
+            root.insert("fontFamily".to_string(), Value::String(font_family));
+        }
+        if reader.has_legacy_base_typography(ThemeTypographyProperty::FontSize) {
+            variables.insert(
+                "fontSize".to_string(),
+                Value::String(format!("{}px", typography.font_size_px())),
+            );
+        }
+        if variables.is_empty() {
+            return;
+        }
         root.insert("themeVariables".to_string(), Value::Object(variables));
         self.add_patch("typography", root);
     }
@@ -1310,10 +1285,8 @@ mod tests {
         include_str!("../../../../fixtures/journey/upstream_tasks_and_people.mmd");
 
     fn bridge(spec: &DiagramThemeSpec) -> LegacyFamilyThemeBridge {
-        LegacyFamilyThemeBridge::new(
-            Arc::new(spec.clone()),
-            Arc::new(FamilyThemeProgramCache::default()),
-        )
+        let spec = Arc::new(spec.clone());
+        LegacyFamilyThemeBridge::new(Arc::new(FamilyThemeProgramCache::new(spec)))
     }
 
     fn parse(spec: &DiagramThemeSpec, source: &str) -> merman_core::ParseMetadata {
@@ -1433,8 +1406,8 @@ mod tests {
                 ),
             ),
         );
-        let family_programs = Arc::new(FamilyThemeProgramCache::default());
-        let bridge = LegacyFamilyThemeBridge::new(Arc::clone(&spec), Arc::clone(&family_programs));
+        let family_programs = Arc::new(FamilyThemeProgramCache::new(Arc::clone(&spec)));
+        let bridge = LegacyFamilyThemeBridge::new(Arc::clone(&family_programs));
         let control = ParseControl::new();
 
         assert_eq!(bridge.cached_family_count(), 0);
@@ -1670,6 +1643,34 @@ mod tests {
             Some("18px")
         );
         assert_eq!(fallback_contribution_count(&flowchart), 0);
+    }
+
+    #[test]
+    fn unsupported_base_typography_does_not_emit_unrelated_legacy_fields() {
+        let sequence_typography = TextStyle::default()
+            .with_font_weight(700)
+            .expect("valid font weight");
+        let spec = DiagramThemeSpec::new().with_typography(
+            TypographySpec::default()
+                .with_family_style(RenderFamilyKind::Sequence, sequence_typography),
+        );
+        let source = "sequenceDiagram\nAlice->>Bob: Hello\n";
+
+        let sequence = parse(&spec, source);
+        let baseline = parse(&DiagramThemeSpec::default(), source);
+
+        assert_eq!(fallback_contribution_count(&sequence), 0);
+        for path in [
+            "fontFamily",
+            "themeVariables.fontFamily",
+            "themeVariables.fontSize",
+        ] {
+            assert_eq!(
+                sequence.effective_config.get_str(path),
+                baseline.effective_config.get_str(path),
+                "unsupported base typography must not mutate `{path}`"
+            );
+        }
     }
 
     #[test]

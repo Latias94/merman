@@ -1,85 +1,83 @@
 use std::fmt;
 
-/// Stable identity for a built-in typed render family.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum RenderFamilyKind {
-    Error,
-    Mindmap,
-    State,
-    Sequence,
-    Zenuml,
-    Flowchart,
-    Swimlane,
-    Architecture,
-    Class,
-    C4,
-    Cynefin,
-    Wardley,
-    Railroad,
-    Kanban,
-    Gantt,
-    Pie,
-    Packet,
-    Timeline,
-    Journey,
-    Requirement,
-    Sankey,
-    Radar,
-    Info,
-    Treemap,
-    Block,
-    Er,
-    QuadrantChart,
-    XyChart,
-    GitGraph,
-    TreeView,
-    Ishikawa,
-    EventModeling,
-    Venn,
+macro_rules! define_render_families {
+    ($($variant:ident => $id:literal),+ $(,)?) => {
+        /// Stable identity for a built-in typed render family.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub enum RenderFamilyKind {
+            $($variant),+
+        }
+
+        impl RenderFamilyKind {
+            #[cfg(test)]
+            pub(crate) const ALL: &'static [Self] = &[$(Self::$variant),+];
+
+            pub const fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $id),+
+                }
+            }
+
+            pub(crate) fn from_str(value: &str) -> Option<Self> {
+                match value {
+                    $($id => Some(Self::$variant),)+
+                    _ => None,
+                }
+            }
+        }
+    };
 }
 
-impl RenderFamilyKind {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Error => "error",
-            Self::Mindmap => "mindmap",
-            Self::State => "state",
-            Self::Sequence => "sequence",
-            Self::Zenuml => "zenuml",
-            Self::Flowchart => "flowchart",
-            Self::Swimlane => "swimlane",
-            Self::Architecture => "architecture",
-            Self::Class => "class",
-            Self::C4 => "c4",
-            Self::Cynefin => "cynefin",
-            Self::Wardley => "wardley",
-            Self::Railroad => "railroad",
-            Self::Kanban => "kanban",
-            Self::Gantt => "gantt",
-            Self::Pie => "pie",
-            Self::Packet => "packet",
-            Self::Timeline => "timeline",
-            Self::Journey => "journey",
-            Self::Requirement => "requirement",
-            Self::Sankey => "sankey",
-            Self::Radar => "radar",
-            Self::Info => "info",
-            Self::Treemap => "treemap",
-            Self::Block => "block",
-            Self::Er => "er",
-            Self::QuadrantChart => "quadrantChart",
-            Self::XyChart => "xychart",
-            Self::GitGraph => "gitGraph",
-            Self::TreeView => "treeView",
-            Self::Ishikawa => "ishikawa",
-            Self::EventModeling => "eventmodeling",
-            Self::Venn => "venn",
-        }
-    }
+define_render_families! {
+    Error => "error",
+    Mindmap => "mindmap",
+    State => "state",
+    Sequence => "sequence",
+    Zenuml => "zenuml",
+    Flowchart => "flowchart",
+    Swimlane => "swimlane",
+    Architecture => "architecture",
+    Class => "class",
+    C4 => "c4",
+    Cynefin => "cynefin",
+    Wardley => "wardley",
+    Railroad => "railroad",
+    Kanban => "kanban",
+    Gantt => "gantt",
+    Pie => "pie",
+    Packet => "packet",
+    Timeline => "timeline",
+    Journey => "journey",
+    Requirement => "requirement",
+    Sankey => "sankey",
+    Radar => "radar",
+    Info => "info",
+    Treemap => "treemap",
+    Block => "block",
+    Er => "er",
+    QuadrantChart => "quadrantChart",
+    XyChart => "xychart",
+    GitGraph => "gitGraph",
+    TreeView => "treeView",
+    Ishikawa => "ishikawa",
+    EventModeling => "eventmodeling",
+    Venn => "venn",
 }
 
 impl fmt::Display for RenderFamilyKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RenderFamilyKind;
+
+    #[test]
+    fn family_catalog_round_trips_every_id() {
+        for family in RenderFamilyKind::ALL {
+            assert_eq!(RenderFamilyKind::from_str(family.as_str()), Some(*family));
+        }
     }
 }

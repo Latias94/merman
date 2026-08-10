@@ -5,8 +5,13 @@ use crate::render_family::RenderFamilyKind;
 use crate::resources::{OperationWorkMeter, ResourceLimitExceeded};
 
 use super::DiagramThemeSpec;
+use super::family_mechanism_matrix::{
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeRoute, FamilyThemeRuleFacet,
+    compile_base_typography_routes, compile_effect_binding_route, compile_ordinal_palette_route,
+    compile_rule_routes,
+};
 use super::resolved::{ResolvedThemeStyle, ThemeRuleOrigin};
-use super::semantic::{ThemeTarget, ThemeVariant};
+use super::semantic::{OrdinalPalette, ThemeTarget, ThemeVariant};
 use super::typography::TextStyle;
 
 /// One immutable, family-local interpretation of a validated theme recipe.
@@ -15,33 +20,41 @@ use super::typography::TextStyle;
 /// because they depend on the concrete diagram element being styled.
 #[derive(Debug)]
 pub(super) struct FamilyThemeProgram {
+    spec: Arc<DiagramThemeSpec>,
     base_typography: TextStyle,
     rule_indices: Box<[usize]>,
     slots: BTreeMap<ThemeTarget, FamilyRuleSlot>,
     ordinal_palette_indices: BTreeMap<ThemeTarget, usize>,
     effect_binding_indices: Box<[usize]>,
+    mechanism_routes: Box<[FamilyThemeRoute]>,
 }
 
 /// Per-recipe cache for the immutable family programs consumed by both typed adapters and the
 /// temporary Mermaid compatibility bridge.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(super) struct FamilyThemeProgramCache {
+    spec: Arc<DiagramThemeSpec>,
     programs: Mutex<HashMap<RenderFamilyKind, Arc<FamilyThemeProgram>>>,
 }
 
 impl FamilyThemeProgramCache {
-    pub(super) fn get_or_compile(
-        &self,
-        spec: &DiagramThemeSpec,
-        family: RenderFamilyKind,
-    ) -> Arc<FamilyThemeProgram> {
+    pub(super) fn new(spec: Arc<DiagramThemeSpec>) -> Self {
+        Self {
+            spec,
+            programs: Mutex::new(HashMap::new()),
+        }
+    }
+
+    pub(super) fn get_or_compile(&self, family: RenderFamilyKind) -> Arc<FamilyThemeProgram> {
         let mut programs = self
             .programs
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         programs
             .entry(family)
-            .or_insert_with(|| Arc::new(FamilyThemeProgram::compile(spec, family)))
+            .or_insert_with(|| {
+                Arc::new(FamilyThemeProgram::compile(Arc::clone(&self.spec), family))
+            })
             .clone()
     }
 
@@ -71,10 +84,11 @@ struct FamilyRuleSlot {
 }
 
 impl FamilyThemeProgram {
-    pub(super) fn compile(spec: &DiagramThemeSpec, family: RenderFamilyKind) -> Self {
+    pub(super) fn compile(spec: Arc<DiagramThemeSpec>, family: RenderFamilyKind) -> Self {
         let base_typography = spec.typography().family_style(family).clone();
         let mut rule_indices = Vec::new();
         let mut slots = BTreeMap::<ThemeTarget, FamilyRuleSlot>::new();
+        let mut mechanism_routes = compile_base_typography_routes(family, &base_typography);
 
         for (rule_index, rule) in spec.styles().rules().iter().enumerate() {
             if rule.target() == ThemeTarget::Canvas
@@ -85,40 +99,42 @@ impl FamilyThemeProgram {
             }
 
             rule_indices.push(rule_index);
+            mechanism_routes.extend(compile_rule_routes(family, rule_index, rule));
             slots
                 .entry(rule.target())
                 .or_insert_with(|| FamilyRuleSlot::new(base_typography.clone()))
                 .compile_rule(ThemeRuleOrigin::new(rule_index, rule), rule.style());
         }
 
-        let ordinal_palette_indices = spec
-            .styles()
-            .ordinal_palettes()
-            .iter()
-            .enumerate()
-            .filter_map(|(index, (target, _))| {
-                (*target != ThemeTarget::Canvas && target.valid_for(family))
-                    .then_some((*target, index))
-            })
-            .collect();
-        let effect_binding_indices = spec
-            .effects()
-            .bindings()
-            .iter()
-            .enumerate()
-            .filter_map(|(index, binding)| {
-                (binding.target() != ThemeTarget::Canvas && binding.target().valid_for(family))
-                    .then_some(index)
-            })
-            .collect::<Vec<_>>()
-            .into_boxed_slice();
+        let mut ordinal_palette_indices = BTreeMap::new();
+        for (index, (target, _)) in spec.styles().ordinal_palettes().iter().enumerate() {
+            if *target == ThemeTarget::Canvas || !target.valid_for(family) {
+                continue;
+            }
+            ordinal_palette_indices.insert(*target, index);
+            mechanism_routes.push(compile_ordinal_palette_route(family, *target));
+        }
+        let mut effect_binding_indices = Vec::new();
+        for (index, binding) in spec.effects().bindings().iter().enumerate() {
+            if binding.target() == ThemeTarget::Canvas || !binding.target().valid_for(family) {
+                continue;
+            }
+            effect_binding_indices.push(index);
+            mechanism_routes.push(compile_effect_binding_route(
+                family,
+                index,
+                binding.target(),
+            ));
+        }
 
         Self {
+            spec,
             base_typography,
             rule_indices: rule_indices.into_boxed_slice(),
             slots,
             ordinal_palette_indices,
-            effect_binding_indices,
+            effect_binding_indices: effect_binding_indices.into_boxed_slice(),
+            mechanism_routes: mechanism_routes.into_boxed_slice(),
         }
     }
 
@@ -146,35 +162,81 @@ impl FamilyThemeProgram {
         self.ordinal_palette_indices.get(&target).copied()
     }
 
+    pub(super) fn ordinal_palette(&self, target: ThemeTarget) -> Option<&OrdinalPalette> {
+        let index = self.ordinal_palette_index(target)?;
+        Some(&self.spec.styles().ordinal_palettes()[index].1)
+    }
+
     pub(super) fn effect_binding_indices(&self) -> &[usize] {
         &self.effect_binding_indices
     }
 
+    pub(super) fn has_legacy_base_typography(
+        &self,
+        property: super::resolved::ThemeTypographyProperty,
+    ) -> bool {
+        self.has_route(
+            FamilyThemeMechanism::BaseTypography(property),
+            FamilyThemeDisposition::LegacyCompatibility,
+        )
+    }
+
+    pub(super) fn has_legacy_rule_facet(
+        &self,
+        rule_index: usize,
+        facet: FamilyThemeRuleFacet,
+    ) -> bool {
+        self.mechanism_routes.iter().any(|route| {
+            matches!(
+                route.mechanism(),
+                FamilyThemeMechanism::RuleFacet {
+                    rule_index: candidate,
+                    facet: candidate_facet,
+                    ..
+                } if candidate == rule_index && candidate_facet == facet
+            ) && route.disposition() == FamilyThemeDisposition::LegacyCompatibility
+        })
+    }
+
+    pub(super) fn has_legacy_ordinal_palette(&self, target: ThemeTarget) -> bool {
+        self.has_route(
+            FamilyThemeMechanism::OrdinalPalette { target },
+            FamilyThemeDisposition::LegacyCompatibility,
+        )
+    }
+
+    fn has_route(
+        &self,
+        mechanism: FamilyThemeMechanism,
+        disposition: FamilyThemeDisposition,
+    ) -> bool {
+        self.mechanism_routes
+            .iter()
+            .any(|route| route.mechanism() == mechanism && route.disposition() == disposition)
+    }
+
     pub(super) fn resolve_style(
         &self,
-        spec: &DiagramThemeSpec,
         target: ThemeTarget,
         variant: ThemeVariant,
         ordinal: Option<usize>,
     ) -> ResolvedThemeStyle {
-        self.resolve_style_internal(spec, target, variant, ordinal, None)
+        self.resolve_style_internal(target, variant, ordinal, None)
             .expect("unmetered family theme resolution cannot fail")
     }
 
     pub(super) fn resolve_style_with_work_meter(
         &self,
-        spec: &DiagramThemeSpec,
         target: ThemeTarget,
         variant: ThemeVariant,
         ordinal: Option<usize>,
         work_meter: &OperationWorkMeter,
     ) -> Result<ResolvedThemeStyle, ResourceLimitExceeded> {
-        self.resolve_style_internal(spec, target, variant, ordinal, Some(work_meter))
+        self.resolve_style_internal(target, variant, ordinal, Some(work_meter))
     }
 
     fn resolve_style_internal(
         &self,
-        spec: &DiagramThemeSpec,
         target: ThemeTarget,
         variant: ThemeVariant,
         ordinal: Option<usize>,
@@ -184,36 +246,33 @@ impl FamilyThemeProgram {
         if let Some(slot) = self.slots.get(&target) {
             slot.apply_static(&mut resolved, variant);
             charge_ordinal_candidates(work_meter, ordinal, slot.ordinal_candidate_count(variant))?;
-            slot.apply_ordinal(spec, &mut resolved, variant, ordinal);
+            slot.apply_ordinal(&self.spec, &mut resolved, variant, ordinal);
         }
         Ok(resolved)
     }
 
     pub(super) fn resolve_text_style(
         &self,
-        spec: &DiagramThemeSpec,
         target: ThemeTarget,
         variant: ThemeVariant,
         ordinal: Option<usize>,
     ) -> ResolvedThemeStyle {
-        self.resolve_text_style_internal(spec, target, variant, ordinal, None)
+        self.resolve_text_style_internal(target, variant, ordinal, None)
             .expect("unmetered family text theme resolution cannot fail")
     }
 
     pub(super) fn resolve_text_style_with_work_meter(
         &self,
-        spec: &DiagramThemeSpec,
         target: ThemeTarget,
         variant: ThemeVariant,
         ordinal: Option<usize>,
         work_meter: &OperationWorkMeter,
     ) -> Result<ResolvedThemeStyle, ResourceLimitExceeded> {
-        self.resolve_text_style_internal(spec, target, variant, ordinal, Some(work_meter))
+        self.resolve_text_style_internal(target, variant, ordinal, Some(work_meter))
     }
 
     fn resolve_text_style_internal(
         &self,
-        spec: &DiagramThemeSpec,
         target: ThemeTarget,
         variant: ThemeVariant,
         ordinal: Option<usize>,
@@ -227,9 +286,9 @@ impl FamilyThemeProgram {
                 self.ordinal_candidate_count(target, variant)
             };
         charge_ordinal_candidates(work_meter, ordinal, ordinal_candidate_count)?;
-        self.apply_text_target(spec, ThemeTarget::Text, &mut resolved, variant, ordinal);
+        self.apply_text_target(ThemeTarget::Text, &mut resolved, variant, ordinal);
         if target != ThemeTarget::Text {
-            self.apply_text_target(spec, target, &mut resolved, variant, ordinal);
+            self.apply_text_target(target, &mut resolved, variant, ordinal);
         }
         Ok(resolved)
     }
@@ -242,7 +301,6 @@ impl FamilyThemeProgram {
 
     fn apply_text_target(
         &self,
-        spec: &DiagramThemeSpec,
         target: ThemeTarget,
         resolved: &mut ResolvedThemeStyle,
         variant: ThemeVariant,
@@ -252,7 +310,7 @@ impl FamilyThemeProgram {
             return;
         };
         slot.apply_static(resolved, variant);
-        slot.apply_ordinal(spec, resolved, variant, ordinal);
+        slot.apply_ordinal(&self.spec, resolved, variant, ordinal);
     }
 }
 
@@ -345,12 +403,12 @@ mod tests {
 
     #[test]
     fn cache_reuses_the_same_program_for_one_recipe_family() {
-        let spec = DiagramThemeSpec::default();
-        let cache = FamilyThemeProgramCache::default();
+        let spec = Arc::new(DiagramThemeSpec::default());
+        let cache = FamilyThemeProgramCache::new(spec);
 
-        let first = cache.get_or_compile(&spec, RenderFamilyKind::Flowchart);
-        let second = cache.get_or_compile(&spec, RenderFamilyKind::Flowchart);
-        let state = cache.get_or_compile(&spec, RenderFamilyKind::State);
+        let first = cache.get_or_compile(RenderFamilyKind::Flowchart);
+        let second = cache.get_or_compile(RenderFamilyKind::Flowchart);
+        let state = cache.get_or_compile(RenderFamilyKind::State);
 
         assert!(Arc::ptr_eq(&first, &second));
         assert!(!Arc::ptr_eq(&first, &state));

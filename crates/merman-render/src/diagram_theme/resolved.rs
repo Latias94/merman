@@ -742,8 +742,7 @@ impl ResolvedDiagramTheme {
         variant: ThemeVariant,
         ordinal: Option<usize>,
     ) -> ResolvedThemeStyle {
-        self.program
-            .resolve_style(self.theme.spec(), target, variant, ordinal)
+        self.program.resolve_style(target, variant, ordinal)
     }
 
     pub(crate) fn style_with_work_meter(
@@ -753,13 +752,8 @@ impl ResolvedDiagramTheme {
         ordinal: Option<usize>,
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> Result<ResolvedThemeStyle, crate::resources::ResourceLimitExceeded> {
-        self.program.resolve_style_with_work_meter(
-            self.theme.spec(),
-            target,
-            variant,
-            ordinal,
-            work_meter,
-        )
+        self.program
+            .resolve_style_with_work_meter(target, variant, ordinal, work_meter)
     }
 
     #[cfg(test)]
@@ -769,8 +763,7 @@ impl ResolvedDiagramTheme {
         variant: ThemeVariant,
         ordinal: Option<usize>,
     ) -> ResolvedThemeStyle {
-        self.program
-            .resolve_text_style(self.theme.spec(), target, variant, ordinal)
+        self.program.resolve_text_style(target, variant, ordinal)
     }
 
     pub(crate) fn text_style_with_work_meter(
@@ -780,13 +773,8 @@ impl ResolvedDiagramTheme {
         ordinal: Option<usize>,
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> Result<ResolvedThemeStyle, crate::resources::ResourceLimitExceeded> {
-        self.program.resolve_text_style_with_work_meter(
-            self.theme.spec(),
-            target,
-            variant,
-            ordinal,
-            work_meter,
-        )
+        self.program
+            .resolve_text_style_with_work_meter(target, variant, ordinal, work_meter)
     }
 
     pub fn series_color(

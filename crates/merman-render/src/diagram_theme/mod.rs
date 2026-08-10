@@ -7,6 +7,7 @@ mod canonical;
 mod canvas;
 mod compiler;
 mod effects;
+mod family_mechanism_matrix;
 mod family_program;
 mod legacy_family_theme_bridge;
 mod mechanisms;
@@ -194,7 +195,7 @@ impl DiagramTheme {
         &self,
         family: crate::render_family::RenderFamilyKind,
     ) -> Arc<family_program::FamilyThemeProgram> {
-        self.0.family_programs.get_or_compile(self.spec(), family)
+        self.0.family_programs.get_or_compile(family)
     }
 
     pub(crate) fn parse_compatibility(&self) -> &merman_core::__private::ThemeCompatibilityPlan {

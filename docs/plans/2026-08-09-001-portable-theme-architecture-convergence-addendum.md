@@ -18,7 +18,7 @@ execution: code
 | Objective | Pause horizontal API and family expansion, then make theme identity, host policy ownership, capability evidence, prepared text, family evaluation, and target admission form one explicit and monotonic chain. |
 | Product contract | The August 6 product contract and its R/A/F/AE identifiers remain unchanged. This addendum changes implementation order and ownership details only. |
 | Authority | Mermaid `11.16.1@7ecca0cd` remains the semantic baseline. The compiled theme recipe describes visual intent; the render environment owns runtime ceilings; family and document evaluators prove what was actually applied. |
-| Execution | Continue in `.worktrees/presentation-theme-model` on `refactor/presentation-theme-model`. C4a is closed for the deterministic native boundary; stop expanding the external prepared-text protocol and proceed through C5/C6 with the current Flowchart and State consumers. The native theme product surface may freeze after those gates; C4b must finish before any external-host assurance contract or its binding fields freeze. |
+| Execution | Continue in `.worktrees/presentation-theme-model` on `refactor/presentation-theme-model`. C4a is closed for the deterministic native boundary and has been re-checked for bounded span traversal and cluster coverage; stop expanding the external prepared-text protocol and proceed through C5/C6 with the current Flowchart and State consumers. The native theme product surface may freeze after those gates; C4b must finish before any external-host assurance contract or its binding fields freeze. |
 | Stop conditions | Do not expose a positive portability or capability conclusion from an unevaluated state, accept host-produced geometry without request/session evidence, or let theme/config inputs widen renderer-owned policy. |
 
 ## Why The Order Changes
@@ -181,17 +181,17 @@ The freeze is stage-specific rather than one condition that expires too early:
 - Keep the official `mmdc` compatibility surface unchanged except for fixes required by removed
   provisional alpha APIs.
 
-## Implementation Checkpoint - 2026-08-10
+## Implementation Checkpoint - 2026-08-11
 
 | Gate | Status | Current evidence and remaining boundary |
 | --- | --- | --- |
 | C0 | Complete for the bounded Flowchart tranche | Prepared SVG labels retain one admitted text result through layout and emission; unsupported label modes fail closed. |
-| C1 | Complete for the internal recipe domain | Recipe, font catalog, and SVG resource identities are separate and canonically encoded. Public evaluator exposure remains a C7 decision. |
+| C1 | Complete for the internal recipe domain | Recipe, font catalog, and SVG resource identities are separate and canonically encoded. Hidden legacy recipe state has been removed; public evaluator exposure remains a C7 decision. |
 | C2 | In progress | Root/family reports, trusted-lane residuals, sealed document reports, consuming SVG admission, and target-specific prepared PNG/JPEG/PDF exports exist. State cascade evidence now attributes only final property winners. The terminal SVG consumer proves solid root base/layers (including explicit transparent base, opacity, placement, and blend declarations); native PNG/JPEG/PDF admission uses an explicit root-capability whitelist rather than assuming exporter support. Gradients, patterns, bleed/viewport expansion, effects, and complete emission-owned family evidence remain residual. Any untrusted postprocessor or raw theme CSS invalidates positive root evidence before document/target admission. |
 | C3 | Complete for the current render session | `RenderEnvironment` owns runtime ceilings, sessions freeze the effective intersection, and themes cannot widen host policy. |
-| C4a | Complete for the deterministic native boundary | Native rustybuzz shaping rejects `.notdef`, wrapping reuses retained cluster advances, and Flowchart/State sidecars freeze only labels consumed by real SVG emission. Public SVG remains token-free while the sealed private SVG carries exact base-or-contiguous-line label tokens. PNG/JPEG/PDF verify the final token-associated face/source set against the retained per-label ledger and can produce `Portable` only from the owned catalog path. Exact final fallback byte ranges remain an explicit `usvg` integration hook, not inferred evidence. |
+| C4a | Complete for the deterministic native boundary | Native rustybuzz shaping rejects `.notdef`, cluster fallback is used consistently by legacy and structured paths, and wrapping plus final metrics use separate monotonic span cursors with linear-visit regression coverage. Flowchart/State sidecars freeze only labels consumed by real SVG emission. Public SVG remains token-free while the sealed private SVG carries exact base-or-contiguous-line label tokens. PNG/JPEG/PDF verify the final token-associated face/source set against the retained per-label ledger and can produce `Portable` only from the owned catalog path. Exact final fallback byte ranges remain an explicit `usvg` integration hook, not inferred evidence. |
 | C4b | Partial infrastructure retained; optional assurance deferred | Session-private fallback candidates, basic response admission, and usage reporting may remain, but no further general host-protocol expansion should precede C5/C6 proof. External backend output remains `HostDependent` unless an explicit independent host trust authority is later designed and admitted. |
-| C5 | In progress; stages 1-2 converged, stage 3 partial | Explicit Mermaid compatibility now comes only from `spec.mermaid()`. The transitional bridge is family-local, runs after detection, preserves explicit site/source/detector ownership, and records compatibility residuals that strict portability rejects. `FamilyThemeProgram` premerges static rules, retains source-order winners, meters only ordinal candidates, and State consumes the metered program directly. Final surviving compatibility provenance and parse/session theme binding are now convergence gates; `{Flowchart, Swimlane}` and Sequence still use the bridge and remain the next cutovers. |
+| C5 | In progress; stages 1-2 converged, stage 3 partial | Explicit Mermaid compatibility now comes only from `spec.mermaid()`. The transitional bridge is family-local, runs after detection, preserves explicit site/source/detector ownership, and records compatibility residuals that strict portability rejects. `FamilyThemeProgram` owns the recipe, premerges static rules, retains source-order winners, meters only ordinal candidates, and now carries a private facet-level `TypedAdapter` / `LegacyCompatibility` / `Unsupported` route matrix. The bridge can read only route-approved legacy winners and never turns the matrix into positive evidence. State consumes the metered program directly; `{Flowchart, Swimlane}` and Sequence still use the bridge and remain the next cutovers. Final surviving compatibility provenance and parse/session theme binding remain convergence gates. |
 | C6 | Not yet proven | The representative themes do not yet have a Flowchart/State/Sequence by SVG/PNG/PDF positive-output matrix. |
 | C7a | Not eligible; intentionally blocked | Do not freeze the native theme recipe/token Rust, Options, binding, CLI, or preset surface before C1-C3, C4a, C5, and C6 close. Existing preset/CLI/binding selectors remain alpha inputs, not a completed compatibility promise. |
 | C4b/C7b | Deferred by design | External-host assurance fields and remaining family/preset breadth freeze only after C4b closes. |
@@ -362,7 +362,11 @@ The freeze is stage-specific rather than one condition that expires too early:
      rejects that evidence.
   3. **Partial.** Compile semantic rules into the single bounded `FamilyThemeProgram`, premerge
      static matches, meter the remaining ordinal work, and cut over State, `{Flowchart, Swimlane}`,
-     and Sequence in that order. The program and State cutover are complete; the other primary
+     and Sequence in that order. The program now owns the exact recipe and compiles each applicable
+     base-typography property, rule facet, ordinal palette, and effect binding into one private
+     `TypedAdapter`, `LegacyCompatibility`, or `Unsupported` route. The bridge may consume only
+     route-approved legacy winners. This matrix assigns responsibility; it never manufactures
+     runtime `Applied` evidence. The program and State cutover are complete; the other primary
      families remain on the explicitly residual bridge.
   4. Remove the default-typography path from the bridge only after direct Flowchart/Swimlane and
      Sequence layout/emission consumption is proven. Keep the bridge for every remaining
