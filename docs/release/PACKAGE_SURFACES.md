@@ -15,6 +15,7 @@ installation command.
 | A ready-to-run language server | `merman-lsp` | GitHub Release archive or crates.io |
 | Rustdoc Mermaid fences | `merman-rustdoc` | crates.io |
 | Browser SVG, analysis, ASCII, or editor SDK | one `@mermanjs/web*` package | npm package group |
+| Native Node.js / static-site SVG rendering | `@mermanjs/node` | npm package group (alpha) |
 | Python host integration | `merman` | PyPI and release wheels |
 | Flutter/Dart host integration | `merman` | pub.dev |
 | Android host integration | `io.merman:merman-android` | GitHub Release AAR |
@@ -44,7 +45,10 @@ The repository-owned delivery routes are:
 6. GitHub Release AAR for Android.
 7. lockstep npm publishing for the admitted `@mermanjs/web` browser package group through
    `release-web.yml` after Trusted Publishing setup.
-8. Platform VSIX artifacts for the independently versioned VS Code extension through
+8. lockstep npm publishing for `@mermanjs/node` and its five native platform packages through
+   `release-node.yml`. Node is an experimental alpha surface; it requires first-publish bootstrap
+   before npm Trusted Publishing can take over.
+9. Platform VSIX artifacts for the independently versioned VS Code extension through
    `vscode-extension.yml`; Marketplace publishing needs an explicit release decision and credentials
    before it is enabled.
 
@@ -66,6 +70,9 @@ Merman CI keeps publication separate from validation:
 - `apple-uniffi-smoke` builds `Merman.xcframework` and validates the generated UniFFI Swift package.
 - `web-npm-dry-run` builds each admitted TypeScript/WASM package, verifies its package projection,
   then packs and verifies the complete lockstep npm group without publishing it.
+- `release-node.yml` builds, packs, installs, and renders the public Node loader through its real
+  macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 native package. Its publisher receives
+  verified tarballs only and reconciles the platform packages before promoting the loader's dist-tag.
 - `vscode-extension.yml` and the VS Code preflight job build platform runtime binaries, package a
   VSIX, and verify package contents, target platform, stable manifest version, and pre-release
   marker.
@@ -147,7 +154,7 @@ differ:
 | --- | --- | --- |
 | Android, Apple, Python, Flutter | analysis, ASCII, SVG, Cytoscape, ELK | Shared default native prebuilt SKU. |
 | Typst | analysis, SVG, Cytoscape, ELK | Matches the five-function Typst ABI; no callable ASCII or binary-export operation, and no admitted math backend. |
-| Private Node candidates | SVG, Cytoscape, ELK | Matches the deterministic static-SVG interface; specialist capabilities stay out until a real package workflow owns them. |
+| Node alpha package group | SVG, Cytoscape, ELK | Matches the deterministic static-SVG interface; specialist capabilities remain out of the prebuilt download. |
 | Browser packages | package-specific | `web-full` and `web-render` keep math, while dedicated packages own analysis, editor, and ASCII workflows. |
 | C ABI source reference | complete | Exercises every ABI/output path for custom embedders without defining a default binary download. |
 
@@ -168,7 +175,7 @@ library-size evidence.
 | Browser artifact evidence | The selected Web artifact profiles have current raw, stripped, gzip, and Brotli measurements; do not substitute a legacy feature-profile name. |
 | Browser/Typst size evidence | The owner-specific Web and Typst size commands share one budget catalog and together cover every admitted artifact exactly once. |
 | Typst transport | The sole `publish` package profile consumes the canonical `typst-wasm` artifact recipe and proves plugin ABI 2, dependency closure, size, provenance, package contents, and examples. Its admitted `json5`, `lol_html`, and `url` dependencies remain measured pure-Rust parts of invariant Mermaid semantics. |
-| Private Node candidates | The candidate recipe, generated wire contract, runtime catalog, package contracts, and build receipts agree on SVG plus both layout backends and typed absence for omitted capabilities. |
+| Node npm alpha package group | The selected N-API recipe, generated wire contract, runtime catalog, package contracts, exact-version optional dependencies, build receipts, packed tarballs, and five real-target install/render smokes agree. |
 
 ## WASM Size Matrix
 

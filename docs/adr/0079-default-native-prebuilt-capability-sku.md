@@ -49,7 +49,7 @@ feature list. Each adapter keeps only the capabilities exercised through its pub
 | Android JNI, Apple UniFFI, Python UniFFI, Flutter C ABI | `analysis,ascii,layout-cytoscape,layout-elk,svg` | These are the common native render, inspection, and text-output workflows. |
 | Source-only C ABI reference | Complete native feature set | It verifies ABI stability and every output path; it is not a downloadable default SDK. |
 | Typst WASM | `analysis,layout-cytoscape,layout-elk,svg` | The Typst interface exports SVG render and canonical analysis. ASCII and binary export have no callable Typst operation, and math violates the admitted import boundary. |
-| Private Node N-API and Node-WASM candidates | `layout-cytoscape,layout-elk,svg` | Their interface is deterministic static SVG plus semantic/layout JSON. Math, analysis, ASCII, and binary export are not separate candidate workflows. |
+| Public Node N-API alpha and private Node-WASM comparison transport | `layout-cytoscape,layout-elk,svg` | The distributed interface is deterministic static SVG plus metadata/layout operations. Math, analysis, ASCII, and binary export are not part of the public Node workflow. |
 | Browser WASM package group | Package-specific full and slim recipes | Package identity is already the user-visible capability selector; `web-full` and `web-render` retain complete SVG math semantics. |
 
 The Rust facade, CLI, and LSP remain separate products. Their capability sets follow their own
@@ -80,7 +80,7 @@ supports interface-shaped recipes rather than one universal cross-language featu
 - Common native users retain SVG rendering, both supported layout engines, ASCII output, semantic
   operations, diagnostics, validation, and document analysis.
 - Typst retains its public analysis interface without paying for an uncallable ASCII or export
-  surface; the private Node candidate no longer pays for an unadvertised math closure.
+  surface; the public Node alpha no longer pays for an unadvertised math closure.
 - Math-bearing diagrams and PNG, JPEG, or PDF output require a custom native build or another
   product surface that advertises those capabilities.
 - Native clock, time-zone, and randomness require a custom build with `native-runtime`; omission

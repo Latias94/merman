@@ -1,6 +1,6 @@
 {
   "schema_version": 3,
-  "status": "private-evaluation",
+  "status": "napi-selected-for-alpha",
   "capability_recipe": {
     "descriptor": "capabilities/feature-surface-v1.json",
     "target": "native",

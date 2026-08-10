@@ -2,8 +2,8 @@
 
 This is the final pre-release readiness view for the FFI contract alignment work. It is a
 candidate-branch engineering record, not a publication or release approval. The public-native
-and private-Node lanes are reported separately because the Node candidate remains private even
-when its transport checks are green.
+and experimental public Node lanes are reported separately because their distributed capability
+sets and release evidence differ.
 
 ## Readiness lanes
 
@@ -11,7 +11,7 @@ when its transport checks are green.
 | --- | --- | --- | --- |
 | `public-native` | green | C ABI 3, Android JNI transport API 1, UniFFI API 3, and the shared default native prebuilt SKU | current artifact-profile dependency claims and the platform verification script |
 | `public-typst` | green | Typst plugin ABI 2 with SVG, canonical analysis, and both layout backends | exact `typst-wasm` recipe, import/export validation, package smoke, and size matrix |
-| `private-node` | green, private | deterministic, static-SVG, text-only candidate with both layout backends and no specialist math/export closure | private candidate recipe, generated wire contract, and Node package contract tests |
+| `public-node-alpha` | green, experimental | deterministic static SVG plus metadata/layout operations with both layout backends and no specialist math/export closure | public six-package contract, generated wire contract, target install/render smokes, and verified npm package-group workflow |
 
 The public-native lane does not claim that Android uses C ABI 3: Android consumes its direct JNI
 transport API 1. C ABI 3 retains size-tagged discovery and its current wire layout, but historical
@@ -35,9 +35,9 @@ async runtime is added. Final platform package sizes remain release evidence; co
 linker-sensitive library byte ceilings are not general merge gates.
 
 Typst and Node are audited at their own interfaces rather than inheriting the native list. Typst
-retains canonical analysis but has no ASCII or binary-export operation. The private Node candidate
-retains only SVG and both layout backends; math is a typed absent capability until a distinct Node
-workflow justifies its closure.
+retains canonical analysis but has no ASCII or binary-export operation. The experimental public
+Node alpha retains only SVG and both layout backends; math remains a typed absent capability until
+a distinct Node workflow justifies its closure.
 
 ## Clean-build timing
 

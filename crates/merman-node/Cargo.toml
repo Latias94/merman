@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.95"
 publish = false
 license = "MIT OR Apache-2.0"
-description = "Private Node/SSG transport candidates for Merman admission testing."
+description = "Native transport implementation and comparison harnesses for @mermanjs/node."
 
 [lib]
 name = "merman_node"

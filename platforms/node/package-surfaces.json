@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "admission_status": "candidate",
+  "admission_status": "public-alpha",
   "version": "0.8.0-alpha.5",
   "node_engine": ">=22.0.0",
   "root": {
@@ -12,31 +12,43 @@
       "target": "darwin-arm64",
       "name": "@mermanjs/node-darwin-arm64",
       "directory": "packages/node-darwin-arm64",
-      "node_artifact": "merman.node"
+      "node_artifact": "merman.node",
+      "os": "darwin",
+      "cpu": "arm64"
     },
     {
       "target": "darwin-x64",
       "name": "@mermanjs/node-darwin-x64",
       "directory": "packages/node-darwin-x64",
-      "node_artifact": "merman.node"
+      "node_artifact": "merman.node",
+      "os": "darwin",
+      "cpu": "x64"
     },
     {
       "target": "linux-x64-gnu",
       "name": "@mermanjs/node-linux-x64-gnu",
       "directory": "packages/node-linux-x64-gnu",
-      "node_artifact": "merman.node"
+      "node_artifact": "merman.node",
+      "os": "linux",
+      "cpu": "x64",
+      "libc": "glibc"
     },
     {
       "target": "linux-x64-musl",
       "name": "@mermanjs/node-linux-x64-musl",
       "directory": "packages/node-linux-x64-musl",
-      "node_artifact": "merman.node"
+      "node_artifact": "merman.node",
+      "os": "linux",
+      "cpu": "x64",
+      "libc": "musl"
     },
     {
       "target": "win32-x64-msvc",
       "name": "@mermanjs/node-win32-x64-msvc",
       "directory": "packages/node-win32-x64-msvc",
-      "node_artifact": "merman.node"
+      "node_artifact": "merman.node",
+      "os": "win32",
+      "cpu": "x64"
     }
   ]
 }

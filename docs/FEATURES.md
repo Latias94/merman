@@ -1,9 +1,8 @@
 # Choosing Merman capabilities
 
-This page documents the current repository source. The published `0.8.0-alpha.3` packages predate
-this capability vocabulary; their release-specific feature names remain documented on that tag.
-The Rust snippets below therefore use workspace path dependencies and cannot be mistaken for
-features already available from crates.io.
+This page documents the current development source. Registry channels publish independently, so
+verify the exact package version and provenance before copying an install command; workspace path
+snippets are for source-tree development.
 
 Choose Merman by the operation you need, not by Mermaid diagram family or implementation
 dependency. Every parser-capable build uses the same Mermaid 11.16 language model, detector,
@@ -82,10 +81,10 @@ select their own direct leaf set instead.
 | Apple/Swift embedding | `Merman.xcframework` | Use the UniFFI XCFramework release asset or local SwiftPM package |
 | Python embedding | `merman` on PyPI | Use the generated UniFFI wheel for the selected platform |
 
-Node/SSG transport remains a private admission candidate, so there is no public
-`@mermanjs/node` package to select yet. Its current deterministic static-SVG recipe contains SVG
-and both layout backends, but not math, analysis, ASCII, or binary export. Browser WASM is not a
-supported Node transport.
+Node/SSG users can select the experimental `@mermanjs/node` alpha package. It installs a small
+loader plus one exact-version N-API platform package and uses the deterministic static-SVG recipe:
+SVG and both layout backends, but not math, analysis, ASCII, or binary export. Browser WASM is not
+a supported Node transport or fallback.
 
 ## Rust examples
 

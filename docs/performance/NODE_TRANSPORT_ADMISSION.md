@@ -1,9 +1,11 @@
 # Node/SSG Transport Admission Decision
 
-Status: inconclusive. Neither private Node candidate is an admitted or supported product.
+Status: N-API selected for the experimental public alpha package group. Stable-product admission
+remains separate from this alpha release boundary.
 
-This is an internal U14 evidence record. It does not add `@mermanjs/node` to a release surface,
-capability descriptor, package manifest, user guide, or changelog.
+This is an internal U14 comparison record. The alpha package release uses the selected N-API
+transport only after `release-node.yml` has built, packed, installed, and rendered the root loader
+on every declared platform target. The Node-targeted WASM implementation remains comparison-only.
 
 The measurements below predate the current size-first candidate recipe, which omits the
 unadvertised math capability. They remain valid only for their recorded source revision and must
@@ -22,17 +24,17 @@ transport and layout backends after removing only `math`:
 
 The current recipe is 17.25% smaller raw, 17.37% smaller under gzip, and removes 59 resolved
 packages while retaining the same callable operation set. Rust transport tests and all Node
-package-contract tests pass. This admits the smaller private recipe only; it does not change the
-transport-admission result below or publish a Node package.
+package-contract tests pass. This defines the smaller alpha package recipe; the historical report
+below does not by itself prove a stable-product admission.
 
 ## Decision
 
 The Node-targeted WASM and napi-rs candidates both built, packed, installed, and ran on the local
 macOS arm64 host. The napi-rs candidate is faster for warm SVG, substantially faster for cold
-startup, and uses less peak memory on this host. Node-WASM remains smaller. The selected transport
-is still `null` because one target does not satisfy the all-target admission rule. Separately, 426
-successful SVG outcomes retain same-host cross-transport exact-geometry and raw-byte drift whose
-cause is not attributed.
+startup, and uses less peak memory on this host. Node-WASM remains smaller. N-API is selected for
+the public alpha package; stable-product admission still requires current-source, all-target
+release evidence. Separately, 426 successful SVG outcomes retain same-host cross-transport exact
+geometry and raw-byte drift whose cause is not attributed.
 
 Report schema 2 closes three evidence gaps from the earlier local run:
 
@@ -117,10 +119,10 @@ faster, and its recorded peak RSS is 62.3% lower. The five concurrency batches p
 direction, but that sample count is evidence for follow-up rather than an admission-grade
 throughput claim. The cost is a 45.6% larger packed footprint and 28.8% larger installed footprint.
 
-This establishes a local N-API latency and RSS advantage, not a selected transport or public
-product decision. Both candidates lack complete runtime evidence across the declared target
-matrix. The N-API topology additionally lacks exact optional-platform-package installation
-evidence for macOS x64, Linux x64 glibc/musl, and Windows x64 MSVC. The geometry drift remains an
+This historical run establishes a local N-API latency and RSS advantage, but it does not by itself
+prove stable-product admission. N-API is now selected for the experimental public alpha, whose
+release workflow separately requires exact optional-platform-package installation and render
+smoke evidence across the complete declared target matrix. The geometry drift remains an
 unattributed report residual.
 
 ## Reproduction
