@@ -762,13 +762,20 @@ fn actor_lifecycle_message<'a>(
     model_index: usize,
     feature: &'static str,
 ) -> Result<&'a CoreSequenceMessage> {
-    model
+    let message = model
         .messages
         .get(model_index)
         .ok_or(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
             feature,
-        })
+        })?;
+    if message.semantic_kind() != CoreSequenceMessageKind::Signal {
+        return Err(AsciiError::UnsupportedFeature {
+            diagram_type: "sequence",
+            feature: "actor lifecycle message kinds",
+        });
+    }
+    Ok(message)
 }
 
 fn try_clone_projection_string(value: &str) -> Result<String> {
