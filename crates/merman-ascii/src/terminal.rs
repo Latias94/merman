@@ -1,8 +1,6 @@
 use crate::color::{AsciiColorRole, AsciiColorTheme, AsciiRgb};
 use crate::error::{AsciiError, Result};
-use crate::resource::{
-    AsciiResourceLimitId, AsciiResourceLimitPhase, AsciiResourcePolicy, ResourceContext,
-};
+use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, AsciiResourcePolicy};
 use std::collections::{HashMap, hash_map::Entry};
 use std::sync::Arc;
 
@@ -124,7 +122,6 @@ impl GlyphArena {
         policy: AsciiResourcePolicy,
         mut include: impl FnMut(usize, &[TerminalCell]) -> Result<bool>,
     ) -> Result<HashMap<GlyphId, GlyphId>> {
-        let resources = ResourceContext::new(policy);
         let capacity = cells.len().min(source.entries.len());
         let mut source_to_target = HashMap::new();
         source_to_target
@@ -148,7 +145,7 @@ impl GlyphArena {
                 continue;
             };
             let grapheme = source.get(source_id).ok_or_else(glyph_allocation_failed)?;
-            check_grapheme(&resources, grapheme)?;
+            check_grapheme(policy, grapheme)?;
             referenced_bytes = referenced_bytes
                 .checked_add(grapheme.len())
                 .ok_or_else(glyph_allocation_failed)?;
@@ -253,7 +250,7 @@ impl GlyphArena {
     }
 
     fn try_store(&mut self, grapheme: &str, policy: AsciiResourcePolicy) -> Result<TerminalGlyph> {
-        check_grapheme(&ResourceContext::new(policy), grapheme)?;
+        check_grapheme(policy, grapheme)?;
         check_retained_glyph_bytes(policy, self.backing_text().len())?;
         // Scalar inspection selects storage only; layout width was resolved by the grapheme API.
         let mut chars = grapheme.chars();
@@ -547,7 +544,7 @@ pub(crate) fn try_push_primary_grapheme_style_with_policy(
         .len()
         .checked_add(width)
         .ok_or_else(document_allocation_failed)?;
-    ResourceContext::new(policy).charge_document_cells(final_len)?;
+    check_document_cell_extent(policy, final_len)?;
     check_primary_cell_extent(policy, final_len)?;
     validate_continuation_width(width)?;
     cells
@@ -576,7 +573,7 @@ pub(crate) fn try_append_cells_from_surface(
         .len()
         .checked_add(source_cells.len())
         .ok_or_else(document_allocation_failed)?;
-    ResourceContext::new(policy).charge_document_cells(final_len)?;
+    check_document_cell_extent(policy, final_len)?;
     check_primary_cell_extent(policy, final_len)?;
     check_concurrent_cell_extent(policy, final_len, source_cells.len())?;
     check_cell_work(policy, source_cells.len(), SURFACE_APPEND_WORK_PASSES)?;
@@ -858,7 +855,7 @@ pub(crate) fn try_mirror_cells(
     cells: &[TerminalCell],
     policy: AsciiResourcePolicy,
 ) -> Result<Vec<TerminalCell>> {
-    ResourceContext::new(policy).charge_document_cells(cells.len())?;
+    check_document_cell_extent(policy, cells.len())?;
     check_concurrent_cell_extent(policy, cells.len(), cells.len())?;
     check_cell_work(policy, cells.len(), CELL_MIRROR_WORK_PASSES)?;
     let mut mirrored = Vec::new();
@@ -998,14 +995,18 @@ fn validate_continuation_width(width: usize) -> Result<()> {
     Ok(())
 }
 
-fn check_grapheme(resources: &ResourceContext, grapheme: &str) -> Result<()> {
+fn check_grapheme(policy: AsciiResourcePolicy, grapheme: &str) -> Result<()> {
     if grapheme.is_empty() {
         return Err(AsciiError::InvalidOption {
             field: "grapheme",
             message: "terminal grapheme clusters must not be empty",
         });
     }
-    resources.check_grapheme_bytes(grapheme.len())
+    policy.check(AsciiResourceLimitId::MaxGraphemeBytes, grapheme.len())
+}
+
+fn check_document_cell_extent(policy: AsciiResourcePolicy, cells: usize) -> Result<()> {
+    policy.check(AsciiResourceLimitId::MaxDocumentCells, cells)
 }
 
 fn check_retained_glyph_bytes(policy: AsciiResourcePolicy, bytes: usize) -> Result<()> {
