@@ -701,22 +701,30 @@ fn sequence_actor_lifecycles(
     for (actor_id, model_index) in &model.created_actors {
         let actor_index =
             actor_lifecycle_index(participant_index, actor_id, "actor lifecycle actors")?;
-        let message =
-            actor_lifecycle_message(model, *model_index, "actor lifecycle message indices")?;
+        let (signal_index, message) = actor_lifecycle_signal(
+            model,
+            *model_index,
+            "actor lifecycle message indices",
+            "actor creation messages",
+        )?;
         if message.to.as_deref() != Some(actor_id.as_str()) {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: "sequence",
                 feature: "actor creation messages",
             });
         }
-        lifecycles[actor_index].created_at = Some(*model_index);
+        lifecycles[actor_index].created_at = Some(signal_index);
     }
 
     for (actor_id, model_index) in &model.destroyed_actors {
         let actor_index =
             actor_lifecycle_index(participant_index, actor_id, "actor lifecycle actors")?;
-        let message =
-            actor_lifecycle_message(model, *model_index, "actor lifecycle message indices")?;
+        let (signal_index, message) = actor_lifecycle_signal(
+            model,
+            *model_index,
+            "actor lifecycle message indices",
+            "actor destruction messages",
+        )?;
         if message.from.as_deref() != Some(actor_id.as_str())
             && message.to.as_deref() != Some(actor_id.as_str())
         {
@@ -725,7 +733,7 @@ fn sequence_actor_lifecycles(
                 feature: "actor destruction messages",
             });
         }
-        lifecycles[actor_index].destroyed_at = Some(*model_index);
+        lifecycles[actor_index].destroyed_at = Some(signal_index);
     }
 
     for lifecycle in &lifecycles {
@@ -757,17 +765,30 @@ fn actor_lifecycle_index(
         })
 }
 
-fn actor_lifecycle_message<'a>(
+fn actor_lifecycle_signal<'a>(
     model: &'a SequenceDiagramRenderModel,
     model_index: usize,
-    feature: &'static str,
-) -> Result<&'a CoreSequenceMessage> {
+    index_feature: &'static str,
+    signal_feature: &'static str,
+) -> Result<(usize, &'a CoreSequenceMessage)> {
+    // Mermaid stores the current message length as an anchor when `create` or
+    // `destroy` is parsed.  An anchor at EOF is therefore valid input; it just
+    // has no following Signal and must report the semantic feature error below.
+    if model_index > model.messages.len() {
+        return Err(AsciiError::UnsupportedFeature {
+            diagram_type: "sequence",
+            feature: index_feature,
+        });
+    }
     model
         .messages
-        .get(model_index)
+        .iter()
+        .enumerate()
+        .skip(model_index)
+        .find(|(_, message)| message.semantic_kind() == CoreSequenceMessageKind::Signal)
         .ok_or(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
-            feature,
+            feature: signal_feature,
         })
 }
 
