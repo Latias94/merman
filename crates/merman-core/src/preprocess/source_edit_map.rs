@@ -90,6 +90,13 @@ impl PreprocessedSource {
         self.edit_map.try_map_span(span)
     }
 
+    pub(super) fn try_map_enclosing_span(&self, span: SourceSpan) -> Option<SourceSpan> {
+        if !self.text.is_char_boundary(span.start) || !self.text.is_char_boundary(span.end) {
+            return None;
+        }
+        self.edit_map.try_map_enclosing_span(span)
+    }
+
     pub(crate) fn global_lexemes(&self) -> &[EditorLexeme] {
         &self.global_lexemes
     }
@@ -307,6 +314,28 @@ impl SourceEditMap {
         }
         if self.has_unmapped_overlap(span.start, span.end)
             || (span.start < span.end && self.has_gap_inside(span.start, span.end))
+        {
+            return None;
+        }
+
+        let start = self.original_at_start(span.start)?;
+        let end = if span.start == span.end {
+            start
+        } else {
+            self.original_at_end(span.end)?
+        };
+        (start <= end).then(|| SourceSpan::new(start, end))
+    }
+
+    /// Maps span boundaries while allowing deleted source bytes inside the enclosing range.
+    ///
+    /// This is provenance-only: callers must not treat the returned range as an exact rewrite
+    /// target. It is used for parser facts such as multiline keys that cross dedented indentation
+    /// or normalized line endings.
+    fn try_map_enclosing_span(&self, span: SourceSpan) -> Option<SourceSpan> {
+        if span.start > span.end
+            || span.end > self.output_len
+            || self.has_unmapped_overlap(span.start, span.end)
         {
             return None;
         }
@@ -1080,6 +1109,24 @@ mod tests {
             source.try_map_span(SourceSpan::new(crossing_deletion, after_deletion)),
             None
         );
+    }
+
+    #[test]
+    fn enclosing_mapping_preserves_provenance_across_deleted_indentation() {
+        let original = "  first\n  second\n";
+        let mut source = PreprocessedSource::new(original);
+        let second_indent = original.find("  second").expect("second-line indentation");
+        source.apply_edits_uncontrolled(vec![
+            SourceEdit::delete(0..2),
+            SourceEdit::delete(second_indent..second_indent + 2),
+        ]);
+
+        let span = SourceSpan::new(0, "first\nsecond".len());
+        assert_eq!(source.try_map_span(span), None);
+        let enclosing = source
+            .try_map_enclosing_span(span)
+            .expect("provenance boundaries remain mappable");
+        assert_eq!(&original[enclosing.start..enclosing.end], "first\n  second");
     }
 
     #[test]

@@ -5,15 +5,12 @@ use crate::{
         DiagnosticCandidate, candidates_from_diagnostics_cancellable,
         extend_candidates_from_diagnostics_cancellable,
     },
-    source_directives::{
-        directive_keyword_spans_cancellable, frontmatter_config_key_spans_cancellable,
-        init_directive_config_key_spans_cancellable,
-    },
 };
 use merman_core::{
     BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
     FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
     MermaidConfig,
+    preprocess::{SourceConfigEvidence, SourceConfigOrigin},
 };
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
@@ -772,6 +769,7 @@ pub(crate) fn source_lint_candidates_cancellable(
     source: &str,
     source_map: &SourceMap,
     captured_config: Option<&MermaidConfig>,
+    source_config: &SourceConfigEvidence,
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<Vec<DiagnosticCandidate>, crate::AnalysisCancelled> {
     cancellation.checkpoint()?;
@@ -780,9 +778,9 @@ pub(crate) fn source_lint_candidates_cancellable(
         .disable_rule(PREFER_FRONTMATTER_CONFIG_RULE_ID)
         .expect("frontmatter preference is configurable");
     let alias_diagnostics = init_directive_alias_diagnostics_cancellable(
-        source,
         source_map,
         &alias_config,
+        source_config,
         cancellation,
     )?;
     let mut candidates = Vec::with_capacity(alias_diagnostics.len());
@@ -801,6 +799,7 @@ pub(crate) fn source_lint_candidates_cancellable(
             source_map,
             capture_rule_config(),
             captured_config,
+            source_config,
             cancellation,
         )?,
         cancellation,
@@ -809,11 +808,11 @@ pub(crate) fn source_lint_candidates_cancellable(
     extend_candidates_from_diagnostics_cancellable(
         &mut candidates,
         deprecated_flowchart_html_labels_diagnostics(
-            source,
             source_map,
             capture_rule_config(),
             &DEPRECATED_FLOWCHART_HTML_LABELS_INIT_CONFIG_PATHS,
             &DEPRECATED_FLOWCHART_HTML_LABELS_FRONTMATTER_CONFIG_PATHS,
+            source_config,
             cancellation,
         )?,
         cancellation,
@@ -822,9 +821,9 @@ pub(crate) fn source_lint_candidates_cancellable(
     extend_candidates_from_diagnostics_cancellable(
         &mut candidates,
         deprecated_external_diagram_loading_diagnostics(
-            source,
             source_map,
             capture_rule_config(),
+            source_config,
             cancellation,
         )?,
         cancellation,
@@ -834,9 +833,9 @@ pub(crate) fn source_lint_candidates_cancellable(
 }
 
 pub(crate) fn parsed_source_lint_candidates_cancellable(
-    source: &str,
     source_map: &SourceMap,
     diagram_type: &str,
+    source_config: &SourceConfigEvidence,
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<Vec<DiagnosticCandidate>, crate::AnalysisCancelled> {
     cancellation.checkpoint()?;
@@ -844,11 +843,11 @@ pub(crate) fn parsed_source_lint_candidates_cancellable(
         return Ok(Vec::new());
     }
     let diagnostics = deprecated_flowchart_html_labels_diagnostics(
-        source,
         source_map,
         capture_rule_config(),
         &DEPRECATED_FLOWCHART_HTML_LABELS_FLOWCHART_INIT_WRAPPER_PATHS,
         &[],
+        source_config,
         cancellation,
     )?;
     cancellation.checkpoint()?;
@@ -866,10 +865,12 @@ pub(crate) fn source_lint_diagnostics(
         .parse_metadata_sync(source)
         .ok()
         .map(|metadata| metadata.config);
+    let source_config = source_config_evidence_for_test(source);
     let candidates = source_lint_candidates_cancellable(
         source,
         source_map,
         captured_config.as_ref(),
+        &source_config,
         &cancellation,
     )
     .expect("a private analysis cancellation token cannot be cancelled");
@@ -884,6 +885,21 @@ pub(crate) fn source_lint_diagnostics(
 }
 
 #[cfg(test)]
+fn source_config_evidence_for_test(source: &str) -> SourceConfigEvidence {
+    let control = merman_core::ParseControl::new();
+    match merman_core::Engine::new()
+        .capture_diagram_snapshot_controlled_sync(source, &control)
+        .expect("a private parse control cannot be cancelled")
+    {
+        merman_core::DiagramSnapshotCapture::Snapshot(Some(snapshot)) => {
+            snapshot.source_config().clone()
+        }
+        merman_core::DiagramSnapshotCapture::Snapshot(None) => SourceConfigEvidence::default(),
+        merman_core::DiagramSnapshotCapture::Failed { source_config, .. } => source_config,
+    }
+}
+
+#[cfg(test)]
 pub(crate) fn parsed_source_lint_diagnostics(
     source: &str,
     source_map: &SourceMap,
@@ -891,9 +907,14 @@ pub(crate) fn parsed_source_lint_diagnostics(
     diagram_type: &str,
 ) -> Vec<AnalysisDiagnostic> {
     let cancellation = crate::AnalysisCancellationToken::new();
-    let candidates =
-        parsed_source_lint_candidates_cancellable(source, source_map, diagram_type, &cancellation)
-            .expect("a private analysis cancellation token cannot be cancelled");
+    let source_config = source_config_evidence_for_test(source);
+    let candidates = parsed_source_lint_candidates_cancellable(
+        source_map,
+        diagram_type,
+        &source_config,
+        &cancellation,
+    )
+    .expect("a private analysis cancellation token cannot be cancelled");
     crate::diagnostic_projection::project_diagnostic_candidates(
         &candidates,
         &crate::AnalysisDiagnosticPolicy {
@@ -1130,9 +1151,9 @@ pub(crate) fn internal_rule_registry_gap_diagnostic(
 }
 
 fn init_directive_alias_diagnostics_cancellable(
-    source: &str,
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
+    source_config: &SourceConfigEvidence,
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<Vec<AnalysisDiagnostic>, crate::AnalysisCancelled> {
     if !rule_config.is_rule_enabled(PREFER_INIT_DIRECTIVE_RULE) {
@@ -1143,16 +1164,14 @@ fn init_directive_alias_diagnostics_cancellable(
     }
     let severity = rule_config.severity_for(PREFER_INIT_DIRECTIVE_RULE);
     let mut diagnostics = Vec::new();
-    for (index, keyword) in directive_keyword_spans_cancellable(source, cancellation)?
-        .into_iter()
-        .enumerate()
-    {
+    for (index, directive) in source_config.directives().iter().enumerate() {
         if index.is_multiple_of(128) {
             cancellation.checkpoint()?;
         }
-        if source.get(keyword.start..keyword.end) != Some("initialize") {
+        if !directive.complete() || directive.keyword() != "initialize" {
             continue;
         }
+        let keyword = directive.keyword_span();
         let Ok(span) = source_map.span_cancellable(keyword.start, keyword.end, cancellation)?
         else {
             continue;
@@ -1184,6 +1203,7 @@ fn prefer_frontmatter_config_diagnostics_with_config_cancellable(
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
     captured_config: Option<&MermaidConfig>,
+    source_config: &SourceConfigEvidence,
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<Vec<AnalysisDiagnostic>, crate::AnalysisCancelled> {
     if !rule_config.is_rule_enabled(PREFER_FRONTMATTER_CONFIG_RULE) {
@@ -1196,6 +1216,7 @@ fn prefer_frontmatter_config_diagnostics_with_config_cancellable(
                 source,
                 source_map,
                 config,
+                source_config,
                 cancellation,
             )?
         }
@@ -1203,19 +1224,14 @@ fn prefer_frontmatter_config_diagnostics_with_config_cancellable(
     };
 
     let mut diagnostics = Vec::new();
-    for (index, keyword) in directive_keyword_spans_cancellable(source, cancellation)?
-        .into_iter()
-        .enumerate()
-    {
+    for (index, directive) in source_config.directives().iter().enumerate() {
         if index.is_multiple_of(128) {
             cancellation.checkpoint()?;
         }
-        if !matches!(
-            source.get(keyword.start..keyword.end),
-            Some("init" | "initialize")
-        ) {
+        if !directive.complete() || !matches!(directive.keyword(), "init" | "initialize") {
             continue;
         }
+        let keyword = directive.keyword_span();
         let Ok(span) = source_map.span_cancellable(keyword.start, keyword.end, cancellation)?
         else {
             continue;
@@ -1250,26 +1266,27 @@ fn prefer_frontmatter_config_diagnostics_with_config(
     captured_config: Option<&MermaidConfig>,
 ) -> Vec<AnalysisDiagnostic> {
     let cancellation = crate::AnalysisCancellationToken::new();
+    let source_config = source_config_evidence_for_test(source);
     prefer_frontmatter_config_diagnostics_with_config_cancellable(
         source,
         source_map,
         rule_config,
         captured_config,
+        &source_config,
         &cancellation,
     )
     .expect("a private analysis cancellation token cannot be cancelled")
 }
 
 fn deprecated_flowchart_html_labels_diagnostics(
-    source: &str,
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
     init_matching_paths: &[&[&str]],
     frontmatter_matching_paths: &[&[&str]],
+    source_config: &SourceConfigEvidence,
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<Vec<AnalysisDiagnostic>, crate::AnalysisCancelled> {
     config_key_diagnostics(
-        source,
         source_map,
         rule_config,
         ConfigKeyDiagnosticSpec {
@@ -1279,18 +1296,18 @@ fn deprecated_flowchart_html_labels_diagnostics(
             message: "`flowchart.htmlLabels` is deprecated; use root-level `htmlLabels` instead",
             help: "Mermaid keeps `flowchart.htmlLabels` as a compatibility fallback, but root-level `htmlLabels` takes precedence.",
         },
+        source_config,
         cancellation,
     )
 }
 
 fn deprecated_external_diagram_loading_diagnostics(
-    source: &str,
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
+    source_config: &SourceConfigEvidence,
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<Vec<AnalysisDiagnostic>, crate::AnalysisCancelled> {
     config_key_diagnostics(
-        source,
         source_map,
         rule_config,
         ConfigKeyDiagnosticSpec {
@@ -1301,6 +1318,7 @@ fn deprecated_external_diagram_loading_diagnostics(
             message: "deprecated external diagram loading config; use `registerExternalDiagrams` instead",
             help: "Mermaid warns that `lazyLoadedDiagrams` and `loadExternalDiagramsAtStartup` are deprecated in favor of the `registerExternalDiagrams` API.",
         },
+        source_config,
         cancellation,
     )
 }
@@ -1314,10 +1332,10 @@ struct ConfigKeyDiagnosticSpec<'a> {
 }
 
 fn config_key_diagnostics(
-    source: &str,
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
     spec: ConfigKeyDiagnosticSpec<'_>,
+    source_config: &SourceConfigEvidence,
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<Vec<AnalysisDiagnostic>, crate::AnalysisCancelled> {
     if !rule_config.is_rule_enabled(spec.descriptor) {
@@ -1326,25 +1344,15 @@ fn config_key_diagnostics(
     cancellation.checkpoint()?;
     let severity = rule_config.severity_for(spec.descriptor);
 
-    let init_spans = init_directive_config_key_spans_cancellable(
-        source,
-        spec.init_matching_paths,
-        cancellation,
-    )?;
-    let frontmatter_spans = frontmatter_config_key_spans_cancellable(
-        source,
-        spec.frontmatter_matching_paths,
-        cancellation,
-    )?;
-
-    let mut diagnostics =
-        Vec::with_capacity(init_spans.len().saturating_add(frontmatter_spans.len()));
-    for (index, span) in init_spans.into_iter().chain(frontmatter_spans).enumerate() {
-        if index.is_multiple_of(128) {
-            cancellation.checkpoint()?;
-        }
+    let matches_any_path = |key: &merman_core::preprocess::SourceConfigKeyEvidence,
+                            paths: &[&[&str]]| {
+        paths.iter().any(|path| key.matches_path(path))
+    };
+    let mut diagnostics = Vec::new();
+    let mut append_diagnostic = |key: &merman_core::preprocess::SourceConfigKeyEvidence| {
+        let span = key.span();
         let Ok(span) = source_map.span_cancellable(span.start, span.end, cancellation)? else {
-            continue;
+            return Ok(());
         };
         diagnostics.push(
             AnalysisDiagnostic::new(
@@ -1356,6 +1364,37 @@ fn config_key_diagnostics(
             .with_span(span)
             .with_help(spec.help),
         );
+        Ok::<(), crate::AnalysisCancelled>(())
+    };
+
+    for (index, key) in source_config.keys().iter().enumerate() {
+        if index.is_multiple_of(128) {
+            cancellation.checkpoint()?;
+        }
+        let SourceConfigOrigin::Directive { directive_index } = key.origin() else {
+            continue;
+        };
+        let Some(directive) = source_config.directives().get(directive_index) else {
+            continue;
+        };
+        if directive.complete()
+            && matches!(directive.keyword(), "init" | "initialize")
+            && matches_any_path(key, spec.init_matching_paths)
+        {
+            append_diagnostic(key)?;
+        }
+    }
+    cancellation.checkpoint()?;
+
+    for (index, key) in source_config.keys().iter().enumerate() {
+        if index.is_multiple_of(128) {
+            cancellation.checkpoint()?;
+        }
+        if key.origin() == SourceConfigOrigin::Frontmatter
+            && matches_any_path(key, spec.frontmatter_matching_paths)
+        {
+            append_diagnostic(key)?;
+        }
     }
     cancellation.checkpoint()?;
     Ok(diagnostics)

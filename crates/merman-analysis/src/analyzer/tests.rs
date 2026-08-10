@@ -679,7 +679,6 @@ fn rich_capture_retains_flowchart_facts_projection_failure_candidate() {
     let parsed = malformed_flowchart_parsed_diagram();
     let captured = analyzer.analyze_parsed_diagram(
         DiagramCaptureInput {
-            source,
             source_map: &source_map,
             metadata: &parsed.meta,
             editor_facts: None,
@@ -738,7 +737,6 @@ fn diagnostic_reprojection_reuses_the_canonical_flowchart_projection_failure() {
     let parsed = malformed_flowchart_parsed_diagram();
     let captured = analyzer.analyze_parsed_diagram(
         DiagramCaptureInput {
-            source,
             source_map: &source_map,
             metadata: &parsed.meta,
             editor_facts: None,
@@ -790,6 +788,43 @@ fn rich_capture_reports_editor_facts_preprocess_failure() {
 }
 
 #[test]
+fn preprocessing_failure_still_projects_later_source_config_evidence() {
+    let analyzer = Analyzer::with_options(
+        AnalysisOptions::default().with_rule_config(
+            crate::rules::AnalysisRuleConfig::default()
+                .with_profile(crate::rules::AnalysisRuleProfile::Recommended),
+        ),
+    );
+    let source = concat!(
+        "---\n",
+        "config: [\n",
+        "---\n",
+        "%%{ initialize: { theme: 'dark' } }%%\n",
+        "flowchart TD\nA-->B\n",
+    );
+    let result = analyzer
+        .analyze_generation(source)
+        .into_ready()
+        .expect("source is within the analysis limit");
+    let payload = result.project(analyzer.options().diagnostic_policy());
+
+    assert!(
+        payload
+            .diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.id == crate::rules::INVALID_FRONT_MATTER_YAML_RULE_ID })
+    );
+    let source_config = payload
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.id == crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
+        .expect("later directive evidence must survive the preprocessing failure");
+    let span = source_config.span.as_ref().expect("directive keyword span");
+    assert_eq!(&source[span.byte_start..span.byte_end], "initialize");
+    assert!(source_config.fixes.is_empty());
+}
+
+#[test]
 fn diagnostics_only_capture_reports_the_canonical_flowchart_projection_failure() {
     let analyzer = Analyzer::new();
     let source = "flowchart TD\nA-->B\n";
@@ -797,7 +832,6 @@ fn diagnostics_only_capture_reports_the_canonical_flowchart_projection_failure()
     let parsed = malformed_flowchart_parsed_diagram();
     let captured = analyzer.analyze_parsed_diagram(
         DiagramCaptureInput {
-            source,
             source_map: &source_map,
             metadata: &parsed.meta,
             editor_facts: None,

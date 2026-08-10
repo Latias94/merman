@@ -40,7 +40,7 @@ pub use detect::{Detector, DetectorRegistry};
 pub use diagram::{
     BLOCK_WIDTH_WARNING_RULE_ID, BuiltinRenderSemantic, CustomJsonProvenance,
     CustomJsonRenderModel, CustomJsonRenderParser, DiagramParseOutcome, DiagramParseSnapshot,
-    DiagramRegistry, DiagramSemanticParser, DiagramWarningFact,
+    DiagramRegistry, DiagramSemanticParser, DiagramSnapshotCapture, DiagramWarningFact,
     FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
     GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID, ParsedDiagram, ParsedDiagramRender,
     ParsedEditorFacts, RenderDiagramRegistry, RenderSemanticModel,
@@ -443,6 +443,18 @@ impl Engine {
     ) -> ParseControlResult<Result<Option<DiagramParseSnapshot>>> {
         parse_pipeline::ParsePipeline::detect(self, text, ParseOptions::strict())
             .parse_editor_snapshot_controlled(parse_pipeline::ParseTiming::Json, control)
+    }
+
+    /// Captures an editor parse operation while retaining preprocessing source-configuration
+    /// evidence on non-cancellation failures. Cooperative cancellation remains the outer error
+    /// channel and never yields a partial capture.
+    pub fn capture_diagram_snapshot_controlled_sync(
+        &self,
+        text: &str,
+        control: &ParseControl,
+    ) -> ParseControlResult<DiagramSnapshotCapture> {
+        parse_pipeline::ParsePipeline::detect(self, text, ParseOptions::strict())
+            .capture_editor_snapshot_controlled(parse_pipeline::ParseTiming::Json, control)
     }
 
     /// Captures one editor-facing parse operation when the diagram type is already known.

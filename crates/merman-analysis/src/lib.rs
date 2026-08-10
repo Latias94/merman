@@ -20,7 +20,6 @@ mod result;
 mod retained_weight;
 mod rules;
 mod source_config_rewrite;
-mod source_directives;
 mod source_limits;
 mod source_map;
 mod status;

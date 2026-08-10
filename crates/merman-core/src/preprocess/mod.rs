@@ -1,5 +1,10 @@
+mod source_config;
 mod source_edit_map;
 
+pub use source_config::{
+    FrontmatterSourceEvidence, SourceConfigEvidence, SourceConfigKeyEvidence, SourceConfigOrigin,
+    SourceDirectiveEvidence,
+};
 pub use source_edit_map::PreprocessedSource;
 
 use crate::{
@@ -32,6 +37,31 @@ pub struct PreprocessResult {
     pub source: PreprocessedSource,
     pub title: Option<String>,
     pub config: MermaidConfig,
+}
+
+#[derive(Debug)]
+pub(crate) struct PreprocessCaptureOutcome {
+    pub(crate) result: Result<PreprocessResult>,
+    pub(crate) source_config: SourceConfigEvidence,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SourceConfigCaptureMode {
+    Omit,
+    Collect,
+}
+
+impl SourceConfigCaptureMode {
+    const fn collects(self) -> bool {
+        matches!(self, Self::Collect)
+    }
+}
+
+#[derive(Debug)]
+struct LocalConfigKeyEvidence {
+    path: Vec<String>,
+    span: Option<SourceSpan>,
+    rewrite_safe: bool,
 }
 
 impl PreprocessResult {
@@ -115,20 +145,62 @@ pub(crate) fn preprocess_diagram_with_known_type_and_directive_recovery_controll
     directive_recovery: DirectiveRecoveryMode,
     control: &ParseControl,
 ) -> ParseControlResult<Result<PreprocessResult>> {
-    let preprocessed = preprocess_single_pass_controlled(
+    Ok(
+        preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled(
+            input,
+            registry,
+            diagram_type,
+            directive_recovery,
+            SourceConfigCaptureMode::Omit,
+            control,
+        )?
+        .result,
+    )
+}
+
+fn preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled(
+    input: &str,
+    registry: &DetectorRegistry,
+    diagram_type: Option<&str>,
+    directive_recovery: DirectiveRecoveryMode,
+    capture_mode: SourceConfigCaptureMode,
+    control: &ParseControl,
+) -> ParseControlResult<PreprocessCaptureOutcome> {
+    let captured = preprocess_single_pass_controlled(
         PreprocessedSource::new_controlled(input, control)?,
         registry,
         diagram_type,
         directive_recovery,
+        capture_mode,
         control,
     )?;
     control.checkpoint()?;
-    let prepared = match preprocessed {
+    let result = match captured.result {
         Ok(preprocessed) => Ok(prepare_parser_code_controlled(preprocessed, control)?),
         Err(error) => Err(error),
     };
     control.checkpoint()?;
-    Ok(prepared)
+    Ok(PreprocessCaptureOutcome {
+        result,
+        source_config: captured.source_config,
+    })
+}
+
+pub(crate) fn preprocess_diagram_with_known_type_and_directive_recovery_evidence_controlled(
+    input: &str,
+    registry: &DetectorRegistry,
+    diagram_type: Option<&str>,
+    directive_recovery: DirectiveRecoveryMode,
+    control: &ParseControl,
+) -> ParseControlResult<PreprocessCaptureOutcome> {
+    preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled(
+        input,
+        registry,
+        diagram_type,
+        directive_recovery,
+        SourceConfigCaptureMode::Collect,
+        control,
+    )
 }
 
 #[cfg(test)]
@@ -170,41 +242,96 @@ pub(crate) fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_c
     directive_recovery: DirectiveRecoveryMode,
     control: &ParseControl,
 ) -> ParseControlResult<Result<PreprocessResult>> {
+    Ok(
+        preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_controlled(
+            input,
+            registry,
+            diagram_type,
+            directive_recovery,
+            SourceConfigCaptureMode::Omit,
+            control,
+        )?
+        .result,
+    )
+}
+
+pub(crate) fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_evidence_controlled(
+    input: &str,
+    registry: &DetectorRegistry,
+    diagram_type: Option<&str>,
+    directive_recovery: DirectiveRecoveryMode,
+    control: &ParseControl,
+) -> ParseControlResult<PreprocessCaptureOutcome> {
+    preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_controlled(
+        input,
+        registry,
+        diagram_type,
+        directive_recovery,
+        SourceConfigCaptureMode::Collect,
+        control,
+    )
+}
+
+fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_controlled(
+    input: &str,
+    registry: &DetectorRegistry,
+    diagram_type: Option<&str>,
+    directive_recovery: DirectiveRecoveryMode,
+    capture_mode: SourceConfigCaptureMode,
+    control: &ParseControl,
+) -> ParseControlResult<PreprocessCaptureOutcome> {
     #[cfg(test)]
     PUBLIC_PARSE_PREPROCESS_COUNT.set(PUBLIC_PARSE_PREPROCESS_COUNT.get() + 1);
 
     control.checkpoint()?;
-    let outer = match preprocess_single_pass_controlled(
+    let outer = preprocess_single_pass_controlled(
         PreprocessedSource::new_controlled(input, control)?,
         registry,
         diagram_type,
         directive_recovery,
+        capture_mode,
         control,
-    )? {
+    )?;
+    let outer_result = match outer.result {
         Ok(outer) => outer,
-        Err(error) => return Ok(Err(error)),
+        Err(error) => {
+            return Ok(PreprocessCaptureOutcome {
+                result: Err(error),
+                source_config: outer.source_config,
+            });
+        }
     };
     control.checkpoint()?;
     // Mermaid `parse()` calls `preprocessDiagram()` in `processAndSetConfigs()` and again in
     // `getDiagramFromText()`. Only `Diagram.fromText()` prepares entities for the family parser.
-    let inner = match preprocess_single_pass_controlled(
-        outer.source,
+    let inner = preprocess_single_pass_controlled(
+        outer_result.source,
         registry,
         diagram_type,
         directive_recovery,
+        SourceConfigCaptureMode::Omit,
         control,
-    )? {
+    )?;
+    let inner = match inner.result {
         Ok(inner) => inner,
-        Err(error) => return Ok(Err(error)),
+        Err(error) => {
+            return Ok(PreprocessCaptureOutcome {
+                result: Err(error),
+                source_config: outer.source_config,
+            });
+        }
     };
     control.checkpoint()?;
     let result = PreprocessResult {
         source: prepare_parser_text_controlled(inner.source, control)?,
-        title: outer.title,
-        config: outer.config,
+        title: outer_result.title,
+        config: outer_result.config,
     };
     control.checkpoint()?;
-    Ok(Ok(result))
+    Ok(PreprocessCaptureOutcome {
+        result: Ok(result),
+        source_config: outer.source_config,
+    })
 }
 
 fn preprocess_single_pass_controlled(
@@ -212,18 +339,38 @@ fn preprocess_single_pass_controlled(
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
     directive_recovery: DirectiveRecoveryMode,
+    capture_mode: SourceConfigCaptureMode,
     control: &ParseControl,
-) -> ParseControlResult<Result<PreprocessResult>> {
+) -> ParseControlResult<PreprocessCaptureOutcome> {
     control.checkpoint()?;
     cleanup_text_controlled(&mut source, control)?;
-    let frontmatter = process_frontmatter_controlled(source.text(), control)?;
-    let (frontmatter_len, title, mut frontmatter_config) = match frontmatter {
-        Ok((without_frontmatter, title, config)) => (
-            source.text().len() - without_frontmatter.len(),
-            title,
-            config,
-        ),
-        Err(error) => return Ok(Err(error)),
+    let mut source_config = SourceConfigEvidence::empty();
+    if capture_mode.collects() {
+        if let Some(config_insert_span) = source.try_map_span(SourceSpan::new(0, 0)) {
+            source_config.set_config_insert_span(config_insert_span);
+        } else {
+            source_config.mark_rewrite_unsafe();
+        }
+    }
+    let frontmatter = process_frontmatter_controlled(source.text(), capture_mode, control)?;
+    if capture_mode.collects() {
+        append_frontmatter_evidence(&source, &frontmatter, &mut source_config, control)?;
+    }
+    let frontmatter_len = frontmatter.full.map_or(0, |full| full.end);
+    let mut first_error = None;
+    let (title, mut frontmatter_config) = match frontmatter.result {
+        Ok(processed) => (processed.title, processed.config),
+        Err(error) => {
+            source_config.mark_rewrite_unsafe();
+            if !capture_mode.collects() {
+                return Ok(PreprocessCaptureOutcome {
+                    result: Err(error),
+                    source_config,
+                });
+            }
+            first_error = Some(error);
+            (None, MermaidConfig::empty_object())
+        }
     };
     if frontmatter_len > 0 {
         source.record_global_lexeme(
@@ -234,16 +381,30 @@ fn preprocess_single_pass_controlled(
     }
 
     control.checkpoint()?;
-    let processed_directives = match process_directives_controlled(
+    let processed_directives = process_directives_controlled(
         source.text(),
         registry,
         diagram_type,
         directive_recovery,
+        capture_mode,
         control,
-    )? {
-        Ok(processed) => processed,
-        Err(error) => return Ok(Err(error)),
-    };
+    )?;
+    if capture_mode.collects() {
+        append_directive_evidence(&source, &processed_directives, &mut source_config, control)?;
+    }
+    if let Some(error) = processed_directives.error {
+        source_config.mark_rewrite_unsafe();
+        if first_error.is_none() {
+            first_error = Some(error);
+        }
+    }
+    if let Some(error) = first_error {
+        control.checkpoint()?;
+        return Ok(PreprocessCaptureOutcome {
+            result: Err(error),
+            source_config,
+        });
+    }
     if processed_directives.recovered_incomplete_directive {
         source.mark_recovered_incomplete_directive();
     }
@@ -269,11 +430,137 @@ fn preprocess_single_pass_controlled(
 
     control.checkpoint()?;
     remove_mermaid_comments_controlled(&mut source, control)?;
-    Ok(Ok(PreprocessResult {
-        source,
-        title,
-        config: frontmatter_config,
-    }))
+    Ok(PreprocessCaptureOutcome {
+        result: Ok(PreprocessResult {
+            source,
+            title,
+            config: frontmatter_config,
+        }),
+        source_config,
+    })
+}
+
+fn append_frontmatter_evidence(
+    source: &PreprocessedSource,
+    captured: &FrontmatterCapture,
+    evidence: &mut SourceConfigEvidence,
+    control: &ParseControl,
+) -> ParseControlResult<()> {
+    let frontmatter = captured
+        .full
+        .zip(captured.body)
+        .and_then(|(full, local_body)| {
+            let full = source.try_map_span(SourceSpan::new(full.start, full.end))?;
+            let body = map_frontmatter_body_span_to_original(source, local_body)?;
+            // The mapped body end is the exact edit boundary used by the existing insertion
+            // projection. For CRLF it intentionally sits between `\r` and `\n`; the projection
+            // replaces that boundary with a complete CRLF-delimited config block.
+            let insert = SourceSpan::new(body.end, body.end);
+            Some(FrontmatterSourceEvidence::new(
+                full,
+                body,
+                captured.indent.clone(),
+                captured.has_config,
+                captured.rewrite_safe,
+                captured.fields.clone(),
+            ))
+            .map(|frontmatter| (frontmatter, insert))
+        });
+    if let Some((frontmatter, insert)) = frontmatter {
+        evidence.set_config_insert_span(insert);
+        evidence.set_frontmatter(frontmatter);
+    } else if captured.full.is_some() {
+        evidence.mark_rewrite_unsafe();
+    }
+
+    for (index, key) in captured.keys.iter().enumerate() {
+        if index.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        let Some(local_span) = key.span else {
+            continue;
+        };
+        let exact_span = source.try_map_span(local_span);
+        let Some(span) = exact_span.or_else(|| source.try_map_enclosing_span(local_span)) else {
+            continue;
+        };
+        evidence.push_key(SourceConfigKeyEvidence::new(
+            SourceConfigOrigin::Frontmatter,
+            key.path.clone(),
+            span,
+            evidence.keys().len(),
+            key.rewrite_safe && exact_span.is_some(),
+        ));
+    }
+    control.checkpoint()
+}
+
+fn map_frontmatter_body_span_to_original(
+    source: &PreprocessedSource,
+    body: FrontmatterByteSpan,
+) -> Option<SourceSpan> {
+    let mut mapped = source.try_map_span(SourceSpan::new(body.start, body.end))?;
+    // The frontmatter locator intentionally leaves the `\r` from a CRLF immediately before the
+    // closing delimiter inside the body range. Preprocessing normalizes that pair to one `\n`,
+    // whose left boundary maps before the original `\r`. Recover the locator's original boundary
+    // from the same edit map without rescanning or retaining source text.
+    if source.text().as_bytes().get(body.end) == Some(&b'\n') {
+        let newline = source.try_map_span(SourceSpan::new(body.end, body.end + 1))?;
+        if newline.end.saturating_sub(newline.start) == 2 && mapped.end == newline.start {
+            mapped.end = newline.end - 1;
+        }
+    }
+    Some(mapped)
+}
+
+fn append_directive_evidence(
+    source: &PreprocessedSource,
+    captured: &ProcessedDirectives,
+    evidence: &mut SourceConfigEvidence,
+    control: &ParseControl,
+) -> ParseControlResult<()> {
+    for (index, directive) in captured.evidence.iter().enumerate() {
+        if index.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        let Some(full_span) = source.try_map_span(directive.full_span) else {
+            evidence.mark_rewrite_unsafe();
+            continue;
+        };
+        let Some(keyword_span) = source.try_map_span(directive.keyword_span) else {
+            evidence.mark_rewrite_unsafe();
+            continue;
+        };
+        let directive_index = evidence.push_directive(SourceDirectiveEvidence::new(
+            directive.keyword.clone(),
+            full_span,
+            keyword_span,
+            evidence.directives().len(),
+            directive.complete,
+            directive.rewrite_safe,
+        ));
+        for key in &directive.keys {
+            let Some(local_span) = key.span else {
+                continue;
+            };
+            let exact_span = source.try_map_span(local_span);
+            let Some(span) = exact_span.or_else(|| source.try_map_enclosing_span(local_span))
+            else {
+                continue;
+            };
+            evidence.push_key(SourceConfigKeyEvidence::new(
+                SourceConfigOrigin::Directive { directive_index },
+                key.path.clone(),
+                span,
+                evidence.keys().len(),
+                key.rewrite_safe && exact_span.is_some(),
+            ));
+        }
+    }
+    if captured.recovered_incomplete_directive {
+        evidence.mark_rewrite_unsafe();
+    }
+    control.checkpoint()
 }
 
 fn prepare_parser_code_controlled(
@@ -687,27 +974,162 @@ fn rfind_ascii_byte_in_range_controlled(
     Ok(None)
 }
 
-fn process_frontmatter_controlled<'a>(
-    input: &'a str,
-    control: &ParseControl,
-) -> ParseControlResult<Result<(&'a str, Option<String>, MermaidConfig)>> {
-    control.checkpoint()?;
-    let Some(frontmatter) = split_frontmatter_block_controlled(input, control)? else {
-        return Ok(Ok((input, None, MermaidConfig::empty_object())));
-    };
-    let yaml_body = frontmatter.dedented_body;
-    let stripped = frontmatter.stripped;
+struct ProcessedFrontmatter {
+    title: Option<String>,
+    config: MermaidConfig,
+}
 
-    if config_nesting_exceeds_limit_controlled(yaml_body.as_ref(), control)? {
-        return Ok(Err(Error::InvalidFrontMatterYaml {
-            message: format!("config nesting exceeds {MAX_CONFIG_NESTING_DEPTH} levels"),
-        }));
+struct FrontmatterCapture {
+    result: Result<ProcessedFrontmatter>,
+    full: Option<FrontmatterByteSpan>,
+    body: Option<FrontmatterByteSpan>,
+    indent: String,
+    keys: Vec<LocalConfigKeyEvidence>,
+    has_config: bool,
+    rewrite_safe: bool,
+    fields: Option<MermaidConfig>,
+}
+
+enum FrontmatterYamlInput<'a> {
+    Plain(Cow<'a, str>),
+    Mapped(PreprocessedSource),
+}
+
+impl FrontmatterYamlInput<'_> {
+    fn text(&self) -> &str {
+        match self {
+            Self::Plain(text) => text.as_ref(),
+            Self::Mapped(source) => source.text(),
+        }
+    }
+
+    fn try_map_span_to_body(&self, span: SourceSpan) -> Option<SourceSpan> {
+        match self {
+            Self::Plain(_) => Some(span),
+            Self::Mapped(source) => source.try_map_span(span),
+        }
+    }
+
+    fn try_map_enclosing_span_to_body(&self, span: SourceSpan) -> Option<SourceSpan> {
+        match self {
+            Self::Plain(_) => Some(span),
+            Self::Mapped(source) => source.try_map_enclosing_span(span),
+        }
+    }
+}
+
+fn map_frontmatter_yaml_span_to_preprocessed_source(
+    yaml_input: &FrontmatterYamlInput<'_>,
+    body_start: usize,
+    span: std::ops::Range<usize>,
+) -> Option<(SourceSpan, bool)> {
+    let parser_span = SourceSpan::new(span.start, span.end);
+    let exact = yaml_input.try_map_span_to_body(parser_span);
+    let body_span = exact.or_else(|| yaml_input.try_map_enclosing_span_to_body(parser_span))?;
+    Some((
+        SourceSpan::new(
+            body_start.checked_add(body_span.start)?,
+            body_start.checked_add(body_span.end)?,
+        ),
+        exact.is_some(),
+    ))
+}
+
+fn process_frontmatter_controlled(
+    input: &str,
+    capture_mode: SourceConfigCaptureMode,
+    control: &ParseControl,
+) -> ParseControlResult<FrontmatterCapture> {
+    control.checkpoint()?;
+    let Some(location) = locate_frontmatter_block_controlled(input, control)? else {
+        return Ok(FrontmatterCapture {
+            result: Ok(ProcessedFrontmatter {
+                title: None,
+                config: MermaidConfig::empty_object(),
+            }),
+            full: None,
+            body: None,
+            indent: String::new(),
+            keys: Vec::new(),
+            has_config: false,
+            rewrite_safe: true,
+            fields: None,
+        });
+    };
+    let body = &input[location.body.start..location.body.end];
+    let yaml_input =
+        dedented_frontmatter_yaml_input_controlled(body, location.indent, capture_mode, control)?;
+    let yaml_body = yaml_input.text();
+    let mut keys = Vec::new();
+    let mut rewrite_safe = true;
+
+    if config_nesting_exceeds_limit_controlled(yaml_body, control)? {
+        return Ok(FrontmatterCapture {
+            result: Err(Error::InvalidFrontMatterYaml {
+                message: format!("config nesting exceeds {MAX_CONFIG_NESTING_DEPTH} levels"),
+            }),
+            full: Some(location.full),
+            body: Some(location.body),
+            indent: location.indent.to_string(),
+            keys,
+            has_config: false,
+            rewrite_safe: false,
+            fields: None,
+        });
     }
 
     control.checkpoint()?;
-    let parsed_obj = match parse_frontmatter_yaml_fields_controlled(yaml_body.as_ref(), control)? {
+    let parsed = if capture_mode.collects() {
+        let captured = crate::yaml_config::parse_yaml_value_capture_controlled(
+            yaml_body,
+            MAX_CONFIG_NESTING_DEPTH,
+            control,
+        )?;
+        rewrite_safe = captured.rewrite_safe;
+        keys.reserve(captured.keys.len());
+        for key in captured.keys {
+            // Compose exactly once through each coordinate space: parser span in the dedented
+            // YAML input -> body-relative source -> cleaned preprocess source. The outer source
+            // edit map is applied later when the operation evidence is appended.
+            let mapped = key.span.and_then(|span| {
+                map_frontmatter_yaml_span_to_preprocessed_source(
+                    &yaml_input,
+                    location.body.start,
+                    span,
+                )
+            });
+            let (span, exact) = mapped.map_or((None, false), |(span, exact)| (Some(span), exact));
+            let rewrite_safe = key.rewrite_safe && exact;
+            keys.push(LocalConfigKeyEvidence {
+                path: key.path,
+                span,
+                rewrite_safe,
+            });
+        }
+        captured.value
+    } else {
+        crate::yaml_config::parse_yaml_value_controlled(
+            yaml_body,
+            MAX_CONFIG_NESTING_DEPTH,
+            control,
+        )?
+    };
+    let parsed_obj = match frontmatter_fields_from_yaml_value(parsed) {
         Ok(parsed) => parsed,
-        Err(message) => return Ok(Err(Error::InvalidFrontMatterYaml { message })),
+        Err(message) => {
+            return Ok(FrontmatterCapture {
+                result: Err(Error::InvalidFrontMatterYaml { message }),
+                full: Some(location.full),
+                body: Some(location.body),
+                indent: location.indent.to_string(),
+                has_config: keys
+                    .iter()
+                    .any(|key| key.path.first().is_some_and(|segment| segment == "config")),
+                keys,
+                rewrite_safe: false,
+                fields: None,
+            });
+        }
     };
     if let Err(cancelled) = control.checkpoint() {
         crate::config::drop_value_nonrecursive(Value::Object(parsed_obj));
@@ -743,9 +1165,60 @@ fn process_frontmatter_controlled<'a>(
         config.set_value("gantt.displayMode", Value::String(dm));
     }
 
-    crate::config::drop_value_nonrecursive(Value::Object(parsed_obj));
+    let has_config = parsed_obj.contains_key("config");
+    let fields = if capture_mode.collects() && has_config && rewrite_safe {
+        Some(MermaidConfig::from_value(Value::Object(parsed_obj)))
+    } else {
+        crate::config::drop_value_nonrecursive(Value::Object(parsed_obj));
+        None
+    };
     control.checkpoint()?;
-    Ok(Ok((stripped, title, config)))
+    Ok(FrontmatterCapture {
+        result: Ok(ProcessedFrontmatter { title, config }),
+        full: Some(location.full),
+        body: Some(location.body),
+        indent: location.indent.to_string(),
+        keys,
+        has_config,
+        rewrite_safe,
+        fields,
+    })
+}
+
+fn dedented_frontmatter_yaml_input_controlled<'a>(
+    body: &'a str,
+    indent: &str,
+    capture_mode: SourceConfigCaptureMode,
+    control: &ParseControl,
+) -> ParseControlResult<FrontmatterYamlInput<'a>> {
+    if !capture_mode.collects() {
+        return dedent_frontmatter_body_controlled(body, indent, control)
+            .map(FrontmatterYamlInput::Plain);
+    }
+    if indent.is_empty() {
+        control.checkpoint()?;
+        return Ok(FrontmatterYamlInput::Plain(Cow::Borrowed(body)));
+    }
+
+    let mut source = PreprocessedSource::new_controlled(body, control)?;
+    let mut checkpoints = ControlledScanCheckpoints::new(control)?;
+    let mut edits = Vec::new();
+    let mut line_start = 0usize;
+    loop {
+        let line_end =
+            find_newline_controlled(body, line_start, &mut checkpoints)?.unwrap_or(body.len());
+        let line = &body[line_start..line_end];
+        if frontmatter_has_prefix_controlled(line, indent, &mut checkpoints)? {
+            edits.push(SourceEdit::delete(line_start..line_start + indent.len()));
+        }
+        if line_end == body.len() {
+            break;
+        }
+        line_start = line_end + 1;
+    }
+    checkpoints.finish()?;
+    source.apply_edits(edits, control)?;
+    Ok(FrontmatterYamlInput::Mapped(source))
 }
 
 /// Splits an optional frontmatter block using a private, non-cancellable parse control.
@@ -1118,6 +1591,17 @@ struct ProcessedDirectives {
     removals: Vec<std::ops::Range<usize>>,
     editor_prefixes: Vec<String>,
     recovered_incomplete_directive: bool,
+    evidence: Vec<LocalDirectiveEvidence>,
+    error: Option<Error>,
+}
+
+struct LocalDirectiveEvidence {
+    keyword: String,
+    full_span: SourceSpan,
+    keyword_span: SourceSpan,
+    complete: bool,
+    rewrite_safe: bool,
+    keys: Vec<LocalConfigKeyEvidence>,
 }
 
 fn process_directives_controlled(
@@ -1125,31 +1609,83 @@ fn process_directives_controlled(
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
     directive_recovery: DirectiveRecoveryMode,
+    capture_mode: SourceConfigCaptureMode,
     control: &ParseControl,
-) -> ParseControlResult<Result<ProcessedDirectives>> {
+) -> ParseControlResult<ProcessedDirectives> {
     control.checkpoint()?;
     let blocks = directive_blocks_controlled(input, directive_recovery, control)?;
     if blocks.is_empty() {
-        return Ok(Ok(ProcessedDirectives {
+        return Ok(ProcessedDirectives {
             config: MermaidConfig::empty_object(),
             removals: Vec::new(),
             editor_prefixes: Vec::new(),
             recovered_incomplete_directive: false,
-        }));
+            evidence: Vec::new(),
+            error: None,
+        });
     }
-    let recovered_incomplete_directive = blocks.iter().any(|block| block.raw.is_none());
+    let recovered_incomplete_directive = blocks.iter().any(|block| !block.complete);
     let mut directives = Vec::new();
+    let mut evidence = Vec::new();
+    let mut first_error = None;
     for (index, block) in blocks.iter().enumerate() {
         if index % 32 == 0 {
             control.checkpoint()?;
         }
-        let Some(raw) = block.raw else {
+        if !block.complete && !capture_mode.collects() {
             continue;
-        };
-        match parse_directive_like_upstream_controlled(raw, control)? {
-            Ok(Some(directive)) => directives.push(directive),
-            Ok(None) => {}
-            Err(error) => return Ok(Err(error)),
+        }
+        let parsed = parse_directive_like_upstream_capture_controlled(
+            block.raw,
+            capture_mode,
+            block.complete,
+            control,
+        )?;
+        if let Some(directive) = parsed.directive {
+            if capture_mode.collects() {
+                let keyword_span = SourceSpan::new(
+                    block.raw_start.saturating_add(directive.keyword_span.start),
+                    block.raw_start.saturating_add(directive.keyword_span.end),
+                );
+                let keys = directive
+                    .config_keys
+                    .iter()
+                    .map(|key| LocalConfigKeyEvidence {
+                        path: key.path.clone(),
+                        span: key.span.as_ref().map(|span| {
+                            SourceSpan::new(
+                                block.raw_start.saturating_add(span.start),
+                                block.raw_start.saturating_add(span.end),
+                            )
+                        }),
+                        rewrite_safe: key.rewrite_safe,
+                    })
+                    .collect();
+                evidence.push(LocalDirectiveEvidence {
+                    keyword: directive.ty.clone(),
+                    full_span: SourceSpan::new(block.range.start, block.range.end),
+                    keyword_span,
+                    complete: block.complete,
+                    rewrite_safe: block.complete && directive.rewrite_safe,
+                    keys,
+                });
+            }
+            if block.complete && parsed.error.is_none() {
+                directives.push(directive);
+            }
+        }
+        if block.complete && first_error.is_none() {
+            first_error = parsed.error;
+        }
+        if first_error.is_some() && !capture_mode.collects() {
+            return Ok(ProcessedDirectives {
+                config: MermaidConfig::empty_object(),
+                removals: Vec::new(),
+                editor_prefixes: Vec::new(),
+                recovered_incomplete_directive,
+                evidence,
+                error: first_error,
+            });
         }
     }
     control.checkpoint()?;
@@ -1162,7 +1698,12 @@ fn process_directives_controlled(
         control,
     )? {
         Ok(init) => init,
-        Err(error) => return Ok(Err(error)),
+        Err(error) => {
+            if first_error.is_none() {
+                first_error = Some(error);
+            }
+            MermaidConfig::empty_object()
+        }
     };
     let wrap = directives.iter().any(|d| d.ty == "wrap");
     let mut editor_prefixes = Vec::new();
@@ -1183,12 +1724,14 @@ fn process_directives_controlled(
     }
 
     control.checkpoint()?;
-    Ok(Ok(ProcessedDirectives {
+    Ok(ProcessedDirectives {
         config: merged,
         removals: blocks.into_iter().map(|block| block.range).collect(),
         editor_prefixes,
         recovered_incomplete_directive,
-    }))
+        evidence,
+        error: first_error,
+    })
 }
 
 #[cfg(test)]
@@ -1273,11 +1816,16 @@ fn detect_init_controlled(
 struct Directive {
     ty: String,
     args: Option<Value>,
+    keyword_span: std::ops::Range<usize>,
+    config_keys: Vec<source_config::Json5ConfigKeyEvidence>,
+    rewrite_safe: bool,
 }
 
 #[derive(Debug)]
 struct DirectiveBlock<'a> {
-    raw: Option<&'a str>,
+    raw: &'a str,
+    raw_start: usize,
+    complete: bool,
     range: std::ops::Range<usize>,
 }
 
@@ -1353,7 +1901,9 @@ fn directive_blocks_controlled<'a>(
             let (trimmed_start, trimmed_end) =
                 trim_whitespace_bounds_controlled(raw, &mut checkpoints)?;
             blocks.push(DirectiveBlock {
-                raw: Some(&raw[trimmed_start..trimmed_end]),
+                raw: &raw[trimmed_start..trimmed_end],
+                raw_start: content_start + trimmed_start,
+                complete: true,
                 range: start..end,
             });
             pos = end;
@@ -1369,8 +1919,13 @@ fn directive_blocks_controlled<'a>(
                 next_open.map_or(line_end, |open| line_end.min(open))
             }
         };
+        let raw = &input[content_start..end];
+        let (trimmed_start, trimmed_end) =
+            trim_whitespace_bounds_controlled(raw, &mut checkpoints)?;
         blocks.push(DirectiveBlock {
-            raw: None,
+            raw: &raw[trimmed_start..trimmed_end],
+            raw_start: content_start + trimmed_start,
+            complete: false,
             range: start..end,
         });
         pos = end;
@@ -1428,16 +1983,42 @@ fn find_line_break_controlled(
 #[cfg(test)]
 fn parse_directive_like_upstream(raw: &str) -> Result<Option<Directive>> {
     let control = ParseControl::new();
-    parse_directive_like_upstream_controlled(raw, &control)
+    parse_directive_like_upstream_controlled(raw, SourceConfigCaptureMode::Omit, &control)
         .expect("a private parse control cannot be cancelled")
 }
 
+#[cfg(test)]
 fn parse_directive_like_upstream_controlled(
     raw: &str,
+    capture_mode: SourceConfigCaptureMode,
     control: &ParseControl,
 ) -> ParseControlResult<Result<Option<Directive>>> {
+    let captured =
+        parse_directive_like_upstream_capture_controlled(raw, capture_mode, true, control)?;
+    Ok(match captured.error {
+        Some(error) => Err(error),
+        None => Ok(captured.directive),
+    })
+}
+
+struct DirectiveParseCapture {
+    directive: Option<Directive>,
+    error: Option<Error>,
+}
+
+fn parse_directive_like_upstream_capture_controlled(
+    raw: &str,
+    capture_mode: SourceConfigCaptureMode,
+    parse_arguments: bool,
+    control: &ParseControl,
+) -> ParseControlResult<DirectiveParseCapture> {
+    // Incomplete authoring evidence only needs the directive keyword. Avoid walking an
+    // arbitrarily large unfinished argument merely to normalize quotes that will not be parsed.
+    if !parse_arguments {
+        return parse_directive_capture_controlled(raw, capture_mode, false, control);
+    }
     let normalized = normalize_directive_quotes_controlled(raw, control)?;
-    parse_directive_controlled(normalized.as_ref(), control)
+    parse_directive_capture_controlled(normalized.as_ref(), capture_mode, true, control)
 }
 
 fn normalize_directive_quotes_controlled<'a>(
@@ -1479,10 +2060,10 @@ fn normalize_directive_quotes_controlled<'a>(
 fn detect_directives(input: &str) -> Result<Vec<Directive>> {
     let mut directives = Vec::new();
     for block in directive_blocks(input, DirectiveRecoveryMode::Strict) {
-        let Some(raw) = block.raw else {
+        if !block.complete {
             continue;
-        };
-        if let Some(directive) = parse_directive_like_upstream(raw)? {
+        }
+        if let Some(directive) = parse_directive_like_upstream(block.raw)? {
             directives.push(directive);
         }
     }
@@ -1786,16 +2367,21 @@ pub(crate) fn directive_removal_ranges_controlled(
     )
 }
 
-fn parse_directive_controlled(
+fn parse_directive_capture_controlled(
     raw: &str,
+    capture_mode: SourceConfigCaptureMode,
+    parse_arguments: bool,
     control: &ParseControl,
-) -> ParseControlResult<Result<Option<Directive>>> {
+) -> ParseControlResult<DirectiveParseCapture> {
     let mut checkpoints = ControlledScanCheckpoints::new(control)?;
     let (raw_start, raw_end) = trim_whitespace_bounds_controlled(raw, &mut checkpoints)?;
     let raw = &raw[raw_start..raw_end];
     if raw.is_empty() {
         checkpoints.finish()?;
-        return Ok(Ok(None));
+        return Ok(DirectiveParseCapture {
+            directive: None,
+            error: None,
+        });
     }
 
     let mut type_end = 0usize;
@@ -1808,13 +2394,33 @@ fn parse_directive_controlled(
     }
     if type_end == 0 {
         checkpoints.finish()?;
-        return Ok(Ok(None));
+        return Ok(DirectiveParseCapture {
+            directive: None,
+            error: None,
+        });
     }
     let mut ty = String::with_capacity(type_end);
     push_frontmatter_str_controlled(&mut ty, &raw[..type_end], &mut checkpoints)?;
+    let keyword_span = raw_start..raw_start + type_end;
+
+    if !parse_arguments {
+        checkpoints.finish()?;
+        return Ok(DirectiveParseCapture {
+            directive: Some(Directive {
+                ty,
+                args: None,
+                keyword_span,
+                config_keys: Vec::new(),
+                rewrite_safe: false,
+            }),
+            error: None,
+        });
+    }
 
     let whitespace = trim_start_whitespace_controlled(&raw[type_end..], &mut checkpoints)?;
     let mut position = type_end + whitespace;
+    let mut config_keys = Vec::new();
+    let mut rewrite_safe = true;
 
     let args = if raw.as_bytes().get(position) == Some(&b':') {
         checkpoints.scanned(1)?;
@@ -1824,24 +2430,60 @@ fn parse_directive_controlled(
         let rest = &raw[position..];
         let (rest_start, rest_end) = trim_whitespace_bounds_controlled(rest, &mut checkpoints)?;
         let rest = &rest[rest_start..rest_end];
+        let rest_offset = raw_start
+            .saturating_add(position)
+            .saturating_add(rest_start);
         if rest.is_empty() {
             None
         } else if rest.starts_with('{') || rest.starts_with('[') {
             if rest.len() > MAX_DIRECTIVE_CONFIG_PARSE_BYTES {
-                return Ok(Err(Error::InvalidDirectiveJson {
-                    message: format!(
-                        "directive config exceeds the safe parser budget of {MAX_DIRECTIVE_CONFIG_PARSE_BYTES} bytes"
-                    ),
-                }));
+                return Ok(DirectiveParseCapture {
+                    directive: Some(Directive {
+                        ty,
+                        args: None,
+                        keyword_span,
+                        config_keys,
+                        rewrite_safe: false,
+                    }),
+                    error: Some(Error::InvalidDirectiveJson {
+                        message: format!(
+                            "directive config exceeds the safe parser budget of {MAX_DIRECTIVE_CONFIG_PARSE_BYTES} bytes"
+                        ),
+                    }),
+                });
             }
             if config_nesting_exceeds_limit_controlled(rest, control)? {
-                return Ok(Err(Error::InvalidDirectiveJson {
-                    message: format!("config nesting exceeds {MAX_CONFIG_NESTING_DEPTH} levels"),
-                }));
+                return Ok(DirectiveParseCapture {
+                    directive: Some(Directive {
+                        ty,
+                        args: None,
+                        keyword_span,
+                        config_keys,
+                        rewrite_safe: false,
+                    }),
+                    error: Some(Error::InvalidDirectiveJson {
+                        message: format!(
+                            "config nesting exceeds {MAX_CONFIG_NESTING_DEPTH} levels"
+                        ),
+                    }),
+                });
             }
             checkpoints.finish()?;
-            parse_directive_config_value_controlled(rest, control)?
+            let captured = parse_directive_config_value_controlled(rest, capture_mode, control)?;
+            rewrite_safe &= captured.rewrite_safe;
+            config_keys = captured
+                .keys
+                .into_iter()
+                .map(|mut key| {
+                    key.span = key.span.map(|span| {
+                        rest_offset.saturating_add(span.start)..rest_offset.saturating_add(span.end)
+                    });
+                    key
+                })
+                .collect();
+            captured.value
         } else {
+            rewrite_safe = false;
             let mut value = String::with_capacity(rest.len());
             push_frontmatter_str_controlled(&mut value, rest, &mut checkpoints)?;
             Some(Value::String(value))
@@ -1851,24 +2493,54 @@ fn parse_directive_controlled(
     };
 
     checkpoints.finish()?;
-    Ok(Ok(Some(Directive { ty, args })))
+    Ok(DirectiveParseCapture {
+        directive: Some(Directive {
+            ty,
+            args,
+            keyword_span,
+            config_keys,
+            rewrite_safe,
+        }),
+        error: None,
+    })
+}
+
+struct DirectiveConfigCapture {
+    value: Option<Value>,
+    keys: Vec<source_config::Json5ConfigKeyEvidence>,
+    rewrite_safe: bool,
 }
 
 fn parse_directive_config_value_controlled(
     input: &str,
+    capture_mode: SourceConfigCaptureMode,
     control: &ParseControl,
-) -> ParseControlResult<Option<Value>> {
+) -> ParseControlResult<DirectiveConfigCapture> {
     control.checkpoint()?;
     // `json5` has no cancellation hook. The caller enforces a hard input and nesting bound, so
     // this is a bounded atomic parser region rather than an unbounded cancellation gap.
-    let parsed = json5::from_str::<Value>(input).ok();
+    let captured = if capture_mode.collects() {
+        let captured = source_config::parse_json5_config(input);
+        DirectiveConfigCapture {
+            value: captured.value,
+            keys: captured.keys,
+            rewrite_safe: captured.rewrite_safe,
+        }
+    } else {
+        let value = json5::from_str::<Value>(input).ok();
+        DirectiveConfigCapture {
+            rewrite_safe: value.is_some(),
+            value,
+            keys: Vec::new(),
+        }
+    };
     if let Err(cancelled) = control.checkpoint() {
-        if let Some(value) = parsed {
+        if let Some(value) = captured.value {
             crate::config::drop_value_nonrecursive(value);
         }
         return Err(cancelled);
     }
-    Ok(parsed)
+    Ok(captured)
 }
 
 #[cfg(test)]
@@ -2232,6 +2904,248 @@ mod tests {
 
         let error = result.expect_err("the caller budget must reject materialization");
         assert!(error.contains("safe materialization budget"));
+    }
+
+    fn capture_source_config(input: &str) -> PreprocessCaptureOutcome {
+        preprocess_mermaid_public_parse_pipeline_with_directive_recovery_evidence_controlled(
+            input,
+            &DetectorRegistry::default(),
+            Some("flowchart-v2"),
+            DirectiveRecoveryMode::RecoverLine,
+            &ParseControl::new(),
+        )
+        .expect("an active parse control must not cancel")
+    }
+
+    #[test]
+    fn source_config_evidence_maps_crlf_unicode_and_indentation_to_original_source() {
+        let source = concat!(
+            "\u{feff}  ---\r\n",
+            "  title: 图\r\n",
+            "  config:\r\n",
+            "    flowchart:\r\n",
+            "      \"htmlLabels\": false\r\n",
+            "  ---\r\n",
+            "%%{ initialize: { flowchart: { 'htmlLabels': false } } }%%\r\n",
+            "flowchart TD\r\n",
+            "A-->B\r\n",
+        );
+        let captured = capture_source_config(source);
+        assert!(captured.result.is_ok());
+        let evidence = captured.source_config;
+
+        let frontmatter = evidence.frontmatter().expect("frontmatter evidence");
+        assert_eq!(frontmatter.indent(), "  ");
+        assert!(
+            source[frontmatter.full_span().start..frontmatter.full_span().end]
+                .starts_with("  ---\r\n")
+        );
+        let directives = evidence.directives();
+        assert_eq!(directives.len(), 1);
+        assert_eq!(directives[0].order(), 0);
+        assert_eq!(directives[0].keyword(), "initialize");
+        let keyword = directives[0].keyword_span();
+        assert_eq!(&source[keyword.start..keyword.end], "initialize");
+
+        let frontmatter_key = evidence
+            .keys()
+            .iter()
+            .find(|key| {
+                key.origin() == SourceConfigOrigin::Frontmatter
+                    && key.matches_path(&["config", "flowchart", "htmlLabels"])
+            })
+            .expect("frontmatter htmlLabels evidence");
+        assert_eq!(
+            &source[frontmatter_key.span().start..frontmatter_key.span().end],
+            "htmlLabels"
+        );
+        let directive_key = evidence
+            .keys()
+            .iter()
+            .find(|key| {
+                key.origin() == SourceConfigOrigin::Directive { directive_index: 0 }
+                    && key.matches_path(&["flowchart", "htmlLabels"])
+            })
+            .expect("directive htmlLabels evidence");
+        assert_eq!(
+            &source[directive_key.span().start..directive_key.span().end],
+            "htmlLabels"
+        );
+        assert!(frontmatter_key.order() < directive_key.order());
+        assert!(evidence.rewrite_safe());
+    }
+
+    #[test]
+    fn json5_evidence_omits_escaped_and_array_nested_keys_without_disabling_rewrite() {
+        let source = concat!(
+            r#"%%{init: { flowchart: { "html\u004cabels": false }, values: [{ htmlLabels: false }] }}%%"#,
+            "\nflowchart TD\nA-->B\n",
+        );
+        let captured = capture_source_config(source);
+        assert!(captured.result.is_ok());
+        let evidence = captured.source_config;
+
+        assert!(evidence.rewrite_safe());
+        assert!(
+            evidence
+                .keys()
+                .iter()
+                .any(|key| key.matches_path(&["flowchart"]))
+        );
+        assert!(!evidence.keys().iter().any(|key| {
+            key.matches_path(&["flowchart", "htmlLabels"])
+                || key.matches_path(&["values", "htmlLabels"])
+        }));
+    }
+
+    #[test]
+    fn source_config_evidence_retains_first_yaml_error_and_later_directive_facts() {
+        let source = concat!(
+            "---\n",
+            "config:\n",
+            "  flowchart:\n",
+            "    htmlLabels: false\n",
+            "  broken: [\n",
+            "---\n",
+            "%%{ initialize: { lazyLoadedDiagrams: true } }%%\n",
+            "flowchart TD\nA-->B\n",
+        );
+        let captured = capture_source_config(source);
+        assert!(matches!(
+            captured.result,
+            Err(Error::InvalidFrontMatterYaml { .. })
+        ));
+        assert!(!captured.source_config.rewrite_safe());
+        assert!(captured.source_config.keys().iter().any(|key| {
+            key.origin() == SourceConfigOrigin::Frontmatter
+                && key.matches_path(&["config", "flowchart", "htmlLabels"])
+        }));
+        let directive = captured
+            .source_config
+            .directives()
+            .iter()
+            .find(|directive| directive.keyword() == "initialize")
+            .expect("later directive evidence survives the YAML error");
+        let span = directive.keyword_span();
+        assert_eq!(&source[span.start..span.end], "initialize");
+        assert!(captured.source_config.keys().iter().any(|key| {
+            matches!(key.origin(), SourceConfigOrigin::Directive { .. })
+                && key.matches_path(&["lazyLoadedDiagrams"])
+        }));
+    }
+
+    #[test]
+    fn source_config_evidence_retains_later_directives_after_a_directive_budget_error() {
+        let nested = format!(
+            "{}true{}",
+            "{".repeat(MAX_CONFIG_NESTING_DEPTH + 1),
+            "}".repeat(MAX_CONFIG_NESTING_DEPTH + 1)
+        );
+        let source = format!(
+            "%%{{init: {nested}}}%%\n%%{{initialize: {{ theme: 'dark' }} }}%%\nflowchart TD\nA-->B\n"
+        );
+        let captured = capture_source_config(&source);
+        assert!(matches!(
+            captured.result,
+            Err(Error::InvalidDirectiveJson { .. })
+        ));
+        assert_eq!(captured.source_config.directives().len(), 2);
+        assert_eq!(captured.source_config.directives()[0].keyword(), "init");
+        assert_eq!(
+            captured.source_config.directives()[1].keyword(),
+            "initialize"
+        );
+        assert!(!captured.source_config.rewrite_safe());
+    }
+
+    #[test]
+    fn incomplete_directive_capture_stops_after_the_keyword() {
+        let nested = format!(
+            "{}true{}",
+            "{".repeat(MAX_CONFIG_NESTING_DEPTH + 1),
+            "}".repeat(MAX_CONFIG_NESTING_DEPTH + 1)
+        );
+        let source = format!("%%{{ initialize: {nested}\nflowchart TD\nA-->B\n");
+        let captured = capture_source_config(&source);
+
+        assert!(captured.result.is_ok());
+        let directive = &captured.source_config.directives()[0];
+        assert_eq!(directive.keyword(), "initialize");
+        assert!(!directive.complete());
+        assert!(captured.source_config.keys().is_empty());
+        assert!(!captured.source_config.rewrite_safe());
+    }
+
+    #[test]
+    fn source_config_evidence_weight_does_not_scale_with_unrelated_diagram_body() {
+        let prefix = "%%{init: { theme: 'dark' }}%%\nflowchart TD\n";
+        let small = capture_source_config(&format!("{prefix}A-->B\n")).source_config;
+        let large_source = format!("{prefix}{}", "A-->B\n".repeat(16_384));
+        let large = capture_source_config(&large_source).source_config;
+
+        assert_eq!(small, large);
+        assert_eq!(
+            small.estimated_owned_heap_bytes(),
+            large.estimated_owned_heap_bytes()
+        );
+        assert!(large.estimated_owned_heap_bytes() < large_source.len() / 100);
+    }
+
+    #[test]
+    fn source_config_evidence_drops_unneeded_frontmatter_field_values() {
+        let small =
+            capture_source_config("---\nnotes: small\n---\nflowchart TD\nA-->B\n").source_config;
+        let large = capture_source_config(&format!(
+            "---\nnotes: \"{}\"\n---\nflowchart TD\nA-->B\n",
+            "x".repeat(256 * 1024)
+        ))
+        .source_config;
+
+        assert!(small.frontmatter().expect("frontmatter").fields().is_none());
+        assert!(large.frontmatter().expect("frontmatter").fields().is_none());
+        assert_eq!(
+            small.estimated_owned_heap_bytes(),
+            large.estimated_owned_heap_bytes()
+        );
+    }
+
+    #[test]
+    fn frontmatter_rewrite_safety_distinguishes_insertion_from_materialization() {
+        let commented_without_config = capture_source_config(concat!(
+            "---\n",
+            "# keep this comment\n",
+            "title: Demo\n",
+            "---\n",
+            "%%{init: { theme: 'dark' }}%%\n",
+            "flowchart TD\nA-->B\n",
+        ))
+        .source_config;
+        assert!(commented_without_config.rewrite_safe());
+        assert!(
+            !commented_without_config
+                .frontmatter()
+                .expect("frontmatter")
+                .rewrite_safe()
+        );
+
+        let commented_with_config = capture_source_config(concat!(
+            "---\n",
+            "# keep this comment\n",
+            "config:\n",
+            "  theme: default\n",
+            "---\n",
+            "%%{init: { theme: 'dark' }}%%\n",
+            "flowchart TD\nA-->B\n",
+        ))
+        .source_config;
+        assert!(!commented_with_config.rewrite_safe());
+        assert!(
+            commented_with_config
+                .frontmatter()
+                .expect("frontmatter")
+                .fields()
+                .is_none()
+        );
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use crate::{
     EditorSemanticFacts, Error, MermaidConfig, ParseControl, ParseControlResult, ParseMetadata,
-    Result, editor::SourceSpan,
+    Result, editor::SourceSpan, preprocess::SourceConfigEvidence,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -208,6 +208,7 @@ pub struct DiagramParseSnapshot {
     meta: ParseMetadata,
     outcome: DiagramParseOutcome,
     editor_facts: ParsedEditorFacts,
+    source_config: SourceConfigEvidence,
     recovered_incomplete_directive: bool,
 }
 
@@ -216,12 +217,14 @@ impl DiagramParseSnapshot {
         meta: ParseMetadata,
         outcome: DiagramParseOutcome,
         editor_facts: ParsedEditorFacts,
+        source_config: SourceConfigEvidence,
         recovered_incomplete_directive: bool,
     ) -> Self {
         Self {
             meta,
             outcome,
             editor_facts,
+            source_config,
             recovered_incomplete_directive,
         }
     }
@@ -229,6 +232,23 @@ impl DiagramParseSnapshot {
     /// Consumes the closed snapshot into its three operation-owned projections.
     pub fn into_parts(self) -> (ParseMetadata, DiagramParseOutcome, ParsedEditorFacts) {
         (self.meta, self.outcome, self.editor_facts)
+    }
+
+    /// Consumes the snapshot while retaining source-configuration evidence from preprocessing.
+    pub fn into_parts_with_source_config(
+        self,
+    ) -> (
+        ParseMetadata,
+        DiagramParseOutcome,
+        ParsedEditorFacts,
+        SourceConfigEvidence,
+    ) {
+        (
+            self.meta,
+            self.outcome,
+            self.editor_facts,
+            self.source_config,
+        )
     }
 
     /// Returns metadata produced by this preprocessing and detection operation.
@@ -246,9 +266,37 @@ impl DiagramParseSnapshot {
         &self.editor_facts
     }
 
+    /// Source-backed frontmatter and directive evidence from the outer preprocessing pass.
+    pub fn source_config(&self) -> &SourceConfigEvidence {
+        &self.source_config
+    }
+
     /// Whether editor preprocessing recovered an unterminated directive line.
     pub const fn recovered_incomplete_directive(&self) -> bool {
         self.recovered_incomplete_directive
+    }
+}
+
+/// Non-cancellation result of one editor snapshot capture operation.
+// Keep the successful snapshot inline: the pre-existing parse API already returned this payload
+// by value, while boxing it would add an allocation to every editor capture only to balance the
+// less common failure variant.
+#[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
+pub enum DiagramSnapshotCapture {
+    Snapshot(Option<DiagramParseSnapshot>),
+    Failed {
+        error: Error,
+        source_config: SourceConfigEvidence,
+    },
+}
+
+impl DiagramSnapshotCapture {
+    pub(crate) fn into_result(self) -> Result<Option<DiagramParseSnapshot>> {
+        match self {
+            Self::Snapshot(snapshot) => Ok(snapshot),
+            Self::Failed { error, .. } => Err(error),
+        }
     }
 }
 

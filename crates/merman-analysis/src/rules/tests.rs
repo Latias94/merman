@@ -203,6 +203,7 @@ fn source_lint_pipeline_observes_cancellation_for_large_migration_source() {
     source.push_str("flowchart TD\nA-->B\n");
     let source_map = SourceMap::new(source.as_str());
     let captured_config = merman_core::MermaidConfig::from_value(json!({ "theme": "dark" }));
+    let source_config = source_config_evidence_for_test(&source);
     let cancellation = crate::AnalysisCancellationToken::new();
     cancellation.cancel_after_checkpoints(12);
 
@@ -211,6 +212,7 @@ fn source_lint_pipeline_observes_cancellation_for_large_migration_source() {
             &source,
             &source_map,
             Some(&captured_config),
+            &source_config,
             &cancellation,
         ),
         Err(crate::AnalysisCancelled)
@@ -394,6 +396,31 @@ fn source_lint_reports_deprecated_flowchart_html_labels_directive() {
 }
 
 #[test]
+fn config_key_scan_observes_cancellation_without_matching_keys() {
+    let unrelated_keys = (0..512)
+        .map(|index| format!("unrelated{index}: false"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let source = format!("%%{{init: {{{unrelated_keys}}}}}%%\nflowchart TD\nA-->B\n");
+    let source_map = SourceMap::new(source.as_str());
+    let source_config = source_config_evidence_for_test(&source);
+    let cancellation = crate::AnalysisCancellationToken::new();
+    cancellation.cancel_after_checkpoints(2);
+
+    assert!(matches!(
+        deprecated_flowchart_html_labels_diagnostics(
+            &source_map,
+            &AnalysisRuleConfig::default(),
+            &DEPRECATED_FLOWCHART_HTML_LABELS_INIT_CONFIG_PATHS,
+            &DEPRECATED_FLOWCHART_HTML_LABELS_FRONTMATTER_CONFIG_PATHS,
+            &source_config,
+            &cancellation,
+        ),
+        Err(crate::AnalysisCancelled)
+    ));
+}
+
+#[test]
 fn source_lint_reports_deprecated_flowchart_html_labels_after_json5_key_comments() {
     let source = "%%{init: { flowchart /* family */: { htmlLabels /* leaf */: false } }}%%\nflowchart TD\nA-->B\n";
     let source_map = SourceMap::new(source);
@@ -404,6 +431,61 @@ fn source_lint_reports_deprecated_flowchart_html_labels_after_json5_key_comments
     assert_eq!(diagnostics[0].id, DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID);
     let span = diagnostics[0].span.as_ref().expect("htmlLabels span");
     assert_eq!(&source[span.byte_start..span.byte_end], "htmlLabels");
+}
+
+#[test]
+fn source_lint_skips_unaddressable_escaped_json5_keys_but_keeps_migration_fix() {
+    let source = concat!(
+        r#"%%{init: { flowchart: { "html\u004cabels": false } }}%%"#,
+        "\nflowchart TD\nA-->B\n",
+    );
+    let source_map = SourceMap::new(source);
+    let config = AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended);
+
+    let diagnostics = source_lint_diagnostics(source, &source_map, &config);
+
+    assert!(
+        !diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.id == DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID })
+    );
+    let migration = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.id == PREFER_FRONTMATTER_CONFIG_RULE_ID)
+        .expect("the parsed directive remains safely removable");
+    assert_eq!(migration.fixes.len(), 1);
+}
+
+#[test]
+fn source_lint_does_not_flatten_object_keys_nested_in_json5_arrays() {
+    let source = concat!(
+        "%%{init: { values: [{ flowchart: { htmlLabels: false } }] }}%%\n",
+        "flowchart TD\nA-->B\n",
+    );
+    let source_map = SourceMap::new(source);
+    let config = AnalysisRuleConfig::default();
+
+    let diagnostics = source_lint_diagnostics(source, &source_map, &config);
+
+    assert!(
+        !diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.id == DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID })
+    );
+}
+
+#[test]
+fn source_lint_keeps_unterminated_directive_evidence_non_diagnostic() {
+    let source = "%%{ initialize: { theme: 'dark' }\nflowchart TD\nA-->B\n";
+    let source_map = SourceMap::new(source);
+    let config = AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended);
+
+    let diagnostics = source_lint_diagnostics(source, &source_map, &config);
+
+    assert!(!diagnostics.iter().any(|diagnostic| {
+        diagnostic.id == PREFER_INIT_DIRECTIVE_RULE_ID
+            || diagnostic.id == PREFER_FRONTMATTER_CONFIG_RULE_ID
+    }));
 }
 
 #[test]

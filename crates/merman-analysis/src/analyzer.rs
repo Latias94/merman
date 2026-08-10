@@ -12,8 +12,8 @@ use crate::{
     SourceDescriptor, SourceKind, SourceMap,
 };
 use merman_core::{
-    DiagramParseOutcome, EditorSemanticFacts, Engine, Error as CoreError, MermaidConfig,
-    ParseMetadata, ParsedEditorFacts,
+    DiagramParseOutcome, DiagramSnapshotCapture, EditorSemanticFacts, Engine, Error as CoreError,
+    MermaidConfig, ParseMetadata, ParsedEditorFacts, preprocess::SourceConfigEvidence,
 };
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -660,6 +660,7 @@ impl Analyzer {
         self.capture_evidence_cancellable(source, &cancellation)
             .unwrap_or_else(|_| DiagramAnalysisEvidence::OperationError {
                 error: CoreError::from(merman_core::ParseCancelled),
+                source_config: SourceConfigEvidence::default(),
             })
     }
 
@@ -670,23 +671,25 @@ impl Analyzer {
     ) -> Result<DiagramAnalysisEvidence, AnalysisCancelled> {
         cancellation.checkpoint()?;
         if source_is_blank_cancellable(source, cancellation)? {
-            return Ok(DiagramAnalysisEvidence::EmptySource);
+            return Ok(DiagramAnalysisEvidence::EmptySource {
+                source_config: SourceConfigEvidence::default(),
+            });
         }
         let parse_result = panic::catch_unwind(AssertUnwindSafe(|| {
             self.engine
-                .parse_diagram_snapshot_controlled_sync(source, cancellation.parse_control())
+                .capture_diagram_snapshot_controlled_sync(source, cancellation.parse_control())
         }));
         let evidence = match parse_result {
             Err(panic_payload) => DiagramAnalysisEvidence::Panic {
                 message: panic_message(panic_payload.as_ref()).to_string(),
                 metadata: None,
-                config_rewrite_safe: false,
+                source_config: SourceConfigEvidence::default(),
             },
             Ok(Err(_)) => return Err(AnalysisCancelled),
             Ok(Ok(parse_result)) => match parse_result {
-                Ok(Some(snapshot)) => {
-                    let config_rewrite_safe = !snapshot.recovered_incomplete_directive();
-                    let (meta, outcome, editor_facts) = snapshot.into_parts();
+                DiagramSnapshotCapture::Snapshot(Some(snapshot)) => {
+                    let (meta, outcome, editor_facts, source_config) =
+                        snapshot.into_parts_with_source_config();
                     let editor_facts = match editor_facts {
                         ParsedEditorFacts::Available(facts) => Some(facts),
                         ParsedEditorFacts::Unavailable => None,
@@ -696,25 +699,33 @@ impl Analyzer {
                             metadata: meta,
                             model,
                             editor_facts,
-                            config_rewrite_safe,
+                            source_config,
                         },
                         DiagramParseOutcome::Failed(error) => {
                             DiagramAnalysisEvidence::ParseFailed {
                                 metadata: meta,
                                 error,
                                 editor_facts,
-                                config_rewrite_safe,
+                                source_config,
                             }
                         }
                         DiagramParseOutcome::Panicked(message) => DiagramAnalysisEvidence::Panic {
                             message,
                             metadata: Some(meta),
-                            config_rewrite_safe,
+                            source_config,
                         },
                     }
                 }
-                Ok(None) => DiagramAnalysisEvidence::NoSnapshot,
-                Err(error) => DiagramAnalysisEvidence::OperationError { error },
+                DiagramSnapshotCapture::Snapshot(None) => DiagramAnalysisEvidence::NoSnapshot {
+                    source_config: SourceConfigEvidence::default(),
+                },
+                DiagramSnapshotCapture::Failed {
+                    error,
+                    source_config,
+                } => DiagramAnalysisEvidence::OperationError {
+                    error,
+                    source_config,
+                },
             },
         };
         cancellation.checkpoint()?;
@@ -746,11 +757,12 @@ impl Analyzer {
             source,
             source_map,
             evidence.config_for_rewrite(),
+            evidence.source_config(),
             cancellation,
         )?;
         cancellation.checkpoint()?;
         match evidence {
-            DiagramAnalysisEvidence::EmptySource => {
+            DiagramAnalysisEvidence::EmptySource { .. } => {
                 let candidates = candidates_from_diagnostics(no_diagram_diagnostic(
                     source_map,
                     crate::rules::capture_rule_config(),
@@ -776,13 +788,13 @@ impl Analyzer {
                     cancellation,
                 )
             }
-            DiagramAnalysisEvidence::NoSnapshot => Self::finish_capture(
+            DiagramAnalysisEvidence::NoSnapshot { .. } => Self::finish_capture(
                 source_lints,
                 mode.unavailable_syntax(None),
                 DiagramParseDisposition::Unavailable,
                 cancellation,
             ),
-            DiagramAnalysisEvidence::OperationError { error } => {
+            DiagramAnalysisEvidence::OperationError { error, .. } => {
                 let projection =
                     core_error_diagnostic(error, source_map, crate::rules::capture_rule_config());
                 let mut candidates = source_lints;
@@ -798,15 +810,16 @@ impl Analyzer {
                 metadata,
                 model,
                 editor_facts,
+                source_config,
                 ..
             } => self.analyze_parsed_diagram_cancellable(
                 DiagramCaptureInput {
-                    source,
                     source_map,
                     metadata,
                     editor_facts: editor_facts.as_ref(),
                 },
                 model,
+                source_config,
                 source_lints,
                 mode,
                 cancellation,
@@ -818,7 +831,6 @@ impl Analyzer {
                 ..
             } => self.analyze_parse_error_cancellable(
                 DiagramCaptureInput {
-                    source,
                     source_map,
                     metadata,
                     editor_facts: editor_facts.as_ref(),
@@ -840,9 +852,11 @@ impl Analyzer {
         mode: CaptureMode,
     ) -> CapturedDiagram {
         let cancellation = AnalysisCancellationToken::new();
+        let source_config = SourceConfigEvidence::default();
         self.analyze_parsed_diagram_cancellable(
             input,
             model,
+            &source_config,
             candidates_from_diagnostics(diagnostics),
             mode,
             &cancellation,
@@ -854,12 +868,12 @@ impl Analyzer {
         &self,
         input: DiagramCaptureInput<'_>,
         model: &serde_json::Value,
+        source_config: &SourceConfigEvidence,
         mut candidates: Vec<DiagnosticCandidate>,
         mode: CaptureMode,
         cancellation: &AnalysisCancellationToken,
     ) -> Result<CapturedDiagram, AnalysisCancelled> {
         let DiagramCaptureInput {
-            source,
             source_map,
             metadata,
             editor_facts,
@@ -867,9 +881,9 @@ impl Analyzer {
         cancellation.checkpoint()?;
         let diagram_type = metadata.diagram_type.as_str();
         candidates.extend(crate::rules::parsed_source_lint_candidates_cancellable(
-            source,
             source_map,
             diagram_type,
+            source_config,
             cancellation,
         )?);
         candidates.extend(crate::rules::semantic_warning_candidates_cancellable(
@@ -932,7 +946,6 @@ impl Analyzer {
         cancellation: &AnalysisCancellationToken,
     ) -> Result<CapturedDiagram, AnalysisCancelled> {
         let DiagramCaptureInput {
-            source: _,
             source_map,
             metadata: meta,
             editor_facts,
@@ -1110,50 +1123,66 @@ fn source_is_blank_cancellable(
 
 #[derive(Debug)]
 enum DiagramAnalysisEvidence {
-    EmptySource,
+    EmptySource {
+        source_config: SourceConfigEvidence,
+    },
     Panic {
         message: String,
         metadata: Option<ParseMetadata>,
-        config_rewrite_safe: bool,
+        source_config: SourceConfigEvidence,
     },
-    NoSnapshot,
+    NoSnapshot {
+        source_config: SourceConfigEvidence,
+    },
     OperationError {
         error: CoreError,
+        source_config: SourceConfigEvidence,
     },
     Parsed {
         metadata: ParseMetadata,
         model: serde_json::Value,
         editor_facts: Option<EditorSemanticFacts>,
-        config_rewrite_safe: bool,
+        source_config: SourceConfigEvidence,
     },
     ParseFailed {
         metadata: ParseMetadata,
         error: CoreError,
         editor_facts: Option<EditorSemanticFacts>,
-        config_rewrite_safe: bool,
+        source_config: SourceConfigEvidence,
     },
 }
 
 impl DiagramAnalysisEvidence {
+    fn source_config(&self) -> &SourceConfigEvidence {
+        match self {
+            Self::EmptySource { source_config }
+            | Self::Panic { source_config, .. }
+            | Self::NoSnapshot { source_config }
+            | Self::OperationError { source_config, .. }
+            | Self::Parsed { source_config, .. }
+            | Self::ParseFailed { source_config, .. } => source_config,
+        }
+    }
+
     fn config_for_rewrite(&self) -> Option<&MermaidConfig> {
         match self {
             Self::Parsed {
                 metadata,
-                config_rewrite_safe: true,
+                source_config,
                 ..
             }
             | Self::ParseFailed {
                 metadata,
-                config_rewrite_safe: true,
+                source_config,
                 ..
-            } => Some(&metadata.config),
+            } if source_config.rewrite_safe() => Some(&metadata.config),
             Self::Panic {
                 metadata: Some(metadata),
-                config_rewrite_safe: true,
+                source_config,
                 ..
-            } => Some(&metadata.config),
-            Self::EmptySource
-            | Self::NoSnapshot
+            } if source_config.rewrite_safe() => Some(&metadata.config),
+            Self::EmptySource { .. }
+            | Self::NoSnapshot { .. }
             | Self::OperationError { .. }
             | Self::Panic { .. }
             | Self::Parsed { .. }
@@ -1178,7 +1207,6 @@ enum CaptureMode {
 
 #[derive(Clone, Copy)]
 struct DiagramCaptureInput<'a> {
-    source: &'a str,
     source_map: &'a SourceMap,
     metadata: &'a ParseMetadata,
     editor_facts: Option<&'a EditorSemanticFacts>,

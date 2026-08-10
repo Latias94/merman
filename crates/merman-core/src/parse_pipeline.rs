@@ -1,7 +1,9 @@
 use crate::preprocess::{
-    DirectiveRecoveryMode, PreprocessedSource,
+    DirectiveRecoveryMode, PreprocessCaptureOutcome, PreprocessedSource, SourceConfigEvidence,
     preprocess_diagram_with_known_type_and_directive_recovery_controlled,
+    preprocess_diagram_with_known_type_and_directive_recovery_evidence_controlled,
     preprocess_mermaid_public_parse_pipeline_with_directive_recovery_controlled,
+    preprocess_mermaid_public_parse_pipeline_with_directive_recovery_evidence_controlled,
 };
 use crate::{
     EditorSemanticFacts, Engine, Error, MermaidConfig, ParseControl, ParseControlResult,
@@ -9,9 +11,9 @@ use crate::{
     family, runtime, sanitize, theme,
 };
 use diagram::{
-    CustomJsonRenderModel, DiagramParseOutcome, DiagramParseSnapshot, DiagramWarningFact,
-    ParsedDiagram, ParsedDiagramRender, ParsedEditorFacts, RegistryOwner, RenderSemanticModel,
-    RenderSemanticParseOutput, ResolvedRenderParser, ResolvedSemanticParser,
+    CustomJsonRenderModel, DiagramParseOutcome, DiagramParseSnapshot, DiagramSnapshotCapture,
+    DiagramWarningFact, ParsedDiagram, ParsedDiagramRender, ParsedEditorFacts, RegistryOwner,
+    RenderSemanticModel, RenderSemanticParseOutput, ResolvedRenderParser, ResolvedSemanticParser,
 };
 use serde_json::Value;
 
@@ -48,6 +50,11 @@ pub(crate) struct ParsePipeline<'a> {
     text: &'a str,
     options: ParseOptions,
     source: ParseSource<'a>,
+}
+
+struct PreparedPreprocessCapture {
+    result: Result<(PreprocessedSource, ParseMetadata)>,
+    source_config: SourceConfigEvidence,
 }
 
 struct EditorParseSourceMap<'a> {
@@ -228,10 +235,25 @@ impl<'a> ParsePipeline<'a> {
         timing: ParseTiming,
         control: &ParseControl,
     ) -> ParseControlResult<Result<Option<DiagramParseSnapshot>>> {
+        Ok(self
+            .capture_editor_snapshot_controlled(timing, control)?
+            .into_result())
+    }
+
+    pub(crate) fn capture_editor_snapshot_controlled(
+        &self,
+        timing: ParseTiming,
+        control: &ParseControl,
+    ) -> ParseControlResult<DiagramSnapshotCapture> {
         control.checkpoint()?;
         let operation_context = match self.engine.begin_operation() {
             Ok(context) => context,
-            Err(error) => return Ok(Err(error.into())),
+            Err(error) => {
+                return Ok(DiagramSnapshotCapture::Failed {
+                    error: error.into(),
+                    source_config: SourceConfigEvidence::default(),
+                });
+            }
         };
         runtime::with_operation_context(&operation_context, || {
             self.parse_editor_snapshot_in_context_controlled(timing, &operation_context, control)
@@ -243,22 +265,29 @@ impl<'a> ParsePipeline<'a> {
         timing: ParseTiming,
         operation_context: &runtime::OperationContext,
         control: &ParseControl,
-    ) -> ParseControlResult<Result<Option<DiagramParseSnapshot>>> {
+    ) -> ParseControlResult<DiagramSnapshotCapture> {
         control.checkpoint()?;
         let operation_timing = timing.operation_timing(operation_context);
         let total_start = operation_timing.map(runtime::OperationTiming::start);
         let preprocess_start = operation_timing.map(runtime::OperationTiming::start);
-        let preprocessed = self.preprocess_for_with_directive_recovery_controlled(
+        let preprocessed = self.preprocess_with_evidence_controlled(
             PreprocessPath::PublicParse,
             DirectiveRecoveryMode::RecoverLine,
             control,
         )?;
-        let Some((code, meta)) = (match preprocessed {
+        let (code, meta) = match preprocessed.result {
             Ok(preprocessed) => preprocessed,
-            Err(error) => return Ok(Err(error)),
-        }) else {
-            return Ok(Ok(None));
+            Err(Error::DetectType(_)) if self.options.suppress_errors => {
+                return Ok(DiagramSnapshotCapture::Snapshot(None));
+            }
+            Err(error) => {
+                return Ok(DiagramSnapshotCapture::Failed {
+                    error,
+                    source_config: preprocessed.source_config,
+                });
+            }
         };
+        let source_config = preprocessed.source_config;
         control.checkpoint()?;
         let source_map = EditorParseSourceMap::new(&code);
         let recovered_incomplete_directive = code.recovered_incomplete_directive();
@@ -307,12 +336,15 @@ impl<'a> ParsePipeline<'a> {
         let (model_result, combined_facts) = match parse_result {
             Ok(parsed) => parsed?,
             Err(payload) => {
-                return Ok(Ok(Some(DiagramParseSnapshot::new(
-                    meta,
-                    DiagramParseOutcome::Panicked(panic_payload_message(payload.as_ref())),
-                    ParsedEditorFacts::Unavailable,
-                    recovered_incomplete_directive,
-                ))));
+                return Ok(DiagramSnapshotCapture::Snapshot(Some(
+                    DiagramParseSnapshot::new(
+                        meta,
+                        DiagramParseOutcome::Panicked(panic_payload_message(payload.as_ref())),
+                        ParsedEditorFacts::Unavailable,
+                        source_config,
+                        recovered_incomplete_directive,
+                    ),
+                )));
             }
         };
         let parse = parse_start.map(runtime::OperationTimer::elapsed);
@@ -328,12 +360,15 @@ impl<'a> ParsePipeline<'a> {
                     &source_map,
                     control,
                 )?;
-                return Ok(Ok(Some(DiagramParseSnapshot::new(
-                    meta,
-                    DiagramParseOutcome::Failed(err),
-                    editor_facts,
-                    recovered_incomplete_directive,
-                ))));
+                return Ok(DiagramSnapshotCapture::Snapshot(Some(
+                    DiagramParseSnapshot::new(
+                        meta,
+                        DiagramParseOutcome::Failed(err),
+                        editor_facts,
+                        source_config,
+                        recovered_incomplete_directive,
+                    ),
+                )));
             }
         };
 
@@ -357,12 +392,15 @@ impl<'a> ParsePipeline<'a> {
         let editor_facts =
             self.finish_snapshot_editor_facts(owner, combined_facts, &meta, &source_map, control)?;
 
-        Ok(Ok(Some(DiagramParseSnapshot::new(
-            meta,
-            DiagramParseOutcome::Parsed(model),
-            editor_facts,
-            recovered_incomplete_directive,
-        ))))
+        Ok(DiagramSnapshotCapture::Snapshot(Some(
+            DiagramParseSnapshot::new(
+                meta,
+                DiagramParseOutcome::Parsed(model),
+                editor_facts,
+                source_config,
+                recovered_incomplete_directive,
+            ),
+        )))
     }
 
     fn finish_snapshot_editor_facts(
@@ -691,6 +729,35 @@ impl<'a> ParsePipeline<'a> {
         }
     }
 
+    fn preprocess_with_evidence_controlled(
+        &self,
+        path: PreprocessPath,
+        directive_recovery: DirectiveRecoveryMode,
+        control: &ParseControl,
+    ) -> ParseControlResult<PreparedPreprocessCapture> {
+        control.checkpoint()?;
+        let known_type = match self.source {
+            ParseSource::Detect => None,
+            ParseSource::KnownType(diagram_type) => Some(diagram_type),
+        };
+        let captured = self.preprocess_input_with_evidence_controlled(
+            path,
+            known_type,
+            directive_recovery,
+            control,
+        )?;
+        let result = match captured.result {
+            Ok(preprocessed) => {
+                self.finish_preprocessed_controlled(preprocessed, known_type, control)?
+            }
+            Err(error) => Err(error),
+        };
+        Ok(PreparedPreprocessCapture {
+            result,
+            source_config: captured.source_config,
+        })
+    }
+
     fn preprocess_and_detect_strict_controlled(
         &self,
         path: PreprocessPath,
@@ -706,6 +773,34 @@ impl<'a> ParsePipeline<'a> {
             Ok(pre) => pre,
             Err(error) => return Ok(Err(error)),
         };
+        self.finish_preprocessed_controlled(pre, None, control)
+    }
+
+    fn preprocess_and_assume_type_controlled(
+        &self,
+        diagram_type: &str,
+        path: PreprocessPath,
+        directive_recovery: DirectiveRecoveryMode,
+        control: &ParseControl,
+    ) -> ParseControlResult<Result<(PreprocessedSource, ParseMetadata)>> {
+        let pre = match self.preprocess_input_with_directive_recovery_controlled(
+            path,
+            Some(diagram_type),
+            directive_recovery,
+            control,
+        )? {
+            Ok(pre) => pre,
+            Err(error) => return Ok(Err(error)),
+        };
+        self.finish_preprocessed_controlled(pre, Some(diagram_type), control)
+    }
+
+    fn finish_preprocessed_controlled(
+        &self,
+        pre: crate::PreprocessResult,
+        known_type: Option<&str>,
+        control: &ParseControl,
+    ) -> ParseControlResult<Result<(PreprocessedSource, ParseMetadata)>> {
         control.checkpoint()?;
         if pre.code().trim_start().starts_with("---") {
             return Ok(Err(Error::MalformedFrontMatter));
@@ -714,14 +809,16 @@ impl<'a> ParsePipeline<'a> {
         let has_config_overrides = !pre.config.is_empty_object();
         let mut effective_config = self.effective_config_before_detect(&pre.config);
         let cached_effective_config = (!has_config_overrides).then(|| effective_config.clone());
-
-        let diagram_type = match self.engine.registry.detect_type_precleaned_controlled(
-            pre.code(),
-            &mut effective_config,
-            control,
-        )? {
-            Ok(diagram_type) => diagram_type.to_owned(),
-            Err(error) => return Ok(Err(error)),
+        let diagram_type = match known_type {
+            Some(diagram_type) => diagram_type.to_string(),
+            None => match self.engine.registry.detect_type_precleaned_controlled(
+                pre.code(),
+                &mut effective_config,
+                control,
+            )? {
+                Ok(diagram_type) => diagram_type.to_owned(),
+                Err(error) => return Ok(Err(error)),
+            },
         };
         control.checkpoint()?;
         family::apply_diagram_type_config_effects(
@@ -741,10 +838,8 @@ impl<'a> ParsePipeline<'a> {
                 Ok(config) => config,
                 Err(error) => return Ok(Err(error)),
             };
-        } else {
-            if let Err(error) = theme::apply_theme_defaults(&mut effective_config) {
-                return Ok(Err(error.into()));
-            }
+        } else if let Err(error) = theme::apply_theme_defaults(&mut effective_config) {
+            return Ok(Err(error.into()));
         }
 
         control.checkpoint()?;
@@ -755,64 +850,6 @@ impl<'a> ParsePipeline<'a> {
             pre.source,
             ParseMetadata {
                 diagram_type,
-                config: pre.config,
-                effective_config,
-                title,
-            },
-        )))
-    }
-
-    fn preprocess_and_assume_type_controlled(
-        &self,
-        diagram_type: &str,
-        path: PreprocessPath,
-        directive_recovery: DirectiveRecoveryMode,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<(PreprocessedSource, ParseMetadata)>> {
-        let pre = match self.preprocess_input_with_directive_recovery_controlled(
-            path,
-            Some(diagram_type),
-            directive_recovery,
-            control,
-        )? {
-            Ok(pre) => pre,
-            Err(error) => return Ok(Err(error)),
-        };
-        control.checkpoint()?;
-        if pre.code().trim_start().starts_with("---") {
-            return Ok(Err(Error::MalformedFrontMatter));
-        }
-
-        let has_config_overrides = !pre.config.is_empty_object();
-        let mut effective_config = self.effective_config_before_detect(&pre.config);
-        let cached_effective_config = (!has_config_overrides).then(|| effective_config.clone());
-        family::apply_diagram_type_config_effects(diagram_type, &pre.config, &mut effective_config);
-        if has_config_overrides {
-            if let Err(error) = theme::apply_theme_defaults(&mut effective_config) {
-                return Ok(Err(error.into()));
-            }
-        } else if cached_effective_config
-            .as_ref()
-            .is_some_and(|cached| effective_config.ptr_eq(cached))
-        {
-            effective_config = match self.engine.default_effective_config() {
-                Ok(config) => config,
-                Err(error) => return Ok(Err(error)),
-            };
-        } else {
-            if let Err(error) = theme::apply_theme_defaults(&mut effective_config) {
-                return Ok(Err(error.into()));
-            }
-        }
-
-        control.checkpoint()?;
-        let title = sanitized_title(pre.title.as_deref(), &effective_config);
-        control.checkpoint()?;
-
-        Ok(Ok((
-            pre.source,
-            ParseMetadata {
-                diagram_type: diagram_type.to_string(),
                 config: pre.config,
                 effective_config,
                 title,
@@ -870,6 +907,36 @@ impl<'a> ParsePipeline<'a> {
             }
             PreprocessPath::Render => {
                 preprocess_diagram_with_known_type_and_directive_recovery_controlled(
+                    self.text,
+                    &self.engine.registry,
+                    diagram_type,
+                    directive_recovery,
+                    control,
+                )
+            }
+        }
+    }
+
+    fn preprocess_input_with_evidence_controlled(
+        &self,
+        path: PreprocessPath,
+        diagram_type: Option<&str>,
+        directive_recovery: DirectiveRecoveryMode,
+        control: &ParseControl,
+    ) -> ParseControlResult<PreprocessCaptureOutcome> {
+        control.checkpoint()?;
+        match path {
+            PreprocessPath::PublicParse => {
+                preprocess_mermaid_public_parse_pipeline_with_directive_recovery_evidence_controlled(
+                    self.text,
+                    &self.engine.registry,
+                    diagram_type,
+                    directive_recovery,
+                    control,
+                )
+            }
+            PreprocessPath::Render => {
+                preprocess_diagram_with_known_type_and_directive_recovery_evidence_controlled(
                     self.text,
                     &self.engine.registry,
                     diagram_type,
@@ -998,8 +1065,9 @@ fn sanitized_title(title: Option<&str>, effective_config: &MermaidConfig) -> Opt
 mod editor_parse_source_map_tests {
     use super::{EditorParseSourceMap, ParsePipeline, PreprocessPath};
     use crate::{
-        EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-        EditorSemanticSymbol, Engine, ParseCancelled, ParseControl, ParseOptions, SourceSpan,
+        DiagramSnapshotCapture, EditorExpectedSyntax, EditorExpectedSyntaxKind,
+        EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Engine, Error,
+        ParseCancelled, ParseControl, ParseOptions, SourceSpan,
     };
 
     #[test]
@@ -1011,6 +1079,74 @@ mod editor_parse_source_map_tests {
             Engine::new().parse_diagram_snapshot_controlled_sync("flowchart TD\nA-->B\n", &control);
 
         assert!(matches!(result, Err(ParseCancelled)));
+    }
+
+    #[test]
+    fn controlled_capture_cancellation_never_returns_partial_evidence() {
+        let control = ParseControl::new();
+        control.cancel();
+
+        let result = Engine::new().capture_diagram_snapshot_controlled_sync(
+            "%%{init: {theme: 'dark'}}%%\nflowchart TD\nA-->B\n",
+            &control,
+        );
+
+        assert!(matches!(result, Err(ParseCancelled)));
+    }
+
+    #[test]
+    fn editor_capture_retains_source_config_on_detection_failure() {
+        let source = "%%{ initialize: { theme: 'dark' } }%%\nnot a diagram\n";
+        let captured = Engine::new()
+            .capture_diagram_snapshot_controlled_sync(source, &ParseControl::new())
+            .expect("an active parse control must not cancel");
+
+        let DiagramSnapshotCapture::Failed {
+            error: Error::DetectType(_),
+            source_config,
+        } = captured
+        else {
+            panic!("strict detection failure must retain preprocessing evidence");
+        };
+        assert_eq!(source_config.directives().len(), 1);
+        let keyword = source_config.directives()[0].keyword_span();
+        assert_eq!(&source[keyword.start..keyword.end], "initialize");
+    }
+
+    #[test]
+    fn editor_capture_retains_later_source_config_on_preprocessing_failure() {
+        let source = concat!(
+            "---\n",
+            "config: [\n",
+            "---\n",
+            "%%{ initialize: { theme: 'dark' } }%%\n",
+            "flowchart TD\nA-->B\n",
+        );
+        let captured = Engine::new()
+            .capture_diagram_snapshot_controlled_sync(source, &ParseControl::new())
+            .expect("an active parse control must not cancel");
+
+        let DiagramSnapshotCapture::Failed {
+            error: Error::InvalidFrontMatterYaml { .. },
+            source_config,
+        } = captured
+        else {
+            panic!("preprocessing failure must be distinct from cancellation");
+        };
+        assert_eq!(source_config.directives().len(), 1);
+        assert_eq!(source_config.directives()[0].keyword(), "initialize");
+        assert!(!source_config.rewrite_safe());
+    }
+
+    #[test]
+    fn lenient_editor_capture_preserves_suppressed_detection_semantics() {
+        let engine = Engine::new();
+        let pipeline = ParsePipeline::detect(&engine, "not a diagram\n", ParseOptions::lenient());
+        let captured = pipeline
+            .capture_editor_snapshot_controlled(super::ParseTiming::Json, &ParseControl::new())
+            .expect("an active parse control must not cancel");
+
+        assert!(matches!(captured, DiagramSnapshotCapture::Snapshot(None)));
     }
 
     #[test]
