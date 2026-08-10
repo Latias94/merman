@@ -52,6 +52,7 @@ export function buildCandidate({ candidate, target = null }) {
   mkdirSync(artifactsRoot, { recursive: true });
   const resolvedTarget = candidate === "napi" ? target ?? resolveNodeTarget() : null;
   const recipe = resolveCandidateRecipe(candidate, resolvedTarget);
+  validateCandidateBuildHost(recipe, candidate === "napi" ? resolveNodeTarget() : null);
   const metadata = cargoMetadata(recipe);
   validateCandidatePackageVersions(metadata);
   const dependencyClosure = candidateDependencyClosure(metadata, recipe);
@@ -91,12 +92,12 @@ function buildNapi(stage, recipe) {
   const cli = path.join(nodeRoot, "node_modules", "@napi-rs", "cli", "dist", "cli.js");
   assertFile(cli, "pinned @napi-rs/cli; run npm ci first");
   const invocation = candidateBuildInvocation(recipe, stage);
-  run(invocation.command, invocation.args, invocation.env);
+  run(invocation.command, invocation.args);
 }
 
 function buildNodeWasm(stage, recipe) {
   const invocation = candidateBuildInvocation(recipe, stage);
-  run(invocation.command, invocation.args, invocation.env);
+  run(invocation.command, invocation.args);
 }
 
 export function candidateBuildInvocation(recipe, stage) {
@@ -104,7 +105,6 @@ export function candidateBuildInvocation(recipe, stage) {
   if (recipe.candidate === "napi") {
     return {
       command: process.execPath,
-      env: candidateBuildEnvironment(recipe),
       args: [
         path.join(nodeRoot, "node_modules", "@napi-rs", "cli", "dist", "cli.js"),
         "build",
@@ -136,7 +136,6 @@ export function candidateBuildInvocation(recipe, stage) {
   if (recipe.candidate === "node-wasm") {
     return {
       command: "wasm-pack",
-      env: {},
       args: [
         "build",
         path.dirname(path.join(repositoryRoot, descriptor.cargo.manifest)),
@@ -158,16 +157,13 @@ export function candidateBuildInvocation(recipe, stage) {
   throw new Error(`Unknown candidate: ${recipe.candidate}.`);
 }
 
-export function candidateBuildEnvironment(recipe, baseEnv = process.env) {
-  if (
-    recipe.candidate !== "napi" ||
-    recipe.rustTarget !== "x86_64-unknown-linux-musl"
-  ) {
-    return {};
+export function validateCandidateBuildHost(recipe, currentTarget) {
+  if (recipe.candidate !== "napi") return;
+  if (recipe.targetId !== currentTarget) {
+    throw new Error(
+      `The ${recipe.targetId} Node package must be built and probed on its matching runtime host; current host is ${currentTarget}.`,
+    );
   }
-
-  const key = "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER";
-  return { [key]: baseEnv[key] || "musl-gcc" };
 }
 
 function normalizeArtifacts(stage, candidate) {
@@ -980,12 +976,11 @@ function localPackageSource(manifestPath) {
   return `path:${path.relative(repositoryRoot, directory).split(path.sep).join("/")}`;
 }
 
-function run(command, args, invocationEnv = {}) {
+function run(command, args) {
   const result = spawnSync(command, args, {
     cwd: nodeRoot,
     env: {
       ...process.env,
-      ...invocationEnv,
       CARGO_BUILD_JOBS: "1",
       CARGO_TARGET_DIR: path.join(repositoryRoot, "target"),
     },

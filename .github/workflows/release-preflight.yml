@@ -590,22 +590,64 @@ jobs:
         run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
+        if: matrix.target != 'linux-x64-musl'
         uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: ${{ matrix.rust_target }}
 
       - name: Rust cache
+        if: matrix.target != 'linux-x64-musl'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: crates/merman-node
 
-      - name: Install musl linker
+      - name: Build, package, and smoke musl target
         if: matrix.target == 'linux-x64-musl'
+        env:
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y musl-tools
+          set -euo pipefail
+          docker build \
+            --platform linux/amd64 \
+            --file platforms/node/Dockerfile.musl \
+            --build-arg NODE_IMAGE=node:24-alpine3.22 \
+            --build-arg RUST_IMAGE=rust:1.95-alpine3.22 \
+            --tag merman-node-musl:ci \
+            platforms/node
+          docker run --rm \
+            --platform linux/amd64 \
+            -e CARGO_INCREMENTAL=0 \
+            -e TARGET="$TARGET" \
+            -e VERSION="$VERSION" \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -v "$RUNNER_TEMP:/runner-temp" \
+            -w /work \
+            merman-node-musl:ci \
+            sh -lc '
+              set -eu
+              git config --global --add safe.directory /work
+              npm ci --prefix platforms/node
+              npm run --prefix platforms/node build:candidate -- --candidate napi --target "$TARGET"
+              package_root=/runner-temp/node-packages
+              artifact_dir=/runner-temp/node-platform-artifact
+              smoke_tarballs=/runner-temp/node-smoke-tarballs
+              smoke_root=/runner-temp/node-install-smoke
+              node platforms/node/scripts/assemble-packages.mjs --target "$TARGET" --output-root "$package_root"
+              npm run --prefix platforms/node check:packages -- --packed-root "$package_root"
+              mkdir -p "$artifact_dir" "$smoke_tarballs" "$smoke_root"
+              npm pack "$package_root/node" --json --pack-destination "$smoke_tarballs" >/runner-temp/node-root-pack.json
+              npm pack "$package_root/$TARGET" --json --pack-destination "$artifact_dir" >/runner-temp/node-target-pack.json
+              cp "$artifact_dir"/*.tgz "$smoke_tarballs"/
+              test "$(find "$artifact_dir" -maxdepth 1 -name "*.tgz" -type f | wc -l | tr -d " ")" = 1
+              cd "$smoke_root"
+              npm init -y >/dev/null
+              npm install --ignore-scripts --no-audit --no-fund "$smoke_tarballs"/*.tgz >/dev/null
+              node /work/platforms/node/scripts/smoke-installed-package.mjs --project "$smoke_root" --version "$VERSION" --target "$TARGET"
+            '
 
       - name: Setup Node
+        if: matrix.target != 'linux-x64-musl'
         uses: actions/setup-node@v6
         with:
           node-version: "24"
@@ -613,12 +655,15 @@ jobs:
           cache-dependency-path: platforms/node/package-lock.json
 
       - name: Install Node build dependencies
+        if: matrix.target != 'linux-x64-musl'
         run: npm ci --prefix platforms/node
 
       - name: Build and probe Node native package
+        if: matrix.target != 'linux-x64-musl'
         run: npm run --prefix platforms/node build:candidate -- --candidate napi --target "${{ matrix.target }}"
 
       - name: Pack and install-smoke Node native package
+        if: matrix.target != 'linux-x64-musl'
         env:
           TARGET: ${{ matrix.target }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
@@ -634,22 +679,12 @@ jobs:
           npm pack "$package_root/$TARGET" --json --pack-destination "$artifact_dir" > "$RUNNER_TEMP/node-target-pack.json"
           cp "$artifact_dir"/*.tgz "$smoke_tarballs/"
 
-          if [[ "$TARGET" == "linux-x64-musl" ]]; then
-            docker run --rm \
-              -e VERSION="$VERSION" \
-              -e TARGET="$TARGET" \
-              -v "$smoke_tarballs:/artifacts:ro" \
-              -v "$GITHUB_WORKSPACE/platforms/node/scripts/smoke-installed-package.mjs:/smoke-installed-package.mjs:ro" \
-              node:24-alpine \
-              sh -lc 'mkdir /smoke && cd /smoke && npm init -y >/dev/null && npm install --ignore-scripts --no-audit --no-fund /artifacts/*.tgz >/dev/null && node /smoke-installed-package.mjs --project /smoke --version "$VERSION" --target "$TARGET"'
-          else
-            smoke_root="$RUNNER_TEMP/node-install-smoke"
-            mkdir -p "$smoke_root"
-            cd "$smoke_root"
-            npm init -y >/dev/null
-            npm install --ignore-scripts --no-audit --no-fund "$smoke_tarballs"/*.tgz >/dev/null
-            node "$GITHUB_WORKSPACE/platforms/node/scripts/smoke-installed-package.mjs" --project "$smoke_root" --version "$VERSION" --target "$TARGET"
-          fi
+          smoke_root="$RUNNER_TEMP/node-install-smoke"
+          mkdir -p "$smoke_root"
+          cd "$smoke_root"
+          npm init -y >/dev/null
+          npm install --ignore-scripts --no-audit --no-fund "$smoke_tarballs"/*.tgz >/dev/null
+          node "$GITHUB_WORKSPACE/platforms/node/scripts/smoke-installed-package.mjs" --project "$smoke_root" --version "$VERSION" --target "$TARGET"
 
       - name: Upload Node target package
         uses: actions/upload-artifact@v6

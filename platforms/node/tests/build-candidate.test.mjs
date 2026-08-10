@@ -7,11 +7,11 @@ import { fileURLToPath } from "node:url";
 
 import {
   candidateDependencyClosure,
-  candidateBuildEnvironment,
   candidateBuildInvocation,
   collectLocalInputEntries,
   resolveCandidateRuntimeContract,
   resolveCandidateRecipe,
+  validateCandidateBuildHost,
   validateCandidateCargoMetadata,
   validateCandidatePackageVersions,
 } from "../scripts/build-candidate.mjs";
@@ -69,14 +69,15 @@ test("candidate builds project its private capability recipe plus one transport"
   }
 });
 
-test("x64 musl candidate build selects the musl linker", () => {
+test("native candidate builds require their matching runtime host", () => {
   const recipe = resolveCandidateRecipe("napi", "linux-x64-musl");
-  const key = "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER";
 
-  assert.equal(candidateBuildEnvironment(recipe, {})[key], "musl-gcc");
-  assert.equal(
-    candidateBuildEnvironment(recipe, { [key]: "/opt/musl/bin/musl-gcc" })[key],
-    "/opt/musl/bin/musl-gcc",
+  assert.doesNotThrow(() =>
+    validateCandidateBuildHost(recipe, "linux-x64-musl")
+  );
+  assert.throws(
+    () => validateCandidateBuildHost(recipe, "linux-x64-gnu"),
+    /matching runtime host/i,
   );
 });
 
