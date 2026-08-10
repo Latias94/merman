@@ -7,7 +7,8 @@ mod width;
 #[cfg(test)]
 use document::encode_text_lines;
 pub(crate) use document::{
-    BudgetedTextDocument, BudgetedWrappedText, charge_text_layout, visit_safe_line_graphemes,
+    BudgetedTextDocument, BudgetedTextLine, BudgetedWrappedText, charge_text_layout,
+    visit_safe_line_graphemes,
 };
 pub(crate) use encode::push_html_escaped_text;
 pub(crate) use label::{
@@ -320,6 +321,27 @@ mod tests {
         assert_eq!(
             document.finish(&options).expect("document should encode"),
             "- alpha\n  beta\n  gamma"
+        );
+    }
+
+    #[test]
+    fn quoted_structured_fields_preserve_whitespace_and_delimiter_ownership() {
+        let options = AsciiRenderOptions::ascii()
+            .with_resource_profile(ResourceProfile::UnboundedForTrustedInput);
+        let mut document = BudgetedTextDocument::new(&options);
+        document
+            .push_line_with(|line| {
+                line.push_str("- ")?;
+                line.push_quoted_text(" leading \"value\" \\ ")
+            })
+            .expect("quoted fields should stream without materializing an escaped copy");
+        document
+            .push_line_with(|line| line.push_quoted_text("line\nbreak"))
+            .expect("quoted line fields should encode structural newlines visibly");
+
+        assert_eq!(
+            document.finish(&options).expect("document should encode"),
+            concat!(r#"- " leading \"value\" \\ ""#, "\n", r#""line\nbreak""#,)
         );
     }
 

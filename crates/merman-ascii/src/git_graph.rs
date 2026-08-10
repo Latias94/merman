@@ -1,9 +1,7 @@
 use crate::Result;
 use crate::options::AsciiRenderOptions;
-use crate::safe_text::BudgetedTextDocument;
+use crate::safe_text::{BudgetedTextDocument, BudgetedTextLine};
 use merman_core::diagrams::git_graph::{GitGraphCommitRenderModel, GitGraphRenderModel};
-
-const SUMMARY_WRAP_WIDTH: usize = 80;
 
 pub fn render_git_graph_diagram(
     model: &GitGraphRenderModel,
@@ -12,30 +10,39 @@ pub fn render_git_graph_diagram(
     let mut document = BudgetedTextDocument::new(options);
 
     document.push_line_with(|line| {
-        line.push_str("gitGraph direction=")?;
-        line.push_str(&model.direction)?;
-        line.push_str(" current=")?;
-        line.push_str(&model.current_branch)
+        line.write_fmt(format_args!(
+            "gitGraph direction(bytes={})=",
+            model.direction.len()
+        ))?;
+        line.push_quoted_text(&model.direction)?;
+        line.write_fmt(format_args!(
+            " current(bytes={})=",
+            model.current_branch.len()
+        ))?;
+        line.push_quoted_text(&model.current_branch)
     })?;
-    document.push_optional_line(model.title.as_deref())?;
-    document.push_optional_prefixed_line("accTitle: ", model.acc_title.as_deref())?;
-    document.push_optional_prefixed_line("accDescr: ", model.acc_descr.as_deref())?;
+    push_optional_framed_line(&mut document, "title", model.title.as_deref())?;
+    push_optional_framed_line(&mut document, "accTitle", model.acc_title.as_deref())?;
+    push_optional_framed_line(&mut document, "accDescr", model.acc_descr.as_deref())?;
     if !model.branches.is_empty() {
         document.push_line_with(|line| {
-            line.push_str("branches: ")?;
+            line.push_str("branches=[")?;
             for (index, branch) in model.branches.iter().enumerate() {
                 if index > 0 {
                     line.push_str(", ")?;
                 }
-                line.push_str(&branch.name)?;
+                line.write_fmt(format_args!("bytes={} ", branch.name.len()))?;
+                line.push_quoted_text(&branch.name)?;
             }
+            line.push_str("]")?;
             Ok(())
         })?;
     }
 
     for commit in &model.commits {
         document.resources_mut().charge_layout_work(1)?;
-        document.push_wrapped_prefixed_line_with("  - ", "    ", SUMMARY_WRAP_WIDTH, |line| {
+        document.push_line_with(|line| {
+            line.push_str("  - ")?;
             push_commit_text(line, commit)
         })?;
     }
@@ -44,12 +51,13 @@ pub fn render_git_graph_diagram(
         document.push_line("warnings:")?;
         for warning in &model.warning_facts {
             document.resources_mut().charge_layout_work(1)?;
-            document.push_wrapped_prefixed_line(
-                "  - ",
-                "    ",
-                &warning.message,
-                SUMMARY_WRAP_WIDTH,
-            )?;
+            document.push_line_with(|line| {
+                line.write_fmt(format_args!(
+                    "  - message(bytes={})=",
+                    warning.message.len()
+                ))?;
+                line.push_quoted_text(&warning.message)
+            })?;
         }
     }
 
@@ -57,27 +65,21 @@ pub fn render_git_graph_diagram(
 }
 
 fn push_commit_text(
-    line: &mut crate::safe_text::BudgetedWrappedText<'_, '_>,
+    line: &mut BudgetedTextLine<'_>,
     commit: &GitGraphCommitRenderModel,
 ) -> Result<()> {
-    line.write_fmt(format_args!("{} ", commit.seq))?;
-    line.push_str(&commit.branch)?;
-    line.push_str(" ")?;
-    line.push_str(&commit.id)?;
+    line.write_fmt(format_args!("seq={}", commit.seq))?;
+    push_framed_field(line, "branch", &commit.branch)?;
+    push_framed_field(line, "id", &commit.id)?;
     if let Some(kind) = commit_kind(commit.commit_type) {
-        line.write_fmt(format_args!(" [{kind}]"))?;
+        line.write_fmt(format_args!(" kind={kind}"))?;
     }
-    line.push_str(" message=")?;
-    line.push_str(&commit.message)?;
+    push_framed_field(line, "message", &commit.message)?;
     if !commit.tags.is_empty() {
-        line.push_str(" tags=[")?;
-        push_joined(line, &commit.tags)?;
-        line.push_str("]")?;
+        push_framed_list(line, "tags", &commit.tags)?;
     }
     if !commit.parents.is_empty() {
-        line.push_str(" parents=[")?;
-        push_joined(line, &commit.parents)?;
-        line.push_str("]")?;
+        push_framed_list(line, "parents", &commit.parents)?;
     }
     if let Some(custom_type) = commit.custom_type {
         line.push_str(" typeOverride=")?;
@@ -93,17 +95,36 @@ fn push_commit_text(
     Ok(())
 }
 
-fn push_joined(
-    line: &mut crate::safe_text::BudgetedWrappedText<'_, '_>,
-    values: &[String],
-) -> Result<()> {
+fn push_framed_field(line: &mut BudgetedTextLine<'_>, key: &str, value: &str) -> Result<()> {
+    line.write_fmt(format_args!(" {key}(bytes={})=", value.len()))?;
+    line.push_quoted_text(value)
+}
+
+fn push_framed_list(line: &mut BudgetedTextLine<'_>, key: &str, values: &[String]) -> Result<()> {
+    line.write_fmt(format_args!(" {key}=["))?;
     for (index, value) in values.iter().enumerate() {
         if index > 0 {
             line.push_str(", ")?;
         }
-        line.push_str(value)?;
+        line.write_fmt(format_args!("bytes={} ", value.len()))?;
+        line.push_quoted_text(value)?;
     }
+    line.push_str("]")?;
     Ok(())
+}
+
+fn push_optional_framed_line(
+    document: &mut BudgetedTextDocument,
+    key: &str,
+    value: Option<&str>,
+) -> Result<()> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    document.push_line_with(|line| {
+        line.write_fmt(format_args!("{key}(bytes={})=", value.len()))?;
+        line.push_quoted_text(value)
+    })
 }
 
 fn commit_kind(commit_type: i64) -> Option<&'static str> {
@@ -127,18 +148,18 @@ mod tests {
 
     #[test]
     fn document_limit_rejects_branches_before_join_or_full_branch_scan() {
+        let branch_name = "branch-name-that-must-not-be-preformatted".repeat(128);
+        let header = "gitGraph direction(bytes=0)=\"\" current(bytes=0)=\"\"";
+        let branch_prefix = format!("branches=[bytes={} \"", branch_name.len());
+        let exact_prefix = header.len() + branch_prefix.len();
         let resources = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
-            .with_limit(AsciiResourceLimitId::MaxDocumentCells, 28)
-            .expect("positive document limit")
-            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 31)
-            .expect("positive layout-work limit");
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_prefix)
+            .expect("positive document limit");
         let options = AsciiRenderOptions::ascii().with_resource_policy(resources);
         let model = GitGraphRenderModel {
             diagram_type: "gitGraph".to_string(),
             commits: Vec::new(),
-            branches: vec![GitGraphBranchRenderModel {
-                name: "branch-name-that-must-not-be-preformatted".repeat(128),
-            }],
+            branches: vec![GitGraphBranchRenderModel { name: branch_name }],
             current_branch: String::new(),
             direction: String::new(),
             title: None,
@@ -154,8 +175,8 @@ mod tests {
             error,
             AsciiError::ResourceLimitExceeded(details)
                 if details.limit == AsciiResourceLimitId::MaxDocumentCells
-                    && details.actual == 29
-                    && details.max == 28
+                    && details.actual == exact_prefix + 1
+                    && details.max == exact_prefix
         ));
     }
 }

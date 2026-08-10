@@ -933,6 +933,17 @@ fn kanban_render_model_rejects_duplicate_or_empty_ids() {
 }
 
 #[test]
+fn kanban_parser_projection_keeps_group_metadata() {
+    let rendered =
+        render_parsed("kanban\n  root@{ priority: high, assigned: alice, icon: star }\n");
+
+    assert_eq!(
+        rendered,
+        "root [id=root, priority=high, assigned=alice, icon=star]"
+    );
+}
+
+#[test]
 fn packet_render_model_renders_rows_and_ranges() {
     let mut model = PacketDiagramRenderModel::default();
     model.title = Some("Packet".to_string());
@@ -966,11 +977,14 @@ fn packet_render_model_renders_rows_and_ranges() {
     assert_eq!(
         rendered,
         concat!(
-            "Packet\n",
-            "accTitle: Packet title\n",
-            "accDescr: Packet description\n",
-            "row 1: [0..7] header (8 bits) | [8..15] payload (8 bits)\n",
-            "row 2: [16..31] footer (16 bits)",
+            "title(bytes=6)=\"Packet\"\n",
+            "accTitle(bytes=12)=\"Packet title\"\n",
+            "accDescr(bytes=18)=\"Packet description\"\n",
+            "row 1:\n",
+            "  - range=[0..7] bits=8 label(bytes=6)=\"header\"\n",
+            "  - range=[8..15] bits=8 label(bytes=7)=\"payload\"\n",
+            "row 2:\n",
+            "  - range=[16..31] bits=16 label(bytes=6)=\"footer\"",
         )
     );
 }
@@ -987,10 +1001,66 @@ fn packet_parser_split_blocks_render_upstream_split_bit_counts() {
     assert_eq!(
         rendered,
         concat!(
-            "row 1: [0..10] test (11 bits) | [11..31] multiple (20 bits)\n",
-            "row 2: [32..63] multiple (31 bits)\n",
-            "row 3: [64..90] multiple (26 bits)",
+            "row 1:\n",
+            "  - range=[0..10] bits=11 label(bytes=4)=\"test\"\n",
+            "  - range=[11..31] bits=20 label(bytes=8)=\"multiple\"\n",
+            "row 2:\n",
+            "  - range=[32..63] bits=31 label(bytes=8)=\"multiple\"\n",
+            "row 3:\n",
+            "  - range=[64..90] bits=26 label(bytes=8)=\"multiple\"",
         )
+    );
+}
+
+#[test]
+fn packet_labels_cannot_forge_following_block_boundaries() {
+    let mut forged = PacketDiagramRenderModel::default();
+    forged.packet = vec![vec![PacketRenderBlock {
+        start: 0,
+        end: 7,
+        bits: 8,
+        label: "header (8 bits) | [8..15] payload".to_string(),
+    }]];
+    let mut split = PacketDiagramRenderModel::default();
+    split.packet = vec![vec![
+        PacketRenderBlock {
+            start: 0,
+            end: 7,
+            bits: 8,
+            label: "header".to_string(),
+        },
+        PacketRenderBlock {
+            start: 8,
+            end: 15,
+            bits: 8,
+            label: "payload".to_string(),
+        },
+    ]];
+
+    assert_ne!(
+        render(RenderSemanticModel::Packet(forged)),
+        render(RenderSemanticModel::Packet(split)),
+        "length-framed packet labels must distinguish one authored block from two blocks"
+    );
+
+    let mut leading = PacketDiagramRenderModel::default();
+    leading.packet = vec![vec![PacketRenderBlock {
+        start: 0,
+        end: 7,
+        bits: 8,
+        label: " label".to_string(),
+    }]];
+    let mut trailing = PacketDiagramRenderModel::default();
+    trailing.packet = vec![vec![PacketRenderBlock {
+        start: 0,
+        end: 7,
+        bits: 8,
+        label: "label ".to_string(),
+    }]];
+    assert_ne!(
+        render(RenderSemanticModel::Packet(leading)),
+        render(RenderSemanticModel::Packet(trailing)),
+        "equal-length whitespace variants must remain distinguishable after wrapping"
     );
 }
 
@@ -1033,15 +1103,14 @@ fn git_graph_render_model_renders_branches_commits_and_warnings() {
     assert_eq!(
         rendered,
         concat!(
-            "gitGraph direction=TB current=main\n",
-            "Repository history\n",
-            "accTitle: Git title\n",
-            "accDescr: Git description\n",
-            "branches: main, feature\n",
-            "  - 0 main c0 [highlight] message=init tags=[v1] parents=[seed] typeOverride=7\n",
-            "    idSource=explicit\n",
+            "gitGraph direction(bytes=2)=\"TB\" current(bytes=4)=\"main\"\n",
+            "title(bytes=18)=\"Repository history\"\n",
+            "accTitle(bytes=9)=\"Git title\"\n",
+            "accDescr(bytes=15)=\"Git description\"\n",
+            "branches=[bytes=4 \"main\", bytes=7 \"feature\"]\n",
+            "  - seq=0 branch(bytes=4)=\"main\" id(bytes=2)=\"c0\" kind=highlight message(bytes=4)=\"init\" tags=[bytes=2 \"v1\"] parents=[bytes=4 \"seed\"] typeOverride=7 idSource=explicit\n",
             "warnings:\n",
-            "  - duplicate head",
+            "  - message(bytes=14)=\"duplicate head\"",
         )
     );
 }
@@ -1062,7 +1131,7 @@ fn git_graph_commit_message_and_metadata_are_framed_without_collisions() {
     let mut message = base.clone();
     message.commits.push(GitGraphCommitRenderModel {
         id: "c0".to_string(),
-        message: "tags=v1".to_string(),
+        message: "init tags=[v1]".to_string(),
         seq: 0,
         commit_type: 0,
         tags: Vec::new(),
@@ -1074,7 +1143,7 @@ fn git_graph_commit_message_and_metadata_are_framed_without_collisions() {
     let mut metadata = base;
     metadata.commits.push(GitGraphCommitRenderModel {
         id: "c0".to_string(),
-        message: String::new(),
+        message: "init".to_string(),
         seq: 0,
         commit_type: 0,
         tags: vec!["v1".to_string()],
@@ -1087,6 +1156,119 @@ fn git_graph_commit_message_and_metadata_are_framed_without_collisions() {
     let message_output = render(RenderSemanticModel::GitGraph(message));
     let metadata_output = render(RenderSemanticModel::GitGraph(metadata));
     assert_ne!(message_output, metadata_output);
-    assert!(message_output.contains("message=tags=v1"));
-    assert!(metadata_output.contains("message= tags=[v1]"));
+    assert!(
+        message_output.contains("message(bytes=14)=")
+            && message_output.contains("init")
+            && message_output.contains("tags=[v1]")
+    );
+    assert!(
+        metadata_output.contains("message(bytes=4)=\"init\"")
+            && metadata_output.contains("tags=[bytes=2 \"v1\"]")
+    );
+
+    let mut comma_message = GitGraphRenderModel {
+        diagram_type: "gitGraph".to_string(),
+        commits: vec![GitGraphCommitRenderModel {
+            id: "c0".to_string(),
+            message: "x".to_string(),
+            seq: 0,
+            commit_type: 0,
+            tags: vec!["a, b".to_string()],
+            parents: Vec::new(),
+            branch: "main".to_string(),
+            custom_type: None,
+            custom_id: None,
+        }],
+        branches: Vec::new(),
+        current_branch: String::new(),
+        direction: "TB".to_string(),
+        title: None,
+        acc_title: None,
+        acc_descr: None,
+        warning_facts: Vec::new(),
+    };
+    let mut comma_tags = comma_message.clone();
+    comma_message.commits[0].tags.clear();
+    comma_message.commits[0].message = "x tags=[a, b]".to_string();
+    comma_tags.commits[0].tags = vec!["a".to_string(), "b".to_string()];
+    assert_ne!(
+        render(RenderSemanticModel::GitGraph(comma_message)),
+        render(RenderSemanticModel::GitGraph(comma_tags.clone())),
+        "length-framed fields must distinguish embedded delimiters from list structure"
+    );
+
+    let mut leading = comma_tags.clone();
+    leading.commits[0].message = " init".to_string();
+    leading.commits[0].tags.clear();
+    let mut trailing = comma_tags;
+    trailing.commits[0].message = "init ".to_string();
+    trailing.commits[0].tags.clear();
+    assert_ne!(
+        render(RenderSemanticModel::GitGraph(leading)),
+        render(RenderSemanticModel::GitGraph(trailing)),
+        "quoted fields must preserve equal-length leading and trailing whitespace"
+    );
+}
+
+#[test]
+fn git_graph_branch_and_commit_identity_fields_are_length_framed() {
+    let base = GitGraphRenderModel {
+        diagram_type: "gitGraph".to_string(),
+        commits: Vec::new(),
+        branches: Vec::new(),
+        current_branch: String::new(),
+        direction: "TB".to_string(),
+        title: None,
+        acc_title: None,
+        acc_descr: None,
+        warning_facts: Vec::new(),
+    };
+    let mut joined_branches = base.clone();
+    joined_branches.branches = vec![GitGraphBranchRenderModel {
+        name: "main, feature".to_string(),
+    }];
+    let mut split_branches = base.clone();
+    split_branches.branches = vec![
+        GitGraphBranchRenderModel {
+            name: "main".to_string(),
+        },
+        GitGraphBranchRenderModel {
+            name: "feature".to_string(),
+        },
+    ];
+    assert_ne!(
+        render(RenderSemanticModel::GitGraph(joined_branches)),
+        render(RenderSemanticModel::GitGraph(split_branches)),
+        "branch-list delimiters must not be forgeable by authored branch names"
+    );
+
+    let mut joined_identity = base.clone();
+    joined_identity.commits.push(GitGraphCommitRenderModel {
+        id: "c0 x".to_string(),
+        message: String::new(),
+        seq: 0,
+        commit_type: 0,
+        tags: Vec::new(),
+        parents: Vec::new(),
+        branch: "main".to_string(),
+        custom_type: None,
+        custom_id: None,
+    });
+    let mut split_identity = base;
+    split_identity.commits.push(GitGraphCommitRenderModel {
+        id: "x".to_string(),
+        message: String::new(),
+        seq: 0,
+        commit_type: 0,
+        tags: Vec::new(),
+        parents: Vec::new(),
+        branch: "main c0".to_string(),
+        custom_type: None,
+        custom_id: None,
+    });
+    assert_ne!(
+        render(RenderSemanticModel::GitGraph(joined_identity)),
+        render(RenderSemanticModel::GitGraph(split_identity)),
+        "commit branch and id ownership must remain distinguishable"
+    );
 }

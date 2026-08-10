@@ -325,6 +325,14 @@ impl BudgetedTextLine<'_> {
         })
     }
 
+    pub(crate) fn write_fmt(&mut self, arguments: fmt::Arguments<'_>) -> Result<()> {
+        try_write_fmt(arguments, |value| self.push_str(value))
+    }
+
+    pub(crate) fn push_quoted_text(&mut self, value: &str) -> Result<()> {
+        push_quoted_terminal_text(self, value)
+    }
+
     fn push_normalized_range(&mut self, value: &str, range: NormalizedTextRange) -> Result<()> {
         let value = &value[range.source_start..range.source_end];
         let mut offset = 0usize;
@@ -633,6 +641,45 @@ fn try_push_document_str(output: &mut String, value: &str) -> Result<()> {
         .map_err(|_| document_allocation_error())?;
     output.push_str(value);
     Ok(())
+}
+
+/// Writes an injective, terminal-safe quoted field value without materializing an escaped copy.
+///
+/// Field owners use non-wrapping rows so ordinary authored spaces and grapheme clusters remain
+/// readable. Quotes, backslashes, and structural whitespace are escaped to keep the mapping
+/// injective.
+fn push_quoted_terminal_text(line: &mut BudgetedTextLine<'_>, value: &str) -> Result<()> {
+    line.push_str("\"")?;
+    for grapheme in value.graphemes(true) {
+        line.document.resources.charge_layout_work(1)?;
+        if !grapheme
+            .chars()
+            .any(|ch| ch == '\\' || ch == '"' || (ch != ' ' && ch.is_whitespace()))
+        {
+            line.push_str(grapheme)?;
+            continue;
+        }
+
+        for ch in grapheme.chars() {
+            match ch {
+                '\\' => line.push_str("\\\\")?,
+                '"' => line.push_str("\\\"")?,
+                ' ' => line.push_str(" ")?,
+                '\t' => line.push_str("\\t")?,
+                '\n' => line.push_str("\\n")?,
+                '\r' => line.push_str("\\r")?,
+                ch if ch.is_whitespace() => {
+                    let mut buffer = [0u8; 10];
+                    line.push_str(visible_escape(ch, &mut buffer))?;
+                }
+                ch => {
+                    let mut buffer = [0u8; 4];
+                    line.push_str(ch.encode_utf8(&mut buffer))?;
+                }
+            }
+        }
+    }
+    line.push_str("\"")
 }
 
 fn try_write_fmt(
