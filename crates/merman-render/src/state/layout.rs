@@ -1,12 +1,13 @@
 //! State diagram layout implementation (stateDiagram-v2).
 
 use crate::dagre::self_loop::compact_self_loop_geometry;
-use crate::diagram_theme::ThemeTextStyle;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{
     Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, StateDiagramLayout,
 };
-use crate::text::{TextMeasurer, TextStyle, WrapMode};
+#[cfg(test)]
+use crate::text::TextStyle;
+use crate::text::{TextMeasurer, WrapMode};
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
@@ -174,8 +175,7 @@ fn edge_label_metrics(
     edge_id: &str,
     label: &str,
     measurer: &dyn TextMeasurer,
-    text_style: &TextStyle,
-    text_typography: Option<&ThemeTextStyle>,
+    typography: &super::ResolvedLabelTypography,
     wrap_mode: WrapMode,
     sidecar: Option<&super::StateLabelSidecarBuilder>,
 ) -> (f64, f64) {
@@ -188,8 +188,7 @@ fn edge_label_metrics(
         text: label,
         source_kind: super::StateLabelSourceKind::Markdown,
         measurer,
-        style: text_style,
-        typography: text_typography,
+        typography,
         max_width_px: Some(wrapping_width),
         wrap_mode,
         break_long_words: true,
@@ -200,7 +199,7 @@ fn edge_label_metrics(
                 super::measure_state_markdown_label(
                     label,
                     measurer,
-                    text_style,
+                    typography.text_style(),
                     Some(wrapping_width),
                     wrap_mode,
                 )
@@ -223,8 +222,7 @@ fn node_label_metrics(
     label: &str,
     wrapping_width: f64,
     measurer: &dyn TextMeasurer,
-    text_style: &TextStyle,
-    text_typography: Option<&ThemeTextStyle>,
+    typography: &super::ResolvedLabelTypography,
     wrap_mode: WrapMode,
     sidecar: Option<&super::StateLabelSidecarBuilder>,
 ) -> (f64, f64) {
@@ -233,8 +231,7 @@ fn node_label_metrics(
         text: label,
         source_kind: super::StateLabelSourceKind::Markdown,
         measurer,
-        style: text_style,
-        typography: text_typography,
+        typography,
         max_width_px: Some(wrapping_width),
         wrap_mode,
         break_long_words: true,
@@ -245,7 +242,7 @@ fn node_label_metrics(
                 super::measure_state_markdown_label(
                     label,
                     measurer,
-                    text_style,
+                    typography.text_style(),
                     Some(wrapping_width),
                     wrap_mode,
                 )
@@ -261,8 +258,7 @@ fn title_label_metrics(
     owner: super::StateLabelOwner<'_>,
     label: &str,
     measurer: &dyn TextMeasurer,
-    text_style: &TextStyle,
-    text_typography: Option<&ThemeTextStyle>,
+    typography: &super::ResolvedLabelTypography,
     wrap_mode: WrapMode,
     sidecar: Option<&super::StateLabelSidecarBuilder>,
 ) -> (f64, f64) {
@@ -273,8 +269,7 @@ fn title_label_metrics(
         text: label,
         source_kind: super::StateLabelSourceKind::Plain,
         measurer,
-        style: text_style,
-        typography: text_typography,
+        typography,
         max_width_px: None,
         wrap_mode,
         break_long_words: false,
@@ -286,7 +281,7 @@ fn title_label_metrics(
                 super::StateLabelMeasurement {
                     metrics: measurer.measure_wrapped(
                         decoded.as_ref(),
-                        text_style,
+                        typography.text_style(),
                         None,
                         wrap_mode,
                     ),
@@ -1471,7 +1466,7 @@ fn build_state_diagram_dagre_input(
         wrapping_width,
         state_padding,
     } = StateConfigView::new(effective_config).layout_settings(&model.direction);
-    let text_style = style_plan.base_text_style().clone();
+    let base_label_typography = style_plan.base_label_typography();
     let diagram_dir = graph_label.rankdir;
 
     let mut graph = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
@@ -1502,12 +1497,9 @@ fn build_state_diagram_dagre_input(
             }
         } else {
             let node_style = style_plan.node(&n.id);
-            let node_text_style = node_style
-                .map(super::StateNodeStylePlan::text_style)
-                .unwrap_or(&text_style);
-            let node_text_typography = node_style
-                .and_then(super::StateNodeStylePlan::text_typography)
-                .or_else(|| style_plan.base_text_typography());
+            let node_label_typography = node_style
+                .map(super::StateNodeStylePlan::resolved_label_typography)
+                .unwrap_or(base_label_typography);
             let padding = node_style
                 .and_then(super::StateNodeStylePlan::padding_override)
                 .or(n.padding)
@@ -1540,8 +1532,7 @@ fn build_state_diagram_dagre_input(
                         &label_text,
                         wrapping_width,
                         measurer,
-                        node_text_style,
-                        node_text_typography,
+                        node_label_typography,
                         wrap_mode,
                         label_sidecar,
                     );
@@ -1557,8 +1548,7 @@ fn build_state_diagram_dagre_input(
                         super::StateLabelOwner::NodeTitle(&n.id),
                         &label_text,
                         measurer,
-                        node_text_style,
-                        node_text_typography,
+                        node_label_typography,
                         WrapMode::HtmlLike,
                         label_sidecar,
                     );
@@ -1566,8 +1556,7 @@ fn build_state_diagram_dagre_input(
                         super::StateLabelOwner::NodeDescription(&n.id),
                         &desc,
                         measurer,
-                        node_text_style,
-                        node_text_typography,
+                        node_label_typography,
                         WrapMode::HtmlLike,
                         label_sidecar,
                     );
@@ -1583,8 +1572,7 @@ fn build_state_diagram_dagre_input(
                         &label_text,
                         wrapping_width,
                         measurer,
-                        node_text_style,
-                        node_text_typography,
+                        node_label_typography,
                         wrap_mode,
                         label_sidecar,
                     );
@@ -1635,19 +1623,15 @@ fn build_state_diagram_dagre_input(
             continue;
         }
         let edge_style = style_plan.edge(&e.id);
-        let edge_text_style = edge_style
-            .map(super::StateEdgeStylePlan::text_style)
-            .unwrap_or_else(|| style_plan.transition_text_style());
-        let edge_text_typography = edge_style
-            .and_then(super::StateEdgeStylePlan::text_typography)
-            .or_else(|| style_plan.transition_text_typography());
+        let edge_label_typography = edge_style
+            .map(super::StateEdgeStylePlan::resolved_label_typography)
+            .unwrap_or_else(|| style_plan.transition_label_typography());
         let canonical_label = e.label.trim();
         let (lw, lh) = edge_label_metrics(
             &e.id,
             canonical_label,
             measurer,
-            edge_text_style,
-            edge_text_typography,
+            edge_label_typography,
             wrap_mode,
             label_sidecar,
         );
@@ -1914,12 +1898,9 @@ fn layout_state_diagram_inner(
             .or(n.padding)
             .unwrap_or(8.0)
             .max(0.0);
-        let cluster_text_style = node_style
-            .map(super::StateNodeStylePlan::cluster_text_style)
-            .unwrap_or_else(|| style_plan.composite_text_style());
-        let cluster_text_typography = node_style
-            .and_then(super::StateNodeStylePlan::text_typography)
-            .or_else(|| style_plan.composite_text_typography());
+        let cluster_label_typography = node_style
+            .map(super::StateNodeStylePlan::resolved_cluster_label_typography)
+            .unwrap_or_else(|| style_plan.composite_label_typography());
         let (tw, th) = if title.trim().is_empty() {
             (0.0, 0.0)
         } else if n.shape == "noteGroup" {
@@ -1928,8 +1909,7 @@ fn layout_state_diagram_inner(
                 text: &title,
                 source_kind: super::StateLabelSourceKind::Markdown,
                 measurer,
-                style: cluster_text_style,
-                typography: cluster_text_typography,
+                typography: cluster_label_typography,
                 max_width_px: Some(wrapping_width),
                 wrap_mode,
                 break_long_words: true,
@@ -1939,7 +1919,7 @@ fn layout_state_diagram_inner(
                     super::measure_state_markdown_label(
                         &title,
                         measurer,
-                        cluster_text_style,
+                        cluster_label_typography.text_style(),
                         Some(wrapping_width),
                         wrap_mode,
                     )
@@ -1952,8 +1932,7 @@ fn layout_state_diagram_inner(
                 super::StateLabelOwner::ClusterTitle(&n.id),
                 &title,
                 measurer,
-                cluster_text_style,
-                cluster_text_typography,
+                cluster_label_typography,
                 wrap_mode,
                 label_sidecar,
             )
@@ -2559,15 +2538,14 @@ mod tests {
             width: 73.123_456_789,
             height: 17.25,
         };
-        let style = TextStyle::default();
+        let typography = crate::state::ResolvedLabelTypography::new(TextStyle::default(), None);
 
         assert_eq!(
             edge_label_metrics(
                 "edge",
                 "edge",
                 &measurer,
-                &style,
-                None,
+                &typography,
                 WrapMode::HtmlLike,
                 None,
             ),
@@ -2579,8 +2557,7 @@ mod tests {
                 "node",
                 180.0,
                 &measurer,
-                &style,
-                None,
+                &typography,
                 WrapMode::HtmlLike,
                 None,
             ),
@@ -2591,8 +2568,7 @@ mod tests {
                 crate::state::StateLabelOwner::NodeTitle("node"),
                 "title",
                 &measurer,
-                &style,
-                None,
+                &typography,
                 WrapMode::HtmlLike,
                 None,
             ),
@@ -2606,15 +2582,14 @@ mod tests {
             width: 250.123_456_789,
             height: 17.25,
         };
-        let style = TextStyle::default();
+        let typography = crate::state::ResolvedLabelTypography::new(TextStyle::default(), None);
 
         assert_eq!(
             edge_label_metrics(
                 "edge",
                 "edge",
                 &measurer,
-                &style,
-                None,
+                &typography,
                 WrapMode::HtmlLike,
                 None,
             ),
@@ -2626,8 +2601,7 @@ mod tests {
                 "node",
                 180.0,
                 &measurer,
-                &style,
-                None,
+                &typography,
                 WrapMode::HtmlLike,
                 None,
             ),
@@ -2638,8 +2612,7 @@ mod tests {
                 "edge",
                 "edge",
                 &measurer,
-                &style,
-                None,
+                &typography,
                 WrapMode::SvgLike,
                 None,
             ),

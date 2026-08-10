@@ -1,3 +1,4 @@
+use cssparser::{Parser, ParserInput};
 use indexmap::IndexMap;
 use merman_core::diagrams::state::{
     StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
@@ -7,17 +8,104 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use crate::diagram_theme::{
-    CanvasPaint, FamilyThemeMechanismKey, PreparedSourceStyleDeclaration, ResolvedDiagramTheme,
-    ResolvedProperty, ResolvedStyleProperty, ResolvedThemeStyle, SourceStyleChannel,
-    SourceStyleDeclaration, SourceStyleOrigin, SourceStyleProvenance, SourceStyleResidual,
-    SourceStyleResidualReason, Specified, TextStylePatch, ThemeTarget, ThemeTextStyle,
-    ThemeTypographyProperty, ThemeVariant,
+    CanvasPaint, FamilyThemeMechanismKey, FontStack, FontStyle, PreparedSourceStyleDeclaration,
+    ResolvedDiagramTheme, ResolvedProperty, ResolvedStyleProperty, ResolvedThemeStyle,
+    SourceStyleChannel, SourceStyleDeclaration, SourceStyleOrigin, SourceStyleProvenance,
+    SourceStyleResidual, SourceStyleResidualReason, Specified, TextStylePatch, ThemeTarget,
+    ThemeTextStyle, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason};
 use crate::mermaid_style::{CssFontSizeContext, is_label_style_key, is_safe_css_font_family_value};
 use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitExceeded};
 use crate::text::TextStyle;
 use crate::theme::MermaidThemeAdapter;
+
+/// One immutable typography decision shared by State layout, prepared-text measurement and SVG
+/// emission.
+///
+/// `TextStyle` is the compatibility projection consumed by the ordinary measurer and CSS
+/// emitter. When structured typography is active, `prepared_typography` is the same decision in
+/// the typed representation retained by the prepared-text session. Source declarations may update
+/// both views, but callers never need to merge them independently.
+#[derive(Debug, Clone)]
+pub(crate) struct ResolvedLabelTypography {
+    text_style: TextStyle,
+    prepared_typography: Option<ThemeTextStyle>,
+}
+
+impl ResolvedLabelTypography {
+    pub(crate) fn new(text_style: TextStyle, prepared_typography: Option<ThemeTextStyle>) -> Self {
+        Self {
+            text_style,
+            prepared_typography,
+        }
+    }
+
+    pub(crate) const fn text_style(&self) -> &TextStyle {
+        &self.text_style
+    }
+
+    pub(crate) const fn prepared_typography(&self) -> Option<&ThemeTextStyle> {
+        self.prepared_typography.as_ref()
+    }
+
+    fn apply_font_family(&mut self, stack: FontStack) {
+        let css = stack.as_css();
+        self.text_style.font_family = Some(css);
+        if let Some(typography) = self.prepared_typography.as_mut() {
+            *typography = typography.clone().with_font_stack(stack);
+        }
+    }
+
+    fn apply_font_size(&mut self, value: f64) -> bool {
+        if let Some(typography) = self.prepared_typography.as_mut() {
+            let Ok(updated) = typography.clone().with_font_size_px(value as f32) else {
+                return false;
+            };
+            *typography = updated;
+        }
+        self.text_style.font_size = value;
+        true
+    }
+
+    fn apply_font_weight(&mut self, value: u16) {
+        self.text_style.font_weight = Some(value.to_string());
+        if let Some(typography) = self.prepared_typography.as_mut() {
+            *typography = typography
+                .clone()
+                .with_font_weight(value)
+                .expect("admitted CSS font weights are within the typed range");
+        }
+    }
+
+    fn apply_font_style(&mut self, value: FontStyle) {
+        self.text_style.font_style = Some(value.id().to_string());
+        if let Some(typography) = self.prepared_typography.as_mut() {
+            *typography = typography.clone().with_font_style(value);
+        }
+    }
+
+    fn canonicalize_emission(&self, out: &mut IndexMap<String, EmittedDeclaration>) {
+        if out.contains_key("font-family") {
+            if let Some(family) = self.text_style.font_family.as_deref() {
+                insert_emitted(out, "font-family", family);
+            }
+        }
+        if out.contains_key("font-size") {
+            insert_emitted(out, "font-size", format!("{}px", self.text_style.font_size));
+        }
+        if out.contains_key("font-weight") {
+            if let Some(weight) = self.text_style.font_weight.as_deref() {
+                insert_emitted(out, "font-weight", weight);
+            }
+        }
+        if out.contains_key("font-style") {
+            if let Some(font_style) = self.text_style.font_style.as_deref() {
+                insert_emitted(out, "font-style", font_style);
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct StateCompatibilityStyle {
@@ -95,9 +183,8 @@ pub(crate) struct StateNodeStylePlan {
     stroke_width_override: Option<f64>,
     radius_override: Option<f64>,
     padding_override: Option<f64>,
-    cluster_text_style: TextStyle,
-    text_style: TextStyle,
-    text_typography: Option<ThemeTextStyle>,
+    cluster_label_typography: ResolvedLabelTypography,
+    label_typography: ResolvedLabelTypography,
 }
 
 #[cfg(test)]
@@ -125,8 +212,7 @@ pub(crate) struct StateEdgeStylePlan {
     label_div_style_prefix: String,
     label_background_style_attr: String,
     label_background_div_style_prefix: String,
-    text_style: TextStyle,
-    text_typography: Option<ThemeTextStyle>,
+    label_typography: ResolvedLabelTypography,
 }
 
 impl StateEdgeStylePlan {
@@ -169,11 +255,11 @@ impl StateEdgeStylePlan {
     }
 
     pub(crate) const fn text_style(&self) -> &TextStyle {
-        &self.text_style
+        self.label_typography.text_style()
     }
 
-    pub(crate) const fn text_typography(&self) -> Option<&ThemeTextStyle> {
-        self.text_typography.as_ref()
+    pub(crate) const fn resolved_label_typography(&self) -> &ResolvedLabelTypography {
+        &self.label_typography
     }
 }
 
@@ -270,15 +356,15 @@ impl StateNodeStylePlan {
     }
 
     pub(crate) const fn text_style(&self) -> &TextStyle {
-        &self.text_style
+        self.label_typography.text_style()
     }
 
-    pub(crate) const fn cluster_text_style(&self) -> &TextStyle {
-        &self.cluster_text_style
+    pub(crate) const fn resolved_label_typography(&self) -> &ResolvedLabelTypography {
+        &self.label_typography
     }
 
-    pub(crate) const fn text_typography(&self) -> Option<&ThemeTextStyle> {
-        self.text_typography.as_ref()
+    pub(crate) const fn resolved_cluster_label_typography(&self) -> &ResolvedLabelTypography {
+        &self.cluster_label_typography
     }
 }
 
@@ -286,13 +372,10 @@ impl StateNodeStylePlan {
 pub(crate) struct StateStylePlan {
     compatibility: StateCompatibilityStyle,
     structured_typography: bool,
-    base_text_style: TextStyle,
-    base_text_typography: Option<ThemeTextStyle>,
-    transition_text_style: TextStyle,
-    transition_text_typography: Option<ThemeTextStyle>,
-    composite_text_style: TextStyle,
-    composite_text_typography: Option<ThemeTextStyle>,
-    title_text_style: TextStyle,
+    base_label_typography: ResolvedLabelTypography,
+    transition_label_typography: ResolvedLabelTypography,
+    composite_label_typography: ResolvedLabelTypography,
+    title_label_typography: ResolvedLabelTypography,
     title_style_attr: String,
     transition_marker_style_attr: String,
     transition_label_background_style_attr: String,
@@ -580,6 +663,18 @@ impl StateStylePlan {
         )?;
         let title_text_style =
             resolve_semantic_text_style(&title_base_text_style, semantic_title_text.as_ref());
+        let base_label_typography =
+            ResolvedLabelTypography::new(base_text_style.clone(), base_text_typography);
+        let transition_label_typography =
+            ResolvedLabelTypography::new(transition_text_style, transition_text_typography);
+        let composite_label_typography =
+            ResolvedLabelTypography::new(composite_text_style, composite_text_typography);
+        let title_label_typography = ResolvedLabelTypography::new(
+            title_text_style,
+            semantic_title_text
+                .as_ref()
+                .map(|style| style.typography().clone()),
+        );
         if has_title {
             theme_evidence
                 .observe_base_typography_use(semantic_title_text.as_ref(), &BTreeSet::new());
@@ -593,6 +688,7 @@ impl StateStylePlan {
                 let mut emission = IndexMap::new();
                 append_theme_base_text_emission(theme, &mut emission);
                 append_semantic_text_emission(style, &mut emission);
+                title_label_typography.canonicalize_emission(&mut emission);
                 if let Some(color) = text_paint_value(style.fill_resolution()) {
                     insert_emitted(&mut emission, "color", color);
                 }
@@ -712,13 +808,10 @@ impl StateStylePlan {
         let plan = Self {
             compatibility,
             structured_typography,
-            base_text_style,
-            base_text_typography,
-            transition_text_style,
-            transition_text_typography,
-            composite_text_style,
-            composite_text_typography,
-            title_text_style,
+            base_label_typography,
+            transition_label_typography,
+            composite_label_typography,
+            title_label_typography,
             title_style_attr,
             transition_marker_style_attr,
             transition_label_background_style_attr,
@@ -740,31 +833,23 @@ impl StateStylePlan {
     }
 
     pub(crate) const fn base_text_style(&self) -> &TextStyle {
-        &self.base_text_style
+        self.base_label_typography.text_style()
     }
 
-    pub(crate) const fn base_text_typography(&self) -> Option<&ThemeTextStyle> {
-        self.base_text_typography.as_ref()
+    pub(crate) const fn base_label_typography(&self) -> &ResolvedLabelTypography {
+        &self.base_label_typography
     }
 
-    pub(crate) const fn transition_text_style(&self) -> &TextStyle {
-        &self.transition_text_style
+    pub(crate) const fn transition_label_typography(&self) -> &ResolvedLabelTypography {
+        &self.transition_label_typography
     }
 
-    pub(crate) const fn transition_text_typography(&self) -> Option<&ThemeTextStyle> {
-        self.transition_text_typography.as_ref()
-    }
-
-    pub(crate) const fn composite_text_style(&self) -> &TextStyle {
-        &self.composite_text_style
-    }
-
-    pub(crate) const fn composite_text_typography(&self) -> Option<&ThemeTextStyle> {
-        self.composite_text_typography.as_ref()
+    pub(crate) const fn composite_label_typography(&self) -> &ResolvedLabelTypography {
+        &self.composite_label_typography
     }
 
     pub(crate) const fn title_text_style(&self) -> &TextStyle {
-        &self.title_text_style
+        self.title_label_typography.text_style()
     }
 
     pub(crate) fn title_style_attr(&self) -> &str {
@@ -1763,6 +1848,9 @@ fn prepare_node(
     }
 
     let semantic_text_style = resolve_semantic_text_style(base_text_style, semantic_label.as_ref());
+    let semantic_prepared_typography = semantic_label
+        .as_ref()
+        .map(|style| style.typography().clone());
     if target == ThemeTarget::Composite {
         if let Some(style) = semantic_label.as_ref() {
             if let Some(theme) = resolved_theme {
@@ -1775,7 +1863,10 @@ fn prepare_node(
             }
         }
     }
-    let mut cluster_text_style = semantic_text_style.clone();
+    let mut cluster_label_typography = ResolvedLabelTypography::new(
+        semantic_text_style.clone(),
+        semantic_prepared_typography.clone(),
+    );
     let mut ignored_cluster_residuals = Vec::new();
     for declaration in &label_declarations {
         if target == ThemeTarget::Composite
@@ -1787,7 +1878,7 @@ fn prepare_node(
             let accepted = apply_source_text_property(
                 declaration,
                 base_text_style,
-                &mut cluster_text_style,
+                &mut cluster_label_typography,
                 &mut ignored_cluster_residuals,
             );
             if target == ThemeTarget::Composite && accepted {
@@ -1798,7 +1889,9 @@ fn prepare_node(
             }
         }
     }
-    let mut text_style = semantic_text_style;
+    cluster_label_typography.canonicalize_emission(&mut composite_header_text_emission);
+    let mut label_typography =
+        ResolvedLabelTypography::new(semantic_text_style, semantic_prepared_typography);
     for declaration in &label_declarations {
         if target == ThemeTarget::Composite
             && declaration.provenance().origin() != SourceStyleOrigin::AssignedClass
@@ -1809,8 +1902,12 @@ fn prepare_node(
             ));
             continue;
         }
-        let accepted =
-            apply_source_text_property(declaration, base_text_style, &mut text_style, residuals);
+        let accepted = apply_source_text_property(
+            declaration,
+            base_text_style,
+            &mut label_typography,
+            residuals,
+        );
         if accepted {
             if let Some(kind) = source_style_theme_property(declaration.property())
                 && shadowed_label_properties.insert(kind)
@@ -1826,6 +1923,7 @@ fn prepare_node(
             );
         }
     }
+    label_typography.canonicalize_emission(&mut label_emission);
 
     if label_ordinal.is_some() {
         theme_evidence
@@ -1864,11 +1962,8 @@ fn prepare_node(
         stroke_width_override,
         radius_override,
         padding_override,
-        cluster_text_style,
-        text_style,
-        text_typography: semantic_label
-            .as_ref()
-            .map(|style| style.typography().clone()),
+        cluster_label_typography,
+        label_typography,
     })
 }
 
@@ -1964,6 +2059,13 @@ fn prepare_edge(
     if label_ordinal.is_some() {
         theme_evidence.observe_base_typography_use(semantic_label.as_ref(), &BTreeSet::new());
     }
+    let label_typography = ResolvedLabelTypography::new(
+        resolve_semantic_text_style(base_text_style, semantic_label.as_ref()),
+        semantic_label
+            .as_ref()
+            .map(|style| style.typography().clone()),
+    );
+    label_typography.canonicalize_emission(&mut label_emission);
 
     Ok(StateEdgeStylePlan {
         #[cfg(test)]
@@ -1977,10 +2079,7 @@ fn prepare_edge(
         label_div_style_prefix: div_style_prefix(&label_emission),
         label_background_style_attr,
         label_background_div_style_prefix,
-        text_style: resolve_semantic_text_style(base_text_style, semantic_label.as_ref()),
-        text_typography: semantic_label
-            .as_ref()
-            .map(|style| style.typography().clone()),
+        label_typography,
     })
 }
 
@@ -2272,23 +2371,35 @@ fn apply_numeric_source_property(
 fn apply_source_text_property(
     declaration: &SourceStyleDeclaration,
     inherited: &TextStyle,
-    style: &mut TextStyle,
+    typography: &mut ResolvedLabelTypography,
     residuals: &mut Vec<SourceStyleResidual>,
 ) -> bool {
     let value = declaration.value().trim();
     match declaration.property() {
         "font-family" if is_safe_css_font_family_value(value) && !value.is_empty() => {
-            style.font_family = Some(value.to_string());
-            true
+            if let Some(stack) = parse_source_font_stack(value) {
+                typography.apply_font_family(stack);
+                true
+            } else {
+                residuals.push(SourceStyleResidual::from_declaration(
+                    declaration,
+                    SourceStyleResidualReason::InvalidValue,
+                ));
+                false
+            }
         }
         "font-size" => match declaration
             .resolve_font_size_px(CssFontSizeContext::uniform(inherited.font_size))
         {
-            Some(value) => {
-                style.font_size = value;
-                true
-            }
+            Some(value) if typography.apply_font_size(value) => true,
             None => {
+                residuals.push(SourceStyleResidual::from_declaration(
+                    declaration,
+                    SourceStyleResidualReason::InvalidValue,
+                ));
+                false
+            }
+            Some(_) => {
                 residuals.push(SourceStyleResidual::from_declaration(
                     declaration,
                     SourceStyleResidualReason::InvalidValue,
@@ -2297,11 +2408,19 @@ fn apply_source_text_property(
             }
         },
         "font-weight" if valid_font_weight(value) => {
-            style.font_weight = Some(value.to_string());
+            typography.apply_font_weight(resolve_source_font_weight(
+                value,
+                inherited.font_weight.as_deref(),
+            ));
             true
         }
         "font-style" if valid_font_style(value) => {
-            style.font_style = Some(value.to_ascii_lowercase());
+            let style = match value.to_ascii_lowercase().as_str() {
+                "italic" => FontStyle::Italic,
+                "oblique" => FontStyle::Oblique,
+                _ => FontStyle::Normal,
+            };
+            typography.apply_font_style(style);
             true
         }
         "color"
@@ -2334,6 +2453,78 @@ fn apply_source_text_property(
             ));
             false
         }
+    }
+}
+
+fn parse_source_font_stack(value: &str) -> Option<FontStack> {
+    let mut input = ParserInput::new(value);
+    let mut parser = Parser::new(&mut input);
+    let mut families = Vec::new();
+
+    while !parser.is_exhausted() {
+        let family = if let Ok(value) = parser.try_parse(|input| input.expect_string_cloned()) {
+            value.to_string()
+        } else {
+            let first = parser.expect_ident_cloned().ok()?;
+            let mut components = vec![first.to_string()];
+            while let Ok(component) = parser.try_parse(|input| input.expect_ident_cloned()) {
+                components.push(component.to_string());
+            }
+            components.join(" ")
+        };
+        families.push(family);
+        if parser.is_exhausted() {
+            break;
+        }
+        parser.expect_comma().ok()?;
+        if parser.is_exhausted() {
+            return None;
+        }
+    }
+
+    if families.len() == 1
+        && matches!(
+            families[0].to_ascii_lowercase().as_str(),
+            "inherit" | "initial" | "revert" | "revert-layer" | "unset"
+        )
+    {
+        return None;
+    }
+    FontStack::new(families).ok()
+}
+
+fn resolve_source_font_weight(value: &str, inherited: Option<&str>) -> u16 {
+    let value = value.trim().to_ascii_lowercase();
+    match value.as_str() {
+        "normal" => 400,
+        "bold" => 700,
+        "bolder" => relative_font_weight(inherited_font_weight(inherited), true),
+        "lighter" => relative_font_weight(inherited_font_weight(inherited), false),
+        _ => value
+            .parse::<u16>()
+            .expect("font-weight was validated before resolution"),
+    }
+}
+
+fn inherited_font_weight(value: Option<&str>) -> u16 {
+    match value.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+        Some("bold" | "bolder") => 700,
+        Some("lighter") => 300,
+        Some("normal") | None => 400,
+        Some(value) => value.parse::<u16>().unwrap_or(400).clamp(1, 1000),
+    }
+}
+
+fn relative_font_weight(inherited: u16, bolder: bool) -> u16 {
+    let canonical = (((u32::from(inherited) + 50) / 100) * 100).clamp(100, 900);
+    match (canonical, bolder) {
+        (100..=300, true) => 400,
+        (400..=500, true) => 700,
+        (600..=900, true) => 900,
+        (100..=500, false) => 100,
+        (600..=700, false) => 400,
+        (800..=900, false) => 700,
+        _ => 400,
     }
 }
 
@@ -2626,6 +2817,148 @@ mod tests {
                 .contains("font-size:20px !important")
         );
         assert!(!node.label_style_attr().contains("not-a-size"));
+        assert!(plan.residuals().iter().any(|residual| {
+            residual.property() == Some("font-size")
+                && residual.reason() == SourceStyleResidualReason::InvalidValue
+        }));
+    }
+
+    #[test]
+    fn source_typography_is_one_decision_for_prepared_text_and_svg_emission() {
+        let typography = ThemeTextStyle::default()
+            .with_font_weight(500)
+            .expect("fixture font weight should be valid");
+        let resolved = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_typography(TypographySpec::default().with_default(typography)),
+            )
+            .expect("fixture theme should compile")
+            .resolve(crate::render_family::RenderFamilyKind::State);
+        let mut model = StateDiagramRenderModel::default();
+        model.style_classes.insert(
+            "source-type".to_string(),
+            StateDiagramRenderStyleClass {
+                id: "source-type".to_string(),
+                styles: vec![
+                    "font-family:\"Class Sans\", serif".to_string(),
+                    "font-size:18px".to_string(),
+                    "font-weight:bolder".to_string(),
+                    "font-style:italic".to_string(),
+                ],
+                text_styles: Vec::new(),
+            },
+        );
+        let mut class_only = semantic_node("ClassOnly", "rect");
+        class_only.css_classes = "source-type".to_string();
+        let mut overridden = semantic_node("Overridden", "rect");
+        overridden.css_classes = "source-type".to_string();
+        overridden.css_styles = vec![
+            "font-size:21px".to_string(),
+            "font-weight:lighter".to_string(),
+        ];
+        overridden.label_style =
+            "font-family:\"Final Sans\", monospace;font-style:oblique".to_string();
+        model.nodes.extend([class_only, overridden]);
+
+        let plan = resolve_theme_plan(&model, &json!({}), &resolved);
+        let class_only = plan.node("ClassOnly").expect("class-only node style");
+        let class_request = crate::text::PrepareTextRequest::new(
+            "ClassOnly",
+            class_only
+                .resolved_label_typography()
+                .prepared_typography()
+                .expect("structured typography")
+                .clone(),
+        );
+        assert_eq!(
+            class_request.typography().font_stack().families(),
+            &["Class Sans".to_string(), "serif".to_string()]
+        );
+        assert_eq!(class_request.typography().font_size_px(), 18.0);
+        assert_eq!(class_request.typography().font_weight(), 700);
+        assert_eq!(class_request.typography().font_style(), FontStyle::Italic);
+        assert!(
+            class_only
+                .label_style_attr()
+                .contains("font-family:\"Class Sans\", serif !important")
+        );
+        assert!(
+            class_only
+                .label_style_attr()
+                .contains("font-size:18px !important")
+        );
+        assert!(
+            class_only
+                .label_style_attr()
+                .contains("font-weight:700 !important")
+        );
+        assert!(
+            class_only
+                .label_style_attr()
+                .contains("font-style:italic !important")
+        );
+
+        let overridden = plan.node("Overridden").expect("overridden node style");
+        let overridden_request = crate::text::PrepareTextRequest::new(
+            "Overridden",
+            overridden
+                .resolved_label_typography()
+                .prepared_typography()
+                .expect("structured typography")
+                .clone(),
+        );
+        assert_eq!(
+            overridden_request.typography().font_stack().families(),
+            &["Final Sans".to_string(), "monospace".to_string()]
+        );
+        assert_eq!(overridden_request.typography().font_size_px(), 21.0);
+        assert_eq!(overridden_request.typography().font_weight(), 100);
+        assert_eq!(
+            overridden_request.typography().font_style(),
+            FontStyle::Oblique
+        );
+        assert!(
+            overridden
+                .label_style_attr()
+                .contains("font-family:\"Final Sans\", monospace !important")
+        );
+        assert!(
+            overridden
+                .label_style_attr()
+                .contains("font-size:21px !important")
+        );
+        assert!(
+            overridden
+                .label_style_attr()
+                .contains("font-weight:100 !important")
+        );
+        assert!(
+            overridden
+                .label_style_attr()
+                .contains("font-style:oblique !important")
+        );
+    }
+
+    #[test]
+    fn source_font_size_that_cannot_enter_typed_typography_is_a_residual() {
+        let resolved =
+            DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new().with_typography(
+                    TypographySpec::default().with_default(ThemeTextStyle::default()),
+                ))
+                .expect("fixture theme should compile")
+                .resolve(crate::render_family::RenderFamilyKind::State);
+        let mut model = StateDiagramRenderModel::default();
+        let mut node = semantic_node("Overflow", "rect");
+        node.css_styles = vec!["font-size:1e100px".to_string()];
+        model.nodes.push(node);
+
+        let plan = resolve_theme_plan(&model, &json!({}), &resolved);
+        let node = plan.node("Overflow").expect("prepared node style");
+
+        assert_ne!(node.text_style().font_size, 1e100);
+        assert!(!node.label_style_attr().contains("1e100"));
         assert!(plan.residuals().iter().any(|residual| {
             residual.property() == Some("font-size")
                 && residual.reason() == SourceStyleResidualReason::InvalidValue

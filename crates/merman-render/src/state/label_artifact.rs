@@ -4,16 +4,18 @@ use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::diagram_theme::{LineHeight, ThemeTextStyle};
+use crate::diagram_theme::LineHeight;
 use crate::entities::decode_mermaid_entities_for_render_text;
 use crate::text::{
     PendingPreparedTextLabelLedgerEntry, PrepareTextRequest, PreparedText, PreparedTextLabelFamily,
     PreparedTextLabelId, PreparedTextLabelLedgerEntry, PreparedTextLayout, PreparedTextWrap,
-    TextLayoutError, TextMeasurer, TextMetrics, TextStyle, WrapMode,
-    merge_prepared_text_typography,
+    TextLayoutError, TextMeasurer, TextMetrics, WrapMode,
 };
 
-use super::{StateLabelMeasurement, measure_state_markdown_label, state_markdown_label_plain_text};
+use super::{
+    ResolvedLabelTypography, StateLabelMeasurement, measure_state_markdown_label,
+    state_markdown_label_plain_text,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StateLabelSourceKind {
@@ -36,8 +38,7 @@ pub(crate) struct StateLabelMetricsRequest<'a> {
     pub(crate) text: &'a str,
     pub(crate) source_kind: StateLabelSourceKind,
     pub(crate) measurer: &'a dyn TextMeasurer,
-    pub(crate) style: &'a TextStyle,
-    pub(crate) typography: Option<&'a ThemeTextStyle>,
+    pub(crate) typography: &'a ResolvedLabelTypography,
     pub(crate) max_width_px: Option<f64>,
     pub(crate) wrap_mode: WrapMode,
     pub(crate) break_long_words: bool,
@@ -231,10 +232,11 @@ impl StateLabelSidecarBuilder {
         };
         let typography = request
             .typography
+            .prepared_typography()
             .ok_or(TextLayoutError::UnsupportedPreparedTextPath(
                 "structured_typography",
-            ))?;
-        let typography = merge_prepared_text_typography(typography, request.style)?
+            ))?
+            .clone()
             .with_line_height(match request.wrap_mode {
                 WrapMode::HtmlLike => LineHeight::Multiplier(1.5),
                 WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => LineHeight::Multiplier(1.1),
@@ -323,7 +325,7 @@ fn measure_without_prepared_text(request: StateLabelMetricsRequest<'_>) -> State
         StateLabelSourceKind::Markdown => measure_state_markdown_label(
             request.text,
             request.measurer,
-            request.style,
+            request.typography.text_style(),
             request.max_width_px,
             request.wrap_mode,
         ),
@@ -332,7 +334,7 @@ fn measure_without_prepared_text(request: StateLabelMetricsRequest<'_>) -> State
             StateLabelMeasurement {
                 metrics: request.measurer.measure_wrapped(
                     text.as_ref(),
-                    request.style,
+                    request.typography.text_style(),
                     request.max_width_px,
                     request.wrap_mode,
                 ),
@@ -463,11 +465,14 @@ mod tests {
     use crate::diagram_theme::{
         CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, FontAssetSpec, FontCatalogSpec,
         FontSourcePolicy, FontStack, OrdinalSelector, ResolvedDiagramTheme, Specified,
-        TextStylePatch, ThemeAssets, ThemeRule, ThemeRuleSet, ThemeStylePatch, TypographySpec,
+        TextStylePatch, ThemeAssets, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTextStyle,
+        TypographySpec,
     };
     use crate::render_family::RenderFamilyKind;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
-    use crate::text::{DeterministicTextMeasurer, NativeTextLayoutBackend, PrepareCatalogRequest};
+    use crate::text::{
+        DeterministicTextMeasurer, NativeTextLayoutBackend, PrepareCatalogRequest, TextStyle,
+    };
     use merman_core::diagrams::state::{StateDiagramRenderModel, StateDiagramRenderNode};
     use serde_json::json;
 
@@ -588,8 +593,7 @@ mod tests {
             text: "Ready",
             source_kind: StateLabelSourceKind::Markdown,
             measurer: &measurer,
-            style: node.text_style(),
-            typography: node.text_typography(),
+            typography: node.resolved_label_typography(),
             max_width_px: Some(180.0),
             wrap_mode: WrapMode::SvgLike,
             break_long_words: true,
@@ -606,7 +610,7 @@ mod tests {
     fn prepared_state_label_without_planned_typography_remains_fail_closed() {
         let (prepared, _, _) = prepared_state_fixture();
         let measurer = DeterministicTextMeasurer::default();
-        let style = TextStyle::default();
+        let typography = ResolvedLabelTypography::new(TextStyle::default(), None);
         let sidecar = StateLabelSidecarBuilder::new(Some(&prepared));
 
         let measurement = sidecar.measure_for_layout(StateLabelMetricsRequest {
@@ -614,8 +618,7 @@ mod tests {
             text: "Ready",
             source_kind: StateLabelSourceKind::Markdown,
             measurer: &measurer,
-            style: &style,
-            typography: None,
+            typography: &typography,
             max_width_px: Some(180.0),
             wrap_mode: WrapMode::SvgLike,
             break_long_words: true,

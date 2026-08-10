@@ -66,7 +66,8 @@ mod style_plan;
 
 pub(crate) use config::StateConfigView;
 pub(crate) use style_plan::{
-    StateCompatibilityStyle, StateEdgeStylePlan, StateNodeStylePlan, StateStylePlan,
+    ResolvedLabelTypography, StateCompatibilityStyle, StateEdgeStylePlan, StateNodeStylePlan,
+    StateStylePlan,
 };
 
 pub(crate) use layout::layout_state_diagram_typed_with_work_meter;
