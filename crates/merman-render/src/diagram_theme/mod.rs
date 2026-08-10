@@ -24,6 +24,8 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::sync::Arc;
 
+pub use merman_core::{MermaidThemeId, MermaidThemeIdParseError};
+
 pub(crate) use admission::ResolvedThemeAdmission;
 pub use admission::{
     FontEmbeddingRequirement, FontSource, FontSourcePolicy, HostMeasurementFallback,
@@ -259,6 +261,8 @@ pub enum ThemeCompileValidationError {
     DuplicateId { field: &'static str },
     #[error("theme field `{field}` references an unknown id")]
     UnknownId { field: &'static str },
+    #[error("theme field `{field}` uses unsupported Mermaid theme `{value}`")]
+    UnsupportedMermaidTheme { field: &'static str, value: String },
     #[error("theme target `{target}` is not valid for render family `{family}`")]
     InvalidTargetFamily {
         target: &'static str,

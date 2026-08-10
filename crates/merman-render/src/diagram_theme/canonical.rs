@@ -125,7 +125,7 @@ fn encode_frozen_legacy_compatibility(
 }
 
 fn encode_mermaid(encoder: &mut CanonicalEncoder, mermaid: &MermaidThemeCompatibility) {
-    encoder.option_string("theme", mermaid.theme());
+    encoder.option_string("theme", mermaid.theme_name());
     encoder.field("dark-mode", |encoder| match mermaid.dark_mode() {
         Some(value) => {
             encoder.byte(1);

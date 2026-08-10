@@ -3,21 +3,126 @@ use crate::theme_color::{self, ColorAdjustment, ColorError};
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
+use std::fmt;
+use std::str::FromStr;
 use std::sync::OnceLock;
 
-pub(crate) const SUPPORTED_THEME_NAMES: &[&str] = &[
-    "default",
-    "base",
-    "dark",
-    "forest",
-    "neutral",
-    "neo",
-    "neo-dark",
-    "redux",
-    "redux-dark",
-    "redux-color",
-    "redux-dark-color",
+// Source: Mermaid 11.16.1 `packages/mermaid/src/themes/index.js`.
+macro_rules! define_mermaid_theme_ids {
+    ($(($variant:ident, $name:literal)),+ $(,)?) => {
+        /// A theme identifier from the pinned Mermaid theme catalog.
+        ///
+        /// This type is deliberately separate from Merman's compiled theme presets. It models
+        /// only the upstream `MermaidConfig.theme` contract and is therefore also the source of
+        /// truth for bindings, CLI discovery, and compatibility projection. Mermaid's `"null"`
+        /// configuration sentinel is not a registered theme and is deliberately excluded.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[non_exhaustive]
+        pub enum MermaidThemeId {
+            $( $variant, )+
+        }
+
+        impl MermaidThemeId {
+            /// All theme identifiers supported by the pinned Mermaid baseline, in catalog order.
+            pub const ALL: &'static [Self] = &[
+                $(Self::$variant,)+
+            ];
+
+            /// The exact upstream spellings in the same order as [`Self::ALL`].
+            pub const NAMES: &'static [&'static str] = &[
+                $($name,)+
+            ];
+
+            /// Returns the exact upstream spelling used in Mermaid configuration and mmdc files.
+            pub const fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $name,)+
+                }
+            }
+
+            /// Parses an upstream theme identifier without applying a fallback.
+            pub fn parse(value: &str) -> Result<Self, MermaidThemeIdParseError> {
+                value.parse()
+            }
+
+            /// Returns whether the selected upstream theme uses a dark visual palette.
+            ///
+            /// This classification does not set or imply Mermaid's independent
+            /// `themeVariables.darkMode` compatibility value.
+            pub const fn is_dark(self) -> bool {
+                matches!(
+                    self,
+                    Self::Dark | Self::NeoDark | Self::ReduxDark | Self::ReduxDarkColor
+                )
+            }
+        }
+
+        impl Default for MermaidThemeId {
+            fn default() -> Self {
+                Self::Default
+            }
+        }
+
+        impl fmt::Display for MermaidThemeId {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str(self.as_str())
+            }
+        }
+
+        impl FromStr for MermaidThemeId {
+            type Err = MermaidThemeIdParseError;
+
+            fn from_str(value: &str) -> Result<Self, Self::Err> {
+                match value {
+                    $($name => Ok(Self::$variant),)+
+                    _ => Err(MermaidThemeIdParseError::new(value)),
+                }
+            }
+        }
+
+    };
+}
+
+define_mermaid_theme_ids![
+    (Default, "default"),
+    (Base, "base"),
+    (Dark, "dark"),
+    (Forest, "forest"),
+    (Neutral, "neutral"),
+    (Neo, "neo"),
+    (NeoDark, "neo-dark"),
+    (Redux, "redux"),
+    (ReduxDark, "redux-dark"),
+    (ReduxColor, "redux-color"),
+    (ReduxDarkColor, "redux-dark-color"),
 ];
+
+/// Error returned when a string is not one of the pinned Mermaid theme identifiers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MermaidThemeIdParseError {
+    input: String,
+}
+
+impl MermaidThemeIdParseError {
+    fn new(input: &str) -> Self {
+        Self {
+            input: input.to_string(),
+        }
+    }
+
+    /// Returns the unsupported identifier supplied to the parser.
+    pub fn input(&self) -> &str {
+        &self.input
+    }
+}
+
+impl fmt::Display for MermaidThemeIdParseError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "unsupported Mermaid theme `{}`", self.input)
+    }
+}
+
+impl std::error::Error for MermaidThemeIdParseError {}
 
 const THEME_ARTIFACT_SCHEMA_VERSION: u32 = 1;
 
@@ -73,7 +178,7 @@ enum ThemeDependencyGraph {
 /// input dependencies needed between the four `ThemeResolution` stages.
 #[derive(Debug, Clone, Copy)]
 struct ThemeProgram {
-    name: &'static str,
+    id: MermaidThemeId,
     kind: ThemeProgramKind,
     dependencies: ThemeDependencyGraph,
     evaluated_color_inputs: &'static [&'static str],
@@ -137,67 +242,67 @@ const REDUX_COLOR_INPUTS: &[&str] = &[
 
 const THEME_PROGRAMS: &[ThemeProgram] = &[
     ThemeProgram::new(
-        "default",
+        MermaidThemeId::Default,
         ThemeProgramKind::Default,
         ThemeDependencyGraph::Default,
         DEFAULT_COLOR_INPUTS,
     ),
     ThemeProgram::new(
-        "base",
+        MermaidThemeId::Base,
         ThemeProgramKind::Base,
         ThemeDependencyGraph::Base,
         BASE_COLOR_INPUTS,
     ),
     ThemeProgram::new(
-        "dark",
+        MermaidThemeId::Dark,
         ThemeProgramKind::Dark,
         ThemeDependencyGraph::Dark,
         DARK_COLOR_INPUTS,
     ),
     ThemeProgram::new(
-        "forest",
+        MermaidThemeId::Forest,
         ThemeProgramKind::Forest,
         ThemeDependencyGraph::Forest,
         FOREST_COLOR_INPUTS,
     ),
     ThemeProgram::new(
-        "neutral",
+        MermaidThemeId::Neutral,
         ThemeProgramKind::Neutral,
         ThemeDependencyGraph::Neutral,
         NEUTRAL_COLOR_INPUTS,
     ),
     ThemeProgram::new(
-        "neo",
+        MermaidThemeId::Neo,
         ThemeProgramKind::Extended,
         ThemeDependencyGraph::None,
         BASE_COLOR_INPUTS,
     ),
     ThemeProgram::new(
-        "neo-dark",
+        MermaidThemeId::NeoDark,
         ThemeProgramKind::Extended,
         ThemeDependencyGraph::DarkenedScale,
         BASE_COLOR_INPUTS,
     ),
     ThemeProgram::new(
-        "redux",
+        MermaidThemeId::Redux,
         ThemeProgramKind::Extended,
         ThemeDependencyGraph::None,
         REDUX_COLOR_INPUTS,
     ),
     ThemeProgram::new(
-        "redux-dark",
+        MermaidThemeId::ReduxDark,
         ThemeProgramKind::Extended,
         ThemeDependencyGraph::DarkenedScaleAndGit,
         BASE_COLOR_INPUTS,
     ),
     ThemeProgram::new(
-        "redux-color",
+        MermaidThemeId::ReduxColor,
         ThemeProgramKind::Extended,
         ThemeDependencyGraph::None,
         BASE_COLOR_INPUTS,
     ),
     ThemeProgram::new(
-        "redux-dark-color",
+        MermaidThemeId::ReduxDarkColor,
         ThemeProgramKind::Extended,
         ThemeDependencyGraph::DynamicGit,
         BASE_COLOR_INPUTS,
@@ -206,43 +311,43 @@ const THEME_PROGRAMS: &[ThemeProgram] = &[
 
 impl ThemeProgram {
     const fn new(
-        name: &'static str,
+        id: MermaidThemeId,
         kind: ThemeProgramKind,
         dependencies: ThemeDependencyGraph,
         evaluated_color_inputs: &'static [&'static str],
     ) -> Self {
         Self {
-            name,
+            id,
             kind,
             dependencies,
             evaluated_color_inputs,
         }
     }
 
-    fn resolve(requested: &str) -> &'static Self {
+    fn resolve(id: MermaidThemeId) -> &'static Self {
         THEME_PROGRAMS
             .iter()
-            .find(|program| program.name == requested)
-            .unwrap_or(&THEME_PROGRAMS[0])
+            .find(|program| program.id == id)
+            .expect("every MermaidThemeId must have a theme program")
     }
 
     fn default_snapshot(self) -> &'static Map<String, Value> {
         generated_theme_artifact()
             .themes
-            .get(self.name)
+            .get(self.id.as_str())
             .and_then(Value::as_object)
-            .unwrap_or_else(|| panic!("generated theme artifact is missing `{}`", self.name))
+            .unwrap_or_else(|| panic!("generated theme artifact is missing `{}`", self.id))
     }
 
     fn dark_mode_snapshot(self) -> &'static Map<String, Value> {
         generated_theme_artifact()
             .dark_mode_true
-            .get(self.name)
+            .get(self.id.as_str())
             .and_then(Value::as_object)
             .unwrap_or_else(|| {
                 panic!(
                     "generated theme artifact is missing darkMode=true `{}`",
-                    self.name
+                    self.id
                 )
             })
     }
@@ -298,7 +403,7 @@ impl ThemeProgram {
             ThemeProgramKind::Dark => apply_dark_theme_defaults(config),
             ThemeProgramKind::Forest => apply_forest_theme_defaults(config),
             ThemeProgramKind::Neutral => apply_neutral_theme_defaults(config),
-            ThemeProgramKind::Extended => apply_snapshot_theme_defaults(config, self.name),
+            ThemeProgramKind::Extended => apply_snapshot_theme_defaults(config, self.id),
         }
     }
 
@@ -440,13 +545,13 @@ fn generated_theme_artifact() -> &'static GeneratedThemeArtifact {
             assert!(
                 artifact
                     .themes
-                    .get(program.name)
+                    .get(program.id.as_str())
                     .is_some_and(Value::is_object)
             );
             assert!(
                 artifact
                     .dark_mode_true
-                    .get(program.name)
+                    .get(program.id.as_str())
                     .is_some_and(Value::is_object)
             );
         }
@@ -476,7 +581,7 @@ fn merge_theme_variable_defaults(target: &mut Map<String, Value>, defaults: &Map
 
 fn finish_theme_defaults(
     config: &mut MermaidConfig,
-    theme: &str,
+    theme: MermaidThemeId,
     tv: Map<String, Value>,
 ) -> Result<(), ColorError> {
     let explicit = theme_variables_map(config);
@@ -548,7 +653,7 @@ struct ThemeResolution {
 
 impl ThemeResolution {
     fn new(
-        theme: &str,
+        theme: MermaidThemeId,
         explicit: Map<String, Value>,
         calculated: Map<String, Value>,
     ) -> Result<Self, ColorError> {
@@ -608,7 +713,7 @@ impl ThemeResolution {
         // inverse values retain their first-pass values. Restore the generated no-override palette
         // baseline before replaying explicit values; this is why a font-only override must not
         // change Radar/Kanban/Mindmap/Timeline colors.
-        if has_user_theme_variables && theme == "default" {
+        if has_user_theme_variables && theme == MermaidThemeId::Default {
             restore_default_baseline_palette(
                 &mut explicit_replay.variables,
                 &mut explicit_replay.origins,
@@ -1049,7 +1154,7 @@ fn apply_forest_theme_dependencies(
         required_color(tv, "mainBkg")?
     } else {
         required_color(
-            ThemeProgram::resolve("forest").default_snapshot(),
+            ThemeProgram::resolve(MermaidThemeId::Forest).default_snapshot(),
             "mainBkg",
         )?
     };
@@ -1186,20 +1291,20 @@ fn validate_explicit_operation(
 }
 
 fn replay_extended_theme_khroma_operations(
-    theme: &str,
+    theme: MermaidThemeId,
     explicit: &Map<String, Value>,
     tv: &mut Map<String, Value>,
 ) -> Result<(), ColorError> {
     let dark_mode = tv.get("darkMode").is_some_and(is_js_truthy);
     match theme {
-        "neo" | "redux" | "redux-color" => {
+        MermaidThemeId::Neo | MermaidThemeId::Redux | MermaidThemeId::ReduxColor => {
             for key in ["secondaryColor", "tertiaryColor"] {
                 validate_explicit_operation(tv, explicit, key, |color| {
                     mk_border(color, dark_mode)
                 })?;
             }
         }
-        "neo-dark" => {
+        MermaidThemeId::NeoDark => {
             validate_explicit_operation(tv, explicit, "secondaryColor", |color| {
                 theme_color::darken(color, 10.0)
             })?;
@@ -1211,12 +1316,14 @@ fn replay_extended_theme_khroma_operations(
     }
 
     let scale_policy = match theme {
-        "neo" | "neo-dark" | "redux-dark" => Some(Some(ColorTransform::Darken(if dark_mode {
-            75.0
-        } else {
-            25.0
-        }))),
-        "redux-color" | "redux-dark-color" => Some(None),
+        MermaidThemeId::Neo | MermaidThemeId::NeoDark | MermaidThemeId::ReduxDark => {
+            Some(Some(ColorTransform::Darken(if dark_mode {
+                75.0
+            } else {
+                25.0
+            })))
+        }
+        MermaidThemeId::ReduxColor | MermaidThemeId::ReduxDarkColor => Some(None),
         _ => None,
     };
     if let Some(transform) = scale_policy {
@@ -1247,7 +1354,7 @@ fn replay_extended_theme_khroma_operations(
                 };
                 tv.insert(peer_key, Value::String(peer));
             }
-            if theme == "redux-dark-color" {
+            if theme == MermaidThemeId::ReduxDarkColor {
                 let label_key = format!("cScaleLabel{index}");
                 if !explicit.contains_key(&label_key) {
                     tv.insert(
@@ -1262,8 +1369,11 @@ fn replay_extended_theme_khroma_operations(
 }
 
 pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorError> {
-    let requested = config.get_str("theme").unwrap_or("default").to_string();
-    let program = *ThemeProgram::resolve(&requested);
+    let requested = config.get_str("theme").unwrap_or("default");
+    // Mermaid's raw configuration runtime falls back to `default` for unknown strings. Typed
+    // Merman theme APIs use `MermaidThemeId::parse` and never enter this compatibility branch.
+    let theme = MermaidThemeId::parse(requested).unwrap_or_default();
+    let program = *ThemeProgram::resolve(theme);
     let raw = theme_variables_map(config);
     program.validate_evaluated_inputs(&raw)?;
     let explicit = program.normalize_overrides(raw);
@@ -1273,7 +1383,7 @@ pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) -> Result<(), Col
 
 fn apply_snapshot_theme_defaults(
     config: &mut MermaidConfig,
-    theme: &str,
+    theme: MermaidThemeId,
 ) -> Result<(), ColorError> {
     let tv = theme_variables_map(config);
     if tv.is_empty() {
@@ -1289,13 +1399,18 @@ fn apply_snapshot_theme_defaults(
 }
 
 fn apply_extended_theme_visible_derivations(
-    theme: &str,
+    theme: MermaidThemeId,
     explicit: &Map<String, Value>,
     tv: &mut Map<String, Value>,
 ) -> Result<(), ColorError> {
     if !matches!(
         theme,
-        "neo" | "neo-dark" | "redux" | "redux-dark" | "redux-color" | "redux-dark-color"
+        MermaidThemeId::Neo
+            | MermaidThemeId::NeoDark
+            | MermaidThemeId::Redux
+            | MermaidThemeId::ReduxDark
+            | MermaidThemeId::ReduxColor
+            | MermaidThemeId::ReduxDarkColor
     ) {
         return Ok(());
     }
@@ -1310,8 +1425,10 @@ fn apply_extended_theme_visible_derivations(
         set_derived_string_unless_explicit(tv, explicit, "nodeBkg", primary.clone());
         set_derived_string_unless_explicit(tv, explicit, "tagLabelBackground", primary.clone());
 
-        if matches!(theme, "neo" | "redux" | "redux-color")
-            && !explicit.contains_key("secondaryColor")
+        if matches!(
+            theme,
+            MermaidThemeId::Neo | MermaidThemeId::Redux | MermaidThemeId::ReduxColor
+        ) && !explicit.contains_key("secondaryColor")
         {
             let secondary = theme_color::adjust(&primary, ColorAdjustment::hsl(-120.0, 0.0, 0.0))?;
             tv.insert("secondaryColor".to_string(), Value::String(secondary));
@@ -1376,7 +1493,10 @@ fn apply_extended_theme_visible_derivations(
     }
 
     if explicit.contains_key("primaryColor")
-        && matches!(theme, "neo-dark" | "redux-dark" | "redux-dark-color")
+        && matches!(
+            theme,
+            MermaidThemeId::NeoDark | MermaidThemeId::ReduxDark | MermaidThemeId::ReduxDarkColor
+        )
     {
         let primary = required_color(tv, "primaryColor")?;
         for key in ["requirementBackground", "pie1"] {
@@ -1395,7 +1515,10 @@ fn apply_extended_theme_visible_derivations(
     }
 
     discard_non_explicit_quadrant_snapshot_values(tv, explicit);
-    let quadrant_fill_base = if matches!(theme, "neo" | "redux" | "redux-color") {
+    let quadrant_fill_base = if matches!(
+        theme,
+        MermaidThemeId::Neo | MermaidThemeId::Redux | MermaidThemeId::ReduxColor
+    ) {
         "#ECECFE".to_string()
     } else {
         required_color(tv, "primaryColor")?
@@ -1985,7 +2108,7 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorE
     apply_quadrant_theme_defaults(&mut tv, default_primary, "#131300", &default_primary_border)?;
     validate_explicit_git_transforms(&tv, &explicit_theme_variables, ColorTransform::Darken(25.0))?;
 
-    finish_theme_defaults(config, "default", tv)
+    finish_theme_defaults(config, MermaidThemeId::Default, tv)
 }
 
 fn apply_dark_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorError> {
@@ -2327,7 +2450,7 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorErro
     );
     apply_current_quadrant_theme_defaults(&mut tv)?;
 
-    finish_theme_defaults(config, "dark", tv)
+    finish_theme_defaults(config, MermaidThemeId::Dark, tv)
 }
 
 fn apply_forest_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorError> {
@@ -2548,7 +2671,7 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorEr
     );
     apply_current_quadrant_theme_defaults(&mut tv)?;
 
-    finish_theme_defaults(config, "forest", tv)
+    finish_theme_defaults(config, MermaidThemeId::Forest, tv)
 }
 
 fn apply_neutral_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorError> {
@@ -2860,7 +2983,7 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorE
     );
     apply_current_quadrant_theme_defaults(&mut tv)?;
 
-    finish_theme_defaults(config, "neutral", tv)
+    finish_theme_defaults(config, MermaidThemeId::Neutral, tv)
 }
 
 fn apply_base_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorError> {
@@ -3121,7 +3244,7 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorErro
     )?;
     apply_current_quadrant_theme_defaults(&mut tv)?;
 
-    finish_theme_defaults(config, "base", tv)
+    finish_theme_defaults(config, MermaidThemeId::Base, tv)
 }
 
 #[cfg(test)]
@@ -3147,11 +3270,44 @@ mod tests {
                 "redux-dark-color"
             ]
         );
+        assert_eq!(crate::supported_theme_ids(), MermaidThemeId::ALL);
+        assert!(
+            THEME_PROGRAMS
+                .iter()
+                .map(|program| program.id)
+                .eq(MermaidThemeId::ALL.iter().copied()),
+            "the executable theme programs must cover the typed catalog exactly"
+        );
+        assert_eq!(
+            MermaidThemeId::ALL
+                .iter()
+                .copied()
+                .map(MermaidThemeId::as_str)
+                .collect::<Vec<_>>(),
+            crate::supported_themes()
+        );
+    }
+
+    #[test]
+    fn typed_theme_ids_round_trip_without_fallback() {
+        for &theme in MermaidThemeId::ALL {
+            assert_eq!(MermaidThemeId::parse(theme.as_str()).unwrap(), theme);
+            assert_eq!(theme.to_string(), theme.as_str());
+        }
+
+        for invalid in ["unknown", "null"] {
+            let error = MermaidThemeId::parse(invalid).unwrap_err();
+            assert_eq!(error.input(), invalid);
+            assert_eq!(
+                error.to_string(),
+                format!("unsupported Mermaid theme `{invalid}`")
+            );
+        }
     }
 
     #[test]
     fn supported_theme_defaults_match_upstream_snapshot() {
-        for &theme in SUPPORTED_THEME_NAMES {
+        for &theme in MermaidThemeId::NAMES {
             let mut cfg = MermaidConfig::from_value(json!({
                 "theme": theme
             }));
@@ -3162,7 +3318,8 @@ mod tests {
                 .get("themeVariables")
                 .and_then(|v| v.as_object())
                 .unwrap();
-            let expected = ThemeProgram::resolve(theme).default_snapshot();
+            let expected =
+                ThemeProgram::resolve(MermaidThemeId::parse(theme).unwrap()).default_snapshot();
 
             assert_eq!(actual, expected, "theme {theme}");
         }
@@ -3170,7 +3327,7 @@ mod tests {
 
     #[test]
     fn dark_mode_branch_matches_generated_mermaid_oracle_for_every_theme() {
-        for &theme in SUPPORTED_THEME_NAMES {
+        for &theme in MermaidThemeId::NAMES {
             let mut config = MermaidConfig::from_value(json!({
                 "theme": theme,
                 "themeVariables": { "darkMode": true }
@@ -3181,7 +3338,8 @@ mod tests {
                 .get("themeVariables")
                 .and_then(Value::as_object)
                 .unwrap();
-            let expected = ThemeProgram::resolve(theme).dark_mode_snapshot();
+            let expected =
+                ThemeProgram::resolve(MermaidThemeId::parse(theme).unwrap()).dark_mode_snapshot();
             assert_eq!(actual, expected, "theme {theme}");
         }
     }
@@ -3249,7 +3407,7 @@ mod tests {
 
     #[test]
     fn font_only_override_preserves_upstream_derived_palette_for_public_themes() {
-        for &theme in SUPPORTED_THEME_NAMES {
+        for &theme in MermaidThemeId::NAMES {
             let mut cfg = MermaidConfig::from_value(json!({
                 "theme": theme,
                 "themeVariables": {
@@ -3263,7 +3421,8 @@ mod tests {
                 .get("themeVariables")
                 .and_then(Value::as_object)
                 .unwrap();
-            let expected = ThemeProgram::resolve(theme).default_snapshot();
+            let expected =
+                ThemeProgram::resolve(MermaidThemeId::parse(theme).unwrap()).default_snapshot();
 
             for key in [
                 "cScale0",
@@ -3911,7 +4070,8 @@ flowchart TD
         .unwrap()
         .clone();
 
-        let resolution = ThemeResolution::new("default", explicit, calculated).unwrap();
+        let resolution =
+            ThemeResolution::new(MermaidThemeId::Default, explicit, calculated).unwrap();
 
         assert_eq!(
             resolution.default_snapshot.stage,
@@ -4069,26 +4229,26 @@ flowchart TD
     }
 
     #[test]
-    fn unknown_theme_falls_back_to_default_theme_variables() {
-        let mut cfg = MermaidConfig::from_value(json!({
-            "theme": "unknown"
-        }));
-        apply_theme_defaults(&mut cfg).unwrap();
+    fn raw_mermaid_config_preserves_upstream_unsupported_theme_fallback() {
+        for requested in ["unknown", "null"] {
+            let mut config = MermaidConfig::from_value(json!({
+                "theme": requested
+            }));
+            assert!(MermaidThemeId::parse(requested).is_err());
+            apply_theme_defaults(&mut config).unwrap();
 
-        let tv = cfg
-            .as_value()
-            .get("themeVariables")
-            .and_then(|v| v.as_object())
-            .unwrap();
+            let variables = config
+                .as_value()
+                .get("themeVariables")
+                .and_then(Value::as_object)
+                .unwrap();
 
-        assert_eq!(
-            tv.get("primaryColor").and_then(|v| v.as_str()),
-            Some("#ECECFF")
-        );
-        assert_eq!(
-            tv.get("classText").and_then(|v| v.as_str()),
-            Some("#131300")
-        );
+            assert_eq!(
+                variables,
+                ThemeProgram::resolve(MermaidThemeId::Default).default_snapshot()
+            );
+            assert_eq!(config.get_str("theme"), Some(requested));
+        }
     }
 
     #[test]

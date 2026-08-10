@@ -4,7 +4,6 @@ use std::sync::{Arc, Mutex};
 use merman_core::__private::{
     ThemeFamilyCompatibilityOverlay, ThemeFamilyCompatibilityOverlayBuilder,
 };
-use merman_core::theme_color::{ColorChannel, ThemeColor};
 use merman_core::{MermaidConfig, ParseControl, ParseControlResult};
 use serde_json::{Map, Value};
 
@@ -391,7 +390,6 @@ fn compile_node_family(
                 "node.palette",
                 reader.palette(ThemeTarget::Node),
                 PaletteProjection::Git { limit: 64 },
-                reader.canvas_color(),
             );
         }
         RenderFamilyKind::Mindmap => {
@@ -399,7 +397,6 @@ fn compile_node_family(
                 "node.palette",
                 reader.palette(ThemeTarget::Node),
                 PaletteProjection::ColorScale { limit: 64 },
-                reader.canvas_color(),
             );
         }
         _ => {}
@@ -578,13 +575,11 @@ fn compile_task_family(
                 "task.palette.color-scale",
                 reader.palette(ThemeTarget::Task),
                 PaletteProjection::ColorScale { limit: 12 },
-                reader.canvas_color(),
             );
             contributions.add_palette(
                 "task.palette.git",
                 reader.palette(ThemeTarget::Task),
                 PaletteProjection::Git { limit: 12 },
-                reader.canvas_color(),
             );
         }
         _ => unreachable!("task compatibility is limited to Gantt and Kanban"),
@@ -732,7 +727,6 @@ fn compile_pie_family(
         "slice.palette",
         palette,
         PaletteProjection::Pie { limit: 12 },
-        None,
     );
     contributions.finish_into(builder);
 }
@@ -792,7 +786,6 @@ fn compile_chart_family(
                 "series.palette",
                 palette,
                 PaletteProjection::ColorScale { limit: 12 },
-                reader.canvas_color(),
             );
             contributions.add_theme_variables(
                 "chart.text",
@@ -835,7 +828,6 @@ fn compile_timeline_family(
         "event.palette",
         reader.palette(ThemeTarget::TimelineEvent),
         PaletteProjection::ColorScale { limit: 12 },
-        reader.canvas_color(),
     );
     contributions.finish_into(builder);
 }
@@ -865,7 +857,6 @@ fn compile_journey_family(
             task_limit: 8,
             actor_limit: 0,
         },
-        None,
     );
     contributions.finish_into(builder);
 }
@@ -936,13 +927,11 @@ fn compile_frozen_legacy_family(
                     "frozen.series.color-scale",
                     Some(palette()),
                     PaletteProjection::ColorScale { limit: 12 },
-                    Some(color(&frozen.canvas)),
                 );
                 contributions.add_palette(
                     "frozen.series.git",
                     Some(palette()),
                     PaletteProjection::Git { limit: 12 },
-                    Some(color(&frozen.canvas)),
                 );
             }
             contributions.finish_into(builder);
@@ -992,7 +981,6 @@ fn compile_frozen_legacy_family(
                     "frozen.series",
                     Some(palette()),
                     PaletteProjection::ColorScale { limit: 12 },
-                    Some(color(&frozen.canvas)),
                 );
             }
             contributions.finish_into(builder);
@@ -1010,7 +998,6 @@ fn compile_frozen_legacy_family(
                 "frozen.series",
                 Some(palette()),
                 PaletteProjection::ColorScale { limit: 12 },
-                Some(color(&frozen.canvas)),
             );
             contributions.finish_into(builder);
         }
@@ -1026,7 +1013,6 @@ fn compile_frozen_legacy_family(
                     "frozen.series",
                     Some(palette()),
                     PaletteProjection::Git { limit: 64 },
-                    Some(color(&frozen.canvas)),
                 );
             }
             contributions.finish_into(builder);
@@ -1037,7 +1023,6 @@ fn compile_frozen_legacy_family(
                 "frozen.series",
                 Some(palette()),
                 PaletteProjection::Pie { limit: 12 },
-                None,
             );
             contributions.finish_into(builder);
         }
@@ -1072,7 +1057,6 @@ fn compile_frozen_legacy_family(
                     "frozen.series",
                     Some(palette()),
                     PaletteProjection::ColorScale { limit: 12 },
-                    Some(color(&frozen.canvas)),
                 );
             }
             contributions.finish_into(builder);
@@ -1092,7 +1076,6 @@ fn compile_frozen_legacy_family(
                         task_limit: 8,
                         actor_limit: 0,
                     },
-                    None,
                 );
             }
             contributions.add_palette(
@@ -1102,7 +1085,6 @@ fn compile_frozen_legacy_family(
                     task_limit: 0,
                     actor_limit: 6,
                 },
-                None,
             );
             contributions.add_theme_variables(
                 "frozen.roles",
@@ -1126,7 +1108,6 @@ fn compile_frozen_legacy_family(
                 "frozen.series",
                 Some(palette()),
                 PaletteProjection::Venn { limit: 8 },
-                None,
             );
             contributions.add_theme_variables(
                 "frozen.roles",
@@ -1225,7 +1206,6 @@ fn compile_frozen_treemap(
         "frozen.series",
         Some(palette.to_vec()),
         PaletteProjection::ColorScale { limit: 12 },
-        Some(frozen.canvas.as_css()),
     );
     contributions.finish_into(builder);
 }
@@ -1430,10 +1410,6 @@ impl<'a> FamilyStyleReader<'a> {
         self.program.ordinal_palette_index(target).is_some()
     }
 
-    fn canvas_color(&self) -> Option<String> {
-        solid_paint(self.spec.canvas().base())
-    }
-
     fn stroke_or_fill_resolution(&self, target: ThemeTarget) -> LegacyPaintResolution {
         let style = self.style(target);
         match LegacyPaintResolution::from_property(style.stroke_resolution()) {
@@ -1497,46 +1473,6 @@ fn solid_paint(paint: &CanvasPaint) -> Option<String> {
         | CanvasPaint::RadialGradient(_)
         | CanvasPaint::Pattern(_) => None,
     }
-}
-
-fn readable_text_color(color: &str, canvas: Option<&str>) -> String {
-    let Ok(color) = ThemeColor::parse(color.trim()) else {
-        return "#ffffff".to_string();
-    };
-    let background = canvas
-        .and_then(|canvas| ThemeColor::parse(canvas.trim()).ok())
-        .map_or([1.0; 3], |canvas| composite_over(&canvas, [1.0; 3]));
-    let [red, green, blue] = composite_over(&color, background);
-    let luminance = relative_luminance(red, green, blue);
-    let black_contrast = (luminance + 0.05) / 0.05;
-    let white_contrast = 1.05 / (luminance + 0.05);
-    if black_contrast >= white_contrast {
-        "#000000".to_string()
-    } else {
-        "#ffffff".to_string()
-    }
-}
-
-fn composite_over(color: &ThemeColor, background: [f64; 3]) -> [f64; 3] {
-    let alpha = color.channel(ColorChannel::Alpha);
-    let foreground = [
-        color.channel(ColorChannel::Red) / 255.0,
-        color.channel(ColorChannel::Green) / 255.0,
-        color.channel(ColorChannel::Blue) / 255.0,
-    ];
-    std::array::from_fn(|index| foreground[index] * alpha + background[index] * (1.0 - alpha))
-}
-
-fn relative_luminance(red: f64, green: f64, blue: f64) -> f64 {
-    fn linear(channel: f64) -> f64 {
-        if channel <= 0.04045 {
-            channel / 12.92
-        } else {
-            ((channel + 0.055) / 1.055).powf(2.4)
-        }
-    }
-
-    0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
 }
 
 struct FamilyContributions {
@@ -1636,7 +1572,6 @@ impl FamilyContributions {
         mapping: &'static str,
         palette: Option<Vec<String>>,
         projection: PaletteProjection,
-        canvas: Option<String>,
     ) {
         let Some(palette) = palette.filter(|palette| !palette.is_empty()) else {
             return;
@@ -1646,22 +1581,11 @@ impl FamilyContributions {
             PaletteProjection::ColorScale { limit } => {
                 for (index, color) in palette.iter().take(limit).enumerate() {
                     variables.insert(format!("cScale{index}"), Value::String(color.clone()));
-                    variables.insert(format!("cScalePeer{index}"), Value::String(color.clone()));
-                    let label_color = readable_text_color(color, canvas.as_deref());
-                    variables.insert(
-                        format!("cScaleLabel{index}"),
-                        Value::String(label_color.clone()),
-                    );
-                    variables.insert(format!("cScaleInv{index}"), Value::String(label_color));
                 }
             }
             PaletteProjection::Git { limit } => {
                 for (index, color) in palette.iter().take(limit).enumerate() {
                     variables.insert(format!("git{index}"), Value::String(color.clone()));
-                    variables.insert(
-                        format!("gitBranchLabel{index}"),
-                        Value::String(readable_text_color(color, canvas.as_deref())),
-                    );
                 }
             }
             PaletteProjection::Pie { limit } => {
@@ -1835,7 +1759,8 @@ fn dotted_paths_overlap(left: &str, right: &str) -> bool {
 mod tests {
     use super::*;
     use crate::diagram_theme::{
-        CanvasSpec, Specified, ThemeRule, ThemeRuleSet, ThemeStylePatch, TypographySpec,
+        CanvasSpec, MermaidThemeCompatibility, Specified, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+        TypographySpec,
     };
     use merman_core::__private::{
         ThemeCompatibilityPlan, install_theme_compatibility, theme_parse_evidence,
@@ -1876,17 +1801,103 @@ mod tests {
     }
 
     fn parse(spec: &DiagramThemeSpec, source: &str) -> merman_core::ParseMetadata {
+        parse_with_compatibility(spec, source, MermaidConfig::empty_object())
+    }
+
+    fn parse_with_compatibility(
+        spec: &DiagramThemeSpec,
+        source: &str,
+        compatibility_config: MermaidConfig,
+    ) -> merman_core::ParseMetadata {
         let bridge = bridge(spec);
         let resolver = bridge.clone();
         let plan = ThemeCompatibilityPlan::try_new(
             [0x5a; 32],
-            MermaidConfig::empty_object(),
+            compatibility_config,
             move |family, control| resolver.overlay_for_family(family, control),
         )
         .expect("test compatibility plan");
         install_theme_compatibility(merman_core::Engine::new(), &plan)
             .parse_metadata_sync(source)
             .expect("test diagram should parse")
+    }
+
+    #[test]
+    fn color_scale_palette_delegates_derived_values_to_pinned_mermaid_theme() {
+        let palette =
+            super::super::OrdinalPalette::new([
+                super::super::ThemeColorValue::parse("#abcdef").expect("valid palette color")
+            ])
+            .expect("non-empty palette");
+        let spec = DiagramThemeSpec::new()
+            .with_mermaid_compatibility(
+                MermaidThemeCompatibility::default()
+                    .with_theme("dark")
+                    .expect("valid Mermaid theme"),
+            )
+            .with_styles(ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::Node, palette));
+        let parsed = parse_with_compatibility(
+            &spec,
+            "mindmap\nroot(Root)\n Child(Child)\n",
+            spec.mermaid().to_mermaid_config(),
+        );
+
+        assert_eq!(
+            parsed.effective_config.get_str("themeVariables.cScale0"),
+            Some("#abcdef")
+        );
+        assert_eq!(
+            parsed
+                .effective_config
+                .get_str("themeVariables.cScalePeer0"),
+            Some("hsl(210, 68%, 90.3921568627%)")
+        );
+        assert_eq!(
+            parsed.effective_config.get_str("themeVariables.cScaleInv0"),
+            Some("#543210")
+        );
+        assert_eq!(
+            parsed
+                .effective_config
+                .get_str("themeVariables.cScaleLabel0"),
+            Some("lightgrey")
+        );
+    }
+
+    #[test]
+    fn git_palette_delegates_inverse_and_label_values_to_pinned_mermaid_theme() {
+        let palette =
+            super::super::OrdinalPalette::new([
+                super::super::ThemeColorValue::parse("#000000").expect("valid palette color")
+            ])
+            .expect("non-empty palette");
+        let spec = DiagramThemeSpec::new()
+            .with_mermaid_compatibility(
+                MermaidThemeCompatibility::default()
+                    .with_theme("redux")
+                    .expect("valid Mermaid theme"),
+            )
+            .with_styles(ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::Node, palette));
+        let parsed = parse_with_compatibility(
+            &spec,
+            "gitGraph\n  commit id: \"first\"\n",
+            spec.mermaid().to_mermaid_config(),
+        );
+
+        assert_eq!(
+            parsed.effective_config.get_str("themeVariables.git0"),
+            Some("#000000")
+        );
+        assert_eq!(
+            parsed.effective_config.get_str("themeVariables.gitInv0"),
+            Some("#ffffff")
+        );
+        assert_eq!(
+            parsed
+                .effective_config
+                .get_str("themeVariables.gitBranchLabel0"),
+            Some("#28253D")
+        );
     }
 
     fn fallback_contribution_count(metadata: &merman_core::ParseMetadata) -> usize {

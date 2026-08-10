@@ -66,6 +66,7 @@ pub use parse_control::{ParseCancelled, ParseControl, ParseControlResult};
 pub use preprocess::{
     PreprocessResult, PreprocessedSource, preprocess_diagram, preprocess_diagram_with_known_type,
 };
+pub use theme::{MermaidThemeId, MermaidThemeIdParseError};
 
 /// Workspace-internal compatibility seam used while typed family adapters replace the legacy
 /// Mermaid config bridge.
@@ -297,7 +298,12 @@ pub const MAX_DIAGRAM_NESTING_DEPTH: usize = 256;
 
 /// Returns Mermaid theme names supported by the pinned baseline.
 pub fn supported_themes() -> &'static [&'static str] {
-    theme::SUPPORTED_THEME_NAMES
+    MermaidThemeId::NAMES
+}
+
+/// Returns the typed Mermaid theme catalog for the pinned baseline.
+pub fn supported_theme_ids() -> &'static [MermaidThemeId] {
+    MermaidThemeId::ALL
 }
 
 /// Returns supported diagram metadata names for binding and host capability discovery.

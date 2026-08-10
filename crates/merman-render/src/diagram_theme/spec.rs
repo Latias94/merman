@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use merman_core::MermaidConfig;
+use merman_core::{MermaidConfig, MermaidThemeId};
 use serde_json::{Map, Value};
 
 use super::admission::ThemeRequirements;
@@ -15,7 +15,7 @@ use super::{FontCatalogSpec, ThemeCompileValidationError};
 /// Renderer selection, look, HTML labels, and output policy deliberately do not belong here.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct MermaidThemeCompatibility {
-    theme: Option<String>,
+    theme: Option<MermaidThemeId>,
     dark_mode: Option<bool>,
     variables: BTreeMap<String, MermaidThemeValue>,
 }
@@ -56,12 +56,21 @@ impl From<bool> for MermaidThemeValue {
 }
 
 impl MermaidThemeCompatibility {
-    pub fn with_theme(
-        mut self,
-        theme: impl Into<String>,
-    ) -> Result<Self, ThemeCompileValidationError> {
-        self.theme = Some(validate_identifier(theme.into(), "mermaid.theme")?);
-        Ok(self)
+    /// Parses and selects an upstream Mermaid theme name.
+    pub fn with_theme(self, theme: impl AsRef<str>) -> Result<Self, ThemeCompileValidationError> {
+        let theme = MermaidThemeId::parse(theme.as_ref()).map_err(|error| {
+            ThemeCompileValidationError::UnsupportedMermaidTheme {
+                field: "mermaid.theme",
+                value: error.input().to_string(),
+            }
+        })?;
+        Ok(self.with_theme_id(theme))
+    }
+
+    /// Selects an already validated theme from the pinned Mermaid catalog.
+    pub fn with_theme_id(mut self, theme: MermaidThemeId) -> Self {
+        self.theme = Some(theme);
+        self
     }
 
     /// Sets Mermaid's mirrored root and `themeVariables.darkMode` compatibility value.
@@ -93,8 +102,12 @@ impl MermaidThemeCompatibility {
         Ok(self)
     }
 
-    pub fn theme(&self) -> Option<&str> {
-        self.theme.as_deref()
+    pub const fn theme(&self) -> Option<MermaidThemeId> {
+        self.theme
+    }
+
+    pub fn theme_name(&self) -> Option<&str> {
+        self.theme.map(MermaidThemeId::as_str)
     }
 
     pub const fn dark_mode(&self) -> Option<bool> {
@@ -110,7 +123,10 @@ impl MermaidThemeCompatibility {
     pub(crate) fn to_mermaid_config(&self) -> MermaidConfig {
         let mut root = Map::new();
         if let Some(theme) = &self.theme {
-            root.insert("theme".to_string(), Value::String(theme.clone()));
+            root.insert(
+                "theme".to_string(),
+                Value::String(theme.as_str().to_string()),
+            );
         }
         if let Some(dark_mode) = self.dark_mode {
             root.insert("darkMode".to_string(), Value::Bool(dark_mode));
@@ -130,9 +146,6 @@ impl MermaidThemeCompatibility {
     }
 
     pub(crate) fn validate(&self) -> Result<(), ThemeCompileValidationError> {
-        if let Some(theme) = &self.theme {
-            validate_identifier(theme.clone(), "mermaid.theme")?;
-        }
         if self.variables.len() > 512 {
             return Err(ThemeCompileValidationError::LimitExceeded {
                 field: "mermaid.theme_variables",
@@ -419,6 +432,32 @@ mod tests {
         assert_eq!(
             variables.get("primaryColor"),
             Some(&Value::String("#123456".to_string()))
+        );
+    }
+
+    #[test]
+    fn mermaid_theme_compatibility_uses_the_core_theme_catalog() {
+        for &theme in MermaidThemeId::ALL {
+            let compatibility = MermaidThemeCompatibility::default()
+                .with_theme(theme.as_str())
+                .unwrap();
+            assert_eq!(compatibility.theme(), Some(theme));
+            assert_eq!(compatibility.theme_name(), Some(theme.as_str()));
+            assert_eq!(
+                compatibility.to_mermaid_config().get_str("theme"),
+                Some(theme.as_str())
+            );
+        }
+
+        let error = MermaidThemeCompatibility::default()
+            .with_theme("unknown")
+            .unwrap_err();
+        assert_eq!(
+            error,
+            ThemeCompileValidationError::UnsupportedMermaidTheme {
+                field: "mermaid.theme",
+                value: "unknown".to_string(),
+            }
         );
     }
 

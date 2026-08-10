@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use base64::Engine as _;
+use merman::MermaidThemeId;
 use merman::svg::{
     BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramTheme,
     DiagramThemeCompiler, DiagramThemeSpec, EffectBinding, EffectGraph, EffectInput,
@@ -221,15 +222,9 @@ impl BindingMermaidCompatibilityJson {
         let mut compatibility = MermaidThemeCompatibility::default();
         if let Some(theme) = self.theme.as_deref() {
             let theme = theme.trim();
-            if !matches!(theme, "default" | "forest" | "dark" | "neutral" | "base") {
-                return Err(invalid_theme(
-                    "theme.spec.mermaid.theme",
-                    format!("unsupported Mermaid theme `{theme}`"),
-                ));
-            }
-            compatibility = compatibility
-                .with_theme(theme)
-                .map_err(|error| theme_value_error("theme.spec.mermaid.theme", error))?;
+            let theme_id = MermaidThemeId::parse(theme)
+                .map_err(|error| invalid_theme("theme.spec.mermaid.theme", error.to_string()))?;
+            compatibility = compatibility.with_theme_id(theme_id);
         }
         if let Some(dark_mode) = self.dark_mode {
             compatibility = compatibility
@@ -1643,6 +1638,32 @@ mod tests {
     }
 
     #[test]
+    fn binding_mermaid_theme_ids_follow_the_core_catalog() {
+        for &theme in MermaidThemeId::ALL {
+            let wire: BindingMermaidCompatibilityJson =
+                serde_json::from_value(serde_json::json!({ "theme": theme.as_str() })).unwrap();
+            let compatibility = wire.to_compatibility().unwrap();
+            assert_eq!(compatibility.theme(), Some(theme));
+        }
+    }
+
+    #[test]
+    fn binding_rejects_unknown_mermaid_theme_ids() {
+        for invalid in ["unknown", "null"] {
+            let wire: BindingMermaidCompatibilityJson =
+                serde_json::from_value(serde_json::json!({ "theme": invalid })).unwrap();
+            let error = wire.to_compatibility().unwrap_err();
+
+            assert_eq!(error.status(), BindingStatus::InvalidArgument);
+            assert!(
+                error
+                    .message()
+                    .contains(&format!("unsupported Mermaid theme `{invalid}`"))
+            );
+        }
+    }
+
+    #[test]
     fn theme_wire_requires_exactly_one_selection() {
         for invalid in [
             serde_json::json!({}),
@@ -1878,7 +1899,8 @@ mod tests {
                     "variables": {
                         "fontSize": 16,
                         "darkMode": true,
-                        "primaryColor": "#123456"
+                        "primaryColor": "#123456",
+                        "useMaxWidth": false
                     }
                 }
             }
@@ -1897,7 +1919,20 @@ mod tests {
             .unwrap();
         let compatibility = typed.mermaid();
         assert_eq!(compatibility.dark_mode(), Some(true));
-        assert_eq!(compatibility.variables().count(), 3);
+        let variables = compatibility.variables().collect::<BTreeMap<_, _>>();
+        assert_eq!(variables.len(), 3);
+        assert_eq!(
+            variables.get("fontSize"),
+            Some(&&MermaidThemeValue::Number(16.0))
+        );
+        assert_eq!(
+            variables.get("primaryColor"),
+            Some(&&MermaidThemeValue::String("#123456".to_string()))
+        );
+        assert_eq!(
+            variables.get("useMaxWidth"),
+            Some(&&MermaidThemeValue::Boolean(false))
+        );
         assert!(theme.recipe_fingerprint().as_bytes() != &[0; 32]);
     }
 
