@@ -16,6 +16,16 @@ pub(super) struct SequenceBatchExtent {
 }
 
 impl SequenceBatchExtent {
+    pub(super) const fn with_materialized_width(materialized_width: usize) -> Self {
+        Self {
+            materialized_width,
+            height: 0,
+            retained_width: 0,
+            document_cells: 0,
+            work_units: 0,
+        }
+    }
+
     pub(super) fn from_line_lengths(
         materialized_width: usize,
         lengths: impl IntoIterator<Item = usize>,
@@ -29,23 +39,28 @@ impl SequenceBatchExtent {
         lengths: impl IntoIterator<Item = Result<usize>>,
         resources: &ResourceContext,
     ) -> Result<Self> {
-        let mut extent = Self {
-            materialized_width,
-            ..Self::default()
-        };
+        let mut extent = Self::with_materialized_width(materialized_width);
         for length in lengths {
-            let length = length?;
-            extent.height = resources.checked_grid_add(extent.height, 1)?;
-            extent.retained_width = extent.retained_width.max(length);
-            extent.document_cells = extent.document_cells.checked_add(length).ok_or_else(|| {
-                resources
-                    .policy()
-                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
-            })?;
-            extent.work_units = resources.checked_work_add(extent.work_units, length.max(1))?;
+            extent.try_push_line_length(length?, resources)?;
         }
-        extent.materialized_width = extent.materialized_width.max(extent.retained_width);
         Ok(extent)
+    }
+
+    pub(super) fn try_push_line_length(
+        &mut self,
+        length: usize,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        self.height = resources.checked_grid_add(self.height, 1)?;
+        self.retained_width = self.retained_width.max(length);
+        self.materialized_width = self.materialized_width.max(length);
+        self.document_cells = self.document_cells.checked_add(length).ok_or_else(|| {
+            resources
+                .policy()
+                .overflow(AsciiResourceLimitId::MaxDocumentCells)
+        })?;
+        self.work_units = resources.checked_work_add(self.work_units, length.max(1))?;
+        Ok(())
     }
 
     pub(super) fn uniform(

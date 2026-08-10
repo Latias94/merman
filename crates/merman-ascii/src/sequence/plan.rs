@@ -1293,10 +1293,14 @@ mod tests {
 
         let prepared =
             prepare_message_rows(&message, &layout, &visible_actors, &mut resources).unwrap();
-        let error = extent
-            .reserve(prepared.extent(), &mut resources)
-            .expect_err("combined rows must be rejected before render_message allocates its rows");
+        let materialized = std::cell::Cell::new(false);
+        let error = (|| {
+            let _reservation = extent.reserve(prepared.extent(), &mut resources)?;
+            prepared.materialize_label_with_probe(&message.label, &materialized)
+        })()
+        .expect_err("combined rows must be rejected before render_message allocates its rows");
 
+        assert!(!materialized.get());
         assert!(matches!(
             error,
             AsciiError::ResourceLimitExceeded(details)

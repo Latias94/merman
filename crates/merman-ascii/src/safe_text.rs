@@ -10,9 +10,14 @@ pub(crate) use document::{
     BudgetedTextDocument, BudgetedWrappedText, charge_text_layout, visit_safe_line_graphemes,
 };
 pub(crate) use encode::push_html_escaped_text;
+pub(crate) use label::{
+    LabelBreakPolicy, NormalizedLabelPlan, try_build_normalized_label_lines,
+    try_measure_normalized_label_lines, try_plan_normalized_label_lines_with_policy,
+};
 #[cfg(test)]
-pub(crate) use label::try_build_normalized_label_lines_with_probe;
-pub(crate) use label::{try_build_normalized_label_lines, try_measure_normalized_label_lines};
+pub(crate) use label::{
+    try_build_normalized_label_lines_with_probe, try_plan_normalized_label_lines,
+};
 pub use normalization::{normalize_terminal_diagnostic, normalize_terminal_text};
 pub(crate) use width::{
     SafeLine, SafeText, terminal_char_display_width, terminal_line_display_width,
@@ -582,6 +587,159 @@ mod tests {
 
         assert_eq!(lines, ["\\u{9}", "value"]);
         assert_eq!(width, 5);
+    }
+
+    #[test]
+    fn label_plan_widths_match_materialized_wrapped_rows() {
+        let cases = [
+            ("alpha beta gamma", false, 8, TerminalWidthProfile::Unicode),
+            ("alpha\n\nbeta", false, 8, TerminalWidthProfile::Unicode),
+            (
+                "alpha<br>beta\\ngamma",
+                false,
+                5,
+                TerminalWidthProfile::Unicode,
+            ),
+            (
+                "extraordinary word",
+                false,
+                4,
+                TerminalWidthProfile::Unicode,
+            ),
+            ("中 文 👩‍💻 ·", false, 4, TerminalWidthProfile::Cjk),
+            (" ́word", false, 6, TerminalWidthProfile::Unicode),
+            ("  value ", true, 7, TerminalWidthProfile::Unicode),
+        ];
+
+        for (raw, trim, wrap_width, profile) in cases {
+            let options = AsciiRenderOptions::ascii()
+                .with_resource_profile(ResourceProfile::UnboundedForTrustedInput)
+                .with_terminal_width_profile(profile);
+            let resources = ResourceContext::new(options.resources);
+            let plan =
+                try_plan_normalized_label_lines(raw, profile, trim, Some(wrap_width), &resources)
+                    .expect("label plan should be measurable")
+                    .expect("test labels should remain visible");
+            let mut planned_widths = Vec::new();
+            plan.try_visit_line_widths(raw, |width| {
+                planned_widths.push(width);
+                Ok(())
+            })
+            .expect("planned row widths should be visitable");
+
+            let materialized = plan.materialize(raw).unwrap_or_else(|error| {
+                let normalized = normalize_terminal_text(raw);
+                let direct = crate::text::wrap_display_lines_with_profile(
+                    normalized.as_ref(),
+                    wrap_width,
+                    profile,
+                );
+                panic!(
+                    "the admitted plan should materialize exactly for {raw:?}: {error}; planned={planned_widths:?}; direct={direct:?}"
+                )
+            });
+            let (lines, width) = materialized.into_parts();
+            let actual_widths = lines
+                .iter()
+                .map(|line| terminal_line_display_width(line, profile))
+                .collect::<Vec<_>>();
+
+            assert_eq!(planned_widths, actual_widths, "raw={raw:?}");
+            assert_eq!(plan.metrics().line_count, lines.len(), "raw={raw:?}");
+            assert_eq!(plan.metrics().max_width, width, "raw={raw:?}");
+        }
+    }
+
+    #[test]
+    fn label_plan_grid_admission_precedes_materialization() {
+        let raw = "alpha beta";
+        let below = options_with_limit(AsciiResourceLimitId::MaxGridCells, 9);
+        let below_resources = ResourceContext::new(below.resources);
+        let plan = try_plan_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(5),
+            &below_resources,
+        )
+        .expect("text planning should not consume a grid")
+        .expect("the label should be visible");
+        assert_eq!(plan.metrics().line_count, 2);
+        assert_eq!(plan.metrics().max_width, 5);
+
+        let materialized = Cell::new(false);
+        let error = (|| {
+            below_resources.grid_extent(plan.metrics().max_width, plan.metrics().line_count)?;
+            plan.materialize_with_probe(raw, &materialized)
+        })()
+        .expect_err("a 5x2 label grid must reject a nine-cell limit");
+
+        assert!(!materialized.get());
+        assert_limit_error(error, AsciiResourceLimitId::MaxGridCells, 10, 9);
+
+        let exact = options_with_limit(AsciiResourceLimitId::MaxGridCells, 10);
+        let exact_resources = ResourceContext::new(exact.resources);
+        let exact_plan = try_plan_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(5),
+            &exact_resources,
+        )
+        .expect("exact text planning should succeed")
+        .expect("the label should be visible");
+        exact_resources
+            .grid_extent(
+                exact_plan.metrics().max_width,
+                exact_plan.metrics().line_count,
+            )
+            .expect("the exact label grid should be admitted");
+        let exact_materialized = Cell::new(false);
+        exact_plan
+            .materialize_with_probe(raw, &exact_materialized)
+            .expect("materialization should follow successful admission");
+        assert!(exact_materialized.get());
+    }
+
+    #[test]
+    fn label_break_policies_preserve_sequence_message_semantics() {
+        let options = AsciiRenderOptions::ascii()
+            .with_resource_profile(ResourceProfile::UnboundedForTrustedInput);
+        let raw = "alpha\n\nbeta<br>gamma\\ndelta";
+
+        let resources = ResourceContext::new(options.resources);
+        let wrapped = try_plan_normalized_label_lines_with_policy(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(80),
+            LabelBreakPolicy::StructuralParagraphs,
+            &resources,
+        )
+        .expect("structural message rows should be measurable")
+        .expect("non-empty message rows should be retained")
+        .materialize(raw)
+        .expect("structural message rows should materialize")
+        .into_parts()
+        .0;
+        assert_eq!(wrapped, ["alpha", "beta<br>gamma\\ndelta"]);
+
+        let resources = ResourceContext::new(options.resources);
+        let visible = try_plan_normalized_label_lines_with_policy(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            None,
+            LabelBreakPolicy::VisibleLine,
+            &resources,
+        )
+        .expect("unwrapped message text should be measurable")
+        .expect("non-empty message text should be retained")
+        .materialize(raw)
+        .expect("unwrapped message text should materialize")
+        .into_parts()
+        .0;
+        assert_eq!(visible, ["alpha\\u{A}\\u{A}beta<br>gamma\\ndelta"]);
     }
 
     #[test]

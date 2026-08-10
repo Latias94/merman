@@ -3,7 +3,10 @@ use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
 use crate::options::TerminalWidthProfile;
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
-use crate::text::{display_width_with_profile, wrap_display_lines_with_profile};
+use crate::safe_text::{
+    LabelBreakPolicy, NormalizedLabelPlan, try_plan_normalized_label_lines_with_policy,
+};
+use crate::text::display_width_with_profile;
 
 use super::layout::SequenceLayout;
 use super::model::{
@@ -13,19 +16,17 @@ use super::model::{
 use super::render::{
     SequenceChars, build_lifeline_line, lifeline_char, lifeline_role, retained_lifeline_width,
 };
-use super::text::{
-    SequenceBatchExtent, SequenceLine, charge_text_work, padded_line, trim_right, write_text_role,
-};
+use super::text::{SequenceBatchExtent, SequenceLine, padded_line, trim_right, write_text_role};
 
 #[derive(Debug)]
 pub(super) struct PreparedMessageRows {
-    label_lines: Vec<String>,
+    label_plan: Option<NormalizedLabelPlan>,
     extent: SequenceBatchExtent,
 }
 
 #[derive(Debug)]
 pub(super) struct PreparedSelfMessageRows {
-    label_lines: Vec<String>,
+    label_plan: Option<NormalizedLabelPlan>,
     extent: SequenceBatchExtent,
     geometry: SelfMessageGeometry,
 }
@@ -63,6 +64,18 @@ impl<'a> MessageActorState<'a> {
 impl PreparedMessageRows {
     pub(super) const fn extent(&self) -> SequenceBatchExtent {
         self.extent
+    }
+
+    #[cfg(test)]
+    pub(super) fn materialize_label_with_probe(
+        &self,
+        raw: &str,
+        materialized: &std::cell::Cell<bool>,
+    ) -> Result<()> {
+        if let Some(plan) = self.label_plan {
+            plan.materialize_with_probe(raw, materialized)?;
+        }
+        Ok(())
     }
 }
 
@@ -114,27 +127,29 @@ pub(super) fn ensure_message_actors_visible(
     })
 }
 
-fn message_label_lines(
+fn message_label_plan(
     message: &SequenceMessage,
     max_width: usize,
     width_profile: TerminalWidthProfile,
-    resources: &mut ResourceContext,
-) -> Result<Vec<String>> {
-    charge_text_work(&message.label, width_profile, resources)?;
+    resources: &ResourceContext,
+) -> Result<Option<NormalizedLabelPlan>> {
     if message.label.is_empty() {
-        Ok(Vec::new())
-    } else if message.wrap {
-        Ok(wrap_display_lines_with_profile(
-            &message.label,
-            max_width,
-            width_profile,
-        ))
-    } else {
-        let mut lines = Vec::new();
-        lines.try_reserve(1).map_err(|_| allocation_failed())?;
-        lines.push(try_clone_string(&message.label)?);
-        Ok(lines)
+        return Ok(None);
     }
+
+    let (wrap_width, break_policy) = if message.wrap {
+        (Some(max_width), LabelBreakPolicy::StructuralParagraphs)
+    } else {
+        (None, LabelBreakPolicy::VisibleLine)
+    };
+    try_plan_normalized_label_lines_with_policy(
+        &message.label,
+        width_profile,
+        false,
+        wrap_width,
+        break_policy,
+        resources,
+    )
 }
 
 pub(super) fn prepare_message_rows(
@@ -145,20 +160,19 @@ pub(super) fn prepare_message_rows(
 ) -> Result<PreparedMessageRows> {
     let from = layout.participant_centers[message.from];
     let to = layout.participant_centers[message.to];
-    let label_lines = message_label_lines(
+    let label_plan = message_label_plan(
         message,
         from.abs_diff(to).saturating_sub(LABEL_LEFT_MARGIN),
         layout.width_profile,
         resources,
     )?;
-    let row_count = resources.checked_grid_add(label_lines.len(), 1)?;
+    let label_metrics = label_plan.map(NormalizedLabelPlan::metrics);
+    let row_count =
+        resources.checked_grid_add(label_metrics.map_or(0, |metrics| metrics.line_count), 1)?;
     let start = resources.checked_grid_add(from.min(to), LABEL_LEFT_MARGIN)?;
     let mut max_width = resources.checked_grid_add(layout.total_width, 1)?;
-    for label in &label_lines {
-        let label_right = resources.checked_grid_add(
-            start,
-            display_width_with_profile(label, layout.width_profile),
-        )?;
+    if let Some(metrics) = label_metrics {
+        let label_right = resources.checked_grid_add(start, metrics.max_width)?;
         let label_width =
             resources.checked_grid_add(layout.total_width.max(label_right), LABEL_BUFFER_SPACE)?;
         max_width = max_width.max(label_width);
@@ -167,23 +181,16 @@ pub(super) fn prepare_message_rows(
     charge_row_work(resources, max_width, row_count)?;
 
     let lifeline_width = retained_lifeline_width(layout, visible_actors, resources)?;
-    let extent = SequenceBatchExtent::try_from_line_lengths(
-        max_width,
-        label_lines
-            .iter()
-            .map(|label| {
-                resources
-                    .checked_grid_add(start, retained_label_width(label, layout.width_profile))
-                    .map(|label_right| lifeline_width.max(label_right))
-            })
-            .chain(std::iter::once(Ok(lifeline_width))),
-        resources,
-    )?;
+    let mut extent = SequenceBatchExtent::with_materialized_width(max_width);
+    if let Some(plan) = label_plan {
+        plan.try_visit_row_metrics(&message.label, |row| {
+            let label_right = resources.checked_grid_add(start, row.retained_width)?;
+            extent.try_push_line_length(lifeline_width.max(label_right), resources)
+        })?;
+    }
+    extent.try_push_line_length(lifeline_width, resources)?;
 
-    Ok(PreparedMessageRows {
-        label_lines,
-        extent,
-    })
+    Ok(PreparedMessageRows { label_plan, extent })
 }
 
 pub(super) fn render_message(
@@ -199,10 +206,11 @@ pub(super) fn render_message(
         visible_actors,
         destroyed_actors,
     } = actor_state;
-    let PreparedMessageRows {
-        label_lines,
-        extent,
-    } = prepared;
+    let PreparedMessageRows { label_plan, extent } = prepared;
+    let label_lines = match label_plan {
+        Some(plan) => plan.materialize(&message.label)?.into_parts().0,
+        None => Vec::new(),
+    };
     let row_count = extent.height();
     let from = layout.participant_centers[message.from];
     let to = layout.participant_centers[message.to];
@@ -329,16 +337,15 @@ pub(super) fn prepare_self_message_rows(
     let center = layout.participant_centers[message.from];
     let geometry = SelfMessageGeometry::try_new(message, layout, chars, resources)?;
     let label_wrap_width = resources.checked_grid_add(geometry.width, LABEL_BUFFER_SPACE)?;
-    let label_lines =
-        message_label_lines(message, label_wrap_width, layout.width_profile, resources)?;
-    let row_count = resources.checked_grid_add(label_lines.len(), 3)?;
+    let label_plan =
+        message_label_plan(message, label_wrap_width, layout.width_profile, resources)?;
+    let label_metrics = label_plan.map(NormalizedLabelPlan::metrics);
+    let row_count =
+        resources.checked_grid_add(label_metrics.map_or(0, |metrics| metrics.line_count), 3)?;
     let start = resources.checked_grid_add(center, LABEL_LEFT_MARGIN)?;
     let mut max_width = geometry.materialized_width;
-    for label in &label_lines {
-        let label_right = resources.checked_grid_add(
-            start,
-            display_width_with_profile(label, layout.width_profile),
-        )?;
+    if let Some(metrics) = label_metrics {
+        let label_right = resources.checked_grid_add(start, metrics.max_width)?;
         max_width = max_width.max(resources.checked_grid_add(label_right, LABEL_BUFFER_SPACE)?);
     }
     resources.grid_extent(max_width, row_count)?;
@@ -346,21 +353,19 @@ pub(super) fn prepare_self_message_rows(
 
     let lifeline_width = retained_lifeline_width(layout, visible_actors, resources)?;
     let message_row_width = lifeline_width.max(geometry.loop_needed);
-    let extent = SequenceBatchExtent::try_from_line_lengths(
-        max_width,
-        label_lines
-            .iter()
-            .map(|label| {
-                resources
-                    .checked_grid_add(start, retained_label_width(label, layout.width_profile))
-                    .map(|label_right| lifeline_width.max(label_right))
-            })
-            .chain([message_row_width; 3].into_iter().map(Ok)),
-        resources,
-    )?;
+    let mut extent = SequenceBatchExtent::with_materialized_width(max_width);
+    if let Some(plan) = label_plan {
+        plan.try_visit_row_metrics(&message.label, |row| {
+            let label_right = resources.checked_grid_add(start, row.retained_width)?;
+            extent.try_push_line_length(lifeline_width.max(label_right), resources)
+        })?;
+    }
+    for _ in 0..3 {
+        extent.try_push_line_length(message_row_width, resources)?;
+    }
 
     Ok(PreparedSelfMessageRows {
-        label_lines,
+        label_plan,
         extent,
         geometry,
     })
@@ -380,10 +385,14 @@ pub(super) fn render_self_message(
         destroyed_actors,
     } = actor_state;
     let PreparedSelfMessageRows {
-        label_lines,
+        label_plan,
         extent,
         geometry,
     } = prepared;
+    let label_lines = match label_plan {
+        Some(plan) => plan.materialize(&message.label)?.into_parts().0,
+        None => Vec::new(),
+    };
     let row_count = extent.height();
     let center = layout.participant_centers[message.from];
     let start = resources.checked_grid_add(center, LABEL_LEFT_MARGIN)?;
@@ -634,21 +643,8 @@ fn charge_row_work(resources: &mut ResourceContext, width: usize, height: usize)
     resources.charge_layout_work(work)
 }
 
-fn retained_label_width(label: &str, width_profile: TerminalWidthProfile) -> usize {
-    display_width_with_profile(label.trim_end_matches(' '), width_profile)
-}
-
 fn allocation_failed() -> AsciiError {
     AsciiError::allocation_failed(AsciiResourceLimitPhase::LayoutWork.as_str())
-}
-
-fn try_clone_string(source: &str) -> Result<String> {
-    let mut cloned = String::new();
-    cloned
-        .try_reserve_exact(source.len())
-        .map_err(|_| allocation_failed())?;
-    cloned.push_str(source);
-    Ok(cloned)
 }
 
 fn invalid_message_geometry() -> AsciiError {
