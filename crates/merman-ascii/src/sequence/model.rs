@@ -99,6 +99,12 @@ impl SequenceParticipantLabel {
         .expect("non-trimmed labels always retain one row");
         plan.check_materialization_limits(resources)?;
         let metrics = plan.metrics();
+        resources.grid_extent(metrics.max_width.max(1), metrics.line_count)?;
+        resources.check(
+            AsciiResourceLimitId::MaxDocumentCells,
+            metrics.document_cells,
+        )?;
+        resources.check(AsciiResourceLimitId::MaxOutputBytes, raw.len())?;
         Ok(Self {
             raw: try_clone_projection_string(raw)?,
             wrap_width,
@@ -843,4 +849,61 @@ fn consume_autonumber(message: &CoreSequenceMessage, state: &mut AutonumberState
     }
     state.visible = autonumber.visible;
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SequenceParticipantLabel;
+    use crate::error::AsciiError;
+    use crate::options::TerminalWidthProfile;
+    use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy, ResourceContext};
+    use merman_core::resources::ResourceProfile;
+
+    #[test]
+    fn participant_label_checks_its_grid_extent_before_projection_clone() {
+        let raw = "Alpha Beta<br><br>Gamma Delta";
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let mut measured_resources = ResourceContext::new(unbounded);
+        let measured = SequenceParticipantLabel::try_from_raw(
+            raw,
+            true,
+            TerminalWidthProfile::Unicode,
+            &mut measured_resources,
+        )
+        .expect("unbounded participant-label plan should pass");
+        let required_cells = measured.metrics.max_width * measured.metrics.line_count;
+        assert!(required_cells > 0);
+
+        let exact_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxGridCells, required_cells)
+            .expect("exact participant-label grid limit should be valid");
+        let mut exact_resources = ResourceContext::new(exact_policy);
+        SequenceParticipantLabel::try_from_raw(
+            raw,
+            true,
+            TerminalWidthProfile::Unicode,
+            &mut exact_resources,
+        )
+        .expect("exact participant-label grid extent should pass");
+
+        let below_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxGridCells, required_cells - 1)
+            .expect("max-minus-one participant-label grid limit should be valid");
+        let mut below_resources = ResourceContext::new(below_policy);
+        let error = SequenceParticipantLabel::try_from_raw(
+            raw,
+            true,
+            TerminalWidthProfile::Unicode,
+            &mut below_resources,
+        )
+        .expect_err("max-minus-one participant-label grid extent should reject");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxGridCells
+                    && details.actual == required_cells
+                    && details.max == required_cells - 1
+        ));
+    }
 }
