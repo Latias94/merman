@@ -8,7 +8,9 @@ use super::events::{
 use super::layout::{
     LifecycleEdge, SequenceLayout, initial_visible_actors, lifecycle_actors_at, participant_left,
 };
-use super::model::{AsciiSequenceDiagram, SequenceControlKind, SequenceEvent};
+use super::model::{
+    AsciiSequenceDiagram, MaterializedSequenceParticipantLabel, SequenceControlKind, SequenceEvent,
+};
 use super::notes::{ensure_note_actors_known, prepare_note_rows, render_note};
 use super::render::{SequenceChars, build_lifeline_line, retained_lifeline_width};
 use super::text::{
@@ -265,10 +267,29 @@ impl<'diagram> SequenceRowPlanner<'diagram> {
 #[derive(Debug)]
 struct SequenceRowEmitter<'diagram, 'layout, 'chars> {
     diagram: &'diagram AsciiSequenceDiagram,
+    participant_labels: Vec<MaterializedSequenceParticipantLabel>,
     layout: &'layout SequenceLayout,
     chars: &'chars SequenceChars,
     lines: Vec<SequenceLine>,
     extent: SequenceExtentLedger,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SequenceParticipantRenderModel<'a> {
+    diagram: &'a AsciiSequenceDiagram,
+    labels: &'a [MaterializedSequenceParticipantLabel],
+}
+
+impl<'a> SequenceParticipantRenderModel<'a> {
+    fn try_new(
+        diagram: &'a AsciiSequenceDiagram,
+        labels: &'a [MaterializedSequenceParticipantLabel],
+    ) -> Result<Self> {
+        if diagram.participants.len() != labels.len() {
+            return Err(unsupported("participant label materialization"));
+        }
+        Ok(Self { diagram, labels })
+    }
 }
 
 impl<'diagram, 'layout, 'chars> SequenceRowEmitter<'diagram, 'layout, 'chars> {
@@ -279,11 +300,25 @@ impl<'diagram, 'layout, 'chars> SequenceRowEmitter<'diagram, 'layout, 'chars> {
         visible_actors: &[bool],
         resources: &mut ResourceContext,
     ) -> Result<Self> {
+        Self::new_with_label_materializer(diagram, layout, chars, visible_actors, resources, || {})
+    }
+
+    fn new_with_label_materializer(
+        diagram: &'diagram AsciiSequenceDiagram,
+        layout: &'layout SequenceLayout,
+        chars: &'chars SequenceChars,
+        visible_actors: &[bool],
+        resources: &mut ResourceContext,
+        before_materialize: impl FnOnce(),
+    ) -> Result<Self> {
         let batch = participant_box_batch_extent(diagram, layout, visible_actors, resources)?;
         let mut extent = SequenceExtentLedger::default();
         let reservation = extent.reserve(batch, resources)?;
+        let participant_labels =
+            materialize_participant_labels(diagram, resources, before_materialize)?;
+        let participants = SequenceParticipantRenderModel::try_new(diagram, &participant_labels)?;
         let lines = render_participant_box_rows(
-            diagram,
+            participants,
             layout,
             chars,
             visible_actors,
@@ -293,6 +328,7 @@ impl<'diagram, 'layout, 'chars> SequenceRowEmitter<'diagram, 'layout, 'chars> {
         reservation.commit(&mut extent, &lines, resources)?;
         Ok(Self {
             diagram,
+            participant_labels,
             layout,
             chars,
             lines,
@@ -345,8 +381,10 @@ impl<'diagram, 'layout, 'chars> SequenceRowEmitter<'diagram, 'layout, 'chars> {
             resources,
         )?;
         let reservation = self.reserve_batch(batch, resources)?;
+        let participants =
+            SequenceParticipantRenderModel::try_new(self.diagram, &self.participant_labels)?;
         let lines = render_lifecycle_participants(
-            self.diagram,
+            participants,
             self.layout,
             self.chars,
             &step.active_counts,
@@ -468,8 +506,10 @@ impl<'diagram, 'layout, 'chars> SequenceRowEmitter<'diagram, 'layout, 'chars> {
                 resources,
             )?;
             let reservation = self.reserve_batch(batch, resources)?;
+            let participants =
+                SequenceParticipantRenderModel::try_new(self.diagram, &self.participant_labels)?;
             let lines = render_participant_box_rows(
-                self.diagram,
+                participants,
                 self.layout,
                 self.chars,
                 planner.visible_actors(),
@@ -666,18 +706,40 @@ fn participant_box_right(
     resources.checked_grid_add(participant_left(layout, index, resources)?, segment_width)
 }
 
-fn render_participant_box_rows(
+fn materialize_participant_labels(
     diagram: &AsciiSequenceDiagram,
+    resources: &ResourceContext,
+    before_materialize: impl FnOnce(),
+) -> Result<Vec<MaterializedSequenceParticipantLabel>> {
+    let mut labels = Vec::new();
+    labels
+        .try_reserve_exact(diagram.participants.len())
+        .map_err(|_| allocation_failed())?;
+    if !diagram.participants.is_empty() {
+        before_materialize();
+    }
+    for participant in &diagram.participants {
+        labels.push(participant.label.materialize(resources)?);
+    }
+    Ok(labels)
+}
+
+fn render_participant_box_rows(
+    participants: SequenceParticipantRenderModel<'_>,
     layout: &SequenceLayout,
     chars: &SequenceChars,
     visible_actors: &[bool],
     frame: ParticipantBoxFrame,
     resources: &mut ResourceContext,
 ) -> Result<Vec<SequenceLine>> {
-    let rows = participant_box_rows(diagram, frame, resources)?;
+    let rows = participant_box_rows(participants.diagram, frame, resources)?;
     let width = resources.checked_grid_add(layout.total_width, 1)?;
     resources.grid_extent(width, rows.len())?;
-    charge_work_product(resources, diagram.participants.len(), rows.len())?;
+    charge_work_product(
+        resources,
+        participants.diagram.participants.len(),
+        rows.len(),
+    )?;
     let mut rendered = Vec::new();
     rendered
         .try_reserve_exact(rows.len())
@@ -685,11 +747,13 @@ fn render_participant_box_rows(
     let resource_view: &ResourceContext = resources;
     for row in rows {
         rendered.push(build_participant_line(
-            diagram,
+            participants.diagram,
             layout,
             visible_actors,
             resource_view,
-            |index| build_participant_box_row(diagram, layout, chars, index, row, resource_view),
+            |index| {
+                build_participant_box_row(participants, layout, chars, index, row, resource_view)
+            },
         )?);
     }
     Ok(rendered)
@@ -723,7 +787,7 @@ fn participant_label_row_count(diagram: &AsciiSequenceDiagram) -> usize {
     diagram
         .participants
         .iter()
-        .map(|participant| participant.label.lines().len())
+        .map(|participant| participant.label.line_count())
         .max()
         .unwrap_or(1)
         .max(1)
@@ -759,7 +823,7 @@ enum ParticipantBoxRow {
 }
 
 fn build_participant_box_row(
-    diagram: &AsciiSequenceDiagram,
+    participants: SequenceParticipantRenderModel<'_>,
     layout: &SequenceLayout,
     chars: &SequenceChars,
     index: usize,
@@ -789,14 +853,14 @@ fn build_participant_box_row(
             line.try_set_role(right, chars.top_right, AsciiColorRole::SequenceFrame)?;
         }
         ParticipantBoxRow::Label(label_row) => {
-            let label = &diagram
-                .participants
+            let label = participants
+                .labels
                 .get(index)
-                .ok_or_else(|| unsupported("participant layout"))?
-                .label;
+                .ok_or_else(|| unsupported("participant label materialization"))?;
             let label_lines = label.lines();
             let row_count = label_lines.len().max(1);
-            let top_padding = (participant_label_row_count(diagram).saturating_sub(row_count)) / 2;
+            let top_padding =
+                (participant_label_row_count(participants.diagram).saturating_sub(row_count)) / 2;
             let row_label = label_row
                 .checked_sub(top_padding)
                 .and_then(|index| label_lines.get(index));
@@ -831,7 +895,7 @@ fn build_participant_box_row(
 }
 
 fn render_lifecycle_participants(
-    diagram: &AsciiSequenceDiagram,
+    participants: SequenceParticipantRenderModel<'_>,
     layout: &SequenceLayout,
     chars: &SequenceChars,
     active_counts: &[usize],
@@ -839,7 +903,7 @@ fn render_lifecycle_participants(
     actor_indices: &[usize],
     resources: &mut ResourceContext,
 ) -> Result<Vec<SequenceLine>> {
-    let rows = participant_box_rows(diagram, ParticipantBoxFrame::Header, resources)?;
+    let rows = participant_box_rows(participants.diagram, ParticipantBoxFrame::Header, resources)?;
     charge_work_product(resources, actor_indices.len(), rows.len())?;
     let base_width = resources.checked_grid_add(layout.total_width, 1)?;
     resources.grid_extent(base_width, rows.len())?;
@@ -852,7 +916,7 @@ fn render_lifecycle_participants(
         let mut width = base_width;
         for index in actor_indices {
             let segment =
-                build_participant_box_row(diagram, layout, chars, *index, row, resources)?;
+                build_participant_box_row(participants, layout, chars, *index, row, resources)?;
             let participant_left = participant_left(layout, *index, resources)?;
             let segment_right = resources.checked_grid_add(participant_left, segment.len())?;
             width = width.max(segment_right);
@@ -864,7 +928,7 @@ fn render_lifecycle_participants(
         )?;
         for index in actor_indices {
             let segment =
-                build_participant_box_row(diagram, layout, chars, *index, row, resources)?;
+                build_participant_box_row(participants, layout, chars, *index, row, resources)?;
             line.try_write_line(participant_left(layout, *index, resources)?, &segment)?;
         }
         rendered.push(trim_right(line)?);
@@ -975,7 +1039,7 @@ mod tests {
     use crate::color::AsciiColorMode;
     use crate::options::AsciiRenderOptions;
     use crate::resource::AsciiResourceLimitId;
-    use crate::sequence::layout::calculate_layout;
+    use crate::sequence::layout::{calculate_layout, calculate_layout_with_resources};
     use crate::sequence::model::{
         SequenceActorLifecycle, SequenceArrowHead, SequenceCentralDecoration,
         SequenceControlSeparator, SequenceControlStart, SequenceEvent, SequenceLineStyle,
@@ -1275,6 +1339,71 @@ mod tests {
                     && details.actual == batch_cells * 2
                     && details.max == batch_cells
         ));
+    }
+
+    #[test]
+    fn participant_labels_materialize_after_aggregate_box_admission() {
+        let diagram = diagram(2);
+        let options = AsciiRenderOptions::ascii();
+        let mut measuring = ResourceContext::new(options.resources);
+        let layout = calculate_layout_with_resources(&diagram, &options, &mut measuring).unwrap();
+        let visible_actors = initial_visible_actors(&diagram, &measuring).unwrap();
+        let batch =
+            participant_box_batch_extent(&diagram, &layout, &visible_actors, &measuring).unwrap();
+        let batch_cells = batch
+            .materialized_width()
+            .checked_mul(batch.height())
+            .unwrap();
+
+        let exact_materialized = std::cell::Cell::new(false);
+        build_participant_header_with_grid_limit(
+            &diagram,
+            &options,
+            batch_cells,
+            &exact_materialized,
+        )
+        .expect("the exact participant-box grid should be admitted");
+        assert!(exact_materialized.get());
+
+        let below_materialized = std::cell::Cell::new(false);
+        let error = build_participant_header_with_grid_limit(
+            &diagram,
+            &options,
+            batch_cells - 1,
+            &below_materialized,
+        )
+        .expect_err("the participant-box grid should reject its limit minus one");
+        assert!(!below_materialized.get());
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxGridCells
+                    && details.actual == batch_cells
+                    && details.max == batch_cells - 1
+        ));
+    }
+
+    fn build_participant_header_with_grid_limit(
+        diagram: &AsciiSequenceDiagram,
+        options: &AsciiRenderOptions,
+        maximum: usize,
+        materialized: &std::cell::Cell<bool>,
+    ) -> Result<()> {
+        let limited =
+            (*options).with_resource_limit(AsciiResourceLimitId::MaxGridCells, maximum)?;
+        let mut resources = ResourceContext::new(limited.resources);
+        let layout = calculate_layout_with_resources(diagram, &limited, &mut resources)?;
+        let visible_actors = initial_visible_actors(diagram, &resources)?;
+        let chars = ascii_chars();
+        SequenceRowEmitter::new_with_label_materializer(
+            diagram,
+            &layout,
+            &chars,
+            &visible_actors,
+            &mut resources,
+            || materialized.set(true),
+        )?;
+        Ok(())
     }
 
     #[test]

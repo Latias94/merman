@@ -6,7 +6,9 @@ use crate::color::AsciiRgb;
 use crate::error::{AsciiError, Result};
 use crate::options::TerminalWidthProfile;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
-use crate::safe_text::{charge_text_layout, try_build_normalized_label_lines};
+use crate::safe_text::{
+    LabelBreakPolicy, charge_text_layout, try_plan_normalized_label_lines_with_policy,
+};
 use crate::style_color::{CssColor, parse_css_color, parse_css_color_value};
 use merman_core::diagrams::sequence::{
     SequenceCentralDecoration as CoreSequenceCentralDecoration, SequenceDiagramRenderModel,
@@ -59,8 +61,23 @@ pub(super) struct SequenceParticipant {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SequenceParticipantLabel {
+    raw: String,
+    wrap_width: Option<usize>,
+    width_profile: TerminalWidthProfile,
+    metrics: SequenceParticipantLabelMetrics,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SequenceParticipantLabelMetrics {
+    materialized_bytes: usize,
+    document_cells: usize,
+    line_count: usize,
+    max_width: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct MaterializedSequenceParticipantLabel {
     lines: Vec<String>,
-    width: usize,
 }
 
 impl SequenceParticipantLabel {
@@ -70,16 +87,29 @@ impl SequenceParticipantLabel {
         width_profile: TerminalWidthProfile,
         resources: &mut ResourceContext,
     ) -> Result<Self> {
-        let normalized = try_build_normalized_label_lines(
+        let wrap_width = wrap.then_some(SEQUENCE_ACTOR_WRAP_TEXT_WIDTH);
+        let plan = try_plan_normalized_label_lines_with_policy(
             raw,
             width_profile,
             false,
-            wrap.then_some(SEQUENCE_ACTOR_WRAP_TEXT_WIDTH),
+            wrap_width,
+            LabelBreakPolicy::MermaidLabelBreaks,
             resources,
         )?
         .expect("non-trimmed labels always retain one row");
-        let (lines, width) = normalized.into_parts();
-        Ok(Self { lines, width })
+        plan.check_materialization_limits(resources)?;
+        let metrics = plan.metrics();
+        Ok(Self {
+            raw: try_clone_projection_string(raw)?,
+            wrap_width,
+            width_profile,
+            metrics: SequenceParticipantLabelMetrics {
+                materialized_bytes: metrics.materialized_bytes,
+                document_cells: metrics.document_cells,
+                line_count: metrics.line_count,
+                max_width: metrics.max_width,
+            },
+        })
     }
 
     #[cfg(test)]
@@ -92,12 +122,53 @@ impl SequenceParticipantLabel {
             .expect("test participant label should fit the unbounded resource policy")
     }
 
-    pub(super) fn lines(&self) -> &[String] {
-        &self.lines
+    pub(super) fn line_count(&self) -> usize {
+        self.metrics.line_count
     }
 
     pub(super) fn width(&self) -> usize {
-        self.width
+        self.metrics.max_width
+    }
+
+    pub(super) fn materialize(
+        &self,
+        resources: &ResourceContext,
+    ) -> Result<MaterializedSequenceParticipantLabel> {
+        let plan = try_plan_normalized_label_lines_with_policy(
+            &self.raw,
+            self.width_profile,
+            false,
+            self.wrap_width,
+            LabelBreakPolicy::MermaidLabelBreaks,
+            resources,
+        )?
+        .expect("non-trimmed labels always retain one row");
+        plan.check_materialization_limits(resources)?;
+        let metrics = plan.metrics();
+        if metrics.materialized_bytes != self.metrics.materialized_bytes
+            || metrics.document_cells != self.metrics.document_cells
+            || metrics.line_count != self.metrics.line_count
+            || metrics.max_width != self.metrics.max_width
+        {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "sequence",
+                feature: "participant label plan",
+            });
+        }
+        let (lines, width) = plan.materialize(&self.raw, resources)?.into_parts();
+        if lines.len() != self.metrics.line_count || width != self.metrics.max_width {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "sequence",
+                feature: "participant label plan",
+            });
+        }
+        Ok(MaterializedSequenceParticipantLabel { lines })
+    }
+}
+
+impl MaterializedSequenceParticipantLabel {
+    pub(super) fn lines(&self) -> &[String] {
+        &self.lines
     }
 }
 

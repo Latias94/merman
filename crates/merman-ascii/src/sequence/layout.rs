@@ -1,5 +1,4 @@
 use super::model::AsciiSequenceDiagram;
-use super::text::charge_text_work;
 use super::{BOX_BORDER_WIDTH, BOX_PADDING_LEFT_RIGHT, MIN_BOX_WIDTH};
 use crate::error::{AsciiError, Result};
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
@@ -31,11 +30,6 @@ pub(super) fn calculate_layout_with_resources(
 ) -> Result<SequenceLayout> {
     charge_work_product(resources, diagram.participants.len(), 2)?;
     resources.grid_extent(diagram.participants.len(), 1)?;
-    for participant in &diagram.participants {
-        for line in participant.label.lines() {
-            charge_text_work(line, options.terminal_width_profile, resources)?;
-        }
-    }
 
     let mut participant_widths = Vec::new();
     participant_widths
