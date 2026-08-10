@@ -18,6 +18,24 @@ impl GraphDirection {
             direction => direction,
         }
     }
+
+    /// Converts an authored local direction into the coordinate space before the root output
+    /// mirror is applied.
+    pub(crate) const fn before_root_output_transform(self, root: Self) -> Self {
+        match root {
+            Self::RightLeft => match self {
+                Self::LeftRight => Self::RightLeft,
+                Self::RightLeft => Self::LeftRight,
+                direction => direction,
+            },
+            Self::BottomTop => match self {
+                Self::TopDown => Self::BottomTop,
+                Self::BottomTop => Self::TopDown,
+                direction => direction,
+            },
+            Self::LeftRight | Self::TopDown => self,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

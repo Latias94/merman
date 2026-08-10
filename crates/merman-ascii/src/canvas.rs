@@ -693,15 +693,6 @@ impl Canvas {
 /// same-sized canvas would duplicate their cells and grapheme arenas. This entry point reuses the
 /// final canvas encoding rules so every color mode keeps identical escaping and output budgeting,
 /// while the document budget is checked before the first encoded byte is emitted.
-pub(crate) fn finish_styled_lines_with_options(
-    lines: &[crate::text::StyledLine],
-    options: &AsciiRenderOptions,
-    trim: bool,
-) -> crate::Result<String> {
-    let mut resources = ResourceContext::new(options.resources);
-    finish_styled_lines_with_resources(lines, options, trim, &mut resources)
-}
-
 pub(crate) fn finish_styled_lines_with_resources(
     lines: &[crate::text::StyledLine],
     options: &AsciiRenderOptions,

@@ -1,7 +1,15 @@
 use crate::options::TerminalWidthProfile;
+use crate::resource::ResourceContext;
+use crate::safe_text::try_measure_normalized_label_lines;
 use crate::text::{display_width_with_profile, split_label_lines, wrap_label_lines_with_profile};
 
 pub(super) const GRAPH_LABEL_LINE_GAP: usize = 1;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct GraphLabelMetrics {
+    pub(super) width: usize,
+    pub(super) content_height: usize,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct GraphLabel {
@@ -68,6 +76,44 @@ impl GraphLabel {
         self.compartment_break_after
     }
 
+    pub(super) fn try_measure_with_profile(
+        raw: &str,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> crate::Result<GraphLabelMetrics> {
+        let metrics = try_measure_normalized_label_lines(raw, width_profile, false, resources)?
+            .ok_or(crate::error::AsciiError::UnsupportedFeature {
+                diagram_type: "flowchart",
+                feature: "empty graph label metrics",
+            })?;
+        graph_label_metrics(metrics.max_width, metrics.line_count, resources)
+    }
+
+    pub(super) fn try_measure_compartmented_with_profile(
+        title: &str,
+        body: &str,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> crate::Result<GraphLabelMetrics> {
+        let title = try_measure_normalized_label_lines(title, width_profile, false, resources)?
+            .ok_or(crate::error::AsciiError::UnsupportedFeature {
+                diagram_type: "flowchart",
+                feature: "empty graph title metrics",
+            })?;
+        let body = try_measure_normalized_label_lines(body, width_profile, false, resources)?
+            .ok_or(crate::error::AsciiError::UnsupportedFeature {
+                diagram_type: "flowchart",
+                feature: "empty graph body metrics",
+            })?;
+        let line_count = title
+            .line_count
+            .checked_add(body.line_count)
+            .ok_or_else(|| {
+                resources.overflow(crate::resource::AsciiResourceLimitId::MaxDocumentCells)
+            })?;
+        graph_label_metrics(title.max_width.max(body.max_width), line_count, resources)
+    }
+
     fn from_lines(
         mut lines: Vec<String>,
         width_profile: TerminalWidthProfile,
@@ -88,6 +134,23 @@ impl GraphLabel {
             compartment_break_after,
         }
     }
+}
+
+fn graph_label_metrics(
+    width: usize,
+    line_count: usize,
+    resources: &ResourceContext,
+) -> crate::Result<GraphLabelMetrics> {
+    let content_height = if line_count == 0 {
+        0
+    } else {
+        let gaps = resources.checked_grid_mul(line_count - 1, GRAPH_LABEL_LINE_GAP)?;
+        resources.checked_grid_add(line_count, gaps)?
+    };
+    Ok(GraphLabelMetrics {
+        width,
+        content_height,
+    })
 }
 
 #[cfg(test)]

@@ -67,17 +67,17 @@ fn push_commit_text(
     if let Some(kind) = commit_kind(commit.commit_type) {
         line.write_fmt(format_args!(" [{kind}]"))?;
     }
-    if !commit.message.is_empty() {
-        line.push_str(" ")?;
-        line.push_str(&commit.message)?;
-    }
+    line.push_str(" message=")?;
+    line.push_str(&commit.message)?;
     if !commit.tags.is_empty() {
-        line.push_str(" tags=")?;
+        line.push_str(" tags=[")?;
         push_joined(line, &commit.tags)?;
+        line.push_str("]")?;
     }
     if !commit.parents.is_empty() {
-        line.push_str(" parents=")?;
+        line.push_str(" parents=[")?;
         push_joined(line, &commit.parents)?;
+        line.push_str("]")?;
     }
     if let Some(custom_type) = commit.custom_type {
         line.push_str(" typeOverride=")?;

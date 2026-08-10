@@ -1,4 +1,4 @@
-use super::super::label::GraphLabel;
+use super::super::label::{GraphLabel, GraphLabelMetrics};
 use super::super::model::{
     AsciiGraph, AsciiGraphEdge, AsciiGraphNode, GraphDirection, GraphNodeSide,
 };
@@ -1537,8 +1537,29 @@ fn node_shape_size(
     options: &AsciiRenderOptions,
     resources: &ResourceContext,
 ) -> Result<GraphNodeShapeSize> {
-    let label = graph_node_label(node, options.terminal_width_profile);
-    GraphNodeShapeSemantics::new(node.shape).try_size_for_label(&label, options, resources)
+    let metrics = graph_node_label_metrics(node, options.terminal_width_profile, resources)?;
+    GraphNodeShapeSemantics::new(node.shape).try_size_for_label_metrics(
+        metrics.width,
+        metrics.content_height,
+        options,
+        resources,
+    )
+}
+
+fn graph_node_label_metrics(
+    node: &AsciiGraphNode,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<GraphLabelMetrics> {
+    match node.semantics.compartments.as_ref() {
+        Some(compartments) => GraphLabel::try_measure_compartmented_with_profile(
+            &compartments.title,
+            &compartments.body,
+            width_profile,
+            resources,
+        ),
+        None => GraphLabel::try_measure_with_profile(&node.label, width_profile, resources),
+    }
 }
 
 fn graph_node_label(node: &AsciiGraphNode, width_profile: TerminalWidthProfile) -> GraphLabel {

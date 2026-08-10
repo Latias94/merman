@@ -1038,10 +1038,55 @@ fn git_graph_render_model_renders_branches_commits_and_warnings() {
             "accTitle: Git title\n",
             "accDescr: Git description\n",
             "branches: main, feature\n",
-            "  - 0 main c0 [highlight] init tags=v1 parents=seed typeOverride=7\n",
+            "  - 0 main c0 [highlight] message=init tags=[v1] parents=[seed] typeOverride=7\n",
             "    idSource=explicit\n",
             "warnings:\n",
             "  - duplicate head",
         )
     );
+}
+
+#[test]
+fn git_graph_commit_message_and_metadata_are_framed_without_collisions() {
+    let base = GitGraphRenderModel {
+        diagram_type: "gitGraph".to_string(),
+        commits: Vec::new(),
+        branches: Vec::new(),
+        current_branch: String::new(),
+        direction: "TB".to_string(),
+        title: None,
+        acc_title: None,
+        acc_descr: None,
+        warning_facts: Vec::new(),
+    };
+    let mut message = base.clone();
+    message.commits.push(GitGraphCommitRenderModel {
+        id: "c0".to_string(),
+        message: "tags=v1".to_string(),
+        seq: 0,
+        commit_type: 0,
+        tags: Vec::new(),
+        parents: Vec::new(),
+        branch: "main".to_string(),
+        custom_type: None,
+        custom_id: None,
+    });
+    let mut metadata = base;
+    metadata.commits.push(GitGraphCommitRenderModel {
+        id: "c0".to_string(),
+        message: String::new(),
+        seq: 0,
+        commit_type: 0,
+        tags: vec!["v1".to_string()],
+        parents: Vec::new(),
+        branch: "main".to_string(),
+        custom_type: None,
+        custom_id: None,
+    });
+
+    let message_output = render(RenderSemanticModel::GitGraph(message));
+    let metadata_output = render(RenderSemanticModel::GitGraph(metadata));
+    assert_ne!(message_output, metadata_output);
+    assert!(message_output.contains("message=tags=v1"));
+    assert!(metadata_output.contains("message= tags=[v1]"));
 }

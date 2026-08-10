@@ -22,6 +22,11 @@ const STATE_DIAGRAM_TYPE: &str = "state";
 const STATE_NODE_PROJECTION_WORK_UNITS: usize = 10;
 const STATE_EDGE_PROJECTION_WORK_UNITS: usize = 2;
 
+struct StateDirectionProjection {
+    node_by_id: HashMap<String, GraphDirection>,
+    group_by_id: HashMap<String, GraphDirection>,
+}
+
 #[cfg(test)]
 pub(crate) fn from_state_model_with_resources(
     model: &StateDiagramRenderModel,
@@ -44,7 +49,7 @@ pub(crate) fn from_state_model_with_context(
     let note_node_parent_by_id = note_node_parent_by_id(model)?;
     let note_side_constraints = note_side_constraints(model, &note_node_parent_by_id)?;
     let direction = parse_state_direction(&model.direction)?;
-    let state_node_direction_by_id = state_node_direction_by_id(model, direction)?;
+    let state_directions = state_direction_projection(model, direction)?;
     let mut graph = AsciiGraph::new_for_diagram(STATE_DIAGRAM_TYPE, direction);
     graph.try_reserve_projection(model.nodes.len(), model.edges.len(), model.nodes.len())?;
     graph.use_incoming_edge_roots();
@@ -62,7 +67,8 @@ pub(crate) fn from_state_model_with_context(
             label,
             state_node_shape(
                 node,
-                state_node_direction_by_id
+                state_directions
+                    .node_by_id
                     .get(node.id.as_str())
                     .copied()
                     .unwrap_or_else(|| direction.canonical()),
@@ -80,11 +86,7 @@ pub(crate) fn from_state_model_with_context(
         graph.add_group_with_kind_and_style(
             &node.id,
             state_group_title(node),
-            node.dir
-                .as_deref()
-                .filter(|_| node.explicit_dir == Some(true))
-                .map(parse_state_direction)
-                .transpose()?,
+            state_directions.group_by_id.get(node.id.as_str()).copied(),
             members,
             state_group_kind(node),
             state_group_style(node),
@@ -466,10 +468,10 @@ fn node_depth(
     Ok(depth)
 }
 
-fn state_node_direction_by_id(
+fn state_direction_projection(
     model: &StateDiagramRenderModel,
     root_direction: GraphDirection,
-) -> Result<HashMap<String, GraphDirection>> {
+) -> Result<StateDirectionProjection> {
     let mut node_by_id = HashMap::<&str, &StateDiagramRenderNode>::new();
     node_by_id
         .try_reserve(model.nodes.len())
@@ -478,35 +480,62 @@ fn state_node_direction_by_id(
         node_by_id.insert(node.id.as_str(), node);
     }
 
-    let mut directions = HashMap::new();
-    directions
+    let mut node_directions = HashMap::new();
+    node_directions
+        .try_reserve(model.nodes.len())
+        .map_err(|_| projection_allocation_failed())?;
+    let mut group_directions = HashMap::new();
+    group_directions
         .try_reserve(model.nodes.len())
         .map_err(|_| projection_allocation_failed())?;
     for node in &model.nodes {
-        let mut direction = root_direction;
-        let mut parent_id = node.parent_id.as_deref();
-        let mut visited = HashSet::new();
-        visited
-            .try_reserve(model.nodes.len())
-            .map_err(|_| projection_allocation_failed())?;
-        while let Some(parent) = parent_id {
-            if !visited.insert(parent) {
-                break;
-            }
-            let Some(parent_node) = node_by_id.get(parent).copied() else {
-                break;
-            };
-            if parent_node.explicit_dir == Some(true) {
-                if let Some(parent_direction) = parent_node.dir.as_deref() {
-                    direction = parse_state_direction(parent_direction)?;
-                }
-                break;
-            }
-            parent_id = parent_node.parent_id.as_deref();
+        let inherited = nearest_explicit_ancestor_direction(node, &node_by_id, model.nodes.len())?;
+        node_directions.insert(node.id.clone(), inherited.unwrap_or(root_direction));
+
+        let group_direction = if node.explicit_dir == Some(true) {
+            Some(parse_state_direction(node.dir.as_deref().ok_or_else(
+                || unsupported("state explicit direction without value"),
+            )?)?)
+        } else {
+            inherited
+        };
+        if let Some(group_direction) = group_direction {
+            group_directions.insert(node.id.clone(), group_direction);
         }
-        directions.insert(node.id.clone(), direction);
     }
-    Ok(directions)
+    Ok(StateDirectionProjection {
+        node_by_id: node_directions,
+        group_by_id: group_directions,
+    })
+}
+
+fn nearest_explicit_ancestor_direction(
+    node: &StateDiagramRenderNode,
+    node_by_id: &HashMap<&str, &StateDiagramRenderNode>,
+    node_count: usize,
+) -> Result<Option<GraphDirection>> {
+    let mut parent_id = node.parent_id.as_deref();
+    let mut visited = HashSet::new();
+    visited
+        .try_reserve(node_count)
+        .map_err(|_| projection_allocation_failed())?;
+    while let Some(parent) = parent_id {
+        if !visited.insert(parent) {
+            break;
+        }
+        let Some(parent_node) = node_by_id.get(parent).copied() else {
+            break;
+        };
+        if parent_node.explicit_dir == Some(true) {
+            return parent_node
+                .dir
+                .as_deref()
+                .map(parse_state_direction)
+                .transpose();
+        }
+        parent_id = parent_node.parent_id.as_deref();
+    }
+    Ok(None)
 }
 
 fn is_group_container(

@@ -101,12 +101,34 @@ enum LabelOutputSegment<'a> {
     LineBreak,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct LabelMetrics {
-    normalized_bytes: usize,
-    document_cells: usize,
-    line_count: usize,
-    max_width: usize,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct NormalizedLabelMetrics {
+    pub(crate) normalized_bytes: usize,
+    pub(crate) document_cells: usize,
+    pub(crate) line_count: usize,
+    pub(crate) max_width: usize,
+}
+
+/// Measures a terminal label without materializing its normalized rows.
+///
+/// Callers that own a grid extent can use this descriptor to size the grid first, then call
+/// `try_build_normalized_label_lines` only after that extent has been admitted.
+pub(crate) fn try_measure_normalized_label_lines(
+    raw: &str,
+    width_profile: TerminalWidthProfile,
+    trim: bool,
+    resources: &ResourceContext,
+) -> Result<Option<NormalizedLabelMetrics>> {
+    let selection = match normalized_label_selection(raw, trim, resources)? {
+        Some(selection) => selection,
+        None => return Ok(None),
+    };
+    Ok(Some(preflight_label(
+        raw,
+        selection,
+        width_profile,
+        resources,
+    )?))
 }
 
 fn normalized_label_selection(
@@ -160,7 +182,7 @@ fn preflight_label(
     selection: LabelSelection,
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
-) -> Result<LabelMetrics> {
+) -> Result<NormalizedLabelMetrics> {
     resources.charge_layout_work(raw.len().max(1))?;
     let mut normalized_bytes = 0usize;
     let mut document_cells = 0usize;
@@ -223,7 +245,7 @@ fn preflight_label(
     })?;
     max_width = max_width.max(line_width);
 
-    Ok(LabelMetrics {
+    Ok(NormalizedLabelMetrics {
         normalized_bytes,
         document_cells,
         line_count,
@@ -234,7 +256,7 @@ fn preflight_label(
 fn materialize_label(
     raw: &str,
     selection: LabelSelection,
-    metrics: LabelMetrics,
+    metrics: NormalizedLabelMetrics,
     policy: AsciiResourcePolicy,
 ) -> Result<Vec<String>> {
     let mut normalized = String::new();

@@ -1085,8 +1085,9 @@ fn apply_subgraph_direction_overrides(
         let start_x = start_x.unwrap_or_default();
         let start_y = start_y.unwrap_or_default();
 
-        let mut local = place_group_nodes(&override_graph, direction, resources)?;
-        mirror_local_placements(&mut local, direction, resources)?;
+        let layout_direction = direction.before_root_output_transform(graph.direction);
+        let mut local = place_group_nodes(&override_graph, layout_direction, resources)?;
+        mirror_local_placements(&mut local, layout_direction, resources)?;
         for (member_index, coord) in local {
             let Some(member) = members.get(member_index) else {
                 continue;

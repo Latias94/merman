@@ -1,3 +1,4 @@
+#[cfg(test)]
 use super::label::GraphLabel;
 use super::model::{GraphDirection, GraphNodeShape};
 use crate::error::{AsciiError, Result};
@@ -374,23 +375,22 @@ impl GraphNodeShapeSemantics {
         let resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
             merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
         ));
-        self.try_size_for_label(label, options, &resources)
+        self.try_size_for_label_metrics(label.width(), label.content_height(), options, &resources)
             .expect("trusted graph shape geometry must remain representable")
     }
 
-    pub(super) fn try_size_for_label(
+    pub(super) fn try_size_for_label_metrics(
         self,
-        label: &GraphLabel,
+        label_width: usize,
+        label_content_height: usize,
         options: &AsciiRenderOptions,
         resources: &ResourceContext,
     ) -> Result<GraphNodeShapeSize> {
         let border_padding = resources.checked_grid_mul(options.box_border_padding, 2)?;
-        let framed_width = resources.checked_grid_add(
-            resources.checked_grid_add(label.width(), border_padding)?,
-            2,
-        )?;
+        let framed_width = resources
+            .checked_grid_add(resources.checked_grid_add(label_width, border_padding)?, 2)?;
         let framed_height = resources.checked_grid_add(
-            resources.checked_grid_add(label.content_height(), border_padding)?,
+            resources.checked_grid_add(label_content_height, border_padding)?,
             2,
         )?;
 
@@ -431,8 +431,8 @@ impl GraphNodeShapeSemantics {
                 }
             }
             GraphNodeShape::Text => GraphNodeShapeSize {
-                width: label.width().max(1),
-                height: label.content_height().max(1),
+                width: label_width.max(1),
+                height: label_content_height.max(1),
             },
             GraphNodeShape::LeanRight | GraphNodeShape::LeanLeft => GraphNodeShapeSize {
                 width: resources.checked_grid_add(framed_width, framed_height.saturating_sub(1))?,

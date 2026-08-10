@@ -214,7 +214,12 @@ impl<'a> FlowchartMembershipIndex<'a> {
             .try_reserve(model.subgraphs.len())
             .map_err(|_| projection_allocation_failed())?;
         for (parent_index, subgraph) in model.subgraphs.iter().enumerate() {
-            group_ids.insert(subgraph.id.as_str());
+            if !group_ids.insert(subgraph.id.as_str()) {
+                return Err(AsciiError::UnsupportedFeature {
+                    diagram_type: "flowchart",
+                    feature: "duplicate subgraph ids",
+                });
+            }
             for member in &subgraph.nodes {
                 // Preserve the former first-match parent semantics without rescanning candidates.
                 parent_group_by_member
@@ -379,7 +384,12 @@ fn validate_supported_flowchart_model(
         .map_err(|_| projection_allocation_failed())?;
     for node in &model.nodes {
         resources.charge_layout_work(1)?;
-        node_ids.insert(node.id.as_str());
+        if !node_ids.insert(node.id.as_str()) {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "flowchart",
+                feature: "duplicate node ids",
+            });
+        }
     }
     for edge in &model.edges {
         resources.charge_layout_work(1)?;
@@ -552,6 +562,24 @@ mod tests {
             below_resources.layout_work_used(),
             GROUP_COUNT + member_count
         );
+    }
+
+    #[test]
+    fn duplicate_flowchart_node_ids_are_rejected_before_graph_projection() {
+        let mut model = model_with_edge(flow_edge("A", "B"));
+        model.nodes.push(flow_node("A"));
+        let options = AsciiRenderOptions::ascii();
+        let mut resources = ResourceContext::new(options.resources);
+
+        let error = from_flowchart_model(&model, &options, &mut resources)
+            .expect_err("duplicate node ids must not select different layout and route entries");
+        assert!(matches!(
+            error,
+            AsciiError::UnsupportedFeature {
+                diagram_type: "flowchart",
+                feature: "duplicate node ids"
+            }
+        ));
     }
 
     #[test]

@@ -10,9 +10,9 @@ pub(crate) use document::{
     BudgetedTextDocument, BudgetedWrappedText, charge_text_layout, visit_safe_line_graphemes,
 };
 pub(crate) use encode::push_html_escaped_text;
-pub(crate) use label::try_build_normalized_label_lines;
 #[cfg(test)]
 pub(crate) use label::try_build_normalized_label_lines_with_probe;
+pub(crate) use label::{try_build_normalized_label_lines, try_measure_normalized_label_lines};
 pub use normalization::{normalize_terminal_diagnostic, normalize_terminal_text};
 pub(crate) use width::{
     SafeLine, SafeText, terminal_char_display_width, terminal_line_display_width,

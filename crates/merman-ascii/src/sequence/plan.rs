@@ -15,7 +15,7 @@ use super::text::{
     SequenceBatchExtent, SequenceExtentLedger, SequenceExtentReservation, SequenceLine, blank_line,
     charge_text_work, padded_line, trim_right,
 };
-use crate::canvas::finish_styled_lines_with_options;
+use crate::canvas::finish_styled_lines_with_resources;
 use crate::color::AsciiColorMode;
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
@@ -594,7 +594,7 @@ impl SequenceRowPlan {
         if let Some(title) = diagram.title.as_deref() {
             prepend_title_line(&mut lines, title, resources)?;
         }
-        finish_sequence_lines(lines, options)
+        finish_sequence_lines(lines, options, resources)
     }
 }
 
@@ -872,16 +872,22 @@ fn render_lifecycle_participants(
     Ok(rendered)
 }
 
-fn finish_sequence_lines(lines: Vec<SequenceLine>, options: &AsciiRenderOptions) -> Result<String> {
+fn finish_sequence_lines(
+    lines: Vec<SequenceLine>,
+    options: &AsciiRenderOptions,
+    resources: &mut ResourceContext,
+) -> Result<String> {
     if options.color_mode == AsciiColorMode::Plain {
-        let resources = ResourceContext::new(options.resources);
+        let document_resources = resources.scoped();
         let mut output = CheckedOutput::new(options.resources);
         if lines.is_empty() {
+            document_resources.charge_layout_work(1)?;
             output.push_char('\n')?;
             return Ok(output.finish());
         }
         for line in lines {
-            resources.charge_document_cells(line.len())?;
+            document_resources.charge_document_cells(line.len())?;
+            document_resources.charge_layout_work(line.len().max(1))?;
             line.try_write_plain_to(&mut output)?;
             output.push_char('\n')?;
         }
@@ -892,7 +898,7 @@ fn finish_sequence_lines(lines: Vec<SequenceLine>, options: &AsciiRenderOptions)
         return Ok(String::new());
     }
 
-    finish_styled_lines_with_options(&lines, options, true)
+    finish_styled_lines_with_resources(&lines, options, true, resources)
 }
 
 fn prepend_title_line(
@@ -1346,6 +1352,80 @@ mod tests {
     }
 
     #[test]
+    fn row_plan_finalization_uses_the_render_wide_layout_work_ledger() {
+        let diagram = diagram(1);
+        let options = AsciiRenderOptions::ascii();
+        let layout = calculate_layout(&diagram, &options).unwrap();
+        let mut resources = ResourceContext::new(options.resources);
+        let plan = SequenceRowPlan::build(&diagram, &layout, &ascii_chars(), false, &mut resources)
+            .unwrap();
+        let before_finalization = resources.layout_work_used();
+
+        plan.render(&diagram, &layout, &ascii_chars(), &options, &mut resources)
+            .unwrap();
+
+        let total_work = resources.layout_work_used();
+        assert!(total_work > before_finalization);
+
+        let exact = options
+            .with_resource_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, total_work)
+            .unwrap();
+        let exact_layout = calculate_layout(&diagram, &exact).unwrap();
+        let mut exact_resources = ResourceContext::new(exact.resources);
+        let exact_plan = SequenceRowPlan::build(
+            &diagram,
+            &exact_layout,
+            &ascii_chars(),
+            false,
+            &mut exact_resources,
+        )
+        .unwrap();
+        exact_plan
+            .render(
+                &diagram,
+                &exact_layout,
+                &ascii_chars(),
+                &exact,
+                &mut exact_resources,
+            )
+            .unwrap();
+        assert_eq!(exact_resources.layout_work_used(), total_work);
+
+        let below = options
+            .with_resource_limit(
+                AsciiResourceLimitId::MaxLayoutWorkUnits,
+                total_work.saturating_sub(1),
+            )
+            .unwrap();
+        let below_layout = calculate_layout(&diagram, &below).unwrap();
+        let mut below_resources = ResourceContext::new(below.resources);
+        let below_plan = SequenceRowPlan::build(
+            &diagram,
+            &below_layout,
+            &ascii_chars(),
+            false,
+            &mut below_resources,
+        )
+        .unwrap();
+        let error = below_plan
+            .render(
+                &diagram,
+                &below_layout,
+                &ascii_chars(),
+                &below,
+                &mut below_resources,
+            )
+            .expect_err("finalization must observe prior layout work");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual == total_work
+                    && details.max == total_work - 1
+        ));
+    }
+
+    #[test]
     fn styled_sequence_rows_stream_through_one_output_budget_in_every_mode() {
         for mode in [
             AsciiColorMode::Plain,
@@ -1355,15 +1435,14 @@ mod tests {
             AsciiColorMode::Html,
         ] {
             let base = AsciiRenderOptions::unicode().with_color_mode(mode);
-            let expected = finish_sequence_lines(styled_test_lines(&base), &base)
+            let expected = finish_styled_test_lines(&base)
                 .expect("unmodified profile should encode styled sequence rows");
 
             let exact = base
                 .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
                 .expect("exact output limit should be valid");
             assert_eq!(
-                finish_sequence_lines(styled_test_lines(&exact), &exact)
-                    .expect("exact output budget should encode"),
+                finish_styled_test_lines(&exact).expect("exact output budget should encode"),
                 expected
             );
 
@@ -1373,7 +1452,7 @@ mod tests {
                     expected.len().saturating_sub(1),
                 )
                 .expect("limit below encoded output should be valid");
-            let error = finish_sequence_lines(styled_test_lines(&below), &below)
+            let error = finish_styled_test_lines(&below)
                 .expect_err("aggregate output budget must reject before partial output escapes");
             assert!(matches!(
                 error,
@@ -1383,6 +1462,11 @@ mod tests {
                         && details.max == expected.len() - 1
             ));
         }
+    }
+
+    fn finish_styled_test_lines(options: &AsciiRenderOptions) -> Result<String> {
+        let mut resources = ResourceContext::new(options.resources);
+        finish_sequence_lines(styled_test_lines(options), options, &mut resources)
     }
 
     fn styled_test_lines(options: &AsciiRenderOptions) -> Vec<SequenceLine> {
