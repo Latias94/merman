@@ -492,15 +492,27 @@ fn sequence_actor_lifecycle_validates_hand_built_indices() {
     model.destroyed_actors.insert("B".to_string(), 0);
     cases.push((model, "actor lifecycle visibility"));
 
-    let mut model = basic_sequence_model();
-    add_sequence_participant(&mut model, "B");
-    let mut note = message(Some("B"), Some("B"), 2);
-    note.placement = Some(2);
-    model.messages.push(note);
-    model.created_actors.insert("B".to_string(), 0);
-    cases.push((model, "actor lifecycle message kinds"));
-
     for (model, feature) in cases {
         assert_unsupported_sequence_model(model, feature);
     }
+}
+
+#[test]
+fn sequence_actor_creation_keeps_the_pinned_message_index_before_a_note() {
+    let rendered = render_sequence(
+        concat!(
+            "sequenceDiagram\n",
+            "participant A\n",
+            "create participant B\n",
+            "Note over B: pending\n",
+            "A->>B: ready\n",
+        ),
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("pinned Mermaid allows a note before the associated creating signal");
+
+    assert!(
+        rendered.contains("pending") && rendered.contains("ready"),
+        "the lifecycle index and later creating signal must both remain visible:\n{rendered}"
+    );
 }
