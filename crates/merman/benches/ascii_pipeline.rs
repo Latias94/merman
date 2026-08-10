@@ -12,7 +12,7 @@ struct OutputIdentity {
     sha256: String,
 }
 
-fn fixtures() -> [(&'static str, &'static str); 5] {
+fn fixtures() -> [(&'static str, &'static str); 10] {
     [
         (
             "flowchart_medium",
@@ -27,6 +27,30 @@ fn fixtures() -> [(&'static str, &'static str); 5] {
         (
             "xychart_medium",
             include_str!("fixtures/xychart_medium.mmd"),
+        ),
+        (
+            "flowchart_large",
+            include_str!("fixtures/flowchart_large.mmd"),
+        ),
+        (
+            "sequence_mermaid_api_large",
+            include_str!(
+                "../../../fixtures/sequence/upstream_docs_diagrams_mermaid_api_sequence.mmd"
+            ),
+        ),
+        (
+            "class_dense_namespaces_stress",
+            include_str!("fixtures/stress_class_dense_namespaces_generics_001.mmd"),
+        ),
+        (
+            "er_multiline_demo_large",
+            include_str!("../../../fixtures/er/upstream_html_demos_er_multiline_example_001.mmd"),
+        ),
+        (
+            "xychart_all_configs_large",
+            include_str!(
+                "../../../fixtures/xychart/upstream_html_demos_xychart_xy_charts_demos_with_all_configs_010.mmd"
+            ),
         ),
     ]
 }

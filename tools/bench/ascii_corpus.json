@@ -3,7 +3,8 @@
   "default_group": "ascii_end_to_end",
   "suites": {
     "closeout": "One stable medium fixture for each common ASCII family measured by U25.",
-    "comparable": "Fixtures whose baseline and head plain-ASCII output identities match."
+    "comparable": "Fixtures whose baseline and head plain-ASCII output identities match.",
+    "large-closeout": "One tracked large or stress fixture for each common ASCII family measured by U25."
   },
   "lanes": [
     {
@@ -21,7 +22,7 @@
       "selector": "ascii_end_to_end/{fixture}",
       "history_aliases": [],
       "size_vector": [],
-      "workload": "common-family-medium-fixture",
+      "workload": "common-family-closeout-fixture",
       "evidence_contract": null,
       "measurement_metrics": ["latency_ns"],
       "semantic_output_dimensions": ["plain_ascii_sha256", "plain_ascii_bytes"]
@@ -77,6 +78,56 @@
       "suites": ["closeout"],
       "features": ["ascii"],
       "quality": ["deterministic", "common-family"]
+    },
+    {
+      "name": "flowchart_large",
+      "family": "flowchart",
+      "size": "large",
+      "category": "ascii-large-closeout",
+      "source": "crates/merman/benches/fixtures/flowchart_large.mmd",
+      "suites": ["large-closeout"],
+      "features": ["ascii", "subgraphs", "large-graph"],
+      "quality": ["deterministic", "common-family", "stress"]
+    },
+    {
+      "name": "sequence_mermaid_api_large",
+      "family": "sequence",
+      "size": "large",
+      "category": "ascii-large-closeout",
+      "source": "fixtures/sequence/upstream_docs_diagrams_mermaid_api_sequence.mmd",
+      "suites": ["large-closeout"],
+      "features": ["ascii", "participants", "messages", "control-frames", "lifecycle"],
+      "quality": ["deterministic", "common-family", "upstream-docs"]
+    },
+    {
+      "name": "class_dense_namespaces_stress",
+      "family": "class",
+      "size": "stress",
+      "category": "ascii-large-closeout",
+      "source": "crates/merman/benches/fixtures/stress_class_dense_namespaces_generics_001.mmd",
+      "suites": ["large-closeout"],
+      "features": ["ascii", "namespaces", "generics", "dense-relations"],
+      "quality": ["deterministic", "common-family", "stress"]
+    },
+    {
+      "name": "er_multiline_demo_large",
+      "family": "er",
+      "size": "large",
+      "category": "ascii-large-closeout",
+      "source": "fixtures/er/upstream_html_demos_er_multiline_example_001.mmd",
+      "suites": ["large-closeout"],
+      "features": ["ascii", "multiline-attributes", "keys", "relationships"],
+      "quality": ["deterministic", "common-family", "upstream-demo"]
+    },
+    {
+      "name": "xychart_all_configs_large",
+      "family": "xychart",
+      "size": "large",
+      "category": "ascii-large-closeout",
+      "source": "fixtures/xychart/upstream_html_demos_xychart_xy_charts_demos_with_all_configs_010.mmd",
+      "suites": ["large-closeout"],
+      "features": ["ascii", "frontmatter-config", "horizontal", "bar-line"],
+      "quality": ["deterministic", "common-family", "upstream-demo"]
     }
   ]
 }
