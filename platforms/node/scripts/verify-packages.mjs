@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { statSync } from "node:fs";
 import path from "node:path";
@@ -8,6 +7,7 @@ import {
   inspectPackageManifests,
   verifyPackedFileOwnership,
 } from "./package-contract.mjs";
+import { spawnNpmSync } from "../../../scripts/npm-command.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -39,7 +39,7 @@ function verifyPackedRoot(root, descriptor) {
 }
 
 function verifyPackage(packageRoot, packageName, role) {
-  const result = spawnSync(npmExecutable(), ["pack", "--json", "--dry-run"], {
+  const result = spawnNpmSync(["pack", "--json", "--dry-run"], {
     cwd: packageRoot,
     encoding: "utf8",
   });
