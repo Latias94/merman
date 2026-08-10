@@ -10,10 +10,13 @@ pub enum ThemeCapability {
     Typography,
     SemanticRules,
     OrdinalPalette,
-    SolidCanvas,
-    GradientCanvas,
+    SolidPaint,
+    TransparentPaint,
+    GradientPaint,
     LayeredCanvas,
-    PatternCanvas,
+    PatternPaint,
+    CanvasBleed,
+    CanvasLayerPlacement,
     BlendMode,
     BorderStyling,
     DashStyling,
@@ -32,15 +35,18 @@ pub enum ThemeCapability {
 }
 
 impl ThemeCapability {
-    pub const ALL: [Self; 23] = [
+    pub const ALL: [Self; 26] = [
         Self::SemanticTokens,
         Self::Typography,
         Self::SemanticRules,
         Self::OrdinalPalette,
-        Self::SolidCanvas,
-        Self::GradientCanvas,
+        Self::SolidPaint,
+        Self::TransparentPaint,
+        Self::GradientPaint,
         Self::LayeredCanvas,
-        Self::PatternCanvas,
+        Self::PatternPaint,
+        Self::CanvasBleed,
+        Self::CanvasLayerPlacement,
         Self::BlendMode,
         Self::BorderStyling,
         Self::DashStyling,
@@ -64,10 +70,13 @@ impl ThemeCapability {
             Self::Typography => "typography",
             Self::SemanticRules => "semantic-rules",
             Self::OrdinalPalette => "ordinal-palette",
-            Self::SolidCanvas => "solid-canvas",
-            Self::GradientCanvas => "gradient-canvas",
+            Self::SolidPaint => "solid-paint",
+            Self::TransparentPaint => "transparent-paint",
+            Self::GradientPaint => "gradient-paint",
             Self::LayeredCanvas => "layered-canvas",
-            Self::PatternCanvas => "pattern-canvas",
+            Self::PatternPaint => "pattern-paint",
+            Self::CanvasBleed => "canvas-bleed",
+            Self::CanvasLayerPlacement => "canvas-layer-placement",
             Self::BlendMode => "blend-mode",
             Self::BorderStyling => "border-styling",
             Self::DashStyling => "dash-styling",
@@ -401,6 +410,20 @@ impl TrustedThemeLane {
             Self::SvgPostprocessor => "svg-postprocessor",
         }
     }
+
+    pub(crate) const fn usage_mask(self) -> u64 {
+        match self {
+            Self::RawThemeCss => 1 << 0,
+            Self::ArbitrarySvg => 1 << 1,
+            Self::SvgPostprocessor => 1 << 2,
+        }
+    }
+}
+
+impl std::fmt::Display for TrustedThemeLane {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.id())
+    }
 }
 
 /// Set of trusted compatibility lanes explicitly enabled by a host.
@@ -586,6 +609,8 @@ impl Default for ThemeAdmissionPolicy {
 /// Immutable result of resolving theme requirements against host policy.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ResolvedThemeAdmission {
+    host_allowed_capabilities: BTreeSet<ThemeCapability>,
+    host_allowed_text_capabilities: BTreeSet<TextLayoutCapability>,
     font_sources: FontSourcePolicy,
     measurement_fallbacks: HostMeasurementFallbackPolicy,
     portability: ThemePortabilityRequirement,
@@ -616,6 +641,8 @@ pub(crate) fn resolve_theme_admission(
     }
 
     Ok(ResolvedThemeAdmission {
+        host_allowed_capabilities: requirements.required_capabilities.clone(),
+        host_allowed_text_capabilities: requirements.required_text_capabilities.clone(),
         font_sources: font_sources.restrict_to(catalog.available_sources())?,
         measurement_fallbacks: measurement_fallbacks.eligible_for(catalog.kind()),
         portability,
@@ -624,6 +651,59 @@ pub(crate) fn resolve_theme_admission(
 }
 
 impl ResolvedThemeAdmission {
+    pub(crate) fn report(&self) -> ThemeHostAdmissionReport {
+        ThemeHostAdmissionReport {
+            host_allowed_capabilities: self.host_allowed_capabilities.clone(),
+            host_allowed_text_capabilities: self.host_allowed_text_capabilities.clone(),
+            font_sources: self.font_sources.clone(),
+            measurement_fallbacks: self.measurement_fallbacks.clone(),
+            portability: self.portability,
+            trusted_lanes: self.trusted_lanes.clone(),
+        }
+    }
+
+    pub const fn font_source_policy(&self) -> &FontSourcePolicy {
+        &self.font_sources
+    }
+
+    pub const fn measurement_fallback_policy(&self) -> &HostMeasurementFallbackPolicy {
+        &self.measurement_fallbacks
+    }
+
+    pub const fn portability_requirement(&self) -> ThemePortabilityRequirement {
+        self.portability
+    }
+
+    pub(crate) const fn trusted_lanes(&self) -> &TrustedThemeLanes {
+        &self.trusted_lanes
+    }
+}
+
+/// Immutable evidence that one render environment allowed a recipe's requirements.
+///
+/// This report records host policy resolution only. Family application and target portability are
+/// separate downstream evaluations.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThemeHostAdmissionReport {
+    host_allowed_capabilities: BTreeSet<ThemeCapability>,
+    host_allowed_text_capabilities: BTreeSet<TextLayoutCapability>,
+    font_sources: FontSourcePolicy,
+    measurement_fallbacks: HostMeasurementFallbackPolicy,
+    portability: ThemePortabilityRequirement,
+    trusted_lanes: TrustedThemeLanes,
+}
+
+impl ThemeHostAdmissionReport {
+    pub fn host_allowed_capabilities(&self) -> impl ExactSizeIterator<Item = ThemeCapability> + '_ {
+        self.host_allowed_capabilities.iter().copied()
+    }
+
+    pub fn host_allowed_text_capabilities(
+        &self,
+    ) -> impl ExactSizeIterator<Item = TextLayoutCapability> + '_ {
+        self.host_allowed_text_capabilities.iter().copied()
+    }
+
     pub const fn font_source_policy(&self) -> &FontSourcePolicy {
         &self.font_sources
     }
@@ -658,6 +738,8 @@ pub enum ThemeAdmissionError {
     ThemeCapabilityDenied(ThemeCapability),
     #[error("text-layout capability `{0}` is disabled by the host")]
     TextLayoutCapabilityDenied(TextLayoutCapability),
+    #[error("trusted theme lane `{0}` is disabled by the host")]
+    TrustedThemeLaneDenied(TrustedThemeLane),
 }
 
 fn reject_duplicate_font_sources(priority: &[FontSource]) -> Result<(), ThemeAdmissionError> {

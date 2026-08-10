@@ -146,6 +146,49 @@ fn native_batch_applies_the_selected_theme_preset() {
     assert!(!svg.contains(r#"data-look="neo""#), "{svg}");
 }
 
+#[cfg(feature = "png")]
+#[test]
+fn native_png_batch_reuses_terminal_accessibility_metadata() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    fs::write(
+        temp.path().join("input.md"),
+        r#"# Diagram
+
+```mermaid
+flowchart LR
+accTitle: Accessible export title
+accDescr: Accessible export description
+A --> B
+```
+"#,
+    )
+    .expect("write Markdown input");
+
+    let output = run_in(
+        temp.path(),
+        &[
+            "batch",
+            "input.md",
+            "--output-dir",
+            "generated",
+            "--format",
+            "png",
+            "--quiet",
+        ],
+    );
+    assert_success(&output);
+
+    let png = fs::read(temp.path().join("generated/input-1.png")).expect("read generated PNG");
+    assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
+    let rewritten =
+        fs::read_to_string(temp.path().join("generated/input.md")).expect("read rewrite");
+    assert!(
+        rewritten.contains(
+            r#"![Accessible export description](./input-1.png "Accessible export title")"#
+        )
+    );
+}
+
 #[test]
 fn native_zero_chart_generation_publishes_document_and_cleans_only_owned_stale_files() {
     let temp = tempfile::tempdir().expect("tempdir");

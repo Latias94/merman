@@ -1,6 +1,8 @@
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramThemeCompiler, ThemeColorValue, ThemePreset, ThemeTarget, ThemeTokens,
-    ThemeVariant, theme_preset_descriptors,
+    CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, FontAssetSpec, FontCatalogSpec, FontStack,
+    TextLayoutCapability, TextTransform, ThemeAssets, ThemeCapability, ThemeColorValue,
+    ThemePreset, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle,
+    ThemeTokens, ThemeVariant, TypographySpec, theme_preset_descriptors,
 };
 use merman_render::family::RenderFamilyKind;
 
@@ -98,12 +100,73 @@ fn compiled_theme_is_reusable_and_custom_tokens_fail_closed() {
     let first = compiler.compile(spec.clone()).expect("compile theme");
     let second = compiler.compile(spec).expect("compile theme again");
 
-    assert_eq!(first, second);
-    assert_eq!(first.fingerprint(), second.fingerprint());
+    assert_eq!(first.recipe_fingerprint(), second.recipe_fingerprint());
     assert!(
         ThemeTokens::default()
             .with_canvas("white; color: red")
             .is_err()
+    );
+}
+
+#[test]
+fn custom_catalog_implies_prepared_text_capabilities() {
+    let bytes = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
+    ));
+    let spec = DiagramThemeSpec::new().with_assets(ThemeAssets::default().with_font_catalog(
+        FontCatalogSpec::new([FontAssetSpec::new("excalifont", bytes)]),
+    ));
+    let theme = DiagramThemeCompiler::new()
+        .compile(spec)
+        .expect("custom catalog theme should compile");
+
+    for capability in [
+        TextLayoutCapability::CatalogBinding,
+        TextLayoutCapability::UnicodeClusterFallback,
+        TextLayoutCapability::OpenTypeShaping,
+    ] {
+        assert!(
+            theme.report().requires_text_capability(capability),
+            "custom catalog must require {capability}"
+        );
+    }
+}
+
+#[test]
+fn typography_defaults_and_semantic_paints_have_fine_grained_requirements() {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(FontStack::single("Excalifont").expect("font stack is valid"))
+        .with_transform(TextTransform::Uppercase)
+        .with_word_spacing_px(2.0)
+        .expect("word spacing is finite");
+    let style = ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+    let spec = DiagramThemeSpec::new()
+        .with_typography(TypographySpec::default().with_default(typography))
+        .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Node, style)));
+    let theme = DiagramThemeCompiler::new()
+        .compile(spec)
+        .expect("theme should compile");
+
+    assert!(
+        theme
+            .report()
+            .requires_capability(ThemeCapability::Typography)
+    );
+    assert!(
+        theme
+            .report()
+            .requires_capability(ThemeCapability::TextTransform)
+    );
+    assert!(
+        theme
+            .report()
+            .requires_capability(ThemeCapability::WordSpacing)
+    );
+    assert!(
+        theme
+            .report()
+            .requires_capability(ThemeCapability::SolidPaint)
     );
 }
 

@@ -162,7 +162,7 @@ fn source_matrix_preserves_real_mechanisms_and_only_aurora_is_residual() {
                 .contains(&ExpectedThemeCapability::LayeredCanvas)
                 && !target
                     .capabilities()
-                    .contains(&ExpectedThemeCapability::PatternCanvas)
+                    .contains(&ExpectedThemeCapability::PatternPaint)
         }));
     }
     assert!(

@@ -158,7 +158,7 @@ fn render_mermaid_svg(
         PipelineMode::Readable => renderer.render_svg_readable_sync(source),
         PipelineMode::ResvgSafe => renderer
             .render_resvg_compatible_svg_sync(source)
-            .map(|svg| svg.map(merman::svg::ResvgCompatibleSvg::into_string)),
+            .map(|svg| svg.map(merman::svg::AdmittedSvg::into_string)),
     };
     rendered
         .map_err(|err| {

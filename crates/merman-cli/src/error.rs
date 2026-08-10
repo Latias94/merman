@@ -135,6 +135,20 @@ pub(crate) enum CliError {
     },
 }
 
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+impl From<merman::svg::OutputError> for CliError {
+    fn from(error: merman::svg::OutputError) -> Self {
+        match error {
+            merman::svg::OutputError::Headless(error) => Self::Headless(error),
+            merman::svg::OutputError::Export(error) => Self::Export(error),
+            merman::svg::OutputError::TargetAdmissionRejected { report } => {
+                Self::Headless(merman::svg::HeadlessError::TargetAdmissionRejected { report })
+            }
+            other => Self::Internal(other.to_string()),
+        }
+    }
+}
+
 impl CliError {
     pub(crate) fn primary_input(error: InputReadError) -> Self {
         Self::Input {

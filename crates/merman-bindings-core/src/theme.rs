@@ -999,10 +999,15 @@ fn binding_effects(entries: &[BindingEffectEntryJson]) -> Result<DiagramEffectSe
                     .map_err(|error| theme_value_error("theme.spec.effects.graph", error))?;
             }
             BindingEffectEntryJson::Binding { target, effect_id } => {
-                effects = effects.with_binding(EffectBinding::new(
-                    parse_theme_target(target, "theme.spec.effects.target")?,
-                    effect_id,
-                ));
+                effects = effects
+                    .with_binding(
+                        EffectBinding::new(
+                            parse_theme_target(target, "theme.spec.effects.target")?,
+                            effect_id,
+                        )
+                        .map_err(|error| theme_value_error("theme.spec.effects.binding", error))?,
+                    )
+                    .map_err(|error| theme_value_error("theme.spec.effects.binding", error))?;
             }
         }
     }
@@ -1662,8 +1667,8 @@ mod tests {
             .unwrap();
         assert!(
             preset
-                .capabilities()
-                .requires(ThemeCapability::SemanticRules)
+                .report()
+                .requires_capability(ThemeCapability::SemanticRules)
         );
 
         let spec: BindingThemeOptionsJson = serde_json::from_value(serde_json::json!({
@@ -1700,11 +1705,15 @@ mod tests {
         let theme = compile_theme_with(&DiagramThemeCompiler::new(), Some(&spec))
             .unwrap()
             .unwrap();
-        assert!(theme.capabilities().requires(ThemeCapability::Typography));
         assert!(
             theme
-                .capabilities()
-                .requires(ThemeCapability::RoundedGeometry)
+                .report()
+                .requires_capability(ThemeCapability::Typography)
+        );
+        assert!(
+            theme
+                .report()
+                .requires_capability(ThemeCapability::RoundedGeometry)
         );
     }
 
@@ -1825,16 +1834,12 @@ mod tests {
     }
 
     #[test]
-    fn standalone_theme_selection_uses_the_binding_schema_and_compiler_policy() {
+    fn standalone_theme_selection_uses_the_binding_schema_and_recipe_compiler() {
         let theme = compile_theme_selection_json(br#"{"preset":"editor-dark"}"#).unwrap();
         assert_eq!(theme.mermaid_config().get_bool("darkMode"), Some(true));
 
-        let compiler = DiagramThemeCompiler::new().with_admission(
-            merman::svg::ThemeAdmissionPolicy::permissive()
-                .with_allowed_capabilities([ThemeCapability::SemanticTokens]),
-        );
-        let error = compile_theme_selection_json_with(
-            &compiler,
+        let theme = compile_theme_selection_json_with(
+            &DiagramThemeCompiler::new(),
             br##"{
                 "spec": {
                     "styles": [{
@@ -1845,9 +1850,12 @@ mod tests {
                 }
             }"##,
         )
-        .unwrap_err();
-        assert_eq!(error.status(), BindingStatus::InvalidArgument);
-        assert!(error.message().contains("semantic-rules"), "{error:?}");
+        .expect("host-independent recipe compilation");
+        assert!(
+            theme
+                .report()
+                .requires_capability(ThemeCapability::SemanticRules)
+        );
     }
 
     #[test]

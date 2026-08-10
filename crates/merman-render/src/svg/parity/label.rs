@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::svg::parity::util::escape_xml_raw_into;
+use crate::text::PreparedTextLabelId;
 
 #[derive(Clone, Copy)]
 enum SvgTextEntityMode {
@@ -59,7 +60,13 @@ pub(in crate::svg::parity) fn write_svg_text_source_word_lines(
     include_style: bool,
     center_text: bool,
 ) {
-    write_svg_text_source_word_lines_impl(out, lines, include_style.then_some(""), center_text);
+    write_svg_text_source_word_lines_impl(
+        out,
+        lines,
+        include_style.then_some(""),
+        center_text,
+        None,
+    );
 }
 
 pub(in crate::svg::parity) fn write_svg_text_source_word_lines_with_style(
@@ -68,7 +75,33 @@ pub(in crate::svg::parity) fn write_svg_text_source_word_lines_with_style(
     style: &str,
     center_text: bool,
 ) {
-    write_svg_text_source_word_lines_impl(out, lines, Some(style), center_text);
+    write_svg_text_source_word_lines_impl(out, lines, Some(style), center_text, None);
+}
+
+pub(in crate::svg::parity) fn write_prepared_svg_text_source_word_lines(
+    out: &mut String,
+    lines: &[Vec<String>],
+    include_style: bool,
+    center_text: bool,
+    label_id: PreparedTextLabelId,
+) {
+    write_svg_text_source_word_lines_impl(
+        out,
+        lines,
+        include_style.then_some(""),
+        center_text,
+        Some(label_id),
+    );
+}
+
+pub(in crate::svg::parity) fn write_prepared_svg_text_source_word_lines_with_style(
+    out: &mut String,
+    lines: &[Vec<String>],
+    style: &str,
+    center_text: bool,
+    label_id: PreparedTextLabelId,
+) {
+    write_svg_text_source_word_lines_impl(out, lines, Some(style), center_text, Some(label_id));
 }
 
 fn write_svg_text_source_word_lines_impl(
@@ -76,8 +109,9 @@ fn write_svg_text_source_word_lines_impl(
     lines: &[Vec<String>],
     style: Option<&str>,
     center_text: bool,
+    label_id: Option<PreparedTextLabelId>,
 ) {
-    open_svg_text(out, style, center_text);
+    open_svg_text(out, style, center_text, label_id);
 
     if lines.len() == 1 && lines[0].is_empty() {
         write_empty_tspan(out, center_text, true);
@@ -96,25 +130,23 @@ fn write_svg_text_source_word_lines_impl(
     out.push_str("</text>");
 }
 
-fn open_svg_text(out: &mut String, style: Option<&str>, center_text: bool) {
-    match (style, center_text) {
-        (Some(style), true) => {
-            let _ = write!(
-                out,
-                r#"<text y="-10.1" style="{}" text-anchor="middle">"#,
-                escape_xml_display(style)
-            );
-        }
-        (Some(style), false) => {
-            let _ = write!(
-                out,
-                r#"<text y="-10.1" style="{}">"#,
-                escape_xml_display(style)
-            );
-        }
-        (None, true) => out.push_str(r#"<text y="-10.1" text-anchor="middle">"#),
-        (None, false) => out.push_str(r#"<text y="-10.1">"#),
+fn open_svg_text(
+    out: &mut String,
+    style: Option<&str>,
+    center_text: bool,
+    label_id: Option<PreparedTextLabelId>,
+) {
+    out.push_str(r#"<text y="-10.1""#);
+    if let Some(style) = style {
+        let _ = write!(out, r#" style="{}""#, escape_xml_display(style));
     }
+    if center_text {
+        out.push_str(r#" text-anchor="middle""#);
+    }
+    if let Some(label_id) = label_id {
+        let _ = write!(out, r#" id="{label_id}""#);
+    }
+    out.push('>');
 }
 
 fn outer_tspan_class(include_row_class: bool) -> &'static str {
@@ -177,7 +209,7 @@ fn write_svg_text_impl(
     include_row_class: bool,
     entity_mode: SvgTextEntityMode,
 ) {
-    open_svg_text(out, include_style.then_some(""), center_text);
+    open_svg_text(out, include_style.then_some(""), center_text, None);
 
     let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines_for_wrap_mode(
         text,
@@ -266,7 +298,7 @@ fn write_svg_text_markdown_lines(
     include_row_class: bool,
     entity_mode: SvgTextEntityMode,
 ) {
-    open_svg_text(out, include_style.then_some(""), center_text);
+    open_svg_text(out, include_style.then_some(""), center_text, None);
 
     if lines.len() == 1 && lines[0].is_empty() {
         write_empty_tspan(out, center_text, include_row_class);

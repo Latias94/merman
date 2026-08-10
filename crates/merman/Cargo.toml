@@ -48,7 +48,12 @@ system-clock = ["merman-core/system-clock", "merman-render?/system-clock"]
 system-timezone = ["merman-core/system-timezone", "merman-render?/system-timezone"]
 system-random = ["merman-core/system-random", "merman-render?/system-random"]
 system-timing = ["merman-core/system-timing", "merman-render?/system-timing"]
-svg = ["dep:merman-render", "dep:serde_json", "dep:thiserror"]
+svg = [
+    "dep:merman-render",
+    "dep:quick-xml",
+    "dep:serde_json",
+    "dep:thiserror",
+]
 analysis = ["dep:merman-analysis"]
 editor = ["analysis", "dep:merman-editor-core"]
 ascii = ["dep:merman-ascii", "dep:thiserror"]
@@ -72,6 +77,7 @@ merman-ascii = { workspace = true, optional = true }
 merman-editor-core = { workspace = true, optional = true }
 merman-export = { workspace = true, optional = true }
 merman-render = { workspace = true, optional = true }
+quick-xml = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 

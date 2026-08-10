@@ -354,6 +354,7 @@ pub(crate) fn validate_resvg_compatible_svg(
     let mut reference_nodes = Vec::new();
     let mut reference_stack = Vec::new();
     let mut resource_closure = SvgResourceClosureBuilder::default();
+    let mut text_elements = 0usize;
 
     loop {
         let event = reader
@@ -370,6 +371,7 @@ pub(crate) fn validate_resvg_compatible_svg(
                 reject_additional_root(is_root, root_seen, root_closed)?;
                 let validated =
                     validate_element(&element, reader.resolver(), is_root, &mut resource_closure)?;
+                text_elements = text_elements.saturating_add(usize::from(validated.is_text));
                 append_reference_node(
                     &mut reference_nodes,
                     reference_stack.last().copied(),
@@ -394,6 +396,7 @@ pub(crate) fn validate_resvg_compatible_svg(
                 reject_additional_root(is_root, root_seen, root_closed)?;
                 let validated =
                     validate_element(&element, reader.resolver(), is_root, &mut resource_closure)?;
+                text_elements = text_elements.saturating_add(usize::from(validated.is_text));
                 append_reference_node(
                     &mut reference_nodes,
                     reference_stack.last().copied(),
@@ -497,6 +500,7 @@ pub(crate) fn validate_resvg_compatible_svg(
     Ok(TerminalSvgValidation {
         reference_plan,
         resource_closure,
+        text_elements,
     })
 }
 
@@ -504,6 +508,7 @@ pub(crate) fn validate_resvg_compatible_svg(
 pub(crate) struct TerminalSvgValidation {
     pub(super) reference_plan: SvgReferencePlan,
     pub(super) resource_closure: SvgResourceClosure,
+    pub(super) text_elements: usize,
 }
 
 impl std::ops::Deref for TerminalSvgValidation {
@@ -525,6 +530,7 @@ fn reject_additional_root(is_root: bool, root_seen: bool, root_closed: bool) -> 
 
 struct ValidatedElement {
     is_style: bool,
+    is_text: bool,
     is_marker: bool,
     may_repeat_per_element: bool,
     use_id: Option<String>,
@@ -767,6 +773,7 @@ fn validate_element(
 
     Ok(ValidatedElement {
         is_style: element_name.eq_ignore_ascii_case("style"),
+        is_text: is_svg_element && element_name.eq_ignore_ascii_case("text"),
         is_marker,
         may_repeat_per_element: is_svg_element
             && matches!(element_name, "filter" | "mask" | "clipPath"),

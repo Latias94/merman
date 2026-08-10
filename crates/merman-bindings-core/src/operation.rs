@@ -591,8 +591,8 @@ impl BindingOperationOutput {
     }
 
     #[cfg(any(feature = "png", feature = "jpeg"))]
-    pub(crate) fn raster(data: Vec<u8>, report: merman::svg::export::RasterExportReport) -> Self {
-        let plan = report.raster();
+    pub(crate) fn raster(data: Vec<u8>, report: merman::svg::RasterRenderReport) -> Self {
+        let plan = report.export_report().raster();
         Self {
             data,
             output_plan: Some(BindingOutputPlan::Raster(BindingRasterOutputPlan {
@@ -608,8 +608,8 @@ impl BindingOperationOutput {
     }
 
     #[cfg(feature = "pdf")]
-    pub(crate) fn pdf(data: Vec<u8>, report: merman::svg::export::PdfExportReport) -> Self {
-        let plan = report.filters();
+    pub(crate) fn pdf(data: Vec<u8>, report: merman::svg::PdfRenderReport) -> Self {
+        let plan = report.export_report().filters();
         Self {
             data,
             output_plan: Some(BindingOutputPlan::PdfFilterImages(

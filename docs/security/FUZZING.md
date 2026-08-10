@@ -27,6 +27,7 @@ The repository root stays on stable Rust. Invoke `cargo-fuzz` with the nightly t
 | `svg_pipeline` | Raw XML SVG through `SvgPipeline::resvg_safe()` | `fuzz/seeds/svg` | `fuzz/dictionaries/svg.dict` |
 | `ffi_api` | ABI 3 discovery, generic collect operations, result ownership, engine/request option paths, reusable engine calls, and host text-measure callbacks | `fuzz/seeds/ffi` | `fuzz/dictionaries/mermaid.dict` |
 | `theme_font_asset` | Bounded base64, WOFF2 reconstruction, SFNT/TTC validation, embedding permissions, and deterministic font-catalog compilation | `fuzz/seeds/theme_font_asset` | `fuzz/dictionaries/font.dict` |
+| `theme_text_layout` | Catalog-bound `rustybuzz` shaping, cluster fallback, direction, OpenType features/variations, and wrapping | `fuzz/seeds/theme_text_layout` | `fuzz/dictionaries/font.dict` |
 
 `ffi_api` keeps the text seeds above readable, but random inputs use a small binary frame so
 options, document URI, and source bytes can evolve independently:
@@ -44,12 +45,13 @@ Run a fast smoke before changing fuzz harnesses:
 
 ```sh
 cargo +nightly-2026-07-01 check --manifest-path fuzz/Cargo.toml --locked
-mkdir -p fuzz/corpus/parse_mermaid fuzz/corpus/render_mermaid fuzz/corpus/svg_pipeline fuzz/corpus/ffi_api fuzz/corpus/theme_font_asset
+mkdir -p fuzz/corpus/parse_mermaid fuzz/corpus/render_mermaid fuzz/corpus/svg_pipeline fuzz/corpus/ffi_api fuzz/corpus/theme_font_asset fuzz/corpus/theme_text_layout
 cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --sanitizer address parse_mermaid fuzz/corpus/parse_mermaid fuzz/seeds/mermaid -- -runs=64 -timeout=10 -max_len=262144 -dict=fuzz/dictionaries/mermaid.dict
 cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --sanitizer address render_mermaid fuzz/corpus/render_mermaid fuzz/seeds/mermaid -- -runs=64 -timeout=10 -max_len=32768 -dict=fuzz/dictionaries/mermaid.dict
 cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --sanitizer address svg_pipeline fuzz/corpus/svg_pipeline fuzz/seeds/svg -- -runs=64 -timeout=10 -max_len=262144 -dict=fuzz/dictionaries/svg.dict
 cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --sanitizer address ffi_api fuzz/corpus/ffi_api fuzz/seeds/ffi -- -runs=64 -timeout=10 -max_len=16384 -dict=fuzz/dictionaries/mermaid.dict
 cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --sanitizer address theme_font_asset fuzz/corpus/theme_font_asset fuzz/seeds/theme_font_asset -- -runs=64 -timeout=10 -max_len=262144 -dict=fuzz/dictionaries/font.dict
+cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --sanitizer address theme_text_layout fuzz/corpus/theme_text_layout fuzz/seeds/theme_text_layout -- -runs=64 -timeout=10 -max_len=16384 -dict=fuzz/dictionaries/font.dict
 ```
 
 On macOS, local `cargo-fuzz` installations may default to the wrong host target if the binary was

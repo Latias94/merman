@@ -27,6 +27,15 @@ use hierarchy::*;
 pub(super) use label::*;
 pub(super) use style::*;
 
+#[cfg(test)]
+pub(crate) fn write_flowchart_svg_label_plan_for_test(
+    out: &mut String,
+    plan: &crate::flowchart::FlowchartSvgLabelRenderPlan<'_>,
+    include_style: bool,
+) {
+    label::write_flowchart_svg_label_plan(out, plan, include_style);
+}
+
 use render::{
     FlowchartRootRenderSession, render_flowchart_edge_path, render_flowchart_elk_root_groups,
     render_flowchart_node, render_flowchart_root,

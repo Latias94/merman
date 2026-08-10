@@ -10,6 +10,7 @@ mod markdown;
 mod markdown_label;
 mod measure;
 mod metrics;
+mod prepared;
 mod svg_metrics;
 mod types;
 mod whitespace;
@@ -48,6 +49,24 @@ pub use metrics::{measure_html_with_inline_styles, measure_markdown_with_inline_
 pub(crate) use metrics::{
     measure_wrapped_markdown_with_inline_styles, measure_xhtml_label_fragment,
     mermaid_markdown_to_wrapped_word_lines,
+};
+#[cfg(feature = "fuzzing")]
+#[doc(hidden)]
+pub use prepared::PreparedTextFuzzProbe;
+pub use prepared::{
+    NativeTextLayoutBackend, PrepareCatalogRequest, PrepareTextRequest, PreparedTextBackendRequest,
+    PreparedTextBackendSession, PreparedTextCallBinding, PreparedTextFaceKey, PreparedTextFaceSlot,
+    PreparedTextLabelEvidence, PreparedTextLabelId, PreparedTextLabelLedgerEntry,
+    PreparedTextLabelProvenance, PreparedTextLayoutReport, PreparedTextLayoutResponse,
+    PreparedTextLineResponse, PreparedTextResponse, PreparedTextRunResponse, PreparedTextWrap,
+    SourceVisibleSpan, TEXT_LAYOUT_CONTRACT_VERSION, TextByteRange, TextLayoutBackend,
+    TextLayoutBackendIdentity, TextLayoutCapabilities, TextLayoutDirection, TextLayoutError,
+    TextLayoutFaceEvidence, TextLayoutRequestDigest, TextLayoutSessionToken,
+};
+pub(crate) use prepared::{
+    PendingPreparedTextLabelLedgerEntry, PreparedText, PreparedTextLabelFamily, PreparedTextLayout,
+    PreparedTextLayoutBuilder, TextProjection, merge_prepared_text_typography,
+    text_projection_layout_error,
 };
 pub(crate) use svg_metrics::{
     FLOWCHART_DEFAULT_FONT_KEY, flowchart_svg_edge_label_background_y_px,

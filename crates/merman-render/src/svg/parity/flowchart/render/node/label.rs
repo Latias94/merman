@@ -9,7 +9,7 @@ use crate::svg::parity::flowchart::util::{
     HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, OptionalStyleXmlAttr, flowchart_html_contains_img_tag,
 };
 use crate::svg::parity::flowchart::{
-    write_flowchart_svg_source_word_lines, write_flowchart_svg_text_markdown_wrapped,
+    write_flowchart_svg_label_plan, write_flowchart_svg_text_markdown_wrapped,
 };
 use crate::svg::parity::{escape_xml_display, fmt_display};
 
@@ -148,11 +148,13 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
                 Some(ctx.wrapping_width),
             );
         } else {
-            let wrapped = prepared_svg_label
-                .as_ref()
-                .expect("non-Markdown SVG labels are prepared before emission")
-                .wrapped_lines();
-            write_flowchart_svg_source_word_lines(out, &wrapped, true);
+            write_flowchart_svg_label_plan(
+                out,
+                prepared_svg_label
+                    .as_ref()
+                    .expect("non-Markdown SVG labels are prepared before emission"),
+                true,
+            );
         }
         out.push_str("</g></g></g>");
     } else {

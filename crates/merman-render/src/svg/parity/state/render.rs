@@ -3,11 +3,13 @@ use super::*;
 pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     layout: &StateDiagramLayout,
     model: &StateSvgModel,
+    label_sidecar: &crate::state::StateLabelSidecar,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
+    label_sidecar.validate_for_render(model, layout)?;
     let timing = options.timing();
     let mut timings = super::timing::RenderTimings::default();
     let total_timer = timing.start();
@@ -135,6 +137,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         include_edges: options.debug.include_edges,
         include_nodes: options.debug.include_nodes,
         measurer,
+        label_sidecar,
         style_plan,
         rough_cache,
         #[cfg(test)]
@@ -866,18 +869,20 @@ fn render_state_cluster(
         .copied()
         .map(state_node_label_text)
         .unwrap_or_else(|| cluster_id.to_string());
+    let prepared_title = ctx.label_sidecar.cluster_title(cluster_id);
     let title_height = cluster.title_label.height.max(0.0);
     let inner_y = y + title_height + 2.0;
     let inner_height = (cluster.height - title_height - 6.0).max(1.0);
 
     if ctx.html_labels {
+        let prepared_token_attr = state_prepared_html_label_token_attr(prepared_title);
         let label_div_style = format!(
             "{}display: table-cell; white-space: nowrap; line-height: 1.5;",
             title_div_prefix
         );
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" style="{}"{} x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" style="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g><rect class="inner" style="{}"{} x="{}" y="{}" width="{}" height="{}"/></g>"#,
+            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" style="{}"{} x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" style="{}" transform="translate({}, {})"><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g><rect class="inner" style="{}"{} x="{}" y="{}" width="{}" height="{}"/></g>"#,
             escape_attr(class),
             escape_attr(&dom_id),
             escape_attr(cluster_id),
@@ -892,10 +897,11 @@ fn render_state_cluster(
             escape_attr(title_style),
             fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
             fmt(y + 1.0),
+            prepared_token_attr,
             fmt(cluster.title_label.width.max(0.0)),
             fmt(title_height),
             escape_attr(&label_div_style),
-            escape_xml(&title),
+            prepared_title.map_or_else(|| escape_xml(&title), state_prepared_html_lines,),
             escape_attr(body_style),
             radius_attrs,
             fmt(x),
@@ -904,10 +910,21 @@ fn render_state_cluster(
             fmt(inner_height)
         );
     } else {
-        let title_dom = state_svg_text_label(
-            &title,
-            false,
-            (!title_style.is_empty()).then_some(title_style),
+        let title_dom = prepared_title.map_or_else(
+            || {
+                state_svg_text_label(
+                    &title,
+                    false,
+                    (!title_style.is_empty()).then_some(title_style),
+                )
+            },
+            |prepared| {
+                state_prepared_svg_text_label(
+                    prepared,
+                    false,
+                    (!title_style.is_empty()).then_some(title_style),
+                )
+            },
         );
         let _ = write!(
             out,

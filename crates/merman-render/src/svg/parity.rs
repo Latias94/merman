@@ -31,6 +31,8 @@ mod er;
 mod error;
 mod eventmodeling;
 mod flowchart;
+#[cfg(test)]
+pub(crate) use flowchart::write_flowchart_svg_label_plan_for_test;
 mod gantt;
 mod gitgraph;
 mod info;
@@ -309,6 +311,36 @@ pub(crate) struct SvgExecution<'a> {
     pub(crate) debug: &'a SvgDebugOptions,
 }
 
+/// Complete family SVG paired with evidence produced by the operation-owned root consumer.
+pub(crate) struct RootThemeAppliedSvg {
+    svg: String,
+    root_theme: crate::diagram_theme::RootThemeReport,
+}
+
+impl RootThemeAppliedSvg {
+    pub(crate) fn as_str(&self) -> &str {
+        &self.svg
+    }
+
+    pub(crate) fn into_parts(self) -> (String, crate::diagram_theme::RootThemeReport) {
+        (self.svg, self.root_theme)
+    }
+}
+
+impl std::ops::Deref for RootThemeAppliedSvg {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.svg
+    }
+}
+
+impl std::fmt::Display for RootThemeAppliedSvg {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.svg)
+    }
+}
+
 impl<'a> SvgExecution<'a> {
     fn new(
         request: &'a SvgRenderOptions,
@@ -445,15 +477,23 @@ pub(crate) fn render_builtin_family_artifact(
     family_execution: FamilyExecutionView<'_>,
     options: &SvgRenderOptions,
     debug: &SvgDebugOptions,
-) -> Result<String> {
+) -> Result<RootThemeAppliedSvg> {
     let execution = SvgExecution::new(options, debug, family_execution)?;
     let rooted_svg = render_builtin_family_artifact_raw(family, metadata, &execution)?;
+    let (rooted_svg, root_theme) =
+        rooted_svg.apply_root_theme(family_execution.root_theme_plan())?;
     let svg = rooted_svg.into_string_for(execution.family_kind())?;
-    apply_theme_css(
+    let (svg, theme_css_applied) = apply_theme_css(
         svg,
         metadata.effective_config.as_value(),
         family_execution.session(),
-    )
+    )?;
+    let root_theme = if theme_css_applied {
+        root_theme.invalidate_for_output_mutation()
+    } else {
+        root_theme
+    };
+    Ok(RootThemeAppliedSvg { svg, root_theme })
 }
 
 #[cfg(feature = "layout-cytoscape")]
@@ -467,7 +507,7 @@ pub(crate) fn render_architecture_family_artifact(
     family_execution: FamilyExecutionView<'_>,
     options: &SvgRenderOptions,
     debug: &SvgDebugOptions,
-) -> Result<String> {
+) -> Result<RootThemeAppliedSvg> {
     // Keep the deep-group Architecture path out of the heterogeneous dispatcher so it fits in
     // the renderer's supported low-stack worker budget.
     let execution = SvgExecution::new(options, debug, family_execution)?;
@@ -477,8 +517,17 @@ pub(crate) fn render_architecture_family_artifact(
         effective_config,
         &execution,
     )?;
+    let (rooted_svg, root_theme) =
+        rooted_svg.apply_root_theme(family_execution.root_theme_plan())?;
     let svg = rooted_svg.into_string_for(execution.family_kind())?;
-    apply_theme_css(svg, effective_config.as_value(), family_execution.session())
+    let (svg, theme_css_applied) =
+        apply_theme_css(svg, effective_config.as_value(), family_execution.session())?;
+    let root_theme = if theme_css_applied {
+        root_theme.invalidate_for_output_mutation()
+    } else {
+        root_theme
+    };
+    Ok(RootThemeAppliedSvg { svg, root_theme })
 }
 
 fn render_builtin_family_artifact_raw(
@@ -544,9 +593,10 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
-        BuiltinFamilyArtifact::State(pair) => state::render_state_diagram_svg_model(
-            pair.layout(),
-            pair.semantic(),
+        BuiltinFamilyArtifact::State(artifact) => state::render_state_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.label_sidecar(),
             effective_config_value,
             title,
             measurer,
@@ -716,7 +766,7 @@ fn apply_theme_css(
     svg: String,
     effective_config: &serde_json::Value,
     session: &RenderSession,
-) -> Result<String> {
+) -> Result<(String, bool)> {
     const UNBALANCED_CSS_ERROR: &str = "{ /* ERROR: Unbalanced CSS */ }";
 
     let Some(theme_css) = effective_config
@@ -725,13 +775,16 @@ fn apply_theme_css(
         .map(str::trim)
         .filter(|css| !css.is_empty() && *css != UNBALANCED_CSS_ERROR)
     else {
-        return Ok(svg);
+        return Ok((svg, false));
     };
 
+    session.use_trusted_theme_lane(crate::diagram_theme::TrustedThemeLane::RawThemeCss)?;
     let metadata = SvgPostprocessMetadata::from_svg(&svg);
     let pipeline = SvgPipeline::parity()
         .with_postprocessor(ScopedCssPostprocessor::new(theme_css).with_existing_style_merge());
-    pipeline.process_to_string_with_metadata(&svg, &metadata, session)
+    pipeline
+        .process_to_string_with_metadata(&svg, &metadata, session)
+        .map(|svg| (svg, true))
 }
 
 fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String {

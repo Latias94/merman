@@ -10,7 +10,7 @@ mod css;
 mod html;
 mod xml;
 
-use crate::text::{TextMeasurer, TextStyle};
+use crate::text::{PreparedTextLabelId, TextMeasurer, TextStyle};
 
 use attr::{is_self_closing, parse_attr_f64, parse_attr_str};
 use context::{
@@ -24,6 +24,8 @@ use html::{
     wrap_html_lines_to_width,
 };
 use xml::{escape_xml_attr, escape_xml_text};
+
+pub(crate) const PREPARED_TEXT_LABEL_DATA_ATTR: &str = "data-merman-prepared-text-label";
 
 /// Adds a best-effort `<text>/<tspan>` overlay extracted from Mermaid label `<foreignObject>`
 /// content.
@@ -168,13 +170,19 @@ pub fn foreign_object_label_fallback_svg_text(
                         font_weight: font_weight.clone(),
                         font_style: None,
                     };
-                    let wrap_width = foreign_object_html_soft_wrap_width(tag, inner);
-                    let lines = wrap_html_lines_to_width(
-                        raw_lines,
-                        wrap_width,
-                        text_measurer,
-                        &measure_style,
-                    );
+                    let prepared_label_id = parse_attr_str(tag, PREPARED_TEXT_LABEL_DATA_ATTR)
+                        .and_then(PreparedTextLabelId::from_svg_id);
+                    let lines = if prepared_label_id.is_some() {
+                        raw_lines
+                    } else {
+                        let wrap_width = foreign_object_html_soft_wrap_width(tag, inner);
+                        wrap_html_lines_to_width(
+                            raw_lines,
+                            wrap_width,
+                            text_measurer,
+                            &measure_style,
+                        )
+                    };
                     let line_height = font_size * 1.5;
                     let n = lines.len() as f64;
                     let y0 = text_y - (line_height * (n - 1.0)) / 2.0;
@@ -196,8 +204,15 @@ pub fn foreign_object_label_fallback_svg_text(
                     for (idx, line) in lines.iter().enumerate() {
                         let y_line = y0 + (idx as f64) * line_height;
                         let text = escape_xml_text(line);
+                        let prepared_line_id_attr = prepared_label_id
+                            .zip(u32::try_from(idx).ok())
+                            .map(|(id, line)| {
+                                format!(r#" id="{}""#, escape_xml_attr(&id.as_svg_line_id(line)))
+                            })
+                            .unwrap_or_default();
                         overlays.push_str(&format!(
-                            r##"<text x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="{}" class="{}" style="{}">{}</text>"##,
+                            r##"<text{} x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="{}" class="{}" style="{}">{}</text>"##,
+                            prepared_line_id_attr,
                             text_x,
                             y_line,
                             escape_xml_attr(&fill),
@@ -482,6 +497,26 @@ mod tests {
         assert!(
             out.contains(">Import / WebSurface / Data Egress Gates</text>"),
             "explicit nowrap labels should keep the existing single-line fallback behavior: {out}"
+        );
+    }
+
+    #[test]
+    fn prepared_foreign_object_uses_explicit_lines_and_emits_canonical_line_ids() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><g><foreignObject data-merman-prepared-text-label="merman-prepared-state-7" width="48" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 48px; text-align: center; width: 48px;"><span class="nodeLabel"><p>Alpha Beta<br />Gamma Delta</p></span></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(
+            out.contains(r#"id="merman-prepared-state-7-line-0""#)
+                && out.contains(r#"id="merman-prepared-state-7-line-1""#),
+            "prepared fallback lines must retain their label identity: {out}"
+        );
+        assert!(
+            out.contains(">Alpha Beta</text>") && out.contains(">Gamma Delta</text>"),
+            "prepared lines must not be wrapped a second time: {out}"
+        );
+        assert!(
+            !out.contains("merman-prepared-state-7-line-2"),
+            "prepared fallback must emit exactly one token per explicit line: {out}"
         );
     }
 }

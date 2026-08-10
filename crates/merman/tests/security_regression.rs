@@ -16,7 +16,7 @@ fn render_resvg_safe(renderer: &HeadlessRenderer, name: &str, source: &str) -> S
     renderer
         .render_resvg_compatible_svg_sync(source)
         .unwrap_or_else(|err| panic!("{name}: render failed: {err}"))
-        .map(merman::svg::ResvgCompatibleSvg::into_string)
+        .map(merman::svg::AdmittedSvg::into_string)
         .unwrap_or_else(|| panic!("{name}: no diagram detected"))
 }
 

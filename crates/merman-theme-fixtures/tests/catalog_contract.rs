@@ -253,7 +253,7 @@ fn target_specific_translation_can_change_one_output_without_changing_the_source
     translation_mut(&mut manifest, "canvas-gradient")["targetOverrides"] = json!({
         "jpeg": {
             "disposition": "capability",
-            "capabilities": ["solid-canvas"]
+            "capabilities": ["solid-paint"]
         }
     });
     let catalog = ThemeFixtureCatalog::from_json(
@@ -266,14 +266,14 @@ fn target_specific_translation_can_change_one_output_without_changing_the_source
         translation.effective_for(ExpectedOutputTarget::BrowserSvg),
         (
             ReferenceMechanismDisposition::Capability,
-            &std::collections::BTreeSet::from([ExpectedThemeCapability::GradientCanvas])
+            &std::collections::BTreeSet::from([ExpectedThemeCapability::GradientPaint])
         )
     );
     assert_eq!(
         translation.effective_for(ExpectedOutputTarget::Jpeg),
         (
             ReferenceMechanismDisposition::Capability,
-            &std::collections::BTreeSet::from([ExpectedThemeCapability::SolidCanvas])
+            &std::collections::BTreeSet::from([ExpectedThemeCapability::SolidPaint])
         )
     );
     let cyberpunk = catalog.theme("cyberpunk").expect("cyberpunk theme");
@@ -282,14 +282,14 @@ fn target_specific_translation_can_change_one_output_without_changing_the_source
             .target(ExpectedOutputTarget::Jpeg)
             .expect("JPEG target")
             .capabilities()
-            .contains(&ExpectedThemeCapability::SolidCanvas)
+            .contains(&ExpectedThemeCapability::SolidPaint)
     );
     assert!(
         !cyberpunk
             .target(ExpectedOutputTarget::Jpeg)
             .expect("JPEG target")
             .capabilities()
-            .contains(&ExpectedThemeCapability::GradientCanvas)
+            .contains(&ExpectedThemeCapability::GradientPaint)
     );
     let fixture = catalog
         .fixture("fixture-layered-canvas")
@@ -301,8 +301,8 @@ fn target_specific_translation_can_change_one_output_without_changing_the_source
         Some(&std::collections::BTreeSet::from([
             ExpectedThemeCapability::BlendMode,
             ExpectedThemeCapability::LayeredCanvas,
-            ExpectedThemeCapability::PatternCanvas,
-            ExpectedThemeCapability::SolidCanvas,
+            ExpectedThemeCapability::PatternPaint,
+            ExpectedThemeCapability::SolidPaint,
         ]))
     );
 }

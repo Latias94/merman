@@ -475,6 +475,12 @@ impl TypographySpec {
             .unwrap_or(&self.default)
     }
 
+    pub(crate) fn family_overrides(&self) -> impl ExactSizeIterator<Item = (&str, &TextStyle)> {
+        self.family_overrides
+            .iter()
+            .map(|(family, style)| (family.as_str(), style))
+    }
+
     pub(crate) fn validate(&self) -> Result<(), ThemeCompileValidationError> {
         self.default.validate()?;
         for style in self.family_overrides.values() {

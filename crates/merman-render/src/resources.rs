@@ -1212,14 +1212,19 @@ mod tests {
         meter.charge(usize::MAX).unwrap();
 
         let preflight_error = meter.preflight(1).unwrap_err();
+        assert_eq!(
+            preflight_error.cause,
+            ResourceLimitCause::ArithmeticOverflow
+        );
         assert_eq!(preflight_error.limit, "max_layout_work_units");
         assert_eq!(preflight_error.actual, usize::MAX);
-        assert_eq!(preflight_error.max, usize::MAX - 1);
+        assert_eq!(preflight_error.max, usize::MAX);
         assert_eq!(meter.used(), usize::MAX);
 
         let charge_error = meter.charge(1).unwrap_err();
+        assert_eq!(charge_error.cause, ResourceLimitCause::ArithmeticOverflow);
         assert_eq!(charge_error.actual, usize::MAX);
-        assert_eq!(charge_error.max, usize::MAX - 1);
+        assert_eq!(charge_error.max, usize::MAX);
         assert_eq!(meter.used(), usize::MAX);
     }
 

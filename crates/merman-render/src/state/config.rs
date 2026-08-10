@@ -42,18 +42,6 @@ pub(super) fn rank_dir_from(direction: &str) -> RankDir {
     }
 }
 
-pub(super) fn value_to_label_text(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        Value::Array(a) => a
-            .first()
-            .and_then(|x| x.as_str())
-            .unwrap_or_default()
-            .to_string(),
-        _ => "".to_string(),
-    }
-}
-
 pub(super) fn decode_html_entities_once(text: &str) -> std::borrow::Cow<'_, str> {
     if text.contains('ﬂ') || text.contains('¶') || text.contains('#') {
         return merman_core::entities::decode_mermaid_entities_to_unicode(text);

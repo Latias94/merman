@@ -1,7 +1,7 @@
 #![cfg(feature = "svg")]
 
 use merman::svg::RenderResourceProfile;
-use merman::svg::{HeadlessRenderer, ResvgCompatibleSvg};
+use merman::svg::{AdmittedSvg, HeadlessRenderer};
 use merman_core::MAX_DIAGRAM_NESTING_DEPTH;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -34,7 +34,7 @@ fn render_resvg_safe(name: &str, source: &str) -> String {
     renderer(name)
         .render_resvg_compatible_svg_sync(source)
         .unwrap_or_else(|err| panic!("{name}: headless render failed: {err}"))
-        .map(ResvgCompatibleSvg::into_string)
+        .map(AdmittedSvg::into_string)
         .unwrap_or_else(|| panic!("{name}: no diagram detected"))
 }
 
@@ -277,7 +277,7 @@ fn zed_old_mermaid_rs_partial_parallelogram_stays_inside_result_boundary() {
             .with_lenient_parsing()
             .with_diagram_id("zed-56199")
             .render_resvg_compatible_svg_sync(ZED_56199_FLOWCHART_PARTIAL_PARALLELOGRAM)
-            .map(|svg| svg.map(ResvgCompatibleSvg::into_string))
+            .map(|svg| svg.map(AdmittedSvg::into_string))
     }));
 
     let render_result =

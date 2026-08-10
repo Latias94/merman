@@ -428,6 +428,7 @@ impl CanvasLayer {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CanvasSpec {
     base: CanvasPaint,
+    base_explicit: bool,
     layers: Vec<CanvasLayer>,
     bleed: InsetsPx,
 }
@@ -436,6 +437,7 @@ impl Default for CanvasSpec {
     fn default() -> Self {
         Self {
             base: CanvasPaint::Transparent,
+            base_explicit: false,
             layers: Vec::new(),
             bleed: InsetsPx::ZERO,
         }
@@ -444,18 +446,19 @@ impl Default for CanvasSpec {
 
 impl CanvasSpec {
     pub fn transparent() -> Self {
-        Self::default()
+        Self {
+            base_explicit: true,
+            ..Self::default()
+        }
     }
 
     pub fn solid(value: impl AsRef<str>) -> Result<Self, ThemeCompileValidationError> {
-        Ok(Self {
-            base: CanvasPaint::solid(value)?,
-            ..Self::default()
-        })
+        Ok(Self::default().with_base(CanvasPaint::solid(value)?))
     }
 
     pub fn with_base(mut self, base: CanvasPaint) -> Self {
         self.base = base;
+        self.base_explicit = true;
         self
     }
 
@@ -478,6 +481,15 @@ impl CanvasSpec {
 
     pub const fn base(&self) -> &CanvasPaint {
         &self.base
+    }
+
+    /// Returns whether the recipe explicitly selected a base paint.
+    ///
+    /// A default canvas remains unspecified so Mermaid's historical root background can be kept;
+    /// `CanvasSpec::transparent()` and `with_base(CanvasPaint::Transparent)` are explicit clear
+    /// requests.
+    pub const fn has_explicit_base(&self) -> bool {
+        self.base_explicit
     }
 
     pub fn layers(&self) -> &[CanvasLayer] {

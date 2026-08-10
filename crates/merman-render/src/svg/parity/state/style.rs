@@ -159,8 +159,40 @@ pub(super) fn state_css(
     }
 
     let theme = style_plan.compatibility();
-    let ff = theme.font_family_css.as_str();
-    let font_size = theme.font_size_px;
+    let base_text_style = style_plan.base_text_style();
+    let uses_structured_typography = style_plan.uses_structured_typography();
+    let ff = if uses_structured_typography {
+        base_text_style
+            .font_family
+            .as_deref()
+            .unwrap_or(theme.font_family_css.as_str())
+    } else {
+        theme.font_family_css.as_str()
+    };
+    let ff = crate::config::normalize_css_font_family(ff);
+    let font_size = if uses_structured_typography {
+        base_text_style.font_size
+    } else {
+        crate::config::config_theme_or_root_font_size_px(effective_config, 16.0)
+    };
+    let font_weight_decl = if uses_structured_typography {
+        base_text_style
+            .font_weight
+            .as_deref()
+            .map(|value| format!("font-weight:{value};"))
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let font_style_decl = if uses_structured_typography {
+        base_text_style
+            .font_style
+            .as_deref()
+            .map(|value| format!("font-style:{value};"))
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
     let id = escape_xml(diagram_id);
     let text_color = theme.text_color.as_str();
     let title_color = theme.title_color.as_str();
@@ -208,8 +240,8 @@ pub(super) fn state_css(
     let font_size_s = fmt(font_size);
     let _ = write!(
         &mut css,
-        r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
-        id, ff, font_size_s, text_color
+        r#"#{}{{font-family:{};font-size:{}px;{}{}fill:{};}}"#,
+        id, ff, font_size_s, font_weight_decl, font_style_decl, text_color
     );
     css.push_str("@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}");
     css.push_str("@keyframes dash{to{stroke-dashoffset:0;}}");
@@ -271,8 +303,8 @@ pub(super) fn state_css(
     );
     let _ = write!(
         &mut css,
-        r#"#{} svg{{font-family:{};font-size:{}px;}}"#,
-        id, ff, font_size_s
+        r#"#{} svg{{font-family:{};font-size:{}px;{}{}}}"#,
+        id, ff, font_size_s, font_weight_decl, font_style_decl
     );
     let _ = write!(&mut css, r#"#{} p{{margin:0;}}"#, id);
     let _ = write!(
@@ -486,11 +518,38 @@ pub(super) fn state_css(
         r#"#{} [id$="-dependencyStart"],#{} [id$="-dependencyEnd"]{{fill:{};stroke:{};stroke-width:1;}}"#,
         id, id, line_color, line_color
     );
-    let _ = write!(
-        &mut css,
-        r#"#{} .statediagramTitleText{{text-anchor:middle;font-size:18px;fill:{};}}"#,
-        id, title_color
-    );
+    let title_text_style = style_plan.title_text_style();
+    if uses_structured_typography {
+        let title_ff = crate::config::normalize_css_font_family(
+            title_text_style.font_family.as_deref().unwrap_or(&ff),
+        );
+        let title_weight_decl = title_text_style
+            .font_weight
+            .as_deref()
+            .map(|value| format!("font-weight:{value};"))
+            .unwrap_or_default();
+        let title_style_decl = title_text_style
+            .font_style
+            .as_deref()
+            .map(|value| format!("font-style:{value};"))
+            .unwrap_or_default();
+        let _ = write!(
+            &mut css,
+            r#"#{} .statediagramTitleText{{text-anchor:middle;font-family:{};font-size:{}px;{}{}fill:{};}}"#,
+            id,
+            title_ff,
+            fmt(title_text_style.font_size),
+            title_weight_decl,
+            title_style_decl,
+            title_color
+        );
+    } else {
+        let _ = write!(
+            &mut css,
+            r#"#{} .statediagramTitleText{{text-anchor:middle;font-size:18px;fill:{};}}"#,
+            id, title_color
+        );
+    }
     let _ = write!(
         &mut css,
         r#"#{} [data-look="neo"].statediagram-cluster rect{{fill:{};stroke:{};stroke-width:{};}}"#,
@@ -603,22 +662,7 @@ pub(super) fn state_css(
 }
 
 pub(super) fn state_value_to_label_text(v: &serde_json::Value) -> String {
-    match v {
-        serde_json::Value::String(s) => s.clone(),
-        serde_json::Value::Array(a) => {
-            let mut parts: Vec<&str> = Vec::new();
-            for item in a {
-                if let Some(s) = item.as_str() {
-                    parts.push(s);
-                }
-            }
-            if parts.is_empty() {
-                return "".to_string();
-            }
-            parts.join("\n")
-        }
-        _ => "".to_string(),
-    }
+    crate::state::state_value_to_label_text(v)
 }
 
 pub(super) fn state_node_label_text(n: &StateSvgNode) -> String {
@@ -641,6 +685,21 @@ pub(super) fn state_node_label_html_with_style(
         r#"<span{} class="nodeLabel markdown-node-label">{}</span>"#,
         style_attr,
         crate::state::state_node_label_xhtml(raw, font_size)
+    )
+}
+
+pub(super) fn state_prepared_node_label_html_with_style(
+    prepared: &crate::state::PreparedStateLabel,
+    span_style: Option<&str>,
+) -> String {
+    let style_attr = span_style
+        .filter(|style| !style.is_empty())
+        .map(|style| format!(r#" style="{}""#, escape_xml_display(style)))
+        .unwrap_or_default();
+    format!(
+        r#"<span{} class="nodeLabel markdown-node-label"><p>{}</p></span>"#,
+        style_attr,
+        state_prepared_html_lines(prepared),
     )
 }
 
@@ -724,8 +783,49 @@ pub(super) fn state_node_label_plain_html(raw: &str) -> String {
     )
 }
 
+pub(super) fn state_prepared_node_label_plain_html(
+    prepared: &crate::state::PreparedStateLabel,
+) -> String {
+    format!(
+        r#"<span class="nodeLabel"><p>{}</p></span>"#,
+        state_prepared_html_lines(prepared),
+    )
+}
+
 pub(super) fn state_edge_label_html(raw: &str) -> String {
     crate::state::state_edge_label_xhtml(raw)
+}
+
+pub(super) fn state_prepared_edge_label_html(
+    prepared: &crate::state::PreparedStateLabel,
+) -> String {
+    format!("<p>{}</p>", state_prepared_html_lines(prepared))
+}
+
+pub(super) fn state_prepared_html_label_token_attr(
+    prepared: Option<&crate::state::PreparedStateLabel>,
+) -> String {
+    prepared
+        .and_then(crate::state::PreparedStateLabel::label_id_for_emission)
+        .map(|id| {
+            format!(
+                r#" {}="{}""#,
+                crate::svg::fallback::PREPARED_TEXT_LABEL_DATA_ATTR,
+                escape_attr(&id.as_svg_id())
+            )
+        })
+        .unwrap_or_default()
+}
+
+pub(super) fn state_prepared_html_lines(prepared: &crate::state::PreparedStateLabel) -> String {
+    let mut out = String::new();
+    for (index, line) in prepared.wrapped_lines().enumerate() {
+        if index > 0 {
+            out.push_str("<br />");
+        }
+        let _ = write!(&mut out, "{}", escape_xml_display(line));
+    }
+    out
 }
 
 fn state_svg_text_style_attr(style_attr: &str) -> String {
@@ -763,6 +863,28 @@ pub(super) fn state_svg_text_label(
 ) -> String {
     let decoded = crate::svg::parity::util::decode_mermaid_entities_for_render_text(raw);
     let normalized = state_normalize_br_tags(decoded.as_ref());
+    state_svg_text_label_lines(normalized.split('\n'), center_text, style_attr, None)
+}
+
+pub(crate) fn state_prepared_svg_text_label(
+    prepared: &crate::state::PreparedStateLabel,
+    center_text: bool,
+    style_attr: Option<&str>,
+) -> String {
+    state_svg_text_label_lines(
+        prepared.wrapped_lines(),
+        center_text,
+        style_attr,
+        prepared.label_id_for_emission(),
+    )
+}
+
+fn state_svg_text_label_lines<'a>(
+    lines: impl IntoIterator<Item = &'a str>,
+    center_text: bool,
+    style_attr: Option<&str>,
+    label_id: Option<crate::text::PreparedTextLabelId>,
+) -> String {
     let text_anchor = if center_text {
         r#" text-anchor="middle""#
     } else {
@@ -773,9 +895,12 @@ pub(super) fn state_svg_text_label(
         .filter(|s| !s.is_empty())
         .map(|s| format!(r#" style="{}""#, escape_attr(&s)))
         .unwrap_or_default();
+    let label_id_attr = label_id
+        .map(|id| format!(r#" id="{id}""#))
+        .unwrap_or_default();
 
-    let mut out = format!(r#"<text y="-10.1"{text_anchor}{svg_style_attr}>"#);
-    for (idx, line) in normalized.split('\n').enumerate() {
+    let mut out = format!(r#"<text y="-10.1"{text_anchor}{svg_style_attr}{label_id_attr}>"#);
+    for (idx, line) in lines.into_iter().enumerate() {
         let y = idx as f64 * 1.1 - 0.1;
         let _ = write!(
             &mut out,

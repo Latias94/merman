@@ -416,6 +416,40 @@ pub(in crate::svg::parity) fn write_flowchart_svg_source_word_lines_centered_wit
     crate::svg::parity::label::write_svg_text_source_word_lines_with_style(out, lines, style, true);
 }
 
+pub(crate) fn write_flowchart_svg_label_plan(
+    out: &mut String,
+    plan: &crate::flowchart::FlowchartSvgLabelRenderPlan<'_>,
+    include_style: bool,
+) {
+    let lines = plan.wrapped_lines();
+    if let Some(label_id) = plan.prepared_text_label_id() {
+        crate::svg::parity::label::write_prepared_svg_text_source_word_lines(
+            out,
+            &lines,
+            include_style,
+            false,
+            label_id,
+        );
+    } else {
+        write_flowchart_svg_source_word_lines(out, &lines, include_style);
+    }
+}
+
+pub(crate) fn write_flowchart_svg_label_plan_centered_with_style(
+    out: &mut String,
+    plan: &crate::flowchart::FlowchartSvgLabelRenderPlan<'_>,
+    style: &str,
+) {
+    let lines = plan.wrapped_lines();
+    if let Some(label_id) = plan.prepared_text_label_id() {
+        crate::svg::parity::label::write_prepared_svg_text_source_word_lines_with_style(
+            out, &lines, style, true, label_id,
+        );
+    } else {
+        write_flowchart_svg_source_word_lines_centered_with_style(out, &lines, style);
+    }
+}
+
 #[cfg(test)]
 pub(in crate::svg::parity) fn wrap_flowchart_svg_source_word_lines(
     measurer: &dyn crate::text::TextMeasurer,

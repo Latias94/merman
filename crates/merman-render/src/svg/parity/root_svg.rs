@@ -1,4 +1,8 @@
 use super::*;
+use crate::diagram_theme::{
+    BlendMode, CanvasPaint, RootThemeApplication, RootThemeMechanismKey, RootThemePlan,
+    RootThemeReport, ThemeCapability,
+};
 use crate::family::RenderFamilyKind;
 use std::ops::Range;
 
@@ -311,6 +315,7 @@ enum RootDocumentState {
     },
     Ready {
         root_open: String,
+        plan: RootViewportPlan,
     },
 }
 
@@ -330,6 +335,8 @@ pub(super) struct RootedSvg {
     svg: String,
     family: RenderFamilyKind,
     diagram_id: String,
+    root_open_end: usize,
+    viewport: RootViewportPlan,
 }
 
 #[derive(Debug, Clone)]
@@ -526,7 +533,7 @@ impl<'a> RootViewportContext<'a> {
         Ok(RootDocument {
             family: self.family,
             diagram_id: self.diagram_id.to_string(),
-            state: RootDocumentState::Ready { root_open },
+            state: RootDocumentState::Ready { root_open, plan },
         })
     }
 
@@ -603,6 +610,7 @@ impl<'a> RootViewportContext<'a> {
             diagram_id: self.diagram_id.to_string(),
             state: RootDocumentState::Ready {
                 root_open: out.clone(),
+                plan: plan.clone(),
             },
         })
     }
@@ -613,7 +621,7 @@ impl<'a> RootViewportContext<'a> {
                 message: "root document belongs to a different render context".to_string(),
             });
         }
-        let RootDocumentState::Ready { root_open } = document.state else {
+        let RootDocumentState::Ready { root_open, plan } = document.state else {
             return Err(Error::InvalidModel {
                 message: "root document viewport was not finalized".to_string(),
             });
@@ -632,6 +640,8 @@ impl<'a> RootViewportContext<'a> {
             svg: out,
             family: self.family,
             diagram_id: self.diagram_id.to_string(),
+            root_open_end: root_open.len(),
+            viewport: plan,
         })
     }
 
@@ -717,6 +727,77 @@ impl<'a> RootViewportContext<'a> {
 }
 
 impl RootedSvg {
+    pub(super) fn apply_root_theme(
+        mut self,
+        plan: Option<&RootThemePlan>,
+    ) -> Result<(Self, RootThemeReport)> {
+        let Some(plan) = plan else {
+            return Ok((
+                self,
+                RootThemePlan::default().begin_svg_application().finish(),
+            ));
+        };
+        let mut application = plan.begin_svg_application();
+        let mut prelude = String::new();
+
+        if plan.canvas().has_explicit_base()
+            && let Some(fill) = supported_canvas_paint(plan.canvas().base())
+        {
+            if matches!(plan.canvas().base(), CanvasPaint::Transparent) {
+                let rewritten =
+                    crate::svg::pipeline::set_root_background_color(&self.svg, "transparent");
+                self.root_open_end =
+                    adjusted_root_open_end(self.root_open_end, self.svg.len(), rewritten.len())?;
+                self.svg = rewritten;
+            }
+            push_canvas_base(&mut prelude, self.viewport.view_box(), &fill);
+            mark_root_mechanism_applied(
+                &mut application,
+                &RootThemeMechanismKey::CanvasBase,
+                [supported_canvas_capability(plan.canvas().base())
+                    .expect("supported canvas paint must have a capability")],
+            )?;
+        }
+
+        for (index, layer) in plan.canvas().layers().iter().enumerate() {
+            let Some(fill) = supported_canvas_paint(layer.paint()) else {
+                continue;
+            };
+            push_canvas_layer(
+                &mut prelude,
+                self.viewport.view_box(),
+                index,
+                &fill,
+                layer.opacity(),
+                layer.offset(),
+                layer.blend_mode(),
+            );
+            let mut applied = vec![ThemeCapability::LayeredCanvas];
+            if let Some(capability) = supported_canvas_capability(layer.paint()) {
+                applied.push(capability);
+            }
+            if layer.opacity() != 1.0 {
+                applied.push(ThemeCapability::Opacity);
+            }
+            if layer.offset() != (0.0, 0.0) {
+                applied.push(ThemeCapability::CanvasLayerPlacement);
+            }
+            if !matches!(layer.blend_mode(), BlendMode::Normal) {
+                applied.push(ThemeCapability::BlendMode);
+            }
+            mark_root_mechanism_applied(
+                &mut application,
+                &RootThemeMechanismKey::CanvasLayer { index },
+                applied,
+            )?;
+        }
+
+        if !prelude.is_empty() {
+            self.svg.insert_str(self.root_open_end, &prelude);
+        }
+        Ok((self, application.finish()))
+    }
+
     pub(super) fn into_string_for(self, expected_family: RenderFamilyKind) -> Result<String> {
         if self.family != expected_family {
             return Err(Error::InvalidModel {
@@ -728,6 +809,122 @@ impl RootedSvg {
         }
         Ok(self.svg)
     }
+}
+
+fn adjusted_root_open_end(
+    root_open_end: usize,
+    previous_svg_len: usize,
+    rewritten_svg_len: usize,
+) -> Result<usize> {
+    if rewritten_svg_len >= previous_svg_len {
+        return root_open_end
+            .checked_add(rewritten_svg_len - previous_svg_len)
+            .ok_or_else(|| Error::InvalidModel {
+                message: "root background rewrite overflowed the SVG opening boundary".to_string(),
+            });
+    }
+    root_open_end
+        .checked_sub(previous_svg_len - rewritten_svg_len)
+        .ok_or_else(|| Error::InvalidModel {
+            message: "root background rewrite invalidated the SVG opening boundary".to_string(),
+        })
+}
+
+fn supported_canvas_paint(paint: &CanvasPaint) -> Option<String> {
+    match paint {
+        CanvasPaint::Transparent => Some("none".to_string()),
+        CanvasPaint::Solid(color) => Some(color.as_css()),
+        CanvasPaint::LinearGradient(_)
+        | CanvasPaint::RadialGradient(_)
+        | CanvasPaint::Pattern(_) => None,
+    }
+}
+
+fn supported_canvas_capability(paint: &CanvasPaint) -> Option<ThemeCapability> {
+    match paint {
+        CanvasPaint::Transparent => Some(ThemeCapability::TransparentPaint),
+        CanvasPaint::Solid(_) => Some(ThemeCapability::SolidPaint),
+        CanvasPaint::LinearGradient(_) | CanvasPaint::RadialGradient(_) => {
+            Some(ThemeCapability::GradientPaint)
+        }
+        CanvasPaint::Pattern(_) => Some(ThemeCapability::PatternPaint),
+    }
+}
+
+fn push_canvas_base(out: &mut String, view_box: Option<ViewBox>, fill: &str) {
+    out.push_str(
+        r#"<rect class="merman-theme-canvas-base" data-merman-theme-canvas="base" aria-hidden="true" pointer-events="none""#,
+    );
+    push_canvas_rect_geometry(out, view_box);
+    out.push_str(r#" fill=""#);
+    escape_attr_into(out, fill);
+    out.push_str(r#""/>"#);
+}
+
+fn push_canvas_layer(
+    out: &mut String,
+    view_box: Option<ViewBox>,
+    index: usize,
+    fill: &str,
+    opacity: f32,
+    offset: (f32, f32),
+    blend_mode: BlendMode,
+) {
+    let _ = write!(
+        out,
+        r#"<g class="merman-theme-canvas-layer" data-merman-theme-canvas-layer="{index}" aria-hidden="true" pointer-events="none""#,
+    );
+    if opacity != 1.0 {
+        let _ = write!(out, r#" opacity="{}""#, fmt(f64::from(opacity)));
+    }
+    if offset != (0.0, 0.0) {
+        let _ = write!(
+            out,
+            r#" transform="translate({} {})""#,
+            fmt(f64::from(offset.0)),
+            fmt(f64::from(offset.1)),
+        );
+    }
+    if !matches!(blend_mode, BlendMode::Normal) {
+        out.push_str(r#" style="mix-blend-mode:"#);
+        out.push_str(blend_mode.as_svg());
+        out.push_str(r#"""#);
+    }
+    out.push('>');
+    out.push_str(r#"<rect"#);
+    push_canvas_rect_geometry(out, view_box);
+    out.push_str(r#" fill=""#);
+    escape_attr_into(out, fill);
+    out.push_str(r#""/></g>"#);
+}
+
+fn push_canvas_rect_geometry(out: &mut String, view_box: Option<ViewBox>) {
+    match view_box {
+        Some(view_box) => {
+            let _ = write!(
+                out,
+                r#" x="{}" y="{}" width="{}" height="{}""#,
+                fmt(view_box.min_x),
+                fmt(view_box.min_y),
+                fmt(view_box.width),
+                fmt(view_box.height),
+            );
+        }
+        None => out.push_str(r#" x="0" y="0" width="100%" height="100%""#),
+    }
+}
+
+fn mark_root_mechanism_applied(
+    application: &mut RootThemeApplication,
+    key: &RootThemeMechanismKey,
+    capabilities: impl IntoIterator<Item = ThemeCapability>,
+) -> Result<()> {
+    if application.mark_applied(key, capabilities) {
+        return Ok(());
+    }
+    Err(Error::InvalidModel {
+        message: format!("root SVG consumer emitted unplanned theme mechanism {key}"),
+    })
 }
 
 impl std::ops::Deref for RootedSvg {

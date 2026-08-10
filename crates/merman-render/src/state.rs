@@ -7,7 +7,14 @@ type StateNode = merman_core::diagrams::state::StateDiagramRenderNode;
 
 mod label;
 pub(crate) use label::{
-    measure_state_markdown_label, state_edge_label_xhtml, state_node_label_xhtml,
+    StateLabelMeasurement, measure_state_markdown_label, state_edge_label_xhtml,
+    state_markdown_label_plain_text, state_node_label_xhtml, state_value_to_label_text,
+};
+
+mod label_artifact;
+pub(crate) use label_artifact::{
+    PreparedStateLabel, StateLabelMetricsRequest, StateLabelOwner, StateLabelSidecar,
+    StateLabelSidecarBuilder, StateLabelSourceKind,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]

@@ -366,18 +366,27 @@ pub(super) fn render_state_node_svg(
         }
         "note" => {
             let label = state_node_label_text(node);
+            let prepared_label = ctx.label_sidecar.node(node_id);
             let measure_start = timing.start();
             let wrap_mode = if ctx.html_labels {
                 WrapMode::HtmlLike
             } else {
                 WrapMode::SvgLike
             };
-            let measurement = crate::state::measure_state_markdown_label(
-                &label,
-                ctx.measurer,
-                node_text_style,
-                Some(ctx.html_label_wrapping_width),
-                wrap_mode,
+            let measurement = prepared_label.map_or_else(
+                || {
+                    crate::state::measure_state_markdown_label(
+                        &label,
+                        ctx.measurer,
+                        node_text_style,
+                        Some(ctx.html_label_wrapping_width),
+                        wrap_mode,
+                    )
+                },
+                |prepared| crate::state::StateLabelMeasurement {
+                    metrics: prepared.metrics(),
+                    uses_html_wrapping_table: prepared.uses_html_wrapping_table(),
+                },
             );
             let metrics = &measurement.metrics;
             if let Some(s) = measure_start {
@@ -415,7 +424,13 @@ pub(super) fn render_state_node_svg(
             }
             let label_html_start = timing.start();
             let label_span_style = (!text_style_attr.is_empty()).then_some(text_style_attr);
-            let label_dom = if ctx.html_labels {
+            let label_dom = if let Some(prepared) = prepared_label {
+                if ctx.html_labels {
+                    state_prepared_node_label_html_with_style(prepared, label_span_style)
+                } else {
+                    state_prepared_svg_text_label(prepared, false, label_span_style)
+                }
+            } else if ctx.html_labels {
                 state_node_label_html_with_style(
                     &label,
                     label_span_style,
@@ -434,6 +449,7 @@ pub(super) fn render_state_node_svg(
             let label_style_escaped = escape_xml_display(text_style_attr);
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             if ctx.html_labels {
+                let prepared_token_attr = state_prepared_html_label_token_attr(prepared_label);
                 let div_style = if measurement.uses_html_wrapping_table {
                     format!(
                         "{}display: table; white-space: break-spaces; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
@@ -450,7 +466,7 @@ pub(super) fn render_state_node_svg(
                 };
                 let _ = write!(
                     out,
-                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label noteLabel" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
+                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label noteLabel" style="{}" transform="translate({}, {})"><rect/><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
                     escape_xml_display(&node_class),
                     escape_xml_display(&node_dom_id),
                     escape_xml_display(data_look),
@@ -466,6 +482,7 @@ pub(super) fn render_state_node_svg(
                     label_style_escaped,
                     fmt_display(-lw / 2.0),
                     fmt_display(-lh / 2.0),
+                    prepared_token_attr,
                     fmt_display(lw),
                     fmt_display(lh),
                     div_style,
@@ -506,13 +523,23 @@ pub(super) fn render_state_node_svg(
                 .as_ref()
                 .map(|v| v.join("\n"))
                 .unwrap_or_default();
+            let prepared_title = ctx.label_sidecar.node_title(node_id);
+            let prepared_description = ctx.label_sidecar.node_description(node_id);
             let measure_start = timing.start();
-            let title_metrics =
-                ctx.measurer
-                    .measure_wrapped(&title, node_text_style, None, WrapMode::HtmlLike);
-            let desc_metrics =
-                ctx.measurer
-                    .measure_wrapped(&desc, node_text_style, None, WrapMode::HtmlLike);
+            let title_metrics = prepared_title.map_or_else(
+                || {
+                    ctx.measurer
+                        .measure_wrapped(&title, node_text_style, None, WrapMode::HtmlLike)
+                },
+                crate::state::PreparedStateLabel::metrics,
+            );
+            let desc_metrics = prepared_description.map_or_else(
+                || {
+                    ctx.measurer
+                        .measure_wrapped(&desc, node_text_style, None, WrapMode::HtmlLike)
+                },
+                crate::state::PreparedStateLabel::metrics,
+            );
             if let Some(s) = measure_start {
                 details.leaf_nodes_measure += s.elapsed();
             }
@@ -530,17 +557,30 @@ pub(super) fn render_state_node_svg(
             );
             let label_html_start = timing.start();
             let label_span_style = (!text_style_attr.is_empty()).then_some(text_style_attr);
-            let (title_dom, desc_dom) = if ctx.html_labels {
-                (
-                    state_node_label_plain_html(&title),
-                    state_node_label_plain_html(&desc),
-                )
-            } else {
-                (
-                    state_svg_text_label(&title, false, label_span_style),
-                    state_svg_text_label(&desc, false, label_span_style),
-                )
-            };
+            let (title_dom, desc_dom) =
+                if let (Some(title), Some(description)) = (prepared_title, prepared_description) {
+                    if ctx.html_labels {
+                        (
+                            state_prepared_node_label_plain_html(title),
+                            state_prepared_node_label_plain_html(description),
+                        )
+                    } else {
+                        (
+                            state_prepared_svg_text_label(title, false, label_span_style),
+                            state_prepared_svg_text_label(description, false, label_span_style),
+                        )
+                    }
+                } else if ctx.html_labels {
+                    (
+                        state_node_label_plain_html(&title),
+                        state_node_label_plain_html(&desc),
+                    )
+                } else {
+                    (
+                        state_svg_text_label(&title, false, label_span_style),
+                        state_svg_text_label(&desc, false, label_span_style),
+                    )
+                };
             if let Some(s) = label_html_start {
                 details.leaf_nodes_label_html += s.elapsed();
             }
@@ -562,9 +602,19 @@ pub(super) fn render_state_node_svg(
                 .unwrap_or_default();
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             if ctx.html_labels {
+                let prepared_pair = prepared_title.zip(prepared_description);
+                let (title_token_attr, description_token_attr) = prepared_pair.map_or_else(
+                    || (String::new(), String::new()),
+                    |(title, description)| {
+                        (
+                            state_prepared_html_label_token_attr(Some(title)),
+                            state_prepared_html_label_token_attr(Some(description)),
+                        )
+                    },
+                );
                 let _ = write!(
                     out,
-                    r#"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="{}"{} x="{}" y="{}" width="{}" height="{}"/><line class="divider" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}" transform="translate( {}, 0)"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject><foreignObject width="{}" height="{}" transform="translate( {}, {})"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"#,
+                    r#"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="{}"{} x="{}" y="{}" width="{}" height="{}"/><line class="divider" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><foreignObject{} width="{}" height="{}" transform="translate( {}, 0)"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject><foreignObject{} width="{}" height="{}" transform="translate( {}, {})"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"#,
                     escape_xml_display(&node_class),
                     escape_xml_display(&node_dom_id),
                     escape_xml_display(data_look),
@@ -583,11 +633,13 @@ pub(super) fn render_state_node_svg(
                     label_style_escaped,
                     fmt_display(geometry.label_x),
                     fmt_display(geometry.label_y),
+                    title_token_attr,
                     fmt_display(title_w),
                     fmt_display(title_h),
                     fmt_display(geometry.title_x),
                     html_div_style,
                     title_dom,
+                    description_token_attr,
                     fmt_display(desc_w),
                     fmt_display(desc_h),
                     fmt_display(geometry.description_x),
@@ -628,6 +680,7 @@ pub(super) fn render_state_node_svg(
         }
         _ => {
             let label = state_node_label_text(node);
+            let prepared_label = ctx.label_sidecar.node(node_id);
 
             let measure_start = timing.start();
             let wrap_mode = if ctx.html_labels {
@@ -635,12 +688,20 @@ pub(super) fn render_state_node_svg(
             } else {
                 WrapMode::SvgLike
             };
-            let measurement = crate::state::measure_state_markdown_label(
-                &label,
-                ctx.measurer,
-                node_text_style,
-                Some(ctx.html_label_wrapping_width),
-                wrap_mode,
+            let measurement = prepared_label.map_or_else(
+                || {
+                    crate::state::measure_state_markdown_label(
+                        &label,
+                        ctx.measurer,
+                        node_text_style,
+                        Some(ctx.html_label_wrapping_width),
+                        wrap_mode,
+                    )
+                },
+                |prepared| crate::state::StateLabelMeasurement {
+                    metrics: prepared.metrics(),
+                    uses_html_wrapping_table: prepared.uses_html_wrapping_table(),
+                },
             );
             let metrics = &measurement.metrics;
             if let Some(s) = measure_start {
@@ -714,7 +775,13 @@ pub(super) fn render_state_node_svg(
                 Some(text_style_attr)
             };
             let label_html_start = timing.start();
-            let label_dom = if ctx.html_labels {
+            let label_dom = if let Some(prepared) = prepared_label {
+                if ctx.html_labels {
+                    state_prepared_node_label_html_with_style(prepared, label_span_style)
+                } else {
+                    state_prepared_svg_text_label(prepared, false, label_span_style)
+                }
+            } else if ctx.html_labels {
                 state_node_label_html_with_style(
                     &label,
                     label_span_style,
@@ -749,9 +816,10 @@ pub(super) fn render_state_node_svg(
                 let rect_style = escape_xml_display(&shape_style_attr);
                 let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
                 if ctx.html_labels {
+                    let prepared_token_attr = state_prepared_html_label_token_attr(prepared_label);
                     let _ = write!(
                         out,
-                        r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}" rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
+                        r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}" rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
                         link_open,
                         escape_xml_display(&node_class),
                         escape_xml_display(&node_dom_id),
@@ -769,6 +837,7 @@ pub(super) fn render_state_node_svg(
                         escape_xml_display(&text_style_attr),
                         fmt_display(-lw / 2.0),
                         fmt_display(-lh / 2.0),
+                        prepared_token_attr,
                         fmt_display(lw),
                         fmt_display(lh),
                         div_style,
@@ -832,9 +901,10 @@ pub(super) fn render_state_node_svg(
 
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             if ctx.html_labels {
+                let prepared_token_attr = state_prepared_html_label_token_attr(prepared_label);
                 let _ = write!(
                     out,
-                    r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
+                    r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
                     link_open,
                     escape_xml_display(&node_class),
                     escape_xml_display(&node_dom_id),
@@ -852,6 +922,7 @@ pub(super) fn render_state_node_svg(
                     escape_xml_display(&text_style_attr),
                     fmt_display(-lw / 2.0),
                     fmt_display(-lh / 2.0),
+                    prepared_token_attr,
                     fmt_display(lw),
                     fmt_display(lh),
                     div_style,

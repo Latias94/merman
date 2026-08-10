@@ -52,13 +52,17 @@ pub use merman_render::diagram_theme::*;
 pub use merman_render::environment::{
     HostFallbackReason, HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
     HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId, RenderEnvironment,
-    RenderSession, RenderSessionReport, TEXT_MEASUREMENT_PROTOCOL_VERSION,
+    RenderEnvironmentError, RenderSession, RenderSessionReport, TEXT_MEASUREMENT_PROTOCOL_VERSION,
     TextMeasurementOperation, TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfile,
     TextMeasurementProfileIdentity, TextMeasurementReport, TextMeasurementResultKind,
     TextMeasurementRoute, TextMeasurementSource, TextMeasurementSummary,
     validate_host_text_measurement,
 };
-pub use merman_render::family::{RenderCapabilityPlan, RenderFamilyKind};
+pub use merman_render::family::{
+    FamilyStyleChannel, FamilyStyleEvaluation, FamilyStyleOrigin, FamilyStyleReport,
+    FamilyStyleResidual, FamilyStyleResidualReason, FamilyStyleVerification, FamilyThemeResidual,
+    FamilyThemeResidualReason, RenderCapabilityPlan, RenderFamilyKind,
+};
 #[cfg(feature = "math")]
 pub use merman_render::math::RatexMathRenderer;
 pub use merman_render::math::{MathRenderer, NoopMathRenderer};
@@ -66,24 +70,30 @@ pub use merman_render::resources::{
     CLI_DEFAULT_RESOURCE_PROFILE, ClassComplexity, FlowchartComplexity,
     GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE, MindmapComplexity, RenderResourceLimitId,
     RenderResourcePolicy, RenderResourceProfile, RenderResourceProfileDescriptor,
-    ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId, ResourceLimitOverride,
-    ResourceLimitOverrideError, ResourceLimitPhase, ResourcePolicyRestrictionError,
-    resource_limit_descriptors, resource_profile_descriptors,
+    ResourceLimitCause, ResourceLimitDescriptor, ResourceLimitExceeded, ResourceLimitId,
+    ResourceLimitOverride, ResourceLimitOverrideError, ResourceLimitPhase,
+    ResourcePolicyRestrictionError, resource_limit_descriptors, resource_profile_descriptors,
 };
 pub use merman_render::svg::{
     CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor, IconPack,
     IconRegistry, IconRegistryBuildError, IconRegistryBuildErrorKind, IconRegistryBuilder,
     IconRegistryResourceLimitDescriptor, IconRegistryResourceLimitId, ResvgCompatibleSvg,
     RootBackgroundPostprocessor, SanitizeCssPostprocessor, SanitizeSvgAttributesPostprocessor,
-    ScopedCssPostprocessor, StripForeignObjectPostprocessor, SvgDebugOptions, SvgOutputPolicy,
-    SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
-    SvgPostprocessor, SvgRenderOptions, SvgResourceClosure, SvgResourceFingerprint,
-    finalize_resvg_svg, foreign_object_label_fallback_svg_text,
+    ScopedCssPostprocessor, StripForeignObjectPostprocessor, SvgDebugOptions,
+    SvgFinalizationReport, SvgOutputPolicy, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext,
+    SvgPostprocessMetadata, SvgPostprocessor, SvgRenderOptions, SvgResourceClosure,
+    SvgResourceFingerprint, finalize_resvg_svg, foreign_object_label_fallback_svg_text,
     icon_registry_resource_limit_descriptors,
 };
 pub use merman_render::text::{
-    DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle,
-    VendoredFontMetricsTextMeasurer, WrapMode,
+    DeterministicTextMeasurer, NativeTextLayoutBackend, PrepareCatalogRequest, PrepareTextRequest,
+    PreparedTextBackendRequest, PreparedTextBackendSession, PreparedTextCallBinding,
+    PreparedTextFaceSlot, PreparedTextLayoutReport, PreparedTextLayoutResponse,
+    PreparedTextLineResponse, PreparedTextResponse, PreparedTextRunResponse, PreparedTextWrap,
+    SourceVisibleSpan, TEXT_LAYOUT_CONTRACT_VERSION, TextByteRange, TextLayoutBackend,
+    TextLayoutBackendIdentity, TextLayoutCapabilities, TextLayoutDirection, TextLayoutError,
+    TextLayoutFaceEvidence, TextLayoutRequestDigest, TextLayoutSessionToken, TextMeasurer,
+    TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
 };
 pub use merman_render::{
     Error as RenderError, LayoutOptions, RenderCapability, RenderCapabilityPolicy,
@@ -91,13 +101,24 @@ pub use merman_render::{
 };
 
 mod operation;
+#[cfg(feature = "jpeg")]
+pub use operation::PreparedJpegExport;
+#[cfg(feature = "png")]
+pub use operation::PreparedPngExport;
+#[cfg(any(feature = "png", feature = "jpeg"))]
+pub use operation::RasterRenderReport;
 pub use operation::{
-    PreparedRender, PreparedSemantic, RenderExecutionPath, RenderOperationReport, RenderedDocument,
-    RenderedSvg,
+    AdmittedSvg, DocumentRenderReport, DocumentResidual, DocumentResidualReason,
+    DocumentResidualStage, PreparedRender, PreparedSemantic, RenderExecutionPath,
+    RenderOperationReport, RenderTargetKind, RenderedDocument, RenderedSvg, SvgOutputMetadata,
+    TargetAdmissionReason, TargetAdmissionReport, TargetAdmissionStatus,
 };
+#[cfg(feature = "pdf")]
+pub use operation::{PdfRenderReport, PreparedPdfExport};
 
-/// Binary export APIs are isolated from Mermaid parsing and layout. They accept only terminally
-/// validated [`ResvgCompatibleSvg`] values, so arbitrary SVG cannot bypass the render pipeline.
+/// Binary export APIs are isolated from Mermaid parsing and layout. They remain a low-level lane
+/// for already validated SVG values and do not carry Mermaid theme portability evidence; normal
+/// Mermaid rendering should use the target-specific methods on [`HeadlessRenderer`].
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 pub mod export {
     pub use merman_export::*;
@@ -112,6 +133,21 @@ pub enum HeadlessError {
     Render(#[from] merman_render::Error),
     #[error(transparent)]
     RuntimePolicy(#[from] RuntimePolicyError),
+    #[error(transparent)]
+    Environment(#[from] RenderEnvironmentError),
+    #[error("portable output requirement rejected target admission: {report}")]
+    TargetAdmissionRejected { report: TargetAdmissionReport },
+}
+
+impl HeadlessError {
+    pub const fn target_admission_rejection(&self) -> Option<&TargetAdmissionReport> {
+        match self {
+            Self::TargetAdmissionRejected { report } => Some(report),
+            Self::Parse(_) | Self::Render(_) | Self::RuntimePolicy(_) | Self::Environment(_) => {
+                None
+            }
+        }
+    }
 }
 
 pub type Result<T> = std::result::Result<T, HeadlessError>;
@@ -129,13 +165,29 @@ pub enum OutputError {
     Headless(#[from] HeadlessError),
     #[error(transparent)]
     Export(#[from] merman_export::ExportError),
+    #[error("portable output requirement rejected target admission: {report}")]
+    TargetAdmissionRejected { report: TargetAdmissionReport },
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+impl OutputError {
+    pub const fn target_admission_rejection(&self) -> Option<&TargetAdmissionReport> {
+        match self {
+            Self::TargetAdmissionRejected { report } => Some(report),
+            Self::Headless(_) | Self::Export(_) => None,
+        }
+    }
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 pub type OutputResult<T> = std::result::Result<T, OutputError>;
 
 fn default_render_environment() -> RenderEnvironment {
-    RenderEnvironment::deterministic()
+    RenderEnvironment::deterministic().with_theme_admission_policy(
+        ThemeAdmissionPolicy::permissive().with_trusted_lanes(TrustedThemeLanes::from_allowed([
+            TrustedThemeLane::RawThemeCss,
+        ])),
+    )
 }
 
 fn engine_with_session_context(
@@ -348,11 +400,16 @@ pub fn render_resvg_compatible_svg_sync(
     parse_options: merman_core::ParseOptions,
     layout_options: &LayoutOptions,
     svg_options: &SvgRenderOptions,
-) -> Result<Option<ResvgCompatibleSvg>> {
-    Ok(
+) -> Result<Option<AdmittedSvg>> {
+    let Some(document) =
         render_document_sync(engine, text, parse_options, layout_options, svg_options)?
-            .map(RenderedDocument::into_svg),
-    )
+    else {
+        return Ok(None);
+    };
+    let admitted = document
+        .admit_svg()
+        .map_err(|report| HeadlessError::TargetAdmissionRejected { report })?;
+    Ok(Some(admitted))
 }
 
 /// Synchronously renders one canonical document for SVG and native export.
@@ -453,7 +510,7 @@ pub async fn render_resvg_compatible_svg(
     parse_options: merman_core::ParseOptions,
     layout_options: &LayoutOptions,
     svg_options: &SvgRenderOptions,
-) -> Result<Option<ResvgCompatibleSvg>> {
+) -> Result<Option<AdmittedSvg>> {
     // This async API is runtime-agnostic: rendering is CPU-bound and does not perform I/O.
     // It executes synchronously and does not yield.
     render_resvg_compatible_svg_sync(engine, text, parse_options, layout_options, svg_options)
@@ -648,6 +705,25 @@ mod svg_pipeline_tests {
         }
     }
 
+    struct ReplaceWithEmptySvg;
+
+    impl SvgPostprocessor for ReplaceWithEmptySvg {
+        fn name(&self) -> &'static str {
+            "replace-with-empty-svg"
+        }
+
+        fn process<'a>(
+            &self,
+            _svg: Cow<'a, str>,
+            _ctx: &SvgPostprocessContext<'_>,
+        ) -> RenderResult<Cow<'a, str>> {
+            Ok(Cow::Owned(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1" viewBox="0 0 1 1"></svg>"#
+                    .to_string(),
+            ))
+        }
+    }
+
     #[cfg(feature = "png")]
     struct FailingRasterPass;
 
@@ -682,6 +758,119 @@ mod svg_pipeline_tests {
         assert!(svg.contains("type=flowchart"));
         assert!(svg.contains("title=Host Pipeline"));
         assert!(svg.contains("id=host-style"));
+    }
+
+    #[test]
+    fn require_portable_raw_svg_rejects_the_unsealed_product_entry() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new())
+            .expect("empty theme should compile");
+        let environment = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
+        let renderer =
+            HeadlessRenderer::from_engine_and_environment(merman_core::Engine::new(), environment)
+                .with_theme(theme);
+
+        let error = match renderer.render_svg_report_sync("flowchart TD\n  A[Raw] --> B[SVG]") {
+            Ok(_) => panic!("strict raw SVG must not claim portability"),
+            Err(error) => error,
+        };
+        let report = error
+            .target_admission_rejection()
+            .expect("strict rejection should retain target evidence");
+
+        assert_eq!(report.target(), RenderTargetKind::Svg);
+        assert_eq!(report.status(), TargetAdmissionStatus::Rejected);
+        assert_eq!(report.reasons(), &[TargetAdmissionReason::UnsealedSvg]);
+    }
+
+    #[test]
+    fn require_portable_sealed_svg_reports_host_font_dependency() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new())
+            .expect("empty theme should compile");
+        let environment = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
+        let renderer =
+            HeadlessRenderer::from_engine_and_environment(merman_core::Engine::new(), environment)
+                .with_theme(theme);
+
+        let error = renderer
+            .render_resvg_compatible_svg_sync("flowchart TD\n  A[Sealed] --> B[SVG]")
+            .expect_err("strict sealed SVG must reject external font resolution");
+        let report = error
+            .target_admission_rejection()
+            .expect("strict rejection should retain target evidence");
+
+        assert_eq!(report.target(), RenderTargetKind::Svg);
+        assert_eq!(report.status(), TargetAdmissionStatus::HostDependent);
+        assert!(
+            report
+                .reasons()
+                .contains(&TargetAdmissionReason::ExternalSvgFontResolution),
+            "font evidence must explain the strict rejection: {report}"
+        );
+    }
+
+    #[test]
+    fn explicit_postprocessor_invalidates_terminal_document_evidence() {
+        let renderer = HeadlessRenderer::new();
+        let pipeline = SvgPipeline::parity().with_postprocessor(ReplaceWithEmptySvg);
+        let document = renderer
+            .render_document_with_pipeline_sync("flowchart TD\n  A[Before] --> B[After]", &pipeline)
+            .unwrap()
+            .expect("diagram should be detected");
+
+        assert!(
+            document
+                .document_report()
+                .residuals()
+                .iter()
+                .any(|residual| {
+                    residual.stage() == DocumentResidualStage::Postprocess
+                        && residual.reason() == DocumentResidualReason::Unverified
+                })
+        );
+        assert_eq!(
+            document.svg_target_admission().status(),
+            TargetAdmissionStatus::Rejected
+        );
+        let admitted = document
+            .admit_svg()
+            .expect("best-effort postprocessed SVG should be admitted");
+        assert_eq!(admitted.as_str().matches("<text").count(), 0);
+    }
+
+    #[test]
+    fn require_portable_postprocessed_sealed_svg_is_rejected_before_consumption() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new())
+            .expect("empty theme should compile");
+        let environment = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
+        let renderer =
+            HeadlessRenderer::from_engine_and_environment(merman_core::Engine::new(), environment)
+                .with_theme(theme);
+        let pipeline = SvgPipeline::parity().with_postprocessor(ReplaceWithEmptySvg);
+
+        let error = renderer
+            .render_resvg_compatible_svg_with_pipeline_sync(
+                "flowchart TD\n  A[Before] --> B[After]",
+                &pipeline,
+            )
+            .expect_err("strict mode must reject unverified postprocessor output");
+        let report = error
+            .target_admission_rejection()
+            .expect("strict rejection should retain target evidence");
+
+        assert_eq!(report.target(), RenderTargetKind::Svg);
+        assert_eq!(report.status(), TargetAdmissionStatus::Rejected);
+        assert!(
+            report
+                .reasons()
+                .contains(&TargetAdmissionReason::DocumentResidual),
+            "postprocessor residual must explain the strict rejection: {report}"
+        );
     }
 
     #[test]
@@ -1102,6 +1291,60 @@ mod svg_pipeline_tests {
         assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
     }
 
+    #[cfg(feature = "png")]
+    #[test]
+    fn render_png_report_keeps_document_and_export_evidence_correlated() {
+        let (_, report) = HeadlessRenderer::new()
+            .render_png_with_report_sync(
+                "flowchart TD\n  A[PNG] --> B[Export]",
+                &merman_export::RasterOptions::default(),
+            )
+            .expect("PNG render should succeed")
+            .expect("diagram should be detected");
+
+        assert_eq!(report.target_admission().target(), RenderTargetKind::Png);
+        assert_eq!(
+            report.document_report().resource_fingerprint(),
+            report.export_report().resource_fingerprint()
+        );
+        assert_eq!(
+            report.operation_report().family_kind(),
+            RenderFamilyKind::Flowchart
+        );
+    }
+
+    #[cfg(feature = "png")]
+    #[test]
+    fn require_portable_png_rejects_export_system_font_before_encoding() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new())
+            .expect("empty theme should compile");
+        let environment = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
+        let renderer =
+            HeadlessRenderer::from_engine_and_environment(merman_core::Engine::new(), environment)
+                .with_theme(theme);
+
+        let error = renderer
+            .render_png_with_report_sync(
+                "flowchart TD\n  A[Portable] --> B[Target]",
+                &merman_export::RasterOptions::default(),
+            )
+            .expect_err("strict portability must reject a system-font raster target");
+        let report = error
+            .target_admission_rejection()
+            .expect("rejection should carry target admission evidence");
+
+        assert_eq!(report.target(), RenderTargetKind::Png);
+        assert_eq!(report.status(), TargetAdmissionStatus::HostDependent);
+        assert!(
+            report
+                .reasons()
+                .contains(&TargetAdmissionReason::ExportSystemFont),
+            "system font evidence must explain the strict rejection: {report}"
+        );
+    }
+
     #[cfg(feature = "jpeg")]
     #[test]
     fn render_jpeg_sync_encodes_a_sealed_svg() {
@@ -1116,6 +1359,28 @@ mod svg_pipeline_tests {
         assert!(bytes.starts_with(b"\xff\xd8\xff"));
     }
 
+    #[cfg(feature = "jpeg")]
+    #[test]
+    fn render_jpeg_report_keeps_document_and_export_evidence_correlated() {
+        let (_, report) = HeadlessRenderer::new()
+            .render_jpeg_with_report_sync(
+                "flowchart TD\n  A[JPEG] --> B[Export]",
+                &merman_export::RasterOptions::default(),
+            )
+            .expect("JPEG render should succeed")
+            .expect("diagram should be detected");
+
+        assert_eq!(report.target_admission().target(), RenderTargetKind::Jpeg);
+        assert_eq!(
+            report.document_report().resource_fingerprint(),
+            report.export_report().resource_fingerprint()
+        );
+        assert_eq!(
+            report.operation_report().family_kind(),
+            RenderFamilyKind::Flowchart
+        );
+    }
+
     #[cfg(feature = "pdf")]
     #[test]
     fn render_pdf_sync_encodes_a_sealed_svg() {
@@ -1125,6 +1390,28 @@ mod svg_pipeline_tests {
             .expect("diagram should be detected");
 
         assert!(bytes.starts_with(b"%PDF-"));
+    }
+
+    #[cfg(feature = "pdf")]
+    #[test]
+    fn render_pdf_report_keeps_document_and_export_evidence_correlated() {
+        let (_, report) = HeadlessRenderer::new()
+            .render_pdf_with_report_sync(
+                "flowchart TD\n  A[PDF] --> B[Export]",
+                &merman_export::PdfOptions::default(),
+            )
+            .expect("PDF render should succeed")
+            .expect("diagram should be detected");
+
+        assert_eq!(report.target_admission().target(), RenderTargetKind::Pdf);
+        assert_eq!(
+            report.document_report().resource_fingerprint(),
+            report.export_report().resource_fingerprint()
+        );
+        assert_eq!(
+            report.operation_report().family_kind(),
+            RenderFamilyKind::Flowchart
+        );
     }
 
     #[test]
@@ -1148,6 +1435,53 @@ mod svg_pipeline_tests {
         assert!(!svg.contains(r#"data-merman-postprocess="scoped-css""#));
         assert!(svg.contains("@media (max-width: 600px) {"));
         assert!(svg.contains("#theme-css text { fill: #654321; }"));
+    }
+
+    #[test]
+    fn render_svg_report_records_authorized_mermaid_theme_css_lane() {
+        let renderer = HeadlessRenderer::new()
+            .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                "secure": [
+                    "secure",
+                    "securityLevel",
+                    "startOnLoad",
+                    "maxTextSize",
+                    "suppressErrorRendering",
+                    "maxEdges"
+                ]
+            })))
+            .with_diagram_id("theme-css-report");
+        let source = r##"%%{init: {"themeCSS": ".node rect { stroke-width: 3px; }"}}%%
+flowchart TD
+  A[Hello] --> B[World]
+"##;
+
+        let rendered = renderer
+            .render_svg_report_sync(source)
+            .expect("themeCSS SVG should render")
+            .expect("flowchart should be detected");
+
+        assert!(
+            rendered
+                .svg()
+                .contains("#theme-css-report .node rect { stroke-width: 3px; }"),
+            "{}",
+            rendered.svg()
+        );
+        assert!(
+            rendered
+                .report()
+                .trusted_theme_lanes()
+                .contains(TrustedThemeLane::RawThemeCss)
+        );
+        assert_eq!(
+            rendered
+                .report()
+                .used_trusted_theme_lanes()
+                .allowed()
+                .collect::<Vec<_>>(),
+            vec![TrustedThemeLane::RawThemeCss]
+        );
     }
 
     #[test]
@@ -1803,10 +2137,18 @@ impl HeadlessRenderer {
         &self,
         text: &str,
         pipeline: &SvgPipeline,
-    ) -> Result<Option<ResvgCompatibleSvg>> {
-        Ok(self
-            .render_document_with_pipeline_sync(text, pipeline)?
-            .map(RenderedDocument::into_svg))
+    ) -> Result<Option<AdmittedSvg>> {
+        let Some(document) = self.render_document_with_pipeline_sync(text, pipeline)? else {
+            return Ok(None);
+        };
+        let admission = document.svg_target_admission();
+        document
+            .enforce_target_admission(&admission)
+            .map_err(|report| HeadlessError::TargetAdmissionRejected { report })?;
+        let admitted = document
+            .admit_svg()
+            .map_err(|report| HeadlessError::TargetAdmissionRejected { report })?;
+        Ok(Some(admitted))
     }
 
     /// Renders one canonical document whose SVG, resources, and report share one operation.
@@ -1835,10 +2177,7 @@ impl HeadlessRenderer {
     }
 
     /// Renders and terminally seals SVG for resvg/raster consumers.
-    pub fn render_resvg_compatible_svg_sync(
-        &self,
-        text: &str,
-    ) -> Result<Option<ResvgCompatibleSvg>> {
+    pub fn render_resvg_compatible_svg_sync(&self, text: &str) -> Result<Option<AdmittedSvg>> {
         self.render_resvg_compatible_svg_with_pipeline_sync(text, &SvgPipeline::resvg_safe())
     }
 
@@ -1877,14 +2216,11 @@ impl HeadlessRenderer {
         &self,
         text: &str,
         options: &merman_export::RasterOptions,
-    ) -> OutputResult<Option<(Vec<u8>, merman_export::RasterExportReport)>> {
+    ) -> OutputResult<Option<(Vec<u8>, RasterRenderReport)>> {
         let Some(document) = self.render_export_document_sync(text)? else {
             return Ok(None);
         };
-        Ok(Some(merman_export::svg_to_png_with_report(
-            document.svg(),
-            options,
-        )?))
+        Ok(Some(document.prepare_png_export(options)?.encode()?))
     }
 
     #[cfg(feature = "jpeg")]
@@ -1904,14 +2240,11 @@ impl HeadlessRenderer {
         &self,
         text: &str,
         options: &merman_export::RasterOptions,
-    ) -> OutputResult<Option<(Vec<u8>, merman_export::RasterExportReport)>> {
+    ) -> OutputResult<Option<(Vec<u8>, RasterRenderReport)>> {
         let Some(document) = self.render_export_document_sync(text)? else {
             return Ok(None);
         };
-        Ok(Some(merman_export::svg_to_jpeg_with_report(
-            document.svg(),
-            options,
-        )?))
+        Ok(Some(document.prepare_jpeg_export(options)?.encode()?))
     }
 
     #[cfg(feature = "pdf")]
@@ -1937,13 +2270,10 @@ impl HeadlessRenderer {
         &self,
         text: &str,
         options: &merman_export::PdfOptions,
-    ) -> OutputResult<Option<(Vec<u8>, merman_export::PdfExportReport)>> {
+    ) -> OutputResult<Option<(Vec<u8>, PdfRenderReport)>> {
         let Some(document) = self.render_export_document_sync(text)? else {
             return Ok(None);
         };
-        Ok(Some(merman_export::svg_to_pdf_with_report(
-            document.svg(),
-            options,
-        )?))
+        Ok(Some(document.prepare_pdf_export(options)?.encode()?))
     }
 }

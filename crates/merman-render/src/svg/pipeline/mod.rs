@@ -2,10 +2,12 @@ mod builtin;
 mod context;
 mod final_validation;
 mod policy;
+mod prepared_text;
 mod preset;
 mod resource_closure;
 
 pub(crate) use builtin::GitGraphBranchLabelBaselinePostprocessor;
+pub(crate) use builtin::set_root_background_color;
 pub use builtin::{
     CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor,
     RootBackgroundPostprocessor, SanitizeCssPostprocessor, SanitizeSvgAttributesPostprocessor,
@@ -14,6 +16,7 @@ pub use builtin::{
 pub use context::{SvgPostprocessContext, SvgPostprocessMetadata};
 pub(crate) use final_validation::validate_well_formed_svg;
 pub use policy::SvgOutputPolicy;
+pub(crate) use prepared_text::partition_prepared_text_label_ids;
 pub use preset::SvgPipelinePreset;
 pub use resource_closure::{SvgResourceClosure, SvgResourceFingerprint};
 
@@ -49,8 +52,12 @@ pub trait SvgPostprocessor: Send + Sync {
 #[derive(Clone)]
 pub struct ResvgCompatibleSvg {
     svg: String,
+    prepared_text_svg: Option<Arc<str>>,
+    prepared_text_ledger: Arc<[crate::text::PreparedTextLabelLedgerEntry]>,
+    prepared_text_evidence_valid: bool,
     reference_plan: SvgReferencePlan,
     resource_closure: SvgResourceClosure,
+    finalization_report: SvgFinalizationReport,
     font_catalog: crate::diagram_theme::FontCatalog,
     font_source_policy: crate::diagram_theme::FontSourcePolicy,
     resource_fingerprint: SvgResourceFingerprint,
@@ -85,11 +92,72 @@ impl SvgReferencePlan {
     }
 }
 
+/// Immutable evidence produced by the terminal SVG finalizer.
+///
+/// Raw SVG drafts do not carry this report. It is created only after the resvg-safe pipeline has
+/// completed XML, CSS, reference, and resource validation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SvgFinalizationReport {
+    preset: SvgPipelinePreset,
+    postprocessor_names: Box<[String]>,
+    drop_native_duplicate_fallbacks: bool,
+    reference_plan: SvgReferencePlan,
+    resource_closure: SvgResourceClosure,
+    text_element_count: usize,
+}
+
+impl SvgFinalizationReport {
+    pub const fn preset(&self) -> SvgPipelinePreset {
+        self.preset
+    }
+
+    pub fn postprocessor_names(&self) -> &[String] {
+        &self.postprocessor_names
+    }
+
+    pub const fn drop_native_duplicate_fallbacks(&self) -> bool {
+        self.drop_native_duplicate_fallbacks
+    }
+
+    pub const fn reference_plan(&self) -> &SvgReferencePlan {
+        &self.reference_plan
+    }
+
+    pub const fn resource_closure(&self) -> &SvgResourceClosure {
+        &self.resource_closure
+    }
+
+    /// Returns the number of terminal SVG `<text>` elements that still require font resolution.
+    pub const fn text_element_count(&self) -> usize {
+        self.text_element_count
+    }
+
+    fn from_pipeline(
+        pipeline: &SvgPipeline,
+        terminal: &final_validation::TerminalSvgValidation,
+    ) -> Self {
+        Self {
+            preset: pipeline.preset,
+            postprocessor_names: pipeline
+                .postprocessors
+                .iter()
+                .map(|postprocessor| postprocessor.name().to_string())
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            drop_native_duplicate_fallbacks: pipeline.drop_native_duplicate_fallbacks,
+            reference_plan: terminal.reference_plan.clone(),
+            resource_closure: terminal.resource_closure.clone(),
+            text_element_count: terminal.text_elements,
+        }
+    }
+}
+
 impl ResvgCompatibleSvg {
     fn finalized(
         svg: String,
         reference_plan: SvgReferencePlan,
         resource_closure: SvgResourceClosure,
+        finalization_report: SvgFinalizationReport,
         session: &RenderSession,
     ) -> Self {
         let font_catalog = session.font_catalog().clone();
@@ -101,8 +169,12 @@ impl ResvgCompatibleSvg {
         );
         Self {
             svg,
+            prepared_text_svg: None,
+            prepared_text_ledger: Arc::from([]),
+            prepared_text_evidence_valid: true,
             reference_plan,
             resource_closure,
+            finalization_report,
             font_catalog,
             font_source_policy,
             resource_fingerprint,
@@ -111,6 +183,46 @@ impl ResvgCompatibleSvg {
 
     pub fn as_str(&self) -> &str {
         &self.svg
+    }
+
+    pub(crate) fn attach_prepared_text_evidence(
+        mut self,
+        ledger: Arc<[crate::text::PreparedTextLabelLedgerEntry]>,
+        evidence_valid: bool,
+    ) -> Result<Self> {
+        self.prepared_text_evidence_valid = evidence_valid;
+        self.prepared_text_ledger = ledger;
+        if !evidence_valid || self.prepared_text_ledger.is_empty() {
+            self.prepared_text_svg = None;
+        } else {
+            let (public_svg, tokenized_svg) = partition_prepared_text_label_ids(
+                std::mem::take(&mut self.svg),
+                &self.prepared_text_ledger,
+            )?;
+            self.svg = public_svg;
+            self.prepared_text_svg = tokenized_svg.map(Arc::from);
+        }
+        Ok(self)
+    }
+
+    /// Returns the terminal SVG carrying renderer-owned prepared-label locators for native export.
+    #[doc(hidden)]
+    pub fn native_export_svg(&self) -> &str {
+        self.prepared_text_svg
+            .as_deref()
+            .unwrap_or(self.svg.as_str())
+    }
+
+    /// Returns per-label prepared-text evidence frozen by the family renderer.
+    #[doc(hidden)]
+    pub fn prepared_text_label_ledger(&self) -> &[crate::text::PreparedTextLabelLedgerEntry] {
+        &self.prepared_text_ledger
+    }
+
+    /// Returns whether the terminal pipeline preserved the renderer-owned label locators.
+    #[doc(hidden)]
+    pub const fn prepared_text_evidence_valid(&self) -> bool {
+        self.prepared_text_evidence_valid
     }
 
     /// Projects the sealed artifact to SVG text and discards its export resources and proofs.
@@ -142,14 +254,27 @@ impl ResvgCompatibleSvg {
     pub const fn resource_fingerprint(&self) -> SvgResourceFingerprint {
         self.resource_fingerprint
     }
+
+    pub const fn finalization_report(&self) -> &SvgFinalizationReport {
+        &self.finalization_report
+    }
 }
 
 impl fmt::Debug for ResvgCompatibleSvg {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ResvgCompatibleSvg")
             .field("svg", &self.svg)
+            .field(
+                "prepared_text_label_count",
+                &self.prepared_text_ledger.len(),
+            )
+            .field(
+                "prepared_text_evidence_valid",
+                &self.prepared_text_evidence_valid,
+            )
             .field("reference_plan", &self.reference_plan)
             .field("resource_closure", &self.resource_closure)
+            .field("finalization_report", &self.finalization_report)
             .field("font_catalog", &self.font_catalog.fingerprint())
             .field("font_source_policy", &self.font_source_policy)
             .field("resource_fingerprint", &self.resource_fingerprint)
@@ -160,8 +285,12 @@ impl fmt::Debug for ResvgCompatibleSvg {
 impl PartialEq for ResvgCompatibleSvg {
     fn eq(&self, other: &Self) -> bool {
         self.svg == other.svg
+            && self.prepared_text_svg == other.prepared_text_svg
+            && self.prepared_text_ledger == other.prepared_text_ledger
+            && self.prepared_text_evidence_valid == other.prepared_text_evidence_valid
             && self.reference_plan == other.reference_plan
             && self.resource_closure == other.resource_closure
+            && self.finalization_report == other.finalization_report
             && self.font_catalog.fingerprint() == other.font_catalog.fingerprint()
             && self.font_source_policy == other.font_source_policy
             && self.resource_fingerprint == other.resource_fingerprint
@@ -227,6 +356,21 @@ impl SvgPipeline {
             postprocessors: Vec::new(),
             drop_native_duplicate_fallbacks: false,
         }
+    }
+
+    /// Returns whether the configured draft pipeline has no untrusted transformation that could
+    /// rewrite typed root-theme nodes after the root consumer emitted them.
+    ///
+    /// The terminal preset itself is renderer-owned and does not invalidate root evidence. A
+    /// custom postprocessor is conservatively treated as a mutation boundary until it provides a
+    /// dedicated preservation contract.
+    pub(crate) fn preserves_typed_root_theme(&self) -> bool {
+        self.postprocessors.is_empty()
+    }
+
+    /// Returns whether the pipeline can preserve renderer-owned prepared-label locators.
+    pub(crate) fn preserves_prepared_text_evidence(&self) -> bool {
+        self.postprocessors.is_empty()
     }
 
     pub fn preset(&self) -> SvgPipelinePreset {
@@ -399,10 +543,12 @@ impl SvgPipeline {
         let (svg, terminal) =
             self.process_cow_with_reference_plan(Cow::Borrowed(svg), metadata, session)?;
         let terminal = terminal.expect("resvg-safe processing always produces terminal evidence");
+        let finalization_report = SvgFinalizationReport::from_pipeline(self, &terminal);
         Ok(ResvgCompatibleSvg::finalized(
             svg.into_owned(),
             terminal.reference_plan,
             terminal.resource_closure,
+            finalization_report,
             session,
         ))
     }
@@ -417,10 +563,12 @@ impl SvgPipeline {
         let (svg, terminal) =
             self.process_cow_with_reference_plan(Cow::Owned(svg), metadata, session)?;
         let terminal = terminal.expect("resvg-safe processing always produces terminal evidence");
+        let finalization_report = SvgFinalizationReport::from_pipeline(self, &terminal);
         Ok(ResvgCompatibleSvg::finalized(
             svg.into_owned(),
             terminal.reference_plan,
             terminal.resource_closure,
+            finalization_report,
             session,
         ))
     }
@@ -473,6 +621,27 @@ mod tests {
 
         let default_svg = finalize_resvg_svg(svg, &default_session).unwrap();
         let custom_svg = finalize_resvg_svg(svg, &custom_session).unwrap();
+
+        assert_eq!(
+            custom_svg.finalization_report().preset(),
+            SvgPipelinePreset::ResvgSafe
+        );
+        assert!(
+            custom_svg
+                .finalization_report()
+                .postprocessor_names()
+                .is_empty()
+        );
+        assert!(
+            custom_svg
+                .finalization_report()
+                .resource_closure()
+                .is_closed()
+        );
+        assert_eq!(
+            custom_svg.finalization_report().reference_plan(),
+            custom_svg.reference_plan()
+        );
 
         assert_eq!(default_svg.as_str(), custom_svg.as_str());
         assert_ne!(

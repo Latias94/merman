@@ -156,10 +156,10 @@ fn render_sequence_with_environment(
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render Sequence artifact");
-    let (svg, _, _, session) = rendered.into_parts();
+    let (svg, family_report) = rendered.into_completion().into_output_and_report();
     SequenceRenderObservation {
         svg,
-        report: session.text_measurement_report(),
+        report: family_report.session_report().measurement().clone(),
     }
 }
 
@@ -411,10 +411,10 @@ fn render_prepared_sequence_after_release(
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render Sequence artifact");
-    let (svg, _, _, session) = rendered.into_parts();
+    let (svg, family_report) = rendered.into_completion().into_output_and_report();
     SequenceRenderObservation {
         svg,
-        report: session.text_measurement_report(),
+        report: family_report.session_report().measurement().clone(),
     }
 }
 
@@ -727,10 +727,11 @@ fn sequence_builtin_route_reuses_self_and_multiline_message_bounds() {
         let rendered = artifact
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .expect("render Sequence artifact");
-        let (_, _, _, session) = rendered.into_parts();
+        let (_, family_report) = rendered.into_completion().into_output_and_report();
 
-        session
-            .text_measurement_report()
+        family_report
+            .session_report()
+            .measurement()
             .entries()
             .iter()
             .filter(|entry| {
@@ -782,10 +783,11 @@ fn sequence_builtin_route_reuses_control_block_message_metrics_through_svg_emiss
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render Sequence artifact");
-    let (_, _, _, session) = rendered.into_parts();
+    let (_, family_report) = rendered.into_completion().into_output_and_report();
 
-    let dimension_calls = session
-        .text_measurement_report()
+    let dimension_calls = family_report
+        .session_report()
+        .measurement()
         .entries()
         .iter()
         .filter(|entry| {

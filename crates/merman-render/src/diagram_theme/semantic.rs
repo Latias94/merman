@@ -4,6 +4,13 @@ use super::ThemeCompileValidationError;
 use super::canvas::{CanvasPaint, InsetsPx, ThemeColorValue};
 use super::typography::{Specified, TextStylePatch};
 
+/// Upper bound for semantic rules in one compiled theme recipe.
+pub(crate) const MAX_THEME_RULES: usize = 512;
+/// Upper bound for ordinal palettes in one compiled theme recipe.
+pub(crate) const MAX_THEME_ORDINAL_PALETTES: usize = 64;
+/// Upper bound for colors in one ordinal palette.
+pub(crate) const MAX_THEME_PALETTE_COLORS: usize = 256;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
 pub enum ThemeTarget {
@@ -442,9 +449,14 @@ impl ThemeStylePatch {
         self
     }
 
-    pub fn with_effect(mut self, effect: impl Into<String>) -> Self {
-        self.effects.effect = Specified::Value(effect.into());
-        self
+    pub fn with_effect(
+        mut self,
+        effect: impl Into<String>,
+    ) -> Result<Self, ThemeCompileValidationError> {
+        let effect = effect.into();
+        super::effects::validate_effect_id(&effect)?;
+        self.effects.effect = Specified::Value(effect);
+        Ok(self)
     }
 
     pub(crate) fn validate(&self) -> Result<(), ThemeCompileValidationError> {
@@ -593,6 +605,13 @@ impl ThemeRule {
                 field: "styles.rule",
             });
         }
+        if self.target == ThemeTarget::Canvas
+            && let Some(family) = self.family
+        {
+            return Err(ThemeCompileValidationError::InvalidCanvasFamilyScope {
+                family: family.as_str(),
+            });
+        }
         if let Some(family) = self.family
             && !self.target.valid_for(family)
         {
@@ -618,7 +637,7 @@ impl ThemeRule {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OrdinalPalette {
     colors: Vec<ThemeColorValue>,
 }
@@ -633,6 +652,11 @@ impl OrdinalPalette {
                 field: "styles.ordinal_palette",
             });
         }
+        if colors.len() > MAX_THEME_PALETTE_COLORS {
+            return Err(ThemeCompileValidationError::LimitExceeded {
+                field: "styles.ordinal_palette.colors",
+            });
+        }
         Ok(Self { colors })
     }
 
@@ -641,9 +665,9 @@ impl OrdinalPalette {
     }
 
     pub fn color_for(&self, one_based_index: usize) -> Option<&ThemeColorValue> {
-        one_based_index
-            .checked_sub(1)
-            .and_then(|index| self.colors.get(index % self.colors.len()))
+        let index = one_based_index.checked_sub(1)?;
+        let palette_len = self.colors.len();
+        (palette_len != 0).then(|| &self.colors[index % palette_len])
     }
 }
 
@@ -673,6 +697,16 @@ impl ThemeRuleSet {
     }
 
     pub(crate) fn validate(&self) -> Result<(), ThemeCompileValidationError> {
+        if self.rules.len() > MAX_THEME_RULES {
+            return Err(ThemeCompileValidationError::LimitExceeded {
+                field: "styles.rules",
+            });
+        }
+        if self.ordinal_palettes.len() > MAX_THEME_ORDINAL_PALETTES {
+            return Err(ThemeCompileValidationError::LimitExceeded {
+                field: "styles.ordinal_palettes",
+            });
+        }
         for rule in &self.rules {
             rule.validate()?;
         }
@@ -688,22 +722,13 @@ impl ThemeRuleSet {
                     field: "styles.ordinal_palette",
                 });
             }
+            if palette.colors.len() > MAX_THEME_PALETTE_COLORS {
+                return Err(ThemeCompileValidationError::LimitExceeded {
+                    field: "styles.ordinal_palette.colors",
+                });
+            }
         }
         Ok(())
-    }
-
-    pub(crate) fn matching_rules(
-        &self,
-        family: RenderFamilyKind,
-        target: ThemeTarget,
-        variant: ThemeVariant,
-        ordinal: Option<usize>,
-    ) -> impl Iterator<Item = &ThemeRule> {
-        self.rules.iter().filter(move |rule| {
-            target.valid_for(family)
-                && rule.target == target
-                && rule.applies_to(family, variant, ordinal)
-        })
     }
 }
 
@@ -739,5 +764,71 @@ fn validate_optional_unit(
     Ok(())
 }
 
-#[allow(dead_code)]
-fn _keep_imports(_: ThemeColorValue, _: CanvasPaint) {}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn solid_rule() -> ThemeRule {
+        ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#2563eb").expect("valid test paint")),
+        )
+    }
+
+    fn palette_color() -> ThemeColorValue {
+        ThemeColorValue::parse("#2563eb").expect("valid test color")
+    }
+
+    #[test]
+    fn semantic_rule_limit_accepts_the_boundary_and_rejects_the_next_rule() {
+        let boundary = ThemeRuleSet {
+            rules: vec![solid_rule(); MAX_THEME_RULES],
+            ordinal_palettes: Vec::new(),
+        };
+        boundary.validate().expect("rule boundary should validate");
+
+        let exceeded = ThemeRuleSet {
+            rules: vec![solid_rule(); MAX_THEME_RULES + 1],
+            ordinal_palettes: Vec::new(),
+        };
+        assert_eq!(
+            exceeded.validate(),
+            Err(ThemeCompileValidationError::LimitExceeded {
+                field: "styles.rules",
+            })
+        );
+    }
+
+    #[test]
+    fn ordinal_palette_color_limit_accepts_the_boundary_and_rejects_the_next_color() {
+        OrdinalPalette::new(vec![palette_color(); MAX_THEME_PALETTE_COLORS])
+            .expect("palette boundary should validate");
+
+        assert_eq!(
+            OrdinalPalette::new(vec![palette_color(); MAX_THEME_PALETTE_COLORS + 1]),
+            Err(ThemeCompileValidationError::LimitExceeded {
+                field: "styles.ordinal_palette.colors",
+            })
+        );
+    }
+
+    #[test]
+    fn ordinal_palette_count_is_bounded_before_duplicate_target_validation() {
+        let palette = OrdinalPalette::new([palette_color()]).expect("valid test palette");
+        let exceeded = ThemeRuleSet {
+            rules: Vec::new(),
+            ordinal_palettes: vec![
+                (ThemeTarget::ChartSeries, palette);
+                MAX_THEME_ORDINAL_PALETTES + 1
+            ],
+        };
+
+        assert_eq!(
+            exceeded.validate(),
+            Err(ThemeCompileValidationError::LimitExceeded {
+                field: "styles.ordinal_palettes",
+            })
+        );
+    }
+}

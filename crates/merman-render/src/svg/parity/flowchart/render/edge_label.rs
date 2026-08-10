@@ -200,13 +200,11 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                                 Some(FLOWCHART_EDGE_LABEL_WRAP_WIDTH),
                             );
                         } else {
-                            let wrapped = prepared_svg_label
-                                .as_ref()
-                                .expect("non-Markdown SVG edge labels are prepared before emission")
-                                .wrapped_lines();
-                            write_flowchart_svg_source_word_lines_centered_with_style(
+                            write_flowchart_svg_label_plan_centered_with_style(
                                 out,
-                                &wrapped,
+                                prepared_svg_label.as_ref().expect(
+                                    "non-Markdown SVG edge labels are prepared before emission",
+                                ),
                                 svg_edge_label_text_style.as_ref(),
                             );
                         }
@@ -246,13 +244,11 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                             Some(FLOWCHART_EDGE_LABEL_WRAP_WIDTH),
                         );
                     } else {
-                        let wrapped = prepared_svg_label
-                            .as_ref()
-                            .expect("non-Markdown SVG edge labels are prepared before emission")
-                            .wrapped_lines();
-                        write_flowchart_svg_source_word_lines_centered_with_style(
+                        write_flowchart_svg_label_plan_centered_with_style(
                             out,
-                            &wrapped,
+                            prepared_svg_label.as_ref().expect(
+                                "non-Markdown SVG edge labels are prepared before emission",
+                            ),
                             svg_edge_label_text_style.as_ref(),
                         );
                     }
@@ -296,13 +292,11 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                         Some(FLOWCHART_EDGE_LABEL_WRAP_WIDTH),
                     );
                 } else {
-                    let wrapped = prepared_svg_label
-                        .as_ref()
-                        .expect("non-Markdown SVG edge labels are prepared before emission")
-                        .wrapped_lines();
-                    write_flowchart_svg_source_word_lines_centered_with_style(
+                    write_flowchart_svg_label_plan_centered_with_style(
                         out,
-                        &wrapped,
+                        prepared_svg_label
+                            .as_ref()
+                            .expect("non-Markdown SVG edge labels are prepared before emission"),
                         svg_edge_label_text_style.as_ref(),
                     );
                 }
@@ -551,8 +545,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         true,
         crate::flowchart::FlowchartSvgWidthMode::Bbox,
     );
-    let wrapped = prepared.wrapped_lines();
-    write_flowchart_svg_source_word_lines(out, &wrapped, true);
+    write_flowchart_svg_label_plan(out, &prepared, true);
     out.push_str("</g></g></g>");
 }
 

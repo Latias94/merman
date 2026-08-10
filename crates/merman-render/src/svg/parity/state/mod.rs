@@ -67,6 +67,7 @@ struct StateRenderCtx<'a> {
     include_edges: bool,
     include_nodes: bool,
     measurer: &'a dyn TextMeasurer,
+    label_sidecar: &'a crate::state::StateLabelSidecar,
     style_plan: &'a crate::state::StateStylePlan,
     rough_cache: StateRoughCache,
     // Keep this field after the operation cache. Rust drops fields in declaration order, so the

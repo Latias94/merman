@@ -2,7 +2,6 @@ use crate::render_family::RenderFamilyKind;
 use std::collections::BTreeMap;
 
 use super::canvas::{CanvasPaint, InsetsPx, ThemeColorValue};
-use super::compiler::ThemeCapabilityReport;
 use super::semantic::{
     OrdinalSelector, StrokeLineCap, StrokeLineJoin, ThemeRule, ThemeStylePatch, ThemeTarget,
     ThemeVariant,
@@ -114,6 +113,23 @@ pub(crate) enum ThemeTypographyProperty {
     TextAlign,
     WhiteSpace,
     Wrap,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum ResolvedStyleProperty {
+    Fill,
+    Stroke,
+    StrokeWidth,
+    StrokeDasharray,
+    StrokeLinecap,
+    StrokeLinejoin,
+    Opacity,
+    FillOpacity,
+    StrokeOpacity,
+    Radius,
+    Padding,
+    Typography(ThemeTypographyProperty),
+    Effect,
 }
 
 #[derive(Debug, Clone)]
@@ -317,6 +333,51 @@ impl ResolvedThemeStyle {
         self.fill.value()
     }
 
+    pub(crate) fn winner_rule_properties(&self) -> Vec<(ResolvedStyleProperty, ThemeRuleOrigin)> {
+        let mut winners = Vec::new();
+        macro_rules! collect_property_winner {
+            ($kind:expr, $property:expr) => {
+                if let Some(origin) = $property.winner() {
+                    winners.push(($kind, origin));
+                }
+            };
+        }
+        collect_property_winner!(ResolvedStyleProperty::Fill, self.fill);
+        collect_property_winner!(ResolvedStyleProperty::Stroke, self.stroke);
+        collect_property_winner!(ResolvedStyleProperty::StrokeWidth, self.stroke_width);
+        collect_property_winner!(
+            ResolvedStyleProperty::StrokeDasharray,
+            self.stroke_dasharray
+        );
+        collect_property_winner!(ResolvedStyleProperty::StrokeLinecap, self.stroke_linecap);
+        collect_property_winner!(ResolvedStyleProperty::StrokeLinejoin, self.stroke_linejoin);
+        collect_property_winner!(ResolvedStyleProperty::Opacity, self.opacity);
+        collect_property_winner!(ResolvedStyleProperty::FillOpacity, self.fill_opacity);
+        collect_property_winner!(ResolvedStyleProperty::StrokeOpacity, self.stroke_opacity);
+        collect_property_winner!(ResolvedStyleProperty::Radius, self.radius);
+        collect_property_winner!(ResolvedStyleProperty::Padding, self.padding);
+        collect_property_winner!(ResolvedStyleProperty::Effect, self.effect);
+        for property in [
+            ThemeTypographyProperty::FontStack,
+            ThemeTypographyProperty::FontSize,
+            ThemeTypographyProperty::FontWeight,
+            ThemeTypographyProperty::FontStyle,
+            ThemeTypographyProperty::LineHeight,
+            ThemeTypographyProperty::LetterSpacing,
+            ThemeTypographyProperty::WordSpacing,
+            ThemeTypographyProperty::Transform,
+            ThemeTypographyProperty::Decoration,
+            ThemeTypographyProperty::TextAlign,
+            ThemeTypographyProperty::WhiteSpace,
+            ThemeTypographyProperty::Wrap,
+        ] {
+            if let Some(origin) = self.typography.winner(property) {
+                winners.push((ResolvedStyleProperty::Typography(property), origin));
+            }
+        }
+        winners
+    }
+
     pub const fn stroke(&self) -> Option<&CanvasPaint> {
         self.stroke.value()
     }
@@ -450,6 +511,7 @@ pub struct ResolvedDiagramTheme {
     base_typography: TextStyle,
     rule_indices: BTreeMap<ThemeTarget, Vec<usize>>,
     ordinal_palette_indices: BTreeMap<ThemeTarget, usize>,
+    effect_binding_indices: Vec<usize>,
 }
 
 impl ResolvedDiagramTheme {
@@ -458,7 +520,8 @@ impl ResolvedDiagramTheme {
         let base_typography = spec.typography().family_style(family).clone();
         let mut rule_indices = BTreeMap::<ThemeTarget, Vec<usize>>::new();
         for (index, rule) in spec.styles().rules().iter().enumerate() {
-            if rule.target().valid_for(family)
+            if rule.target() != ThemeTarget::Canvas
+                && rule.target().valid_for(family)
                 && rule.family().is_none_or(|expected| expected == family)
             {
                 rule_indices.entry(rule.target()).or_default().push(index);
@@ -469,7 +532,20 @@ impl ResolvedDiagramTheme {
             .ordinal_palettes()
             .iter()
             .enumerate()
-            .filter_map(|(index, (target, _))| target.valid_for(family).then_some((*target, index)))
+            .filter_map(|(index, (target, _))| {
+                (*target != ThemeTarget::Canvas && target.valid_for(family))
+                    .then_some((*target, index))
+            })
+            .collect();
+        let effect_binding_indices = spec
+            .effects()
+            .bindings()
+            .iter()
+            .enumerate()
+            .filter_map(|(index, binding)| {
+                (binding.target() != ThemeTarget::Canvas && binding.target().valid_for(family))
+                    .then_some(index)
+            })
             .collect();
 
         Self {
@@ -478,6 +554,7 @@ impl ResolvedDiagramTheme {
             base_typography,
             rule_indices,
             ordinal_palette_indices,
+            effect_binding_indices,
         }
     }
 
@@ -487,6 +564,57 @@ impl ResolvedDiagramTheme {
 
     pub const fn typography(&self) -> &TextStyle {
         &self.base_typography
+    }
+
+    pub(crate) fn has_family_style_requirements(&self) -> bool {
+        self.base_typography != TextStyle::default()
+            || !self.rule_indices.is_empty()
+            || !self.ordinal_palette_indices.is_empty()
+            || !self.effect_binding_indices.is_empty()
+    }
+
+    pub(crate) fn effect_bindings(
+        &self,
+    ) -> impl ExactSizeIterator<Item = &super::effects::EffectBinding> + '_ {
+        self.effect_binding_indices
+            .iter()
+            .map(|index| &self.theme.spec().effects().bindings()[*index])
+    }
+
+    pub(crate) fn family_rules(&self) -> impl Iterator<Item = (usize, &ThemeRule)> + '_ {
+        self.rule_indices
+            .values()
+            .flat_map(|indices| indices.iter().copied())
+            .map(|index| (index, &self.theme.spec().styles().rules()[index]))
+    }
+
+    pub(crate) fn family_ordinal_palette_targets(&self) -> impl Iterator<Item = ThemeTarget> + '_ {
+        self.ordinal_palette_indices.keys().copied()
+    }
+
+    pub(crate) fn family_mechanism_keys(&self) -> Vec<super::application::FamilyThemeMechanismKey> {
+        let mut keys = Vec::new();
+        if self.base_typography != TextStyle::default() {
+            keys.push(super::application::FamilyThemeMechanismKey::Typography);
+        }
+        keys.extend(self.family_rules().map(|(index, rule)| {
+            super::application::FamilyThemeMechanismKey::Rule {
+                index,
+                target: rule.target(),
+            }
+        }));
+        keys.extend(
+            self.family_ordinal_palette_targets().map(|target| {
+                super::application::FamilyThemeMechanismKey::OrdinalPalette { target }
+            }),
+        );
+        keys.extend(self.effect_bindings().map(|binding| {
+            super::application::FamilyThemeMechanismKey::EffectBinding {
+                target: binding.target(),
+                effect_id: binding.effect_id().to_string(),
+            }
+        }));
+        keys
     }
 
     pub fn style(
@@ -508,6 +636,40 @@ impl ResolvedDiagramTheme {
         )
     }
 
+    pub(crate) fn text_style(
+        &self,
+        target: ThemeTarget,
+        variant: ThemeVariant,
+        ordinal: Option<usize>,
+    ) -> ResolvedThemeStyle {
+        let mut indices = self
+            .rule_indices
+            .get(&ThemeTarget::Text)
+            .into_iter()
+            .flatten()
+            .copied()
+            .collect::<Vec<_>>();
+        if target != ThemeTarget::Text {
+            indices.extend(
+                self.rule_indices
+                    .get(&target)
+                    .into_iter()
+                    .flatten()
+                    .copied(),
+            );
+        }
+        indices.sort_unstable();
+        indices.dedup();
+        let rules = self.theme.spec().styles().rules();
+        resolve_matching_rules(
+            &self.base_typography,
+            indices
+                .into_iter()
+                .map(|index| (index, &rules[index]))
+                .filter(|(_, rule)| rule.applies_to(self.family, variant, ordinal)),
+        )
+    }
+
     pub fn series_color(
         &self,
         target: ThemeTarget,
@@ -518,13 +680,12 @@ impl ResolvedDiagramTheme {
             .1
             .color_for(one_based_index)
     }
-
-    pub fn capabilities(&self) -> &ThemeCapabilityReport {
-        self.theme.capabilities()
-    }
 }
 
-/// Resolves directly from an uncompiled spec for Mermaid compatibility projection.
+/// Resolves unscoped rules directly from a spec for the transitional Mermaid compatibility lane.
+///
+/// Explicit family scopes belong exclusively to the selected family's typed adapter. Projecting
+/// them into global Mermaid variables would let one family alter every other renderer.
 pub(crate) fn resolve_style(
     spec: &super::DiagramThemeSpec,
     family: RenderFamilyKind,
@@ -541,6 +702,7 @@ pub(crate) fn resolve_style(
             .enumerate()
             .filter(|(_, rule)| {
                 target.valid_for(family)
+                    && rule.family().is_none()
                     && rule.target() == target
                     && rule.applies_to(family, variant, ordinal)
             }),
@@ -562,8 +724,9 @@ fn resolve_matching_rules<'a>(
 mod tests {
     use super::*;
     use crate::diagram_theme::{
-        DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, OrdinalSelector, ThemeRule,
-        ThemeRuleSet,
+        CanvasSpec, DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding,
+        EffectGraph, EffectInput, EffectPrimitive, FilterRegion, OrdinalPalette, OrdinalSelector,
+        ThemeRule, ThemeRuleSet,
     };
 
     #[test]
@@ -640,6 +803,53 @@ mod tests {
         );
         assert_eq!(resolved.series_color(ThemeTarget::Edge, 1), None);
         assert_eq!(resolved.series_color(ThemeTarget::ChartSeries, 1), None);
+    }
+
+    #[test]
+    fn family_resolution_excludes_root_canvas_and_indexes_local_effect_bindings() {
+        let state_fill = CanvasPaint::solid("#22c55e").expect("valid state fill");
+        let graph = EffectGraph::new(
+            "state-shadow",
+            FilterRegion::bounded(0.0, 0.0, 256.0, 256.0),
+            [EffectPrimitive::DropShadow {
+                input: EffectInput::SourceGraphic,
+                offset_x: 1.0,
+                offset_y: 1.0,
+                blur_radius: 2.0,
+                spread: 0.0,
+                color: ThemeColorValue::parse("#00000080").expect("valid shadow color"),
+            }],
+        )
+        .expect("valid effect graph");
+        let effects = DiagramEffectSet::default()
+            .with_graph(graph)
+            .expect("add effect graph")
+            .with_binding(
+                EffectBinding::new(ThemeTarget::State, "state-shadow")
+                    .expect("valid state effect binding"),
+            )
+            .expect("add state effect binding");
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_canvas(CanvasSpec::solid("#0f172a").expect("valid canvas"))
+                    .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::State,
+                        ThemeStylePatch::default().with_fill(state_fill),
+                    )))
+                    .with_effects(effects),
+            )
+            .expect("compile theme");
+
+        let resolved = theme.resolve(RenderFamilyKind::State);
+        assert_eq!(
+            resolved
+                .style(ThemeTarget::Canvas, ThemeVariant::Default, None)
+                .fill(),
+            None
+        );
+        assert_eq!(resolved.effect_bindings().count(), 1);
+        assert!(resolved.has_family_style_requirements());
     }
 
     #[test]

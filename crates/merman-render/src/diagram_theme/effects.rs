@@ -4,6 +4,7 @@ use super::semantic::ThemeTarget;
 
 const MAX_EFFECT_GRAPHS: usize = 32;
 const MAX_EFFECT_PRIMITIVES: usize = 256;
+const MAX_EFFECT_BINDINGS: usize = 64;
 const MAX_TURBULENCE_OCTAVES: u8 = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -179,11 +180,13 @@ pub struct EffectBinding {
 }
 
 impl EffectBinding {
-    pub fn new(target: ThemeTarget, effect_id: impl Into<String>) -> Self {
-        Self {
-            target,
-            effect_id: effect_id.into(),
-        }
+    pub fn new(
+        target: ThemeTarget,
+        effect_id: impl Into<String>,
+    ) -> Result<Self, ThemeCompileValidationError> {
+        let effect_id = effect_id.into();
+        validate_effect_id(&effect_id)?;
+        Ok(Self { target, effect_id })
     }
 
     pub const fn target(&self) -> ThemeTarget {
@@ -217,9 +220,26 @@ impl DiagramEffectSet {
         Ok(self)
     }
 
-    pub fn with_binding(mut self, binding: EffectBinding) -> Self {
+    pub fn with_binding(
+        mut self,
+        binding: EffectBinding,
+    ) -> Result<Self, ThemeCompileValidationError> {
+        if self.bindings.len() >= MAX_EFFECT_BINDINGS {
+            return Err(ThemeCompileValidationError::LimitExceeded {
+                field: "effects.bindings",
+            });
+        }
+        if self
+            .bindings
+            .iter()
+            .any(|existing| existing.target == binding.target)
+        {
+            return Err(ThemeCompileValidationError::DuplicateId {
+                field: "effects.binding.target",
+            });
+        }
         self.bindings.push(binding);
-        self
+        Ok(self)
     }
 
     pub fn graphs(&self) -> &[EffectGraph] {
@@ -230,10 +250,29 @@ impl DiagramEffectSet {
         &self.bindings
     }
 
+    pub(crate) fn graph(&self, id: &str) -> Option<&EffectGraph> {
+        self.graphs.iter().find(|graph| graph.id == id)
+    }
+
     pub(crate) fn validate(&self) -> Result<(), ThemeCompileValidationError> {
         if self.graphs.len() > MAX_EFFECT_GRAPHS {
             return Err(ThemeCompileValidationError::LimitExceeded {
                 field: "effects.graphs",
+            });
+        }
+        if self.bindings.len() > MAX_EFFECT_BINDINGS {
+            return Err(ThemeCompileValidationError::LimitExceeded {
+                field: "effects.bindings",
+            });
+        }
+        let targets = self
+            .bindings
+            .iter()
+            .map(|binding| binding.target)
+            .collect::<std::collections::BTreeSet<_>>();
+        if targets.len() != self.bindings.len() {
+            return Err(ThemeCompileValidationError::DuplicateId {
+                field: "effects.binding.target",
             });
         }
         let ids = self
@@ -280,7 +319,7 @@ fn validate_inputs(primitives: &[EffectPrimitive]) -> Result<(), ThemeCompileVal
     Ok(())
 }
 
-fn validate_effect_id(id: &str) -> Result<(), ThemeCompileValidationError> {
+pub(crate) fn validate_effect_id(id: &str) -> Result<(), ThemeCompileValidationError> {
     if id.is_empty()
         || id.len() > 128
         || id.chars().any(|character| {

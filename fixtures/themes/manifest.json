@@ -425,7 +425,7 @@
       "source": "canvas-gradient",
       "disposition": "capability",
       "capabilities": [
-        "gradient-canvas"
+        "gradient-paint"
       ]
     },
     {
@@ -439,14 +439,14 @@
       "source": "canvas-pattern",
       "disposition": "capability",
       "capabilities": [
-        "pattern-canvas"
+        "pattern-paint"
       ]
     },
     {
       "source": "canvas-solid",
       "disposition": "capability",
       "capabilities": [
-        "solid-canvas"
+        "solid-paint"
       ]
     },
     {

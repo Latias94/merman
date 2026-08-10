@@ -193,8 +193,40 @@ pub enum Error {
         residual_count: usize,
         first_residual: crate::family::FamilyStyleResidual,
     },
+    #[error(
+        "portable theme rendering rejected {residual_count} structured family theme residual(s) for `{family_kind}`; first residual: {first_residual}"
+    )]
+    UnverifiedFamilyTheme {
+        family_kind: RenderFamilyKind,
+        residual_count: usize,
+        first_residual: crate::family::FamilyThemeResidual,
+    },
+    #[error(
+        "portable theme rendering cannot evaluate structured family styles for unadapted family `{family_kind}`"
+    )]
+    UnadaptedFamilyTheme { family_kind: RenderFamilyKind },
+    #[error(
+        "portable theme rendering has incomplete structured family evidence for `{family_kind}`: accounted for {accounted_count} of {required_count} mechanism(s)"
+    )]
+    IncompleteFamilyTheme {
+        family_kind: RenderFamilyKind,
+        required_count: usize,
+        accounted_count: usize,
+    },
+    #[error(
+        "portable theme rendering rejected root theme verification {verification:?} with {residual_count} residual(s)"
+    )]
+    RejectedRootTheme {
+        verification: crate::diagram_theme::RootThemeVerification,
+        residual_count: usize,
+        first_residual: Option<crate::diagram_theme::RootThemeResidual>,
+    },
     #[error("invalid semantic model: {message}")]
     InvalidModel { message: String },
+    #[error(transparent)]
+    TextLayout(#[from] crate::text::TextLayoutError),
+    #[error(transparent)]
+    ThemeAdmission(#[from] crate::diagram_theme::ThemeAdmissionError),
     #[error(
         "custom JSON model `{model_name}` from {provenance:?} cannot render diagram type `{diagram_type}`"
     )]
@@ -265,6 +297,54 @@ impl Error {
                 residual_count,
                 first_residual,
             } => Some((*family_kind, *residual_count, first_residual)),
+            _ => None,
+        }
+    }
+
+    pub const fn unadapted_family_theme(&self) -> Option<RenderFamilyKind> {
+        match self {
+            Self::UnadaptedFamilyTheme { family_kind } => Some(*family_kind),
+            _ => None,
+        }
+    }
+
+    pub const fn incomplete_family_theme(&self) -> Option<(RenderFamilyKind, usize, usize)> {
+        match self {
+            Self::IncompleteFamilyTheme {
+                family_kind,
+                required_count,
+                accounted_count,
+            } => Some((*family_kind, *required_count, *accounted_count)),
+            _ => None,
+        }
+    }
+
+    pub const fn unverified_family_theme(
+        &self,
+    ) -> Option<(RenderFamilyKind, usize, &crate::family::FamilyThemeResidual)> {
+        match self {
+            Self::UnverifiedFamilyTheme {
+                family_kind,
+                residual_count,
+                first_residual,
+            } => Some((*family_kind, *residual_count, first_residual)),
+            _ => None,
+        }
+    }
+
+    pub const fn rejected_root_theme(
+        &self,
+    ) -> Option<(
+        crate::diagram_theme::RootThemeVerification,
+        usize,
+        Option<&crate::diagram_theme::RootThemeResidual>,
+    )> {
+        match self {
+            Self::RejectedRootTheme {
+                verification,
+                residual_count,
+                first_residual,
+            } => Some((*verification, *residual_count, first_residual.as_ref())),
             _ => None,
         }
     }
@@ -360,6 +440,14 @@ impl<'a> LayoutExecution<'a> {
 
     pub(crate) fn text_measurer(&self) -> &dyn crate::text::TextMeasurer {
         &self.text_measurer
+    }
+
+    pub(crate) fn prepared_text_layout(&self) -> Option<&crate::text::PreparedTextLayout> {
+        self.family.session().prepared_text_layout()
+    }
+
+    pub(crate) fn resolved_theme(&self) -> Option<&crate::diagram_theme::ResolvedDiagramTheme> {
+        self.family.resolved_theme()
     }
 
     pub(crate) fn math_renderer(&self) -> Option<&(dyn crate::math::MathRenderer + Send + Sync)> {

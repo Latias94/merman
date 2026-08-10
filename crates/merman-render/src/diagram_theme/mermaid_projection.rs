@@ -82,7 +82,11 @@ struct CompatibilityThemeRoles {
 
 impl CompatibilityThemeRoles {
     fn new(spec: &DiagramThemeSpec) -> Self {
-        let canvas = solid_paint(spec.canvas().base());
+        let canvas = spec
+            .canvas()
+            .has_explicit_base()
+            .then(|| solid_paint(spec.canvas().base()))
+            .flatten();
         let surface = fill(spec, RenderFamilyKind::Flowchart, ThemeTarget::Node);
         let surface_alt = fill(spec, RenderFamilyKind::Sequence, ThemeTarget::Loop)
             .or_else(|| fill(spec, RenderFamilyKind::Flowchart, ThemeTarget::Cluster))
@@ -945,7 +949,10 @@ fn relative_luminance(r: f64, g: f64, b: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diagram_theme::{DiagramThemeCompiler, ThemePreset};
+    use crate::diagram_theme::{
+        DiagramThemeCompiler, DiagramThemeSpec, ThemePreset, ThemeRule, ThemeRuleSet,
+        ThemeStylePatch,
+    };
 
     #[test]
     fn palette_readability_composites_transparency_against_the_canvas() {
@@ -971,5 +978,44 @@ mod tests {
         assert_eq!(variables["noteTextColor"], "#fef3c7");
         assert_eq!(variables["stateLabelColor"], "#e5e7eb");
         assert_eq!(variables["transitionLabelColor"], "#e5e7eb");
+    }
+
+    #[test]
+    fn explicit_family_rules_never_enter_the_global_mermaid_projection() {
+        let scoped_fill = CanvasPaint::solid("#ef4444").expect("valid scoped fill");
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default().with_fill(scoped_fill),
+                )
+                .for_family(RenderFamilyKind::Flowchart),
+            ),
+        );
+        let projected = compile(&spec);
+
+        assert_eq!(
+            projected
+                .as_value()
+                .get("themeVariables")
+                .and_then(|variables| variables.get("primaryColor")),
+            None
+        );
+    }
+
+    #[test]
+    fn unscoped_rules_remain_in_the_transitional_mermaid_projection() {
+        let shared_fill = CanvasPaint::solid("#2563eb").expect("valid shared fill");
+        let spec =
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Node,
+                ThemeStylePatch::default().with_fill(shared_fill),
+            )));
+        let projected = compile(&spec);
+
+        assert_eq!(
+            projected.as_value()["themeVariables"]["primaryColor"],
+            "#2563eb"
+        );
     }
 }

@@ -1,10 +1,13 @@
 //! Portable, validated diagram-theme inputs and host admission policy.
 
 mod admission;
+mod application;
 mod assets;
+mod canonical;
 mod canvas;
 mod compiler;
 mod effects;
+mod mechanisms;
 mod mermaid_projection;
 mod presets;
 mod resolved;
@@ -19,12 +22,19 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::sync::Arc;
 
+pub(crate) use admission::ResolvedThemeAdmission;
 pub use admission::{
     FontEmbeddingRequirement, FontSource, FontSourcePolicy, HostMeasurementFallback,
     HostMeasurementFallbackPolicy, TextLayoutCapability, ThemeAdmissionError, ThemeAdmissionPolicy,
-    ThemeCapability, ThemePortabilityRequirement, ThemeRequirements, TrustedThemeLane,
-    TrustedThemeLanes,
+    ThemeCapability, ThemeHostAdmissionReport, ThemePortabilityRequirement, ThemeRequirements,
+    TrustedThemeLane, TrustedThemeLanes,
 };
+pub use application::{
+    FamilyThemeMechanismKey, RootThemeEvaluation, RootThemeMechanism, RootThemeMechanismEvidence,
+    RootThemeMechanismKey, RootThemeReport, RootThemeResidual, RootThemeResidualReason,
+    RootThemeVerification,
+};
+pub(crate) use application::{RootThemeApplication, RootThemePlan};
 pub use assets::{
     FontAsset, FontAssetFingerprint, FontAssetIdError, FontAssetSpec, FontCatalog,
     FontCatalogError, FontCatalogFingerprint, FontCatalogSpec, FontContainer,
@@ -34,7 +44,7 @@ pub use canvas::{
     BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, GradientStop, InsetsPx, LinearGradient,
     PatternKind, PatternSpec, RadialGradient, ThemeColorValue, ThemeLength,
 };
-pub use compiler::{DiagramThemeCompiler, ThemeCapabilityReport, ThemeCompileError};
+pub use compiler::{DiagramThemeCompiler, ThemeCompileError};
 pub use effects::{
     DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FilterRegion,
 };
@@ -44,6 +54,7 @@ pub use presets::{
 pub use resolved::{
     ResolvedDiagramTheme, ResolvedProperty, ResolvedThemeStyle, ResolvedTypography,
 };
+pub(crate) use resolved::{ResolvedStyleProperty, ThemeTypographyProperty};
 pub use resources::{
     MAX_FONT_ALIASES_HARD_CAP, MAX_FONT_ASSET_COMPRESSED_BYTES_HARD_CAP,
     MAX_FONT_ASSET_DECODED_BYTES_HARD_CAP, MAX_FONT_ASSETS_HARD_CAP,
@@ -72,9 +83,9 @@ pub(crate) use source_styles::{
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ThemeFingerprint([u8; 32]);
+pub struct ThemeRecipeFingerprint([u8; 32]);
 
-impl ThemeFingerprint {
+impl ThemeRecipeFingerprint {
     pub(crate) const fn from_bytes(bytes: [u8; 32]) -> Self {
         Self(bytes)
     }
@@ -88,37 +99,40 @@ impl ThemeFingerprint {
     }
 }
 
-impl fmt::Debug for ThemeFingerprint {
+impl fmt::Debug for ThemeRecipeFingerprint {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_tuple("ThemeFingerprint")
+            .debug_tuple("ThemeRecipeFingerprint")
             .field(&self.to_hex())
             .finish()
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ThemeResolutionReport {
-    theme_fingerprint: ThemeFingerprint,
+pub struct ThemeRecipeReport {
+    theme_recipe_fingerprint: ThemeRecipeFingerprint,
     font_catalog_fingerprint: FontCatalogFingerprint,
     required_capabilities: BTreeSet<ThemeCapability>,
+    required_text_capabilities: BTreeSet<TextLayoutCapability>,
 }
 
-impl ThemeResolutionReport {
+impl ThemeRecipeReport {
     pub(crate) fn compiled(
-        theme_fingerprint: ThemeFingerprint,
+        theme_recipe_fingerprint: ThemeRecipeFingerprint,
         font_catalog_fingerprint: FontCatalogFingerprint,
         required_capabilities: BTreeSet<ThemeCapability>,
+        required_text_capabilities: BTreeSet<TextLayoutCapability>,
     ) -> Self {
         Self {
-            theme_fingerprint,
+            theme_recipe_fingerprint,
             font_catalog_fingerprint,
             required_capabilities,
+            required_text_capabilities,
         }
     }
 
-    pub const fn theme_fingerprint(&self) -> ThemeFingerprint {
-        self.theme_fingerprint
+    pub const fn theme_recipe_fingerprint(&self) -> ThemeRecipeFingerprint {
+        self.theme_recipe_fingerprint
     }
 
     pub const fn font_catalog_fingerprint(&self) -> FontCatalogFingerprint {
@@ -128,26 +142,31 @@ impl ThemeResolutionReport {
     pub fn required_capabilities(&self) -> impl ExactSizeIterator<Item = ThemeCapability> + '_ {
         self.required_capabilities.iter().copied()
     }
+
+    pub fn requires_capability(&self, capability: ThemeCapability) -> bool {
+        self.required_capabilities.contains(&capability)
+    }
+
+    pub fn required_text_capabilities(
+        &self,
+    ) -> impl ExactSizeIterator<Item = TextLayoutCapability> + '_ {
+        self.required_text_capabilities.iter().copied()
+    }
+
+    pub fn requires_text_capability(&self, capability: TextLayoutCapability) -> bool {
+        self.required_text_capabilities.contains(&capability)
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct DiagramTheme(pub(crate) Arc<CompiledDiagramTheme>);
 
-impl PartialEq for DiagramTheme {
-    fn eq(&self, other: &Self) -> bool {
-        self.fingerprint() == other.fingerprint()
-    }
-}
-
-impl Eq for DiagramTheme {}
-
 impl DiagramTheme {
-    pub fn fingerprint(&self) -> ThemeFingerprint {
-        self.0.fingerprint
-    }
-
-    pub fn capabilities(&self) -> &ThemeCapabilityReport {
-        &self.0.capabilities
+    /// Returns the content identity of the canonical recipe and its retained resources.
+    ///
+    /// This identity does not prove host admission, family evaluation, or output portability.
+    pub fn recipe_fingerprint(&self) -> ThemeRecipeFingerprint {
+        self.0.recipe_fingerprint
     }
 
     pub fn spec(&self) -> &DiagramThemeSpec {
@@ -158,7 +177,7 @@ impl DiagramTheme {
         &self.0.catalog
     }
 
-    pub fn report(&self) -> &ThemeResolutionReport {
+    pub fn report(&self) -> &ThemeRecipeReport {
         &self.0.report
     }
 
@@ -166,24 +185,29 @@ impl DiagramTheme {
         ResolvedDiagramTheme::new(self.clone(), family)
     }
 
-    pub fn font_source_policy(&self) -> &FontSourcePolicy {
-        self.0.admission.font_source_policy()
-    }
-
-    pub fn measurement_fallback_policy(&self) -> &HostMeasurementFallbackPolicy {
-        self.0.admission.measurement_fallback_policy()
-    }
-
-    pub fn portability_requirement(&self) -> ThemePortabilityRequirement {
-        self.0.admission.portability_requirement()
-    }
-
-    pub fn trusted_lanes(&self) -> &TrustedThemeLanes {
-        self.0.admission.trusted_lanes()
-    }
-
     pub fn mermaid_config(&self) -> &merman_core::MermaidConfig {
         &self.0.mermaid_config
+    }
+
+    pub(crate) fn requirements(&self) -> &ThemeRequirements {
+        &self.0.requirements
+    }
+
+    pub(crate) fn resolve_runtime_admission(
+        &self,
+        admission: &ThemeAdmissionPolicy,
+        font_sources: &FontSourcePolicy,
+        measurement_fallbacks: &HostMeasurementFallbackPolicy,
+        portability: ThemePortabilityRequirement,
+    ) -> Result<ResolvedThemeAdmission, ThemeAdmissionError> {
+        admission::resolve_theme_admission(
+            admission,
+            font_sources,
+            measurement_fallbacks,
+            portability,
+            self.requirements(),
+            self.font_catalog(),
+        )
     }
 }
 
@@ -191,11 +215,10 @@ impl DiagramTheme {
 pub(crate) struct CompiledDiagramTheme {
     spec: DiagramThemeSpec,
     catalog: FontCatalog,
-    admission: admission::ResolvedThemeAdmission,
+    requirements: ThemeRequirements,
     mermaid_config: merman_core::MermaidConfig,
-    capabilities: ThemeCapabilityReport,
-    fingerprint: ThemeFingerprint,
-    report: ThemeResolutionReport,
+    recipe_fingerprint: ThemeRecipeFingerprint,
+    report: ThemeRecipeReport,
 }
 
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
@@ -222,6 +245,8 @@ pub enum ThemeCompileValidationError {
         target: &'static str,
         family: &'static str,
     },
+    #[error("canvas theme rules cannot be scoped to render family `{family}`")]
+    InvalidCanvasFamilyScope { family: &'static str },
 }
 
 #[cfg(test)]
@@ -243,19 +268,31 @@ mod tests {
         let first = DiagramThemeCompiler::new().compile(spec.clone()).unwrap();
         let second = DiagramThemeCompiler::new().compile(spec).unwrap();
 
-        assert_eq!(first, second);
-        assert!(
-            first
-                .capabilities()
-                .requires(ThemeCapability::SemanticRules)
+        assert_eq!(
+            first.recipe_fingerprint(),
+            second.recipe_fingerprint(),
+            "canonical recipe identity must be explicit"
         );
         assert!(
             first
-                .capabilities()
-                .requires(ThemeCapability::OrdinalPalette)
+                .report()
+                .requires_capability(ThemeCapability::SemanticRules)
         );
-        assert!(first.capabilities().requires(ThemeCapability::SolidCanvas));
-        assert!(first.capabilities().requires(ThemeCapability::Typography));
+        assert!(
+            first
+                .report()
+                .requires_capability(ThemeCapability::OrdinalPalette)
+        );
+        assert!(
+            first
+                .report()
+                .requires_capability(ThemeCapability::SolidPaint)
+        );
+        assert!(
+            first
+                .report()
+                .requires_capability(ThemeCapability::Typography)
+        );
         assert_eq!(
             first
                 .mermaid_config()
@@ -288,7 +325,7 @@ mod tests {
     }
 
     #[test]
-    fn inferred_capabilities_are_subject_to_host_admission() {
+    fn inferred_capabilities_are_retained_as_theme_requirements() {
         let stops = [
             GradientStop::new(0.0, ThemeColorValue::parse("#000").unwrap()).unwrap(),
             GradientStop::new(1.0, ThemeColorValue::parse("#fff").unwrap()).unwrap(),
@@ -296,17 +333,15 @@ mod tests {
         let spec = DiagramThemeSpec::new().with_canvas(CanvasSpec::default().with_base(
             CanvasPaint::LinearGradient(LinearGradient::new(45.0, stops).unwrap()),
         ));
-        let compiler = DiagramThemeCompiler::new().with_admission(
-            ThemeAdmissionPolicy::permissive()
-                .with_allowed_capabilities([ThemeCapability::Typography]),
-        );
+        let theme = DiagramThemeCompiler::new()
+            .compile(spec)
+            .expect("host-independent recipe compilation");
 
-        assert!(matches!(
-            compiler.compile(spec),
-            Err(ThemeCompileError::Admission(
-                ThemeAdmissionError::ThemeCapabilityDenied(ThemeCapability::GradientCanvas)
-            ))
-        ));
+        assert!(
+            theme
+                .report()
+                .requires_capability(ThemeCapability::GradientPaint)
+        );
     }
 
     #[test]
@@ -384,8 +419,25 @@ mod tests {
             ))
         ));
 
+        let canvas_family_rule = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Canvas,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#fff").unwrap()),
+                )
+                .for_family(RenderFamilyKind::Flowchart),
+            ),
+        );
+        assert!(matches!(
+            DiagramThemeCompiler::new().compile(canvas_family_rule),
+            Err(ThemeCompileError::Validation(
+                ThemeCompileValidationError::InvalidCanvasFamilyScope { .. }
+            ))
+        ));
+
         let effects = DiagramEffectSet::default()
-            .with_binding(EffectBinding::new(ThemeTarget::Node, "missing"));
+            .with_binding(EffectBinding::new(ThemeTarget::Node, "missing").unwrap())
+            .unwrap();
         assert!(matches!(
             DiagramThemeCompiler::new().compile(DiagramThemeSpec::new().with_effects(effects)),
             Err(ThemeCompileError::Validation(

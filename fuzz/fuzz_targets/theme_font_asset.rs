@@ -5,8 +5,8 @@ use base64::engine::general_purpose::STANDARD;
 use libfuzzer_sys::fuzz_target;
 use merman_render::diagram_theme::{
     FontAssetSpec, FontCatalogSpec, FontEmbeddingRequirement, FontSource, GenericFontFamily,
+    ThemeResourceLimitId, ThemeResourcePolicy,
 };
-use merman_render::resources::{RenderResourcePolicy, ResourceLimitId};
 
 const MAX_INPUT_BYTES: usize = 256 * 1024;
 const MAX_FUZZ_ASSETS: usize = 4;
@@ -61,7 +61,7 @@ struct FuzzCatalogInput {
     assets: Vec<Vec<u8>>,
 }
 
-fn decode_input(data: &[u8], policy: &RenderResourcePolicy) -> Option<FuzzCatalogInput> {
+fn decode_input(data: &[u8], policy: &ThemeResourcePolicy) -> Option<FuzzCatalogInput> {
     if is_font_container(data) {
         return Some(FuzzCatalogInput {
             selector: 0,
@@ -142,22 +142,28 @@ fn catalog_spec(input: &FuzzCatalogInput) -> Option<FontCatalogSpec> {
     )
 }
 
-fn fuzz_resource_policy() -> RenderResourcePolicy {
-    let mut policy = RenderResourcePolicy::constrained();
+fn fuzz_resource_policy() -> ThemeResourcePolicy {
+    let mut policy = ThemeResourcePolicy::constrained();
     for (id, value) in [
-        (ResourceLimitId::MaxThemeEncodedBytes, MAX_INPUT_BYTES),
-        (ResourceLimitId::MaxThemeBase64Bytes, MAX_INPUT_BYTES),
+        (ThemeResourceLimitId::MaxThemeEncodedBytes, MAX_INPUT_BYTES),
+        (ThemeResourceLimitId::MaxThemeBase64Bytes, MAX_INPUT_BYTES),
         (
-            ResourceLimitId::MaxFontAssetCompressedBytes,
+            ThemeResourceLimitId::MaxFontAssetCompressedBytes,
             MAX_INPUT_BYTES,
         ),
-        (ResourceLimitId::MaxFontAssetDecodedBytes, 2 * 1024 * 1024),
-        (ResourceLimitId::MaxFontCatalogDecodedBytes, 4 * 1024 * 1024),
-        (ResourceLimitId::MaxFontAssets, MAX_FUZZ_ASSETS),
-        (ResourceLimitId::MaxFontFaces, 32),
-        (ResourceLimitId::MaxFontTables, 512),
-        (ResourceLimitId::MaxFontAliases, 8),
-        (ResourceLimitId::MaxFontDecodedExpansionRatio, 16),
+        (
+            ThemeResourceLimitId::MaxFontAssetDecodedBytes,
+            2 * 1024 * 1024,
+        ),
+        (
+            ThemeResourceLimitId::MaxFontCatalogDecodedBytes,
+            4 * 1024 * 1024,
+        ),
+        (ThemeResourceLimitId::MaxFontAssets, MAX_FUZZ_ASSETS),
+        (ThemeResourceLimitId::MaxFontFaces, 32),
+        (ThemeResourceLimitId::MaxFontTables, 512),
+        (ThemeResourceLimitId::MaxFontAliases, 8),
+        (ThemeResourceLimitId::MaxFontDecodedExpansionRatio, 16),
     ] {
         policy
             .apply_limit(id, value)

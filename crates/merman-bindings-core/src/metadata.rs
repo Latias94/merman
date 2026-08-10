@@ -648,15 +648,14 @@ fn theme_catalog_for(artifact_contract: &ValidatedArtifactContract) -> BindingTh
                     },
                     required_capability_ids: sorted_theme_ids(
                         theme
-                            .capabilities()
-                            .required()
+                            .report()
+                            .required_capabilities()
                             .map(merman::svg::ThemeCapability::id)
                             .collect(),
                     ),
                     required_text_capability_ids: sorted_theme_ids(
                         theme
-                            .spec()
-                            .requirements()
+                            .report()
                             .required_text_capabilities()
                             .map(merman::svg::TextLayoutCapability::id)
                             .collect(),

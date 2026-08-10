@@ -1,16 +1,19 @@
 use indexmap::IndexMap;
 use merman_core::diagrams::state::{
-    StateDiagramRenderModel, StateDiagramRenderNode, StateDiagramRenderStyleClass,
+    StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
+    StateDiagramRenderStyleClass,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use crate::diagram_theme::{
-    CanvasPaint, PreparedSourceStyleDeclaration, ResolvedDiagramTheme, ResolvedProperty,
-    ResolvedThemeStyle, SourceStyleChannel, SourceStyleDeclaration, SourceStyleOrigin,
-    SourceStyleProvenance, SourceStyleResidual, SourceStyleResidualReason, Specified, ThemeTarget,
+    CanvasPaint, FamilyThemeMechanismKey, PreparedSourceStyleDeclaration, ResolvedDiagramTheme,
+    ResolvedProperty, ResolvedStyleProperty, ResolvedThemeStyle, SourceStyleChannel,
+    SourceStyleDeclaration, SourceStyleOrigin, SourceStyleProvenance, SourceStyleResidual,
+    SourceStyleResidualReason, Specified, ThemeTarget, ThemeTextStyle, ThemeTypographyProperty,
     ThemeVariant,
 };
+use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason};
 use crate::mermaid_style::{CssFontSizeContext, is_label_style_key, is_safe_css_font_family_value};
 use crate::text::TextStyle;
 use crate::theme::MermaidThemeAdapter;
@@ -20,7 +23,6 @@ pub(crate) struct StateCompatibilityStyle {
     pub(crate) dark_mode: bool,
     pub(crate) neo: bool,
     pub(crate) font_family_css: String,
-    pub(crate) font_size_px: f64,
     pub(crate) text_color: String,
     pub(crate) title_color: String,
     pub(crate) line_color: String,
@@ -76,7 +78,6 @@ impl StateClassStylePlan {
 
 #[derive(Debug, Clone)]
 pub(crate) struct StateNodeStylePlan {
-    #[cfg(test)]
     binding: StateNodeThemeBinding,
     semantic_shape_style_attr: String,
     composite_header_style_attr: String,
@@ -96,10 +97,11 @@ pub(crate) struct StateNodeStylePlan {
     text_style: TextStyle,
 }
 
-#[cfg(test)]
 #[derive(Debug, Clone, Copy)]
 struct StateNodeThemeBinding {
     target: ThemeTarget,
+    label_target: ThemeTarget,
+    variant: ThemeVariant,
     ordinal: Option<usize>,
     label_ordinal: Option<usize>,
     composite_header_ordinal: Option<usize>,
@@ -108,9 +110,7 @@ struct StateNodeThemeBinding {
 
 #[derive(Debug, Clone)]
 pub(crate) struct StateEdgeStylePlan {
-    #[cfg(test)]
     ordinal: Option<usize>,
-    #[cfg(test)]
     label_ordinal: Option<usize>,
     marker_ordinal: Option<usize>,
     path_style_attr: String,
@@ -123,12 +123,10 @@ pub(crate) struct StateEdgeStylePlan {
 }
 
 impl StateEdgeStylePlan {
-    #[cfg(test)]
     pub(crate) const fn ordinal(&self) -> Option<usize> {
         self.ordinal
     }
 
-    #[cfg(test)]
     pub(crate) const fn label_ordinal(&self) -> Option<usize> {
         self.label_ordinal
     }
@@ -167,27 +165,30 @@ impl StateEdgeStylePlan {
 }
 
 impl StateNodeStylePlan {
-    #[cfg(test)]
     pub(crate) const fn target(&self) -> ThemeTarget {
         self.binding.target
     }
 
-    #[cfg(test)]
+    pub(crate) const fn label_target(&self) -> ThemeTarget {
+        self.binding.label_target
+    }
+
+    pub(crate) const fn variant(&self) -> ThemeVariant {
+        self.binding.variant
+    }
+
     pub(crate) const fn ordinal(&self) -> Option<usize> {
         self.binding.ordinal
     }
 
-    #[cfg(test)]
     pub(crate) const fn label_ordinal(&self) -> Option<usize> {
         self.binding.label_ordinal
     }
 
-    #[cfg(test)]
     pub(crate) const fn composite_header_ordinal(&self) -> Option<usize> {
         self.binding.composite_header_ordinal
     }
 
-    #[cfg(test)]
     pub(crate) const fn special_state_inner_ordinal(&self) -> Option<usize> {
         self.binding.special_state_inner_ordinal
     }
@@ -260,6 +261,7 @@ impl StateNodeStylePlan {
 #[derive(Debug, Clone)]
 pub(crate) struct StateStylePlan {
     compatibility: StateCompatibilityStyle,
+    structured_typography: bool,
     base_text_style: TextStyle,
     transition_text_style: TextStyle,
     composite_text_style: TextStyle,
@@ -274,15 +276,127 @@ pub(crate) struct StateStylePlan {
     residuals: Vec<SourceStyleResidual>,
 }
 
+#[derive(Debug)]
+struct StateThemeEvidenceBuilder<'a> {
+    theme: Option<&'a ResolvedDiagramTheme>,
+    uses: Vec<StateThemeUse>,
+    observed_targets: BTreeSet<ThemeTarget>,
+    available_palettes: BTreeSet<ThemeTarget>,
+    consumed_palettes: BTreeSet<ThemeTarget>,
+    has_visible_text: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct StateThemeUseId(usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StateThemePropertyOutcome {
+    Applied,
+    Residual(FamilyThemeResidualReason),
+    SupersededBySource,
+}
+
+#[derive(Debug)]
+struct StateThemePropertyUse {
+    rule_index: usize,
+    property: ResolvedStyleProperty,
+    outcome: StateThemePropertyOutcome,
+}
+
+#[derive(Debug)]
+struct StateThemeUse {
+    properties: Vec<StateThemePropertyUse>,
+}
+
+impl<'a> StateThemeEvidenceBuilder<'a> {
+    fn new(theme: Option<&'a ResolvedDiagramTheme>) -> Self {
+        Self {
+            theme,
+            uses: Vec::new(),
+            observed_targets: BTreeSet::new(),
+            available_palettes: BTreeSet::new(),
+            consumed_palettes: BTreeSet::new(),
+            has_visible_text: false,
+        }
+    }
+
+    fn observe_target(&mut self, target: ThemeTarget) {
+        self.observed_targets.insert(target);
+    }
+
+    fn observe_text(&mut self, target: ThemeTarget) {
+        self.has_visible_text = true;
+        self.observe_target(ThemeTarget::Text);
+        self.observe_target(target);
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct StateGeometrySupport {
+    radius: bool,
+    padding: bool,
+}
+
+impl StateGeometrySupport {
+    const NONE: Self = Self {
+        radius: false,
+        padding: false,
+    };
+    const BOTH: Self = Self {
+        radius: true,
+        padding: true,
+    };
+    const PADDING: Self = Self {
+        radius: false,
+        padding: true,
+    };
+}
+
 impl StateStylePlan {
     pub(crate) fn resolve(
         model: &StateDiagramRenderModel,
         effective_config: &serde_json::Value,
         resolved_theme: Option<&ResolvedDiagramTheme>,
     ) -> Self {
+        Self::resolve_internal(model, effective_config, resolved_theme, None).0
+    }
+
+    pub(crate) fn resolve_with_evidence(
+        model: &StateDiagramRenderModel,
+        effective_config: &serde_json::Value,
+        resolved_theme: Option<&ResolvedDiagramTheme>,
+        title: Option<&str>,
+    ) -> (Self, FamilyThemeEvidence) {
+        Self::resolve_internal(model, effective_config, resolved_theme, title)
+    }
+
+    fn resolve_internal(
+        model: &StateDiagramRenderModel,
+        effective_config: &serde_json::Value,
+        resolved_theme: Option<&ResolvedDiagramTheme>,
+        title: Option<&str>,
+    ) -> (Self, FamilyThemeEvidence) {
         let compatibility = MermaidThemeAdapter::new(effective_config).state_diagram();
-        let base_text_style = super::StateConfigView::new(effective_config).text_style();
+        let config_view = super::StateConfigView::new(effective_config);
+        let config_text_style = config_view.text_style();
+        let html_labels = config_view.render_settings().html_labels;
+        let structured_typography =
+            resolved_theme.is_some_and(|theme| theme.typography() != &ThemeTextStyle::default());
+        let mut base_text_style = config_text_style.clone();
+        if let Some(theme) = resolved_theme {
+            apply_theme_base_typography(&mut base_text_style, theme.typography());
+        }
+        let mut title_base_text_style = config_text_style;
+        title_base_text_style.font_size = 18.0;
+        if let Some(theme) = resolved_theme {
+            apply_theme_base_typography(&mut title_base_text_style, theme.typography());
+        }
         let mut residuals = Vec::new();
+        let mut theme_evidence = StateThemeEvidenceBuilder::new(resolved_theme);
+        let has_title = title.is_some_and(|value| !value.trim().is_empty());
+        if has_title {
+            theme_evidence.observe_text(ThemeTarget::Title);
+        }
         let classes = prepare_classes(model, &mut residuals);
 
         let transition_text_style = resolve_semantic_text_style(
@@ -299,8 +413,6 @@ impl StateStylePlan {
             ThemeVariant::Default,
             None,
         );
-        let mut title_base_text_style = base_text_style.clone();
-        title_base_text_style.font_size = 18.0;
         let title_text_style = resolve_semantic_text_style(
             &title_base_text_style,
             resolved_theme,
@@ -310,16 +422,14 @@ impl StateStylePlan {
         );
         let title_style_attr = resolved_theme
             .map(|theme| {
-                let style = theme.style(ThemeTarget::Title, ThemeVariant::Default, None);
+                let style = theme.text_style(ThemeTarget::Title, ThemeVariant::Default, None);
+                if has_title {
+                    theme_evidence.consume_text_style(&style);
+                }
                 let mut emission = IndexMap::new();
+                append_theme_base_text_emission(theme, &mut emission);
                 append_semantic_text_emission(&style, &mut emission);
-                if let Some(color) = direct_paint(
-                    ThemeTarget::Title,
-                    PaintSlot::Fill,
-                    style.fill_resolution(),
-                    ThemeVariant::Default,
-                    None,
-                ) {
+                if let Some(color) = text_paint_value(style.fill_resolution()) {
                     insert_emitted(&mut emission, "color", color);
                 }
                 compact_style_attr(&emission)
@@ -331,14 +441,12 @@ impl StateStylePlan {
             ThemeTarget::TransitionMarker,
             ThemeVariant::Default,
             None,
-            true,
         );
         let transition_label_background_style_attr = semantic_shape_style_attr(
             resolved_theme,
             ThemeTarget::TransitionLabelBackground,
             ThemeVariant::Default,
             None,
-            true,
         );
         let transition_label_background_div_style_prefix = semantic_html_background_style(
             resolved_theme,
@@ -347,6 +455,7 @@ impl StateStylePlan {
             None,
         );
         let hidden_prefixes = hidden_state_prefixes(model);
+        let shadowed_self_loops = shadowed_self_loop_edge_indices(model, &hidden_prefixes);
         let mut target_ordinals = BTreeMap::<ThemeTarget, usize>::new();
         let mut nodes = BTreeMap::new();
         for node in &model.nodes {
@@ -363,8 +472,20 @@ impl StateStylePlan {
             .then(|| next_target_ordinal(&mut target_ordinals, ThemeTarget::CompositeHeader));
             let special_state_inner_ordinal = (participates
                 && matches!(target, ThemeTarget::SpecialState)
-                && matches!(node.shape.as_str(), "stateEnd" | "choice" | "fork" | "join"))
-            .then(|| next_target_ordinal(&mut target_ordinals, ThemeTarget::SpecialStateInner));
+                && node.shape == "stateEnd")
+                .then(|| next_target_ordinal(&mut target_ordinals, ThemeTarget::SpecialStateInner));
+            if participates {
+                theme_evidence.observe_target(target);
+                if label_ordinal.is_some() {
+                    theme_evidence.observe_text(label_target);
+                }
+                if composite_header_ordinal.is_some() {
+                    theme_evidence.observe_target(ThemeTarget::CompositeHeader);
+                }
+                if special_state_inner_ordinal.is_some() {
+                    theme_evidence.observe_target(ThemeTarget::SpecialStateInner);
+                }
+            }
             let node_plan = prepare_node(
                 node,
                 &classes,
@@ -378,19 +499,16 @@ impl StateStylePlan {
                 composite_header_ordinal,
                 special_state_inner_ordinal,
                 &mut residuals,
+                &mut theme_evidence,
             );
             nodes.insert(node.id.clone(), node_plan);
         }
 
         let mut transition_ordinal = 0usize;
         let mut edges = BTreeMap::new();
-        for edge in &model.edges {
-            let hidden = edge
-                .classes
-                .split_whitespace()
-                .any(|class| class == "note-edge")
-                || state_is_hidden_id(&hidden_prefixes, edge.start.as_str())
-                || state_is_hidden_id(&hidden_prefixes, edge.end.as_str());
+        for (edge_index, edge) in model.edges.iter().enumerate() {
+            let hidden = state_edge_is_hidden(edge, &hidden_prefixes)
+                || shadowed_self_loops.contains(&edge_index);
             let ordinal = (!hidden).then(|| {
                 transition_ordinal += 1;
                 transition_ordinal
@@ -399,6 +517,16 @@ impl StateStylePlan {
                 .then(|| next_target_ordinal(&mut target_ordinals, ThemeTarget::TransitionLabel));
             let marker_ordinal = (ordinal.is_some() && !edge.arrow_type_end.trim().is_empty())
                 .then(|| next_target_ordinal(&mut target_ordinals, ThemeTarget::TransitionMarker));
+            if ordinal.is_some() {
+                theme_evidence.observe_target(ThemeTarget::Transition);
+                if label_ordinal.is_some() {
+                    theme_evidence.observe_text(ThemeTarget::TransitionLabel);
+                    theme_evidence.observe_target(ThemeTarget::TransitionLabelBackground);
+                }
+                if marker_ordinal.is_some() {
+                    theme_evidence.observe_target(ThemeTarget::TransitionMarker);
+                }
+            }
             edges.insert(
                 edge.id.clone(),
                 prepare_edge(
@@ -407,12 +535,15 @@ impl StateStylePlan {
                     ordinal,
                     label_ordinal,
                     marker_ordinal,
+                    html_labels,
+                    &mut theme_evidence,
                 ),
             );
         }
 
-        Self {
+        let plan = Self {
             compatibility,
+            structured_typography,
             base_text_style,
             transition_text_style,
             composite_text_style,
@@ -425,11 +556,16 @@ impl StateStylePlan {
             nodes,
             edges,
             residuals,
-        }
+        };
+        (plan, theme_evidence.finish())
     }
 
     pub(crate) const fn compatibility(&self) -> &StateCompatibilityStyle {
         &self.compatibility
+    }
+
+    pub(crate) const fn uses_structured_typography(&self) -> bool {
+        self.structured_typography
     }
 
     pub(crate) const fn base_text_style(&self) -> &TextStyle {
@@ -483,6 +619,651 @@ impl StateStylePlan {
     pub(crate) fn residuals(&self) -> &[SourceStyleResidual] {
         &self.residuals
     }
+}
+
+fn apply_theme_base_typography(base: &mut TextStyle, style: &ThemeTextStyle) {
+    if style == &ThemeTextStyle::default() {
+        return;
+    }
+    // Keep structured theme typography on Mermaid's canonical CSS spelling at the compatibility
+    // boundary. The typed stack retains family identity; only separator whitespace is normalized.
+    base.font_family = Some(crate::config::normalize_css_font_family(
+        &style.font_stack().as_css(),
+    ));
+    base.font_size = f64::from(style.font_size_px()).max(1.0);
+    base.font_weight = Some(style.font_weight().to_string());
+    base.font_style = Some(style.font_style().id().to_string());
+}
+
+impl StateThemeEvidenceBuilder<'_> {
+    fn consume_shape_style(
+        &mut self,
+        style: &ResolvedThemeStyle,
+        geometry: StateGeometrySupport,
+    ) -> StateThemeUseId {
+        let use_id = self.begin_use(style);
+        self.consume_paint(
+            use_id,
+            style.fill_resolution(),
+            ResolvedStyleProperty::Fill,
+            true,
+        );
+        self.consume_paint(
+            use_id,
+            style.stroke_resolution(),
+            ResolvedStyleProperty::Stroke,
+            true,
+        );
+        self.consume_shape_property(
+            use_id,
+            style.stroke_width_resolution(),
+            ResolvedStyleProperty::StrokeWidth,
+        );
+        self.consume_shape_property(
+            use_id,
+            style.stroke_dasharray_resolution(),
+            ResolvedStyleProperty::StrokeDasharray,
+        );
+        self.consume_shape_property(
+            use_id,
+            style.stroke_linecap_resolution(),
+            ResolvedStyleProperty::StrokeLinecap,
+        );
+        self.consume_shape_property(
+            use_id,
+            style.stroke_linejoin_resolution(),
+            ResolvedStyleProperty::StrokeLinejoin,
+        );
+        self.consume_shape_property(
+            use_id,
+            style.opacity_resolution(),
+            ResolvedStyleProperty::Opacity,
+        );
+        self.consume_shape_property(
+            use_id,
+            style.fill_opacity_resolution(),
+            ResolvedStyleProperty::FillOpacity,
+        );
+        self.consume_shape_property(
+            use_id,
+            style.stroke_opacity_resolution(),
+            ResolvedStyleProperty::StrokeOpacity,
+        );
+        self.consume_geometry(use_id, style, geometry);
+        self.reject_all_typography(use_id, style);
+        self.reject_property(
+            use_id,
+            style.effect_resolution(),
+            ResolvedStyleProperty::Effect,
+            FamilyThemeResidualReason::UnsupportedEffect,
+        );
+        use_id
+    }
+
+    fn consume_text_style(&mut self, style: &ResolvedThemeStyle) -> StateThemeUseId {
+        let use_id = self.begin_use(style);
+        self.consume_paint(
+            use_id,
+            style.fill_resolution(),
+            ResolvedStyleProperty::Fill,
+            true,
+        );
+        self.consume_paint(
+            use_id,
+            style.stroke_resolution(),
+            ResolvedStyleProperty::Stroke,
+            false,
+        );
+        self.reject_property(
+            use_id,
+            style.stroke_width_resolution(),
+            ResolvedStyleProperty::StrokeWidth,
+            FamilyThemeResidualReason::UnsupportedGeometry,
+        );
+        self.reject_property(
+            use_id,
+            style.stroke_dasharray_resolution(),
+            ResolvedStyleProperty::StrokeDasharray,
+            FamilyThemeResidualReason::UnsupportedGeometry,
+        );
+        self.reject_property(
+            use_id,
+            style.stroke_linecap_resolution(),
+            ResolvedStyleProperty::StrokeLinecap,
+            FamilyThemeResidualReason::UnsupportedGeometry,
+        );
+        self.reject_property(
+            use_id,
+            style.stroke_linejoin_resolution(),
+            ResolvedStyleProperty::StrokeLinejoin,
+            FamilyThemeResidualReason::UnsupportedGeometry,
+        );
+        self.reject_property(
+            use_id,
+            style.opacity_resolution(),
+            ResolvedStyleProperty::Opacity,
+            FamilyThemeResidualReason::UnsupportedGeometry,
+        );
+        self.reject_property(
+            use_id,
+            style.fill_opacity_resolution(),
+            ResolvedStyleProperty::FillOpacity,
+            FamilyThemeResidualReason::UnsupportedGeometry,
+        );
+        self.reject_property(
+            use_id,
+            style.stroke_opacity_resolution(),
+            ResolvedStyleProperty::StrokeOpacity,
+            FamilyThemeResidualReason::UnsupportedGeometry,
+        );
+        self.reject_property(
+            use_id,
+            style.radius_resolution(),
+            ResolvedStyleProperty::Radius,
+            FamilyThemeResidualReason::UnsupportedGeometry,
+        );
+        self.reject_property(
+            use_id,
+            style.padding_resolution(),
+            ResolvedStyleProperty::Padding,
+            FamilyThemeResidualReason::UnsupportedGeometry,
+        );
+        self.consume_simple_typography(use_id, style);
+        self.reject_advanced_typography(use_id, style);
+        self.reject_property(
+            use_id,
+            style.effect_resolution(),
+            ResolvedStyleProperty::Effect,
+            FamilyThemeResidualReason::UnsupportedEffect,
+        );
+        use_id
+    }
+
+    fn consume_html_background_style(&mut self, style: &ResolvedThemeStyle) -> StateThemeUseId {
+        let use_id = self.begin_use(style);
+        self.consume_paint(
+            use_id,
+            style.fill_resolution(),
+            ResolvedStyleProperty::Fill,
+            true,
+        );
+        self.consume_paint(
+            use_id,
+            style.stroke_resolution(),
+            ResolvedStyleProperty::Stroke,
+            false,
+        );
+        self.reject_property(
+            use_id,
+            style.stroke_width_resolution(),
+            ResolvedStyleProperty::StrokeWidth,
+            FamilyThemeResidualReason::UnsupportedGeometry,
+        );
+        self.reject_property(
+            use_id,
+            style.stroke_dasharray_resolution(),
+            ResolvedStyleProperty::StrokeDasharray,
+            FamilyThemeResidualReason::UnsupportedGeometry,
+        );
+        self.reject_property(
+            use_id,
+            style.stroke_linecap_resolution(),
+            ResolvedStyleProperty::StrokeLinecap,
+            FamilyThemeResidualReason::UnsupportedGeometry,
+        );
+        self.reject_property(
+            use_id,
+            style.stroke_linejoin_resolution(),
+            ResolvedStyleProperty::StrokeLinejoin,
+            FamilyThemeResidualReason::UnsupportedGeometry,
+        );
+        self.reject_property(
+            use_id,
+            style.opacity_resolution(),
+            ResolvedStyleProperty::Opacity,
+            FamilyThemeResidualReason::UnsupportedGeometry,
+        );
+        self.reject_property(
+            use_id,
+            style.fill_opacity_resolution(),
+            ResolvedStyleProperty::FillOpacity,
+            FamilyThemeResidualReason::UnsupportedGeometry,
+        );
+        self.reject_property(
+            use_id,
+            style.stroke_opacity_resolution(),
+            ResolvedStyleProperty::StrokeOpacity,
+            FamilyThemeResidualReason::UnsupportedGeometry,
+        );
+        self.reject_property(
+            use_id,
+            style.radius_resolution(),
+            ResolvedStyleProperty::Radius,
+            FamilyThemeResidualReason::UnsupportedGeometry,
+        );
+        self.reject_property(
+            use_id,
+            style.padding_resolution(),
+            ResolvedStyleProperty::Padding,
+            FamilyThemeResidualReason::UnsupportedGeometry,
+        );
+        self.reject_all_typography(use_id, style);
+        self.reject_property(
+            use_id,
+            style.effect_resolution(),
+            ResolvedStyleProperty::Effect,
+            FamilyThemeResidualReason::UnsupportedEffect,
+        );
+        use_id
+    }
+
+    fn series_color(&mut self, target: ThemeTarget, one_based_ordinal: usize) -> Option<String> {
+        let color = self
+            .theme
+            .and_then(|theme| theme.series_color(target, one_based_ordinal))
+            .map(|color| color.as_css());
+        if color.is_some() {
+            self.available_palettes.insert(target);
+        }
+        color
+    }
+
+    fn record_series_color_emission(&mut self, target: ThemeTarget) {
+        self.consumed_palettes.insert(target);
+    }
+
+    fn finish(self) -> FamilyThemeEvidence {
+        let mut evidence = FamilyThemeEvidence::from_theme(self.theme);
+        let Some(theme) = self.theme else {
+            return evidence;
+        };
+
+        if theme.typography() != &ThemeTextStyle::default() {
+            if !self.has_visible_text {
+                evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography);
+            } else if state_base_typography_is_unadapted(theme) {
+                evidence.mark_residual(
+                    FamilyThemeMechanismKey::Typography,
+                    FamilyThemeResidualReason::UnsupportedTypography,
+                );
+            } else {
+                evidence.mark_applied(FamilyThemeMechanismKey::Typography);
+            }
+        }
+
+        let mut applied_rules = BTreeSet::new();
+        let mut residual_rules = BTreeMap::new();
+        for use_record in &self.uses {
+            for property in &use_record.properties {
+                match property.outcome {
+                    StateThemePropertyOutcome::Applied => {
+                        applied_rules.insert(property.rule_index);
+                    }
+                    StateThemePropertyOutcome::Residual(reason) => {
+                        residual_rules.entry(property.rule_index).or_insert(reason);
+                    }
+                    StateThemePropertyOutcome::SupersededBySource => {}
+                }
+            }
+        }
+
+        for (index, rule) in theme.family_rules() {
+            let key = FamilyThemeMechanismKey::Rule {
+                index,
+                target: rule.target(),
+            };
+            if let Some(reason) = residual_rules.get(&index).copied() {
+                evidence.mark_residual(key, reason);
+            } else if applied_rules.contains(&index) {
+                evidence.mark_applied(key);
+            } else {
+                evidence.mark_not_applicable(key);
+            }
+        }
+
+        for target in theme.family_ordinal_palette_targets() {
+            let key = FamilyThemeMechanismKey::OrdinalPalette { target };
+            if self.consumed_palettes.contains(&target) {
+                evidence.mark_applied(key);
+            } else if self.available_palettes.contains(&target) {
+                evidence.mark_not_applicable(key);
+            } else if self.observed_targets.contains(&target) {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedOrdinalPalette);
+            } else {
+                evidence.mark_not_applicable(key);
+            }
+        }
+
+        for binding in theme.effect_bindings() {
+            let key = FamilyThemeMechanismKey::EffectBinding {
+                target: binding.target(),
+                effect_id: binding.effect_id().to_string(),
+            };
+            if self.observed_targets.contains(&binding.target()) {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
+            } else {
+                evidence.mark_not_applicable(key);
+            }
+        }
+
+        evidence
+    }
+
+    fn begin_use(&mut self, style: &ResolvedThemeStyle) -> StateThemeUseId {
+        let use_id = StateThemeUseId(self.uses.len());
+        let properties = style
+            .winner_rule_properties()
+            .into_iter()
+            .map(|(property, origin)| StateThemePropertyUse {
+                rule_index: origin.rule_index(),
+                property,
+                outcome: StateThemePropertyOutcome::Applied,
+            })
+            .collect();
+        self.uses.push(StateThemeUse { properties });
+        use_id
+    }
+
+    fn shadow_source_property(
+        &mut self,
+        use_id: Option<StateThemeUseId>,
+        kind: ResolvedStyleProperty,
+    ) {
+        let Some(use_id) = use_id else {
+            return;
+        };
+        if let Some(property) = self.uses[use_id.0]
+            .properties
+            .iter_mut()
+            .find(|property| property.property == kind)
+        {
+            property.outcome = StateThemePropertyOutcome::SupersededBySource;
+        }
+    }
+
+    fn consume_paint(
+        &mut self,
+        use_id: StateThemeUseId,
+        property: &ResolvedProperty<CanvasPaint>,
+        kind: ResolvedStyleProperty,
+        supported: bool,
+    ) {
+        match property.specified() {
+            Specified::Unspecified => {}
+            Specified::Value(CanvasPaint::Transparent | CanvasPaint::Solid(_)) if supported => {}
+            Specified::Clear
+            | Specified::Value(
+                CanvasPaint::Transparent
+                | CanvasPaint::Solid(_)
+                | CanvasPaint::LinearGradient(_)
+                | CanvasPaint::RadialGradient(_)
+                | CanvasPaint::Pattern(_),
+            ) => self.reject_property(
+                use_id,
+                property,
+                kind,
+                FamilyThemeResidualReason::UnsupportedPaint,
+            ),
+        }
+    }
+
+    fn consume_shape_property<T>(
+        &mut self,
+        use_id: StateThemeUseId,
+        property: &ResolvedProperty<T>,
+        kind: ResolvedStyleProperty,
+    ) {
+        if matches!(property.specified(), Specified::Clear) {
+            self.reject_property(
+                use_id,
+                property,
+                kind,
+                FamilyThemeResidualReason::UnsupportedGeometry,
+            );
+        }
+    }
+
+    fn consume_geometry(
+        &mut self,
+        use_id: StateThemeUseId,
+        style: &ResolvedThemeStyle,
+        support: StateGeometrySupport,
+    ) {
+        match style.radius_resolution().specified() {
+            Specified::Unspecified | Specified::Value(_) if support.radius => {}
+            Specified::Unspecified => {}
+            Specified::Clear | Specified::Value(_) => self.reject_property(
+                use_id,
+                style.radius_resolution(),
+                ResolvedStyleProperty::Radius,
+                FamilyThemeResidualReason::UnsupportedGeometry,
+            ),
+        }
+        match style.padding_resolution().specified() {
+            Specified::Unspecified => {}
+            Specified::Value(padding)
+                if support.padding
+                    && [padding.top, padding.right, padding.bottom, padding.left]
+                        .iter()
+                        .all(|value| (*value - padding.top).abs() <= f32::EPSILON) => {}
+            Specified::Clear | Specified::Value(_) => self.reject_property(
+                use_id,
+                style.padding_resolution(),
+                ResolvedStyleProperty::Padding,
+                FamilyThemeResidualReason::UnsupportedGeometry,
+            ),
+        }
+    }
+
+    fn consume_simple_typography(&mut self, use_id: StateThemeUseId, style: &ResolvedThemeStyle) {
+        let patch = style.typography_resolution().patch();
+        if matches!(patch.font_stack, Specified::Clear) {
+            self.reject_typography(use_id, style, ThemeTypographyProperty::FontStack);
+        }
+        if matches!(patch.font_size_px, Specified::Clear) {
+            self.reject_typography(use_id, style, ThemeTypographyProperty::FontSize);
+        }
+        if matches!(patch.font_weight, Specified::Clear) {
+            self.reject_typography(use_id, style, ThemeTypographyProperty::FontWeight);
+        }
+        if matches!(patch.font_style, Specified::Clear) {
+            self.reject_typography(use_id, style, ThemeTypographyProperty::FontStyle);
+        }
+    }
+
+    fn reject_advanced_typography(&mut self, use_id: StateThemeUseId, style: &ResolvedThemeStyle) {
+        let patch = style.typography_resolution().patch();
+        let properties = [
+            (
+                ThemeTypographyProperty::LineHeight,
+                !patch.line_height.is_unspecified(),
+            ),
+            (
+                ThemeTypographyProperty::LetterSpacing,
+                !patch.letter_spacing_px.is_unspecified(),
+            ),
+            (
+                ThemeTypographyProperty::WordSpacing,
+                !patch.word_spacing_px.is_unspecified(),
+            ),
+            (
+                ThemeTypographyProperty::Transform,
+                !patch.transform.is_unspecified(),
+            ),
+            (
+                ThemeTypographyProperty::Decoration,
+                !patch.decoration.is_unspecified(),
+            ),
+            (
+                ThemeTypographyProperty::TextAlign,
+                !patch.text_align.is_unspecified(),
+            ),
+            (
+                ThemeTypographyProperty::WhiteSpace,
+                !patch.white_space.is_unspecified(),
+            ),
+            (ThemeTypographyProperty::Wrap, !patch.wrap.is_unspecified()),
+        ];
+        for (property, present) in properties {
+            if present {
+                self.reject_typography(use_id, style, property);
+            }
+        }
+    }
+
+    fn reject_all_typography(&mut self, use_id: StateThemeUseId, style: &ResolvedThemeStyle) {
+        for property in [
+            ThemeTypographyProperty::FontStack,
+            ThemeTypographyProperty::FontSize,
+            ThemeTypographyProperty::FontWeight,
+            ThemeTypographyProperty::FontStyle,
+            ThemeTypographyProperty::LineHeight,
+            ThemeTypographyProperty::LetterSpacing,
+            ThemeTypographyProperty::WordSpacing,
+            ThemeTypographyProperty::Transform,
+            ThemeTypographyProperty::Decoration,
+            ThemeTypographyProperty::TextAlign,
+            ThemeTypographyProperty::WhiteSpace,
+            ThemeTypographyProperty::Wrap,
+        ] {
+            self.reject_typography(use_id, style, property);
+        }
+    }
+
+    fn reject_typography(
+        &mut self,
+        use_id: StateThemeUseId,
+        style: &ResolvedThemeStyle,
+        property: ThemeTypographyProperty,
+    ) {
+        if let Some(origin) = style.typography_resolution().winner(property) {
+            self.set_property_outcome(
+                use_id,
+                origin.rule_index(),
+                ResolvedStyleProperty::Typography(property),
+                StateThemePropertyOutcome::Residual(
+                    FamilyThemeResidualReason::UnsupportedTypography,
+                ),
+            );
+        }
+    }
+
+    fn reject_property<T>(
+        &mut self,
+        use_id: StateThemeUseId,
+        property: &ResolvedProperty<T>,
+        kind: ResolvedStyleProperty,
+        reason: FamilyThemeResidualReason,
+    ) {
+        if let Some(origin) = property.winner() {
+            self.set_property_outcome(
+                use_id,
+                origin.rule_index(),
+                kind,
+                StateThemePropertyOutcome::Residual(reason),
+            );
+        }
+    }
+
+    fn set_property_outcome(
+        &mut self,
+        use_id: StateThemeUseId,
+        rule_index: usize,
+        kind: ResolvedStyleProperty,
+        outcome: StateThemePropertyOutcome,
+    ) {
+        if let Some(property) = self.uses[use_id.0]
+            .properties
+            .iter_mut()
+            .find(|property| property.rule_index == rule_index && property.property == kind)
+        {
+            property.outcome = outcome;
+        }
+    }
+}
+
+fn source_style_theme_property(property: &str) -> Option<ResolvedStyleProperty> {
+    Some(match property {
+        "fill" | "color" => ResolvedStyleProperty::Fill,
+        "stroke" => ResolvedStyleProperty::Stroke,
+        "stroke-width" => ResolvedStyleProperty::StrokeWidth,
+        "stroke-dasharray" => ResolvedStyleProperty::StrokeDasharray,
+        "stroke-linecap" => ResolvedStyleProperty::StrokeLinecap,
+        "stroke-linejoin" => ResolvedStyleProperty::StrokeLinejoin,
+        "opacity" => ResolvedStyleProperty::Opacity,
+        "fill-opacity" => ResolvedStyleProperty::FillOpacity,
+        "stroke-opacity" => ResolvedStyleProperty::StrokeOpacity,
+        "border-radius" | "rx" | "ry" => ResolvedStyleProperty::Radius,
+        "padding" => ResolvedStyleProperty::Padding,
+        "font-family" => ResolvedStyleProperty::Typography(ThemeTypographyProperty::FontStack),
+        "font-size" => ResolvedStyleProperty::Typography(ThemeTypographyProperty::FontSize),
+        "font-weight" => ResolvedStyleProperty::Typography(ThemeTypographyProperty::FontWeight),
+        "font-style" => ResolvedStyleProperty::Typography(ThemeTypographyProperty::FontStyle),
+        _ => return None,
+    })
+}
+
+fn source_shape_property_reaches_primary_surface(
+    node: &StateDiagramRenderNode,
+    geometry: StateGeometrySupport,
+    property: ResolvedStyleProperty,
+) -> bool {
+    if node.shape == "stateStart" {
+        return false;
+    }
+    match property {
+        ResolvedStyleProperty::Radius => geometry.radius,
+        ResolvedStyleProperty::Padding => geometry.padding,
+        ResolvedStyleProperty::Typography(_) | ResolvedStyleProperty::Effect => false,
+        ResolvedStyleProperty::Fill
+        | ResolvedStyleProperty::Stroke
+        | ResolvedStyleProperty::StrokeWidth
+        | ResolvedStyleProperty::StrokeDasharray
+        | ResolvedStyleProperty::StrokeLinecap
+        | ResolvedStyleProperty::StrokeLinejoin
+        | ResolvedStyleProperty::Opacity
+        | ResolvedStyleProperty::FillOpacity
+        | ResolvedStyleProperty::StrokeOpacity => true,
+    }
+}
+
+fn state_geometry_support(node: &StateDiagramRenderNode) -> StateGeometrySupport {
+    match node.shape.as_str() {
+        "note" => StateGeometrySupport::PADDING,
+        "stateStart" | "stateEnd" | "choice" | "fork" | "join" | "noteGroup" => {
+            StateGeometrySupport::NONE
+        }
+        // Rectangles, title rectangles, composite clusters, and divider clusters all consume
+        // uniform padding during layout and emit a bounded corner radius when requested.
+        _ => StateGeometrySupport::BOTH,
+    }
+}
+
+fn source_shape_property_reaches_inner_surface(property: ResolvedStyleProperty) -> bool {
+    matches!(
+        property,
+        ResolvedStyleProperty::Fill
+            | ResolvedStyleProperty::Stroke
+            | ResolvedStyleProperty::StrokeWidth
+            | ResolvedStyleProperty::StrokeDasharray
+            | ResolvedStyleProperty::StrokeLinecap
+            | ResolvedStyleProperty::StrokeLinejoin
+            | ResolvedStyleProperty::Opacity
+            | ResolvedStyleProperty::FillOpacity
+            | ResolvedStyleProperty::StrokeOpacity
+    )
+}
+
+fn state_base_typography_is_unadapted(theme: &ResolvedDiagramTheme) -> bool {
+    let style = theme.typography();
+    style.line_height() != crate::diagram_theme::LineHeight::Normal
+        || style.letter_spacing_px() != 0.0
+        || style.word_spacing_px() != 0.0
+        || style.transform() != crate::diagram_theme::TextTransform::None
+        || style.decoration() != crate::diagram_theme::TextDecoration::None
+        || style.text_align() != crate::diagram_theme::TextAlign::Start
+        || style.white_space() != crate::diagram_theme::WhiteSpace::Normal
+        || style.wrap() != crate::diagram_theme::ThemeWrapMode::Normal
 }
 
 fn prepare_classes(
@@ -557,10 +1338,11 @@ fn prepare_node(
     composite_header_ordinal: Option<usize>,
     special_state_inner_ordinal: Option<usize>,
     residuals: &mut Vec<SourceStyleResidual>,
+    theme_evidence: &mut StateThemeEvidenceBuilder<'_>,
 ) -> StateNodeStylePlan {
     let semantic_shape = resolved_theme.map(|theme| theme.style(target, variant, ordinal));
     let semantic_label =
-        resolved_theme.map(|theme| theme.style(label_target, variant, label_ordinal));
+        resolved_theme.map(|theme| theme.text_style(label_target, variant, label_ordinal));
     let semantic_composite_header = (target == ThemeTarget::Composite)
         .then(|| {
             resolved_theme.map(|theme| {
@@ -572,17 +1354,30 @@ fn prepare_node(
             })
         })
         .flatten();
-    let semantic_special_state_inner = (target == ThemeTarget::SpecialState)
+    let semantic_special_state_inner = (node.shape == "stateEnd")
         .then(|| {
             resolved_theme.map(|theme| {
                 theme.style(
                     ThemeTarget::SpecialStateInner,
-                    ThemeVariant::End,
+                    variant,
                     special_state_inner_ordinal,
                 )
             })
         })
         .flatten();
+    let geometry_support = state_geometry_support(node);
+    let shape_use = ordinal
+        .zip(semantic_shape.as_ref())
+        .map(|(_, style)| theme_evidence.consume_shape_style(style, geometry_support));
+    let label_use = label_ordinal
+        .zip(semantic_label.as_ref())
+        .map(|(_, style)| theme_evidence.consume_text_style(style));
+    let _composite_header_use = composite_header_ordinal
+        .zip(semantic_composite_header.as_ref())
+        .map(|(_, style)| theme_evidence.consume_shape_style(style, StateGeometrySupport::NONE));
+    let special_state_inner_use = special_state_inner_ordinal
+        .zip(semantic_special_state_inner.as_ref())
+        .map(|(_, style)| theme_evidence.consume_shape_style(style, StateGeometrySupport::NONE));
     let mut shape_declarations = Vec::new();
     let mut label_declarations = Vec::new();
 
@@ -668,32 +1463,18 @@ fn prepare_node(
     let mut shape_emission = IndexMap::<String, EmittedDeclaration>::new();
     let mut source_shape_emission = IndexMap::<String, EmittedDeclaration>::new();
     let mut label_emission = IndexMap::<String, EmittedDeclaration>::new();
-    let mut fill_override = semantic_shape
+    let mut shadowed_shape_properties = BTreeSet::new();
+    let mut shadowed_label_properties = BTreeSet::new();
+    let mut label_uses_series_color = false;
+    let semantic_fill = semantic_shape
         .as_ref()
-        .and_then(|style| {
-            direct_paint(
-                target,
-                PaintSlot::Fill,
-                style.fill_resolution(),
-                variant,
-                ordinal,
-            )
-        })
-        .or_else(|| {
-            resolved_theme
-                .zip(ordinal)
-                .and_then(|(theme, ordinal)| theme.series_color(target, ordinal))
-                .map(|color| color.as_css())
-        });
-    let mut stroke_override = semantic_shape.as_ref().and_then(|style| {
-        direct_paint(
-            target,
-            PaintSlot::Stroke,
-            style.stroke_resolution(),
-            variant,
-            ordinal,
-        )
-    });
+        .and_then(|style| shape_paint_value(style.fill_resolution()));
+    let series_fill = ordinal.and_then(|ordinal| theme_evidence.series_color(target, ordinal));
+    let mut fill_uses_series_color = semantic_fill.is_none() && series_fill.is_some();
+    let mut fill_override = semantic_fill.or(series_fill);
+    let mut stroke_override = semantic_shape
+        .as_ref()
+        .and_then(|style| shape_paint_value(style.stroke_resolution()));
     let mut stroke_width_override = semantic_shape
         .as_ref()
         .and_then(ResolvedThemeStyle::stroke_width)
@@ -717,20 +1498,15 @@ fn prepare_node(
         insert_emitted(&mut shape_emission, "stroke", stroke.clone());
     }
     if let Some(style) = semantic_label.as_ref() {
+        if let Some(theme) = resolved_theme {
+            append_theme_base_text_emission(theme, &mut label_emission);
+        }
         append_semantic_text_emission(style, &mut label_emission);
-        let color = direct_paint(
-            label_target,
-            PaintSlot::Fill,
-            style.fill_resolution(),
-            variant,
-            label_ordinal,
-        )
-        .or_else(|| {
-            resolved_theme
-                .zip(label_ordinal)
-                .and_then(|(theme, ordinal)| theme.series_color(label_target, ordinal))
-                .map(|color| color.as_css())
-        });
+        let series_color =
+            label_ordinal.and_then(|ordinal| theme_evidence.series_color(label_target, ordinal));
+        let semantic_color = text_paint_value(style.fill_resolution());
+        label_uses_series_color = semantic_color.is_none() && series_color.is_some();
+        let color = semantic_color.or(series_color);
         if let Some(color) = color {
             insert_emitted(&mut label_emission, "color", color);
         }
@@ -741,26 +1517,25 @@ fn prepare_node(
     let mut composite_header_text_emission = IndexMap::new();
     if let Some(style) = semantic_composite_header.as_ref() {
         append_semantic_shape_emission(style, &mut composite_header_emission);
-        if let Some(fill) = paint_value(style.fill_resolution()) {
+        if let Some(fill) = shape_paint_value(style.fill_resolution()) {
             insert_emitted(&mut composite_header_emission, "fill", fill);
         }
-        if let Some(stroke) = paint_value(style.stroke_resolution()) {
+        if let Some(stroke) = shape_paint_value(style.stroke_resolution()) {
             insert_emitted(&mut composite_header_emission, "stroke", stroke);
         }
     }
     let special_state_inner_style_attr = semantic_special_state_inner
         .as_ref()
-        .map(|style| {
-            semantic_shape_style_attr_for_style(
-                style,
-                ThemeTarget::SpecialStateInner,
-                ThemeVariant::End,
-                special_state_inner_ordinal,
-                true,
-            )
-        })
+        .map(semantic_shape_style_attr_for_style)
         .unwrap_or_default();
     for declaration in &shape_declarations {
+        if node.shape == "stateStart" {
+            residuals.push(SourceStyleResidual::from_declaration(
+                declaration,
+                SourceStyleResidualReason::UnsupportedSurface,
+            ));
+            continue;
+        }
         if target == ThemeTarget::Composite
             && declaration.provenance().origin() != SourceStyleOrigin::AssignedClass
         {
@@ -780,6 +1555,19 @@ fn prepare_node(
             residuals,
         );
         if accepted {
+            if let Some(kind) = source_style_theme_property(declaration.property())
+                && shadowed_shape_properties.insert(kind)
+            {
+                if source_shape_property_reaches_primary_surface(node, geometry_support, kind) {
+                    theme_evidence.shadow_source_property(shape_use, kind);
+                }
+                if node.shape == "stateEnd" && source_shape_property_reaches_inner_surface(kind) {
+                    theme_evidence.shadow_source_property(special_state_inner_use, kind);
+                }
+            }
+            if declaration.property() == "fill" {
+                fill_uses_series_color = false;
+            }
             let emitted = EmittedDeclaration::from_source(declaration);
             shape_emission.insert(declaration.property().to_string(), emitted.clone());
             source_shape_emission.insert(declaration.property().to_string(), emitted);
@@ -802,14 +1590,11 @@ fn prepare_node(
     );
     if target == ThemeTarget::Composite {
         if let Some(style) = semantic_label.as_ref() {
+            if let Some(theme) = resolved_theme {
+                append_theme_base_text_emission(theme, &mut composite_header_text_emission);
+            }
             append_semantic_text_emission(style, &mut composite_header_text_emission);
-            let color = direct_paint(
-                label_target,
-                PaintSlot::Fill,
-                style.fill_resolution(),
-                variant,
-                label_ordinal,
-            );
+            let color = text_paint_value(style.fill_resolution());
             if let Some(color) = color {
                 insert_emitted(&mut composite_header_text_emission, "color", color);
             }
@@ -852,6 +1637,14 @@ fn prepare_node(
         let accepted =
             apply_source_text_property(declaration, base_text_style, &mut text_style, residuals);
         if accepted {
+            if let Some(kind) = source_style_theme_property(declaration.property())
+                && shadowed_label_properties.insert(kind)
+            {
+                theme_evidence.shadow_source_property(label_use, kind);
+            }
+            if declaration.property() == "color" {
+                label_uses_series_color = false;
+            }
             label_emission.insert(
                 declaration.property().to_string(),
                 EmittedDeclaration::from_source(declaration),
@@ -859,10 +1652,18 @@ fn prepare_node(
         }
     }
 
+    if fill_uses_series_color {
+        theme_evidence.record_series_color_emission(target);
+    }
+    if label_uses_series_color {
+        theme_evidence.record_series_color_emission(label_target);
+    }
+
     StateNodeStylePlan {
-        #[cfg(test)]
         binding: StateNodeThemeBinding {
             target,
+            label_target,
+            variant,
             ordinal,
             label_ordinal,
             composite_header_ordinal,
@@ -893,35 +1694,65 @@ fn prepare_edge(
     ordinal: Option<usize>,
     label_ordinal: Option<usize>,
     marker_ordinal: Option<usize>,
+    html_labels: bool,
+    theme_evidence: &mut StateThemeEvidenceBuilder<'_>,
 ) -> StateEdgeStylePlan {
     let mut path_style_attr = semantic_shape_style_attr(
         resolved_theme,
         ThemeTarget::Transition,
         ThemeVariant::Default,
         ordinal,
-        false,
     );
-    if !path_style_attr.contains("stroke:")
-        && let Some(color) = resolved_theme
-            .zip(ordinal)
-            .and_then(|(theme, ordinal)| theme.series_color(ThemeTarget::Transition, ordinal))
+    if ordinal.is_some()
+        && let Some(theme) = resolved_theme
     {
-        append_style_declaration(&mut path_style_attr, "stroke", color.as_css());
+        let style = theme.style(ThemeTarget::Transition, ThemeVariant::Default, ordinal);
+        theme_evidence.consume_shape_style(&style, StateGeometrySupport::NONE);
+    }
+    let series_stroke =
+        ordinal.and_then(|ordinal| theme_evidence.series_color(ThemeTarget::Transition, ordinal));
+    if !path_style_attr.contains("stroke:")
+        && let Some(color) = series_stroke
+    {
+        append_style_declaration(&mut path_style_attr, "stroke", color);
+        theme_evidence.record_series_color_emission(ThemeTarget::Transition);
     }
     let marker_style_attr = semantic_shape_style_attr(
         resolved_theme,
         ThemeTarget::TransitionMarker,
         ThemeVariant::Default,
         marker_ordinal,
-        false,
     );
+    if marker_ordinal.is_some()
+        && let Some(theme) = resolved_theme
+    {
+        let style = theme.style(
+            ThemeTarget::TransitionMarker,
+            ThemeVariant::Default,
+            marker_ordinal,
+        );
+        theme_evidence.consume_shape_style(&style, StateGeometrySupport::NONE);
+    }
     let label_background_style_attr = semantic_shape_style_attr(
         resolved_theme,
         ThemeTarget::TransitionLabelBackground,
         ThemeVariant::Default,
         label_ordinal,
-        true,
     );
+    if label_ordinal.is_some()
+        && let Some(theme) = resolved_theme
+    {
+        let style = theme.style(
+            ThemeTarget::TransitionLabelBackground,
+            ThemeVariant::Default,
+            label_ordinal,
+        );
+        if html_labels {
+            theme_evidence.consume_html_background_style(&style);
+        } else {
+            theme_evidence.consume_shape_style(&style, StateGeometrySupport::NONE);
+        }
+    }
     let label_background_div_style_prefix = semantic_html_background_style(
         resolved_theme,
         ThemeTarget::TransitionLabelBackground,
@@ -930,33 +1761,31 @@ fn prepare_edge(
     );
     let mut label_emission = IndexMap::<String, EmittedDeclaration>::new();
     if let Some(theme) = resolved_theme {
-        let style = theme.style(
+        let style = theme.text_style(
             ThemeTarget::TransitionLabel,
             ThemeVariant::Default,
             label_ordinal,
         );
+        if label_ordinal.is_some() {
+            theme_evidence.consume_text_style(&style);
+        }
+        append_theme_base_text_emission(theme, &mut label_emission);
         append_semantic_text_emission(&style, &mut label_emission);
-        let color = direct_paint(
-            ThemeTarget::TransitionLabel,
-            PaintSlot::Fill,
-            style.fill_resolution(),
-            ThemeVariant::Default,
-            label_ordinal,
-        )
-        .or_else(|| {
-            label_ordinal
-                .and_then(|ordinal| theme.series_color(ThemeTarget::TransitionLabel, ordinal))
-                .map(|color| color.as_css())
-        });
+        let series_color = label_ordinal
+            .and_then(|ordinal| theme_evidence.series_color(ThemeTarget::TransitionLabel, ordinal));
+        let semantic_color = text_paint_value(style.fill_resolution());
+        let color_uses_series = semantic_color.is_none() && series_color.is_some();
+        let color = semantic_color.or(series_color);
         if let Some(color) = color {
             insert_emitted(&mut label_emission, "color", color);
+        }
+        if color_uses_series {
+            theme_evidence.record_series_color_emission(ThemeTarget::TransitionLabel);
         }
     }
 
     StateEdgeStylePlan {
-        #[cfg(test)]
         ordinal,
-        #[cfg(test)]
         label_ordinal,
         marker_ordinal,
         path_style_attr,
@@ -980,36 +1809,22 @@ fn semantic_shape_style_attr(
     target: ThemeTarget,
     variant: ThemeVariant,
     ordinal: Option<usize>,
-    include_default_paint: bool,
 ) -> String {
     let Some(theme) = resolved_theme else {
         return String::new();
     };
     let style = theme.style(target, variant, ordinal);
-    semantic_shape_style_attr_for_style(&style, target, variant, ordinal, include_default_paint)
+    semantic_shape_style_attr_for_style(&style)
 }
 
-fn semantic_shape_style_attr_for_style(
-    style: &ResolvedThemeStyle,
-    target: ThemeTarget,
-    variant: ThemeVariant,
-    ordinal: Option<usize>,
-    include_default_paint: bool,
-) -> String {
+fn semantic_shape_style_attr_for_style(style: &ResolvedThemeStyle) -> String {
     let mut emission = IndexMap::<String, EmittedDeclaration>::new();
     append_semantic_shape_emission(style, &mut emission);
 
-    let resolve_paint = |slot, property: &ResolvedProperty<CanvasPaint>| {
-        if include_default_paint {
-            paint_value(property)
-        } else {
-            direct_paint(target, slot, property, variant, ordinal)
-        }
-    };
-    if let Some(fill) = resolve_paint(PaintSlot::Fill, style.fill_resolution()) {
+    if let Some(fill) = shape_paint_value(style.fill_resolution()) {
         insert_emitted(&mut emission, "fill", fill);
     }
-    if let Some(stroke) = resolve_paint(PaintSlot::Stroke, style.stroke_resolution()) {
+    if let Some(stroke) = shape_paint_value(style.stroke_resolution()) {
         insert_emitted(&mut emission, "stroke", stroke);
     }
     compact_style_attr(&emission)
@@ -1025,7 +1840,7 @@ fn semantic_html_background_style(
         return String::new();
     };
     let style = theme.style(target, variant, ordinal);
-    match paint_value(style.fill_resolution()).as_deref() {
+    match shape_paint_value(style.fill_resolution()).as_deref() {
         Some("none") => "background-color: transparent !important; ".to_string(),
         Some(value) => format!("background-color: {value} !important; "),
         None => String::new(),
@@ -1116,6 +1931,32 @@ fn hidden_state_prefixes(model: &StateDiagramRenderModel) -> Vec<String> {
         .collect()
 }
 
+fn shadowed_self_loop_edge_indices(
+    model: &StateDiagramRenderModel,
+    hidden_prefixes: &[String],
+) -> BTreeSet<usize> {
+    let mut retained_endpoints = BTreeSet::new();
+    let mut shadowed = BTreeSet::new();
+    for (index, edge) in model.edges.iter().enumerate().rev() {
+        if edge.start != edge.end || state_edge_is_hidden(edge, hidden_prefixes) {
+            continue;
+        }
+        if !retained_endpoints.insert(edge.start.as_str()) {
+            shadowed.insert(index);
+        }
+    }
+    shadowed
+}
+
+fn state_edge_is_hidden(edge: &StateDiagramRenderEdge, hidden_prefixes: &[String]) -> bool {
+    edge.classes
+        .split_whitespace()
+        .any(|class| class == "note-edge")
+        || state_is_hidden_id(hidden_prefixes, edge.start.as_str())
+        || state_is_hidden_id(hidden_prefixes, edge.end.as_str())
+        || state_is_hidden_id(hidden_prefixes, edge.id.as_str())
+}
+
 fn state_is_hidden_id(prefixes: &[String], id: &str) -> bool {
     prefixes.iter().any(|prefix| {
         id == prefix
@@ -1156,7 +1997,7 @@ fn resolve_semantic_text_style(
     let Some(theme) = theme else {
         return style;
     };
-    let resolved = theme.style(target, variant, ordinal);
+    let resolved = theme.text_style(target, variant, ordinal);
     let patch = resolved.typography_resolution().patch();
     if let Specified::Value(stack) = &patch.font_stack {
         style.font_family = Some(stack.as_css());
@@ -1381,49 +2222,19 @@ fn append_semantic_shape_emission(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PaintSlot {
-    Fill,
-    Stroke,
-}
-
-fn direct_paint(
-    target: ThemeTarget,
-    slot: PaintSlot,
-    property: &ResolvedProperty<CanvasPaint>,
-    requested_variant: ThemeVariant,
-    requested_ordinal: Option<usize>,
-) -> Option<String> {
-    let winner = property.winner()?;
-    let variant_specific = winner
-        .variant()
-        .is_some_and(|variant| variant != ThemeVariant::Default && variant == requested_variant);
-    let ordinal_specific = winner.ordinal().is_some() && requested_ordinal.is_some();
-    if !variant_specific && !ordinal_specific && paint_is_projected(target, slot) {
-        return None;
-    }
-    paint_value(property)
-}
-
-fn paint_is_projected(target: ThemeTarget, slot: PaintSlot) -> bool {
-    match (target, slot) {
-        (ThemeTarget::State, PaintSlot::Fill | PaintSlot::Stroke)
-        | (ThemeTarget::StateLabel, PaintSlot::Fill)
-        | (ThemeTarget::Transition, PaintSlot::Stroke)
-        | (ThemeTarget::TransitionMarker, PaintSlot::Fill | PaintSlot::Stroke)
-        | (ThemeTarget::TransitionLabel, PaintSlot::Fill)
-        | (ThemeTarget::Composite, PaintSlot::Fill)
-        | (ThemeTarget::SpecialState, PaintSlot::Fill | PaintSlot::Stroke)
-        | (ThemeTarget::Note, PaintSlot::Fill | PaintSlot::Stroke)
-        | (ThemeTarget::NoteLabel, PaintSlot::Fill)
-        | (ThemeTarget::Title, PaintSlot::Fill) => true,
-        _ => false,
-    }
-}
-
-fn paint_value(property: &ResolvedProperty<CanvasPaint>) -> Option<String> {
+fn shape_paint_value(property: &ResolvedProperty<CanvasPaint>) -> Option<String> {
     match property.value()? {
         CanvasPaint::Transparent => Some("none".to_string()),
+        CanvasPaint::Solid(color) => Some(color.as_css()),
+        CanvasPaint::LinearGradient(_)
+        | CanvasPaint::RadialGradient(_)
+        | CanvasPaint::Pattern(_) => None,
+    }
+}
+
+fn text_paint_value(property: &ResolvedProperty<CanvasPaint>) -> Option<String> {
+    match property.value()? {
+        CanvasPaint::Transparent => Some("transparent".to_string()),
         CanvasPaint::Solid(color) => Some(color.as_css()),
         CanvasPaint::LinearGradient(_)
         | CanvasPaint::RadialGradient(_)
@@ -1456,6 +2267,24 @@ fn append_semantic_text_emission(
     if let Specified::Value(font_style) = patch.font_style {
         insert_emitted(out, "font-style", font_style.id());
     }
+}
+
+fn append_theme_base_text_emission(
+    theme: &ResolvedDiagramTheme,
+    out: &mut IndexMap<String, EmittedDeclaration>,
+) {
+    let style = theme.typography();
+    if style == &ThemeTextStyle::default() {
+        return;
+    }
+    insert_emitted(out, "font-family", style.font_stack().as_css());
+    insert_emitted(
+        out,
+        "font-size",
+        format!("{}px", f64::from(style.font_size_px())),
+    );
+    insert_emitted(out, "font-weight", style.font_weight().to_string());
+    insert_emitted(out, "font-style", style.font_style().id());
 }
 
 fn insert_emitted(
@@ -1507,7 +2336,11 @@ fn div_style_prefix(declarations: &IndexMap<String, EmittedDeclaration>) -> Stri
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diagram_theme::{TextStylePatch, ThemeRule, ThemeStylePatch};
+    use crate::diagram_theme::{
+        DiagramThemeCompiler, DiagramThemeSpec, GradientStop, InsetsPx, LinearGradient,
+        OrdinalPalette, OrdinalSelector, TextStylePatch, ThemeColorValue, ThemeGeometryPatch,
+        ThemeRule, ThemeRuleSet, ThemeStylePatch, TypographySpec,
+    };
     use merman_core::diagrams::state::{
         StateDiagramRenderEdge, StateDiagramRenderNode, StateDiagramRenderStyleClass,
     };
@@ -1538,6 +2371,18 @@ mod tests {
             shape: "rect".to_string(),
             position: None,
         }
+    }
+
+    fn semantic_node(id: &str, shape: &str) -> StateDiagramRenderNode {
+        let mut node = rect_node();
+        node.id = id.to_string();
+        node.dom_id = format!("state-{id}-0");
+        node.label = Some(json!(id));
+        node.shape = shape.to_string();
+        node.css_classes.clear();
+        node.css_compiled_styles.clear();
+        node.css_styles.clear();
+        node
     }
 
     #[test]
@@ -1728,5 +2573,697 @@ mod tests {
             plan.node("end").unwrap().special_state_inner_ordinal(),
             Some(1)
         );
+    }
+
+    #[test]
+    fn note_group_does_not_prove_a_note_rule() {
+        let mut model = StateDiagramRenderModel::default();
+        let mut note_group = semantic_node("note-group", "noteGroup");
+        note_group.is_group = true;
+        note_group.node_type = Some("group".to_string());
+        model.nodes.push(note_group);
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::Note,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#fef3c7").unwrap()),
+                    )),
+                ),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let (_, evidence) =
+            StateStylePlan::resolve_with_evidence(&model, &json!({}), Some(&resolved), None);
+        let key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Note,
+        };
+
+        assert!(evidence.not_applicable_mechanisms().contains(&key));
+        assert!(!evidence.applied().contains(&key));
+        assert!(evidence.residuals().is_empty());
+    }
+
+    #[test]
+    fn special_state_inner_is_proved_only_by_an_end_state() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::SpecialStateInner,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ffffff").unwrap()),
+                        )
+                        .with_variant(ThemeVariant::End),
+                    ),
+                ),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::SpecialStateInner,
+        };
+
+        let mut choice_model = StateDiagramRenderModel::default();
+        choice_model.nodes.push(semantic_node("choice", "choice"));
+        let (_, choice_evidence) =
+            StateStylePlan::resolve_with_evidence(&choice_model, &json!({}), Some(&resolved), None);
+        assert!(choice_evidence.not_applicable_mechanisms().contains(&key));
+
+        let mut end_model = StateDiagramRenderModel::default();
+        end_model.nodes.push(semantic_node("end", "stateEnd"));
+        let (end_plan, end_evidence) =
+            StateStylePlan::resolve_with_evidence(&end_model, &json!({}), Some(&resolved), None);
+        assert!(end_evidence.applied().contains(&key));
+        assert!(
+            end_plan
+                .node("end")
+                .unwrap()
+                .special_state_inner_style_attr()
+                .contains("fill:#ffffff !important")
+        );
+    }
+
+    #[test]
+    fn later_typed_winner_leaves_shadowed_gradient_rule_not_applicable() {
+        let gradient = LinearGradient::new(
+            90.0,
+            [
+                GradientStop::new(0.0, ThemeColorValue::parse("#0f172a").unwrap()).unwrap(),
+                GradientStop::new(1.0, ThemeColorValue::parse("#22d3ee").unwrap()).unwrap(),
+            ],
+        )
+        .unwrap();
+        let rules = ThemeRuleSet::default()
+            .with_rule(ThemeRule::new(
+                ThemeTarget::State,
+                ThemeStylePatch::default().with_fill(CanvasPaint::LinearGradient(gradient)),
+            ))
+            .with_rule(ThemeRule::new(
+                ThemeTarget::State,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#22c55e").unwrap()),
+            ));
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .unwrap();
+        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let mut model = StateDiagramRenderModel::default();
+        model.nodes.push(semantic_node("Ready", "rect"));
+        let (plan, evidence) =
+            StateStylePlan::resolve_with_evidence(&model, &json!({}), Some(&resolved), None);
+
+        assert_eq!(plan.node("Ready").unwrap().fill_override(), Some("#22c55e"));
+        assert!(evidence.residuals().is_empty());
+        assert!(evidence.applied().contains(&FamilyThemeMechanismKey::Rule {
+            index: 1,
+            target: ThemeTarget::State,
+        }));
+        assert!(
+            evidence
+                .not_applicable_mechanisms()
+                .contains(&FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::State,
+                })
+        );
+    }
+
+    #[test]
+    fn generic_text_rule_is_consumed_by_state_labels() {
+        let mut text_patch = TextStylePatch::default();
+        text_patch.font_size_px = Specified::Value(23.0);
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch {
+                            paint: crate::diagram_theme::ThemePaintPatch {
+                                fill: Specified::Value(CanvasPaint::solid("#e11d48").unwrap()),
+                                ..crate::diagram_theme::ThemePaintPatch::default()
+                            },
+                            typography: text_patch,
+                            ..ThemeStylePatch::default()
+                        },
+                    ),
+                )),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let mut model = StateDiagramRenderModel::default();
+        model.nodes.push(semantic_node("Ready", "rect"));
+        let (plan, evidence) =
+            StateStylePlan::resolve_with_evidence(&model, &json!({}), Some(&resolved), None);
+        let node = plan.node("Ready").unwrap();
+
+        assert_eq!(node.text_style().font_size, 23.0);
+        assert!(node.label_style_attr().contains("color:#e11d48 !important"));
+        assert!(evidence.applied().contains(&FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Text,
+        }));
+        assert!(evidence.residuals().is_empty());
+    }
+
+    #[test]
+    fn explicit_state_fill_shadows_ordinal_palette_evidence() {
+        let palette = OrdinalPalette::new([ThemeColorValue::parse("#22d3ee").unwrap()]).unwrap();
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_ordinal_palette(ThemeTarget::State, palette)
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::State,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+                        )),
+                ),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let mut model = StateDiagramRenderModel::default();
+        model.nodes.push(semantic_node("Ready", "rect"));
+        let (plan, evidence) =
+            StateStylePlan::resolve_with_evidence(&model, &json!({}), Some(&resolved), None);
+        let key = FamilyThemeMechanismKey::OrdinalPalette {
+            target: ThemeTarget::State,
+        };
+
+        assert_eq!(plan.node("Ready").unwrap().fill_override(), Some("#ef4444"));
+        assert!(evidence.not_applicable_mechanisms().contains(&key));
+        assert!(!evidence.applied().contains(&key));
+        assert!(evidence.residuals().iter().all(|item| item.key() != &key));
+    }
+
+    #[test]
+    fn note_padding_is_applied_but_note_radius_is_residual() {
+        let radius_patch = ThemeStylePatch {
+            geometry: ThemeGeometryPatch {
+                radius: Specified::Value(12.0),
+            },
+            ..ThemeStylePatch::default()
+        };
+        let rules = ThemeRuleSet::default()
+            .with_rule(ThemeRule::new(ThemeTarget::Note, radius_patch))
+            .with_rule(ThemeRule::new(
+                ThemeTarget::Note,
+                ThemeStylePatch::default().with_padding(InsetsPx::all(14.0)),
+            ));
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .unwrap();
+        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let mut model = StateDiagramRenderModel::default();
+        model.nodes.push(semantic_node("N", "note"));
+        let (plan, evidence) =
+            StateStylePlan::resolve_with_evidence(&model, &json!({}), Some(&resolved), None);
+        let radius_key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Note,
+        };
+        let padding_key = FamilyThemeMechanismKey::Rule {
+            index: 1,
+            target: ThemeTarget::Note,
+        };
+
+        assert_eq!(plan.node("N").unwrap().padding_override(), Some(14.0));
+        assert!(evidence.applied().contains(&padding_key));
+        assert!(evidence.residuals().iter().any(|residual| {
+            residual.key() == &radius_key
+                && residual.reason() == FamilyThemeResidualReason::UnsupportedGeometry
+        }));
+    }
+
+    #[test]
+    fn transparent_state_label_emits_valid_css_color() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::StateLabel,
+                        ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+                    ),
+                )),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let mut model = StateDiagramRenderModel::default();
+        model.nodes.push(semantic_node("Ready", "rect"));
+        let (plan, evidence) =
+            StateStylePlan::resolve_with_evidence(&model, &json!({}), Some(&resolved), None);
+
+        let style = plan.node("Ready").unwrap().label_style_attr();
+        assert!(style.contains("color:transparent !important"));
+        assert!(!style.contains("color:none"));
+        assert!(evidence.applied().contains(&FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::StateLabel,
+        }));
+    }
+
+    #[test]
+    fn accepted_source_fill_shadows_only_the_typed_fill_winner() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::State,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+                    )),
+                ),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let mut model = StateDiagramRenderModel::default();
+        let mut node = semantic_node("Ready", "rect");
+        node.css_styles = vec!["fill:#111827".to_string()];
+        model.nodes.push(node);
+
+        let (plan, evidence) =
+            StateStylePlan::resolve_with_evidence(&model, &json!({}), Some(&resolved), None);
+        let key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::State,
+        };
+
+        assert_eq!(plan.node("Ready").unwrap().fill_override(), Some("#111827"));
+        assert!(evidence.not_applicable_mechanisms().contains(&key));
+        assert!(!evidence.applied().contains(&key));
+        assert!(evidence.residuals().iter().all(|item| item.key() != &key));
+    }
+
+    #[test]
+    fn accepted_source_fill_preserves_another_typed_property_from_the_same_rule() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::State,
+                        ThemeStylePatch {
+                            paint: crate::diagram_theme::ThemePaintPatch {
+                                fill: Specified::Value(CanvasPaint::solid("#ef4444").unwrap()),
+                                ..Default::default()
+                            },
+                            geometry: ThemeGeometryPatch {
+                                radius: Specified::Value(12.0),
+                            },
+                            ..ThemeStylePatch::default()
+                        },
+                    ),
+                )),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let mut model = StateDiagramRenderModel::default();
+        let mut node = semantic_node("Ready", "rect");
+        node.css_styles = vec!["fill:#111827".to_string()];
+        model.nodes.push(node);
+
+        let (plan, evidence) =
+            StateStylePlan::resolve_with_evidence(&model, &json!({}), Some(&resolved), None);
+        let key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::State,
+        };
+
+        assert_eq!(plan.node("Ready").unwrap().fill_override(), Some("#111827"));
+        assert_eq!(plan.node("Ready").unwrap().radius_override(), Some(12.0));
+        assert!(evidence.applied().contains(&key));
+        assert!(!evidence.not_applicable_mechanisms().contains(&key));
+        assert!(evidence.residuals().iter().all(|item| item.key() != &key));
+    }
+
+    #[test]
+    fn source_shadow_is_scoped_to_one_rendered_node() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::State,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+                    )),
+                ),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let mut model = StateDiagramRenderModel::default();
+        let mut overridden = semantic_node("Overridden", "rect");
+        overridden.css_styles = vec!["fill:#111827".to_string(), "fill:#0f172a".to_string()];
+        model.nodes.push(overridden);
+        model.nodes.push(semantic_node("Untouched", "rect"));
+
+        let (plan, evidence) =
+            StateStylePlan::resolve_with_evidence(&model, &json!({}), Some(&resolved), None);
+        let key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::State,
+        };
+
+        assert_eq!(
+            plan.node("Overridden").unwrap().fill_override(),
+            Some("#0f172a")
+        );
+        assert_eq!(
+            plan.node("Untouched").unwrap().fill_override(),
+            Some("#ef4444")
+        );
+        assert!(evidence.applied().contains(&key));
+        assert!(!evidence.not_applicable_mechanisms().contains(&key));
+    }
+
+    #[test]
+    fn source_shadow_does_not_erase_a_residual_from_another_rendered_node() {
+        let gradient = LinearGradient::new(
+            90.0,
+            [
+                GradientStop::new(0.0, ThemeColorValue::parse("#0f172a").unwrap()).unwrap(),
+                GradientStop::new(1.0, ThemeColorValue::parse("#22d3ee").unwrap()).unwrap(),
+            ],
+        )
+        .unwrap();
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::State,
+                        ThemeStylePatch::default().with_fill(CanvasPaint::LinearGradient(gradient)),
+                    ),
+                )),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let mut model = StateDiagramRenderModel::default();
+        let mut overridden = semantic_node("Overridden", "rect");
+        overridden.css_styles = vec!["fill:#111827".to_string()];
+        model.nodes.push(overridden);
+        model.nodes.push(semantic_node("Unsupported", "rect"));
+
+        let (_, evidence) =
+            StateStylePlan::resolve_with_evidence(&model, &json!({}), Some(&resolved), None);
+        let key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::State,
+        };
+
+        assert!(evidence.residuals().iter().any(|residual| {
+            residual.key() == &key
+                && residual.reason() == FamilyThemeResidualReason::UnsupportedPaint
+        }));
+        assert!(!evidence.applied().contains(&key));
+        assert!(!evidence.not_applicable_mechanisms().contains(&key));
+    }
+
+    #[test]
+    fn end_state_source_fill_supersedes_the_inner_surface_use() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::SpecialStateInner,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#ffffff").unwrap()),
+                    )),
+                ),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let mut model = StateDiagramRenderModel::default();
+        let mut end = semantic_node("end", "stateEnd");
+        end.css_styles = vec!["fill:#111827".to_string()];
+        model.nodes.push(end);
+
+        let (plan, evidence) =
+            StateStylePlan::resolve_with_evidence(&model, &json!({}), Some(&resolved), None);
+        let key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::SpecialStateInner,
+        };
+
+        assert!(
+            plan.node("end")
+                .unwrap()
+                .special_state_inner_style_attr()
+                .contains("fill:#ffffff !important")
+        );
+        assert!(
+            plan.node("end")
+                .unwrap()
+                .source_shape_style_attr()
+                .contains("fill:#111827 !important")
+        );
+        assert!(evidence.not_applicable_mechanisms().contains(&key));
+        assert!(!evidence.applied().contains(&key));
+        assert!(
+            evidence
+                .residuals()
+                .iter()
+                .all(|residual| residual.key() != &key)
+        );
+    }
+
+    #[test]
+    fn start_state_source_fill_cannot_shadow_the_emitted_typed_style() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::SpecialState,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#22c55e").unwrap()),
+                    )),
+                ),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let mut model = StateDiagramRenderModel::default();
+        let mut start = semantic_node("start", "stateStart");
+        start.css_styles = vec!["fill:#111827".to_string()];
+        model.nodes.push(start);
+
+        let (plan, evidence) =
+            StateStylePlan::resolve_with_evidence(&model, &json!({}), Some(&resolved), None);
+        let key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::SpecialState,
+        };
+        let node = plan.node("start").unwrap();
+
+        assert!(
+            node.semantic_shape_style_attr()
+                .contains("fill:#22c55e !important")
+        );
+        assert!(node.source_shape_style_attr().is_empty());
+        assert!(evidence.applied().contains(&key));
+        assert!(plan.residuals().iter().any(|residual| {
+            residual.property() == Some("fill")
+                && residual.reason() == SourceStyleResidualReason::UnsupportedSurface
+        }));
+    }
+
+    #[test]
+    fn composite_source_fill_shadows_only_the_body_surface() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Composite,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#22c55e").unwrap()),
+                        ))
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::CompositeHeader,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ffffff").unwrap()),
+                        )),
+                ),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let mut model = StateDiagramRenderModel::default();
+        model.style_classes.insert(
+            "surface".to_string(),
+            StateDiagramRenderStyleClass {
+                id: "surface".to_string(),
+                styles: vec!["fill:#111827".to_string()],
+                text_styles: Vec::new(),
+            },
+        );
+        let mut composite = semantic_node("cluster", "roundedWithTitle");
+        composite.is_group = true;
+        composite.node_type = Some("group".to_string());
+        composite.css_classes = "surface".to_string();
+        model.nodes.push(composite);
+
+        let (plan, evidence) =
+            StateStylePlan::resolve_with_evidence(&model, &json!({}), Some(&resolved), None);
+        let body_key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Composite,
+        };
+        let header_key = FamilyThemeMechanismKey::Rule {
+            index: 1,
+            target: ThemeTarget::CompositeHeader,
+        };
+        let node = plan.node("cluster").unwrap();
+
+        assert_eq!(node.fill_override(), Some("#111827"));
+        assert!(
+            node.composite_header_style_attr()
+                .contains("fill:#ffffff !important")
+        );
+        assert!(evidence.not_applicable_mechanisms().contains(&body_key));
+        assert!(evidence.applied().contains(&header_key));
+    }
+
+    #[test]
+    fn invalid_source_fill_does_not_supersede_the_typed_winner() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::State,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#22c55e").unwrap()),
+                    )),
+                ),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let mut model = StateDiagramRenderModel::default();
+        let mut node = semantic_node("Ready", "rect");
+        node.css_styles = vec!["fill:not-a-color".to_string()];
+        model.nodes.push(node);
+
+        let (plan, evidence) =
+            StateStylePlan::resolve_with_evidence(&model, &json!({}), Some(&resolved), None);
+        let key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::State,
+        };
+
+        assert_eq!(plan.node("Ready").unwrap().fill_override(), Some("#22c55e"));
+        assert!(evidence.applied().contains(&key));
+        assert!(plan.residuals().iter().any(|residual| {
+            residual.property() == Some("fill")
+                && residual.reason() == SourceStyleResidualReason::InvalidValue
+        }));
+    }
+
+    #[test]
+    fn html_transition_background_rejects_unemitted_stroke() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::TransitionLabelBackground,
+                        ThemeStylePatch::default()
+                            .with_stroke(CanvasPaint::solid("#ef4444").unwrap()),
+                    )),
+                ),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let mut model = StateDiagramRenderModel::default();
+        model.edges.push(StateDiagramRenderEdge {
+            id: "transition-1".to_string(),
+            start: "A".to_string(),
+            end: "B".to_string(),
+            classes: "transition".to_string(),
+            arrow_type_end: "arrow_barb".to_string(),
+            label: "go".to_string(),
+        });
+        let (_, evidence) = StateStylePlan::resolve_with_evidence(
+            &model,
+            &json!({ "htmlLabels": true }),
+            Some(&resolved),
+            None,
+        );
+        let key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::TransitionLabelBackground,
+        };
+
+        assert!(evidence.residuals().iter().any(|residual| {
+            residual.key() == &key
+                && residual.reason() == FamilyThemeResidualReason::UnsupportedPaint
+        }));
+        assert!(!evidence.applied().contains(&key));
+    }
+
+    #[test]
+    fn shadowed_self_loop_is_removed_before_transition_ordinals_are_assigned() {
+        let rule = ThemeRule::new(
+            ThemeTarget::Transition,
+            ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#22d3ee").unwrap()),
+        )
+        .with_ordinal(OrdinalSelector::exact(1).unwrap());
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+            .unwrap();
+        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let mut model = StateDiagramRenderModel::default();
+        model.edges.extend([
+            StateDiagramRenderEdge {
+                id: "loop-early".to_string(),
+                start: "Ready".to_string(),
+                end: "Ready".to_string(),
+                classes: "transition".to_string(),
+                arrow_type_end: "arrow_barb".to_string(),
+                label: String::new(),
+            },
+            StateDiagramRenderEdge {
+                id: "loop-late".to_string(),
+                start: "Ready".to_string(),
+                end: "Ready".to_string(),
+                classes: "transition".to_string(),
+                arrow_type_end: "arrow_barb".to_string(),
+                label: String::new(),
+            },
+        ]);
+        let (plan, evidence) =
+            StateStylePlan::resolve_with_evidence(&model, &json!({}), Some(&resolved), None);
+        let key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Transition,
+        };
+
+        assert_eq!(plan.edge("loop-early").unwrap().ordinal(), None);
+        assert_eq!(plan.edge("loop-late").unwrap().ordinal(), Some(1));
+        assert!(evidence.applied().contains(&key));
+        assert!(evidence.residuals().is_empty());
+    }
+
+    #[test]
+    fn title_only_document_uses_family_typography_after_legacy_title_defaults() {
+        let typography = ThemeTextStyle::default().with_font_size_px(26.0).unwrap();
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_typography(TypographySpec::default().with_default(typography)),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::render_family::RenderFamilyKind::State);
+        let (plan, evidence) = StateStylePlan::resolve_with_evidence(
+            &StateDiagramRenderModel::default(),
+            &json!({}),
+            Some(&resolved),
+            Some("Architecture"),
+        );
+
+        assert_eq!(plan.title_text_style().font_size, 26.0);
+        assert!(
+            evidence
+                .applied()
+                .contains(&FamilyThemeMechanismKey::Typography)
+        );
+        assert!(evidence.residuals().is_empty());
     }
 }

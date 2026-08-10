@@ -32,7 +32,7 @@ fn completed_render_report_records_the_canonical_execution_path() {
         RenderExecutionPath::HeadlessOperationTyped
     );
     assert_eq!(rendered.family_kind(), merman::svg::RenderFamilyKind::Info);
-    assert_eq!(rendered.report().theme_fingerprint(), None);
+    assert_eq!(rendered.report().theme_recipe_fingerprint(), None);
 }
 
 #[test]

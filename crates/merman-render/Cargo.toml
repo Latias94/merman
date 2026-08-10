@@ -25,6 +25,7 @@ wasm-inputs = ["assets/zenuml"]
 
 [features]
 default = []
+fuzzing = []
 system-clock = ["merman-core/system-clock"]
 system-timezone = ["merman-core/system-timezone"]
 system-random = ["merman-core/system-random"]
@@ -59,6 +60,7 @@ ratex-parser = { workspace = true, optional = true }
 ratex-svg = { workspace = true, optional = true }
 ratex-types = { workspace = true, optional = true }
 rustc-hash.workspace = true
+rustybuzz.workspace = true
 roxmltree.workspace = true
 quick-xml.workspace = true
 serde.workspace = true
@@ -71,6 +73,7 @@ roughr = { workspace = true, default-features = false }
 ryu-js.workspace = true
 unicode-width.workspace = true
 unicode-linebreak.workspace = true
+unicode-script.workspace = true
 unicode-segmentation.workspace = true
 wuff.workspace = true
 

@@ -15,8 +15,11 @@ pub(crate) mod scanner;
 
 #[cfg(feature = "layout-cytoscape")]
 pub(crate) use parity::render_architecture_family_artifact;
-pub(crate) use parity::render_builtin_family_artifact;
 pub(crate) use parity::theme as render_theme;
+#[cfg(test)]
+pub(crate) use parity::write_flowchart_svg_label_plan_for_test;
+pub(crate) use parity::{RootThemeAppliedSvg, render_builtin_family_artifact};
+pub(crate) use pipeline::partition_prepared_text_label_ids;
 
 pub use fallback::foreign_object_label_fallback_svg_text;
 pub use icon_registry::{
@@ -29,7 +32,7 @@ pub use pipeline::{
     CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor,
     ResvgCompatibleSvg, RootBackgroundPostprocessor, SanitizeCssPostprocessor,
     SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StripForeignObjectPostprocessor,
-    SvgOutputPolicy, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
-    SvgPostprocessor, SvgReferencePlan, SvgResourceClosure, SvgResourceFingerprint,
-    finalize_resvg_svg,
+    SvgFinalizationReport, SvgOutputPolicy, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext,
+    SvgPostprocessMetadata, SvgPostprocessor, SvgReferencePlan, SvgResourceClosure,
+    SvgResourceFingerprint, finalize_resvg_svg,
 };

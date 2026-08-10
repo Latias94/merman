@@ -617,6 +617,7 @@ pub(super) fn render_state_edge_label(
         out: &mut String,
         id: &str,
         label_text: &str,
+        prepared: Option<&crate::state::PreparedStateLabel>,
         label_pos: crate::model::LayoutPoint,
         w: f64,
         h: f64,
@@ -629,14 +630,16 @@ pub(super) fn render_state_edge_label(
         let w = w.max(0.0);
         let h = h.max(0.0);
         if html_labels {
+            let prepared_token_attr = state_prepared_html_label_token_attr(prepared);
             let _ = write!(
                 out,
-                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
+                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject{} width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
                 fmt_display(label_pos.x),
                 fmt_display(label_pos.y),
                 escape_attr(id),
                 fmt_display(-w / 2.0),
                 fmt_display(-h / 2.0),
+                prepared_token_attr,
                 fmt_display(w),
                 fmt_display(h),
                 escape_attr(&edge_label_div_style(
@@ -644,13 +647,27 @@ pub(super) fn render_state_edge_label(
                     label_div_prefix,
                     html_background_style,
                 )),
-                state_edge_label_html(label_text)
+                prepared.map_or_else(
+                    || state_edge_label_html(label_text),
+                    state_prepared_edge_label_html,
+                )
             );
         } else {
-            let label_dom = state_svg_text_label(
-                label_text,
-                true,
-                (!label_style.is_empty()).then_some(label_style),
+            let label_dom = prepared.map_or_else(
+                || {
+                    state_svg_text_label(
+                        label_text,
+                        true,
+                        (!label_style.is_empty()).then_some(label_style),
+                    )
+                },
+                |prepared| {
+                    state_prepared_svg_text_label(
+                        prepared,
+                        true,
+                        (!label_style.is_empty()).then_some(label_style),
+                    )
+                },
             );
             let _ = write!(
                 out,
@@ -730,6 +747,7 @@ pub(super) fn render_state_edge_label(
         out,
         &edge.id,
         label_text,
+        ctx.label_sidecar.edge(&edge.id),
         label_position,
         w,
         h,

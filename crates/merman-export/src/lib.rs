@@ -1388,7 +1388,7 @@ fn prepare_raster_on_backend_stack(
     svg: &ResvgCompatibleSvg,
     options: &RasterOptions,
 ) -> Result<PreparedRaster> {
-    let source = svg.as_str();
+    let source = svg.native_export_svg();
     let matte = options
         .matte
         .as_deref()
@@ -1404,7 +1404,11 @@ fn prepare_raster_on_backend_stack(
         options.embedded_image_limit,
     )?;
     let tree = usvg::Tree::from_str(source, &usvg_options).map_err(|_| ExportError::SvgParse)?;
-    let font_plan = font_plan.finish();
+    let font_plan = font_plan.finish_with_tree(
+        &tree,
+        svg.prepared_text_label_ledger(),
+        svg.prepared_text_evidence_valid(),
+    );
     let conversion_plan = plan_svg_conversion(&tree, options.conversion_limits)?;
     let embedded_image_plan = plan_embedded_images(&tree, options.embedded_image_limit, data_plan)?;
     let (geometry, translate_min_to_origin) = raster_geometry_for_svg(root_metadata, &tree);
@@ -1439,7 +1443,7 @@ fn prepare_pdf_on_backend_stack(
     svg: &ResvgCompatibleSvg,
     options: &PdfOptions,
 ) -> Result<PreparedPdf> {
-    let source = svg.as_str();
+    let source = svg.native_export_svg();
     validate_pdf_options(options)?;
     let page_paint = options
         .page_paint
@@ -1566,8 +1570,14 @@ pub fn svg_to_pdf_with_report(
 fn parse_pdf_tree(svg: &ResvgCompatibleSvg) -> Result<(usvg::Tree, ExportFontPlan)> {
     let mut opts = usvg::Options::default();
     let font_plan = configure_usvg_options_for_pdf(&mut opts, svg)?;
-    let tree = usvg::Tree::from_str(svg.as_str(), &opts).map_err(|_| ExportError::SvgParse)?;
-    Ok((tree, font_plan.finish()))
+    let tree =
+        usvg::Tree::from_str(svg.native_export_svg(), &opts).map_err(|_| ExportError::SvgParse)?;
+    let font_plan = font_plan.finish_with_tree(
+        &tree,
+        svg.prepared_text_label_ledger(),
+        svg.prepared_text_evidence_valid(),
+    );
+    Ok((tree, font_plan))
 }
 
 #[cfg(feature = "pdf")]

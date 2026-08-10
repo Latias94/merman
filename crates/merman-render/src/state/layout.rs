@@ -1,6 +1,7 @@
 //! State diagram layout implementation (stateDiagram-v2).
 
 use crate::dagre::self_loop::compact_self_loop_geometry;
+use crate::diagram_theme::{ThemeTarget, ThemeVariant};
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{
     Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, StateDiagramLayout,
@@ -15,7 +16,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 use super::config::*;
-use super::{StateDiagramModel, StateNode};
+use super::{StateDiagramModel, StateNode, state_value_to_label_text};
 
 struct PreparedGraph {
     graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
@@ -170,23 +171,45 @@ fn set_extras_i32(extras: &mut std::collections::BTreeMap<String, Value>, key: &
 }
 
 fn edge_label_metrics(
+    edge_id: &str,
     label: &str,
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
     wrap_mode: WrapMode,
+    label_ordinal: Option<usize>,
+    sidecar: Option<&super::StateLabelSidecarBuilder>,
 ) -> (f64, f64) {
     if label.trim().is_empty() {
         return (0.0, 0.0);
     }
     let wrapping_width = crate::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX;
-    let mut metrics = super::measure_state_markdown_label(
-        label,
+    let request = super::StateLabelMetricsRequest {
+        owner: super::StateLabelOwner::Edge(edge_id),
+        text: label,
+        source_kind: super::StateLabelSourceKind::Markdown,
         measurer,
-        text_style,
-        Some(wrapping_width),
+        style: text_style,
+        target: ThemeTarget::TransitionLabel,
+        variant: ThemeVariant::Default,
+        ordinal: label_ordinal,
+        max_width_px: Some(wrapping_width),
         wrap_mode,
-    )
-    .metrics;
+        break_long_words: true,
+    };
+    let mut metrics = sidecar
+        .map_or_else(
+            || {
+                super::measure_state_markdown_label(
+                    label,
+                    measurer,
+                    text_style,
+                    Some(wrapping_width),
+                    wrap_mode,
+                )
+            },
+            |sidecar| sidecar.measure_for_layout(request),
+        )
+        .metrics;
     // For SVG edge labels, `createText(..., addSvgBackground=true)` adds a background rect with a
     // 2px padding.
     if wrap_mode == WrapMode::SvgLike {
@@ -198,36 +221,100 @@ fn edge_label_metrics(
 }
 
 fn node_label_metrics(
+    node_id: &str,
     label: &str,
     wrapping_width: f64,
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
     wrap_mode: WrapMode,
+    node_style: Option<&super::StateNodeStylePlan>,
+    sidecar: Option<&super::StateLabelSidecarBuilder>,
 ) -> (f64, f64) {
-    let metrics = super::measure_state_markdown_label(
-        label,
+    let (target, variant, ordinal) = node_label_binding(node_style);
+    let request = super::StateLabelMetricsRequest {
+        owner: super::StateLabelOwner::Node(node_id),
+        text: label,
+        source_kind: super::StateLabelSourceKind::Markdown,
         measurer,
-        text_style,
-        Some(wrapping_width),
+        style: text_style,
+        target,
+        variant,
+        ordinal,
+        max_width_px: Some(wrapping_width),
         wrap_mode,
-    )
-    .metrics;
+        break_long_words: true,
+    };
+    let metrics = sidecar
+        .map_or_else(
+            || {
+                super::measure_state_markdown_label(
+                    label,
+                    measurer,
+                    text_style,
+                    Some(wrapping_width),
+                    wrap_mode,
+                )
+            },
+            |sidecar| sidecar.measure_for_layout(request),
+        )
+        .metrics;
 
     (metrics.width.max(0.0), metrics.height.max(0.0))
 }
 
 fn title_label_metrics(
+    owner: super::StateLabelOwner<'_>,
     label: &str,
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
     wrap_mode: WrapMode,
+    node_style: Option<&super::StateNodeStylePlan>,
+    sidecar: Option<&super::StateLabelSidecarBuilder>,
 ) -> (f64, f64) {
     // Mermaid state diagram cluster titles use `createLabel(...)` (nowrap) rather than
     // `createText(...)` (width constrained).
-    let decoded = decode_html_entities_once(label);
-    let metrics = measurer.measure_wrapped(decoded.as_ref(), text_style, None, wrap_mode);
+    let (target, variant, ordinal) = node_label_binding(node_style);
+    let request = super::StateLabelMetricsRequest {
+        owner,
+        text: label,
+        source_kind: super::StateLabelSourceKind::Plain,
+        measurer,
+        style: text_style,
+        target,
+        variant,
+        ordinal,
+        max_width_px: None,
+        wrap_mode,
+        break_long_words: false,
+    };
+    let metrics = sidecar
+        .map_or_else(
+            || {
+                let decoded = decode_html_entities_once(label);
+                super::StateLabelMeasurement {
+                    metrics: measurer.measure_wrapped(
+                        decoded.as_ref(),
+                        text_style,
+                        None,
+                        wrap_mode,
+                    ),
+                    uses_html_wrapping_table: false,
+                }
+            },
+            |sidecar| sidecar.measure_for_layout(request),
+        )
+        .metrics;
 
     (metrics.width.max(0.0), metrics.height.max(0.0))
+}
+
+fn node_label_binding(
+    node_style: Option<&super::StateNodeStylePlan>,
+) -> (ThemeTarget, ThemeVariant, Option<usize>) {
+    node_style.map_or(
+        (ThemeTarget::StateLabel, ThemeVariant::Default, None),
+        |style| (style.label_target(), style.variant(), style.label_ordinal()),
+    )
 }
 
 fn extract_descendants(
@@ -1330,6 +1417,7 @@ pub(crate) fn layout_state_diagram_typed_with_work_meter(
     effective_config: &Value,
     style_plan: &super::StateStylePlan,
     measurer: &dyn TextMeasurer,
+    label_sidecar: Option<&super::StateLabelSidecarBuilder>,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
 ) -> Result<StateDiagramLayout> {
     let mut work_control = OperationLayoutWorkControl::new(work_meter);
@@ -1340,6 +1428,7 @@ pub(crate) fn layout_state_diagram_typed_with_work_meter(
         effective_config,
         style_plan,
         measurer,
+        label_sidecar,
         &mut work_control,
     )
 }
@@ -1373,6 +1462,7 @@ fn build_state_diagram_dagre_input(
     effective_config: &Value,
     style_plan: &super::StateStylePlan,
     measurer: &dyn TextMeasurer,
+    label_sidecar: Option<&super::StateLabelSidecarBuilder>,
 ) -> Result<StateDagreInput> {
     // Mermaid accepts some historical "floating note" syntaxes in the parser but does not render them.
     // Keep them in the semantic model/snapshots, but exclude them from layout so they do not shift
@@ -1440,7 +1530,7 @@ fn build_state_diagram_dagre_input(
             let label_text = n
                 .label
                 .as_ref()
-                .map(value_to_label_text)
+                .map(state_value_to_label_text)
                 .unwrap_or_else(|| n.id.clone());
 
             let (w, h) = match n.shape.as_str() {
@@ -1460,11 +1550,14 @@ fn build_state_diagram_dagre_input(
                 }
                 "note" => {
                     let (tw, th) = node_label_metrics(
+                        &n.id,
                         &label_text,
                         wrapping_width,
                         measurer,
                         node_text_style,
                         wrap_mode,
+                        node_style,
+                        label_sidecar,
                     );
                     (tw + padding * 2.0, th + padding * 2.0)
                 }
@@ -1475,13 +1568,23 @@ fn build_state_diagram_dagre_input(
                         .map(|v| v.join("\n"))
                         .unwrap_or_default();
                     let (title_w, title_h) = title_label_metrics(
+                        super::StateLabelOwner::NodeTitle(&n.id),
                         &label_text,
                         measurer,
                         node_text_style,
                         WrapMode::HtmlLike,
+                        node_style,
+                        label_sidecar,
                     );
-                    let (desc_w, desc_h) =
-                        title_label_metrics(&desc, measurer, node_text_style, WrapMode::HtmlLike);
+                    let (desc_w, desc_h) = title_label_metrics(
+                        super::StateLabelOwner::NodeDescription(&n.id),
+                        &desc,
+                        measurer,
+                        node_text_style,
+                        WrapMode::HtmlLike,
+                        node_style,
+                        label_sidecar,
+                    );
 
                     let geometry = super::RectWithTitleGeometry::from_metrics(
                         title_w, title_h, desc_w, desc_h, padding,
@@ -1490,11 +1593,14 @@ fn build_state_diagram_dagre_input(
                 }
                 "rect" => {
                     let (tw, th) = node_label_metrics(
+                        &n.id,
                         &label_text,
                         wrapping_width,
                         measurer,
                         node_text_style,
                         wrap_mode,
+                        node_style,
+                        label_sidecar,
                     );
                     // Mermaid converts `rect` into `roundedRect` when rx/ry is set.
                     let radius = node_style
@@ -1546,7 +1652,19 @@ fn build_state_diagram_dagre_input(
             .edge(&e.id)
             .map(super::StateEdgeStylePlan::text_style)
             .unwrap_or_else(|| style_plan.transition_text_style());
-        let (lw, lh) = edge_label_metrics(&e.label, measurer, edge_text_style, wrap_mode);
+        let label_ordinal = style_plan
+            .edge(&e.id)
+            .and_then(super::StateEdgeStylePlan::label_ordinal);
+        let canonical_label = e.label.trim();
+        let (lw, lh) = edge_label_metrics(
+            &e.id,
+            canonical_label,
+            measurer,
+            edge_text_style,
+            wrap_mode,
+            label_ordinal,
+            label_sidecar,
+        );
         let mut base = EdgeLabel {
             width: lw,
             height: lh,
@@ -1670,6 +1788,7 @@ fn layout_state_diagram_inner(
     effective_config: &Value,
     style_plan: &super::StateStylePlan,
     measurer: &dyn TextMeasurer,
+    label_sidecar: Option<&super::StateLabelSidecarBuilder>,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<StateDiagramLayout> {
     validate_state_parent_cycles(model)?;
@@ -1683,7 +1802,13 @@ fn layout_state_diagram_inner(
         wrap_mode,
         wrapping_width,
         html_labels,
-    } = build_state_diagram_dagre_input(model, effective_config, style_plan, measurer)?;
+    } = build_state_diagram_dagre_input(
+        model,
+        effective_config,
+        style_plan,
+        measurer,
+        label_sidecar,
+    )?;
 
     let cluster_dir =
         |id: &str| -> Option<String> { dir_by_dagre_id.get(id).and_then(|v| v.clone()) };
@@ -1792,7 +1917,7 @@ fn layout_state_diagram_inner(
         let mut title = n
             .label
             .as_ref()
-            .map(value_to_label_text)
+            .map(state_value_to_label_text)
             .unwrap_or_default();
         if title.trim().is_empty() {
             title = n.id.clone();
@@ -1809,16 +1934,43 @@ fn layout_state_diagram_inner(
         let (tw, th) = if title.trim().is_empty() {
             (0.0, 0.0)
         } else if n.shape == "noteGroup" {
-            let measurement = super::measure_state_markdown_label(
-                &title,
+            let (target, variant, ordinal) = node_label_binding(node_style);
+            let request = super::StateLabelMetricsRequest {
+                owner: super::StateLabelOwner::ClusterTitle(&n.id),
+                text: &title,
+                source_kind: super::StateLabelSourceKind::Markdown,
                 measurer,
-                cluster_text_style,
-                Some(wrapping_width),
+                style: cluster_text_style,
+                target,
+                variant,
+                ordinal,
+                max_width_px: Some(wrapping_width),
                 wrap_mode,
+                break_long_words: true,
+            };
+            let measurement = label_sidecar.map_or_else(
+                || {
+                    super::measure_state_markdown_label(
+                        &title,
+                        measurer,
+                        cluster_text_style,
+                        Some(wrapping_width),
+                        wrap_mode,
+                    )
+                },
+                |sidecar| sidecar.measure_for_layout(request),
             );
             (measurement.metrics.width, measurement.metrics.height)
         } else {
-            title_label_metrics(&title, measurer, cluster_text_style, wrap_mode)
+            title_label_metrics(
+                super::StateLabelOwner::ClusterTitle(&n.id),
+                &title,
+                measurer,
+                cluster_text_style,
+                wrap_mode,
+                node_style,
+                label_sidecar,
+            )
         };
 
         // Mermaid expands cluster width to ensure the title fits, but does not re-run Dagre after
@@ -2328,7 +2480,10 @@ pub fn debug_build_state_diagram_dagre_graph(
     measurer: &dyn TextMeasurer,
 ) -> Result<Graph<NodeLabel, EdgeLabel, GraphLabel>> {
     let style_plan = super::StateStylePlan::resolve(model, effective_config, None);
-    Ok(build_state_diagram_dagre_input(model, effective_config, &style_plan, measurer)?.graph)
+    Ok(
+        build_state_diagram_dagre_input(model, effective_config, &style_plan, measurer, None)?
+            .graph,
+    )
 }
 
 #[cfg(test)]
@@ -2374,6 +2529,7 @@ mod tests {
             parsed.metadata().effective_config.as_value(),
             &style_plan,
             &VendoredFontMetricsTextMeasurer::default(),
+            None,
         )
         .expect("build State Dagre input");
 
@@ -2421,15 +2577,40 @@ mod tests {
         let style = TextStyle::default();
 
         assert_eq!(
-            edge_label_metrics("edge", &measurer, &style, WrapMode::HtmlLike),
+            edge_label_metrics(
+                "edge",
+                "edge",
+                &measurer,
+                &style,
+                WrapMode::HtmlLike,
+                None,
+                None,
+            ),
             (73.123_456_789, 17.25)
         );
         assert_eq!(
-            node_label_metrics("node", 180.0, &measurer, &style, WrapMode::HtmlLike,),
+            node_label_metrics(
+                "node",
+                "node",
+                180.0,
+                &measurer,
+                &style,
+                WrapMode::HtmlLike,
+                None,
+                None,
+            ),
             (73.123_456_789, 17.25)
         );
         assert_eq!(
-            title_label_metrics("title", &measurer, &style, WrapMode::HtmlLike),
+            title_label_metrics(
+                crate::state::StateLabelOwner::NodeTitle("node"),
+                "title",
+                &measurer,
+                &style,
+                WrapMode::HtmlLike,
+                None,
+                None,
+            ),
             (73.123_456_789, 17.25)
         );
     }
@@ -2443,15 +2624,40 @@ mod tests {
         let style = TextStyle::default();
 
         assert_eq!(
-            edge_label_metrics("edge", &measurer, &style, WrapMode::HtmlLike),
+            edge_label_metrics(
+                "edge",
+                "edge",
+                &measurer,
+                &style,
+                WrapMode::HtmlLike,
+                None,
+                None,
+            ),
             (250.123_456_789, 17.25)
         );
         assert_eq!(
-            node_label_metrics("node", 180.0, &measurer, &style, WrapMode::HtmlLike,),
+            node_label_metrics(
+                "node",
+                "node",
+                180.0,
+                &measurer,
+                &style,
+                WrapMode::HtmlLike,
+                None,
+                None,
+            ),
             (250.123_456_789, 17.25)
         );
         assert_eq!(
-            edge_label_metrics("edge", &measurer, &style, WrapMode::SvgLike),
+            edge_label_metrics(
+                "edge",
+                "edge",
+                &measurer,
+                &style,
+                WrapMode::SvgLike,
+                None,
+                None,
+            ),
             (254.123_456_789, 21.25)
         );
     }

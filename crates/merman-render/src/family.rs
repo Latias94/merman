@@ -1,6 +1,7 @@
 use crate::diagram_theme::{
-    ResolvedDiagramTheme, SourceStyleChannel, SourceStyleOrigin, SourceStyleResidual,
-    SourceStyleResidualReason, ThemeFingerprint, ThemePortabilityRequirement,
+    FamilyThemeMechanismKey, ResolvedDiagramTheme, RootThemePlan, RootThemeReport,
+    SourceStyleChannel, SourceStyleOrigin, SourceStyleResidual, SourceStyleResidualReason,
+    ThemePortabilityRequirement, ThemeRecipeFingerprint,
 };
 use crate::environment::{RenderSession, RenderSessionReport};
 use crate::model::*;
@@ -13,7 +14,7 @@ use crate::{Error, LayoutExecution, LayoutOptions, RenderCapability, Result};
 use merman_core::diagrams;
 use merman_core::models::class_diagram::ClassDiagram;
 use merman_core::{BuiltinRenderSemantic, ParseMetadata, ParsedDiagramRender, RenderSemanticModel};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 pub use crate::render_family::RenderFamilyKind;
 
@@ -77,12 +78,27 @@ impl RenderCapabilityPlan {
     }
 }
 
-/// Verification state of a family-local style plan after source styles have been adapted.
+/// Evaluation state of a family-local style plan.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum FamilyStyleEvaluation {
+    /// The selected theme has no structured styles that apply to this family.
+    NotApplicable,
+    /// The family adapter evaluated every applicable structured style input.
+    Evaluated,
+    /// Structured style inputs apply, but this family has no complete adapter yet.
+    Unadapted,
+}
+
+/// Verification state derived from family evaluation and its retained residuals.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum FamilyStyleVerification {
+    NotApplicable,
     Verified,
     Unverified,
+    Unadapted,
+    Incomplete,
 }
 
 /// Source channel that produced an unverified family style residual.
@@ -134,6 +150,58 @@ impl FamilyStyleOrigin {
 impl std::fmt::Display for FamilyStyleOrigin {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(self.id())
+    }
+}
+
+/// Reason a family adapter could not prove one typed semantic mechanism.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum FamilyThemeResidualReason {
+    UnsupportedPaint,
+    UnsupportedTypography,
+    UnsupportedGeometry,
+    UnsupportedEffect,
+    UnsupportedOrdinalPalette,
+}
+
+impl FamilyThemeResidualReason {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::UnsupportedPaint => "unsupported-paint",
+            Self::UnsupportedTypography => "unsupported-typography",
+            Self::UnsupportedGeometry => "unsupported-geometry",
+            Self::UnsupportedEffect => "unsupported-effect",
+            Self::UnsupportedOrdinalPalette => "unsupported-ordinal-palette",
+        }
+    }
+}
+
+impl std::fmt::Display for FamilyThemeResidualReason {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.id())
+    }
+}
+
+/// Frozen evidence for one typed semantic mechanism not proven by the selected family adapter.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FamilyThemeResidual {
+    key: FamilyThemeMechanismKey,
+    reason: FamilyThemeResidualReason,
+}
+
+impl FamilyThemeResidual {
+    pub const fn key(&self) -> &FamilyThemeMechanismKey {
+        &self.key
+    }
+
+    pub const fn reason(&self) -> FamilyThemeResidualReason {
+        self.reason
+    }
+}
+
+impl std::fmt::Display for FamilyThemeResidual {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{} ({})", self.key, self.reason)
     }
 }
 
@@ -284,22 +352,37 @@ impl From<SourceStyleResidualReason> for FamilyStyleResidualReason {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FamilyStyleReport {
     family_kind: RenderFamilyKind,
+    evaluation: FamilyStyleEvaluation,
+    theme_required: Vec<FamilyThemeMechanismKey>,
+    theme_applied: Vec<FamilyThemeMechanismKey>,
+    theme_not_applicable: Vec<FamilyThemeMechanismKey>,
+    theme_residuals: Vec<FamilyThemeResidual>,
     residuals: Vec<FamilyStyleResidual>,
 }
 
 impl FamilyStyleReport {
     fn freeze(plan: &ResolvedFamilyStylePlan) -> Self {
         let mut residuals = Vec::new();
-        if let FamilyStylePayload::State(state) = &plan.payload {
-            for residual in state.residuals() {
-                let residual = FamilyStyleResidual::freeze(residual);
-                if !residuals.contains(&residual) {
-                    residuals.push(residual);
+        let evaluation = match &plan.payload {
+            FamilyStylePayload::NotApplicable => FamilyStyleEvaluation::NotApplicable,
+            FamilyStylePayload::Unadapted => FamilyStyleEvaluation::Unadapted,
+            FamilyStylePayload::State(state) => {
+                for residual in state.residuals() {
+                    let residual = FamilyStyleResidual::freeze(residual);
+                    if !residuals.contains(&residual) {
+                        residuals.push(residual);
+                    }
                 }
+                FamilyStyleEvaluation::Evaluated
             }
-        }
+        };
         Self {
             family_kind: plan.family_kind,
+            evaluation,
+            theme_required: plan.theme_evidence.required.clone(),
+            theme_applied: plan.theme_evidence.applied.clone(),
+            theme_not_applicable: plan.theme_evidence.not_applicable.clone(),
+            theme_residuals: plan.theme_evidence.residuals.clone(),
             residuals,
         }
     }
@@ -308,39 +391,150 @@ impl FamilyStyleReport {
         self.family_kind
     }
 
+    pub const fn evaluation(&self) -> FamilyStyleEvaluation {
+        self.evaluation
+    }
+
     pub fn residuals(&self) -> &[FamilyStyleResidual] {
         &self.residuals
     }
 
+    /// Returns every family-scoped typed mechanism selected by the recipe.
+    pub fn theme_required_mechanisms(&self) -> &[FamilyThemeMechanismKey] {
+        &self.theme_required
+    }
+
+    /// Returns typed mechanisms the family adapter explicitly emitted or consumed.
+    pub fn theme_applied_mechanisms(&self) -> &[FamilyThemeMechanismKey] {
+        &self.theme_applied
+    }
+
+    /// Returns recipe mechanisms evaluated against this document but not selected by any rendered
+    /// target, variant, or ordinal.
+    pub fn theme_not_applicable_mechanisms(&self) -> &[FamilyThemeMechanismKey] {
+        &self.theme_not_applicable
+    }
+
+    /// Returns typed semantic mechanisms that remain outside this adapter's proof boundary.
+    pub fn theme_residuals(&self) -> &[FamilyThemeResidual] {
+        &self.theme_residuals
+    }
+
+    pub fn theme_coverage_complete(&self) -> bool {
+        let required = self
+            .theme_required
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>();
+        let applied = self
+            .theme_applied
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>();
+        let residuals = self
+            .theme_residuals
+            .iter()
+            .map(FamilyThemeResidual::key)
+            .collect::<std::collections::BTreeSet<_>>();
+        let not_applicable = self
+            .theme_not_applicable
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>();
+        let accounted = applied
+            .iter()
+            .chain(not_applicable.iter())
+            .chain(residuals.iter())
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>();
+        required.len() == self.theme_required.len()
+            && applied.len() == self.theme_applied.len()
+            && not_applicable.len() == self.theme_not_applicable.len()
+            && residuals.len() == self.theme_residuals.len()
+            && applied.is_disjoint(&residuals)
+            && applied.is_disjoint(&not_applicable)
+            && not_applicable.is_disjoint(&residuals)
+            && accounted == required
+    }
+
     pub fn verification(&self) -> FamilyStyleVerification {
-        if self.residuals.is_empty() {
-            FamilyStyleVerification::Verified
-        } else {
-            FamilyStyleVerification::Unverified
+        match self.evaluation {
+            FamilyStyleEvaluation::NotApplicable => FamilyStyleVerification::NotApplicable,
+            FamilyStyleEvaluation::Unadapted => FamilyStyleVerification::Unadapted,
+            FamilyStyleEvaluation::Evaluated if !self.theme_coverage_complete() => {
+                FamilyStyleVerification::Incomplete
+            }
+            FamilyStyleEvaluation::Evaluated
+                if self.theme_residuals.is_empty() && self.residuals.is_empty() =>
+            {
+                FamilyStyleVerification::Verified
+            }
+            FamilyStyleEvaluation::Evaluated => FamilyStyleVerification::Unverified,
         }
     }
 
     pub fn is_verified(&self) -> bool {
-        self.residuals.is_empty()
+        self.verification() == FamilyStyleVerification::Verified
+    }
+
+    fn ensure_portable(&self) -> Result<()> {
+        match self.verification() {
+            FamilyStyleVerification::NotApplicable | FamilyStyleVerification::Verified => Ok(()),
+            FamilyStyleVerification::Unadapted => Err(Error::UnadaptedFamilyTheme {
+                family_kind: self.family_kind,
+            }),
+            FamilyStyleVerification::Incomplete => Err(Error::IncompleteFamilyTheme {
+                family_kind: self.family_kind,
+                required_count: self.theme_required.len(),
+                accounted_count: self.theme_applied.len()
+                    + self.theme_not_applicable.len()
+                    + self.theme_residuals.len(),
+            }),
+            FamilyStyleVerification::Unverified => {
+                if let Some(first_residual) = self.theme_residuals.first().cloned() {
+                    return Err(Error::UnverifiedFamilyTheme {
+                        family_kind: self.family_kind,
+                        residual_count: self.theme_residuals.len(),
+                        first_residual,
+                    });
+                }
+                let first_residual = self
+                    .residuals
+                    .first()
+                    .cloned()
+                    .expect("unverified family source styles retain a residual");
+                Err(Error::UnverifiedFamilyStyle {
+                    family_kind: self.family_kind,
+                    residual_count: self.residuals.len(),
+                    first_residual,
+                })
+            }
+        }
     }
 }
 
 /// Frozen family identity and operation evidence captured after SVG work completes.
 ///
-/// The theme fingerprint identifies the compiled theme selected and resolved for the family. It
-/// does not claim that every semantic target has an adapter or was emitted by this diagram. The
-/// family style report separately records source declarations that remained unverified.
+/// The recipe fingerprint identifies selected visual intent and retained resources only. Host
+/// admission and family evaluation remain separate structured reports; the fingerprint does not
+/// claim that any semantic target was applied or emitted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FamilyRenderReport {
+    root_theme: RootThemeReport,
     style: FamilyStyleReport,
     session: RenderSessionReport,
+    prepared_text_ledger: Arc<[crate::text::PreparedTextLabelLedgerEntry]>,
 }
 
 impl FamilyRenderReport {
-    fn freeze(style: FamilyStyleReport, session: RenderSession) -> Self {
+    fn freeze(
+        root_theme: RootThemeReport,
+        style: FamilyStyleReport,
+        session: RenderSession,
+        prepared_text_ledger: Arc<[crate::text::PreparedTextLabelLedgerEntry]>,
+    ) -> Self {
         Self {
+            root_theme,
             style,
             session: session.report(),
+            prepared_text_ledger,
         }
     }
 
@@ -350,6 +544,10 @@ impl FamilyRenderReport {
 
     pub const fn style_report(&self) -> &FamilyStyleReport {
         &self.style
+    }
+
+    pub const fn root_theme_report(&self) -> &RootThemeReport {
+        &self.root_theme
     }
 
     /// Returns the frozen family style report carried by this completion.
@@ -362,22 +560,99 @@ impl FamilyRenderReport {
         self.style.residuals()
     }
 
-    pub fn theme_fingerprint(&self) -> Option<ThemeFingerprint> {
-        self.session.theme_fingerprint()
+    pub fn theme_recipe_fingerprint(&self) -> Option<ThemeRecipeFingerprint> {
+        self.session.theme_recipe_fingerprint()
     }
 
     pub const fn session_report(&self) -> &RenderSessionReport {
         &self.session
     }
+
+    /// Returns prepared labels actually consumed by the family SVG emitter.
+    #[doc(hidden)]
+    pub fn prepared_text_label_ledger(&self) -> &[crate::text::PreparedTextLabelLedgerEntry] {
+        &self.prepared_text_ledger
+    }
 }
 
 struct FamilyRenderContext {
+    root_theme: RootThemePlan,
     style_plan: ResolvedFamilyStylePlan,
     session: RenderSession,
 }
 
+#[derive(Debug, Clone, Default)]
+pub(crate) struct FamilyThemeEvidence {
+    required: Vec<FamilyThemeMechanismKey>,
+    applied: Vec<FamilyThemeMechanismKey>,
+    not_applicable: Vec<FamilyThemeMechanismKey>,
+    residuals: Vec<FamilyThemeResidual>,
+}
+
+impl FamilyThemeEvidence {
+    pub(crate) fn from_theme(theme: Option<&ResolvedDiagramTheme>) -> Self {
+        let Some(theme) = theme else {
+            return Self::default();
+        };
+        Self {
+            required: theme.family_mechanism_keys(),
+            applied: Vec::new(),
+            not_applicable: Vec::new(),
+            residuals: Vec::new(),
+        }
+    }
+
+    fn not_applicable(theme: Option<&ResolvedDiagramTheme>) -> bool {
+        theme.is_none_or(|theme| theme.family_mechanism_keys().is_empty())
+    }
+
+    pub(crate) fn mark_applied(&mut self, key: FamilyThemeMechanismKey) {
+        if self.required.contains(&key) && !self.is_accounted(&key) {
+            self.applied.push(key);
+        }
+    }
+
+    pub(crate) fn mark_not_applicable(&mut self, key: FamilyThemeMechanismKey) {
+        if self.required.contains(&key) && !self.is_accounted(&key) {
+            self.not_applicable.push(key);
+        }
+    }
+
+    pub(crate) fn mark_residual(
+        &mut self,
+        key: FamilyThemeMechanismKey,
+        reason: FamilyThemeResidualReason,
+    ) {
+        if self.required.contains(&key) && !self.is_accounted(&key) {
+            self.residuals.push(FamilyThemeResidual { key, reason });
+        }
+    }
+
+    fn is_accounted(&self, key: &FamilyThemeMechanismKey) -> bool {
+        self.applied.contains(key)
+            || self.not_applicable.contains(key)
+            || self.residuals.iter().any(|residual| residual.key == *key)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn applied(&self) -> &[FamilyThemeMechanismKey] {
+        &self.applied
+    }
+
+    #[cfg(test)]
+    pub(crate) fn not_applicable_mechanisms(&self) -> &[FamilyThemeMechanismKey] {
+        &self.not_applicable
+    }
+
+    #[cfg(test)]
+    pub(crate) fn residuals(&self) -> &[FamilyThemeResidual] {
+        &self.residuals
+    }
+}
+
 #[derive(Debug)]
 enum FamilyStylePayload {
+    NotApplicable,
     Unadapted,
     State(Box<crate::state::StateStylePlan>),
 }
@@ -386,17 +661,26 @@ enum FamilyStylePayload {
 pub(crate) struct ResolvedFamilyStylePlan {
     family_kind: RenderFamilyKind,
     resolved_theme: Option<Box<ResolvedDiagramTheme>>,
+    theme_evidence: FamilyThemeEvidence,
     payload: FamilyStylePayload,
 }
 
 impl ResolvedFamilyStylePlan {
     fn new(session: &RenderSession, family_kind: RenderFamilyKind) -> Self {
+        let resolved_theme = session
+            .theme()
+            .map(|theme| Box::new(theme.resolve(family_kind)));
+        let theme_evidence = FamilyThemeEvidence::from_theme(resolved_theme.as_deref());
+        let payload = if !FamilyThemeEvidence::not_applicable(resolved_theme.as_deref()) {
+            FamilyStylePayload::Unadapted
+        } else {
+            FamilyStylePayload::NotApplicable
+        };
         Self {
             family_kind,
-            resolved_theme: session
-                .theme()
-                .map(|theme| Box::new(theme.resolve(family_kind))),
-            payload: FamilyStylePayload::Unadapted,
+            resolved_theme,
+            theme_evidence,
+            payload,
         }
     }
 
@@ -404,15 +688,18 @@ impl ResolvedFamilyStylePlan {
         &mut self,
         model: &merman_core::diagrams::state::StateDiagramRenderModel,
         effective_config: &serde_json::Value,
-        portability: ThemePortabilityRequirement,
+        title: Option<&str>,
     ) -> Result<()> {
         debug_assert_eq!(self.family_kind, RenderFamilyKind::State);
-        self.payload = FamilyStylePayload::State(Box::new(crate::state::StateStylePlan::resolve(
+        let (plan, theme_evidence) = crate::state::StateStylePlan::resolve_with_evidence(
             model,
             effective_config,
             self.resolved_theme.as_deref(),
-        )));
-        self.ensure_portable(portability)
+            title,
+        );
+        self.theme_evidence = theme_evidence;
+        self.payload = FamilyStylePayload::State(Box::new(plan));
+        Ok(())
     }
 
     fn ensure_portable(&self, portability: ThemePortabilityRequirement) -> Result<()> {
@@ -420,15 +707,7 @@ impl ResolvedFamilyStylePlan {
             return Ok(());
         }
 
-        let report = FamilyStyleReport::freeze(self);
-        let Some(first_residual) = report.residuals().first().cloned() else {
-            return Ok(());
-        };
-        Err(Error::UnverifiedFamilyStyle {
-            family_kind: self.family_kind,
-            residual_count: report.residuals().len(),
-            first_residual,
-        })
+        FamilyStyleReport::freeze(self).ensure_portable()
     }
 
     pub(crate) const fn family_kind(&self) -> RenderFamilyKind {
@@ -442,7 +721,7 @@ impl ResolvedFamilyStylePlan {
     pub(crate) fn state(&self) -> Option<&crate::state::StateStylePlan> {
         match &self.payload {
             FamilyStylePayload::State(plan) => Some(plan),
-            FamilyStylePayload::Unadapted => None,
+            FamilyStylePayload::NotApplicable | FamilyStylePayload::Unadapted => None,
         }
     }
 }
@@ -451,25 +730,31 @@ impl ResolvedFamilyStylePlan {
 pub(crate) struct FamilyExecutionView<'a> {
     family_kind: RenderFamilyKind,
     session: &'a RenderSession,
+    root_theme: Option<&'a RootThemePlan>,
     style_plan: Option<&'a ResolvedFamilyStylePlan>,
 }
 
 impl<'a> FamilyExecutionView<'a> {
-    fn new(session: &'a RenderSession, style_plan: &'a ResolvedFamilyStylePlan) -> Self {
+    fn new(
+        session: &'a RenderSession,
+        root_theme: &'a RootThemePlan,
+        style_plan: &'a ResolvedFamilyStylePlan,
+    ) -> Self {
         let execution = Self {
             family_kind: style_plan.family_kind(),
             session,
+            root_theme: Some(root_theme),
             style_plan: Some(style_plan),
         };
         debug_assert_eq!(
             execution.resolved_theme().is_some(),
-            session.theme_fingerprint().is_some(),
+            session.theme_recipe_fingerprint().is_some(),
             "family theme plan presence must match the render session"
         );
         debug_assert_eq!(
             execution.resolved_theme().map(ResolvedDiagramTheme::family),
             session
-                .theme_fingerprint()
+                .theme_recipe_fingerprint()
                 .map(|_| style_plan.family_kind()),
             "family theme plan must match the planned render family"
         );
@@ -482,6 +767,10 @@ impl<'a> FamilyExecutionView<'a> {
 
     pub(crate) const fn session(self) -> &'a RenderSession {
         self.session
+    }
+
+    pub(crate) const fn root_theme_plan(self) -> Option<&'a RootThemePlan> {
+        self.root_theme
     }
 
     pub(crate) fn resolved_theme(self) -> Option<&'a ResolvedDiagramTheme> {
@@ -500,6 +789,7 @@ impl<'a> FamilyExecutionView<'a> {
         Self {
             family_kind,
             session,
+            root_theme: None,
             style_plan: None,
         }
     }
@@ -507,8 +797,10 @@ impl<'a> FamilyExecutionView<'a> {
 
 impl FamilyRenderContext {
     fn resolve(session: RenderSession, family_kind: RenderFamilyKind) -> Self {
+        let root_theme = RootThemePlan::from_theme(session.theme());
         let style_plan = ResolvedFamilyStylePlan::new(&session, family_kind);
         Self {
+            root_theme,
             style_plan,
             session,
         }
@@ -527,22 +819,24 @@ impl FamilyRenderContext {
     }
 
     fn execution(&self) -> FamilyExecutionView<'_> {
-        FamilyExecutionView::new(&self.session, &self.style_plan)
+        FamilyExecutionView::new(&self.session, &self.root_theme, &self.style_plan)
     }
 
     fn adapt_state(
         &mut self,
         model: &merman_core::diagrams::state::StateDiagramRenderModel,
         effective_config: &serde_json::Value,
+        title: Option<&str>,
     ) -> Result<()> {
+        self.style_plan.adapt_state(model, effective_config, title)
+    }
+
+    fn ensure_portable(&self) -> Result<()> {
         let portability = self
             .session
-            .theme()
-            .map_or(ThemePortabilityRequirement::BestEffort, |theme| {
-                theme.portability_requirement()
-            });
-        self.style_plan
-            .adapt_state(model, effective_config, portability)
+            .theme_portability_requirement()
+            .unwrap_or(ThemePortabilityRequirement::BestEffort);
+        self.style_plan.ensure_portable(portability)
     }
 
     fn into_session_and_style_report(self) -> (RenderSession, FamilyStyleReport) {
@@ -602,10 +896,28 @@ impl<L> FlowchartFamilyArtifact<L> {
 }
 
 #[derive(Debug)]
+pub(crate) struct StateFamilyArtifact {
+    pair: FamilyPair<diagrams::state::StateDiagramRenderModel, StateDiagramLayout>,
+    label_sidecar: crate::state::StateLabelSidecar,
+}
+
+impl StateFamilyArtifact {
+    pub(crate) fn pair(
+        &self,
+    ) -> &FamilyPair<diagrams::state::StateDiagramRenderModel, StateDiagramLayout> {
+        &self.pair
+    }
+
+    pub(crate) const fn label_sidecar(&self) -> &crate::state::StateLabelSidecar {
+        &self.label_sidecar
+    }
+}
+
+#[derive(Debug)]
 pub(crate) enum BuiltinFamilyArtifact {
     Error(Box<FamilyPair<diagrams::error_diagram::ErrorDiagramRenderModel, ErrorDiagramLayout>>),
     Mindmap(Box<FamilyPair<diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout>>),
-    State(Box<FamilyPair<diagrams::state::StateDiagramRenderModel, StateDiagramLayout>>),
+    State(Box<StateFamilyArtifact>),
     Sequence(
         Box<
             FamilyPair<
@@ -833,6 +1145,28 @@ impl BuiltinFamilyArtifact {
         }
     }
 
+    fn prepared_text_label_ledger(&self) -> Arc<[crate::text::PreparedTextLabelLedgerEntry]> {
+        let entries = match self {
+            Self::Flowchart(artifact) => artifact
+                .svg_label_sidecar()
+                .prepared_text_label_ledger()
+                .cloned()
+                .collect::<Vec<_>>(),
+            Self::Swimlane(artifact) => artifact
+                .svg_label_sidecar()
+                .prepared_text_label_ledger()
+                .cloned()
+                .collect::<Vec<_>>(),
+            Self::State(artifact) => artifact
+                .label_sidecar()
+                .prepared_text_label_ledger()
+                .cloned()
+                .collect::<Vec<_>>(),
+            _ => Vec::new(),
+        };
+        Arc::from(entries)
+    }
+
     fn compatibility_json(
         &self,
         metadata: &ParseMetadata,
@@ -840,7 +1174,7 @@ impl BuiltinFamilyArtifact {
         match self {
             Self::Error(pair) => pair.compatibility_json(metadata),
             Self::Mindmap(pair) => pair.compatibility_json(metadata),
-            Self::State(pair) => pair.compatibility_json(metadata),
+            Self::State(artifact) => artifact.pair.compatibility_json(metadata),
             Self::Sequence(pair) => pair.compatibility_json(metadata),
             Self::Zenuml(pair) => pair.compatibility_json(metadata),
             Self::Flowchart(artifact) => artifact.pair.compatibility_json(metadata),
@@ -879,7 +1213,7 @@ impl BuiltinFamilyArtifact {
         match self {
             Self::Error(pair) => LayoutProjection::ErrorDiagram(pair.layout()),
             Self::Mindmap(pair) => LayoutProjection::MindmapDiagram(pair.layout()),
-            Self::State(pair) => LayoutProjection::StateDiagram(pair.layout()),
+            Self::State(artifact) => LayoutProjection::StateDiagram(artifact.pair.layout()),
             Self::Sequence(pair) => LayoutProjection::SequenceDiagram(pair.layout().layout()),
             Self::Zenuml(pair) => LayoutProjection::ZenumlDiagram(pair.layout()),
             Self::Flowchart(artifact) => LayoutProjection::Flowchart(artifact.pair.layout()),
@@ -1040,6 +1374,10 @@ impl GanttTimeAxisDiagnostics {
 /// ```
 pub struct RenderedFamilySvg {
     svg: String,
+    prepared_text_svg: Option<String>,
+    prepared_text_ledger: Arc<[crate::text::PreparedTextLabelLedgerEntry]>,
+    prepared_text_evidence_valid: bool,
+    root_theme: RootThemeReport,
     style_report: FamilyStyleReport,
     metadata: ParseMetadata,
     session: RenderSession,
@@ -1095,35 +1433,93 @@ impl RenderedFamilySvg {
         &self.style_report
     }
 
+    pub const fn root_theme_report(&self) -> &RootThemeReport {
+        &self.root_theme
+    }
+
     /// Applies an output pipeline while retaining the renderer-owned family capability.
     pub fn apply_pipeline(mut self, pipeline: &SvgPipeline) -> Result<Self> {
         let output_metadata = self.output_metadata();
-        self.svg = pipeline.process_owned_to_string_with_metadata(
-            self.svg,
+        let preserves_prepared_text =
+            self.prepared_text_evidence_valid && pipeline.preserves_prepared_text_evidence();
+        let source_svg = if preserves_prepared_text {
+            self.prepared_text_svg
+                .take()
+                .unwrap_or_else(|| std::mem::take(&mut self.svg))
+        } else {
+            self.prepared_text_svg = None;
+            self.prepared_text_evidence_valid = false;
+            std::mem::take(&mut self.svg)
+        };
+        let processed_svg = pipeline.process_owned_to_string_with_metadata(
+            source_svg,
             &output_metadata,
             &self.session,
         )?;
+        if preserves_prepared_text && !self.prepared_text_ledger.is_empty() {
+            let (public_svg, prepared_text_svg) = crate::svg::partition_prepared_text_label_ids(
+                processed_svg,
+                &self.prepared_text_ledger,
+            )?;
+            self.svg = public_svg;
+            self.prepared_text_svg = prepared_text_svg;
+        } else {
+            self.svg = processed_svg;
+        }
         self.session
             .resource_policy()
             .check_svg_bytes(&self.svg, ResourceLimitPhase::SvgPostprocess)?;
+        if !pipeline.preserves_typed_root_theme() {
+            self.root_theme = self.root_theme.invalidate_for_output_mutation();
+        }
+        ensure_root_theme_portable(
+            &self.root_theme,
+            self.session
+                .theme_portability_requirement()
+                .unwrap_or(ThemePortabilityRequirement::BestEffort),
+        )?;
         Ok(self)
     }
 
     /// Finalizes the typed family output for resvg/raster consumption.
     pub fn finalize_resvg(self, pipeline: &SvgPipeline) -> Result<RenderedResvgCompatibleSvg> {
+        let portability = self
+            .session
+            .theme_portability_requirement()
+            .unwrap_or(ThemePortabilityRequirement::BestEffort);
         let output_metadata = self.output_metadata();
-        let svg = pipeline.process_owned_resvg_compatible_with_metadata(
-            self.svg,
-            &output_metadata,
-            &self.session,
-        )?;
+        let prepared_text_evidence_valid =
+            self.prepared_text_evidence_valid && pipeline.preserves_prepared_text_evidence();
+        let source_svg = if prepared_text_evidence_valid {
+            self.prepared_text_svg.unwrap_or(self.svg)
+        } else {
+            self.svg
+        };
+        let svg = pipeline
+            .process_owned_resvg_compatible_with_metadata(
+                source_svg,
+                &output_metadata,
+                &self.session,
+            )?
+            .attach_prepared_text_evidence(
+                Arc::clone(&self.prepared_text_ledger),
+                prepared_text_evidence_valid,
+            )?;
         self.session
             .resource_policy()
             .check_svg_bytes(svg.as_str(), ResourceLimitPhase::SvgPostprocess)?;
+        let root_theme = if pipeline.preserves_typed_root_theme() {
+            self.root_theme
+        } else {
+            self.root_theme.invalidate_for_output_mutation()
+        };
+        ensure_root_theme_portable(&root_theme, portability)?;
         Ok(RenderedResvgCompatibleSvg {
             svg,
+            root_theme,
             style_report: self.style_report,
             session: self.session,
+            prepared_text_ledger: self.prepared_text_ledger,
         })
     }
 
@@ -1135,9 +1531,24 @@ impl RenderedFamilySvg {
     }
 
     pub fn into_completion(self) -> FamilyRenderCompletion<String> {
+        let Self {
+            svg,
+            prepared_text_svg: _,
+            prepared_text_ledger,
+            prepared_text_evidence_valid: _,
+            root_theme,
+            style_report,
+            session,
+            metadata: _,
+        } = self;
         FamilyRenderCompletion {
-            output: self.svg,
-            report: FamilyRenderReport::freeze(self.style_report, self.session),
+            output: svg,
+            report: FamilyRenderReport::freeze(
+                root_theme,
+                style_report,
+                session,
+                prepared_text_ledger,
+            ),
         }
     }
 }
@@ -1145,8 +1556,10 @@ impl RenderedFamilySvg {
 /// Renderer-owned family output after the terminal resvg compatibility finalizer.
 pub struct RenderedResvgCompatibleSvg {
     svg: ResvgCompatibleSvg,
+    root_theme: RootThemeReport,
     style_report: FamilyStyleReport,
     session: RenderSession,
+    prepared_text_ledger: Arc<[crate::text::PreparedTextLabelLedgerEntry]>,
 }
 
 impl RenderedResvgCompatibleSvg {
@@ -1162,10 +1575,19 @@ impl RenderedResvgCompatibleSvg {
         &self.style_report
     }
 
+    pub const fn root_theme_report(&self) -> &RootThemeReport {
+        &self.root_theme
+    }
+
     pub fn into_completion(self) -> FamilyRenderCompletion<ResvgCompatibleSvg> {
         FamilyRenderCompletion {
             output: self.svg,
-            report: FamilyRenderReport::freeze(self.style_report, self.session),
+            report: FamilyRenderReport::freeze(
+                self.root_theme,
+                self.style_report,
+                self.session,
+                self.prepared_text_ledger,
+            ),
         }
     }
 }
@@ -1266,21 +1688,35 @@ impl FamilyRenderArtifact {
         options: &SvgRenderOptions,
         debug: &SvgDebugOptions,
     ) -> Result<RenderedFamilySvg> {
-        let svg = render_family_artifact_svg(&self, options, debug)?;
+        let rendered = render_family_artifact_svg(&self, options, debug)?;
         self.context
             .session()
             .resource_policy()
-            .check_svg_bytes(&svg, ResourceLimitPhase::SvgOutput)?;
+            .check_svg_bytes(rendered.as_str(), ResourceLimitPhase::SvgOutput)?;
+        let prepared_text_ledger = self.family.prepared_text_label_ledger();
         let Self {
             metadata,
             compatibility_projection: _,
             family: _,
             context,
         } = self;
+        let (tokenized_svg, root_theme) = rendered.into_parts();
+        let (svg, prepared_text_svg) =
+            crate::svg::partition_prepared_text_label_ids(tokenized_svg, &prepared_text_ledger)?;
         let (session, style_report) = context.into_session_and_style_report();
+        ensure_root_theme_portable(
+            &root_theme,
+            session
+                .theme_portability_requirement()
+                .unwrap_or(ThemePortabilityRequirement::BestEffort),
+        )?;
 
         Ok(RenderedFamilySvg {
             svg,
+            prepared_text_svg,
+            prepared_text_ledger,
+            prepared_text_evidence_valid: true,
+            root_theme,
             style_report,
             metadata,
             session,
@@ -1293,7 +1729,7 @@ fn render_family_artifact_svg(
     artifact: &FamilyRenderArtifact,
     request: &SvgRenderOptions,
     debug: &SvgDebugOptions,
-) -> Result<String> {
+) -> Result<crate::svg::RootThemeAppliedSvg> {
     let options = request.normalized();
     let execution = artifact.context.execution();
     #[cfg(feature = "layout-cytoscape")]
@@ -1315,6 +1751,28 @@ fn render_family_artifact_svg(
     )
 }
 
+fn ensure_root_theme_portable(
+    report: &RootThemeReport,
+    portability: ThemePortabilityRequirement,
+) -> Result<()> {
+    if portability != ThemePortabilityRequirement::RequirePortable {
+        return Ok(());
+    }
+    let verification = report.verification();
+    if matches!(
+        verification,
+        crate::diagram_theme::RootThemeVerification::NotApplicable
+            | crate::diagram_theme::RootThemeVerification::Verified
+    ) {
+        return Ok(());
+    }
+    Err(Error::RejectedRootTheme {
+        verification,
+        residual_count: report.residuals().len(),
+        first_residual: report.residuals().first().cloned(),
+    })
+}
+
 #[inline(never)]
 fn prepare_pair<S, L>(
     semantic: S,
@@ -1327,15 +1785,23 @@ fn prepare_pair<S, L>(
 fn prepare_flowchart_artifact<L>(
     semantic: diagrams::flowchart::FlowchartModel,
     label_sources: diagrams::flowchart::FlowchartRenderLabelSources,
+    prepared_text_layout: Option<&crate::text::PreparedTextLayout>,
+    resolved_theme: Option<&ResolvedDiagramTheme>,
     layout: impl FnOnce(
         &diagrams::flowchart::FlowchartModel,
         &diagrams::flowchart::FlowchartRenderLabelSources,
         &crate::flowchart::FlowchartSvgLabelSidecarBuilder,
     ) -> Result<L>,
 ) -> Result<Box<FlowchartFamilyArtifact<L>>> {
-    let svg_label_sidecar = crate::flowchart::FlowchartSvgLabelSidecarBuilder::default();
+    let svg_label_sidecar = crate::flowchart::FlowchartSvgLabelSidecarBuilder::new(
+        prepared_text_layout,
+        resolved_theme,
+    );
     let layout = layout(&semantic, &label_sources, &svg_label_sidecar)?;
     let svg_label_sidecar = svg_label_sidecar.finish();
+    if let Some(error) = svg_label_sidecar.prepared_error().cloned() {
+        return Err(error.into());
+    }
     Ok(Box::new(FlowchartFamilyArtifact {
         pair: FamilyPair::new(semantic, layout),
         label_sources,
@@ -1557,6 +2023,7 @@ fn prepare_class_render(
     let RenderSemanticModel::Class(model) = model else {
         unreachable!("Class render dispatch requires a Class semantic model")
     };
+    context.ensure_portable()?;
     let diagram_type = meta.diagram_type.as_str();
     let execution = LayoutExecution::new(options, context.execution());
     let family = prepare_class_family(model, &meta, diagram_type, &execution)?;
@@ -1585,6 +2052,9 @@ pub fn prepare(
     options: &LayoutOptions,
     session: RenderSession,
 ) -> Result<FamilyRenderArtifact> {
+    if let Some(error) = session.text_layout_error().cloned() {
+        return Err(error.into());
+    }
     let plan = plan_render(&parsed, &session)?;
     plan.ensure_available()?;
     let expected_family = plan.family_kind();
@@ -1610,8 +2080,9 @@ fn prepare_non_class_render(
     let effective_config = meta.effective_config.as_value();
     let title = meta.title.as_deref();
     if let RenderSemanticModel::State(model) = &model {
-        context.adapt_state(model, effective_config)?;
+        context.adapt_state(model, effective_config, title)?;
     }
+    context.ensure_portable()?;
     let execution = LayoutExecution::new(options, context.execution());
     let family = match model {
         RenderSemanticModel::Error(model) => {
@@ -1635,17 +2106,31 @@ fn prepare_non_class_render(
             })?)
         }
         RenderSemanticModel::State(model) => {
-            BuiltinFamilyArtifact::State(prepare_pair(model, |model| {
-                crate::state::layout_state_diagram_typed_with_work_meter(
-                    model,
-                    effective_config,
-                    execution
-                        .state_style_plan()
-                        .expect("State family layout requires an adapted style plan"),
-                    execution.text_measurer(),
-                    execution.work_meter(),
-                )
-            })?)
+            let label_sidecar = crate::state::StateLabelSidecarBuilder::new(
+                execution.prepared_text_layout(),
+                execution.resolved_theme(),
+            );
+            if title.is_some_and(|title| !title.trim().is_empty()) {
+                label_sidecar.reject_unsupported("state_diagram_title_bbox_y");
+            }
+            let layout = crate::state::layout_state_diagram_typed_with_work_meter(
+                &model,
+                effective_config,
+                execution
+                    .state_style_plan()
+                    .expect("State family layout requires an adapted style plan"),
+                execution.text_measurer(),
+                Some(&label_sidecar),
+                execution.work_meter(),
+            )?;
+            let label_sidecar = label_sidecar.finish();
+            if let Some(error) = label_sidecar.prepared_error().cloned() {
+                return Err(error.into());
+            }
+            BuiltinFamilyArtifact::State(Box::new(StateFamilyArtifact {
+                pair: FamilyPair::new(model, layout),
+                label_sidecar,
+            }))
         }
         RenderSemanticModel::Sequence(model) => {
             BuiltinFamilyArtifact::Sequence(prepare_pair(model, |model| {
@@ -1669,6 +2154,8 @@ fn prepare_non_class_render(
                 BuiltinFamilyArtifact::Swimlane(prepare_flowchart_artifact(
                     model,
                     flowchart_label_sources,
+                    execution.prepared_text_layout(),
+                    execution.resolved_theme(),
                     |model, label_sources, svg_label_sidecar| {
                         crate::swimlane::layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
                             model,
@@ -1686,6 +2173,8 @@ fn prepare_non_class_render(
                 BuiltinFamilyArtifact::Flowchart(prepare_flowchart_artifact(
                     model,
                     flowchart_label_sources,
+                    execution.prepared_text_layout(),
+                    execution.resolved_theme(),
                     |model, label_sources, svg_label_sidecar| {
                         crate::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_by_engine(
                             diagram_type,
@@ -1986,7 +2475,12 @@ fn prepare_non_class_render(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diagram_theme::{DiagramThemeCompiler, DiagramThemeSpec};
+    use crate::diagram_theme::{
+        BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, DiagramThemeCompiler, DiagramThemeSpec,
+        GradientStop, LinearGradient, OrdinalPalette, RootThemeEvaluation, RootThemeMechanismKey,
+        RootThemeVerification, ThemeCapability, ThemeColorValue, ThemeRule, ThemeRuleSet,
+        ThemeStylePatch, ThemeTarget, ThemeTextStyle, TypographySpec,
+    };
     #[cfg(feature = "layout-cytoscape")]
     use std::sync::Arc;
     use std::sync::Mutex;
@@ -1999,6 +2493,7 @@ mod tests {
     use crate::environment::{
         MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfileIdentity,
     };
+    use crate::svg::SvgPipelinePreset;
     use crate::text::{TextMetrics, WrapMode};
     use merman_core::{CustomJsonProvenance, CustomJsonRenderModel, Engine, ParseOptions};
     use serde_json::{Value, json};
@@ -2028,6 +2523,161 @@ mod tests {
         crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
+    }
+
+    fn family_report(
+        evaluation: FamilyStyleEvaluation,
+        required: Vec<FamilyThemeMechanismKey>,
+        applied: Vec<FamilyThemeMechanismKey>,
+        theme_residuals: Vec<FamilyThemeResidual>,
+    ) -> FamilyStyleReport {
+        FamilyStyleReport {
+            family_kind: RenderFamilyKind::State,
+            evaluation,
+            theme_required: required,
+            theme_applied: applied,
+            theme_not_applicable: Vec::new(),
+            theme_residuals,
+            residuals: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn family_theme_verification_state_matrix_is_fail_closed() {
+        let key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::State,
+        };
+        let residual = FamilyThemeResidual {
+            key: key.clone(),
+            reason: FamilyThemeResidualReason::UnsupportedPaint,
+        };
+
+        assert_eq!(
+            family_report(FamilyStyleEvaluation::NotApplicable, vec![], vec![], vec![])
+                .verification(),
+            FamilyStyleVerification::NotApplicable
+        );
+        assert_eq!(
+            family_report(
+                FamilyStyleEvaluation::Unadapted,
+                vec![key.clone()],
+                vec![],
+                vec![residual.clone()],
+            )
+            .verification(),
+            FamilyStyleVerification::Unadapted
+        );
+        assert_eq!(
+            family_report(
+                FamilyStyleEvaluation::Evaluated,
+                vec![key.clone()],
+                vec![key.clone()],
+                vec![],
+            )
+            .verification(),
+            FamilyStyleVerification::Verified
+        );
+        assert_eq!(
+            family_report(
+                FamilyStyleEvaluation::Evaluated,
+                vec![key.clone()],
+                vec![],
+                vec![residual],
+            )
+            .verification(),
+            FamilyStyleVerification::Unverified
+        );
+        assert_eq!(
+            family_report(
+                FamilyStyleEvaluation::Evaluated,
+                vec![key.clone()],
+                vec![],
+                vec![],
+            )
+            .verification(),
+            FamilyStyleVerification::Incomplete
+        );
+        assert_eq!(
+            family_report(
+                FamilyStyleEvaluation::Evaluated,
+                vec![key.clone(), key.clone()],
+                vec![key.clone()],
+                vec![],
+            )
+            .verification(),
+            FamilyStyleVerification::Incomplete
+        );
+
+        let error = family_report(FamilyStyleEvaluation::Evaluated, vec![key], vec![], vec![])
+            .ensure_portable()
+            .expect_err("strict portability must reject incomplete family evidence");
+        assert_eq!(
+            error.incomplete_family_theme(),
+            Some((RenderFamilyKind::State, 1, 0))
+        );
+    }
+
+    struct RejectingTextLayoutBackend {
+        identity: crate::text::TextLayoutBackendIdentity,
+    }
+
+    impl crate::text::TextLayoutBackend for RejectingTextLayoutBackend {
+        fn identity(&self) -> &crate::text::TextLayoutBackendIdentity {
+            &self.identity
+        }
+
+        fn capabilities(&self) -> crate::text::TextLayoutCapabilities {
+            crate::text::TextLayoutCapabilities::native()
+        }
+
+        fn prepare_catalog(
+            &self,
+            _request: &crate::text::PrepareCatalogRequest,
+        ) -> std::result::Result<
+            crate::text::PreparedTextLayoutResponse,
+            crate::text::TextLayoutError,
+        > {
+            Err(crate::text::TextLayoutError::BackendRejected)
+        }
+    }
+
+    #[test]
+    fn custom_catalog_preparation_failure_uses_the_native_catalog_fallback() {
+        let bytes = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/themes/assets/fonts/Excalifont-Regular-Latin.woff2"
+        ));
+        let catalog =
+            crate::diagram_theme::FontCatalogSpec::new([crate::diagram_theme::FontAssetSpec::new(
+                "excalifont",
+                bytes,
+            )])
+            .compile(&crate::diagram_theme::ThemeResourcePolicy::interactive())
+            .expect("fixture catalog should compile");
+        let backend = RejectingTextLayoutBackend {
+            identity: crate::text::TextLayoutBackendIdentity::new("test.rejecting", "v1")
+                .expect("test backend identity"),
+        };
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_font_catalog(catalog)
+            .with_text_layout_backend(std::sync::Arc::new(backend))
+            .begin_session()
+            .expect("runtime session should still capture preparation evidence");
+        assert_eq!(session.text_layout_error(), None);
+        let session_report = session.report();
+        let prepared_report = session_report
+            .prepared_text_layout()
+            .expect("native fallback should prepare the custom catalog");
+        assert_eq!(prepared_report.backend().name(), "merman.native-rustybuzz");
+        assert_eq!(prepared_report.failed_attempt_count(), 1);
+
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("info", ParseOptions::strict())
+            .expect("parse info")
+            .expect("info render model");
+        prepare(parsed, &LayoutOptions::default(), session)
+            .expect("native fallback should allow layout to continue");
     }
 
     #[test]
@@ -2103,8 +2753,8 @@ mod tests {
             assert_eq!(artifact.context.family_kind(), expected_family, "{source}");
             assert_eq!(resolved_theme.family(), expected_family, "{source}");
             assert_eq!(
-                artifact.context.session().theme_fingerprint(),
-                Some(theme.fingerprint()),
+                artifact.context.session().theme_recipe_fingerprint(),
+                Some(theme.recipe_fingerprint()),
                 "{source}"
             );
         }
@@ -2131,12 +2781,20 @@ mod tests {
             .expect("render themed family SVG");
         assert_eq!(rendered.family_kind(), RenderFamilyKind::Swimlane);
         assert_eq!(
-            rendered.style_report().verification(),
-            FamilyStyleVerification::Verified
+            rendered.root_theme_report().evaluation(),
+            RootThemeEvaluation::NotApplicable
         );
         assert_eq!(
-            rendered.session.theme_fingerprint(),
-            Some(theme.fingerprint())
+            rendered.style_report().verification(),
+            FamilyStyleVerification::NotApplicable
+        );
+        assert_eq!(
+            rendered.style_report().evaluation(),
+            FamilyStyleEvaluation::NotApplicable
+        );
+        assert_eq!(
+            rendered.session.theme_recipe_fingerprint(),
+            Some(theme.recipe_fingerprint())
         );
 
         let rendered = rendered
@@ -2144,39 +2802,487 @@ mod tests {
             .expect("apply themed family SVG pipeline");
         assert_eq!(rendered.family_kind(), RenderFamilyKind::Swimlane);
         assert_eq!(
-            rendered.session.theme_fingerprint(),
-            Some(theme.fingerprint())
+            rendered.session.theme_recipe_fingerprint(),
+            Some(theme.recipe_fingerprint())
         );
 
         let finalized = rendered
             .finalize_resvg(&SvgPipeline::resvg_safe())
             .expect("finalize themed family SVG");
         assert_eq!(finalized.family_kind(), RenderFamilyKind::Swimlane);
-        assert!(finalized.style_report().is_verified());
+        assert!(!finalized.style_report().is_verified());
         assert_eq!(
-            finalized.session.theme_fingerprint(),
-            Some(theme.fingerprint())
+            finalized.session.theme_recipe_fingerprint(),
+            Some(theme.recipe_fingerprint())
         );
 
         let completion = finalized.into_completion();
+        assert_eq!(
+            completion.output().finalization_report().preset(),
+            SvgPipelinePreset::ResvgSafe
+        );
         assert_eq!(
             completion.report().family_kind(),
             RenderFamilyKind::Swimlane
         );
         assert_eq!(
-            completion.report().theme_fingerprint(),
-            Some(theme.fingerprint())
+            completion.report().theme_recipe_fingerprint(),
+            Some(theme.recipe_fingerprint())
         );
         assert_eq!(
-            completion.report().session_report().theme_fingerprint(),
-            Some(theme.fingerprint())
+            completion
+                .report()
+                .session_report()
+                .theme_recipe_fingerprint(),
+            Some(theme.recipe_fingerprint())
         );
         assert_eq!(
             completion.report().style_report(),
             &FamilyStyleReport {
                 family_kind: RenderFamilyKind::Swimlane,
+                evaluation: FamilyStyleEvaluation::NotApplicable,
+                theme_required: Vec::new(),
+                theme_applied: Vec::new(),
+                theme_not_applicable: Vec::new(),
+                theme_residuals: Vec::new(),
                 residuals: Vec::new(),
             }
+        );
+        assert_eq!(
+            completion.report().root_theme_report().evaluation(),
+            RootThemeEvaluation::NotApplicable
+        );
+    }
+
+    #[test]
+    fn solid_root_layer_is_applied_by_terminal_svg_completion() {
+        let layer = CanvasLayer::new(CanvasPaint::solid("#ef4444").expect("valid layer paint"))
+            .with_opacity(0.5)
+            .expect("valid layer opacity")
+            .with_offset(4.0, -2.0)
+            .expect("valid layer offset")
+            .with_blend_mode(BlendMode::Multiply);
+        let canvas = CanvasSpec::default()
+            .with_layer(layer)
+            .expect("bounded canvas layer");
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_canvas(canvas))
+            .expect("compile layered canvas theme");
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
+            .unwrap()
+            .expect("Flowchart source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_theme(&theme)
+            .expect("begin best-effort themed session");
+        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+            .expect("root theme should not stop layout")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render themed SVG");
+
+        assert_eq!(
+            rendered.root_theme_report().evaluation(),
+            RootThemeEvaluation::Evaluated
+        );
+        assert_eq!(
+            rendered.root_theme_report().verification(),
+            RootThemeVerification::Verified
+        );
+        assert!(
+            rendered
+                .root_theme_report()
+                .applied_mechanisms()
+                .contains(&RootThemeMechanismKey::CanvasLayer { index: 0 })
+        );
+        assert!(rendered.root_theme_report().residuals().is_empty());
+        assert!(rendered.svg().contains(
+            r#"data-merman-theme-canvas-layer="0" aria-hidden="true" pointer-events="none""#
+        ));
+        assert!(rendered.svg().contains(r#"opacity="0.5""#));
+        assert!(rendered.svg().contains(r#"transform="translate(4 -2)""#));
+        assert!(
+            rendered
+                .svg()
+                .contains(r#"style="mix-blend-mode:multiply""#)
+        );
+        assert!(rendered.svg().contains(r##"fill="#ef4444""##));
+
+        let completion = rendered
+            .finalize_resvg(&SvgPipeline::resvg_safe())
+            .expect("finalize themed SVG")
+            .into_completion();
+        let root_report = completion.report().root_theme_report();
+        assert!(root_report.residuals().is_empty());
+        assert_eq!(root_report.verification(), RootThemeVerification::Verified);
+        assert!(root_report.coverage_complete());
+    }
+
+    #[test]
+    fn solid_root_base_is_applied_by_terminal_svg_completion() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_canvas(CanvasSpec::solid("#111827").expect("valid canvas base")),
+            )
+            .expect("compile solid canvas theme");
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
+            .unwrap()
+            .expect("Flowchart source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_theme(&theme)
+            .expect("begin themed session");
+        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+            .expect("solid canvas should not stop layout")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render themed SVG");
+
+        assert_eq!(
+            rendered.root_theme_report().verification(),
+            RootThemeVerification::Verified
+        );
+        assert!(
+            rendered
+                .root_theme_report()
+                .applied_mechanisms()
+                .contains(&RootThemeMechanismKey::CanvasBase)
+        );
+        assert!(
+            rendered
+                .svg()
+                .contains(r#"class="merman-theme-canvas-base" data-merman-theme-canvas="base""#)
+        );
+        assert!(rendered.svg().contains(r##"fill="#111827""##));
+    }
+
+    #[test]
+    fn explicit_transparent_root_base_clears_the_mermaid_white_background() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_canvas(CanvasSpec::transparent()))
+            .expect("compile transparent canvas theme");
+        assert!(
+            theme
+                .report()
+                .requires_capability(ThemeCapability::TransparentPaint)
+        );
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
+            .unwrap()
+            .expect("Flowchart source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_theme(&theme)
+            .expect("begin transparent themed session");
+        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+            .expect("transparent canvas should not stop layout")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render transparent themed SVG");
+
+        assert_eq!(
+            rendered.root_theme_report().verification(),
+            RootThemeVerification::Verified
+        );
+        assert!(rendered.svg().contains("background-color: transparent;"));
+        assert!(!rendered.svg().contains("background-color: white;"));
+        assert!(
+            rendered
+                .svg()
+                .contains(r#"data-merman-theme-canvas="base""#)
+        );
+        assert!(rendered.svg().contains(r#"fill="none""#));
+    }
+
+    #[test]
+    fn root_theme_evidence_is_invalidated_by_an_untrusted_svg_postprocessor() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_canvas(CanvasSpec::solid("#111827").expect("valid canvas paint")),
+            )
+            .expect("compile root canvas theme");
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
+            .unwrap()
+            .expect("Flowchart source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_theme(&theme)
+            .expect("begin themed render session");
+        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+            .expect("prepare themed family")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render themed SVG")
+            .apply_pipeline(
+                &SvgPipeline::parity()
+                    .with_postprocessor(crate::svg::RootBackgroundPostprocessor::new("white")),
+            )
+            .expect("best-effort output may retain a downgraded report");
+
+        assert_eq!(
+            rendered.root_theme_report().verification(),
+            RootThemeVerification::Unverified
+        );
+        assert_eq!(
+            rendered.root_theme_report().residuals()[0].reason(),
+            crate::diagram_theme::RootThemeResidualReason::OutputMutation
+        );
+    }
+
+    #[test]
+    fn strict_root_theme_is_rechecked_after_svg_postprocessing() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_canvas(CanvasSpec::solid("#111827").expect("valid canvas paint")),
+            )
+            .expect("compile root canvas theme");
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
+            .unwrap()
+            .expect("Flowchart source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict themed render session");
+        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+            .expect("prepare themed family")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("initial root consumer proves the canvas");
+        let error = match rendered.apply_pipeline(
+            &SvgPipeline::parity()
+                .with_postprocessor(crate::svg::RootBackgroundPostprocessor::new("white")),
+        ) {
+            Ok(_) => panic!("strict portability must be rechecked after postprocessing"),
+            Err(error) => error,
+        };
+
+        assert!(error.rejected_root_theme().is_some(), "{error}");
+    }
+
+    #[test]
+    fn unsupported_root_gradient_residual_survives_terminal_svg_completion() {
+        let gradient = LinearGradient::new(
+            90.0,
+            [
+                GradientStop::new(0.0, ThemeColorValue::parse("#0f172a").unwrap()).unwrap(),
+                GradientStop::new(1.0, ThemeColorValue::parse("#22d3ee").unwrap()).unwrap(),
+            ],
+        )
+        .unwrap();
+        let canvas = CanvasSpec::default()
+            .with_layer(CanvasLayer::new(CanvasPaint::LinearGradient(gradient)))
+            .expect("bounded gradient canvas layer");
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_canvas(canvas))
+            .expect("compile layered canvas theme");
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
+            .unwrap()
+            .expect("Flowchart source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_theme(&theme)
+            .expect("begin best-effort themed session");
+        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+            .expect("best-effort root residual should not stop layout")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render best-effort SVG");
+
+        let report = rendered.root_theme_report();
+        assert_eq!(report.evaluation(), RootThemeEvaluation::Evaluated);
+        assert_eq!(report.verification(), RootThemeVerification::Unverified);
+        assert_eq!(report.residuals().len(), 1);
+        assert_eq!(
+            report.residuals()[0].key(),
+            &RootThemeMechanismKey::CanvasLayer { index: 0 }
+        );
+        assert!(!rendered.svg().contains("data-merman-theme-canvas-layer"));
+    }
+
+    #[test]
+    fn root_theme_evidence_preserves_distinct_layers_with_equal_capabilities() {
+        let canvas = CanvasSpec::default()
+            .with_layer(CanvasLayer::new(
+                CanvasPaint::solid("#ef4444").expect("valid first layer paint"),
+            ))
+            .expect("bounded first canvas layer")
+            .with_layer(CanvasLayer::new(
+                CanvasPaint::solid("#2563eb").expect("valid second layer paint"),
+            ))
+            .expect("bounded second canvas layer");
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_canvas(canvas))
+            .expect("compile layered canvas theme");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_theme(&theme)
+            .expect("begin best-effort themed session");
+        let plan = RootThemePlan::from_theme(session.theme());
+        let mut application = plan.begin_svg_application();
+        assert!(application.mark_applied(
+            &RootThemeMechanismKey::CanvasLayer { index: 0 },
+            [ThemeCapability::LayeredCanvas, ThemeCapability::SolidPaint],
+        ));
+        assert!(application.mark_applied(
+            &RootThemeMechanismKey::CanvasLayer { index: 1 },
+            [ThemeCapability::LayeredCanvas, ThemeCapability::SolidPaint],
+        ));
+        let report = application.finish();
+
+        assert_eq!(
+            report.required_mechanisms(),
+            &[
+                RootThemeMechanismKey::CanvasLayer { index: 0 },
+                RootThemeMechanismKey::CanvasLayer { index: 1 },
+            ]
+        );
+        assert!(report.residuals().is_empty());
+        assert_eq!(
+            report.applied_mechanisms(),
+            &[
+                RootThemeMechanismKey::CanvasLayer { index: 0 },
+                RootThemeMechanismKey::CanvasLayer { index: 1 },
+            ]
+        );
+        assert!(report.coverage_complete());
+    }
+
+    #[test]
+    fn root_layer_evidence_keeps_opacity_and_offset_capabilities_on_the_layer_key() {
+        let layer = CanvasLayer::new(CanvasPaint::solid("#ef4444").expect("valid layer paint"))
+            .with_opacity(0.5)
+            .expect("valid layer opacity")
+            .with_offset(4.0, -2.0)
+            .expect("valid layer offset");
+        let canvas = CanvasSpec::default()
+            .with_layer(layer)
+            .expect("bounded canvas layer");
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_canvas(canvas))
+            .expect("compile layered canvas theme");
+        let report = RootThemePlan::from_theme(Some(&theme))
+            .begin_svg_application()
+            .finish();
+        let mechanism = &report.mechanisms()[0];
+
+        assert!(
+            mechanism
+                .required_capabilities()
+                .any(|capability| capability == ThemeCapability::Opacity)
+        );
+        assert!(
+            mechanism
+                .required_capabilities()
+                .any(|capability| capability == ThemeCapability::CanvasLayerPlacement)
+        );
+        assert!(
+            mechanism
+                .residual_capabilities()
+                .any(|capability| capability == ThemeCapability::CanvasLayerPlacement)
+        );
+    }
+
+    #[test]
+    fn require_portable_accepts_a_root_layer_proved_by_the_svg_consumer() {
+        let canvas = CanvasSpec::transparent()
+            .with_layer(CanvasLayer::new(
+                CanvasPaint::solid("#ef4444").expect("valid layer paint"),
+            ))
+            .expect("bounded canvas layer");
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_canvas(canvas))
+            .expect("compile layered canvas theme");
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
+            .unwrap()
+            .expect("Flowchart source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict portable session");
+
+        let rendered = prepare(parsed, &LayoutOptions::default(), session)
+            .expect("strict root theme should reach the real SVG consumer")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("proved root layer should satisfy strict portability");
+
+        assert_eq!(
+            rendered.root_theme_report().verification(),
+            RootThemeVerification::Verified
+        );
+    }
+
+    #[test]
+    fn require_portable_rejects_an_unsupported_root_theme_after_svg_consumption() {
+        let gradient = LinearGradient::new(
+            90.0,
+            [
+                GradientStop::new(0.0, ThemeColorValue::parse("#0f172a").unwrap()).unwrap(),
+                GradientStop::new(1.0, ThemeColorValue::parse("#22d3ee").unwrap()).unwrap(),
+            ],
+        )
+        .unwrap();
+        let canvas = CanvasSpec::transparent()
+            .with_layer(CanvasLayer::new(CanvasPaint::LinearGradient(gradient)))
+            .expect("bounded gradient layer");
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_canvas(canvas))
+            .expect("compile gradient theme");
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
+            .unwrap()
+            .expect("Flowchart source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict portable session");
+        let artifact = prepare(parsed, &LayoutOptions::default(), session)
+            .expect("strict root theme should reach the real SVG consumer");
+
+        let error =
+            match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
+                Ok(_) => panic!("strict portability must reject an unsupported root gradient"),
+                Err(error) => error,
+            };
+        let (verification, residual_count, first_residual) = error
+            .rejected_root_theme()
+            .expect("evaluated root theme rejection");
+        assert_eq!(verification, RootThemeVerification::Unverified);
+        assert_eq!(residual_count, 1);
+        assert_eq!(
+            first_residual.expect("gradient residual").key(),
+            &RootThemeMechanismKey::CanvasLayer { index: 0 }
+        );
+    }
+
+    #[test]
+    fn environment_portability_ceiling_rejects_an_unadapted_family() {
+        let fill = CanvasPaint::solid("#ef4444").expect("valid node fill");
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Node,
+                            ThemeStylePatch::default().with_fill(fill),
+                        )
+                        .for_family(RenderFamilyKind::Flowchart),
+                    ),
+                ),
+            )
+            .expect("compile strict Flowchart theme");
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("flowchart LR\nA --> B\n", ParseOptions::strict())
+            .unwrap()
+            .expect("Flowchart source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict portable render session");
+
+        let error = match prepare(parsed, &LayoutOptions::default(), session) {
+            Ok(_) => panic!("strict portability must reject an unadapted Flowchart theme"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error.unadapted_family_theme(),
+            Some(RenderFamilyKind::Flowchart)
         );
     }
 
@@ -2223,13 +3329,285 @@ mod tests {
     }
 
     #[test]
+    fn state_structured_gradient_is_a_semantic_residual_not_verified_source_css() {
+        let gradient = LinearGradient::new(
+            90.0,
+            [
+                GradientStop::new(
+                    0.0,
+                    ThemeColorValue::parse("#0f172a").expect("valid first stop"),
+                )
+                .expect("valid first stop"),
+                GradientStop::new(
+                    1.0,
+                    ThemeColorValue::parse("#22d3ee").expect("valid second stop"),
+                )
+                .expect("valid second stop"),
+            ],
+        )
+        .expect("valid gradient");
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::State,
+                        ThemeStylePatch::default().with_fill(CanvasPaint::LinearGradient(gradient)),
+                    ),
+                )),
+            )
+            .expect("compile gradient theme");
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "stateDiagram-v2\n[*] --> Ready\nReady --> [*]\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("State source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&theme)
+                .expect("begin themed session"),
+        )
+        .expect("best-effort State preparation")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render State SVG");
+
+        assert_eq!(
+            rendered.style_report().verification(),
+            FamilyStyleVerification::Unverified
+        );
+        let residual = rendered
+            .style_report()
+            .theme_residuals()
+            .first()
+            .expect("gradient must retain semantic residual");
+        assert_eq!(
+            residual.reason(),
+            FamilyThemeResidualReason::UnsupportedPaint
+        );
+        assert!(rendered.style_report().residuals().is_empty());
+    }
+
+    #[test]
+    fn state_ordinal_palette_is_applied_by_an_observed_state_binding() {
+        let palette = OrdinalPalette::new([
+            ThemeColorValue::parse("#0f172a").expect("valid first palette color"),
+            ThemeColorValue::parse("#22d3ee").expect("valid second palette color"),
+        ])
+        .expect("valid ordinal palette");
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::State, palette),
+            ))
+            .expect("compile ordinal State theme");
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "stateDiagram-v2\n[*] --> Ready\nReady --> [*]\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("State source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&theme)
+                .expect("begin themed session"),
+        )
+        .expect("best-effort State preparation")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render State SVG");
+
+        let key = FamilyThemeMechanismKey::OrdinalPalette {
+            target: ThemeTarget::State,
+        };
+        assert_eq!(
+            rendered.style_report().verification(),
+            FamilyStyleVerification::Verified
+        );
+        assert!(
+            rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .contains(&key)
+        );
+        assert!(
+            !rendered
+                .style_report()
+                .theme_residuals()
+                .iter()
+                .any(|residual| residual.key() == &key)
+        );
+        assert!(rendered.svg().contains("#0f172a"));
+    }
+
+    #[test]
+    fn state_family_typography_is_shared_by_layout_and_terminal_svg() {
+        let typography = ThemeTextStyle::default()
+            .with_font_size_px(26.0)
+            .expect("valid State font size");
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_typography(TypographySpec::default().with_default(typography)),
+            )
+            .expect("compile State typography theme");
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "---\ntitle: Architecture\n---\nstateDiagram-v2\n[*] --> Ready\nReady --> Done\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("State source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&theme)
+                .expect("begin themed session"),
+        )
+        .expect("State typography preparation")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render State SVG");
+
+        assert!(
+            rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .contains(&FamilyThemeMechanismKey::Typography)
+        );
+        assert!(rendered.style_report().theme_residuals().is_empty());
+        assert!(rendered.svg().contains("font-size:26px"));
+        assert!(
+            rendered.svg().contains("font-size:26px !important"),
+            "node/title inline emission must match the measured typography: {}",
+            rendered.svg()
+        );
+        assert!(
+            rendered
+                .svg()
+                .contains("statediagramTitleText{text-anchor:middle;font-family:"),
+            "title CSS must use the computed State text style: {}",
+            rendered.svg()
+        );
+    }
+
+    #[test]
+    fn state_rule_without_a_matching_document_target_is_not_applicable() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::Note,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#fef3c7").expect("valid note fill")),
+                    )),
+                ),
+            )
+            .expect("compile Note theme");
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "stateDiagram-v2\n[*] --> Ready\nReady --> [*]\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("State source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&theme)
+                .expect("begin themed session"),
+        )
+        .expect("best-effort State preparation")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render State SVG");
+
+        let key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Note,
+        };
+        assert_eq!(
+            rendered.style_report().verification(),
+            FamilyStyleVerification::Verified
+        );
+        assert!(
+            rendered
+                .style_report()
+                .theme_not_applicable_mechanisms()
+                .contains(&key)
+        );
+        assert!(
+            !rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .contains(&key)
+        );
+        assert!(rendered.style_report().theme_residuals().is_empty());
+    }
+
+    #[test]
+    fn require_portable_rejects_state_semantic_residual_before_layout() {
+        let gradient = LinearGradient::new(
+            90.0,
+            [
+                GradientStop::new(
+                    0.0,
+                    ThemeColorValue::parse("#0f172a").expect("valid first stop"),
+                )
+                .expect("valid first stop"),
+                GradientStop::new(
+                    1.0,
+                    ThemeColorValue::parse("#22d3ee").expect("valid second stop"),
+                )
+                .expect("valid second stop"),
+            ],
+        )
+        .expect("valid gradient");
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::State,
+                        ThemeStylePatch::default().with_fill(CanvasPaint::LinearGradient(gradient)),
+                    ),
+                )),
+            )
+            .expect("compile gradient theme");
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "stateDiagram-v2\n[*] --> Ready\nReady --> [*]\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("State source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict portable render session");
+
+        let error = match prepare(parsed, &LayoutOptions::default(), session) {
+            Ok(_) => panic!("strict portability must reject a State semantic residual"),
+            Err(error) => error,
+        };
+        let (family_kind, residual_count, residual) = error
+            .unverified_family_theme()
+            .expect("typed family theme portability error");
+        assert_eq!(family_kind, RenderFamilyKind::State);
+        assert_eq!(residual_count, 1);
+        assert_eq!(
+            residual.reason(),
+            FamilyThemeResidualReason::UnsupportedPaint
+        );
+    }
+
+    #[test]
     fn require_portable_rejects_state_style_residual_before_layout() {
         let theme = DiagramThemeCompiler::new()
-            .with_portability_requirement(
-                crate::diagram_theme::ThemePortabilityRequirement::RequirePortable,
-            )
             .compile(DiagramThemeSpec::new())
-            .expect("compile strict portable theme");
+            .expect("compile portable theme recipe");
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(
                 "stateDiagram-v2\nclassDef broken font-size:not-a-size\n[*] --> Ready:::broken\nReady --> [*]\n",
@@ -2238,6 +3616,7 @@ mod tests {
             .unwrap()
             .expect("State source should produce a render model");
         let session = crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
             .begin_session_with_theme(&theme)
             .expect("begin strict portable render session");
 
@@ -2355,9 +3734,12 @@ mod tests {
             completion.report().family_kind(),
             RenderFamilyKind::Flowchart
         );
-        assert_eq!(completion.report().theme_fingerprint(), None);
+        assert_eq!(completion.report().theme_recipe_fingerprint(), None);
         assert_eq!(
-            completion.report().session_report().theme_fingerprint(),
+            completion
+                .report()
+                .session_report()
+                .theme_recipe_fingerprint(),
             None
         );
     }

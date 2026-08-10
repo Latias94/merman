@@ -175,7 +175,7 @@ class FuzzConfigTests(unittest.TestCase):
         self.assertNotIn("github.event.inputs", run)
         self.assertIn('case "$DISPATCH_TARGET" in', run)
         self.assertIn(
-            "all|parse_mermaid|render_mermaid|svg_pipeline|ffi_api|theme_font_asset)",
+            "all|parse_mermaid|render_mermaid|svg_pipeline|ffi_api|theme_font_asset|theme_text_layout)",
             run,
         )
         self.assertIn('case "$DISPATCH_PRESET" in', run)

@@ -275,7 +275,18 @@ impl DiagramThemeSpec {
         self.typography.validate()?;
         self.styles.validate()?;
         self.canvas.validate()?;
-        self.effects.validate()
+        self.effects.validate()?;
+        for rule in self.styles.rules() {
+            let super::Specified::Value(effect_id) = &rule.style().effects.effect else {
+                continue;
+            };
+            if self.effects.graph(effect_id).is_none() {
+                return Err(ThemeCompileValidationError::UnknownId {
+                    field: "styles.rule.effect",
+                });
+            }
+        }
+        Ok(())
     }
 }
 

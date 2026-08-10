@@ -84,12 +84,12 @@ pub(crate) fn execute_graphical(
             }
             #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
             _ => {
-                let Some(svg) = renderer
-                    .render_resvg_compatible_svg_with_pipeline_sync(source, &prepared.pipeline)?
+                let Some(document) =
+                    renderer.render_document_with_pipeline_sync(source, &prepared.pipeline)?
                 else {
                     return Err(CliError::NoDiagram);
                 };
-                execute_encoded_svg(prepared, svg, permit, stderr)
+                execute_encoded_document(prepared, document, permit, stderr)
             }
         },
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -101,13 +101,93 @@ pub(crate) fn execute_graphical(
                 .pipeline
                 .process_resvg_compatible(source, &session)
                 .map_err(merman::svg::HeadlessError::from)?;
-            execute_encoded_svg(prepared, svg, permit, stderr)
+            execute_raw_svg(prepared, svg, permit, stderr)
         }
     }
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn execute_encoded_svg(
+fn execute_encoded_document(
+    prepared: &PreparedGraphicalRender,
+    document: merman::svg::RenderedDocument,
+    permit: super::admission::BackendPermit,
+    stderr: &SharedWriter,
+) -> Result<ExecutedArtifact, CliError> {
+    match &prepared.output {
+        PreparedGraphicalOutput::Svg => Err(CliError::InvalidOutput(
+            "SVG output entered the encoded backend".to_string(),
+        )),
+        #[cfg(feature = "png")]
+        PreparedGraphicalOutput::Png { options } => {
+            let prepared_export = document.prepare_png_export(options)?;
+            let report = prepared_export.export_report();
+            let actual_weight = super::admission::actual_raster_weight(
+                report.raster(),
+                report.embedded_images(),
+                8,
+            )?;
+            prepared.admission.ensure_actual_weight(actual_weight)?;
+            report_raster_plan(prepared.quiet, report.raster(), stderr);
+            #[cfg(feature = "markdown")]
+            let metadata = output_metadata(prepared_export.metadata());
+            let (bytes, _report) = prepared_export.encode()?;
+            Ok(ExecutedArtifact {
+                bytes,
+                _permit: Some(permit),
+                #[cfg(feature = "markdown")]
+                title: metadata.0,
+                #[cfg(feature = "markdown")]
+                desc: metadata.1,
+            })
+        }
+        #[cfg(feature = "jpeg")]
+        PreparedGraphicalOutput::Jpeg { options } => {
+            let prepared_export = document.prepare_jpeg_export(options)?;
+            let report = prepared_export.export_report();
+            let actual_weight = super::admission::actual_raster_weight(
+                report.raster(),
+                report.embedded_images(),
+                10,
+            )?;
+            prepared.admission.ensure_actual_weight(actual_weight)?;
+            report_raster_plan(prepared.quiet, report.raster(), stderr);
+            #[cfg(feature = "markdown")]
+            let metadata = output_metadata(prepared_export.metadata());
+            let (bytes, _report) = prepared_export.encode()?;
+            Ok(ExecutedArtifact {
+                bytes,
+                _permit: Some(permit),
+                #[cfg(feature = "markdown")]
+                title: metadata.0,
+                #[cfg(feature = "markdown")]
+                desc: metadata.1,
+            })
+        }
+        #[cfg(feature = "pdf")]
+        PreparedGraphicalOutput::Pdf { options } => {
+            let prepared_export = document.prepare_pdf_export(options)?;
+            let report = prepared_export.export_report();
+            let actual_weight =
+                super::admission::actual_pdf_weight(report.filters(), report.embedded_images())?;
+            prepared.admission.ensure_actual_weight(actual_weight)?;
+            report_pdf_filter_plan(prepared.quiet, report.filters(), stderr);
+            #[cfg(feature = "markdown")]
+            let metadata = output_metadata(prepared_export.metadata());
+            let (bytes, _report) = prepared_export.encode()?;
+            Ok(ExecutedArtifact {
+                bytes,
+                _permit: Some(permit),
+                #[cfg(feature = "markdown")]
+                title: metadata.0,
+                #[cfg(feature = "markdown")]
+                desc: metadata.1,
+            })
+        }
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn execute_raw_svg(
     prepared: &PreparedGraphicalRender,
     svg: merman::svg::ResvgCompatibleSvg,
     permit: super::admission::BackendPermit,
@@ -179,6 +259,17 @@ fn execute_encoded_svg(
             })
         }
     }
+}
+
+#[cfg(all(
+    feature = "markdown",
+    any(feature = "png", feature = "jpeg", feature = "pdf")
+))]
+fn output_metadata(metadata: &merman::svg::SvgOutputMetadata) -> (Option<String>, Option<String>) {
+    (
+        metadata.title().map(str::to_owned),
+        metadata.description().map(str::to_owned),
+    )
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]

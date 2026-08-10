@@ -2,45 +2,29 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use merman_core::MermaidConfig;
-use sha2::{Digest, Sha256};
 
-use super::admission::{
-    FontSourcePolicy, HostMeasurementFallback, HostMeasurementFallbackPolicy, ThemeAdmissionError,
-    ThemeAdmissionPolicy, ThemeCapability, ThemePortabilityRequirement, resolve_theme_admission,
-};
+use super::admission::{FontCatalogKind, TextLayoutCapability, ThemeCapability};
+use super::application::root_theme_requirements;
 use super::assets::{FontCatalog, FontCatalogError};
-use super::canvas::CanvasPaint;
-use super::effects::EffectPrimitive;
+use super::mechanisms::{
+    collect_effect_graph_capabilities, collect_style_patch_capabilities,
+    collect_typography_capabilities,
+};
 use super::resources::{ThemeResourceLimitExceeded, ThemeResourcePolicy};
 use super::spec::DiagramThemeSpec;
 use super::typography::Specified;
-use super::{ThemeCompileValidationError, ThemeFingerprint, ThemeResolutionReport};
+use super::{ThemeCompileValidationError, ThemeRecipeFingerprint, ThemeRecipeReport};
 
-const THEME_FINGERPRINT_DOMAIN: &[u8] = b"merman-diagram-theme-v1";
-
-/// Host-owned compiler for one complete typed theme value.
+/// Resource-bounded compiler for one complete typed theme recipe.
 #[derive(Debug, Clone)]
 pub struct DiagramThemeCompiler {
-    admission: ThemeAdmissionPolicy,
     resources: ThemeResourcePolicy,
-    font_sources: FontSourcePolicy,
-    measurement_fallbacks: HostMeasurementFallbackPolicy,
-    portability: ThemePortabilityRequirement,
 }
 
 impl Default for DiagramThemeCompiler {
     fn default() -> Self {
         Self {
-            admission: ThemeAdmissionPolicy::default(),
             resources: ThemeResourcePolicy::default(),
-            font_sources: FontSourcePolicy::default(),
-            measurement_fallbacks: HostMeasurementFallbackPolicy::new([
-                HostMeasurementFallback::NativeCatalog,
-                HostMeasurementFallback::AcceptHostDependent,
-                HostMeasurementFallback::VendoredDefault,
-            ])
-            .expect("static measurement fallback policy"),
-            portability: ThemePortabilityRequirement::BestEffort,
         }
     }
 }
@@ -50,34 +34,8 @@ impl DiagramThemeCompiler {
         Self::default()
     }
 
-    pub fn with_admission(mut self, admission: ThemeAdmissionPolicy) -> Self {
-        self.admission = admission;
-        self
-    }
-
     pub fn with_resource_policy(mut self, resources: ThemeResourcePolicy) -> Self {
         self.resources = resources;
-        self
-    }
-
-    pub fn with_font_source_policy(mut self, font_sources: FontSourcePolicy) -> Self {
-        self.font_sources = font_sources;
-        self
-    }
-
-    pub fn with_measurement_fallbacks(
-        mut self,
-        measurement_fallbacks: HostMeasurementFallbackPolicy,
-    ) -> Self {
-        self.measurement_fallbacks = measurement_fallbacks;
-        self
-    }
-
-    pub fn with_portability_requirement(
-        mut self,
-        portability: ThemePortabilityRequirement,
-    ) -> Self {
-        self.portability = portability;
         self
     }
 
@@ -103,33 +61,31 @@ impl DiagramThemeCompiler {
             None => FontCatalog::default_parity(),
         };
         let inferred_capabilities = infer_required_capabilities(&spec);
+        let inferred_text_capabilities = infer_required_text_capabilities(&spec, &catalog);
         let effective_requirements = spec
             .requirements()
             .clone()
-            .with_required_capabilities(inferred_capabilities);
-        let admission = resolve_theme_admission(
-            &self.admission,
-            &self.font_sources,
-            &self.measurement_fallbacks,
-            self.portability,
-            &effective_requirements,
-            &catalog,
-        )?;
+            .with_required_capabilities(inferred_capabilities)
+            .with_required_text_capabilities(inferred_text_capabilities);
         let mermaid_config = compile_mermaid_config(&spec);
-        let capabilities = ThemeCapabilityReport::from_requirements(&effective_requirements);
-        let fingerprint = fingerprint(&spec, &catalog, &mermaid_config);
-        let report = ThemeResolutionReport::compiled(
-            ThemeFingerprint::from_bytes(fingerprint),
+        let fingerprint =
+            super::canonical::recipe_fingerprint(&spec, &catalog, &effective_requirements);
+        let report = ThemeRecipeReport::compiled(
+            ThemeRecipeFingerprint::from_bytes(fingerprint),
             catalog.fingerprint(),
-            capabilities.required.clone(),
+            effective_requirements
+                .required_capabilities()
+                .collect::<BTreeSet<_>>(),
+            effective_requirements
+                .required_text_capabilities()
+                .collect::<BTreeSet<_>>(),
         );
         Ok(super::DiagramTheme(Arc::new(super::CompiledDiagramTheme {
             spec,
             catalog,
-            admission,
+            requirements: effective_requirements,
             mermaid_config,
-            capabilities,
-            fingerprint: ThemeFingerprint::from_bytes(fingerprint),
+            recipe_fingerprint: ThemeRecipeFingerprint::from_bytes(fingerprint),
             report,
         })))
     }
@@ -142,34 +98,6 @@ impl DiagramThemeCompiler {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ThemeCapabilityReport {
-    required: BTreeSet<ThemeCapability>,
-    admitted: BTreeSet<ThemeCapability>,
-}
-
-impl ThemeCapabilityReport {
-    fn from_requirements(requirements: &super::ThemeRequirements) -> Self {
-        let required = requirements
-            .required_capabilities()
-            .collect::<BTreeSet<_>>();
-        let admitted = required.clone();
-        Self { required, admitted }
-    }
-
-    pub fn required(&self) -> impl ExactSizeIterator<Item = ThemeCapability> + '_ {
-        self.required.iter().copied()
-    }
-
-    pub fn admitted(&self) -> impl ExactSizeIterator<Item = ThemeCapability> + '_ {
-        self.admitted.iter().copied()
-    }
-
-    pub fn requires(&self, capability: ThemeCapability) -> bool {
-        self.required.contains(&capability)
-    }
-}
-
 fn infer_required_capabilities(spec: &DiagramThemeSpec) -> BTreeSet<ThemeCapability> {
     let mut required = BTreeSet::new();
     if !spec.styles().rules().is_empty() {
@@ -179,108 +107,50 @@ fn infer_required_capabilities(spec: &DiagramThemeSpec) -> BTreeSet<ThemeCapabil
     if !spec.styles().ordinal_palettes().is_empty() {
         required.insert(ThemeCapability::OrdinalPalette);
     }
-    if spec.typography() != &super::typography::TypographySpec::default() {
-        required.insert(ThemeCapability::Typography);
+    collect_typography_capabilities(spec.typography(), &mut required);
+    required.extend(
+        root_theme_requirements(spec)
+            .iter()
+            .flat_map(|requirement| requirement.capabilities()),
+    );
+    for rule in spec.styles().rules() {
+        collect_style_patch_capabilities(rule.style(), &mut required);
     }
-    collect_paint_capabilities(spec.canvas().base(), &mut required);
-    for layer in spec.canvas().layers() {
-        collect_paint_capabilities(layer.paint(), &mut required);
-    }
-    if !spec.canvas().layers().is_empty() {
-        required.insert(ThemeCapability::LayeredCanvas);
-    }
-    if spec
-        .canvas()
-        .layers()
-        .iter()
-        .any(|layer| !matches!(layer.blend_mode(), super::BlendMode::Normal))
-    {
-        required.insert(ThemeCapability::BlendMode);
-    }
-    if !spec.effects().graphs().is_empty() {
-        required.insert(ThemeCapability::SvgFilter);
-        for graph in spec.effects().graphs() {
-            for primitive in graph.primitives() {
-                match primitive {
-                    EffectPrimitive::DropShadow { .. } => {
-                        required.insert(ThemeCapability::Shadow);
-                    }
-                    EffectPrimitive::Turbulence { .. } => {
-                        required.insert(ThemeCapability::Noise);
-                    }
-                    EffectPrimitive::Displacement { .. } => {
-                        required.insert(ThemeCapability::Displacement);
-                    }
-                    _ => {}
-                }
-            }
-        }
+
+    let mut referenced_effects = BTreeSet::new();
+    for binding in spec.effects().bindings() {
+        referenced_effects.insert(binding.effect_id());
     }
     for rule in spec.styles().rules() {
-        let style = rule.style();
-        if !matches!(style.stroke.width, Specified::Unspecified)
-            || !matches!(style.stroke.linecap, Specified::Unspecified)
-            || !matches!(style.stroke.linejoin, Specified::Unspecified)
-        {
-            required.insert(ThemeCapability::BorderStyling);
+        if let Specified::Value(effect_id) = &rule.style().effects.effect {
+            referenced_effects.insert(effect_id.as_str());
         }
-        if !matches!(style.stroke.dasharray, Specified::Unspecified) {
-            required.insert(ThemeCapability::DashStyling);
-        }
-        if !matches!(style.geometry.radius, Specified::Unspecified) {
-            required.insert(ThemeCapability::RoundedGeometry);
-        }
-        if !matches!(style.typography.letter_spacing_px, Specified::Unspecified) {
-            required.insert(ThemeCapability::Typography);
-            required.insert(ThemeCapability::LetterSpacing);
-        }
-        if !matches!(style.typography.transform, Specified::Unspecified) {
-            required.insert(ThemeCapability::Typography);
-            required.insert(ThemeCapability::TextTransform);
-        }
-        if !matches!(style.typography.word_spacing_px, Specified::Unspecified) {
-            required.insert(ThemeCapability::Typography);
-            required.insert(ThemeCapability::WordSpacing);
-        }
-        if !matches!(style.typography.decoration, Specified::Unspecified) {
-            required.insert(ThemeCapability::Typography);
-            required.insert(ThemeCapability::TextDecoration);
-        }
-        if !matches!(style.typography.white_space, Specified::Unspecified)
-            || !matches!(style.typography.wrap, Specified::Unspecified)
-        {
-            required.insert(ThemeCapability::Typography);
-            required.insert(ThemeCapability::WhiteSpaceWrapping);
-        }
-        if style.typography != super::TextStylePatch::default() {
-            required.insert(ThemeCapability::Typography);
-        }
-        if !matches!(style.spacing.padding, Specified::Unspecified) {
-            required.insert(ThemeCapability::ContentPadding);
-        }
-        if !matches!(style.paint.opacity, Specified::Unspecified)
-            || !matches!(style.paint.fill_opacity, Specified::Unspecified)
-            || !matches!(style.stroke.stroke_opacity, Specified::Unspecified)
-        {
-            required.insert(ThemeCapability::Opacity);
-        }
+    }
+    for effect_id in referenced_effects {
+        let graph = spec
+            .effects()
+            .graph(effect_id)
+            .expect("validated effect reference must resolve");
+        collect_effect_graph_capabilities(graph, &mut required);
     }
     required
 }
 
-fn collect_paint_capabilities(paint: &CanvasPaint, required: &mut BTreeSet<ThemeCapability>) {
-    match paint {
-        CanvasPaint::Transparent => {}
-        CanvasPaint::Solid(_) => {
-            required.insert(ThemeCapability::SolidCanvas);
-        }
-        CanvasPaint::LinearGradient(_) | CanvasPaint::RadialGradient(_) => {
-            required.insert(ThemeCapability::GradientCanvas);
-        }
-        CanvasPaint::Pattern(_) => {
-            required.insert(ThemeCapability::PatternCanvas);
-        }
+fn infer_required_text_capabilities(
+    _spec: &DiagramThemeSpec,
+    catalog: &FontCatalog,
+) -> BTreeSet<TextLayoutCapability> {
+    let mut required = BTreeSet::new();
+    if catalog.kind() == FontCatalogKind::Custom {
+        // A custom catalog is an explicit geometry input. It cannot be consumed by the legacy
+        // system-font measurer, so the prepared lane must attest its catalog and shaping support.
+        required.extend([
+            TextLayoutCapability::CatalogBinding,
+            TextLayoutCapability::UnicodeClusterFallback,
+            TextLayoutCapability::OpenTypeShaping,
+        ]);
     }
+    required
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -288,8 +158,6 @@ fn collect_paint_capabilities(paint: &CanvasPaint, required: &mut BTreeSet<Theme
 pub enum ThemeCompileError {
     #[error(transparent)]
     Validation(#[from] ThemeCompileValidationError),
-    #[error(transparent)]
-    Admission(#[from] ThemeAdmissionError),
     #[error(transparent)]
     FontCatalog(#[from] FontCatalogError),
     #[error(transparent)]
@@ -300,22 +168,65 @@ fn compile_mermaid_config(spec: &DiagramThemeSpec) -> MermaidConfig {
     super::mermaid_projection::compile(spec)
 }
 
-fn fingerprint(
-    spec: &DiagramThemeSpec,
-    catalog: &FontCatalog,
-    mermaid_config: &MermaidConfig,
-) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    update_len_prefixed(&mut hasher, THEME_FINGERPRINT_DOMAIN);
-    update_len_prefixed(&mut hasher, format!("{spec:?}").as_bytes());
-    update_len_prefixed(&mut hasher, catalog.fingerprint().as_bytes());
-    if let Ok(value) = serde_json::to_vec(mermaid_config.as_value()) {
-        update_len_prefixed(&mut hasher, &value);
-    }
-    hasher.finalize().into()
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagram_theme::{
+        DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FilterRegion,
+        ThemeColorValue, ThemeTarget,
+    };
 
-fn update_len_prefixed(hasher: &mut Sha256, value: &[u8]) {
-    hasher.update((value.len() as u64).to_be_bytes());
-    hasher.update(value);
+    fn shadow_graph() -> EffectGraph {
+        EffectGraph::new(
+            "shadow",
+            FilterRegion::bounded(0.0, 0.0, 64.0, 64.0),
+            [EffectPrimitive::DropShadow {
+                input: EffectInput::SourceGraphic,
+                offset_x: 1.0,
+                offset_y: 1.0,
+                blur_radius: 2.0,
+                spread: 0.0,
+                color: ThemeColorValue::parse("#00000080").expect("valid shadow color"),
+            }],
+        )
+        .expect("valid shadow graph")
+    }
+
+    #[test]
+    fn unused_effect_graph_does_not_expand_required_capabilities() {
+        let effects = DiagramEffectSet::default()
+            .with_graph(shadow_graph())
+            .expect("add unused graph");
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_effects(effects))
+            .expect("compile theme");
+
+        assert!(
+            !theme
+                .report()
+                .requires_capability(ThemeCapability::SvgFilter)
+        );
+        assert!(!theme.report().requires_capability(ThemeCapability::Shadow));
+    }
+
+    #[test]
+    fn referenced_effect_binding_expands_only_the_referenced_graph_capabilities() {
+        let effects = DiagramEffectSet::default()
+            .with_graph(shadow_graph())
+            .expect("add graph")
+            .with_binding(
+                EffectBinding::new(ThemeTarget::Node, "shadow").expect("valid effect binding"),
+            )
+            .expect("add binding");
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_effects(effects))
+            .expect("compile theme");
+
+        assert!(
+            theme
+                .report()
+                .requires_capability(ThemeCapability::SvgFilter)
+        );
+        assert!(theme.report().requires_capability(ThemeCapability::Shadow));
+    }
 }

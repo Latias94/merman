@@ -53,7 +53,7 @@ fn huge_mermaid_dimensions_remain_compact_vector_svg() {
 fn huge_mermaid_dimensions_use_vector_pdf_and_bounded_bitmap_planning() {
     use merman::svg::{
         SvgPipeline,
-        export::{DEFAULT_MAX_RASTER_PIXELS, RasterOptions, svg_raster_plan},
+        export::{DEFAULT_MAX_RASTER_PIXELS, RasterOptions},
     };
 
     let renderer = HeadlessRenderer::new();
@@ -74,7 +74,7 @@ fn huge_mermaid_dimensions_use_vector_pdf_and_bounded_bitmap_planning() {
         )
         .unwrap()
         .expect("XYChart should render to sealed SVG");
-    let plan = svg_raster_plan(&svg, &RasterOptions::default()).unwrap();
+    let plan = svg.raster_plan(&RasterOptions::default()).unwrap();
 
     assert_eq!(plan.requested_width_px, 100_000.0);
     assert_eq!(plan.requested_height_px, 100_000.0);
@@ -90,7 +90,7 @@ fn huge_mermaid_dimensions_use_vector_pdf_and_bounded_bitmap_planning() {
 fn raster_limits_apply_before_integer_encoder_dimensions() {
     use merman::svg::{
         SvgPipeline,
-        export::{RasterOptions, RasterSizeLimit, svg_raster_plan},
+        export::{RasterOptions, RasterSizeLimit},
     };
 
     let svg = HeadlessRenderer::new()
@@ -105,13 +105,15 @@ fn raster_limits_apply_before_integer_encoder_dimensions() {
         Some(512),
         Some(512 * 512),
     ));
-    let plan = svg_raster_plan(&svg, &bounded).unwrap();
+    let plan = svg.raster_plan(&bounded).unwrap();
 
     assert!(plan.requested_width_px > f64::from(u32::MAX), "{plan:?}");
     assert!(plan.requested_height_px > f64::from(u32::MAX), "{plan:?}");
     assert_eq!((plan.width_px, plan.height_px), (512, 512));
     assert!(plan.limited, "{plan:?}");
 
-    let err = svg_raster_plan(&svg, &RasterOptions::default().with_unbounded_size()).unwrap_err();
+    let err = svg
+        .raster_plan(&RasterOptions::default().with_unbounded_size())
+        .unwrap_err();
     assert!(err.to_string().contains("u32 encoder capability"), "{err}");
 }

@@ -1087,8 +1087,8 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn request_theme_replacement_uses_the_constructor_owned_compiler() {
-        let mut engine = BindingEngine::new(
+    fn request_theme_replacement_is_compiled_after_request_overlay() {
+        let engine = BindingEngine::new(
             br##"{
                 "theme": {
                     "spec": {
@@ -1103,10 +1103,6 @@ mod tests {
             }"##,
         )
         .unwrap();
-        engine.theme_compiler = merman::svg::DiagramThemeCompiler::new().with_admission(
-            merman::svg::ThemeAdmissionPolicy::permissive()
-                .with_allowed_capabilities([merman::svg::ThemeCapability::SemanticTokens]),
-        );
 
         let inherited = engine
             .execute(
@@ -1126,7 +1122,7 @@ mod tests {
             )
             .expect("clearing a theme does not require theme admission");
 
-        let error = engine
+        let replaced = engine
             .execute(
                 crate::BindingOperationRequest::new("svg", b"flowchart TD\nA --> B")
                     .with_options_json(
@@ -1144,9 +1140,11 @@ mod tests {
                 }"##,
                     ),
             )
-            .expect_err("replacement themes must use the engine compiler policy");
-        assert_eq!(error.status(), crate::BindingStatus::InvalidArgument);
-        assert!(error.message().contains("semantic-rules"), "{error:?}");
+            .expect("replacement recipe should compile before runtime admission");
+        assert!(
+            String::from_utf8_lossy(replaced.data()).contains("#f8fafc"),
+            "the request-local compiled theme must replace the inherited recipe"
+        );
     }
 
     #[cfg(feature = "svg")]

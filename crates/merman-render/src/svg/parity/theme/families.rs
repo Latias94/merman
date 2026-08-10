@@ -637,7 +637,6 @@ impl<'a> MermaidThemeAdapter<'a> {
             dark_mode: self.common.is_dark_theme(),
             neo: self.common.is_neo(),
             font_family_css: self.common.font_family_css.clone(),
-            font_size_px: self.common.font_size_px,
             text_color: self.common.text_color.clone(),
             title_color: self
                 .raw
