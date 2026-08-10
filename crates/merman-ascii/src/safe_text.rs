@@ -1,6 +1,7 @@
 mod document;
 mod encode;
 mod label;
+mod layout;
 mod normalization;
 mod width;
 
@@ -19,6 +20,7 @@ pub(crate) use label::{
 pub(crate) use label::{
     try_build_normalized_label_lines_with_probe, try_plan_normalized_label_lines,
 };
+pub(crate) use layout::{try_clone_layout_text, try_concat_layout_text, try_repeat_layout_char};
 pub use normalization::{normalize_terminal_diagnostic, normalize_terminal_text};
 pub(crate) use width::{
     SafeLine, SafeText, terminal_char_display_width, terminal_line_display_width,

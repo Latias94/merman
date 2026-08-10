@@ -2,7 +2,10 @@ use crate::Result;
 use crate::error::AsciiError;
 use crate::options::AsciiRenderOptions;
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
-use crate::safe_text::{BudgetedTextDocument, charge_text_layout};
+use crate::safe_text::{
+    BudgetedTextDocument, charge_text_layout, try_clone_layout_text, try_concat_layout_text,
+    try_repeat_layout_char,
+};
 use merman_core::diagrams::mindmap::{
     MindmapDiagramRenderEdge, MindmapDiagramRenderModel, MindmapDiagramRenderNode,
 };
@@ -74,7 +77,7 @@ pub fn render_mindmap_diagram(
                     let branch = if is_root {
                         String::new()
                     } else {
-                        branch_prefix(&prefix, is_last)
+                        branch_prefix(&prefix, is_last, document.resources_mut())?
                     };
                     push_wrapped_label(&mut document, &branch, |line| {
                         push_node_text(line, node, is_cycle)
@@ -99,21 +102,21 @@ pub fn render_mindmap_diagram(
                     let next_prefix = if is_root {
                         String::new()
                     } else {
-                        child_prefix(&prefix, is_last)
+                        child_prefix(&prefix, is_last, document.resources_mut())?
                     };
 
                     for (child_index, child_id) in children.iter().enumerate().rev() {
                         let Some(child) = nodes_by_id.get(*child_id) else {
                             continue;
                         };
-                        document
-                            .resources_mut()
-                            .charge_layout_work(next_prefix.len())?;
                         push_enter_frame(
                             &mut stack,
                             MindmapEnterFrame {
                                 node: child,
-                                prefix: next_prefix.clone(),
+                                prefix: try_clone_layout_text(
+                                    &next_prefix,
+                                    document.resources_mut(),
+                                )?,
                                 is_last: child_index + 1 == children.len(),
                                 depth: child_depth,
                                 is_root: false,
@@ -407,32 +410,12 @@ fn push_exit_frame<'a>(
     Ok(())
 }
 
-fn branch_prefix(prefix: &str, is_last: bool) -> String {
-    if prefix.is_empty() {
-        if is_last {
-            "\\-- ".to_string()
-        } else {
-            BRANCH.to_string()
-        }
-    } else if is_last {
-        format!("{prefix}\\-- ")
-    } else {
-        format!("{prefix}{BRANCH}")
-    }
+fn branch_prefix(prefix: &str, is_last: bool, resources: &ResourceContext) -> Result<String> {
+    try_concat_layout_text(prefix, if is_last { "\\-- " } else { BRANCH }, resources)
 }
 
-fn child_prefix(prefix: &str, is_last: bool) -> String {
-    if prefix.is_empty() {
-        if is_last {
-            EMPTY.to_string()
-        } else {
-            CONTINUE.to_string()
-        }
-    } else if is_last {
-        format!("{prefix}{EMPTY}")
-    } else {
-        format!("{prefix}{CONTINUE}")
-    }
+fn child_prefix(prefix: &str, is_last: bool, resources: &ResourceContext) -> Result<String> {
+    try_concat_layout_text(prefix, if is_last { EMPTY } else { CONTINUE }, resources)
 }
 
 fn push_wrapped_label(
@@ -441,10 +424,8 @@ fn push_wrapped_label(
     render: impl FnOnce(&mut crate::safe_text::BudgetedWrappedText<'_, '_>) -> Result<()>,
 ) -> Result<()> {
     let continuation_width = prefix.len();
-    document
-        .resources_mut()
-        .charge_layout_work(continuation_width)?;
-    let continuation_prefix = " ".repeat(continuation_width);
+    let continuation_prefix =
+        try_repeat_layout_char(' ', continuation_width, document.resources_mut())?;
     document.push_wrapped_prefixed_line_with(
         prefix,
         &continuation_prefix,

@@ -2,7 +2,9 @@ use crate::Result;
 use crate::error::AsciiError;
 use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
-use crate::safe_text::BudgetedTextDocument;
+use crate::safe_text::{
+    BudgetedTextDocument, try_clone_layout_text, try_concat_layout_text, try_repeat_layout_char,
+};
 use crate::text::display_width_with_profile;
 use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
 use std::collections::HashSet;
@@ -69,17 +71,15 @@ pub fn render_tree_view_diagram(
             is_last,
             depth,
         } = frame;
-        let branch = if prefix.is_empty() {
+        let branch = try_concat_layout_text(
+            &prefix,
             if is_last {
-                chars.last_branch.to_string()
+                chars.last_branch
             } else {
-                chars.branch.to_string()
-            }
-        } else if is_last {
-            format!("{prefix}{}", chars.last_branch)
-        } else {
-            format!("{prefix}{}", chars.branch)
-        };
+                chars.branch
+            },
+            document.resources_mut(),
+        )?;
         push_wrapped_node(&mut document, &branch, node, options)?;
 
         if node.children.is_empty() {
@@ -92,27 +92,22 @@ pub fn render_tree_view_diagram(
                 .overflow(AsciiResourceLimitId::MaxNestingDepth)
         })?;
         document.resources_mut().check_nesting_depth(child_depth)?;
-        let next_prefix = if prefix.is_empty() {
+        let next_prefix = try_concat_layout_text(
+            &prefix,
             if is_last {
-                chars.child_empty.to_string()
+                chars.child_empty
             } else {
-                chars.child_continue.to_string()
-            }
-        } else if is_last {
-            format!("{prefix}{}", chars.child_empty)
-        } else {
-            format!("{prefix}{}", chars.child_continue)
-        };
+                chars.child_continue
+            },
+            document.resources_mut(),
+        )?;
 
         for (index, child) in node.children.iter().enumerate().rev() {
-            document
-                .resources_mut()
-                .charge_layout_work(next_prefix.len())?;
             push_frame(
                 &mut stack,
                 TreeFrame {
                     node: child,
-                    prefix: next_prefix.clone(),
+                    prefix: try_clone_layout_text(&next_prefix, document.resources_mut())?,
                     is_last: index + 1 == node.children.len(),
                     depth: child_depth,
                 },
@@ -204,10 +199,8 @@ fn push_wrapped_node(
     options: &AsciiRenderOptions,
 ) -> Result<()> {
     let continuation_width = display_width_with_profile(prefix, options.terminal_width_profile);
-    document
-        .resources_mut()
-        .charge_layout_work(continuation_width)?;
-    let continuation_prefix = " ".repeat(continuation_width);
+    let continuation_prefix =
+        try_repeat_layout_char(' ', continuation_width, document.resources_mut())?;
     document.push_wrapped_prefixed_line_with(
         prefix,
         &continuation_prefix,
