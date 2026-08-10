@@ -6,8 +6,9 @@ use std::sync::Arc;
 use crate::retained_weight::{ARC_ALLOCATION_OVERHEAD, RetainedWeight};
 
 pub const ANALYSIS_PAYLOAD_VERSION: u32 = 1;
-// Diagnostics and facts are independent contracts whose first public shapes both start at 1.
-pub const ANALYSIS_FACTS_PAYLOAD_VERSION: u32 = 1;
+// Diagnostics and facts are independent contracts; facts advanced to schema 2 for the deliberate
+// Flowchart-rich deletion while the diagnostics payload remains at schema 1.
+pub const ANALYSIS_FACTS_PAYLOAD_VERSION: u32 = 2;
 
 fn deserialize_payload_version<'de, D>(
     deserializer: D,

@@ -85,7 +85,7 @@ The default AAR is deterministic and does not bundle native clock, time-zone, or
 
 Use `Merman.runtimeCatalogJson()` to inspect the loaded artifact's exact options and payload schemas, capability/output/operation/metadata surface, constructor-owned services, and resource-to-operation mappings. Use `Merman.presentationCatalogJson()` for the open-ended theme preset, presentation profile, aspect, and capability-availability catalog instead of maintaining a Kotlin enum. Hosts should query the loaded catalogs before exposing optional choices. A custom Android build that changes the selected SKU must regenerate and package its matching Kotlin artifact contract with the native library.
 
-`analyzeJson` and `analyzeDocumentJson` return diagnostics schema `1`; document facts also use their independently defined schema `1`. These payload schemas are independent of Android transport version. Pass full Markdown/MDX-like content plus a URI to document analysis:
+`analyzeJson` and `analyzeDocumentJson` return diagnostics schema `1`; document facts use their independently defined schema `2` and contain generic parser/editor facts only. These payload schemas are independent of Android transport version. Pass full Markdown/MDX-like content plus a URI to document analysis:
 
 ````kotlin
 val factsJson = Merman.analyzeDocumentFactsJson(

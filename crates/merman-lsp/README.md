@@ -120,7 +120,7 @@ Dropping the service, the unsplit socket, or either split half terminates the wh
 
 LSP analysis uses deterministic runtime state. Initialization and workspace settings can provide `fixed_today` and `fixed_local_offset_minutes`. `fixed_today` uses the canonical `CivilDate` spelling: years `0000` through `9999` use `YYYY-MM-DD`, later years use `+YEAR-MM-DD`, and negative years use `-YEAR-MM-DD`. The server does not expose a native runtime selector or forward `system-*` Cargo features.
 
-The private session cache consumes typed editor snapshots backed by `FenceTextIndex` and keeps reusable snapshot-only or complete analysis under one weighted budget; normal language requests do not serialize `AnalysisFactsPayload`. The separately exposed binding facts payload uses schema version `1`, which is independent from LSP document revisions and Mermaid diagram IDs such as `flowchart-v2`.
+The private session cache consumes typed editor snapshots backed by `FenceTextIndex` and keeps reusable snapshot-only or complete analysis under one weighted budget; normal language requests do not serialize `AnalysisFactsPayload`. The separately exposed binding facts payload uses schema version `2`, which is independent from LSP document revisions and Mermaid diagram IDs such as `flowchart-v2`.
 
 When a family parser cannot provide complete or recovered body facts, Merman does not guess body symbols, references, or rename targets. Source-start diagram headers and templates remain available from the static family catalog.
 

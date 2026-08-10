@@ -66,7 +66,7 @@ export function detectDiagramFacts(
     const facts: unknown = analysisFacts(source, options);
     if (
       !isRecord(facts) ||
-      facts.version !== 1 ||
+      facts.version !== 2 ||
       typeof facts.valid !== "boolean"
     ) {
       return UNAVAILABLE_DIAGRAM_DETECTION;

@@ -948,7 +948,7 @@ fn rule_config_can_override_block_warning_severity() {
 fn rule_descriptors_expose_stable_rule_metadata() {
     let descriptors = rule_descriptors();
 
-    assert_eq!(descriptors.len(), 22);
+    assert_eq!(descriptors.len(), 21);
     assert_eq!(descriptors[0].id, PREFER_INIT_DIRECTIVE_RULE_ID);
     assert!(descriptors[0].description.contains("canonical `init`"));
     assert_eq!(descriptors[0].default_severity, DiagnosticSeverity::Hint);
@@ -1109,11 +1109,6 @@ fn rule_descriptors_expose_stable_rule_metadata() {
         descriptors
             .iter()
             .any(|descriptor| descriptor.id == INTERNAL_RULE_REGISTRY_GAP_RULE_ID)
-    );
-    assert!(
-        descriptors
-            .iter()
-            .any(|descriptor| descriptor.id == FLOWCHART_FACTS_PROJECTION_RULE_ID)
     );
     assert!(
         descriptors
@@ -1399,11 +1394,6 @@ fn configurable_rule_descriptors_exclude_internal_and_resource_rules() {
             .iter()
             .all(|descriptor| descriptor.id != INTERNAL_RULE_REGISTRY_GAP_RULE_ID)
     );
-    assert!(
-        descriptors
-            .iter()
-            .all(|descriptor| descriptor.id != FLOWCHART_FACTS_PROJECTION_RULE_ID)
-    );
 }
 
 #[test]
@@ -1549,10 +1539,5 @@ fn configurable_rule_catalog_excludes_internal_and_resource_rules() {
         catalog
             .iter()
             .all(|entry| entry.id != DOCUMENT_DIAGRAM_LIMIT_RULE_ID)
-    );
-    assert!(
-        catalog
-            .iter()
-            .all(|entry| entry.id != FLOWCHART_FACTS_PROJECTION_RULE_ID)
     );
 }

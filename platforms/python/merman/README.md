@@ -71,7 +71,7 @@ Use `CONSTRAINED` for untrusted, public, or multi-tenant input; `INTERACTIVE` is
 
 Call `client.runtime_catalog_json()` to inspect the loaded runtime catalog and exact resource profile values instead of duplicating limits in application code. Decode `client.presentation_catalog_json()` for the open-ended theme preset, presentation profile, aspect, and capability-availability catalog. `merman.get_runtime_catalog(client)` strictly validates its flat schema `1` artifact facts, package identity, transport API, supported options/payload schema IDs, named metadata IDs, sorted stable IDs, and local output/operation relations as one atomic response. New stable IDs remain forward compatible. This direct binding API version is `3` and is independent from native C ABI and the text-measurement protocol version.
 
-Diagnostics and parser facts both use their final schema `1`, independently of UniFFI binding API `3`. Other facts versions are rejected at the boundary; consumers of the removed TextScan shape must migrate to parser-backed items and explicit unavailable bodies.
+Diagnostics use schema `1` and parser facts use schema `2`, independently of UniFFI binding API `3`. Other facts versions are rejected at the boundary; consumers of the removed TextScan shape and Flowchart-only rich graph must migrate to generic parser-backed items and explicit unavailable bodies.
 
 ## Text Measurement
 

@@ -56,11 +56,9 @@ pub use payload::{
 pub use result::{
     AnalysisCaptureOutcome, AnalysisDiagramFacts, AnalysisDiagramSyntaxFacts,
     AnalysisExpectedSyntaxFacts, AnalysisFactSpan, AnalysisFactsPayload,
-    AnalysisFenceDelimiterFacts, AnalysisFlowchartEdgeDefaults, AnalysisFlowchartEdgeFacts,
-    AnalysisFlowchartFacts, AnalysisFlowchartNodeFacts, AnalysisFlowchartSubgraphFacts,
-    AnalysisGeneration, AnalysisLineItemFacts, AnalysisReferenceFacts, AnalysisRejection,
-    AnalysisResourceLimit, AnalysisSemanticItemFacts, AnalysisSyntaxFacts, AnalyzedDiagram,
-    DiagramParseDisposition,
+    AnalysisFenceDelimiterFacts, AnalysisGeneration, AnalysisLineItemFacts, AnalysisReferenceFacts,
+    AnalysisRejection, AnalysisResourceLimit, AnalysisSemanticItemFacts, AnalysisSyntaxFacts,
+    AnalyzedDiagram, DiagramParseDisposition,
 };
 pub use rules::{
     AnalysisRuleConfig, AnalysisRuleConfigError, AnalysisRuleProfile,

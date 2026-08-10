@@ -1,13 +1,13 @@
 use crate::diagnostic_projection::{
     DiagnosticCandidate, append_diagnostic_candidates_cancellable, core_error_candidate,
-    flowchart_facts_projection_candidate, no_diagram_candidate, panic_candidate,
+    no_diagram_candidate, panic_candidate,
 };
 use crate::recovery::editor_recovery_candidates;
 use crate::rules::AnalysisRuleConfig;
 use crate::{
-    AnalysisCancellationToken, AnalysisCancelled, AnalysisCaptureOutcome, AnalysisFlowchartFacts,
-    AnalysisPayload, AnalysisRejection, AnalysisSyntaxFacts, DiagramParseDisposition,
-    DocumentDiagram, FenceTextIndex, SourceDescriptor, SourceMap,
+    AnalysisCancellationToken, AnalysisCancelled, AnalysisCaptureOutcome, AnalysisPayload,
+    AnalysisRejection, AnalysisSyntaxFacts, DiagramParseDisposition, DocumentDiagram,
+    FenceTextIndex, SourceDescriptor, SourceMap,
 };
 use merman_core::{
     DiagramParseOutcome, DiagramSnapshotCapture, DiagramWarningFact, EditorSemanticFacts, Engine,
@@ -520,16 +520,14 @@ impl Analyzer {
                         ParsedEditorFacts::Unavailable => None,
                     };
                     match outcome {
-                        DiagramParseOutcome::Parsed {
-                            model,
-                            warning_facts,
-                        } => DiagramAnalysisEvidence::Parsed {
-                            metadata: meta,
-                            model,
-                            warning_facts,
-                            editor_facts,
-                            source_config,
-                        },
+                        DiagramParseOutcome::Parsed { warning_facts, .. } => {
+                            DiagramAnalysisEvidence::Parsed {
+                                metadata: meta,
+                                warning_facts,
+                                editor_facts,
+                                source_config,
+                            }
+                        }
                         DiagramParseOutcome::Failed(error) => {
                             DiagramAnalysisEvidence::ParseFailed {
                                 metadata: meta,
@@ -621,11 +619,9 @@ impl Analyzer {
             }
             DiagramAnalysisEvidence::Parsed {
                 metadata,
-                model,
                 warning_facts,
                 editor_facts,
                 source_config,
-                ..
             } => self.analyze_parsed_diagram_cancellable(
                 DiagramCaptureInput {
                     source_map,
@@ -633,7 +629,6 @@ impl Analyzer {
                     editor_facts: editor_facts.as_ref(),
                 },
                 ParsedDiagramCaptureInput {
-                    model,
                     warning_facts,
                     source_config,
                 },
@@ -660,30 +655,6 @@ impl Analyzer {
         }
     }
 
-    #[cfg(test)]
-    fn analyze_parsed_diagram(
-        &self,
-        input: DiagramCaptureInput<'_>,
-        model: &serde_json::Value,
-        candidates: Vec<DiagnosticCandidate>,
-        mode: CaptureMode,
-    ) -> CapturedDiagram {
-        let cancellation = AnalysisCancellationToken::new();
-        let source_config = SourceConfigEvidence::default();
-        self.analyze_parsed_diagram_cancellable(
-            input,
-            ParsedDiagramCaptureInput {
-                model,
-                warning_facts: &[],
-                source_config: &source_config,
-            },
-            candidates,
-            mode,
-            &cancellation,
-        )
-        .expect("a private analysis cancellation token cannot be cancelled")
-    }
-
     fn analyze_parsed_diagram_cancellable(
         &self,
         input: DiagramCaptureInput<'_>,
@@ -698,7 +669,6 @@ impl Analyzer {
             editor_facts,
         } = input;
         let ParsedDiagramCaptureInput {
-            model,
             warning_facts,
             source_config,
         } = parsed;
@@ -730,20 +700,6 @@ impl Analyzer {
             editor_facts,
             cancellation,
         )?;
-        let FlowchartFactsProjection {
-            facts: flowchart_facts,
-            candidates: flowchart_candidates,
-        } = self.flowchart_facts_projection_cancellable(
-            model,
-            diagram_type,
-            source_map,
-            cancellation,
-        )?;
-        append_diagnostic_candidates_cancellable(
-            &mut candidates,
-            flowchart_candidates,
-            cancellation,
-        )?;
         append_diagnostic_candidates_cancellable(&mut candidates, editor_candidates, cancellation)?;
         let syntax = match mode {
             CaptureMode::DiagnosticsOnly => None,
@@ -757,8 +713,7 @@ impl Analyzer {
                         Some(diagram_type.to_string()),
                         Self::editor_text_index_from_facts_cancellable(editor_facts, cancellation)?,
                     )
-                    .with_effective_layout(effective_layout)
-                    .with_flowchart(flowchart_facts),
+                    .with_effective_layout(effective_layout),
                 )
             }
         };
@@ -855,35 +810,6 @@ impl Analyzer {
         }
     }
 
-    fn flowchart_facts_projection_cancellable(
-        &self,
-        model: &serde_json::Value,
-        diagram_type: &str,
-        source_map: &SourceMap,
-        cancellation: &AnalysisCancellationToken,
-    ) -> Result<FlowchartFactsProjection, AnalysisCancelled> {
-        let projection =
-            match AnalysisFlowchartFacts::try_from_model_cancellable(model, cancellation)? {
-                Ok(facts) => FlowchartFactsProjection {
-                    facts,
-                    candidates: Vec::new(),
-                },
-                Err(error) => {
-                    let _ = source_map.whole_source_span_cancellable(cancellation)?;
-                    FlowchartFactsProjection {
-                        facts: None,
-                        candidates: vec![flowchart_facts_projection_candidate(
-                            error,
-                            diagram_type,
-                            source_map,
-                        )],
-                    }
-                }
-            };
-        cancellation.checkpoint()?;
-        Ok(projection)
-    }
-
     fn finish_capture(
         candidates: Vec<DiagnosticCandidate>,
         syntax: Option<AnalysisSyntaxFacts>,
@@ -952,7 +878,6 @@ enum DiagramAnalysisEvidence {
     },
     Parsed {
         metadata: ParseMetadata,
-        model: serde_json::Value,
         warning_facts: Vec<DiagramWarningFact>,
         editor_facts: Option<EditorSemanticFacts>,
         source_config: SourceConfigEvidence,
@@ -1043,7 +968,6 @@ struct DiagramCaptureInput<'a> {
 
 #[derive(Clone, Copy)]
 struct ParsedDiagramCaptureInput<'a> {
-    model: &'a serde_json::Value,
     warning_facts: &'a [DiagramWarningFact],
     source_config: &'a SourceConfigEvidence,
 }
@@ -1053,12 +977,6 @@ pub(crate) struct CapturedDiagram {
     pub(crate) candidates: Vec<DiagnosticCandidate>,
     pub(crate) syntax: Option<AnalysisSyntaxFacts>,
     pub(crate) parse_disposition: DiagramParseDisposition,
-}
-
-#[derive(Debug, Clone)]
-struct FlowchartFactsProjection {
-    facts: Option<AnalysisFlowchartFacts>,
-    candidates: Vec<DiagnosticCandidate>,
 }
 
 pub fn engine_from_options(options: &AnalysisOptions) -> Engine {

@@ -627,53 +627,6 @@ fn markdown_fence_facts_compose_crlf_preprocess_edits_and_utf16_positions() {
 }
 
 #[test]
-fn analysis_facts_payload_exposes_flowchart_typed_facts() {
-    let source = concat!(
-        "flowchart TB\n",
-        "classDef hot fill:#f00\n",
-        "subgraph group\n",
-        "A[Alpha] -->|go| B@{ shape: rect }\n",
-        "end\n",
-        "class A hot\n",
-        "click A href \"https://example.com\" \"Open\" _blank\n",
-    );
-    let facts = Analyzer::new().analyze_facts(source);
-    let flowchart = facts.diagrams[0]
-        .syntax
-        .flowchart
-        .as_ref()
-        .expect("flowchart facts");
-
-    assert_eq!(flowchart.direction.as_deref(), Some("TB"));
-    assert!(flowchart.class_defs.contains_key("hot"));
-    assert!(flowchart.nodes.iter().any(|node| {
-        node.id == "A"
-            && node.label.as_deref() == Some("Alpha")
-            && node.classes.iter().any(|class| class == "hot")
-            && node.link.as_deref() == Some("https://example.com/")
-            && node.link_target.as_deref() == Some("_blank")
-    }));
-    assert!(
-        flowchart
-            .nodes
-            .iter()
-            .any(|node| node.id == "B" && node.layout_shape.as_deref() == Some("rect"))
-    );
-    assert!(
-        flowchart
-            .edges
-            .iter()
-            .any(|edge| edge.from == "A" && edge.to == "B" && edge.label.as_deref() == Some("go"))
-    );
-    assert!(
-        flowchart
-            .subgraphs
-            .iter()
-            .any(|subgraph| subgraph.id == "group" && subgraph.nodes.iter().any(|id| id == "B"))
-    );
-}
-
-#[test]
 fn valid_flowchart_returns_no_diagnostics() {
     let payload = analyze("flowchart TD\nA[Hello] --> B[World]\n");
 

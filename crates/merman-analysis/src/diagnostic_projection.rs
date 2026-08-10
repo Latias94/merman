@@ -1,10 +1,10 @@
 #[cfg(test)]
 use crate::rules::INTERNAL_RULE_REGISTRY_GAP_RULE;
 use crate::rules::{
-    DIAGRAM_PARSE_RULE, DIAGRAM_PARSE_RULE_ID, FLOWCHART_FACTS_PROJECTION_RULE,
-    INVALID_DIRECTIVE_JSON_RULE, INVALID_FRONT_MATTER_YAML_RULE, INVALID_THEME_COLOR_RULE,
-    MALFORMED_FRONT_MATTER_RULE, NO_DIAGRAM_RULE, PANIC_RULE, PARSER_CONTRACT_VIOLATION_RULE,
-    RuleDescriptor, UNSUPPORTED_DIAGRAM_RULE, rule_descriptor,
+    DIAGRAM_PARSE_RULE, DIAGRAM_PARSE_RULE_ID, INVALID_DIRECTIVE_JSON_RULE,
+    INVALID_FRONT_MATTER_YAML_RULE, INVALID_THEME_COLOR_RULE, MALFORMED_FRONT_MATTER_RULE,
+    NO_DIAGRAM_RULE, PANIC_RULE, PARSER_CONTRACT_VIOLATION_RULE, RuleDescriptor,
+    UNSUPPORTED_DIAGRAM_RULE, rule_descriptor,
 };
 use crate::{
     AnalysisCancellationToken, AnalysisCancelled, AnalysisDiagnostic, AnalysisDiagnosticPolicy,
@@ -436,20 +436,6 @@ fn parse_diagnostic(
 
 pub(crate) fn panic_candidate(message: &str, source_map: &SourceMap) -> DiagnosticCandidate {
     rule_candidate(PANIC_RULE, AnalysisStatus::Panic, message, source_map)
-}
-
-pub(crate) fn flowchart_facts_projection_candidate(
-    error: impl std::fmt::Display,
-    diagram_type: &str,
-    source_map: &SourceMap,
-) -> DiagnosticCandidate {
-    rule_candidate(
-        FLOWCHART_FACTS_PROJECTION_RULE,
-        AnalysisStatus::InternalError,
-        format!("failed to project flowchart facts from parser model: {error}"),
-        source_map,
-    )
-    .with_diagram_type(diagram_type)
 }
 
 pub(crate) fn no_diagram_candidate(source_map: &SourceMap) -> DiagnosticCandidate {

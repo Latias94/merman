@@ -266,7 +266,7 @@ APIs that were never part of the alpha.3 release and can be ignored by tag-only 
 
   Both planner entry points return `Result<SemanticTokenPlan, TokenPlanError>`. Range planning accepts editor-core's protocol-neutral `Range`, not separate start/end line integers. Packed output and LSP names come from the generated descriptor contract rather than parallel handwritten index tables.
 - Delete TextScan compatibility code; there is no alpha.5 replacement for `ShapeObjectValuePrefix`, `shape_object_value_prefix`, `FenceTextIndex::from_text`, `FenceTextIndex::merge_text_scan_node_ids`, `FenceTextIndexSource::TextScan`, `FenceTextIndexSource::is_text_scan`, or `AnalysisSyntaxFacts::text_scan`.
-- The serialized `AnalysisFactsPayload` remains schema `1` but is parser-only: `fact_source: "text_scan"` is removed, unavailable bodies use `"unavailable"`, every semantic item includes `rename_policy`, and unsupported version discriminators are rejected before decoding the body.
+- The serialized `AnalysisFactsPayload` is now schema `2` and parser-only: `fact_source: "text_scan"` and the Flowchart-only rich graph are removed, unavailable bodies use `"unavailable"`, every semantic item includes `rename_policy`, and unsupported version discriminators are rejected after reading the envelope and before decoding the body. Regenerate all bindings; no schema-1 facts decoder or alias remains.
 
 ### LSP embedding
 
@@ -282,7 +282,7 @@ APIs that were never part of the alpha.3 release and can be ignored by tag-only 
 ### Retained wire names
 
 - The Rust type `AnalysisResult` is removed, but the TypeScript/WASM wire-level `AnalysisResult` name remains unchanged.
-- `AnalysisPayload` and `AnalysisFactsPayload` continue to use independent schema version `1` contracts.
+- `AnalysisPayload` remains schema `1`; `AnalysisFactsPayload` is schema `2`. They remain independent contracts.
 - Mermaid diagram and compatibility identifiers such as `flowchart-v2` remain wire names; Rust type or planner renames do not rewrite them.
 
 ### Rendering and option contracts

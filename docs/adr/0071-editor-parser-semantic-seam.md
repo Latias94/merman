@@ -83,11 +83,12 @@ or whole-document degraded fallback. Serialized facts keep `source_mapped_spans`
 compatibility: it is true for parser-backed facts and false for `Unavailable`. `Unavailable`
 produces no body completion, hover, symbols, navigation, rename, or semantic tokens.
 
-### Analysis facts v1 is the sole parser-only wire contract
+### Analysis facts v2 is the sole parser-only wire contract
 
 The diagnostics-only `AnalysisPayload` and richer `AnalysisFactsPayload` are independently
-versioned. `AnalysisPayload` remains version `1`. `AnalysisFactsPayload` version `1` is the sole
-parser-only semantic contract produced after this migration:
+versioned. `AnalysisPayload` remains version `1`. `AnalysisFactsPayload` version `2` is the sole
+parser-only semantic contract produced after this migration. It contains generic parser/editor
+facts and no Flowchart-only rich graph:
 
 - `fact_source: "text_scan"` is removed and `"unavailable"` represents honest absence;
 - current writers include `rename_policy` on every semantic item;
@@ -96,7 +97,7 @@ parser-only semantic contract produced after this migration:
 
 The TextScan-capable prerelease shape is deleted. This decision deliberately resets the contract during
 the coordinated refactor: consumers must regenerate against the current package, and every discriminator
-other than version `1` is rejected before its body is decoded.
+other than version `2` is rejected before its body is decoded.
 
 `AnalysisFactsPayload` is a binding wire projection, not the internal exchange format between
 analysis, editor-core, and LSP. Those modules share typed `AnalysisGeneration`,
@@ -205,11 +206,12 @@ Rejected. They invent semantics, weaken locality, and are unsafe for navigation 
 
 Rejected. It duplicates successful grammar behavior and splits the public meaning of a document.
 
-### Reset the replacement facts shape as version 1
+### Reset the replacement facts shape as version 2
 
-Adopted by amendment. The TextScan-capable shape and its decoder are deleted. The final parser-only
-facts contract begins at version 1, and every other discriminator is rejected before nested fields
-are decoded.
+Adopted by amendment. The TextScan-capable shape and its decoder are deleted, and the Flowchart-only
+rich graph is removed from the public facts sidecar. The final parser-only facts contract is version
+2, and every other discriminator is rejected after envelope inspection but before nested fields are
+decoded.
 
 ## Related Decisions
 

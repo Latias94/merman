@@ -86,7 +86,7 @@ test("detectDiagramFacts fails closed for malformed or unsupported facts", () =>
     effectiveLayoutId: null,
   };
   const invalidFacts = [
-    { ...facts("flowchart-v2", "dagre", "parsed"), version: 2 },
+    { ...facts("flowchart-v2", "dagre", "parsed"), version: 1 },
     { ...facts("flowchart-v2", "dagre", "parsed"), valid: "yes" },
     { ...facts("flowchart-v2", "dagre", "parsed"), diagrams: [] },
     {
@@ -143,7 +143,7 @@ test("detectDiagramFacts treats an unavailable parse disposition as unavailable"
 
 function facts(syntaxId, effectiveLayoutId, parseDisposition) {
   return {
-    version: 1,
+    version: 2,
     valid: true,
     diagrams: [diagram(syntaxId, effectiveLayoutId, parseDisposition)],
   };

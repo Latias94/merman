@@ -107,12 +107,12 @@ whole-document degraded coordinate mode. Precise edits still require `source_map
 
 The serialized diagnostics payload and richer facts payload are independent contracts with separate
 version constants. The diagnostics-only `AnalysisPayload` remains version `1`. The parser-only
-`AnalysisFactsPayload` is the sole version `1` facts contract: it has no `text_scan` provenance,
-uses `unavailable` for absent body facts, and current writers emit the family-owned
-`rename_policy` on every semantic item. Other versions are rejected at the boundary before the
-body is decoded. This is not a compatibility path for the TextScan-capable prerelease shape from
-`0.8.0-alpha.3`; its decoder, executor, and dual projection are removed. Consumers of that prerelease
-shape must update.
+`AnalysisFactsPayload` is the sole version `2` facts contract: it has no `text_scan` provenance or
+Flowchart-only rich graph, uses `unavailable` for absent body facts, and current writers emit the
+family-owned `rename_policy` on every semantic item. Other versions are rejected at the boundary
+after envelope discrimination and before the body is decoded. This is not a compatibility path for
+the TextScan-capable or schema-1 Flowchart-rich prerelease shapes; their decoders, executors, aliases,
+and dual projections are removed. Consumers of those prerelease shapes must update.
 
 This payload version is unrelated to LSP document revision numbers, Mermaid ids such as
 `flowchart-v2` or `stateDiagram-v2`, and native binding ABI versions.
@@ -212,7 +212,7 @@ substrings are not durable architecture guards.
 - Adding a family or alias requires one catalog declaration, family-owned semantic projections,
   a typed render adapter when renderable, parser-backed editor facts when admitted, and parity
   evidence through the canonical operation.
-- Consumers of the superseded TextScan facts shape must migrate directly to the current facts v1
+- Consumers of the superseded TextScan facts shape must migrate directly to the current facts v2
   contract; rejecting other payload shapes does not restore a deprecated alias, TextScan executor, or dual
   projection path.
 

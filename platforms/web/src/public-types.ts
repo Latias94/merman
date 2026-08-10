@@ -542,67 +542,6 @@ export interface AnalysisExpectedSyntaxFacts {
   span: AnalysisFactSpan;
 }
 
-export interface AnalysisFlowchartEdgeDefaults {
-  interpolate?: string | null;
-  style: string[];
-}
-
-export interface AnalysisFlowchartNodeFacts {
-  id: string;
-  label?: string | null;
-  labelType?: string | null;
-  layoutShape?: string | null;
-  icon?: string | null;
-  form?: string | null;
-  pos?: string | null;
-  img?: string | null;
-  constraint?: string | null;
-  assetWidth?: number | null;
-  assetHeight?: number | null;
-  classes: string[];
-  styles: string[];
-  link?: string | null;
-  linkTarget?: string | null;
-  haveCallback: boolean;
-}
-
-export interface AnalysisFlowchartEdgeFacts {
-  id: string;
-  from: string;
-  to: string;
-  label?: string | null;
-  labelType?: string | null;
-  type?: string | null;
-  stroke?: string | null;
-  interpolate?: string | null;
-  classes: string[];
-  style: string[];
-  animate?: boolean | null;
-  animation?: string | null;
-  length: number;
-}
-
-export interface AnalysisFlowchartSubgraphFacts {
-  id: string;
-  title: string;
-  dir?: string | null;
-  labelType?: string | null;
-  classes: string[];
-  styles: string[];
-  nodes: string[];
-}
-
-export interface AnalysisFlowchartFacts {
-  direction?: string | null;
-  classDefs: Record<string, string[]>;
-  edgeDefaults?: AnalysisFlowchartEdgeDefaults | null;
-  vertexCalls: string[];
-  nodes: AnalysisFlowchartNodeFacts[];
-  edges: AnalysisFlowchartEdgeFacts[];
-  subgraphs: AnalysisFlowchartSubgraphFacts[];
-  tooltips: Record<string, string>;
-}
-
 export interface AnalysisDiagramSyntaxFacts {
   diagram_type?: string | null;
   effective_layout?: string | null;
@@ -610,7 +549,6 @@ export interface AnalysisDiagramSyntaxFacts {
   parser_backed: boolean;
   recovered: boolean;
   source_mapped_spans: boolean;
-  flowchart?: AnalysisFlowchartFacts | null;
   node_ids: string[];
   class_names: string[];
   directive_prefixes: string[];
@@ -636,7 +574,7 @@ export interface AnalysisDiagramFacts {
 }
 
 export interface AnalysisFactsResult extends AnalysisPayloadFields {
-  version: 1;
+  version: 2;
   diagrams: AnalysisDiagramFacts[];
 }
 

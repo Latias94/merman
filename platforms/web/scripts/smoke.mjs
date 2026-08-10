@@ -521,20 +521,11 @@ if (hasCapability("analysis")) {
   );
 
   const flowchartFacts = api.analysisFacts("flowchart TD\nA-->B\n", deterministicTime);
+  assert.equal(flowchartFacts.version, 2);
   assert.equal(flowchartFacts.valid, true);
   assert.equal(flowchartFacts.diagrams[0].syntax.fact_source, "parser_complete");
   assert.equal(flowchartFacts.diagrams[0].syntax.source_mapped_spans, true);
   assert.equal(flowchartFacts.diagrams[0].syntax.effective_layout, "dagre");
-  assert.equal(
-    flowchartFacts.diagrams[0].syntax.flowchart.nodes.some((node) => node.id === "A"),
-    true
-  );
-  assert.equal(
-    flowchartFacts.diagrams[0].syntax.flowchart.edges.some(
-      (edge) => edge.from === "A" && edge.to === "B"
-    ),
-    true
-  );
   assert.equal(
     flowchartFacts.diagrams[0].syntax.semantic_items.some(
       (item) => item.name === "A" && item.span.document

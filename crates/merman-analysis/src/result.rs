@@ -8,16 +8,11 @@ use crate::{
     FenceDelimiterSpans, FenceLineItem, FenceMarker, FenceReferenceGroup, FenceSemanticItem,
     FenceTextIndex, FenceTextIndexSource, SharedTextSlice, SourceDescriptor, SourceMap, Summary,
 };
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::collections::BTreeMap;
 use std::fmt;
 use std::mem::size_of;
 
-use crate::retained_weight::{
-    ARC_ALLOCATION_OVERHEAD, RetainedWeight, conservative_btree_entry_bytes,
-};
+use crate::retained_weight::{ARC_ALLOCATION_OVERHEAD, RetainedWeight};
 
 /// One sealed rich capture bound to an exact parser environment and snapshot policy.
 #[derive(Debug)]
@@ -430,7 +425,6 @@ pub struct AnalysisSyntaxFacts {
     pub diagram_type: Option<String>,
     pub effective_layout: Option<String>,
     pub text_index: FenceTextIndex,
-    pub flowchart: Option<AnalysisFlowchartFacts>,
 }
 
 impl AnalysisSyntaxFacts {
@@ -439,7 +433,6 @@ impl AnalysisSyntaxFacts {
             diagram_type,
             effective_layout: None,
             text_index,
-            flowchart: None,
         }
     }
 
@@ -448,17 +441,11 @@ impl AnalysisSyntaxFacts {
             text_index: FenceTextIndex::default(),
             diagram_type,
             effective_layout: None,
-            flowchart: None,
         }
     }
 
     pub fn source(&self) -> FenceTextIndexSource {
         self.text_index.source()
-    }
-
-    pub fn with_flowchart(mut self, flowchart: Option<AnalysisFlowchartFacts>) -> Self {
-        self.flowchart = flowchart;
-        self
     }
 
     pub fn with_effective_layout(mut self, effective_layout: Option<String>) -> Self {
@@ -471,9 +458,6 @@ impl AnalysisSyntaxFacts {
         weight.add_optional_string(&self.diagram_type);
         weight.add_optional_string(&self.effective_layout);
         weight.add(self.text_index.estimated_owned_heap_bytes());
-        if let Some(flowchart) = &self.flowchart {
-            weight.add(flowchart.estimated_owned_heap_bytes());
-        }
         weight.finish()
     }
 }
@@ -633,8 +617,6 @@ pub struct AnalysisDiagramSyntaxFacts {
     pub parser_backed: bool,
     pub recovered: bool,
     pub source_mapped_spans: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub flowchart: Option<AnalysisFlowchartFacts>,
     pub node_ids: Vec<String>,
     pub class_names: Vec<String>,
     pub directive_prefixes: Vec<String>,
@@ -660,7 +642,6 @@ impl AnalysisDiagramSyntaxFacts {
             parser_backed: fact_source.is_parser_backed(),
             recovered: fact_source.is_recovered(),
             source_mapped_spans: fact_source.has_source_mapped_spans(),
-            flowchart: syntax.flowchart.clone(),
             node_ids: text_index.node_ids().cloned().collect(),
             class_names: text_index.class_names().cloned().collect(),
             directive_prefixes: text_index.directive_prefixes().cloned().collect(),
@@ -688,424 +669,6 @@ impl AnalysisDiagramSyntaxFacts {
                 })
                 .collect(),
         }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AnalysisFlowchartFacts {
-    #[serde(default)]
-    pub direction: Option<String>,
-    #[serde(default, rename = "classDefs")]
-    pub class_defs: BTreeMap<String, Vec<String>>,
-    #[serde(default, rename = "edgeDefaults")]
-    pub edge_defaults: Option<AnalysisFlowchartEdgeDefaults>,
-    #[serde(default, rename = "vertexCalls")]
-    pub vertex_calls: Vec<String>,
-    #[serde(default)]
-    pub nodes: Vec<AnalysisFlowchartNodeFacts>,
-    #[serde(default)]
-    pub edges: Vec<AnalysisFlowchartEdgeFacts>,
-    #[serde(default)]
-    pub subgraphs: Vec<AnalysisFlowchartSubgraphFacts>,
-    #[serde(default)]
-    pub tooltips: BTreeMap<String, String>,
-}
-
-impl AnalysisFlowchartFacts {
-    fn estimated_owned_heap_bytes(&self) -> usize {
-        let mut weight = RetainedWeight::default();
-        weight.add_optional_string(&self.direction);
-        weight.add(
-            self.class_defs
-                .len()
-                .saturating_mul(conservative_btree_entry_bytes::<String, Vec<String>>()),
-        );
-        for (name, classes) in &self.class_defs {
-            weight.add_string(name);
-            add_string_vec_weight(&mut weight, classes);
-        }
-        if let Some(defaults) = &self.edge_defaults {
-            weight.add_optional_string(&defaults.interpolate);
-            add_string_vec_weight(&mut weight, &defaults.style);
-        }
-        add_string_vec_weight(&mut weight, &self.vertex_calls);
-        weight.add_array::<AnalysisFlowchartNodeFacts>(self.nodes.capacity());
-        for node in &self.nodes {
-            weight.add(node.estimated_owned_heap_bytes());
-        }
-        weight.add_array::<AnalysisFlowchartEdgeFacts>(self.edges.capacity());
-        for edge in &self.edges {
-            weight.add(edge.estimated_owned_heap_bytes());
-        }
-        weight.add_array::<AnalysisFlowchartSubgraphFacts>(self.subgraphs.capacity());
-        for subgraph in &self.subgraphs {
-            weight.add(subgraph.estimated_owned_heap_bytes());
-        }
-        weight.add(
-            self.tooltips
-                .len()
-                .saturating_mul(conservative_btree_entry_bytes::<String, String>()),
-        );
-        for (name, tooltip) in &self.tooltips {
-            weight.add_string(name);
-            weight.add_string(tooltip);
-        }
-        weight.finish()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn try_from_model(
-        model: &Value,
-    ) -> Result<Option<Self>, AnalysisFlowchartFactsProjectionError> {
-        let cancellation = crate::AnalysisCancellationToken::new();
-        Self::try_from_model_cancellable(model, &cancellation)
-            .expect("a private analysis cancellation token cannot be cancelled")
-    }
-
-    pub(crate) fn try_from_model_cancellable(
-        model: &Value,
-        cancellation: &crate::AnalysisCancellationToken,
-    ) -> Result<Result<Option<Self>, AnalysisFlowchartFactsProjectionError>, crate::AnalysisCancelled>
-    {
-        cancellation.checkpoint()?;
-        let diagram_type = model.get("type").and_then(Value::as_str);
-        if !matches!(
-            diagram_type,
-            Some("flowchart" | "flowchart-v2" | "flowchart-elk")
-        ) {
-            return Ok(Ok(None));
-        }
-
-        let facts: Result<Self, CancellableFlowchartProjectionError> = (|| {
-            Ok(Self {
-                direction: deserialize_optional_model_field_cancellable(
-                    model,
-                    "direction",
-                    cancellation,
-                )?,
-                class_defs: deserialize_model_map_cancellable(model, "classDefs", cancellation)?,
-                edge_defaults: deserialize_optional_model_field_cancellable(
-                    model,
-                    "edgeDefaults",
-                    cancellation,
-                )?,
-                vertex_calls: deserialize_model_array_cancellable(
-                    model,
-                    "vertexCalls",
-                    cancellation,
-                )?,
-                nodes: deserialize_model_array_cancellable(model, "nodes", cancellation)?,
-                edges: deserialize_model_array_cancellable(model, "edges", cancellation)?,
-                subgraphs: deserialize_model_array_cancellable(model, "subgraphs", cancellation)?,
-                tooltips: deserialize_model_map_cancellable(model, "tooltips", cancellation)?,
-            })
-        })();
-        match facts {
-            Ok(facts) => {
-                cancellation.checkpoint()?;
-                Ok(Ok(Some(facts)))
-            }
-            Err(CancellableFlowchartProjectionError::Cancelled) => Err(crate::AnalysisCancelled),
-            Err(CancellableFlowchartProjectionError::Invalid(error)) => {
-                cancellation.checkpoint()?;
-                Ok(Err(error))
-            }
-        }
-    }
-}
-
-fn add_string_vec_weight(weight: &mut RetainedWeight, values: &Vec<String>) {
-    weight.add_array::<String>(values.capacity());
-    for value in values {
-        weight.add_string(value);
-    }
-}
-
-fn deserialize_optional_model_field_cancellable<T>(
-    model: &Value,
-    field: &'static str,
-    cancellation: &crate::AnalysisCancellationToken,
-) -> Result<Option<T>, CancellableFlowchartProjectionError>
-where
-    T: DeserializeOwned,
-{
-    match model.get(field) {
-        None | Some(Value::Null) => Ok(None),
-        Some(value) => {
-            checkpoint_model_value(value, cancellation)?;
-            T::deserialize(value)
-                .map(Some)
-                .map_err(AnalysisFlowchartFactsProjectionError::from)
-                .map_err(CancellableFlowchartProjectionError::Invalid)
-        }
-    }
-}
-
-fn deserialize_model_array_cancellable<T>(
-    model: &Value,
-    field: &'static str,
-    cancellation: &crate::AnalysisCancellationToken,
-) -> Result<Vec<T>, CancellableFlowchartProjectionError>
-where
-    T: DeserializeOwned,
-{
-    let Some(value) = model.get(field) else {
-        return Ok(Vec::new());
-    };
-    let Some(values) = value.as_array() else {
-        return Err(CancellableFlowchartProjectionError::Invalid(
-            AnalysisFlowchartFactsProjectionError::invalid_field(field, "an array"),
-        ));
-    };
-
-    let mut projected = Vec::with_capacity(values.len());
-    for value in values {
-        cancellation.checkpoint()?;
-        checkpoint_model_value(value, cancellation)?;
-        projected.push(
-            T::deserialize(value)
-                .map_err(AnalysisFlowchartFactsProjectionError::from)
-                .map_err(CancellableFlowchartProjectionError::Invalid)?,
-        );
-    }
-    Ok(projected)
-}
-
-fn deserialize_model_map_cancellable<T>(
-    model: &Value,
-    field: &'static str,
-    cancellation: &crate::AnalysisCancellationToken,
-) -> Result<BTreeMap<String, T>, CancellableFlowchartProjectionError>
-where
-    T: DeserializeOwned,
-{
-    let Some(value) = model.get(field) else {
-        return Ok(BTreeMap::new());
-    };
-    let Some(values) = value.as_object() else {
-        return Err(CancellableFlowchartProjectionError::Invalid(
-            AnalysisFlowchartFactsProjectionError::invalid_field(field, "an object"),
-        ));
-    };
-
-    let mut projected = BTreeMap::new();
-    for (key, value) in values {
-        cancellation.checkpoint()?;
-        checkpoint_model_value(value, cancellation)?;
-        projected.insert(
-            key.clone(),
-            T::deserialize(value)
-                .map_err(AnalysisFlowchartFactsProjectionError::from)
-                .map_err(CancellableFlowchartProjectionError::Invalid)?,
-        );
-    }
-    Ok(projected)
-}
-
-fn checkpoint_model_value(
-    root: &Value,
-    cancellation: &crate::AnalysisCancellationToken,
-) -> Result<(), CancellableFlowchartProjectionError> {
-    let mut stack = vec![root];
-    let mut visited = 0usize;
-    while let Some(value) = stack.pop() {
-        if visited.is_multiple_of(128) {
-            cancellation.checkpoint()?;
-        }
-        visited += 1;
-        match value {
-            Value::Array(values) => stack.extend(values.iter().rev()),
-            Value::Object(values) => stack.extend(values.values()),
-            _ => {}
-        }
-    }
-    cancellation.checkpoint()?;
-    Ok(())
-}
-
-enum CancellableFlowchartProjectionError {
-    Cancelled,
-    Invalid(AnalysisFlowchartFactsProjectionError),
-}
-
-impl From<crate::AnalysisCancelled> for CancellableFlowchartProjectionError {
-    fn from(_: crate::AnalysisCancelled) -> Self {
-        Self::Cancelled
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AnalysisFlowchartFactsProjectionError {
-    message: String,
-}
-
-impl fmt::Display for AnalysisFlowchartFactsProjectionError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.message)
-    }
-}
-
-impl std::error::Error for AnalysisFlowchartFactsProjectionError {}
-
-impl AnalysisFlowchartFactsProjectionError {
-    fn invalid_field(field: &str, expected: &str) -> Self {
-        Self {
-            message: format!("flowchart model field `{field}` must be {expected}"),
-        }
-    }
-}
-
-impl From<serde_json::Error> for AnalysisFlowchartFactsProjectionError {
-    fn from(error: serde_json::Error) -> Self {
-        Self {
-            message: error.to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AnalysisFlowchartEdgeDefaults {
-    #[serde(default)]
-    pub interpolate: Option<String>,
-    #[serde(default)]
-    pub style: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AnalysisFlowchartNodeFacts {
-    pub id: String,
-    #[serde(default)]
-    pub label: Option<String>,
-    #[serde(default, rename = "labelType")]
-    pub label_type: Option<String>,
-    #[serde(default, rename = "layoutShape")]
-    pub layout_shape: Option<String>,
-    #[serde(default)]
-    pub icon: Option<String>,
-    #[serde(default)]
-    pub form: Option<String>,
-    #[serde(default)]
-    pub pos: Option<String>,
-    #[serde(default)]
-    pub img: Option<String>,
-    #[serde(default)]
-    pub constraint: Option<String>,
-    #[serde(default, rename = "assetWidth")]
-    pub asset_width: Option<f64>,
-    #[serde(default, rename = "assetHeight")]
-    pub asset_height: Option<f64>,
-    #[serde(default)]
-    pub classes: Vec<String>,
-    #[serde(default)]
-    pub styles: Vec<String>,
-    #[serde(default)]
-    pub link: Option<String>,
-    #[serde(default, rename = "linkTarget")]
-    pub link_target: Option<String>,
-    #[serde(default, rename = "haveCallback")]
-    pub have_callback: bool,
-}
-
-impl AnalysisFlowchartNodeFacts {
-    fn estimated_owned_heap_bytes(&self) -> usize {
-        let mut weight = RetainedWeight::default();
-        weight.add_string(&self.id);
-        for value in [
-            &self.label,
-            &self.label_type,
-            &self.layout_shape,
-            &self.icon,
-            &self.form,
-            &self.pos,
-            &self.img,
-            &self.constraint,
-            &self.link,
-            &self.link_target,
-        ] {
-            weight.add_optional_string(value);
-        }
-        add_string_vec_weight(&mut weight, &self.classes);
-        add_string_vec_weight(&mut weight, &self.styles);
-        weight.finish()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AnalysisFlowchartEdgeFacts {
-    pub id: String,
-    pub from: String,
-    pub to: String,
-    #[serde(default)]
-    pub label: Option<String>,
-    #[serde(default, rename = "labelType")]
-    pub label_type: Option<String>,
-    #[serde(default, rename = "type")]
-    pub edge_type: Option<String>,
-    #[serde(default)]
-    pub stroke: Option<String>,
-    #[serde(default)]
-    pub interpolate: Option<String>,
-    #[serde(default)]
-    pub classes: Vec<String>,
-    #[serde(default)]
-    pub style: Vec<String>,
-    #[serde(default)]
-    pub animate: Option<bool>,
-    #[serde(default)]
-    pub animation: Option<String>,
-    #[serde(default)]
-    pub length: usize,
-}
-
-impl AnalysisFlowchartEdgeFacts {
-    fn estimated_owned_heap_bytes(&self) -> usize {
-        let mut weight = RetainedWeight::default();
-        weight.add_string(&self.id);
-        weight.add_string(&self.from);
-        weight.add_string(&self.to);
-        for value in [
-            &self.label,
-            &self.label_type,
-            &self.edge_type,
-            &self.stroke,
-            &self.interpolate,
-            &self.animation,
-        ] {
-            weight.add_optional_string(value);
-        }
-        add_string_vec_weight(&mut weight, &self.classes);
-        add_string_vec_weight(&mut weight, &self.style);
-        weight.finish()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AnalysisFlowchartSubgraphFacts {
-    pub id: String,
-    pub title: String,
-    #[serde(default)]
-    pub dir: Option<String>,
-    #[serde(default, rename = "labelType")]
-    pub label_type: Option<String>,
-    #[serde(default)]
-    pub classes: Vec<String>,
-    #[serde(default)]
-    pub styles: Vec<String>,
-    #[serde(default)]
-    pub nodes: Vec<String>,
-}
-
-impl AnalysisFlowchartSubgraphFacts {
-    fn estimated_owned_heap_bytes(&self) -> usize {
-        let mut weight = RetainedWeight::default();
-        weight.add_string(&self.id);
-        weight.add_string(&self.title);
-        weight.add_optional_string(&self.dir);
-        weight.add_optional_string(&self.label_type);
-        add_string_vec_weight(&mut weight, &self.classes);
-        add_string_vec_weight(&mut weight, &self.styles);
-        add_string_vec_weight(&mut weight, &self.nodes);
-        weight.finish()
     }
 }
 
@@ -1258,45 +821,5 @@ mod tests {
                 disposition
             );
         }
-    }
-
-    #[test]
-    fn flowchart_facts_accept_legacy_flowchart_models() {
-        let model = json!({
-            "type": "flowchart",
-            "direction": "LR",
-            "nodes": [
-                {
-                    "id": "A",
-                    "label": "Alpha"
-                }
-            ],
-            "edges": [
-                {
-                    "id": "L_A_B_0",
-                    "from": "A",
-                    "to": "B",
-                    "length": 1
-                }
-            ]
-        });
-
-        let facts = AnalysisFlowchartFacts::try_from_model(&model)
-            .expect("legacy flowchart model should deserialize")
-            .expect("legacy flowchart model should produce facts");
-
-        assert_eq!(facts.direction.as_deref(), Some("LR"));
-        assert!(
-            facts
-                .nodes
-                .iter()
-                .any(|node| node.id == "A" && node.label.as_deref() == Some("Alpha"))
-        );
-        assert!(
-            facts
-                .edges
-                .iter()
-                .any(|edge| edge.from == "A" && edge.to == "B")
-        );
     }
 }

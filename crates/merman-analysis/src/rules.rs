@@ -37,7 +37,6 @@ pub const INVALID_THEME_COLOR_RULE_ID: &str = "merman.config.invalid_theme_color
 pub const PANIC_RULE_ID: &str = "merman.internal.panic";
 pub const PARSER_CONTRACT_VIOLATION_RULE_ID: &str = "merman.internal.parser_contract_violation";
 pub const INTERNAL_RULE_REGISTRY_GAP_RULE_ID: &str = "merman.internal.rule_registry_gap";
-pub const FLOWCHART_FACTS_PROJECTION_RULE_ID: &str = "merman.internal.flowchart_facts_projection";
 pub const BLOCK_WIDTH_RULE_ID: &str = "merman.block.width_exceeds_columns";
 pub const FLOWCHART_EXPLICIT_DIRECTION_RULE_ID: &str =
     "merman.authoring.flowchart.explicit_direction";
@@ -426,18 +425,6 @@ pub(crate) const INTERNAL_RULE_REGISTRY_GAP_RULE: RuleDescriptor = RuleDescripto
     fixable: false,
 };
 
-pub(crate) const FLOWCHART_FACTS_PROJECTION_RULE: RuleDescriptor = RuleDescriptor {
-    id: FLOWCHART_FACTS_PROJECTION_RULE_ID,
-    description: "Report an internal failure while projecting flowchart parser model facts.",
-    evidence: &["docs/adr/0070-diagnostics-first-analysis-contract.md"],
-    default_severity: DiagnosticSeverity::Error,
-    category: DiagnosticCategory::Internal,
-    default_enabled: true,
-    default_profile: AnalysisRuleProfile::Core,
-    origin: RuleOrigin::MermanInternal,
-    fixable: false,
-};
-
 const BLOCK_WIDTH_RULE: RuleDescriptor = RuleDescriptor {
     id: BLOCK_WIDTH_RULE_ID,
     description: "Report block diagram entries that exceed the configured column width.",
@@ -509,7 +496,6 @@ const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
     PANIC_RULE,
     PARSER_CONTRACT_VIOLATION_RULE,
     INTERNAL_RULE_REGISTRY_GAP_RULE,
-    FLOWCHART_FACTS_PROJECTION_RULE,
     BLOCK_WIDTH_RULE,
     FLOWCHART_EXPLICIT_DIRECTION_RULE,
     FLOWCHART_UNKNOWN_STYLE_TARGET_RULE,
