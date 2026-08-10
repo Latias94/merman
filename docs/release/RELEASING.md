@@ -138,11 +138,19 @@ README files are ordinary source documentation and `release-version.py` never re
 A focused audit command is:
 
 ```bash
-rg -n 'published registry packages can still|candidate from Git|After alpha\.[0-9]+ is published|git\s*=\s*"https://github\.com/Latias94/merman' \
+rg -n --glob '**/README.md' \
+  '0\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+|published registry packages can still|candidate from Git|[Aa]fter .*is published|[Ww]hen .*is published|git\s*=\s*"https://github\.com/Latias94/merman' \
   README.md crates docs/rendering platforms packages tools
 ```
 
 Classify each match rather than applying a repository-wide mechanical rewrite. Package-local READMEs included in crates, cargo-dist archives, npm tarballs, wheels, Flutter packages, Apple/Android bundles, Typst packages, or VSIX files are part of the release experience even though they are not version authorities.
+
+After publication or recovery, query each owning registry and GitHub Release independently, then
+repeat the README audit and update `PUBLISH_ORDER.md` from candidate state to the published
+baseline. Do not imply that npm, PyPI, pub.dev, Android, Apple, Typst, crates.io, and GitHub binaries
+move in lockstep. The release is not operationally complete while a current install command names
+an older version or current prose still describes an externally published target as unavailable;
+commit the documentation reconciliation or report it as explicit unfinished release work.
 
 The unpublished VS Code extension, the Typst package wrapper, and `roughr-merman` own independent
 version tracks. They are intentionally excluded from workspace projection. Record the workspace

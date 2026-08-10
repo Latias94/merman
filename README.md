@@ -48,14 +48,14 @@ These are headless `merman-cli` outputs. The [Playground](https://frankorz.com/m
 ## Quick Start
 
 > [!IMPORTANT]
-> This README describes the unreleased `0.8.0-alpha.5` source contract. The current crates.io and GitHub binary release is `0.8.0-alpha.4`. Commands labeled as source installs require a reviewed full commit before use in CI or production.
+> This README describes the current source tree. Rust crates and the GitHub CLI/LSP release are published at `0.8.0-alpha.5`; browser and language-binding packages follow their own release channels and may trail it. Source-only changes may be newer, and commands labeled as source installs require a reviewed full commit before use in CI or production.
 
 ### Rust
 
-Add the published alpha.4 crate:
+Add the published alpha.5 crate:
 
 ```sh
-cargo add merman@0.8.0-alpha.4
+cargo add merman@0.8.0-alpha.5
 ```
 
 Render one Mermaid source string without constructing a renderer:
@@ -85,18 +85,12 @@ Choose the narrowest Rust entry point that owns the task:
 
 The task-oriented [Rust examples](https://github.com/Latias94/merman/tree/main/crates/merman/examples) are self-contained files that can be copied into another crate. They cover one-shot SVG, same-DOM embedding, renderer reuse, PNG and terminal output, semantic and layout inspection, deterministic dates, site configuration, presentation themes, and consumer-specific SVG pipelines.
 
-When alpha.5 is published, its registry dependency will be:
-
-```sh
-cargo add merman@0.8.0-alpha.5
-```
-
 ### Command Line
 
 Install the published complete CLI and render a diagram:
 
 ```sh
-cargo install merman-cli --version 0.8.0-alpha.4 --locked
+cargo install merman-cli --version 0.8.0-alpha.5 --locked
 printf 'flowchart LR\n  Source --> Merman --> SVG\n' | \
   merman-cli render - --output diagram.svg
 ```

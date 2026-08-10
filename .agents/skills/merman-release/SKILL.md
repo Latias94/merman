@@ -60,10 +60,11 @@ README files are ordinary documentation and are not generated version projection
 - Remove stale future tense such as “after this version is published”, old published baselines, and candidate wording once external publication evidence exists.
 - Review package-local READMEs included by `cargo package`, cargo-dist, npm, Python, Flutter, Apple, Android, Typst, or VSIX packaging, not only the repository root README.
 
-Use a focused search before preflight and again after partial-release recovery:
+Use a broad README version search before preflight and again after every publication or recovery:
 
 ```bash
-rg -n 'published registry packages can still|candidate from Git|After alpha\.[0-9]+ is published|git\s*=\s*"https://github\.com/Latias94/merman' \
+rg -n --glob '**/README.md' \
+  '0\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+|published registry packages can still|candidate from Git|[Aa]fter .*is published|[Ww]hen .*is published|git\s*=\s*"https://github\.com/Latias94/merman' \
   README.md crates docs/rendering platforms packages tools
 ```
 
@@ -103,6 +104,18 @@ Use direct GitHub, registry, and artifact evidence documented in `docs/release/R
 - `main` remains green after any release-workflow repair.
 
 Workflow success is not publication evidence. Registry and GitHub state must agree with the release contract.
+
+### Post-Publication Documentation Reconciliation
+
+Treat each registry and artifact channel independently. After any successful publication or
+recovery, query the owning registry or GitHub Release, update current installation commands and
+availability prose only for the surfaces that actually published, and move
+`docs/release/PUBLISH_ORDER.md` from candidate state to the published workspace baseline when the
+Rust release lands. Rerun the broad README version search above and account for every match.
+
+Do not report the release complete while a current README installation command names an older
+workspace prerelease or current prose says the published target is unavailable. Commit the
+documentation reconciliation before completion, or report it as explicit unfinished release work.
 
 ## Recovery
 
