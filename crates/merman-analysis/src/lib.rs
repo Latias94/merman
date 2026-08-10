@@ -41,8 +41,8 @@ pub use document::{
 pub use editor::{
     ByteSpan, EditorSymbolKind, FenceCursorCompletionKind, FenceCursorContext, FenceExpectedSyntax,
     FenceExpectedSyntaxKind, FenceLexeme, FenceLexemeFailure, FenceLexemeKind, FenceLexemeModifier,
-    FenceLineItem, FenceReferenceGroup, FenceRenamePolicy, FenceSemanticItem, FenceSemanticRole,
-    FenceTextIndex, FenceTextIndexSource,
+    FenceReferenceGroup, FenceRenamePolicy, FenceSemanticItem, FenceSemanticRole, FenceTextIndex,
+    FenceTextIndexSource,
 };
 pub use options_json::{
     AnalysisOptionsJson, AnalysisOptionsJsonError, LintOptionsJson, LintRuleSeverityOverrideJson,

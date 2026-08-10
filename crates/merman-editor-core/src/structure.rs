@@ -1,8 +1,8 @@
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{DocumentUri, Position, Range};
 use merman_analysis::{
-    ByteSpan, EditorSymbolKind, FenceLineItem, FenceRenamePolicy, FenceSemanticItem,
-    FenceTextIndexSource, SourceMap,
+    ByteSpan, EditorSymbolKind, FenceRenamePolicy, FenceSemanticItem, FenceTextIndexSource,
+    SourceMap,
 };
 use std::collections::HashMap;
 use std::fmt;
@@ -440,22 +440,11 @@ fn outline_for_fence(fence: &FenceSnapshot) -> OutlineItem {
 fn outline_children(fence: &FenceSnapshot) -> Vec<OutlineItem> {
     fence
         .text_index()
-        .outline_items()
+        .semantic_items()
         .iter()
-        .map(|item| outline_item_from_index(fence, item))
+        .filter(|item| item.role.contributes_outline())
+        .map(|item| outline_item_from_semantic(fence, item))
         .collect()
-}
-
-fn outline_item_from_index(fence: &FenceSnapshot, item: &FenceLineItem) -> OutlineItem {
-    OutlineItem {
-        name: item.name.clone(),
-        detail: item.detail.clone(),
-        kind: item.kind,
-        fact_source: fence.text_index().source(),
-        span: absolute_span(fence, item.span),
-        selection: absolute_span(fence, item.selection),
-        children: Vec::new(),
-    }
 }
 
 fn outline_item_from_semantic(fence: &FenceSnapshot, item: &FenceSemanticItem) -> OutlineItem {

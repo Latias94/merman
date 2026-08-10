@@ -45,21 +45,18 @@ pub enum EditorSymbolKind {
     Variable,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FenceLineItem {
-    pub name: String,
-    pub detail: Option<String>,
-    pub kind: EditorSymbolKind,
-    pub span: ByteSpan,
-    pub selection: ByteSpan,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FenceSemanticRole {
     Entity,
     Outline,
     Payload,
+}
+
+impl FenceSemanticRole {
+    pub const fn contributes_outline(self) -> bool {
+        matches!(self, Self::Entity | Self::Outline)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -151,16 +148,6 @@ impl FenceSemanticItem {
     pub fn with_rename_policy(mut self, rename_policy: FenceRenamePolicy) -> Self {
         self.rename_policy = rename_policy;
         self
-    }
-
-    fn to_line_item(&self) -> FenceLineItem {
-        FenceLineItem {
-            name: self.name.clone(),
-            detail: self.detail.clone(),
-            kind: self.kind,
-            span: self.span,
-            selection: self.selection,
-        }
     }
 }
 
@@ -422,7 +409,6 @@ pub(super) struct FenceTextIndexData {
     pub(super) class_names: BTreeSet<String>,
     pub(super) directive_prefixes: BTreeSet<String>,
     pub(super) references: BTreeMap<FenceReferenceGroup, Vec<ByteSpan>>,
-    pub(super) outline_items: Vec<FenceLineItem>,
     pub(super) semantic_items: Vec<FenceSemanticItem>,
     pub(super) lexemes: Vec<FenceLexeme>,
     pub(super) lexeme_failure: Option<FenceLexemeFailure>,
@@ -514,11 +500,6 @@ impl FenceTextIndexData {
         for (group, spans) in &self.references {
             weight.add_string(&group.name);
             weight.add_array::<ByteSpan>(spans.capacity());
-        }
-        weight.add_array::<FenceLineItem>(self.outline_items.capacity());
-        for item in &self.outline_items {
-            weight.add_string(&item.name);
-            weight.add_optional_string(&item.detail);
         }
         weight.add_array::<FenceSemanticItem>(self.semantic_items.capacity());
         for item in &self.semantic_items {
@@ -645,10 +626,6 @@ impl FenceTextIndex {
     pub fn entity_item_at_offset(&self, offset: usize) -> Option<&FenceSemanticItem> {
         self.semantic_item_at_offset(offset)
             .filter(|item| item.role == FenceSemanticRole::Entity)
-    }
-
-    pub fn outline_items(&self) -> &[FenceLineItem] {
-        &self.data.outline_items
     }
 
     pub fn semantic_items(&self) -> &[FenceSemanticItem] {

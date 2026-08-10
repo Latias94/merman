@@ -14,8 +14,8 @@ use crate::session::analysis::request::{AnalysisBuildError, AnalysisBuildRequest
 use crate::snapshot::{DocumentAnalysisContext, DocumentSnapshot, SnapshotContext};
 use merman_analysis::{
     AnalysisCancellationToken, AnalysisOptions, AnalysisPayload, AnalysisResourceLimit,
-    AnalysisRuleConfig, AnalysisRuleProfile, Analyzer, DiagnosticSeverity, FenceSemanticRole,
-    FenceTextIndexSource, source_limit_diagnostic_span,
+    AnalysisRuleConfig, AnalysisRuleProfile, Analyzer, DiagnosticSeverity, FenceSemanticItem,
+    FenceSemanticRole, FenceTextIndex, FenceTextIndexSource, source_limit_diagnostic_span,
 };
 use merman_editor_core::DocumentKind;
 use tower_lsp_server::ls_types::{
@@ -25,6 +25,19 @@ use tower_lsp_server::ls_types::{
 static CUSTOM_SESSION_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 static CUSTOM_ASYNC_SESSION_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 static REPEATED_DIAGNOSTIC_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+trait FenceTextIndexTestExt {
+    fn outline_items(&self) -> Vec<&FenceSemanticItem>;
+}
+
+impl FenceTextIndexTestExt for FenceTextIndex {
+    fn outline_items(&self) -> Vec<&FenceSemanticItem> {
+        self.semantic_items()
+            .iter()
+            .filter(|item| item.role.contributes_outline())
+            .collect()
+    }
+}
 
 fn reprojection_for(store: &SessionState, uri: &Uri) -> DiagnosticProjectionTicket {
     store

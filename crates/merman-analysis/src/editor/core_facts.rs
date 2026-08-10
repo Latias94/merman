@@ -96,29 +96,10 @@ pub(super) fn from_core_facts_cancellable(
                 .or_default()
                 .push(item.selection);
         }
-        if role.contributes_outline() {
-            index.outline_items.push(item.to_line_item());
-        }
         index.semantic_items.push(item);
     }
 
     cancellation.checkpoint()?;
-    index.outline_items.sort_by(|left, right| {
-        (
-            left.span.start,
-            left.span.end,
-            left.name.as_str(),
-            left.selection.start,
-            left.selection.end,
-        )
-            .cmp(&(
-                right.span.start,
-                right.span.end,
-                right.name.as_str(),
-                right.selection.start,
-                right.selection.end,
-            ))
-    });
     index.semantic_items.sort_by(|left, right| {
         (
             left.span.start,

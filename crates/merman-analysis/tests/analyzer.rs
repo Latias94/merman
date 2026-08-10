@@ -382,6 +382,34 @@ fn analysis_generation_preserves_exact_spans_through_entity_normalization() {
     assert!(!syntax.references.is_empty());
     assert!(!syntax.outline_items.is_empty());
     assert!(!syntax.semantic_items.is_empty());
+    let outline_projection = syntax
+        .outline_items
+        .iter()
+        .map(|item| {
+            (
+                item.name.as_str(),
+                item.detail.as_deref(),
+                item.kind,
+                &item.span,
+                &item.selection,
+            )
+        })
+        .collect::<Vec<_>>();
+    let canonical_outline = syntax
+        .semantic_items
+        .iter()
+        .filter(|item| item.role.contributes_outline())
+        .map(|item| {
+            (
+                item.name.as_str(),
+                item.detail.as_deref(),
+                item.kind,
+                &item.span,
+                &item.selection,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(outline_projection, canonical_outline);
     assert!(!syntax.expected_syntax.is_empty());
     assert!(syntax.expected_syntax.iter().all(|expected| {
         expected.span.document.as_ref().is_some_and(|span| {

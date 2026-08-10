@@ -5,8 +5,8 @@ use crate::payload::DiagnosticRetainedWeight;
 use crate::{
     ANALYSIS_FACTS_PAYLOAD_VERSION, AnalysisCancellationToken, AnalysisCancelled,
     AnalysisDiagnostic, AnalysisPayload, DocumentDiagram, DocumentDiagramKind, FenceDelimiter,
-    FenceDelimiterSpans, FenceLineItem, FenceMarker, FenceReferenceGroup, FenceSemanticItem,
-    FenceTextIndex, FenceTextIndexSource, SharedTextSlice, SourceDescriptor, SourceMap, Summary,
+    FenceDelimiterSpans, FenceMarker, FenceReferenceGroup, FenceSemanticItem, FenceTextIndex,
+    FenceTextIndexSource, SharedTextSlice, SourceDescriptor, SourceMap, Summary,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -652,8 +652,9 @@ impl AnalysisDiagramSyntaxFacts {
                 })
                 .collect(),
             outline_items: text_index
-                .outline_items()
+                .semantic_items()
                 .iter()
+                .filter(|item| item.role.contributes_outline())
                 .map(|item| AnalysisLineItemFacts::from_item(item, source_map, body_start))
                 .collect(),
             semantic_items: text_index
@@ -708,7 +709,7 @@ pub struct AnalysisLineItemFacts {
 }
 
 impl AnalysisLineItemFacts {
-    fn from_item(item: &FenceLineItem, source_map: &SourceMap, body_start: usize) -> Self {
+    fn from_item(item: &FenceSemanticItem, source_map: &SourceMap, body_start: usize) -> Self {
         Self {
             name: item.name.clone(),
             detail: item.detail.clone(),

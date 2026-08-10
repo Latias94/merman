@@ -43,6 +43,13 @@ fn payload(
     )
 }
 
+fn outline_items(index: &FenceTextIndex) -> impl Iterator<Item = &super::FenceSemanticItem> {
+    index
+        .semantic_items()
+        .iter()
+        .filter(|item| item.role.contributes_outline())
+}
+
 #[test]
 fn byte_span_contains_half_open_ranges_and_empty_insertions() {
     let span = ByteSpan { start: 0, end: 1 };
@@ -86,7 +93,7 @@ fn unavailable_index_offers_only_source_start_headers() {
     assert!(!body_context.offers(FenceCursorCompletionKind::DiagramHeader));
     assert!(!body_context.offers(FenceCursorCompletionKind::NodeIdentifier));
     assert!(index.node_ids().next().is_none());
-    assert!(index.outline_items().is_empty());
+    assert!(outline_items(&index).next().is_none());
     assert!(index.semantic_items().is_empty());
 }
 
@@ -367,7 +374,9 @@ fn text_index_projects_core_editor_facts() {
     assert!(index.node_ids().any(|id| id == "A"));
     assert_eq!(index.first_reference_span("A").unwrap().start, 13);
     assert_eq!(
-        index.outline_items()[0].detail.as_deref(),
+        outline_items(&index)
+            .next()
+            .and_then(|item| item.detail.as_deref()),
         Some("flowchart node")
     );
     assert!(index.has_directive_prefix("classDef"));
@@ -491,13 +500,8 @@ fn text_index_skips_payload_only_core_facts_for_completion() {
     );
     assert_eq!(index.entity_item_at_offset(9), None);
     assert_eq!(index.symbol_at_offset(9), None);
-    assert!(
-        index
-            .outline_items()
-            .iter()
-            .any(|item| item.name == "section")
-    );
-    assert!(!index.outline_items().iter().any(|item| item.name == "PK"));
+    assert!(outline_items(&index).any(|item| item.name == "section"));
+    assert!(!outline_items(&index).any(|item| item.name == "PK"));
 }
 
 #[test]

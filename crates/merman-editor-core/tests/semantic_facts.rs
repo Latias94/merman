@@ -1,5 +1,12 @@
-use merman_analysis::{FenceSemanticRole, FenceTextIndexSource};
+use merman_analysis::{FenceSemanticItem, FenceSemanticRole, FenceTextIndex, FenceTextIndexSource};
 use merman_editor_core::{DocumentKind, DocumentWorkspace};
+
+fn outline_items(index: &FenceTextIndex) -> impl Iterator<Item = &FenceSemanticItem> {
+    index
+        .semantic_items()
+        .iter()
+        .filter(|item| item.role.contributes_outline())
+}
 
 #[test]
 fn product_families_are_parser_backed_and_role_aware() {
@@ -275,7 +282,7 @@ fn product_families_are_parser_backed_and_role_aware() {
         }
         for name in case.required_outline {
             assert!(
-                index.outline_items().iter().any(|item| item.name == *name),
+                outline_items(index).any(|item| item.name == *name),
                 "missing outline item {name:?} for {}",
                 case.label
             );
