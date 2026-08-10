@@ -9,7 +9,7 @@ Use `merman-analysis` directly when a Rust application needs to validate Mermaid
 ## Quick Start
 
 ```sh
-cargo add merman-analysis@0.8.0-alpha.5
+cargo add merman-analysis@0.8.0-alpha.6
 ```
 
 Analyze one Mermaid diagram:

@@ -14,7 +14,7 @@ Keep the renderer out of ordinary builds by making it an optional documentation 
 
 ```toml
 [dependencies]
-merman-rustdoc = { version = "=0.8.0-alpha.5", optional = true }
+merman-rustdoc = { version = "=0.8.0-alpha.6", optional = true }
 
 [features]
 doc-diagrams = ["dep:merman-rustdoc"]
@@ -56,7 +56,7 @@ Use a smaller closure when the documented diagrams need only the base SVG render
 
 ```toml
 [dependencies]
-merman-rustdoc = { version = "=0.8.0-alpha.5", default-features = false, features = ["svg"], optional = true }
+merman-rustdoc = { version = "=0.8.0-alpha.6", default-features = false, features = ["svg"], optional = true }
 ```
 
 | Feature | Adds |

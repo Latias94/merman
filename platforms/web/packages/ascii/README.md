@@ -4,7 +4,7 @@ Browser-only Merman SDK for supported ASCII diagram output.
 
 ## Install
 
-This package first ships with Merman `0.8.0-alpha.5`. After that version appears in npm, install the current alpha:
+This package has shipped since Merman `0.8.0-alpha.5`. Install the current alpha:
 
 ```sh
 npm install @mermanjs/web-ascii@alpha

@@ -206,7 +206,7 @@ The default feature set is the complete local product. Cargo features are additi
 Install a lint-only binary:
 
 ```sh
-cargo install merman-cli --version 0.8.0-alpha.5 --locked \
+cargo install merman-cli --version 0.8.0-alpha.6 --locked \
   --no-default-features --features analysis
 ```
 
