@@ -97,16 +97,6 @@ impl RoutedLabelText {
     pub(super) fn line_count(&self) -> usize {
         self.lines.len()
     }
-
-    pub(super) fn reversed(&self) -> Self {
-        let mut lines = self.lines.clone();
-        lines.reverse();
-        Self {
-            lines,
-            width: self.width,
-            width_profile: self.width_profile,
-        }
-    }
 }
 
 pub(crate) fn draw_routed_label(canvas: &mut Canvas, label: &EdgeLabel) -> Result<()> {

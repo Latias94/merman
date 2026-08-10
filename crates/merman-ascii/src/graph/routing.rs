@@ -178,7 +178,7 @@ impl RouteLabelTransform {
             Self::VerticalMirror { height } => {
                 let line_count = label.text.line_count();
                 EdgeLabel {
-                    text: label.text.reversed(),
+                    text: label.text,
                     placement: label.placement.with_position(
                         label.placement.x(),
                         height.saturating_sub(label.placement.y().saturating_add(line_count)),
@@ -2261,7 +2261,7 @@ mod tests {
     }
 
     #[test]
-    fn route_label_transform_reverses_vertical_mirrored_multiline_labels() {
+    fn route_label_transform_preserves_vertical_mirrored_multiline_label_order() {
         let label = EdgeLabel {
             text: RoutedLabelText::new("north<br>south").expect("label should exist"),
             placement: RoutedLabelPlacement::new(2, 4, 5),
@@ -2270,7 +2270,7 @@ mod tests {
 
         let transformed = RouteLabelTransform::VerticalMirror { height: 20 }.apply(label);
 
-        assert_eq!(transformed.text.lines(), ["south", "north"]);
+        assert_eq!(transformed.text.lines(), ["north", "south"]);
         assert_eq!(transformed.placement, RoutedLabelPlacement::new(2, 14, 5));
     }
 
