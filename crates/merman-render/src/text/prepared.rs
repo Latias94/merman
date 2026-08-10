@@ -39,6 +39,11 @@ const MAX_PREPARED_TEXT_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 const PREPARED_TEXT_LINE_RECORD_BYTES: usize = 96;
 const PREPARED_TEXT_RUN_RECORD_BYTES: usize = 64;
 const MAX_STRUCTURED_COVERAGE_INPUT_BYTES: usize = MAX_TEXT_PROJECTION_BYTES * 16;
+const MAX_STRUCTURED_FACE_INSPECTIONS: usize = MAX_TEXT_PROJECTION_BYTES * 32;
+const STRUCTURED_COVERAGE_CACHE_LANES: usize = 2;
+const MAX_STRUCTURED_COVERAGE_CACHE_ENTRIES: usize =
+    MAX_TEXT_PROJECTION_BYTES * STRUCTURED_COVERAGE_CACHE_LANES;
+const MAX_STRUCTURED_SPAN_VISITS: usize = MAX_TEXT_PROJECTION_BYTES * 4;
 
 pub(crate) fn merge_prepared_text_typography(
     base: &ThemeTextStyle,
@@ -2626,7 +2631,7 @@ impl PreparedTextLayout {
                 projection.clone(),
             ) {
                 Ok(prepared) => {
-                    self.record_candidate_success(candidate_index, candidate_index != 0);
+                    self.record_candidate_success(candidate_index, candidate.fallback.is_some());
                     return Ok(prepared);
                 }
                 Err(error) => {
@@ -3332,22 +3337,85 @@ struct CompiledStructuredTextRequest {
 
 struct CompiledStructuredTextStyle {
     candidate_faces: Vec<usize>,
+    coverage_lane: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct StructuredCoverageKey {
-    face_index: usize,
-    visible_range: TextByteRange,
-    script: Option<BuzzScript>,
+const STRUCTURED_COVERAGE_UNCHECKED: u32 = u32::MAX;
+const STRUCTURED_COVERAGE_MISSING: u32 = u32::MAX - 1;
+
+struct StructuredCoverageCache {
+    entries: Vec<[u32; STRUCTURED_COVERAGE_CACHE_LANES]>,
 }
 
-type StructuredCoverageCache = HashMap<StructuredCoverageKey, bool>;
+impl StructuredCoverageCache {
+    fn new(span_count: usize) -> Result<Self, TextLayoutError> {
+        let entry_count = span_count
+            .checked_mul(STRUCTURED_COVERAGE_CACHE_LANES)
+            .ok_or(TextLayoutError::LimitExceeded("coverage_cache"))?;
+        if entry_count > MAX_STRUCTURED_COVERAGE_CACHE_ENTRIES {
+            return Err(TextLayoutError::LimitExceeded("coverage_cache"));
+        }
+        Ok(Self {
+            entries: vec![
+                [STRUCTURED_COVERAGE_UNCHECKED; STRUCTURED_COVERAGE_CACHE_LANES];
+                span_count
+            ],
+        })
+    }
+
+    fn get(
+        &self,
+        span_index: usize,
+        lane: usize,
+    ) -> Result<Option<Option<usize>>, TextLayoutError> {
+        let value = *self
+            .entries
+            .get(span_index)
+            .and_then(|entry| entry.get(lane))
+            .ok_or(TextLayoutError::InvalidPreparedText)?;
+        Ok(match value {
+            STRUCTURED_COVERAGE_UNCHECKED => None,
+            STRUCTURED_COVERAGE_MISSING => Some(None),
+            face_index => Some(Some(face_index as usize)),
+        })
+    }
+
+    fn insert(
+        &mut self,
+        span_index: usize,
+        lane: usize,
+        face_index: Option<usize>,
+    ) -> Result<(), TextLayoutError> {
+        let slot = self
+            .entries
+            .get_mut(span_index)
+            .and_then(|entry| entry.get_mut(lane))
+            .ok_or(TextLayoutError::InvalidPreparedText)?;
+        if *slot != STRUCTURED_COVERAGE_UNCHECKED {
+            return Err(TextLayoutError::InvalidPreparedText);
+        }
+        *slot = match face_index {
+            Some(face_index) => u32::try_from(face_index)
+                .ok()
+                .filter(|face_index| *face_index < STRUCTURED_COVERAGE_MISSING)
+                .ok_or(TextLayoutError::InvalidPreparedText)?,
+            None => STRUCTURED_COVERAGE_MISSING,
+        };
+        Ok(())
+    }
+}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct StructuredShapingWork {
     coverage_input_bytes: usize,
+    face_inspections: usize,
+    coverage_cache_insertions: usize,
     wrapping_input_bytes: usize,
     metrics_input_bytes: usize,
+    wrapping_span_visits: usize,
+    metrics_span_visits: usize,
+    wrapping_line_ranges: usize,
+    metrics_line_ranges: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -3382,6 +3450,115 @@ impl StructuredShapingWork {
             return Err(TextLayoutError::LimitExceeded("shaping_work"));
         }
         Ok(())
+    }
+
+    fn record_span_visit(&mut self, pass: StructuredShapingPass) -> Result<(), TextLayoutError> {
+        let counter = match pass {
+            StructuredShapingPass::Wrapping => &mut self.wrapping_span_visits,
+            StructuredShapingPass::Metrics => &mut self.metrics_span_visits,
+            StructuredShapingPass::Coverage => return Ok(()),
+        };
+        *counter = counter
+            .checked_add(1)
+            .ok_or(TextLayoutError::LimitExceeded("span_work"))?;
+        if *counter > MAX_STRUCTURED_SPAN_VISITS {
+            return Err(TextLayoutError::LimitExceeded("span_work"));
+        }
+        Ok(())
+    }
+
+    fn record_face_inspection(&mut self) -> Result<(), TextLayoutError> {
+        self.face_inspections = self
+            .face_inspections
+            .checked_add(1)
+            .ok_or(TextLayoutError::LimitExceeded("coverage_work"))?;
+        if self.face_inspections > MAX_STRUCTURED_FACE_INSPECTIONS {
+            return Err(TextLayoutError::LimitExceeded("coverage_work"));
+        }
+        Ok(())
+    }
+
+    fn record_coverage_cache_insertion(&mut self) -> Result<(), TextLayoutError> {
+        self.coverage_cache_insertions = self
+            .coverage_cache_insertions
+            .checked_add(1)
+            .ok_or(TextLayoutError::LimitExceeded("coverage_cache"))?;
+        if self.coverage_cache_insertions > MAX_STRUCTURED_COVERAGE_CACHE_ENTRIES {
+            return Err(TextLayoutError::LimitExceeded("coverage_cache"));
+        }
+        Ok(())
+    }
+
+    fn record_line_range(&mut self, pass: StructuredShapingPass) -> Result<(), TextLayoutError> {
+        let counter = match pass {
+            StructuredShapingPass::Wrapping => &mut self.wrapping_line_ranges,
+            StructuredShapingPass::Metrics => &mut self.metrics_line_ranges,
+            StructuredShapingPass::Coverage => return Ok(()),
+        };
+        *counter = counter
+            .checked_add(1)
+            .ok_or(TextLayoutError::LimitExceeded("span_work"))?;
+        if *counter > MAX_PREPARED_TEXT_LINES {
+            return Err(TextLayoutError::LimitExceeded("span_work"));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Default)]
+struct ProjectionSpanCursor {
+    next_index: usize,
+    previous_line_end: usize,
+}
+
+impl ProjectionSpanCursor {
+    fn range_for_line(
+        &mut self,
+        projection: &TextProjection,
+        line_range: TextByteRange,
+        pass: StructuredShapingPass,
+        work: &mut StructuredShapingWork,
+    ) -> Result<std::ops::Range<usize>, TextLayoutError> {
+        work.record_line_range(pass)?;
+        let start = line_range.start();
+        let end = line_range.end();
+        if start > end || start < self.previous_line_end || end > projection.visible().len() {
+            return Err(TextLayoutError::InvalidPreparedText);
+        }
+
+        let spans = projection.spans();
+        while let Some(span) = spans.get(self.next_index) {
+            work.record_span_visit(pass)?;
+            if span.visible().end() <= start {
+                self.next_index = self.next_index.saturating_add(1);
+                continue;
+            }
+            break;
+        }
+
+        let first = self.next_index;
+        let mut atom_cursor = start;
+        while let Some(span) = spans.get(self.next_index) {
+            work.record_span_visit(pass)?;
+            let visible = span.visible();
+            if visible.start() >= end {
+                break;
+            }
+            if visible.start() < start
+                || visible.end() > end
+                || visible.start() != atom_cursor
+                || visible.end() <= visible.start()
+            {
+                return Err(TextLayoutError::InvalidPreparedText);
+            }
+            atom_cursor = visible.end();
+            self.next_index = self.next_index.saturating_add(1);
+        }
+        if atom_cursor != end {
+            return Err(TextLayoutError::InvalidPreparedText);
+        }
+        self.previous_line_end = end;
+        Ok(first..self.next_index)
     }
 }
 
@@ -3984,13 +4161,18 @@ impl NativeCatalogTextMeasurer {
                 Language::from_str(value).map_err(|_| TextLayoutError::InvalidRequest("language"))
             })
             .transpose()?;
+        let wrapping = self.compile_structured_style(request.wrapping_typography())?;
+        let mut metrics = self.compile_structured_style(request.metrics_typography())?;
+        if metrics.candidate_faces != wrapping.candidate_faces {
+            metrics.coverage_lane = 1;
+        }
         Ok(CompiledStructuredTextRequest {
             features,
             variations,
             requested_script,
             language,
-            wrapping: self.compile_structured_style(request.wrapping_typography())?,
-            metrics: self.compile_structured_style(request.metrics_typography())?,
+            wrapping,
+            metrics,
         })
     }
 
@@ -4003,7 +4185,10 @@ impl NativeCatalogTextMeasurer {
         if candidate_faces.is_empty() {
             return Err(TextLayoutError::FontFamilyUnavailable);
         }
-        Ok(CompiledStructuredTextStyle { candidate_faces })
+        Ok(CompiledStructuredTextStyle {
+            candidate_faces,
+            coverage_lane: 0,
+        })
     }
 
     fn candidate_face_indices(&self, selector: &FaceSelector) -> Vec<usize> {
@@ -4093,46 +4278,40 @@ impl NativeCatalogTextMeasurer {
     fn choose_structured_face_index(
         &self,
         text: &str,
-        visible_range: TextByteRange,
-        candidates: &[usize],
+        span_index: usize,
+        coverage_lane: usize,
+        style: &CompiledStructuredTextStyle,
         request: &PrepareTextRequest,
         compiled: &CompiledStructuredTextRequest,
         script: Option<BuzzScript>,
         coverage_cache: &mut StructuredCoverageCache,
         work: &mut StructuredShapingWork,
     ) -> Result<Option<usize>, TextLayoutError> {
-        for index in candidates.iter().copied() {
-            if let Some(character) = single_unicode_scalar(text)
-                && !self.face_covers_scalar(index, character)
-            {
-                continue;
-            }
-            let key = StructuredCoverageKey {
-                face_index: index,
-                visible_range,
+        if let Some(face_index) = coverage_cache.get(span_index, coverage_lane)? {
+            return Ok(face_index);
+        }
+
+        let mut selected = None;
+        for index in style.candidate_faces.iter().copied() {
+            work.record_face_inspection()?;
+            work.record(StructuredShapingPass::Coverage, text.len())?;
+            let covers = self.face_shapes_cluster(
+                index,
+                text,
+                request.direction(),
                 script,
-            };
-            let covers = if let Some(covers) = coverage_cache.get(&key) {
-                *covers
-            } else {
-                work.record(StructuredShapingPass::Coverage, text.len())?;
-                let covers = self.face_shapes_cluster(
-                    index,
-                    text,
-                    request.direction(),
-                    script,
-                    compiled.language.clone(),
-                    &compiled.features,
-                    &compiled.variations,
-                )?;
-                coverage_cache.insert(key, covers);
-                covers
-            };
+                compiled.language.clone(),
+                &compiled.features,
+                &compiled.variations,
+            )?;
             if covers {
-                return Ok(Some(index));
+                selected = Some(index);
+                break;
             }
         }
-        Ok(None)
+        work.record_coverage_cache_insertion()?;
+        coverage_cache.insert(span_index, coverage_lane, selected)?;
+        Ok(selected)
     }
 
     fn face_covers_scalar(&self, face_index: usize, character: char) -> bool {
@@ -4243,19 +4422,20 @@ impl NativeCatalogTextMeasurer {
     fn shape_structured_line_with_evidence(
         &self,
         text: &str,
-        visible_start: usize,
+        line_range: TextByteRange,
         projection: &TextProjection,
         request: &PrepareTextRequest,
         typography: &ThemeTextStyle,
         compiled: &CompiledStructuredTextRequest,
         style: &CompiledStructuredTextStyle,
         coverage_cache: &mut StructuredCoverageCache,
+        span_cursor: &mut ProjectionSpanCursor,
         work: &mut StructuredShapingWork,
     ) -> Result<ShapedStructuredLine, TextLayoutError> {
         self.shape_structured_line_internal(
             text,
             projection,
-            visible_start,
+            line_range,
             request,
             typography,
             compiled,
@@ -4263,6 +4443,7 @@ impl NativeCatalogTextMeasurer {
             true,
             StructuredShapingPass::Metrics,
             coverage_cache,
+            span_cursor,
             work,
         )
     }
@@ -4271,7 +4452,7 @@ impl NativeCatalogTextMeasurer {
         &self,
         text: &str,
         projection: &TextProjection,
-        line_visible_start: usize,
+        line_range: TextByteRange,
         request: &PrepareTextRequest,
         typography: &ThemeTextStyle,
         compiled: &CompiledStructuredTextRequest,
@@ -4279,8 +4460,18 @@ impl NativeCatalogTextMeasurer {
         emit_evidence: bool,
         pass: StructuredShapingPass,
         coverage_cache: &mut StructuredCoverageCache,
+        span_cursor: &mut ProjectionSpanCursor,
         work: &mut StructuredShapingWork,
     ) -> Result<ShapedStructuredLine, TextLayoutError> {
+        let line_visible_start = line_range.start();
+        let line_visible_end = line_range.end();
+        if line_visible_end.saturating_sub(line_visible_start) != text.len()
+            || !projection.visible().is_char_boundary(line_visible_start)
+            || !projection.visible().is_char_boundary(line_visible_end)
+        {
+            return Err(TextLayoutError::InvalidPreparedText);
+        }
+        let span_range = span_cursor.range_for_line(projection, line_range, pass, work)?;
         if text.is_empty() {
             return Ok(ShapedStructuredLine {
                 metrics: ShapedLineMetrics::default(),
@@ -4297,18 +4488,10 @@ impl NativeCatalogTextMeasurer {
         let mut run_start = 0;
         let mut runs = Vec::new();
         let mut clusters = Vec::new();
-        let line_visible_end = line_visible_start
-            .checked_add(text.len())
-            .ok_or(TextLayoutError::InvalidPreparedText)?;
         let mut atom_cursor = 0;
-        for span in projection.spans() {
+        for span_index in span_range {
+            let span = &projection.spans()[span_index];
             let visible = span.visible();
-            if visible.end() <= line_visible_start {
-                continue;
-            }
-            if visible.start() >= line_visible_end {
-                break;
-            }
             if visible.start() < line_visible_start || visible.end() > line_visible_end {
                 return Err(TextLayoutError::InvalidPreparedText);
             }
@@ -4320,14 +4503,22 @@ impl NativeCatalogTextMeasurer {
             let atom = text
                 .get(atom_start..atom_end)
                 .ok_or(TextLayoutError::InvalidPreparedText)?;
+            let atom_script = cluster_script(atom);
             let script = compiled
                 .requested_script
-                .or_else(|| cluster_script(atom).or(current_script));
+                .or_else(|| atom_script.or(current_script));
+            let context_dependent_script =
+                compiled.requested_script.is_none() && atom_script.is_none();
+            let coverage_lane = usize::from(
+                matches!(pass, StructuredShapingPass::Metrics)
+                    && (style.coverage_lane != 0 || context_dependent_script),
+            );
             let face_index = self
                 .choose_structured_face_index(
                     atom,
-                    visible,
-                    &style.candidate_faces,
+                    span_index,
+                    coverage_lane,
+                    style,
                     request,
                     compiled,
                     script,
@@ -4548,13 +4739,14 @@ impl NativeCatalogTextMeasurer {
         request: &PrepareTextRequest,
         compiled: &CompiledStructuredTextRequest,
         coverage_cache: &mut StructuredCoverageCache,
+        span_cursor: &mut ProjectionSpanCursor,
         work: &mut StructuredShapingWork,
     ) -> Result<ShapedWrapLine, TextLayoutError> {
         let text = source.text(projection.visible())?;
         let shaped = self.shape_structured_line_internal(
             text,
             projection,
-            source.visible_range().start(),
+            source.visible_range(),
             request,
             request.wrapping_typography(),
             compiled,
@@ -4562,6 +4754,7 @@ impl NativeCatalogTextMeasurer {
             false,
             StructuredShapingPass::Wrapping,
             coverage_cache,
+            span_cursor,
             work,
         )?;
         let atoms = coalesce_wrap_atoms(
@@ -4686,8 +4879,9 @@ impl NativeCatalogTextMeasurer {
         let request = backend_request.request();
         let projection = backend_request.projection();
         let compiled = self.compile_structured_request(request)?;
-        let mut coverage_cache = StructuredCoverageCache::new();
+        let mut coverage_cache = StructuredCoverageCache::new(projection.spans().len())?;
         let mut work = StructuredShapingWork::default();
+        let mut wrapping_span_cursor = ProjectionSpanCursor::default();
         let source_lines = split_projected_visible_lines(projection.visible());
         let mut wrapped_lines = Vec::new();
         let mut raw_width_px: f64 = 0.0;
@@ -4709,6 +4903,7 @@ impl NativeCatalogTextMeasurer {
                         request,
                         &compiled,
                         &mut coverage_cache,
+                        &mut wrapping_span_cursor,
                         &mut work,
                     )?;
                     wrapped_lines.extend(self.wrap_svg_structured_line(
@@ -4727,6 +4922,7 @@ impl NativeCatalogTextMeasurer {
                         request,
                         &compiled,
                         &mut coverage_cache,
+                        &mut wrapping_span_cursor,
                         &mut work,
                     )?;
                     raw_width_px =
@@ -4751,17 +4947,19 @@ impl NativeCatalogTextMeasurer {
         let line_height_px = self.structured_line_height(request.metrics_typography());
         let mut lines = Vec::with_capacity(wrapped_lines.len());
         let mut runs = Vec::new();
+        let mut metrics_span_cursor = ProjectionSpanCursor::default();
         for line in &wrapped_lines {
             let text = line.text(projection.visible())?;
             let shaped = self.shape_structured_line_with_evidence(
                 text,
-                line.visible_range().start(),
+                line.visible_range(),
                 projection,
                 request,
                 request.metrics_typography(),
                 &compiled,
                 &compiled.metrics,
                 &mut coverage_cache,
+                &mut metrics_span_cursor,
                 &mut work,
             )?;
             lines.push(PreparedTextLineResponse::new(
@@ -5987,7 +6185,8 @@ mod tests {
             let request = PrepareTextRequest::new(text, typography.clone()).with_wrap(wrap);
             let backend_request = backend_request_for(&layout, &request);
             let visible_bytes = backend_request.visible_text().len();
-            let (_, work) = measurer
+            let projection_spans = backend_request.projection().spans().len();
+            let (response, work) = measurer
                 .prepare_structured_text_with_work(&backend_request)
                 .expect("bounded fixture text should prepare linearly");
 
@@ -5998,7 +6197,63 @@ mod tests {
                     .saturating_add(work.metrics_input_bytes)
                     <= visible_bytes.saturating_mul(2)
             );
+            assert_eq!(work.wrapping_line_ranges, 1);
+            assert_eq!(work.metrics_line_ranges, response.lines().len());
+            assert!(
+                work.wrapping_span_visits
+                    <= projection_spans.saturating_add(work.wrapping_line_ranges.saturating_mul(2))
+            );
+            assert!(
+                work.metrics_span_visits
+                    <= projection_spans.saturating_add(work.metrics_line_ranges.saturating_mul(2))
+            );
         }
+    }
+
+    #[test]
+    fn projection_span_cursor_preserves_gaps_empty_lines_and_expanded_atoms() {
+        let projection = TextProjection::new("a\n\nß", ThemeTextTransform::Uppercase)
+            .expect("projection should build");
+        assert_eq!(projection.visible(), "A\n\nSS");
+        let lines = split_projected_visible_lines(projection.visible());
+        assert_eq!(
+            lines
+                .iter()
+                .map(|line| line.visible_range())
+                .collect::<Vec<_>>(),
+            vec![
+                TextByteRange::new(0, 1),
+                TextByteRange::new(2, 2),
+                TextByteRange::new(3, 5),
+            ]
+        );
+
+        let mut cursor = ProjectionSpanCursor::default();
+        let mut work = StructuredShapingWork::default();
+        let ranges = lines
+            .iter()
+            .map(|line| {
+                cursor.range_for_line(
+                    &projection,
+                    line.visible_range(),
+                    StructuredShapingPass::Metrics,
+                    &mut work,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .expect("ordered projected lines should admit");
+
+        assert_eq!(ranges[0].len(), 1);
+        assert!(ranges[1].is_empty());
+        assert_eq!(ranges[2].len(), 1);
+        assert_eq!(work.metrics_line_ranges, lines.len());
+        assert!(
+            work.metrics_span_visits
+                <= projection
+                    .spans()
+                    .len()
+                    .saturating_add(lines.len().saturating_mul(2))
+        );
     }
 
     #[test]
@@ -6023,6 +6278,8 @@ mod tests {
             .expect("combining-mark cluster should be shaped by the native backend");
 
         assert_eq!(work.coverage_input_bytes, "e\u{301}".len());
+        assert_eq!(work.coverage_cache_insertions, 1);
+        assert_eq!(work.face_inspections, 1);
     }
 
     #[test]
@@ -6043,6 +6300,31 @@ mod tests {
             .expect("scalar coverage should be confirmed by shaping");
 
         assert_eq!(work.coverage_input_bytes, 1);
+        assert_eq!(work.coverage_cache_insertions, 1);
+        assert_eq!(work.face_inspections, 1);
+    }
+
+    #[test]
+    fn native_coverage_cache_retains_one_face_decision_per_span() {
+        let catalog_request =
+            PrepareCatalogRequest::new(mixed_catalog(), FontSourcePolicy::embedded_only());
+        let layout = NativeTextLayoutBackend::default()
+            .prepare(&catalog_request)
+            .expect("native backend should prepare fixture catalog");
+        let measurer = NativeCatalogTextMeasurer::new(&catalog_request, FontSource::Embedded)
+            .expect("fixture catalog should construct the native measurer");
+        let typography = ThemeTextStyle::default().with_font_stack(
+            FontStack::new(["Excalifont", "Xiaolai"]).expect("fixture families are valid"),
+        );
+        let request = PrepareTextRequest::new("图", typography);
+        let backend_request = backend_request_for(&layout, &request);
+        let (_, work) = measurer
+            .prepare_structured_text_with_work(&backend_request)
+            .expect("CJK fallback should select the second catalog face");
+
+        assert_eq!(work.face_inspections, 2);
+        assert_eq!(work.coverage_cache_insertions, 1);
+        assert_eq!(work.coverage_input_bytes, "图".len() * 2);
     }
 
     #[test]

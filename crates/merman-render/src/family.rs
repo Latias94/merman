@@ -737,6 +737,7 @@ impl ResolvedFamilyStylePlan {
         model: &merman_core::diagrams::state::StateDiagramRenderModel,
         effective_config: &serde_json::Value,
         title: Option<&str>,
+        prepared_text_available: bool,
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> Result<()> {
         debug_assert_eq!(self.family_kind, RenderFamilyKind::State);
@@ -745,6 +746,7 @@ impl ResolvedFamilyStylePlan {
             effective_config,
             self.resolved_theme.as_deref(),
             title,
+            prepared_text_available,
             work_meter,
         )?;
         self.theme_evidence = theme_evidence;
@@ -897,6 +899,7 @@ impl FamilyRenderContext {
             model,
             effective_config,
             title,
+            self.session.prepared_text_layout().is_some(),
             self.session.work_meter().as_ref(),
         )
     }
@@ -3869,6 +3872,56 @@ mod tests {
                 .contains("statediagramTitleText{text-anchor:middle;font-family:"),
             "title CSS must use the computed State text style: {}",
             rendered.svg()
+        );
+    }
+
+    #[test]
+    fn state_spacing_without_prepared_text_is_suppressed_and_reported() {
+        let typography = ThemeTextStyle::default()
+            .with_letter_spacing_px(10.0)
+            .expect("valid State letter spacing")
+            .with_word_spacing_px(6.0)
+            .expect("valid State word spacing");
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_typography(TypographySpec::default().with_default(typography)),
+            )
+            .expect("compile State spacing theme");
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "stateDiagram-v2\nReady --> Done\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("State source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&theme)
+                .expect("begin themed session without a custom font catalog"),
+        )
+        .expect("best-effort State spacing preparation")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render State SVG");
+
+        assert!(!rendered.svg().contains("letter-spacing"));
+        assert!(!rendered.svg().contains("word-spacing"));
+        assert_eq!(
+            rendered.style_report().verification(),
+            FamilyStyleVerification::Unverified
+        );
+        assert!(
+            rendered
+                .style_report()
+                .theme_residuals()
+                .iter()
+                .any(|residual| {
+                    residual.key() == &FamilyThemeMechanismKey::Typography
+                        && residual.reason() == FamilyThemeResidualReason::UnsupportedTypography
+                })
         );
     }
 

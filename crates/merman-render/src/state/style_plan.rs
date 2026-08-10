@@ -104,6 +104,10 @@ impl ResolvedLabelTypography {
                 insert_emitted(out, "font-style", font_style);
             }
         }
+        if self.prepared_typography.is_none() {
+            out.shift_remove("letter-spacing");
+            out.shift_remove("word-spacing");
+        }
     }
 }
 
@@ -395,6 +399,7 @@ struct StateThemeEvidenceBuilder<'a> {
     consumed_palettes: BTreeSet<ThemeTarget>,
     has_visible_text: bool,
     base_typography_properties: BTreeSet<ThemeTypographyProperty>,
+    prepared_text_available: bool,
     base_typography_applied: bool,
     base_typography_residual: bool,
 }
@@ -422,7 +427,7 @@ struct StateThemeUse {
 }
 
 impl<'a> StateThemeEvidenceBuilder<'a> {
-    fn new(theme: Option<&'a ResolvedDiagramTheme>) -> Self {
+    fn new(theme: Option<&'a ResolvedDiagramTheme>, prepared_text_available: bool) -> Self {
         let base_typography_properties = theme
             .map(|theme| configured_base_typography_properties(theme.typography()))
             .unwrap_or_default();
@@ -434,6 +439,7 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
             consumed_palettes: BTreeSet::new(),
             has_visible_text: false,
             base_typography_properties,
+            prepared_text_available,
             base_typography_applied: false,
             base_typography_residual: false,
         }
@@ -472,9 +478,14 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
                 | ThemeTypographyProperty::FontSize
                 | ThemeTypographyProperty::FontWeight
                 | ThemeTypographyProperty::FontStyle => self.base_typography_applied = true,
+                ThemeTypographyProperty::LetterSpacing | ThemeTypographyProperty::WordSpacing => {
+                    if self.prepared_text_available {
+                        self.base_typography_applied = true;
+                    } else {
+                        self.base_typography_residual = true;
+                    }
+                }
                 ThemeTypographyProperty::LineHeight
-                | ThemeTypographyProperty::LetterSpacing
-                | ThemeTypographyProperty::WordSpacing
                 | ThemeTypographyProperty::Transform
                 | ThemeTypographyProperty::Decoration
                 | ThemeTypographyProperty::TextAlign
@@ -584,7 +595,7 @@ impl StateStylePlan {
     ) -> Self {
         let work_meter =
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        Self::resolve_internal(model, effective_config, None, None, &work_meter)
+        Self::resolve_internal(model, effective_config, None, None, false, &work_meter)
             .expect("an unthemed State style plan cannot exhaust theme selector work")
             .0
     }
@@ -594,9 +605,17 @@ impl StateStylePlan {
         effective_config: &serde_json::Value,
         resolved_theme: Option<&ResolvedDiagramTheme>,
         title: Option<&str>,
+        prepared_text_available: bool,
         work_meter: &OperationWorkMeter,
     ) -> Result<(Self, FamilyThemeEvidence), ResourceLimitExceeded> {
-        Self::resolve_internal(model, effective_config, resolved_theme, title, work_meter)
+        Self::resolve_internal(
+            model,
+            effective_config,
+            resolved_theme,
+            title,
+            prepared_text_available,
+            work_meter,
+        )
     }
 
     fn resolve_internal(
@@ -604,6 +623,7 @@ impl StateStylePlan {
         effective_config: &serde_json::Value,
         resolved_theme: Option<&ResolvedDiagramTheme>,
         title: Option<&str>,
+        prepared_text_available: bool,
         work_meter: &OperationWorkMeter,
     ) -> Result<(Self, FamilyThemeEvidence), ResourceLimitExceeded> {
         let compatibility = MermaidThemeAdapter::new(effective_config).state_diagram();
@@ -612,7 +632,9 @@ impl StateStylePlan {
         let html_labels = config_view.render_settings().html_labels;
         let structured_typography =
             resolved_theme.is_some_and(|theme| theme.typography() != &ThemeTextStyle::default());
-        let base_text_typography = resolved_theme.map(|theme| theme.typography().clone());
+        let base_text_typography = prepared_text_available
+            .then(|| resolved_theme.map(|theme| theme.typography().clone()))
+            .flatten();
         let mut base_text_style = config_text_style.clone();
         if let Some(theme) = resolved_theme {
             apply_theme_base_typography(&mut base_text_style, theme.typography());
@@ -623,7 +645,8 @@ impl StateStylePlan {
             apply_theme_base_typography(&mut title_base_text_style, theme.typography());
         }
         let mut residuals = Vec::new();
-        let mut theme_evidence = StateThemeEvidenceBuilder::new(resolved_theme);
+        let mut theme_evidence =
+            StateThemeEvidenceBuilder::new(resolved_theme, prepared_text_available);
         let has_title = title.is_some_and(|value| !value.trim().is_empty());
         if has_title {
             theme_evidence.observe_text(ThemeTarget::Title);
@@ -639,9 +662,13 @@ impl StateStylePlan {
         )?;
         let transition_text_style =
             resolve_semantic_text_style(&base_text_style, semantic_transition_text.as_ref());
-        let transition_text_typography = semantic_transition_text
-            .as_ref()
-            .map(|style| style.typography().clone());
+        let transition_text_typography = prepared_text_available
+            .then(|| {
+                semantic_transition_text
+                    .as_ref()
+                    .map(|style| style.typography().clone())
+            })
+            .flatten();
         let semantic_composite_text = resolve_theme_text_style(
             resolved_theme,
             ThemeTarget::CompositeLabel,
@@ -651,9 +678,13 @@ impl StateStylePlan {
         )?;
         let composite_text_style =
             resolve_semantic_text_style(&base_text_style, semantic_composite_text.as_ref());
-        let composite_text_typography = semantic_composite_text
-            .as_ref()
-            .map(|style| style.typography().clone());
+        let composite_text_typography = prepared_text_available
+            .then(|| {
+                semantic_composite_text
+                    .as_ref()
+                    .map(|style| style.typography().clone())
+            })
+            .flatten();
         let semantic_title_text = resolve_theme_text_style(
             resolved_theme,
             ThemeTarget::Title,
@@ -671,9 +702,13 @@ impl StateStylePlan {
             ResolvedLabelTypography::new(composite_text_style, composite_text_typography);
         let title_label_typography = ResolvedLabelTypography::new(
             title_text_style,
-            semantic_title_text
-                .as_ref()
-                .map(|style| style.typography().clone()),
+            prepared_text_available
+                .then(|| {
+                    semantic_title_text
+                        .as_ref()
+                        .map(|style| style.typography().clone())
+                })
+                .flatten(),
         );
         if has_title {
             theme_evidence
@@ -1339,6 +1374,18 @@ impl StateThemeEvidenceBuilder<'_> {
         if matches!(patch.font_style, Specified::Clear) {
             self.reject_typography(use_id, style, ThemeTypographyProperty::FontStyle);
         }
+        if matches!(patch.letter_spacing_px, Specified::Clear)
+            || (!self.prepared_text_available
+                && matches!(patch.letter_spacing_px, Specified::Value(_)))
+        {
+            self.reject_typography(use_id, style, ThemeTypographyProperty::LetterSpacing);
+        }
+        if matches!(patch.word_spacing_px, Specified::Clear)
+            || (!self.prepared_text_available
+                && matches!(patch.word_spacing_px, Specified::Value(_)))
+        {
+            self.reject_typography(use_id, style, ThemeTypographyProperty::WordSpacing);
+        }
     }
 
     fn reject_advanced_typography(&mut self, use_id: StateThemeUseId, style: &ResolvedThemeStyle) {
@@ -1347,14 +1394,6 @@ impl StateThemeEvidenceBuilder<'_> {
             (
                 ThemeTypographyProperty::LineHeight,
                 !patch.line_height.is_unspecified(),
-            ),
-            (
-                ThemeTypographyProperty::LetterSpacing,
-                !patch.letter_spacing_px.is_unspecified(),
-            ),
-            (
-                ThemeTypographyProperty::WordSpacing,
-                !patch.word_spacing_px.is_unspecified(),
             ),
             (
                 ThemeTypographyProperty::Transform,
@@ -1599,6 +1638,7 @@ fn prepare_node(
     theme_evidence: &mut StateThemeEvidenceBuilder<'_>,
     work_meter: &OperationWorkMeter,
 ) -> Result<StateNodeStylePlan, ResourceLimitExceeded> {
+    let prepared_text_available = theme_evidence.prepared_text_available;
     let semantic_shape = resolve_theme_style(resolved_theme, target, variant, ordinal, work_meter)?;
     let semantic_label = resolve_theme_text_style(
         resolved_theme,
@@ -1848,9 +1888,13 @@ fn prepare_node(
     }
 
     let semantic_text_style = resolve_semantic_text_style(base_text_style, semantic_label.as_ref());
-    let semantic_prepared_typography = semantic_label
-        .as_ref()
-        .map(|style| style.typography().clone());
+    let semantic_prepared_typography = prepared_text_available
+        .then(|| {
+            semantic_label
+                .as_ref()
+                .map(|style| style.typography().clone())
+        })
+        .flatten();
     if target == ThemeTarget::Composite {
         if let Some(style) = semantic_label.as_ref() {
             if let Some(theme) = resolved_theme {
@@ -1977,6 +2021,7 @@ fn prepare_edge(
     theme_evidence: &mut StateThemeEvidenceBuilder<'_>,
     work_meter: &OperationWorkMeter,
 ) -> Result<StateEdgeStylePlan, ResourceLimitExceeded> {
+    let prepared_text_available = theme_evidence.prepared_text_available;
     let semantic_path = resolve_theme_style(
         resolved_theme,
         ThemeTarget::Transition,
@@ -2061,9 +2106,13 @@ fn prepare_edge(
     }
     let label_typography = ResolvedLabelTypography::new(
         resolve_semantic_text_style(base_text_style, semantic_label.as_ref()),
-        semantic_label
-            .as_ref()
-            .map(|style| style.typography().clone()),
+        prepared_text_available
+            .then(|| {
+                semantic_label
+                    .as_ref()
+                    .map(|style| style.typography().clone())
+            })
+            .flatten(),
     );
     label_typography.canonicalize_emission(&mut label_emission);
 
@@ -2470,6 +2519,14 @@ fn parse_source_font_stack(value: &str) -> Option<FontStack> {
             while let Ok(component) = parser.try_parse(|input| input.expect_ident_cloned()) {
                 components.push(component.to_string());
             }
+            if components.iter().any(|component| {
+                matches!(
+                    component.to_ascii_lowercase().as_str(),
+                    "inherit" | "initial" | "revert" | "revert-layer" | "unset"
+                )
+            }) {
+                return None;
+            }
             components.join(" ")
         };
         families.push(family);
@@ -2482,14 +2539,6 @@ fn parse_source_font_stack(value: &str) -> Option<FontStack> {
         }
     }
 
-    if families.len() == 1
-        && matches!(
-            families[0].to_ascii_lowercase().as_str(),
-            "inherit" | "initial" | "revert" | "revert-layer" | "unset"
-        )
-    {
-        return None;
-    }
     FontStack::new(families).ok()
 }
 
@@ -2646,6 +2695,20 @@ fn append_semantic_text_emission(
     if let Specified::Value(font_style) = patch.font_style {
         insert_emitted(out, "font-style", font_style.id());
     }
+    if let Specified::Value(letter_spacing_px) = patch.letter_spacing_px {
+        insert_emitted(
+            out,
+            "letter-spacing",
+            format!("{}px", f64::from(letter_spacing_px)),
+        );
+    }
+    if let Specified::Value(word_spacing_px) = patch.word_spacing_px {
+        insert_emitted(
+            out,
+            "word-spacing",
+            format!("{}px", f64::from(word_spacing_px)),
+        );
+    }
 }
 
 fn append_theme_base_text_emission(
@@ -2664,6 +2727,20 @@ fn append_theme_base_text_emission(
     );
     insert_emitted(out, "font-weight", style.font_weight().to_string());
     insert_emitted(out, "font-style", style.font_style().id());
+    if style.letter_spacing_px().abs() > f32::EPSILON {
+        insert_emitted(
+            out,
+            "letter-spacing",
+            format!("{}px", f64::from(style.letter_spacing_px())),
+        );
+    }
+    if style.word_spacing_px().abs() > f32::EPSILON {
+        insert_emitted(
+            out,
+            "word-spacing",
+            format!("{}px", f64::from(style.word_spacing_px())),
+        );
+    }
 }
 
 fn insert_emitted(
@@ -2743,8 +2820,15 @@ mod tests {
         theme: &ResolvedDiagramTheme,
         title: Option<&str>,
     ) -> (StateStylePlan, FamilyThemeEvidence) {
-        StateStylePlan::resolve_with_evidence(model, config, Some(theme), title, &test_work_meter())
-            .expect("resolve State theme plan")
+        StateStylePlan::resolve_with_evidence(
+            model,
+            config,
+            Some(theme),
+            title,
+            true,
+            &test_work_meter(),
+        )
+        .expect("resolve State theme plan")
     }
 
     fn rect_node() -> StateDiagramRenderNode {
@@ -2937,6 +3021,20 @@ mod tests {
             overridden
                 .label_style_attr()
                 .contains("font-style:oblique !important")
+        );
+    }
+
+    #[test]
+    fn source_font_stack_rejects_unquoted_css_wide_keywords_in_any_position() {
+        assert!(parse_source_font_stack("Excalifont, inherit").is_none());
+        assert!(parse_source_font_stack("initial, Excalifont").is_none());
+        assert!(parse_source_font_stack("Family unset, serif").is_none());
+
+        let quoted = parse_source_font_stack("\"inherit\", Excalifont")
+            .expect("quoted CSS-wide text remains a valid family name");
+        assert_eq!(
+            quoted.families(),
+            &["inherit".to_string(), "Excalifont".to_string()]
         );
     }
 
@@ -3324,6 +3422,7 @@ mod tests {
             &json!({}),
             Some(&resolved),
             None,
+            true,
             &work_meter,
         )
         .expect("resolve metered State theme plan");
@@ -3419,6 +3518,7 @@ mod tests {
             &json!({}),
             Some(&resolved),
             None,
+            true,
             &work_meter,
         )
         .expect("resolve metered State edge theme plan");
@@ -4041,6 +4141,94 @@ mod tests {
             residual.key() == &key
                 && residual.reason() == FamilyThemeResidualReason::UnsupportedTypography
         }));
+    }
+
+    #[test]
+    fn base_spacing_is_shared_by_measurement_emission_and_evidence() {
+        let typography = ThemeTextStyle::default()
+            .with_letter_spacing_px(1.5)
+            .unwrap()
+            .with_word_spacing_px(2.5)
+            .unwrap();
+        let resolved = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_typography(TypographySpec::default().with_default(typography)),
+            )
+            .unwrap()
+            .resolve(crate::render_family::RenderFamilyKind::State);
+        let mut model = StateDiagramRenderModel::default();
+        model.nodes.push(semantic_node("Ready", "rect"));
+
+        let (plan, evidence) =
+            resolve_theme_plan_with_evidence(&model, &json!({}), &resolved, None);
+        let node = plan.node("Ready").expect("prepared node style");
+        let prepared = node
+            .resolved_label_typography()
+            .prepared_typography()
+            .expect("structured typography");
+        let key = FamilyThemeMechanismKey::Typography;
+
+        assert_eq!(prepared.letter_spacing_px(), 1.5);
+        assert_eq!(prepared.word_spacing_px(), 2.5);
+        assert!(
+            node.label_style_attr()
+                .contains("letter-spacing:1.5px !important")
+        );
+        assert!(
+            node.label_style_attr()
+                .contains("word-spacing:2.5px !important")
+        );
+        assert!(evidence.applied().contains(&key));
+        assert!(evidence.residuals().iter().all(|item| item.key() != &key));
+    }
+
+    #[test]
+    fn semantic_spacing_is_shared_by_measurement_emission_and_evidence() {
+        let mut typography = TextStylePatch::default();
+        typography.letter_spacing_px = Specified::Value(3.0);
+        typography.word_spacing_px = Specified::Value(4.0);
+        let resolved = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::StateLabel,
+                        ThemeStylePatch {
+                            typography,
+                            ..ThemeStylePatch::default()
+                        },
+                    ),
+                )),
+            )
+            .unwrap()
+            .resolve(crate::render_family::RenderFamilyKind::State);
+        let mut model = StateDiagramRenderModel::default();
+        model.nodes.push(semantic_node("Ready", "rect"));
+
+        let (plan, evidence) =
+            resolve_theme_plan_with_evidence(&model, &json!({}), &resolved, None);
+        let node = plan.node("Ready").expect("prepared node style");
+        let prepared = node
+            .resolved_label_typography()
+            .prepared_typography()
+            .expect("structured typography");
+        let key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::StateLabel,
+        };
+
+        assert_eq!(prepared.letter_spacing_px(), 3.0);
+        assert_eq!(prepared.word_spacing_px(), 4.0);
+        assert!(
+            node.label_style_attr()
+                .contains("letter-spacing:3px !important")
+        );
+        assert!(
+            node.label_style_attr()
+                .contains("word-spacing:4px !important")
+        );
+        assert!(evidence.applied().contains(&key));
+        assert!(evidence.residuals().iter().all(|item| item.key() != &key));
     }
 
     #[test]

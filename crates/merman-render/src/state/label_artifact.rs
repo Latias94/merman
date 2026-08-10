@@ -195,6 +195,9 @@ impl StateLabelSidecarBuilder {
         let Some(layout) = self.prepared_text_layout.as_ref() else {
             return measure_without_prepared_text(request);
         };
+        if self.prepared_error.borrow().is_some() {
+            return failed_prepared_measurement();
+        }
 
         match self.prepare_label(layout, request) {
             Ok(label) => {
@@ -207,14 +210,7 @@ impl StateLabelSidecarBuilder {
             }
             Err(error) => {
                 self.record_error(error);
-                StateLabelMeasurement {
-                    metrics: TextMetrics {
-                        width: 0.0,
-                        height: 0.0,
-                        line_count: 0,
-                    },
-                    uses_html_wrapping_table: false,
-                }
+                failed_prepared_measurement()
             }
         }
     }
@@ -313,6 +309,17 @@ impl StateLabelSidecarBuilder {
             labels,
             prepared_error,
         }
+    }
+}
+
+fn failed_prepared_measurement() -> StateLabelMeasurement {
+    StateLabelMeasurement {
+        metrics: TextMetrics {
+            width: 0.0,
+            height: 0.0,
+            line_count: 0,
+        },
+        uses_html_wrapping_table: false,
     }
 }
 
@@ -580,6 +587,7 @@ mod tests {
             &json!({}),
             Some(&resolved),
             None,
+            true,
             &work_meter,
         )
         .expect("resolve metered State style plan");
@@ -608,7 +616,7 @@ mod tests {
 
     #[test]
     fn prepared_state_label_without_planned_typography_remains_fail_closed() {
-        let (prepared, _, _) = prepared_state_fixture();
+        let (prepared, resolved, model) = prepared_state_fixture();
         let measurer = DeterministicTextMeasurer::default();
         let typography = ResolvedLabelTypography::new(TextStyle::default(), None);
         let sidecar = StateLabelSidecarBuilder::new(Some(&prepared));
@@ -623,9 +631,33 @@ mod tests {
             wrap_mode: WrapMode::SvgLike,
             break_long_words: true,
         });
+        let work_meter =
+            OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let (plan, _) = crate::state::StateStylePlan::resolve_with_evidence(
+            &model,
+            &json!({}),
+            Some(&resolved),
+            None,
+            true,
+            &work_meter,
+        )
+        .expect("resolve metered State style plan");
+        let node = plan.node("Ready").expect("prepared State node style");
+        let skipped = sidecar.measure_for_layout(StateLabelMetricsRequest {
+            owner: StateLabelOwner::NodeTitle("Ready"),
+            text: "Not prepared after the terminal error",
+            source_kind: StateLabelSourceKind::Plain,
+            measurer: &measurer,
+            typography: node.resolved_label_typography(),
+            max_width_px: None,
+            wrap_mode: WrapMode::SvgLikeSingleRun,
+            break_long_words: false,
+        });
         let sidecar = sidecar.finish();
 
         assert_eq!(measurement.metrics.width, 0.0);
+        assert_eq!(skipped.metrics.width, 0.0);
+        assert!(sidecar.node_title("Ready").is_none());
         assert!(matches!(
             sidecar.prepared_error(),
             Some(TextLayoutError::UnsupportedPreparedTextPath(

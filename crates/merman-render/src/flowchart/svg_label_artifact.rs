@@ -605,16 +605,15 @@ impl FlowchartSvgLabelSidecarBuilder {
         break_long_words: bool,
         width_mode: FlowchartSvgWidthMode,
     ) -> TextMetrics {
+        if self.prepared_error.borrow().is_some() {
+            return failed_prepared_metrics();
+        }
         if !supports_svg_source_preparation(&request) {
             if self.prepared_text_layout.is_some() {
                 self.record_prepared_error(TextLayoutError::UnsupportedPreparedTextPath(
                     "flowchart_label",
                 ));
-                return TextMetrics {
-                    width: 0.0,
-                    height: 0.0,
-                    line_count: 0,
-                };
+                return failed_prepared_metrics();
             }
             return flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
                 style: metrics_style,
@@ -664,11 +663,7 @@ impl FlowchartSvgLabelSidecarBuilder {
                 Ok(metrics) => return metrics,
                 Err(error) => {
                     self.record_prepared_error(error);
-                    return TextMetrics {
-                        width: 0.0,
-                        height: 0.0,
-                        line_count: 0,
-                    };
+                    return failed_prepared_metrics();
                 }
             }
         }
@@ -874,6 +869,14 @@ impl FlowchartSvgLabelSidecarBuilder {
     #[cfg(test)]
     pub(crate) fn prepared_hit_count(&self) -> usize {
         self.prepared_hits.get()
+    }
+}
+
+fn failed_prepared_metrics() -> TextMetrics {
+    TextMetrics {
+        width: 0.0,
+        height: 0.0,
+        line_count: 0,
     }
 }
 
@@ -1602,6 +1605,59 @@ mod tests {
         );
         assert!(matches!(plan, FlowchartSvgLabelRenderPlan::Prepared { .. }));
         assert!(!plan.wrapped_lines().is_empty());
+        assert!(measurer.snapshot().is_empty());
+    }
+
+    #[test]
+    fn native_prepared_label_stops_after_the_first_terminal_error() {
+        let (prepared, theme) = native_flowchart_text_fixture();
+        let measurer = StatefulOpaqueTraceMeasurer::new();
+        let config = MermaidConfig::default();
+        let style = TextStyle::default();
+        let builder = FlowchartSvgLabelSidecarBuilder::new(Some(&prepared), Some(&theme));
+
+        let rejected = builder.measure_for_layout(
+            FlowchartSvgLabelOwner::Node(0),
+            "rejected",
+            FlowchartLabelMetricsRequest {
+                measurer: &measurer,
+                raw_label: "unsupported source",
+                label_type: "html",
+                style: &style,
+                max_width_px: None,
+                wrap_mode: WrapMode::HtmlLike,
+                config: &config,
+                math_renderer: None,
+            },
+            true,
+            FlowchartSvgWidthMode::Bbox,
+        );
+        let skipped = builder.measure_for_layout(
+            FlowchartSvgLabelOwner::Node(1),
+            "skipped",
+            FlowchartLabelMetricsRequest {
+                measurer: &measurer,
+                raw_label: "otherwise valid",
+                label_type: "text",
+                style: &style,
+                max_width_px: None,
+                wrap_mode: WrapMode::SvgLike,
+                config: &config,
+                math_renderer: None,
+            },
+            true,
+            FlowchartSvgWidthMode::Bbox,
+        );
+
+        assert_eq!(rejected.width, 0.0);
+        assert_eq!(skipped.width, 0.0);
+        assert_eq!(builder.prepared_count(), 0);
+        assert!(matches!(
+            builder.finish().prepared_error(),
+            Some(TextLayoutError::UnsupportedPreparedTextPath(
+                "flowchart_label"
+            ))
+        ));
         assert!(measurer.snapshot().is_empty());
     }
 

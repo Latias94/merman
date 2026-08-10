@@ -3863,6 +3863,7 @@ mod tests {
             report.used_fallbacks(),
             &[HostMeasurementFallback::NativeCatalog]
         );
+        assert_eq!(report.fallback_count(), 1);
         assert_eq!(
             report.used_font_sources(),
             &[crate::diagram_theme::FontSource::Embedded]
