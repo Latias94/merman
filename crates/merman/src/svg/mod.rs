@@ -278,6 +278,22 @@ mod sanitize_svg_id_tests {
         assert_eq!(sanitize_svg_id("m-"), "m-untitled");
         assert_eq!(sanitize_svg_id("m--"), "m-untitled");
     }
+
+    #[test]
+    fn sanitize_svg_id_isolates_prepared_text_namespace() {
+        assert_eq!(
+            sanitize_svg_id("merman-prepared-state-17"),
+            "m-user-merman-prepared-state-17"
+        );
+        assert_eq!(
+            sanitize_svg_id("merman-prepared-state-17-line-2"),
+            "m-user-merman-prepared-state-17-line-2"
+        );
+        assert_eq!(
+            sanitize_svg_id("merman--prepared-state-17"),
+            "m-user-merman-prepared-state-17"
+        );
+    }
 }
 
 /// Parses and lays out one diagram as compatibility JSON (executor-free).

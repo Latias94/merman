@@ -11,7 +11,7 @@ use crate::model::{
     SankeyDiagramLayout, SequenceDiagramLayout, StateDiagramLayout, TimelineDiagramLayout,
     TreeViewDiagramLayout, VennDiagramLayout, XyChartDiagramLayout,
 };
-use crate::text::{TextMeasurer, TextStyle, WrapMode};
+use crate::text::{PreparedTextLabelId, TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use base64::Engine as _;
 use indexmap::IndexMap;
@@ -144,6 +144,11 @@ pub fn sanitize_svg_id(raw: &str) -> String {
 
     if out.is_empty() || out == "m" {
         "m-untitled".to_string()
+    } else if PreparedTextLabelId::is_svg_id_candidate(&out) {
+        // Prepared-text labels use this namespace for internal evidence tokens. A caller-owned
+        // diagram id must not be allowed to enter it, because the partitioner validates every
+        // matching `id` attribute against the operation ledger.
+        format!("m-user-{out}")
     } else {
         out
     }
