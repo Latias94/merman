@@ -2,6 +2,7 @@ mod boxes;
 mod control;
 mod events;
 mod layout;
+mod lifecycle;
 mod model;
 mod notes;
 mod plan;
@@ -23,3 +24,9 @@ const SEQUENCE_ACTOR_WRAP_TEXT_WIDTH: usize = 12;
 const SEQUENCE_BOX_WRAP_TEXT_WIDTH: usize = 12;
 const SEQUENCE_BOX_CONTENT_OFFSET: usize = BOX_BORDER_WIDTH;
 const SEQUENCE_BOX_LABEL_MARGIN: usize = 2;
+
+fn projection_allocation_failed() -> crate::error::AsciiError {
+    crate::error::AsciiError::AllocationFailed {
+        phase: crate::resource::AsciiResourceLimitPhase::LayoutWork.as_str(),
+    }
+}

@@ -1,8 +1,11 @@
-use super::{SEQUENCE_ACTOR_WRAP_TEXT_WIDTH, validate::validate_supported_sequence_model};
+use super::{
+    SEQUENCE_ACTOR_WRAP_TEXT_WIDTH, lifecycle::resolve_actor_lifecycles,
+    projection_allocation_failed, validate::validate_supported_sequence_model,
+};
 use crate::color::AsciiRgb;
 use crate::error::{AsciiError, Result};
 use crate::options::TerminalWidthProfile;
-use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
+use crate::resource::{AsciiResourceLimitId, ResourceContext};
 use crate::safe_text::{charge_text_layout, try_build_normalized_label_lines};
 use crate::style_color::{CssColor, parse_css_color, parse_css_color_value};
 use merman_core::diagrams::sequence::{
@@ -14,6 +17,8 @@ use merman_core::diagrams::sequence::{
     SequenceMessageStroke as CoreSequenceMessageStroke,
 };
 use std::collections::HashMap;
+
+pub(super) use super::lifecycle::SequenceActorLifecycle;
 
 const LOOP_START_MESSAGE_TYPE: i32 = 10;
 const LOOP_END_MESSAGE_TYPE: i32 = 11;
@@ -102,12 +107,6 @@ pub(super) struct SequenceGroupBox {
     pub(super) label: Option<String>,
     pub(super) background: Option<AsciiRgb>,
     pub(super) wrap: bool,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(super) struct SequenceActorLifecycle {
-    pub(super) created_at: Option<usize>,
-    pub(super) destroyed_at: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -366,7 +365,7 @@ pub(crate) fn from_sequence_model(
         participant_index.insert(participant.id.as_str(), index);
     }
     let boxes = sequence_boxes(model, &participant_index)?;
-    let lifecycles = sequence_actor_lifecycles(model, &participant_index)?;
+    let lifecycles = resolve_actor_lifecycles(model, &participant_index, resources)?;
     let mut events = Vec::new();
     events
         .try_reserve_exact(model.messages.len())
@@ -688,110 +687,6 @@ fn sequence_boxes(
     Ok(boxes)
 }
 
-fn sequence_actor_lifecycles(
-    model: &SequenceDiagramRenderModel,
-    participant_index: &HashMap<&str, usize>,
-) -> Result<Vec<SequenceActorLifecycle>> {
-    let mut lifecycles = Vec::new();
-    lifecycles
-        .try_reserve_exact(participant_index.len())
-        .map_err(|_| projection_allocation_failed())?;
-    lifecycles.resize(participant_index.len(), SequenceActorLifecycle::default());
-
-    for (actor_id, model_index) in &model.created_actors {
-        let actor_index =
-            actor_lifecycle_index(participant_index, actor_id, "actor lifecycle actors")?;
-        let (signal_index, message) = actor_lifecycle_signal(
-            model,
-            *model_index,
-            "actor lifecycle message indices",
-            "actor creation messages",
-        )?;
-        if message.to.as_deref() != Some(actor_id.as_str()) {
-            return Err(AsciiError::UnsupportedFeature {
-                diagram_type: "sequence",
-                feature: "actor creation messages",
-            });
-        }
-        lifecycles[actor_index].created_at = Some(signal_index);
-    }
-
-    for (actor_id, model_index) in &model.destroyed_actors {
-        let actor_index =
-            actor_lifecycle_index(participant_index, actor_id, "actor lifecycle actors")?;
-        let (signal_index, message) = actor_lifecycle_signal(
-            model,
-            *model_index,
-            "actor lifecycle message indices",
-            "actor destruction messages",
-        )?;
-        if message.from.as_deref() != Some(actor_id.as_str())
-            && message.to.as_deref() != Some(actor_id.as_str())
-        {
-            return Err(AsciiError::UnsupportedFeature {
-                diagram_type: "sequence",
-                feature: "actor destruction messages",
-            });
-        }
-        lifecycles[actor_index].destroyed_at = Some(signal_index);
-    }
-
-    for lifecycle in &lifecycles {
-        if let (Some(created_at), Some(destroyed_at)) =
-            (lifecycle.created_at, lifecycle.destroyed_at)
-            && destroyed_at <= created_at
-        {
-            return Err(AsciiError::UnsupportedFeature {
-                diagram_type: "sequence",
-                feature: "actor lifecycle order",
-            });
-        }
-    }
-
-    Ok(lifecycles)
-}
-
-fn actor_lifecycle_index(
-    participant_index: &HashMap<&str, usize>,
-    actor_id: &str,
-    feature: &'static str,
-) -> Result<usize> {
-    participant_index
-        .get(actor_id)
-        .copied()
-        .ok_or(AsciiError::UnsupportedFeature {
-            diagram_type: "sequence",
-            feature,
-        })
-}
-
-fn actor_lifecycle_signal<'a>(
-    model: &'a SequenceDiagramRenderModel,
-    model_index: usize,
-    index_feature: &'static str,
-    signal_feature: &'static str,
-) -> Result<(usize, &'a CoreSequenceMessage)> {
-    // Mermaid stores the current message length as an anchor when `create` or
-    // `destroy` is parsed.  An anchor at EOF is therefore valid input; it just
-    // has no following Signal and must report the semantic feature error below.
-    if model_index > model.messages.len() {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "sequence",
-            feature: index_feature,
-        });
-    }
-    model
-        .messages
-        .iter()
-        .enumerate()
-        .skip(model_index)
-        .find(|(_, message)| message.semantic_kind() == CoreSequenceMessageKind::Signal)
-        .ok_or(AsciiError::UnsupportedFeature {
-            diagram_type: "sequence",
-            feature: signal_feature,
-        })
-}
-
 fn try_clone_projection_string(value: &str) -> Result<String> {
     let mut output = String::new();
     output
@@ -799,12 +694,6 @@ fn try_clone_projection_string(value: &str) -> Result<String> {
         .map_err(|_| projection_allocation_failed())?;
     output.push_str(value);
     Ok(output)
-}
-
-fn projection_allocation_failed() -> AsciiError {
-    AsciiError::AllocationFailed {
-        phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
