@@ -70,10 +70,11 @@ impl PreparedMessageRows {
     pub(super) fn materialize_label_with_probe(
         &self,
         raw: &str,
+        resources: &ResourceContext,
         materialized: &std::cell::Cell<bool>,
     ) -> Result<()> {
         if let Some(plan) = self.label_plan {
-            plan.materialize_with_probe(raw, materialized)?;
+            plan.materialize_with_probe(raw, resources, materialized)?;
         }
         Ok(())
     }
@@ -166,6 +167,9 @@ pub(super) fn prepare_message_rows(
         layout.width_profile,
         resources,
     )?;
+    if let Some(plan) = label_plan {
+        plan.check_materialization_limits(resources)?;
+    }
     let label_metrics = label_plan.map(NormalizedLabelPlan::metrics);
     let row_count =
         resources.checked_grid_add(label_metrics.map_or(0, |metrics| metrics.line_count), 1)?;
@@ -183,7 +187,7 @@ pub(super) fn prepare_message_rows(
     let lifeline_width = retained_lifeline_width(layout, visible_actors, resources)?;
     let mut extent = SequenceBatchExtent::with_materialized_width(max_width);
     if let Some(plan) = label_plan {
-        plan.try_visit_row_metrics(&message.label, |row| {
+        plan.try_visit_row_metrics(&message.label, resources, |row| {
             let label_right = resources.checked_grid_add(start, row.retained_width)?;
             extent.try_push_line_length(lifeline_width.max(label_right), resources)
         })?;
@@ -208,7 +212,7 @@ pub(super) fn render_message(
     } = actor_state;
     let PreparedMessageRows { label_plan, extent } = prepared;
     let label_lines = match label_plan {
-        Some(plan) => plan.materialize(&message.label)?.into_parts().0,
+        Some(plan) => plan.materialize(&message.label, resources)?.into_parts().0,
         None => Vec::new(),
     };
     let row_count = extent.height();
@@ -339,6 +343,9 @@ pub(super) fn prepare_self_message_rows(
     let label_wrap_width = resources.checked_grid_add(geometry.width, LABEL_BUFFER_SPACE)?;
     let label_plan =
         message_label_plan(message, label_wrap_width, layout.width_profile, resources)?;
+    if let Some(plan) = label_plan {
+        plan.check_materialization_limits(resources)?;
+    }
     let label_metrics = label_plan.map(NormalizedLabelPlan::metrics);
     let row_count =
         resources.checked_grid_add(label_metrics.map_or(0, |metrics| metrics.line_count), 3)?;
@@ -355,7 +362,7 @@ pub(super) fn prepare_self_message_rows(
     let message_row_width = lifeline_width.max(geometry.loop_needed);
     let mut extent = SequenceBatchExtent::with_materialized_width(max_width);
     if let Some(plan) = label_plan {
-        plan.try_visit_row_metrics(&message.label, |row| {
+        plan.try_visit_row_metrics(&message.label, resources, |row| {
             let label_right = resources.checked_grid_add(start, row.retained_width)?;
             extent.try_push_line_length(lifeline_width.max(label_right), resources)
         })?;
@@ -390,7 +397,7 @@ pub(super) fn render_self_message(
         geometry,
     } = prepared;
     let label_lines = match label_plan {
-        Some(plan) => plan.materialize(&message.label)?.into_parts().0,
+        Some(plan) => plan.materialize(&message.label, resources)?.into_parts().0,
         None => Vec::new(),
     };
     let row_count = extent.height();

@@ -1296,7 +1296,7 @@ mod tests {
         let materialized = std::cell::Cell::new(false);
         let error = (|| {
             let _reservation = extent.reserve(prepared.extent(), &mut resources)?;
-            prepared.materialize_label_with_probe(&message.label, &materialized)
+            prepared.materialize_label_with_probe(&message.label, &resources, &materialized)
         })()
         .expect_err("combined rows must be rejected before render_message allocates its rows");
 

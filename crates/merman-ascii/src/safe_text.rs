@@ -570,6 +570,71 @@ mod tests {
     }
 
     #[test]
+    fn authored_break_budget_counts_retained_rows_not_structural_separators() {
+        let raw = "First<br />Line";
+        let exact = options_with_limit(AsciiResourceLimitId::MaxOutputBytes, 9);
+        let resources = ResourceContext::new(exact.resources);
+        let label = try_build_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            None,
+            &resources,
+        )
+        .expect("the retained row bytes should fit exactly")
+        .expect("the label should remain visible");
+        assert_eq!(
+            label.into_parts(),
+            (vec!["First".to_string(), "Line".to_string()], 5)
+        );
+
+        let below = options_with_limit(AsciiResourceLimitId::MaxOutputBytes, 8);
+        let resources = ResourceContext::new(below.resources);
+        let error = try_build_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            None,
+            &resources,
+        )
+        .expect_err("one byte below the retained rows must fail before materialization");
+        assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 9, 8);
+    }
+
+    #[test]
+    fn authored_empty_rows_are_grid_admitted_before_row_allocation() {
+        let raw = "<br><br><br>";
+        let exact = options_with_limit(AsciiResourceLimitId::MaxGridCells, 4);
+        let resources = ResourceContext::new(exact.resources);
+        let label = try_build_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            None,
+            &resources,
+        )
+        .expect("four empty rows should fit their minimum allocation extent")
+        .expect("authored breaks should retain the label");
+        assert_eq!(label.into_parts(), (vec![String::new(); 4], 0));
+
+        let below = options_with_limit(AsciiResourceLimitId::MaxGridCells, 3);
+        let mut resources = ResourceContext::new(below.resources);
+        let materialized = Cell::new(false);
+        let error = try_build_normalized_label_lines_with_probe(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            None,
+            &mut resources,
+            &materialized,
+        )
+        .expect_err("one grid cell below the minimum row extent must fail first");
+
+        assert!(!materialized.get());
+        assert_limit_error(error, AsciiResourceLimitId::MaxGridCells, 4, 3);
+    }
+
+    #[test]
     fn relation_label_trim_keeps_visible_controls_and_authored_breaks() {
         let options = AsciiRenderOptions::ascii()
             .with_resource_profile(ResourceProfile::UnboundedForTrustedInput);
@@ -608,7 +673,7 @@ mod tests {
             ),
             ("中 文 👩‍💻 ·", false, 4, TerminalWidthProfile::Cjk),
             (" ́word", false, 6, TerminalWidthProfile::Unicode),
-            ("  value ", true, 7, TerminalWidthProfile::Unicode),
+            ("\u{1b} value ", true, 7, TerminalWidthProfile::Unicode),
         ];
 
         for (raw, trim, wrap_width, profile) in cases {
@@ -621,13 +686,13 @@ mod tests {
                     .expect("label plan should be measurable")
                     .expect("test labels should remain visible");
             let mut planned_widths = Vec::new();
-            plan.try_visit_line_widths(raw, |width| {
+            plan.try_visit_line_widths(raw, &resources, |width| {
                 planned_widths.push(width);
                 Ok(())
             })
             .expect("planned row widths should be visitable");
 
-            let materialized = plan.materialize(raw).unwrap_or_else(|error| {
+            let materialized = plan.materialize(raw, &resources).unwrap_or_else(|error| {
                 let normalized = normalize_terminal_text(raw);
                 let direct = crate::text::wrap_display_lines_with_profile(
                     normalized.as_ref(),
@@ -651,6 +716,184 @@ mod tests {
     }
 
     #[test]
+    fn wrapped_label_budget_uses_final_rows_after_whitespace_collapse() {
+        let raw = "alpha          beta";
+        let exact = AsciiRenderOptions::ascii()
+            .with_resource_limit(AsciiResourceLimitId::MaxDocumentCells, 10)
+            .unwrap();
+        let resources = ResourceContext::new(exact.resources);
+        let label = try_build_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(32),
+            &resources,
+        )
+        .expect("the final collapsed row should fit exactly")
+        .expect("the label should remain visible");
+        assert_eq!(label.into_parts(), (vec!["alpha beta".to_string()], 10));
+
+        let below = AsciiRenderOptions::ascii()
+            .with_resource_limit(AsciiResourceLimitId::MaxDocumentCells, 9)
+            .unwrap();
+        let resources = ResourceContext::new(below.resources);
+        let error = try_build_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(32),
+            &resources,
+        )
+        .expect_err("one cell below the final row must fail before materialization");
+        assert_limit_error(error, AsciiResourceLimitId::MaxDocumentCells, 10, 9);
+
+        let exact = AsciiRenderOptions::ascii()
+            .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, 10)
+            .unwrap();
+        let resources = ResourceContext::new(exact.resources);
+        try_build_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(32),
+            &resources,
+        )
+        .expect("the final collapsed bytes should fit exactly")
+        .expect("the label should remain visible");
+
+        let below = AsciiRenderOptions::ascii()
+            .with_resource_limit(AsciiResourceLimitId::MaxOutputBytes, 9)
+            .unwrap();
+        let resources = ResourceContext::new(below.resources);
+        let error = try_build_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(32),
+            &resources,
+        )
+        .expect_err("one byte below the final collapsed output must fail");
+        assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 10, 9);
+    }
+
+    #[test]
+    fn wrapped_label_keeps_visible_escape_atoms_intact() {
+        let options = AsciiRenderOptions::ascii()
+            .with_resource_profile(ResourceProfile::UnboundedForTrustedInput);
+        let resources = ResourceContext::new(options.resources);
+        let lines = try_plan_normalized_label_lines(
+            "\u{301}word",
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(6),
+            &resources,
+        )
+        .expect("the escaped label should be measurable")
+        .expect("the escaped label should remain visible")
+        .materialize("\u{301}word", &resources)
+        .expect("the escaped label should materialize atomically")
+        .into_parts()
+        .0;
+
+        assert_eq!(lines, ["\\u{301}", "word"]);
+    }
+
+    #[test]
+    fn wrapped_label_preserves_combining_marks_with_their_whitespace_base() {
+        let raw = " \u{301}word";
+        let options = AsciiRenderOptions::ascii()
+            .with_resource_profile(ResourceProfile::UnboundedForTrustedInput);
+        let resources = ResourceContext::new(options.resources);
+        let lines = try_plan_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(6),
+            &resources,
+        )
+        .expect("the complete grapheme should be measurable")
+        .expect("the complete grapheme should remain visible")
+        .materialize(raw, &resources)
+        .expect("wrapping must not detach the combining mark from its space base")
+        .into_parts()
+        .0;
+
+        assert_eq!(lines, [raw]);
+    }
+
+    #[test]
+    fn label_plan_accounts_each_scan_in_render_wide_work() {
+        let raw = "alpha          beta gamma";
+        let options = AsciiRenderOptions::ascii()
+            .with_resource_profile(ResourceProfile::UnboundedForTrustedInput);
+        let resources = ResourceContext::new(options.resources);
+        let plan = try_plan_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(10),
+            &resources,
+        )
+        .expect("the work probe should be measurable")
+        .expect("the work probe should remain visible");
+        plan.try_visit_line_widths(raw, &resources, |_width| Ok(()))
+            .expect("the retained-row scan should be charged");
+        let before_materialization = resources.layout_work_used();
+        let materialized = Cell::new(false);
+        plan.materialize_with_probe(raw, &resources, &materialized)
+            .expect("the materialization scan should be charged");
+        assert!(materialized.get());
+        let total_work = resources.layout_work_used();
+        assert!(total_work > before_materialization);
+
+        let exact = options_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, total_work);
+        let exact_resources = ResourceContext::new(exact.resources);
+        let exact_plan = try_plan_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(10),
+            &exact_resources,
+        )
+        .expect("the exact work plan should succeed")
+        .expect("the exact work label should remain visible");
+        exact_plan
+            .try_visit_line_widths(raw, &exact_resources, |_width| Ok(()))
+            .expect("the exact retained-row scan should succeed");
+        exact_plan
+            .materialize(raw, &exact_resources)
+            .expect("the exact materialization scan should succeed");
+        assert_eq!(exact_resources.layout_work_used(), total_work);
+
+        let below = options_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, total_work - 1);
+        let below_resources = ResourceContext::new(below.resources);
+        let below_plan = try_plan_normalized_label_lines(
+            raw,
+            TerminalWidthProfile::Unicode,
+            false,
+            Some(10),
+            &below_resources,
+        )
+        .expect("the below-limit plan should still fit before materialization")
+        .expect("the below-limit label should remain visible");
+        below_plan
+            .try_visit_line_widths(raw, &below_resources, |_width| Ok(()))
+            .expect("the below-limit retained-row scan should still fit");
+        let materialized = Cell::new(false);
+        let error = below_plan
+            .materialize_with_probe(raw, &below_resources, &materialized)
+            .expect_err("one work unit below the full scan cost must fail first");
+
+        assert!(!materialized.get());
+        assert_limit_error(
+            error,
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            total_work,
+            total_work - 1,
+        );
+    }
+
+    #[test]
     fn label_plan_grid_admission_precedes_materialization() {
         let raw = "alpha beta";
         let below = options_with_limit(AsciiResourceLimitId::MaxGridCells, 9);
@@ -670,7 +913,7 @@ mod tests {
         let materialized = Cell::new(false);
         let error = (|| {
             below_resources.grid_extent(plan.metrics().max_width, plan.metrics().line_count)?;
-            plan.materialize_with_probe(raw, &materialized)
+            plan.materialize_with_probe(raw, &below_resources, &materialized)
         })()
         .expect_err("a 5x2 label grid must reject a nine-cell limit");
 
@@ -696,7 +939,7 @@ mod tests {
             .expect("the exact label grid should be admitted");
         let exact_materialized = Cell::new(false);
         exact_plan
-            .materialize_with_probe(raw, &exact_materialized)
+            .materialize_with_probe(raw, &exact_resources, &exact_materialized)
             .expect("materialization should follow successful admission");
         assert!(exact_materialized.get());
     }
@@ -718,7 +961,7 @@ mod tests {
         )
         .expect("structural message rows should be measurable")
         .expect("non-empty message rows should be retained")
-        .materialize(raw)
+        .materialize(raw, &resources)
         .expect("structural message rows should materialize")
         .into_parts()
         .0;
@@ -735,7 +978,7 @@ mod tests {
         )
         .expect("unwrapped message text should be measurable")
         .expect("non-empty message text should be retained")
-        .materialize(raw)
+        .materialize(raw, &resources)
         .expect("unwrapped message text should materialize")
         .into_parts()
         .0;

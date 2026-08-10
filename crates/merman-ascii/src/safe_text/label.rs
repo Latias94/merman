@@ -1,5 +1,4 @@
 use super::normalization::{NormalizedSegment, NormalizedSegmentKind, visit_normalized_segments};
-use super::width::grapheme_display_width;
 use crate::Result;
 use crate::error::AsciiError;
 use crate::options::TerminalWidthProfile;
@@ -7,7 +6,6 @@ use crate::resource::{
     AsciiResourceLimitId, AsciiResourceLimitPhase, AsciiResourcePolicy, ResourceContext,
 };
 use crate::text::html_break_end;
-use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NormalizedLabelLines {
@@ -24,7 +22,7 @@ impl NormalizedLabelLines {
 /// Builds terminal-safe label rows without retaining the normalized expansion before admission.
 ///
 /// The source is scanned without allocation to establish terminal normalization, label-break,
-/// grapheme, work, document-cell, and conservative output-byte bounds. Only an admitted label is
+/// grapheme, work, document-cell, and retained row-byte bounds. Only an admitted label is
 /// materialized. `trim` matches relation labels, whose terminal-normalized authored text is
 /// trimmed before Mermaid `<br>`/`\\n` label breaks are interpreted.
 pub(crate) fn try_build_normalized_label_lines(
@@ -50,8 +48,15 @@ fn try_build_normalized_label_lines_impl(
     else {
         return Ok(None);
     };
-    before_materialize();
-    plan.materialize(raw).map(Some)
+    let metrics = plan.metrics();
+    resources.grid_extent(metrics.max_width.max(1), metrics.line_count)?;
+    resources.charge_document_cells(metrics.document_cells)?;
+    resources.check(
+        AsciiResourceLimitId::MaxOutputBytes,
+        metrics.materialized_bytes,
+    )?;
+    plan.materialize_with(raw, resources, before_materialize)
+        .map(Some)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -74,7 +79,7 @@ enum LabelOutputSegment<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct NormalizedLabelMetrics {
-    pub(crate) normalized_bytes: usize,
+    pub(crate) materialized_bytes: usize,
     pub(crate) document_cells: usize,
     pub(crate) line_count: usize,
     pub(crate) max_width: usize,
@@ -84,6 +89,84 @@ pub(crate) struct NormalizedLabelMetrics {
 pub(crate) struct NormalizedLabelRowMetrics {
     pub(crate) width: usize,
     pub(crate) retained_width: usize,
+    materialized_bytes: usize,
+}
+
+impl NormalizedLabelMetrics {
+    const EMPTY: Self = Self {
+        materialized_bytes: 0,
+        document_cells: 0,
+        line_count: 0,
+        max_width: 0,
+    };
+
+    fn try_include_row(
+        &mut self,
+        row: NormalizedLabelRowMetrics,
+        policy: AsciiResourcePolicy,
+    ) -> Result<()> {
+        self.line_count = checked_add_with_policy(
+            policy,
+            AsciiResourceLimitId::MaxDocumentCells,
+            self.line_count,
+            1,
+        )?;
+        self.max_width = self.max_width.max(row.width);
+        self.document_cells = checked_add_with_policy(
+            policy,
+            AsciiResourceLimitId::MaxDocumentCells,
+            self.document_cells,
+            row.width,
+        )?;
+        self.materialized_bytes = checked_add_with_policy(
+            policy,
+            AsciiResourceLimitId::MaxOutputBytes,
+            self.materialized_bytes,
+            row.materialized_bytes,
+        )?;
+        Ok(())
+    }
+}
+
+struct MaterializedLabelRows {
+    lines: Vec<String>,
+    metrics: NormalizedLabelMetrics,
+    expected_line_count: usize,
+}
+
+impl MaterializedLabelRows {
+    fn try_new(expected_line_count: usize) -> Result<Self> {
+        let mut lines = Vec::new();
+        lines
+            .try_reserve_exact(expected_line_count)
+            .map_err(|_| document_allocation_error())?;
+        Ok(Self {
+            lines,
+            metrics: NormalizedLabelMetrics::EMPTY,
+            expected_line_count,
+        })
+    }
+
+    fn try_push_row(
+        &mut self,
+        row: String,
+        width: usize,
+        policy: AsciiResourcePolicy,
+    ) -> Result<()> {
+        if self.lines.len() >= self.expected_line_count {
+            return Err(invalid_label_extent_plan());
+        }
+        self.metrics.try_include_row(
+            NormalizedLabelRowMetrics {
+                width,
+                retained_width: width,
+                materialized_bytes: row.len(),
+            },
+            policy,
+        )?;
+        self.lines.push(row);
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,6 +194,7 @@ pub(crate) struct NormalizedLabelPlan {
     width_profile: TerminalWidthProfile,
     wrap_width: Option<usize>,
     break_policy: LabelBreakPolicy,
+    replay_work_units: usize,
     policy: AsciiResourcePolicy,
 }
 
@@ -119,20 +203,30 @@ impl NormalizedLabelPlan {
         self.output_metrics
     }
 
+    pub(crate) fn check_materialization_limits(self, resources: &ResourceContext) -> Result<()> {
+        resources.check(
+            AsciiResourceLimitId::MaxOutputBytes,
+            self.output_metrics.materialized_bytes,
+        )
+    }
+
     #[cfg(test)]
     pub(crate) fn try_visit_line_widths(
         self,
         raw: &str,
+        resources: &ResourceContext,
         mut visit: impl FnMut(usize) -> Result<()>,
     ) -> Result<()> {
-        self.try_visit_row_metrics(raw, |row| visit(row.width))
+        self.try_visit_row_metrics(raw, resources, |row| visit(row.width))
     }
 
     pub(crate) fn try_visit_row_metrics(
         self,
         raw: &str,
+        resources: &ResourceContext,
         visit: impl FnMut(NormalizedLabelRowMetrics) -> Result<()>,
     ) -> Result<()> {
+        resources.charge_layout_work(self.replay_work_units)?;
         visit_label_row_metrics(
             raw,
             self.selection,
@@ -144,8 +238,22 @@ impl NormalizedLabelPlan {
         )
     }
 
-    pub(crate) fn materialize(self, raw: &str) -> Result<NormalizedLabelLines> {
-        self.materialize_impl(raw, || {})
+    pub(crate) fn materialize(
+        self,
+        raw: &str,
+        resources: &ResourceContext,
+    ) -> Result<NormalizedLabelLines> {
+        self.materialize_with(raw, resources, || {})
+    }
+
+    fn materialize_with(
+        self,
+        raw: &str,
+        resources: &ResourceContext,
+        before_materialize: impl FnOnce(),
+    ) -> Result<NormalizedLabelLines> {
+        resources.charge_layout_work(self.replay_work_units)?;
+        self.materialize_impl(raw, before_materialize)
     }
 
     fn materialize_impl(
@@ -154,7 +262,7 @@ impl NormalizedLabelPlan {
         before_materialize: impl FnOnce(),
     ) -> Result<NormalizedLabelLines> {
         before_materialize();
-        let mut lines = match self.wrap_width {
+        let mut materialized = match self.wrap_width {
             Some(max_width) => materialize_wrapped_label(
                 raw,
                 self.selection,
@@ -168,30 +276,22 @@ impl NormalizedLabelPlan {
                 raw,
                 self.selection,
                 self.source_metrics,
+                self.width_profile,
                 self.break_policy,
                 self.policy,
             )?,
         };
-        if lines.is_empty()
+        if materialized.lines.is_empty()
             && (self.wrap_width.is_none() || self.break_policy.ensure_nonempty_wrapped_output())
         {
-            lines.push(String::new());
+            materialized.try_push_row(String::new(), 0, self.policy)?;
         }
-
-        let actual_width = lines
-            .iter()
-            .map(|line| checked_line_width_with_policy(line, self.width_profile, self.policy))
-            .try_fold(0usize, |maximum, width| {
-                width.map(|width| maximum.max(width))
-            })?;
-        if lines.len() != self.output_metrics.line_count
-            || actual_width != self.output_metrics.max_width
-        {
+        if materialized.metrics != self.output_metrics {
             return Err(invalid_label_extent_plan());
         }
 
         Ok(NormalizedLabelLines {
-            lines,
+            lines: materialized.lines,
             width: self.output_metrics.max_width,
         })
     }
@@ -200,9 +300,10 @@ impl NormalizedLabelPlan {
     pub(crate) fn materialize_with_probe(
         self,
         raw: &str,
+        resources: &ResourceContext,
         materialized: &std::cell::Cell<bool>,
     ) -> Result<NormalizedLabelLines> {
-        self.materialize_impl(raw, || materialized.set(true))
+        self.materialize_with(raw, resources, || materialized.set(true))
     }
 }
 
@@ -236,29 +337,21 @@ pub(crate) fn try_plan_normalized_label_lines_with_policy(
         None => return Ok(None),
     };
     let source_metrics = preflight_label(raw, selection, width_profile, break_policy, resources)?;
-
-    resources.charge_document_cells(source_metrics.document_cells)?;
-    resources.check(
-        AsciiResourceLimitId::MaxOutputBytes,
-        source_metrics.normalized_bytes,
+    let replay_work_units = resources.checked_work_add(
+        raw.len().max(1),
+        resources.checked_work_add(source_metrics.document_cells, source_metrics.line_count)?,
     )?;
+
     let output_metrics = if let Some(max_width) = wrap_width {
-        let wrap_work =
-            resources.checked_work_add(source_metrics.document_cells, source_metrics.line_count)?;
-        resources.charge_layout_work(wrap_work.max(1))?;
-        let (line_count, max_width) = measure_label_line_widths(
+        resources.charge_layout_work(replay_work_units)?;
+        measure_label_output_metrics(
             raw,
             selection,
             width_profile,
             Some(max_width),
             break_policy,
             resources.policy(),
-        )?;
-        NormalizedLabelMetrics {
-            line_count,
-            max_width,
-            ..source_metrics
-        }
+        )?
     } else {
         source_metrics
     };
@@ -270,6 +363,7 @@ pub(crate) fn try_plan_normalized_label_lines_with_policy(
         width_profile,
         wrap_width,
         break_policy,
+        replay_work_units,
         policy: resources.policy(),
     }))
 }
@@ -308,10 +402,10 @@ fn normalized_label_selection(
     break_policy: LabelBreakPolicy,
     resources: &ResourceContext,
 ) -> Result<Option<LabelSelection>> {
-    resources.charge_layout_work(raw.len().max(1))?;
     if !trim {
         return Ok(Some(LabelSelection::All));
     }
+    resources.charge_layout_work(raw.len().max(1))?;
 
     let mut offset = 0usize;
     let mut start = None;
@@ -357,7 +451,7 @@ fn preflight_label(
     resources: &ResourceContext,
 ) -> Result<NormalizedLabelMetrics> {
     resources.charge_layout_work(raw.len().max(1))?;
-    let mut normalized_bytes = 0usize;
+    let mut materialized_bytes = 0usize;
     let mut document_cells = 0usize;
     let mut line_count = 1usize;
     let mut line_width = 0usize;
@@ -378,12 +472,6 @@ fn preflight_label(
             match output {
                 LabelOutputSegment::LineBreak => {
                     resources.charge_layout_work(1)?;
-                    normalized_bytes = checked_add(
-                        resources,
-                        AsciiResourceLimitId::MaxOutputBytes,
-                        normalized_bytes,
-                        1,
-                    )?;
                     line_count = checked_add(
                         resources,
                         AsciiResourceLimitId::MaxDocumentCells,
@@ -398,10 +486,10 @@ fn preflight_label(
                     resources.charge_layout_work(segment.layout_work())?;
                     let mut buffer = [0u8; 10];
                     let text = segment.text(&mut buffer);
-                    normalized_bytes = checked_add(
+                    materialized_bytes = checked_add(
                         resources,
                         AsciiResourceLimitId::MaxOutputBytes,
-                        normalized_bytes,
+                        materialized_bytes,
                         text.len(),
                     )?;
                     let width = segment.display_width(width_profile);
@@ -425,7 +513,7 @@ fn preflight_label(
     max_width = max_width.max(line_width);
 
     Ok(NormalizedLabelMetrics {
-        normalized_bytes,
+        materialized_bytes,
         document_cells,
         line_count,
         max_width,
@@ -436,13 +524,13 @@ fn materialize_label(
     raw: &str,
     selection: LabelSelection,
     metrics: NormalizedLabelMetrics,
+    width_profile: TerminalWidthProfile,
     break_policy: LabelBreakPolicy,
     policy: AsciiResourcePolicy,
-) -> Result<Vec<String>> {
-    let mut normalized = String::new();
-    normalized
-        .try_reserve_exact(metrics.normalized_bytes)
-        .map_err(|_| document_allocation_error())?;
+) -> Result<MaterializedLabelRows> {
+    let mut materialized = MaterializedLabelRows::try_new(metrics.line_count)?;
+    let mut current = String::new();
+    let mut current_width = 0usize;
     visit_selected_label_output(
         raw,
         selection,
@@ -450,58 +538,45 @@ fn materialize_label(
         policy,
         |_source_segment, output| {
             match output {
-                LabelOutputSegment::LineBreak => normalized.push('\n'),
+                LabelOutputSegment::LineBreak => {
+                    materialized.try_push_row(
+                        std::mem::take(&mut current),
+                        current_width,
+                        policy,
+                    )?;
+                    current_width = 0;
+                }
                 LabelOutputSegment::Segment(segment) => {
                     let mut buffer = [0u8; 10];
-                    normalized.push_str(segment.text(&mut buffer));
+                    let text = segment.text(&mut buffer);
+                    current
+                        .try_reserve(text.len())
+                        .map_err(|_| document_allocation_error())?;
+                    current.push_str(text);
+                    current_width = checked_add_with_policy(
+                        policy,
+                        AsciiResourceLimitId::MaxDocumentCells,
+                        current_width,
+                        segment.display_width(width_profile),
+                    )?;
                 }
             }
             Ok::<(), AsciiError>(())
         },
     )?;
-    debug_assert_eq!(normalized.len(), metrics.normalized_bytes);
-
-    let mut lines = Vec::new();
-    lines
-        .try_reserve_exact(metrics.line_count)
-        .map_err(|_| document_allocation_error())?;
-    for line in normalized.split('\n') {
-        let mut retained = String::new();
-        retained
-            .try_reserve_exact(line.len())
-            .map_err(|_| document_allocation_error())?;
-        retained.push_str(line);
-        lines.push(retained);
-    }
-    debug_assert_eq!(lines.len(), metrics.line_count);
-    Ok(lines)
+    materialized.try_push_row(current, current_width, policy)?;
+    Ok(materialized)
 }
 
-fn checked_line_width_with_policy(
-    line: &str,
-    profile: TerminalWidthProfile,
-    policy: AsciiResourcePolicy,
-) -> Result<usize> {
-    line.graphemes(true).try_fold(0usize, |width, grapheme| {
-        checked_add_with_policy(
-            policy,
-            AsciiResourceLimitId::MaxDocumentCells,
-            width,
-            grapheme_display_width(grapheme, profile),
-        )
-    })
-}
-
-fn measure_label_line_widths(
+fn measure_label_output_metrics(
     raw: &str,
     selection: LabelSelection,
     width_profile: TerminalWidthProfile,
     wrap_width: Option<usize>,
     break_policy: LabelBreakPolicy,
     policy: AsciiResourcePolicy,
-) -> Result<(usize, usize)> {
-    let mut line_count = 0usize;
-    let mut max_width = 0usize;
+) -> Result<NormalizedLabelMetrics> {
+    let mut metrics = NormalizedLabelMetrics::EMPTY;
     visit_label_row_metrics(
         raw,
         selection,
@@ -509,15 +584,9 @@ fn measure_label_line_widths(
         wrap_width,
         break_policy,
         policy,
-        |row| {
-            line_count = line_count
-                .checked_add(1)
-                .ok_or_else(|| policy.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
-            max_width = max_width.max(row.width);
-            Ok(())
-        },
+        |row| metrics.try_include_row(row, policy),
     )?;
-    Ok((line_count, max_width))
+    Ok(metrics)
 }
 
 fn visit_label_row_metrics(
@@ -532,19 +601,28 @@ fn visit_label_row_metrics(
     let Some(max_width) = wrap_width else {
         let mut line_width = 0usize;
         let mut retained_width = 0usize;
+        let mut materialized_bytes = 0usize;
         visit_selected_label_output(raw, selection, break_policy, policy, |_source, output| {
             match output {
                 LabelOutputSegment::LineBreak => {
                     visit(NormalizedLabelRowMetrics {
                         width: line_width,
                         retained_width,
+                        materialized_bytes,
                     })?;
                     line_width = 0;
                     retained_width = 0;
+                    materialized_bytes = 0;
                 }
                 LabelOutputSegment::Segment(segment) => {
                     let mut buffer = [0u8; 10];
                     let text = segment.text(&mut buffer);
+                    materialized_bytes = checked_add_with_policy(
+                        policy,
+                        AsciiResourceLimitId::MaxOutputBytes,
+                        materialized_bytes,
+                        text.len(),
+                    )?;
                     line_width = checked_add_with_policy(
                         policy,
                         AsciiResourceLimitId::MaxDocumentCells,
@@ -561,6 +639,7 @@ fn visit_label_row_metrics(
         return visit(NormalizedLabelRowMetrics {
             width: line_width,
             retained_width,
+            materialized_bytes,
         });
     };
 
@@ -571,7 +650,12 @@ fn visit_label_row_metrics(
         max_width,
         break_policy,
         policy,
-        WrappedWidthSink { visit },
+        WrappedWidthSink {
+            visit,
+            policy,
+            word_bytes: 0,
+            line_bytes: 0,
+        },
     )
 }
 
@@ -630,40 +714,16 @@ where
         }
     }
 
-    fn push_text(&mut self, text: &str) -> Result<()> {
+    fn push_segment(&mut self, segment: NormalizedSegment<'_>) -> Result<()> {
+        let mut buffer = [0u8; 10];
+        let text = segment.text(&mut buffer);
         self.paragraph_has_text |= !text.is_empty();
-        let mut run_start = 0usize;
-        let mut run_is_whitespace = None;
-        for (index, ch) in text.char_indices() {
-            let is_whitespace = ch.is_whitespace();
-            match run_is_whitespace {
-                Some(current) if current != is_whitespace => {
-                    self.push_run(&text[run_start..index], current)?;
-                    run_start = index;
-                    run_is_whitespace = Some(is_whitespace);
-                }
-                None => run_is_whitespace = Some(is_whitespace),
-                Some(_) => {}
-            }
-        }
-        if let Some(is_whitespace) = run_is_whitespace {
-            self.push_run(&text[run_start..], is_whitespace)?;
-        }
-        Ok(())
-    }
-
-    fn push_run(&mut self, text: &str, is_whitespace: bool) -> Result<()> {
-        if is_whitespace {
+        if matches!(segment.kind, NormalizedSegmentKind::Grapheme(grapheme) if grapheme.chars().all(char::is_whitespace))
+        {
             return self.finish_word();
         }
         self.in_word = true;
-        visit_normalized_segments(text, |segment| {
-            let mut buffer = [0u8; 10];
-            self.push_word_unit(
-                segment.text(&mut buffer),
-                segment.display_width(self.width_profile),
-            )
-        })
+        self.push_word_unit(text, segment.display_width(self.width_profile))
     }
 
     fn push_word_unit(&mut self, text: &str, width: usize) -> Result<()> {
@@ -797,6 +857,9 @@ where
 
 struct WrappedWidthSink<F> {
     visit: F,
+    policy: AsciiResourcePolicy,
+    word_bytes: usize,
+    line_bytes: usize,
 }
 
 impl<F> WrappedLabelSink for WrappedWidthSink<F>
@@ -805,25 +868,48 @@ where
 {
     type Output = ();
 
-    fn push_word_unit(&mut self, _text: &str) -> Result<()> {
+    fn push_word_unit(&mut self, text: &str) -> Result<()> {
+        self.word_bytes = checked_add_with_policy(
+            self.policy,
+            AsciiResourceLimitId::MaxOutputBytes,
+            self.word_bytes,
+            text.len(),
+        )?;
         Ok(())
     }
 
     fn emit_word_chunk(&mut self, width: usize) -> Result<()> {
+        let materialized_bytes = std::mem::take(&mut self.word_bytes);
         (self.visit)(NormalizedLabelRowMetrics {
             width,
             retained_width: width,
+            materialized_bytes,
         })
     }
 
-    fn append_word_to_line(&mut self, _separator: bool) -> Result<()> {
+    fn append_word_to_line(&mut self, separator: bool) -> Result<()> {
+        let extra = checked_add_with_policy(
+            self.policy,
+            AsciiResourceLimitId::MaxOutputBytes,
+            self.word_bytes,
+            usize::from(separator),
+        )?;
+        self.line_bytes = checked_add_with_policy(
+            self.policy,
+            AsciiResourceLimitId::MaxOutputBytes,
+            self.line_bytes,
+            extra,
+        )?;
+        self.word_bytes = 0;
         Ok(())
     }
 
     fn emit_line(&mut self, width: usize) -> Result<()> {
+        let materialized_bytes = std::mem::take(&mut self.line_bytes);
         (self.visit)(NormalizedLabelRowMetrics {
             width,
             retained_width: width,
+            materialized_bytes,
         })
     }
 
@@ -831,6 +917,7 @@ where
         (self.visit)(NormalizedLabelRowMetrics {
             width: 0,
             retained_width: 0,
+            materialized_bytes: 0,
         })
     }
 
@@ -840,35 +927,29 @@ where
 }
 
 struct MaterializedWrappedLabelSink {
-    lines: Vec<String>,
+    materialized: MaterializedLabelRows,
     current: String,
     word: String,
+    policy: AsciiResourcePolicy,
 }
 
 impl MaterializedWrappedLabelSink {
-    fn try_new(expected_lines: usize) -> Result<Self> {
-        let mut lines = Vec::new();
-        lines
-            .try_reserve_exact(expected_lines)
-            .map_err(|_| document_allocation_error())?;
+    fn try_new(expected_lines: usize, policy: AsciiResourcePolicy) -> Result<Self> {
         Ok(Self {
-            lines,
+            materialized: MaterializedLabelRows::try_new(expected_lines)?,
             current: String::new(),
             word: String::new(),
+            policy,
         })
     }
 
-    fn push_row(&mut self, row: String) -> Result<()> {
-        self.lines
-            .try_reserve(1)
-            .map_err(|_| document_allocation_error())?;
-        self.lines.push(row);
-        Ok(())
+    fn push_row(&mut self, row: String, width: usize) -> Result<()> {
+        self.materialized.try_push_row(row, width, self.policy)
     }
 }
 
 impl WrappedLabelSink for MaterializedWrappedLabelSink {
-    type Output = Vec<String>;
+    type Output = MaterializedLabelRows;
 
     fn push_word_unit(&mut self, text: &str) -> Result<()> {
         self.word
@@ -878,9 +959,9 @@ impl WrappedLabelSink for MaterializedWrappedLabelSink {
         Ok(())
     }
 
-    fn emit_word_chunk(&mut self, _width: usize) -> Result<()> {
+    fn emit_word_chunk(&mut self, width: usize) -> Result<()> {
         let row = std::mem::take(&mut self.word);
-        self.push_row(row)
+        self.push_row(row, width)
     }
 
     fn append_word_to_line(&mut self, separator: bool) -> Result<()> {
@@ -900,19 +981,19 @@ impl WrappedLabelSink for MaterializedWrappedLabelSink {
         Ok(())
     }
 
-    fn emit_line(&mut self, _width: usize) -> Result<()> {
+    fn emit_line(&mut self, width: usize) -> Result<()> {
         let row = std::mem::take(&mut self.current);
-        self.push_row(row)
+        self.push_row(row, width)
     }
 
     fn emit_empty_line(&mut self) -> Result<()> {
-        self.push_row(String::new())
+        self.push_row(String::new(), 0)
     }
 
     fn finish(self) -> Result<Self::Output> {
         debug_assert!(self.current.is_empty());
         debug_assert!(self.word.is_empty());
-        Ok(self.lines)
+        Ok(self.materialized)
     }
 }
 
@@ -934,8 +1015,7 @@ where
         match output {
             LabelOutputSegment::LineBreak => wrapped.finish_paragraph()?,
             LabelOutputSegment::Segment(segment) => {
-                let mut buffer = [0u8; 10];
-                wrapped.push_text(segment.text(&mut buffer))?;
+                wrapped.push_segment(segment)?;
             }
         }
         Ok(())
@@ -951,7 +1031,7 @@ fn materialize_wrapped_label(
     break_policy: LabelBreakPolicy,
     policy: AsciiResourcePolicy,
     expected_lines: usize,
-) -> Result<Vec<String>> {
+) -> Result<MaterializedLabelRows> {
     process_wrapped_label(
         raw,
         selection,
@@ -959,7 +1039,7 @@ fn materialize_wrapped_label(
         max_width,
         break_policy,
         policy,
-        MaterializedWrappedLabelSink::try_new(expected_lines)?,
+        MaterializedWrappedLabelSink::try_new(expected_lines, policy)?,
     )
 }
 
@@ -997,7 +1077,7 @@ fn visit_selected_label_output(
                 }
                 LabelToken::Segment(source_segment) => {
                     let selected = &trim_text[selected];
-                    visit_normalized_segments(selected, |segment| {
+                    let mut emit = |segment: NormalizedSegment<'_>| {
                         let output = match (segment.kind, break_policy) {
                             (NormalizedSegmentKind::LineBreak, LabelBreakPolicy::VisibleLine) => {
                                 LabelOutputSegment::Segment(NormalizedSegment {
@@ -1009,7 +1089,12 @@ fn visit_selected_label_output(
                             _ => LabelOutputSegment::Segment(segment),
                         };
                         visit(Some(source_segment), output)
-                    })
+                    };
+                    if selected.len() == trim_text.len() {
+                        emit(source_segment)
+                    } else {
+                        visit_normalized_segments(selected, emit)
+                    }
                 }
             }
         })
