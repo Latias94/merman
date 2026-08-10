@@ -754,9 +754,9 @@ fn terminal_claims_allow_route_cell(
         let mut all_incident_to_endpoint = true;
         for claim in claims {
             resources.charge_layout_work(1)?;
-            if !existing_routes
+            if existing_routes
                 .get(claim.route_index)
-                .is_some_and(|route| route.owner.endpoint_id(claim.endpoint) == endpoint_id)
+                .is_none_or(|route| route.owner.endpoint_id(claim.endpoint) != endpoint_id)
             {
                 all_incident_to_endpoint = false;
                 break;
