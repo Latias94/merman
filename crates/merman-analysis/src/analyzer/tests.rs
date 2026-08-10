@@ -1208,31 +1208,33 @@ fn malformed_flowchart_parsed_diagram() -> ParsedDiagram {
 fn fallback_recovery_merge_uses_structured_location_metadata() {
     let source_map = SourceMap::new("flowchart TD\nA[unterminated");
     let span = source_map.whole_source_span().unwrap();
-    let mut primary = crate::diagnostic_projection::rule_diagnostic_without_default_span(
+    let mut primary = crate::AnalysisDiagnostic::error(
         crate::rules::DIAGRAM_PARSE_RULE_ID,
-        AnalysisStatus::ParseError,
+        DiagnosticCategory::Parse,
         "primary parser message",
-        &AnalysisRuleConfig::default(),
     )
-    .unwrap()
+    .with_code(
+        AnalysisStatus::ParseError.code(),
+        AnalysisStatus::ParseError.code_name(),
+    )
     .with_diagram_type("flowchart-v2")
     .with_span(span);
-    let recovery = crate::diagnostic_projection::rule_diagnostic_without_default_span(
+    let recovery = crate::AnalysisDiagnostic::error(
         crate::rules::RECOVERED_EDITOR_FACTS_RULE_ID,
-        AnalysisStatus::ParseError,
+        DiagnosticCategory::Parse,
         "recovered parser message",
-        &AnalysisRuleConfig::default(),
     )
-    .unwrap()
+    .with_code(
+        AnalysisStatus::ParseError.code(),
+        AnalysisStatus::ParseError.code_name(),
+    )
     .with_diagram_type("flowchart-v2")
     .with_span(span);
     assert!(crate::recovery::merge_duplicate_parse_recovery_diagnostic(
         &mut primary,
         0,
-        &crate::recovery::AnalysisRecoveryDiagnostic::parser_backed(
-            recovery,
-            merman_core::EditorSemanticDiagnosticKind::ParserRecovery,
-        ),
+        &recovery,
+        merman_core::EditorSemanticDiagnosticKind::ParserRecovery,
         Some(crate::diagnostic_projection::ParseDiagnosticLocation::Fallback),
     ));
 
@@ -1259,12 +1261,25 @@ fn source_mapped_editor_recovery_diagnostics_keep_original_spans() {
         &AnalysisRuleConfig::default(),
     );
 
-    let span = diagnostics[0]
-        .diagnostic
-        .span
-        .as_ref()
-        .expect("source span");
+    let span = diagnostics[0].span.as_ref().expect("source span");
     assert_eq!(&source[span.byte_start..span.byte_end], "Bob");
+}
+
+#[test]
+fn editor_recovery_without_a_parser_span_falls_back_to_the_whole_source() {
+    let source = "architecture-beta\nservice api(server)";
+    let source_map = SourceMap::new(source);
+    let diagnostics = crate::recovery::editor_recovery_diagnostics(
+        vec![EditorSemanticDiagnostic::parser_recovery(
+            "recovered without a precise parser span",
+            None,
+        )],
+        "architecture",
+        &source_map,
+        &AnalysisRuleConfig::default(),
+    );
+
+    assert_eq!(diagnostics[0].span, source_map.whole_source_span().ok());
 }
 
 #[test]
@@ -1978,34 +1993,29 @@ fn markdown_fallback_recovery_is_scoped_per_fence_and_decorated_last() {
             .find(if diagram.index == 0 { 'A' } else { 'B' })
             .unwrap();
         let node = local_map.span(node_start, node_start + 1).unwrap();
-        let mut primary = crate::diagnostic_projection::rule_diagnostic_without_default_span(
-            crate::rules::DIAGRAM_PARSE_RULE_ID,
+        let mut primary = crate::diagnostic_projection::rule_candidate_without_default_span(
+            crate::rules::DIAGRAM_PARSE_RULE,
             AnalysisStatus::ParseError,
             "fallback parse failure",
-            crate::rules::capture_rule_config(),
         )
-        .unwrap()
         .with_diagram_type("flowchart-v2")
         .with_span(whole);
-        primary.related.push(crate::DiagnosticRelated {
+        primary = primary.with_related(crate::DiagnosticRelated {
             message: "Parser reported a fallback location for this syntax error.".to_string(),
             span: Some(whole),
         });
-        let recovery = crate::diagnostic_projection::rule_diagnostic_without_default_span(
-            crate::rules::RECOVERED_EDITOR_FACTS_RULE_ID,
+        let recovery = crate::diagnostic_projection::rule_candidate_without_default_span(
+            crate::rules::RECOVERED_EDITOR_FACTS_RULE,
             AnalysisStatus::ParseError,
             "recovery refinement",
-            crate::rules::capture_rule_config(),
         )
-        .unwrap()
         .with_diagram_type("flowchart-v2")
         .with_span(node);
         let candidates = vec![
-            crate::diagnostic_projection::DiagnosticCandidate::new(primary).with_parse_location(
-                Some(crate::diagnostic_projection::ParseDiagnosticLocation::Fallback),
-            ),
-            crate::diagnostic_projection::DiagnosticCandidate::new(recovery)
-                .with_recovery_kind(merman_core::EditorSemanticDiagnosticKind::ParserRecovery),
+            primary.with_parse_location(Some(
+                crate::diagnostic_projection::ParseDiagnosticLocation::Fallback,
+            )),
+            recovery.with_recovery_kind(merman_core::EditorSemanticDiagnosticKind::ParserRecovery),
         ];
         let candidates = crate::document::normalize_document_diagnostic_candidates(
             document.source_map(),
@@ -2200,14 +2210,21 @@ fn analysis_rule_config_can_override_git_graph_warning_severity() {
 #[test]
 fn analysis_rule_registry_gap_surfaces_as_internal_error() {
     let source_map = SourceMap::new("flowchart TD\nA-->B\n");
-    let diagnostic = crate::diagnostic_projection::rule_diagnostic(
+    let candidates = vec![crate::diagnostic_projection::candidate_for_rule_id(
         "merman.unknown.rule",
         AnalysisStatus::Panic,
         "rule ids must be registered",
         &source_map,
-        &AnalysisRuleConfig::default(),
+    )];
+    let diagnostics = crate::diagnostic_projection::project_diagnostic_candidates(
+        &candidates,
+        &crate::AnalysisDiagnosticPolicy {
+            rule_config: AnalysisRuleConfig::default(),
+        },
+        &crate::AnalysisCancellationToken::new(),
     )
     .expect("internal registry gap diagnostic");
+    let diagnostic = &diagnostics[0];
 
     assert_eq!(
         diagnostic.id,

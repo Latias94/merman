@@ -357,20 +357,50 @@ pub(crate) struct DiagnosticRetainedWeight {
     fix_edit_allocations: BTreeSet<usize>,
 }
 
+pub(crate) struct DiagnosticDynamicWeight<'a> {
+    pub(crate) message_capacity: usize,
+    pub(crate) diagram_type_capacity: Option<usize>,
+    pub(crate) help_capacity: Option<usize>,
+    pub(crate) related: &'a [DiagnosticRelated],
+    pub(crate) related_capacity: usize,
+    pub(crate) fixes: &'a [DiagnosticFix],
+    pub(crate) fixes_capacity: usize,
+}
+
 impl DiagnosticRetainedWeight {
     pub(crate) fn add_diagnostic(&mut self, diagnostic: &AnalysisDiagnostic) {
+        self.weight.add_string(&diagnostic.id);
+        self.add_dynamic(DiagnosticDynamicWeight {
+            message_capacity: diagnostic.message.capacity(),
+            diagram_type_capacity: diagnostic.diagram_type.as_ref().map(String::capacity),
+            help_capacity: diagnostic.help.as_ref().map(String::capacity),
+            related: &diagnostic.related,
+            related_capacity: diagnostic.related.capacity(),
+            fixes: &diagnostic.fixes,
+            fixes_capacity: diagnostic.fixes.capacity(),
+        });
+        self.weight.add_optional_string(&diagnostic.code_name);
+    }
+
+    pub(crate) fn add_candidate(&mut self, fields: DiagnosticDynamicWeight<'_>) {
+        self.add_dynamic(fields);
+    }
+
+    fn add_dynamic(&mut self, fields: DiagnosticDynamicWeight<'_>) {
         let weight = &mut self.weight;
-        weight.add_string(&diagnostic.id);
-        weight.add_string(&diagnostic.message);
-        weight.add_optional_string(&diagnostic.code_name);
-        weight.add_optional_string(&diagnostic.diagram_type);
-        weight.add_optional_string(&diagnostic.help);
-        weight.add_array::<DiagnosticRelated>(diagnostic.related.capacity());
-        for related in &diagnostic.related {
+        weight.add(fields.message_capacity);
+        if let Some(capacity) = fields.diagram_type_capacity {
+            weight.add(capacity);
+        }
+        if let Some(capacity) = fields.help_capacity {
+            weight.add(capacity);
+        }
+        weight.add_array::<DiagnosticRelated>(fields.related_capacity);
+        for related in fields.related {
             weight.add_string(&related.message);
         }
-        weight.add_array::<DiagnosticFix>(diagnostic.fixes.capacity());
-        for fix in &diagnostic.fixes {
+        weight.add_array::<DiagnosticFix>(fields.fixes_capacity);
+        for fix in fields.fixes {
             weight.add_string(&fix.title);
             if fix.edits.is_empty() {
                 continue;

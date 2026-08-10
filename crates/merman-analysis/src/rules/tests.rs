@@ -412,9 +412,8 @@ fn config_key_scan_observes_cancellation_without_matching_keys() {
     cancellation.cancel_after_checkpoints(2);
 
     assert!(matches!(
-        deprecated_flowchart_html_labels_diagnostics(
+        deprecated_flowchart_html_labels_candidates(
             &source_map,
-            &AnalysisRuleConfig::default(),
             &DEPRECATED_FLOWCHART_HTML_LABELS_INIT_CONFIG_PATHS,
             &DEPRECATED_FLOWCHART_HTML_LABELS_FRONTMATTER_CONFIG_PATHS,
             &source_config,

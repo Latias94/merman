@@ -1,7 +1,6 @@
 use crate::diagnostic_projection::{
-    DiagnosticCandidate, candidates_from_diagnostics, core_error_diagnostic,
-    flowchart_facts_projection_diagnostic, materialize_diagnostic_candidates,
-    no_diagram_diagnostic, panic_diagnostic,
+    DiagnosticCandidate, core_error_candidate, flowchart_facts_projection_candidate,
+    materialize_diagnostic_candidates, no_diagram_candidate, panic_candidate,
 };
 use crate::recovery::editor_recovery_candidates;
 use crate::rules::AnalysisRuleConfig;
@@ -390,14 +389,7 @@ impl Analyzer {
         error: merman_core::runtime::RuntimePolicyError,
         source_map: &SourceMap,
     ) -> Vec<DiagnosticCandidate> {
-        candidates_from_diagnostics(
-            core_error_diagnostic(
-                &CoreError::from(error),
-                source_map,
-                crate::rules::capture_rule_config(),
-            )
-            .diagnostic,
-        )
+        vec![core_error_candidate(&CoreError::from(error), source_map).candidate]
     }
 
     pub fn analyze_generation(&self, source: &str) -> AnalysisCaptureOutcome {
@@ -768,10 +760,7 @@ impl Analyzer {
         cancellation.checkpoint()?;
         match evidence {
             DiagramAnalysisEvidence::EmptySource { .. } => {
-                let candidates = candidates_from_diagnostics(no_diagram_diagnostic(
-                    source_map,
-                    crate::rules::capture_rule_config(),
-                ));
+                let candidates = vec![no_diagram_candidate(source_map)];
                 Self::finish_capture(
                     candidates,
                     mode.unavailable_syntax(None),
@@ -781,11 +770,7 @@ impl Analyzer {
             }
             DiagramAnalysisEvidence::Panic { message, .. } => {
                 let mut candidates = source_lints;
-                candidates.extend(candidates_from_diagnostics(panic_diagnostic(
-                    message,
-                    source_map,
-                    crate::rules::capture_rule_config(),
-                )));
+                candidates.push(panic_candidate(message, source_map));
                 Self::finish_capture(
                     candidates,
                     mode.unavailable_syntax(None),
@@ -800,10 +785,9 @@ impl Analyzer {
                 cancellation,
             ),
             DiagramAnalysisEvidence::OperationError { error, .. } => {
-                let projection =
-                    core_error_diagnostic(error, source_map, crate::rules::capture_rule_config());
+                let projection = core_error_candidate(error, source_map);
                 let mut candidates = source_lints;
-                candidates.extend(candidates_from_diagnostics(projection.diagnostic));
+                candidates.push(projection.candidate);
                 Self::finish_capture(
                     candidates,
                     mode.unavailable_syntax(projection.diagram_type),
@@ -857,7 +841,7 @@ impl Analyzer {
         &self,
         input: DiagramCaptureInput<'_>,
         model: &serde_json::Value,
-        diagnostics: Vec<AnalysisDiagnostic>,
+        candidates: Vec<DiagnosticCandidate>,
         mode: CaptureMode,
     ) -> CapturedDiagram {
         let cancellation = AnalysisCancellationToken::new();
@@ -869,7 +853,7 @@ impl Analyzer {
                 warning_facts: &[],
                 source_config: &source_config,
             },
-            candidates_from_diagnostics(diagnostics),
+            candidates,
             mode,
             &cancellation,
         )
@@ -967,14 +951,12 @@ impl Analyzer {
             editor_facts,
         } = input;
         cancellation.checkpoint()?;
-        let core_diagnostic =
-            core_error_diagnostic(error, source_map, crate::rules::capture_rule_config());
-        if let Some(diagnostic) = core_diagnostic.diagnostic {
-            candidates.push(
-                DiagnosticCandidate::new(diagnostic)
-                    .with_parse_location(core_diagnostic.parse_location),
-            );
-        }
+        let core_diagnostic = core_error_candidate(error, source_map);
+        candidates.push(
+            core_diagnostic
+                .candidate
+                .with_parse_location(core_diagnostic.parse_location),
+        );
         let diagram_type = meta.diagram_type.as_str();
         candidates.extend(Self::editor_recovery_candidates_from_facts_cancellable(
             diagram_type,
@@ -1053,14 +1035,11 @@ impl Analyzer {
                     let _ = source_map.whole_source_span_cancellable(cancellation)?;
                     FlowchartFactsProjection {
                         facts: None,
-                        candidates: candidates_from_diagnostics(
-                            flowchart_facts_projection_diagnostic(
-                                error,
-                                diagram_type,
-                                source_map,
-                                crate::rules::capture_rule_config(),
-                            ),
-                        ),
+                        candidates: vec![flowchart_facts_projection_candidate(
+                            error,
+                            diagram_type,
+                            source_map,
+                        )],
                     }
                 }
             };

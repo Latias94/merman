@@ -1,7 +1,8 @@
 use crate::diagnostic_projection::materialize_diagnostic_candidates;
 use crate::{
     AnalysisCaptureOutcome, AnalysisDiagnostic, AnalysisGeneration, AnalysisPayload, Analyzer,
-    DiagnosticFixEdit, DiagnosticRelated, DiagnosticSpan, SourceDescriptor, SourceKind, SourceMap,
+    DiagnosticFix, DiagnosticFixEdit, DiagnosticRelated, DiagnosticSpan, SourceDescriptor,
+    SourceKind, SourceMap,
 };
 use std::collections::BTreeMap;
 use std::ops::ControlFlow;
@@ -253,13 +254,42 @@ fn remap_diagnostic_spans_cancellable(
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<AnalysisDiagnostic, crate::AnalysisCancelled> {
     cancellation.checkpoint()?;
-    diagnostic.span = match diagnostic.span.take() {
+    remap_diagnostic_locations_cancellable(
+        source_map,
+        diagram,
+        fence_span,
+        DiagnosticLocationsMut {
+            span: &mut diagnostic.span,
+            related: &mut diagnostic.related,
+            fixes: &mut diagnostic.fixes,
+        },
+        remapped_fix_edits,
+        cancellation,
+    )?;
+    Ok(diagnostic)
+}
+
+struct DiagnosticLocationsMut<'a> {
+    span: &'a mut Option<DiagnosticSpan>,
+    related: &'a mut [DiagnosticRelated],
+    fixes: &'a mut Vec<DiagnosticFix>,
+}
+
+fn remap_diagnostic_locations_cancellable(
+    source_map: &SourceMap,
+    diagram: &DocumentDiagram,
+    fence_span: Option<DiagnosticSpan>,
+    locations: DiagnosticLocationsMut<'_>,
+    remapped_fix_edits: &mut BTreeMap<usize, Arc<[DiagnosticFixEdit]>>,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<(), crate::AnalysisCancelled> {
+    *locations.span = match locations.span.take() {
         Some(span) => remap_span_to_document_cancellable(source_map, diagram, span, cancellation)?
             .or(fence_span),
         None => fence_span,
     };
 
-    for (index, related) in diagnostic.related.iter_mut().enumerate() {
+    for (index, related) in locations.related.iter_mut().enumerate() {
         if index.is_multiple_of(128) {
             cancellation.checkpoint()?;
         }
@@ -271,7 +301,7 @@ fn remap_diagnostic_spans_cancellable(
         };
     }
 
-    for (fix_index, fix) in diagnostic.fixes.iter_mut().enumerate() {
+    for (fix_index, fix) in locations.fixes.iter_mut().enumerate() {
         if fix_index.is_multiple_of(128) {
             cancellation.checkpoint()?;
         }
@@ -300,10 +330,10 @@ fn remap_diagnostic_spans_cancellable(
         remapped_fix_edits.insert(source_allocation, Arc::clone(&remapped));
         fix.edits = remapped;
     }
-    diagnostic.fixes.retain(|fix| !fix.edits.is_empty());
+    locations.fixes.retain(|fix| !fix.edits.is_empty());
 
     cancellation.checkpoint()?;
-    Ok(diagnostic)
+    Ok(())
 }
 
 fn remap_span_to_document_cancellable(
@@ -722,12 +752,16 @@ pub(crate) fn normalize_document_diagnostic_candidates_cancellable(
         if index.is_multiple_of(128) {
             cancellation.checkpoint()?;
         }
-        let candidate = candidate.try_map_diagnostic(|diagnostic| {
-            remap_diagnostic_spans_cancellable(
+        let candidate = candidate.try_map_locations(|span, related, fixes| {
+            remap_diagnostic_locations_cancellable(
                 source_map,
                 diagram,
                 fence_span,
-                diagnostic,
+                DiagnosticLocationsMut {
+                    span,
+                    related,
+                    fixes,
+                },
                 &mut remapped_fix_edits,
                 cancellation,
             )
@@ -1229,11 +1263,10 @@ mod tests {
         let diagram = &document.diagrams()[0];
         let candidates = (0..512)
             .map(|index| {
-                crate::diagnostic_projection::DiagnosticCandidate::new(AnalysisDiagnostic::error(
-                    crate::rules::DIAGRAM_PARSE_RULE_ID,
-                    DiagnosticCategory::Parse,
+                crate::diagnostic_projection::DiagnosticCandidate::new(
+                    crate::rules::DIAGRAM_PARSE_RULE,
                     format!("diagnostic {index}"),
-                ))
+                )
             })
             .collect();
         let cancellation = crate::AnalysisCancellationToken::new();
