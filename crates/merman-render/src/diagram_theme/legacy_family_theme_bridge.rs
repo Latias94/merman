@@ -10,7 +10,7 @@ use serde_json::{Map, Value};
 use crate::render_family::RenderFamilyKind;
 
 use super::canvas::CanvasPaint;
-use super::family_mechanism_matrix::FamilyThemeRuleFacet;
+use super::family_mechanism_matrix::{FamilyThemeRuleFacet, MAX_LEGACY_ASSIGNMENT_STRING_BYTES};
 use super::family_program::{FamilyThemeProgram, FamilyThemeProgramCache};
 use super::resolved::{ResolvedProperty, ResolvedThemeStyle, ThemeTypographyProperty};
 use super::semantic::{ThemeTarget, ThemeVariant};
@@ -20,7 +20,6 @@ use super::typography::{Specified, TextStyle};
 use super::DiagramThemeSpec;
 
 pub(super) const CONTRIBUTION_ID_PREFIX: &str = "merman.legacy-family-theme.v1.";
-const MAX_LEGACY_ASSIGNMENT_STRING_BYTES: usize = 4 * 1024;
 
 /// Temporary, family-local compatibility inputs for Mermaid renderers that do not yet consume the
 /// typed theme program directly.
@@ -1013,11 +1012,10 @@ impl FamilyContributions {
         let mut root = Map::new();
         if reader.has_legacy_base_typography(ThemeTypographyProperty::FontStack) {
             let font_family = typography.font_stack().as_css();
-            if font_family.len() > MAX_LEGACY_ASSIGNMENT_STRING_BYTES {
-                return;
+            if font_family.len() <= MAX_LEGACY_ASSIGNMENT_STRING_BYTES {
+                variables.insert("fontFamily".to_string(), Value::String(font_family.clone()));
+                root.insert("fontFamily".to_string(), Value::String(font_family));
             }
-            variables.insert("fontFamily".to_string(), Value::String(font_family.clone()));
-            root.insert("fontFamily".to_string(), Value::String(font_family));
         }
         if reader.has_legacy_base_typography(ThemeTypographyProperty::FontSize) {
             variables.insert(
@@ -1671,6 +1669,43 @@ mod tests {
                 "unsupported base typography must not mutate `{path}`"
             );
         }
+    }
+
+    #[test]
+    fn oversized_font_stack_does_not_drop_independent_font_size() {
+        let families = (0..32)
+            .map(|index| format!("font-{index}-{}", "x".repeat(180)))
+            .collect::<Vec<_>>();
+        let typography = TextStyle::default()
+            .with_font_stack(
+                super::super::FontStack::new(families).expect("valid oversized font stack"),
+            )
+            .with_font_size_px(18.0)
+            .expect("valid font size");
+        let spec = DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(RenderFamilyKind::Sequence, typography),
+        );
+        let parsed = parse(&spec, "sequenceDiagram\nAlice->>Bob: Hello\n");
+        let baseline = parse(
+            &DiagramThemeSpec::default(),
+            "sequenceDiagram\nAlice->>Bob: Hello\n",
+        );
+
+        assert_eq!(fallback_contribution_count(&parsed), 1);
+        assert_eq!(
+            parsed.effective_config.get_str("themeVariables.fontSize"),
+            Some("18px")
+        );
+        assert_eq!(
+            parsed.effective_config.get_str("fontFamily"),
+            baseline.effective_config.get_str("fontFamily")
+        );
+        assert_eq!(
+            parsed.effective_config.get_str("themeVariables.fontFamily"),
+            baseline
+                .effective_config
+                .get_str("themeVariables.fontFamily")
+        );
     }
 
     #[test]

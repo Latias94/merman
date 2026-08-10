@@ -5,6 +5,12 @@ use super::resolved::ThemeTypographyProperty;
 use super::semantic::{OrdinalSelector, ThemeRule, ThemeTarget, ThemeVariant};
 use super::typography::{Specified, TextStyle};
 
+/// 与 core compatibility overlay 的单项字符串上限保持一致。
+///
+/// 超过该上限的字体栈不能进入 legacy 配置通道，必须落到 Unsupported，避免
+/// 矩阵宣称已适配而 bridge 静默丢弃。
+pub(super) const MAX_LEGACY_ASSIGNMENT_STRING_BYTES: usize = 4 * 1024;
+
 /// Static owner of one family-local theme mechanism.
 ///
 /// This classification routes work. It never claims that a concrete document applied a
@@ -164,7 +170,17 @@ pub(super) fn compile_base_typography_routes(
     let baseline = TextStyle::default();
     let mut routes = Vec::new();
     if style.font_stack() != baseline.font_stack() {
-        push_base_typography(&mut routes, family, ThemeTypographyProperty::FontStack);
+        let disposition = if family != RenderFamilyKind::State
+            && style.font_stack().as_css().len() > MAX_LEGACY_ASSIGNMENT_STRING_BYTES
+        {
+            FamilyThemeDisposition::Unsupported
+        } else {
+            classify_base_typography(family, ThemeTypographyProperty::FontStack)
+        };
+        routes.push(FamilyThemeRoute::new(
+            FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack),
+            disposition,
+        ));
     }
     if style.font_size_px() != baseline.font_size_px() {
         push_base_typography(&mut routes, family, ThemeTypographyProperty::FontSize);
@@ -890,6 +906,30 @@ mod tests {
             route.mechanism()
                 == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontWeight)
                 && route.disposition() == FamilyThemeDisposition::Unsupported
+        }));
+    }
+
+    #[test]
+    fn oversized_font_stack_is_unsupported_without_shadowing_font_size() {
+        let families = (0..32)
+            .map(|index| format!("font-{index}-{}", "x".repeat(180)))
+            .collect::<Vec<_>>();
+        let typography = TextStyle::default()
+            .with_font_stack(super::super::FontStack::new(families).expect("valid font stack"))
+            .with_font_size_px(18.0)
+            .expect("valid font size");
+        let routes = compile_base_typography_routes(RenderFamilyKind::Sequence, &typography);
+
+        assert_eq!(routes.len(), 2);
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontStack)
+                && route.disposition() == FamilyThemeDisposition::Unsupported
+        }));
+        assert!(routes.iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                && route.disposition() == FamilyThemeDisposition::LegacyCompatibility
         }));
     }
 }
