@@ -61,7 +61,6 @@ jobs:
     uses: ./.github/workflows/pages.yml
     with:
       ci_only: ${{ github.event_name == 'pull_request' }}
-      execution_lane: standalone
 
   deploy:
     name: Deploy playground

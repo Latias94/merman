@@ -8,17 +8,12 @@ on:
         required: false
         default: true
         type: boolean
-      execution_lane:
-        description: Distinguish same-run CI from the standalone compatibility workflow
-        required: false
-        default: same-run
-        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: pages-${{ inputs.execution_lane || 'standalone' }}-${{ github.ref }}
+  group: pages-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

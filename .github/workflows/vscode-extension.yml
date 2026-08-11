@@ -2,12 +2,6 @@ name: VS Code Extension
 
 on:
   workflow_call:
-    inputs:
-      execution_lane:
-        description: Distinguish same-run CI from the standalone compatibility workflow
-        required: false
-        default: same-run
-        type: string
   push:
     branches:
       - main
@@ -59,7 +53,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: vscode-extension-${{ inputs.execution_lane || 'standalone' }}-${{ github.workflow }}-${{ github.ref }}
+  group: vscode-extension-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

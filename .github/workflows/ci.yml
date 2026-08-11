@@ -990,16 +990,12 @@ jobs:
     name: npm-owner
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.npm == 'true' }}
-    permissions:
-      contents: read
     uses: ./.github/workflows/npm-audit.yml
 
   security-owner:
     name: security-owner
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.security == 'true' }}
-    permissions:
-      contents: read
     uses: ./.github/workflows/security-audit.yml
     with:
       representative_targets: ${{ github.event_name != 'push' }}
@@ -1008,19 +1004,12 @@ jobs:
     name: fuzz-owner
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.fuzz == 'true' }}
-    permissions:
-      contents: read
     uses: ./.github/workflows/fuzz.yml
-    with:
-      target: all
-      preset: smoke
 
   web-owner:
     name: web-owner
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.web == 'true' }}
-    permissions:
-      contents: read
     uses: ./.github/workflows/pages.yml
     with:
       ci_only: true
@@ -1029,8 +1018,6 @@ jobs:
     name: vscode-owner
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.vscode == 'true' }}
-    permissions:
-      contents: read
     uses: ./.github/workflows/vscode-extension.yml
 
   performance-contracts:

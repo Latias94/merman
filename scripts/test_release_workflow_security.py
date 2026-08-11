@@ -1824,20 +1824,6 @@ class CiWorkflowSecurityTests(unittest.TestCase):
                     self.assertRegex(match.group(1), PINNED_ACTION)
                     self.assertTrue(match.group(2), "pinned action needs a readable version comment")
 
-    def test_reusable_owner_workflows_isolate_dual_run_concurrency(self) -> None:
-        for workflow_name in (
-            "fuzz.yml",
-            "npm-audit.yml",
-            "pages.yml",
-            "security-audit.yml",
-            "vscode-extension.yml",
-        ):
-            with self.subTest(workflow=workflow_name):
-                text = read_workflow(WORKFLOW_ROOT / workflow_name)
-                self.assertIn("execution_lane:", text)
-                self.assertIn("default: same-run", text)
-                self.assertIn("inputs.execution_lane || 'standalone'", text)
-
     def test_same_run_web_owner_cannot_enter_pages_deployment(self) -> None:
         ci = read_workflow(WORKFLOW_ROOT / "ci.yml")
         pages = read_workflow(WORKFLOW_ROOT / "pages.yml")

@@ -154,8 +154,7 @@ class FuzzConfigTests(unittest.TestCase):
     def test_concurrency_keeps_discovery_runs_outside_push_cancellation(self) -> None:
         text = FUZZ_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn(
-            "group: fuzz-${{ inputs.execution_lane || 'standalone' }}-"
-            "${{ github.workflow }}-${{ github.event_name }}-",
+            "group: fuzz-${{ github.workflow }}-${{ github.event_name }}-",
             text,
         )
         self.assertIn("github.event.pull_request.number", text)
