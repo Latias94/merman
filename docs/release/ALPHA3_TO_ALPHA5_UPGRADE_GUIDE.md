@@ -4,6 +4,8 @@
 > This guide describes the alpha.5 source contract. Package registries and release channels can
 > trail the repository, so verify the installed version before relying on an alpha.5 API or
 > capability. Final release benchmarks must be regenerated against the tagged release commit.
+> Source integrations following the default branch after alpha.5 must also apply the
+> [unreleased upgrade guide](UNRELEASED_UPGRADE_GUIDE.md).
 
 Alpha.5 is a broad prerelease upgrade, not a drop-in patch. It expands the Mermaid baseline to
 11.16, admits all 35 diagram families, replaces implementation-oriented feature bundles with

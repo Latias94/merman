@@ -355,7 +355,8 @@ mod tests {
         analyze_document_generation_shared, source_descriptor_for_kind,
     };
     use merman_editor_core::{
-        DocumentKind, DocumentSnapshot as EditorDocumentSnapshot, DocumentWorkspace,
+        DocumentKind, DocumentSnapshot as EditorDocumentSnapshot,
+        analyze_document_context_with_shared_text,
     };
     use std::str::FromStr;
     use std::sync::Arc;
@@ -366,14 +367,13 @@ mod tests {
     #[test]
     fn lsp_context_reuses_the_editor_generation_and_text_index() {
         let uri = Uri::from_str("file:///tmp/canonical%20source.mmd").unwrap();
-        let editor = DocumentWorkspace::build_analysis_context_with_shared_text(
+        let editor = analyze_document_context_with_shared_text(
             &Analyzer::new(),
             uri.as_str(),
             5,
             Arc::from("flowchart TD\nA-->B\n"),
             DocumentKind::Diagram,
         )
-        .into_ready()
         .expect("source is within the analysis limit");
         let generation = editor.shared_analysis_generation();
         let text_index = editor.snapshot().fences()[0].text_index() as *const _;
@@ -432,14 +432,13 @@ mod tests {
             "```\n",
         );
         let uri = Uri::from_str("file:///tmp/example.md").unwrap();
-        let editor = DocumentWorkspace::build_analysis_context_with_shared_text(
+        let editor = analyze_document_context_with_shared_text(
             &Analyzer::new(),
             uri.as_str(),
             7,
             Arc::from(source),
             DocumentKind::Markdown,
         )
-        .into_ready()
         .expect("source is within the analysis limit");
         let lsp =
             super::DocumentAnalysisContext::from_editor(editor, super::DiagnosticGeneration(1))

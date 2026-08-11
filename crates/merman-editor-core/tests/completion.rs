@@ -1,9 +1,11 @@
+mod support;
+
 use merman_analysis::FenceTextIndexSource;
 use merman_editor_core::{
     COMPLETION_TRIGGER_CHARACTERS, CompletionDataKind, CompletionInsertTextFormat,
-    CompletionItemKind, DocumentKind, DocumentWorkspace, Position, completion_documentation,
-    completion_for_snapshot,
+    CompletionItemKind, DocumentKind, Position, completion_documentation, completion_for_snapshot,
 };
+use support::SnapshotHarness;
 
 #[test]
 fn completion_trigger_characters_are_owned_by_editor_policy() {
@@ -15,9 +17,9 @@ fn completion_trigger_characters_are_owned_by_editor_policy() {
 
 #[test]
 fn completion_offers_known_node_ids_with_text_edits() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\nA-->B\nB-->C\nC-->".to_string(),
@@ -39,9 +41,9 @@ fn completion_at_eof_preserves_unicode_ranges_across_line_endings() {
     for (label, line_ending) in [("lf", "\n"), ("crlf", "\r\n"), ("cr", "\r")] {
         let final_line = "target[\"🤓\"] -->";
         let source = ["flowchart TD", "alpha-->beta", final_line].join(line_ending);
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 format!("file:///tmp/completion-{label}.mmd"),
                 1,
                 source,
@@ -68,9 +70,9 @@ fn completion_at_eof_preserves_unicode_ranges_across_line_endings() {
 
 #[test]
 fn completion_offers_node_ids_for_directive_targets() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\nA-->B\nstyle \n".to_string(),
@@ -100,9 +102,9 @@ fn empty_style_targets_use_typed_id_slots_across_line_endings() {
 
     for (line_ending_name, line_ending) in [("lf", "\n"), ("crlf", "\r\n"), ("cr", "\r")] {
         for (name, lines, expected_id) in cases {
-            let mut workspace = DocumentWorkspace::new();
-            let snapshot = workspace
-                .upsert(
+            let harness = SnapshotHarness::new();
+            let snapshot = harness
+                .analyze(
                     format!("file:///tmp/{name}-{line_ending_name}-style-target.mmd"),
                     1,
                     format!("{}{line_ending}", lines.join(line_ending)),
@@ -125,9 +127,9 @@ fn empty_style_targets_use_typed_id_slots_across_line_endings() {
 
 #[test]
 fn completion_offers_class_names_for_class_references() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\nA-->B\nclassDef hot fill:#f00\nclass A h\n".to_string(),
@@ -151,10 +153,10 @@ fn completion_offers_class_names_for_class_references() {
 
 #[test]
 fn completion_does_not_offer_class_names_inside_node_payload() {
-    let mut workspace = DocumentWorkspace::new();
+    let harness = SnapshotHarness::new();
     let line = "A[\"docs :::h\"]";
-    let snapshot = workspace
-        .upsert(
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             format!("flowchart TD\nclassDef hot fill:#f00\n{line}\n"),
@@ -178,9 +180,9 @@ fn completion_does_not_offer_class_names_inside_node_payload() {
 
 #[test]
 fn completion_offers_style_snippets_after_style_targets() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\nA-->B\nstyle A \n".to_string(),
@@ -202,9 +204,9 @@ fn completion_offers_style_snippets_after_style_targets() {
 
 #[test]
 fn completion_offers_interaction_snippets_after_click_targets() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\nA-->B\nclick A \n".to_string(),
@@ -248,9 +250,9 @@ fn completion_uses_typed_style_slots_across_directive_families() {
     ];
 
     for (name, source, position) in cases {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 format!("file:///tmp/{name}-style-completion.mmd"),
                 1,
                 source.to_string(),
@@ -298,9 +300,9 @@ fn completion_uses_typed_class_name_slots_across_directive_families() {
     ];
 
     for (name, source, position) in cases {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 format!("file:///tmp/{name}-class-completion.mmd"),
                 1,
                 source.to_string(),
@@ -322,9 +324,9 @@ fn completion_uses_typed_class_name_slots_across_directive_families() {
 
 #[test]
 fn completion_uses_typed_interaction_slots_for_class_diagrams() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/class-interaction-completion.mmd",
             1,
             "classDiagram\nclass User\nclick User \n".to_string(),
@@ -423,9 +425,9 @@ fn completion_requires_a_separator_before_post_target_slots() {
     ];
 
     for (name, source, position, forbidden_kind) in cases {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 format!("file:///tmp/{name}.mmd"),
                 1,
                 source.to_string(),
@@ -474,9 +476,9 @@ fn completion_uses_class_name_slots_after_real_separators() {
     ];
 
     for (name, source, position) in cases {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 format!("file:///tmp/{name}-class-separator.mmd"),
                 1,
                 source.to_string(),
@@ -518,9 +520,9 @@ fn typed_style_slots_precede_line_endings() {
 
     for (line_ending_name, line_ending) in [("lf", "\n"), ("crlf", "\r\n"), ("cr", "\r")] {
         for (name, lines, position) in cases {
-            let mut workspace = DocumentWorkspace::new();
-            let snapshot = workspace
-                .upsert(
+            let harness = SnapshotHarness::new();
+            let snapshot = harness
+                .analyze(
                     format!("file:///tmp/{name}-{line_ending_name}-style.mmd"),
                     1,
                     format!("{}{line_ending}", lines.join(line_ending)),
@@ -578,9 +580,9 @@ fn completion_recognizes_partial_and_complete_interaction_actions() {
             Position::new(2, 18),
         ),
     ] {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 format!("file:///tmp/{name}.mmd"),
                 1,
                 source.to_string(),
@@ -607,9 +609,9 @@ fn completion_recognizes_partial_and_complete_interaction_actions() {
 fn class_interaction_actions_replace_only_the_action_token() {
     for (name, action, end_character) in [("partial", "c", 12), ("complete", "call", 15)] {
         let source = format!("classDiagram\nclass User\nclick User {action}");
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 format!("file:///tmp/class-call-{name}.mmd"),
                 1,
                 source,
@@ -670,9 +672,9 @@ fn class_interaction_payloads_suppress_action_completion() {
             "classDiagram\nclass User\ncallback User \"open\"",
         ),
     ] {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 format!("file:///tmp/class-{name}.mmd"),
                 1,
                 source.to_string(),
@@ -737,9 +739,9 @@ fn flowchart_interaction_actions_replace_only_the_action_token() {
         ),
     ] {
         let source = format!("flowchart TD\nA\nclick A {action}");
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 format!("file:///tmp/flowchart-{name}.mmd"),
                 1,
                 source,
@@ -792,9 +794,9 @@ fn flowchart_interaction_payloads_suppress_action_completion() {
         ),
         ("legacy-callback", "flowchart TD\nA\nclick A open"),
     ] {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 format!("file:///tmp/flowchart-{name}.mmd"),
                 1,
                 source.to_string(),
@@ -835,9 +837,9 @@ fn empty_class_definition_names_keep_directive_helpers_across_families() {
         ("state", "stateDiagram-v2\nclassDef "),
         ("block", "block\nclassDef "),
     ] {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 format!("file:///tmp/{name}-empty-classdef.mmd"),
                 1,
                 source.to_string(),
@@ -868,9 +870,9 @@ fn empty_class_definition_names_keep_directive_helpers_across_families() {
 
 #[test]
 fn completion_stays_fence_local_in_markdown_documents() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.markdown",
             1,
             concat!(
@@ -908,9 +910,9 @@ fn completion_stays_fence_local_in_markdown_documents() {
 
 #[test]
 fn completion_ignores_markdown_fence_delimiter_lines() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.markdown",
             1,
             concat!(
@@ -940,9 +942,9 @@ fn completion_ignores_markdown_fence_delimiter_lines() {
 
 #[test]
 fn completion_allows_unclosed_markdown_fence_body() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.markdown",
             1,
             concat!("```mermaid\n", "flowchart TD\n", "A-->\n").to_string(),
@@ -960,9 +962,9 @@ fn completion_allows_unclosed_markdown_fence_body() {
 
 #[test]
 fn completion_uses_parser_identifier_context_after_operator() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\nA-->B\nC-->".to_string(),
@@ -990,9 +992,9 @@ fn non_flowchart_parser_facts_do_not_offer_flowchart_body_completions() {
         ("direction", CompletionDataKind::Direction),
         ("A@{ shape: rou", CompletionDataKind::Shape),
     ] {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 "file:///tmp/history.mmd",
                 1,
                 format!("gitGraph\n{line}"),
@@ -1060,9 +1062,9 @@ fn directional_families_project_partial_values_from_recovery_facts() {
             &["TB", "BT", "LR", "RL"],
         ),
     ] {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 "file:///tmp/example.mmd",
                 1,
                 source.to_string(),
@@ -1108,9 +1110,9 @@ fn directional_families_reject_prefixed_values_from_recovery_facts() {
         ("erDiagram\ndirection LRfoo", 1),
         ("classDiagram\ndirection LRfoo", 1),
     ] {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 "file:///tmp/example.mmd",
                 1,
                 source.to_string(),
@@ -1143,9 +1145,9 @@ fn directional_families_reject_prefixed_values_from_recovery_facts() {
 #[test]
 fn flowchart_direction_keeps_legacy_trailing_text_compatibility() {
     let source = "flowchart TD\nsubgraph group\ndirection LR trailing\nend\n";
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             source.to_string(),
@@ -1164,9 +1166,9 @@ fn flowchart_direction_keeps_legacy_trailing_text_compatibility() {
 fn flowchart_partial_operator_completion_comes_from_recovery_facts() {
     for source in ["flowchart TD\nA ->", "flowchart TD\nA --"] {
         let line = source.lines().last().expect("edge line");
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 "file:///tmp/example.mmd",
                 1,
                 source.to_string(),
@@ -1206,9 +1208,9 @@ fn flowchart_partial_shape_completion_comes_from_recovery_facts() {
             "circle }",
         ),
     ] {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 "file:///tmp/example.mmd",
                 1,
                 source.to_string(),
@@ -1239,9 +1241,9 @@ fn flowchart_partial_shape_completion_comes_from_recovery_facts() {
 
 #[test]
 fn completion_after_pipe_edge_label_inserts_after_the_label() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\nA-->B\nA -->|go|".to_string(),
@@ -1261,9 +1263,9 @@ fn completion_after_pipe_edge_label_inserts_after_the_label() {
 
 #[test]
 fn completion_after_pipe_edge_label_replaces_trailing_whitespace_slot() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\nA-->B\nA -->|go|   ".to_string(),
@@ -1284,9 +1286,9 @@ fn completion_after_pipe_edge_label_replaces_trailing_whitespace_slot() {
 
 #[test]
 fn completion_keeps_known_node_ids_when_parser_recovers() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\nsubgraph group\nA-->B\nC-->".to_string(),
@@ -1375,9 +1377,9 @@ fn completion_payload_contexts_return_no_body_items() {
             "block classDef",
         ),
     ] {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 "file:///tmp/example.mmd",
                 1,
                 source.to_string(),
@@ -1399,9 +1401,9 @@ fn completion_payload_contexts_return_no_body_items() {
 
 #[test]
 fn completion_bounds_unavailable_facts_to_source_start() {
-    let mut workspace = DocumentWorkspace::new();
-    let source_start = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let source_start = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flow".to_string(),
@@ -1422,8 +1424,8 @@ fn completion_bounds_unavailable_facts_to_source_start() {
             .is_some_and(|data| data.kind == CompletionDataKind::Template)
     }));
 
-    let body = workspace
-        .upsert(
+    let body = harness
+        .analyze(
             "file:///tmp/unknown.mmd",
             1,
             "unknownDiagram\nA-".to_string(),
@@ -1438,9 +1440,9 @@ fn completion_bounds_unavailable_facts_to_source_start() {
 
 #[test]
 fn completion_uses_parser_expected_syntax_for_shape_values() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\nA@{\n  shape: rou\n}\n".to_string(),
@@ -1462,9 +1464,9 @@ fn completion_uses_parser_expected_syntax_for_shape_values() {
 
 #[test]
 fn shape_value_completion_does_not_duplicate_existing_closing_brace() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\nA@{ shape: rou }\n".to_string(),
@@ -1493,9 +1495,9 @@ fn shape_value_completion_accepts_mermaid_whitespace_variants() {
         "flowchart TD\nA@{       shape: rou }\n",
         "flowchart TD\nA@{ shape : rou }\n",
     ] {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 "file:///tmp/example.mmd",
                 1,
                 source.to_string(),
@@ -1524,9 +1526,9 @@ fn shape_value_completion_accepts_mermaid_whitespace_variants() {
 
 #[test]
 fn shape_value_completion_appends_missing_brace_before_markdown_fence_close() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.markdown",
             1,
             concat!(
@@ -1558,9 +1560,9 @@ fn shape_value_completion_appends_missing_brace_before_markdown_fence_close() {
 
 #[test]
 fn shape_value_completion_ignores_host_document_tail_after_markdown_fence() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.markdown",
             1,
             concat!(
@@ -1588,9 +1590,9 @@ fn shape_value_completion_ignores_host_document_tail_after_markdown_fence() {
 
 #[test]
 fn shape_value_completion_appends_missing_brace_before_next_diagram_statement() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\nA@{ shape: rou\nB --> C\n".to_string(),
@@ -1614,9 +1616,9 @@ fn shape_value_completion_appends_missing_brace_before_next_diagram_statement() 
 
 #[test]
 fn completion_offers_parser_accepted_flowchart_shapes() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\nA@{\n  shape: rou\n}\n".to_string(),
@@ -1657,9 +1659,9 @@ fn completion_resolve_documentation_is_protocol_neutral() {
 
 #[test]
 fn completion_offers_snippet_templates_at_diagram_start() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flow".to_string(),
@@ -1689,9 +1691,9 @@ fn completion_offers_snippet_templates_at_diagram_start() {
 
 #[test]
 fn completion_offers_icon_template_from_icon_prefix() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "icon".to_string(),
@@ -1711,9 +1713,9 @@ fn completion_offers_icon_template_from_icon_prefix() {
 
 #[test]
 fn completion_offers_frontmatter_templates_at_document_start() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             String::new(),
@@ -1734,9 +1736,9 @@ fn completion_offers_frontmatter_templates_at_document_start() {
 
 #[test]
 fn completion_offers_themecss_inside_frontmatter() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "---\nconfig:\n  theme\n---\nflowchart TD\nA-->B\n".to_string(),
@@ -1760,9 +1762,9 @@ fn completion_offers_themecss_inside_frontmatter() {
 
 #[test]
 fn completion_does_not_offer_frontmatter_items_in_diagram_body() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\n  theme".to_string(),
@@ -1796,9 +1798,9 @@ fn global_completion_evidence_stops_before_physical_line_endings() {
             ("frontmatter", frontmatter, Position::new(4, 0)),
             ("comment", comment, Position::new(2, 0)),
         ] {
-            let mut workspace = DocumentWorkspace::new();
-            let snapshot = workspace
-                .upsert(
+            let harness = SnapshotHarness::new();
+            let snapshot = harness
+                .analyze(
                     format!("file:///tmp/{kind}-{ending_name}-boundary.mmd"),
                     1,
                     source,
@@ -1830,9 +1832,9 @@ fn global_completion_evidence_stops_before_physical_line_endings() {
 
 #[test]
 fn completion_uses_core_frontmatter_semantics_for_indented_frontmatter() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "  ---\n  config:\n    theme\n  ---\nflowchart TD\nA-->B\n".to_string(),
@@ -1856,9 +1858,9 @@ fn completion_uses_core_frontmatter_semantics_for_indented_frontmatter() {
 
 #[test]
 fn directive_helpers_use_snippet_placeholders() {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             "file:///tmp/example.mmd",
             1,
             "flowchart TD\nclassDef ".to_string(),

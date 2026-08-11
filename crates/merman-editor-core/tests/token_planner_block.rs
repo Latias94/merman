@@ -1,6 +1,7 @@
-use merman_editor_core::{
-    DocumentKind, DocumentWorkspace, PlannedTokenKind, plan_semantic_tokens_for_snapshot,
-};
+mod support;
+
+use merman_editor_core::{DocumentKind, PlannedTokenKind, plan_semantic_tokens_for_snapshot};
+use support::SnapshotHarness;
 
 #[test]
 fn block_parser_lexemes_project_to_utf16_tokens_without_overlap() {
@@ -26,9 +27,9 @@ fn block_parser_lexemes_project_to_utf16_tokens_without_overlap() {
     ];
 
     for (index, source) in cases.into_iter().enumerate() {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 format!("file:///tmp/block-{index}.mmd"),
                 1,
                 source.to_string(),

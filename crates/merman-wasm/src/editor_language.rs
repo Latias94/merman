@@ -8,10 +8,10 @@ use merman_bindings_core::{BindingError, BindingStatus};
 use merman_core::EditorSemanticKind;
 use merman_editor_core::{
     COMPLETION_TRIGGER_CHARACTERS, DiagramDetectionValidity, DocumentAnalysisContext, DocumentKind,
-    DocumentSnapshot, DocumentWorkspace, EditorDiagnostic, EditorDiagramDetection,
-    EditorDocumentSymbol, EditorHover, EditorLocation, EditorPrepareRename, EditorTextEdit,
-    EditorWorkspaceEdit, Position, Range, RenameError, SemanticTokenDescriptor,
-    analysis_payload_to_diagnostics, code_actions_from_fixes, completion_for_snapshot,
+    DocumentSnapshot, EditorDiagnostic, EditorDiagramDetection, EditorDocumentSymbol, EditorHover,
+    EditorLocation, EditorPrepareRename, EditorTextEdit, EditorWorkspaceEdit, Position, Range,
+    RenameError, SemanticTokenDescriptor, analysis_payload_to_diagnostics,
+    analyze_document_context_with_shared_text, code_actions_from_fixes, completion_for_snapshot,
     document_symbols, goto_definition, hover, plan_semantic_tokens_for_snapshot, prepare_rename,
     references, rename, search_document_symbols, semantic_token_descriptor,
 };
@@ -822,15 +822,8 @@ fn build_editor_document_analysis(
     let kind = document_kind_for_uri(uri);
     let text = Arc::<str>::from(source);
     record_editor_document_context_build();
-    DocumentWorkspace::build_analysis_context_with_shared_text(
-        &analyzer,
-        uri.to_string(),
-        version,
-        text,
-        kind,
-    )
-    .into_ready()
-    .map_err(editor_rejection_to_binding_error)
+    analyze_document_context_with_shared_text(&analyzer, uri.to_string(), version, text, kind)
+        .map_err(editor_rejection_to_binding_error)
 }
 
 fn editor_rejection_to_binding_error(rejection: AnalysisRejection) -> BindingError {

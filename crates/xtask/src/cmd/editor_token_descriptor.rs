@@ -3,7 +3,7 @@
 use crate::XtaskError;
 use merman_analysis::{AnalysisOptions, Analyzer};
 use merman_editor_core::{
-    DiagramDetectionValidity, DocumentKind, DocumentUri, DocumentWorkspace,
+    DiagramDetectionValidity, DocumentKind, DocumentUri, analyze_document_context_with_shared_text,
     plan_semantic_tokens_for_snapshot,
 };
 use serde::{Deserialize, Serialize};
@@ -1107,14 +1107,13 @@ fn token_equivalence_case(
     fixture: Option<String>,
     source: String,
 ) -> Result<TokenEquivalenceCase, XtaskError> {
-    let analyzed = DocumentWorkspace::build_analysis_context_with_shared_text(
+    let analyzed = analyze_document_context_with_shared_text(
         analyzer,
         DocumentUri::new(format!("file:///editor-language/{id}.mmd")),
         1,
         Arc::from(source.as_str()),
         DocumentKind::Diagram,
     )
-    .into_ready()
     .map_err(|rejection| {
         descriptor_error(format!(
             "token equivalence case `{id}` exceeded {}",

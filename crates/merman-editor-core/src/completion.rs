@@ -619,14 +619,44 @@ pub struct CompletionResolveData {
 #[cfg(test)]
 mod tests {
     use super::{CompletionDataKind, completion_for_snapshot};
-    use crate::types::{DocumentKind, Position};
-    use crate::workspace::DocumentWorkspace;
+    use crate::document_analysis::analyze_document_snapshot_with_shared_text;
+    use crate::types::{DocumentKind, DocumentUri, Position};
+    use merman_analysis::{AnalysisRejection, Analyzer};
+    use std::sync::Arc;
+
+    struct SnapshotHarness {
+        analyzer: Analyzer,
+    }
+
+    impl SnapshotHarness {
+        fn new() -> Self {
+            Self {
+                analyzer: Analyzer::new(),
+            }
+        }
+
+        fn analyze(
+            &self,
+            uri: impl Into<DocumentUri>,
+            version: i32,
+            text: impl Into<Arc<str>>,
+            kind: DocumentKind,
+        ) -> Result<crate::DocumentSnapshot, AnalysisRejection> {
+            analyze_document_snapshot_with_shared_text(
+                &self.analyzer,
+                uri,
+                version,
+                text.into(),
+                kind,
+            )
+        }
+    }
 
     #[test]
     fn markdown_outside_mermaid_fence_returns_no_completion() {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 "file:///tmp/readme.md",
                 1,
                 "# Notes\n\nplain prose\n".to_string(),
@@ -641,9 +671,9 @@ mod tests {
 
     #[test]
     fn source_start_offers_headers_and_templates() {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 "file:///tmp/example.mmd",
                 1,
                 "flow".to_string(),
@@ -674,9 +704,9 @@ mod tests {
 
     #[test]
     fn unsupported_diagram_body_context_returns_no_completion() {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 "file:///tmp/example.mmd",
                 1,
                 "flowchart TD\nunsupported".to_string(),
@@ -691,9 +721,9 @@ mod tests {
 
     #[test]
     fn parser_payload_context_returns_no_completion() {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 "file:///tmp/example.mmd",
                 1,
                 "sequenceDiagram\nAlice->Bob: Hello".to_string(),
@@ -708,9 +738,9 @@ mod tests {
 
     #[test]
     fn parser_expected_node_slot_reuses_known_entity_ids() {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 "file:///tmp/example.mmd",
                 1,
                 "flowchart TD\nA--> ".to_string(),
@@ -737,9 +767,9 @@ mod tests {
     #[test]
     fn parser_expected_flowchart_direction_edits_only_direction_value() {
         let text = "flowchart TD\nsubgraph group\ndirection L\nend\n";
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 "file:///tmp/example.mmd",
                 1,
                 text.to_string(),
@@ -777,9 +807,9 @@ mod tests {
     #[test]
     fn parser_expected_block_arrow_direction_uses_block_values() {
         let text = "block\n  blockArrow<[\"&nbsp;\"]>(r";
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 "file:///tmp/example.mmd",
                 1,
                 text.to_string(),

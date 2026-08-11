@@ -1,7 +1,10 @@
+mod support;
+
 use merman_editor_core::{
-    DocumentKind, DocumentSnapshot, DocumentWorkspace, PlannedToken, PlannedTokenKind,
-    PlannedTokenModifier, SemanticTokenPlan, plan_semantic_tokens_for_snapshot,
+    DocumentKind, DocumentSnapshot, PlannedToken, PlannedTokenKind, PlannedTokenModifier,
+    SemanticTokenPlan, plan_semantic_tokens_for_snapshot,
 };
+use support::SnapshotHarness;
 
 #[test]
 fn wardley_complete_plan_projects_parser_lexemes_semantics_and_utf16() {
@@ -104,9 +107,9 @@ fn wardley_recovery_plan_keeps_pipeline_suffix_later_definition_and_eof_string()
 }
 
 fn plan(source: &str, suffix: &str) -> (DocumentSnapshot, SemanticTokenPlan) {
-    let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace
-        .upsert(
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
             format!("file:///tmp/wardley-{suffix}.mmd"),
             1,
             source.to_string(),

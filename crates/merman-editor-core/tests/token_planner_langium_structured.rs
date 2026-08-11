@@ -1,6 +1,7 @@
-use merman_editor_core::{
-    DocumentKind, DocumentWorkspace, PlannedTokenKind, plan_semantic_tokens_for_snapshot,
-};
+mod support;
+
+use merman_editor_core::{DocumentKind, PlannedTokenKind, plan_semantic_tokens_for_snapshot};
+use support::SnapshotHarness;
 
 #[test]
 fn structured_langium_plans_merge_parser_lexemes_without_overlap() {
@@ -50,9 +51,9 @@ fn structured_langium_plans_merge_parser_lexemes_without_overlap() {
     ];
 
     for (family, source, distinctive_kind) in cases {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 format!("file:///tmp/{family}-structured.mmd"),
                 1,
                 source.to_string(),
@@ -97,9 +98,9 @@ fn structured_langium_recovery_plans_preserve_utf16_tokens_after_the_error() {
     ];
 
     for (family, source) in cases {
-        let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace
-            .upsert(
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
                 format!("file:///tmp/{family}-structured-recovery.mmd"),
                 1,
                 source.to_string(),
