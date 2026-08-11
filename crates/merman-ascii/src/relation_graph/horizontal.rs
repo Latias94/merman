@@ -184,6 +184,54 @@ struct HorizontalEdgePlan {
     lane_y: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct VerticalOwnershipSpan {
+    x: usize,
+    top: usize,
+    bottom: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct HorizontalEdgeGeometry {
+    lane_y: usize,
+    left_x: usize,
+    right_x: usize,
+    left_port_y: usize,
+    right_port_y: usize,
+    left_stem: VerticalOwnershipSpan,
+    right_stem: VerticalOwnershipSpan,
+}
+
+impl HorizontalEdgeGeometry {
+    fn vertical_stems(self) -> [VerticalOwnershipSpan; 2] {
+        [self.left_stem, self.right_stem]
+    }
+
+    fn owns_crossing_with(self, other: Self) -> bool {
+        self.vertical_stems().into_iter().any(|stem| {
+            other.horizontal_owns_vertical(stem)
+                || other
+                    .vertical_stems()
+                    .into_iter()
+                    .any(|other_stem| stems_overlap(stem, other_stem))
+        }) || other
+            .vertical_stems()
+            .into_iter()
+            .any(|stem| self.horizontal_owns_vertical(stem))
+    }
+
+    fn horizontal_owns_vertical(self, stem: VerticalOwnershipSpan) -> bool {
+        self.left_x <= stem.x
+            && stem.x <= self.right_x
+            && stem.top <= self.lane_y
+            && self.lane_y <= stem.bottom
+    }
+}
+
+fn stems_overlap(left: VerticalOwnershipSpan, right: VerticalOwnershipSpan) -> bool {
+    left.x == right.x && left.top.max(right.top) <= left.bottom.min(right.bottom)
+}
+
 struct HorizontalComponentPlanContext<'a, R, A> {
     edges: &'a [LayeredRelationEdge],
     relations: &'a [R],
@@ -473,8 +521,8 @@ where
     nodes
         .try_reserve_exact(boxes.len())
         .map_err(|_| layout_allocation_failed())?;
-    for box_index in order {
-        let original = boxes[box_index];
+    for box_index in &order {
+        let original = boxes[*box_index];
         nodes.push(HorizontalNode {
             original,
             visual: original.shared_projection(),
@@ -580,6 +628,19 @@ where
         .max()
         .unwrap_or(0);
     let height = resources.checked_grid_add(box_top, box_height)?;
+    if horizontal_edge_owners_overlap(&nodes, &edge_plans, box_top, resources)? {
+        return Ok(RelationRegionPlan::Summary(
+            plan_horizontal_relation_summary(
+                boxes,
+                &order,
+                edge_indices,
+                relations,
+                options,
+                resources,
+                adapter,
+            )?,
+        ));
+    }
     let extent = resources.grid_extent(width, height)?;
     Ok(RelationRegionPlan::Horizontal(
         HorizontalRelationPaintPlan {
@@ -723,6 +784,100 @@ fn horizontal_span_between(
     Ok(span)
 }
 
+fn horizontal_edge_geometry(
+    nodes: &[HorizontalNode<'_>],
+    edge: &HorizontalEdgePlan,
+    box_top: usize,
+    resources: &ResourceContext,
+) -> Result<HorizontalEdgeGeometry> {
+    let (left_index, _, right_index, _) = edge.physical_endpoints();
+    let left = nodes
+        .get(left_index)
+        .ok_or_else(|| grid_overflow(resources))?;
+    let right = nodes
+        .get(right_index)
+        .ok_or_else(|| grid_overflow(resources))?;
+    let left_x = resources.checked_grid_add(left.x, left.original.width())?;
+    let right_x = right
+        .x
+        .checked_sub(1)
+        .ok_or_else(|| grid_overflow(resources))?;
+    let left_port_y = left.port_y(box_top, resources)?;
+    let right_port_y = right.port_y(box_top, resources)?;
+    Ok(HorizontalEdgeGeometry {
+        lane_y: edge.lane_y,
+        left_x,
+        right_x,
+        left_port_y,
+        right_port_y,
+        left_stem: VerticalOwnershipSpan {
+            x: left_x,
+            top: edge.lane_y.min(left_port_y),
+            bottom: edge.lane_y.max(left_port_y),
+        },
+        right_stem: VerticalOwnershipSpan {
+            x: right_x,
+            top: edge.lane_y.min(right_port_y),
+            bottom: edge.lane_y.max(right_port_y),
+        },
+    })
+}
+
+fn horizontal_edges_share_node(left: &HorizontalEdgePlan, right: &HorizontalEdgePlan) -> bool {
+    left.source_index == right.source_index
+        || left.source_index == right.target_index
+        || left.target_index == right.source_index
+        || left.target_index == right.target_index
+}
+
+fn horizontal_edge_ownership_differs(
+    left: &HorizontalEdgePlan,
+    right: &HorizontalEdgePlan,
+) -> bool {
+    left.style.horizontal != right.style.horizontal
+        || left.style.vertical != right.style.vertical
+        || left.style.line_chars != right.style.line_chars
+        || left.style.source.marker != right.style.source.marker
+        || left.style.target.marker != right.style.target.marker
+}
+
+fn horizontal_edge_owners_overlap(
+    nodes: &[HorizontalNode<'_>],
+    edges: &[HorizontalEdgePlan],
+    box_top: usize,
+    resources: &mut ResourceContext,
+) -> Result<bool> {
+    resources.charge_layout_work(edges.len())?;
+    let mut geometries = Vec::new();
+    geometries
+        .try_reserve_exact(edges.len())
+        .map_err(|_| layout_allocation_failed())?;
+    for edge in edges {
+        geometries.push(horizontal_edge_geometry(nodes, edge, box_top, resources)?);
+    }
+
+    let pair_count = edges
+        .len()
+        .checked_mul(edges.len().saturating_sub(1))
+        .map(|pairs| pairs / 2)
+        .ok_or_else(|| work_overflow(resources))?;
+    resources.charge_layout_work(pair_count)?;
+    for left_index in 0..edges.len() {
+        for right_index in (left_index + 1)..edges.len() {
+            let share_node = horizontal_edges_share_node(&edges[left_index], &edges[right_index]);
+            if share_node
+                && !horizontal_edge_ownership_differs(&edges[left_index], &edges[right_index])
+            {
+                continue;
+            }
+            if geometries[left_index].owns_crossing_with(geometries[right_index]) {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
+}
+
 fn draw_horizontal_edge(
     canvas: &mut Canvas,
     nodes: &[HorizontalNode<'_>],
@@ -730,22 +885,15 @@ fn draw_horizontal_edge(
     box_top: usize,
     resources: &mut ResourceContext,
 ) -> Result<()> {
-    let (left_index, left_endpoint, right_index, right_endpoint) = edge.physical_endpoints();
-    let left = &nodes[left_index];
-    let right = &nodes[right_index];
-    // A self-loop expands only the visual projection. Ordinary edges must still
-    // attach to the original node face, not to the loop's outer gutter.
-    let left_stem_x = resources.checked_grid_add(left.x, left.original.width())?;
-    let right_stem_x = right
-        .x
-        .checked_sub(1)
-        .ok_or_else(|| grid_overflow(resources))?;
-    let left_port_y = left.port_y(box_top, resources)?;
-    let right_port_y = right.port_y(box_top, resources)?;
-    let vertical_work = edge
-        .lane_y
-        .abs_diff(left_port_y)
-        .checked_add(edge.lane_y.abs_diff(right_port_y))
+    let (_, left_endpoint, _, right_endpoint) = edge.physical_endpoints();
+    let geometry = horizontal_edge_geometry(nodes, edge, box_top, resources)?;
+    let left_stem_x = geometry.left_x;
+    let right_stem_x = geometry.right_x;
+    let vertical_work = geometry
+        .left_stem
+        .bottom
+        .abs_diff(geometry.left_stem.top)
+        .checked_add(geometry.right_stem.bottom.abs_diff(geometry.right_stem.top))
         .ok_or_else(|| work_overflow(resources))?;
     let horizontal_work = right_stem_x.abs_diff(left_stem_x);
     resources.charge_layout_work(
@@ -759,7 +907,7 @@ fn draw_horizontal_edge(
         canvas,
         left_stem_x,
         edge.lane_y,
-        left_port_y,
+        geometry.left_port_y,
         edge.style.vertical,
         edge.style.line_chars,
     )?;
@@ -767,7 +915,7 @@ fn draw_horizontal_edge(
         canvas,
         right_stem_x,
         edge.lane_y,
-        right_port_y,
+        geometry.right_port_y,
         edge.style.vertical,
         edge.style.line_chars,
     )?;

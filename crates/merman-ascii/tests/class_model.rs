@@ -546,6 +546,33 @@ fn class_parser_horizontal_component_draws_each_class_once() {
 }
 
 #[test]
+fn class_parser_horizontal_unrelated_edge_crossings_use_lossless_summary() {
+    let rendered = render_class(
+        concat!(
+            "classDiagram\n",
+            "direction LR\n",
+            "class A\n",
+            "class B\n",
+            "class C\n",
+            "class D\n",
+            "A --> C : first\n",
+            "B ..> D : second\n",
+            "A --> B : bridge",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("unrelated horizontal crossings should remain recoverable");
+
+    assert!(rendered.contains("relations:"), "{rendered}");
+    for expected in ["A --> C : first", "B ..> D : second", "A --> B : bridge"] {
+        assert!(
+            rendered.contains(expected),
+            "summary must preserve {expected:?} after owner crossing fallback:\n{rendered}"
+        );
+    }
+}
+
+#[test]
 fn class_parser_horizontal_long_label_keeps_connector_attached_to_ports() {
     let rendered = render_class(
         concat!(
