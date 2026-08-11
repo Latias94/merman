@@ -337,50 +337,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Resolve pinned Mermaid source
-        id: mermaid-source
-        if: matrix.parity
-        shell: bash
-        run: |
-          commit="$(python3 - <<'PY'
-          import json
-          from pathlib import Path
-
-          bundle = json.loads(
-              Path("tools/upstreams/MERMAID_REFERENCE_BUNDLE.json").read_text(encoding="utf-8")
-          )
-          print(bundle["release"]["source"]["commit"])
-          PY
-          )"
-          if [[ ! "$commit" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "Invalid Mermaid source commit in reference bundle: $commit" >&2
-            exit 1
-          fi
-          echo "commit=$commit" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        name: Checkout pinned Mermaid Cypress sources
-        if: matrix.parity
-        with:
-          repository: mermaid-js/mermaid
-          ref: ${{ steps.mermaid-source.outputs.commit }}
-          path: repo-ref/mermaid
-          persist-credentials: false
-          sparse-checkout: |
-            cypress/integration/rendering/treeView/treeView.spec.ts
-            cypress/integration/rendering/cynefin/cynefin.spec.js
-            cypress/integration/rendering/railroad/railroad.spec.ts
-          sparse-checkout-cone-mode: false
-
-      - name: Verify pinned Mermaid source checkout
-        if: matrix.parity
-        shell: bash
-        env:
-          MERMAID_SOURCE_COMMIT: ${{ steps.mermaid-source.outputs.commit }}
-        run: |
-          actual="$(git -C repo-ref/mermaid rev-parse HEAD)"
-          test "$actual" = "$MERMAID_SOURCE_COMMIT"
-
       - name: Resolve pinned DOMPurify source
         id: dompurify-source
         if: matrix.parity
@@ -520,9 +476,9 @@ jobs:
         if: matrix.parity && github.event_name == 'push'
         run: npm run --prefix platforms/node build:candidate -- --candidate napi --target linux-x64-gnu
 
-      - name: Verify Cypress corpus against pinned Mermaid source
+      - name: Verify committed upstream alignment manifests
         if: matrix.parity
-        run: cargo run --locked -p xtask -- import-upstream-cypress --check-11-16-corpus-manifest-source
+        run: cargo run --locked -p xtask -- check-alignment
 
       - name: Test system adapter feature contracts
         if: matrix.parity

@@ -2011,24 +2011,13 @@ class CiWorkflowSecurityTests(unittest.TestCase):
         ):
             self.assertIn(contract, modern_validation_step["run"])
 
-    def test_ci_pins_cypress_corpus_source_alignment(self) -> None:
+    def test_ci_checks_committed_upstream_alignment_without_live_source_checkout(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "ci.yml")
 
-        self.assertIn("repository: mermaid-js/mermaid", text)
-        self.assertIn("tools/upstreams/MERMAID_REFERENCE_BUNDLE.json", text)
-        self.assertIn("ref: ${{ steps.mermaid-source.outputs.commit }}", text)
-        self.assertIn("MERMAID_SOURCE_COMMIT: ${{ steps.mermaid-source.outputs.commit }}", text)
-        self.assertNotRegex(text, r"ref: [0-9a-f]{40}")
-        for source in (
-            "cypress/integration/rendering/treeView/treeView.spec.ts",
-            "cypress/integration/rendering/cynefin/cynefin.spec.js",
-            "cypress/integration/rendering/railroad/railroad.spec.ts",
-        ):
-            self.assertIn(source, text)
-        self.assertIn(
-            "import-upstream-cypress --check-11-16-corpus-manifest-source",
-            text,
-        )
+        self.assertIn("cargo run --locked -p xtask -- check-alignment", text)
+        self.assertNotIn("repository: mermaid-js/mermaid", text)
+        self.assertNotIn("repo-ref/mermaid", text)
+        self.assertNotIn("import-upstream-cypress", text)
 
     def test_ci_prepares_pinned_generated_artifact_inputs_before_verification(self) -> None:
         workflow_path = WORKFLOW_ROOT / "ci.yml"
