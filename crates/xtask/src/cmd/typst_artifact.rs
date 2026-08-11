@@ -912,7 +912,7 @@ fn collect_input_fingerprint(
     collect_optional_directory(workspace_root, Path::new(".cargo"), false, &mut paths)?;
     collect_required_file(
         workspace_root,
-        Path::new("packages/typst/merman/typst.toml"),
+        Path::new("distribution/typst/merman/typst.toml"),
         &mut paths,
     )?;
     let mut packages = Vec::with_capacity(closure.len());
@@ -1395,7 +1395,7 @@ fn read_workspace_package_version(workspace_root: &Path) -> Result<String, Xtask
 }
 
 fn read_typst_package_version(workspace_root: &Path) -> Result<String, XtaskError> {
-    let path = workspace_root.join("packages/typst/merman/typst.toml");
+    let path = workspace_root.join("distribution/typst/merman/typst.toml");
     let source = fs::read_to_string(&path)
         .map_err(|error| artifact_io_error("read Typst package manifest", &path, error))?;
     let manifest: TypstPackageManifest = toml::from_str(&source).map_err(|error| {
@@ -1683,7 +1683,7 @@ mod tests {
             );
             write(&workspace.join("Cargo.lock"), "version = 4\n");
             write(
-                &workspace.join("packages/typst/merman/typst.toml"),
+                &workspace.join("distribution/typst/merman/typst.toml"),
                 "[package]\nname = \"merman\"\nversion = \"0.2.0\"\n",
             );
             write(

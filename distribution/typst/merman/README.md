@@ -31,17 +31,17 @@ The Typst package version tracks the `@preview/merman` wrapper API. The merman s
 
 ## Examples
 
-- [basic.typ](https://github.com/Latias94/merman/blob/main/packages/typst/merman/examples/basic.typ): minimal `#mermaid(...)` usage.
-- [document-context.typ](https://github.com/Latias94/merman/blob/main/packages/typst/merman/examples/document-context.typ): opt-in document typography and width bridging.
-- [profile.typ](https://github.com/Latias94/merman/blob/main/packages/typst/merman/examples/profile.typ): reusable renderer settings shared by direct calls and raw blocks.
-- [figure.typ](https://github.com/Latias94/merman/blob/main/packages/typst/merman/examples/figure.typ): Mermaid diagrams wrapped as Typst figures with reusable layout defaults.
-- [raw-block.typ](https://github.com/Latias94/merman/blob/main/packages/typst/merman/examples/raw-block.typ): document-wide Mermaid fences with `show-mermaid-blocks`.
-- [options.typ](https://github.com/Latias94/merman/blob/main/packages/typst/merman/examples/options.typ): themes, stable IDs, `mermaid-result`, SVG export, and placeholder errors.
-- [print.typ](https://github.com/Latias94/merman/blob/main/packages/typst/merman/examples/print.typ): print-friendly white-background output.
-- [presentation.typ](https://github.com/Latias94/merman/blob/main/packages/typst/merman/examples/presentation.typ): dark slide-sized output.
-- [svg-export.typ](https://github.com/Latias94/merman/blob/main/packages/typst/merman/examples/svg-export.typ): raw SVG and structured render payloads.
+- [basic.typ](https://github.com/Latias94/merman/blob/main/distribution/typst/merman/examples/basic.typ): minimal `#mermaid(...)` usage.
+- [document-context.typ](https://github.com/Latias94/merman/blob/main/distribution/typst/merman/examples/document-context.typ): opt-in document typography and width bridging.
+- [profile.typ](https://github.com/Latias94/merman/blob/main/distribution/typst/merman/examples/profile.typ): reusable renderer settings shared by direct calls and raw blocks.
+- [figure.typ](https://github.com/Latias94/merman/blob/main/distribution/typst/merman/examples/figure.typ): Mermaid diagrams wrapped as Typst figures with reusable layout defaults.
+- [raw-block.typ](https://github.com/Latias94/merman/blob/main/distribution/typst/merman/examples/raw-block.typ): document-wide Mermaid fences with `show-mermaid-blocks`.
+- [options.typ](https://github.com/Latias94/merman/blob/main/distribution/typst/merman/examples/options.typ): themes, stable IDs, `mermaid-result`, SVG export, and placeholder errors.
+- [print.typ](https://github.com/Latias94/merman/blob/main/distribution/typst/merman/examples/print.typ): print-friendly white-background output.
+- [presentation.typ](https://github.com/Latias94/merman/blob/main/distribution/typst/merman/examples/presentation.typ): dark slide-sized output.
+- [svg-export.typ](https://github.com/Latias94/merman/blob/main/distribution/typst/merman/examples/svg-export.typ): raw SVG and structured render payloads.
 
-Package fixtures are grouped by behavior family under [tests](https://github.com/Latias94/merman/tree/main/packages/typst/merman/tests): API, render environments, context, errors, figures, raw blocks, README examples, historical issues, and visual smoke coverage. These links point to the source repository because examples and tests are not included in the published Typst package.
+Package fixtures are grouped by behavior family under [tests](https://github.com/Latias94/merman/tree/main/distribution/typst/merman/tests): API, render environments, context, errors, figures, raw blocks, README examples, historical issues, and visual smoke coverage. These links point to the source repository because examples and tests are not included in the published Typst package.
 
 ## Document Fonts
 

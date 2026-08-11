@@ -856,7 +856,7 @@ function validReceiptInput() {
       },
       coldDefinition: "fresh process and context",
       equivalenceDefinition: "35 families by 11 queries",
-      equivalenceEvidence: "editor-language/token-equivalence-v1.json",
+      equivalenceEvidence: "contracts/editor-language/token-equivalence-v1.json",
       equivalenceEvidenceSha256: digest("evidence"),
       memoryDefinition: "user-agent-specific-memory",
       order: "AB/BA",

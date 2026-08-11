@@ -27,7 +27,7 @@
     },
     "coldDefinition": "fresh Chromium process and browser context",
     "equivalenceDefinition": "one generated family-baseline source for each of 35 families; all 11 production WorkerClient queries execute in an explicit module Worker and each canonical result or request-local error is SHA-256 bound",
-    "equivalenceEvidence": "editor-language/token-equivalence-v1.json generated from playground/examples/manifest.json",
+    "equivalenceEvidence": "contracts/editor-language/token-equivalence-v1.json generated from playground/examples/manifest.json",
     "equivalenceEvidenceSha256": "cbc199b897eeabfca13b95e922c10ef1e76ac39ef2648d73fc2bbe1c3006d1ff",
     "memoryDefinition": "maximum sampled startup bytes from performance.measureUserAgentSpecificMemory in cross-origin-isolated Chromium; the measurement fails instead of substituting a narrower heap scope",
     "order": "odd blocks full/editor; even blocks editor/full",

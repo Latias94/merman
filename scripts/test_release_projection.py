@@ -517,7 +517,7 @@ class ReleaseProjectionTests(unittest.TestCase):
         self.assertNotIn(Path("docs/rendering/RASTER_OUTPUT.md"), updates)
         self.assertFalse(any(path.suffix == ".md" for path in updates))
         self.assertNotIn(Path("tools/vscode-extension/package.json"), updates)
-        self.assertNotIn(Path("packages/typst/merman/typst.toml"), updates)
+        self.assertNotIn(Path("distribution/typst/merman/typst.toml"), updates)
         for _name, (member, _version) in release_projection.load_workspace_catalog(
             release_projection.RepositoryView(self.ROOT)
         ).independent_packages.items():

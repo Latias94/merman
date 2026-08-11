@@ -20,7 +20,7 @@ installation command.
 | Flutter/Dart host integration | `merman` | pub.dev |
 | Android host integration | `io.merman:merman-android` | GitHub Release AAR |
 | Apple host integration | `Merman.xcframework` | GitHub Release asset or local SwiftPM package |
-| Typst plugin package | `packages/typst/merman` | manual Typst registry submission |
+| Typst plugin package | `distribution/typst/merman` | manual Typst registry submission |
 | VS Code integration | `merman-vscode` | GitHub Actions VSIX artifact |
 
 Foundational Rust implementation crates are not product entry points. Homebrew/core owns formula

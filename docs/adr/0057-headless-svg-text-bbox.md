@@ -67,7 +67,7 @@ when every canonical fact is bit-identical. Otherwise the shape has an independe
 single-tspan facts rather than borrowing the direct-text profile.
 
 `MRMFNT05` is an internal generated-data schema, not a public binding ABI. Native ABI versioning is
-owned separately by `abi/merman-v3.json`; changing this generated-data format does not change the
+owned separately by `contracts/abi/merman-v3.json`; changing this generated-data format does not change the
 native ABI.
 
 ### Baseline-bearing DOM probes remain distinct
