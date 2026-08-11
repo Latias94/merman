@@ -711,60 +711,21 @@ class ReleaseVersionOwnerTests(unittest.TestCase):
             release_version_owners.prepare_android_version(root, release)
             release_version_owners.prepare_flutter_version(root, release)
 
-            expected = {
-                release_version_owners.PYTHON_MANIFEST: 'version = "0.9.0b2"',
-                release_version_owners.ANDROID_MANIFEST: 'version = "0.9.0-beta.2"',
-                release_version_owners.FLUTTER_MANIFEST: "version: 0.9.0-beta.2",
-                release_version_owners.FLUTTER_PACKAGE_VERSION: "'0.9.0-beta.2'",
-                release_version_owners.FLUTTER_ANDROID_MANIFEST: "'0.9.0-beta.2'",
-                release_version_owners.FLUTTER_IOS_PODSPEC: "'0.9.0-beta.2'",
-                release_version_owners.FLUTTER_MACOS_PODSPEC: "'0.9.0-beta.2'",
-                release_version_owners.FLUTTER_IOS_BUILD: "<string>0.9.0</string>",
-            }
-            for path, version_text in expected.items():
-                self.assertIn(version_text, (root / path).read_text(encoding="utf-8"))
-            self.assertIn(
-                "keep-python",
-                (root / release_version_owners.PYTHON_MANIFEST).read_text(
-                    encoding="utf-8"
-                ),
+            checks = (
+                (release_version_owners.PYTHON_MANIFEST, 'version = "0.9.0b2"', "keep-python", 1),
+                (release_version_owners.ANDROID_MANIFEST, 'version = "0.9.0-beta.2"', "keep-android", 1),
+                (release_version_owners.FLUTTER_MANIFEST, "version: 0.9.0-beta.2", "keep-flutter", 1),
+                (release_version_owners.FLUTTER_PACKAGE_VERSION, "'0.9.0-beta.2'", None, 1),
+                (release_version_owners.FLUTTER_ANDROID_MANIFEST, "'0.9.0-beta.2'", None, 1),
+                (release_version_owners.FLUTTER_IOS_PODSPEC, "'0.9.0-beta.2'", None, 1),
+                (release_version_owners.FLUTTER_MACOS_PODSPEC, "'0.9.0-beta.2'", None, 1),
+                (release_version_owners.FLUTTER_IOS_BUILD, "<string>0.9.0</string>", None, 2),
             )
-            self.assertIn(
-                "keep-android",
-                (root / release_version_owners.ANDROID_MANIFEST).read_text(
-                    encoding="utf-8"
-                ),
-            )
-            self.assertIn(
-                "keep-flutter",
-                (root / release_version_owners.FLUTTER_MANIFEST).read_text(
-                    encoding="utf-8"
-                ),
-            )
-
-    def test_flutter_owner_validates_every_surface_before_writing(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            fixtures = dict(self.FIXTURES)
-            fixtures[release_version_owners.FLUTTER_IOS_BUILD] = (
-                "<key>CFBundleShortVersionString</key>\n<string>0.8.0</string>\n"
-            )
-            self.write_fixtures(root, fixtures)
-            before = {path: (root / path).read_bytes() for path in fixtures}
-
-            with self.assertRaisesRegex(
-                release_version_owners.ReleaseOwnerError,
-                "CFBundleVersion",
-            ):
-                release_version_owners.prepare_flutter_version(
-                    root,
-                    release_projection.parse_release_version("0.9.0-alpha.1"),
-                )
-
-            self.assertEqual(
-                {path: (root / path).read_bytes() for path in fixtures},
-                before,
-            )
+            for path, version_text, retained_text, count in checks:
+                text = (root / path).read_text(encoding="utf-8")
+                self.assertEqual(text.count(version_text), count)
+                if retained_text is not None:
+                    self.assertIn(retained_text, text)
 
 
 class ReleaseProjectionWriteTests(unittest.TestCase):

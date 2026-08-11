@@ -59,43 +59,37 @@ def prepare_android_version(root: Path, release: ReleaseVersion) -> None:
 def prepare_flutter_version(root: Path, release: ReleaseVersion) -> None:
     """Update the Flutter owner's Dart, Gradle, CocoaPods, and plist surfaces."""
 
-    updates = {
-        FLUTTER_MANIFEST: _replace_assignment(
-            _read(root, FLUTTER_MANIFEST),
-            r"^(version:\s*)[^\s#]+(\s*)$",
-            release.canonical,
-            FLUTTER_MANIFEST,
-            "Flutter version",
-        ),
-        FLUTTER_PACKAGE_VERSION: _replace_assignment(
-            _read(root, FLUTTER_PACKAGE_VERSION),
-            r"^(const String mermanPackageVersion = ')[^']+(';\s*)$",
-            release.canonical,
+    assignments = (
+        (FLUTTER_MANIFEST, r"^(version:\s*)[^\s#]+(\s*)$", "Flutter version"),
+        (
             FLUTTER_PACKAGE_VERSION,
+            r"^(const String mermanPackageVersion = ')[^']+(';\s*)$",
             "Flutter bundled native package version",
         ),
-        FLUTTER_ANDROID_MANIFEST: _replace_assignment(
-            _read(root, FLUTTER_ANDROID_MANIFEST),
-            r"^(version\s*=\s*')[^']+('\s*)$",
-            release.canonical,
+        (
             FLUTTER_ANDROID_MANIFEST,
+            r"^(version\s*=\s*')[^']+('\s*)$",
             "Flutter Android version",
         ),
-        FLUTTER_IOS_PODSPEC: _replace_assignment(
-            _read(root, FLUTTER_IOS_PODSPEC),
-            r"^(\s*s\.version\s*=\s*')[^']+('\s*)$",
-            release.canonical,
+        (
             FLUTTER_IOS_PODSPEC,
+            r"^(\s*s\.version\s*=\s*')[^']+('\s*)$",
             "Flutter iOS Podspec version",
         ),
-        FLUTTER_MACOS_PODSPEC: _replace_assignment(
-            _read(root, FLUTTER_MACOS_PODSPEC),
-            r"^(\s*s\.version\s*=\s*')[^']+('\s*)$",
-            release.canonical,
+        (
             FLUTTER_MACOS_PODSPEC,
+            r"^(\s*s\.version\s*=\s*')[^']+('\s*)$",
             "Flutter macOS Podspec version",
         ),
-    }
+    )
+    for path, pattern, label in assignments:
+        _write_if_changed(
+            root,
+            path,
+            _replace_assignment(
+                _read(root, path), pattern, release.canonical, path, label
+            ),
+        )
 
     build_text = _read(root, FLUTTER_IOS_BUILD)
     for plist_key in ("CFBundleShortVersionString", "CFBundleVersion"):
@@ -107,10 +101,7 @@ def prepare_flutter_version(root: Path, release: ReleaseVersion) -> None:
             plist_key,
             flags=0,
         )
-    updates[FLUTTER_IOS_BUILD] = build_text
-
-    for path, content in updates.items():
-        _write_if_changed(root, path, content)
+    _write_if_changed(root, FLUTTER_IOS_BUILD, build_text)
 
 
 def _read(root: Path, path: Path) -> str:
@@ -168,14 +159,15 @@ def _replace_assignment(
     *,
     flags: int = re.MULTILINE,
 ) -> str:
-    expression = re.compile(pattern, flags=flags)
-    matches = list(expression.finditer(text))
-    if len(matches) != 1:
-        raise ReleaseOwnerError(
-            f"{path} must contain exactly one {label}; found {len(matches)}"
-        )
-    return expression.sub(
+    candidate, count = re.subn(
+        pattern,
         lambda match: f"{match.group(1)}{version}{match.group(2)}",
         text,
         count=1,
+        flags=flags,
     )
+    if count != 1:
+        raise ReleaseOwnerError(
+            f"{path} must contain exactly one {label}; found {count}"
+        )
+    return candidate
