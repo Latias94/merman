@@ -2,7 +2,8 @@
 
 This document is the human-readable parity dashboard. It records current support and verification
 boundaries; it is not a progress log. Historical implementation notes belong in workstream,
-planning, or coverage documents.
+planning, or coverage documents. See the [alignment authority map](README.md) for the machine and
+prose ownership boundary.
 
 ## Current Read
 
@@ -11,7 +12,7 @@ planning, or coverage documents.
 | Dashboard | Active |
 | Upstream baseline | Mermaid `@11.16.1` |
 | Reference graph | Generated bundle verifies Mermaid and companion source, package, lock, and provenance evidence |
-| Evidence audit | Inventory and corpus counts checked against the worktree on 2026-07-19 |
+| Dashboard review | Authority links and lifecycle boundaries reviewed on 2026-08-11; exact gate state belongs to the revision that ran it |
 | Admission | 35 families in the primary SVG matrix; `zenuml` has a separate external-renderer comparison lane |
 | Root viewport | Every primary-matrix family has covered root-viewport evidence |
 | Semantic edge labels | C4, Flowchart ELK, Architecture, Requirement, State, Class, and ER use fail-closed identity/geometry/presentation admission |
@@ -22,21 +23,22 @@ planning, or coverage documents.
 Admission describes available capability and required evidence. It does not certify that every
 gate passes after the latest uncommitted changes.
 
-## Sources of Truth
+## Authority Map
 
 | Concern | Authority |
 | --- | --- |
 | Pinned Mermaid source | `tools/upstreams/REPOS.lock.json` |
 | Family parser and typed-render capabilities | `crates/merman-core/src/family.rs` |
 | Admission and fixture coverage policy | `crates/xtask/src/cmd/admission.rs` |
-| Generated admission overview | `docs/alignment/ADMISSION_INVENTORY.md` |
+| Human admission overview | `docs/alignment/ADMISSION_INVENTORY.md` |
 | Executable SVG compare facts | `crates/xtask/src/cmd/compare/diagrams.rs` |
 | Parity and residual policy | `docs/workstreams/PARITY_BOUNDARY.md` |
 | Semantic edge-label contract | `docs/alignment/SEMANTIC_LABEL_PARITY.md` |
-| Family-specific scope and gaps | `docs/alignment/*_MINIMUM.md` and `*_UPSTREAM_TEST_COVERAGE.md` |
+| Human family scope and source evidence | `docs/alignment/*_MINIMUM.md` and `*_UPSTREAM_TEST_COVERAGE.md` |
 
 If this dashboard disagrees with executable inventory or capability facts, the executable facts
-win and this file must be corrected.
+win and this file must be corrected. Family prose is review guidance, not a machine input;
+`check-alignment` does not parse its wording or require document pairs.
 
 ## Support Vocabulary
 
@@ -192,7 +194,7 @@ documented `mmdc@11.16.0` render/export flags through `merman-cli mmdc`; it does
 Run the smallest gate that proves the change, then widen according to blast radius:
 
 ```sh
-# Admission records, owner docs, capability facts, fixtures, and compare facts.
+# Family capabilities, fixtures, upstream manifests, and compare facts.
 cargo run -p xtask -- check-alignment
 
 # One admitted family.

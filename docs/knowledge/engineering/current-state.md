@@ -5,7 +5,7 @@ status: active
 
 # Current State
 
-- Active Mermaid parity focus: the repository is pinned to Mermaid 11.16.0. The primary SVG matrix
+- Active Mermaid parity focus: the repository is pinned to Mermaid 11.16.1. The primary SVG matrix
   contains 35 source-backed families; `zenuml` remains the sole compatibility-only family. The
   11.16 TreeView, Ishikawa, EventModeling, Venn, Swimlane, four Railroad dialects, Wardley, and
   Cynefin families now have typed semantics, editor facts where upstream provides them, layout,

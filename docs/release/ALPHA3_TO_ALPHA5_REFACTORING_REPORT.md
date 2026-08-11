@@ -5,7 +5,10 @@
 > Its primary release-range measurements compare alpha.3 with `d2698d0a3`, while explicitly named
 > later commits are separate focused receipts. See the
 > [Alpha.3 to Alpha.5 upgrade guide](ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md) for audience-specific
-> migration steps. Regenerate release measurements against the final tagged commit.
+> migration steps. For current package/channel ownership and release operations, use
+> [Package Surfaces](PACKAGE_SURFACES.md) and [Releasing](RELEASING.md); channel tables below record
+> this checkpoint rather than live registry state. Regenerate release measurements against the
+> final tagged commit.
 
 ## Scope and verdict
 
