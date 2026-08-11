@@ -1,3 +1,6 @@
+use super::{DiagnosticContext, LanguageSession};
+use crate::client_profile::ClientProtocolProfile;
+use crate::diagnostics::unavailable_document_diagnostics_with_profile;
 use crate::sync::lock_recovering_poison;
 use futures::FutureExt;
 use futures::future::{AbortHandle, AbortRegistration, Abortable};
@@ -5,13 +8,291 @@ use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use tokio::sync::Notify;
-use tower_lsp_server::ls_types::Uri;
+use tower_lsp_server::Client;
+use tower_lsp_server::jsonrpc::Result;
+use tower_lsp_server::ls_types::{Diagnostic, MessageType, Uri};
 
 type ClientEffect = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
 
 pub(crate) const LSP_CLIENT_EFFECT_QUEUE_LIMIT: usize = 64;
+pub(crate) const MAX_CLIENT_LOG_MESSAGE_BYTES: usize = 4 * 1024;
+pub(crate) const CLIENT_LOG_TRUNCATION_SUFFIX: &str = " [truncated]";
+
+pub(crate) fn bounded_client_log_message(message: impl Into<String>) -> String {
+    let message = message.into();
+    let (prefix, suffix) = if message.len() <= MAX_CLIENT_LOG_MESSAGE_BYTES {
+        (message.as_str(), "")
+    } else {
+        let mut end = MAX_CLIENT_LOG_MESSAGE_BYTES - CLIENT_LOG_TRUNCATION_SUFFIX.len();
+        while !message.is_char_boundary(end) {
+            end -= 1;
+        }
+        (&message[..end], CLIENT_LOG_TRUNCATION_SUFFIX)
+    };
+    let mut bounded = String::with_capacity(prefix.len() + suffix.len());
+    bounded.push_str(prefix);
+    bounded.push_str(suffix);
+    bounded
+}
+
+/// Domain-facing client effects. The queue and refresh lanes remain private collaborators.
+#[derive(Debug, Clone)]
+pub(crate) struct ClientEffects {
+    client: Client,
+    session: LanguageSession,
+    client_profile: Arc<OnceLock<ClientProtocolProfile>>,
+}
+
+impl ClientEffects {
+    pub(crate) fn new(
+        client: Client,
+        session: LanguageSession,
+        client_profile: Arc<OnceLock<ClientProtocolProfile>>,
+    ) -> Self {
+        Self {
+            client,
+            session,
+            client_profile,
+        }
+    }
+
+    pub(crate) async fn push_diagnostics(&self, uri: Uri) {
+        let Some(publisher) = self.diagnostic_publisher() else {
+            return;
+        };
+        publisher.enqueue_uri(uri).await;
+    }
+
+    pub(crate) async fn republish_diagnostics(&self) {
+        let Some(publisher) = self.diagnostic_publisher() else {
+            return;
+        };
+        publisher.enqueue_all().await;
+    }
+
+    pub(crate) async fn log_message(&self, kind: MessageType, message: impl Into<String>) {
+        let client = self.client.clone();
+        let message = bounded_client_log_message(message);
+        self.session
+            .enqueue_latest_client_effect(ClientEffectKey::LogMessage, async move {
+                client.log_message(kind, message).await;
+            })
+            .await;
+    }
+
+    pub(crate) fn refresh_semantic_tokens(&self) {
+        let profile = self.profile();
+        if profile.semantic_tokens.is_some() && profile.semantic_tokens_refresh {
+            self.session.request_semantic_tokens_refresh();
+        }
+    }
+
+    pub(crate) fn refresh_diagnostics(&self) {
+        let profile = self.profile();
+        if profile.diagnostic_pull && profile.diagnostic_refresh {
+            self.session.request_diagnostic_refresh();
+        }
+    }
+
+    pub(crate) async fn configuration_changed(
+        &self,
+        change: super::documents::ConfigurationUpdateOutcome,
+    ) {
+        if change.affects_diagnostics() {
+            self.republish_diagnostics().await;
+        }
+        if change.affects_snapshots() {
+            self.refresh_semantic_tokens();
+        }
+        if change.affects_diagnostics() {
+            self.refresh_diagnostics();
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn diagnostics_for_context(
+        &self,
+        context: &DiagnosticContext,
+    ) -> Result<Option<Vec<Diagnostic>>> {
+        let Some(publisher) = self.diagnostic_publisher() else {
+            return Ok(None);
+        };
+        publisher.diagnostics_for_current_context(context).await
+    }
+
+    #[cfg(test)]
+    pub(crate) fn client(&self) -> Client {
+        self.client.clone()
+    }
+
+    fn diagnostic_publisher(&self) -> Option<DiagnosticPublisher> {
+        let profile = self.profile();
+        if profile.diagnostic_pull {
+            return None;
+        }
+        Some(DiagnosticPublisher {
+            client: self.client.clone(),
+            session: self.session.clone(),
+            profile,
+        })
+    }
+
+    fn profile(&self) -> ClientProtocolProfile {
+        self.client_profile
+            .get()
+            .cloned()
+            .unwrap_or_else(ClientProtocolProfile::conservative)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn admission_count(&self) -> usize {
+        self.session.client_effect_admission_count()
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn block_serial_lane_for_test(&self) -> tokio::sync::oneshot::Sender<()> {
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        self.session
+            .enqueue_latest_client_effect(
+                ClientEffectKey::document_for_test("controlled-blocker"),
+                async move {
+                    let _ = started_tx.send(());
+                    let _ = release_rx.await;
+                },
+            )
+            .await;
+        started_rx
+            .await
+            .expect("controlled client effect should start");
+        release_tx
+    }
+
+    #[cfg(test)]
+    pub(crate) fn refresh_request_counts(&self) -> (usize, usize) {
+        self.session.refresh_request_counts()
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn wait_idle(&self) {
+        self.session.wait_client_effects_idle().await;
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn saturate_serial_lane_for_test(&self) {
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        self.session
+            .enqueue_latest_client_effect(
+                ClientEffectKey::document_for_test("blocker"),
+                async move {
+                    let _ = started_tx.send(());
+                    std::future::pending::<()>().await;
+                },
+            )
+            .await;
+        started_rx
+            .await
+            .expect("blocking client effect should start");
+        for index in 0..LSP_CLIENT_EFFECT_QUEUE_LIMIT {
+            self.session
+                .enqueue_latest_client_effect(
+                    ClientEffectKey::document_for_test(format!("queued-{index}")),
+                    async {},
+                )
+                .await;
+        }
+    }
+}
+
+#[derive(Clone)]
+struct DiagnosticPublisher {
+    client: Client,
+    session: LanguageSession,
+    profile: ClientProtocolProfile,
+}
+
+impl DiagnosticPublisher {
+    async fn enqueue_uri(&self, uri: Uri) {
+        let publisher = self.clone();
+        self.session
+            .enqueue_latest_client_effect(ClientEffectKey::Document(uri.clone()), async move {
+                publisher.synchronize_uri(uri).await;
+            })
+            .await;
+    }
+
+    async fn enqueue_all(&self) {
+        let publisher = self.clone();
+        self.session
+            .enqueue_latest_client_effect(ClientEffectKey::AllDiagnostics, async move {
+                publisher.publish_all().await;
+            })
+            .await;
+    }
+
+    async fn diagnostics_for_current_context(
+        &self,
+        context: &DiagnosticContext,
+    ) -> Result<Option<Vec<Diagnostic>>> {
+        self.session
+            .query_push_diagnostics(context, |document, analysis| {
+                unavailable_document_diagnostics_with_profile(document, &self.profile)
+                    .unwrap_or_else(|| {
+                        analysis
+                            .expect("available documents require an analysis context")
+                            .diagnostic_round_trip()
+                            .diagnostics_with_profile(&self.profile)
+                    })
+            })
+            .await
+    }
+
+    async fn synchronize_uri(&self, uri: Uri) {
+        match self.session.diagnostic_context(&uri).await {
+            Some(context) => self.publish_current(&context).await,
+            None => self.clear(uri).await,
+        }
+    }
+
+    async fn publish_all(&self) {
+        let contexts = self.session.diagnostic_contexts().await;
+        for context in contexts {
+            self.publish_current(&context).await;
+        }
+    }
+
+    async fn publish_current(&self, context: &DiagnosticContext) {
+        match self.diagnostics_for_current_context(context).await {
+            Ok(Some(diagnostics)) => {
+                self.client
+                    .publish_diagnostics(
+                        context.document.uri.clone(),
+                        diagnostics,
+                        self.profile
+                            .diagnostics
+                            .version
+                            .then_some(context.document.version),
+                    )
+                    .await;
+            }
+            Ok(None) => {}
+            Err(error) => {
+                tracing::error!(
+                    uri = %context.document.uri.as_str(),
+                    code = ?error.code,
+                    message = %error.message,
+                    "failed to compute push diagnostics"
+                );
+            }
+        }
+    }
+
+    async fn clear(&self, uri: Uri) {
+        self.client.publish_diagnostics(uri, Vec::new(), None).await;
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum ClientEffectKey {

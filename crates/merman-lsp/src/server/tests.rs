@@ -1,14 +1,12 @@
 use std::str::FromStr;
 
+use super::MermanLanguageServer;
 use super::semantic_token_planning_error;
 use super::test_support::TestService;
-use super::{
-    CLIENT_LOG_TRUNCATION_SUFFIX, MAX_CLIENT_LOG_MESSAGE_BYTES, MermanLanguageServer,
-    bounded_client_log_message,
-};
 use crate::protocol::{CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION};
 use crate::session::{
-    ClientEffectKey, LSP_CLIENT_EFFECT_QUEUE_LIMIT, default_lsp_analysis_options,
+    CLIENT_LOG_TRUNCATION_SUFFIX, MAX_CLIENT_LOG_MESSAGE_BYTES, bounded_client_log_message,
+    default_lsp_analysis_options,
 };
 use crate::snapshot::snapshot_for_test;
 use crate::structure::{
@@ -118,47 +116,6 @@ async fn initialize_push_test_service(service: &mut crate::MermanLspService) {
         .unwrap()
         .expect("initialize response");
     assert!(response.is_ok());
-}
-
-async fn saturate_client_effect_queue(session: &crate::session::LanguageSession) {
-    let (started_tx, started_rx) = tokio::sync::oneshot::channel();
-    session
-        .enqueue_latest_client_effect(ClientEffectKey::document_for_test("blocker"), async move {
-            let _ = started_tx.send(());
-            std::future::pending::<()>().await;
-        })
-        .await;
-    started_rx
-        .await
-        .expect("blocking client effect should start");
-    for index in 0..LSP_CLIENT_EFFECT_QUEUE_LIMIT {
-        session
-            .enqueue_latest_client_effect(
-                ClientEffectKey::document_for_test(format!("queued-{index}")),
-                async {},
-            )
-            .await;
-    }
-}
-
-async fn block_client_effect_worker(
-    session: &crate::session::LanguageSession,
-) -> tokio::sync::oneshot::Sender<()> {
-    let (started_tx, started_rx) = tokio::sync::oneshot::channel();
-    let (release_tx, release_rx) = tokio::sync::oneshot::channel();
-    session
-        .enqueue_latest_client_effect(
-            ClientEffectKey::document_for_test("controlled-blocker"),
-            async move {
-                let _ = started_tx.send(());
-                let _ = release_rx.await;
-            },
-        )
-        .await;
-    started_rx
-        .await
-        .expect("controlled client effect should start");
-    release_tx
 }
 
 async fn initialize_test_backend(server: &MermanLanguageServer, capabilities: serde_json::Value) {
@@ -548,22 +505,22 @@ async fn configuration_side_effects_follow_the_changed_policy_scope() {
             },
         })
         .await;
-    assert_eq!(server.session.client_effect_admission_count(), 1);
+    assert_eq!(server.client_effects.admission_count(), 1);
 
     server
         .did_change_configuration(DidChangeConfigurationParams {
             settings: serde_json::Value::Null,
         })
         .await;
-    assert_eq!(server.session.client_effect_admission_count(), 1);
-    assert_eq!(server.session.refresh_request_counts(), (0, 0));
+    assert_eq!(server.client_effects.admission_count(), 1);
+    assert_eq!(server.client_effects.refresh_request_counts(), (0, 0));
 
     server
         .did_change_configuration(diagnostic_only_configuration())
         .await;
-    assert_eq!(server.session.client_effect_admission_count(), 2);
+    assert_eq!(server.client_effects.admission_count(), 2);
     assert_eq!(
-        server.session.refresh_request_counts(),
+        server.client_effects.refresh_request_counts(),
         (0, 0),
         "diagnostic-only changes must not refresh semantic tokens"
     );
@@ -601,12 +558,12 @@ async fn pull_diagnostic_effects_require_negotiated_refresh_support() {
             .await;
 
         assert_eq!(
-            server.session.client_effect_admission_count(),
+            server.client_effects.admission_count(),
             0,
             "pull diagnostics must not enqueue no-op push effects"
         );
         assert_eq!(
-            server.session.refresh_request_counts(),
+            server.client_effects.refresh_request_counts(),
             (0, expected_refreshes)
         );
     }
@@ -649,7 +606,7 @@ async fn push_diagnostics_admit_exactly_one_effect_per_document_event() {
         })
         .await;
 
-    assert_eq!(server.session.client_effect_admission_count(), 3);
+    assert_eq!(server.client_effects.admission_count(), 3);
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -659,7 +616,7 @@ async fn queued_diagnostic_sync_clears_a_document_closed_before_execution() {
     initialize_push_test_service(&mut service).await;
     let server = &server;
     let uri = Uri::from_str("file:///tmp/queued-diagnostic-close.mmd").unwrap();
-    let release = block_client_effect_worker(&server.session).await;
+    let release = server.client_effects.block_serial_lane_for_test().await;
 
     assert!(
         server
@@ -667,12 +624,12 @@ async fn queued_diagnostic_sync_clears_a_document_closed_before_execution() {
             .open_document(uri.clone(), 1, String::new(), DocumentKind::Diagram,)
             .await
     );
-    server.enqueue_diagnostic_sync(uri.clone()).await;
+    server.client_effects.push_diagnostics(uri.clone()).await;
     server.session.close_document(&uri).await;
 
     release.send(()).expect("client effect gate should be open");
     let notification = socket.next().await.expect("expected diagnostic clear");
-    server.session.wait_client_effects_idle().await;
+    server.client_effects.wait_idle().await;
     assert_eq!(notification.method(), "textDocument/publishDiagnostics");
     let params: PublishDiagnosticsParams = serde_json::from_value(
         notification
@@ -693,9 +650,9 @@ async fn queued_diagnostic_sync_publishes_a_document_opened_before_execution() {
     initialize_push_test_service(&mut service).await;
     let server = &server;
     let uri = Uri::from_str("file:///tmp/queued-diagnostic-open.mmd").unwrap();
-    let release = block_client_effect_worker(&server.session).await;
+    let release = server.client_effects.block_serial_lane_for_test().await;
 
-    server.enqueue_diagnostic_sync(uri.clone()).await;
+    server.client_effects.push_diagnostics(uri.clone()).await;
     assert!(
         server
             .session
@@ -708,7 +665,7 @@ async fn queued_diagnostic_sync_publishes_a_document_opened_before_execution() {
         .next()
         .await
         .expect("expected current diagnostic publish");
-    server.session.wait_client_effects_idle().await;
+    server.client_effects.wait_idle().await;
     assert_eq!(notification.method(), "textDocument/publishDiagnostics");
     let params: PublishDiagnosticsParams = serde_json::from_value(
         notification
@@ -744,7 +701,7 @@ async fn stalled_configuration_error_log_is_bounded() {
     let (mut socket, _responses) = socket.split();
     let server = &server;
     initialize_test_backend(server, serde_json::json!({})).await;
-    let release = block_client_effect_worker(&server.session).await;
+    let release = server.client_effects.block_serial_lane_for_test().await;
     let mut resources = serde_json::Map::new();
     resources.insert(
         "界".repeat(MAX_CLIENT_LOG_MESSAGE_BYTES),
@@ -764,7 +721,7 @@ async fn stalled_configuration_error_log_is_bounded() {
         .next()
         .await
         .expect("expected bounded configuration error log");
-    server.session.wait_client_effects_idle().await;
+    server.client_effects.wait_idle().await;
     assert_eq!(notification.method(), "window/logMessage");
     let params: LogMessageParams =
         serde_json::from_value(notification.params().cloned().expect("client log params"))
@@ -779,18 +736,20 @@ async fn stalled_client_logs_are_latest_wins() {
     let (_service, socket, server) = test_service();
     let (mut socket, _responses) = socket.split();
     let server = &server;
-    let release = block_client_effect_worker(&server.session).await;
+    let release = server.client_effects.block_serial_lane_for_test().await;
 
     server
-        .enqueue_log_message(MessageType::INFO, "obsolete client log")
+        .client_effects
+        .log_message(MessageType::INFO, "obsolete client log")
         .await;
     server
-        .enqueue_log_message(MessageType::ERROR, "latest client log")
+        .client_effects
+        .log_message(MessageType::ERROR, "latest client log")
         .await;
 
     release.send(()).expect("client effect gate should be open");
     let notification = socket.next().await.expect("expected latest client log");
-    server.session.wait_client_effects_idle().await;
+    server.client_effects.wait_idle().await;
     assert_eq!(notification.method(), "window/logMessage");
     let params: LogMessageParams =
         serde_json::from_value(notification.params().cloned().expect("client log params"))
@@ -1232,7 +1191,13 @@ async fn exit_preserves_an_already_admitted_shutdown_error() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn client_effect_backpressure_does_not_hold_the_mutation_fence() {
-    let (mut service, _socket, session) = test_session_service();
+    let TestService {
+        mut service,
+        socket: _socket,
+        backend,
+        session,
+        ..
+    } = super::test_support::service();
     let initialize = Request::build("initialize")
         .params(serde_json::json!({ "capabilities": {} }))
         .id(1)
@@ -1248,7 +1213,7 @@ async fn client_effect_backpressure_does_not_hold_the_mutation_fence() {
             .is_some_and(|response| response.is_ok())
     );
     let uri = Uri::from_str("file:///tmp/effect-backpressure.mmd").unwrap();
-    saturate_client_effect_queue(&session).await;
+    backend.client_effects.saturate_serial_lane_for_test().await;
 
     let save = service.call(
         Request::build("textDocument/didSave")
@@ -1296,9 +1261,15 @@ async fn client_log_backpressure_does_not_hold_mutation_fences() {
     ];
 
     for (method, params) in cases {
-        let (mut service, _socket, session) = test_session_service();
+        let TestService {
+            mut service,
+            socket: _socket,
+            backend,
+            session,
+            ..
+        } = super::test_support::service();
         initialize_test_service(&mut service).await;
-        saturate_client_effect_queue(&session).await;
+        backend.client_effects.saturate_serial_lane_for_test().await;
 
         let notification = service.call(Request::build(method).params(params).finish());
         tokio::pin!(notification);
@@ -1722,9 +1693,8 @@ async fn stale_push_diagnostic_context_is_suppressed() {
     );
 
     let diagnostics = server
-        .diagnostic_publisher()
-        .expect("the default test client uses push diagnostics")
-        .diagnostics_for_current_context(&context)
+        .client_effects
+        .diagnostics_for_context(&context)
         .await
         .expect("stale push diagnostics should be suppressed cleanly");
 
@@ -1892,9 +1862,8 @@ async fn code_action_rejects_stale_diagnostic_edits_after_document_change() {
         .await
         .expect("opened document diagnostic context");
     let stale_diagnostic = server
-        .diagnostic_publisher()
-        .expect("permissive profile uses push diagnostics")
-        .diagnostics_for_current_context(&diagnostic_context)
+        .client_effects
+        .diagnostics_for_context(&diagnostic_context)
         .await
         .expect("initial diagnostic projection")
         .expect("initial diagnostics")
@@ -1973,9 +1942,8 @@ async fn code_action_rejects_close_reopen_aba_with_reused_uri_and_version() {
         .await
         .expect("first document incarnation");
     let old_diagnostic = server
-        .diagnostic_publisher()
-        .expect("permissive profile uses push diagnostics")
-        .diagnostics_for_current_context(&old_context)
+        .client_effects
+        .diagnostics_for_context(&old_context)
         .await
         .expect("first diagnostic projection")
         .expect("first diagnostics")
@@ -2001,9 +1969,8 @@ async fn code_action_rejects_close_reopen_aba_with_reused_uri_and_version() {
         .await
         .expect("second document incarnation");
     let new_diagnostic = server
-        .diagnostic_publisher()
-        .expect("permissive profile uses push diagnostics")
-        .diagnostics_for_current_context(&new_context)
+        .client_effects
+        .diagnostics_for_context(&new_context)
         .await
         .expect("second diagnostic projection")
         .expect("second diagnostics")
@@ -2282,9 +2249,8 @@ async fn lsp_handlers_return_hover_and_symbols() {
         .await
         .expect("expected snapshot-backed diagnostics");
     let diagnostic = server
-        .diagnostic_publisher()
-        .expect("the default test client uses push diagnostics")
-        .diagnostics_for_current_context(&context)
+        .client_effects
+        .diagnostics_for_context(&context)
         .await
         .expect("diagnostic analysis should succeed")
         .expect("expected current diagnostics")

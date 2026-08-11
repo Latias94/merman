@@ -13,10 +13,10 @@ use crate::semantic_tokens::{
     semantic_token_plan_for_snapshot_with_profile, semantic_tokens_delta_result,
     semantic_tokens_from_packed, semantic_tokens_options_with_profile, semantic_tokens_result_id,
 };
-use crate::session::{ClientEffectKey, LanguageSession, MermanLspService, commit_active_mutation};
+use crate::session::{ClientEffects, LanguageSession, MermanLspService, commit_active_mutation};
 use crate::session::{
-    DiagnosticContext, DocumentDiagnosticState, SemanticTokensState,
-    analysis_options_with_lsp_resource_defaults, default_lsp_analysis_options,
+    DocumentDiagnosticState, SemanticTokensState, analysis_options_with_lsp_resource_defaults,
+    default_lsp_analysis_options,
 };
 use crate::snapshot::DocumentSnapshot;
 use crate::structure::{
@@ -53,46 +53,22 @@ use tower_lsp_server::ls_types::{
 };
 use tower_lsp_server::{Client, LanguageServer, LspService};
 
-const MAX_CLIENT_LOG_MESSAGE_BYTES: usize = 4 * 1024;
-const CLIENT_LOG_TRUNCATION_SUFFIX: &str = " [truncated]";
-
-fn bounded_client_log_message(message: impl Into<String>) -> String {
-    let message = message.into();
-    let (prefix, suffix) = if message.len() <= MAX_CLIENT_LOG_MESSAGE_BYTES {
-        (message.as_str(), "")
-    } else {
-        let mut end = MAX_CLIENT_LOG_MESSAGE_BYTES - CLIENT_LOG_TRUNCATION_SUFFIX.len();
-        while !message.is_char_boundary(end) {
-            end -= 1;
-        }
-        (&message[..end], CLIENT_LOG_TRUNCATION_SUFFIX)
-    };
-    let mut bounded = String::with_capacity(prefix.len() + suffix.len());
-    bounded.push_str(prefix);
-    bounded.push_str(suffix);
-    bounded
-}
-
-#[derive(Clone)]
-struct DiagnosticPublisher {
-    client: Client,
-    session: LanguageSession,
-    profile: ClientProtocolProfile,
-}
-
 #[derive(Debug, Clone)]
 pub struct MermanLanguageServer {
-    client: Client,
     session: LanguageSession,
     client_profile: Arc<OnceLock<ClientProtocolProfile>>,
+    client_effects: ClientEffects,
 }
 
 impl MermanLanguageServer {
     fn new(client: Client, session: LanguageSession) -> Self {
+        let client_profile = Arc::new(OnceLock::new());
+        let client_effects =
+            ClientEffects::new(client.clone(), session.clone(), Arc::clone(&client_profile));
         Self {
-            client,
             session,
-            client_profile: Arc::new(OnceLock::new()),
+            client_profile,
+            client_effects,
         }
     }
 
@@ -245,51 +221,6 @@ impl MermanLanguageServer {
         ))
     }
 
-    fn diagnostic_publisher(&self) -> Option<DiagnosticPublisher> {
-        let profile = self.client_profile();
-        if profile.diagnostic_pull {
-            return None;
-        }
-        Some(DiagnosticPublisher {
-            client: self.client.clone(),
-            session: self.session.clone(),
-            profile: profile.clone(),
-        })
-    }
-
-    async fn enqueue_diagnostic_sync(&self, uri: tower_lsp_server::ls_types::Uri) {
-        let Some(publisher) = self.diagnostic_publisher() else {
-            return;
-        };
-        let key = ClientEffectKey::Document(uri.clone());
-        self.session
-            .enqueue_latest_client_effect(key, async move {
-                publisher.synchronize_uri(uri).await;
-            })
-            .await;
-    }
-
-    async fn enqueue_republish_all(&self) {
-        let Some(publisher) = self.diagnostic_publisher() else {
-            return;
-        };
-        self.session
-            .enqueue_latest_client_effect(ClientEffectKey::AllDiagnostics, async move {
-                publisher.publish_all().await;
-            })
-            .await;
-    }
-
-    async fn enqueue_log_message(&self, kind: MessageType, message: impl Into<String>) {
-        let client = self.client.clone();
-        let message = bounded_client_log_message(message);
-        self.session
-            .enqueue_latest_client_effect(ClientEffectKey::LogMessage, async move {
-                client.log_message(kind, message).await;
-            })
-            .await;
-    }
-
     async fn apply_initialization_options(
         &self,
         initialization_options: Option<serde_json::Value>,
@@ -312,69 +243,6 @@ impl MermanLanguageServer {
     }
 }
 
-impl DiagnosticPublisher {
-    async fn diagnostics_for_current_context(
-        &self,
-        context: &DiagnosticContext,
-    ) -> Result<Option<Vec<tower_lsp_server::ls_types::Diagnostic>>> {
-        self.session
-            .query_push_diagnostics(context, |document, analysis| {
-                unavailable_document_diagnostics_with_profile(document, &self.profile)
-                    .unwrap_or_else(|| {
-                        analysis
-                            .expect("available documents require an analysis context")
-                            .diagnostic_round_trip()
-                            .diagnostics_with_profile(&self.profile)
-                    })
-            })
-            .await
-    }
-
-    async fn synchronize_uri(&self, uri: tower_lsp_server::ls_types::Uri) {
-        match self.session.diagnostic_context(&uri).await {
-            Some(context) => self.publish_current(&context).await,
-            None => self.clear(uri).await,
-        }
-    }
-
-    async fn publish_all(&self) {
-        let contexts = self.session.diagnostic_contexts().await;
-        for context in contexts {
-            self.publish_current(&context).await;
-        }
-    }
-
-    async fn publish_current(&self, context: &DiagnosticContext) {
-        match self.diagnostics_for_current_context(context).await {
-            Ok(Some(diagnostics)) => {
-                self.client
-                    .publish_diagnostics(
-                        context.document.uri.clone(),
-                        diagnostics,
-                        self.profile
-                            .diagnostics
-                            .version
-                            .then_some(context.document.version),
-                    )
-                    .await;
-            }
-            Ok(None) => {}
-            Err(error) => {
-                tracing::error!(
-                    uri = %context.document.uri.as_str(),
-                    code = ?error.code,
-                    message = %error.message,
-                    "failed to compute push diagnostics"
-                );
-            }
-        }
-    }
-
-    async fn clear(&self, uri: tower_lsp_server::ls_types::Uri) {
-        self.client.publish_diagnostics(uri, Vec::new(), None).await;
-    }
-}
-
 impl LanguageServer for MermanLanguageServer {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
         let profile = ClientProtocolProfile::negotiate(&params.capabilities);
@@ -392,7 +260,8 @@ impl LanguageServer for MermanLanguageServer {
 
     async fn initialized(&self, _: tower_lsp_server::ls_types::InitializedParams) {
         commit_active_mutation();
-        self.enqueue_log_message(MessageType::INFO, "merman-lsp initialized")
+        self.client_effects
+            .log_message(MessageType::INFO, "merman-lsp initialized")
             .await;
     }
 
@@ -410,7 +279,7 @@ impl LanguageServer for MermanLanguageServer {
             .await;
         commit_active_mutation();
         if committed {
-            self.enqueue_diagnostic_sync(uri).await;
+            self.client_effects.push_diagnostics(uri).await;
         }
     }
 
@@ -422,21 +291,21 @@ impl LanguageServer for MermanLanguageServer {
             .await;
         commit_active_mutation();
         if update == Some(true) {
-            self.enqueue_diagnostic_sync(doc.uri).await;
+            self.client_effects.push_diagnostics(doc.uri).await;
         }
     }
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
         let uri = params.text_document.uri;
         commit_active_mutation();
-        self.enqueue_diagnostic_sync(uri).await;
+        self.client_effects.push_diagnostics(uri).await;
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         let uri = params.text_document.uri;
         self.session.close_document(&uri).await;
         commit_active_mutation();
-        self.enqueue_diagnostic_sync(uri).await;
+        self.client_effects.push_diagnostics(uri).await;
     }
 
     async fn did_change_configuration(
@@ -450,11 +319,12 @@ impl LanguageServer for MermanLanguageServer {
                 Ok(options) => analysis_options_with_lsp_resource_defaults(options),
                 Err(err) => {
                     commit_active_mutation();
-                    self.enqueue_log_message(
-                        MessageType::ERROR,
-                        format!("invalid merman analysis settings: {err}"),
-                    )
-                    .await;
+                    self.client_effects
+                        .log_message(
+                            MessageType::ERROR,
+                            format!("invalid merman analysis settings: {err}"),
+                        )
+                        .await;
                     return;
                 }
             }
@@ -463,23 +333,15 @@ impl LanguageServer for MermanLanguageServer {
         let change = self.session.update_configuration(options).await;
         commit_active_mutation();
         if change.failed() {
-            self.enqueue_log_message(
-                MessageType::ERROR,
-                "failed to apply merman analysis settings",
-            )
-            .await;
+            self.client_effects
+                .log_message(
+                    MessageType::ERROR,
+                    "failed to apply merman analysis settings",
+                )
+                .await;
             return;
         }
-        if change.affects_diagnostics() {
-            self.enqueue_republish_all().await;
-        }
-        let profile = self.client_profile();
-        self.session.request_refresh(
-            change.affects_snapshots()
-                && profile.semantic_tokens.is_some()
-                && profile.semantic_tokens_refresh,
-            change.affects_diagnostics() && profile.diagnostic_pull && profile.diagnostic_refresh,
-        );
+        self.client_effects.configuration_changed(change).await;
     }
 
     async fn diagnostic(

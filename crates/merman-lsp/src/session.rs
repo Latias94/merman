@@ -26,9 +26,11 @@ mod documents;
 mod lifecycle;
 
 use client_effects::ClientEffectDispatcher;
-pub(crate) use client_effects::ClientEffectKey;
+pub(crate) use client_effects::ClientEffects;
 #[cfg(test)]
-pub(crate) use client_effects::LSP_CLIENT_EFFECT_QUEUE_LIMIT;
+pub(crate) use client_effects::{
+    CLIENT_LOG_TRUNCATION_SUFFIX, MAX_CLIENT_LOG_MESSAGE_BYTES, bounded_client_log_message,
+};
 
 pub(crate) use documents::{
     DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS, DEFAULT_LSP_MAX_SOURCE_BYTES, DiagnosticContext,
@@ -198,18 +200,22 @@ impl LanguageSession {
         self.inner.lifecycle.terminated().await;
     }
 
-    pub(crate) async fn enqueue_latest_client_effect(
+    async fn enqueue_latest_client_effect(
         &self,
-        key: ClientEffectKey,
+        key: client_effects::ClientEffectKey,
         effect: impl Future<Output = ()> + Send + 'static,
     ) {
         self.inner.client_effects.enqueue_latest(key, effect).await;
     }
 
-    pub(crate) fn request_refresh(&self, semantic_tokens: bool, diagnostics: bool) {
+    fn request_semantic_tokens_refresh(&self) {
         self.inner
             .refresh_coordinator
-            .request(semantic_tokens, diagnostics);
+            .request_semantic_tokens_refresh();
+    }
+
+    fn request_diagnostic_refresh(&self) {
+        self.inner.refresh_coordinator.request_diagnostic_refresh();
     }
 
     #[cfg(test)]
