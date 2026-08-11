@@ -3,6 +3,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use merman_ascii::{AsciiRenderOptions, render_model};
+use merman_core::diagram::RenderSemanticModel;
+use merman_core::diagrams::sequence::SequenceMessageKind;
 use merman_core::{Engine, ParseOptions};
 use sha2::{Digest, Sha256};
 
@@ -511,7 +513,7 @@ fn moving_reference_evidence_anchors_resolve_to_executable_tests() {
 }
 
 #[test]
-fn imported_common_family_fixtures_render_with_explicit_empty_dispositions() {
+fn imported_common_family_fixtures_preserve_primary_typed_facts() {
     let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let engine = Engine::new();
     let options = AsciiRenderOptions::ascii();
@@ -579,6 +581,9 @@ fn imported_common_family_fixtures_render_with_explicit_empty_dispositions() {
                         model.kind()
                     ));
                 }
+                // This corpus gate owns primary authored-text visibility. Focused family tests own
+                // topology, marker, control-frame, and field-role semantics.
+                let witnesses = primary_typed_semantic_witnesses(model);
                 let rendered = render_model(model, &options)
                     .map_err(|error| format!("ASCII render failed: {error}"))?;
                 if expected_empty {
@@ -589,6 +594,8 @@ fn imported_common_family_fixtures_render_with_explicit_empty_dispositions() {
                     }
                 } else if rendered.trim().is_empty() {
                     return Err("ASCII renderer returned an empty document".to_string());
+                } else {
+                    assert_primary_typed_semantic_witnesses(&rendered, &witnesses)?;
                 }
                 Ok(())
             })();
@@ -636,6 +643,245 @@ fn imported_common_family_fixtures_render_with_explicit_empty_dispositions() {
             .collect(),
         "every empty imported render must have one explicit metadata-only disposition"
     );
+}
+
+#[derive(Debug)]
+struct SemanticWitness<'model> {
+    role: &'static str,
+    text: &'model str,
+    tokens: Vec<String>,
+}
+
+fn primary_typed_semantic_witnesses(model: &RenderSemanticModel) -> Vec<SemanticWitness<'_>> {
+    let mut witnesses = Vec::new();
+    match model {
+        RenderSemanticModel::Sequence(model) => {
+            if let Some(title) = &model.title {
+                push_semantic_witness(&mut witnesses, "sequence title", title);
+            }
+            for actor_id in &model.actor_order {
+                let Some(actor) = model.actors.get(actor_id) else {
+                    continue;
+                };
+                let visible = if actor.description.is_empty() {
+                    actor_id
+                } else {
+                    actor.description.as_str()
+                };
+                push_semantic_witness(&mut witnesses, "sequence participant", visible);
+            }
+            for sequence_box in &model.boxes {
+                if let Some(name) = &sequence_box.name {
+                    push_semantic_witness(&mut witnesses, "sequence box", name);
+                }
+            }
+            for note in &model.notes {
+                push_semantic_witness(&mut witnesses, "sequence note", &note.message);
+            }
+            for message in &model.messages {
+                if matches!(
+                    message.semantic_kind(),
+                    SequenceMessageKind::Signal | SequenceMessageKind::Note
+                ) {
+                    push_semantic_witness(
+                        &mut witnesses,
+                        "sequence message",
+                        message.message_text(),
+                    );
+                }
+            }
+        }
+        RenderSemanticModel::Class(model) => {
+            for class in model.classes.values() {
+                let visible = if class.label.is_empty() {
+                    class.id.as_str()
+                } else {
+                    class.label.as_str()
+                };
+                push_semantic_witness(&mut witnesses, "class identity", visible);
+                for annotation in &class.annotations {
+                    push_semantic_witness(&mut witnesses, "class annotation", annotation);
+                }
+                for member in class.members.iter().chain(&class.methods) {
+                    let visible = if member.display_text.is_empty() {
+                        member.id.as_str()
+                    } else {
+                        member.display_text.as_str()
+                    };
+                    push_semantic_witness(&mut witnesses, "class member", visible);
+                }
+            }
+            for namespace in model.namespaces.values() {
+                let visible = if namespace.label.is_empty() {
+                    namespace.id.rsplit('.').next().unwrap_or(&namespace.id)
+                } else {
+                    namespace.label.as_str()
+                };
+                push_semantic_witness(&mut witnesses, "class namespace", visible);
+            }
+            for note in &model.notes {
+                push_semantic_witness(&mut witnesses, "class note", &note.text);
+            }
+            for relation in &model.relations {
+                push_semantic_witness(&mut witnesses, "class relation", &relation.title);
+                for (role, label) in [
+                    ("class source endpoint label", &relation.relation_title_1),
+                    ("class target endpoint label", &relation.relation_title_2),
+                ] {
+                    // Core projects an absent endpoint label as this sentinel.
+                    if !label.eq_ignore_ascii_case("none") {
+                        push_semantic_witness(&mut witnesses, role, label);
+                    }
+                }
+            }
+        }
+        RenderSemanticModel::Er(model) => {
+            for entity in model.entities.values() {
+                let visible = if entity.alias.is_empty() {
+                    entity.label.as_str()
+                } else {
+                    entity.alias.as_str()
+                };
+                push_semantic_witness(&mut witnesses, "ER entity", visible);
+                for attribute in &entity.attributes {
+                    push_semantic_witness(&mut witnesses, "ER attribute type", &attribute.ty);
+                    push_semantic_witness(&mut witnesses, "ER attribute name", &attribute.name);
+                    for key in &attribute.keys {
+                        push_semantic_witness(&mut witnesses, "ER attribute key", key);
+                    }
+                    push_semantic_witness(
+                        &mut witnesses,
+                        "ER attribute comment",
+                        &attribute.comment,
+                    );
+                }
+            }
+            for relationship in &model.relationships {
+                push_semantic_witness(
+                    &mut witnesses,
+                    "ER relationship label",
+                    &relationship.role_a,
+                );
+            }
+        }
+        other => panic!(
+            "imported common-family witness extraction does not support `{}`",
+            other.kind()
+        ),
+    }
+    witnesses
+}
+
+fn push_semantic_witness<'model>(
+    witnesses: &mut Vec<SemanticWitness<'model>>,
+    role: &'static str,
+    text: &'model str,
+) {
+    let tokens = semantic_witness_tokens(text);
+    if !tokens.is_empty() {
+        witnesses.push(SemanticWitness { role, text, tokens });
+    }
+}
+
+fn assert_primary_typed_semantic_witnesses(
+    rendered: &str,
+    witnesses: &[SemanticWitness<'_>],
+) -> std::result::Result<(), String> {
+    let rendered_tokens = semantic_tokens(rendered);
+    for witness in witnesses {
+        for token in &witness.tokens {
+            if visible_token_occurrences(&rendered_tokens, token) == 0 {
+                return Err(format!(
+                    "{} fact {:?} lost visible token {:?}:\n{rendered}",
+                    witness.role, witness.text, token
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn semantic_witness_tokens(text: &str) -> Vec<String> {
+    let mut normalized = String::with_capacity(text.len());
+    let mut remaining = text;
+    while !remaining.is_empty() {
+        if let Some(after_break) = remaining.strip_prefix("\\n") {
+            normalized.push(' ');
+            remaining = after_break;
+            continue;
+        }
+        if let Some(after_open) = remaining.strip_prefix("#lt;")
+            && let Some(end) = after_open.find("#gt;")
+        {
+            normalized.push(' ');
+            remaining = &after_open[end + "#gt;".len()..];
+            continue;
+        }
+        if let Some(after_open) = remaining.strip_prefix('<')
+            && let Some(end) = after_open.find('>')
+        {
+            let tag = after_open[..end].trim();
+            if tag
+                .as_bytes()
+                .get(..2)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"br"))
+                && tag[2..]
+                    .chars()
+                    .all(|character| character.is_ascii_whitespace() || character == '/')
+            {
+                normalized.push(' ');
+                remaining = &after_open[end + 1..];
+                continue;
+            }
+        }
+
+        let character = remaining
+            .chars()
+            .next()
+            .expect("non-empty semantic text must contain a character");
+        normalized.push(character);
+        remaining = &remaining[character.len_utf8()..];
+    }
+
+    semantic_tokens(&normalized)
+}
+
+fn semantic_tokens(text: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut token = String::new();
+    let flush = |token: &mut String, tokens: &mut Vec<String>| {
+        if !token.is_empty() {
+            tokens.push(std::mem::take(token));
+        }
+    };
+
+    for character in text.chars() {
+        if character.is_alphanumeric() || character == '_' {
+            token.push(character);
+        } else {
+            flush(&mut token, &mut tokens);
+        }
+    }
+    flush(&mut token, &mut tokens);
+    tokens
+}
+
+fn visible_token_occurrences(tokens: &[String], expected: &str) -> usize {
+    let mut occurrences = 0usize;
+    for start in 0..tokens.len() {
+        let mut joined = String::new();
+        for token in &tokens[start..] {
+            joined.push_str(token);
+            if joined == expected {
+                occurrences += 1;
+                break;
+            }
+            if joined.len() >= expected.len() || !expected.starts_with(&joined) {
+                break;
+            }
+        }
+    }
+    occurrences
 }
 
 #[test]
