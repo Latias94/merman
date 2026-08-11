@@ -44,7 +44,8 @@ export function assertOfficialSignatureAuditResult(result, label) {
     return JSON.parse(result.stdout);
   } catch (error) {
     throw new Error(
-      `official npm signature verification returned invalid JSON for ${label}: ${error.message}`
+      `official npm signature verification returned invalid JSON for ${label}: ${error.message}`,
+      { cause: error }
     );
   }
 }
