@@ -84,7 +84,7 @@ Use a broad README version search before preflight and again after every publica
 ```bash
 rg -n --glob '**/README.md' --glob '**/CHANGELOG.md' \
   '0\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+|\[[^]]+\] - Unreleased|published registry packages can still|candidate from Git|[Aa]fter .*is published|[Ww]hen .*is published|git\s*=\s*"https://github\.com/Latias94/merman' \
-  README.md CHANGELOG.md crates docs platforms packages tools
+  README.md CHANGELOG.md crates distribution docs platforms tools
 ```
 
 Classify every match instead of blindly replacing it. Historical reports may retain historical wording; current installation guidance must match the intended release state. A cancelled or completed release has no generated README mode to restore, but a successful or partially recovered publication can require a new documentation commit so `main` stops describing an already-published version as unavailable.

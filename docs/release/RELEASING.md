@@ -187,7 +187,7 @@ A focused audit command is:
 ```bash
 rg -n --glob '**/README.md' --glob '**/CHANGELOG.md' \
   '0\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+|\[[^]]+\] - Unreleased|published registry packages can still|candidate from Git|[Aa]fter .*is published|[Ww]hen .*is published|git\s*=\s*"https://github\.com/Latias94/merman' \
-  README.md CHANGELOG.md crates docs platforms packages tools
+  README.md CHANGELOG.md crates distribution docs platforms tools
 ```
 
 Classify each match rather than applying a repository-wide mechanical rewrite. Package-local READMEs included in crates, cargo-dist archives, npm tarballs, wheels, Flutter packages, Apple/Android bundles, Typst packages, or VSIX files are part of the release experience even though they are not version authorities.
