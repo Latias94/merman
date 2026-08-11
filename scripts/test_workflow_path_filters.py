@@ -118,6 +118,7 @@ class WorkflowPathFilterTests(unittest.TestCase):
 
     def test_pages_paths_cover_web_prepack_inputs(self) -> None:
         required_paths = {
+            ".github/workflows/pages-deploy.yml",
             ".github/workflows/pages.yml",
             "Cargo.lock",
             "Cargo.toml",
@@ -134,7 +135,7 @@ class WorkflowPathFilterTests(unittest.TestCase):
         for event_name in ("push", "pull_request"):
             with self.subTest(event_name=event_name):
                 self.assert_event_paths_include(
-                    ".github/workflows/pages.yml",
+                    ".github/workflows/pages-deploy.yml",
                     event_name,
                     required_paths,
                 )

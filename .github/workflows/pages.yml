@@ -13,48 +13,6 @@ on:
         required: false
         default: same-run
         type: string
-  push:
-    branches:
-      - main
-      - master
-    paths:
-      - ".github/workflows/pages.yml"
-      - "abi/**"
-      - "Cargo.lock"
-      - "Cargo.toml"
-      - "LICENSE-*"
-      - "THIRD_PARTY_NOTICES.md"
-      - "THIRD_PARTY_LICENSES/**"
-      - "crates/**"
-      - "docs/release/WASM_SIZE_BUDGETS.json"
-      - "docs/workstreams/web-wasm-playground/editor-artifact-receipt-v*.json"
-      - "platforms/web/**"
-      - "playground/**"
-      - "scripts/check-svg-safety-policy.mjs"
-      - "scripts/generate-svg-safety-policy.mjs"
-      - "scripts/svg-safety-policy.mjs"
-      - "scripts/sync-release-legal-materials.py"
-      - "tools/vscode-extension/src/preview-svg-safety-policy.ts"
-  pull_request:
-    paths:
-      - ".github/workflows/pages.yml"
-      - "abi/**"
-      - "Cargo.lock"
-      - "Cargo.toml"
-      - "LICENSE-*"
-      - "THIRD_PARTY_NOTICES.md"
-      - "THIRD_PARTY_LICENSES/**"
-      - "crates/**"
-      - "docs/release/WASM_SIZE_BUDGETS.json"
-      - "docs/workstreams/web-wasm-playground/editor-artifact-receipt-v*.json"
-      - "platforms/web/**"
-      - "playground/**"
-      - "scripts/check-svg-safety-policy.mjs"
-      - "scripts/generate-svg-safety-policy.mjs"
-      - "scripts/svg-safety-policy.mjs"
-      - "scripts/sync-release-legal-materials.py"
-      - "tools/vscode-extension/src/preview-svg-safety-policy.ts"
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -178,20 +136,3 @@ jobs:
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: playground/dist
-
-  deploy:
-    name: Deploy playground
-    if: github.event_name != 'pull_request' && inputs.ci_only != true
-    needs: build
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5

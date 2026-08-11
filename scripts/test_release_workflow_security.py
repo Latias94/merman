@@ -1841,13 +1841,19 @@ class CiWorkflowSecurityTests(unittest.TestCase):
     def test_same_run_web_owner_cannot_enter_pages_deployment(self) -> None:
         ci = read_workflow(WORKFLOW_ROOT / "ci.yml")
         pages = read_workflow(WORKFLOW_ROOT / "pages.yml")
+        deploy = read_workflow(WORKFLOW_ROOT / "pages-deploy.yml")
 
         self.assertRegex(
             ci,
             re.compile(r"(?ms)^  web-owner:.*?^    with:\n      ci_only: true$"),
         )
         self.assertNotIn("inputs.deploy", pages)
-        self.assertEqual(pages.count("inputs.ci_only != true"), 4)
+        self.assertEqual(pages.count("inputs.ci_only != true"), 3)
+        self.assertNotIn("pages: write", pages)
+        self.assertNotIn("id-token: write", pages)
+        self.assertIn("uses: ./.github/workflows/pages.yml", deploy)
+        self.assertIn("pages: write", deploy)
+        self.assertIn("id-token: write", deploy)
 
     def test_workflow_analyzers_are_exact_and_executable(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "ci.yml")
@@ -2085,7 +2091,7 @@ class PagesWorkflowSecurityTests(unittest.TestCase):
                 self.assertEqual(step["with"].get("persist-credentials"), "false")
 
     def test_pages_deploy_job_owns_pages_write_permissions(self) -> None:
-        deploy = job_contract(WORKFLOW_ROOT / "pages.yml", "deploy")
+        deploy = job_contract(WORKFLOW_ROOT / "pages-deploy.yml", "deploy")
         self.assertEqual(
             deploy["permissions"],
             {"contents": "read", "id-token": "write", "pages": "write"},
