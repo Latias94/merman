@@ -321,7 +321,7 @@ cargo run -p xtask -- wasm-size-matrix --surface web \
   --budget-file docs/release/WASM_SIZE_BUDGETS.json
 cargo run -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
 cargo run --locked -p xtask -- verify-typst-profile-constants
-cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm
+python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm
 cargo run --locked -p xtask -- build-typst-package --profile publish
 cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build
 ```

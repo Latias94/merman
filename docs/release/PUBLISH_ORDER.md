@@ -32,36 +32,18 @@ release axes.
 
 ## Publish Order
 
-Publish crates in dependency order:
+Cargo metadata is the publish-order authority. Inspect the current dependency-safe projection with:
 
-1. `dugong-graphlib`
-2. `manatee`
-3. `merman-core`
-4. `merman-elk-layered`
-5. `roughr-merman`
-6. `dugong`
-7. `merman-analysis`
-8. `merman-ascii`
-9. `merman-layout-elk`
-10. `merman-editor-core`
-11. `merman-render`
-12. `merman-export`
-13. `merman`
-14. `merman-lsp`
-15. `merman-bindings-core`
-16. `merman-cli`
-17. `merman-rustdoc`
-18. `merman-ffi`
-19. `merman-typst-plugin`
-20. `merman-uniffi`
-21. `merman-wasm`
+```bash
+python3 tools/publish.py --list-crates-io-packages
+```
 
-This list is intentionally identical to `.github/workflows/release-crates.yml`,
-`tools/publish.py`, `docs/releasing/CRATES_IO.md`, and `docs/releasing/PUBLISHING.md`.
-Run `python3 scripts/verify-release-crate-order.py` after changing any publishable crate, release
-workflow, or release-order document. The guard checks duplicate entries, cross-file sync, the
-publishable workspace crate set, and Cargo metadata dependency topology, so a crate must appear
-after every publishable workspace dependency it needs for a crates.io publish.
+The helper selects crates.io-publishable `workspace_members`, follows every non-dev workspace path
+dependency (including optional, target-specific, renamed, and build dependencies), rejects a
+publishable crate that depends on a private workspace member, and topologically sorts the graph.
+Only crates within the same independent batch use lexical ordering. The local publish flow,
+release preflight, and release workflow consume this same projection; Markdown is not parsed as a
+release-order database.
 
 `roughr-merman` is versioned separately as `0.12.2`. The workflow reads each crate's own package
 version, so it can skip already-published crates while still keeping one dependency-ordered list.
@@ -131,7 +113,7 @@ first appear in a later immutable package version.
 Before publishing, run focused checks:
 
 ```bash
-python3 scripts/verify-release-crate-order.py
+python3 tools/publish.py --list-crates-io-packages
 cargo check -p merman-ffi
 cargo check -p merman-uniffi
 cargo nextest run -p merman-bindings-core -p merman-ffi -p merman-uniffi
@@ -184,4 +166,5 @@ the owning artifact release directly for current availability; do not infer it f
 ## Publish Guardrail
 
 Do not run `cargo publish` as part of an implementation lane unless the release operator explicitly
-requests it. This document prepares the order and gates; it is not itself a publish command.
+requests it. This document explains the policy and gates; `tools/publish.py` computes the current
+order and is the executable consumer.

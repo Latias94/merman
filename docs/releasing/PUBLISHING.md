@@ -27,29 +27,14 @@ Notes:
 When running `cargo publish`, Cargo resolves workspace `path` dependencies as registry dependencies,
 so dependency crates must be published first.
 
-Recommended order:
+Cargo metadata owns that graph. Print the current topological order with:
 
-1. `dugong-graphlib`
-2. `manatee`
-3. `merman-core`
-4. `merman-elk-layered`
-5. `roughr-merman`
-6. `dugong`
-7. `merman-analysis`
-8. `merman-ascii`
-9. `merman-layout-elk`
-10. `merman-editor-core`
-11. `merman-render`
-12. `merman-export`
-13. `merman`
-14. `merman-lsp`
-15. `merman-bindings-core`
-16. `merman-cli`
-17. `merman-rustdoc`
-18. `merman-ffi`
-19. `merman-typst-plugin`
-20. `merman-uniffi`
-21. `merman-wasm`
+```bash
+python3 tools/publish.py --list-crates-io-packages
+```
+
+The release workflow and local publish helper consume the same derived batches. Independent crates
+are ordered lexically only within a batch; this document does not restate the list.
 
 ## Dry runs
 
@@ -58,4 +43,4 @@ Recommended order:
   - `--allow-dirty`
 
 Important: dry runs for crates that depend on unpublished workspace crates will fail until those
-dependencies exist on crates.io. Use the publish order above for end-to-end dry-run verification.
+dependencies exist on crates.io. Use the derived order for end-to-end dry-run verification.

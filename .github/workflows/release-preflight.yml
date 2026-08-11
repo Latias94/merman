@@ -128,9 +128,6 @@ jobs:
           VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: python3 scripts/release-version.py check --version "$VERSION"
 
-      - name: Verify release crate order docs
-        run: python3 scripts/verify-release-crate-order.py
-
       - name: Verify independent crate versions changed with their source
         run: |
           set -euo pipefail
@@ -248,13 +245,13 @@ jobs:
             cargo publish -p "$crate" --locked --dry-run --registry crates-io
           }
 
-          registry_independent_crates=(
-            roughr-merman
-            dugong-graphlib
-            manatee
-            merman-core
-            merman-elk-layered
+          mapfile -t registry_independent_crates < <(
+            python3 tools/publish.py --list-crates-io-initial-batch
           )
+          if [ "${#registry_independent_crates[@]}" -eq 0 ]; then
+            echo "::error::Cargo metadata produced an empty initial crates.io publish batch"
+            exit 1
+          fi
 
           for crate in "${registry_independent_crates[@]}"; do
             publish_dry_run "$crate" "$(workspace_crate_version "$crate")"

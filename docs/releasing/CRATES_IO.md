@@ -22,60 +22,18 @@ This is expected. Publish in dependency order.
 - Confirm `docs/alignment/STATUS.md` is up to date.
 - Bump versions (workspace + crates as needed) and tag the release.
 
-## Recommended publish order
+## Derived publish order
 
-Publish leaf crates first, then the crates that depend on them:
-
-1. `dugong-graphlib`
-2. `manatee`
-3. `merman-core`
-4. `merman-elk-layered`
-5. `roughr-merman`
-6. `dugong`
-7. `merman-analysis`
-8. `merman-ascii`
-9. `merman-layout-elk`
-10. `merman-editor-core`
-11. `merman-render`
-12. `merman-export`
-13. `merman`
-14. `merman-lsp`
-15. `merman-bindings-core`
-16. `merman-cli`
-17. `merman-rustdoc`
-18. `merman-ffi`
-19. `merman-typst-plugin`
-20. `merman-uniffi`
-21. `merman-wasm`
-
-Example:
+Do not maintain a prose copy. Cargo metadata owns the workspace dependency graph and the publish
+helper derives the current topological order:
 
 ```bash
-cargo publish -p dugong-graphlib
-cargo publish -p manatee
-cargo publish -p merman-core
-cargo publish -p merman-elk-layered
-cargo publish -p roughr-merman
-cargo publish -p dugong
-cargo publish -p merman-analysis
-cargo publish -p merman-ascii
-cargo publish -p merman-layout-elk
-cargo publish -p merman-editor-core
-cargo publish -p merman-render
-cargo publish -p merman-export
-cargo publish -p merman
-cargo publish -p merman-lsp
-cargo publish -p merman-bindings-core
-cargo publish -p merman-cli
-cargo publish -p merman-rustdoc
-cargo publish -p merman-ffi
-cargo publish -p merman-typst-plugin
-cargo publish -p merman-uniffi
-cargo publish -p merman-wasm
+python3 tools/publish.py --list-crates-io-packages
+python3 tools/publish.py --dry-run
 ```
 
 Notes:
 
 - `xtask` is `publish = false` and should not be published.
-- If you prefer to validate without publishing, run `cargo publish --dry-run -p <crate>` in the
-  same order.
+- If you prefer to validate without publishing, use `tools/publish.py` with
+  `--preflight-publish-dry-run --preflight-only`; it consumes the same derived order.

@@ -16,10 +16,7 @@ import uuid
 from pathlib import Path
 
 try:
-    from scripts.artifact_profile_recipe import (
-        load_artifact_profile,
-        load_artifact_profiles,
-    )
+    from scripts.artifact_profile_recipe import load_artifact_profile
     from scripts.github_workflow_contract import (
         WorkflowContractError,
         load_workflow_contract as parse_workflow_structure,
@@ -27,10 +24,7 @@ try:
         workflow_step,
     )
 except ModuleNotFoundError:
-    from artifact_profile_recipe import (
-        load_artifact_profile,
-        load_artifact_profiles,
-    )
+    from artifact_profile_recipe import load_artifact_profile
     from github_workflow_contract import (
         WorkflowContractError,
         load_workflow_contract as parse_workflow_structure,
@@ -104,30 +98,6 @@ def exact_binary_build_command(profile_id: str) -> str:
     return (
         f"python3 scripts/artifact_profile_recipe.py {profile_id} "
         "--build-host --locked"
-    )
-
-
-def exact_dependency_gate_command(profile_id: str) -> str:
-    matches = [
-        profile
-        for profile in load_artifact_profiles()
-        if profile.profile_id == profile_id
-    ]
-    if len(matches) != 1:
-        raise AssertionError(f"expected one artifact profile {profile_id!r}")
-    profile = matches[0]
-    recipe = profile.cargo
-    if profile.semantic_target != "typst":
-        raise AssertionError(f"{profile_id} must be a Typst artifact profile")
-    if recipe.default_features is not False:
-        raise AssertionError(f"{profile_id} must disable Cargo default features")
-    if recipe.build_target_kind != "target-set" or recipe.build_targets != (
-        "wasm32-unknown-unknown",
-    ):
-        raise AssertionError(f"{profile_id} must select the canonical WASM target")
-    return (
-        "cargo run --locked -p xtask -- profile-budget check-deps "
-        f"--profile typst-wasm --artifact-profile {profile_id}"
     )
 
 
@@ -1398,24 +1368,6 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertNotIn(lsp_command, surfaces_doc)
         self.assertNotIn(cli_command, surfaces_doc)
 
-
-    def test_typst_dependency_gate_uses_the_exact_artifact_profile(self) -> None:
-        command = exact_dependency_gate_command("typst-wasm")
-        ci = read_workflow(WORKFLOW_ROOT / "ci.yml")
-        self.assertEqual(ci.count(command), 2)
-
-        for relative_path in [
-            "crates/merman-typst-plugin/README.md",
-            "docs/release/RELEASING.md",
-        ]:
-            with self.subTest(path=relative_path):
-                text = (ROOT / relative_path).read_text(encoding="utf-8")
-                self.assertIn(command, text)
-
-        surfaces_doc = (ROOT / "docs/release/PACKAGE_SURFACES.md").read_text(
-            encoding="utf-8"
-        )
-        self.assertNotIn(command, surfaces_doc)
 
     def test_cargo_dist_metadata_matches_exact_release_profiles(self) -> None:
         dist_config = tomllib.loads((ROOT / "dist-workspace.toml").read_text(encoding="utf-8"))

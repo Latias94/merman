@@ -128,9 +128,6 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Verify release crate publish order
-        run: python3 scripts/verify-release-crate-order.py
-
       - name: Verify independent crate versions changed with their source
         run: |
           set -euo pipefail
@@ -153,29 +150,11 @@ jobs:
             cargo pkgid -p "$crate" | sed -E 's/.*[#@]//'
           }
 
-          crates=(
-            dugong-graphlib
-            manatee
-            merman-core
-            merman-elk-layered
-            roughr-merman
-            dugong
-            merman-analysis
-            merman-ascii
-            merman-layout-elk
-            merman-editor-core
-            merman-render
-            merman-export
-            merman
-            merman-lsp
-            merman-bindings-core
-            merman-cli
-            merman-rustdoc
-            merman-ffi
-            merman-typst-plugin
-            merman-uniffi
-            merman-wasm
-          )
+          mapfile -t crates < <(python3 tools/publish.py --list-crates-io-packages)
+          if [ "${#crates[@]}" -eq 0 ]; then
+            echo "::error::Cargo metadata produced an empty crates.io publish order"
+            exit 1
+          fi
 
           crate_versions=()
           for crate in "${crates[@]}"; do
@@ -304,7 +283,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm
+          python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm
           cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
           cargo run --locked -p xtask -- build-typst-package --profile publish
           typst_bin="${RUNNER_TEMP}/typst-${TYPST_CLI_VERSION}/typst"

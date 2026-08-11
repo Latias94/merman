@@ -32,9 +32,6 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --all --check
 
-      - name: Verify release crate order docs
-        run: python3 scripts/verify-release-crate-order.py
-
       - name: Verify release version projections
         run: python3 scripts/release-version.py
 
@@ -343,7 +340,6 @@ jobs:
         run: |
           cargo run --locked -p xtask -- verify-generated
           cargo run --locked -p xtask -- verify-feature-matrix
-          python3 .agents/skills/align-mermaid-release/scripts/validate_workflow.py
 
       - name: Test (nextest)
         run: cargo nextest run --cargo-quiet
@@ -484,7 +480,7 @@ jobs:
         run: cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
       - name: Check exact Typst dependency closure
-        run: cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm
+        run: python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm
 
       - name: Build and validate Typst package
         run: cargo run --locked -p xtask -- build-typst-package --profile publish
@@ -541,7 +537,7 @@ jobs:
         run: cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
       - name: Check exact Typst dependency closure
-        run: cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm
+        run: python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm
 
       - name: Build and validate Typst package
         run: cargo run --locked -p xtask -- build-typst-package --profile publish

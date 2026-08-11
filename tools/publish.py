@@ -5,7 +5,7 @@ Publish merman workspace crates to crates.io in dependency order.
 This is intentionally boring and explicit: a small helper around `cargo publish` that:
 - optionally runs `cargo run -p xtask -- verify` once up-front (parity gate)
 - optionally runs `cargo publish --dry-run` per crate before uploading
-- publishes crates in a fixed order
+- derives dependency-safe publish batches from Cargo metadata
 - waits between publishes for crates.io indexing
 
 Usage:
@@ -27,34 +27,6 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional
-
-
-PUBLISH_ORDER = [
-    # Layout stack.
-    "dugong-graphlib",
-    "manatee",
-    "merman-core",
-    "merman-elk-layered",
-    # Forked dependency used for Mermaid roughjs parity.
-    "roughr-merman",
-    "dugong",
-    # Mermaid pipeline.
-    "merman-analysis",
-    "merman-ascii",
-    "merman-layout-elk",
-    "merman-editor-core",
-    "merman-render",
-    "merman-export",
-    "merman",
-    "merman-lsp",
-    "merman-bindings-core",
-    "merman-cli",
-    "merman-rustdoc",
-    "merman-ffi",
-    "merman-typst-plugin",
-    "merman-uniffi",
-    "merman-wasm",
-]
 
 
 class Colors:
@@ -134,14 +106,17 @@ def git_is_clean(repo_root: Path) -> bool:
 class PackageInfo:
     name: str
     version: str
-    publish: bool
     manifest_path: Path
     internal_deps: tuple[str, ...]
 
 
+class PublishGraphError(RuntimeError):
+    """Cargo workspace metadata cannot produce a safe crates.io publish graph."""
+
+
 def cargo_metadata(repo_root: Path, *, quiet: bool = False) -> dict:
     cp = run_command(
-        ["cargo", "metadata", "--format-version", "1", "--no-deps"],
+        ["cargo", "metadata", "--locked", "--format-version", "1", "--no-deps"],
         cwd=repo_root,
         capture=True,
         quiet=quiet,
@@ -159,39 +134,129 @@ def publish_field_allows_crates_io(publish_raw: object) -> bool:
     return False
 
 
-def get_workspace_packages(repo_root: Path) -> dict[str, PackageInfo]:
-    md = cargo_metadata(repo_root)
-    out: dict[str, PackageInfo] = {}
-    publish_set = set(PUBLISH_ORDER)
-    for pkg in md.get("packages", []):
-        name = pkg["name"]
-        version = pkg["version"]
-        publish = publish_field_allows_crates_io(pkg.get("publish", None))
-        manifest_path = Path(pkg["manifest_path"])
-        deps = pkg.get("dependencies", []) or []
-        internal_deps = sorted(
-            {d.get("name") for d in deps if d.get("name") in publish_set and d.get("name") != name}
+def crates_io_publish_batches(metadata: dict) -> tuple[tuple[str, ...], ...]:
+    """Return deterministic topological batches for publishable workspace packages."""
+    workspace = _workspace_packages_by_name(metadata)
+    publishable = {
+        name: package
+        for name, package in workspace.items()
+        if publish_field_allows_crates_io(package.get("publish"))
+    }
+    if not publishable:
+        raise PublishGraphError("Cargo workspace has no crates.io-publishable packages")
+
+    manifest_owners = {
+        Path(str(package["manifest_path"])).resolve().parent: name
+        for name, package in workspace.items()
+    }
+    dependencies: dict[str, set[str]] = {name: set() for name in publishable}
+    for name, package in publishable.items():
+        raw_dependencies = package.get("dependencies", [])
+        if not isinstance(raw_dependencies, list):
+            raise PublishGraphError(f"workspace package {name} has invalid dependencies metadata")
+        for dependency in raw_dependencies:
+            if not isinstance(dependency, dict):
+                raise PublishGraphError(
+                    f"workspace package {name} has a non-object dependency entry"
+                )
+            if dependency.get("kind") == "dev":
+                continue
+            dependency_path = dependency.get("path")
+            if not isinstance(dependency_path, str):
+                continue
+            dependency_name = manifest_owners.get(Path(dependency_path).resolve())
+            if dependency_name is None or dependency_name == name:
+                continue
+            if dependency_name not in publishable:
+                raise PublishGraphError(
+                    f"publishable workspace package {name} depends on non-publishable "
+                    f"workspace package {dependency_name}"
+                )
+            dependencies[name].add(dependency_name)
+
+    batches: list[tuple[str, ...]] = []
+    remaining = {name: set(deps) for name, deps in dependencies.items()}
+    while remaining:
+        ready = tuple(sorted(name for name, deps in remaining.items() if not deps))
+        if not ready:
+            cycle = ", ".join(sorted(remaining))
+            raise PublishGraphError(
+                f"crates.io workspace dependency cycle prevents publication: {cycle}"
+            )
+        batches.append(ready)
+        ready_set = set(ready)
+        remaining = {
+            name: deps - ready_set
+            for name, deps in remaining.items()
+            if name not in ready_set
+        }
+    return tuple(batches)
+
+
+def crates_io_publish_order(metadata: dict) -> tuple[str, ...]:
+    return tuple(
+        package
+        for batch in crates_io_publish_batches(metadata)
+        for package in batch
+    )
+
+
+def _workspace_packages_by_name(metadata: dict) -> dict[str, dict]:
+    packages = metadata.get("packages")
+    workspace_members = metadata.get("workspace_members")
+    if not isinstance(packages, list) or not isinstance(workspace_members, list):
+        raise PublishGraphError(
+            "cargo metadata must contain packages and workspace_members arrays"
         )
+    member_ids = set(workspace_members)
+    workspace: dict[str, dict] = {}
+    for package in packages:
+        if not isinstance(package, dict) or package.get("id") not in member_ids:
+            continue
+        name = package.get("name")
+        manifest_path = package.get("manifest_path")
+        if not isinstance(name, str) or not isinstance(manifest_path, str):
+            raise PublishGraphError("workspace package metadata is missing name/manifest_path")
+        if name in workspace:
+            raise PublishGraphError(f"cargo metadata repeats workspace package name {name}")
+        workspace[name] = package
+    missing_ids = sorted(member_ids - {package.get("id") for package in workspace.values()})
+    if missing_ids:
+        raise PublishGraphError(
+            "cargo metadata workspace_members reference missing packages: "
+            + ", ".join(str(package_id) for package_id in missing_ids)
+        )
+    return workspace
+
+
+def workspace_package_infos(metadata: dict) -> dict[str, PackageInfo]:
+    workspace = _workspace_packages_by_name(metadata)
+    publish_order = crates_io_publish_order(metadata)
+    publish_set = set(publish_order)
+    manifest_owners = {
+        Path(str(package["manifest_path"])).resolve().parent: name
+        for name, package in workspace.items()
+    }
+    out: dict[str, PackageInfo] = {}
+    for name in publish_order:
+        package = workspace[name]
+        internal_deps: set[str] = set()
+        for dependency in package.get("dependencies", []) or []:
+            if not isinstance(dependency, dict) or dependency.get("kind") == "dev":
+                continue
+            dependency_path = dependency.get("path")
+            if not isinstance(dependency_path, str):
+                continue
+            dependency_name = manifest_owners.get(Path(dependency_path).resolve())
+            if dependency_name in publish_set and dependency_name != name:
+                internal_deps.add(dependency_name)
         out[name] = PackageInfo(
             name=name,
-            version=version,
-            publish=publish,
-            manifest_path=manifest_path,
-            internal_deps=tuple(internal_deps),
+            version=str(package["version"]),
+            manifest_path=Path(str(package["manifest_path"])),
+            internal_deps=tuple(sorted(internal_deps)),
         )
     return out
-
-
-def crates_io_publishable_package_names(metadata: dict) -> list[str]:
-    names: list[str] = []
-    for pkg in metadata.get("packages", []):
-        if publish_field_allows_crates_io(pkg.get("publish", None)):
-            names.append(pkg["name"])
-    return names
-
-
-def get_crates_io_package_names(repo_root: Path) -> list[str]:
-    return crates_io_publishable_package_names(cargo_metadata(repo_root, quiet=True))
 
 
 def check_crate_published(crate_name: str, version: str) -> bool:
@@ -222,11 +287,12 @@ def git_create_annotated_tag(repo_root: Path, tag: str, message: str, *, dry_run
 
 
 def iter_publish_list(
+    publish_order: Iterable[str],
     *,
     requested: Optional[set[str]],
     start_from: Optional[str],
 ) -> list[str]:
-    crates = [c for c in PUBLISH_ORDER if requested is None or c in requested]
+    crates = [crate for crate in publish_order if requested is None or crate in requested]
     if start_from:
         if start_from not in crates:
             raise RuntimeError(f"--start-from crate not in publish list: {start_from}")
@@ -242,10 +308,16 @@ def main() -> int:
         epilog=__doc__,
     )
     parser.add_argument("--dry-run", action="store_true", help="Print actions without publishing")
-    parser.add_argument(
+    listing = parser.add_mutually_exclusive_group()
+    listing.add_argument(
         "--list-crates-io-packages",
         action="store_true",
-        help="Print workspace packages whose Cargo metadata allows crates.io publishing",
+        help="Print the dependency-safe crates.io publish order, one package per line",
+    )
+    listing.add_argument(
+        "--list-crates-io-initial-batch",
+        action="store_true",
+        help="Print the dependency-free first crates.io publish batch",
     )
     parser.add_argument(
         "--yes",
@@ -316,19 +388,31 @@ def main() -> int:
 
     try:
         require_tool("cargo")
-        if not args.list_crates_io_packages:
+        if not (args.list_crates_io_packages or args.list_crates_io_initial_batch):
             require_tool("git")
     except Exception as e:
         print_error(str(e))
         return 2
 
+    try:
+        metadata = cargo_metadata(
+            repo_root,
+            quiet=args.list_crates_io_packages or args.list_crates_io_initial_batch,
+        )
+        publish_batches = crates_io_publish_batches(metadata)
+        publish_order = tuple(crate for batch in publish_batches for crate in batch)
+        packages = workspace_package_infos(metadata)
+    except Exception as e:
+        print_error(str(e))
+        return 2
+
     if args.list_crates_io_packages:
-        try:
-            for crate in get_crates_io_package_names(repo_root):
-                print(crate)
-        except Exception as e:
-            print_error(str(e))
-            return 2
+        for crate in publish_order:
+            print(crate)
+        return 0
+    if args.list_crates_io_initial_batch:
+        for crate in publish_batches[0]:
+            print(crate)
         return 0
 
     if not args.allow_dirty:
@@ -343,27 +427,27 @@ def main() -> int:
     requested = None
     if args.crates:
         requested = {c.strip() for c in args.crates.split(",") if c.strip()}
-        unknown = requested - set(PUBLISH_ORDER)
+        unknown = requested - set(publish_order)
         if unknown:
-            print_error(f"Unknown crates: {', '.join(sorted(unknown))}")
-            print_info(f"Known crates: {', '.join(PUBLISH_ORDER)}")
+            print_error(
+                "Unknown or non-publishable crates: " + ", ".join(sorted(unknown))
+            )
+            print_info(f"Known crates: {', '.join(publish_order)}")
             return 2
 
     try:
-        crates = iter_publish_list(requested=requested, start_from=args.start_from)
+        crates = iter_publish_list(
+            publish_order,
+            requested=requested,
+            start_from=args.start_from,
+        )
     except Exception as e:
         print_error(str(e))
         return 2
 
-    packages = get_workspace_packages(repo_root)
     missing = [c for c in crates if c not in packages]
     if missing:
         print_error(f"Crates not found in workspace: {', '.join(missing)}")
-        return 2
-
-    not_publishable = [c for c in crates if not packages[c].publish]
-    if not_publishable:
-        print_error(f"Crates are marked publish=false and cannot be published: {', '.join(not_publishable)}")
         return 2
 
     if args.preflight_only and not args.preflight_publish_dry_run:

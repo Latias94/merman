@@ -30,48 +30,28 @@ class PublishMetadataTests(unittest.TestCase):
         self.assertFalse(publish_tool.publish_field_allows_crates_io(False))
         self.assertFalse(publish_tool.publish_field_allows_crates_io(["internal"]))
 
-    def test_workspace_packages_mark_publish_false_metadata_as_not_publishable(self) -> None:
-        original_cargo_metadata = publish_tool.cargo_metadata
-        try:
-            publish_tool.cargo_metadata = lambda _repo_root: {
-                "packages": [
-                    {
-                        "name": "xtask",
-                        "version": "1.0.0",
-                        "publish": [],
-                        "manifest_path": str(ROOT / "crates" / "xtask" / "Cargo.toml"),
-                        "dependencies": [],
-                    },
-                    {
-                        "name": "merman-core",
-                        "version": "1.0.0",
-                        "publish": None,
-                        "manifest_path": str(ROOT / "crates" / "merman-core" / "Cargo.toml"),
-                        "dependencies": [],
-                    },
-                ],
-            }
+    def test_workspace_packages_exclude_publish_false_metadata(self) -> None:
+        metadata = workspace_metadata(
+            package("xtask", publish=[]),
+            package("merman-core"),
+        )
 
-            packages = publish_tool.get_workspace_packages(ROOT)
-        finally:
-            publish_tool.cargo_metadata = original_cargo_metadata
+        packages = publish_tool.workspace_package_infos(metadata)
 
-        self.assertFalse(packages["xtask"].publish)
-        self.assertTrue(packages["merman-core"].publish)
+        self.assertNotIn("xtask", packages)
+        self.assertEqual(packages["merman-core"].version, "1.0.0")
 
-    def test_crates_io_package_list_rejects_internal_registry_packages(self) -> None:
-        metadata = {
-            "packages": [
-                {"name": "default-publish", "publish": None},
-                {"name": "explicit-crates-io", "publish": ["crates-io"]},
-                {"name": "internal-only", "publish": ["internal"]},
-                {"name": "publish-false", "publish": []},
-            ]
-        }
+    def test_crates_io_package_order_rejects_internal_registry_packages(self) -> None:
+        metadata = workspace_metadata(
+            package("default-publish"),
+            package("explicit-crates-io", publish=["crates-io"]),
+            package("internal-only", publish=["internal"]),
+            package("publish-false", publish=[]),
+        )
 
         self.assertEqual(
-            publish_tool.crates_io_publishable_package_names(metadata),
-            ["default-publish", "explicit-crates-io"],
+            publish_tool.crates_io_publish_order(metadata),
+            ("default-publish", "explicit-crates-io"),
         )
 
     def test_no_verify_does_not_apply_to_preflight_dry_run(self) -> None:
@@ -95,17 +75,9 @@ class PublishMetadataTests(unittest.TestCase):
                 "--wait",
                 "0",
             ]
-            publish_tool.cargo_metadata = lambda _repo_root: {
-                "packages": [
-                    {
-                        "name": "merman-core",
-                        "version": "1.0.0",
-                        "publish": None,
-                        "manifest_path": str(ROOT / "crates" / "merman-core" / "Cargo.toml"),
-                        "dependencies": [],
-                    }
-                ],
-            }
+            publish_tool.cargo_metadata = lambda _repo_root, **_kwargs: workspace_metadata(
+                package("merman-core")
+            )
             publish_tool.git_is_clean = lambda _repo_root: True
             publish_tool.require_tool = lambda _name: None
 
@@ -155,24 +127,10 @@ class PublishMetadataTests(unittest.TestCase):
                 "--wait",
                 "0",
             ]
-            publish_tool.cargo_metadata = lambda _repo_root: {
-                "packages": [
-                    {
-                        "name": "merman-core",
-                        "version": "1.0.0",
-                        "publish": None,
-                        "manifest_path": str(ROOT / "crates" / "merman-core" / "Cargo.toml"),
-                        "dependencies": [],
-                    },
-                    {
-                        "name": "merman",
-                        "version": "1.0.0",
-                        "publish": None,
-                        "manifest_path": str(ROOT / "crates" / "merman" / "Cargo.toml"),
-                        "dependencies": [{"name": "merman-core"}],
-                    },
-                ],
-            }
+            publish_tool.cargo_metadata = lambda _repo_root, **_kwargs: workspace_metadata(
+                package("merman-core"),
+                package("merman", dependency("merman-core")),
+            )
             publish_tool.git_is_clean = lambda _repo_root: True
             publish_tool.require_tool = lambda _name: None
 
@@ -206,6 +164,112 @@ class PublishMetadataTests(unittest.TestCase):
             stdout.getvalue(),
         )
         self.assertIn("Skipped 1 crate(s): merman", stdout.getvalue())
+
+
+class PublishGraphTests(unittest.TestCase):
+    def test_independent_packages_share_lexically_sorted_batches(self) -> None:
+        metadata = workspace_metadata(
+            package("beta"),
+            package("alpha"),
+            package("gamma", dependency("alpha")),
+            package("delta", dependency("beta")),
+        )
+
+        self.assertEqual(
+            publish_tool.crates_io_publish_batches(metadata),
+            (("alpha", "beta"), ("delta", "gamma")),
+        )
+
+    def test_renamed_optional_target_and_build_dependencies_precede_dependents(self) -> None:
+        metadata = workspace_metadata(
+            package("core"),
+            package(
+                "app",
+                dependency("core", rename="renamed_core", optional=True),
+                dependency("core", kind="build", target="cfg(unix)"),
+            ),
+        )
+
+        self.assertEqual(
+            publish_tool.crates_io_publish_batches(metadata),
+            (("core",), ("app",)),
+        )
+
+    def test_dev_dependencies_do_not_constrain_publish_order(self) -> None:
+        metadata = workspace_metadata(
+            package("alpha", dependency("zeta", kind="dev")),
+            package("zeta"),
+        )
+
+        self.assertEqual(
+            publish_tool.crates_io_publish_batches(metadata),
+            (("alpha", "zeta"),),
+        )
+
+    def test_publishable_package_cannot_depend_on_private_workspace_member(self) -> None:
+        metadata = workspace_metadata(
+            package("internal", publish=[]),
+            package("public", dependency("internal")),
+        )
+
+        with self.assertRaisesRegex(
+            publish_tool.PublishGraphError,
+            "public.*non-publishable workspace package internal",
+        ):
+            publish_tool.crates_io_publish_batches(metadata)
+
+    def test_dependency_cycle_is_rejected(self) -> None:
+        metadata = workspace_metadata(
+            package("alpha", dependency("beta")),
+            package("beta", dependency("alpha")),
+        )
+
+        with self.assertRaisesRegex(
+            publish_tool.PublishGraphError,
+            "dependency cycle.*alpha.*beta",
+        ):
+            publish_tool.crates_io_publish_batches(metadata)
+
+
+def workspace_metadata(*packages: dict[str, object]) -> dict[str, object]:
+    return {
+        "workspace_members": [package["id"] for package in packages],
+        "packages": list(packages),
+    }
+
+
+def package(
+    name: str,
+    *dependencies: dict[str, object],
+    publish: object = None,
+) -> dict[str, object]:
+    manifest_path = ROOT / "crates" / name / "Cargo.toml"
+    return {
+        "id": f"path+file://{manifest_path.parent}#1.0.0",
+        "name": name,
+        "version": "1.0.0",
+        "publish": publish,
+        "manifest_path": str(manifest_path),
+        "dependencies": list(dependencies),
+    }
+
+
+def dependency(
+    name: str,
+    *,
+    kind: str | None = None,
+    rename: str | None = None,
+    optional: bool = False,
+    target: str | None = None,
+) -> dict[str, object]:
+    return {
+        "name": name,
+        "kind": kind,
+        "rename": rename,
+        "optional": optional,
+        "target": target,
+        "path": str(ROOT / "crates" / name),
+    }
 
 
 if __name__ == "__main__":

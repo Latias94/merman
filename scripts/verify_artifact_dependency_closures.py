@@ -6,10 +6,13 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from functools import lru_cache
+import json
 from pathlib import Path
-import re
+import shutil
 import subprocess
 import sys
+import tempfile
 
 from artifact_profile_recipe import (
     DEFAULT_DESCRIPTOR,
@@ -21,14 +24,6 @@ from artifact_profile_recipe import (
 )
 
 
-PACKAGE_MARKER = "__MERMAN_CLOSURE_PACKAGE__"
-FEATURE_MARKER = "__MERMAN_CLOSURE_FEATURES__"
-PACKAGE_ID_RE = re.compile(
-    r"^(?P<name>[A-Za-z0-9_-]+)\s+v(?P<version>[^\s]+)(?P<annotations>.*)$"
-)
-DEFAULT_REGISTRY_SOURCE = "registry+https://github.com/rust-lang/crates.io-index"
-CARGO_DEDUPLICATION_SUFFIX = " (*)"
-CARGO_PROC_MACRO_ANNOTATION = " (proc-macro)"
 HOST_CLOSURE_REFERENCE_TARGET = "x86_64-unknown-linux-gnu"
 LINUX_REFERENCE_SCOPE = "linux-reference"
 PROFILE_TARGET_SCOPE = "profile-target"
@@ -121,6 +116,7 @@ class ClosureVerificationError(RuntimeError):
 
 
 CommandRunner = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]
+ProbePreparer = Callable[[VerificationCase, Path], Path]
 
 
 SEMANTIC_CLAIMS = (
@@ -314,6 +310,24 @@ SEMANTIC_CLAIMS = (
             PackageFeatureExclusion("merman-export", ("jpeg", "png")),
         ),
     ),
+    ClosureClaim(
+        claim_id="typst-wasm-excludes-host-and-browser-adapters",
+        profile_id="typst-wasm",
+        required_packages=("merman-typst-plugin",),
+        forbidden_packages=(
+            "chrono",
+            "console_error_panic_hook",
+            "getrandom",
+            "js-sys",
+            "pest",
+            "serde-wasm-bindgen",
+            "serde_yaml",
+            "unsafe-libyaml",
+            "wasm-bindgen",
+            "wasm-bindgen-futures",
+            "web-time",
+        ),
+    ),
 )
 
 
@@ -374,8 +388,8 @@ def load_verification_cases(
     return tuple(cases)
 
 
-def cargo_tree_command(case: VerificationCase) -> list[str]:
-    """Project one descriptor-owned case into a runtime-only Cargo tree."""
+def _validate_case_recipe(case: VerificationCase) -> None:
+    """Validate the target selectors before querying Cargo metadata."""
     recipe = case.recipe
     if recipe.default_features:
         raise ClosureVerificationError(
@@ -399,76 +413,445 @@ def cargo_tree_command(case: VerificationCase) -> list[str]:
             f"{recipe.build_target_kind!r}"
         )
 
+
+@lru_cache(maxsize=1)
+def _workspace_metadata_without_dependencies() -> Mapping[str, object]:
+    return _run_cargo_metadata(
+        ["cargo", "metadata", "--locked", "--format-version", "1", "--no-deps"],
+        "workspace package declarations",
+    )
+
+
+@lru_cache(maxsize=1)
+def _locked_workspace_external_identities() -> frozenset[tuple[str, str, str]]:
+    document = _run_cargo_metadata(
+        [
+            "cargo",
+            "metadata",
+            "--locked",
+            "--format-version",
+            "1",
+            "--all-features",
+        ],
+        "locked workspace package identities",
+    )
+    return _external_package_identities(document)
+
+
+def _run_cargo_metadata(
+    command: Sequence[str],
+    description: str,
+) -> Mapping[str, object]:
+    completed = subprocess.run(
+        command,
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout).strip() or "<empty output>"
+        raise ClosureVerificationError(f"failed to read {description}: {detail}")
+    try:
+        document = json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        raise ClosureVerificationError(
+            f"{description} was not valid Cargo metadata JSON: {error}"
+        ) from error
+    if not isinstance(document, Mapping):
+        raise ClosureVerificationError(f"{description} must be a JSON object")
+    return document
+
+
+def _workspace_package_metadata(recipe: CargoArtifactRecipe) -> Mapping[str, object]:
+    document = _workspace_metadata_without_dependencies()
+    packages = document.get("packages")
+    workspace_members = document.get("workspace_members")
+    if not isinstance(packages, list) or not isinstance(workspace_members, list):
+        raise ClosureVerificationError(
+            "workspace cargo metadata lacks packages/workspace_members"
+        )
+    member_ids = set(workspace_members)
+    matches = [
+        package
+        for package in packages
+        if isinstance(package, Mapping)
+        and package.get("id") in member_ids
+        and package.get("name") == recipe.package
+    ]
+    if len(matches) != 1:
+        raise ClosureVerificationError(
+            f"workspace metadata must contain one package {recipe.package!r}; "
+            f"found {len(matches)}"
+        )
+    manifest_path = matches[0].get("manifest_path")
+    expected_manifest = (REPO_ROOT / recipe.manifest).resolve()
+    if not isinstance(manifest_path, str) or Path(manifest_path).resolve() != expected_manifest:
+        raise ClosureVerificationError(
+            f"artifact profile {recipe.profile_id!r} manifest does not match workspace metadata"
+        )
+    return matches[0]
+
+
+def write_metadata_probe(
+    case: VerificationCase,
+    probe_dir: Path,
+    *,
+    package_metadata: Mapping[str, object] | None = None,
+) -> Path:
+    """Create a standalone package projection for one exact artifact recipe."""
+    _validate_case_recipe(case)
+    recipe = case.recipe
+    package = package_metadata or _workspace_package_metadata(recipe)
+    if package.get("name") != recipe.package:
+        raise ClosureVerificationError(
+            f"structured package metadata does not match recipe root {recipe.package!r}"
+        )
+    version = package.get("version")
+    edition = package.get("edition")
+    features = package.get("features")
+    dependencies = package.get("dependencies")
+    if (
+        not isinstance(version, str)
+        or not isinstance(edition, str)
+        or not isinstance(features, Mapping)
+        or not isinstance(dependencies, list)
+    ):
+        raise ClosureVerificationError(
+            f"structured package metadata for {recipe.package!r} is incomplete"
+        )
+
+    probe_dir.mkdir(parents=True, exist_ok=True)
+    (probe_dir / "lib.rs").write_text("", encoding="utf-8")
+    lines = [
+        "[package]",
+        f"name = {json.dumps(recipe.package)}",
+        f"version = {json.dumps(version)}",
+        f"edition = {json.dumps(edition)}",
+        "publish = false",
+        "",
+        "[lib]",
+        'path = "lib.rs"',
+        "",
+        "[workspace]",
+        'resolver = "2"',
+        "",
+        "[features]",
+    ]
+    for feature, members in sorted(features.items()):
+        if not isinstance(feature, str) or not isinstance(members, list) or not all(
+            isinstance(member, str) for member in members
+        ):
+            raise ClosureVerificationError(
+                f"structured feature metadata for {recipe.package!r} is invalid"
+            )
+        rendered_members = ", ".join(json.dumps(member) for member in members)
+        lines.append(f"{json.dumps(feature)} = [{rendered_members}]")
+
+    sections: dict[str, list[str]] = {}
+    for dependency in dependencies:
+        if not isinstance(dependency, Mapping):
+            raise ClosureVerificationError(
+                f"structured dependency metadata for {recipe.package!r} is invalid"
+            )
+        if dependency.get("kind") is not None:
+            continue
+        target = dependency.get("target")
+        if target is not None and not isinstance(target, str):
+            raise ClosureVerificationError(
+                f"dependency target for {recipe.package!r} is invalid"
+            )
+        section = "dependencies" if target is None else f"target.{json.dumps(target)}.dependencies"
+        sections.setdefault(section, []).append(_render_probe_dependency(dependency))
+    for section, entries in sorted(sections.items()):
+        lines.extend(("", f"[{section}]", *sorted(entries)))
+    lines.append("")
+
+    manifest = probe_dir / "Cargo.toml"
+    manifest.write_text("\n".join(lines), encoding="utf-8")
+    return manifest
+
+
+def _render_probe_dependency(dependency: Mapping[str, object]) -> str:
+    name = dependency.get("name")
+    rename = dependency.get("rename")
+    requirement = dependency.get("req")
+    path = dependency.get("path")
+    source = dependency.get("source")
+    registry = dependency.get("registry")
+    optional = dependency.get("optional")
+    uses_default_features = dependency.get("uses_default_features")
+    dependency_features = dependency.get("features")
+    if (
+        not isinstance(name, str)
+        or (rename is not None and not isinstance(rename, str))
+        or not isinstance(requirement, str)
+        or not isinstance(optional, bool)
+        or not isinstance(uses_default_features, bool)
+        or not isinstance(dependency_features, list)
+        or not all(isinstance(feature, str) for feature in dependency_features)
+    ):
+        raise ClosureVerificationError("structured normal dependency metadata is invalid")
+
+    fields: list[str] = []
+    if isinstance(path, str):
+        fields.extend(
+            (f"path = {json.dumps(path)}", f"version = {json.dumps(requirement)}")
+        )
+    elif isinstance(source, str) and source.startswith("registry+") and registry is None:
+        fields.append(f"version = {json.dumps(requirement)}")
+    else:
+        raise ClosureVerificationError(
+            f"normal dependency {name!r} uses an unsupported non-path/crates.io source"
+        )
+
+    alias = rename or name
+    if alias != name:
+        fields.append(f"package = {json.dumps(name)}")
+    fields.append(
+        f"default-features = {'true' if uses_default_features else 'false'}"
+    )
+    if optional:
+        fields.append("optional = true")
+    if dependency_features:
+        rendered_features = ", ".join(
+            json.dumps(feature) for feature in dependency_features
+        )
+        fields.append(f"features = [{rendered_features}]")
+    return f"{json.dumps(alias)} = {{ {', '.join(fields)} }}"
+
+
+def _external_package_identities(
+    document: Mapping[str, object],
+) -> frozenset[tuple[str, str, str]]:
+    packages = document.get("packages")
+    if not isinstance(packages, list):
+        raise ClosureVerificationError("cargo metadata lacks a packages array")
+    identities: set[tuple[str, str, str]] = set()
+    for package in packages:
+        if not isinstance(package, Mapping):
+            raise ClosureVerificationError("cargo metadata contains a non-object package")
+        source = package.get("source")
+        if source is None:
+            continue
+        name = package.get("name")
+        version = package.get("version")
+        if not isinstance(name, str) or not isinstance(version, str) or not isinstance(source, str):
+            raise ClosureVerificationError("cargo metadata contains an invalid external package")
+        identities.add((name, version, source))
+    return frozenset(identities)
+
+
+def prepare_metadata_probe(case: VerificationCase, probe_dir: Path) -> Path:
+    """Resolve the probe offline, then bind every external package to the locked workspace."""
+    manifest = write_metadata_probe(case, probe_dir)
+    committed_lock = REPO_ROOT / "Cargo.lock"
+    if not committed_lock.is_file():
+        raise ClosureVerificationError(f"missing committed Cargo.lock at {committed_lock}")
+    shutil.copyfile(committed_lock, probe_dir / "Cargo.lock")
+    document = _run_cargo_metadata(
+        cargo_metadata_command(case, probe_manifest=manifest, frozen=False),
+        f"metadata probe for {case.recipe.profile_id!r}",
+    )
+    unexpected = sorted(
+        _external_package_identities(document) - _locked_workspace_external_identities()
+    )
+    if unexpected:
+        rendered = ", ".join(
+            f"{name} {version} ({source})" for name, version, source in unexpected
+        )
+        raise ClosureVerificationError(
+            "metadata probe resolved packages outside the committed workspace lock: "
+            + rendered
+        )
+    if not (probe_dir / "Cargo.lock").is_file():
+        raise ClosureVerificationError("cargo metadata did not create the probe lockfile")
+    return manifest
+
+
+def cargo_metadata_command(
+    case: VerificationCase,
+    *,
+    probe_manifest: Path,
+    frozen: bool = True,
+) -> list[str]:
+    """Project one exact descriptor case into a structured Cargo metadata query."""
+    _validate_case_recipe(case)
+    recipe = case.recipe
     command = [
         "cargo",
-        "tree",
-        "--color",
-        "never",
-        "--locked",
-        "--package",
-        recipe.package,
+        "metadata",
+        "--format-version",
+        "1",
+        "--filter-platform",
+        case.target,
         "--manifest-path",
-        str(REPO_ROOT / recipe.manifest),
-        "--edges",
-        "normal,no-proc-macro",
-        "--prefix",
-        "none",
-        "--charset",
-        "ascii",
-        "--format",
-        f"{PACKAGE_MARKER}{{p}}\t{FEATURE_MARKER}{{f}}",
+        str(probe_manifest),
         "--no-default-features",
     ]
     if recipe.features:
         command.extend(("--features", recipe.feature_argument))
-    command.extend(("--target", case.target))
+    command.append("--frozen" if frozen else "--offline")
     return command
 
 
-def parse_cargo_tree(output: str) -> DependencyClosure:
-    """Parse the marker-delimited Cargo tree emitted by this verifier."""
-    identity_features: dict[tuple[str, str, str], set[str]] = {}
-    malformed: list[str] = []
-
-    for line_number, line in enumerate(output.splitlines(), start=1):
-        if not line:
-            continue
-        if not line.startswith(PACKAGE_MARKER):
-            malformed.append(f"line {line_number} lacks the package marker")
-            continue
-        package_and_features = line[len(PACKAGE_MARKER) :].split(
-            f"\t{FEATURE_MARKER}", maxsplit=1
-        )
-        if len(package_and_features) != 2:
-            malformed.append(f"line {line_number} lacks the feature marker")
-            continue
-        package_display, raw_features = package_and_features
-        match = PACKAGE_ID_RE.match(package_display)
-        if match is None:
-            malformed.append(f"line {line_number} has an invalid Cargo package display")
-            continue
-        package = match.group("name")
-        version = match.group("version")
+def parse_cargo_metadata(
+    document: Mapping[str, object] | str,
+    *,
+    root_package: str,
+) -> DependencyClosure:
+    """Traverse normal, target-filtered dependencies from structured Cargo metadata."""
+    if isinstance(document, str):
         try:
-            source = _normalize_cargo_source(match.group("annotations"))
-        except ValueError as error:
-            malformed.append(f"line {line_number} {error}")
-            continue
-        parsed_features = {
-            feature.strip()
-            for feature in raw_features.removesuffix(
-                CARGO_DEDUPLICATION_SUFFIX
-            ).split(",")
-            if feature.strip()
-        }
-        identity_features.setdefault((package, version, source), set()).update(
-            parsed_features
+            document = json.loads(document)
+        except json.JSONDecodeError as error:
+            raise ClosureVerificationError(
+                f"cargo metadata output was not valid JSON: {error}"
+            ) from error
+    if not isinstance(document, Mapping):
+        raise ClosureVerificationError("cargo metadata output must be a JSON object")
+
+    packages_raw = document.get("packages")
+    resolve = document.get("resolve")
+    if not isinstance(packages_raw, list) or not isinstance(resolve, Mapping):
+        raise ClosureVerificationError(
+            "cargo metadata output must contain packages and resolve objects"
+        )
+    root_id = resolve.get("root")
+    nodes_raw = resolve.get("nodes")
+    if not isinstance(root_id, str) or not isinstance(nodes_raw, list):
+        raise ClosureVerificationError(
+            "cargo metadata resolve must contain a root id and nodes array"
         )
 
-    if malformed:
-        raise ClosureVerificationError("; ".join(malformed))
+    packages: dict[str, Mapping[str, object]] = {}
+    for package in packages_raw:
+        if not isinstance(package, Mapping):
+            raise ClosureVerificationError("cargo metadata package entries must be objects")
+        package_id = package.get("id")
+        if not isinstance(package_id, str) or not package_id:
+            raise ClosureVerificationError("cargo metadata package is missing an id")
+        if package_id in packages:
+            raise ClosureVerificationError(f"cargo metadata repeats package id {package_id!r}")
+        packages[package_id] = package
+
+    nodes: dict[str, Mapping[str, object]] = {}
+    for node in nodes_raw:
+        if not isinstance(node, Mapping):
+            raise ClosureVerificationError("cargo metadata resolve node entries must be objects")
+        node_id = node.get("id")
+        if not isinstance(node_id, str) or not node_id:
+            raise ClosureVerificationError("cargo metadata resolve node is missing an id")
+        if node_id in nodes:
+            raise ClosureVerificationError(f"cargo metadata repeats resolve node {node_id!r}")
+        nodes[node_id] = node
+    if root_id not in nodes or root_id not in packages:
+        raise ClosureVerificationError("cargo metadata resolve root is not a package node")
+
+    def package_name(package_id: str) -> str:
+        package = packages.get(package_id)
+        name = package.get("name") if package is not None else None
+        if not isinstance(name, str) or not name:
+            raise ClosureVerificationError(
+                f"cargo metadata package {package_id!r} is missing a name"
+            )
+        return name
+
+    def is_normal_dependency(dep: Mapping[str, object]) -> bool:
+        dep_kinds = dep.get("dep_kinds")
+        if not isinstance(dep_kinds, list):
+            raise ClosureVerificationError(
+                "cargo metadata dependency is missing its dep_kinds array"
+            )
+        return any(
+            isinstance(kind, Mapping) and kind.get("kind") is None
+            for kind in dep_kinds
+        )
+
+    def is_proc_macro(package: Mapping[str, object]) -> bool:
+        targets = package.get("targets")
+        if not isinstance(targets, list):
+            raise ClosureVerificationError("cargo metadata package is missing targets")
+        return any(
+            isinstance(target, Mapping)
+            and isinstance(target.get("kind"), list)
+            and "proc-macro" in target["kind"]
+            for target in targets
+        )
+
+    def normal_dependencies(node_id: str) -> list[str]:
+        node = nodes.get(node_id)
+        if node is None:
+            raise ClosureVerificationError(
+                f"cargo metadata is missing resolve node {node_id!r}"
+            )
+        deps = node.get("deps")
+        if not isinstance(deps, list):
+            raise ClosureVerificationError(
+                f"cargo metadata resolve node {node_id!r} is missing deps"
+            )
+        result = []
+        for dep in deps:
+            if not isinstance(dep, Mapping) or not is_normal_dependency(dep):
+                continue
+            dep_id = dep.get("pkg")
+            if not isinstance(dep_id, str) or dep_id not in packages:
+                raise ClosureVerificationError(
+                    f"cargo metadata dependency from {node_id!r} references unknown package"
+                )
+            if not is_proc_macro(packages[dep_id]):
+                result.append(dep_id)
+        return result
+
+    if package_name(root_id) != root_package:
+        raise ClosureVerificationError(
+            f"cargo metadata selected root {package_name(root_id)!r}; "
+            f"expected {root_package!r}"
+        )
+
+    reachable: list[str] = []
+    pending = [root_id]
+    seen: set[str] = set()
+    while pending:
+        package_id = pending.pop()
+        if package_id in seen:
+            continue
+        seen.add(package_id)
+        reachable.append(package_id)
+        pending.extend(normal_dependencies(package_id))
+
+    identity_features: dict[tuple[str, str, str], set[str]] = {}
+    for package_id in reachable:
+        package = packages[package_id]
+        name = package.get("name")
+        version = package.get("version")
+        source_value = package.get("source")
+        manifest_path = package.get("manifest_path")
+        if not isinstance(name, str) or not isinstance(version, str):
+            raise ClosureVerificationError(
+                f"cargo metadata package {package_id!r} is missing name/version"
+            )
+        if source_value is not None and not isinstance(source_value, str):
+            raise ClosureVerificationError(
+                f"cargo metadata package {package_id!r} has an invalid source"
+            )
+        if not isinstance(manifest_path, str) or not manifest_path:
+            raise ClosureVerificationError(
+                f"cargo metadata package {package_id!r} is missing manifest_path"
+            )
+        source = _metadata_source(source_value, Path(manifest_path))
+        node = nodes[package_id]
+        features = node.get("features", [])
+        if not isinstance(features, list) or not all(
+            isinstance(feature, str) for feature in features
+        ):
+            raise ClosureVerificationError(
+                f"cargo metadata resolve node {package_id!r} has invalid features"
+            )
+        identity_features.setdefault((name, version, source), set()).update(features)
+
     if not identity_features:
-        raise ClosureVerificationError("cargo tree produced no dependency packages")
+        raise ClosureVerificationError("cargo metadata produced no dependency packages")
 
     return DependencyClosure(
         features_by_package_identity={
@@ -478,36 +861,15 @@ def parse_cargo_tree(output: str) -> DependencyClosure:
     )
 
 
-def _normalize_cargo_source(annotations: str) -> str:
-    source_annotation = annotations.strip()
-    proc_macro_annotation = CARGO_PROC_MACRO_ANNOTATION.strip()
-    if source_annotation.startswith(proc_macro_annotation):
-        source_annotation = source_annotation.removeprefix(
-            proc_macro_annotation
-        ).strip()
-    elif source_annotation.endswith(proc_macro_annotation):
-        source_annotation = source_annotation.removesuffix(
-            proc_macro_annotation
-        ).strip()
-    if proc_macro_annotation in source_annotation:
-        raise ValueError("has invalid Cargo proc-macro annotations")
-    if not source_annotation:
-        return DEFAULT_REGISTRY_SOURCE
-    if not (source_annotation.startswith("(") and source_annotation.endswith(")")):
-        raise ValueError("has invalid Cargo source annotations")
-
-    source = source_annotation[1:-1]
-    path = Path(source)
-    if path.is_absolute():
-        resolved_path = path.resolve()
-        try:
-            relative_path = resolved_path.relative_to(RESOLVED_REPO_ROOT)
-        except ValueError:
-            return f"path+file://{resolved_path.as_posix()}"
-        return f"path+workspace://{relative_path.as_posix()}"
-    if source.startswith(("http://", "https://", "ssh://", "git://", "file://")):
-        return f"git+{source}"
-    return source
+def _metadata_source(source: str | None, manifest_path: Path) -> str:
+    if source is not None:
+        return source
+    resolved_path = manifest_path.resolve()
+    try:
+        relative_path = resolved_path.parent.relative_to(RESOLVED_REPO_ROOT)
+    except ValueError:
+        return f"path+file://{resolved_path.parent.as_posix()}"
+    return f"path+workspace://{relative_path.as_posix()}"
 
 
 def check_case(
@@ -575,8 +937,9 @@ def verify_cases(
     cases: Iterable[VerificationCase],
     *,
     runner: CommandRunner = _default_runner,
+    probe_preparer: ProbePreparer = prepare_metadata_probe,
 ) -> tuple[ClosureObservation, ...]:
-    """Run every selected profile-target case and aggregate all failures."""
+    """Run every selected profile-target metadata query and aggregate failures."""
     failures: list[str] = []
     observations: list[ClosureObservation] = []
     command_results: dict[
@@ -585,35 +948,57 @@ def verify_cases(
     ] = {}
     command_closures: dict[tuple[str, ...], DependencyClosure] = {}
 
-    for case in cases:
-        context = (
-            f"{case.claim.claim_id} ({case.recipe.profile_id}, "
-            f"build-target-kind={case.recipe.build_target_kind}, "
-            f"closure-scope={case.closure_scope}, closure-target={case.target})"
-        )
-        try:
-            command = cargo_tree_command(case)
-            command_key = tuple(command)
-            completed = command_results.get(command_key)
-            if completed is None:
-                completed = runner(command)
-                command_results[command_key] = completed
-            closure = command_closures.get(command_key)
-            if closure is None:
-                if completed.returncode != 0:
-                    stderr = (completed.stderr or "").strip() or "<empty stderr>"
-                    raise ClosureVerificationError(
-                        f"cargo tree exited with {completed.returncode}: {stderr}"
+    case_list = tuple(cases)
+    with tempfile.TemporaryDirectory(prefix="merman-closure-") as temporary_directory:
+        probe_root = Path(temporary_directory)
+        probe_paths: dict[tuple[object, ...], Path] = {}
+        for index, case in enumerate(case_list):
+            context = (
+                f"{case.claim.claim_id} ({case.recipe.profile_id}, "
+                f"build-target-kind={case.recipe.build_target_kind}, "
+                f"closure-scope={case.closure_scope}, closure-target={case.target})"
+            )
+            try:
+                probe_key = (
+                    case.recipe.package,
+                    case.recipe.manifest,
+                    case.recipe.features,
+                    case.target,
+                )
+                probe_manifest = probe_paths.get(probe_key)
+                if probe_manifest is None:
+                    probe_manifest = probe_preparer(
+                        case,
+                        probe_root / f"probe-{index}",
                     )
-                if not isinstance(completed.stdout, str):
-                    raise ClosureVerificationError("cargo tree stdout was not text")
-                closure = parse_cargo_tree(completed.stdout)
-                command_closures[command_key] = closure
-            case_failures, observation = check_case(case, closure)
-            observations.append(observation)
-            failures.extend(f"{context}: {failure}" for failure in case_failures)
-        except RuntimeError as error:
-            failures.append(f"{context}: {error}")
+                    probe_paths[probe_key] = probe_manifest
+                command = cargo_metadata_command(case, probe_manifest=probe_manifest)
+                command_key = tuple(command)
+                completed = command_results.get(command_key)
+                if completed is None:
+                    completed = runner(command)
+                    command_results[command_key] = completed
+                closure = command_closures.get(command_key)
+                if closure is None:
+                    if completed.returncode != 0:
+                        stderr = (completed.stderr or "").strip() or "<empty stderr>"
+                        raise ClosureVerificationError(
+                            f"cargo metadata exited with {completed.returncode}: {stderr}"
+                        )
+                    if not isinstance(completed.stdout, (str, dict)):
+                        raise ClosureVerificationError(
+                            "cargo metadata stdout was neither JSON text nor an object"
+                        )
+                    closure = parse_cargo_metadata(
+                        completed.stdout,
+                        root_package=case.recipe.package,
+                    )
+                    command_closures[command_key] = closure
+                case_failures, observation = check_case(case, closure)
+                observations.append(observation)
+                failures.extend(f"{context}: {failure}" for failure in case_failures)
+            except RuntimeError as error:
+                failures.append(f"{context}: {error}")
 
     if failures:
         raise ClosureVerificationError(

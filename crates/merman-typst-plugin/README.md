@@ -66,7 +66,7 @@ cargo run --locked -p xtask -- build-typst-package --profile publish
 Check the dependency closure using the package, target, default-feature policy, and features owned by the exact `typst-wasm` artifact recipe:
 
 ```bash
-cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm
+python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm
 ```
 
 Check the canonical artifact's compressed size budget without referring to its private output directory:
