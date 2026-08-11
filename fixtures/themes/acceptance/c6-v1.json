@@ -1,0 +1,470 @@
+{
+  "schemaVersion": 1,
+  "cells": [
+    {
+      "theme": "brutalist",
+      "family": "flowchart",
+      "target": "browser-svg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "family-adapter-incomplete"
+      }
+    },
+    {
+      "theme": "brutalist",
+      "family": "flowchart",
+      "target": "standalone-svg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "family-adapter-incomplete"
+      }
+    },
+    {
+      "theme": "brutalist",
+      "family": "flowchart",
+      "target": "png",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "family-adapter-incomplete"
+      }
+    },
+    {
+      "theme": "brutalist",
+      "family": "flowchart",
+      "target": "jpeg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "family-adapter-incomplete"
+      }
+    },
+    {
+      "theme": "brutalist",
+      "family": "flowchart",
+      "target": "pdf",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "family-adapter-incomplete"
+      }
+    },
+    {
+      "theme": "brutalist",
+      "family": "state",
+      "target": "browser-svg",
+      "expectation": {
+        "kind": "executable",
+        "sourceFixtureId": "fixture-semantic-style-capabilities",
+        "mechanismRequirements": {
+          "canvas-solid": "must-apply",
+          "css-filter": "must-apply",
+          "font-stack": "must-apply",
+          "nth-child-selector": "must-apply",
+          "rounded-corners": "must-apply",
+          "stroke-styling": "must-apply",
+          "theme-variables": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "requiredAdmission": "portable",
+        "requiredArtifactAssertion": "browser-svg-dom"
+      }
+    },
+    {
+      "theme": "brutalist",
+      "family": "state",
+      "target": "standalone-svg",
+      "expectation": {
+        "kind": "executable",
+        "sourceFixtureId": "fixture-semantic-style-capabilities",
+        "mechanismRequirements": {
+          "canvas-solid": "must-apply",
+          "css-filter": "must-apply",
+          "font-stack": "must-apply",
+          "nth-child-selector": "must-apply",
+          "rounded-corners": "must-apply",
+          "stroke-styling": "must-apply",
+          "theme-variables": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "requiredAdmission": "portable",
+        "requiredArtifactAssertion": "standalone-svg-document"
+      }
+    },
+    {
+      "theme": "brutalist",
+      "family": "state",
+      "target": "png",
+      "expectation": {
+        "kind": "executable",
+        "sourceFixtureId": "fixture-semantic-style-capabilities",
+        "mechanismRequirements": {
+          "canvas-solid": "must-apply",
+          "css-filter": "must-apply",
+          "font-stack": "must-apply",
+          "nth-child-selector": "must-apply",
+          "rounded-corners": "must-apply",
+          "stroke-styling": "must-apply",
+          "theme-variables": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "requiredAdmission": "portable",
+        "requiredArtifactAssertion": "png-image"
+      }
+    },
+    {
+      "theme": "brutalist",
+      "family": "state",
+      "target": "jpeg",
+      "expectation": {
+        "kind": "executable",
+        "sourceFixtureId": "fixture-semantic-style-capabilities",
+        "mechanismRequirements": {
+          "canvas-solid": "must-apply",
+          "css-filter": "must-apply",
+          "font-stack": "must-apply",
+          "nth-child-selector": "must-apply",
+          "rounded-corners": "must-apply",
+          "stroke-styling": "must-apply",
+          "theme-variables": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "requiredAdmission": "portable",
+        "requiredArtifactAssertion": "jpeg-image"
+      }
+    },
+    {
+      "theme": "brutalist",
+      "family": "state",
+      "target": "pdf",
+      "expectation": {
+        "kind": "executable",
+        "sourceFixtureId": "fixture-semantic-style-capabilities",
+        "mechanismRequirements": {
+          "canvas-solid": "must-apply",
+          "css-filter": "must-apply",
+          "font-stack": "must-apply",
+          "nth-child-selector": "must-apply",
+          "rounded-corners": "must-apply",
+          "stroke-styling": "must-apply",
+          "theme-variables": "must-apply"
+        },
+        "expectedResidualIds": [],
+        "requiredAdmission": "portable",
+        "requiredArtifactAssertion": "pdf-document"
+      }
+    },
+    {
+      "theme": "brutalist",
+      "family": "sequence",
+      "target": "browser-svg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "family-adapter-incomplete"
+      }
+    },
+    {
+      "theme": "brutalist",
+      "family": "sequence",
+      "target": "standalone-svg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "family-adapter-incomplete"
+      }
+    },
+    {
+      "theme": "brutalist",
+      "family": "sequence",
+      "target": "png",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "family-adapter-incomplete"
+      }
+    },
+    {
+      "theme": "brutalist",
+      "family": "sequence",
+      "target": "jpeg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "family-adapter-incomplete"
+      }
+    },
+    {
+      "theme": "brutalist",
+      "family": "sequence",
+      "target": "pdf",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "family-adapter-incomplete"
+      }
+    },
+    {
+      "theme": "spotless",
+      "family": "flowchart",
+      "target": "browser-svg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "spotless",
+      "family": "flowchart",
+      "target": "standalone-svg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "spotless",
+      "family": "flowchart",
+      "target": "png",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "spotless",
+      "family": "flowchart",
+      "target": "jpeg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "spotless",
+      "family": "flowchart",
+      "target": "pdf",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "spotless",
+      "family": "state",
+      "target": "browser-svg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "spotless",
+      "family": "state",
+      "target": "standalone-svg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "spotless",
+      "family": "state",
+      "target": "png",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "spotless",
+      "family": "state",
+      "target": "jpeg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "spotless",
+      "family": "state",
+      "target": "pdf",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "spotless",
+      "family": "sequence",
+      "target": "browser-svg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "spotless",
+      "family": "sequence",
+      "target": "standalone-svg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "spotless",
+      "family": "sequence",
+      "target": "png",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "spotless",
+      "family": "sequence",
+      "target": "jpeg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "spotless",
+      "family": "sequence",
+      "target": "pdf",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "flowchart",
+      "target": "browser-svg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "flowchart",
+      "target": "standalone-svg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "flowchart",
+      "target": "png",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "flowchart",
+      "target": "jpeg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "flowchart",
+      "target": "pdf",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "state",
+      "target": "browser-svg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "state",
+      "target": "standalone-svg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "state",
+      "target": "png",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "state",
+      "target": "jpeg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "state",
+      "target": "pdf",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "sequence",
+      "target": "browser-svg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "sequence",
+      "target": "standalone-svg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "sequence",
+      "target": "png",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "sequence",
+      "target": "jpeg",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    },
+    {
+      "theme": "cyberpunk",
+      "family": "sequence",
+      "target": "pdf",
+      "expectation": {
+        "kind": "not-ready",
+        "blocker": "theme-slice-incomplete"
+      }
+    }
+  ]
+}

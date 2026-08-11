@@ -12,6 +12,19 @@ pub enum CatalogError {
     InvalidJson(serde_json::Error),
     #[error("unsupported theme fixture schema version {0}")]
     UnsupportedSchemaVersion(u32),
+    #[error("C6 acceptance catalog is invalid JSON: {0}")]
+    InvalidC6AcceptanceJson(serde_json::Error),
+    #[error("unsupported C6 acceptance schema version {0}")]
+    UnsupportedC6AcceptanceSchemaVersion(u32),
+    #[error("C6 acceptance cell `{key}` is duplicated")]
+    DuplicateC6AcceptanceCell { key: String },
+    #[error("C6 acceptance cell set mismatch; missing {missing:?}, unexpected {unexpected:?}")]
+    C6AcceptanceCellSetMismatch {
+        missing: Vec<String>,
+        unexpected: Vec<String>,
+    },
+    #[error("C6 acceptance cell `{key}` is invalid: {reason}")]
+    InvalidC6AcceptanceCell { key: String, reason: String },
     #[error("theme fixture root `{path}` is invalid: {source}")]
     InvalidRoot {
         path: PathBuf,
