@@ -9,6 +9,9 @@ on:
   merge_group:
     types:
       - checks_requested
+  schedule:
+    - cron: "7 2 * * 0"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -71,6 +74,11 @@ jobs:
               base="$PUSH_BASE_SHA"
               head="$PUSH_HEAD_SHA"
               extra=(--select-all --reason "main push full lifecycle")
+              ;;
+            schedule|workflow_dispatch)
+              base="$PUSH_HEAD_SHA"
+              head="$PUSH_HEAD_SHA"
+              extra=(--select-owner core --reason "scheduled or manual full host safety net")
               ;;
             *)
               echo "unsupported CI event: $EVENT_NAME" >&2
@@ -435,8 +443,24 @@ jobs:
           cargo run --locked -p xtask -- verify-generated
           cargo run --locked -p xtask -- verify-feature-matrix
 
-      - name: Test (nextest)
-        run: cargo nextest run --cargo-quiet
+      - name: Test full workspace (Linux and safety-net lifecycles)
+        if: runner.os == 'Linux' || github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: cargo nextest run --locked --cargo-quiet
+
+      - name: Compile workspace on pull-request host runners
+        if: runner.os != 'Linux' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
+        run: cargo check --workspace --all-targets --locked
+
+      - name: Test host-sensitive contracts on pull requests
+        if: runner.os != 'Linux' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
+        run: |
+          cargo nextest run --locked -p merman-layout-elk --lib --cargo-quiet \
+            -E 'test(separate_children_layout_is_small_stack_safe_and_deterministic) | test(source_graph_dump_is_small_stack_safe_for_deep_hierarchy)'
+          cargo nextest run --locked -p xtask --lib --cargo-quiet \
+            -E 'test(two_contenders_are_serialized) | test(dead_owner_is_recovered)'
+          cargo nextest run --locked -p merman-ffi \
+            --test header_smoke --test c_consumer_smoke --cargo-quiet
+          cargo nextest run --locked -p merman-cli --test markdown_cli --cargo-quiet
 
       - name: Test architecture compile-fail contracts
         if: matrix.parity
@@ -998,7 +1022,7 @@ jobs:
     if: ${{ needs.ci-plan.outputs.security == 'true' }}
     uses: ./.github/workflows/security-audit.yml
     with:
-      representative_targets: ${{ github.event_name != 'push' }}
+      representative_targets: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
 
   fuzz-owner:
     name: fuzz-owner

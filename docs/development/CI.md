@@ -9,8 +9,9 @@ unless that job produces an independently releasable artifact.
 Pull requests answer whether a change is safe to review and merge:
 
 - formatting, repository hygiene, and generated-source freshness;
-- broad workspace tests on supported hosts, with Linux owning the repository-wide parity and
-  architecture contracts;
+- full workspace tests and blocking parity on Linux;
+- workspace compilation plus an explicit host-sensitive macOS/Windows inventory, including the
+  Windows ELK small-stack regression;
 - representative Cargo feature leaves, default surfaces, owner APIs, and feature-unification
   regressions;
 - Web package build, size budgets, package smoke, and Playground browser behavior when their inputs
@@ -36,11 +37,16 @@ Performance evidence produced from pull-request code remains read-only: it may u
 artifacts and append a job summary, but it does not receive repository write permissions or feed a
 separate comment-writing job.
 
-During the workflow-contract migration, the previous path-filtered PR workflows continue to run
-beside `pr-gate` as comparison evidence. They are not inputs to `pr-gate` and will be removed from
-the PR lifecycle only after a real draft pull request proves equivalent owner coverage and a seeded
-owner failure is observed by the new aggregate. Reusable same-run calls use a separate concurrency
-lane so they cannot cancel, or be cancelled by, those standalone compatibility runs.
+Reusable owner workflows do not start independent pull-request runs. The central orchestrator calls
+them after classification, so one owner executes once and its result is available directly to
+`pr-gate`. Main pushes still select every owner. A weekly and manually dispatchable core safety-net
+run executes the full workspace on Linux, macOS, and Windows; routine pull requests keep the full
+Linux suite while host runners compile the workspace and run focused filesystem, process, FFI, and
+ELK stack-safety contracts.
+
+Editor-language descriptors are shared inputs to the browser editor and VS Code extension. Changes
+under `contracts/editor-language/` therefore select both owners. Other shared authorities and
+unknown paths fail broad instead of guessing a narrow consumer set.
 
 The pull-request feature matrix validates the complete declared feature graph but compiles a curated
 set of representative products and transports. It deliberately does not compile every bounded
@@ -61,13 +67,21 @@ user-visible contract rather than a duplicate source-level test.
 
 ## Scheduled Maintenance
 
-The repository has focused weekly schedules for fuzzing, security, performance, and Homebrew
-compatibility. There is no umbrella daily `nightly` workflow. Scheduled checks answer questions
-that need time, repeated observation, or external-state refresh rather than immediate merge
-feedback.
+The repository has focused weekly schedules for full host Rust tests, fuzzing, security,
+performance, and Homebrew compatibility. There is no umbrella daily `nightly` workflow. Scheduled
+checks answer questions that need time, repeated observation, or external-state refresh rather
+than immediate merge feedback.
 
 `cargo-fuzz` uses a pinned Rust nightly toolchain because sanitizer-backed fuzz instrumentation
 requires it. The workspace and release artifacts continue to use the pinned stable Rust toolchain.
+Pull requests build every harness and replay every committed seed, corpus entry, and crash
+regression without mutation. Only scheduled and manually dispatched fuzz runs perform randomized
+discovery.
+
+The performance workflow selects regression and frontmatter descriptors into one measurement
+matrix. Each descriptor uses the same base/head runner, receipt, artifact, summary, and outcome
+consumer. Pull requests remain read-only and write only to the job summary; schedules run both
+self-comparison descriptors plus the independent external-renderer reference lane.
 
 ## Release Preflight
 
@@ -122,6 +136,8 @@ workflow row or source line is safe.
 
 Workflow syntax and expression semantics are checked with actionlint 1.7.12. High-severity workflow
 security findings are checked with zizmor 1.29.0. CI verifies the downloaded actionlint archive and
-the selected zizmor wheel by SHA-256 before execution, and prints both tool versions. GitHub Actions
-are pinned to reviewed commits with readable version comments; weekly Dependabot updates maintain
-those identities.
+the selected zizmor wheel by SHA-256 before execution, and prints both tool versions. Repository
+tests cover only Merman-specific boundaries: the same-run fail-closed gate, read-only PR owner
+closure, trusted deployment separation, immutable action identities, checkout credential isolation,
+and npm provenance policy. GitHub Actions are pinned to reviewed commits with readable version
+comments; weekly Dependabot updates maintain those identities.

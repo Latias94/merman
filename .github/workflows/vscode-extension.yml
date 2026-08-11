@@ -2,45 +2,6 @@ name: VS Code Extension
 
 on:
   workflow_call:
-  push:
-    branches:
-      - main
-      - master
-    paths:
-      - ".github/workflows/vscode-extension.yml"
-      - "Cargo.lock"
-      - "Cargo.toml"
-      - "LICENSE-*"
-      - "THIRD_PARTY_NOTICES.md"
-      - "THIRD_PARTY_LICENSES/**"
-      - "crates/**"
-      - "editor-language/**"
-      - "fixtures/**"
-      - "platforms/web/src/svg-safety-policy.ts"
-      - "playground/examples/manifest.json"
-      - "scripts/check-svg-safety-policy.mjs"
-      - "scripts/generate-svg-safety-policy.mjs"
-      - "scripts/svg-safety-policy.mjs"
-      - "scripts/sync-release-legal-materials.py"
-      - "tools/vscode-extension/**"
-  pull_request:
-    paths:
-      - ".github/workflows/vscode-extension.yml"
-      - "Cargo.lock"
-      - "Cargo.toml"
-      - "LICENSE-*"
-      - "THIRD_PARTY_NOTICES.md"
-      - "THIRD_PARTY_LICENSES/**"
-      - "crates/**"
-      - "editor-language/**"
-      - "fixtures/**"
-      - "platforms/web/src/svg-safety-policy.ts"
-      - "playground/examples/manifest.json"
-      - "scripts/check-svg-safety-policy.mjs"
-      - "scripts/generate-svg-safety-policy.mjs"
-      - "scripts/svg-safety-policy.mjs"
-      - "scripts/sync-release-legal-materials.py"
-      - "tools/vscode-extension/**"
   workflow_dispatch:
     inputs:
       source_ref:

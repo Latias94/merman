@@ -59,36 +59,6 @@ def workflow_named_step(name: str) -> str:
     raise AssertionError(f"missing workflow step: {name}")
 
 
-def workflow_event_list(event_name: str, key: str) -> list[str]:
-    lines = FUZZ_WORKFLOW.read_text(encoding="utf-8").splitlines()
-    event_line = f"  {event_name}:"
-    try:
-        start = lines.index(event_line) + 1
-    except ValueError as exc:
-        raise AssertionError(f"fuzz workflow does not define on.{event_name}") from exc
-
-    values: list[str] = []
-    in_key = False
-    for line in lines[start:]:
-        stripped = line.strip()
-        indent = len(line) - len(line.lstrip(" "))
-        if indent <= 2 and stripped.endswith(":"):
-            break
-        if indent == 4 and stripped == f"{key}:":
-            in_key = True
-            continue
-        if not in_key:
-            continue
-        if indent == 6 and stripped.startswith("- "):
-            values.append(stripped[2:].strip().strip("\"'"))
-            continue
-        if stripped == "":
-            continue
-        if indent <= 4:
-            break
-    return values
-
-
 def workflow_dispatch_choice_options(input_name: str) -> list[str]:
     lines = FUZZ_WORKFLOW.read_text(encoding="utf-8").splitlines()
     marker = f"      {input_name}:"
@@ -141,15 +111,23 @@ class FuzzConfigTests(unittest.TestCase):
             with self.subTest(action=action):
                 self.assertRegex(revision, r"^[0-9a-f]{40}$")
 
-    def test_push_and_pull_request_remain_smoke_triggers(self) -> None:
-        self.assertEqual(workflow_event_list("push", "branches"), ["main"])
-        self.assertNotEqual(workflow_event_list("pull_request", "paths"), [])
-
+    def test_pr_calls_run_fixed_regressions_and_schedules_run_discovery(self) -> None:
+        text = FUZZ_WORKFLOW.read_text(encoding="utf-8")
+        self.assertNotIn("  pull_request:", text)
+        self.assertNotIn("  push:", text)
         plan_step = workflow_named_step("Select bounded target and budget")
         self.assertIn("pull_request|push|merge_group|workflow_call)", plan_step)
-        self.assertIn("profile=smoke", plan_step)
+        self.assertIn("profile=regression", plan_step)
         self.assertIn("schedule)", plan_step)
         self.assertIn("profile=scheduled", plan_step)
+
+        build_step = workflow_named_step("Build libFuzzer harness")
+        regression_step = workflow_named_step("Run committed regression inputs")
+        randomized_step = workflow_named_step("Run bounded randomized libFuzzer discovery")
+        self.assertIn("fuzz build", build_step)
+        self.assertIn("fuzz/corpus/$FUZZ_TARGET", regression_step)
+        self.assertIn("${inputs[@]}", regression_step)
+        self.assertIn("profile != 'regression'", randomized_step)
 
     def test_concurrency_keeps_discovery_runs_outside_push_cancellation(self) -> None:
         text = FUZZ_WORKFLOW.read_text(encoding="utf-8")
@@ -158,10 +136,9 @@ class FuzzConfigTests(unittest.TestCase):
             text,
         )
         self.assertIn("github.event.pull_request.number", text)
-        self.assertIn("github.ref", text)
         self.assertIn("github.run_id", text)
         self.assertIn(
-            "cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}",
+            "cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}",
             text,
         )
 
@@ -184,7 +161,7 @@ class FuzzConfigTests(unittest.TestCase):
 
     def test_budget_and_result_classification_keep_harness_panics_distinct(self) -> None:
         text = FUZZ_WORKFLOW.read_text(encoding="utf-8")
-        run_step = workflow_named_step("Run libFuzzer with AddressSanitizer enabled")
+        run_step = workflow_named_step("Run bounded randomized libFuzzer discovery")
         classify_step = workflow_named_step("Classify fuzz result")
 
         self.assertIn("-runs=64", run_step)

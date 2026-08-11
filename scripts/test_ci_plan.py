@@ -16,6 +16,7 @@ try:
         evaluate_gate,
         parse_name_status_z,
         plan_changes,
+        plan_selected,
         plan_repository_diff,
     )
 except ModuleNotFoundError:
@@ -25,6 +26,7 @@ except ModuleNotFoundError:
         evaluate_gate,
         parse_name_status_z,
         plan_changes,
+        plan_selected,
         plan_repository_diff,
     )
 
@@ -95,8 +97,18 @@ class PlannerTests(unittest.TestCase):
             "platforms/web/src/index.ts": {"hygiene", "npm", "web"},
             "platforms/node/package-lock.json": {"core", "hygiene", "node", "npm", "security"},
             "tools/vscode-extension/src/extension.ts": {"hygiene", "npm", "vscode"},
+            "contracts/editor-language/token-descriptor-v1.json": {
+                "hygiene",
+                "npm",
+                "vscode",
+                "web",
+            },
             "tools/bench/perf_runner.py": {"core", "hygiene", "performance"},
             "platforms/python/pyproject.toml": {"hygiene", "python"},
+            "distribution/cli/registry-templates/scoop.template.json": {
+                "cli",
+                "hygiene",
+            },
         }
 
         for path, selected in fixtures.items():
@@ -147,6 +159,8 @@ class PlannerTests(unittest.TestCase):
     def test_workflow_classifier_and_unknown_paths_fail_broad(self) -> None:
         for path in (
             ".github/workflows/ci.yml",
+            "contracts/abi/merman-v3.json",
+            "distribution/typst/merman/lib.typ",
             "scripts/ci_plan.py",
             "unowned/new-surface.txt",
         ):
@@ -255,6 +269,24 @@ class PlannerTests(unittest.TestCase):
         )
         encoded = json.dumps(plan, separators=(",", ":"), sort_keys=True)
         self.assertNotIn("\n", encoded)
+
+    def test_non_pr_host_safety_net_can_select_only_core(self) -> None:
+        plan = plan_selected(
+            base="a" * 40,
+            head="b" * 40,
+            selected=["core"],
+            reason="scheduled full host safety net",
+        )
+
+        self.assertEqual(
+            {name for name, selected in plan["owners"].items() if selected},
+            {"core"},
+        )
+        summary = evaluate_gate(
+            plan,
+            {"build-test": {"owner": "core", "required": True, "result": "success"}},
+        )
+        self.assertEqual(summary["selected"], ["build-test"])
 
 
 class GateTests(unittest.TestCase):

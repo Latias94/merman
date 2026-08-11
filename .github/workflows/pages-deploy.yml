@@ -8,27 +8,7 @@ on:
     paths:
       - ".github/workflows/pages-deploy.yml"
       - ".github/workflows/pages.yml"
-      - "abi/**"
-      - "Cargo.lock"
-      - "Cargo.toml"
-      - "LICENSE-*"
-      - "THIRD_PARTY_NOTICES.md"
-      - "THIRD_PARTY_LICENSES/**"
-      - "crates/**"
-      - "docs/release/WASM_SIZE_BUDGETS.json"
-      - "docs/workstreams/web-wasm-playground/editor-artifact-receipt-v*.json"
-      - "platforms/web/**"
-      - "playground/**"
-      - "scripts/check-svg-safety-policy.mjs"
-      - "scripts/generate-svg-safety-policy.mjs"
-      - "scripts/svg-safety-policy.mjs"
-      - "scripts/sync-release-legal-materials.py"
-      - "tools/vscode-extension/src/preview-svg-safety-policy.ts"
-  pull_request:
-    paths:
-      - ".github/workflows/pages-deploy.yml"
-      - ".github/workflows/pages.yml"
-      - "abi/**"
+      - "contracts/abi/**"
       - "Cargo.lock"
       - "Cargo.toml"
       - "LICENSE-*"
@@ -60,11 +40,10 @@ jobs:
       contents: read
     uses: ./.github/workflows/pages.yml
     with:
-      ci_only: ${{ github.event_name == 'pull_request' }}
+      ci_only: false
 
   deploy:
     name: Deploy playground
-    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-24.04
     permissions:

@@ -2,33 +2,6 @@ name: npm Dependency Audit
 
 on:
   workflow_call:
-  push:
-    branches:
-      - main
-      - master
-    paths:
-      - playground/package.json
-      - playground/package-lock.json
-      - playground/tests/package.json
-      - playground/tests/package-lock.json
-      - "**/package.json"
-      - "**/package-lock.json"
-      - scripts/audit_plan.py
-      - tools/mermaid-cli/package.json
-      - tools/mermaid-cli/package-lock.json
-      - .github/workflows/npm-audit.yml
-  pull_request:
-    paths:
-      - playground/package.json
-      - playground/package-lock.json
-      - playground/tests/package.json
-      - playground/tests/package-lock.json
-      - "**/package.json"
-      - "**/package-lock.json"
-      - scripts/audit_plan.py
-      - tools/mermaid-cli/package.json
-      - tools/mermaid-cli/package-lock.json
-      - .github/workflows/npm-audit.yml
   schedule:
     - cron: "53 4 * * 1"
   workflow_dispatch:

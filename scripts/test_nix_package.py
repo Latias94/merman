@@ -10,7 +10,6 @@ import re
 import tomllib
 import unittest
 
-from github_workflow_contract import load_workflow_contract, workflow_job, workflow_step
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -178,27 +177,6 @@ class NixPackageContractTests(unittest.TestCase):
             nixpkgs["locked"]["narHash"],
             r"^sha256-[A-Za-z0-9+/]{43}=$",
         )
-
-    def test_ci_builds_reusable_and_flake_interfaces_before_running_the_app(self) -> None:
-        workflow = load_workflow_contract(ROOT / ".github/workflows/ci.yml")
-        job = workflow_job(workflow, "nix-cli-package")
-        self.assertEqual(job["runs-on"], "ubuntu-24.04")
-        install = workflow_step(job, name="Install Nix")
-        self.assertRegex(
-            install["uses"],
-            r"^DeterminateSystems/determinate-nix-action@[0-9a-f]{40}$",
-        )
-        reusable = workflow_step(job, name="Build reusable Nix derivation")
-        self.assertIn("nix-build", reusable["run"])
-        self.assertIn("builtins.getFlake", reusable["run"])
-        check = workflow_step(job, name="Check Nix flake")
-        self.assertIn("nix flake check", check["run"])
-        self.assertIn("--all-systems --no-build", check["run"])
-        self.assertIn("--no-write-lock-file", check["run"])
-        run = workflow_step(job, name="Run Nix flake app")
-        self.assertIn("nix run", run["run"])
-        immutable = workflow_step(job, name="Check immutable Nix lock")
-        self.assertEqual(immutable["run"], "git diff --exit-code -- flake.lock")
 
 
 if __name__ == "__main__":

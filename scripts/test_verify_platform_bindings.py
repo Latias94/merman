@@ -14,19 +14,6 @@ from unittest import mock
 import zipfile
 from pathlib import Path
 
-try:
-    from scripts.github_workflow_contract import (
-        load_workflow_contract,
-        workflow_job,
-        workflow_step,
-    )
-except ModuleNotFoundError:
-    from github_workflow_contract import (
-        load_workflow_contract,
-        workflow_job,
-        workflow_step,
-    )
-
 MODULE_PATH = Path(__file__).with_name("verify-platform-bindings.py")
 SPEC = importlib.util.spec_from_file_location("verify_platform_bindings", MODULE_PATH)
 assert SPEC is not None
@@ -361,21 +348,6 @@ class GeneratedBindingFreshnessTests(unittest.TestCase):
                 ["git", "diff", "--exit-code", "--", relative],
             ],
         )
-
-    def test_flutter_ci_uses_the_fail_closed_generated_binding_gate(self) -> None:
-        document = load_workflow_contract(
-            MODULE_PATH.parents[1] / ".github" / "workflows" / "ci.yml"
-        )
-        job = workflow_job(document, "platform-bindings")
-        step = workflow_step(job, name="Verify platform bindings")
-        self.assertEqual(step["run"], "python3 scripts/verify-platform-bindings.py")
-
-        checkout = next(
-            step
-            for step in job["steps"]
-            if step.get("uses", "").startswith("actions/checkout@")
-        )
-        self.assertEqual(str(checkout.get("with", {}).get("fetch-depth")), "0")
 
 
 class AndroidAarVerificationTests(unittest.TestCase):

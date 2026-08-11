@@ -148,12 +148,19 @@ consumer agree on the same feature/API contract.
 For `.github/workflows/**` or workflow-contract script changes, run the targeted contract suites:
 
 ```text
-python3 -m unittest scripts.test_release_workflow_security scripts.test_workflow_path_filters scripts.test_ci_workflow_android_emulator
+python3 -m unittest \
+  scripts.test_ci_plan \
+  scripts.test_release_workflow_security \
+  scripts.test_ci_workflow_android_emulator \
+  scripts.test_fuzz_config
 ```
 
-Run `actionlint` when it is installed; the targeted Python suites remain the repository-specific
-semantic check when it is not. Validate only the workflow files touched by the change and keep the
-workflow contract tests in the same commit as a changed gate condition.
+Run `actionlint` and `zizmor --min-severity high .` at the repository-pinned versions when they are
+installed; CI remains the exact-identity owner when they are unavailable locally. The Python suites
+cover only repository-specific behavior: owner selection and fail-closed aggregation, read-only PR
+closure, deployment separation, Android emulator ownership, and the deterministic-versus-randomized
+fuzz lifecycle. Validate only the workflow files touched by the change and keep those behavior
+contracts in the same commit as a changed gate condition.
 
 For `tools/bench/**` changes, run the Python performance contracts:
 

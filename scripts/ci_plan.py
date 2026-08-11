@@ -180,6 +180,31 @@ def plan_all(*, base: str, head: str, reason: str) -> dict[str, Any]:
     )
 
 
+def plan_selected(
+    *, base: str, head: str, selected: Iterable[str], reason: str
+) -> dict[str, Any]:
+    """Select explicit owners for a non-PR lifecycle such as a host safety-net run."""
+
+    selected_owners = frozenset(selected)
+    unknown = selected_owners - _ALL_OWNERS
+    if unknown:
+        raise ValueError(f"unknown explicit CI owners: {sorted(unknown)}")
+    if not selected_owners:
+        raise ValueError("explicit CI owner selection must not be empty")
+    if not reason.strip():
+        raise ValueError("explicit CI owner reason must not be empty")
+    return _plan_document(
+        base=base,
+        head=head,
+        changes=[],
+        owners={name: name in selected_owners for name in OWNER_NAMES},
+        reasons={name: [reason] if name in selected_owners else [] for name in OWNER_NAMES},
+        fallback=False,
+        fallback_reason=None,
+        empty=False,
+    )
+
+
 def evaluate_gate(plan: Mapping[str, Any], jobs: Mapping[str, Any]) -> dict[str, Any]:
     """Fail closed unless every selected owner has a successful required job."""
 
@@ -316,7 +341,13 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
             f"Node owner changed: {path}",
             False,
         )
-    if path.startswith(("tools/vscode-extension/", "editor-language/")):
+    if path.startswith("contracts/editor-language/"):
+        return (
+            frozenset({"hygiene", "npm", "vscode", "web"}),
+            f"shared editor language authority changed: {path}",
+            False,
+        )
+    if path.startswith("tools/vscode-extension/"):
         return frozenset({"hygiene", "npm", "vscode"}), f"VS Code owner changed: {path}", False
     if path.startswith("tools/bench/"):
         return (
@@ -337,13 +368,13 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
             f"fuzz owner changed: {path}",
             False,
         )
-    if path.startswith(("nix/", "packaging/")) or path in {
+    if path.startswith(("nix/", "distribution/cli/")) or path in {
         "default.nix",
         "flake.lock",
         "flake.nix",
     }:
         return frozenset({"cli", "hygiene"}), f"CLI package owner changed: {path}", False
-    if path.startswith(("abi/", "packages/")) or path == "Package.swift":
+    if path.startswith(("contracts/abi/", "distribution/typst/")) or path == "Package.swift":
         return _ALL_OWNERS, f"shared package surface changed: {path}", True
     if path.startswith(("tools/mermaid-cli/", "tools/debug/", "tools/preview/")):
         return _ALL_OWNERS, f"shared tool changed: {path}", True
@@ -498,8 +529,6 @@ def _validate_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
         raise GateError("an empty plan cannot be a fallback")
     if not plan["empty"] and not any(owners.values()):
         raise GateError("a non-empty plan must select at least one owner")
-    if not plan["empty"] and not changes and not plan["fallback"] and not all(owners.values()):
-        raise GateError("an explicit full plan must select every owner")
     if changes:
         expected = plan_changes(
             [
@@ -549,6 +578,13 @@ def _build_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument("--head", required=True)
     plan_parser.add_argument("--repository", type=Path, default=Path.cwd())
     plan_parser.add_argument("--select-all", action="store_true")
+    plan_parser.add_argument(
+        "--select-owner",
+        action="append",
+        choices=OWNER_NAMES,
+        default=[],
+        help="select one owner for a non-PR lifecycle; may be repeated",
+    )
     plan_parser.add_argument("--reason", default="explicit full lifecycle")
     plan_parser.add_argument("--github-output", type=Path)
 
@@ -561,8 +597,17 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: Iterable[str] | None = None) -> int:
     args = _build_parser().parse_args(list(argv) if argv is not None else None)
     if args.command == "plan":
+        if args.select_all and args.select_owner:
+            raise SystemExit("--select-all and --select-owner are mutually exclusive")
         if args.select_all:
             plan = plan_all(base=args.base, head=args.head, reason=args.reason)
+        elif args.select_owner:
+            plan = plan_selected(
+                base=args.base,
+                head=args.head,
+                selected=args.select_owner,
+                reason=args.reason,
+            )
         else:
             plan = plan_repository_diff(args.repository, args.base, args.head)
         encoded = _compact_json(plan)
