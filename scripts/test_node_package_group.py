@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 
 from scripts import node_package_group
-from scripts.npm_package_group import DryRunNpmClient, promote_group, stage_group
+from scripts.npm_package_group import DryRunNpmClient, reconcile_group
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -75,7 +75,7 @@ class NodePackageGroupTests(unittest.TestCase):
                 info.size = len(data)
                 archive.addfile(info, io.BytesIO(data))
 
-    def test_create_verify_stage_and_promote_lockstep_group(self) -> None:
+    def test_create_verify_and_publish_lockstep_group(self) -> None:
         manifest_path = node_package_group.create_manifest(
             self.artifacts,
             DESCRIPTOR,
@@ -98,12 +98,22 @@ class NodePackageGroupTests(unittest.TestCase):
         )
 
         client = DryRunNpmClient(manifest)
-        staged = stage_group(manifest, self.artifacts, client)
-        promoted = promote_group(manifest, client)
-        self.assertEqual(staged["status"], "staged")
-        self.assertEqual(promoted["status"], "promoted")
-        self.assertEqual(len(staged["published"]), 6)
-        self.assertEqual(promoted["promoted"][-1], "@mermanjs/node")
+        report = reconcile_group(manifest, self.artifacts, client)
+        self.assertEqual(report["status"], "released")
+        self.assertEqual(report["already_published"], [])
+        self.assertEqual(report["published"][-1], "@mermanjs/node")
+        self.assertEqual(
+            client.operations,
+            [
+                f"publish {record['name']}@{self.version} --tag alpha"
+                for record in manifest["packages"]
+            ],
+        )
+
+        retry = reconcile_group(manifest, self.artifacts, client)
+        self.assertEqual(retry["status"], "released")
+        self.assertEqual(retry["published"], [])
+        self.assertEqual(retry["already_published"][-1], "@mermanjs/node")
 
     def test_tampered_tarball_is_rejected(self) -> None:
         manifest_path = node_package_group.create_manifest(

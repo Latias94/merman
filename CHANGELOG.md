@@ -19,7 +19,7 @@ The next workspace release remains in development. This section records only com
 ### Changed
 
 - Native release recipes now follow each wrapper's callable interface instead of shipping one universal complete binary. This substantially reduces distributed dependency closures, removes a duplicate macOS library from the Flutter archive, and adds an explicit compressed-package budget before pub.dev publication.
-- Node npm publishing follows the browser group's recoverable package protocol: platform packages are staged first, registry integrity is checked, and the public prerelease tag moves only after the complete six-package group is available.
+- Web and Node npm publishing now preflight existing registry integrity and tags, publish missing exact versions directly under the requested final tag, and place the default Web package or Node loader last; retries skip members that already match the verified manifest.
 
 ### Fixed
 

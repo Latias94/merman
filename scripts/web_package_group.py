@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Build, verify, and reconcile the lockstep browser npm package group.
+"""Build, verify, and publish the lockstep browser npm package group.
 
 The Web workspace owns package layout. This helper intentionally owns only the
 release artifact boundary: it reads the workspace's closed package descriptor,
-packs public packages, verifies their tarballs, and reconciles npm publication
-without assuming that a group publish is transactional.
+packs public packages, verifies their tarballs, and publishes each verified
+version through npm Trusted Publisher.
 """
 
 from __future__ import annotations
@@ -972,7 +972,11 @@ def build_manifest(
 
     package_records: list[dict[str, Any]] = []
     inspected_records: list[dict[str, Any]] = []
-    for entry in public_entries:
+    publication_entries = sorted(
+        public_entries,
+        key=lambda entry: entry["id"] == descriptor["default_package"],
+    )
+    for entry in publication_entries:
         package_dir = root / "platforms" / "web" / descriptor_package_path(entry)
         validate_package_manifest(entry, package_dir, expected_version=version)
         tarball, record = records_by_name[entry["name"]]
@@ -1095,6 +1099,10 @@ def validate_group_manifest(data: dict[str, Any]) -> dict[str, Any]:
             if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
                 raise PackageGroupError(f"{owner}: {key} must be a positive integer")
     validate_public_package_size_admission(packages, "Web package group manifest")
+    if packages[-1]["id"] != "full":
+        raise PackageGroupError(
+            "Web package group manifest: the default @mermanjs/web package must publish last"
+        )
     return data
 
 

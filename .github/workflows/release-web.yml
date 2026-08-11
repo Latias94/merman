@@ -238,7 +238,7 @@ jobs:
             --target-dist-tag "$NPM_DIST_TAG" \
             --descriptor platforms/web/web-surface-descriptor.json
 
-      - name: Reconcile npm package group
+      - name: Publish npm package group
         shell: bash
         run: |
           set -euo pipefail

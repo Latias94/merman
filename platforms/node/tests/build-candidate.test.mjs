@@ -69,6 +69,27 @@ test("candidate builds project its private capability recipe plus one transport"
   }
 });
 
+test("Windows native candidates request reproducible MSVC linking", () => {
+  const windows = candidateBuildInvocation(
+    resolveCandidateRecipe("napi", "win32-x64-msvc"),
+    "/tmp/merman-node-candidate",
+  );
+  const configIndex = windows.args.indexOf("--config");
+
+  assert.notEqual(configIndex, -1);
+  assert.equal(
+    windows.args[configIndex + 1],
+    'target.x86_64-pc-windows-msvc.rustflags=["-C","link-arg=/Brepro"]',
+  );
+
+  const darwin = candidateBuildInvocation(
+    resolveCandidateRecipe("napi", "darwin-arm64"),
+    "/tmp/merman-node-candidate",
+  );
+  assert.equal(darwin.args.includes("/Brepro"), false);
+  assert.equal(darwin.args.includes("--config"), false);
+});
+
 test("native candidate builds require their matching runtime host", () => {
   const recipe = resolveCandidateRecipe("napi", "linux-x64-musl");
 

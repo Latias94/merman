@@ -1,9 +1,10 @@
 # Upgrade from 0.8.0-alpha.3 to 0.8.0-alpha.5
 
 > [!IMPORTANT]
-> This guide describes the alpha.5 source contract. Package registries and release channels can
-> trail the repository, so verify the installed version before relying on an alpha.5 API or
-> capability. Final release benchmarks must be regenerated against the tagged release commit.
+> This guide describes the tagged alpha.5 workspace contract. Package registries and release
+> channels move independently, so verify the installed version and provenance before relying on an
+> alpha.5 API or capability. The later Web and Node npm alpha.5 packages were published from a
+> reviewed commit newer than the workspace tag and are not byte-identical tag artifacts.
 
 Alpha.5 is a broad prerelease upgrade, not a drop-in patch. It expands the Mermaid baseline to
 11.16, admits all 35 diagram families, replaces implementation-oriented feature bundles with
@@ -33,7 +34,7 @@ The practical upgrade rule is:
 | `render_svg_resvg_safe{,_sync}` or `svg_resvg_safe()` | Migrate to the typed `ResvgCompatibleSvg` boundaries described under [Rendering and option contracts](#rendering-and-option-contracts). No string-returning compatibility alias is retained. |
 | `assertSafeSvgForDom()` | Choose an explicit self-contained or navigable browser capability and retain its opaque admission until the real mount document is known. |
 | Typed State render links | Keep handling `StateDiagramRenderLinks::{One, Many}`. Mermaid 11.16 preserves repeated `click` declarations in source order because each parsed `idStatement` is a distinct runtime key; repeated links render as nested anchors. |
-| Node.js or SSR | Continue to invoke `merman-cli` as a subprocess. No in-process Node package is admitted for alpha.5. |
+| Node.js or SSR | Install the experimental `@mermanjs/node@alpha` channel-only package on Node.js 22 or newer, or keep using the tagged `merman-cli` subprocess when workspace-tag provenance is required. |
 | Typst | Treat it as an independent release track. The published `@preview/merman:0.2.0` package is not an alpha.5 artifact. |
 
 ## Choose the alpha.5 surface
@@ -52,9 +53,9 @@ The practical upgrade rule is:
 | Provide browser editor intelligence | `@mermanjs/web-editor` | Analysis plus parser-backed editor APIs; intended for a dedicated Worker. |
 | Render ASCII in a browser | `@mermanjs/web-ascii` | ASCII/Unicode only; family support is capability-graded. |
 | Need all browser capabilities in one realm | `@mermanjs/web` | Full browser SDK; avoid combining it with duplicate slim packages. |
+| Render from Node.js or SSR | `@mermanjs/node@alpha` | Experimental native loader for macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 MSVC. Its alpha.5 npm provenance names a newer source commit than the workspace tag. |
 | Embed a prebuilt native SDK | The Python, Flutter, Android, or Apple package | The alpha.5 release contract defines one complete SKU per surface, not a full/slim prebuilt matrix. |
 | Embed the C ABI | `merman-ffi` | Build the source crate; there is no downloadable C binary SDK. |
-| Render from Node.js or SSR | `merman-cli` subprocess | The private Node candidate is not a supported release surface. |
 
 See [Package Surfaces](PACKAGE_SURFACES.md) for delivery channels and the exact release evidence
 required by each surface.
@@ -372,14 +373,14 @@ the callback shape, fallback behavior, protocol version, error class, and public
 The public layout, work/error, ordering, resource-cause, rendering, binding, Web, CLI, and LSP
 migrations documented above remain the complete user-facing boundary for this branch.
 
-## What remains unproven before release
+## Residual evidence boundaries
 
-- The final alpha.5 target commit is not fixed until the release tag is created.
+- The workspace release is fixed at tag commit `fb1dd48e4612e20c47673c0268f88aab02afd26c`; the later Web and Node npm alpha.5 package groups record their distinct source commit in package provenance.
 - Final same-host alpha.3 A/B measurements still need to refresh the complete and minimal SVG
   lanes, including Class, Sequence, Requirement, and Mindmap attribution.
 - Browser-WASM throughput has not been compared with browser Mermaid.js under one equivalent
   browser contract.
-- The private Node candidate lacks reproducible all-target admission and is not a supported package.
+- The Node package group is an experimental alpha surface. Its exact-version platform packages are install-smoked on their target hosts, but the published Windows alpha.5 binary does not carry a same-source byte-reproducibility claim.
 - Package availability must be verified at each registry or GitHub Release; repository manifests
   describe the intended contract, not live publication state.
 

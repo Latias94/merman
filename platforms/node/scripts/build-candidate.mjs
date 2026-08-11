@@ -36,6 +36,8 @@ const capabilitySurface = readJson(capabilityDescriptorPath);
 const artifactsRoot = path.join(nodeRoot, "artifacts");
 const cargoLockPath = path.join(repositoryRoot, "crates", "merman-node", "Cargo.lock");
 const requireFromBuild = createRequire(import.meta.url);
+const WINDOWS_MSVC_REPRODUCIBLE_LINK_CONFIG =
+  'target.x86_64-pc-windows-msvc.rustflags=["-C","link-arg=/Brepro"]';
 
 if (isMainModule()) {
   try {
@@ -102,6 +104,10 @@ function buildNodeWasm(stage, recipe) {
 
 export function candidateBuildInvocation(recipe, stage) {
   const featureArgument = recipe.cargoFeatures.join(",");
+  const cargoArguments = ["--locked", "-j1"];
+  if (recipe.rustTarget === "x86_64-pc-windows-msvc") {
+    cargoArguments.push("--config", WINDOWS_MSVC_REPRODUCIBLE_LINK_CONFIG);
+  }
   if (recipe.candidate === "napi") {
     return {
       command: process.execPath,
@@ -128,8 +134,7 @@ export function candidateBuildInvocation(recipe, stage) {
         "--features",
         featureArgument,
         "--",
-        "--locked",
-        "-j1",
+        ...cargoArguments,
       ],
     };
   }
@@ -146,8 +151,7 @@ export function candidateBuildInvocation(recipe, stage) {
         "--out-dir",
         stage,
         "--",
-        "--locked",
-        "-j1",
+        ...cargoArguments,
         "--no-default-features",
         "--features",
         featureArgument,

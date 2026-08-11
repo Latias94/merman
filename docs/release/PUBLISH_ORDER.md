@@ -1,16 +1,17 @@
 # Publish Order
 
 Status: maintained workspace publish order.
-Last updated: 2026-08-10
+Last updated: 2026-08-11
 
 ## Version Decision
 
 Published workspace prerelease baseline: `0.8.0-alpha.5`.
 
-The next workspace release remains in development and has no selected version yet. For npm flow
-testing only, the browser and Node package groups may publish `0.8.0-alpha.5` from a reviewed,
-immutable source commit that is newer than the workspace `v0.8.0-alpha.5` tag. Their provenance
-must identify that exact commit, and documentation must not imply cross-channel byte identity.
+The next workspace release remains in development and has no selected version yet. The browser and
+Node package groups were published as an authorized alpha-channel test at `0.8.0-alpha.5` from
+reviewed commit `d4365ca4860b6b4d51c421e775daab92a815c667`, newer than the workspace
+`v0.8.0-alpha.5` tag. Their package provenance identifies that commit; documentation must not imply
+cross-channel byte identity.
 
 Rationale:
 
@@ -91,15 +92,15 @@ transport with the released binding core, renderer, ASCII, and editor-capable cr
 The npm browser SDK is not a single Cargo publication and is intentionally outside the crates.io
 topological order. After the selected source revision has passed release preflight, run
 `release-web.yml` for the admitted package group: `@mermanjs/web`, `@mermanjs/web-analysis`,
-`@mermanjs/web-editor`, `@mermanjs/web-ascii`, and `@mermanjs/web-render`. The workflow publishes
-missing exact versions to a staging tag, verifies every member, then promotes the requested public
-tag as a recoverable group operation.
+`@mermanjs/web-editor`, `@mermanjs/web-ascii`, and `@mermanjs/web-render`. The workflow preflights
+all existing versions and tags, then publishes missing exact versions directly under the requested
+final tag in manifest order, with `@mermanjs/web` last. A retry skips matching published members.
 
 The first version of a new split Web package cannot use npm Trusted Publishing before the package
 exists. Run `release-web.yml` without publication, download the verified package-group artifact,
-publish only the missing exact tarballs under its staging tag with a maintainer's 2FA-protected npm
-credential, configure Trusted Publishing for those package names, then rerun the workflow with
-publication enabled. Do not keep the bootstrap credential in GitHub Actions.
+publish only the missing exact tarballs directly under the requested final tag with a maintainer's
+2FA-protected npm credential, configure Trusted Publishing for those package names, then rerun the
+workflow with publication enabled. Do not keep the bootstrap credential in GitHub Actions.
 
 ## Node Native Package Group
 
@@ -107,16 +108,16 @@ The experimental Node package is also a lockstep npm group, but it is native rat
 WASM: `@mermanjs/node`, `@mermanjs/node-darwin-arm64`, `@mermanjs/node-darwin-x64`,
 `@mermanjs/node-linux-x64-gnu`, `@mermanjs/node-linux-x64-musl`, and
 `@mermanjs/node-win32-x64-msvc`. Run `release-node.yml` against a reviewed immutable source commit
-after the matching preflight succeeds. It builds and installs every native target, publishes
-missing exact versions under a staging tag in platform-first order, verifies registry integrity,
-then promotes the requested tag with the root loader last.
+after the matching preflight succeeds. It builds and installs every native target, preflights
+existing registry integrity and tags, then publishes missing exact versions directly under the
+requested final tag in platform-first order, with the root loader last.
 
 The first version of each npm package cannot use npm Trusted Publishing before the package exists.
 For that one bootstrap, download the verified group artifact from a non-publishing run, publish the
-five platform tarballs and then the loader under the workflow's staging tag with a maintainer's
-2FA-protected npm credential, configure Trusted Publishing for all six package names, and rerun
-`release-node.yml` with publishing enabled. Thereafter the workflow owns reconciled publishing and
-provenance; do not keep an npm token in GitHub Actions.
+five platform tarballs and then the loader directly under the requested final tag with a
+maintainer's 2FA-protected npm credential, configure Trusted Publishing for all six package names,
+and rerun `release-node.yml` with publishing enabled. Thereafter the workflow owns idempotent
+publishing and provenance; do not keep an npm token in GitHub Actions.
 
 ## Pre-Publish Gates
 

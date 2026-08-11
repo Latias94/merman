@@ -80,7 +80,7 @@ The public browser packages are `@mermanjs/web`, `@mermanjs/web-analysis`,
 Publishing for every package in that lockstep group with workflow file `release-web.yml` and GitHub
 environment `npm`. Trusted publishes automatically include npm provenance; the workflow does not
 need `--provenance`. For any package name that does not yet exist, first run the workflow without
-publication, publish only the verified missing tarball under the workflow staging tag with a
+publication, publish only the verified missing tarball directly under the requested final tag with a
 maintainer's 2FA-protected credential, configure its trusted publisher, and rerun the workflow with
 publication enabled. Do not add the bootstrap credential to GitHub Actions.
 
@@ -88,7 +88,7 @@ The experimental native Node group is `@mermanjs/node`, `@mermanjs/node-darwin-a
 `@mermanjs/node-darwin-x64`, `@mermanjs/node-linux-x64-gnu`,
 `@mermanjs/node-linux-x64-musl`, and `@mermanjs/node-win32-x64-msvc`. Its workflow builds and
 install-smokes each actual target, packages platform binaries before the root loader, and uses the
-same staging-tag plus integrity-reconciliation boundary as the browser group. npm only allows a
+same direct-publish plus integrity-preflight boundary as the browser group. npm only allows a
 trusted publisher to be configured for an existing package, so the first release of each new Node
 package requires the documented one-time, 2FA-protected bootstrap from the verified workflow
 artifact; configure OIDC for all six names immediately afterward. Do not add a persistent npm token
@@ -102,7 +102,8 @@ and release notes must not claim that separately published channels are byte-ide
 The npm publish job is intentionally narrow: it runs on GitHub-hosted Ubuntu with Node 24, enters
 the `npm` environment, requests `id-token: write`, checks out only `github.workflow_sha` without
 credentials, downloads the verified package-group data artifact, verifies its hashes against the
-trusted descriptor, then reconciles the group. It must not checkout the dispatch `source_ref`,
+trusted descriptor, then publishes missing packages directly under the final tag. It must not
+checkout the dispatch `source_ref`,
 build, test, or execute a script contained in the downloaded artifact. Do not add `NPM_TOKEN`,
 `NODE_AUTH_TOKEN`, `--provenance`, `provenance=false`, or `NPM_CONFIG_PROVENANCE=false`.
 
@@ -146,22 +147,23 @@ Treat the root `CHANGELOG.md` as the canonical project-wide release narrative an
 
 | Surface | Registry or audience behavior | Changelog source |
 | --- | --- | --- |
+| Node | The root loader tarball includes the user-facing changelog for the six-package group | `platforms/node/CHANGELOG.md` |
 | Flutter/Dart | pub.dev renders the package-root changelog as its Changelog tab | `platforms/flutter/CHANGELOG.md` |
 | Python | PyPI project metadata links Python users to the package changelog | `platforms/python/merman/CHANGELOG.md` |
 | Android | The Android package README links consumers to its JNI/AAR-specific history | `platforms/android/CHANGELOG.md` |
 | Apple | The Apple package README links consumers to its Swift/XCFramework-specific history | `platforms/apple/CHANGELOG.md` |
 | VS Code | The unpublished extension has an independent version and release boundary | `tools/vscode-extension/CHANGELOG.md` |
 
-For workspace-coupled packages, keep the target package entry at `Unreleased` during preparation and stamp it with the same intended tag date as the root entry immediately before immutable preflight. Each projection should contain only user-visible behavior, migrations, compatibility notes, and performance claims verified for that surface. Independently versioned surfaces keep their own version and publication date.
+For workspace-coupled packages, keep the target package entry at `Unreleased` during preparation and stamp it with the same intended tag date as the root entry immediately before immutable preflight. For an authorized channel-only publication, keep the root entry at `Unreleased` but stamp the channel's package-local entry before building its immutable package artifact. Each projection should contain only user-visible behavior, migrations, compatibility notes, and performance claims verified for that surface. Independently versioned surfaces keep their own version and publication date.
 
 README files are ordinary source documentation and `release-version.py` never rewrites them. Before immutable preflight, review the root README, every package README shipped by an authorized surface, and the closest installation guides. Release-facing Cargo dependency examples should use the exact target prerelease version instead of a moving default-branch Git dependency. Source-only Git commands must be labeled as source installs and pin a reviewed full commit. Remove stale statements that an already-published version is unavailable, old published baselines, and future tense such as “after this version is published”. Historical reports may retain historical wording. Confirm publication through the owning package registry or artifact workflow before recommending a released install command, and repeat this documentation pass after any partial-release recovery.
 
 A focused audit command is:
 
 ```bash
-rg -n --glob '**/README.md' \
-  '0\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+|published registry packages can still|candidate from Git|[Aa]fter .*is published|[Ww]hen .*is published|git\s*=\s*"https://github\.com/Latias94/merman' \
-  README.md crates docs/rendering platforms packages tools
+rg -n --glob '**/README.md' --glob '**/CHANGELOG.md' \
+  '0\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+|\[[^]]+\] - Unreleased|published registry packages can still|candidate from Git|[Aa]fter .*is published|[Ww]hen .*is published|git\s*=\s*"https://github\.com/Latias94/merman' \
+  README.md CHANGELOG.md crates docs platforms packages tools
 ```
 
 Classify each match rather than applying a repository-wide mechanical rewrite. Package-local READMEs included in crates, cargo-dist archives, npm tarballs, wheels, Flutter packages, Apple/Android bundles, Typst packages, or VSIX files are part of the release experience even though they are not version authorities.
@@ -172,6 +174,13 @@ baseline. Do not imply that npm, PyPI, pub.dev, Android, Apple, Typst, crates.io
 move in lockstep. The release is not operationally complete while a current install command names
 an older version or current prose still describes an externally published target as unavailable;
 commit the documentation reconciliation or report it as explicit unfinished release work.
+
+For Web and Node npm groups, verify every package member's exact registry integrity and complete
+dist-tag map against the downloaded package-group manifest. npm Trusted Publisher can publish under
+the requested final tag but cannot repair tags afterward, so existing integrity or tag conflicts
+must fail before any mutation. Confirm that the published tarball already contains the dated
+package-local changelog; if it does not, record the immutable artifact defect and fix the source for
+the next version. A channel-only npm release does not select the next workspace version.
 
 The unpublished VS Code extension, the Typst package wrapper, and `roughr-merman` own independent
 version tracks. They are intentionally excluded from workspace projection. Record the workspace
@@ -258,10 +267,10 @@ python3 ../../scripts/web_package_group.py verify-artifact \
 rm -rf "$artifact_dir"
 ```
 
-Normal Web releases must use `release-web.yml`. It stages every missing exact package version,
-checks every tarball integrity, and only then moves the requested `alpha`, `beta`, `rc`, or `latest`
-tag as a recoverable group operation. Do not publish a member manually: a bare `npm publish` can
-leave the package group on divergent versions or tags.
+Normal Web releases must use `release-web.yml`. It preflights every existing exact package version
+and target tag, then publishes missing versions directly under the requested `alpha`, `beta`, `rc`,
+or `latest` tag in manifest order, with the default package last. Do not publish a member manually:
+the workflow's manifest and post-publish integrity checks are the source of truth for a retry.
 
 For local Node package validation on the current host:
 
@@ -278,7 +287,8 @@ npm pack "$package_root/node" --dry-run
 The release preflight and `release-node.yml` remain responsible for building, installing, and
 render-smoke-testing all five native targets. A local host build does not substitute for that
 matrix. Normal Node releases publish the five platform packages before the root loader and verify
-the exact package-group integrity before moving the public prerelease tag.
+the exact package-group integrity and target tags before publishing any missing package directly
+under the public prerelease tag.
 
 For local VS Code VSIX validation:
 

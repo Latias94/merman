@@ -48,7 +48,7 @@ These are headless `merman-cli` outputs. The [Playground](https://frankorz.com/m
 ## Quick Start
 
 > [!IMPORTANT]
-> This README describes the current development source. Rust crates and GitHub CLI/LSP artifacts are published at `0.8.0-alpha.5`; npm alpha-flow tests may use a newer commit with the same experimental prerelease version, while language-binding channels publish independently and may trail it. Verify the selected channel and provenance before installing it. Commands labeled as source installs require a reviewed full commit before use in CI or production.
+> This README describes the current development source. Rust crates and GitHub CLI/LSP artifacts are published at `0.8.0-alpha.5`; the Web and Node npm alpha.5 packages are published from the reviewed commit recorded in their package provenance, which is newer than the workspace `v0.8.0-alpha.5` tag. Language-binding channels publish independently and may trail it. Verify the selected channel and provenance before installing it. Commands labeled as source installs require a reviewed full commit before use in CI or production.
 
 ### Rust
 
@@ -135,7 +135,7 @@ The call returns the rendered SVG string in `svg`; it does not mutate the page.
 
 The browser package does not provide a Node.js or SSR fallback. See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md) for Worker lifecycle, custom WASM loading, and resource policy.
 
-The npm alpha channel can trail this source tree. Check the installed package version and provenance before depending on prerelease-only behavior.
+The npm alpha.5 packages are published from the reviewed source commit recorded in their provenance. Check the installed package version and provenance before depending on prerelease-only behavior.
 
 ### Node.js And Static-Site Builds
 

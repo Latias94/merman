@@ -13,7 +13,7 @@ on:
         default: "main"
         type: string
       publish_to_npm:
-        description: "Publish and promote the verified @mermanjs/node package group"
+        description: "Publish the verified @mermanjs/node package group"
         required: true
         default: true
         type: boolean
@@ -421,7 +421,7 @@ jobs:
             --source-sha "$SOURCE_SHA" \
             --target-dist-tag "$NPM_DIST_TAG"
 
-      - name: Reconcile npm package group
+      - name: Publish npm package group
         run: |
           set -euo pipefail
           python3 trusted/scripts/node_package_group.py reconcile \

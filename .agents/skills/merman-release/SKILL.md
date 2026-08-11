@@ -50,7 +50,8 @@ Write the changelog for users:
 - While the next workspace version is unselected, keep the root entry as `## [Unreleased]`. Once the maintainer selects a workspace version, rename it to `## [version] - Unreleased`; immediately before immutable preflight, replace `Unreleased` with the intended tag date in `YYYY-MM-DD` form.
 - Treat the root `CHANGELOG.md` as the canonical project-wide release narrative. For every intended publish surface that owns a package-local changelog, update that file as a curated projection of the same release delta: include only changes, migrations, compatibility notes, and verified performance claims that affect that package's users.
 - Keep workspace-coupled package changelog entries at `Unreleased` during preparation, then stamp them with the same intended tag date as the root entry immediately before immutable preflight. Independently versioned surfaces keep their own version and publication date.
-- Review `platforms/flutter/CHANGELOG.md`, `platforms/python/merman/CHANGELOG.md`, `platforms/android/CHANGELOG.md`, and `platforms/apple/CHANGELOG.md` when their surfaces are in scope. Review `tools/vscode-extension/CHANGELOG.md` only for the extension's independent release. Do not create per-crate changelogs or copy the complete root entry into every package.
+- Review `platforms/node/CHANGELOG.md`, `platforms/flutter/CHANGELOG.md`, `platforms/python/merman/CHANGELOG.md`, `platforms/android/CHANGELOG.md`, and `platforms/apple/CHANGELOG.md` when their surfaces are in scope. Review `tools/vscode-extension/CHANGELOG.md` only for the extension's independent release. Do not create per-crate changelogs or copy the complete root entry into every package.
+- For an authorized channel-only publication, leave the root workspace entry at `Unreleased`, but stamp that channel's package-local version entry with the intended publication date before the immutable package artifact is built. Confirm the date against registry evidence after publication.
 - State installation, integration, migration, compatibility, or behavior changes users can act on.
 - Remove duplicate metadata and internal implementation detail.
 - Keep each Markdown paragraph or bullet on one physical line.
@@ -75,9 +76,9 @@ README files are ordinary documentation and are not generated version projection
 Use a broad README version search before preflight and again after every publication or recovery:
 
 ```bash
-rg -n --glob '**/README.md' \
-  '0\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+|published registry packages can still|candidate from Git|[Aa]fter .*is published|[Ww]hen .*is published|git\s*=\s*"https://github\.com/Latias94/merman' \
-  README.md crates docs/rendering platforms packages tools
+rg -n --glob '**/README.md' --glob '**/CHANGELOG.md' \
+  '0\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+|\[[^]]+\] - Unreleased|published registry packages can still|candidate from Git|[Aa]fter .*is published|[Ww]hen .*is published|git\s*=\s*"https://github\.com/Latias94/merman' \
+  README.md CHANGELOG.md crates docs platforms packages tools
 ```
 
 Classify every match instead of blindly replacing it. Historical reports may retain historical wording; current installation guidance must match the intended release state. A cancelled or completed release has no generated README mode to restore, but a successful or partially recovered publication can require a new documentation commit so `main` stops describing an already-published version as unavailable.
@@ -93,6 +94,19 @@ Keep release smoke tests strict about user-observable behavior and loose about v
 Resolve the intended commit to a 40-character `SOURCE_SHA`. Use the exact preflight dispatch from `docs/release/RELEASING.md`, passing that immutable SHA instead of a branch. Wait for every job and diagnose failures before tagging. A local build is not a substitute for preflight.
 
 Preparation is complete when version projections and release notes are committed, the release-ready check passes, preflight is green for the exact version and `SOURCE_SHA`, and every tag-triggered package fits the current registry upload constraints. Treat an exit-zero package dry-run that reports a server-enforced size or content hint as unresolved release evidence.
+
+### npm Package Groups
+
+For Web or Node publication, treat the verified package-group manifest order as publication order. Publish dependency or platform packages first and the default Web package or Node loader last.
+
+npm Trusted Publisher authorizes `npm publish`, not a later `npm dist-tag` repair. The owner script must preflight every existing exact version, integrity, and requested tag before mutating the registry, publish only missing versions directly under the final tag, verify each postcondition, and skip matching members on retry. Stop before publication when an existing integrity or tag conflicts; recover that tag with an explicitly authorized maintainer credential. Do not reintroduce a synthetic staging tag or OIDC-incompatible promotion step.
+
+When npm package-group code or its workflow changes, run the focused owner checks before dispatching:
+
+```bash
+python3 -m unittest scripts.test_node_package_group scripts.test_web_package_group scripts.test_release_workflow_security
+node --test platforms/node/tests/build-candidate.test.mjs
+```
 
 Apple source compatibility is a compiler-floor contract. The Swift 5.9/Xcode 15.2 CI job must pass for the exact source commit; a newer Swift compiler does not prove that floor. GitHub's `macos-14` hosted image starts retirement brownouts on 2026-10-05 and retires on 2026-11-02, so move this exact check to a maintained runner or toolchain before the brownouts. If no equivalent runner is available, block Apple shipping instead of weakening or silently skipping the check.
 
@@ -125,6 +139,14 @@ availability prose only for the surfaces that actually published, and move
 `docs/release/PUBLISH_ORDER.md` from candidate state to the published workspace baseline when the
 Rust release lands. Rerun the broad README version search above and account for every match.
 
+For npm groups, query every member's exact version integrity and complete dist-tag map, compare the
+integrity with the verified package-group manifest, and verify the requested tag before declaring
+the group released. First publications can expose registry-assigned tags beyond the requested tag;
+record the observed state instead of assuming the requested tag is the only one. Confirm that the
+published tarball already contains the dated package-local changelog, then update current README
+availability prose. If the immutable tarball shipped stale documentation, record that defect and
+fix the source for the next version instead of claiming the registry artifact was corrected.
+
 Do not report the release complete while a current README installation command names an older
 workspace prerelease or current prose says the published target is unavailable. Commit the
 documentation reconciliation before completion, or report it as explicit unfinished release work.
@@ -146,6 +168,7 @@ Diagnosis and local fixes are `prepare` work. Rerunning a publisher, uploading a
 - GitHub Release jobs without checkout need `GH_REPO`.
 - cargo-dist workflow changes require `dist generate --check`.
 - `npm pack --json` output must not be contaminated by lifecycle logs.
+- npm Trusted Publisher cannot run the package group's old post-publish `dist-tag` promotion; publish directly under the final tag and make retries integrity-aware.
 - Workflow contract tests should follow stable step IDs and provenance data flow; display labels and local variable names are not release invariants.
 - Recovery admission should require a non-empty subset of allowed paths plus semantic and trusted-source checks, not require every allowed path to change.
 - `dart pub publish --dry-run` can succeed while reporting a package too large for server upload. Inspect its final compressed size before tagging; split the package surface instead of silently dropping documented targets.
