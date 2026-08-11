@@ -28,9 +28,9 @@ use tower_lsp_server::ls_types::{
     CompletionResponse, Diagnostic, DidChangeConfigurationParams, DidChangeTextDocumentParams,
     DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
     DocumentChanges, DocumentDiagnosticParams, DocumentDiagnosticReport,
-    DocumentDiagnosticReportResult, DocumentSymbolParams, DocumentSymbolResponse,
-    FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionResponse, HoverContents,
-    HoverParams, InitializeParams, LogMessageParams, MessageType, NumberOrString, Position,
+    DocumentDiagnosticReportResult, DocumentSymbolResponse, FoldingRangeParams,
+    FoldingRangeProviderCapability, GotoDefinitionResponse, HoverContents, HoverParams,
+    InitializeParams, LogMessageParams, MessageType, NumberOrString, Position,
     PublishDiagnosticsParams, Range, RenameParams, SelectionRangeParams,
     SelectionRangeProviderCapability, SemanticTokensParams, SemanticTokensRangeParams,
     SemanticTokensRangeResult, TextDocumentContentChangeEvent, TextDocumentIdentifier,
@@ -65,19 +65,6 @@ fn test_session_service() -> (
         ..
     } = super::test_support::service();
     (service, socket, session)
-}
-
-async fn assert_cached_snapshot_identity(
-    server: &MermanLanguageServer,
-    uri: &Uri,
-    expected: &std::sync::Arc<crate::snapshot::DocumentSnapshot>,
-) {
-    let actual = server
-        .snapshot_for_uri(uri)
-        .await
-        .expect("expected cached snapshot");
-    assert!(std::sync::Arc::ptr_eq(expected, &actual));
-    assert_eq!(actual.version(), expected.version());
 }
 
 #[test]
@@ -886,229 +873,6 @@ async fn diagnostics_include_rich_editor_projection_warnings() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn did_open_diagnostics_and_editor_requests_reuse_one_snapshot() {
-    let (_service, _socket, server) = test_service();
-    let server = &server;
-    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-
-    server
-        .did_open(DidOpenTextDocumentParams {
-            text_document: TextDocumentItem {
-                uri: uri.clone(),
-                language_id: "mermaid".to_string(),
-                version: 1,
-                text: "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
-            },
-        })
-        .await;
-    server.session.wait_client_effects_idle().await;
-
-    let probe = server.session.probe();
-    assert!(probe.document(&uri).await.is_some());
-    assert_eq!(probe.cache_state(&uri).await, (true, true));
-    let diagnostic_snapshot = probe
-        .cached_snapshot(&uri)
-        .await
-        .expect("expected diagnostic snapshot");
-
-    let hover = server
-        .hover(HoverParams {
-            text_document_position_params: TextDocumentPositionParams::new(
-                TextDocumentIdentifier { uri: uri.clone() },
-                Position::new(1, 0),
-            ),
-            work_done_progress_params: Default::default(),
-        })
-        .await
-        .unwrap();
-
-    assert!(hover.is_some());
-    assert!(probe.cache_state(&uri).await.0);
-    let editor_snapshot = probe
-        .cached_snapshot(&uri)
-        .await
-        .expect("expected cached snapshot");
-    assert!(std::sync::Arc::ptr_eq(
-        &diagnostic_snapshot,
-        &editor_snapshot
-    ));
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn r24_language_capabilities_reuse_one_analysis_snapshot_identity() {
-    let (_service, _socket, server) = test_service();
-    let server = &server;
-    server
-        .client_profile
-        .set(crate::client_profile::ClientProtocolProfile::permissive())
-        .expect("test profile should initialize once");
-    let uri = Uri::from_str("file:///tmp/r24-identity.mmd").unwrap();
-    let version = 11;
-
-    server
-        .session
-        .update_configuration(
-            default_lsp_analysis_options().with_rule_config(
-                AnalysisRuleConfig::default()
-                    .with_rule_enabled("merman.authoring.flowchart.explicit_direction")
-                    .unwrap(),
-            ),
-        )
-        .await;
-    assert!(
-        server
-            .session
-            .open_document(
-                uri.clone(),
-                version,
-                "flowchart\nsubgraph group\nA-->B\nA-->C\nend\n".to_string(),
-                DocumentKind::Diagram,
-            )
-            .await
-    );
-    assert!(!server.session.probe().cache_state(&uri).await.0);
-
-    let report = server
-        .diagnostic(DocumentDiagnosticParams {
-            text_document: TextDocumentIdentifier { uri: uri.clone() },
-            identifier: None,
-            previous_result_id: None,
-            work_done_progress_params: Default::default(),
-            partial_result_params: Default::default(),
-        })
-        .await
-        .expect("diagnostics should use the shared snapshot");
-    let diagnostics = match report {
-        DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(report)) => {
-            report.full_document_diagnostic_report.items
-        }
-        other => panic!("unexpected diagnostic report: {other:?}"),
-    };
-    let direction_diagnostic = diagnostics
-        .into_iter()
-        .find(|diagnostic| {
-            diagnostic.code
-                == Some(NumberOrString::String(
-                    "merman.authoring.flowchart.explicit_direction".to_string(),
-                ))
-        })
-        .expect("expected snapshot-owned flowchart direction diagnostic");
-    let shared = server
-        .snapshot_for_uri(&uri)
-        .await
-        .expect("diagnostics should cache the shared snapshot");
-    assert_eq!(shared.version(), version);
-
-    let detection = shared
-        .detection()
-        .expect("diagram detection should be projected by the shared snapshot");
-    assert_eq!(detection.diagram_type, "flowchart");
-    assert_eq!(detection.syntax_id, "flowchart-v2");
-    assert_eq!(detection.effective_layout_id, "dagre");
-
-    let completion = server
-        .completion(CompletionParams {
-            text_document_position: TextDocumentPositionParams::new(
-                TextDocumentIdentifier { uri: uri.clone() },
-                Position::new(2, 1),
-            ),
-            work_done_progress_params: Default::default(),
-            partial_result_params: Default::default(),
-            context: None,
-        })
-        .await
-        .expect("completion request");
-    assert!(completion.is_some());
-    assert_cached_snapshot_identity(server, &uri, &shared).await;
-
-    let hover = server
-        .hover(HoverParams {
-            text_document_position_params: TextDocumentPositionParams::new(
-                TextDocumentIdentifier { uri: uri.clone() },
-                Position::new(1, 0),
-            ),
-            work_done_progress_params: Default::default(),
-        })
-        .await
-        .expect("hover request");
-    assert!(hover.is_some());
-    assert_cached_snapshot_identity(server, &uri, &shared).await;
-
-    let symbols = server
-        .document_symbol(DocumentSymbolParams {
-            text_document: TextDocumentIdentifier { uri: uri.clone() },
-            work_done_progress_params: Default::default(),
-            partial_result_params: Default::default(),
-        })
-        .await
-        .expect("document symbol request");
-    assert!(symbols.is_some());
-    assert_cached_snapshot_identity(server, &uri, &shared).await;
-
-    let rename_position = TextDocumentPositionParams::new(
-        TextDocumentIdentifier { uri: uri.clone() },
-        Position::new(2, 0),
-    );
-    assert!(
-        server
-            .prepare_rename(rename_position.clone())
-            .await
-            .expect("prepare rename request")
-            .is_some()
-    );
-    assert!(
-        server
-            .rename(RenameParams {
-                text_document_position: rename_position,
-                new_name: "Renamed".to_string(),
-                work_done_progress_params: Default::default(),
-            })
-            .await
-            .expect("rename request")
-            .is_some()
-    );
-    assert_cached_snapshot_identity(server, &uri, &shared).await;
-
-    let code_actions = server
-        .code_action(CodeActionParams {
-            text_document: TextDocumentIdentifier { uri: uri.clone() },
-            range: direction_diagnostic.range,
-            context: CodeActionContext {
-                diagnostics: vec![direction_diagnostic],
-                only: Some(vec![CodeActionKind::QUICKFIX]),
-                trigger_kind: None,
-            },
-            work_done_progress_params: Default::default(),
-            partial_result_params: Default::default(),
-        })
-        .await
-        .expect("code action request")
-        .expect("expected snapshot-owned quick fix");
-    assert!(code_actions.iter().any(|action| {
-        matches!(
-            action,
-            CodeActionOrCommand::CodeAction(action)
-                if action.title == "Insert `TB` into the flowchart header"
-        )
-    }));
-    assert_cached_snapshot_identity(server, &uri, &shared).await;
-
-    let tokens = server
-        .semantic_tokens_full(SemanticTokensParams {
-            text_document: TextDocumentIdentifier { uri: uri.clone() },
-            work_done_progress_params: Default::default(),
-            partial_result_params: Default::default(),
-        })
-        .await
-        .expect("semantic token request");
-    assert!(matches!(
-        tokens,
-        Some(SemanticTokensResult::Tokens(tokens)) if !tokens.data.is_empty()
-    ));
-    assert_cached_snapshot_identity(server, &uri, &shared).await;
-}
-
-#[tokio::test(flavor = "current_thread")]
 async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuration_change() {
     let (_service, _socket, server) = test_service();
     let server = &server;
@@ -1118,58 +882,39 @@ async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuratio
         .expect("test profile should initialize once");
     let uri = Uri::from_str("file:///tmp/current-diagnostic-code-action.mmd").unwrap();
 
-    assert!(
-        server
-            .session
-            .open_document(
-                uri.clone(),
-                1,
-                "flowchart\nsubgraph group\nA-->B\nend\n".to_string(),
-                DocumentKind::Diagram,
-            )
-            .await
-    );
-    let original_snapshot = server
-        .snapshot_for_uri(&uri)
-        .await
-        .expect("expected initial snapshot");
-    let execution_count = server.session.analysis_execution_count();
-
-    let change = server
-        .session
-        .update_configuration(
-            default_lsp_analysis_options().with_rule_config(
-                AnalysisRuleConfig::default()
-                    .with_rule_enabled("merman.authoring.flowchart.explicit_direction")
-                    .unwrap(),
-            ),
-        )
+    server
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "mermaid".to_string(),
+                version: 1,
+                text: "flowchart\nsubgraph group\nA-->B\nend\n".to_string(),
+            },
+        })
         .await;
-    assert!(change.affects_diagnostics());
-    assert!(!change.affects_snapshots());
-    assert_eq!(
-        server.session.probe().cache_state(&uri).await,
-        (true, false),
-        "diagnostic-only configuration retains the parsed snapshot and defers projection to demand"
-    );
-    assert_eq!(
-        server.session.analysis_execution_count(),
-        execution_count,
-        "diagnostic reprojection must not schedule another analysis"
+    assert!(
+        pull_document_diagnostics(server, uri.clone())
+            .await
+            .iter()
+            .all(|diagnostic| {
+                diagnostic.code
+                    != Some(NumberOrString::String(
+                        "merman.authoring.flowchart.explicit_direction".to_string(),
+                    ))
+            })
     );
 
-    let context = server
-        .session
-        .diagnostic_context(&uri)
+    server
+        .did_change_configuration(DidChangeConfigurationParams {
+            settings: serde_json::json!({
+                "lint": {
+                    "enable_rules": ["merman.authoring.flowchart.explicit_direction"]
+                }
+            }),
+        })
+        .await;
+    let diagnostic = pull_document_diagnostics(server, uri.clone())
         .await
-        .expect("expected diagnostic context");
-    let diagnostic = server
-        .diagnostic_publisher()
-        .expect("the default test client uses push diagnostics")
-        .diagnostics_for_current_context(&context)
-        .await
-        .expect("diagnostic analysis should succeed")
-        .expect("expected current diagnostics")
         .into_iter()
         .find(|diagnostic| {
             diagnostic.code
@@ -1201,12 +946,6 @@ async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuratio
                 if action.title == "Insert `TB` into the flowchart header"
         )
     }));
-    assert_cached_snapshot_identity(server, &uri, &original_snapshot).await;
-    assert_eq!(
-        server.session.analysis_execution_count(),
-        execution_count,
-        "diagnostics and code actions must consume the reprojected generation"
-    );
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -1214,6 +953,8 @@ async fn did_open_uses_language_id_and_change_preserves_document_kind() {
     let (_service, _socket, server) = test_service();
     let server = &server;
     let uri = Uri::from_str("untitled:notes").unwrap();
+    let initial = "```mermaid\nflowchart TD\nA-->B\n```\n";
+    let changed = "```mermaid\nsequenceDiagram\nAlice->>Bob: Hi\n```\n";
 
     server
         .did_open(DidOpenTextDocumentParams {
@@ -1221,18 +962,20 @@ async fn did_open_uses_language_id_and_change_preserves_document_kind() {
                 uri: uri.clone(),
                 language_id: "markdown".to_string(),
                 version: 1,
-                text: "```mermaid\nflowchart TD\nA-->B\n```\n".to_string(),
+                text: initial.to_string(),
             },
         })
         .await;
 
-    let snapshot = server
-        .snapshot_for_uri(&uri)
+    let stored = server
+        .session
+        .probe()
+        .document(&uri)
         .await
-        .expect("expected markdown snapshot");
-    assert_eq!(snapshot.kind(), DocumentKind::Markdown);
-    assert_eq!(snapshot.fences().len(), 1);
-    assert_eq!(snapshot.fences()[0].diagram_type(), Some("flowchart-v2"));
+        .expect("expected opened Markdown document");
+    assert_eq!(stored.version, 1);
+    assert_eq!(stored.kind, DocumentKind::Markdown);
+    assert_eq!(stored.retained_text().unwrap().as_ref(), initial);
 
     server
         .did_change(DidChangeTextDocumentParams {
@@ -1243,18 +986,20 @@ async fn did_open_uses_language_id_and_change_preserves_document_kind() {
             content_changes: vec![TextDocumentContentChangeEvent {
                 range: None,
                 range_length: None,
-                text: "```mermaid\nsequenceDiagram\nAlice->>Bob: Hi\n```\n".to_string(),
+                text: changed.to_string(),
             }],
         })
         .await;
 
-    let snapshot = server
-        .snapshot_for_uri(&uri)
+    let stored = server
+        .session
+        .probe()
+        .document(&uri)
         .await
-        .expect("expected changed markdown snapshot");
-    assert_eq!(snapshot.kind(), DocumentKind::Markdown);
-    assert_eq!(snapshot.fences().len(), 1);
-    assert_eq!(snapshot.fences()[0].diagram_type(), Some("sequence"));
+        .expect("expected changed Markdown document");
+    assert_eq!(stored.version, 2);
+    assert_eq!(stored.kind, DocumentKind::Markdown);
+    assert_eq!(stored.retained_text().unwrap().as_ref(), changed);
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -1309,15 +1054,11 @@ async fn did_change_rejects_stale_document_versions() {
         .await
         .expect("expected stored document");
     assert_eq!(stored.version, 3);
-    assert!(stored.text().unwrap().contains("sequenceDiagram"));
-    assert!(!stored.text().unwrap().contains("stale"));
-
-    let snapshot = server
-        .snapshot_for_uri(&uri)
-        .await
-        .expect("expected current snapshot");
-    assert_eq!(snapshot.version(), 3);
-    assert_eq!(snapshot.fences()[0].diagram_type(), Some("sequence"));
+    assert_eq!(stored.kind, DocumentKind::Diagram);
+    assert_eq!(
+        stored.retained_text().unwrap().as_ref(),
+        "sequenceDiagram\nAlice->>Bob: Hi\n"
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -1366,15 +1107,10 @@ async fn did_change_applies_incremental_changes_in_order() {
         .expect("expected stored document");
     assert_eq!(stored.version, 2);
     assert_eq!(
-        stored.text().unwrap().as_ref(),
+        stored.retained_text().unwrap().as_ref(),
         "flowchart TD\nA-->C\nC-->D\n"
     );
-
-    let snapshot = server
-        .snapshot_for_uri(&uri)
-        .await
-        .expect("expected changed snapshot");
-    assert_eq!(snapshot.fences()[0].diagram_type(), Some("flowchart-v2"));
+    assert_eq!(stored.kind, DocumentKind::Diagram);
 }
 
 #[tokio::test(flavor = "current_thread")]

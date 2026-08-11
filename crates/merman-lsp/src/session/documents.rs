@@ -1,17 +1,14 @@
 use super::LanguageSession;
-use crate::session::analysis::AnalysisJobGeneration;
+use crate::session::analysis::acquisition::{AcquiredSnapshot, ProjectionDecision};
 use crate::session::analysis::executor::{
     AnalysisExecutionLease, AnalysisExecutor, DiagnosticReprojectionLease,
 };
 #[cfg(test)]
 use crate::session::analysis::request::TestAnalysisGate;
 use crate::session::analysis::request::{
-    AnalysisBuildKey, AnalysisBuildRequest, DiagnosticReprojectionKey,
-    DiagnosticReprojectionRequest,
+    AnalysisBuildKey, AnalysisBuildRequest, DiagnosticReprojectionRequest,
 };
 use crate::session::analysis_cache::{AnalysisCache, AnalysisCacheAuthority, AnalysisCacheStamp};
-#[cfg(test)]
-use crate::session::cache::WeightedCacheStatistics;
 use crate::snapshot::{
     DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch, DocumentSnapshot,
     SnapshotContext, SnapshotGeneration,
@@ -75,78 +72,6 @@ pub(super) struct SessionState {
     analysis_cache: AnalysisCache,
     #[cfg(test)]
     analysis_test_gate: Option<Arc<TestAnalysisGate>>,
-}
-
-#[derive(Debug, Clone)]
-pub(super) struct SnapshotLease {
-    pub(super) snapshot: Arc<DocumentSnapshot>,
-    context: Option<Arc<DocumentAnalysisContext>>,
-    snapshot_generation: SnapshotGeneration,
-    document_epoch: DocumentEpoch,
-    analysis_job_generation: AnalysisJobGeneration,
-    cache_authority: Option<AnalysisCacheAuthority>,
-}
-
-impl SnapshotLease {
-    fn new(
-        snapshot: Arc<DocumentSnapshot>,
-        context: Option<Arc<DocumentAnalysisContext>>,
-        snapshot_generation: SnapshotGeneration,
-        document_epoch: DocumentEpoch,
-        analysis_job_generation: AnalysisJobGeneration,
-        cache_authority: Option<AnalysisCacheAuthority>,
-    ) -> Self {
-        Self {
-            snapshot,
-            context,
-            snapshot_generation,
-            document_epoch,
-            analysis_job_generation,
-            cache_authority,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(super) struct DiagnosticProjectionTicket {
-    request: DiagnosticReprojectionRequest,
-    cache_authority: Option<AnalysisCacheAuthority>,
-}
-
-impl DiagnosticProjectionTicket {
-    fn new(
-        request: DiagnosticReprojectionRequest,
-        cache_authority: Option<AnalysisCacheAuthority>,
-    ) -> Self {
-        Self {
-            request,
-            cache_authority,
-        }
-    }
-
-    pub(super) fn request(&self) -> &DiagnosticReprojectionRequest {
-        &self.request
-    }
-
-    pub(super) fn uri(&self) -> &Uri {
-        self.request.uri()
-    }
-
-    #[cfg(test)]
-    pub(in crate::session::documents) fn snapshot(&self) -> &Arc<DocumentSnapshot> {
-        self.request.snapshot()
-    }
-}
-
-pub(super) enum DiagnosticProjectionPreparation {
-    Ready(SnapshotContext),
-    Project(DiagnosticProjectionTicket),
-}
-
-pub(super) enum AnalysisPreparation {
-    Ready(SnapshotContext),
-    Project(DiagnosticProjectionTicket),
-    Build(Box<AnalysisBuildRequest>),
 }
 
 #[derive(Debug)]

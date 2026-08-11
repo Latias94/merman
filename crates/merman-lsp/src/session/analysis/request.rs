@@ -1,4 +1,5 @@
 use super::AnalysisJobGeneration;
+use crate::session::analysis_cache::{AnalysisCacheAuthority, AnalysisCacheStamp};
 use crate::snapshot::{
     AnalysisResultIdentity, DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch,
     DocumentSnapshot, SnapshotGeneration,
@@ -39,30 +40,20 @@ pub(in crate::session) enum AnalysisBuildError {
     Rejected(AnalysisRejection),
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub(in crate::session) struct DiagnosticReprojectionKey {
+#[derive(Debug, Clone)]
+pub(in crate::session) struct DiagnosticReprojectionRequest {
     uri: Uri,
     analysis_job_generation: AnalysisJobGeneration,
     document_epoch: DocumentEpoch,
     snapshot_generation: SnapshotGeneration,
     target_diagnostic_generation: DiagnosticGeneration,
     analysis_result_identity: AnalysisResultIdentity,
-}
-
-#[derive(Debug, Clone)]
-pub(in crate::session) struct DiagnosticReprojectionRequest {
     policy: AnalysisDiagnosticPolicy,
     cancellation: AnalysisCancellationToken,
-    key: DiagnosticReprojectionKey,
     snapshot: Arc<DocumentSnapshot>,
+    cache_authority: Option<AnalysisCacheAuthority>,
     #[cfg(test)]
     test_gate: Option<Arc<TestAnalysisGate>>,
-}
-
-#[derive(Debug, Clone)]
-pub(in crate::session) struct DiagnosticReprojectionResult {
-    key: DiagnosticReprojectionKey,
-    projected: Arc<DocumentAnalysisContext>,
 }
 
 impl AnalysisBuildKey {
@@ -176,23 +167,34 @@ impl AnalysisBuildRequest {
     }
 }
 
-impl DiagnosticReprojectionKey {
+impl DiagnosticReprojectionRequest {
     pub(in crate::session) fn new(
-        uri: Uri,
-        analysis_job_generation: AnalysisJobGeneration,
-        document_epoch: DocumentEpoch,
-        snapshot_generation: SnapshotGeneration,
+        policy: AnalysisDiagnosticPolicy,
+        cancellation: AnalysisCancellationToken,
         target_diagnostic_generation: DiagnosticGeneration,
-        snapshot: &DocumentSnapshot,
+        snapshot: Arc<DocumentSnapshot>,
+        stamp: AnalysisCacheStamp,
+        cache_authority: Option<AnalysisCacheAuthority>,
     ) -> Self {
+        let analysis_result_identity = snapshot.analysis_result_identity();
         Self {
-            uri,
-            analysis_job_generation,
-            document_epoch,
-            snapshot_generation,
+            uri: snapshot.uri().clone(),
+            analysis_job_generation: stamp.analysis_job_generation,
+            document_epoch: stamp.document_epoch,
+            snapshot_generation: stamp.snapshot_generation,
             target_diagnostic_generation,
-            analysis_result_identity: snapshot.analysis_result_identity(),
+            analysis_result_identity,
+            policy,
+            cancellation,
+            snapshot,
+            cache_authority,
+            #[cfg(test)]
+            test_gate: None,
         }
+    }
+
+    pub(in crate::session) fn cancellation_child(&self) -> AnalysisCancellationToken {
+        self.cancellation.child()
     }
 
     pub(in crate::session) fn uri(&self) -> &Uri {
@@ -218,55 +220,9 @@ impl DiagnosticReprojectionKey {
     pub(in crate::session) fn analysis_result_identity(&self) -> AnalysisResultIdentity {
         self.analysis_result_identity
     }
-}
 
-impl DiagnosticReprojectionRequest {
-    pub(in crate::session) fn new(
-        policy: AnalysisDiagnosticPolicy,
-        cancellation: AnalysisCancellationToken,
-        key: DiagnosticReprojectionKey,
-        snapshot: Arc<DocumentSnapshot>,
-    ) -> Self {
-        Self {
-            policy,
-            cancellation,
-            key,
-            snapshot,
-            #[cfg(test)]
-            test_gate: None,
-        }
-    }
-
-    pub(in crate::session) fn key(&self) -> DiagnosticReprojectionKey {
-        self.key.clone()
-    }
-
-    pub(in crate::session) fn key_ref(&self) -> &DiagnosticReprojectionKey {
-        &self.key
-    }
-
-    pub(in crate::session) fn cancellation_child(&self) -> AnalysisCancellationToken {
-        self.cancellation.child()
-    }
-
-    pub(in crate::session) fn uri(&self) -> &Uri {
-        self.key.uri()
-    }
-
-    pub(in crate::session) fn analysis_job_generation(&self) -> AnalysisJobGeneration {
-        self.key.analysis_job_generation()
-    }
-
-    pub(in crate::session) fn document_epoch(&self) -> DocumentEpoch {
-        self.key.document_epoch()
-    }
-
-    pub(in crate::session) fn snapshot_generation(&self) -> SnapshotGeneration {
-        self.key.snapshot_generation()
-    }
-
-    pub(in crate::session) fn snapshot(&self) -> &Arc<DocumentSnapshot> {
-        &self.snapshot
+    pub(in crate::session) fn cache_authority(&self) -> Option<AnalysisCacheAuthority> {
+        self.cache_authority
     }
 
     #[cfg(test)]
@@ -278,7 +234,7 @@ impl DiagnosticReprojectionRequest {
     pub(in crate::session) fn project_with_cancellation(
         self,
         cancellation: &AnalysisCancellationToken,
-    ) -> Result<DiagnosticReprojectionResult, AnalysisCancelled> {
+    ) -> Result<Arc<DocumentAnalysisContext>, AnalysisCancelled> {
         cancellation.checkpoint()?;
         #[cfg(test)]
         if let Some(gate) = &self.test_gate {
@@ -287,25 +243,12 @@ impl DiagnosticReprojectionRequest {
         let projected = Arc::new(DocumentAnalysisContext::project_cancellable(
             Arc::clone(&self.snapshot),
             &self.policy,
-            self.key.document_epoch(),
-            self.key.target_diagnostic_generation(),
+            self.document_epoch,
+            self.target_diagnostic_generation,
             cancellation,
         )?);
         cancellation.checkpoint()?;
-        Ok(DiagnosticReprojectionResult {
-            key: self.key,
-            projected,
-        })
-    }
-}
-
-impl DiagnosticReprojectionResult {
-    pub(in crate::session) fn key(&self) -> &DiagnosticReprojectionKey {
-        &self.key
-    }
-
-    pub(in crate::session) fn projected(&self) -> &Arc<DocumentAnalysisContext> {
-        &self.projected
+        Ok(projected)
     }
 }
 

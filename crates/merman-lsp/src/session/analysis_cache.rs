@@ -78,12 +78,6 @@ impl AnalysisCache {
         lease
     }
 
-    pub(in crate::session) fn contains(&self, uri: &Uri, stamp: AnalysisCacheStamp) -> bool {
-        self.entries
-            .peek(uri)
-            .is_some_and(|entry| entry.stamp == stamp)
-    }
-
     pub(in crate::session) fn insert_snapshot(
         &mut self,
         uri: Uri,
@@ -202,29 +196,8 @@ impl AnalysisCache {
     }
 
     #[cfg(test)]
-    pub(in crate::session) fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    #[cfg(test)]
     pub(in crate::session) fn statistics(&self) -> WeightedCacheStatistics {
         self.entries.statistics()
-    }
-
-    #[cfg(test)]
-    pub(in crate::session) fn snapshot_entry_weight(
-        uri: &Uri,
-        snapshot: &DocumentSnapshot,
-    ) -> usize {
-        snapshot_entry_weight(uri, snapshot)
-    }
-
-    #[cfg(test)]
-    pub(in crate::session) fn complete_entry_weight(
-        uri: &Uri,
-        context: &DocumentAnalysisContext,
-    ) -> usize {
-        complete_entry_weight(uri, context)
     }
 
     fn issue_incarnation(&mut self) -> AnalysisCacheIncarnation {
@@ -492,13 +465,13 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_downgrade_preserves_residency_and_releases_payload() {
+    fn diagnostic_downgrade_preserves_residency_and_releases_projection() {
         let uri = test_uri("diagnostic-downgrade");
         let snapshot = test_snapshot(&uri);
         let context = test_context(Arc::clone(&snapshot));
         let snapshot_weight = snapshot_entry_weight(&uri, &snapshot);
         let complete_weight = complete_entry_weight(&uri, &context);
-        let payload = Arc::downgrade(&context.payload);
+        let round_trip = Arc::downgrade(context.diagnostic_round_trip());
         let mut cache = AnalysisCache::new(complete_weight);
         let authority = cache
             .insert_snapshot(uri.clone(), test_stamp(), snapshot)
@@ -513,7 +486,7 @@ mod tests {
             AnalysisCachePromotion::Committed
         );
         drop(context);
-        assert!(payload.upgrade().is_some());
+        assert!(round_trip.upgrade().is_some());
 
         cache.downgrade_complete_entries();
 
@@ -523,6 +496,6 @@ mod tests {
         assert_eq!(lease.authority(), authority);
         assert!(lease.context().is_none());
         assert_eq!(cache.total_weight(), snapshot_weight);
-        assert!(payload.upgrade().is_none());
+        assert!(round_trip.upgrade().is_none());
     }
 }

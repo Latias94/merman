@@ -14,8 +14,6 @@ use tokio::sync::Mutex as AsyncMutex;
 use tokio::sync::Notify;
 use tower::Service;
 use tower_lsp_server::jsonrpc::{Error, Id, Request, Response};
-#[cfg(test)]
-use tower_lsp_server::ls_types::Uri;
 use tower_lsp_server::{ExitedError, LspService};
 
 mod analysis;
@@ -235,16 +233,6 @@ impl LanguageSession {
     }
 
     #[cfg(test)]
-    pub(crate) fn analysis_registry_state(&self) -> (usize, usize, usize) {
-        self.inner.analysis_executor.registry_state()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn analysis_waiter_count(&self, uri: &Uri) -> usize {
-        self.inner.analysis_executor.waiter_count_for_uri(uri)
-    }
-
-    #[cfg(test)]
     pub(crate) fn probe(&self) -> SessionProbe {
         SessionProbe {
             state: Arc::clone(&self.inner.state),
@@ -287,18 +275,6 @@ impl SessionProbe {
         uri: &tower_lsp_server::ls_types::Uri,
     ) -> Option<documents::StoredDocument> {
         self.state.lock().await.get(uri).cloned()
-    }
-
-    pub(crate) async fn cache_state(&self, uri: &tower_lsp_server::ls_types::Uri) -> (bool, bool) {
-        let state = self.state.lock().await;
-        (state.has_snapshot(uri), state.has_analysis_payload(uri))
-    }
-
-    pub(crate) async fn cached_snapshot(
-        &self,
-        uri: &tower_lsp_server::ls_types::Uri,
-    ) -> Option<Arc<crate::snapshot::DocumentSnapshot>> {
-        self.state.lock().await.cached_snapshot_for_probe(uri)
     }
 }
 

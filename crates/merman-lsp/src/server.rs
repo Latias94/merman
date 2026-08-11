@@ -209,14 +209,6 @@ impl MermanLanguageServer {
         }
     }
 
-    #[cfg(test)]
-    async fn snapshot_for_uri(
-        &self,
-        uri: &tower_lsp_server::ls_types::Uri,
-    ) -> Option<Arc<DocumentSnapshot>> {
-        self.session.structure_snapshot(uri).await
-    }
-
     fn diagnostic_result_id(diagnostics: &[tower_lsp_server::ls_types::Diagnostic]) -> String {
         let serialized = serde_json::to_vec(diagnostics).unwrap_or_default();
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
