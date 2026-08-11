@@ -1,6 +1,6 @@
 use super::super::model::{
     AsciiGraph, AsciiGraphEdge, AsciiGraphGroup, AsciiGraphNode, GraphDirection, GraphEdgeMarker,
-    GraphEdgeStroke, GraphEdgeStyle, GraphGroupKind, GraphNodeShape, GraphNodeSide, GraphNodeStyle,
+    GraphEdgeStroke, GraphEdgeStyle, GraphGroupKind, GraphNodeShape, GraphNodeStyle,
 };
 use super::super::topology::{GraphEndpointIndex, GraphGroupTopology};
 use super::{GridCoord, GroupLayout, NodeLayout};
@@ -10,8 +10,13 @@ use crate::resource::{AsciiResourceLimitId, ResourceContext};
 use std::collections::{HashMap, HashSet};
 
 mod bounds;
+mod side_constraints;
 
 use self::bounds::{RawBounds, raw_group_bounds_for_members};
+use self::side_constraints::{
+    include_side_constrained_group_followers, override_member_semantics,
+    reserve_group_left_constraint_space,
+};
 
 pub(super) fn apply_group_placement_adjustments(
     graph: &AsciiGraph,
@@ -132,81 +137,6 @@ fn include_group_endpoint_scope(
         .try_reserve(1)
         .map_err(|_| layout_work_allocation_failed())?;
     scope.insert(group_index);
-    Ok(())
-}
-
-fn reserve_group_left_constraint_space(
-    graph: &AsciiGraph,
-    placements: &mut [GridCoord],
-    topology: &GraphGroupTopology<'_>,
-    width_profile: TerminalWidthProfile,
-    resources: &mut ResourceContext,
-) -> Result<()> {
-    if graph.direction.canonical() != GraphDirection::TopDown {
-        return Ok(());
-    }
-
-    for (group_index, group) in graph.groups.iter().enumerate() {
-        resources.charge_layout_work(graph.nodes.len())?;
-        let mut fixed_left_nodes = try_bool_slots(graph.nodes.len())?;
-        let mut furthest_left_note_right = None::<isize>;
-        for (node_index, node) in graph.nodes.iter().enumerate() {
-            let is_left_constraint =
-                node.semantics
-                    .side_constraint
-                    .as_ref()
-                    .is_some_and(|constraint| {
-                        constraint.anchor_id() == group.id
-                            && constraint.side() == GraphNodeSide::Left
-                    });
-            if !is_left_constraint {
-                continue;
-            }
-            fixed_left_nodes[node_index] = true;
-            let Some(placement) = placements.get(node_index).copied() else {
-                continue;
-            };
-            let note_right = node_bounds(placement, resources)?.right;
-            furthest_left_note_right = Some(
-                furthest_left_note_right.map_or(note_right, |current| current.max(note_right)),
-            );
-        }
-        let Some(furthest_left_note_right) = furthest_left_note_right else {
-            continue;
-        };
-
-        let member_indices = group_member_indices(topology, group_index, resources)?;
-        let Some(group_bounds) = group_bounds_for_placements(
-            graph,
-            group_index,
-            &member_indices,
-            placements,
-            width_profile,
-            resources,
-        )?
-        else {
-            continue;
-        };
-        if furthest_left_note_right < group_bounds.x {
-            continue;
-        }
-        let shift = furthest_left_note_right
-            .checked_sub(group_bounds.x)
-            .and_then(|distance| distance.checked_add(1))
-            .and_then(|distance| usize::try_from(distance).ok())
-            .ok_or_else(|| {
-                resources
-                    .policy()
-                    .overflow(AsciiResourceLimitId::MaxGridCells)
-            })?;
-        for (node_index, placement) in placements.iter_mut().enumerate() {
-            if fixed_left_nodes.get(node_index).copied().unwrap_or(false) {
-                continue;
-            }
-            resources.charge_layout_work(1)?;
-            placement.x = resources.checked_grid_add(placement.x, shift)?;
-        }
-    }
     Ok(())
 }
 
@@ -1121,7 +1051,9 @@ fn apply_subgraph_direction_overrides(
             continue;
         }
 
-        let override_graph = build_group_override_graph(graph, topology, &members, resources)?;
+        let layout_direction = direction.before_root_output_transform(graph.direction);
+        let override_graph =
+            build_group_override_graph(graph, topology, &members, layout_direction, resources)?;
 
         let mut start_x = None::<usize>;
         let mut start_y = None::<usize>;
@@ -1135,7 +1067,6 @@ fn apply_subgraph_direction_overrides(
         let start_x = start_x.unwrap_or_default();
         let start_y = start_y.unwrap_or_default();
 
-        let layout_direction = direction.before_root_output_transform(graph.direction);
         let mut local = place_group_nodes(&override_graph, layout_direction, resources)?;
         mirror_local_placements(&mut local, layout_direction, resources)?;
         for (member_index, coord) in local {
@@ -1620,6 +1551,14 @@ fn group_placement_members(
         }
     }
 
+    include_side_constrained_group_followers(
+        graph,
+        topology,
+        group_index,
+        &mut members,
+        resources,
+    )?;
+
     Ok(members)
 }
 
@@ -1627,26 +1566,11 @@ fn build_group_override_graph(
     graph: &AsciiGraph,
     topology: &GraphGroupTopology<'_>,
     members: &[GroupPlacementMember],
+    direction: GraphDirection,
     resources: &mut ResourceContext,
 ) -> Result<AsciiGraph> {
-    let mut override_graph = AsciiGraph::new_for_diagram(graph.diagram_type(), graph.direction);
+    let mut override_graph = AsciiGraph::new_for_diagram(graph.diagram_type(), direction);
     override_graph.root_policy = graph.root_policy;
-    override_graph
-        .nodes
-        .try_reserve(members.len())
-        .map_err(|_| crate::error::AsciiError::AllocationFailed {
-            phase: crate::resource::AsciiResourceLimitPhase::LayoutWork.as_str(),
-        })?;
-    for member in members {
-        resources.charge_layout_work(1)?;
-        override_graph.nodes.push(AsciiGraphNode {
-            id: member.id.clone(),
-            label: member.id.clone(),
-            shape: GraphNodeShape::Rect,
-            style: GraphNodeStyle::default(),
-            semantics: Default::default(),
-        });
-    }
 
     let mut endpoint_to_member = HashMap::<GraphEndpointIndex, usize>::new();
     resources.charge_layout_work(members.len())?;
@@ -1657,9 +1581,7 @@ fn build_group_override_graph(
     resources.charge_layout_work(endpoint_capacity)?;
     endpoint_to_member
         .try_reserve(endpoint_capacity)
-        .map_err(|_| crate::error::AsciiError::AllocationFailed {
-            phase: crate::resource::AsciiResourceLimitPhase::LayoutWork.as_str(),
-        })?;
+        .map_err(|_| layout_work_allocation_failed())?;
     for (member_index, member) in members.iter().enumerate() {
         endpoint_to_member.insert(member.endpoint, member_index);
         for node_index in &member.node_indices {
@@ -1667,6 +1589,31 @@ fn build_group_override_graph(
                 .entry(GraphEndpointIndex::Node(*node_index))
                 .or_insert(member_index);
         }
+    }
+
+    override_graph
+        .nodes
+        .try_reserve(members.len())
+        .map_err(|_| crate::error::AsciiError::AllocationFailed {
+            phase: crate::resource::AsciiResourceLimitPhase::LayoutWork.as_str(),
+        })?;
+    for member in members {
+        resources.charge_layout_work(1)?;
+        let semantics = override_member_semantics(
+            graph,
+            topology,
+            members,
+            &endpoint_to_member,
+            member,
+            resources,
+        )?;
+        override_graph.nodes.push(AsciiGraphNode {
+            id: member.id.clone(),
+            label: member.id.clone(),
+            shape: GraphNodeShape::Rect,
+            style: GraphNodeStyle::default(),
+            semantics,
+        });
     }
 
     override_graph
@@ -2221,9 +2168,14 @@ mod tests {
         let members = group_placement_members(&graph, &topology, 2, &mut resources)
             .expect("parent group members should resolve through endpoint ownership");
 
-        let override_graph =
-            build_group_override_graph(&graph, &topology, &members, &mut resources)
-                .expect("child group endpoint edges should project into the local override graph");
+        let override_graph = build_group_override_graph(
+            &graph,
+            &topology,
+            &members,
+            graph.direction,
+            &mut resources,
+        )
+        .expect("child group endpoint edges should project into the local override graph");
 
         assert_eq!(override_graph.nodes.len(), 2);
         assert_eq!(override_graph.edges.len(), 1);
