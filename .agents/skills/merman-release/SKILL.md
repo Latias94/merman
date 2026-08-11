@@ -36,7 +36,7 @@ If scope is incomplete, report what is ready and stop before the first external 
 Use this path only when the maintainer explicitly authorizes one channel to test publication under an existing prerelease version without claiming a new workspace release.
 
 - Keep the package manifest, embedded runtime catalog, and package-group version exact and consistent.
-- Resolve `source_ref` to a reviewed 40-character commit and bind that SHA into the verified package-group manifest and registry provenance.
+- Resolve `source_ref` to a reviewed 40-character commit and bind that SHA into the verified package-group manifest. Require a registry provenance attestation when the workflow can produce one; record a manual first-publication bootstrap separately and never describe an unattested registry artifact as provenance-backed.
 - Treat a same-named workspace tag as a different publication snapshot when its commit differs. State that boundary in current release documentation and avoid cross-channel byte-identity claims.
 - Keep unrelated tag-triggered crates, binaries, and language-binding publishers out of scope. A channel-only test never authorizes moving a tag or republishing another registry.
 - Keep external registry mutation behind the ordinary `ship` authorization boundary even when non-publishing preflight and tarball generation are green.
@@ -146,6 +146,10 @@ record the observed state instead of assuming the requested tag is the only one.
 published tarball already contains the dated package-local changelog, then update current README
 availability prose. If the immutable tarball shipped stale documentation, record that defect and
 fix the source for the next version instead of claiming the registry artifact was corrected.
+Also query npm provenance attestations for every member. Do not treat an embedded
+`artifacts/provenance.json` file as an npm attestation; if a manual bootstrap has none, state that
+boundary in current release documentation and direct users to the verified package-group artifact
+and release record instead.
 
 Do not report the release complete while a current README installation command names an older
 workspace prerelease or current prose says the published target is unavailable. Commit the

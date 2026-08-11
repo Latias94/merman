@@ -10,7 +10,9 @@ Published workspace prerelease baseline: `0.8.0-alpha.5`.
 The next workspace release remains in development and has no selected version yet. The browser and
 Node package groups were published as an authorized alpha-channel test at `0.8.0-alpha.5` from
 reviewed commit `d4365ca4860b6b4d51c421e775daab92a815c667`, newer than the workspace
-`v0.8.0-alpha.5` tag. Their package provenance identifies that commit; documentation must not imply
+`v0.8.0-alpha.5` tag. Their verified package-group manifests and workflow artifacts identify that
+commit. Because the first publication was a manual bootstrap, those npm registry artifacts do not
+expose npm provenance attestations; documentation must not imply either an attestation or
 cross-channel byte identity.
 
 Rationale:
@@ -118,6 +120,11 @@ five platform tarballs and then the loader directly under the requested final ta
 maintainer's 2FA-protected npm credential, configure Trusted Publishing for all six package names,
 and rerun `release-node.yml` with publishing enabled. Thereafter the workflow owns idempotent
 publishing and provenance; do not keep an npm token in GitHub Actions.
+
+The immutable `@mermanjs/node@0.8.0-alpha.5` loader tarball was packed before its package-local
+changelog heading was dated, so the registry copy contains an `Unreleased` heading. This is a
+documentation-only bootstrap defect: the source changelog is corrected, and the correction will
+first appear in a later immutable package version.
 
 ## Pre-Publish Gates
 

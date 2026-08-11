@@ -24,6 +24,8 @@ from typing import Any
 
 try:
     from scripts.npm_package_group import (
+        DEFAULT_REGISTRY_OBSERVATION_ATTEMPTS,
+        DEFAULT_REGISTRY_OBSERVATION_DELAY_SECONDS,
         DryRunNpmClient,
         NpmCli,
         NpmClient,
@@ -33,6 +35,8 @@ try:
     )
 except ModuleNotFoundError:
     from npm_package_group import (
+        DEFAULT_REGISTRY_OBSERVATION_ATTEMPTS,
+        DEFAULT_REGISTRY_OBSERVATION_DELAY_SECONDS,
         DryRunNpmClient,
         NpmCli,
         NpmClient,
@@ -1266,11 +1270,20 @@ def pack_group(
     return manifest
 
 
-def reconcile_group(manifest: dict[str, Any], artifact_dir: Path, client: NpmClient) -> dict[str, Any]:
+def reconcile_group(
+    manifest: dict[str, Any],
+    artifact_dir: Path,
+    client: NpmClient,
+    *,
+    observation_attempts: int = DEFAULT_REGISTRY_OBSERVATION_ATTEMPTS,
+    observation_delay_seconds: float = DEFAULT_REGISTRY_OBSERVATION_DELAY_SECONDS,
+) -> dict[str, Any]:
     return reconcile_registry_group(
         validate_group_manifest(manifest),
         artifact_dir,
         client,
+        observation_attempts=observation_attempts,
+        observation_delay_seconds=observation_delay_seconds,
     )
 
 

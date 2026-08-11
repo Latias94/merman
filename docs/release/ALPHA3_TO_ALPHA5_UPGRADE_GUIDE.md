@@ -2,9 +2,11 @@
 
 > [!IMPORTANT]
 > This guide describes the tagged alpha.5 workspace contract. Package registries and release
-> channels move independently, so verify the installed version and provenance before relying on an
-> alpha.5 API or capability. The later Web and Node npm alpha.5 packages were published from a
-> reviewed commit newer than the workspace tag and are not byte-identical tag artifacts.
+> channels move independently, so verify the installed version and its channel release record
+> before relying on an alpha.5 API or capability. The later Web and Node npm alpha.5 packages were
+> bootstrapped from verified workflow artifacts built at a reviewed commit newer than the workspace
+> tag and are not byte-identical tag artifacts. Those bootstrap registry artifacts do not expose npm
+> provenance attestations.
 
 Alpha.5 is a broad prerelease upgrade, not a drop-in patch. It expands the Mermaid baseline to
 11.16, admits all 35 diagram families, replaces implementation-oriented feature bundles with
@@ -34,7 +36,7 @@ The practical upgrade rule is:
 | `render_svg_resvg_safe{,_sync}` or `svg_resvg_safe()` | Migrate to the typed `ResvgCompatibleSvg` boundaries described under [Rendering and option contracts](#rendering-and-option-contracts). No string-returning compatibility alias is retained. |
 | `assertSafeSvgForDom()` | Choose an explicit self-contained or navigable browser capability and retain its opaque admission until the real mount document is known. |
 | Typed State render links | Keep handling `StateDiagramRenderLinks::{One, Many}`. Mermaid 11.16 preserves repeated `click` declarations in source order because each parsed `idStatement` is a distinct runtime key; repeated links render as nested anchors. |
-| Node.js or SSR | Install the experimental `@mermanjs/node@alpha` channel-only package on Node.js 22 or newer, or keep using the tagged `merman-cli` subprocess when workspace-tag provenance is required. |
+| Node.js or SSR | Install the experimental `@mermanjs/node@alpha` channel-only package on Node.js 22 or newer, or keep using the tagged `merman-cli` subprocess when exact workspace-tag source identity is required. |
 | Typst | Treat it as an independent release track. The published `@preview/merman:0.2.0` package is not an alpha.5 artifact. |
 
 ## Choose the alpha.5 surface
@@ -53,7 +55,7 @@ The practical upgrade rule is:
 | Provide browser editor intelligence | `@mermanjs/web-editor` | Analysis plus parser-backed editor APIs; intended for a dedicated Worker. |
 | Render ASCII in a browser | `@mermanjs/web-ascii` | ASCII/Unicode only; family support is capability-graded. |
 | Need all browser capabilities in one realm | `@mermanjs/web` | Full browser SDK; avoid combining it with duplicate slim packages. |
-| Render from Node.js or SSR | `@mermanjs/node@alpha` | Experimental native loader for macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 MSVC. Its alpha.5 npm provenance names a newer source commit than the workspace tag. |
+| Render from Node.js or SSR | `@mermanjs/node@alpha` | Experimental native loader for macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 MSVC. Its verified alpha.5 package-group artifact was built from a newer source commit than the workspace tag; the manual bootstrap publication has no npm provenance attestation. |
 | Embed a prebuilt native SDK | The Python, Flutter, Android, or Apple package | The alpha.5 release contract defines one complete SKU per surface, not a full/slim prebuilt matrix. |
 | Embed the C ABI | `merman-ffi` | Build the source crate; there is no downloadable C binary SDK. |
 
@@ -375,7 +377,7 @@ migrations documented above remain the complete user-facing boundary for this br
 
 ## Residual evidence boundaries
 
-- The workspace release is fixed at tag commit `fb1dd48e4612e20c47673c0268f88aab02afd26c`; the later Web and Node npm alpha.5 package groups record their distinct source commit in package provenance.
+- The workspace release is fixed at tag commit `fb1dd48e4612e20c47673c0268f88aab02afd26c`; the verified Web and Node alpha.5 package-group artifacts record their distinct source commit, while the manually bootstrapped npm registry artifacts have no provenance attestation.
 - Final same-host alpha.3 A/B measurements still need to refresh the complete and minimal SVG
   lanes, including Class, Sequence, Requirement, and Mindmap attribution.
 - Browser-WASM throughput has not been compared with browser Mermaid.js under one equivalent

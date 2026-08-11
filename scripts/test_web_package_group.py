@@ -230,15 +230,25 @@ class FakeNpm:
         self,
         *,
         fail_publish_for: str | None = None,
+        fail_after_publish_for: str | None = None,
         omit_tag_for: str | None = None,
+        hidden_integrity_reads_after_publish: int = 0,
     ) -> None:
         self.versions: dict[tuple[str, str], str] = {}
         self.tags: dict[tuple[str, str], str] = {}
         self.published: list[tuple[str, str]] = []
         self.fail_publish_for = fail_publish_for
+        self.fail_after_publish_for = fail_after_publish_for
         self.omit_tag_for = omit_tag_for
+        self.hidden_integrity_reads_after_publish = hidden_integrity_reads_after_publish
 
     def version_integrity(self, package: str, version: str) -> str | None:
+        if (
+            (package, version) in self.published
+            and self.hidden_integrity_reads_after_publish > 0
+        ):
+            self.hidden_integrity_reads_after_publish -= 1
+            return None
         return self.versions.get((package, version))
 
     def dist_tag(self, package: str, tag: str) -> str | None:
@@ -252,6 +262,8 @@ class FakeNpm:
         if record["name"] != self.omit_tag_for:
             self.tags[(record["name"], tag)] = self.manifest["version"]
         self.published.append((record["name"], self.manifest["version"]))
+        if record["name"] == self.fail_after_publish_for:
+            raise web_package_group.PackageGroupError("simulated response loss after publish")
 
 
 class WebPackageDescriptorTests(unittest.TestCase):
@@ -579,8 +591,17 @@ class WebPackageArtifactTests(unittest.TestCase):
         client = FakeNpm(omit_tag_for=first["name"])
         client.manifest = manifest
 
-        with self.assertRaisesRegex(web_package_group.ReconciliationError, "after publish") as raised:
-            web_package_group.reconcile_group(manifest, self.artifacts, client)
+        with self.assertRaisesRegex(
+            web_package_group.ReconciliationError,
+            "registry state was not confirmed",
+        ) as raised:
+            web_package_group.reconcile_group(
+                manifest,
+                self.artifacts,
+                client,
+                observation_attempts=2,
+                observation_delay_seconds=0,
+            )
         self.assertEqual(raised.exception.report["status"], "failed-during-publish")
         self.assertEqual(raised.exception.report["published"], [first["name"]])
 
@@ -592,10 +613,50 @@ class WebPackageArtifactTests(unittest.TestCase):
         client.manifest = manifest
 
         with self.assertRaisesRegex(web_package_group.ReconciliationError, "publish failure") as raised:
-            web_package_group.reconcile_group(manifest, self.artifacts, client)
+            web_package_group.reconcile_group(
+                manifest,
+                self.artifacts,
+                client,
+                observation_attempts=2,
+                observation_delay_seconds=0,
+            )
         self.assertEqual(raised.exception.report["status"], "failed-during-publish")
         self.assertEqual(raised.exception.report["published"], [])
         self.assertEqual(client.published, [])
+
+    def test_reconciliation_recovers_when_publish_succeeds_before_response_loss(self) -> None:
+        path = self.create_manifest()
+        manifest = web_package_group.verify_artifact(path, self.artifacts)
+        first = manifest["packages"][0]
+        client = FakeNpm(fail_after_publish_for=first["name"])
+        client.manifest = manifest
+
+        report = web_package_group.reconcile_group(
+            manifest,
+            self.artifacts,
+            client,
+            observation_delay_seconds=0,
+        )
+
+        self.assertEqual(report["status"], "released")
+        self.assertEqual(report["published"], [record["name"] for record in manifest["packages"]])
+
+    def test_reconciliation_retries_transient_registry_invisibility(self) -> None:
+        path = self.create_manifest()
+        manifest = web_package_group.verify_artifact(path, self.artifacts)
+        client = FakeNpm(hidden_integrity_reads_after_publish=2)
+        client.manifest = manifest
+
+        report = web_package_group.reconcile_group(
+            manifest,
+            self.artifacts,
+            client,
+            observation_attempts=3,
+            observation_delay_seconds=0,
+        )
+
+        self.assertEqual(report["status"], "released")
+        self.assertEqual(client.hidden_integrity_reads_after_publish, 0)
 
     def test_reconciliation_rejects_existing_version_with_different_integrity(self) -> None:
         path = self.create_manifest()
