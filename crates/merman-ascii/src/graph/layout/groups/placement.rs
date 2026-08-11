@@ -1,9 +1,8 @@
 use super::direction::plan_group_direction_overrides;
 use super::side_constraints::reserve_group_left_constraint_space;
 use super::{
-    apply_subgraph_direction_overrides, layout_work_allocation_failed, node_bounds,
-    raw_bounds_intersects, separate_external_nodes_from_groups, stack_divider_sections,
-    try_bool_slots,
+    layout_work_allocation_failed, node_bounds, raw_bounds_intersects,
+    separate_external_nodes_from_groups, stack_divider_sections, try_bool_slots,
 };
 use crate::error::Result;
 use crate::graph::layout::GridCoord;
@@ -11,6 +10,10 @@ use crate::graph::model::{AsciiGraph, GraphDirection};
 use crate::graph::topology::{GraphEndpointIndex, GraphGroupTopology};
 use crate::options::TerminalWidthProfile;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
+
+mod local_direction;
+
+use self::local_direction::apply_subgraph_direction_overrides;
 pub(super) fn apply_group_placement_adjustments(
     graph: &AsciiGraph,
     placements: &mut [GridCoord],
