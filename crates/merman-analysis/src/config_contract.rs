@@ -3,7 +3,7 @@ use crate::{
     MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID, configurable_rule_descriptors,
     options_json::{
         AnalysisOptionsJson, AnalysisOptionsJsonError, LintOptionsJson,
-        LintRuleSeverityOverrideJson,
+        LintRuleSeverityOverrideJson, ResourceOptionsJson,
     },
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -22,7 +22,7 @@ const WRAPPER_KEYS: [&str; 2] = ["merman", "analysis"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum AnalysisConfigRoot {
+enum AnalysisConfigRoot {
     Direct,
     Merman,
     Analysis,
@@ -68,7 +68,7 @@ impl AnalysisConfigChange {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum AnalysisConfigChangeScope {
+enum AnalysisConfigChangeScope {
     DiagnosticsOnly,
     SnapshotAffecting,
 }
@@ -84,7 +84,7 @@ impl AnalysisConfigChangeScope {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum AnalysisConfigCompatibility {
+enum AnalysisConfigCompatibility {
     ForwardCompatible,
     Strict,
 }
@@ -99,16 +99,10 @@ impl AnalysisConfigCompatibility {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub struct AnalysisConfigFieldDescriptor {
-    pub path: &'static str,
-    pub root_key: &'static str,
-    pub change_scope: AnalysisConfigChangeScope,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub struct AnalysisConfigContainerDescriptor {
-    pub path: &'static str,
-    pub compatibility: AnalysisConfigCompatibility,
+struct AnalysisConfigFieldDescriptor {
+    path: &'static str,
+    root_key: &'static str,
+    change_scope: AnalysisConfigChangeScope,
 }
 
 const ANALYSIS_CONFIG_FIELDS: [AnalysisConfigFieldDescriptor; 9] = [
@@ -159,29 +153,6 @@ const ANALYSIS_CONFIG_FIELDS: [AnalysisConfigFieldDescriptor; 9] = [
     },
 ];
 
-const ANALYSIS_CONFIG_CONTAINERS: [AnalysisConfigContainerDescriptor; 5] = [
-    AnalysisConfigContainerDescriptor {
-        path: "",
-        compatibility: AnalysisConfigCompatibility::ForwardCompatible,
-    },
-    AnalysisConfigContainerDescriptor {
-        path: "lint",
-        compatibility: AnalysisConfigCompatibility::ForwardCompatible,
-    },
-    AnalysisConfigContainerDescriptor {
-        path: "lint.rule_severities[]",
-        compatibility: AnalysisConfigCompatibility::ForwardCompatible,
-    },
-    AnalysisConfigContainerDescriptor {
-        path: "resources",
-        compatibility: AnalysisConfigCompatibility::Strict,
-    },
-    AnalysisConfigContainerDescriptor {
-        path: "resources.limits",
-        compatibility: AnalysisConfigCompatibility::Strict,
-    },
-];
-
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct AnalysisConfigHostDefaults {
     pub max_source_bytes: Option<usize>,
@@ -213,14 +184,6 @@ pub struct AnalysisConfigContract;
 impl AnalysisConfigContract {
     pub const fn current() -> Self {
         Self
-    }
-
-    pub const fn fields(self) -> &'static [AnalysisConfigFieldDescriptor] {
-        &ANALYSIS_CONFIG_FIELDS
-    }
-
-    pub const fn containers(self) -> &'static [AnalysisConfigContainerDescriptor] {
-        &ANALYSIS_CONFIG_CONTAINERS
     }
 
     pub fn decode(self, value: &Value) -> Result<AnalysisOptions, AnalysisOptionsJsonError> {
@@ -287,12 +250,19 @@ impl AnalysisConfigContract {
     pub(crate) fn resource_limit_minimum(self, limit_id: &str) -> Option<usize> {
         resource_limit_descriptor(limit_id).map(|descriptor| descriptor.minimum_value)
     }
+
+    pub(crate) fn resource_limit_maximum(self, limit_id: &str) -> Option<usize> {
+        resource_limit_descriptor(limit_id).map(|descriptor| descriptor.maximum_value)
+    }
 }
+
+const RESOURCE_LIMIT_MAXIMUM: usize = u32::MAX as usize;
 
 #[derive(Debug, Clone, Copy)]
 struct ResourceLimitSchemaDescriptor {
     stable_id: &'static str,
     minimum_value: usize,
+    maximum_value: usize,
     description: &'static str,
 }
 
@@ -302,6 +272,7 @@ fn resource_limit_descriptor(limit_id: &str) -> Option<ResourceLimitSchemaDescri
         return Some(ResourceLimitSchemaDescriptor {
             stable_id: source.stable_id,
             minimum_value: source.minimum_value,
+            maximum_value: RESOURCE_LIMIT_MAXIMUM,
             description: source.description,
         });
     }
@@ -311,6 +282,7 @@ fn resource_limit_descriptor(limit_id: &str) -> Option<ResourceLimitSchemaDescri
         .map(|descriptor| ResourceLimitSchemaDescriptor {
             stable_id: descriptor.stable_id,
             minimum_value: descriptor.minimum_value,
+            maximum_value: RESOURCE_LIMIT_MAXIMUM,
             description: descriptor.description,
         })
 }
@@ -321,6 +293,7 @@ fn resource_limit_properties(host_defaults: AnalysisConfigHostDefaults) -> Value
     for descriptor in std::iter::once(ResourceLimitSchemaDescriptor {
         stable_id: source.stable_id,
         minimum_value: source.minimum_value,
+        maximum_value: RESOURCE_LIMIT_MAXIMUM,
         description: source.description,
     })
     .chain(
@@ -329,12 +302,14 @@ fn resource_limit_properties(host_defaults: AnalysisConfigHostDefaults) -> Value
             .map(|descriptor| ResourceLimitSchemaDescriptor {
                 stable_id: descriptor.stable_id,
                 minimum_value: descriptor.minimum_value,
+                maximum_value: RESOURCE_LIMIT_MAXIMUM,
                 description: descriptor.description,
             }),
     ) {
         let mut schema = json!({
             "type": "integer",
             "minimum": descriptor.minimum_value,
+            "maximum": descriptor.maximum_value,
             "description": descriptor.description,
             "x-merman-change-scope": AnalysisConfigChangeScope::SnapshotAffecting.as_str(),
         });
@@ -597,14 +572,61 @@ fn decode_analysis_options_object(
         .ok_or_else(|| AnalysisOptionsJsonError::new("analysis options JSON must be an object"))?;
     Ok(AnalysisOptionsJson {
         fixed_today: decode_optional_field(map, "fixed_today")?,
-        fixed_local_offset_minutes: decode_optional_field(map, "fixed_local_offset_minutes")?,
+        fixed_local_offset_minutes: decode_optional_integer_field(
+            map,
+            "fixed_local_offset_minutes",
+            -1439,
+            1439,
+        )?
+        .map(|value| value as i32),
         site_config: map
             .get("site_config")
             .filter(|value| !value.is_null())
             .cloned(),
-        resources: decode_optional_field(map, "resources")?,
+        resources: map
+            .get("resources")
+            .filter(|value| !value.is_null())
+            .map(decode_resource_options)
+            .transpose()?,
         lint: decode_lint(map.get("lint"))?,
     })
+}
+
+pub(crate) fn decode_resource_options(
+    value: &Value,
+) -> Result<ResourceOptionsJson, AnalysisOptionsJsonError> {
+    let map = value.as_object().ok_or_else(|| {
+        AnalysisOptionsJsonError::new("invalid analysis options JSON: resources must be an object")
+    })?;
+    if let Some(unknown) = map.keys().find(|key| key.as_str() != "limits") {
+        return Err(AnalysisOptionsJsonError::new(format!(
+            "invalid analysis options JSON: unknown field `{unknown}` in resources"
+        )));
+    }
+    let Some(limits) = map.get("limits") else {
+        return Ok(ResourceOptionsJson::default());
+    };
+    let limits = limits.as_object().ok_or_else(|| {
+        AnalysisOptionsJsonError::new(
+            "invalid analysis options JSON: resources.limits must be an object",
+        )
+    })?;
+    let mut decoded = std::collections::BTreeMap::new();
+    for (limit_id, value) in limits {
+        let Some(descriptor) = resource_limit_descriptor(limit_id) else {
+            return Err(AnalysisOptionsJsonError::new(format!(
+                "unknown analysis resource limit id: {limit_id}"
+            )));
+        };
+        let integer = decode_json_integer(
+            value,
+            &format!("resources.limits.{limit_id}"),
+            descriptor.minimum_value as i64,
+            descriptor.maximum_value as i64,
+        )?;
+        decoded.insert(limit_id.clone(), integer as usize);
+    }
+    Ok(ResourceOptionsJson { limits: decoded })
 }
 
 fn decode_lint(value: Option<&Value>) -> Result<Option<LintOptionsJson>, AnalysisOptionsJsonError> {
@@ -679,6 +701,48 @@ where
         .map_err(|error| {
             AnalysisOptionsJsonError::new(format!("invalid analysis options JSON: {error}"))
         })
+}
+
+fn decode_optional_integer_field(
+    map: &Map<String, Value>,
+    field: &str,
+    minimum: i64,
+    maximum: i64,
+) -> Result<Option<i64>, AnalysisOptionsJsonError> {
+    let Some(value) = map.get(field).filter(|value| !value.is_null()) else {
+        return Ok(None);
+    };
+    decode_json_integer(value, field, minimum, maximum).map(Some)
+}
+
+fn decode_json_integer(
+    value: &Value,
+    field: &str,
+    minimum: i64,
+    maximum: i64,
+) -> Result<i64, AnalysisOptionsJsonError> {
+    let integer = value
+        .as_i64()
+        .or_else(|| value.as_u64().and_then(|value| i64::try_from(value).ok()))
+        .or_else(|| {
+            let value = value.as_f64()?;
+            (value.is_finite()
+                && value.fract() == 0.0
+                && value >= minimum as f64
+                && value <= maximum as f64)
+                .then_some(value as i64)
+        })
+        .ok_or_else(|| {
+            AnalysisOptionsJsonError::new(format!(
+                "invalid analysis options JSON: {field} must be an integer between {minimum} and {maximum}"
+            ))
+        })?;
+    if !(minimum..=maximum).contains(&integer) {
+        return Err(AnalysisOptionsJsonError::new(format!(
+            "invalid analysis options JSON: {field} must be an integer between {minimum} and {maximum}"
+        )));
+    }
+    Ok(integer)
 }
 
 fn decode_default_field<T>(

@@ -194,6 +194,10 @@ describe("language intelligence adoption", () => {
       "null",
     ]);
     assert.equal(properties["merman.analysis.resources.limits.max_source_bytes"]?.minimum, 1);
+    assert.equal(
+      properties["merman.analysis.resources.limits.max_source_bytes"]?.maximum,
+      0xffff_ffff,
+    );
     assert.deepEqual(
       properties["merman.analysis.resources.limits.max_document_diagrams"]?.type,
       ["integer", "null"],
@@ -201,6 +205,10 @@ describe("language intelligence adoption", () => {
     assert.equal(
       properties["merman.analysis.resources.limits.max_document_diagrams"]?.minimum,
       0,
+    );
+    assert.equal(
+      properties["merman.analysis.resources.limits.max_document_diagrams"]?.maximum,
+      0xffff_ffff,
     );
   });
 

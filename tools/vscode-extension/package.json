@@ -102,7 +102,25 @@
           "merman.server.args": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "merman.authoring.config.prefer_init_directive",
+                "merman.authoring.config.prefer_frontmatter_config",
+                "merman.compatibility.config.deprecated_flowchart_html_labels",
+                "merman.compatibility.config.deprecated_external_diagram_loading",
+                "merman.parse.no_diagram",
+                "merman.parse.diagram_parse",
+                "merman.compatibility.unsupported_diagram",
+                "merman.parse.recovered_editor_facts",
+                "merman.config.malformed_front_matter",
+                "merman.config.invalid_directive_json",
+                "merman.config.invalid_front_matter_yaml",
+                "merman.config.invalid_theme_color",
+                "merman.block.width_exceeds_columns",
+                "merman.authoring.flowchart.explicit_direction",
+                "merman.semantic.flowchart.unknown_style_target",
+                "merman.git_graph.duplicate_commit_id"
+              ]
             },
             "default": [],
             "restricted": true,
@@ -195,6 +213,7 @@
             "markdownDescription": "Optional source size cap forwarded to `merman-lsp`. `null` uses the server default.",
             "scope": "window",
             "minimum": 1,
+            "maximum": 4294967295,
             "order": 40
           },
           "merman.analysis.resources.limits.max_document_diagrams": {
@@ -206,6 +225,7 @@
             "markdownDescription": "Optional Mermaid fence count cap for Markdown and MDX documents. `null` uses the server default; `0` rejects documents containing any Mermaid diagram.",
             "scope": "window",
             "minimum": 0,
+            "maximum": 4294967295,
             "order": 41
           },
           "merman.analysis.lint.profile": {
@@ -220,7 +240,7 @@
             "markdownDescription": "Lint profile forwarded to `merman-lsp`.",
             "scope": "window",
             "enumDescriptions": [
-              "Unset the profile and rely only on explicit rule configuration.",
+              "Use the server's core profile and apply any explicit rule configuration.",
               "Core diagnostics only.",
               "Opt-in recommended authoring diagnostics.",
               "Strict authoring diagnostics."
@@ -230,7 +250,25 @@
           "merman.analysis.lint.enable_rules": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "merman.authoring.config.prefer_init_directive",
+                "merman.authoring.config.prefer_frontmatter_config",
+                "merman.compatibility.config.deprecated_flowchart_html_labels",
+                "merman.compatibility.config.deprecated_external_diagram_loading",
+                "merman.parse.no_diagram",
+                "merman.parse.diagram_parse",
+                "merman.compatibility.unsupported_diagram",
+                "merman.parse.recovered_editor_facts",
+                "merman.config.malformed_front_matter",
+                "merman.config.invalid_directive_json",
+                "merman.config.invalid_front_matter_yaml",
+                "merman.config.invalid_theme_color",
+                "merman.block.width_exceeds_columns",
+                "merman.authoring.flowchart.explicit_direction",
+                "merman.semantic.flowchart.unknown_style_target",
+                "merman.git_graph.duplicate_commit_id"
+              ]
             },
             "default": [],
             "markdownDescription": "Additional lint rules enabled in `merman-lsp`.",
@@ -240,7 +278,25 @@
           "merman.analysis.lint.disable_rules": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "merman.authoring.config.prefer_init_directive",
+                "merman.authoring.config.prefer_frontmatter_config",
+                "merman.compatibility.config.deprecated_flowchart_html_labels",
+                "merman.compatibility.config.deprecated_external_diagram_loading",
+                "merman.parse.no_diagram",
+                "merman.parse.diagram_parse",
+                "merman.compatibility.unsupported_diagram",
+                "merman.parse.recovered_editor_facts",
+                "merman.config.malformed_front_matter",
+                "merman.config.invalid_directive_json",
+                "merman.config.invalid_front_matter_yaml",
+                "merman.config.invalid_theme_color",
+                "merman.block.width_exceeds_columns",
+                "merman.authoring.flowchart.explicit_direction",
+                "merman.semantic.flowchart.unknown_style_target",
+                "merman.git_graph.duplicate_commit_id"
+              ]
             },
             "default": [],
             "markdownDescription": "Lint rules disabled in `merman-lsp`.",
@@ -257,7 +313,25 @@
               ],
               "properties": {
                 "rule_id": {
-                  "type": "string"
+                  "type": "string",
+                  "enum": [
+                    "merman.authoring.config.prefer_init_directive",
+                    "merman.authoring.config.prefer_frontmatter_config",
+                    "merman.compatibility.config.deprecated_flowchart_html_labels",
+                    "merman.compatibility.config.deprecated_external_diagram_loading",
+                    "merman.parse.no_diagram",
+                    "merman.parse.diagram_parse",
+                    "merman.compatibility.unsupported_diagram",
+                    "merman.parse.recovered_editor_facts",
+                    "merman.config.malformed_front_matter",
+                    "merman.config.invalid_directive_json",
+                    "merman.config.invalid_front_matter_yaml",
+                    "merman.config.invalid_theme_color",
+                    "merman.block.width_exceeds_columns",
+                    "merman.authoring.flowchart.explicit_direction",
+                    "merman.semantic.flowchart.unknown_style_target",
+                    "merman.git_graph.duplicate_commit_id"
+                  ]
                 },
                 "severity": {
                   "type": "string",

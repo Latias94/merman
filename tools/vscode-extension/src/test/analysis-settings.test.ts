@@ -125,6 +125,15 @@ describe("analysis settings normalization", () => {
         profile: "core",
       },
     });
+    assert.deepEqual(normalizeAnalysisSettings({
+      ...defaultRawAnalysisSettings(),
+      maxSourceBytes: 0x1_0000_0000,
+      maxDocumentDiagrams: 0x1_0000_0000,
+    }), {
+      lint: {
+        profile: "core",
+      },
+    });
   });
 
   it("preserves the analysis-owned zero document limit", () => {
@@ -150,6 +159,38 @@ describe("analysis settings normalization", () => {
     }), {
       lint: {
         profile: "recommended",
+      },
+    });
+  });
+
+  it("drops rule ids outside the analysis-owned configurable catalog", () => {
+    assert.deepEqual(normalizeAnalysisSettings({
+      ...defaultRawAnalysisSettings(),
+      enableRules: [
+        "merman.authoring.flowchart.explicit_direction",
+        "merman.unknown.rule",
+      ],
+      disableRules: ["merman.resource.source_bytes_exceeded"],
+      ruleSeverities: [
+        {
+          rule_id: "merman.config.invalid_theme_color",
+          severity: "hint",
+        },
+        {
+          rule_id: "merman.internal.panic",
+          severity: "warning",
+        },
+      ],
+    }), {
+      lint: {
+        profile: "core",
+        enable_rules: ["merman.authoring.flowchart.explicit_direction"],
+        rule_severities: [
+          {
+            rule_id: "merman.config.invalid_theme_color",
+            severity: "hint",
+          },
+        ],
       },
     });
   });

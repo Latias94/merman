@@ -1,7 +1,6 @@
 use merman_analysis::{
-    AnalysisConfigChange, AnalysisConfigChangeScope, AnalysisConfigCompatibility,
-    AnalysisConfigContract, AnalysisConfigHostDefaults, AnalysisOptions, AnalysisRuleConfig,
-    AnalysisRuleProfile, DiagnosticSeverity, configurable_rule_descriptors,
+    AnalysisConfigChange, AnalysisConfigContract, AnalysisConfigHostDefaults, AnalysisOptions,
+    AnalysisRuleConfig, AnalysisRuleProfile, DiagnosticSeverity, configurable_rule_descriptors,
 };
 use serde_json::{Value, json};
 
@@ -116,6 +115,16 @@ fn projected_metadata_comes_from_the_analysis_authorities_once() {
         json!(256)
     );
     assert_eq!(
+        options["properties"]["resources"]["properties"]["limits"]["properties"]["max_source_bytes"]
+            ["maximum"],
+        json!(u32::MAX)
+    );
+    assert_eq!(
+        options["properties"]["resources"]["properties"]["limits"]["properties"]["max_document_diagrams"]
+            ["maximum"],
+        json!(u32::MAX)
+    );
+    assert_eq!(
         options["properties"]["lint"]["properties"]["profile"]["enum"],
         json!([null, "core", "recommended", "strict"])
     );
@@ -123,39 +132,6 @@ fn projected_metadata_comes_from_the_analysis_authorities_once() {
         options["properties"]["lint"]["properties"]["enable_rules"]
             .get("uniqueItems")
             .is_none()
-    );
-}
-
-#[test]
-fn typed_field_and_container_contracts_expose_change_and_compatibility_policy() {
-    let contract = AnalysisConfigContract::current();
-
-    for field in contract.fields() {
-        let expected = if field.path.starts_with("lint.") {
-            AnalysisConfigChangeScope::DiagnosticsOnly
-        } else {
-            AnalysisConfigChangeScope::SnapshotAffecting
-        };
-        assert_eq!(field.change_scope, expected, "{}", field.path);
-    }
-
-    let containers = contract
-        .containers()
-        .iter()
-        .map(|container| (container.path, container.compatibility))
-        .collect::<std::collections::BTreeMap<_, _>>();
-    assert_eq!(
-        containers[""],
-        AnalysisConfigCompatibility::ForwardCompatible
-    );
-    assert_eq!(
-        containers["lint"],
-        AnalysisConfigCompatibility::ForwardCompatible
-    );
-    assert_eq!(containers["resources"], AnalysisConfigCompatibility::Strict);
-    assert_eq!(
-        containers["resources.limits"],
-        AnalysisConfigCompatibility::Strict
     );
 }
 
@@ -228,6 +204,32 @@ fn config_cases() -> Vec<ConfigCase> {
                 }
             }),
         ),
+        accepted(
+            "mathematical integer spellings",
+            serde_json::from_str(
+                r#"{
+                    "fixed_local_offset_minutes": 0.0,
+                    "resources": {
+                        "limits": {
+                            "max_source_bytes": 1e0,
+                            "max_document_diagrams": 0.0
+                        }
+                    }
+                }"#,
+            )
+            .unwrap(),
+        ),
+        accepted(
+            "resource maximum",
+            json!({
+                "resources": {
+                    "limits": {
+                        "max_source_bytes": u32::MAX,
+                        "max_document_diagrams": u32::MAX
+                    }
+                }
+            }),
+        ),
         accepted("empty merman wrapper", json!({ "merman": {} })),
         accepted(
             "future-only analysis wrapper",
@@ -274,6 +276,18 @@ fn config_cases() -> Vec<ConfigCase> {
         rejected(
             "source minimum",
             json!({ "resources": { "limits": { "max_source_bytes": 0 } } }),
+        ),
+        rejected(
+            "resource maximum plus one",
+            json!({
+                "resources": {
+                    "limits": { "max_source_bytes": u64::from(u32::MAX) + 1 }
+                }
+            }),
+        ),
+        rejected(
+            "resource huge mathematical integer",
+            serde_json::from_str(r#"{"resources":{"limits":{"max_source_bytes":1e100}}}"#).unwrap(),
         ),
         rejected(
             "profile case",

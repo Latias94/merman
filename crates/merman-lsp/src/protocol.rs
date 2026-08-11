@@ -383,6 +383,26 @@ mod tests {
             Value::Array(vscode_severities.clone()),
             json!(response.severities)
         );
+        for setting_key in [
+            "merman.analysis.lint.enable_rules",
+            "merman.analysis.lint.disable_rules",
+        ] {
+            let rule_ids = vscode_analysis_setting(&package_json, setting_key)
+                .and_then(|setting| setting["items"]["enum"].as_array())
+                .expect("VS Code rule lists must publish configurable analysis rule ids");
+            assert_eq!(
+                Value::Array(rule_ids.clone()),
+                json!(response.configurable_rule_ids)
+            );
+        }
+        let severity_rule_ids =
+            vscode_analysis_setting(&package_json, "merman.analysis.lint.rule_severities")
+                .and_then(|setting| setting["items"]["properties"]["rule_id"]["enum"].as_array())
+                .expect("VS Code severity overrides must publish configurable analysis rule ids");
+        assert_eq!(
+            Value::Array(severity_rule_ids.clone()),
+            json!(response.configurable_rule_ids)
+        );
 
         let analysis_options = &response.schema["$defs"]["analysisOptions"];
         let offset_setting =

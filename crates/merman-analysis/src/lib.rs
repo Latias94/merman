@@ -33,10 +33,8 @@ pub use analyzer::{
 };
 pub use cancellation::{AnalysisCancellationToken, AnalysisCancelled};
 pub use config_contract::{
-    AnalysisConfigChange, AnalysisConfigChangeScope, AnalysisConfigCompatibility,
-    AnalysisConfigContainerDescriptor, AnalysisConfigContract, AnalysisConfigFieldDescriptor,
-    AnalysisConfigHostDefaults, AnalysisConfigRoot, AnalysisConfigSchemaProjection,
-    FIXED_TODAY_SCHEMA_PATTERN,
+    AnalysisConfigChange, AnalysisConfigContract, AnalysisConfigHostDefaults,
+    AnalysisConfigSchemaProjection, FIXED_TODAY_SCHEMA_PATTERN,
 };
 pub use document::{
     DocumentDiagram, DocumentDiagramKind, DocumentSource, FenceDelimiter, FenceDelimiterSpans,

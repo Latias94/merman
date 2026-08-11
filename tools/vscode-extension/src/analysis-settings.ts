@@ -1,5 +1,5 @@
 export interface LintRuleSeverityOverride {
-  rule_id: string;
+  rule_id: AnalysisConfigurableRuleId;
   severity: AnalysisDiagnosticSeverity;
 }
 
@@ -10,9 +10,28 @@ export const ANALYSIS_DIAGNOSTIC_SEVERITIES = [
   "info",
   "hint",
 ] as const;
+export const ANALYSIS_CONFIGURABLE_RULE_IDS = [
+  "merman.authoring.config.prefer_init_directive",
+  "merman.authoring.config.prefer_frontmatter_config",
+  "merman.compatibility.config.deprecated_flowchart_html_labels",
+  "merman.compatibility.config.deprecated_external_diagram_loading",
+  "merman.parse.no_diagram",
+  "merman.parse.diagram_parse",
+  "merman.compatibility.unsupported_diagram",
+  "merman.parse.recovered_editor_facts",
+  "merman.config.malformed_front_matter",
+  "merman.config.invalid_directive_json",
+  "merman.config.invalid_front_matter_yaml",
+  "merman.config.invalid_theme_color",
+  "merman.block.width_exceeds_columns",
+  "merman.authoring.flowchart.explicit_direction",
+  "merman.semantic.flowchart.unknown_style_target",
+  "merman.git_graph.duplicate_commit_id",
+] as const;
 
 export type AnalysisLintProfile = (typeof ANALYSIS_LINT_PROFILES)[number];
 export type AnalysisDiagnosticSeverity = (typeof ANALYSIS_DIAGNOSTIC_SEVERITIES)[number];
+export type AnalysisConfigurableRuleId = (typeof ANALYSIS_CONFIGURABLE_RULE_IDS)[number];
 
 export interface AnalysisSettings {
   fixed_today?: string;
@@ -26,8 +45,8 @@ export interface AnalysisSettings {
   };
   lint?: {
     profile?: AnalysisLintProfile;
-    enable_rules?: string[];
-    disable_rules?: string[];
+    enable_rules?: AnalysisConfigurableRuleId[];
+    disable_rules?: AnalysisConfigurableRuleId[];
     rule_severities?: LintRuleSeverityOverride[];
   };
 }
@@ -52,11 +71,15 @@ export function normalizeAnalysisSettings(raw: RawAnalysisSettings): AnalysisSet
     1439,
   );
   const siteConfig = normalizePlainObject(raw.siteConfig);
-  const maxSourceBytes = normalizeIntegerAtLeast(raw.maxSourceBytes, 1);
-  const maxDocumentDiagrams = normalizeIntegerAtLeast(raw.maxDocumentDiagrams, 0);
+  const maxSourceBytes = normalizeIntegerInRange(raw.maxSourceBytes, 1, 0xffff_ffff);
+  const maxDocumentDiagrams = normalizeIntegerInRange(
+    raw.maxDocumentDiagrams,
+    0,
+    0xffff_ffff,
+  );
   const lintProfile = normalizeLintProfile(raw.lintProfile);
-  const enableRules = sanitizeStringArray(raw.enableRules);
-  const disableRules = sanitizeStringArray(raw.disableRules);
+  const enableRules = sanitizeRuleIds(raw.enableRules);
+  const disableRules = sanitizeRuleIds(raw.disableRules);
   const ruleSeverities = sanitizeRuleSeverities(raw.ruleSeverities);
 
   return compactObject<AnalysisSettings>({
@@ -91,14 +114,15 @@ function normalizePlainObject(value: unknown): Record<string, unknown> | undefin
   return Object.keys(record).length > 0 ? record : undefined;
 }
 
-function sanitizeStringArray(value: unknown[] | undefined): string[] {
+function sanitizeRuleIds(value: unknown[] | undefined): AnalysisConfigurableRuleId[] {
   if (!Array.isArray(value)) {
     return [];
   }
+  const ruleIds = new Set<string>(ANALYSIS_CONFIGURABLE_RULE_IDS);
   return value
     .filter((entry): entry is string => typeof entry === "string")
     .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
+    .filter((entry): entry is AnalysisConfigurableRuleId => ruleIds.has(entry));
 }
 
 function sanitizeRuleSeverities(value: unknown[] | undefined): LintRuleSeverityOverride[] {
@@ -106,18 +130,19 @@ function sanitizeRuleSeverities(value: unknown[] | undefined): LintRuleSeverityO
     return [];
   }
   const severities = new Set<string>(ANALYSIS_DIAGNOSTIC_SEVERITIES);
+  const ruleIds = new Set<string>(ANALYSIS_CONFIGURABLE_RULE_IDS);
   return value.flatMap((entry) => {
     if (!entry || typeof entry !== "object") {
       return [];
     }
     const ruleId = normalizeOptionalString((entry as Record<string, unknown>).rule_id);
     const severity = normalizeOptionalString((entry as Record<string, unknown>).severity);
-    if (!ruleId || !severity || !severities.has(severity)) {
+    if (!ruleId || !ruleIds.has(ruleId) || !severity || !severities.has(severity)) {
       return [];
     }
     return [
       {
-        rule_id: ruleId,
+        rule_id: ruleId as AnalysisConfigurableRuleId,
         severity: severity as LintRuleSeverityOverride["severity"],
       },
     ];
@@ -185,12 +210,6 @@ function normalizeIntegerInRange(
     Number.isInteger(value) &&
     value >= minimum &&
     value <= maximum
-    ? value
-    : undefined;
-}
-
-function normalizeIntegerAtLeast(value: unknown, minimum: number): number | undefined {
-  return typeof value === "number" && Number.isInteger(value) && value >= minimum
     ? value
     : undefined;
 }

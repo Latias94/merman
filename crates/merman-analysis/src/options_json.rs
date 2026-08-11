@@ -28,10 +28,8 @@ pub struct AnalysisOptionsJson {
 }
 
 /// Strict resource-limit JSON for callers validating the versioned nested schema directly.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct ResourceOptionsJson {
-    #[serde(default)]
     pub limits: BTreeMap<String, usize>,
 }
 
@@ -67,6 +65,16 @@ impl<'de> Deserialize<'de> for AnalysisOptionsJson {
         AnalysisConfigContract::current()
             .decode_json(&value)
             .map_err(serde::de::Error::custom)
+    }
+}
+
+impl<'de> Deserialize<'de> for ResourceOptionsJson {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        crate::config_contract::decode_resource_options(&value).map_err(serde::de::Error::custom)
     }
 }
 
@@ -164,9 +172,17 @@ impl AnalysisOptionsJson {
         let minimum_value = AnalysisConfigContract::current()
             .resource_limit_minimum(limit_id)
             .expect("analysis resource limit id must be validated by its owner descriptor");
+        let maximum_value = AnalysisConfigContract::current()
+            .resource_limit_maximum(limit_id)
+            .expect("analysis resource limit id must be validated by its owner descriptor");
         if limit.is_some_and(|value| value < minimum_value) {
             return Err(AnalysisOptionsJsonError::new(format!(
                 "resources.limits.{limit_id} must be at least {minimum_value}"
+            )));
+        }
+        if limit.is_some_and(|value| value > maximum_value) {
+            return Err(AnalysisOptionsJsonError::new(format!(
+                "resources.limits.{limit_id} must be at most {maximum_value}"
             )));
         }
         Ok(limit)
