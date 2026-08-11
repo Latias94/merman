@@ -301,7 +301,7 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
         return _ALL_OWNERS, f"shared repository owner changed: {path}", True
 
     if path.startswith(
-        "docs/workstreams/web-wasm-playground/editor-artifact-receipt-v"
+        "playground/editor-artifact-receipt-v"
     ) and path.endswith(".json"):
         return (
             frozenset({"hygiene", "web"}),

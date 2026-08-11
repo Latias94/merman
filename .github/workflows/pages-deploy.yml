@@ -16,7 +16,6 @@ on:
       - "THIRD_PARTY_LICENSES/**"
       - "crates/**"
       - "docs/release/WASM_SIZE_BUDGETS.json"
-      - "docs/workstreams/web-wasm-playground/editor-artifact-receipt-v*.json"
       - "platforms/web/**"
       - "playground/**"
       - "scripts/check-svg-safety-policy.mjs"

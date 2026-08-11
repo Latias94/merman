@@ -17,7 +17,7 @@ export const EDITOR_ARTIFACT_SELECTION_INPUT_SCHEMA_VERSION = 4;
 export const DEFAULT_EDITOR_ARTIFACT_RECEIPT_PATH =
   "target/playground/editor-artifact-measurement/receipt-v2.json";
 export const CHECKED_EDITOR_ARTIFACT_RECEIPT_PATH =
-  "docs/workstreams/web-wasm-playground/editor-artifact-receipt-v2.json";
+  "playground/editor-artifact-receipt-v2.json";
 
 export const EDITOR_ARTIFACT_VARIANTS = Object.freeze(["full", "editor"]);
 export const EDITOR_ARTIFACT_MODES = Object.freeze(["cold", "warm"]);

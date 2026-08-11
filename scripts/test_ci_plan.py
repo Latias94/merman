@@ -141,7 +141,7 @@ class PlannerTests(unittest.TestCase):
                 "vscode",
                 "web",
             },
-            "docs/workstreams/web-wasm-playground/editor-artifact-receipt-v2.json": {
+            "playground/editor-artifact-receipt-v2.json": {
                 "hygiene",
                 "web",
             },

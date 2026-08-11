@@ -299,7 +299,7 @@ test("creates an owned authoritative receipt", () => {
   );
   assert.equal(
     CHECKED_EDITOR_ARTIFACT_RECEIPT_PATH,
-    "docs/workstreams/web-wasm-playground/editor-artifact-receipt-v2.json",
+    "playground/editor-artifact-receipt-v2.json",
   );
 });
 
