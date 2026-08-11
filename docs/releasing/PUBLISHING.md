@@ -38,9 +38,12 @@ are ordered lexically only within a batch; this document does not restate the li
 
 ## Dry runs
 
-- `cargo publish -p <crate> --dry-run`
+- `cargo publish -p <crate> --locked --dry-run --registry crates-io`
 - If your working tree is not clean, add:
   - `--allow-dirty`
 
 Important: dry runs for crates that depend on unpublished workspace crates will fail until those
-dependencies exist on crates.io. Use the derived order for end-to-end dry-run verification.
+dependencies exist on crates.io. Use the derived batches for local verification. The credentialed
+release workflow additionally records each prepared `.crate` checksum and reconciles the complete
+batch against crates.io before any dependent batch starts; local dry runs are not publication
+evidence.

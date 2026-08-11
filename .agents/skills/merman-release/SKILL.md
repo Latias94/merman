@@ -63,7 +63,13 @@ Treat `Cargo.toml` `[workspace.package].version` as the workspace release author
 
 Run the version projection only after the maintainer selects the next workspace version. A channel-only npm alpha test may reuse the current workspace prerelease version from a newer reviewed commit without selecting the next workspace release; keep the root changelog at `Unreleased` and leave workspace versions unchanged.
 
-Do not hand-edit generated version projections. If the command is interrupted, preserve the partial diff and rerun the same command; the workspace authority is written last.
+Run `release-version.py set` only from a clean linked release worktree, never the primary checkout.
+Use the exact npm version pinned by `playground/package.json`; the command rejects tool drift. Cargo,
+npm, and platform owners prepare their manifests and locks in disposable state, after which the
+coordinator validates the full projection and source preimage, checks one binary patch, and applies
+that patch once. Preparation and pre-apply failures leave the caller unchanged. Do not hand-edit
+generated projections or copy partial files from the disposable worktree; fix the owner failure and
+rerun the same command.
 
 README files are ordinary documentation and are not generated version projections. Before immutable preflight, perform a release-state documentation pass across the root README, every package README shipped by an authorized surface, and the closest installation guides:
 
@@ -94,6 +100,20 @@ Keep release smoke tests strict about user-observable behavior and loose about v
 Resolve the intended commit to a 40-character `SOURCE_SHA`. Use the exact preflight dispatch from `docs/release/RELEASING.md`, passing that immutable SHA instead of a branch. Wait for every job and diagnose failures before tagging. A local build is not a substitute for preflight.
 
 Preparation is complete when version projections and release notes are committed, the release-ready check passes, preflight is green for the exact version and `SOURCE_SHA`, and every tag-triggered package fits the current registry upload constraints. Treat an exit-zero package dry-run that reports a server-enforced size or content hint as unresolved release evidence.
+
+For crates.io, inspect the derived topological batches before shipping. The credentialed workflow
+must emit a prepared receipt for every batch, and its result receipt must reach `complete` with each
+registry checksum equal to the locally prepared `.crate` digest before the next batch begins. The
+receipt schema is owned by `distribution/crates-io/receipt-schema-v1.json`; do not generalize it to
+other registries.
+
+Within one crates.io batch, every missing member must complete `cargo publish --dry-run --locked`
+before any member is uploaded. A later dry-run failure must therefore leave the whole batch
+unpublished.
+
+For Flutter, keep the package archive and its source/tree/version/digest receipt together. The
+pub.dev job must verify and safely extract that archive with the trusted workflow revision before
+configuring Dart OIDC credentials; never replace this boundary with direct `tar -x` extraction.
 
 ### npm Package Groups
 
@@ -126,6 +146,8 @@ Use direct GitHub, registry, and artifact evidence documented in `docs/release/R
 
 - the GitHub Release state and assets match the channel and configured target matrix;
 - crates.io, npm, PyPI, and pub.dev show only the surfaces that were actually published;
+- every crates.io batch result receipt is `complete`, with no `pending_recovery` or `mismatch`
+  state and no dependent batch started before its predecessors matched;
 - separately authorized Android, Apple, Web, VS Code, and Homebrew outputs match their declared channel semantics;
 - `main` remains green after any release-workflow repair.
 
@@ -161,7 +183,17 @@ Classify the failure before changing anything:
 
 - Source or manifest failure before publication: fix source, rerun preflight, and use a new tag only if nothing external accepted the broken version.
 - Workflow-only failure after tagging: fix the workflow on `main`, then rerun the authorized workflow against `refs/tags/<tag>` so provenance remains anchored to the release.
-- Partial registry publication: rerun only idempotent or unfinished surfaces; never republish a version a registry accepted.
+- Partial crates.io publication: retain the receipt artifact and rerun from the exact same immutable
+  source. A rerun must download the prior attempt receipts; a new workflow run supplies the prior
+  run id through `recovery_run_id`. Deterministic re-packaging must match the prior source, tree,
+  toolchain, plan, manifest, artifact identities, and every existing registry checksum; matching
+  members are skipped and missing members continue only after the current batch barrier completes.
+- A crates.io `pending_recovery` result means visibility or response status is unresolved. Wait and
+  rerun the same workflow; do not issue a second manual publish attempt while acceptance is unknown.
+- A crates.io `mismatch` result is an incident requiring an explicit maintainer decision. Never
+  auto-yank, silently resume, or publish dependent batches.
+- Partial publication on other registries: rerun only idempotent or unfinished surfaces; never
+  republish a version a registry accepted.
 - Any accepted external publication makes the release tag immutable unless the maintainer explicitly accepts the provenance risk of changing it.
 
 Diagnosis and local fixes are `prepare` work. Rerunning a publisher, uploading an asset, changing a tag, or mutating a registry requires fresh `ship` authorization.
@@ -169,6 +201,9 @@ Diagnosis and local fixes are `prepare` work. Rerunning a publisher, uploading a
 ## Known Traps
 
 - `cargo pkgid` may print versions with either `#` or `@`.
+- `cargo publish` re-packages from source; crates.io integrity is therefore proven by deterministic
+  local `.crate` preparation plus the registry checksum, not by claiming Cargo uploaded an arbitrary
+  prebuilt file.
 - GitHub Release jobs without checkout need `GH_REPO`.
 - cargo-dist workflow changes require `dist generate --check`.
 - `npm pack --json` output must not be contaminated by lifecycle logs.

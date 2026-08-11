@@ -119,22 +119,9 @@ jobs:
         id: android-toolchain
         run: echo "ndk=$(python3 platforms/android/build-android.py --print-version ndk)" >> "$GITHUB_OUTPUT"
 
-      - name: Use validated release metadata
-        id: version
-        env:
-          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
-          VERSION: ${{ needs.validate-inputs.outputs.version }}
-        run: |
-          set -euo pipefail
-          {
-            printf 'tag=%s\n' "$RELEASE_TAG"
-            printf 'version=%s\n' "$VERSION"
-          } >> "$GITHUB_OUTPUT"
-          echo "Tag version: $VERSION"
-
       - name: Verify release version projections match tag
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
@@ -219,17 +206,27 @@ jobs:
         run: python3 scripts/sync-release-legal-materials.py --check
 
       - name: Package Flutter release artifact
+        env:
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          SOURCE_TREE: ${{ needs.validate-inputs.outputs.source_tree }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: |
           set -euo pipefail
-          tar -czf "$RUNNER_TEMP/merman-flutter-package.tar.gz" -C platforms/flutter .
-          tar -tzf "$RUNNER_TEMP/merman-flutter-package.tar.gz" | grep -Fx './LICENSE'
-          tar -tzf "$RUNNER_TEMP/merman-flutter-package.tar.gz" | grep -Fx './THIRD_PARTY_NOTICES.md'
+          python3 scripts/flutter_release_archive.py pack \
+            --package-root platforms/flutter \
+            --archive "$RUNNER_TEMP/merman-flutter-package.tar.gz" \
+            --receipt "$RUNNER_TEMP/merman-flutter-package.receipt.json" \
+            --source-sha "$SOURCE_SHA" \
+            --source-tree "$SOURCE_TREE" \
+            --version "$VERSION"
 
       - name: Upload Flutter package artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: merman-flutter-package
-          path: ${{ runner.temp }}/merman-flutter-package.tar.gz
+          path: |
+            ${{ runner.temp }}/merman-flutter-package.tar.gz
+            ${{ runner.temp }}/merman-flutter-package.receipt.json
 
   pubdev_version:
     needs:
@@ -279,8 +276,13 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - name: Setup Dart with pub.dev OIDC credentials
-        uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260 # v1
+      # The downloaded archive is data only. Run extraction from the trusted workflow revision.
+      - name: Checkout trusted Flutter release verifier
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: trusted
+          persist-credentials: false
 
       - name: Download Flutter package artifact
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
@@ -288,11 +290,23 @@ jobs:
           name: merman-flutter-package
           path: target/flutter-package
 
-      - name: Extract Flutter package artifact
+      - name: Verify and extract Flutter package artifact
+        env:
+          SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
+          SOURCE_TREE: ${{ needs.validate-inputs.outputs.source_tree }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: |
           set -euo pipefail
-          mkdir -p target/flutter-publish
-          tar -xzf target/flutter-package/merman-flutter-package.tar.gz -C target/flutter-publish
+          python3 trusted/scripts/flutter_release_archive.py extract \
+            --archive target/flutter-package/merman-flutter-package.tar.gz \
+            --receipt target/flutter-package/merman-flutter-package.receipt.json \
+            --destination target/flutter-publish \
+            --source-sha "$SOURCE_SHA" \
+            --source-tree "$SOURCE_TREE" \
+            --version "$VERSION"
+
+      - name: Setup Dart with pub.dev OIDC credentials
+        uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260 # v1
 
       - name: Publish to pub.dev
         working-directory: target/flutter-publish

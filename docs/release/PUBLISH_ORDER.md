@@ -120,8 +120,9 @@ cargo nextest run -p merman-bindings-core -p merman-ffi -p merman-uniffi
 ```
 
 For crates.io packaging, prefer publish dry-runs once registry dependencies are available. The
-release workflow runs this gate automatically for every unpublished crate immediately before the
-real publish, so it also covers `merman-bindings-core`, `merman-ffi`, and `merman-uniffi`.
+release workflow packages every member of a topological batch first and records the exact `.crate`
+digest. It then requires all missing members in that batch to pass this gate before the first real
+publish attempt, so it also covers `merman-bindings-core`, `merman-ffi`, and `merman-uniffi`.
 
 ```bash
 cargo publish -p merman-render --locked --dry-run --registry crates-io
@@ -133,6 +134,16 @@ cargo publish -p merman-uniffi --locked --dry-run --registry crates-io
 
 Before upstream crates for the same release are visible in crates.io, keep using `cargo package
 --list` only as a file-list check. It does not replace publish dry-run verification.
+
+The credentialed workflow writes `batch-NNN-prepared.json` before each batch and
+`batch-NNN-result.json` after registry reconciliation. Both conform to
+`distribution/crates-io/receipt-schema-v1.json` and bind the source commit/tree, Cargo and Rust
+toolchains, publish graph, manifest bytes, `.crate` bytes, and observed registry checksum. A batch
+result of `pending_recovery` or `mismatch` blocks every dependent batch. Recovery re-packages the
+same source and skips only exact checksum matches. A rerun consumes the prior attempt artifact; a
+new manual recovery supplies its prior workflow id through `recovery_run_id`. Source, tree,
+toolchain, publish plan, manifest, and `.crate` identity must all agree before recovery continues,
+and the publisher never yanks automatically.
 
 ## Pre-Alpha.3 Package Evidence Snapshot
 
@@ -166,5 +177,6 @@ the owning artifact release directly for current availability; do not infer it f
 ## Publish Guardrail
 
 Do not run `cargo publish` as part of an implementation lane unless the release operator explicitly
-requests it. This document explains the policy and gates; `tools/publish.py` computes the current
-order and is the executable consumer.
+requests it. `tools/publish.py` computes the current order, and `release-crates.yml` is the normal
+caller of `scripts/crates_io_release.py publish-receipted`. Do not invoke that command locally merely
+to test it; focused unit tests own response-loss, checksum-mismatch, and partial-recovery behavior.

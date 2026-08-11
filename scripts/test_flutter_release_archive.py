@@ -1,0 +1,331 @@
+#!/usr/bin/env python3
+"""Tests for the Flutter release archive owner boundary."""
+
+from __future__ import annotations
+
+import hashlib
+import io
+import json
+from pathlib import Path
+import sys
+import tarfile
+import tempfile
+import unittest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from flutter_release_archive import (
+    ARCHIVE_NAME,
+    DEFAULT_LIMITS,
+    PACKAGE_NAME,
+    RECEIPT_NAME,
+    SCHEMA_VERSION,
+    ArchiveLimits,
+    FlutterReleaseArchiveError,
+    create_archive,
+    verify_and_extract,
+)
+
+
+SOURCE_SHA = "1" * 40
+SOURCE_TREE = "2" * 40
+VERSION = "0.8.0-alpha.5"
+
+
+def raw_member(
+    name: str,
+    data: bytes = b"",
+    member_type: bytes = tarfile.REGTYPE,
+    linkname: str = "",
+) -> tuple[tarfile.TarInfo, bytes]:
+    info = tarfile.TarInfo(name)
+    info.type = member_type
+    info.mode = 0o644
+    info.size = len(data) if info.isreg() else 0
+    info.linkname = linkname
+    return info, data
+
+
+class FlutterReleaseArchiveTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary_directory.name)
+
+    def tearDown(self) -> None:
+        self.temporary_directory.cleanup()
+
+    def test_pack_and_extract_bind_identity_and_ignore_transient_files(self) -> None:
+        root = self.case("roundtrip")
+        package_root = root / "package"
+        self.write_package(package_root)
+        (package_root / ".dart_tool").mkdir()
+        (package_root / ".dart_tool" / "package_config.json").write_text(
+            "/private/runner/path\n", encoding="utf-8"
+        )
+        (package_root / "tool" / "__pycache__").mkdir(parents=True)
+        (package_root / "tool" / "__pycache__" / "owner.pyc").write_bytes(b"cache")
+
+        archive = root / ARCHIVE_NAME
+        receipt = root / RECEIPT_NAME
+        created = create_archive(
+            package_root,
+            archive,
+            receipt,
+            source_sha=SOURCE_SHA,
+            source_tree=SOURCE_TREE,
+            version=VERSION,
+        )
+        destination = root / "publish"
+        verified = self.verify(archive, receipt, destination)
+
+        self.assertEqual(created, verified)
+        self.assertEqual(
+            (destination / "lib" / "merman.dart").read_text(encoding="utf-8"),
+            "library merman;\n",
+        )
+        self.assertFalse((destination / ".dart_tool").exists())
+        self.assertFalse((destination / "tool" / "__pycache__").exists())
+
+    def test_receipt_binds_source_tree_version_and_archive_digest(self) -> None:
+        root = self.case("identity")
+        archive, receipt = self.create_valid_artifact(root)
+        mismatches = (
+            ("source_sha", "3" * 40, SOURCE_TREE, VERSION),
+            ("source_tree", SOURCE_SHA, "4" * 40, VERSION),
+            ("version", SOURCE_SHA, SOURCE_TREE, "0.8.0-alpha.6"),
+        )
+        for label, source_sha, source_tree, version in mismatches:
+            with self.subTest(label=label), self.assertRaisesRegex(
+                FlutterReleaseArchiveError, "release identity"
+            ):
+                verify_and_extract(
+                    archive,
+                    receipt,
+                    root / f"publish-{label}",
+                    expected_source_sha=source_sha,
+                    expected_source_tree=source_tree,
+                    expected_version=version,
+                )
+
+        with archive.open("ab") as stream:
+            stream.write(b"tampered")
+        with self.assertRaisesRegex(FlutterReleaseArchiveError, "digest"):
+            self.verify(archive, receipt, root / "publish-digest")
+
+    def test_receipt_read_is_bounded_and_duplicate_keys_are_rejected(self) -> None:
+        root = self.case("large-receipt")
+        archive, receipt = self.create_valid_artifact(root)
+        receipt.write_bytes(b"{" + b" " * (32 * 1024) + b"}")
+        with self.assertRaisesRegex(FlutterReleaseArchiveError, "receipt exceeds"):
+            self.verify(archive, receipt, root / "publish")
+
+        root = self.case("duplicate-receipt")
+        archive, receipt = self.create_valid_artifact(root)
+        receipt.write_text('{"schema_version": 1, "schema_version": 1}\n', encoding="utf-8")
+        with self.assertRaisesRegex(FlutterReleaseArchiveError, "duplicate key"):
+            self.verify(archive, receipt, root / "publish")
+
+    def test_rejects_absolute_and_traversal_paths(self) -> None:
+        for index, path in enumerate(("/tmp/escape", "../escape", "lib/../../escape", "lib\\escape")):
+            with self.subTest(path=path):
+                self.assert_raw_rejected(
+                    f"unsafe-path-{index}",
+                    [raw_member(path, b"escape")],
+                    "absolute|traversal|backslash",
+                )
+
+    def test_rejects_links_devices_and_other_non_regular_members(self) -> None:
+        attacks = (
+            ("link", tarfile.SYMTYPE, "pubspec.yaml"),
+            ("hard-link", tarfile.LNKTYPE, "pubspec.yaml"),
+            ("device", tarfile.CHRTYPE, ""),
+            ("fifo", tarfile.FIFOTYPE, ""),
+        )
+        for name, member_type, linkname in attacks:
+            with self.subTest(member_type=member_type):
+                self.assert_raw_rejected(
+                    f"member-{name}",
+                    [raw_member(name, member_type=member_type, linkname=linkname)],
+                    "not a regular file",
+                )
+
+    def test_rejects_duplicate_portable_collision_and_file_ancestor(self) -> None:
+        attacks = (
+            (
+                "duplicate",
+                [raw_member("lib/repeated", b"one"), raw_member("lib/repeated", b"two")],
+                "duplicate",
+            ),
+            (
+                "case-collision",
+                [raw_member("lib/Foo.dart", b"one"), raw_member("lib/foo.dart", b"two")],
+                "portable path collision",
+            ),
+            (
+                "unicode-collision",
+                [
+                    raw_member("lib/caf\N{LATIN SMALL LETTER E WITH ACUTE}.dart", b"one"),
+                    raw_member("lib/cafe\N{COMBINING ACUTE ACCENT}.dart", b"two"),
+                ],
+                "portable path collision",
+            ),
+            (
+                "ancestor",
+                [raw_member("lib", b"file"), raw_member("lib/child.dart", b"child")],
+                "ancestor",
+            ),
+        )
+        for name, additions, pattern in attacks:
+            with self.subTest(name=name):
+                self.assert_raw_rejected(name, additions, pattern)
+
+    def test_rejects_member_and_member_count_budget_overruns(self) -> None:
+        self.assert_raw_rejected(
+            "member-size",
+            [raw_member("large.bin", b"x" * 128)],
+            "size budget",
+            limits=ArchiveLimits(max_member_bytes=64),
+        )
+        self.assert_raw_rejected(
+            "member-count",
+            [raw_member("extra.txt", b"x")],
+            "member-count budget",
+            limits=ArchiveLimits(max_members=3),
+        )
+
+    def test_rejects_oversized_pax_metadata_before_member_admission(self) -> None:
+        self.assert_raw_rejected(
+            "pax-metadata",
+            [],
+            "decompressed tar",
+            limits=ArchiveLimits(
+                max_total_bytes=4096,
+                max_metadata_bytes=20 * 1024,
+            ),
+            pax_comment="x" * (64 * 1024),
+        )
+
+    def test_refuses_to_write_into_an_existing_destination(self) -> None:
+        root = self.case("existing-destination")
+        archive, receipt = self.create_valid_artifact(root)
+        destination = root / "publish"
+        destination.mkdir()
+        sentinel = destination / "sentinel"
+        sentinel.write_text("keep", encoding="utf-8")
+
+        with self.assertRaisesRegex(FlutterReleaseArchiveError, "must not already exist"):
+            self.verify(archive, receipt, destination)
+        self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep")
+
+    def test_rejects_archive_pubspec_version_drift(self) -> None:
+        self.assert_raw_rejected(
+            "pubspec-drift",
+            [],
+            "version does not match",
+            pubspec_version="0.8.0-alpha.6",
+        )
+
+    def case(self, name: str) -> Path:
+        root = self.root / name
+        root.mkdir()
+        return root
+
+    @staticmethod
+    def write_package(package_root: Path) -> None:
+        (package_root / "lib").mkdir(parents=True)
+        (package_root / "pubspec.yaml").write_text(
+            f"name: {PACKAGE_NAME}\nversion: {VERSION}\n", encoding="utf-8"
+        )
+        (package_root / "LICENSE").write_text("license\n", encoding="utf-8")
+        (package_root / "THIRD_PARTY_NOTICES.md").write_text("notices\n", encoding="utf-8")
+        (package_root / "lib" / "merman.dart").write_text(
+            "library merman;\n", encoding="utf-8"
+        )
+
+    def create_valid_artifact(self, root: Path) -> tuple[Path, Path]:
+        package_root = root / "package"
+        self.write_package(package_root)
+        archive = root / ARCHIVE_NAME
+        receipt = root / RECEIPT_NAME
+        create_archive(
+            package_root,
+            archive,
+            receipt,
+            source_sha=SOURCE_SHA,
+            source_tree=SOURCE_TREE,
+            version=VERSION,
+        )
+        return archive, receipt
+
+    @staticmethod
+    def write_raw_artifact(
+        root: Path,
+        additions: list[tuple[tarfile.TarInfo, bytes]],
+        *,
+        pubspec_version: str = VERSION,
+        pax_comment: str | None = None,
+    ) -> tuple[Path, Path]:
+        archive_path = root / ARCHIVE_NAME
+        receipt_path = root / RECEIPT_NAME
+        members = [
+            raw_member(
+                "pubspec.yaml",
+                f"name: {PACKAGE_NAME}\nversion: {pubspec_version}\n".encode(),
+            ),
+            raw_member("LICENSE", b"license\n"),
+            raw_member("THIRD_PARTY_NOTICES.md", b"notices\n"),
+            *additions,
+        ]
+        with tarfile.open(archive_path, "w:gz", format=tarfile.PAX_FORMAT) as archive:
+            for info, data in members:
+                if pax_comment is not None and info.name == "pubspec.yaml":
+                    info.pax_headers["comment"] = pax_comment
+                archive.addfile(info, io.BytesIO(data) if info.size else None)
+
+        archive_bytes = archive_path.read_bytes()
+        receipt = {
+            "archive_sha256": hashlib.sha256(archive_bytes).hexdigest(),
+            "package": PACKAGE_NAME,
+            "schema_version": SCHEMA_VERSION,
+            "source_sha": SOURCE_SHA,
+            "source_tree": SOURCE_TREE,
+            "version": VERSION,
+        }
+        receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+        return archive_path, receipt_path
+
+    def assert_raw_rejected(
+        self,
+        name: str,
+        additions: list[tuple[tarfile.TarInfo, bytes]],
+        pattern: str,
+        *,
+        limits: ArchiveLimits = DEFAULT_LIMITS,
+        **archive_options: object,
+    ) -> None:
+        root = self.case(name)
+        archive, receipt = self.write_raw_artifact(root, additions, **archive_options)
+        with self.assertRaisesRegex(FlutterReleaseArchiveError, pattern):
+            self.verify(archive, receipt, root / "publish", limits=limits)
+
+    @staticmethod
+    def verify(
+        archive: Path,
+        receipt: Path,
+        destination: Path,
+        *,
+        limits: ArchiveLimits = DEFAULT_LIMITS,
+    ) -> dict[str, object]:
+        return verify_and_extract(
+            archive,
+            receipt,
+            destination,
+            expected_source_sha=SOURCE_SHA,
+            expected_source_tree=SOURCE_TREE,
+            expected_version=VERSION,
+            limits=limits,
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

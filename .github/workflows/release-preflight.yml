@@ -213,49 +213,7 @@ jobs:
         run: python3 scripts/verify_crate_package_legal_materials.py
 
       - name: Verify registry-independent crate dry-runs
-        run: |
-          set -euo pipefail
-
-          crate_version_available() {
-            local crate="$1"
-            local version="$2"
-            local tmpdir="${RUNNER_TEMP:-/tmp}"
-
-            (
-              cd "$tmpdir"
-              cargo info "$crate@$version" --registry crates-io >/dev/null 2>&1
-            )
-          }
-
-          workspace_crate_version() {
-            local crate="$1"
-
-            cargo pkgid -p "$crate" | sed -E 's/.*[#@]//'
-          }
-
-          publish_dry_run() {
-            local crate="$1"
-            local crate_version="$2"
-
-            if crate_version_available "$crate" "$crate_version"; then
-              echo "Skipping dry-run for $crate $crate_version because it is already published"
-              return 0
-            fi
-
-            cargo publish -p "$crate" --locked --dry-run --registry crates-io
-          }
-
-          mapfile -t registry_independent_crates < <(
-            python3 tools/publish.py --list-crates-io-initial-batch
-          )
-          if [ "${#registry_independent_crates[@]}" -eq 0 ]; then
-            echo "::error::Cargo metadata produced an empty initial crates.io publish batch"
-            exit 1
-          fi
-
-          for crate in "${registry_independent_crates[@]}"; do
-            publish_dry_run "$crate" "$(workspace_crate_version "$crate")"
-          done
+        run: python3 scripts/crates_io_release.py preflight-initial
 
       - name: Upload package lists
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

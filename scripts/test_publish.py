@@ -2,21 +2,15 @@
 """Unit tests for crates.io publish helper metadata handling."""
 
 import contextlib
-import importlib.util
 import io
 import sys
 import unittest
 from pathlib import Path
 
+from tools import publish as publish_tool
+
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE_PATH = ROOT / "tools" / "publish.py"
-SPEC = importlib.util.spec_from_file_location("publish_tool", MODULE_PATH)
-assert SPEC is not None
-publish_tool = importlib.util.module_from_spec(SPEC)
-assert SPEC.loader is not None
-sys.modules[SPEC.name] = publish_tool
-SPEC.loader.exec_module(publish_tool)
 
 
 class PublishMetadataTests(unittest.TestCase):
@@ -36,7 +30,7 @@ class PublishMetadataTests(unittest.TestCase):
             package("merman-core"),
         )
 
-        packages = publish_tool.workspace_package_infos(metadata)
+        packages = publish_tool.crates_io_publish_plan(metadata).packages
 
         self.assertNotIn("xtask", packages)
         self.assertEqual(packages["merman-core"].version, "1.0.0")
@@ -81,117 +75,6 @@ class PublishMetadataTests(unittest.TestCase):
             publish_tool.crates_io_publish_order(metadata),
             ("default-publish", "explicit-crates-io"),
         )
-
-    def test_no_verify_does_not_apply_to_preflight_dry_run(self) -> None:
-        commands: list[list[str]] = []
-        original_argv = sys.argv
-        original_cargo_metadata = publish_tool.cargo_metadata
-        original_git_is_clean = publish_tool.git_is_clean
-        original_require_tool = publish_tool.require_tool
-        original_run_command = publish_tool.run_command
-        try:
-            sys.argv = [
-                "publish.py",
-                "--crates",
-                "merman-core",
-                "--skip-xtask-verify",
-                "--allow-dirty",
-                "--yes",
-                "--preflight-publish-dry-run",
-                "--no-verify",
-                "--no-check-published",
-                "--wait",
-                "0",
-            ]
-            publish_tool.cargo_metadata = lambda _repo_root, **_kwargs: workspace_metadata(
-                package("merman-core")
-            )
-            publish_tool.git_is_clean = lambda _repo_root: True
-            publish_tool.require_tool = lambda _name: None
-
-            def run_command(cmd, **_kwargs):
-                commands.append(list(cmd))
-                return publish_tool.subprocess.CompletedProcess(args=cmd, returncode=0)
-
-            publish_tool.run_command = run_command
-
-            stdout = io.StringIO()
-            stderr = io.StringIO()
-            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-                self.assertEqual(publish_tool.main(), 0)
-        finally:
-            sys.argv = original_argv
-            publish_tool.cargo_metadata = original_cargo_metadata
-            publish_tool.git_is_clean = original_git_is_clean
-            publish_tool.require_tool = original_require_tool
-            publish_tool.run_command = original_run_command
-
-        self.assertIn(["cargo", "publish", "-p", "merman-core", "--dry-run"], commands)
-        self.assertIn(["cargo", "publish", "-p", "merman-core", "--no-verify"], commands)
-        preflight = commands[0]
-        upload = commands[1]
-        self.assertEqual(preflight, ["cargo", "publish", "-p", "merman-core", "--dry-run"])
-        self.assertEqual(upload, ["cargo", "publish", "-p", "merman-core", "--no-verify"])
-
-    def test_preflight_only_skips_crates_with_unpublished_internal_deps(self) -> None:
-        commands: list[list[str]] = []
-        published_checks: list[tuple[str, str]] = []
-        original_argv = sys.argv
-        original_cargo_metadata = publish_tool.cargo_metadata
-        original_git_is_clean = publish_tool.git_is_clean
-        original_require_tool = publish_tool.require_tool
-        original_run_command = publish_tool.run_command
-        original_check_crate_published = publish_tool.check_crate_published
-        try:
-            sys.argv = [
-                "publish.py",
-                "--crates",
-                "merman",
-                "--skip-xtask-verify",
-                "--allow-dirty",
-                "--yes",
-                "--preflight-only",
-                "--preflight-publish-dry-run",
-                "--wait",
-                "0",
-            ]
-            publish_tool.cargo_metadata = lambda _repo_root, **_kwargs: workspace_metadata(
-                package("merman-core"),
-                package("merman", dependency("merman-core")),
-            )
-            publish_tool.git_is_clean = lambda _repo_root: True
-            publish_tool.require_tool = lambda _name: None
-
-            def run_command(cmd, **_kwargs):
-                commands.append(list(cmd))
-                return publish_tool.subprocess.CompletedProcess(args=cmd, returncode=0)
-
-            def check_crate_published(crate_name: str, version: str) -> bool:
-                published_checks.append((crate_name, version))
-                return False
-
-            publish_tool.run_command = run_command
-            publish_tool.check_crate_published = check_crate_published
-
-            stdout = io.StringIO()
-            stderr = io.StringIO()
-            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-                self.assertEqual(publish_tool.main(), 0)
-        finally:
-            sys.argv = original_argv
-            publish_tool.cargo_metadata = original_cargo_metadata
-            publish_tool.git_is_clean = original_git_is_clean
-            publish_tool.require_tool = original_require_tool
-            publish_tool.run_command = original_run_command
-            publish_tool.check_crate_published = original_check_crate_published
-
-        self.assertEqual(published_checks, [("merman-core", "1.0.0")])
-        self.assertEqual(commands, [])
-        self.assertIn(
-            "Skipping preflight: internal workspace dependencies are not published yet: merman-core v1.0.0",
-            stdout.getvalue(),
-        )
-        self.assertIn("Skipped 1 crate(s): merman", stdout.getvalue())
 
 
 class PublishGraphTests(unittest.TestCase):

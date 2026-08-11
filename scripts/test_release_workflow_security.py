@@ -128,6 +128,20 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
                     if not uses.startswith("./"):
                         self.assertRegex(uses, PINNED_ACTION)
 
+    def test_crates_publish_uses_trusted_receipt_operator_and_immutable_source(self) -> None:
+        text = read(WORKFLOW_ROOT / "release-crates.yml")
+        self.assertIn("ref: ${{ github.workflow_sha }}", text)
+        self.assertIn("trusted/scripts/crates_io_release.py publish-receipted", text)
+        self.assertIn("--source-tree \"$SOURCE_TREE\"", text)
+        self.assertIn("Upload crates.io receipts", text)
+        self.assertIn("recovery_run_id:", text)
+        self.assertIn("Download prior crates.io receipts for recovery", text)
+        self.assertIn("--recovery-receipts-dir recovery-receipts", text)
+        self.assertNotIn('default: "main"', text)
+        self.assertNotIn('SOURCE_REF" == "main"', text)
+        self.assertNotIn("cargo yank", text)
+        self.assertNotIn("--token \"$CARGO_REGISTRY_TOKEN\"", text)
+
     def test_npm_publish_provenance_cannot_be_disabled_by_repository_config(self) -> None:
         paths = [
             ROOT / ".npmrc",

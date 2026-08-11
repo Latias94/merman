@@ -29,11 +29,15 @@ helper derives the current topological order:
 
 ```bash
 python3 tools/publish.py --list-crates-io-packages
-python3 tools/publish.py --dry-run
 ```
 
 Notes:
 
 - `xtask` is `publish = false` and should not be published.
-- If you prefer to validate without publishing, use `tools/publish.py` with
-  `--preflight-publish-dry-run --preflight-only`; it consumes the same derived order.
+- Run local package or publish dry-runs only for the currently registry-satisfiable batch. The
+  release preflight owns registry-independent dry-runs for the initial batch.
+- Normal publication runs through `release-crates.yml`. Its trusted `publish-receipted` operator
+  packages an entire topological batch, writes the exact `.crate` receipt, publishes each missing
+  version once, and requires matching crates.io checksums before entering the next batch.
+- A `pending_recovery` or `mismatch` receipt is a stop condition. Retry only from the same immutable
+  source; do not rerun `cargo publish` manually and do not yank automatically.

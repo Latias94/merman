@@ -8,9 +8,11 @@ import hashlib
 import importlib.util
 import io
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from unittest import mock
 
@@ -77,6 +79,37 @@ def replace_json_path(text: str, path: tuple[str, ...], value: object) -> str:
         target = target[component]
     target[path[-1]] = value
     return json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+
+
+def git(root: Path, *args: str) -> bytes:
+    return subprocess.run(
+        ["git", "-C", str(root), *args], check=True, capture_output=True
+    ).stdout
+
+
+@contextmanager
+def linked_worktree_fixture():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        repository = Path(temp_dir) / "repository"
+        release_worktree = Path(temp_dir) / "release"
+        repository.mkdir()
+        subprocess.run(["git", "init", "--quiet", str(repository)], check=True)
+        for name in ("sentinel.txt", "concurrent.txt"):
+            (repository / name).write_text("original\n", encoding="utf-8")
+        git(repository, "add", "sentinel.txt", "concurrent.txt")
+        git(
+            repository,
+            "-c",
+            "user.name=Merman Tests",
+            "-c",
+            "user.email=merman-tests@example.invalid",
+            "commit",
+            "--quiet",
+            "-m",
+            "fixture",
+        )
+        git(repository, "worktree", "add", "--quiet", "-b", "release-test", str(release_worktree))
+        yield repository, release_worktree
 
 
 class RepositoryViewTests(unittest.TestCase):
@@ -484,45 +517,6 @@ class ReleaseProjectionTests(unittest.TestCase):
                     continue
                 self.assertFalse(result.ok)
 
-    def test_update_plan_projects_one_authority_without_touching_independent_axes(self) -> None:
-        current = release_projection.verify_repository(self.ROOT).authority
-        next_version = f"{current.major}.{current.minor + 1}.0-alpha.1"
-
-        updates = release_projection.plan_version_update(self.ROOT, next_version)
-        result = release_projection.verify_repository(
-            self.ROOT,
-            expected_version=next_version,
-            overrides=updates,
-        )
-
-        self.assertTrue(result.ok)
-        self.assertIn(Path("Cargo.toml"), updates)
-        self.assertIn(release_projection.FUZZ_LOCK, updates)
-        self.assertIn(release_projection.WEB_WORKSPACE_PACKAGE, updates)
-        for entry in web_package_entries():
-            self.assertIn(web_package_manifest(entry), updates)
-        self.assertIn(release_projection.NODE_CARGO_MANIFEST, updates)
-        self.assertIn(release_projection.NODE_CARGO_LOCK, updates)
-        self.assertIn(release_projection.NODE_DESCRIPTOR, updates)
-        self.assertIn(release_projection.NODE_WORKSPACE_PACKAGE, updates)
-        self.assertIn(release_projection.NODE_WORKSPACE_LOCK, updates)
-        for manifest_path in node_package_manifests():
-            self.assertIn(manifest_path, updates)
-        self.assertIn(release_projection.PLAYGROUND_PACKAGE, updates)
-        self.assertIn(release_projection.PLAYGROUND_LOCK, updates)
-        self.assertIn(release_projection.PLAYGROUND_LICENSE_REPORT, updates)
-        self.assertIn(release_projection.FLUTTER_PACKAGE_VERSION, updates)
-        self.assertIn(release_projection.FLUTTER_IOS_BUILD, updates)
-        self.assertNotIn(Path("README.md"), updates)
-        self.assertNotIn(Path("docs/rendering/RASTER_OUTPUT.md"), updates)
-        self.assertFalse(any(path.suffix == ".md" for path in updates))
-        self.assertNotIn(Path("tools/vscode-extension/package.json"), updates)
-        self.assertNotIn(Path("distribution/typst/merman/typst.toml"), updates)
-        for _name, (member, _version) in release_projection.load_workspace_catalog(
-            release_projection.RepositoryView(self.ROOT)
-        ).independent_packages.items():
-            self.assertNotIn(member / "Cargo.toml", updates)
-
     def test_node_candidate_verification_fails_closed_on_each_version_projection(
         self,
     ) -> None:
@@ -670,87 +664,91 @@ class ReleaseProjectionTests(unittest.TestCase):
 
 
 class ReleaseProjectionWriteTests(unittest.TestCase):
-    def test_installs_workspace_authority_last_and_preserves_modes(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            nested = root / "nested"
-            nested.mkdir()
-            manifest = root / release_projection.ROOT_MANIFEST
-            projection = nested / "projection.txt"
-            manifest.write_text("old authority", encoding="utf-8")
-            projection.write_text("old projection", encoding="utf-8")
-            projection.chmod(0o640)
-            destinations: list[Path] = []
-            real_replace = release_projection.os.replace
+    def test_set_requires_a_clean_linked_worktree(self) -> None:
+        with linked_worktree_fixture() as (repository, release_worktree):
+            with self.assertRaisesRegex(release_projection.ReleaseProjectionError, "linked release worktree"):
+                release_projection._capture_release_preimage(repository)
 
-            def record_replace(source, destination):  # noqa: ANN001
-                destinations.append(Path(destination))
-                return real_replace(source, destination)
+            release_projection._capture_release_preimage(release_worktree)
+
+            (release_worktree / "untracked.txt").write_text("dirty\n", encoding="utf-8")
+            with self.assertRaisesRegex(release_projection.ReleaseProjectionError, "clean release worktree"):
+                release_projection._capture_release_preimage(release_worktree)
+
+    def test_flutter_owner_failure_leaves_caller_byte_identical(self) -> None:
+        with linked_worktree_fixture() as (_repository, release_worktree):
+            before = (release_worktree / "sentinel.txt").read_bytes()
+            preimage = release_projection._capture_release_preimage(release_worktree)
+            release = release_projection.parse_release_version("0.9.0-alpha.1")
+
+            def prepare_cargo(root: Path, _release) -> None:  # noqa: ANN001
+                (root / "sentinel.txt").write_text("prepared\n", encoding="utf-8")
 
             with mock.patch.object(
-                release_projection.os,
-                "replace",
-                side_effect=record_replace,
+                release_projection, "_prepare_cargo_versions", side_effect=prepare_cargo
+            ), mock.patch.object(
+                release_projection, "_prepare_npm_versions"
+            ), mock.patch.object(
+                release_projection,
+                "_prepare_platform_versions",
+                side_effect=release_projection.ReleaseProjectionError("injected Flutter owner failure"),
             ):
-                release_projection._replace_projection_files(
-                    root,
-                    {
-                        release_projection.ROOT_MANIFEST: "new authority",
-                        Path("nested/projection.txt"): "new projection",
-                    },
-                    expected={
-                        release_projection.ROOT_MANIFEST: "old authority",
-                        Path("nested/projection.txt"): "old projection",
-                    },
-                )
+                with self.assertRaisesRegex(release_projection.ReleaseProjectionError, "Flutter owner failure"):
+                    release_projection._prepare_release_patch(release_worktree, release, preimage)
 
-            self.assertEqual(destinations, [projection.resolve(), manifest.resolve()])
-            self.assertEqual(manifest.read_text(encoding="utf-8"), "new authority")
-            self.assertEqual(
-                projection.read_text(encoding="utf-8"),
-                "new projection",
+            self.assertEqual((release_worktree / "sentinel.txt").read_bytes(), before)
+            release_projection._capture_release_preimage(release_worktree)
+
+    def test_concurrent_preimage_change_aborts_before_git_apply(self) -> None:
+        with linked_worktree_fixture() as (_repository, release_worktree):
+            sentinel = release_worktree / "sentinel.txt"
+            sentinel.write_text("projected\n", encoding="utf-8")
+            patch = git(release_worktree, "diff", "--binary", "--full-index", "HEAD", "--")
+            sentinel.write_text("original\n", encoding="utf-8")
+            preimage = release_projection._capture_release_preimage(release_worktree)
+            (release_worktree / "concurrent.txt").write_text("concurrent edit\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(release_projection.ReleaseProjectionError, "source preimage changed"):
+                release_projection._apply_release_patch(release_worktree, patch, preimage)
+
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "original\n")
+
+    def test_unrelated_npm_lock_drift_is_rejected(self) -> None:
+        before = '{"version":"old","packages":{"":{"version":"old"},"node_modules/example":{"version":"1.0.0"}}}'
+        after = '{"version":"new","packages":{"":{"version":"new"},"node_modules/example":{"version":"1.1.0"}}}'
+
+        with self.assertRaisesRegex(release_projection.ReleaseProjectionError, "unrelated dependency drift"):
+            release_projection._assert_npm_lock_dependency_state(
+                Path("package-lock.json"), before, after, local_package_keys={""}
             )
-            self.assertEqual(projection.stat().st_mode & 0o777, 0o640)
-            self.assertEqual(list(root.rglob(".*.release-version-*")), [])
 
-    def test_stale_plan_is_rejected_before_any_replace(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            first = root / "first.txt"
-            second = root / "second.txt"
-            first.write_text("first-old", encoding="utf-8")
-            second.write_text("external edit", encoding="utf-8")
+    def test_pinned_tool_missing_or_drifted_is_reported(self) -> None:
+        with mock.patch.object(release_projection.shutil, "which", return_value=None):
+            with self.assertRaisesRegex(release_projection.ReleaseProjectionError, "required pinned tool npm"):
+                release_projection._require_exact_tool_version("npm", "11.17.0")
+        with mock.patch.object(release_projection.shutil, "which", return_value="/npm"), mock.patch.object(
+            release_projection, "_run_command", return_value=b"11.18.0\n"
+        ):
+            with self.assertRaisesRegex(release_projection.ReleaseProjectionError, "found 11.18.0"):
+                release_projection._require_exact_tool_version("npm", "11.17.0")
 
-            with self.assertRaisesRegex(
-                release_projection.ReleaseProjectionError,
-                "changed while planning",
-            ):
-                release_projection._replace_projection_files(
-                    root,
-                    {
-                        Path("first.txt"): "first-new",
-                        Path("second.txt"): "second-new",
-                    },
-                    expected={
-                        Path("first.txt"): "first-old",
-                        Path("second.txt"): "second-old",
-                    },
-                )
+    def test_patch_is_checked_then_applied_once_and_malformed_input_is_rejected(self) -> None:
+        with linked_worktree_fixture() as (_repository, release_worktree):
+            sentinel = release_worktree / "sentinel.txt"
+            before = sentinel.read_bytes()
+            preimage = release_projection._capture_release_preimage(release_worktree)
 
-            self.assertEqual(first.read_text(encoding="utf-8"), "first-old")
-            self.assertEqual(second.read_text(encoding="utf-8"), "external edit")
-            self.assertEqual(list(root.rglob(".*.release-version-*")), [])
+            with self.assertRaisesRegex(release_projection.ReleaseProjectionError, "cannot validate release patch"):
+                release_projection._apply_release_patch(release_worktree, b"not a patch\n", preimage)
+            self.assertEqual(sentinel.read_bytes(), before)
 
-    def test_rejects_path_escape(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            with self.assertRaisesRegex(
-                release_projection.ReleaseProjectionError,
-                "escapes repository root",
-            ):
-                release_projection._replace_projection_files(
-                    root,
-                    {Path("../outside.txt"): "new"},
-                    expected={Path("../outside.txt"): "old"},
-                )
-            self.assertEqual(list(root.rglob(".*.release-version-*")), [])
+            sentinel.write_text("projected\n", encoding="utf-8")
+            patch = git(release_worktree, "diff", "--binary", "--full-index", "HEAD", "--")
+            sentinel.write_bytes(before)
+            with mock.patch.object(
+                release_projection, "_run_command", wraps=release_projection._run_command
+            ) as run_command:
+                release_projection._apply_release_patch(release_worktree, patch, preimage)
+            apply_calls = [call.args[0] for call in run_command.call_args_list if "apply" in call.args[0]]
+            self.assertEqual(["--check" in args for args in apply_calls], [True, False])
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "projected\n")
