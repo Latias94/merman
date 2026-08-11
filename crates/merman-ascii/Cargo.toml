@@ -29,6 +29,7 @@ unicode-width = { workspace = true, features = ["cjk"] }
 
 [dev-dependencies]
 criterion = "0.8.2"
+sha2.workspace = true
 
 [[bench]]
 name = "terminal_cell_representation"

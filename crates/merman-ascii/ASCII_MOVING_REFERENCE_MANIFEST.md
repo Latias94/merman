@@ -1,7 +1,7 @@
 # ASCII Moving Reference Manifest
 
 Status: discovery evidence, not a byte oracle
-Last updated: 2026-08-10
+Last updated: 2026-08-11
 
 This manifest records the fixture delta discovered after the immutable v1 copy. It exists so a
 local `repo-ref/` checkout can inform development without becoming an undeclared release
@@ -14,7 +14,9 @@ dependency or turning reference-specific layout into a Merman contract.
 - `beautiful-mermaid` capability-prior-art snapshot:
   `2ac8bbbb060ca0a65a6a21f3200bd99b1587b488`
 - Mermaid validity authority: local pinned Mermaid `11.16.1`
-- Delta inventory: 137 paths: 5 Flowchart, 51 Sequence, and 81 ER fixtures
+- Raw reference delta: 144 paths relative to `6fffb8e`; four later tight-arrow files already belong
+  to the immutable copied corpus through the recorded supplement, leaving 140 moving-only paths:
+  8 Flowchart, 51 Sequence, and 81 ER fixtures
 
 The 96 paths already present in the copied v1 corpus remain governed by
 `V1_MERMAID_ASCII_COVERAGE.md`. The entries below are only the moving-reference delta. Reference
@@ -25,6 +27,8 @@ expected bytes are never imported by this manifest.
 - Classification `mermaid_valid`: Mermaid 11.16.1 accepts the input.
 - Classification `mixed_valid_private_behavior`: Mermaid accepts the input, but the moving
   reference assigns at least one construct a different, reference-private meaning.
+- Classification `reference_private`: the moving reference accepts syntax that pinned Mermaid
+  11.16.1 rejects; it is retained only to prevent accidental admission.
 - Admission `semantic_probe`: equivalent behavior is owned by parser-backed local tests; the
   reference output is not an oracle.
 - Admission `discovery_only`: the case remains useful research input but authorizes no support
@@ -37,7 +41,7 @@ Each entry inherits classification, admission, semantic feature, and evidence fr
 - Classification: `mermaid_valid`
 - Admission: `semantic_probe`
 - Semantic feature: bidirectional endpoints, labels, and LR/TD direction
-- Evidence: `tests/flowchart_model.rs` endpoint-marker and direction tests
+- Evidence: `tests/flowchart_model/graph_routing.rs::flowchart_parser_preserves_bidirectional_point_markers_in_both_charsets`
 
 - `ascii/bidirectional_labeled_lr.txt`
 - `ascii/bidirectional_lr.txt`
@@ -45,13 +49,24 @@ Each entry inherits classification, admission, semantic feature, and evidence fr
 - `extended-chars/bidirectional_lr.txt`
 - `extended-chars/bidirectional_td.txt`
 
+## Flowchart Multibyte Labels
+
+- Classification: `mermaid_valid`
+- Admission: `semantic_probe`
+- Semantic feature: accented Latin, Greek, and Cyrillic node and edge labels retain authored text
+- Evidence: `tests/flowchart_model/direction_and_labels.rs::flowchart_parser_multibyte_reference_labels_render_readably`
+
+- `multibyte/accented_latin_node_and_edge_labels.txt`
+- `multibyte/cyrillic_node_and_edge_labels.txt`
+- `multibyte/greek_node_and_edge_labels.txt`
+
 ## Sequence Actor Identity
 
 - Classification: `mermaid_valid`
 - Admission: `semantic_probe`
-- Semantic feature: aliases, actor/participant mixing, spaces, dashes, quoted arrow text, and actor
-  identity inside central, fragment, note, and self-message contexts
-- Evidence: `merman-core/src/tests/sequence.rs` and `tests/sequence_model.rs`
+- Semantic feature: aliases, actor/participant mixing, spaces, dashes, and actor identity inside
+  central, fragment, note, and self-message contexts
+- Evidence: `merman-core/src/tests/sequence.rs::parse_diagram_sequence_preserves_mermaid_valid_spaced_actor_ids` and `tests/sequence_model/signals.rs::sequence_spaced_actor_names_render_without_splitting_participants`
 
 - `sequence/actor_alias.txt`
 - `sequence/actor_participant_mix.txt`
@@ -60,7 +75,6 @@ Each entry inherits classification, admission, semantic feature, and evidence fr
 - `sequence/note_over_spaced_names.txt`
 - `sequence/participant_names_dashes.txt`
 - `sequence/participant_names_spaces.txt`
-- `sequence/quoted_name_with_arrow.txt`
 - `sequence/self_message_spaced_name.txt`
 - `sequence-ascii/actor_alias.txt`
 - `sequence-ascii/actor_participant_mix.txt`
@@ -69,13 +83,23 @@ Each entry inherits classification, admission, semantic feature, and evidence fr
 - `sequence-ascii/participant_names_dashes.txt`
 - `sequence-ascii/participant_names_spaces.txt`
 
+## Sequence Quoted Actor Extension
+
+- Classification: `reference_private`
+- Admission: `discovery_only`
+- Semantic feature: a quoted actor token containing arrow text is accepted by the moving reference
+  but is outside pinned Mermaid 11.16.1 actor syntax
+- Evidence: `merman-core/src/tests/sequence.rs::parse_diagram_sequence_rejects_reference_private_quoted_actor_ids`
+
+- `sequence/quoted_name_with_arrow.txt`
+
 ## Sequence Mixed Alias Behavior
 
 - Classification: `mixed_valid_private_behavior`
 - Admission: `discovery_only`
 - Semantic feature: `data=svc as DS` is a Mermaid alias, while `cron job as Cron` is one literal
   spaced actor id under pinned Mermaid and a split alias under the moving reference
-- Evidence: `merman-core/src/tests/sequence.rs` locks the pinned spaced-alias boundary
+- Evidence: `merman-core/src/tests/sequence.rs::parse_diagram_sequence_keeps_pinned_spaced_alias_boundary`
 
 - `sequence/participant_names_alias_equals.txt`
 - `sequence-ascii/participant_names_alias_equals.txt`
@@ -86,7 +110,7 @@ Each entry inherits classification, admission, semantic feature, and evidence fr
 - Admission: `semantic_probe`
 - Semantic feature: open/filled/cross/point/bidirectional markers, central connections, and self
   message endpoint ownership in ASCII and Unicode
-- Evidence: typed signal and glyph-disjointness tests in `tests/sequence_model.rs`
+- Evidence: `tests/sequence_model/signals.rs::sequence_extended_signal_markers_render_from_typed_endpoint_semantics` and `tests/sequence_model/signals.rs::sequence_ascii_half_arrows_preserve_filled_and_open_semantics`
 
 - `sequence/arrow_types.txt`
 - `sequence/async_point_arrows.txt`
@@ -109,7 +133,7 @@ Each entry inherits classification, admission, semantic feature, and evidence fr
 - Admission: `semantic_probe`
 - Semantic feature: empty and nested controls, alternate sections, autonumber, notes, participant
   span, and control labels
-- Evidence: recursive control-plan, note, and autonumber tests in `tests/sequence_model.rs`
+- Evidence: `tests/sequence_model/control_composition.rs::sequence_control_frame_uses_the_local_participant_span`, `tests/sequence_model/control_core.rs`, and `tests/sequence_model/layout_and_lifecycle.rs`
 
 - `sequence/alt_basic.txt`
 - `sequence/alt_multiple_else.txt`
@@ -138,7 +162,7 @@ Each entry inherits classification, admission, semantic feature, and evidence fr
 - Admission: `semantic_probe`
 - Semantic feature: attribute type/name roles, keys, comments, quoted names, repeated blocks, and
   relationship coexistence
-- Evidence: typed attribute-role and entity-section tests in `tests/er_model.rs`
+- Evidence: `tests/er_model.rs::er_attribute_keys_and_comments_have_distinct_terminal_roles`
 
 - `er/attributes_asterisk_names.txt`
 - `er/attributes_backtick_names.txt`
@@ -159,8 +183,7 @@ Each entry inherits classification, admission, semantic feature, and evidence fr
 - Admission: `semantic_probe`
 - Semantic feature: numeric and word aliases plus every identifying/non-identifying cardinality
   endpoint combination
-- Evidence: parser cardinality tests in `merman-core` and marker ownership tests in
-  `tests/er_model.rs`
+- Evidence: `tests/er_model.rs::er_parser_relationship_chain_renders_each_cardinality_and_label`
 
 - `er/cardinality_numeric.txt`
 - `er/cardinality_numeric_all.txt`
@@ -210,7 +233,7 @@ Each entry inherits classification, admission, semantic feature, and evidence fr
 - Admission: `semantic_probe`
 - Semantic feature: aliases, quoted and multiword names, CJK, empty labels, standalone entities,
   and long terminal labels
-- Evidence: parser identity tests in `merman-core` and terminal-width tests in `tests/er_model.rs`
+- Evidence: parser identity tests in `merman-core` and `tests/er_model.rs::er_parser_preserves_entity_declaration_order`
 
 - `er/alias_forms.txt`
 - `er/cjk_entities.txt`
@@ -230,8 +253,7 @@ Each entry inherits classification, admission, semantic feature, and evidence fr
 - Admission: `semantic_probe`
 - Semantic feature: declaration order, dense components, duplicate and self relationships,
   identifying kind, dashed variants, and relation labels
-- Evidence: shared relation-component, self-loop, parallel-lane, and summary tests in
-  `tests/er_model.rs`
+- Evidence: `tests/er_model.rs::er_parser_parallel_relationship_layout_keeps_diagram_when_ports_fit` and `tests/er_model.rs::er_parser_self_relationship_renders_single_box_with_loop`
 
 - `er/classic_order_example.txt`
 - `er/dash_dot_variants.txt`

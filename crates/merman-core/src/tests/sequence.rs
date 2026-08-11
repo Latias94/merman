@@ -1006,6 +1006,17 @@ fn parse_diagram_sequence_rejects_invalid_actor_token_extensions() {
 }
 
 #[test]
+fn parse_diagram_sequence_rejects_reference_private_quoted_actor_ids() {
+    let engine = Engine::new();
+    let text = "sequenceDiagram\n\"A->B\" ->> C: quoted arrow name";
+
+    assert!(
+        block_on(engine.parse_diagram(text, ParseOptions::default())).is_err(),
+        "pinned Mermaid rejects the moving reference's quoted actor extension"
+    );
+}
+
+#[test]
 fn parse_diagram_sequence_preserves_comment_markers_inside_actor_tokens() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram

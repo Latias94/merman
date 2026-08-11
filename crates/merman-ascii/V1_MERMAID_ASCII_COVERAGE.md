@@ -19,6 +19,11 @@ The tracked graph copy also includes the later upstream no-whitespace edge fixtu
 `tight_arrow.txt` and `tight_arrow_mixed.txt`, copied from local `repo-ref/mermaid-ascii` commit
 `876b5b4` after upstream renamed those cases.
 
+`tests/testdata/mermaid-ascii/SOURCE_PROVENANCE.tsv` binds the baseline tree, supplemental blobs,
+and all tracked bytes. Of the 96 tracked files, 88 remain byte-identical to their recorded source;
+eight historical transformations are enumerated with both source and tracked SHA-256 digests. This
+is a provenance disclosure, not permission to refresh the snapshot again.
+
 `repo-ref/` is a research checkout and is not required by CI or downstream users. The tracked copy
 is the executable source of truth for the v1 coverage contract.
 

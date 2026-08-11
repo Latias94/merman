@@ -1,9 +1,10 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use merman_ascii::{AsciiRenderOptions, render_model};
 use merman_core::{Engine, ParseOptions};
+use sha2::{Digest, Sha256};
 
 const EXPECTED_FIXTURE_COUNTS: &[(&str, usize)] = &[
     ("ascii", 54),
@@ -55,14 +56,191 @@ fn fixture_inventory_records_source_provenance() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let readme = fs::read_to_string(manifest_dir.join("tests/testdata/mermaid-ascii/README.md"))
         .expect("fixture README must be readable");
+    let provenance =
+        fs::read_to_string(manifest_dir.join("tests/testdata/mermaid-ascii/SOURCE_PROVENANCE.tsv"))
+            .expect("fixture provenance manifest must be readable");
     let license = fs::read_to_string(manifest_dir.join("LICENSES/mermaid-ascii-MIT.txt"))
         .expect("upstream MIT license copy must be readable");
 
     assert!(readme.contains("https://github.com/AlexanderGrooff/mermaid-ascii"));
     assert!(readme.contains("6fffb8e"));
+    assert!(readme.contains("SOURCE_PROVENANCE.tsv"));
     assert!(readme.contains("MIT"));
+    assert!(provenance.contains("d5430290e873b327ca1af07f753e28a25db76cc7"));
     assert!(license.contains("MIT License"));
     assert!(license.contains("Copyright (c) 2023 Alexander Grooff"));
+}
+
+#[test]
+fn fixture_source_provenance_pins_bytes_and_historical_transforms() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let root = manifest_dir.join("tests/testdata/mermaid-ascii");
+    let provenance_path = root.join("SOURCE_PROVENANCE.tsv");
+    let provenance = fs::read_to_string(&provenance_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", provenance_path.display()));
+
+    let mut metadata = BTreeMap::new();
+    let mut supplements = BTreeMap::new();
+    let mut transforms = BTreeMap::new();
+    for (line_index, line) in provenance.lines().enumerate() {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let fields = line.split('\t').collect::<Vec<_>>();
+        match fields.as_slice() {
+            ["meta", key, value] => {
+                assert!(
+                    metadata.insert(*key, *value).is_none(),
+                    "duplicate provenance metadata key `{key}`"
+                );
+            }
+            ["meta", key, value, extra] => {
+                assert_eq!(*key, "baseline_tree");
+                assert!(
+                    metadata.insert(*key, *extra).is_none(),
+                    "duplicate provenance metadata key `{key}`"
+                );
+                assert_eq!(*value, "cmd/testdata");
+            }
+            ["supplement", relative, source_blob] => {
+                assert!(is_lower_hex(source_blob, 40));
+                assert!(
+                    supplements.insert(*relative, *source_blob).is_none(),
+                    "duplicate supplemental provenance for `{relative}`"
+                );
+            }
+            [
+                "transform",
+                relative,
+                source_commit,
+                source_blob,
+                source_sha256,
+                tracked_sha256,
+                transform,
+            ] => {
+                assert!(is_lower_hex(source_commit, 40));
+                assert!(is_lower_hex(source_blob, 40));
+                assert!(is_lower_hex(source_sha256, 64));
+                assert!(is_lower_hex(tracked_sha256, 64));
+                assert_ne!(source_sha256, tracked_sha256);
+                assert!(
+                    transform.starts_with("historical_output_refresh_")
+                        || transform.starts_with("reference_option_preamble_moved_"),
+                    "unknown historical fixture transform `{transform}`"
+                );
+                assert!(
+                    transforms
+                        .insert(*relative, (*tracked_sha256, *transform))
+                        .is_none(),
+                    "duplicate historical transform for `{relative}`"
+                );
+            }
+            _ => panic!(
+                "invalid provenance record at {}:{}",
+                provenance_path.display(),
+                line_index + 1
+            ),
+        }
+    }
+
+    assert_eq!(
+        metadata.get("baseline_commit"),
+        Some(&"6fffb8e2714acab2c4cb41c78894fabbc62cee56")
+    );
+    assert_eq!(
+        metadata.get("baseline_tree"),
+        Some(&"d5430290e873b327ca1af07f753e28a25db76cc7")
+    );
+    assert_eq!(
+        metadata.get("supplement_commit"),
+        Some(&"876b5b44fcebb746e7aee09d3d19d0c059452621")
+    );
+    assert_eq!(
+        supplements,
+        BTreeMap::from([
+            (
+                "ascii/tight_arrow.txt",
+                "3d1b05b706897c1d9ee8674abdf0984755852b06",
+            ),
+            (
+                "ascii/tight_arrow_mixed.txt",
+                "2329cd3a4249a0be4a8e0c2198dae1a08df8c802",
+            ),
+            (
+                "extended-chars/tight_arrow.txt",
+                "71b37b2e4fa8e01d8162def0bbda08571380b03d",
+            ),
+            (
+                "extended-chars/tight_arrow_mixed.txt",
+                "18834e2fcbf4100659d9dd071c0bfe80e5eb66ff",
+            ),
+        ]),
+        "the supplemental source identities must stay pinned"
+    );
+    assert_eq!(transforms.len(), 8);
+
+    let mut fixture_paths = EXPECTED_FIXTURE_COUNTS
+        .iter()
+        .flat_map(|(directory, _)| fixture_cases_in(&root, directory))
+        .collect::<Vec<_>>();
+    fixture_paths.sort();
+    assert_eq!(
+        fixture_paths.len(),
+        parse_metadata_usize(&metadata, "tracked_fixture_count")
+    );
+    assert_eq!(
+        fixture_paths.len(),
+        parse_metadata_usize(&metadata, "byte_identical_source_count")
+            + parse_metadata_usize(&metadata, "historical_transform_count")
+    );
+    assert_eq!(
+        transforms.len(),
+        parse_metadata_usize(&metadata, "historical_transform_count")
+    );
+
+    let mut aggregate = Sha256::new();
+    let mut transformed_paths = BTreeSet::new();
+    for fixture_path in fixture_paths {
+        let relative = fixture_path
+            .strip_prefix(&root)
+            .unwrap_or_else(|error| {
+                panic!(
+                    "failed to relativize {} against {}: {error}",
+                    fixture_path.display(),
+                    root.display()
+                )
+            })
+            .to_string_lossy()
+            .replace('\\', "/");
+        let bytes = fs::read(&fixture_path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", fixture_path.display()));
+        aggregate.update((relative.len() as u64).to_le_bytes());
+        aggregate.update(relative.as_bytes());
+        aggregate.update((bytes.len() as u64).to_le_bytes());
+        aggregate.update(&bytes);
+
+        if let Some((expected_sha256, _)) = transforms.get(relative.as_str()) {
+            let actual_sha256 = format!("{:x}", Sha256::digest(&bytes));
+            assert_eq!(
+                &actual_sha256, expected_sha256,
+                "historically transformed fixture drifted: {relative}"
+            );
+            transformed_paths.insert(relative);
+        }
+    }
+
+    assert_eq!(
+        transformed_paths,
+        transforms.keys().map(|path| (*path).to_owned()).collect(),
+        "every historical transform must name one tracked fixture"
+    );
+    assert_eq!(
+        format!("{:x}", aggregate.finalize()),
+        *metadata
+            .get("tracked_aggregate_sha256")
+            .expect("tracked aggregate digest must be recorded"),
+        "the immutable tracked fixture bytes drifted"
+    );
 }
 
 #[test]
@@ -124,9 +302,12 @@ fn moving_reference_manifest_records_each_discovery_fixture_once() {
         "Mermaid `11.16.1`",
         "Classification: `mermaid_valid`",
         "Classification: `mixed_valid_private_behavior`",
+        "Classification: `reference_private`",
         "Admission: `semantic_probe`",
         "Admission: `discovery_only`",
         "Semantic feature:",
+        "Raw reference delta: 144 paths",
+        "leaving 140 moving-only paths",
     ] {
         assert!(
             manifest.contains(expected),
@@ -134,15 +315,14 @@ fn moving_reference_manifest_records_each_discovery_fixture_once() {
         );
     }
 
-    let entries = manifest
-        .lines()
-        .filter_map(|line| line.strip_prefix("- `"))
-        .filter_map(|line| line.strip_suffix('`'))
-        .filter(|path| path.ends_with(".txt"))
+    let dispositions = parse_moving_fixture_dispositions(&manifest);
+    let entries = dispositions
+        .iter()
+        .map(|disposition| disposition.path.as_str())
         .collect::<Vec<_>>();
     let unique_entries = entries.iter().copied().collect::<BTreeSet<_>>();
 
-    assert_eq!(entries.len(), 137, "moving discovery fixture count drifted");
+    assert_eq!(entries.len(), 140, "moving discovery fixture count drifted");
     assert_eq!(
         unique_entries.len(),
         entries.len(),
@@ -152,6 +332,7 @@ fn moving_reference_manifest_records_each_discovery_fixture_once() {
     for (prefix, expected_count) in [
         ("ascii/", 3),
         ("extended-chars/", 2),
+        ("multibyte/", 3),
         ("sequence/", 31),
         ("sequence-ascii/", 20),
         ("er/", 69),
@@ -164,6 +345,81 @@ fn moving_reference_manifest_records_each_discovery_fixture_once() {
                 .count(),
             expected_count,
             "moving discovery fixture count drifted for {prefix}"
+        );
+    }
+
+    for disposition in &dispositions {
+        match (
+            disposition.classification.as_str(),
+            disposition.admission.as_str(),
+        ) {
+            ("mermaid_valid", "semantic_probe")
+            | ("mixed_valid_private_behavior", "discovery_only")
+            | ("reference_private", "discovery_only") => {}
+            pair => panic!(
+                "invalid moving-fixture disposition {pair:?} for {} in section {}",
+                disposition.path, disposition.section
+            ),
+        }
+        assert!(
+            !disposition.semantic_feature.is_empty(),
+            "moving fixture {} must name its semantic feature",
+            disposition.path
+        );
+        assert!(
+            !disposition.evidence.is_empty(),
+            "moving fixture {} must name its evidence",
+            disposition.path
+        );
+    }
+
+    let by_path = dispositions
+        .iter()
+        .map(|disposition| (disposition.path.as_str(), disposition))
+        .collect::<BTreeMap<_, _>>();
+    let quoted = by_path
+        .get("sequence/quoted_name_with_arrow.txt")
+        .expect("quoted actor discovery fixture must stay classified");
+    assert_eq!(quoted.classification, "reference_private");
+    assert_eq!(quoted.admission, "discovery_only");
+
+    for path in [
+        "multibyte/accented_latin_node_and_edge_labels.txt",
+        "multibyte/cyrillic_node_and_edge_labels.txt",
+        "multibyte/greek_node_and_edge_labels.txt",
+    ] {
+        let disposition = by_path
+            .get(path)
+            .unwrap_or_else(|| panic!("missing moving fixture disposition for {path}"));
+        assert_eq!(disposition.classification, "mermaid_valid");
+        assert_eq!(disposition.admission, "semantic_probe");
+    }
+
+    for (relative, test_name) in [
+        (
+            "tests/flowchart_model/direction_and_labels.rs",
+            "flowchart_parser_multibyte_reference_labels_render_readably",
+        ),
+        (
+            "tests/sequence_model/control_composition.rs",
+            "sequence_control_frame_uses_the_local_participant_span",
+        ),
+        (
+            "../merman-core/src/tests/sequence.rs",
+            "parse_diagram_sequence_rejects_reference_private_quoted_actor_ids",
+        ),
+    ] {
+        let path = manifest_dir.join(relative);
+        let source = fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        assert!(
+            source.contains(&format!("fn {test_name}")),
+            "moving-reference evidence anchor `{test_name}` must exist in {}",
+            path.display()
+        );
+        assert!(
+            manifest.contains(test_name),
+            "moving-reference manifest must cite executable evidence `{test_name}`"
         );
     }
 }
@@ -343,4 +599,116 @@ fn collect_local_semantic_fixtures(root: &Path, dir: &Path, fixtures: &mut Vec<P
             fixtures.push(path);
         }
     }
+}
+
+fn fixture_cases_in(root: &Path, directory: &str) -> Vec<PathBuf> {
+    let dir = root.join(directory);
+    let mut fixtures = fs::read_dir(&dir)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", dir.display()))
+        .map(|entry| entry.expect("fixture entry must be readable").path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "txt"))
+        .collect::<Vec<_>>();
+    fixtures.sort();
+    fixtures
+}
+
+fn parse_metadata_usize(metadata: &BTreeMap<&str, &str>, key: &str) -> usize {
+    metadata
+        .get(key)
+        .unwrap_or_else(|| panic!("missing fixture provenance metadata `{key}`"))
+        .parse()
+        .unwrap_or_else(|error| panic!("invalid fixture provenance metadata `{key}`: {error}"))
+}
+
+fn is_lower_hex(value: &str, length: usize) -> bool {
+    value.len() == length
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+#[derive(Debug)]
+struct MovingFixtureDisposition {
+    section: String,
+    path: String,
+    classification: String,
+    admission: String,
+    semantic_feature: String,
+    evidence: String,
+}
+
+fn parse_moving_fixture_dispositions(manifest: &str) -> Vec<MovingFixtureDisposition> {
+    let mut section = None;
+    let mut classification = None;
+    let mut admission = None;
+    let mut semantic_feature = None;
+    let mut evidence = None;
+    let mut dispositions = Vec::new();
+
+    for (line_index, line) in manifest.lines().enumerate() {
+        if let Some(title) = line.strip_prefix("## ") {
+            section = Some(title.to_owned());
+            classification = None;
+            admission = None;
+            semantic_feature = None;
+            evidence = None;
+            continue;
+        }
+        if let Some(value) = line
+            .strip_prefix("- Classification: `")
+            .and_then(|value| value.strip_suffix('`'))
+        {
+            classification = Some(value.to_owned());
+            continue;
+        }
+        if let Some(value) = line
+            .strip_prefix("- Admission: `")
+            .and_then(|value| value.strip_suffix('`'))
+        {
+            admission = Some(value.to_owned());
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("- Semantic feature: ") {
+            semantic_feature = Some(value.to_owned());
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("- Evidence: ") {
+            evidence = Some(value.to_owned());
+            continue;
+        }
+        let Some(path) = line
+            .strip_prefix("- `")
+            .and_then(|value| value.strip_suffix('`'))
+            .filter(|value| value.ends_with(".txt"))
+        else {
+            continue;
+        };
+
+        let context = || {
+            format!(
+                "moving fixture `{path}` at manifest line {}",
+                line_index + 1
+            )
+        };
+        dispositions.push(MovingFixtureDisposition {
+            section: section
+                .clone()
+                .unwrap_or_else(|| panic!("{} has no section", context())),
+            path: path.to_owned(),
+            classification: classification
+                .clone()
+                .unwrap_or_else(|| panic!("{} has no classification", context())),
+            admission: admission
+                .clone()
+                .unwrap_or_else(|| panic!("{} has no admission", context())),
+            semantic_feature: semantic_feature
+                .clone()
+                .unwrap_or_else(|| panic!("{} has no semantic feature", context())),
+            evidence: evidence
+                .clone()
+                .unwrap_or_else(|| panic!("{} has no evidence", context())),
+        });
+    }
+
+    dispositions
 }
