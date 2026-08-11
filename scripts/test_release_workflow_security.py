@@ -150,6 +150,16 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
             manifest = json.loads(read(package_json))
             self.assertIsNot(manifest.get("publishConfig", {}).get("provenance"), False)
 
+    def test_npm_manual_publish_requires_an_immutable_source(self) -> None:
+        for workflow in ("release-web.yml", "release-node.yml"):
+            text = read(WORKFLOW_ROOT / workflow)
+            with self.subTest(workflow=workflow):
+                self.assertIn("publish_to_npm:", text)
+                self.assertIn("default: false", text)
+                self.assertIn("DISPATCH_PUBLISH_TO_NPM", text)
+                self.assertIn("main is allowed only for a non-publishing build", text)
+                self.assertRegex(text, r"\[\[ \"\$SOURCE_REF\" =~ \^\[0-9a-f\]\{40\}\$ \]\]")
+
     def test_performance_pull_requests_are_read_only_and_summary_only(self) -> None:
         text = read(WORKFLOW_ROOT / "performance.yml")
         self.assertNotIn("pull-requests: write", text)

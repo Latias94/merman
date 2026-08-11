@@ -8,14 +8,14 @@ on:
         required: true
         type: string
       source_ref:
-        description: "Reviewed full commit SHA, main, or a matching release tag to build from"
+        description: "Reviewed full commit SHA or matching release tag; main is build-only"
         required: true
         default: "main"
         type: string
       publish_to_npm:
         description: "Publish the verified @mermanjs/node package group"
         required: true
-        default: true
+        default: false
         type: boolean
 
 permissions:
@@ -47,6 +47,7 @@ jobs:
         env:
           DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
           DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
+          DISPATCH_PUBLISH_TO_NPM: ${{ inputs.publish_to_npm }}
         run: |
           set -euo pipefail
           RELEASE_TAG="$DISPATCH_RELEASE_TAG"
@@ -63,11 +64,15 @@ jobs:
           if [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
             validated_source_ref="$SOURCE_REF"
           elif [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
+            if [[ "$DISPATCH_PUBLISH_TO_NPM" == "true" ]]; then
+              echo "::error::main is allowed only for a non-publishing build; use a reviewed full commit SHA or matching release tag to publish." >&2
+              exit 1
+            fi
             validated_source_ref="$SOURCE_REF"
           elif [[ "$SOURCE_REF" == "$RELEASE_TAG" || "$SOURCE_REF" == "refs/tags/$RELEASE_TAG" ]]; then
             validated_source_ref="refs/tags/$RELEASE_TAG"
           else
-            echo "::error::source_ref tag must match release_tag; source_ref must be a full commit SHA, main, refs/heads/main, a matching release tag, or refs/tags/<release-tag>." >&2
+            echo "::error::source_ref tag must match release_tag; use a reviewed full commit SHA, a matching release tag, or main only for a non-publishing build." >&2
             exit 1
           fi
           {

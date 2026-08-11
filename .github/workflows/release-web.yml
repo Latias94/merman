@@ -8,14 +8,14 @@ on:
         required: true
         type: string
       source_ref:
-        description: "Protected branch (main), matching release tag, or refs/tags/<release-tag> to build from"
+        description: "Reviewed full commit SHA or matching release tag; main is build-only"
         required: true
         default: "main"
         type: string
       publish_to_npm:
         description: "Publish the admitted @mermanjs/web package group after checks pass"
         required: true
-        default: true
+        default: false
         type: boolean
 
 permissions:
@@ -45,6 +45,7 @@ jobs:
         env:
           DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
           DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
+          DISPATCH_PUBLISH_TO_NPM: ${{ inputs.publish_to_npm }}
         run: |
           set -euo pipefail
 
@@ -66,13 +67,15 @@ jobs:
 
           [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || fail "source_ref must be a single line."
           validated_source_ref="$SOURCE_REF"
-          if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
+          if [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
             :
+          elif [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
+            [[ "$DISPATCH_PUBLISH_TO_NPM" != "true" ]] || fail "main is allowed only for a non-publishing build; use a reviewed full commit SHA or matching release tag to publish."
           elif [[ "$SOURCE_REF" == "$RELEASE_TAG" || "$SOURCE_REF" == "refs/tags/$RELEASE_TAG" ]]; then
             source_tag="${SOURCE_REF#refs/tags/}"
             validated_source_ref="refs/tags/$source_tag"
           else
-            fail "source_ref tag must match release_tag; source_ref must be main, refs/heads/main, a matching release tag, or refs/tags/<release-tag>."
+            fail "source_ref tag must match release_tag; use a reviewed full commit SHA, a matching release tag, or main only for a non-publishing build."
           fi
 
           {
