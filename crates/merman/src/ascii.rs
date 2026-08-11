@@ -755,11 +755,10 @@ Task: task1, 2026-01-01, 1d
             .unwrap()
             .unwrap();
 
-        assert!(rendered.contains("Task [id=task1"), "{rendered}");
-        assert!(
-            rendered.contains("range=2026-01-01 -> 2026-01-02"),
-            "{rendered}"
-        );
+        assert!(rendered.contains("task(bytes=4)=\"Task\""), "{rendered}");
+        assert!(rendered.contains("id(bytes=5)=\"task1\""), "{rendered}");
+        assert!(rendered.contains("range=2026-01-01 ->"), "{rendered}");
+        assert!(rendered.contains("2026-01-02"), "{rendered}");
     }
 
     #[test]
