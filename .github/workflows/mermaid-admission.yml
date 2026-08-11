@@ -1,0 +1,93 @@
+name: Mermaid upgrade admission
+
+on:
+  workflow_dispatch:
+    inputs:
+      zenuml_core_version:
+        description: Exact @zenuml/core candidate version
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mermaid-admission-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  zenuml:
+    name: ZenUML candidate and browser admission
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout selected reference
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Setup exact Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.6.0"
+          cache: npm
+          cache-dependency-path: |
+            platforms/web/package-lock.json
+            playground/package-lock.json
+            playground/tests/package-lock.json
+
+      - name: Install exact npm
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@11.17.0
+
+      - name: Install wasm-tools
+        uses: taiki-e/install-action@wasm-tools
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --version 0.15.0 --locked
+
+      - name: Install admission dependencies without lifecycle scripts
+        run: |
+          npm ci --ignore-scripts --prefix platforms/web
+          npm ci --ignore-scripts --prefix playground
+          npm ci --ignore-scripts --prefix playground/tests
+
+      - name: Install Chromium for admission
+        run: npm exec --prefix playground/tests -- playwright install --with-deps chromium
+
+      - name: Run official signature and candidate behavior admission
+        env:
+          ZENUML_CORE_VERSION: ${{ inputs.zenuml_core_version }}
+        run: |
+          npm run admit:zenuml --prefix playground -- \
+            --candidate "$ZENUML_CORE_VERSION" \
+            --output "$RUNNER_TEMP/zenuml-candidate-admission.json"
+
+      - name: Build selected browser runtime
+        run: |
+          npm run build --prefix platforms/web
+          npm run prepare:browser-runtime --prefix playground
+          npm run build:prepared --prefix playground
+
+      - name: Run browser security admission probes
+        run: |
+          npm run admit:zenuml-browser --prefix playground -- \
+            --output "$RUNNER_TEMP/zenuml-browser-admission.json"
+
+      - name: Upload admission reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: mermaid-admission-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/zenuml-candidate-admission.json
+            ${{ runner.temp }}/zenuml-browser-admission.json
+            playground/playwright-report
+            playground/test-results
+          if-no-files-found: warn
+          retention-days: 14

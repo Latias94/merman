@@ -900,7 +900,7 @@
         }
       ],
       "locks": [
-        {"type": "repository", "repository_id": "zenuml-core-candidate"},
+        {"type": "repository", "repository_id": "zenuml-core"},
         {
           "type": "npm",
           "path": "playground/package-lock.json",

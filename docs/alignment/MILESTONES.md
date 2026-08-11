@@ -105,8 +105,10 @@ Pinned-source evidence:
 1. Family-owned parsing and semantic/editor facts live under
    `crates/merman-core/src/diagrams/zenuml/`.
 2. Typed layout and SVG are covered by `crates/merman/tests/zenuml_typed_render.rs`.
-3. External browser admission is recorded by the ZenUML probes under `tools/upstreams/` and is
-   kept outside the built-in Mermaid SVG matrix.
+3. `tools/upstreams/ZENUML_BROWSER_ADMISSION_PROBES.json` records the browser probe contract.
+   Observations are produced only by the manual Mermaid upgrade admission workflow; a reviewed
+   selection is retained by `MERMAID_SELECTION_DECISION.json`, outside the built-in Mermaid SVG
+   matrix.
 
 Exit criteria:
 

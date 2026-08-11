@@ -1,94 +1,89 @@
 # Upstream checkouts
 
-This repository uses **optional, local** checkouts under `repo-ref/` for parity work.
+This repository uses optional local checkouts under `repo-ref/` for parity work. They are ignored,
+are not submodules, and must resolve to the selected revisions in `REPOS.lock.json`.
 
-These checkouts are **not committed** and are **not** git submodules. Pinned revisions are tracked
-in `tools/upstreams/REPOS.lock.json`.
+Typical selected checkouts include:
 
-Typical layout:
+- `repo-ref/mermaid` for Mermaid `11.16.1`;
+- `repo-ref/dompurify` for the selected sanitizer source;
+- `repo-ref/zenuml-core` for the selected ZenUML Core `3.50.1` source;
+- the selected Dagre, Graphlib, Cytoscape, and layout sources listed in the lock.
 
-- `repo-ref/mermaid` (Mermaid upstream)
-- `repo-ref/dagre` (Dagre upstream)
-- `repo-ref/graphlib` (Graphlib upstream)
-- `repo-ref/dompurify` (DOMPurify upstream)
-- `repo-ref/sanitize-url` (sanitize-url upstream)
-- `repo-ref/zenuml-core` (Mermaid workspace oracle retained for comparative evidence)
-- `repo-ref/zenuml-core-3.50.1` (matrix-selected compatible ZenUML Core behavior source)
+## Standing selected-reference contract
 
-`MERMAID_REFERENCE_BUNDLE.json` is the machine-readable release graph. It records npm integrity,
-source provenance, the ordered built-in diagram/default-layout registry inventory, external
-diagram/layout packages, the selected compatible behavior source, installed content hashes for the
-complete materialized runtime graph, and generated projections. The
-built-in inventory is extracted from the pinned Mermaid checkout during materialized verification;
-an added, removed, renamed, or reordered upstream registration is a release-graph change rather
-than a local admission-only decision. `ZENUML_CORE_ADMISSION.json` keeps the oracle-to-candidate decision evidence,
-`ZENUML_BROWSER_SECURITY_EVIDENCE.json` records executable desktop isolation and security
-observations, and `ZENUML_CORE_V4_DEFERRED_ADMISSION.json` binds the outside-range `4.2.0` identity
-to a separate unfinished major-admission inventory. The package-manager lockfiles remain generated
-materialization evidence; do not edit them by hand.
+`MERMAID_REFERENCE_BUNDLE.json` describes only the current graph: selected package versions and
+integrities, selected source commits, runtime registrations, workspace/lock ownership, installed
+content digests, built-in registry inputs, and generated projections. It deliberately contains no
+oracle, candidate, deferred-major, browser-admission, or attestation payload.
 
-"Latest" is an observation, not an automatic selection rule. The pinned Mermaid workspace lock is
-the behavior oracle. The newest stable package inside an upstream-declared compatible range is an
-admission candidate, and it replaces the oracle only after every recorded behavior, security, and
-resource gate passes. A newer major outside that range remains a separate admission.
+`MERMAID_SELECTION_DECISION.json` is the compact reviewed decision receipt. The bundle stores only
+its path and SHA-256. The receipt binds the previous and current selection identity digests, their
+exact changed fields, the official npm command/version and package identities used during
+admission, the behavior outcome, and the admission output digest. The one bootstrap receipt marks
+its digest as a historical aggregate because the original npm stdout was not archived; it does not
+pretend that aggregate is official-tool output.
 
-The deferred v4 artifact is not a source checkout, implementation claim, or feature decision. It
-must retain zero impact on the selected `3.50.1` graph until its grammar, semantic, editor/LSP,
-render, browser-security, resource, license, and release-surface evidence is independently closed.
-`verify-mermaid-reference` validates that artifact against the exact latest-stable identity in the
-reference bundle and fails on a missing or modified artifact.
+Run the offline-capable standing gate with:
 
-The selected `@zenuml/core@3.50.1` package declares an exact optional CLI peer on
-`playwright-core@1.57.0`, while the Playground browser-test harness uses `1.62.1`. The application
-runtime and browser-test harness are therefore separate npm projects with separate locks. The
-runtime tree intentionally leaves the optional CLI peer absent; the test tree owns Playwright and
-Axe without making either visible to ZenUML Core. Both trees must pass independent `npm ci` and
-`npm ls --all` gates. Do not collapse the trees or hide a conflict with `--force`,
-`legacy-peer-deps`, an override, or a Playwright downgrade.
+```bash
+cargo run -p xtask -- verify-mermaid-reference
+```
 
-## How to populate
+When reviewing a reference change, bind it to a trusted base bundle:
 
-Clone each repository at the pinned commit shown in `tools/upstreams/REPOS.lock.json`.
+```bash
+cargo run -p xtask -- verify-mermaid-reference --base <trusted-base-sha>
+```
 
-Install the Playground runtime, its `playground/tests` browser-test toolchain, and the reference CLI
-with lifecycle scripts disabled (the package-local `.npmrc` files enforce this and the official npm
-registry). Any required install action must first be added to the audited allowlist in the reference
-bundle and invoked explicitly.
-Playground `dev`, `build`, and `test` invoke their owned runtime preparation directly; do not move
-that work into `pre*` or `post*` hooks because `ignore-scripts=true` intentionally disables them.
+The transition gate reads the base bundle through `git show`. A changed selected identity requires
+an exact previous/current receipt and field diff. An unchanged identity cannot replace its receipt;
+the committed bootstrap is the only explicit exception for a base that predates receipts. Its
+historical evidence commit must be an ancestor of the trusted base, and the referenced Git object
+must still match the receipt digest.
 
-Use `cargo run -p xtask -- verify-mermaid-reference` for the clean-clone static contract (bundle,
-locks, provenance, admission evidence, and generated projections). After populating `repo-ref/`
-and running scriptless npm installs, add `--materialized` to verify checkout commits, installed
-package versions, the content of Mermaid, parser, sanitizer, CLI, external diagram/layout, and
-selected behavior packages, and the source-extracted built-in registration inventory.
+After populating checkouts and installing the Playground and reference CLI with lifecycle scripts
+disabled, verify materialized source and installed bytes with:
 
-Verify the selected ZenUML graph without regenerating evidence:
+```bash
+cargo run -p xtask -- verify-mermaid-reference --materialized
+```
+
+## Explicit upgrade admission
+
+Candidate discovery, future-major evaluation, official signature verification, behavior
+comparison, and browser security probes are manual upgrade work. They are not inputs to ordinary
+CI, Pages, or release verification, and completed candidate/deferred evidence is not kept as a
+live repository gate.
+
+Use the read-only **Mermaid upgrade admission** workflow with an exact ZenUML Core candidate
+version. It pins Node `24.6.0` and npm `11.17.0`, installs packages with lifecycle scripts disabled,
+runs the official command
+`npm audit signatures --json --include-attestations --registry=https://registry.npmjs.org/`,
+compares the selected and candidate fixture behavior in Chromium, validates strict inline SVG, and
+runs the browser probe contract in `ZENUML_BROWSER_ADMISSION_PROBES.json`. Its reports are workflow
+artifacts for review, not standing repository inputs.
+
+The same owner commands are available locally with the required exact toolchain:
 
 ```bash
 cd playground
-npm run verify:dependencies
-npm run verify:zenuml-browser-admission
-npm run verify:zenuml-candidate
+npm run admit:zenuml -- --candidate <exact-version> --output <candidate-report.json>
+npm run admit:zenuml-browser -- --output <browser-report.json>
 ```
 
-When a security-critical source named by `ZENUML_BROWSER_SECURITY_EVIDENCE.json` changes, run the
-real desktop Chromium probes and record their observed results before regenerating candidate
-evidence:
+After the admission reports are reviewed and a new graph is selected, update the bundle and locks,
+write a new selection receipt from the raw workflow outputs, regenerate projections, and run the
+standing verifier with `--base` before refreshing upstream SVG provenance.
+
+## Baseline generation
+
+After reviewed render evidence confirms the selected graph, run:
 
 ```bash
-cd playground
-npm run record:zenuml-browser-admission
-npm run verify:zenuml-candidate:online -- --write
+cargo run -p xtask -- gen-mermaid-reference --refresh-provenance
 ```
 
-Do not hand-edit probe counts, pass states, source hashes, or candidate summaries. The Rust verifier
-derives them from the probe contract and per-project observations.
-
-After reviewed render evidence confirms a new reference graph, run
-`cargo run -p xtask -- gen-mermaid-reference --refresh-provenance` to freshly render every primary
-upstream SVG family. The command holds each canonical family lock, stages SVGs and its manifest in
-the destination filesystem, and commits them atomically. It records Chromium's resolved locale and
-timezone as part of the render identity and fails if any primary-family manifest is absent. It does
-not relabel existing SVGs. The ordinary generator deliberately leaves provenance stale so a
-dependency-only lock change cannot silently re-attest existing baselines.
+The refresh renders every primary upstream SVG family and records the selected reference identity.
+The ordinary generator deliberately leaves provenance unchanged so a lock-only edit cannot relabel
+existing baselines.

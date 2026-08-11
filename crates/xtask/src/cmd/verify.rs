@@ -217,13 +217,6 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
                 &mut run_checked,
             )?;
         }
-
-        println!("\n== ZenUML candidate matrix ==");
-        let mut npm_cmd = Command::new("npm");
-        npm_cmd
-            .args(["run", "verify:zenuml-candidate"])
-            .current_dir(workspace_root.join("playground"));
-        run_checked("npm run verify:zenuml-candidate", &mut npm_cmd)?;
     }
 
     println!("\n== cargo nextest ==");
