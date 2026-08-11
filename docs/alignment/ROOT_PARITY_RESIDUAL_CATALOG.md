@@ -1,5 +1,13 @@
 # Root Parity Residual Catalog
 
+> Migration note: the compact blocking contract is now maintained in
+> `fixtures/_verification/deterministic-root-contracts.json` and enforced by
+> `crates/xtask/src/cmd/compare/root_contract.rs`. The catalog below is the historical 1.1 MB
+> numeric acceptance ledger retained temporarily for a real old/new pull-request gate checkpoint.
+> It must not grow, and it must not be used as a production rendering input. After the checkpoint,
+> browser-owned numeric rows are deleted; schedule/release retain only the browser diagnostic
+> artifact and the independent painted-content cropping oracle.
+
 Baseline: Mermaid `11.16.1@7ecca0cd7f1658ef74f4e7e91f925724ef403bbf`.
 
 This document is the review evidence for
@@ -8,12 +16,27 @@ change production rendering, and every entry is bound to the exact input and ups
 It exists to keep browser-only root differences visible without restoring fixture-keyed production
 overrides or broadening DOM normalization.
 
-This catalog owns only root `style`, `viewBox`, `width`, and `height`. It cannot accept a semantic
+This legacy catalog owns only root `style`, `viewBox`, `width`, and `height`. It cannot accept a semantic
 edge-label mismatch. Label residuals use a separate key/text/full-signature contract documented in
 `SEMANTIC_LABEL_PARITY.md`, and the aggregate comparator evaluates that gate before root residual
 policy.
 
 ## Admission Method
+
+The replacement path is exercised for every `parity-root` fixture before the historical ledger is
+consulted:
+
+- `root_contract.rs` validates root structure, finite origins, positive dimensions, width/height
+  strategy, non-numeric style, and the `max-width`/`viewBox` relationship;
+- `deterministic-root-contracts.json` binds ten representative exact roots to their input and
+  upstream SVG hashes; and
+- `playground/tests/run-root-viewport-oracle.mjs` mounts local SVGs in the pinned Chromium lane,
+  writes exact browser rectangle diagnostics, and blocks only when painted SVG/HTML content escapes
+  the root viewport.
+
+The browser rectangle report deliberately records deltas without accepting them. The only numeric
+constant in the crop oracle is the documented `1/64` CSS-pixel coordinate quantization used to
+avoid browser serialization noise; it is not a family or fixture tolerance.
 
 The candidate was generated with the canonical typed render operation:
 

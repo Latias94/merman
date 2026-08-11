@@ -116,6 +116,17 @@ Accept drift when:
 Accepted drift must still be visible in a parity report, narrow accepted-residual policy, or a
 changelog/TODO note explaining why exact modeling is intentionally out of scope.
 
+## Root viewport transition
+
+Root viewport verification now separates blocking contracts from browser diagnostics. The shared
+`parity-root` comparator rejects malformed or non-positive viewports, changed width/height
+strategy, changed non-numeric style, and changed `max-width`/`viewBox` policy. A small hash-bound
+deterministic fixture set provides exact root examples, including origin policy. Browser-owned bbox movement is
+reported by the scheduled/release browser oracle instead of becoming a per-fixture numeric
+acceptance row. The same oracle independently mounts the local SVG, including HTML in
+`foreignObject`, and rejects painted descendants that escape the final viewport using one
+coordinate-quantization epsilon.
+
 ## FontAwesome And Icon Labels
 
 FontAwesome is the canonical boundary example.

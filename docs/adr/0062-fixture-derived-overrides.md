@@ -6,7 +6,7 @@ Accepted
 
 ## Updated
 
-2026-07-15 for Mermaid `@11.16.0`
+2026-08-11 for Mermaid `@11.16.1`
 
 ## Context
 
@@ -62,7 +62,10 @@ Architecture and generation gates enforce the boundary:
 - generated measurement facts contain no complete fixture strings;
 - browser-probe generators are deterministic and validate against an independent fixture corpus;
 - host-measurement tests prove that a successful host result bypasses the vendored fallback; and
-- structural, normal, and root parity continue to reject new or changed mismatches.
+- structural and normal parity continue to reject new or changed mismatches. Root parity uses the
+  blocking root viewport contract and deterministic exact fixture set described by ADR-0050;
+  browser-owned bbox numerics are emitted only as attributable diagnostics and never as production
+  fixture data.
 
 ## Consequences
 

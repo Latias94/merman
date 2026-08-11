@@ -8,6 +8,7 @@ mod labels;
 mod layout;
 mod paths;
 mod root;
+mod root_contract;
 mod root_residual_catalog;
 mod xml;
 
@@ -19,5 +20,6 @@ pub(crate) use labels::*;
 pub(crate) use layout::*;
 pub(crate) use paths::*;
 pub(crate) use root::*;
+pub(crate) use root_contract::*;
 pub(crate) use root_residual_catalog::*;
 pub(crate) use xml::*;

@@ -1620,6 +1620,17 @@ fn write_rendered_fixture(
                 "DOM evidence for {diagram}/{stem}: accepted residual profile applied ({reason})"
             ));
         }
+        if profile.compares_root_viewport()
+            && let Err(error) = super::validate_root_viewport_contract(
+                diagram,
+                stem,
+                input_text,
+                upstream_svg,
+                local_svg,
+            )
+        {
+            failures.push(error);
+        }
         if let Err(err) = compare_dom_signatures(
             stem,
             upstream_svg,
