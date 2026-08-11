@@ -25,6 +25,11 @@ try:
 except ModuleNotFoundError:
     import web_package_group
 
+try:
+    from scripts import release_version_owners
+except ModuleNotFoundError:
+    import release_version_owners
+
 ROOT_MANIFEST = Path("Cargo.toml")
 ROOT_LOCK = Path("Cargo.lock")
 RUST_TOOLCHAIN = Path("rust-toolchain.toml")
@@ -46,16 +51,14 @@ PLAYGROUND_LOCK = Path("playground/package-lock.json")
 PLAYGROUND_LICENSE_REPORT = Path(
     "playground/public/THIRD_PARTY_LICENSES/npm-production-dependencies.txt"
 )
-PYTHON_MANIFEST = Path("platforms/python/merman/pyproject.toml")
-ANDROID_MANIFEST = Path("platforms/android/build.gradle.kts")
-FLUTTER_MANIFEST = Path("platforms/flutter/pubspec.yaml")
-FLUTTER_ANDROID_MANIFEST = Path("platforms/flutter/android/build.gradle")
-FLUTTER_IOS_PODSPEC = Path("platforms/flutter/ios/merman.podspec")
-FLUTTER_MACOS_PODSPEC = Path("platforms/flutter/macos/merman.podspec")
-FLUTTER_IOS_BUILD = Path("platforms/flutter/build-ios.sh")
-FLUTTER_PACKAGE_VERSION = Path(
-    "platforms/flutter/lib/src/generated/package_version.dart"
-)
+PYTHON_MANIFEST = release_version_owners.PYTHON_MANIFEST
+ANDROID_MANIFEST = release_version_owners.ANDROID_MANIFEST
+FLUTTER_MANIFEST = release_version_owners.FLUTTER_MANIFEST
+FLUTTER_ANDROID_MANIFEST = release_version_owners.FLUTTER_ANDROID_MANIFEST
+FLUTTER_IOS_PODSPEC = release_version_owners.FLUTTER_IOS_PODSPEC
+FLUTTER_MACOS_PODSPEC = release_version_owners.FLUTTER_MACOS_PODSPEC
+FLUTTER_IOS_BUILD = release_version_owners.FLUTTER_IOS_BUILD
+FLUTTER_PACKAGE_VERSION = release_version_owners.FLUTTER_PACKAGE_VERSION
 NPM_REGISTRY = "https://registry.npmjs.org/"
 
 
@@ -1149,7 +1152,12 @@ def _prepare_release_patch(
         try:
             _prepare_cargo_versions(prepared_root, release)
             _prepare_npm_versions(prepared_root, release)
-            _prepare_platform_versions(prepared_root, release)
+            try:
+                release_version_owners.prepare_python_version(prepared_root, release)
+                release_version_owners.prepare_android_version(prepared_root, release)
+                release_version_owners.prepare_flutter_version(prepared_root, release)
+            except release_version_owners.ReleaseOwnerError as exc:
+                raise ReleaseProjectionError(str(exc)) from exc
 
             verification = verify_repository(
                 prepared_root,
@@ -1502,51 +1510,6 @@ def _prepare_npm_versions(root: Path, release: ReleaseVersion) -> None:
             "package-lock.json digest",
         ),
     )
-
-
-def _prepare_platform_versions(root: Path, release: ReleaseVersion) -> None:
-    view = RepositoryView(root)
-    _write_relative(
-        root,
-        PYTHON_MANIFEST,
-        _replace_toml_section_string(
-            view.text(PYTHON_MANIFEST),
-            "project",
-            "version",
-            release.to_pep440(),
-        ),
-    )
-    assignments = (
-        (ANDROID_MANIFEST, r'^(version\s*=\s*")[^"]+("\s*)$', "Android version"),
-        (FLUTTER_MANIFEST, r"^(version:\s*)[^\s#]+(\s*)$", "Flutter version"),
-        (FLUTTER_PACKAGE_VERSION, r"^(const String mermanPackageVersion = ')[^']+(';\s*)$", "Flutter bundled native package version"),
-        (FLUTTER_ANDROID_MANIFEST, r"^(version\s*=\s*')[^']+('\s*)$", "Flutter Android version"),
-        (FLUTTER_IOS_PODSPEC, r"^(\s*s\.version\s*=\s*')[^']+('\s*)$", "Podspec version"),
-        (FLUTTER_MACOS_PODSPEC, r"^(\s*s\.version\s*=\s*')[^']+('\s*)$", "Podspec version"),
-    )
-    for path, pattern, label in assignments:
-        _write_relative(
-            root,
-            path,
-            _replace_one(
-                view.text(path),
-                pattern,
-                rf"\g<1>{release.canonical}\g<2>",
-                path,
-                label,
-            ),
-        )
-    build_text = view.text(FLUTTER_IOS_BUILD)
-    for plist_key in ("CFBundleShortVersionString", "CFBundleVersion"):
-        build_text = _replace_one(
-            build_text,
-            rf"(<key>{plist_key}</key>\s*<string>)[^<]+(</string>)",
-            rf"\g<1>{release.base}\g<2>",
-            FLUTTER_IOS_BUILD,
-            plist_key,
-            flags=0,
-        )
-    _write_relative(root, FLUTTER_IOS_BUILD, build_text)
 
 
 def _replace_toml_section_string(

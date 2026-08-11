@@ -12,13 +12,14 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from collections.abc import Callable
 from contextlib import contextmanager
 from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts import release_projection
+from scripts import release_projection, release_version_owners
 
 
 VERSION_SCRIPT_PATH = Path(__file__).with_name("release-version.py")
@@ -663,6 +664,109 @@ class ReleaseProjectionTests(unittest.TestCase):
             )
 
 
+class ReleaseVersionOwnerTests(unittest.TestCase):
+    FIXTURES = {
+        release_version_owners.PYTHON_MANIFEST: (
+            '[project]\nversion = "0.8.0a5"\n'
+            '[tool.fixture]\nversion = "keep-python"\n'
+        ),
+        release_version_owners.ANDROID_MANIFEST: (
+            'version = "0.8.0-alpha.5"\n'
+            'val dependencyVersion = "keep-android"\n'
+        ),
+        release_version_owners.FLUTTER_MANIFEST: (
+            "version: 0.8.0-alpha.5\ndependencies:\n  fixture: keep-flutter\n"
+        ),
+        release_version_owners.FLUTTER_PACKAGE_VERSION: (
+            "const String mermanPackageVersion = '0.8.0-alpha.5';\n"
+        ),
+        release_version_owners.FLUTTER_ANDROID_MANIFEST: (
+            "version = '0.8.0-alpha.5'\n"
+        ),
+        release_version_owners.FLUTTER_IOS_PODSPEC: (
+            "s.version = '0.8.0-alpha.5'\n"
+        ),
+        release_version_owners.FLUTTER_MACOS_PODSPEC: (
+            "s.version = '0.8.0-alpha.5'\n"
+        ),
+        release_version_owners.FLUTTER_IOS_BUILD: (
+            "<key>CFBundleShortVersionString</key>\n<string>0.8.0</string>\n"
+            "<key>CFBundleVersion</key>\n<string>0.8.0</string>\n"
+        ),
+    }
+
+    def write_fixtures(self, root: Path, fixtures: dict[Path, str]) -> None:
+        for path, text in fixtures.items():
+            target = root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text, encoding="utf-8")
+
+    def test_owner_editors_update_every_owned_surface(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self.write_fixtures(root, self.FIXTURES)
+            release = release_projection.parse_release_version("0.9.0-beta.2")
+
+            release_version_owners.prepare_python_version(root, release)
+            release_version_owners.prepare_android_version(root, release)
+            release_version_owners.prepare_flutter_version(root, release)
+
+            expected = {
+                release_version_owners.PYTHON_MANIFEST: 'version = "0.9.0b2"',
+                release_version_owners.ANDROID_MANIFEST: 'version = "0.9.0-beta.2"',
+                release_version_owners.FLUTTER_MANIFEST: "version: 0.9.0-beta.2",
+                release_version_owners.FLUTTER_PACKAGE_VERSION: "'0.9.0-beta.2'",
+                release_version_owners.FLUTTER_ANDROID_MANIFEST: "'0.9.0-beta.2'",
+                release_version_owners.FLUTTER_IOS_PODSPEC: "'0.9.0-beta.2'",
+                release_version_owners.FLUTTER_MACOS_PODSPEC: "'0.9.0-beta.2'",
+                release_version_owners.FLUTTER_IOS_BUILD: "<string>0.9.0</string>",
+            }
+            for path, version_text in expected.items():
+                self.assertIn(version_text, (root / path).read_text(encoding="utf-8"))
+            self.assertIn(
+                "keep-python",
+                (root / release_version_owners.PYTHON_MANIFEST).read_text(
+                    encoding="utf-8"
+                ),
+            )
+            self.assertIn(
+                "keep-android",
+                (root / release_version_owners.ANDROID_MANIFEST).read_text(
+                    encoding="utf-8"
+                ),
+            )
+            self.assertIn(
+                "keep-flutter",
+                (root / release_version_owners.FLUTTER_MANIFEST).read_text(
+                    encoding="utf-8"
+                ),
+            )
+
+    def test_flutter_owner_validates_every_surface_before_writing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            fixtures = dict(self.FIXTURES)
+            fixtures[release_version_owners.FLUTTER_IOS_BUILD] = (
+                "<key>CFBundleShortVersionString</key>\n<string>0.8.0</string>\n"
+            )
+            self.write_fixtures(root, fixtures)
+            before = {path: (root / path).read_bytes() for path in fixtures}
+
+            with self.assertRaisesRegex(
+                release_version_owners.ReleaseOwnerError,
+                "CFBundleVersion",
+            ):
+                release_version_owners.prepare_flutter_version(
+                    root,
+                    release_projection.parse_release_version("0.9.0-alpha.1"),
+                )
+
+            self.assertEqual(
+                {path: (root / path).read_bytes() for path in fixtures},
+                before,
+            )
+
+
 class ReleaseProjectionWriteTests(unittest.TestCase):
     def test_set_requires_a_clean_linked_worktree(self) -> None:
         with linked_worktree_fixture() as (repository, release_worktree):
@@ -675,27 +779,56 @@ class ReleaseProjectionWriteTests(unittest.TestCase):
             with self.assertRaisesRegex(release_projection.ReleaseProjectionError, "clean release worktree"):
                 release_projection._capture_release_preimage(release_worktree)
 
-    def test_flutter_owner_failure_leaves_caller_byte_identical(self) -> None:
+    def test_owner_preparers_are_explicit_and_failure_leaves_caller_byte_identical(self) -> None:
         with linked_worktree_fixture() as (_repository, release_worktree):
             before = (release_worktree / "sentinel.txt").read_bytes()
             preimage = release_projection._capture_release_preimage(release_worktree)
             release = release_projection.parse_release_version("0.9.0-alpha.1")
+            calls: list[tuple[str, Path]] = []
 
             def prepare_cargo(root: Path, _release) -> None:  # noqa: ANN001
+                calls.append(("cargo", root))
                 (root / "sentinel.txt").write_text("prepared\n", encoding="utf-8")
+
+            def prepare(owner: str) -> Callable[[Path, object], None]:
+                def record(root: Path, _release: object) -> None:
+                    calls.append((owner, root))
+
+                return record
+
+            def fail_flutter(root: Path, _release) -> None:  # noqa: ANN001
+                calls.append(("flutter", root))
+                raise release_version_owners.ReleaseOwnerError(
+                    "injected Flutter owner failure"
+                )
 
             with mock.patch.object(
                 release_projection, "_prepare_cargo_versions", side_effect=prepare_cargo
             ), mock.patch.object(
-                release_projection, "_prepare_npm_versions"
-            ), mock.patch.object(
                 release_projection,
-                "_prepare_platform_versions",
-                side_effect=release_projection.ReleaseProjectionError("injected Flutter owner failure"),
+                "_prepare_npm_versions",
+                side_effect=prepare("npm"),
+            ), mock.patch.object(
+                release_version_owners,
+                "prepare_python_version",
+                side_effect=prepare("python"),
+            ), mock.patch.object(
+                release_version_owners,
+                "prepare_android_version",
+                side_effect=prepare("android"),
+            ), mock.patch.object(
+                release_version_owners,
+                "prepare_flutter_version",
+                side_effect=fail_flutter,
             ):
                 with self.assertRaisesRegex(release_projection.ReleaseProjectionError, "Flutter owner failure"):
                     release_projection._prepare_release_patch(release_worktree, release, preimage)
 
+            self.assertEqual(
+                [owner for owner, _root in calls],
+                ["cargo", "npm", "python", "android", "flutter"],
+            )
+            self.assertEqual(len({root for _owner, root in calls}), 1)
             self.assertEqual((release_worktree / "sentinel.txt").read_bytes(), before)
             release_projection._capture_release_preimage(release_worktree)
 
