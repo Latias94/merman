@@ -50,6 +50,43 @@ companion:
 3. **Latest-stable delta**: a newer stable release outside that range, reported separately and
    never substituted implicitly.
 
+After `.github/workflows/mermaid-admission.yml` exists on the remote default branch, dispatch it
+from a pushed, reviewed branch or tag. Its only required input is the exact
+`zenuml_core_version` candidate:
+
+```bash
+ADMISSION_REF="<reviewed-branch-or-tag>"
+ADMISSION_SHA="<approved-40-character-commit>"
+ZENUML_CORE_VERSION="<exact-version>"
+
+gh workflow run mermaid-admission.yml \
+  --ref "$ADMISSION_REF" \
+  -f zenuml_core_version="$ZENUML_CORE_VERSION"
+ADMISSION_RUN_ID="$(gh run list \
+  --workflow mermaid-admission.yml \
+  --event workflow_dispatch \
+  --commit "$ADMISSION_SHA" \
+  --limit 1 \
+  --json databaseId \
+  --jq '.[0].databaseId')"
+test -n "$ADMISSION_RUN_ID"
+test "$(gh run view "$ADMISSION_RUN_ID" --json headSha --jq .headSha)" = "$ADMISSION_SHA"
+gh run watch "$ADMISSION_RUN_ID" --exit-status ||
+  gh run view "$ADMISSION_RUN_ID" --log-failed
+
+ADMISSION_ATTEMPT="$(gh run view "$ADMISSION_RUN_ID" --json attempt --jq .attempt)"
+ADMISSION_DIR="target/mermaid-admission/$ADMISSION_RUN_ID"
+gh run download "$ADMISSION_RUN_ID" \
+  --name "mermaid-admission-${ADMISSION_RUN_ID}-${ADMISSION_ATTEMPT}" \
+  --dir "$ADMISSION_DIR"
+test -f "$ADMISSION_DIR/zenuml-candidate-admission.json"
+test -f "$ADMISSION_DIR/zenuml-browser-admission.json"
+jq -e --arg version "$ZENUML_CORE_VERSION" \
+  '.candidate.version == $version' \
+  "$ADMISSION_DIR/zenuml-candidate-admission.json"
+gh run view "$ADMISSION_RUN_ID" --exit-status
+```
+
 Treat semver as candidacy, not behavioral proof. Materialize candidates in temporary state, invoke
 the exact official npm command
 `npm audit signatures --json --include-attestations --registry=https://registry.npmjs.org/`, and

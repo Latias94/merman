@@ -24,9 +24,9 @@ Before changing anything, classify the work as development, a workspace release,
 Treat the request as `prepare` unless the maintainer explicitly authorizes `ship` for a concrete version, source commit, channel, and surface set.
 
 - `prepare` may update source files, run local checks, dispatch non-publishing preflight when requested, and inspect external state read-only.
-- `ship` may create or push a tag, dispatch a publishing workflow, modify a GitHub Release, or mutate a registry only within the named scope.
+- `ship` may create or push a tag, dispatch a publishing or deployment workflow, modify a GitHub Release, or mutate a registry only within the named scope.
 - Pushing a release tag starts one inseparable tag-triggered publication bundle: `release.yml`, `release-crates.yml`, and `release-flutter.yml`. The maintainer must authorize all three tag-triggered surfaces; authorization for only part of that bundle does not authorize a tag push.
-- Python, Android, Apple, Web, VS Code, and Homebrew are separately authorized surfaces.
+- Python, Android, Apple, Web, VS Code, Homebrew, and GitHub Pages are separately authorized surfaces. Pages authorization must name a reviewed ref and approved 40-character commit; Web/npm or CI authorization does not cover dispatching `pages-deploy.yml` or a matching-path push to `main` or `master`.
 - Preparation, a green preflight, an existing plan, a partial prior release, or authorization from an earlier release never implies current shipping authorization.
 
 If scope is incomplete, report what is ready and stop before the first external mutation.
@@ -140,6 +140,46 @@ Watch the tag-triggered cargo-dist, crates.io, and pub.dev workflows first. Afte
 
 Skipped jobs must be explained by channel rules. A manual surface is not authorized merely because the tag-triggered bundle succeeded.
 
+### GitHub Pages Deployment
+
+Under explicit Pages `ship` authorization, dispatch `.github/workflows/pages-deploy.yml`, bind the
+run to the approved commit, wait for both build and deploy, and inspect failed logs before retrying:
+
+```bash
+PAGES_REF="<reviewed-branch-or-tag>"
+PAGES_SHA="<approved-40-character-commit>"
+
+gh workflow run pages-deploy.yml --ref "$PAGES_REF"
+PAGES_RUN_ID="$(gh run list \
+  --workflow pages-deploy.yml \
+  --event workflow_dispatch \
+  --commit "$PAGES_SHA" \
+  --limit 1 \
+  --json databaseId \
+  --jq '.[0].databaseId')"
+test -n "$PAGES_RUN_ID"
+test "$(gh run view "$PAGES_RUN_ID" --json headSha --jq .headSha)" = "$PAGES_SHA"
+if ! gh run watch "$PAGES_RUN_ID" --exit-status; then
+  gh run view "$PAGES_RUN_ID" --log-failed
+  exit 1
+fi
+
+PAGES_DEPLOYMENT_ID="$(gh api --method GET repos/{owner}/{repo}/deployments \
+  -f environment=github-pages \
+  -f sha="$PAGES_SHA" \
+  -f per_page=10 \
+  --jq 'map(select(.task == "deploy")) | first | .id')"
+test -n "$PAGES_DEPLOYMENT_ID"
+PAGES_URL="$(gh api "repos/{owner}/{repo}/deployments/$PAGES_DEPLOYMENT_ID/statuses" \
+  --jq 'map(select(.state == "success" and ((.environment_url // "") != ""))) | first | .environment_url')"
+test -n "$PAGES_URL"
+curl --fail --location --silent --show-error --output /dev/null "$PAGES_URL"
+printf '%s\n' "$PAGES_URL"
+```
+
+The workflow run, successful `github-pages` deployment status, and reachable deployment URL must
+all refer to the approved commit before reporting Pages complete.
+
 ## Verify
 
 Use direct GitHub, registry, and artifact evidence documented in `docs/release/RELEASING.md`. Confirm that:
@@ -152,6 +192,57 @@ Use direct GitHub, registry, and artifact evidence documented in `docs/release/R
 - `main` remains green after any release-workflow repair.
 
 Workflow success is not publication evidence. Registry and GitHub state must agree with the release contract.
+
+### Crates.io Receipt Inspection
+
+Download the exact `release-crates.yml` receipt artifact for read-only inspection. Use the
+preflighted source SHA, not the workflow head SHA of a manual recovery run:
+
+```bash
+CRATES_RUN_ID="<release-crates-run-id>"
+SOURCE_SHA="<preflighted-40-character-source-sha>"
+CRATES_ATTEMPT="$(gh run view "$CRATES_RUN_ID" --json attempt --jq .attempt)"
+RECEIPTS_DIR="target/crates-io-receipts/$CRATES_RUN_ID"
+RECEIPT_SCHEMA="distribution/crates-io/receipt-schema-v1.json"
+
+gh run download "$CRATES_RUN_ID" \
+  --name "crates-io-receipts-${SOURCE_SHA}-attempt-${CRATES_ATTEMPT}" \
+  --dir "$RECEIPTS_DIR"
+
+jq -s -e --slurpfile schema "$RECEIPT_SCHEMA" '
+  def fields_match($shape):
+    (($shape.required - keys) | length == 0)
+    and ((keys - ($shape.properties | keys)) | length == 0);
+  ($schema[0]) as $schema
+  | all(.[];
+      fields_match($schema)
+      and (.source | fields_match($schema.properties.source))
+      and (.toolchain | fields_match($schema.properties.toolchain))
+      and all(.packages[];
+        fields_match($schema["$defs"].package)
+        and (.artifact | fields_match($schema["$defs"].package.properties.artifact))
+        and (.registry | fields_match($schema["$defs"].package.properties.registry))))
+' "$RECEIPTS_DIR"/batch-*.json
+
+jq -s -e --arg source_sha "$SOURCE_SHA" '
+  all(.[];
+    .schema_version == 1
+    and .schema == "distribution/crates-io/receipt-schema-v1.json"
+    and .channel == "crates.io"
+    and .kind == "topological-batch"
+    and .source.commit == $source_sha)
+  and ((map(select(.state == "prepared") | .batch_index) | sort)
+    == (map(select(.state != "prepared") | .batch_index) | sort))
+  and all(.[];
+    .state == "prepared"
+    or (.state == "complete"
+      and all(.packages[];
+        .registry.observed_checksum != null
+        and .registry.observed_checksum == .artifact.sha256)))
+' "$RECEIPTS_DIR"/batch-*.json
+```
+
+These commands only download and inspect evidence; they do not authorize recovery or publication.
 
 ### Post-Publication Documentation Reconciliation
 
