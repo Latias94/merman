@@ -11,8 +11,9 @@ gap inventory live in `tests/graph_fixture.rs`.
 - Exact-output subset: 40 fixtures, derived as `GRAPH_FIXTURE_CORPUS - GRAPH_FIXTURE_GAPS`.
 - Named intentional differences: 39 fixtures.
 - Every exact fixture must still match byte-for-byte.
-- Every named gap must still render successfully; parser-backed semantic tests own topology,
-  endpoint, label, direction, and compound-boundary behavior.
+- Every named gap must still render successfully and retain every non-marker visible text token
+  from the copied output; parser-backed semantic tests own topology, endpoint, direction, and
+  compound-boundary behavior.
 
 The gap classification does not authorize missing nodes, edges, labels, or groups. It records only
 deterministic layout and route-shape differences from the narrow copied renderer. Resource errors or
@@ -82,8 +83,8 @@ Unicode:
 ## Executable Evidence
 
 - `graph_fixture_exact_subset_matches_upstream` protects the remaining byte oracle.
-- `graph_fixture_named_gaps_remain_renderable` prevents named differences from hiding render
-  failures.
+- `graph_fixture_named_gaps_preserve_visible_text_and_render` prevents named differences from
+  hiding render failures or authored visible-text loss.
 - `flowchart_local_semantic_fixture_covers_ampersand_fanin_and_fanout` covers ampersand topology.
 - `flowchart_parser_cross_subgraph_routes_follow_compound_parent_topology` covers legal group-border
   crossing and repeated-node first-parent ownership.

@@ -19,6 +19,21 @@ const IMPORTED_FAMILY_FIXTURE_COUNTS: &[(&str, &str, usize)] = &[
     ("er", "er", 101),
 ];
 
+const IMPORTED_INTENTIONAL_EMPTY_FIXTURES: &[(&str, &str)] = &[
+    (
+        "class/upstream_pkgtests_classdiagram_spec_004.mmd",
+        "accessibility-only Class input has no terminal-visible diagram facts",
+    ),
+    (
+        "class/upstream_pkgtests_classdiagram_spec_005.mmd",
+        "multiline accessibility-only Class input has no terminal-visible diagram facts",
+    ),
+    (
+        "er/upstream_pkgtests_diagram_orchestration_spec_030.mmd",
+        "an empty ER diagram has no terminal-visible diagram facts",
+    ),
+];
+
 #[test]
 fn fixture_inventory_matches_tracked_upstream_snapshot() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/testdata/mermaid-ascii");
@@ -425,11 +440,18 @@ fn moving_reference_manifest_records_each_discovery_fixture_once() {
 }
 
 #[test]
-fn imported_common_family_fixture_admission_is_reproducible() {
+fn imported_common_family_fixtures_render_with_explicit_empty_dispositions() {
     let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let engine = Engine::new();
     let options = AsciiRenderOptions::ascii();
     let mut failures = Vec::new();
+    let mut intentional_empty_seen = BTreeSet::new();
+    assert!(
+        IMPORTED_INTENTIONAL_EMPTY_FIXTURES
+            .iter()
+            .all(|(path, reason)| !path.is_empty() && !reason.is_empty()),
+        "every intentional-empty imported fixture must name a path and reason"
+    );
 
     for (directory, expected_kind, expected_count) in IMPORTED_FAMILY_FIXTURE_COUNTS {
         let root = workspace_root.join("fixtures").join(directory);
@@ -467,6 +489,10 @@ fn imported_common_family_fixture_admission_is_reproducible() {
                 rejected_invalid_count += 1;
                 continue;
             }
+            let fixture_key = format!("{directory}/{file_name}");
+            let expected_empty = IMPORTED_INTENTIONAL_EMPTY_FIXTURES
+                .iter()
+                .any(|(path, _)| *path == fixture_key);
 
             let result = (|| -> std::result::Result<(), String> {
                 let source = fs::read_to_string(&path)
@@ -482,13 +508,27 @@ fn imported_common_family_fixture_admission_is_reproducible() {
                         model.kind()
                     ));
                 }
-                render_model(model, &options)
+                let rendered = render_model(model, &options)
                     .map_err(|error| format!("ASCII render failed: {error}"))?;
+                if expected_empty {
+                    if !rendered.trim().is_empty() {
+                        return Err(format!(
+                            "document has terminal-visible output despite its intentional-empty disposition:\n{rendered}"
+                        ));
+                    }
+                } else if rendered.trim().is_empty() {
+                    return Err("ASCII renderer returned an empty document".to_string());
+                }
                 Ok(())
             })();
 
             match result {
-                Ok(()) => rendered_count += 1,
+                Ok(()) => {
+                    rendered_count += 1;
+                    if expected_empty {
+                        intentional_empty_seen.insert(fixture_key);
+                    }
+                }
                 Err(error) => {
                     let relative = path.strip_prefix(&workspace_root).unwrap_or(&path);
                     failures.push(format!("{}: {error}", relative.display()));
@@ -506,8 +546,9 @@ fn imported_common_family_fixture_admission_is_reproducible() {
         assert_eq!(
             rendered_count,
             expected_count - expected_invalid_count,
-            "rendered fixture count drifted for {}",
-            root.display()
+            "rendered fixture count drifted for {}:\n{}",
+            root.display(),
+            failures.join("\n")
         );
     }
 
@@ -515,6 +556,14 @@ fn imported_common_family_fixture_admission_is_reproducible() {
         failures.is_empty(),
         "imported common-family admission failures:\n{}",
         failures.join("\n")
+    );
+    assert_eq!(
+        intentional_empty_seen,
+        IMPORTED_INTENTIONAL_EMPTY_FIXTURES
+            .iter()
+            .map(|(path, _)| (*path).to_owned())
+            .collect(),
+        "every empty imported render must have one explicit metadata-only disposition"
     );
 }
 

@@ -1,6 +1,6 @@
 use merman_ascii::{AsciiRenderOptions, render_model};
 use merman_core::{Engine, ParseOptions};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -473,13 +473,25 @@ fn graph_fixture_exact_subset_matches_upstream() {
 }
 
 #[test]
-fn graph_fixture_named_gaps_remain_renderable() {
+fn graph_fixture_named_gaps_preserve_visible_text_and_render() {
     let mut failures = Vec::new();
     for fixture in GRAPH_FIXTURE_GAPS {
         let path = fixture_path(*fixture);
-        let (input, _) = split_fixture(&path);
+        let (input, expected) = split_fixture(&path);
         match render_flowchart(&input, &fixture.options()) {
-            Ok(rendered) if !rendered.is_empty() => {}
+            Ok(rendered) if !rendered.trim().is_empty() => {
+                let expected_tokens = visible_text_token_counts(&expected);
+                let rendered_tokens = visible_text_tokens(&rendered);
+                for (token, expected_count) in expected_tokens {
+                    let actual_count = visible_token_occurrences(&rendered_tokens, &token);
+                    if actual_count < expected_count {
+                        failures.push(format!(
+                            "{}: visible token {token:?} occurs {actual_count} times, expected at least {expected_count}\n{rendered}",
+                            fixture.key(),
+                        ));
+                    }
+                }
+            }
             Ok(_) => failures.push(format!("{}: empty output", fixture.key())),
             Err(error) => failures.push(format!("{}: {error}", fixture.key())),
         }
@@ -490,6 +502,55 @@ fn graph_fixture_named_gaps_remain_renderable() {
         "named graph fixture gaps must remain renderable:\n{}",
         failures.join("\n")
     );
+}
+
+fn visible_text_token_counts(text: &str) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for token in visible_text_tokens(text) {
+        *counts.entry(token).or_default() += 1;
+    }
+    counts
+}
+
+fn visible_text_tokens(text: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut token = String::new();
+    let flush = |token: &mut String, tokens: &mut Vec<String>| {
+        // The copied ASCII renderer uses a standalone `v` as a downward arrowhead.
+        if !token.is_empty() && token != "v" {
+            tokens.push(std::mem::take(token));
+        } else {
+            token.clear();
+        }
+    };
+
+    for character in text.chars() {
+        if character.is_alphanumeric() || character == '_' {
+            token.push(character);
+        } else {
+            flush(&mut token, &mut tokens);
+        }
+    }
+    flush(&mut token, &mut tokens);
+    tokens
+}
+
+fn visible_token_occurrences(tokens: &[String], expected: &str) -> usize {
+    let mut occurrences = 0usize;
+    for start in 0..tokens.len() {
+        let mut joined = String::new();
+        for token in &tokens[start..] {
+            joined.push_str(token);
+            if joined == expected {
+                occurrences += 1;
+                break;
+            }
+            if joined.len() >= expected.len() || !expected.starts_with(&joined) {
+                break;
+            }
+        }
+    }
+    occurrences
 }
 
 #[test]
