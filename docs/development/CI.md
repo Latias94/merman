@@ -140,6 +140,8 @@ Workflow syntax and expression semantics are checked with actionlint 1.7.12. Hig
 security findings are checked with zizmor 1.29.0. CI verifies the downloaded actionlint archive and
 the selected zizmor wheel by SHA-256 before execution, and prints both tool versions. Repository
 tests cover only Merman-specific boundaries: the same-run fail-closed gate, read-only PR owner
-closure, trusted deployment separation, immutable action identities, checkout credential isolation,
-and npm provenance policy. GitHub Actions are pinned to reviewed commits with readable version
-comments; weekly Dependabot updates maintain those identities.
+closure, trusted deployment separation, maintained action release tags, checkout credential
+isolation, and npm provenance policy. GitHub Actions use current stable release tags, while actions
+whose ref is part of their public interface retain readable tool or toolchain refs. The zizmor
+configuration accepts version refs without disabling its other workflow-security audits, and weekly
+Dependabot updates maintain the selected action versions.

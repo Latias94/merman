@@ -66,19 +66,19 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_ref }}
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Verify legal material projections
         run: python3 scripts/sync-release-legal-materials.py --check
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@v2.9.2
         with:
           cache-targets: false
 
@@ -110,21 +110,21 @@ jobs:
             target: win32-x64
 
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_ref }}
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@v2.9.2
         with:
           cache-targets: false
 
       - name: Setup Node
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        uses: actions/setup-node@v7.0.0
         with:
           node-version: "24"
           cache: npm
@@ -204,7 +204,7 @@ jobs:
         run: npm run smoke:vsix -- --vsix "merman-vscode-${{ matrix.target }}.vsix"
 
       - name: Upload VSIX
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: merman-vscode-${{ steps.vsix.outputs.extension_version }}-runtime-${{ steps.vsix.outputs.runtime_version }}-${{ steps.vsix.outputs.runtime_channel }}-${{ steps.vsix.outputs.source_sha }}-${{ matrix.target }}
           path: tools/vscode-extension/merman-vscode-${{ matrix.target }}.vsix

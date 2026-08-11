@@ -27,12 +27,12 @@ jobs:
           - os: macos-15
           - os: ubuntu-24.04
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Set up Homebrew test environment
-        uses: Homebrew/actions/setup-homebrew@1f8e202ffddf94def7f42f6fa3a482e821489f9c # 2026.07.10.1
+        uses: Homebrew/actions/setup-homebrew@2026.08.10.2
         with:
           core: true
           setup-sandbox: true
@@ -73,7 +73,7 @@ jobs:
         run: brew livecheck merman-cli --json
 
       - name: Check out formula release contract
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: refs/tags/v${{ steps.metadata.outputs.version }}
           path: formula-contract

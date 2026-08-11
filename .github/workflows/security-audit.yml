@@ -26,7 +26,7 @@ jobs:
     outputs:
       cargo: ${{ steps.plan.outputs.cargo }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -42,15 +42,17 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.audit-plan.outputs.cargo) }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Install cargo-audit
-        uses: taiki-e/install-action@e40e306b80d964fa5d3792fcbb48bf976d23dce8 # cargo-audit
+        uses: taiki-e/install-action@v2.85.11
+        with:
+          tool: cargo-audit
 
       - name: Audit Rust dependencies
         env:
@@ -61,18 +63,20 @@ jobs:
     name: cargo-deny dependency policy
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Install cargo-deny
-        uses: taiki-e/install-action@c0977eb8b4952c1e8e932703147dba6f76856a53 # cargo-deny
+        uses: taiki-e/install-action@v2.85.11
+        with:
+          tool: cargo-deny
 
       - name: Install cargo-about
-        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
+        uses: taiki-e/install-action@v2.85.11
         with:
           tool: cargo-about@0.9.1
 

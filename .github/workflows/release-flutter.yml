@@ -69,7 +69,7 @@ jobs:
             printf 'version=%s\n' "$VERSION"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ steps.release.outputs.source_ref }}
           persist-credentials: false
@@ -100,7 +100,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
@@ -125,7 +125,7 @@ jobs:
         run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: aarch64-linux-android,x86_64-linux-android,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin,x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,x86_64-pc-windows-gnu
 
@@ -137,7 +137,7 @@ jobs:
           cargo install cargo-zigbuild --version 0.21.8 --locked
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
+        uses: android-actions/setup-android@v4.0.1
 
       - name: Install Android NDK
         shell: bash
@@ -176,10 +176,10 @@ jobs:
           test -f platforms/flutter/linux/lib/aarch64/libmerman_ffi.so
 
       - name: Setup Dart with pub.dev OIDC credentials
-        uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260 # v1
+        uses: dart-lang/setup-dart@v1.8.0
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        uses: subosito/flutter-action@v2.23.0
         with:
           flutter-version: "3.38.3"
           channel: stable
@@ -221,7 +221,7 @@ jobs:
             --version "$VERSION"
 
       - name: Upload Flutter package artifact
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: merman-flutter-package
           path: |
@@ -278,14 +278,14 @@ jobs:
     steps:
       # The downloaded archive is data only. Run extraction from the trusted workflow revision.
       - name: Checkout trusted Flutter release verifier
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           path: trusted
           persist-credentials: false
 
       - name: Download Flutter package artifact
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        uses: actions/download-artifact@v8.0.1
         with:
           name: merman-flutter-package
           path: target/flutter-package
@@ -306,7 +306,7 @@ jobs:
             --version "$VERSION"
 
       - name: Setup Dart with pub.dev OIDC credentials
-        uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260 # v1
+        uses: dart-lang/setup-dart@v1.8.0
 
       - name: Publish to pub.dev
         working-directory: target/flutter-publish

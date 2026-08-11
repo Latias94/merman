@@ -141,18 +141,18 @@ jobs:
       matrix: ${{ fromJSON(needs.resolve-fuzz-plan.outputs.matrix) }}
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Install Rust nightly
-        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # 1.97.1 patch release
+        uses: dtolnay/rust-toolchain@1.97.1
         with:
           toolchain: ${{ env.FUZZ_NIGHTLY }}
           components: rust-src
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        uses: Swatinem/rust-cache@v2.9.2
         with:
           cache-targets: false
           workspaces: |
@@ -289,7 +289,7 @@ jobs:
 
       - name: Upload fuzz artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: fuzz-artifacts-${{ matrix.target }}
           path: |

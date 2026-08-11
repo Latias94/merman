@@ -41,7 +41,7 @@ jobs:
       web: ${{ steps.plan.outputs.web }}
       workflow: ${{ steps.plan.outputs.workflow }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -97,7 +97,7 @@ jobs:
     if: ${{ needs.ci-plan.outputs.workflow == 'true' }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -154,13 +154,13 @@ jobs:
     if: ${{ needs.ci-plan.outputs.hygiene == 'true' }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           components: rustfmt
 
@@ -213,20 +213,22 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           components: clippy
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@9e3720000324bf314ab081346108fc3bab8d6b74 # nextest
+        uses: taiki-e/install-action@v2.85.11
+        with:
+          tool: nextest
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@v2.9.2
         with:
           cache-targets: false
 
@@ -254,12 +256,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@d96678350ffd6a456235832eb11e1c491589b7bb # v3.21.8
+        uses: DeterminateSystems/determinate-nix-action@v3.21.9
 
       - name: Build reusable Nix derivation
         run: |
@@ -299,7 +301,7 @@ jobs:
           - os: windows-2025-vs2026
             target: x86_64-pc-windows-msvc
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -308,10 +310,10 @@ jobs:
         run: python3 scripts/verify_cli_assets.py --require powershell
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@v2.9.2
         with:
           cache-targets: false
 
@@ -341,7 +343,7 @@ jobs:
             parity: false
 
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -366,7 +368,7 @@ jobs:
           fi
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         name: Checkout pinned DOMPurify source
         if: matrix.parity
         with:
@@ -388,14 +390,16 @@ jobs:
           test "$actual" = "$DOMPURIFY_SOURCE_COMMIT"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Install parity Rust targets
         if: matrix.parity
         run: rustup target add aarch64-linux-android wasm32-unknown-unknown
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@9e3720000324bf314ab081346108fc3bab8d6b74 # nextest
+        uses: taiki-e/install-action@v2.85.11
+        with:
+          tool: nextest
 
       - name: Free disk space (Ubuntu)
         if: runner.os == 'Linux'
@@ -412,7 +416,7 @@ jobs:
           df -h
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@v2.9.2
         with:
           cache-targets: false
 
@@ -422,7 +426,7 @@ jobs:
 
       - name: Setup Node for generated Mermaid artifacts
         if: matrix.parity
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        uses: actions/setup-node@v7.0.0
         with:
           node-version: "24"
           cache: npm
@@ -543,12 +547,12 @@ jobs:
     if: ${{ needs.ci-plan.outputs.node == 'true' }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        uses: actions/setup-node@v7.0.0
         with:
           node-version: "24"
           cache: npm
@@ -573,25 +577,27 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: "0"
       TYPST_CLI_VERSION: "0.15.0"
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: wasm32-unknown-unknown
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@v2.9.2
         with:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@179faed5d7f555fa78d5b53e7a145219b4e85dba # wasm-tools
+        uses: taiki-e/install-action@v2.85.11
+        with:
+          tool: wasm-tools
 
       - name: Install wasm-opt
-        uses: sigoden/install-binary@7eb4b088aedf19fe9b2bc6c6bbdc12379ffb355c # v1
+        uses: sigoden/install-binary@v1.2.0
         with:
           repo: WebAssembly/binaryen
           name: wasm-opt
@@ -636,7 +642,7 @@ jobs:
 
       - name: Upload Typst package smoke artifacts
         if: failure()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: typst-package-smoke
           path: target/typst-package-smoke
@@ -652,25 +658,27 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: "0"
       TYPST_COMPAT_CLI_VERSION: "0.15.0"
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: wasm32-unknown-unknown
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@v2.9.2
         with:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@179faed5d7f555fa78d5b53e7a145219b4e85dba # wasm-tools
+        uses: taiki-e/install-action@v2.85.11
+        with:
+          tool: wasm-tools
 
       - name: Install wasm-opt
-        uses: sigoden/install-binary@7eb4b088aedf19fe9b2bc6c6bbdc12379ffb355c # v1
+        uses: sigoden/install-binary@v1.2.0
         with:
           repo: WebAssembly/binaryen
           name: wasm-opt
@@ -709,7 +717,7 @@ jobs:
 
       - name: Upload Typst package compatibility artifacts
         if: failure()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: typst-package-compat-smoke
           path: target/typst-package-smoke
@@ -721,7 +729,7 @@ jobs:
     if: ${{ needs.ci-plan.outputs.platform == 'true' }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -747,7 +755,7 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -757,26 +765,28 @@ jobs:
         run: echo "ndk=$(python3 platforms/android/build-android.py --print-version ndk)" >> "$GITHUB_OUTPUT"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: aarch64-linux-android
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@9e3720000324bf314ab081346108fc3bab8d6b74 # nextest
+        uses: taiki-e/install-action@v2.85.11
+        with:
+          tool: nextest
 
       - name: Setup JDK
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        uses: actions/setup-java@v5.7.0
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@v2.9.2
         with:
           cache-targets: false
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        uses: subosito/flutter-action@v2.23.0
         with:
           flutter-version: "3.38.3"
           channel: stable
@@ -786,7 +796,7 @@ jobs:
         run: flutter precache --android
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
+        uses: android-actions/setup-android@v4.0.1
 
       - name: Install Android NDK
         shell: bash
@@ -813,7 +823,7 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -824,26 +834,26 @@ jobs:
           echo "ndk=$(python3 platforms/android/build-android.py --print-version ndk)" >> "$GITHUB_OUTPUT"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: aarch64-linux-android,x86_64-linux-android
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@v2.9.2
         with:
           cache-targets: false
 
       - name: Setup JDK
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        uses: actions/setup-java@v5.7.0
         with:
           distribution: temurin
           java-version: ${{ steps.android-toolchain.outputs.java }}
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5
+        uses: gradle/actions/setup-gradle@v6.3.0
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
+        uses: android-actions/setup-android@v4.0.1
 
       - name: Install Android NDK
         shell: bash
@@ -871,7 +881,7 @@ jobs:
           ls -l /dev/kvm
 
       - name: Run Android instrumentation smoke
-        uses: reactivecircus/android-emulator-runner@e89f39f1abbbd05b1113a29cf4db69e7540cae5a # v2.37.0
+        uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
           # The JNI smoke only needs minSdk coverage; the default image boots faster and flakes less.
           api-level: 29
@@ -888,20 +898,20 @@ jobs:
     if: ${{ needs.ci-plan.outputs.python == 'true' }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: "3.12"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@v2.9.2
 
       - name: Build and smoke Python UniFFI wheel
         run: python scripts/build-python-uniffi-wheel.py --run-smoke
@@ -912,15 +922,15 @@ jobs:
     if: ${{ needs.ci-plan.outputs.platform == 'true' }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@v2.9.2
 
       - name: Build merman C ABI library
         run: python3 scripts/artifact_profile_recipe.py c-abi-native --build --locked
@@ -942,7 +952,7 @@ jobs:
     if: ${{ needs.ci-plan.outputs.platform == 'true' }}
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -953,12 +963,12 @@ jobs:
           swift --version | grep -Eq 'Apple Swift version 5\.9(\.[0-9]+)?([[:space:]]|$)'
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@v2.9.2
 
       - name: Build iOS XCFramework with Swift 5.9
         env:
@@ -985,17 +995,17 @@ jobs:
     if: ${{ needs.ci-plan.outputs.platform == 'true' }}
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@v2.9.2
 
       - name: Build Apple XCFramework
         env:
@@ -1051,7 +1061,7 @@ jobs:
     if: ${{ needs.ci-plan.outputs.performance == 'true' }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -1104,7 +1114,7 @@ jobs:
       - performance-contracts
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 

@@ -21,10 +21,9 @@ PR_REACHABLE_WORKFLOWS = [
     WORKFLOW_ROOT / "vscode-extension.yml",
 ]
 PUBLISH_WORKFLOWS = sorted(WORKFLOW_ROOT.glob("release-*.yml")) + [
-    WORKFLOW_ROOT / "pages-deploy.yml"
+    WORKFLOW_ROOT / "release.yml",
+    WORKFLOW_ROOT / "pages-deploy.yml",
 ]
-PINNED_ACTION = re.compile(r"^[^@\s]+@[0-9a-f]{40}$")
-USES_LINE = re.compile(r"(?m)^\s*(?:-\s+)?uses:\s*([^\s#]+)(?:\s+#\s*(\S.*))?$")
 WRITE_CAPABILITIES = (
     "actions: write",
     "attestations: write",
@@ -42,10 +41,6 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def action_uses(path: Path) -> list[tuple[str, str | None]]:
-    return [(match.group(1), match.group(2)) for match in USES_LINE.finditer(read(path))]
-
-
 def assert_no_npm_provenance_disable(test_case: unittest.TestCase, text: str) -> None:
     patterns = (
         r"(?:^|\s)--no-provenance(?:\s|$)",
@@ -59,17 +54,8 @@ def assert_no_npm_provenance_disable(test_case: unittest.TestCase, text: str) ->
 
 
 class WorkflowSecurityBoundaries(unittest.TestCase):
-    def test_all_external_actions_are_commit_pinned_with_readable_versions(self) -> None:
-        for path in sorted(WORKFLOW_ROOT.glob("*.yml")):
-            for uses, comment in action_uses(path):
-                if uses.startswith("./"):
-                    continue
-                with self.subTest(workflow=path.name, uses=uses):
-                    self.assertRegex(uses, PINNED_ACTION)
-                    self.assertIsNotNone(comment, "pinned actions need a readable version comment")
-
     def test_pull_request_orchestrator_and_reusable_owners_are_read_only(self) -> None:
-        for path in PR_REACHABLE_WORKFLOWS:
+        for path in [*PR_REACHABLE_WORKFLOWS, WORKFLOW_ROOT / "performance.yml"]:
             text = read(path)
             with self.subTest(workflow=path.name):
                 for capability in WRITE_CAPABILITIES:
@@ -101,6 +87,11 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
     def test_pr_gate_is_same_run_and_fail_closed(self) -> None:
         ci = read(CI_WORKFLOW)
         self.assertIn("  pr-gate:\n", ci)
+        self.assertIn(
+            "name: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'pr-gate' || format('{0}-gate', github.event_name) }}",
+            ci,
+        )
+        self.assertNotIn("\n    name: pr-gate\n", ci)
         self.assertIn("if: ${{ always() }}", ci)
         self.assertIn("python3 scripts/ci_plan.py gate", ci)
         self.assertNotIn("workflow_run:", ci)
@@ -116,7 +107,7 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertIn("environment:\n      name: github-pages", deployment)
         self.assertIn("uses: ./.github/workflows/pages.yml", deployment)
 
-    def test_publish_workflows_do_not_use_mutable_actions_or_persist_checkout_tokens(self) -> None:
+    def test_publish_workflows_do_not_persist_checkout_tokens(self) -> None:
         for path in PUBLISH_WORKFLOWS:
             text = read(path)
             with self.subTest(workflow=path.name):
@@ -124,9 +115,6 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
                     text.count("persist-credentials: false"),
                     text.count("uses: actions/checkout@"),
                 )
-                for uses, _comment in action_uses(path):
-                    if not uses.startswith("./"):
-                        self.assertRegex(uses, PINNED_ACTION)
 
     def test_crates_publish_uses_trusted_receipt_operator_and_immutable_source(self) -> None:
         text = read(WORKFLOW_ROOT / "release-crates.yml")

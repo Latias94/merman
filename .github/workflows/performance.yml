@@ -115,7 +115,7 @@ jobs:
       CARGO_INCREMENTAL: "0"
     steps:
       - name: Checkout head
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@v7.0.1
         with:
           path: head
           fetch-depth: 1
@@ -124,7 +124,7 @@ jobs:
           repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Check Python performance scripts
         if: github.event_name != 'pull_request'
@@ -261,7 +261,7 @@ jobs:
       matrix: ${{ fromJSON(needs.measurement-plan.outputs.matrix) }}
     steps:
       - name: Checkout head
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@v7.0.1
         with:
           path: head
           fetch-depth: 1
@@ -270,7 +270,7 @@ jobs:
           repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}
 
       - name: Checkout base
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@v7.0.1
         with:
           path: base
           fetch-depth: ${{ github.event_name == 'schedule' && 2 || 1 }}
@@ -284,7 +284,7 @@ jobs:
         run: git checkout --detach HEAD^
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Measure descriptor and write receipt
         id: comparison
@@ -347,7 +347,7 @@ jobs:
 
       - name: Upload measurement receipt
         if: ${{ always() }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: ${{ matrix.artifact }}
           path: |
@@ -410,7 +410,7 @@ jobs:
       CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
       - name: Checkout head
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@v7.0.1
         with:
           path: head
           fetch-depth: 1
@@ -419,7 +419,7 @@ jobs:
           repository: ${{ github.event_name == 'workflow_dispatch' && inputs.head_repository || github.repository }}
 
       - name: Checkout mermaid-rs-renderer
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@v7.0.1
         with:
           repository: 1jehuang/mermaid-rs-renderer
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.mmdr_ref || '7ff1196ed297c32a65a6b3cdc28f3ca3787fb65e' }}
@@ -428,7 +428,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Install mermaid-rs-renderer toolchain
         shell: bash
@@ -446,7 +446,7 @@ jobs:
 
       - name: Setup Node for Mermaid JS
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.include_mermaid_js }}
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        uses: actions/setup-node@v7.0.0
         with:
           node-version: "22"
           cache: npm
@@ -506,7 +506,7 @@ jobs:
           python3 tools/bench/compare_mermaid_renderers.py "${args[@]}"
 
       - name: Upload reference artifacts
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: perf-reference
           path: |
