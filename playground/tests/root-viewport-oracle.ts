@@ -3,6 +3,7 @@ import type { Page } from "playwright";
 export const ROOT_VIEWPORT_QUANTIZATION_EPSILON_CSS_PX = 1 / 64;
 export const ROOT_VIEWPORT_PAINT_GUARD_CSS_PX = 16;
 export const ROOT_VIEWPORT_MAX_CAPTURE_CSS_PX = 4096;
+export const ROOT_VIEWPORT_RASTER_NEIGHBORHOOD_PX = 1;
 
 const ROOT_VIEWPORT_HOST_WIDTH_CSS_PX = 1200;
 const ROOT_VIEWPORT_AUDIT_PAGE_CSS_PX =
@@ -14,6 +15,8 @@ export type RootViewportAudit = {
   paintedElementCount: number;
   paintAudit: PaintAuditSnapshot;
   violations: PaintedPixelViolation[];
+  structuralViolations: PaintedPixelViolation[];
+  structuralPixelKeys: string[];
 };
 
 export type RectSnapshot = {
@@ -34,17 +37,32 @@ export type PaintedPixelViolation = {
   reachesAuditBoundary: boolean;
 };
 
+export type PaintAuditIndeterminateReason =
+  | "active-box-shadow"
+  | "active-filter"
+  | "active-text-shadow"
+  | "capture-boundary"
+  | "capture-limit"
+  | "image-decode-failed"
+  | "image-decode-unavailable";
+
 export type PaintAuditSnapshot = {
   status: "collected" | "indeterminate" | "missing-root";
   guardCssPx: number;
   captureWidthCssPx: number | null;
   captureHeightCssPx: number | null;
-  indeterminateReasons: string[];
+  indeterminateReasons: PaintAuditIndeterminateReason[];
 };
 
 export type RootViewportAuditRequest = {
   svgSource: string;
 };
+
+export type RootViewportContainmentClassification =
+  | "blocking"
+  | "browser-owned-diagnostic"
+  | "contained"
+  | "upstream-inherited";
 
 type MountedSvgSnapshot = {
   root: RectSnapshot | null;
@@ -52,7 +70,7 @@ type MountedSvgSnapshot = {
   paintedElementCount: number;
   screenshotWidth: number;
   screenshotHeight: number;
-  indeterminateReasons: string[];
+  indeterminateReasons: PaintAuditIndeterminateReason[];
   rootPixelBounds: {
     left: number;
     top: number;
@@ -75,7 +93,86 @@ type PixelAuditSnapshot = {
     rect: RectSnapshot | null;
     reachesAuditBoundary: boolean;
   }>;
+  pixelKeys: string[];
 };
+
+export function classifyRootViewportContainment(
+  local: RootViewportAudit,
+  upstream: RootViewportAudit | null,
+): RootViewportContainmentClassification {
+  if (local.paintAudit.status === "collected" && local.violations.length === 0) {
+    return "contained";
+  }
+  if (
+    local.paintAudit.status === "collected" &&
+    local.structuralViolations.length === 0
+  ) {
+    return "browser-owned-diagnostic";
+  }
+  if (local.paintAudit.status === "missing-root" || upstream === null) return "blocking";
+  if (local.paintAudit.status === "indeterminate") {
+    return indeterminateEvidenceIsNoWorse(local, upstream)
+      ? "upstream-inherited"
+      : "blocking";
+  }
+  return paintEvidenceIsNoWorse(local, upstream) ? "upstream-inherited" : "blocking";
+}
+
+function indeterminateEvidenceIsNoWorse(
+  local: RootViewportAudit,
+  upstream: RootViewportAudit,
+): boolean {
+  if (upstream.paintAudit.status !== "indeterminate") return false;
+  if (local.paintAudit.indeterminateReasons.includes("capture-boundary")) return false;
+  if (!sameValues(local.paintAudit.indeterminateReasons, upstream.paintAudit.indeterminateReasons)) {
+    return false;
+  }
+  return paintEvidenceIsNoWorse(local, upstream);
+}
+
+function paintEvidenceIsNoWorse(
+  local: RootViewportAudit,
+  upstream: RootViewportAudit,
+): boolean {
+  if (
+    local.root === null ||
+    upstream.root === null ||
+    !["collected", "indeterminate"].includes(upstream.paintAudit.status)
+  ) {
+    return false;
+  }
+  if (local.structuralPixelKeys.length > upstream.structuralPixelKeys.length) {
+    return false;
+  }
+  const upstreamPixels = new Set(upstream.structuralPixelKeys);
+  return local.structuralPixelKeys.every((pixel) => {
+    if (upstreamPixels.has(pixel)) return true;
+    const [x, y] = pixel.split(",").map(Number);
+    for (
+      let deltaY = -ROOT_VIEWPORT_RASTER_NEIGHBORHOOD_PX;
+      deltaY <= ROOT_VIEWPORT_RASTER_NEIGHBORHOOD_PX;
+      deltaY += 1
+    ) {
+      for (
+        let deltaX = -ROOT_VIEWPORT_RASTER_NEIGHBORHOOD_PX;
+        deltaX <= ROOT_VIEWPORT_RASTER_NEIGHBORHOOD_PX;
+        deltaX += 1
+      ) {
+        if (upstreamPixels.has(`${x + deltaX},${y + deltaY}`)) return true;
+      }
+    }
+    return false;
+  });
+}
+
+function sameValues<T extends string>(left: T[], right: T[]): boolean {
+  const sortedLeft = [...left].sort();
+  const sortedRight = [...right].sort();
+  return (
+    sortedLeft.length === sortedRight.length &&
+    sortedLeft.every((value, index) => value === sortedRight[index])
+  );
+}
 
 export async function auditMountedSvg(
   page: Page,
@@ -107,6 +204,8 @@ export async function auditMountedSvg(
         indeterminateReasons: [],
       },
       violations: [],
+      structuralViolations: [],
+      structuralPixelKeys: [],
     };
   }
 
@@ -123,6 +222,8 @@ export async function auditMountedSvg(
         indeterminateReasons: mounted.indeterminateReasons,
       },
       violations: [],
+      structuralViolations: [],
+      structuralPixelKeys: [],
     };
   }
 
@@ -139,32 +240,30 @@ export async function auditMountedSvg(
     await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
   }
 
-  const screenshot = await page.screenshot({
-    animations: "disabled",
-    caret: "hide",
-    clip: {
-      x: 0,
-      y: 0,
-      width: mounted.screenshotWidth,
-      height: mounted.screenshotHeight,
-    },
-    omitBackground: true,
-    scale: "css",
-    type: "png",
-  });
-  const pixelAudit = await auditScreenshotPixels(
+  const rootPixelBounds = mounted.rootPixelBounds;
+  const paint = await capturePaintEvidence(
     page,
-    screenshot.toString("base64"),
-    mounted.rootPixelBounds,
+    mounted.screenshotWidth,
+    mounted.screenshotHeight,
+    rootPixelBounds,
   );
-  const violations = pixelAudit.edges
-    .filter(
-      (edge): edge is PaintedPixelViolation =>
-        edge.rect !== null,
-    );
+  let structuralPaint = paint;
+  if (paint.violations.length > 0) {
+    await setBrowserOwnedPaintSuppressed(page, true);
+    try {
+      structuralPaint = await capturePaintEvidence(
+        page,
+        mounted.screenshotWidth,
+        mounted.screenshotHeight,
+        rootPixelBounds,
+      );
+    } finally {
+      await setBrowserOwnedPaintSuppressed(page, false);
+    }
+  }
   const indeterminateReasons = [...mounted.indeterminateReasons];
-  if (violations.some((violation) => violation.reachesAuditBoundary)) {
-    indeterminateReasons.push("paint reached the root viewport audit capture boundary");
+  if (paint.violations.some((violation) => violation.reachesAuditBoundary)) {
+    indeterminateReasons.push("capture-boundary");
   }
 
   return {
@@ -178,8 +277,75 @@ export async function auditMountedSvg(
       captureHeightCssPx: mounted.screenshotHeight,
       indeterminateReasons,
     },
-    violations,
+    violations: paint.violations,
+    structuralViolations: structuralPaint.violations,
+    structuralPixelKeys: structuralPaint.pixelKeys,
   };
+}
+
+async function capturePaintEvidence(
+  page: Page,
+  screenshotWidth: number,
+  screenshotHeight: number,
+  rootPixelBounds: NonNullable<MountedSvgSnapshot["rootPixelBounds"]>,
+): Promise<{ violations: PaintedPixelViolation[]; pixelKeys: string[] }> {
+  const screenshot = await page.screenshot({
+    animations: "disabled",
+    caret: "hide",
+    clip: {
+      x: 0,
+      y: 0,
+      width: screenshotWidth,
+      height: screenshotHeight,
+    },
+    omitBackground: true,
+    scale: "css",
+    type: "png",
+  });
+  const pixelAudit = await auditScreenshotPixels(
+    page,
+    screenshot.toString("base64"),
+    rootPixelBounds,
+  );
+  return {
+    violations: pixelAudit.edges.filter(
+      (edge): edge is PaintedPixelViolation => edge.rect !== null,
+    ),
+    pixelKeys: pixelAudit.pixelKeys,
+  };
+}
+
+async function setBrowserOwnedPaintSuppressed(page: Page, suppressed: boolean): Promise<void> {
+  await page.evaluate((shouldSuppress) => {
+    const styleId = "root-viewport-audit-browser-owned-style";
+    const roughPathAttribute = "data-root-viewport-audit-rough-path";
+
+    if (shouldSuppress) {
+      const roughPaths = document.querySelectorAll<SVGPathElement>(
+        ".root-viewport-audit-host path[data-look='handDrawn'], .root-viewport-audit-host [data-look='handDrawn'] path",
+      );
+      for (const path of roughPaths) {
+        if (path.closest(".label, foreignObject, .icon-shape, .label-icon")) continue;
+        path.setAttribute(roughPathAttribute, "");
+      }
+      const style = document.createElement("style");
+      style.id = styleId;
+      style.textContent = `
+        .root-viewport-audit-host text,
+        .root-viewport-audit-host text * { visibility: hidden !important; }
+        .root-viewport-audit-host [${roughPathAttribute}] {
+          fill-opacity: 0 !important;
+          stroke-opacity: 0 !important;
+        }
+      `;
+      document.head.append(style);
+      return;
+    }
+    document.getElementById(styleId)?.remove();
+    for (const path of document.querySelectorAll(`[${roughPathAttribute}]`)) {
+      path.removeAttribute(roughPathAttribute);
+    }
+  }, suppressed);
 }
 
 async function mountSvg(
@@ -257,6 +423,7 @@ async function mountSvg(
       });
 
       const host = document.createElement("div");
+      host.className = "root-viewport-audit-host";
       Object.assign(host.style, {
         background: "transparent",
         left: `${guardCssPx}px`,
@@ -284,7 +451,7 @@ async function mountSvg(
       svg.style.setProperty("overflow", "visible", "important");
 
       await document.fonts.ready;
-      const resourceReasons = new Set<string>();
+      const resourceReasons = new Set<PaintAuditIndeterminateReason>();
       const images = [
         ...svg.querySelectorAll<SVGImageElement>("image"),
         ...svg.querySelectorAll<HTMLImageElement>("foreignObject img"),
@@ -296,13 +463,13 @@ async function mountSvg(
         images.map(async (image) => {
           const decode = (image as typeof image & { decode?: () => Promise<void> }).decode;
           if (typeof decode !== "function") {
-            resourceReasons.add("embedded image decode is unavailable in this browser");
+            resourceReasons.add("image-decode-unavailable");
             return;
           }
           try {
             await decode.call(image);
           } catch {
-            resourceReasons.add("embedded image failed to decode before paint capture");
+            resourceReasons.add("image-decode-failed");
           }
         }),
       );
@@ -337,15 +504,13 @@ async function mountSvg(
         inspectedStyles.add(element);
         const style = getComputedStyle(element);
         if (style.filter && style.filter !== "none") {
-          indeterminateReasons.add(
-            "active CSS or SVG filter has no browser-exposed paint bounds",
-          );
+          indeterminateReasons.add("active-filter");
         }
         if (style.boxShadow && style.boxShadow !== "none") {
-          indeterminateReasons.add("active box shadow has no browser-exposed paint bounds");
+          indeterminateReasons.add("active-box-shadow");
         }
         if (style.textShadow && style.textShadow !== "none") {
-          indeterminateReasons.add("active text shadow has no browser-exposed paint bounds");
+          indeterminateReasons.add("active-text-shadow");
         }
       }
 
@@ -417,9 +582,7 @@ async function mountSvg(
       const captureExceedsLimit =
         screenshotWidth > maxCaptureCssPx || screenshotHeight > maxCaptureCssPx;
       if (captureExceedsLimit) {
-        indeterminateReasons.add(
-          `required geometry-backed capture ${screenshotWidth}x${screenshotHeight}px exceeds ${maxCaptureCssPx}x${maxCaptureCssPx}px`,
-        );
+        indeterminateReasons.add("capture-limit");
       } else {
         host.style.left = `${leftPadding - rootOffsetLeft}px`;
         host.style.top = `${topPadding - rootOffsetTop}px`;
@@ -520,6 +683,7 @@ async function auditScreenshotPixels(
         bottom: { paintedPixelCount: 0, bounds: null, reachesAuditBoundary: false },
         left: { paintedPixelCount: 0, bounds: null, reachesAuditBoundary: false },
       };
+      const pixelKeys: string[] = [];
 
       const strips: Array<{
         edge: RootViewportEdge;
@@ -571,11 +735,13 @@ async function auditScreenshotPixels(
               pageX === canvas.width - 1 ||
               pageY === canvas.height - 1;
             recordPixel(edges[strip.edge], pageX, pageY, atAuditBoundary);
+            pixelKeys.push(`${pageX - root.left},${pageY - root.top}`);
           }
         }
       }
 
       return {
+        pixelKeys,
         edges: strips.map(({ edge }) => ({
           edge,
           paintedPixelCount: edges[edge].paintedPixelCount,

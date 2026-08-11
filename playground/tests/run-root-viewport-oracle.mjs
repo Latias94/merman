@@ -8,9 +8,11 @@ import packageJson from "playwright/package.json" with { type: "json" };
 
 import {
   auditMountedSvg,
+  classifyRootViewportContainment,
   ROOT_VIEWPORT_MAX_CAPTURE_CSS_PX,
   ROOT_VIEWPORT_PAINT_GUARD_CSS_PX,
   ROOT_VIEWPORT_QUANTIZATION_EPSILON_CSS_PX,
+  ROOT_VIEWPORT_RASTER_NEIGHBORHOOD_PX,
 } from "./root-viewport-oracle.ts";
 
 const options = parseArguments(process.argv.slice(2));
@@ -36,7 +38,7 @@ try {
       svgSource: localSvg,
     });
     const compareWithUpstream =
-      local.paintAudit.status === "collected" && local.violations.length > 0;
+      local.paintAudit.status !== "collected" || local.structuralViolations.length > 0;
     const upstreamSvg = compareWithUpstream
       ? await readFile(upstreamPath, "utf8").catch(() => null)
       : null;
@@ -46,14 +48,14 @@ try {
         : await auditMountedSvg(page, {
             svgSource: upstreamSvg,
           });
-    const containmentClassification = classifyContainment(local, upstream);
+    const containmentClassification = classifyRootViewportContainment(local, upstream);
     entries.push({
       fixture: relativePath.replaceAll(path.sep, "/").replace(/\.svg$/u, ""),
       localSha256: sha256(localSvg),
       upstreamSha256: upstreamSvg === null ? null : sha256(upstreamSvg),
       containmentClassification,
-      local,
-      upstream,
+      local: reportAudit(local),
+      upstream: upstream === null ? null : reportAudit(upstream),
     });
   }
 } finally {
@@ -61,11 +63,12 @@ try {
 }
 
 const report = {
-  schemaVersion: 5,
-  contractRevision: "browser-root-paint-containment-v5",
+  schemaVersion: 7,
+  contractRevision: "browser-root-paint-containment-v7",
   quantizationEpsilonCssPx: ROOT_VIEWPORT_QUANTIZATION_EPSILON_CSS_PX,
   paintGuardCssPx: ROOT_VIEWPORT_PAINT_GUARD_CSS_PX,
   maxCaptureCssPx: ROOT_VIEWPORT_MAX_CAPTURE_CSS_PX,
+  rasterNeighborhoodPx: ROOT_VIEWPORT_RASTER_NEIGHBORHOOD_PX,
   environment: {
     playwright: packageJson.version,
     browser: `Chromium ${browserVersion}`,
@@ -74,7 +77,7 @@ const report = {
     platform: `${process.platform}-${process.arch}`,
     localPaintAudit: "transparent Chromium screenshot alpha",
     upstreamPaintAudit:
-      "collected only after a local pixel failure; otherwise browser geometry diagnostics only",
+      "collected only after local overflow or indeterminate evidence; otherwise omitted",
   },
   summary: {
     fixtures: entries.length,
@@ -84,6 +87,9 @@ const report = {
     blockingContainmentFailures: entries.filter(
       (entry) => entry.containmentClassification === "blocking",
     ).length,
+    browserOwnedPaintDiagnostics: entries.filter(
+      (entry) => entry.containmentClassification === "browser-owned-diagnostic",
+    ).length,
     upstreamInheritedContainmentFailures: entries.filter(
       (entry) => entry.containmentClassification === "upstream-inherited",
     ).length,
@@ -92,8 +98,7 @@ const report = {
     ).length,
     upstreamDiagnosticsMissing: entries.filter(
       (entry) =>
-        entry.local.paintAudit.status === "collected" &&
-        entry.local.violations.length > 0 &&
+        entry.containmentClassification === "blocking" &&
         entry.upstream === null,
     ).length,
   },
@@ -103,7 +108,7 @@ const report = {
 await mkdir(path.dirname(outputPath), { recursive: true });
 await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`);
 console.log(
-  `root viewport oracle fixtures=${report.summary.fixtures} blocking_containment_failures=${report.summary.blockingContainmentFailures} upstream_inherited=${report.summary.upstreamInheritedContainmentFailures} output=${outputPath}`,
+  `root viewport oracle fixtures=${report.summary.fixtures} blocking_containment_failures=${report.summary.blockingContainmentFailures} browser_owned_diagnostics=${report.summary.browserOwnedPaintDiagnostics} upstream_inherited=${report.summary.upstreamInheritedContainmentFailures} output=${outputPath}`,
 );
 if (report.summary.blockingContainmentFailures > 0) process.exitCode = 1;
 
@@ -152,24 +157,12 @@ async function collectSvgFiles(root) {
   return output;
 }
 
-function classifyContainment(local, upstream) {
-  if (local.paintAudit.status !== "collected") return "blocking";
-  if (local.violations.length === 0) return "contained";
-  return paintFailureExactlyMatches(local, upstream) ? "upstream-inherited" : "blocking";
-}
-
-function paintFailureExactlyMatches(local, upstream) {
-  return (
-    upstream !== null &&
-    upstream.paintAudit.status === "collected" &&
-    exactJson(local.root, upstream.root) &&
-    exactJson(local.geometryUnion, upstream.geometryUnion) &&
-    exactJson(local.violations, upstream.violations)
-  );
-}
-
-function exactJson(left, right) {
-  return JSON.stringify(left) === JSON.stringify(right);
+function reportAudit({ structuralPixelKeys, ...audit }) {
+  return {
+    ...audit,
+    structuralPaintedPixelCount: structuralPixelKeys.length,
+    structuralPixelSha256: sha256(structuralPixelKeys.join("\n")),
+  };
 }
 
 function sha256(value) {

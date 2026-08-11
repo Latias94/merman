@@ -51,9 +51,21 @@ blocking `parity-root` comparison in Chromium and checks that painted content st
 viewport. It reuses that job's Node environment and generated SVGs, installs only the locked
 `playground/tests` dependencies and Chromium, and preserves the outer SVG's own width, height, and
 max-width while mounting it in a fixed-width host. A local paint failure triggers the same paint
-audit for its upstream SVG. An exactly matching root, geometry union, and pixel violation is reported
-as an upstream-inherited diagnostic; local-only, new, or worse overflow remains blocking, as does
-every indeterminate result. No fixture-specific tolerance or inheritance list is used.
+audit for its upstream SVG. This browser gate runs only after the same job's blocking DOM parity
+comparison. It compares root-relative structural overflow pixels and accepts inherited evidence
+only when the local footprint is no larger and every local pixel is present in the upstream
+footprint or its immediate raster neighbor. That one-physical-pixel neighborhood handles binary
+alpha coverage moving between adjacent pixels during anti-aliasing; it is not a CSS-space or
+fixture tolerance. Root and geometry floats remain diagnostic. It repeats the alpha capture with
+SVG text and RoughJS drawing paths suppressed. Overflow attributable only to browser-owned text
+measurement or RoughJS output stays diagnostic,
+while shapes, markers, images, and `foreignObject` paint remain in the blocking pass. An
+indeterminate result is also diagnostic only when upstream has the same structured reason set and
+no new structural overflow pixel. Browser geometry and required capture dimensions remain report
+data, not a numeric acceptance policy. Paint that reaches the audit boundary always blocks because
+its full extent is unknown.
+Local-only, new, or worse structural evidence remains blocking. No
+fixture-specific tolerance or inheritance list is used.
 The JSON report at `target/root-viewport-diagnostic.json` is uploaded as a diagnostic artifact even
 when the oracle fails; upstream browser measurements in that report remain diagnostic rather than
 an acceptance policy. The oracle expands its transparent screenshot capture from browser geometry
