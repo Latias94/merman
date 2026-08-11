@@ -321,6 +321,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "tags",
             "time-of-day precision",
             "deterministic date formatting",
+            "length-framed authored report fields",
         ],
         limits: &[
             "no terminal timeline geometry",
@@ -332,7 +333,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
                 source: "crates/merman-ascii/tests/new_family_models.rs",
-                note: "typed-model tests preserve task identity and typed scheduling constraints without claiming pseudo-graph geometry",
+                note: "typed-model tests preserve task identity and typed scheduling constraints with injective authored-field framing without claiming pseudo-graph geometry",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
@@ -380,13 +381,19 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
         primary_projection: AsciiPrimaryProjection::StructuredText,
         structured_text_fallback: false,
-        supported_semantics: &["sections", "tasks", "actors", "scores"],
+        supported_semantics: &[
+            "sections",
+            "tasks",
+            "actors",
+            "scores",
+            "length-framed authored report fields",
+        ],
         limits: &["does not draw Mermaid journey chart geometry"],
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
                 source: "crates/merman-ascii/tests/new_family_models.rs",
-                note: "typed-model tests preserve actor and score data in stable rows",
+                note: "typed-model tests preserve actor and score data in stable, injectively framed rows",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
@@ -566,7 +573,13 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
         primary_projection: AsciiPrimaryProjection::StructuredText,
         structured_text_fallback: false,
-        supported_semantics: &["sections", "events", "direction", "ordered grouped text"],
+        supported_semantics: &[
+            "sections",
+            "events",
+            "direction",
+            "ordered grouped text",
+            "length-framed authored report fields",
+        ],
         limits: &[
             "does not draw Mermaid timeline geometry",
             "parser bookkeeping score is intentionally omitted",
@@ -575,7 +588,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
                 source: "crates/merman-ascii/tests/new_family_models.rs",
-                note: "typed-model tests keep section and event order stable",
+                note: "typed-model tests keep section and event order stable with injective authored-field framing",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
@@ -968,6 +981,18 @@ mod tests {
                 .iter()
                 .any(|limit| limit.contains("dependency source expressions"))
         );
+    }
+
+    #[test]
+    fn sectioned_structured_text_capabilities_disclose_injective_field_framing() {
+        for diagram_type in ["gantt", "journey", "timeline"] {
+            assert!(
+                find(diagram_type)
+                    .supported_semantics
+                    .contains(&"length-framed authored report fields"),
+                "{diagram_type} should disclose its injective StructuredText field ownership",
+            );
+        }
     }
 
     #[test]

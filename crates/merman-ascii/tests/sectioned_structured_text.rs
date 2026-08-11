@@ -46,16 +46,16 @@ fn timeline_duplicate_section_fixture_preserves_occurrence_ownership() {
     assert_eq!(
         rendered,
         concat!(
-            "Repeated section names\n",
+            "title(bytes=22)=\"Repeated section names\"\n",
             "direction: LR\n",
-            "section: Repeated\n",
-            "  - 2000\n",
-            "    * First in repeated section\n",
-            "section: Repeated\n",
-            "  - 2001\n",
-            "    * Second section with same name\n",
-            "  - 2002\n",
-            "    * Third task",
+            "section(bytes=8)=\"Repeated\"\n",
+            "  - task(bytes=5)=\"2000 \"\n",
+            "    * event(bytes=25)=\"First in repeated section\"\n",
+            "section(bytes=8)=\"Repeated\"\n",
+            "  - task(bytes=5)=\"2001 \"\n",
+            "    * event(bytes=29)=\"Second section with same name\"\n",
+            "  - task(bytes=5)=\"2002 \"\n",
+            "    * event(bytes=10)=\"Third task\"",
         )
     );
 }
@@ -74,12 +74,12 @@ fn journey_duplicate_sections_preserve_parser_occurrence_ownership() {
     assert_eq!(
         rendered,
         concat!(
-            "Repeated journey\n",
-            "actors: Alice, Bob\n",
-            "section: Repeated\n",
-            "  - First [score 5] (Alice)\n",
-            "section: Repeated\n",
-            "  - Second [score 3] (Bob)",
+            "title(bytes=16)=\"Repeated journey\"\n",
+            "actors=[bytes=5 \"Alice\", bytes=3 \"Bob\"]\n",
+            "section(bytes=8)=\"Repeated\"\n",
+            "  - task(bytes=7)=\"  First\" score=5 people=[bytes=5 \"Alice\"]\n",
+            "section(bytes=8)=\"Repeated\"\n",
+            "  - task(bytes=8)=\"  Second\" score=3 people=[bytes=3 \"Bob\"]",
         )
     );
 }
@@ -102,12 +102,12 @@ fn direct_models_disclose_unknown_and_unsectioned_tasks_once() {
         timeline_rendered,
         concat!(
             "direction: LR\n",
-            "section: Known\n",
-            "  - Declared\n",
-            "section: Missing [undeclared]\n",
-            "  - Unknown\n",
-            "section: [unsectioned]\n",
-            "  - Loose",
+            "section(bytes=5)=\"Known\"\n",
+            "  - task(bytes=8)=\"Declared\"\n",
+            "section(bytes=7)=\"Missing\" status=undeclared\n",
+            "  - task(bytes=7)=\"Unknown\"\n",
+            "section(bytes=0)=\"\" status=unsectioned\n",
+            "  - task(bytes=5)=\"Loose\"",
         )
     );
 
@@ -126,12 +126,12 @@ fn direct_models_disclose_unknown_and_unsectioned_tasks_once() {
     assert_eq!(
         journey_rendered,
         concat!(
-            "section: Known\n",
-            "  - Declared [score 3]\n",
-            "section: Missing [undeclared]\n",
-            "  - Unknown [score 3]\n",
-            "section: [unsectioned]\n",
-            "  - Loose [score 3]",
+            "section(bytes=5)=\"Known\"\n",
+            "  - task(bytes=8)=\"Declared\" score=3\n",
+            "section(bytes=7)=\"Missing\" status=undeclared\n",
+            "  - task(bytes=7)=\"Unknown\" score=3\n",
+            "section(bytes=0)=\"\" status=unsectioned\n",
+            "  - task(bytes=5)=\"Loose\" score=3",
         )
     );
 }

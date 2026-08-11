@@ -119,6 +119,7 @@ impl BudgetedTextDocument {
         writer.finish()
     }
 
+    #[cfg(test)]
     pub(crate) fn push_wrapped_prefixed_line(
         &mut self,
         first_prefix: &str,
@@ -377,6 +378,54 @@ impl BudgetedWrappedText<'_, '_> {
 
     pub(crate) fn write_fmt(&mut self, arguments: fmt::Arguments<'_>) -> Result<()> {
         try_write_fmt(arguments, |value| self.push_str(value))
+    }
+
+    pub(crate) fn push_quoted_text(&mut self, value: &str) -> Result<()> {
+        self.push_exact_normalized_text("\"")?;
+        for grapheme in value.graphemes(true) {
+            self.document.resources.charge_layout_work(1)?;
+            if !grapheme
+                .chars()
+                .any(|ch| ch == '\\' || ch == '"' || (ch != ' ' && ch.is_whitespace()))
+            {
+                self.push_exact_normalized_text(grapheme)?;
+                continue;
+            }
+
+            for ch in grapheme.chars() {
+                match ch {
+                    '\\' => self.push_exact_normalized_text("\\\\")?,
+                    '"' => self.push_exact_normalized_text("\\\"")?,
+                    ' ' => self.push_exact_normalized_text(" ")?,
+                    '\t' => self.push_exact_normalized_text("\\t")?,
+                    '\n' => self.push_exact_normalized_text("\\n")?,
+                    '\r' => self.push_exact_normalized_text("\\r")?,
+                    ch if ch.is_whitespace() => {
+                        let mut buffer = [0u8; 10];
+                        self.push_exact_normalized_text(visible_escape(ch, &mut buffer))?;
+                    }
+                    ch => {
+                        let mut buffer = [0u8; 4];
+                        self.push_exact_normalized_text(ch.encode_utf8(&mut buffer))?;
+                    }
+                }
+            }
+        }
+        self.push_exact_normalized_text("\"")
+    }
+
+    fn push_exact_normalized_text(&mut self, value: &str) -> Result<()> {
+        visit_normalized_segments(value, |segment| {
+            self.document.budget_layout_segment(segment)?;
+            match segment.kind {
+                NormalizedSegmentKind::LineBreak => self.push_word_fragment("\\n"),
+                NormalizedSegmentKind::Grapheme(grapheme) => self.push_word_fragment(grapheme),
+                NormalizedSegmentKind::VisibleEscape(ch) => {
+                    let mut buffer = [0u8; 10];
+                    self.push_word_fragment(visible_escape(ch, &mut buffer))
+                }
+            }
+        })
     }
 
     fn push_normalized_text(&mut self, value: &str) -> Result<()> {

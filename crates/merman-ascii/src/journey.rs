@@ -2,7 +2,10 @@ use crate::Result;
 use crate::error::AsciiError;
 use crate::options::AsciiRenderOptions;
 use crate::resource::AsciiResourceLimitPhase;
-use crate::safe_text::BudgetedTextDocument;
+use crate::safe_text::{
+    BudgetedTextDocument, push_document_field, push_line_field, push_line_list,
+    push_optional_document_field, push_wrapped_field, push_wrapped_list,
+};
 use crate::sectioned_text::{SectionedTextPlan, SectionedTextTask, plan_sectioned_text};
 use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyRenderTask};
 
@@ -20,9 +23,9 @@ pub fn render_journey_diagram(
         document.resources_mut(),
     )?;
 
-    document.push_optional_line(model.title.as_deref())?;
-    document.push_optional_prefixed_line("accTitle: ", model.acc_title.as_deref())?;
-    document.push_optional_prefixed_line("accDescr: ", model.acc_descr.as_deref())?;
+    push_optional_document_field(&mut document, "title", model.title.as_deref())?;
+    push_optional_document_field(&mut document, "accTitle", model.acc_title.as_deref())?;
+    push_optional_document_field(&mut document, "accDescr", model.acc_descr.as_deref())?;
 
     let actors = if model.actors.is_empty() {
         collect_actors(&model.tasks, &mut document)?
@@ -31,21 +34,10 @@ pub fn render_journey_diagram(
     };
     if !model.actors.is_empty() || !actors.is_empty() {
         document.push_line_with(|line| {
-            line.push_str("actors: ")?;
             if model.actors.is_empty() {
-                for (index, actor) in actors.iter().enumerate() {
-                    if index > 0 {
-                        line.push_str(", ")?;
-                    }
-                    line.push_str(actor)?;
-                }
+                push_line_list(line, "", "actors", actors.iter().copied())?;
             } else {
-                for (index, actor) in model.actors.iter().enumerate() {
-                    if index > 0 {
-                        line.push_str(", ")?;
-                    }
-                    line.push_str(actor)?;
-                }
+                push_line_list(line, "", "actors", model.actors.iter().map(String::as_str))?;
             }
             Ok(())
         })?;
@@ -53,10 +45,7 @@ pub fn render_journey_diagram(
 
     if !model.sections.is_empty() {
         for (section_index, section) in model.sections.iter().enumerate() {
-            document.push_line_with(|line| {
-                line.push_str("section: ")?;
-                line.push_str(section)
-            })?;
+            push_document_field(&mut document, "section", section)?;
             for task_index in section_plan.tasks_for_section(section_index) {
                 push_task(&mut document, &model.tasks[*task_index])?;
             }
@@ -102,13 +91,12 @@ fn push_orphan_tasks(
 
 fn push_orphan_section(document: &mut BudgetedTextDocument, section: &str) -> Result<()> {
     document.push_line_with(|line| {
-        line.push_str("section: ")?;
-        if section.is_empty() {
-            line.push_str("[unsectioned]")
+        push_line_field(line, "", "section", section)?;
+        line.push_str(if section.is_empty() {
+            " status=unsectioned"
         } else {
-            line.push_str(section)?;
-            line.push_str(" [undeclared]")
-        }
+            " status=undeclared"
+        })
     })
 }
 
@@ -136,23 +124,15 @@ fn collect_actors<'a>(
 fn push_task(document: &mut BudgetedTextDocument, task: &JourneyRenderTask) -> Result<()> {
     document.resources_mut().charge_layout_work(1)?;
     document.push_wrapped_prefixed_line_with("  - ", "    ", SUMMARY_WRAP_WIDTH, |line| {
-        line.push_str(&task.task)?;
-        line.push_str(" [score ")?;
+        push_wrapped_field(line, "", "task", &task.task)?;
+        line.push_str(" score=")?;
         if task.score_is_nan {
             line.push_str("NaN")?;
         } else {
             line.write_fmt(format_args!("{}", task.score))?;
         }
-        line.push_str("]")?;
         if !task.people.is_empty() {
-            line.push_str(" (")?;
-            for (index, person) in task.people.iter().enumerate() {
-                if index > 0 {
-                    line.push_str(", ")?;
-                }
-                line.push_str(person)?;
-            }
-            line.push_str(")")?;
+            push_wrapped_list(line, " ", "people", task.people.iter().map(String::as_str))?;
         }
         Ok(())
     })

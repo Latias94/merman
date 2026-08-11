@@ -1,5 +1,6 @@
 mod document;
 mod encode;
+mod framing;
 mod label;
 mod layout;
 mod normalization;
@@ -12,6 +13,10 @@ pub(crate) use document::{
     visit_safe_line_graphemes,
 };
 pub(crate) use encode::push_html_escaped_text;
+pub(crate) use framing::{
+    push_document_field, push_document_list, push_line_field, push_line_list,
+    push_optional_document_field, push_wrapped_field, push_wrapped_list,
+};
 pub(crate) use label::{
     LabelBreakPolicy, NormalizedLabelPlan, try_build_normalized_label_lines,
     try_measure_normalized_label_lines, try_plan_normalized_label_lines_with_policy,
@@ -345,6 +350,43 @@ mod tests {
             document.finish(&options).expect("document should encode"),
             concat!(r#"- " leading \"value\" \\ ""#, "\n", r#""line\nbreak""#,)
         );
+    }
+
+    #[test]
+    fn wrapped_quoted_fields_preserve_whitespace_and_escape_structural_text() {
+        let options = AsciiRenderOptions::ascii()
+            .with_resource_profile(ResourceProfile::UnboundedForTrustedInput);
+        let mut document = BudgetedTextDocument::new(&options);
+        document
+            .push_wrapped_prefixed_line_with("- ", "  ", 80, |line| {
+                line.push_quoted_text(" leading \"value\" \\ \nnext")
+            })
+            .expect("wrapped quoted fields should retain authored separators safely");
+
+        assert_eq!(
+            document.finish(&options).expect("document should encode"),
+            r#"- " leading \"value\" \\ \nnext""#,
+        );
+    }
+
+    #[test]
+    fn wrapped_quoted_fields_honor_exact_document_cell_limits() {
+        let exact = options_with_limit(AsciiResourceLimitId::MaxDocumentCells, 7);
+        let mut document = BudgetedTextDocument::new(&exact);
+        document
+            .push_wrapped_prefixed_line_with("- ", "  ", 80, |line| line.push_quoted_text("a b"))
+            .expect("two prefix cells plus five quoted-value cells should fit exactly");
+        assert_eq!(
+            document.finish(&exact).expect("document should encode"),
+            "- \"a b\""
+        );
+
+        let limited = options_with_limit(AsciiResourceLimitId::MaxDocumentCells, 6);
+        let mut document = BudgetedTextDocument::new(&limited);
+        let error = document
+            .push_wrapped_prefixed_line_with("- ", "  ", 80, |line| line.push_quoted_text("a b"))
+            .expect_err("limit-minus-one must reject the quoted row");
+        assert_limit_error(error, AsciiResourceLimitId::MaxDocumentCells, 7, 6);
     }
 
     #[test]

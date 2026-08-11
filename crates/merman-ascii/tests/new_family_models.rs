@@ -532,16 +532,16 @@ fn timeline_render_model_renders_sections_tasks_and_events() {
     assert_eq!(
         rendered,
         concat!(
-            "Timeline\n",
-            "accTitle: Timeline title\n",
-            "accDescr: Timeline description\n",
+            "title(bytes=8)=\"Timeline\"\n",
+            "accTitle(bytes=14)=\"Timeline title\"\n",
+            "accDescr(bytes=20)=\"Timeline description\"\n",
             "direction: TD\n",
-            "section: Planning\n",
-            "  - Design\n",
-            "    * Kickoff\n",
-            "  - Implement\n",
-            "    * Build spec\n",
-            "    * Review",
+            "section(bytes=8)=\"Planning\"\n",
+            "  - task(bytes=6)=\"Design\"\n",
+            "    * event(bytes=7)=\"Kickoff\"\n",
+            "  - task(bytes=9)=\"Implement\"\n",
+            "    * event(bytes=10)=\"Build spec\"\n",
+            "    * event(bytes=6)=\"Review\"",
         )
     );
 }
@@ -568,12 +568,36 @@ fn timeline_render_model_wraps_long_task_and_event_text() {
         rendered,
         concat!(
             "direction: LR\n",
-            "section: Planning\n",
-            "  - Design a very long integration event stream normalization workflow that\n",
-            "    still fits readable terminal output\n",
-            "    * Capture every upstream payload variant without losing the important\n",
-            "      operational context",
+            "section(bytes=8)=\"Planning\"\n",
+            "  - task(bytes=107)=\"Design a very long integration event stream normalization w\n",
+            "    orkflow that still fits readable terminal output\"\n",
+            "    * event(bytes=87)=\"Capture every upstream payload variant without losing the\n",
+            "       important operational context\"",
         )
+    );
+}
+
+#[test]
+fn timeline_structured_text_framing_distinguishes_task_text_from_events() {
+    let mut embedded_event = TimelineDiagramRenderModel::default();
+    embedded_event.tasks = vec![TimelineRenderTask {
+        id: 1,
+        section: String::new(),
+        section_index: None,
+        task_type: String::new(),
+        task: "Task\n* Event".to_string(),
+        score: 0,
+        events: Vec::new(),
+    }];
+
+    let mut explicit_event = embedded_event.clone();
+    explicit_event.tasks[0].task = "Task".to_string();
+    explicit_event.tasks[0].events = vec!["Event".to_string()];
+
+    assert_ne!(
+        render(RenderSemanticModel::Timeline(embedded_event)),
+        render(RenderSemanticModel::Timeline(explicit_event)),
+        "authored task text must not be able to forge an event row",
     );
 }
 
@@ -613,17 +637,18 @@ fn gantt_render_model_renders_sections_tasks_and_flags() {
     assert_eq!(
         rendered,
         concat!(
-            "Gantt\n",
-            "accTitle: Gantt title\n",
-            "accDescr: Gantt description\n",
-            "dateFormat: YYYY-MM-DD\n",
-            "axisFormat: %d\n",
-            "section: Empty\n",
-            "section: Empty\n",
-            "section: Build\n",
-            "  - Implement [id=task-1, order=0, range=+292278994-08-17T07:12:55.000 ->\n",
-            "    +292278994-08-17T07:12:55.001, renderEnd=+292278994-08-17T07:12:55.002,\n",
-            "    flags=milestone, active, done, crit, vert]",
+            "title(bytes=5)=\"Gantt\"\n",
+            "accTitle(bytes=11)=\"Gantt title\"\n",
+            "accDescr(bytes=17)=\"Gantt description\"\n",
+            "dateFormat(bytes=10)=\"YYYY-MM-DD\"\n",
+            "axisFormat(bytes=2)=\"%d\"\n",
+            "section(bytes=5)=\"Empty\"\n",
+            "section(bytes=5)=\"Empty\"\n",
+            "section(bytes=5)=\"Build\"\n",
+            "  - task(bytes=9)=\"Implement\" [id(bytes=6)=\"task-1\", order=0,\n",
+            "    range=+292278994-08-17T07:12:55.000 -> +292278994-08-17T07:12:55.001,\n",
+            "    renderEnd=+292278994-08-17T07:12:55.002, flags=milestone, active, done,\n",
+            "    crit, vert]",
         )
     );
 }
@@ -647,13 +672,29 @@ fn gantt_direct_model_discloses_task_order() {
     ];
 
     let rendered = render(RenderSemanticModel::Gantt(model.clone()));
-    assert!(rendered.contains("First [id=first, order=7,"));
-    assert!(rendered.contains("Second [id=second, order=3,"));
+    assert!(rendered.contains("task(bytes=5)=\"First\" [id(bytes=5)=\"first\", order=7,"));
+    assert!(rendered.contains("task(bytes=6)=\"Second\" [id(bytes=6)=\"second\", order=3,"));
 
     model.tasks[0].order = 3;
     model.tasks[1].order = 7;
     let reordered = render(RenderSemanticModel::Gantt(model));
     assert_ne!(rendered, reordered, "task order must remain recoverable");
+}
+
+#[test]
+fn gantt_structured_text_framing_distinguishes_title_from_axis_format() {
+    let mut embedded_axis = GanttDiagramRenderModel::default();
+    embedded_axis.title = Some("Gantt\naxisFormat: %d".to_string());
+
+    let mut explicit_axis = GanttDiagramRenderModel::default();
+    explicit_axis.title = Some("Gantt".to_string());
+    explicit_axis.axis_format = "%d".to_string();
+
+    assert_ne!(
+        render(RenderSemanticModel::Gantt(embedded_axis)),
+        render(RenderSemanticModel::Gantt(explicit_axis)),
+        "authored title text must not be able to forge an axisFormat field",
+    );
 }
 
 #[test]
@@ -668,19 +709,18 @@ fn gantt_structured_text_discloses_dependency_source_expressions() {
         "Release: release, 2026-01-05, 2026-01-06\n",
     ));
 
-    let normalized = rendered.split_whitespace().collect::<Vec<_>>().join(" ");
     assert!(
-        normalized.contains("after=design review"),
+        rendered.contains("after=[bytes=6 \"design\", bytes=6 \"review\"]"),
         "structured Gantt output should disclose the dependency source expression:\n{rendered}"
     );
-    assert!(normalized.contains("until=design review"));
-    assert!(normalized.contains("start=2026-01-01"));
-    assert!(normalized.contains("duration=1d"));
-    assert!(normalized.contains("end=2026-01-06"));
-    assert!(rendered.contains("id=design"));
-    assert!(rendered.contains("id=review"));
-    assert!(rendered.contains("id=implementation"));
-    assert!(rendered.contains("id=release"));
+    assert!(rendered.contains("until=[bytes=6 \"design\", bytes=6 \"review\"]"));
+    assert!(rendered.contains("start(bytes=10)=\"2026-01-01\""));
+    assert!(rendered.contains("duration(bytes=2)=\"1d\""));
+    assert!(rendered.contains("end(bytes=10)=\"2026-01-06\""));
+    assert!(rendered.contains("id(bytes=6)=\"design\""));
+    assert!(rendered.contains("id(bytes=6)=\"review\""));
+    assert!(rendered.contains("id(bytes=14)=\"implementation\""));
+    assert!(rendered.contains("id(bytes=7)=\"release\""));
 }
 
 #[test]
@@ -711,10 +751,8 @@ fn gantt_direct_model_renders_only_typed_constraints() {
     }];
 
     let rendered = render(RenderSemanticModel::Gantt(model));
-    let normalized = rendered.split_whitespace().collect::<Vec<_>>().join(" ");
-
-    assert!(normalized.contains("after=design review"));
-    assert!(normalized.contains("until=release"));
+    assert!(rendered.contains("after=[bytes=6 \"design\", bytes=6 \"review\"]"));
+    assert!(rendered.contains("until=[bytes=7 \"release\"]"));
     for legacy in ["raw-start", "raw-end", "legacy-previous"] {
         assert!(
             !rendered.contains(legacy),
@@ -752,12 +790,10 @@ fn gantt_direct_model_distinguishes_fixed_and_relative_end_constraints() {
     ];
 
     let rendered = render(RenderSemanticModel::Gantt(model));
-    let normalized = rendered.split_whitespace().collect::<Vec<_>>().join(" ");
-
-    assert!(normalized.contains("start=2026-01-01 08:30"));
-    assert!(normalized.contains("end=2026-01-01 10:45"));
-    assert!(normalized.contains("after=fixed"));
-    assert!(normalized.contains("duration=2.5h"));
+    assert!(rendered.contains("start(bytes=16)=\"2026-01-01 08:30\""));
+    assert!(rendered.contains("end(bytes=16)=\"2026-01-01 10:45\""));
+    assert!(rendered.contains("after(bytes=5)=\"fixed\""));
+    assert!(rendered.contains("duration(bytes=4)=\"2.5h\""));
 }
 
 #[test]
@@ -776,7 +812,7 @@ fn gantt_structured_text_preserves_time_precision_and_render_end() {
 
     let rendered = render(RenderSemanticModel::Gantt(model));
 
-    assert!(rendered.contains("id=timed"));
+    assert!(rendered.contains("id(bytes=5)=\"timed\""));
     assert!(
         rendered.contains("T"),
         "time-of-day precision must be visible:\n{rendered}"
@@ -842,14 +878,29 @@ fn journey_render_model_renders_actors_sections_and_scores() {
     assert_eq!(
         rendered,
         concat!(
-            "Journey\n",
-            "accTitle: Journey title\n",
-            "accDescr: Journey description\n",
-            "actors: Alice, Bob\n",
-            "section: Discovery\n",
-            "  - Research [score 5] (Alice, Bob)\n",
-            "  - Ship [score 3] (Bob)",
+            "title(bytes=7)=\"Journey\"\n",
+            "accTitle(bytes=13)=\"Journey title\"\n",
+            "accDescr(bytes=19)=\"Journey description\"\n",
+            "actors=[bytes=5 \"Alice\", bytes=3 \"Bob\"]\n",
+            "section(bytes=9)=\"Discovery\"\n",
+            "  - task(bytes=8)=\"Research\" score=5 people=[bytes=5 \"Alice\", bytes=3 \"Bob\"]\n",
+            "  - task(bytes=4)=\"Ship\" score=3 people=[bytes=3 \"Bob\"]",
         )
+    );
+}
+
+#[test]
+fn journey_structured_text_framing_distinguishes_actor_list_items() {
+    let mut one_actor = JourneyDiagramRenderModel::default();
+    one_actor.actors = vec!["Alice, Bob".to_string()];
+
+    let mut two_actors = JourneyDiagramRenderModel::default();
+    two_actors.actors = vec!["Alice".to_string(), "Bob".to_string()];
+
+    assert_ne!(
+        render(RenderSemanticModel::Journey(one_actor)),
+        render(RenderSemanticModel::Journey(two_actors)),
+        "one authored actor containing a comma must differ from two actor values",
     );
 }
 

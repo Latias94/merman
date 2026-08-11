@@ -1,6 +1,9 @@
 use crate::Result;
 use crate::options::AsciiRenderOptions;
-use crate::safe_text::BudgetedTextDocument;
+use crate::safe_text::{
+    BudgetedTextDocument, push_document_field, push_line_field, push_optional_document_field,
+    push_wrapped_field,
+};
 use crate::sectioned_text::{SectionedTextPlan, SectionedTextTask, plan_sectioned_text};
 use merman_core::diagrams::timeline::{
     TimelineDiagramRenderModel, TimelineDirection, TimelineRenderTask,
@@ -20,9 +23,9 @@ pub fn render_timeline_diagram(
         document.resources_mut(),
     )?;
 
-    document.push_optional_line(model.title.as_deref())?;
-    document.push_optional_prefixed_line("accTitle: ", model.acc_title.as_deref())?;
-    document.push_optional_prefixed_line("accDescr: ", model.acc_descr.as_deref())?;
+    push_optional_document_field(&mut document, "title", model.title.as_deref())?;
+    push_optional_document_field(&mut document, "accTitle", model.acc_title.as_deref())?;
+    push_optional_document_field(&mut document, "accDescr", model.acc_descr.as_deref())?;
     document.push_line_with(|line| {
         line.push_str("direction: ")?;
         line.push_str(match model.direction {
@@ -33,10 +36,7 @@ pub fn render_timeline_diagram(
 
     if !model.sections.is_empty() {
         for (section_index, section) in model.sections.iter().enumerate() {
-            document.push_line_with(|line| {
-                line.push_str("section: ")?;
-                line.push_str(section)
-            })?;
+            push_document_field(&mut document, "section", section)?;
             for task_index in section_plan.tasks_for_section(section_index) {
                 push_task(&mut document, &model.tasks[*task_index])?;
             }
@@ -82,24 +82,28 @@ fn push_orphan_tasks(
 
 fn push_orphan_section(document: &mut BudgetedTextDocument, section: &str) -> Result<()> {
     document.push_line_with(|line| {
-        line.push_str("section: ")?;
-        if section.is_empty() {
-            line.push_str("[unsectioned]")
+        push_line_field(line, "", "section", section)?;
+        line.push_str(if section.is_empty() {
+            " status=unsectioned"
         } else {
-            line.push_str(section)?;
-            line.push_str(" [undeclared]")
-        }
+            " status=undeclared"
+        })
     })
 }
 
 fn push_task(document: &mut BudgetedTextDocument, task: &TimelineRenderTask) -> Result<()> {
     document.resources_mut().charge_layout_work(1)?;
     document.push_wrapped_prefixed_line_with("  - ", "    ", SUMMARY_WRAP_WIDTH, |line| {
-        line.push_str(&task.task)
+        push_wrapped_field(line, "", "task", &task.task)
     })?;
     for event in &task.events {
         document.resources_mut().charge_layout_work(1)?;
-        document.push_wrapped_prefixed_line("    * ", "      ", event, SUMMARY_WRAP_WIDTH)?;
+        document.push_wrapped_prefixed_line_with(
+            "    * ",
+            "      ",
+            SUMMARY_WRAP_WIDTH,
+            |line| push_wrapped_field(line, "", "event", event),
+        )?;
     }
     Ok(())
 }

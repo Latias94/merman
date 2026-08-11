@@ -2,7 +2,7 @@ use crate::Result;
 use crate::error::AsciiError;
 use crate::options::AsciiRenderOptions;
 use crate::resource::ResourceContext;
-use crate::safe_text::BudgetedTextDocument;
+use crate::safe_text::{BudgetedTextDocument, push_optional_document_field};
 use merman_core::diagrams::packet::PacketDiagramRenderModel;
 
 pub fn render_packet_diagram(
@@ -12,9 +12,9 @@ pub fn render_packet_diagram(
     let mut document = BudgetedTextDocument::new(options);
     validate_packet_blocks(model, document.resources_mut())?;
 
-    push_optional_framed_line(&mut document, "title", model.title.as_deref())?;
-    push_optional_framed_line(&mut document, "accTitle", model.acc_title.as_deref())?;
-    push_optional_framed_line(&mut document, "accDescr", model.acc_descr.as_deref())?;
+    push_optional_document_field(&mut document, "title", model.title.as_deref())?;
+    push_optional_document_field(&mut document, "accTitle", model.acc_title.as_deref())?;
+    push_optional_document_field(&mut document, "accDescr", model.acc_descr.as_deref())?;
 
     for (row_idx, row) in model.packet.iter().enumerate() {
         document.resources_mut().charge_layout_work(1)?;
@@ -79,18 +79,4 @@ fn validate_packet_blocks(
         }
     }
     Ok(())
-}
-
-fn push_optional_framed_line(
-    document: &mut BudgetedTextDocument,
-    key: &str,
-    value: Option<&str>,
-) -> Result<()> {
-    let Some(value) = value else {
-        return Ok(());
-    };
-    document.push_line_with(|line| {
-        line.write_fmt(format_args!("{key}(bytes={})=", value.len()))?;
-        line.push_quoted_text(value)
-    })
 }

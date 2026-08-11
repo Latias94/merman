@@ -1,6 +1,9 @@
 use crate::Result;
 use crate::options::AsciiRenderOptions;
-use crate::safe_text::{BudgetedTextDocument, BudgetedTextLine};
+use crate::safe_text::{
+    BudgetedTextDocument, BudgetedTextLine, push_line_field, push_line_list,
+    push_optional_document_field,
+};
 use merman_core::diagrams::git_graph::{GitGraphCommitRenderModel, GitGraphRenderModel};
 
 pub fn render_git_graph_diagram(
@@ -10,32 +13,20 @@ pub fn render_git_graph_diagram(
     let mut document = BudgetedTextDocument::new(options);
 
     document.push_line_with(|line| {
-        line.write_fmt(format_args!(
-            "gitGraph direction(bytes={})=",
-            model.direction.len()
-        ))?;
-        line.push_quoted_text(&model.direction)?;
-        line.write_fmt(format_args!(
-            " current(bytes={})=",
-            model.current_branch.len()
-        ))?;
-        line.push_quoted_text(&model.current_branch)
+        push_line_field(line, "gitGraph ", "direction", &model.direction)?;
+        push_line_field(line, " ", "current", &model.current_branch)
     })?;
-    push_optional_framed_line(&mut document, "title", model.title.as_deref())?;
-    push_optional_framed_line(&mut document, "accTitle", model.acc_title.as_deref())?;
-    push_optional_framed_line(&mut document, "accDescr", model.acc_descr.as_deref())?;
+    push_optional_document_field(&mut document, "title", model.title.as_deref())?;
+    push_optional_document_field(&mut document, "accTitle", model.acc_title.as_deref())?;
+    push_optional_document_field(&mut document, "accDescr", model.acc_descr.as_deref())?;
     if !model.branches.is_empty() {
         document.push_line_with(|line| {
-            line.push_str("branches=[")?;
-            for (index, branch) in model.branches.iter().enumerate() {
-                if index > 0 {
-                    line.push_str(", ")?;
-                }
-                line.write_fmt(format_args!("bytes={} ", branch.name.len()))?;
-                line.push_quoted_text(&branch.name)?;
-            }
-            line.push_str("]")?;
-            Ok(())
+            push_line_list(
+                line,
+                "",
+                "branches",
+                model.branches.iter().map(|branch| branch.name.as_str()),
+            )
         })?;
     }
 
@@ -52,11 +43,7 @@ pub fn render_git_graph_diagram(
         for warning in &model.warning_facts {
             document.resources_mut().charge_layout_work(1)?;
             document.push_line_with(|line| {
-                line.write_fmt(format_args!(
-                    "  - message(bytes={})=",
-                    warning.message.len()
-                ))?;
-                line.push_quoted_text(&warning.message)
+                push_line_field(line, "  - ", "message", &warning.message)
             })?;
         }
     }
@@ -69,17 +56,22 @@ fn push_commit_text(
     commit: &GitGraphCommitRenderModel,
 ) -> Result<()> {
     line.write_fmt(format_args!("seq={}", commit.seq))?;
-    push_framed_field(line, "branch", &commit.branch)?;
-    push_framed_field(line, "id", &commit.id)?;
+    push_line_field(line, " ", "branch", &commit.branch)?;
+    push_line_field(line, " ", "id", &commit.id)?;
     if let Some(kind) = commit_kind(commit.commit_type) {
         line.write_fmt(format_args!(" kind={kind}"))?;
     }
-    push_framed_field(line, "message", &commit.message)?;
+    push_line_field(line, " ", "message", &commit.message)?;
     if !commit.tags.is_empty() {
-        push_framed_list(line, "tags", &commit.tags)?;
+        push_line_list(line, " ", "tags", commit.tags.iter().map(String::as_str))?;
     }
     if !commit.parents.is_empty() {
-        push_framed_list(line, "parents", &commit.parents)?;
+        push_line_list(
+            line,
+            " ",
+            "parents",
+            commit.parents.iter().map(String::as_str),
+        )?;
     }
     if let Some(custom_type) = commit.custom_type {
         line.push_str(" typeOverride=")?;
@@ -93,38 +85,6 @@ fn push_commit_text(
         line.push_str(" idSource=explicit")?;
     }
     Ok(())
-}
-
-fn push_framed_field(line: &mut BudgetedTextLine<'_>, key: &str, value: &str) -> Result<()> {
-    line.write_fmt(format_args!(" {key}(bytes={})=", value.len()))?;
-    line.push_quoted_text(value)
-}
-
-fn push_framed_list(line: &mut BudgetedTextLine<'_>, key: &str, values: &[String]) -> Result<()> {
-    line.write_fmt(format_args!(" {key}=["))?;
-    for (index, value) in values.iter().enumerate() {
-        if index > 0 {
-            line.push_str(", ")?;
-        }
-        line.write_fmt(format_args!("bytes={} ", value.len()))?;
-        line.push_quoted_text(value)?;
-    }
-    line.push_str("]")?;
-    Ok(())
-}
-
-fn push_optional_framed_line(
-    document: &mut BudgetedTextDocument,
-    key: &str,
-    value: Option<&str>,
-) -> Result<()> {
-    let Some(value) = value else {
-        return Ok(());
-    };
-    document.push_line_with(|line| {
-        line.write_fmt(format_args!("{key}(bytes={})=", value.len()))?;
-        line.push_quoted_text(value)
-    })
 }
 
 fn commit_kind(commit_type: i64) -> Option<&'static str> {

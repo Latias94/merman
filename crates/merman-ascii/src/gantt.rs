@@ -1,7 +1,10 @@
 use crate::Result;
 use crate::options::AsciiRenderOptions;
 use crate::resource::ResourceContext;
-use crate::safe_text::{BudgetedTextDocument, charge_text_layout};
+use crate::safe_text::{
+    BudgetedTextDocument, charge_text_layout, push_document_field, push_document_list,
+    push_optional_document_field, push_wrapped_field, push_wrapped_list,
+};
 use merman_core::diagrams::gantt::{
     GanttDiagramRenderModel, GanttRenderTask, GanttTaskEndConstraint, GanttTaskStartConstraint,
 };
@@ -22,59 +25,50 @@ pub fn render_gantt_diagram(
         |admission, resources| GanttTaskIndex::materialize(model, admission, resources),
     )?;
 
-    document.push_optional_line(model.title.as_deref())?;
-    document.push_optional_prefixed_line("accTitle: ", model.acc_title.as_deref())?;
-    document.push_optional_prefixed_line("accDescr: ", model.acc_descr.as_deref())?;
+    push_optional_document_field(&mut document, "title", model.title.as_deref())?;
+    push_optional_document_field(&mut document, "accTitle", model.acc_title.as_deref())?;
+    push_optional_document_field(&mut document, "accDescr", model.acc_descr.as_deref())?;
     if !model.date_format.is_empty() {
-        document.push_line_with(|line| {
-            line.push_str("dateFormat: ")?;
-            line.push_str(&model.date_format)
-        })?;
+        push_document_field(&mut document, "dateFormat", &model.date_format)?;
     }
     if !model.axis_format.is_empty() {
-        document.push_line_with(|line| {
-            line.push_str("axisFormat: ")?;
-            line.push_str(&model.axis_format)
-        })?;
+        push_document_field(&mut document, "axisFormat", &model.axis_format)?;
     }
 
     if let Some(tick_interval) = model.tick_interval.as_deref() {
-        document.push_line_with(|line| {
-            line.push_str("tickInterval: ")?;
-            line.push_str(tick_interval)
-        })?;
+        push_document_field(&mut document, "tickInterval", tick_interval)?;
     }
     if !model.today_marker.is_empty() {
-        document.push_line_with(|line| {
-            line.push_str("todayMarker: ")?;
-            line.push_str(&model.today_marker)
-        })?;
+        push_document_field(&mut document, "todayMarker", &model.today_marker)?;
     }
-    push_optional_list(&mut document, "includes", &model.includes)?;
-    push_optional_list(&mut document, "excludes", &model.excludes)?;
+    if !model.includes.is_empty() {
+        push_document_list(
+            &mut document,
+            "includes",
+            model.includes.iter().map(String::as_str),
+        )?;
+    }
+    if !model.excludes.is_empty() {
+        push_document_list(
+            &mut document,
+            "excludes",
+            model.excludes.iter().map(String::as_str),
+        )?;
+    }
     if model.inclusive_end_dates {
         document.push_line("inclusiveEndDates: true")?;
     }
     if !model.display_mode.is_empty() {
-        document.push_line_with(|line| {
-            line.push_str("displayMode: ")?;
-            line.push_str(&model.display_mode)
-        })?;
+        push_document_field(&mut document, "displayMode", &model.display_mode)?;
     }
     if model.top_axis {
         document.push_line("topAxis: true")?;
     }
     if !model.weekday.is_empty() && model.weekday != "sunday" {
-        document.push_line_with(|line| {
-            line.push_str("weekday: ")?;
-            line.push_str(&model.weekday)
-        })?;
+        push_document_field(&mut document, "weekday", &model.weekday)?;
     }
     if !model.weekend.is_empty() && model.weekend != "saturday" {
-        document.push_line_with(|line| {
-            line.push_str("weekend: ")?;
-            line.push_str(&model.weekend)
-        })?;
+        push_document_field(&mut document, "weekend", &model.weekend)?;
     }
 
     if let Some(task_index) = task_index {
@@ -253,31 +247,7 @@ fn admit_then_materialize_gantt_structure<T>(
 }
 
 fn push_section(document: &mut BudgetedTextDocument, section: &str) -> Result<()> {
-    document.push_line_with(|line| {
-        line.push_str("section: ")?;
-        line.push_str(section)
-    })
-}
-
-fn push_optional_list(
-    document: &mut BudgetedTextDocument,
-    name: &str,
-    values: &[String],
-) -> Result<()> {
-    if values.is_empty() {
-        return Ok(());
-    }
-    document.push_line_with(|line| {
-        line.push_str(name)?;
-        line.push_str(": ")?;
-        for (index, value) in values.iter().enumerate() {
-            if index > 0 {
-                line.push_str(", ")?;
-            }
-            line.push_str(value)?;
-        }
-        Ok(())
-    })
+    push_document_field(document, "section", section)
 }
 
 fn push_task(
@@ -293,9 +263,8 @@ fn push_task(
         .filter(|render_end| *render_end != task.end_ms)
         .map(|render_end| format_date(render_end, local_time_zone));
     document.push_wrapped_prefixed_line_with("  - ", "    ", SUMMARY_WRAP_WIDTH, |line| {
-        line.push_str(&task.task)?;
-        line.push_str(" [id=")?;
-        line.push_str(&task.id)?;
+        push_wrapped_field(line, "", "task", &task.task)?;
+        push_wrapped_field(line, " [", "id", &task.id)?;
         line.write_fmt(format_args!(", order={}", task.order))?;
         line.push_str(", range=")?;
         line.push_str(&start)?;
@@ -310,20 +279,18 @@ fn push_task(
         push_end_constraint(line, task)?;
 
         if !task.classes.is_empty() {
-            line.push_str(", classes=")?;
-            for (index, class) in task.classes.iter().enumerate() {
-                if index > 0 {
-                    line.push_str("|")?;
-                }
-                line.push_str(class)?;
-            }
+            push_wrapped_list(
+                line,
+                ", ",
+                "classes",
+                task.classes.iter().map(String::as_str),
+            )?;
         }
         if task.manual_end_time {
             line.push_str(", manualEnd=true")?;
         }
         if task.task_type != task.section && !task.task_type.is_empty() {
-            line.push_str(", type=")?;
-            line.push_str(&task.task_type)?;
+            push_wrapped_field(line, ", ", "type", &task.task_type)?;
         }
 
         let flags = [
@@ -388,10 +355,7 @@ fn push_constraint_value(
     key: &str,
     value: &str,
 ) -> Result<()> {
-    line.push_str(", ")?;
-    line.push_str(key)?;
-    line.push_str("=")?;
-    line.push_str(value)
+    push_wrapped_field(line, ", ", key, value)
 }
 
 fn push_dependency_constraint(
@@ -399,16 +363,7 @@ fn push_dependency_constraint(
     key: &str,
     dependency_ids: &[String],
 ) -> Result<()> {
-    line.push_str(", ")?;
-    line.push_str(key)?;
-    line.push_str("=")?;
-    for (index, dependency_id) in dependency_ids.iter().enumerate() {
-        if index > 0 {
-            line.push_str(" ")?;
-        }
-        line.push_str(dependency_id)?;
-    }
-    Ok(())
+    push_wrapped_list(line, ", ", key, dependency_ids.iter().map(String::as_str))
 }
 
 fn format_date(ms: i64, local_time_zone: &merman_core::time::LocalTimeZone) -> String {
