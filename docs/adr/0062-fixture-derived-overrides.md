@@ -53,8 +53,9 @@ or configuration default and apply independently of fixture identity and label t
 
 ### Verification owns residuals
 
-Comparator normalization remains narrow and non-semantic. Accepted browser residuals are explicit
-verification policy describing a bounded mismatch set; they do not alter production output.
+Comparator normalization remains narrow and non-semantic. Browser-owned numeric movement is emitted
+as an attributable diagnostic; it is not a fixture-specific acceptance policy and does not alter
+production output.
 
 Architecture and generation gates enforce the boundary:
 

@@ -129,7 +129,6 @@ fn print_help(topic: Option<&str>) {
     println!("  adopt-upstream-svg-provenance");
     println!("  check-upstream-svgs");
     println!("  compare-all-svgs");
-    println!("  accept-root-residual-candidate");
     println!("  compare-svg-xml");
     println!("  debug-svg-bbox");
     println!("  debug-svg-data-points");
@@ -260,7 +259,6 @@ fn main() -> Result<(), XtaskError> {
         "debug-svg-bbox" => cmd::debug_svg_bbox(args.collect()),
         "debug-svg-data-points" => cmd::debug_svg_data_points(args.collect()),
         "compare-all-svgs" => cmd::compare_all_svgs(args.collect()),
-        "accept-root-residual-candidate" => cmd::accept_root_residual_candidate(args.collect()),
         "compare-svg-xml" => cmd::compare_svg_xml(args.collect()),
         other => Err(XtaskError::UnknownCommand(other.to_string())),
     }

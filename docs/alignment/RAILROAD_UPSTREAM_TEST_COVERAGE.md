@@ -63,7 +63,8 @@ All four Railroad variants are admitted to the primary SVG parity matrix. The 13
 have complete Mermaid `@11.16.1` baselines under the four `fixtures/upstream-svgs/railroad*/`
 directories, with per-file input/SVG hashes and explicit provenance attestations. The four
 family-local compare commands and the ordinary `compare-all-svgs` structural DOM gate cover the
-committed corpus; browser-derived root-height differences remain in the exact root residual lane.
+committed corpus; browser-derived root-height differences remain visible in the browser root
+diagnostic artifact.
 
 ## Known Residuals
 

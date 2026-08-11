@@ -65,7 +65,7 @@ The parser returns a headless semantic model:
 - `classDef` shape styles, text styles, CSSOM color serialization, HTML-label selectors, and SVG
   `tspan` selectors are emitted separately like Mermaid.
 - `stress_state_batch5_parallel_edges_labels_styles_067` is the signed semantic-label canary. Root
-  browser-measurement residuals remain owned by the exact root residual catalog.
+  browser-measurement movement remains visible through the browser root diagnostic artifact.
 
 ## Known gaps (to be closed)
 

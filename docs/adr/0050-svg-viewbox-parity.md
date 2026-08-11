@@ -40,10 +40,6 @@ without being noticed if they are always excluded from parity checks.
    `foreignObject` descendants remain inside the final viewport using one coordinate-quantization
    epsilon. It does not relax descendant, semantic, or root-contract checks.
 
-4. During migration, the historical numeric residual catalog may run beside the new contract on a
-   real pull-request revision. It is transitional evidence only and is removed after the old/new
-   gate agreement and mutation evidence are recorded.
-
 ## Alternatives Considered
 
 1. **Keep ignoring root `viewBox` in parity checks**  
@@ -67,7 +63,7 @@ without being noticed if they are always excluded from parity checks.
   numerics to be stable across fonts and browser versions.
 - Some renderers must implement explicit bounding-box logic (including text ascent) to satisfy
   `viewBox` comparisons against upstream baselines.
-- Browser-only root residuals remain visible in reports and do not require fixture-specific
+- Browser-only root movement remains visible in reports and does not require fixture-specific
   production overrides. Exact browser movement is attributable through a schedule/release report,
   while cropping remains independently blocking.
 

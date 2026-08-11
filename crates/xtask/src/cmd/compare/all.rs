@@ -7,8 +7,7 @@ use std::path::{Path, PathBuf};
 use super::diagrams::compare_diagram_request;
 use super::{
     AcceptedResidualPolicy, CompareEvidence, CompareRequest, CompareRunResult,
-    RootDeltaReportLimit, RootParityResidualPolicy, diagram_supports_root_delta_report,
-    parse_root_delta_report_limit,
+    RootDeltaReportLimit, diagram_supports_root_delta_report, parse_root_delta_report_limit,
 };
 
 pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
@@ -29,7 +28,7 @@ fn compare_selected_diagram_svgs(
     let diagrams = diagram_selection.diagrams;
 
     let invocation_options = options.invocation_options();
-    let mut failures = CompareAllFailures::new(&options, &diagrams)?;
+    let mut failures = CompareAllFailures::new(&options);
 
     for diagram in diagrams {
         println!("\n== compare {diagram} ==");
@@ -60,7 +59,6 @@ struct CompareAllOptions {
     root_report_limit: Option<RootDeltaReportLimit>,
     only_diagrams: Vec<String>,
     skip_diagrams: Vec<String>,
-    write_root_residual_candidate: bool,
 }
 
 impl CompareAllOptions {
@@ -114,46 +112,12 @@ impl CompareAllOptions {
                         options.skip_diagrams.push(diagram);
                     }
                 }
-                "--write-root-residual-candidate" => {
-                    options.write_root_residual_candidate = true;
-                }
                 "--help" | "-h" => return Err(XtaskError::Usage),
                 _ => return Err(XtaskError::Usage),
             }
             i += 1;
         }
-
-        options.validate()?;
         Ok(options)
-    }
-
-    fn validate(&self) -> Result<(), XtaskError> {
-        if !self.write_root_residual_candidate {
-            return Ok(());
-        }
-        let full_matrix = self.only_diagrams.is_empty() && self.skip_diagrams.is_empty();
-        let deterministic_profile = self.dom_decimals.unwrap_or(3) == 3
-            && self
-                .flowchart_text_measurer
-                .as_deref()
-                .is_none_or(|profile| profile == "vendored");
-        if self.root_parity_policy_enabled() && full_matrix && deterministic_profile {
-            Ok(())
-        } else {
-            Err(XtaskError::SvgCompareFailed(
-                "--write-root-residual-candidate requires an unfiltered full-matrix parity-root DOM check at 3 decimals with the vendored measurement profile"
-                    .to_string(),
-            ))
-        }
-    }
-
-    fn root_parity_policy_enabled(&self) -> bool {
-        self.check_dom
-            && self.filter.is_none()
-            && self
-                .dom_mode
-                .as_deref()
-                .is_some_and(|mode| matches!(mode.trim(), "parity-root" | "parity_root"))
     }
 
     fn invocation_options(&self) -> CompareAllInvocationOptions<'_> {
@@ -165,7 +129,6 @@ impl CompareAllOptions {
             flowchart_text_measurer: self.flowchart_text_measurer.as_deref(),
             report_root: self.report_root,
             root_report_limit: self.root_report_limit,
-            root_parity_policy_enabled: self.root_parity_policy_enabled(),
         }
     }
 }
@@ -210,30 +173,18 @@ struct CompareAllFailures {
     skip_unmatched_filter_messages: bool,
     check_dom: bool,
     evidence: CompareEvidence,
-    root_parity_policy: Option<RootParityResidualPolicy>,
     failures: Vec<String>,
 }
 
 impl CompareAllFailures {
-    fn new(options: &CompareAllOptions, diagrams: &[&str]) -> Result<Self, XtaskError> {
-        let root_parity_policy = if options.root_parity_policy_enabled() {
-            Some(if options.write_root_residual_candidate {
-                RootParityResidualPolicy::candidate(options.dom_decimals.unwrap_or(3))
-            } else {
-                RootParityResidualPolicy::verify(diagrams, options.dom_decimals.unwrap_or(3))
-                    .map_err(XtaskError::SvgCompareFailed)?
-            })
-        } else {
-            None
-        };
-        Ok(Self {
+    fn new(options: &CompareAllOptions) -> Self {
+        Self {
             skip_unmatched_filter_messages: options.filter.is_some()
                 && options.only_diagrams.is_empty(),
             check_dom: options.check_dom,
             evidence: CompareEvidence::default(),
-            root_parity_policy,
             failures: Vec::new(),
-        })
+        }
     }
 
     fn record(&mut self, diagram: &str, result: CompareRunResult, report_path: Option<&Path>) {
@@ -259,27 +210,6 @@ impl CompareAllFailures {
     }
 
     fn finish(mut self) -> Result<(), XtaskError> {
-        if let Some(policy) = self.root_parity_policy {
-            match policy.finish() {
-                Ok(finish) => {
-                    if !finish.accepted_summaries.is_empty() {
-                        println!("\n== accepted root parity residuals ==");
-                        for line in finish.accepted_summaries {
-                            println!("{line}");
-                        }
-                    }
-                    if let Some(path) = finish.candidate_path {
-                        println!(
-                            "\nroot parity residual candidate written to {}",
-                            path.display()
-                        );
-                    }
-                    self.failures.extend(finish.failures);
-                }
-                Err(error) => self.failures.push(error),
-            }
-        }
-
         self.failures.extend(
             self.evidence
                 .gate_failures("compare-all selected families", self.check_dom),
@@ -293,19 +223,13 @@ impl CompareAllFailures {
     }
 
     fn record_svg_compare_failure(&mut self, diagram: &str, msg: &str, report_path: Option<&Path>) {
-        if let Some(policy) = self.root_parity_policy.as_mut() {
-            if let Some(failure) = policy.accept_or_summarize_failure(diagram, msg, report_path) {
-                self.failures.push(failure);
-            }
-        } else {
-            let report = report_path
-                .map(|path| format!("\nreport={}", path.display()))
-                .unwrap_or_default();
-            self.failures.push(format!(
-                "{diagram}: {}{report}",
-                XtaskError::SvgCompareFailed(msg.to_string())
-            ));
-        }
+        let report = report_path
+            .map(|path| format!("\nreport={}", path.display()))
+            .unwrap_or_default();
+        self.failures.push(format!(
+            "{diagram}: {}{report}",
+            XtaskError::SvgCompareFailed(msg.to_string())
+        ));
     }
 
     fn should_skip_unmatched_filter(&self, msg: &str) -> bool {
@@ -322,7 +246,6 @@ struct CompareAllInvocationOptions<'a> {
     flowchart_text_measurer: Option<&'a str>,
     report_root: bool,
     root_report_limit: Option<RootDeltaReportLimit>,
-    root_parity_policy_enabled: bool,
 }
 
 impl CompareAllInvocationOptions<'_> {
@@ -346,14 +269,11 @@ impl CompareAllInvocationOptions<'_> {
                 .then_some(self.flowchart_text_measurer)
                 .flatten()
                 .map(str::to_string),
-            accepted_residual_policy: if self.root_parity_policy_enabled {
-                AcceptedResidualPolicy::RootParityExact
-            } else if matches!(diagram, "c4" | "class" | "ishikawa" | "venn") {
+            accepted_residual_policy: if matches!(diagram, "c4" | "class" | "ishikawa" | "venn") {
                 AcceptedResidualPolicy::ScopedDomEvidenceCatalog
             } else {
                 AcceptedResidualPolicy::None
             },
-            defer_root_residual_policy_to_caller: self.root_parity_policy_enabled,
         };
 
         DiagramCompareInvocation {
@@ -469,78 +389,33 @@ mod tests {
     }
 
     #[test]
-    fn compare_all_options_detects_root_parity_policy_scope() {
+    fn compare_all_root_mode_uses_the_blocking_contract_without_an_acceptance_policy() {
         let global = CompareAllOptions {
             check_dom: true,
             dom_mode: Some("parity_root".to_string()),
             ..Default::default()
         };
-        assert!(global.root_parity_policy_enabled());
         assert_eq!(
             global
                 .invocation_options()
                 .for_diagram("flowchart", Path::new("target/compare"))
                 .request
                 .accepted_residual_policy,
-            AcceptedResidualPolicy::RootParityExact
+            AcceptedResidualPolicy::None
         );
-        assert!(
-            global
-                .invocation_options()
-                .for_diagram("flowchart", Path::new("target/compare"))
-                .request
-                .defer_root_residual_policy_to_caller
-        );
-
-        let targeted = CompareAllOptions {
-            only_diagrams: vec!["flowchart".to_string()],
-            ..global.clone()
-        };
-        assert!(targeted.root_parity_policy_enabled());
 
         let filtered = CompareAllOptions {
             filter: Some("smoke".to_string()),
             ..global
         };
-        assert!(!filtered.root_parity_policy_enabled());
-        assert!(
-            !filtered
+        assert_eq!(
+            filtered
                 .invocation_options()
                 .for_diagram("flowchart", Path::new("target/compare"))
                 .request
-                .defer_root_residual_policy_to_caller
+                .accepted_residual_policy,
+            AcceptedResidualPolicy::None
         );
-    }
-
-    #[test]
-    fn root_residual_candidate_requires_the_full_deterministic_root_profile() {
-        let options = CompareAllOptions::parse(vec![
-            "--check-dom".to_string(),
-            "--dom-mode".to_string(),
-            "parity-root".to_string(),
-            "--dom-decimals".to_string(),
-            "3".to_string(),
-            "--flowchart-text-measurer".to_string(),
-            "vendored".to_string(),
-            "--write-root-residual-candidate".to_string(),
-        ])
-        .expect("deterministic candidate profile");
-        assert!(options.write_root_residual_candidate);
-
-        for extra in [
-            vec!["--filter", "basic"],
-            vec!["--diagram", "flowchart"],
-            vec!["--dom-decimals", "6"],
-        ] {
-            let mut args = vec![
-                "--check-dom".to_string(),
-                "--dom-mode".to_string(),
-                "parity-root".to_string(),
-                "--write-root-residual-candidate".to_string(),
-            ];
-            args.extend(extra.into_iter().map(str::to_string));
-            assert!(CompareAllOptions::parse(args).is_err());
-        }
     }
 
     #[test]
@@ -604,7 +479,7 @@ mod tests {
             filter: Some("missing".to_string()),
             ..Default::default()
         };
-        let global = CompareAllFailures::new(&global_options, &["info"]).expect("failure policy");
+        let global = CompareAllFailures::new(&global_options);
         assert!(global.should_skip_unmatched_filter(msg));
 
         let targeted_options = CompareAllOptions {
@@ -612,15 +487,14 @@ mod tests {
             only_diagrams: vec!["info".to_string()],
             ..Default::default()
         };
-        let targeted =
-            CompareAllFailures::new(&targeted_options, &["info"]).expect("failure policy");
+        let targeted = CompareAllFailures::new(&targeted_options);
         assert!(!targeted.should_skip_unmatched_filter(msg));
     }
 
     #[test]
     fn compare_all_failures_records_plain_svg_compare_failures() {
         let options = CompareAllOptions::default();
-        let mut failures = CompareAllFailures::new(&options, &["info"]).expect("failure policy");
+        let mut failures = CompareAllFailures::new(&options);
 
         failures.record(
             "info",
@@ -635,7 +509,7 @@ mod tests {
             ["info: svg compare failed:\ndom mismatch"]
         );
 
-        let mut failures = CompareAllFailures::new(&options, &["info"]).expect("failure policy");
+        let mut failures = CompareAllFailures::new(&options);
         failures.record(
             "info",
             Err(CompareRunFailure::without_evidence(
@@ -674,8 +548,7 @@ mod tests {
                     dom_mode: Some(mode.to_string()),
                     ..Default::default()
                 };
-                let mut failures =
-                    CompareAllFailures::new(&options, &["sequence"]).expect("failure policy");
+                let mut failures = CompareAllFailures::new(&options);
                 failures.record(
                     "sequence",
                     Err(CompareRunFailure::without_evidence(
@@ -762,7 +635,7 @@ mod tests {
     }
 
     #[test]
-    fn root_report_support_covers_active_residual_families() {
+    fn root_report_support_covers_active_diagnostic_families() {
         for diagram in ["class", "timeline", "journey"] {
             assert!(
                 diagram_supports_root_delta_report(diagram),

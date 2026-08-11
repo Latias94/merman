@@ -474,25 +474,6 @@ mod tests {
     }
 
     #[test]
-    fn legacy_numeric_rows_all_satisfy_the_replacement_root_contract() {
-        let path = crate::cmd::fixtures_root().join("_verification/root-parity-residuals.json");
-        let catalog: serde_json::Value =
-            serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
-        let entries = catalog["entries"].as_array().unwrap();
-        for entry in entries {
-            let upstream = root_signature_svg(&entry["upstream"]);
-            let local = root_signature_svg(&entry["local"]);
-            validate(&upstream, &local).unwrap_or_else(|error| {
-                panic!(
-                    "legacy row {}/{} violates replacement contract: {error}",
-                    entry["diagram"].as_str().unwrap(),
-                    entry["fixture"].as_str().unwrap()
-                )
-            });
-        }
-    }
-
-    #[test]
     fn descendant_structure_and_identity_mutations_remain_blocking() {
         let upstream = r#"<svg width="100%" viewBox="0 0 100 50" style="max-width: 100px;"><defs><marker id="arrow"/></defs><g data-id="node-a" clip-path="url(#clip)"><rect width="20" height="10"/><path marker-end="url(#arrow)"/><text>ready</text></g></svg>"#;
         for local in [
@@ -508,24 +489,5 @@ mod tests {
             let local = crate::svgdom::dom_signature_for_comparison(&local, profile, 3).unwrap();
             assert_ne!(upstream, local);
         }
-    }
-
-    fn root_signature_svg(signature: &serde_json::Value) -> String {
-        let mut attributes = String::new();
-        for (json_name, xml_name) in [
-            ("style", "style"),
-            ("view_box", "viewBox"),
-            ("width", "width"),
-            ("height", "height"),
-        ] {
-            if let Some(value) = signature[json_name].as_str() {
-                attributes.push(' ');
-                attributes.push_str(xml_name);
-                attributes.push_str("=\"");
-                attributes.push_str(&value.replace('&', "&amp;").replace('"', "&quot;"));
-                attributes.push('"');
-            }
-        }
-        format!(r#"<svg xmlns="http://www.w3.org/2000/svg"{attributes}/>"#)
     }
 }
