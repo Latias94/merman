@@ -439,6 +439,30 @@ fn sequence_actor_lifecycle_renders_from_typed_model() {
 }
 
 #[test]
+fn sequence_deactivate_after_destroy_preserves_parser_activation_semantics() {
+    let rendered = render_sequence(
+        concat!(
+            "sequenceDiagram\n",
+            "participant A\n",
+            "participant B\n",
+            "activate B\n",
+            "A->>B: Work\n",
+            "destroy B\n",
+            "A--xB: Bye\n",
+            "deactivate B",
+        ),
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("deactivation after a destroy signal should match Mermaid parser semantics");
+
+    assert!(rendered.contains("Work"), "{rendered}");
+    assert!(
+        rendered.contains("Bye") && rendered.contains('×'),
+        "{rendered}"
+    );
+}
+
+#[test]
 fn sequence_note_after_destroy_uses_the_static_actor_anchor() {
     let mut model = basic_sequence_model();
     add_sequence_participant(&mut model, "B");

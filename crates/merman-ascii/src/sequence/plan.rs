@@ -191,7 +191,7 @@ impl<'diagram> SequenceRowPlanner<'diagram> {
                     created_actors,
                     destroyed_actors,
                 };
-                self.record_destroyed_actors(&step.destroyed_actors);
+                self.record_destroyed_actor_visibility(&step.destroyed_actors);
                 Ok(Some(step))
             }
         }
@@ -205,13 +205,10 @@ impl<'diagram> SequenceRowPlanner<'diagram> {
         }
     }
 
-    fn record_destroyed_actors(&mut self, actor_indices: &[usize]) {
+    fn record_destroyed_actor_visibility(&mut self, actor_indices: &[usize]) {
         for actor in actor_indices {
             if let Some(visible) = self.visible_actors.get_mut(*actor) {
                 *visible = false;
-            }
-            if let Some(count) = self.active_counts.get_mut(*actor) {
-                *count = 0;
             }
         }
     }
@@ -1293,7 +1290,7 @@ mod tests {
     }
 
     #[test]
-    fn event_plan_updates_lifecycle_visibility_and_resets_activation() {
+    fn event_plan_updates_lifecycle_visibility_without_erasing_activation_state() {
         let mut diagram = diagram(1);
         diagram.lifecycles[0].created_at = Some(1);
         diagram.lifecycles[0].destroyed_at = Some(1);
@@ -1336,6 +1333,21 @@ mod tests {
         assert_eq!(step.destroyed_actors, &[0]);
         assert_eq!(step.visible_actors, &[true]);
         assert_eq!(plan.visible_actors(), &[false]);
+        assert_eq!(plan.active_counts(), &[1]);
+
+        assert!(
+            plan.advance(
+                &diagram,
+                &SequenceEvent::ActivationEnd {
+                    actor: 0,
+                    model_index: 2,
+                },
+                5,
+                &mut resources,
+            )
+            .unwrap()
+            .is_none()
+        );
         assert_eq!(plan.active_counts(), &[0]);
     }
 

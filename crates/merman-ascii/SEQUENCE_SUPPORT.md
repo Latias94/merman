@@ -27,7 +27,7 @@ This document describes the current `merman-ascii` sequence support boundary. Th
 | Message labels | Supported | Empty labels, single-word labels, multiword labels, and `wrap:` message labels. |
 | Notes | Supported subset | `Note left of`, `Note right of`, and `Note over` notes render as boxes; multiline note text and `wrap:` notes wrap by display width. |
 | Sequence boxes | Supported subset | Boxes render as enclosing text borders around typed actor groups; wrapped and multiline box labels render as additional label rows. Boxes with no actor anchors render as diagram-wide terminal regions instead of inventing hidden participants. |
-| Activations | Supported subset | `activate`, `deactivate`, `+`, and `-` activation state renders as active lifelines. |
+| Activations | Supported subset | `activate`, `deactivate`, `+`, and `-` activation state renders as active lifelines. Activation records follow Mermaid parser ordering independently from actor visibility, so a deactivation after a destroying signal can close an activation that began before destruction. |
 | Actor create/destroy | Supported subset | Created participants render at their creating message; destroyed participants terminate with `x`/`×` and stop their lifeline. Parser-backed models carry the signal that actually consumed each pending lifecycle request, so ASCII and SVG share Mermaid's create-before-destroy and last-declaration-wins ordering. Legacy direct models without that sidecar fall back to the compatibility lifecycle maps. |
 | Autonumber | Supported subset | Visible autonumber commands with optional start/step from the typed model. |
 | Sequence control blocks | Supported subset | `loop`, `opt`, `break`, `rect`, and `par_over` render as single-section frames; `alt`/`else`, `par`/`and`, and `critical`/`option` render as sectioned frames. Frames derive their horizontal bounds from the participants used by their descendant messages, notes, and activation directives, while unrelated lifelines remain outside. Nested frames keep stable insets and empty sections fall back to the full participant span. |
@@ -48,7 +48,7 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 | Hand-built lifecycle maps with out-of-range message indices | `actor lifecycle message indices` |
 | Hand-built create lifecycle maps not bound to the created receiver | `actor creation messages` |
 | Hand-built destroy lifecycle maps not bound to a message endpoint | `actor destruction messages` |
-| Messages or notes before create or after destroy | `actor lifecycle visibility` |
+| Messages before create or after destroy | `actor lifecycle visibility` |
 | Nonempty hand-built actor orders that omit, duplicate, or reference unknown actors | `actor order` |
 | Hand-built activation flags without the matching target state event | `activation state events` |
 | Invalid activation event ordering | `activation underflow` |
