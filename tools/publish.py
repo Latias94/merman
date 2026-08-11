@@ -110,6 +110,21 @@ class PackageInfo:
     internal_deps: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class PublishPlan:
+    batches: tuple[tuple[str, ...], ...]
+    order: tuple[str, ...]
+    packages: dict[str, PackageInfo]
+
+
+@dataclass(frozen=True)
+class _PublishGraph:
+    workspace: dict[str, dict]
+    dependencies: dict[str, frozenset[str]]
+    batches: tuple[tuple[str, ...], ...]
+    order: tuple[str, ...]
+
+
 class PublishGraphError(RuntimeError):
     """Cargo workspace metadata cannot produce a safe crates.io publish graph."""
 
@@ -134,8 +149,7 @@ def publish_field_allows_crates_io(publish_raw: object) -> bool:
     return False
 
 
-def crates_io_publish_batches(metadata: dict) -> tuple[tuple[str, ...], ...]:
-    """Return deterministic topological batches for publishable workspace packages."""
+def _crates_io_publish_graph(metadata: dict) -> _PublishGraph:
     workspace = _workspace_packages_by_name(metadata)
     publishable = {
         name: package
@@ -190,15 +204,25 @@ def crates_io_publish_batches(metadata: dict) -> tuple[tuple[str, ...], ...]:
             for name, deps in remaining.items()
             if name not in ready_set
         }
-    return tuple(batches)
+    publish_batches = tuple(batches)
+    return _PublishGraph(
+        workspace=workspace,
+        dependencies={
+            name: frozenset(package_dependencies)
+            for name, package_dependencies in dependencies.items()
+        },
+        batches=publish_batches,
+        order=tuple(package for batch in publish_batches for package in batch),
+    )
+
+
+def crates_io_publish_batches(metadata: dict) -> tuple[tuple[str, ...], ...]:
+    """Return deterministic topological batches for publishable workspace packages."""
+    return _crates_io_publish_graph(metadata).batches
 
 
 def crates_io_publish_order(metadata: dict) -> tuple[str, ...]:
-    return tuple(
-        package
-        for batch in crates_io_publish_batches(metadata)
-        for package in batch
-    )
+    return _crates_io_publish_graph(metadata).order
 
 
 def _workspace_packages_by_name(metadata: dict) -> dict[str, dict]:
@@ -229,34 +253,30 @@ def _workspace_packages_by_name(metadata: dict) -> dict[str, dict]:
     return workspace
 
 
-def workspace_package_infos(metadata: dict) -> dict[str, PackageInfo]:
-    workspace = _workspace_packages_by_name(metadata)
-    publish_order = crates_io_publish_order(metadata)
-    publish_set = set(publish_order)
-    manifest_owners = {
-        Path(str(package["manifest_path"])).resolve().parent: name
-        for name, package in workspace.items()
-    }
+def _package_infos(graph: _PublishGraph) -> dict[str, PackageInfo]:
     out: dict[str, PackageInfo] = {}
-    for name in publish_order:
-        package = workspace[name]
-        internal_deps: set[str] = set()
-        for dependency in package.get("dependencies", []) or []:
-            if not isinstance(dependency, dict) or dependency.get("kind") == "dev":
-                continue
-            dependency_path = dependency.get("path")
-            if not isinstance(dependency_path, str):
-                continue
-            dependency_name = manifest_owners.get(Path(dependency_path).resolve())
-            if dependency_name in publish_set and dependency_name != name:
-                internal_deps.add(dependency_name)
+    for name in graph.order:
+        package = graph.workspace[name]
         out[name] = PackageInfo(
             name=name,
             version=str(package["version"]),
             manifest_path=Path(str(package["manifest_path"])),
-            internal_deps=tuple(sorted(internal_deps)),
+            internal_deps=tuple(sorted(graph.dependencies[name])),
         )
     return out
+
+
+def crates_io_publish_plan(metadata: dict) -> PublishPlan:
+    graph = _crates_io_publish_graph(metadata)
+    return PublishPlan(
+        batches=graph.batches,
+        order=graph.order,
+        packages=_package_infos(graph),
+    )
+
+
+def workspace_package_infos(metadata: dict) -> dict[str, PackageInfo]:
+    return crates_io_publish_plan(metadata).packages
 
 
 def check_crate_published(crate_name: str, version: str) -> bool:
@@ -399,21 +419,19 @@ def main() -> int:
             repo_root,
             quiet=args.list_crates_io_packages or args.list_crates_io_initial_batch,
         )
-        publish_batches = crates_io_publish_batches(metadata)
-        publish_order = tuple(crate for batch in publish_batches for crate in batch)
-        packages = workspace_package_infos(metadata)
+        if args.list_crates_io_packages or args.list_crates_io_initial_batch:
+            graph = _crates_io_publish_graph(metadata)
+            selected = graph.order if args.list_crates_io_packages else graph.batches[0]
+            for crate in selected:
+                print(crate)
+            return 0
+        plan = crates_io_publish_plan(metadata)
     except Exception as e:
         print_error(str(e))
         return 2
 
-    if args.list_crates_io_packages:
-        for crate in publish_order:
-            print(crate)
-        return 0
-    if args.list_crates_io_initial_batch:
-        for crate in publish_batches[0]:
-            print(crate)
-        return 0
+    publish_order = plan.order
+    packages = plan.packages
 
     if not args.allow_dirty:
         try:

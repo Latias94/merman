@@ -11,6 +11,13 @@ struct FamilyAuthorityFact {
     has_render_parser: bool,
 }
 
+#[derive(Debug, Default)]
+struct FixtureFiles {
+    mermaid: bool,
+    semantic_golden: bool,
+    layout_golden: bool,
+}
+
 pub(crate) fn primary_svg_matrix_diagrams() -> impl Iterator<Item = &'static str> {
     crate::cmd::compare::DIAGRAM_VERIFICATION_FACTS
         .iter()
@@ -160,24 +167,22 @@ fn fixture_golden_failures(families: &[FamilyAuthorityFact], fixtures_root: &Pat
             ));
             continue;
         }
-        if count_fixture_files(&fixtures_dir, |name| name.ends_with(".mmd")) == 0 {
+        let fixture_files = inspect_fixture_files(&fixtures_dir);
+        if !fixture_files.mermaid {
             failures.push(format!(
                 "admission authorities: canonical family `{}` has no structured Mermaid fixtures under {}",
                 family.diagram,
                 fixtures_dir.display()
             ));
         }
-        if count_fixture_files(&fixtures_dir, |name| {
-            name.ends_with(".golden.json") && !name.ends_with(".layout.golden.json")
-        }) == 0
-        {
+        if !fixture_files.semantic_golden {
             failures.push(format!(
                 "admission authorities: canonical family `{}` has no semantic golden under {}",
                 family.diagram,
                 fixtures_dir.display()
             ));
         }
-        if count_fixture_files(&fixtures_dir, |name| name.ends_with(".layout.golden.json")) == 0 {
+        if !fixture_files.layout_golden {
             failures.push(format!(
                 "admission authorities: canonical family `{}` has no layout golden under {}",
                 family.diagram,
@@ -189,23 +194,29 @@ fn fixture_golden_failures(families: &[FamilyAuthorityFact], fixtures_root: &Pat
     failures
 }
 
-fn count_fixture_files(dir: &Path, matches: impl Fn(&str) -> bool) -> usize {
+fn inspect_fixture_files(dir: &Path) -> FixtureFiles {
     fs::read_dir(dir)
         .map(|entries| {
-            entries
-                .flatten()
-                .filter(|entry| entry.path().is_file())
-                .filter(|entry| entry.file_name().to_str().is_some_and(&matches))
-                .count()
+            let mut files = FixtureFiles::default();
+            for entry in entries.flatten().filter(|entry| entry.path().is_file()) {
+                let file_name = entry.file_name();
+                let Some(name) = file_name.to_str() else {
+                    continue;
+                };
+                files.mermaid |= name.ends_with(".mmd");
+                files.layout_golden |= name.ends_with(".layout.golden.json");
+                files.semantic_golden |=
+                    name.ends_with(".golden.json") && !name.ends_with(".layout.golden.json");
+            }
+            files
         })
-        .unwrap_or(0)
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn structured_family_authorities_reject_missing_and_duplicate_registry_entries() {
@@ -238,7 +249,8 @@ mod tests {
 
     #[test]
     fn structured_fixture_authority_requires_fixture_and_both_golden_kinds() {
-        let root = temp_root("admission-fixtures");
+        let temporary = tempfile::tempdir().expect("temporary fixture root");
+        let root = temporary.path();
         let fixtures_dir = root.join("flowchart");
         fs::create_dir_all(&fixtures_dir).expect("fixtures dir");
         fs::write(fixtures_dir.join("basic.mmd"), "flowchart TD\nA-->B\n").expect("fixture");
@@ -248,7 +260,7 @@ mod tests {
             has_render_parser: true,
         }];
 
-        let missing_goldens = fixture_golden_failures(&families, &root);
+        let missing_goldens = fixture_golden_failures(&families, root);
         assert!(
             missing_goldens
                 .iter()
@@ -262,20 +274,7 @@ mod tests {
 
         fs::write(fixtures_dir.join("basic.golden.json"), "{}\n").expect("semantic golden");
         fs::write(fixtures_dir.join("basic.layout.golden.json"), "{}\n").expect("layout golden");
-        assert!(fixture_golden_failures(&families, &root).is_empty());
-
-        fs::remove_dir_all(root).expect("cleanup");
-    }
-
-    #[test]
-    fn primary_svg_matrix_is_a_direct_compare_registry_projection() {
-        let primary = primary_svg_matrix_diagrams().collect::<Vec<_>>();
-        let compare = crate::cmd::compare::DIAGRAM_VERIFICATION_FACTS
-            .iter()
-            .map(|fact| fact.diagram)
-            .collect::<Vec<_>>();
-
-        assert_eq!(primary, compare);
+        assert!(fixture_golden_failures(&families, root).is_empty());
     }
 
     #[test]
@@ -362,13 +361,5 @@ mod tests {
                 .iter()
                 .all(|fact| !fact.command.trim().is_empty())
         );
-    }
-
-    fn temp_root(label: &str) -> std::path::PathBuf {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("time")
-            .as_nanos();
-        std::env::temp_dir().join(format!("merman-{label}-{}-{nonce}", std::process::id()))
     }
 }

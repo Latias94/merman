@@ -41,6 +41,34 @@ class PublishMetadataTests(unittest.TestCase):
         self.assertNotIn("xtask", packages)
         self.assertEqual(packages["merman-core"].version, "1.0.0")
 
+    def test_list_mode_returns_before_package_info_projection(self) -> None:
+        original_argv = sys.argv
+        original_cargo_metadata = publish_tool.cargo_metadata
+        original_publish_plan = publish_tool.crates_io_publish_plan
+        original_require_tool = publish_tool.require_tool
+        try:
+            sys.argv = ["publish.py", "--list-crates-io-packages"]
+            publish_tool.cargo_metadata = lambda _repo_root, **_kwargs: workspace_metadata(
+                package("merman-core")
+            )
+            publish_tool.crates_io_publish_plan = lambda _metadata: self.fail(
+                "list mode must not construct package info"
+            )
+            publish_tool.require_tool = lambda _name: None
+
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                self.assertEqual(publish_tool.main(), 0)
+        finally:
+            sys.argv = original_argv
+            publish_tool.cargo_metadata = original_cargo_metadata
+            publish_tool.crates_io_publish_plan = original_publish_plan
+            publish_tool.require_tool = original_require_tool
+
+        self.assertEqual(stdout.getvalue(), "merman-core\n")
+        self.assertEqual(stderr.getvalue(), "")
+
     def test_crates_io_package_order_rejects_internal_registry_packages(self) -> None:
         metadata = workspace_metadata(
             package("default-publish"),

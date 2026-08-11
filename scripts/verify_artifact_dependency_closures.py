@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 
 from artifact_profile_recipe import (
     DEFAULT_DESCRIPTOR,
@@ -424,18 +425,7 @@ def _workspace_metadata_without_dependencies() -> Mapping[str, object]:
 
 @lru_cache(maxsize=1)
 def _locked_workspace_external_identities() -> frozenset[tuple[str, str, str]]:
-    document = _run_cargo_metadata(
-        [
-            "cargo",
-            "metadata",
-            "--locked",
-            "--format-version",
-            "1",
-            "--all-features",
-        ],
-        "locked workspace package identities",
-    )
-    return _external_package_identities(document)
+    return _lockfile_external_identities(REPO_ROOT / "Cargo.lock")
 
 
 def _run_cargo_metadata(
@@ -502,7 +492,11 @@ def write_metadata_probe(
     """Create a standalone package projection for one exact artifact recipe."""
     _validate_case_recipe(case)
     recipe = case.recipe
-    package = package_metadata or _workspace_package_metadata(recipe)
+    package = (
+        _workspace_package_metadata(recipe)
+        if package_metadata is None
+        else package_metadata
+    )
     if package.get("name") != recipe.package:
         raise ClosureVerificationError(
             f"structured package metadata does not match recipe root {recipe.package!r}"
@@ -621,40 +615,58 @@ def _render_probe_dependency(dependency: Mapping[str, object]) -> str:
     return f"{json.dumps(alias)} = {{ {', '.join(fields)} }}"
 
 
-def _external_package_identities(
-    document: Mapping[str, object],
+def _lockfile_external_identities(
+    lockfile: Path,
 ) -> frozenset[tuple[str, str, str]]:
-    packages = document.get("packages")
+    try:
+        with lockfile.open("rb") as file:
+            document = tomllib.load(file)
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        raise ClosureVerificationError(
+            f"failed to read Cargo lockfile {lockfile}: {error}"
+        ) from error
+
+    packages = document.get("package")
     if not isinstance(packages, list):
-        raise ClosureVerificationError("cargo metadata lacks a packages array")
+        raise ClosureVerificationError(
+            f"Cargo lockfile {lockfile} lacks a package array"
+        )
     identities: set[tuple[str, str, str]] = set()
     for package in packages:
         if not isinstance(package, Mapping):
-            raise ClosureVerificationError("cargo metadata contains a non-object package")
+            raise ClosureVerificationError(
+                f"Cargo lockfile {lockfile} contains a non-object package"
+            )
         source = package.get("source")
         if source is None:
             continue
         name = package.get("name")
         version = package.get("version")
         if not isinstance(name, str) or not isinstance(version, str) or not isinstance(source, str):
-            raise ClosureVerificationError("cargo metadata contains an invalid external package")
+            raise ClosureVerificationError(
+                f"Cargo lockfile {lockfile} contains an invalid external package"
+            )
         identities.add((name, version, source))
     return frozenset(identities)
 
 
 def prepare_metadata_probe(case: VerificationCase, probe_dir: Path) -> Path:
-    """Resolve the probe offline, then bind every external package to the locked workspace."""
+    """Create one exact standalone probe seeded from the committed workspace lock."""
     manifest = write_metadata_probe(case, probe_dir)
     committed_lock = REPO_ROOT / "Cargo.lock"
     if not committed_lock.is_file():
         raise ClosureVerificationError(f"missing committed Cargo.lock at {committed_lock}")
     shutil.copyfile(committed_lock, probe_dir / "Cargo.lock")
-    document = _run_cargo_metadata(
-        cargo_metadata_command(case, probe_manifest=manifest, frozen=False),
-        f"metadata probe for {case.recipe.profile_id!r}",
-    )
+    return manifest
+
+
+def _validate_probe_lock(probe_manifest: Path) -> None:
+    lockfile = probe_manifest.parent / "Cargo.lock"
+    if not lockfile.is_file():
+        raise ClosureVerificationError("cargo metadata did not create the probe lockfile")
     unexpected = sorted(
-        _external_package_identities(document) - _locked_workspace_external_identities()
+        _lockfile_external_identities(lockfile)
+        - _locked_workspace_external_identities()
     )
     if unexpected:
         rendered = ", ".join(
@@ -664,9 +676,6 @@ def prepare_metadata_probe(case: VerificationCase, probe_dir: Path) -> Path:
             "metadata probe resolved packages outside the committed workspace lock: "
             + rendered
         )
-    if not (probe_dir / "Cargo.lock").is_file():
-        raise ClosureVerificationError("cargo metadata did not create the probe lockfile")
-    return manifest
 
 
 def cargo_metadata_command(
@@ -942,11 +951,10 @@ def verify_cases(
     """Run every selected profile-target metadata query and aggregate failures."""
     failures: list[str] = []
     observations: list[ClosureObservation] = []
-    command_results: dict[
+    command_outcomes: dict[
         tuple[str, ...],
-        subprocess.CompletedProcess[str],
+        DependencyClosure | RuntimeError,
     ] = {}
-    command_closures: dict[tuple[str, ...], DependencyClosure] = {}
 
     case_list = tuple(cases)
     with tempfile.TemporaryDirectory(prefix="merman-closure-") as temporary_directory:
@@ -972,28 +980,36 @@ def verify_cases(
                         probe_root / f"probe-{index}",
                     )
                     probe_paths[probe_key] = probe_manifest
-                command = cargo_metadata_command(case, probe_manifest=probe_manifest)
+                command = cargo_metadata_command(
+                    case,
+                    probe_manifest=probe_manifest,
+                    frozen=False,
+                )
                 command_key = tuple(command)
-                completed = command_results.get(command_key)
-                if completed is None:
-                    completed = runner(command)
-                    command_results[command_key] = completed
-                closure = command_closures.get(command_key)
-                if closure is None:
-                    if completed.returncode != 0:
-                        stderr = (completed.stderr or "").strip() or "<empty stderr>"
-                        raise ClosureVerificationError(
-                            f"cargo metadata exited with {completed.returncode}: {stderr}"
+                outcome = command_outcomes.get(command_key)
+                if outcome is None:
+                    try:
+                        completed = runner(command)
+                        if completed.returncode != 0:
+                            stderr = (completed.stderr or "").strip() or "<empty stderr>"
+                            raise ClosureVerificationError(
+                                f"cargo metadata exited with {completed.returncode}: {stderr}"
+                            )
+                        if not isinstance(completed.stdout, (str, dict)):
+                            raise ClosureVerificationError(
+                                "cargo metadata stdout was neither JSON text nor an object"
+                            )
+                        _validate_probe_lock(probe_manifest)
+                        outcome = parse_cargo_metadata(
+                            completed.stdout,
+                            root_package=case.recipe.package,
                         )
-                    if not isinstance(completed.stdout, (str, dict)):
-                        raise ClosureVerificationError(
-                            "cargo metadata stdout was neither JSON text nor an object"
-                        )
-                    closure = parse_cargo_metadata(
-                        completed.stdout,
-                        root_package=case.recipe.package,
-                    )
-                    command_closures[command_key] = closure
+                    except RuntimeError as error:
+                        outcome = error
+                    command_outcomes[command_key] = outcome
+                if isinstance(outcome, RuntimeError):
+                    raise outcome
+                closure = outcome
                 case_failures, observation = check_case(case, closure)
                 observations.append(observation)
                 failures.extend(f"{context}: {failure}" for failure in case_failures)

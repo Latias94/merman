@@ -32,6 +32,7 @@ from verify_artifact_dependency_closures import (  # noqa: E402
     ClosureVerificationError,
     PackageFeatureExclusion,
     VerificationCase,
+    _lockfile_external_identities,
     _select_cases,
     cargo_metadata_command,
     check_case,
@@ -101,7 +102,7 @@ def write_test_metadata_probe(
     current: VerificationCase,
     probe_dir: Path,
 ) -> Path:
-    return write_metadata_probe(
+    manifest = write_metadata_probe(
         current,
         probe_dir,
         package_metadata={
@@ -118,6 +119,11 @@ def write_test_metadata_probe(
             ),
         },
     )
+    (probe_dir / "Cargo.lock").write_text(
+        'version = 4\n\n[[package]]\nname = "fixture"\nversion = "1.2.3"\n',
+        encoding="utf-8",
+    )
+    return manifest
 
 
 def metadata_document(
@@ -446,6 +452,52 @@ class CargoMetadataCommandTests(unittest.TestCase):
         self.assertIn('features = ["svg"]', text)
         self.assertNotIn("ignored-build-tool", text)
 
+    def test_probe_rejects_an_empty_explicit_package_projection(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            with self.assertRaisesRegex(
+                ClosureVerificationError,
+                "does not match recipe root",
+            ):
+                write_metadata_probe(
+                    case(),
+                    Path(temporary_directory),
+                    package_metadata={},
+                )
+
+    def test_lockfile_external_identities_ignore_workspace_packages(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            lockfile = Path(temporary_directory) / "Cargo.lock"
+            lockfile.write_text(
+                """\
+version = 4
+
+[[package]]
+name = "workspace-root"
+version = "1.0.0"
+
+[[package]]
+name = "registry-dependency"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+""",
+                encoding="utf-8",
+            )
+
+            identities = _lockfile_external_identities(lockfile)
+
+        self.assertEqual(
+            identities,
+            frozenset(
+                {
+                    (
+                        "registry-dependency",
+                        "2.0.0",
+                        "registry+https://github.com/rust-lang/crates.io-index",
+                    )
+                }
+            ),
+        )
+
     def test_host_requires_the_linux_reference_target(self) -> None:
         with self.assertRaisesRegex(
             ClosureVerificationError,
@@ -625,6 +677,8 @@ class VerificationTests(unittest.TestCase):
             ),
             targets,
         )
+        self.assertTrue(all("--offline" in command for command in commands))
+        self.assertTrue(all("--frozen" not in command for command in commands))
         self.assertEqual(
             tuple(observation.closure_target for observation in observations),
             targets,
@@ -730,7 +784,10 @@ class VerificationTests(unittest.TestCase):
         self.assertIn("forbidden packages present", message)
 
     def test_runner_failure_is_fail_closed(self) -> None:
+        commands: list[Sequence[str]] = []
+
         def runner(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+            commands.append(command)
             return subprocess.CompletedProcess(
                 command,
                 101,
@@ -743,10 +800,12 @@ class VerificationTests(unittest.TestCase):
             "dependency resolution failed",
         ):
             verify_cases(
-                (case(),),
+                (case(), case()),
                 runner=runner,
                 probe_preparer=write_test_metadata_probe,
             )
+
+        self.assertEqual(len(commands), 1)
 
     def test_unknown_profile_selection_is_rejected(self) -> None:
         with self.assertRaisesRegex(

@@ -41,20 +41,20 @@ enum CheckKind {
     Wasm,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct ProfileBudgetOptions {
-    check: Option<CheckKind>,
-    profile: Option<Profile>,
-    wasm_file: Option<PathBuf>,
+    check: CheckKind,
+    profile: Profile,
+    wasm_file: PathBuf,
 }
 
 pub(crate) fn profile_budget(args: Vec<String>) -> Result<(), XtaskError> {
     let options = parse_options(args)?;
-    let check = options.check.ok_or(XtaskError::Usage)?;
-    let profile = options.profile.ok_or(XtaskError::Usage)?;
 
     let mut failures = Vec::new();
-    let wasm_file = options.wasm_file.as_deref().ok_or(XtaskError::Usage)?;
+    let check = options.check;
+    let profile = options.profile;
+    let wasm_file = options.wasm_file.as_path();
     let wasm = load_wasm_module(wasm_file)?;
 
     if matches!(check, CheckKind::Imports | CheckKind::Wasm) {
@@ -90,13 +90,12 @@ fn parse_options(args: Vec<String>) -> Result<ProfileBudgetOptions, XtaskError> 
         return Err(XtaskError::Usage);
     }
 
-    let mut options = ProfileBudgetOptions::default();
     let mut iter = args.into_iter();
     let Some(action) = iter.next() else {
         print_usage();
         return Err(XtaskError::Usage);
     };
-    options.check = Some(match action.as_str() {
+    let check = match action.as_str() {
         "check-imports" => CheckKind::Imports,
         "check-exports" => CheckKind::Exports,
         "check-wasm" => CheckKind::Wasm,
@@ -104,17 +103,19 @@ fn parse_options(args: Vec<String>) -> Result<ProfileBudgetOptions, XtaskError> 
             print_usage();
             return Err(XtaskError::Usage);
         }
-    });
+    };
+    let mut profile = None;
+    let mut wasm_file = None;
 
     while let Some(arg) = iter.next() {
         match arg.as_str() {
             "--profile" => {
                 let raw = iter.next().ok_or(XtaskError::Usage)?;
-                options.profile = Some(Profile::parse(&raw)?);
+                profile = Some(Profile::parse(&raw)?);
             }
             "--wasm" => {
                 let path = iter.next().ok_or(XtaskError::Usage)?;
-                options.wasm_file = Some(PathBuf::from(path));
+                wasm_file = Some(PathBuf::from(path));
             }
             _ => {
                 print_usage();
@@ -123,12 +124,17 @@ fn parse_options(args: Vec<String>) -> Result<ProfileBudgetOptions, XtaskError> 
         }
     }
 
-    if options.check.is_none() || options.wasm_file.is_none() {
+    let Some(wasm_file) = wasm_file else {
         print_usage();
         return Err(XtaskError::Usage);
-    }
+    };
+    let profile = profile.ok_or(XtaskError::Usage)?;
 
-    Ok(options)
+    Ok(ProfileBudgetOptions {
+        check,
+        profile,
+        wasm_file,
+    })
 }
 
 fn print_usage() {
@@ -227,8 +233,8 @@ mod tests {
         ])
         .expect("WASM surface options");
 
-        assert_eq!(options.check, Some(CheckKind::Wasm));
-        assert_eq!(options.profile, Some(Profile::Typst));
-        assert_eq!(options.wasm_file, Some(PathBuf::from("plugin.wasm")));
+        assert_eq!(options.check, CheckKind::Wasm);
+        assert_eq!(options.profile, Profile::Typst);
+        assert_eq!(options.wasm_file, PathBuf::from("plugin.wasm"));
     }
 }
