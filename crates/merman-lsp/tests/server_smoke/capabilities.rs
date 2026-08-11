@@ -468,7 +468,7 @@ async fn lsp_service_smoke_serves_config_schema_custom_request() {
     assert_eq!(
         result["schema"]["$defs"]["analysisOptions"]["properties"]["lint"]["properties"]["profile"]
             ["enum"],
-        serde_json::json!(["core", "recommended", "strict"])
+        serde_json::json!([null, "core", "recommended", "strict"])
     );
     assert_eq!(
         result["schema"]["$defs"]["severity"]["enum"],

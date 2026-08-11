@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::{
-    AnalyzerConfigurationChange, AnalyzerOptionsPreparation, ConfigurationUpdateOutcome,
+    AnalyzerOptionsPreparation, ConfigurationUpdateOutcome,
     DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES, DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS,
     DEFAULT_LSP_MAX_SOURCE_BYTES, DiagnosticProjectionPreparation, DiagnosticProjectionTicket,
     DocumentDiagnosticState, DocumentDiscardedSource, DocumentResourceLimit, DocumentSyncError,
@@ -13,9 +13,9 @@ use super::{
 use crate::session::analysis::request::{AnalysisBuildError, AnalysisBuildRequest};
 use crate::snapshot::{DocumentAnalysisContext, DocumentSnapshot, SnapshotContext};
 use merman_analysis::{
-    AnalysisCancellationToken, AnalysisOptions, AnalysisPayload, AnalysisResourceLimit,
-    AnalysisRuleConfig, AnalysisRuleProfile, Analyzer, DiagnosticSeverity, FenceTextIndex,
-    FenceTextIndexSource, source_limit_diagnostic_span,
+    AnalysisCancellationToken, AnalysisConfigChange, AnalysisConfigContract, AnalysisOptions,
+    AnalysisPayload, AnalysisResourceLimit, AnalysisRuleConfig, AnalysisRuleProfile, Analyzer,
+    DiagnosticSeverity, FenceTextIndex, FenceTextIndexSource, source_limit_diagnostic_span,
 };
 use merman_core::{EditorSemanticRole, EditorSemanticSymbol};
 use merman_editor_core::DocumentKind;
@@ -94,14 +94,14 @@ trait SessionStateTestExt: Sized {
 
     fn with_analysis_cache_budget(analysis_cache_budget: usize) -> Self;
 
-    fn begin_analyzer_options(&mut self, options: AnalysisOptions) -> AnalyzerConfigurationChange;
+    fn begin_analyzer_options(&mut self, options: AnalysisOptions) -> AnalysisConfigChange;
 
     fn prepare_snapshot_configuration(
         &self,
         next_options: AnalysisOptions,
     ) -> SnapshotConfigurationPlan;
 
-    fn apply_analyzer_options(&mut self, options: AnalysisOptions) -> AnalyzerConfigurationChange;
+    fn apply_analyzer_options(&mut self, options: AnalysisOptions) -> AnalysisConfigChange;
 
     fn upsert_text(
         &mut self,
@@ -153,7 +153,7 @@ impl SessionStateTestExt for SessionState {
         )
     }
 
-    fn begin_analyzer_options(&mut self, options: AnalysisOptions) -> AnalyzerConfigurationChange {
+    fn begin_analyzer_options(&mut self, options: AnalysisOptions) -> AnalysisConfigChange {
         let request = self.begin_analyzer_configuration_request();
         match self
             .prepare_analyzer_options(request, options)
@@ -177,7 +177,7 @@ impl SessionStateTestExt for SessionState {
         self.prepare_snapshot_configuration_for(self.latest_configuration_request, next_options)
     }
 
-    fn apply_analyzer_options(&mut self, options: AnalysisOptions) -> AnalyzerConfigurationChange {
+    fn apply_analyzer_options(&mut self, options: AnalysisOptions) -> AnalysisConfigChange {
         self.begin_analyzer_options(options)
     }
 
@@ -784,7 +784,7 @@ fn source_limit_reclassification_rejects_a_superseded_configuration_request() {
         .expect("the latest request is current");
     assert!(matches!(
         latest,
-        AnalyzerOptionsPreparation::Applied(AnalyzerConfigurationChange::Unchanged)
+        AnalyzerOptionsPreparation::Applied(AnalysisConfigChange::Unchanged)
     ));
 
     assert!(!store.is_analyzer_configuration_request_current(older_request));
@@ -1691,7 +1691,7 @@ fn unchanged_analyzer_update_preserves_context_generations_snapshots_and_tokens(
 
     assert_eq!(
         store.apply_analyzer_options(default_lsp_analysis_options()),
-        AnalyzerConfigurationChange::Unchanged
+        AnalysisConfigChange::Unchanged
     );
 
     assert!(store.is_snapshot_context_current(&snapshot_context));
@@ -1710,7 +1710,7 @@ fn unchanged_analyzer_update_preserves_context_generations_snapshots_and_tokens(
 }
 
 #[test]
-fn analyzer_configuration_change_classifies_each_policy_scope() {
+fn analysis_config_contract_classifies_each_policy_scope() {
     let current = AnalysisOptions::default();
     let diagnostic_only = AnalysisOptions::default().with_rule_config(
         AnalysisRuleConfig::default()
@@ -1722,17 +1722,17 @@ fn analyzer_configuration_change_classifies_each_policy_scope() {
         AnalysisOptions::default().with_fixed_today(Some("2026-07-02".parse().unwrap()));
 
     assert_eq!(
-        super::analyzer_configuration_change(&current, &current),
-        super::AnalyzerConfigurationChange::Unchanged
+        AnalysisConfigContract::current().classify_change(&current, &current),
+        AnalysisConfigChange::Unchanged
     );
     assert_eq!(
-        super::analyzer_configuration_change(&current, &diagnostic_only),
-        super::AnalyzerConfigurationChange::DiagnosticsOnly
+        AnalysisConfigContract::current().classify_change(&current, &diagnostic_only),
+        AnalysisConfigChange::DiagnosticsOnly
     );
     for next in [&source_limit, &runtime_policy] {
         assert_eq!(
-            super::analyzer_configuration_change(&current, next),
-            super::AnalyzerConfigurationChange::SnapshotAffecting
+            AnalysisConfigContract::current().classify_change(&current, next),
+            AnalysisConfigChange::SnapshotAffecting
         );
     }
 }
@@ -1804,7 +1804,7 @@ fn no_op_configuration_does_not_supersede_prepared_text_changes() {
         .expect("current no-op configuration should be classified");
     assert!(matches!(
         preparation,
-        AnalyzerOptionsPreparation::Applied(AnalyzerConfigurationChange::Unchanged)
+        AnalyzerOptionsPreparation::Applied(AnalysisConfigChange::Unchanged)
     ));
 
     assert_eq!(
@@ -2075,7 +2075,7 @@ async fn repeated_diagnostic_updates_preserve_environment_and_parse_once() {
                     .unwrap(),
             ),
         );
-        assert_eq!(change, AnalyzerConfigurationChange::DiagnosticsOnly);
+        assert_eq!(change, AnalysisConfigChange::DiagnosticsOnly);
         assert_eq!(store.analyzer_environment_identity(), &identity);
         assert!(store.has_snapshot(&uri));
         assert!(!store.has_analysis_payload(&uri));
@@ -2176,7 +2176,7 @@ async fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
         ),
     );
 
-    assert_eq!(change, AnalyzerConfigurationChange::DiagnosticsOnly);
+    assert_eq!(change, AnalysisConfigChange::DiagnosticsOnly);
     assert_eq!(
         store.analyzer_environment_identity(),
         &analyzer_environment_identity

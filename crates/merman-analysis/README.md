@@ -116,7 +116,18 @@ The optional `system-clock`, `system-timezone`, `system-random`, and `system-tim
 
 ## Options JSON
 
-`AnalysisOptionsJson` is the shared forward-compatible configuration root. Unknown fields at the root and inside `lint` are ignored so older configuration transports can read newer additive settings. The `resources` object remains a strict versioned schema even when it is nested under the root.
+`AnalysisConfigContract` is the authority for the shared configuration root, its Draft 2020-12
+schema, and diagnostic-only versus snapshot-affecting change classification. It accepts options
+directly or under exactly one `merman` or `analysis` object; wrappers cannot be combined with
+each other or with direct analysis fields. Profile and severity strings are canonical lowercase
+values, including the reserved `strict` profile.
+
+`AnalysisOptionsJson` is the decoded forward-compatible root. Unknown fields at the root and
+inside `lint` are ignored so older configuration transports can read newer additive settings. The
+`resources` object and its limit IDs remain strict even when nested under the root. Calendar-date
+validity and fixed-date/fixed-offset instant representability are explicitly runtime-only
+constraints; the published standard schema names them instead of implementing a second date
+parser.
 
 Direct `serde_json` decoding of `LintOptionsJson`, `LintRuleSeverityOverrideJson`, or `ResourceOptionsJson` is intentionally strict and rejects unknown fields. Decode through `AnalysisOptionsJson` or `analysis_options_json_from_json_value` when forward compatibility is required; decode a nested type directly only when validating that exact nested schema is the goal.
 

@@ -119,8 +119,24 @@ describe("analysis settings normalization", () => {
       ...defaultRawAnalysisSettings(),
       fixedLocalOffsetMinutes: 1440,
       maxSourceBytes: -1,
+      maxDocumentDiagrams: -1,
+    }), {
+      lint: {
+        profile: "core",
+      },
+    });
+  });
+
+  it("preserves the analysis-owned zero document limit", () => {
+    assert.deepEqual(normalizeAnalysisSettings({
+      ...defaultRawAnalysisSettings(),
       maxDocumentDiagrams: 0,
     }), {
+      resources: {
+        limits: {
+          max_document_diagrams: 0,
+        },
+      },
       lint: {
         profile: "core",
       },
@@ -144,8 +160,8 @@ function defaultRawAnalysisSettings(): RawAnalysisSettings {
     fixedToday: "",
     fixedLocalOffsetMinutes: null,
     siteConfig: {},
-    maxSourceBytes: 0,
-    maxDocumentDiagrams: 0,
+    maxSourceBytes: null,
+    maxDocumentDiagrams: null,
     lintProfile: "core",
     enableRules: [],
     disableRules: [],

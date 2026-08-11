@@ -72,12 +72,20 @@ pub enum AnalysisRuleProfile {
 }
 
 impl AnalysisRuleProfile {
+    pub const ALL: [Self; 3] = [Self::Core, Self::Recommended, Self::Strict];
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Core => "core",
             Self::Recommended => "recommended",
             Self::Strict => "strict",
         }
+    }
+
+    pub fn from_config_str(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|profile| profile.as_str() == value)
     }
 
     const fn includes(self, minimum: Self) -> bool {

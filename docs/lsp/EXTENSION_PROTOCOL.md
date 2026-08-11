@@ -156,8 +156,8 @@ Response. The JSON below is abbreviated; implementations return the complete
             "type": "object",
             "properties": {
               "profile": {
-                "type": "string",
-                "enum": ["core", "recommended", "strict"]
+                "type": ["string", "null"],
+                "enum": [null, "core", "recommended", "strict"]
               },
               "enable_rules": {
                 "type": "array",
@@ -178,10 +178,21 @@ Response. The JSON below is abbreviated; implementations return the complete
           }
         }
       }
-    }
+    },
+    "oneOf": [
+      { "description": "Direct analysis options" },
+      { "description": "Exactly one merman wrapper" },
+      { "description": "Exactly one analysis wrapper" }
+    ]
   }
 }
 ```
+
+The three root shapes are mutually exclusive. Unknown root and `lint` fields are
+forward-compatible, while `resources` and its limit IDs are strict. The schema is projected by
+`merman-analysis`; the LSP adapter adds only host defaults. Calendar validity and the
+fixed-date/fixed-offset representable-instant check remain named runtime constraints because a
+standard JSON Schema pattern is not a second civil-date parser.
 
 The schema describes the same analysis options accepted by `initialize.initializationOptions` and
 `workspace/didChangeConfiguration`: `lint`, `resources.limits.max_source_bytes`,

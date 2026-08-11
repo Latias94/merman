@@ -1,7 +1,18 @@
 export interface LintRuleSeverityOverride {
   rule_id: string;
-  severity: "error" | "warning" | "info" | "hint";
+  severity: AnalysisDiagnosticSeverity;
 }
+
+export const ANALYSIS_LINT_PROFILES = ["core", "recommended", "strict"] as const;
+export const ANALYSIS_DIAGNOSTIC_SEVERITIES = [
+  "error",
+  "warning",
+  "info",
+  "hint",
+] as const;
+
+export type AnalysisLintProfile = (typeof ANALYSIS_LINT_PROFILES)[number];
+export type AnalysisDiagnosticSeverity = (typeof ANALYSIS_DIAGNOSTIC_SEVERITIES)[number];
 
 export interface AnalysisSettings {
   fixed_today?: string;
@@ -14,7 +25,7 @@ export interface AnalysisSettings {
     };
   };
   lint?: {
-    profile?: "core" | "recommended" | "strict";
+    profile?: AnalysisLintProfile;
     enable_rules?: string[];
     disable_rules?: string[];
     rule_severities?: LintRuleSeverityOverride[];
@@ -33,8 +44,6 @@ export interface RawAnalysisSettings {
   ruleSeverities: unknown[];
 }
 
-type LintProfile = "core" | "recommended" | "strict";
-
 export function normalizeAnalysisSettings(raw: RawAnalysisSettings): AnalysisSettings {
   const fixedToday = normalizeOptionalIsoDateString(raw.fixedToday);
   const fixedLocalOffsetMinutes = normalizeIntegerInRange(
@@ -43,8 +52,8 @@ export function normalizeAnalysisSettings(raw: RawAnalysisSettings): AnalysisSet
     1439,
   );
   const siteConfig = normalizePlainObject(raw.siteConfig);
-  const maxSourceBytes = normalizePositiveInteger(raw.maxSourceBytes);
-  const maxDocumentDiagrams = normalizePositiveInteger(raw.maxDocumentDiagrams);
+  const maxSourceBytes = normalizeIntegerAtLeast(raw.maxSourceBytes, 1);
+  const maxDocumentDiagrams = normalizeIntegerAtLeast(raw.maxDocumentDiagrams, 0);
   const lintProfile = normalizeLintProfile(raw.lintProfile);
   const enableRules = sanitizeStringArray(raw.enableRules);
   const disableRules = sanitizeStringArray(raw.disableRules);
@@ -54,7 +63,7 @@ export function normalizeAnalysisSettings(raw: RawAnalysisSettings): AnalysisSet
     fixed_today: fixedToday,
     fixed_local_offset_minutes: fixedLocalOffsetMinutes,
     site_config: siteConfig,
-    resources: maxSourceBytes || maxDocumentDiagrams
+    resources: maxSourceBytes !== undefined || maxDocumentDiagrams !== undefined
       ? {
           limits: compactObject({
             max_source_bytes: maxSourceBytes,
@@ -96,7 +105,7 @@ function sanitizeRuleSeverities(value: unknown[] | undefined): LintRuleSeverityO
   if (!Array.isArray(value)) {
     return [];
   }
-  const severities = new Set(["error", "warning", "info", "hint"]);
+  const severities = new Set<string>(ANALYSIS_DIAGNOSTIC_SEVERITIES);
   return value.flatMap((entry) => {
     if (!entry || typeof entry !== "object") {
       return [];
@@ -180,21 +189,16 @@ function normalizeIntegerInRange(
     : undefined;
 }
 
-function normalizePositiveInteger(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+function normalizeIntegerAtLeast(value: unknown, minimum: number): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value >= minimum
+    ? value
+    : undefined;
 }
 
 function normalizeLintProfile(
   value: string,
-): LintProfile | undefined {
-  switch (value) {
-    case "core":
-    case "recommended":
-    case "strict":
-      return value;
-    default:
-      return undefined;
-  }
+): AnalysisLintProfile | undefined {
+  return ANALYSIS_LINT_PROFILES.find((profile) => profile === value);
 }
 
 function compactObject<T extends object>(value: T): T {

@@ -58,7 +58,13 @@ Applications that already own a transport can depend on `merman-lsp` with defaul
 
 `MermanLanguageServer::service()` returns an ordered `MermanLspService` plus its client socket. Embedded transports must drive `MermanLspService` through `tower::Service<Request>` so each message is admitted in input order. The underlying `LanguageServer` is intentionally not exposed: calling it directly would bypass document and configuration ordering.
 
-The session refactor removes the direct `MermanLanguageServer::rule_catalog()` and `MermanLanguageServer::config_schema()` helpers. Embedded clients should send `RULE_CATALOG_METHOD` and `CONFIG_SCHEMA_METHOD` through the ordered service. Rust callers that only need the static payloads can use `RuleCatalogResponse::current()` and `ConfigSchemaResponse::current()`.
+The session refactor removes the direct `MermanLanguageServer::rule_catalog()` and
+`MermanLanguageServer::config_schema()` helpers. Embedded clients should send
+`RULE_CATALOG_METHOD` and `CONFIG_SCHEMA_METHOD` through the ordered service. Rust callers that
+only need the static payloads can use `RuleCatalogResponse::current()` and
+`ConfigSchemaResponse::current()`. The configuration response is a protocol projection of
+`merman_analysis::AnalysisConfigContract`; LSP contributes only its source and document-fence
+defaults, not an independent accepted-shape definition.
 
 ```toml
 [dependencies]

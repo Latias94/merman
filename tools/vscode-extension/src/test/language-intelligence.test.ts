@@ -189,8 +189,19 @@ describe("language intelligence adoption", () => {
     assert.equal(properties["merman.analysis.fixed_local_offset_minutes"]?.minimum, -1439);
     assert.equal(properties["merman.analysis.fixed_local_offset_minutes"]?.maximum, 1439);
     assert.equal(properties["merman.analysis.site_config"]?.type, "object");
-    assert.equal(properties["merman.analysis.resources.limits.max_source_bytes"]?.type, "integer");
-    assert.equal(properties["merman.analysis.resources.limits.max_source_bytes"]?.minimum, 0);
+    assert.deepEqual(properties["merman.analysis.resources.limits.max_source_bytes"]?.type, [
+      "integer",
+      "null",
+    ]);
+    assert.equal(properties["merman.analysis.resources.limits.max_source_bytes"]?.minimum, 1);
+    assert.deepEqual(
+      properties["merman.analysis.resources.limits.max_document_diagrams"]?.type,
+      ["integer", "null"],
+    );
+    assert.equal(
+      properties["merman.analysis.resources.limits.max_document_diagrams"]?.minimum,
+      0,
+    );
   });
 
   it("does not advertise resource overrides for settings consumed as one global profile", () => {

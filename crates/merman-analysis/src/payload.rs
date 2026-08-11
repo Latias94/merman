@@ -104,6 +104,8 @@ pub enum DiagnosticSeverity {
 }
 
 impl DiagnosticSeverity {
+    pub const ALL: [Self; 4] = [Self::Error, Self::Warning, Self::Info, Self::Hint];
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Error => "error",
@@ -111,6 +113,12 @@ impl DiagnosticSeverity {
             Self::Info => "info",
             Self::Hint => "hint",
         }
+    }
+
+    pub fn from_config_str(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|severity| severity.as_str() == value)
     }
 }
 

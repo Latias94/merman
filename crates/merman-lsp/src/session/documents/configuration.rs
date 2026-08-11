@@ -68,13 +68,14 @@ impl SessionState {
         if !self.is_analyzer_configuration_request_current(request) {
             return None;
         }
-        let change = analyzer_configuration_change(self.analyzer.options(), &options);
+        let change =
+            AnalysisConfigContract::current().classify_change(self.analyzer.options(), &options);
         if change.affects_snapshots() {
             Some(AnalyzerOptionsPreparation::RequiresSnapshotPreparation(
                 Box::new(self.prepare_snapshot_configuration_for(request, options)),
             ))
         } else {
-            if !matches!(change, AnalyzerConfigurationChange::Unchanged) {
+            if !matches!(change, AnalysisConfigChange::Unchanged) {
                 self.apply_diagnostic_policy(options.diagnostic_policy().clone());
             }
             Some(AnalyzerOptionsPreparation::Applied(change))
@@ -117,7 +118,7 @@ impl SessionState {
     pub(in crate::session::documents) fn commit_snapshot_configuration(
         &mut self,
         batch: SnapshotConfigurationBatch,
-    ) -> Option<AnalyzerConfigurationChange> {
+    ) -> Option<AnalysisConfigChange> {
         if !self.is_analyzer_configuration_request_current(batch.request)
             || self.configuration_revision != batch.expected_configuration_revision
             || batch
@@ -127,7 +128,8 @@ impl SessionState {
             return None;
         }
 
-        let change = analyzer_configuration_change(self.analyzer.options(), &batch.next_options);
+        let change = AnalysisConfigContract::current()
+            .classify_change(self.analyzer.options(), &batch.next_options);
         if !change.affects_snapshots() {
             return None;
         }

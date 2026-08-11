@@ -8,6 +8,7 @@
 
 mod analyzer;
 mod cancellation;
+mod config_contract;
 mod diagnostic_projection;
 pub mod document;
 mod document_limits;
@@ -31,6 +32,12 @@ pub use analyzer::{
     analysis_resource_profile_value,
 };
 pub use cancellation::{AnalysisCancellationToken, AnalysisCancelled};
+pub use config_contract::{
+    AnalysisConfigChange, AnalysisConfigChangeScope, AnalysisConfigCompatibility,
+    AnalysisConfigContainerDescriptor, AnalysisConfigContract, AnalysisConfigFieldDescriptor,
+    AnalysisConfigHostDefaults, AnalysisConfigRoot, AnalysisConfigSchemaProjection,
+    FIXED_TODAY_SCHEMA_PATTERN,
+};
 pub use document::{
     DocumentDiagram, DocumentDiagramKind, DocumentSource, FenceDelimiter, FenceDelimiterSpans,
     FenceMarker, SharedTextSlice, analyze_document, analyze_document_facts,

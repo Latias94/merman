@@ -187,17 +187,23 @@
             "order": 30
           },
           "merman.analysis.resources.limits.max_source_bytes": {
-            "type": "integer",
-            "default": 0,
-            "markdownDescription": "Optional source size cap forwarded to `merman-lsp`. `0` uses the server default.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "default": null,
+            "markdownDescription": "Optional source size cap forwarded to `merman-lsp`. `null` uses the server default.",
             "scope": "window",
-            "minimum": 0,
+            "minimum": 1,
             "order": 40
           },
           "merman.analysis.resources.limits.max_document_diagrams": {
-            "type": "integer",
-            "default": 0,
-            "markdownDescription": "Optional Mermaid fence count cap for Markdown and MDX documents. `0` uses the server default.",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "default": null,
+            "markdownDescription": "Optional Mermaid fence count cap for Markdown and MDX documents. `null` uses the server default; `0` rejects documents containing any Mermaid diagram.",
             "scope": "window",
             "minimum": 0,
             "order": 41

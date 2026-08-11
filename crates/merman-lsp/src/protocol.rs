@@ -1,13 +1,9 @@
 use std::str::FromStr;
 
 use crate::session::{DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS, DEFAULT_LSP_MAX_SOURCE_BYTES};
-use merman_analysis::{
-    ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS, AnalysisRuleProfile, DiagnosticSeverity,
-    MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID,
-};
+pub use merman_analysis::FIXED_TODAY_SCHEMA_PATTERN;
+use merman_analysis::{AnalysisConfigContract, AnalysisConfigHostDefaults};
 pub use merman_analysis::{RULE_CATALOG_RESPONSE_VERSION, RuleCatalogEntry, RuleCatalogResponse};
-#[cfg(test)]
-use merman_analysis::{analysis_options_from_json_value, analysis_options_json_from_json_value};
 use merman_core::EditorRenamePolicy;
 use merman_editor_core::{
     DocumentUri, EditorLocation, Position as CorePosition, Range as CoreRange,
@@ -21,14 +17,6 @@ pub const EXPERIMENTAL_SCHEMA_VERSION: u32 = 1;
 pub const CONFIG_SCHEMA_RESPONSE_VERSION: u32 = 1;
 pub const RULE_CATALOG_METHOD: &str = "merman/ruleCatalog";
 pub const CONFIG_SCHEMA_METHOD: &str = "merman/configSchema";
-pub const FIXED_TODAY_SCHEMA_PATTERN: &str = concat!(
-    r"^(?:\d{4}|\+(?:[1-9]\d{4,8}|1\d{9}|20\d{8}|21[0-3]\d{7}|214[0-6]\d{6}|",
-    r"2147[0-3]\d{5}|21474[0-7]\d{4}|214748[0-2]\d{3}|2147483[0-5]\d{2}|",
-    r"21474836[0-3]\d|214748364[0-7])|-(?:000[1-9]|00[1-9]\d|0[1-9]\d{2}|",
-    r"[1-9]\d{3}|[1-9]\d{4,8}|1\d{9}|20\d{8}|21[0-3]\d{7}|214[0-6]\d{6}|",
-    r"2147[0-3]\d{5}|21474[0-7]\d{4}|214748[0-2]\d{3}|2147483[0-5]\d{2}|",
-    r"21474836[0-3]\d|214748364[0-8]))-\d{2}-\d{2}$",
-);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceEditEncoding {
@@ -73,21 +61,18 @@ pub struct ConfigSchemaResponse {
 
 impl ConfigSchemaResponse {
     pub fn current() -> Self {
-        let profiles = lint_profiles();
-        let severities = lint_severities();
-        let configurable_rule_ids = configurable_rule_ids();
+        let contract = AnalysisConfigContract::current().json_schema(AnalysisConfigHostDefaults {
+            max_source_bytes: Some(DEFAULT_LSP_MAX_SOURCE_BYTES),
+            max_document_diagrams: Some(DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS),
+        });
         Self {
             version: CONFIG_SCHEMA_RESPONSE_VERSION,
             rule_catalog_method: RULE_CATALOG_METHOD.to_string(),
-            accepted_roots: vec![
-                "direct".to_string(),
-                "merman".to_string(),
-                "analysis".to_string(),
-            ],
-            schema: analysis_options_schema(&profiles, &severities, &configurable_rule_ids),
-            profiles,
-            severities,
-            configurable_rule_ids,
+            accepted_roots: contract.accepted_roots,
+            profiles: contract.profiles,
+            severities: contract.severities,
+            configurable_rule_ids: contract.configurable_rule_ids,
+            schema: contract.schema,
         }
     }
 }
@@ -164,168 +149,6 @@ pub(crate) fn generated_markdown_to_plain_text(markdown: &str) -> String {
         }
     }
     plain.trim_end().to_string()
-}
-
-fn profile_name(profile: AnalysisRuleProfile) -> &'static str {
-    profile.as_str()
-}
-
-fn severity_name(severity: DiagnosticSeverity) -> &'static str {
-    severity.as_str()
-}
-
-fn lint_profiles() -> Vec<String> {
-    [
-        AnalysisRuleProfile::Core,
-        AnalysisRuleProfile::Recommended,
-        AnalysisRuleProfile::Strict,
-    ]
-    .into_iter()
-    .map(profile_name)
-    .map(str::to_string)
-    .collect()
-}
-
-fn lint_severities() -> Vec<String> {
-    [
-        DiagnosticSeverity::Error,
-        DiagnosticSeverity::Warning,
-        DiagnosticSeverity::Info,
-        DiagnosticSeverity::Hint,
-    ]
-    .into_iter()
-    .map(severity_name)
-    .map(str::to_string)
-    .collect()
-}
-
-fn configurable_rule_ids() -> Vec<String> {
-    merman_analysis::configurable_rule_catalog()
-        .into_iter()
-        .map(|rule| rule.id.to_string())
-        .collect()
-}
-
-fn analysis_options_schema(
-    profiles: &[String],
-    severities: &[String],
-    configurable_rule_ids: &[String],
-) -> Value {
-    let max_document_diagrams = ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS
-        .iter()
-        .find(|descriptor| descriptor.stable_id == MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID)
-        .expect("analysis must describe max_document_diagrams");
-    json!({
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "title": "Merman analysis options",
-        "description": "Options accepted by Merman LSP initializationOptions and workspace/didChangeConfiguration. Clients may pass these options directly, or under a merman or analysis object.",
-        "$defs": {
-            "ruleId": {
-                "type": "string",
-                "enum": configurable_rule_ids,
-                "description": "A configurable Merman analysis rule id."
-            },
-            "severity": {
-                "type": "string",
-                "enum": severities,
-                "description": "Diagnostic severity for an explicit rule override."
-            },
-            "analysisOptions": {
-                "type": "object",
-                "additionalProperties": true,
-                "properties": {
-                    "fixed_today": {
-                        "type": "string",
-                        "pattern": FIXED_TODAY_SCHEMA_PATTERN,
-                        "description": "Canonical fixed local civil date. Years 0000 through 9999 use YYYY-MM-DD; later years use +YEAR-MM-DD and negative years use -YEAR-MM-DD. The date and its local-midnight instant are validated when the configuration is applied."
-                    },
-                    "fixed_local_offset_minutes": {
-                        "type": "integer",
-                        "minimum": -1439,
-                        "maximum": 1439,
-                        "description": "Fixed local UTC offset in minutes."
-                    },
-                    "site_config": {
-                        "type": "object",
-                        "additionalProperties": true,
-                        "description": "Mermaid site configuration forwarded to the shared parser/config layer."
-                    },
-                    "resources": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "properties": {
-                            "limits": {
-                                "type": "object",
-                                "additionalProperties": false,
-                                "properties": {
-                                    "max_source_bytes": {
-                                        "type": "integer",
-                                        "minimum": 1,
-                                        "default": DEFAULT_LSP_MAX_SOURCE_BYTES,
-                                        "description": "Maximum source bytes accepted by analysis before a resource diagnostic is emitted."
-                                    },
-                                    "max_document_diagrams": {
-                                        "type": "integer",
-                                        "minimum": max_document_diagrams.minimum_value,
-                                        "default": DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS,
-                                        "description": max_document_diagrams.description
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "lint": {
-                        "type": "object",
-                        "additionalProperties": true,
-                        "properties": {
-                            "profile": {
-                                "type": "string",
-                                "enum": profiles,
-                                "default": "core",
-                                "description": "Base lint profile. Recommended and strict may enable additional governed authoring rules."
-                            },
-                            "enable_rules": {
-                                "type": "array",
-                                "items": { "$ref": "#/$defs/ruleId" },
-                                "uniqueItems": true,
-                                "description": "Configurable rule ids to enable explicitly."
-                            },
-                            "disable_rules": {
-                                "type": "array",
-                                "items": { "$ref": "#/$defs/ruleId" },
-                                "uniqueItems": true,
-                                "description": "Configurable rule ids to disable explicitly."
-                            },
-                            "rule_severities": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "required": ["rule_id", "severity"],
-                                    "additionalProperties": true,
-                                    "properties": {
-                                        "rule_id": { "$ref": "#/$defs/ruleId" },
-                                        "severity": { "$ref": "#/$defs/severity" }
-                                    }
-                                },
-                                "description": "Per-rule diagnostic severity overrides."
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "allOf": [
-            { "$ref": "#/$defs/analysisOptions" },
-            {
-                "type": "object",
-                "additionalProperties": true,
-                "properties": {
-                    "merman": { "$ref": "#/$defs/analysisOptions" },
-                    "analysis": { "$ref": "#/$defs/analysisOptions" }
-                }
-            }
-        ]
-    })
 }
 
 #[cfg(test)]
@@ -471,7 +294,7 @@ mod tests {
         assert_eq!(
             response.schema["$defs"]["analysisOptions"]["properties"]["lint"]["properties"]["profile"]
                 ["enum"],
-            json!(["core", "recommended", "strict"])
+            json!([null, "core", "recommended", "strict"])
         );
         assert_eq!(
             response.schema["$defs"]["ruleId"]["enum"],
@@ -495,78 +318,21 @@ mod tests {
             response.schema["$defs"]["analysisOptions"]["properties"]["fixed_today"]["pattern"],
             json!(FIXED_TODAY_SCHEMA_PATTERN)
         );
-        for fixed_today in [
-            "0000-01-01",
-            "9999-12-31",
-            "+10000-01-01",
-            "+2147483647-12-31",
-            "-0001-01-01",
-            "-10000-01-01",
-            "-2147483648-01-01",
-        ] {
-            let options = analysis_options_json_from_json_value(&json!({
-                "fixed_today": fixed_today
-            }))
-            .expect("fixed_today must deserialize as a string");
-            assert!(
-                options.fixed_today().is_ok(),
-                "canonical date must parse: {fixed_today}"
-            );
-        }
-        for fixed_today in [
-            "+9999-01-01",
-            "+010000-01-01",
-            "+2147483648-01-01",
-            "-0000-01-01",
-            "-010000-01-01",
-            "-2147483649-01-01",
-            "10000-01-01",
-        ] {
-            let options = analysis_options_json_from_json_value(&json!({
-                "fixed_today": fixed_today
-            }))
-            .expect("fixed_today must deserialize as a string");
-            assert!(
-                options.fixed_today().is_err(),
-                "non-canonical or out-of-domain date must be rejected: {fixed_today}"
-            );
-        }
-        let descriptor = ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS
-            .iter()
-            .find(|descriptor| descriptor.stable_id == MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID)
-            .expect("analysis must describe max_document_diagrams");
-        assert_eq!(
-            response.schema["$defs"]["analysisOptions"]["properties"]["resources"]["properties"]["limits"]
-                ["properties"]["max_document_diagrams"]["minimum"],
-            json!(descriptor.minimum_value)
-        );
-        let parsed = analysis_options_from_json_value(&json!({
-            "resources": {
-                "limits": {
-                    MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID: descriptor.minimum_value
-                }
-            }
-        }))
-        .expect("the schema minimum must be accepted by the options parser");
-        assert_eq!(
-            parsed.max_document_diagrams(),
-            Some(descriptor.minimum_value)
-        );
         assert!(
             response.schema["$defs"]["analysisOptions"]["properties"]
                 .get("parse")
                 .is_none()
         );
         assert_eq!(
-            response.schema["allOf"][0],
+            response.schema["oneOf"][0]["allOf"][0],
             json!({ "$ref": "#/$defs/analysisOptions" })
         );
         assert_eq!(
-            response.schema["allOf"][1]["properties"]["merman"],
+            response.schema["oneOf"][1]["properties"]["merman"],
             json!({ "$ref": "#/$defs/analysisOptions" })
         );
         assert_eq!(
-            response.schema["allOf"][1]["properties"]["analysis"],
+            response.schema["oneOf"][2]["properties"]["analysis"],
             json!({ "$ref": "#/$defs/analysisOptions" })
         );
     }
@@ -597,6 +363,63 @@ mod tests {
             vscode_analysis_setting(&package_json, "merman.analysis.fixed_today")
                 .and_then(|setting| setting["pattern"].as_str()),
             Some(expected_fixed_today_pattern.as_str())
+        );
+
+        let vscode_profiles =
+            vscode_analysis_setting(&package_json, "merman.analysis.lint.profile")
+                .and_then(|setting| setting["enum"].as_array())
+                .expect("VS Code must publish lint profiles")
+                .iter()
+                .filter_map(Value::as_str)
+                .filter(|profile| !profile.is_empty())
+                .collect::<Vec<_>>();
+        assert_eq!(vscode_profiles, response.profiles);
+
+        let vscode_severities =
+            vscode_analysis_setting(&package_json, "merman.analysis.lint.rule_severities")
+                .and_then(|setting| setting["items"]["properties"]["severity"]["enum"].as_array())
+                .expect("VS Code must publish diagnostic severities");
+        assert_eq!(
+            Value::Array(vscode_severities.clone()),
+            json!(response.severities)
+        );
+
+        let analysis_options = &response.schema["$defs"]["analysisOptions"];
+        let offset_setting =
+            vscode_analysis_setting(&package_json, "merman.analysis.fixed_local_offset_minutes")
+                .expect("VS Code offset setting");
+        let offset_schema = &analysis_options["properties"]["fixed_local_offset_minutes"];
+        assert_eq!(offset_setting["type"], offset_schema["type"]);
+        assert_eq!(offset_setting["minimum"], offset_schema["minimum"]);
+        assert_eq!(offset_setting["maximum"], offset_schema["maximum"]);
+
+        for (setting_key, schema_path) in [
+            (
+                "merman.analysis.resources.limits.max_source_bytes",
+                &analysis_options["properties"]["resources"]["properties"]["limits"]["properties"]
+                    ["max_source_bytes"],
+            ),
+            (
+                "merman.analysis.resources.limits.max_document_diagrams",
+                &analysis_options["properties"]["resources"]["properties"]["limits"]["properties"]
+                    ["max_document_diagrams"],
+            ),
+        ] {
+            let setting = vscode_analysis_setting(&package_json, setting_key)
+                .expect("VS Code resource setting");
+            assert_eq!(setting["type"], json!(["integer", "null"]), "{setting_key}");
+            assert_eq!(schema_path["type"], "integer", "{setting_key}");
+            assert_eq!(setting["minimum"], schema_path["minimum"], "{setting_key}");
+            assert_eq!(setting["maximum"], schema_path["maximum"], "{setting_key}");
+            assert_eq!(setting["default"], Value::Null, "{setting_key}");
+        }
+        assert_eq!(
+            vscode_analysis_setting(
+                &package_json,
+                "merman.analysis.resources.limits.max_document_diagrams",
+            )
+            .expect("VS Code document limit setting")["default"],
+            Value::Null
         );
     }
 

@@ -17,9 +17,9 @@ use crate::snapshot::{
     SnapshotContext, SnapshotGeneration,
 };
 use merman_analysis::{
-    AnalysisCancellationToken, AnalysisCancelled, AnalysisDiagnosticPolicy, AnalysisOptions,
-    AnalysisRejection, AnalysisResourceLimit, AnalysisResourceLimits, Analyzer, DiagnosticSpan,
-    SourceDescriptor, source_descriptor_for_kind,
+    AnalysisCancellationToken, AnalysisCancelled, AnalysisConfigChange, AnalysisConfigContract,
+    AnalysisDiagnosticPolicy, AnalysisOptions, AnalysisRejection, AnalysisResourceLimit,
+    AnalysisResourceLimits, Analyzer, DiagnosticSpan, SourceDescriptor, source_descriptor_for_kind,
 };
 use merman_editor_core::DocumentKind;
 use ropey::{Rope, RopeSlice};
@@ -179,7 +179,7 @@ struct SnapshotConfigurationBatch {
 
 #[derive(Debug)]
 enum AnalyzerOptionsPreparation {
-    Applied(AnalyzerConfigurationChange),
+    Applied(AnalysisConfigChange),
     RequiresSnapshotPreparation(Box<SnapshotConfigurationPlan>),
 }
 
@@ -998,35 +998,18 @@ impl DiagnosticContext {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AnalyzerConfigurationChange {
-    Unchanged,
-    DiagnosticsOnly,
-    SnapshotAffecting,
-}
-
-impl AnalyzerConfigurationChange {
-    pub(crate) fn affects_diagnostics(self) -> bool {
-        !matches!(self, Self::Unchanged)
-    }
-
-    pub(crate) fn affects_snapshots(self) -> bool {
-        matches!(self, Self::SnapshotAffecting)
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ConfigurationUpdateOutcome {
     Unchanged,
-    Applied(AnalyzerConfigurationChange),
+    Applied(AnalysisConfigChange),
     Superseded,
     Cancelled,
     Failed,
 }
 
 impl ConfigurationUpdateOutcome {
-    fn applied(change: AnalyzerConfigurationChange) -> Self {
+    fn applied(change: AnalysisConfigChange) -> Self {
         match change {
-            AnalyzerConfigurationChange::Unchanged => Self::Unchanged,
+            AnalysisConfigChange::Unchanged => Self::Unchanged,
             change => Self::Applied(change),
         }
     }
@@ -1045,19 +1028,6 @@ impl ConfigurationUpdateOutcome {
 
     pub(crate) fn accepted(self) -> bool {
         matches!(self, Self::Unchanged | Self::Applied(_))
-    }
-}
-
-pub(crate) fn analyzer_configuration_change(
-    current: &AnalysisOptions,
-    next: &AnalysisOptions,
-) -> AnalyzerConfigurationChange {
-    if current == next {
-        AnalyzerConfigurationChange::Unchanged
-    } else if current.snapshot_policy() == next.snapshot_policy() {
-        AnalyzerConfigurationChange::DiagnosticsOnly
-    } else {
-        AnalyzerConfigurationChange::SnapshotAffecting
     }
 }
 
