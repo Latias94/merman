@@ -51,7 +51,11 @@ fn flowchart_color_html_wraps_subgraph_roles_without_changing_plain_text() {
         .with_color_mode(AsciiColorMode::Html)
         .with_color_theme(theme);
 
-    let rendered = render_flowchart("flowchart TB\nsubgraph one\nA --> B\nend", &options).unwrap();
+    let rendered = render_flowchart(
+        "flowchart TB\nsubgraph one\ndirection TB\nA --> B\nend",
+        &options,
+    )
+    .unwrap();
 
     assert_eq!(
         strip_html_spans(&rendered),

@@ -26,15 +26,15 @@ is the executable source of truth for the v1 coverage contract.
 
 | Reference fixture group | Diagram scope | Current v1 status | Gate |
 | --- | --- | --- | --- |
-| `ascii` | `graph` / `flowchart` LR, TD, TB fixtures with ASCII characters | 32 / 54 exact output matches; 22 named deterministic differences | `cargo nextest run -p merman-ascii graph_fixture` |
+| `ascii` | `graph` / `flowchart` LR, TD, TB fixtures with ASCII characters | 27 / 54 exact output matches; 27 named deterministic differences | `cargo nextest run -p merman-ascii graph_fixture` |
 | `extended-chars` | `graph` / `flowchart` LR, TD, TB fixtures with Unicode box drawing characters | 13 / 25 exact output matches; 12 named deterministic differences | `cargo nextest run -p merman-ascii graph_fixture` |
 | `sequence` | `sequenceDiagram` fixtures with Unicode box drawing characters | 12 / 12 normalized exact output matches | `cargo nextest run -p merman-ascii sequence_golden` |
 | `sequence-ascii` | `sequenceDiagram` fixtures with ASCII characters | 5 / 5 normalized exact output matches | `cargo nextest run -p merman-ascii sequence_golden` |
 
 Summary:
 
-- Graph/flowchart copied fixture exact subset: 45 / 79.
-- Graph/flowchart named deterministic differences: 34 / 79.
+- Graph/flowchart copied fixture exact subset: 40 / 79.
+- Graph/flowchart named deterministic differences: 39 / 79.
 - Sequence copied fixture parity: 17 / 17.
 
 The graph differences are enumerated in
@@ -62,8 +62,8 @@ cargo nextest run -p merman-ascii
 ```
 
 `fixture_inventory` pins the copied fixture counts, source provenance, and truthful exact/gap
-disposition. `graph_fixture` proves byte parity for the 45-case exact subset and successful semantic
-admission for all 34 named differences. `sequence_golden` proves normalized byte parity for the
+disposition. `graph_fixture` proves byte parity for the 40-case exact subset and successful semantic
+admission for all 39 named differences. `sequence_golden` proves normalized byte parity for the
 supported Sequence reference scope.
 
 ## Non-Goals For V1

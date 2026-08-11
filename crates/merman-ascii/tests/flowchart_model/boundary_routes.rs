@@ -21,22 +21,33 @@ fn flowchart_local_semantic_fixture_covers_nested_direction_boundary_routes() {
         );
     }
 
-    let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
+    let position = |needle: &str| {
+        rendered
+            .lines()
+            .enumerate()
+            .find_map(|(y, line)| line.find(needle).map(|x| (x, y)))
+            .unwrap_or_else(|| panic!("missing {needle:?} in output:\n{rendered}"))
+    };
+    let start = position("Start");
+    let entry = position("Entry");
+    let validate = position("Validate");
+    let persist = position("Persist");
+    let done = position("Done");
 
     assert!(
-        line_index("Start") < line_index("Entry"),
+        start.1 < entry.1,
         "root TD direction should keep Start above the outer group entry:\n{rendered}"
     );
-    assert!(
-        line_index("Entry") < line_index("Validate"),
-        "the outer boundary edges should disable its local LR override:\n{rendered}"
+    assert_eq!(
+        entry.1, validate.1,
+        "the explicit outer LR direction should survive boundary edges:\n{rendered}"
     );
     assert!(
-        line_index("Validate") < line_index("Persist"),
+        validate.1 < persist.1,
         "inner TD override should keep Validate above Persist:\n{rendered}"
     );
     assert!(
-        line_index("Persist") < line_index("Done"),
+        persist.1 < done.1,
         "cross-boundary exit edge should keep Done after Persist in root TD flow:\n{rendered}"
     );
     assert!(
@@ -61,30 +72,43 @@ fn flowchart_local_semantic_fixture_covers_multiple_boundary_routes() {
         );
     }
 
-    let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
+    let position = |needle: &str| {
+        rendered
+            .lines()
+            .enumerate()
+            .find_map(|(y, line)| line.find(needle).map(|x| (x, y)))
+            .unwrap_or_else(|| panic!("missing {needle:?} in output:\n{rendered}"))
+    };
+    let source = position("Source");
+    let audit = position("Audit");
+    let ingest = position("Ingest");
+    let validate = position("Validate");
+    let publish = position("Publish");
+    let success = position("Success");
+    let retry = position("Retry");
 
     assert!(
-        line_index("Source") < line_index("Ingest"),
+        source.1 < ingest.1,
         "first entering boundary edge should preserve root TD ordering:\n{rendered}"
     );
     assert!(
-        line_index("Audit") < line_index("Validate"),
+        audit.1 < validate.1,
         "second entering boundary edge should preserve root TD ordering:\n{rendered}"
     );
-    assert!(
-        line_index("Ingest") < line_index("Validate"),
-        "external edges should disable the Pipeline LR override:\n{rendered}"
+    assert_eq!(
+        ingest.1, validate.1,
+        "the explicit Pipeline LR direction should survive entering edges:\n{rendered}"
+    );
+    assert_eq!(
+        validate.1, publish.1,
+        "the explicit Pipeline LR direction should survive leaving edges:\n{rendered}"
     );
     assert!(
-        line_index("Validate") < line_index("Publish"),
-        "the Pipeline members should follow the root TD ordering:\n{rendered}"
-    );
-    assert!(
-        line_index("Publish") < line_index("Success"),
+        publish.1 < success.1,
         "first leaving boundary edge should preserve root TD ordering:\n{rendered}"
     );
     assert!(
-        line_index("Publish") < line_index("Retry"),
+        publish.1 < retry.1,
         "second leaving boundary edge should preserve root TD ordering:\n{rendered}"
     );
     assert!(
@@ -294,33 +318,20 @@ fn flowchart_local_semantic_fixture_covers_disconnected_subgraphs() {
     assert_rectangular_char_grid(&rendered);
 
     let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
-    assert!(
-        line_index("Today") < line_index("Next Wave"),
-        "LR disconnected subgraphs should stack into separate visible groups without overlap:\n{rendered}"
-    );
-    assert_eq!(
-        line_index("Today AI"),
-        line_index("Today Markdown"),
-        "first disconnected group should keep its LR chain on one row:\n{rendered}"
-    );
-    assert_eq!(
-        line_index("Today Markdown"),
-        line_index("Today Reads"),
-        "first disconnected group should keep its full LR chain on one row:\n{rendered}"
-    );
-    assert_eq!(
-        line_index("Next AI"),
-        line_index("Next Widget"),
-        "second disconnected group should keep its LR chain on one row:\n{rendered}"
-    );
-    assert_eq!(
-        line_index("Next Widget"),
-        line_index("Next Acts"),
-        "second disconnected group should keep its full LR chain on one row:\n{rendered}"
+    assert_ne!(
+        line_index("Today"),
+        line_index("Next Wave"),
+        "disconnected subgraphs should remain separate visible groups:\n{rendered}"
     );
     assert!(
-        line_index("Today Reads") < line_index("Next AI"),
-        "disconnected group content should not overlap or merge into one row:\n{rendered}"
+        line_index("Today AI") < line_index("Today Markdown")
+            && line_index("Today Markdown") < line_index("Today Reads"),
+        "an implicit isolated group under LR should use Mermaid's vertical default:\n{rendered}"
+    );
+    assert!(
+        line_index("Next AI") < line_index("Next Widget")
+            && line_index("Next Widget") < line_index("Next Acts"),
+        "each implicit isolated group should use Mermaid's vertical default:\n{rendered}"
     );
 }
 
@@ -415,7 +426,7 @@ fn flowchart_local_semantic_fixture_covers_ampersand_fanin_and_fanout() {
 }
 
 #[test]
-fn flowchart_parser_sibling_groups_with_external_edges_use_the_root_direction() {
+fn flowchart_parser_sibling_groups_keep_explicit_directions_across_external_edges() {
     let rendered = render_flowchart(
         concat!(
             "flowchart TD\n",
@@ -431,7 +442,7 @@ fn flowchart_parser_sibling_groups_with_external_edges_use_the_root_direction() 
         ),
         &AsciiRenderOptions::ascii(),
     )
-    .expect("externally connected sibling groups should render with the root direction");
+    .expect("externally connected sibling groups should retain explicit local directions");
 
     for expected in [
         "Left Group",
@@ -448,14 +459,32 @@ fn flowchart_parser_sibling_groups_with_external_edges_use_the_root_direction() 
         );
     }
 
-    let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
+    let position = |needle: &str| {
+        rendered
+            .lines()
+            .enumerate()
+            .find_map(|(y, line)| line.find(needle).map(|x| (x, y)))
+            .unwrap_or_else(|| panic!("missing {needle:?} in output:\n{rendered}"))
+    };
+    let alpha = position("Alpha");
+    let beta = position("Beta");
+    let gamma = position("Gamma");
+    let delta = position("Delta");
 
-    assert!(
-        line_index("Alpha") < line_index("Beta"),
-        "external edges should disable the left sibling LR override:\n{rendered}"
+    assert_eq!(
+        alpha.1, beta.1,
+        "the explicit left sibling LR direction should survive external edges:\n{rendered}"
     );
     assert!(
-        line_index("Gamma") < line_index("Delta"),
-        "external edges should disable the right sibling RL override:\n{rendered}"
+        alpha.0 < beta.0,
+        "the left sibling should preserve authored LR order:\n{rendered}"
+    );
+    assert_eq!(
+        gamma.1, delta.1,
+        "the explicit right sibling RL direction should survive external edges:\n{rendered}"
+    );
+    assert!(
+        gamma.0 > delta.0,
+        "the right sibling should preserve authored RL order:\n{rendered}"
     );
 }

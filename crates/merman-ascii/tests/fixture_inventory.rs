@@ -73,12 +73,12 @@ fn fixture_inventory_documents_v1_coverage_contract() {
 
     for expected in [
         "6fffb8e2714acab2c4cb41c78894fabbc62cee56",
-        "32 / 54 exact output matches; 22 named deterministic differences",
+        "27 / 54 exact output matches; 27 named deterministic differences",
         "13 / 25 exact output matches; 12 named deterministic differences",
         "12 / 12 normalized exact output matches",
         "5 / 5 normalized exact output matches",
-        "Graph/flowchart copied fixture exact subset: 45 / 79.",
-        "Graph/flowchart named deterministic differences: 34 / 79.",
+        "Graph/flowchart copied fixture exact subset: 40 / 79.",
+        "Graph/flowchart named deterministic differences: 39 / 79.",
         "Sequence copied fixture parity: 17 / 17.",
         "GRAPH_FIXTURE_GAPS.md",
         "cargo nextest run -p merman-ascii fixture_inventory graph_fixture sequence_golden",
@@ -99,8 +99,8 @@ fn fixture_inventory_documents_graph_exact_and_gap_disposition() {
 
     for expected in [
         "Copied corpus: 79 fixtures",
-        "Exact-output subset: 45 fixtures",
-        "Named intentional differences: 34 fixtures",
+        "Exact-output subset: 40 fixtures",
+        "Named intentional differences: 39 fixtures",
         "Every exact fixture must still match byte-for-byte",
         "Every named gap must still render successfully",
     ] {

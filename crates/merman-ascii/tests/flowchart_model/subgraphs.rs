@@ -10,7 +10,19 @@ fn flowchart_parser_simple_subgraph_renders_group_box() {
 
     assert_eq!(
         rendered,
-        fixture_expected("ascii", "graph_tb_direction.txt")
+        concat!(
+            "+-----------------+\n",
+            "|       one       |\n",
+            "|                 |\n",
+            "|                 |\n",
+            "| +---+     +---+ |\n",
+            "| |   |     |   | |\n",
+            "| | A |---->| B | |\n",
+            "| |   |     |   | |\n",
+            "| +---+     +---+ |\n",
+            "|                 |\n",
+            "+-----------------+\n",
+        )
     );
 }
 
@@ -74,7 +86,7 @@ fn flowchart_parser_multiline_subgraph_title_renders_centered_rows() {
 #[test]
 fn flowchart_parser_long_subgraph_title_wraps_to_multiple_rows() {
     let rendered = render_flowchart(
-        "flowchart LR\nsubgraph cluster [Wrap this title nicely]\nA --> B\nend",
+        "flowchart LR\nsubgraph cluster [Wrap this title nicely]\ndirection LR\nA --> B\nend",
         &AsciiRenderOptions::ascii(),
     )
     .expect("long subgraph titles should wrap inside the existing group box");
@@ -307,7 +319,7 @@ fn flowchart_root_and_local_reverse_directions_compose_once() {
 }
 
 #[test]
-fn flowchart_parser_subgraph_direction_override_is_ignored_with_cross_boundary_edges() {
+fn flowchart_parser_explicit_subgraph_direction_survives_cross_boundary_edges() {
     let rendered = render_flowchart(
         concat!(
             "flowchart TD\n",
@@ -320,7 +332,7 @@ fn flowchart_parser_subgraph_direction_override_is_ignored_with_cross_boundary_e
         ),
         &AsciiRenderOptions::ascii(),
     )
-    .expect("cross-boundary subgraph should render with the root direction");
+    .expect("cross-boundary subgraph should retain its explicit local direction");
 
     for expected in ["LR", "Group", "A", "B", "X", "Y"] {
         assert!(
@@ -328,20 +340,70 @@ fn flowchart_parser_subgraph_direction_override_is_ignored_with_cross_boundary_e
             "missing {expected:?}:\n{rendered}"
         );
     }
-    let line_index = |needle: &str| first_line_index_containing(&rendered, needle);
+    let position = |needle: &str| {
+        rendered
+            .lines()
+            .enumerate()
+            .find_map(|(y, line)| line.find(needle).map(|x| (x, y)))
+            .unwrap_or_else(|| panic!("missing {needle:?} in output:\n{rendered}"))
+    };
+    let x = position(" X ");
+    let a = position(" A ");
+    let b = position(" B ");
+    let y = position(" Y ");
     assert!(
-        line_index("X") < line_index("A"),
+        x.1 < a.1,
         "root TD direction should keep the external source above its group entry:\n{rendered}"
     );
-    assert!(
-        line_index("A") < line_index("B"),
-        "the external connections should disable the local LR override:\n{rendered}"
+    assert_eq!(
+        a.1, b.1,
+        "an explicit LR subgraph must remain horizontal across boundary edges:\n{rendered}"
     );
     assert!(
-        line_index("B") < line_index("Y"),
+        b.1 < y.1,
         "root TD direction should keep the external target below its group exit:\n{rendered}"
     );
     assert_rectangular_char_grid(&rendered);
+}
+
+#[test]
+fn flowchart_parser_isolated_implicit_subgraph_uses_mermaid_perpendicular_default() {
+    for (root_direction, expected_axis) in [
+        ("TD", "row"),
+        ("LR", "column"),
+        ("BT", "column"),
+        ("RL", "column"),
+    ] {
+        let rendered = render_flowchart(
+            &format!("flowchart {root_direction}\nsubgraph isolated\n    A --> B\nend\n"),
+            &AsciiRenderOptions::ascii(),
+        )
+        .unwrap_or_else(|error| {
+            panic!("isolated subgraph under {root_direction} should render: {error:?}")
+        });
+        let position = |needle: &str| {
+            rendered
+                .lines()
+                .enumerate()
+                .find_map(|(y, line)| line.find(needle).map(|x| (x, y)))
+                .unwrap_or_else(|| panic!("missing {needle:?} in output:\n{rendered}"))
+        };
+        let a = position(" A ");
+        let b = position(" B ");
+
+        if expected_axis == "row" {
+            assert_eq!(
+                a.1, b.1,
+                "isolated subgraph should toggle {root_direction} to a horizontal axis:\n{rendered}"
+            );
+        } else {
+            assert_eq!(
+                a.0, b.0,
+                "isolated subgraph should toggle {root_direction} to a vertical axis:\n{rendered}"
+            );
+        }
+        assert_rectangular_char_grid(&rendered);
+    }
 }
 
 #[test]

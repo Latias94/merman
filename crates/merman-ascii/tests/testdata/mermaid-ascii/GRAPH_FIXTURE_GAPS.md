@@ -8,8 +8,8 @@ gap inventory live in `tests/graph_fixture.rs`.
 ## Current Status
 
 - Copied corpus: 79 fixtures from the pinned `mermaid-ascii` source boundary.
-- Exact-output subset: 45 fixtures, derived as `GRAPH_FIXTURE_CORPUS - GRAPH_FIXTURE_GAPS`.
-- Named intentional differences: 34 fixtures.
+- Exact-output subset: 40 fixtures, derived as `GRAPH_FIXTURE_CORPUS - GRAPH_FIXTURE_GAPS`.
+- Named intentional differences: 39 fixtures.
 - Every exact fixture must still match byte-for-byte.
 - Every named gap must still render successfully; parser-backed semantic tests own topology,
   endpoint, label, direction, and compound-boundary behavior.
@@ -26,6 +26,9 @@ silent semantic loss are regressions, not acceptable gaps.
   endpoints and reachability.
 - Compound routes use explicit first-parent ownership and protected group borders instead of the
   copied renderer's looser subgraph geometry.
+- Mermaid 11.16.1 lays out isolated subgraphs without an explicit `direction` on the axis
+  perpendicular to their effective parent direction. The copied renderer inherits the root axis;
+  Merman follows the pinned Mermaid source instead.
 - Labels and junctions are placed through planner-owned occupancy, so spacing can differ when the
   copied output relied on post-render overlays.
 
@@ -45,12 +48,17 @@ ASCII:
 - `bidirectional_edge_labels_td.txt`
 - `comments.txt`
 - `duplicate_edge_labels.txt`
+- `graph_tb_direction.txt`
 - `preserve_order_of_definition.txt`
+- `subgraph_complex_nested.txt`
 - `subgraph_complex_mixed.txt`
 - `subgraph_empty.txt`
+- `subgraph_explicit_title.txt`
 - `subgraph_mixed_nodes_td.txt`
 - `subgraph_multiple_edges.txt`
+- `subgraph_multiple_nodes.txt`
 - `subgraph_node_outside_lr.txt`
+- `subgraph_td_direction.txt`
 - `subgraph_with_labels.txt`
 - `tight_arrow_mixed.txt`
 - `two_layer_single_graph.txt`
@@ -79,5 +87,10 @@ Unicode:
 - `flowchart_local_semantic_fixture_covers_ampersand_fanin_and_fanout` covers ampersand topology.
 - `flowchart_parser_cross_subgraph_routes_follow_compound_parent_topology` covers legal group-border
   crossing and repeated-node first-parent ownership.
+- `flowchart_parser_isolated_implicit_subgraph_uses_mermaid_perpendicular_default` protects the
+  pinned Mermaid default axis across TD, LR, BT, and RL roots.
+- `flowchart_parser_explicit_subgraph_direction_survives_cross_boundary_edges` and
+  `flowchart_parser_sibling_groups_keep_explicit_directions_across_external_edges` protect authored
+  local directions independently of external connectivity.
 - The focused Flowchart suite covers back edges, parallel labels, directions, subgraphs, endpoint
   markers, route reachability, terminal safety, and resource limits independently of copied spacing.
