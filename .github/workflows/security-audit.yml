@@ -8,6 +8,8 @@ on:
     paths:
       - Cargo.lock
       - Cargo.toml
+      - "**/Cargo.lock"
+      - "**/Cargo.toml"
       - rust-toolchain.toml
       - about.toml
       - capabilities/artifact-profiles-v1.json
@@ -26,6 +28,7 @@ on:
       - scripts/generate-rust-license-report.py
       - scripts/python_wheel_licenses.py
       - scripts/artifact_profile_recipe.py
+      - scripts/audit_plan.py
       - scripts/strict_json.py
       - scripts/verify_artifact_dependency_closures.py
       - scripts/verify_rustsec_exceptions.py
@@ -34,6 +37,8 @@ on:
     paths:
       - Cargo.lock
       - Cargo.toml
+      - "**/Cargo.lock"
+      - "**/Cargo.toml"
       - rust-toolchain.toml
       - about.toml
       - capabilities/artifact-profiles-v1.json
@@ -52,6 +57,7 @@ on:
       - scripts/generate-rust-license-report.py
       - scripts/python_wheel_licenses.py
       - scripts/artifact_profile_recipe.py
+      - scripts/audit_plan.py
       - scripts/strict_json.py
       - scripts/verify_artifact_dependency_closures.py
       - scripts/verify_rustsec_exceptions.py
@@ -68,15 +74,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  audit-plan:
+    name: discover tracked audit locks
+    runs-on: ubuntu-24.04
+    outputs:
+      cargo: ${{ steps.plan.outputs.cargo }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build tracked lockfile matrices
+        id: plan
+        run: python3 scripts/audit_plan.py --github-output "$GITHUB_OUTPUT"
+
   cargo-audit:
     name: cargo-audit (${{ matrix.lockfile }})
+    needs: audit-plan
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
-      matrix:
-        lockfile:
-          - Cargo.lock
-          - fuzz/Cargo.lock
+      matrix: ${{ fromJSON(needs.audit-plan.outputs.cargo) }}
     steps:
       - uses: actions/checkout@v6
 
@@ -87,7 +103,9 @@ jobs:
         uses: taiki-e/install-action@cargo-audit
 
       - name: Audit Rust dependencies
-        run: cargo audit --file "${{ matrix.lockfile }}"
+        env:
+          AUDIT_LOCKFILE: ${{ matrix.lockfile }}
+        run: cargo audit --file "$AUDIT_LOCKFILE"
 
   cargo-dependency-policy:
     name: cargo-deny dependency policy

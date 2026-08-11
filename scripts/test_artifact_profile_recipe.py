@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import replace
 import importlib.util
@@ -37,6 +38,18 @@ assert WHEEL_BUILDER_SPEC is not None
 wheel_builder = importlib.util.module_from_spec(WHEEL_BUILDER_SPEC)
 assert WHEEL_BUILDER_SPEC.loader is not None
 WHEEL_BUILDER_SPEC.loader.exec_module(wheel_builder)
+
+
+def posix_recipe_shell(
+    *,
+    os_name: str | None = None,
+    which: Callable[[str], str | None] = shutil.which,
+) -> str | None:
+    """Return Bash only when this host owns POSIX recipe execution."""
+    resolved_os_name = os.name if os_name is None else os_name
+    if resolved_os_name != "posix":
+        return None
+    return which("bash")
 
 
 class ArtifactProfileRecipeTests(unittest.TestCase):
@@ -218,8 +231,32 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         self.assertNotIn("pdf", flutter.features)
         self.assertNotIn("png", flutter.features)
 
+    def test_posix_recipe_shell_requires_both_owner_host_and_bash(self) -> None:
+        lookups: list[str] = []
+
+        def available(command: str) -> str:
+            lookups.append(command)
+            return "/usr/bin/bash"
+
+        self.assertEqual(
+            posix_recipe_shell(os_name="posix", which=available),
+            "/usr/bin/bash",
+        )
+        self.assertEqual(lookups, ["bash"])
+        self.assertIsNone(
+            posix_recipe_shell(os_name="posix", which=lambda _command: None)
+        )
+        lookups.clear()
+        self.assertIsNone(posix_recipe_shell(os_name="nt", which=available))
+        self.assertEqual(lookups, [])
+
     def test_native_shell_consumers_validate_the_committed_recipe_at_runtime(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
+        bash = posix_recipe_shell()
+        if bash is None:
+            if os.name != "posix":
+                self.skipTest("POSIX recipe execution belongs to POSIX owner hosts")
+            self.skipTest("Bash is unavailable for the POSIX owner recipe smoke")
         environment = os.environ.copy()
         environment["MERMAN_CHECK_RECIPE_ONLY"] = "true"
         for relative_path in (
@@ -229,7 +266,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         ):
             with self.subTest(path=relative_path):
                 subprocess.run(
-                    ["bash", str(repo_root / relative_path)],
+                    [bash, str(repo_root / relative_path)],
                     cwd=repo_root,
                     env=environment,
                     check=True,

@@ -21,6 +21,10 @@ import {
 } from "../assemble-packages.mjs";
 import { digestJson } from "../stable-json.mjs";
 import { svgTransportEvidence } from "./svg-signature.mjs";
+import {
+  assertSuccessfulNpmSpawn,
+  spawnNpmSync,
+} from "../../../../scripts/npm-command.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const packageSurface = JSON.parse(
@@ -160,7 +164,7 @@ function packAndInstall(temporaryRoot, packageRoots, candidate) {
     path.join(installRoot, "package.json"),
     `${JSON.stringify(installManifest, null, 2)}\n`,
   );
-  run("npm", [
+  runNpm([
     "install",
     "--ignore-scripts",
     "--no-audit",
@@ -201,13 +205,11 @@ function packAndInstall(temporaryRoot, packageRoots, candidate) {
 }
 
 function npmPack(packageRoot, tarRoot) {
-  const result = spawnSync("npm", ["pack", "--json", "--pack-destination", tarRoot], {
+  const result = spawnNpmSync(["pack", "--json", "--pack-destination", tarRoot], {
     cwd: packageRoot,
     encoding: "utf8",
   });
-  if (result.error || result.status !== 0) {
-    throw new Error(`npm pack failed: ${result.error?.message ?? result.stderr}`);
-  }
+  assertSuccessfulNpmSpawn(result, "npm pack for footprint measurement");
   const output = JSON.parse(result.stdout)[0];
   if (
     typeof output?.name !== "string" ||
@@ -443,8 +445,12 @@ function runCapture(command, args, cwd) {
   return result.stdout.trim();
 }
 
-function run(command, args, cwd) {
-  runCapture(command, args, cwd);
+function runNpm(args, cwd) {
+  const result = spawnNpmSync(args, { cwd, encoding: "utf8" });
+  assertSuccessfulNpmSpawn(
+    result,
+    `npm ${args[0] ?? "command"} for footprint measurement`,
+  );
 }
 
 function fileReference(from, file) {

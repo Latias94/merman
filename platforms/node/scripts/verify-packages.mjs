@@ -7,7 +7,10 @@ import {
   inspectPackageManifests,
   verifyPackedFileOwnership,
 } from "./package-contract.mjs";
-import { spawnNpmSync } from "../../../scripts/npm-command.mjs";
+import {
+  assertSuccessfulNpmSpawn,
+  spawnNpmSync,
+} from "../../../scripts/npm-command.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -43,15 +46,9 @@ function verifyPackage(packageRoot, packageName, role) {
     cwd: packageRoot,
     encoding: "utf8",
   });
-  if (result.error || result.status !== 0) {
-    throw new Error(`npm pack failed for ${packageName}: ${result.error?.message ?? result.stderr}`);
-  }
+  assertSuccessfulNpmSpawn(result, `npm pack for ${packageName}`);
   const output = JSON.parse(result.stdout);
   verifyPackedFileOwnership({ packageName, role, files: output[0]?.files ?? [] });
-}
-
-export function npmExecutable(platform = process.platform) {
-  return platform === "win32" ? "npm.cmd" : "npm";
 }
 
 function existsForTarget(root, target) {
