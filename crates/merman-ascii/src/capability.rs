@@ -415,6 +415,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "assignments",
             "metadata",
             "deterministic Unassigned grouping",
+            "length-framed authored report fields",
         ],
         limits: &[
             "drag and board presentation metadata are not terminal output",
@@ -424,7 +425,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
                 source: "crates/merman-ascii/tests/new_family_models.rs",
-                note: "typed-model tests preserve column-first card order and metadata",
+                note: "typed-model tests preserve column-first card order and metadata with injective authored-field framing",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
@@ -448,6 +449,8 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "shape, icon, and section disclosure",
             "disconnected components and cycles",
             "validated edge endpoints",
+            "ASCII and Unicode tree connectors",
+            "length-framed authored report fields",
         ],
         limits: &[
             "icons and rich browser node shapes are disclosed as text rather than styled",
@@ -457,7 +460,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
                 source: "crates/merman-ascii/tests/new_family_models.rs",
-                note: "typed-model tests preserve hierarchy instead of imitating browser geometry",
+                note: "typed-model tests preserve hierarchy with charset-aware connectors and injective authored-field framing",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
@@ -609,17 +612,19 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "directory and file distinction",
             "ASCII and Unicode tree connectors",
             "icons classes and descriptions as text disclosure",
+            "length-framed authored report fields",
         ],
         limits: &[
             "outline output does not claim two-dimensional diagram geometry",
             "browser icons and CSS classes are disclosed rather than styled",
             "duplicate node ids are rejected",
+            "unknown node types are rejected",
         ],
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
                 source: "crates/merman-ascii/tests/new_family_models.rs",
-                note: "typed-model tests preserve hierarchy and annotations as terminal text",
+                note: "typed-model tests preserve hierarchy and annotations with injective authored-field framing",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
@@ -993,6 +998,24 @@ mod tests {
                 "{diagram_type} should disclose its injective StructuredText field ownership",
             );
         }
+    }
+
+    #[test]
+    fn hierarchy_structured_text_capabilities_disclose_injective_field_framing() {
+        for diagram_type in ["kanban", "mindmap", "treeView"] {
+            assert!(
+                find(diagram_type)
+                    .supported_semantics
+                    .contains(&"length-framed authored report fields"),
+                "{diagram_type} should disclose its injective StructuredText field ownership",
+            );
+        }
+
+        assert!(
+            find("mindmap")
+                .supported_semantics
+                .contains(&"ASCII and Unicode tree connectors")
+        );
     }
 
     #[test]

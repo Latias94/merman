@@ -59,6 +59,7 @@ pub(crate) struct BudgetedWrappedText<'document, 'prefix> {
     emitted: bool,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy)]
 struct NormalizedTextRange {
     source_start: usize,
@@ -80,10 +81,12 @@ impl BudgetedTextDocument {
         &mut self.resources
     }
 
+    #[cfg(test)]
     pub(crate) fn push_optional_line(&mut self, value: Option<&str>) -> Result<()> {
         self.push_optional_prefixed_line("", value)
     }
 
+    #[cfg(test)]
     pub(crate) fn push_optional_prefixed_line(
         &mut self,
         prefix: &str,
@@ -202,6 +205,7 @@ impl BudgetedTextDocument {
             .charge_document_cells(segment.display_width(self.width_profile))
     }
 
+    #[cfg(test)]
     fn trimmed_normalized_range(&mut self, value: &str) -> Result<Option<NormalizedTextRange>> {
         // Determine trim bounds over the normalized byte stream without retaining that stream. The
         // second pass emits only the kept range through `BudgetedTextLine`, so arbitrarily large
@@ -334,6 +338,7 @@ impl BudgetedTextLine<'_> {
         push_quoted_terminal_text(self, value)
     }
 
+    #[cfg(test)]
     fn push_normalized_range(&mut self, value: &str, range: NormalizedTextRange) -> Result<()> {
         let value = &value[range.source_start..range.source_end];
         let mut offset = 0usize;
@@ -370,7 +375,11 @@ impl BudgetedWrappedText<'_, '_> {
                 NormalizedSegmentKind::Grapheme(grapheme) => self.push_normalized_text(grapheme),
                 NormalizedSegmentKind::VisibleEscape(ch) => {
                     let mut buffer = [0u8; 10];
-                    self.push_normalized_text(visible_escape(ch, &mut buffer))
+                    let escape = visible_escape(ch, &mut buffer);
+                    self.document
+                        .resources
+                        .charge_document_cells(escape.len())?;
+                    self.push_atomic_word_fragment_with_width(escape, escape.len())
                 }
             }
         })
@@ -415,17 +424,65 @@ impl BudgetedWrappedText<'_, '_> {
     }
 
     fn push_exact_normalized_text(&mut self, value: &str) -> Result<()> {
+        let mut width = 0usize;
+        let mut bytes = 0usize;
         visit_normalized_segments(value, |segment| {
             self.document.budget_layout_segment(segment)?;
-            match segment.kind {
-                NormalizedSegmentKind::LineBreak => self.push_word_fragment("\\n"),
-                NormalizedSegmentKind::Grapheme(grapheme) => self.push_word_fragment(grapheme),
-                NormalizedSegmentKind::VisibleEscape(ch) => {
-                    let mut buffer = [0u8; 10];
-                    self.push_word_fragment(visible_escape(ch, &mut buffer))
-                }
-            }
-        })
+            let mut buffer = [0u8; 10];
+            let text = match segment.kind {
+                NormalizedSegmentKind::LineBreak => "\\n",
+                _ => segment.text(&mut buffer),
+            };
+            bytes = bytes.checked_add(text.len()).ok_or_else(|| {
+                self.document
+                    .resources
+                    .policy()
+                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
+            })?;
+            let segment_width = match segment.kind {
+                NormalizedSegmentKind::LineBreak => 2,
+                _ => segment.display_width(self.document.width_profile),
+            };
+            width = width.checked_add(segment_width).ok_or_else(|| {
+                self.document
+                    .resources
+                    .policy()
+                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
+            })?;
+            Ok::<(), AsciiError>(())
+        })?;
+
+        let total_cells = self
+            .document
+            .resources
+            .document_cells_used()
+            .checked_add(width)
+            .ok_or_else(|| {
+                self.document
+                    .resources
+                    .policy()
+                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
+            })?;
+        self.document
+            .resources
+            .check(AsciiResourceLimitId::MaxDocumentCells, total_cells)?;
+
+        let mut normalized = String::new();
+        normalized
+            .try_reserve(bytes)
+            .map_err(|_| document_allocation_error())?;
+        visit_normalized_segments(value, |segment| {
+            let mut buffer = [0u8; 10];
+            let text = match segment.kind {
+                NormalizedSegmentKind::LineBreak => "\\n",
+                _ => segment.text(&mut buffer),
+            };
+            normalized.push_str(text);
+            Ok::<(), AsciiError>(())
+        })?;
+
+        self.document.resources.charge_document_cells(width)?;
+        self.push_atomic_word_fragment_with_width(&normalized, width)
     }
 
     fn push_normalized_text(&mut self, value: &str) -> Result<()> {
@@ -444,6 +501,43 @@ impl BudgetedWrappedText<'_, '_> {
     fn push_word_fragment(&mut self, value: &str) -> Result<()> {
         for grapheme in measured_graphemes(value, self.document.width_profile) {
             self.push_word_grapheme(grapheme)?;
+        }
+        Ok(())
+    }
+
+    fn push_atomic_word_fragment_with_width(&mut self, value: &str, width: usize) -> Result<()> {
+        let prospective = self.word_width.checked_add(width).ok_or_else(|| {
+            self.document
+                .resources
+                .policy()
+                .overflow(AsciiResourceLimitId::MaxDocumentCells)
+        })?;
+        if prospective > self.available && !self.word.is_empty() {
+            if !self.long_word {
+                if !self.current.is_empty() {
+                    self.emit_current()?;
+                }
+                self.long_word = true;
+            }
+            self.emit_word_chunk()?;
+        }
+
+        if self.word.is_empty() && width > self.available {
+            if !self.current.is_empty() {
+                self.emit_current()?;
+            }
+            self.long_word = true;
+        }
+
+        try_push_document_str(&mut self.word, value)?;
+        self.word_width = self.word_width.checked_add(width).ok_or_else(|| {
+            self.document
+                .resources
+                .policy()
+                .overflow(AsciiResourceLimitId::MaxDocumentCells)
+        })?;
+        if self.long_word && self.word_width >= self.available {
+            self.emit_word_chunk()?;
         }
         Ok(())
     }

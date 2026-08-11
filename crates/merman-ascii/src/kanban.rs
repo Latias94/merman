@@ -2,7 +2,7 @@ use crate::Result;
 use crate::error::AsciiError;
 use crate::options::AsciiRenderOptions;
 use crate::resource::AsciiResourceLimitPhase;
-use crate::safe_text::BudgetedTextDocument;
+use crate::safe_text::{BudgetedTextDocument, push_wrapped_field};
 use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
 use std::collections::{HashMap, HashSet};
 
@@ -125,23 +125,26 @@ fn push_node_text(
     node: &KanbanRenderNode,
     disclosed_parent: Option<&str>,
 ) -> Result<()> {
-    line.push_str(&node.label)?;
+    push_wrapped_field(
+        line,
+        "",
+        if node.is_group { "group" } else { "card" },
+        &node.label,
+    )?;
     let metadata = [
-        ("id=", Some(node.id.as_str())),
-        ("parent=", disclosed_parent),
-        ("ticket=", node.ticket.as_deref()),
-        ("priority=", node.priority.as_deref()),
-        ("assigned=", node.assigned.as_deref()),
-        ("icon=", node.icon.as_deref()),
+        ("id", Some(node.id.as_str())),
+        ("parent", disclosed_parent),
+        ("ticket", node.ticket.as_deref()),
+        ("priority", node.priority.as_deref()),
+        ("assigned", node.assigned.as_deref()),
+        ("icon", node.icon.as_deref()),
     ];
     let mut emitted = false;
     for (key, value) in metadata
         .into_iter()
         .filter_map(|(key, value)| value.map(|value| (key, value)))
     {
-        line.push_str(if emitted { ", " } else { " [" })?;
-        line.push_str(key)?;
-        line.push_str(value)?;
+        push_wrapped_field(line, if emitted { ", " } else { " [" }, key, value)?;
         emitted = true;
     }
     if emitted {

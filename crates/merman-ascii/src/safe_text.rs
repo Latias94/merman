@@ -495,6 +495,24 @@ mod tests {
     }
 
     #[test]
+    fn wrapped_quoted_visible_escapes_remain_atomic_at_a_wrap_boundary() {
+        let options = AsciiRenderOptions::ascii()
+            .with_resource_profile(ResourceProfile::UnboundedForTrustedInput);
+        let mut document = BudgetedTextDocument::new(&options);
+        document
+            .push_wrapped_prefixed_line_with("", "", 12, |line| {
+                push_wrapped_field(line, "", "value", "before\u{202e}after")
+            })
+            .expect("quoted visible escapes should remain terminal-safe when wrapped");
+
+        let rendered = document
+            .finish(&options)
+            .expect("wrapped field should encode");
+        assert!(rendered.contains(r"\u{202E}"), "{rendered:?}");
+        assert!(!rendered.contains("\\u{2\n02E}"), "{rendered:?}");
+    }
+
+    #[test]
     fn oversized_structural_prefix_does_not_force_vertical_label_text() {
         let options = AsciiRenderOptions::ascii();
         let mut document = BudgetedTextDocument::new(&options);

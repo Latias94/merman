@@ -3,7 +3,8 @@ use crate::error::AsciiError;
 use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::{
-    BudgetedTextDocument, try_clone_layout_text, try_concat_layout_text, try_repeat_layout_char,
+    BudgetedTextDocument, push_optional_document_field, push_wrapped_field, try_clone_layout_text,
+    try_concat_layout_text, try_repeat_layout_char,
 };
 use crate::text::display_width_with_profile;
 use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
@@ -45,9 +46,9 @@ pub fn render_tree_view_diagram(
     let mut document = BudgetedTextDocument::new(options);
     validate_tree_view_model(&model.root, document.resources_mut())?;
     let chars = TreeViewChars::from_options(options);
-    document.push_optional_line(model.title.as_deref())?;
-    document.push_optional_prefixed_line("accTitle: ", model.acc_title.as_deref())?;
-    document.push_optional_prefixed_line("accDescr: ", model.acc_descr.as_deref())?;
+    push_optional_document_field(&mut document, "title", model.title.as_deref())?;
+    push_optional_document_field(&mut document, "accTitle", model.acc_title.as_deref())?;
+    push_optional_document_field(&mut document, "accDescr", model.acc_descr.as_deref())?;
     push_wrapped_node(&mut document, "", &model.root, options)?;
 
     let mut stack = Vec::new();
@@ -147,6 +148,12 @@ fn validate_tree_view_model(
                 feature: "duplicate node ids",
             });
         }
+        if !matches!(node.node_type.as_str(), "file" | "directory") {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "treeView",
+                feature: "unknown node types",
+            });
+        }
 
         if node.children.is_empty() {
             continue;
@@ -209,13 +216,14 @@ fn push_wrapped_node(
             match node.node_type.as_str() {
                 "file" => line.push_str("[file] ")?,
                 "directory" => line.push_str("[directory] ")?,
-                node_type => {
-                    line.push_str("[type=")?;
-                    line.push_str(node_type)?;
-                    line.push_str("] ")?;
+                _ => {
+                    return Err(AsciiError::UnsupportedFeature {
+                        diagram_type: "treeView",
+                        feature: "unknown node types",
+                    });
                 }
             }
-            line.push_str(&node.name)?;
+            push_wrapped_field(line, "", "name", &node.name)?;
             if node.node_type == "directory" && !node.name.ends_with('/') {
                 line.push_str("/")?;
             }
@@ -226,21 +234,18 @@ fn push_wrapped_node(
             line.write_fmt(format_args!("{}", node.level))?;
 
             let metadata = [
-                ("icon=", node.icon.as_deref()),
-                ("class=", node.css_class.as_deref()),
+                ("icon", node.icon.as_deref()),
+                ("class", node.css_class.as_deref()),
             ];
             for (key, value) in metadata
                 .into_iter()
                 .filter_map(|(key, value)| value.map(|value| (key, value)))
             {
-                line.push_str(", ")?;
-                line.push_str(key)?;
-                line.push_str(value)?;
+                push_wrapped_field(line, ", ", key, value)?;
             }
             line.push_str("]")?;
             if let Some(description) = node.description.as_deref() {
-                line.push_str(" -- ")?;
-                line.push_str(description)?;
+                push_wrapped_field(line, " ", "description", description)?;
             }
             Ok(())
         },

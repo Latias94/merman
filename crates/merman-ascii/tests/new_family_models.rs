@@ -151,14 +151,14 @@ fn tree_view_render_model_renders_outline_summary() {
     assert_eq!(
         rendered,
         concat!(
-            "Project\n",
-            "accTitle: Tree title\n",
-            "accDescr: Tree description\n",
-            "[directory] / [id=0, level=-1]\n",
-            "|-- [directory] Root/ [id=1, level=0]\n",
-            "|   |-- [file] Child 1 [id=2, level=1]\n",
-            "|   \\-- [file] Child 2 [id=3, level=1]\n",
-            "\\-- [file] Sibling [id=4, level=0]",
+            "title(bytes=7)=\"Project\"\n",
+            "accTitle(bytes=10)=\"Tree title\"\n",
+            "accDescr(bytes=16)=\"Tree description\"\n",
+            "[directory] name(bytes=1)=\"/\" [id=0, level=-1]\n",
+            "|-- [directory] name(bytes=4)=\"Root\"/ [id=1, level=0]\n",
+            "|   |-- [file] name(bytes=7)=\"Child 1\" [id=2, level=1]\n",
+            "|   \\-- [file] name(bytes=7)=\"Child 2\" [id=3, level=1]\n",
+            "\\-- [file] name(bytes=7)=\"Sibling\" [id=4, level=0]",
         )
     );
 }
@@ -204,19 +204,21 @@ fn tree_view_discloses_typed_fields_and_honors_unicode_connectors() {
     assert_eq!(
         ascii,
         concat!(
-            "[directory] / [id=0, level=-1]\n",
-            "\\-- [directory] src/ [id=1, level=0, icon=folder, class=highlight] -- source\n",
-            "    directory\n",
-            "    \\-- [file] App.tsx [id=2, level=1, icon=react] -- main component",
+            "[directory] name(bytes=1)=\"/\" [id=0, level=-1]\n",
+            "\\-- [directory] name(bytes=3)=\"src\"/ [id=1, level=0, icon(bytes=6)=\"folder\",\n",
+            "    class(bytes=9)=\"highlight\"] description(bytes=16)=\"source directory\"\n",
+            "    \\-- [file] name(bytes=7)=\"App.tsx\" [id=2, level=1, icon(bytes=5)=\"react\"]\n",
+            "        description(bytes=14)=\"main component\"",
         )
     );
     assert_eq!(
         unicode,
         concat!(
-            "[directory] / [id=0, level=-1]\n",
-            "└── [directory] src/ [id=1, level=0, icon=folder, class=highlight] -- source\n",
-            "    directory\n",
-            "    └── [file] App.tsx [id=2, level=1, icon=react] -- main component",
+            "[directory] name(bytes=1)=\"/\" [id=0, level=-1]\n",
+            "└── [directory] name(bytes=3)=\"src\"/ [id=1, level=0, icon(bytes=6)=\"folder\",\n",
+            "    class(bytes=9)=\"highlight\"] description(bytes=16)=\"source directory\"\n",
+            "    └── [file] name(bytes=7)=\"App.tsx\" [id=2, level=1, icon(bytes=5)=\"react\"]\n",
+            "        description(bytes=14)=\"main component\"",
         )
     );
 }
@@ -247,9 +249,44 @@ fn tree_view_distinguishes_trailing_slash_files_from_directories() {
     let file_rendered = render(RenderSemanticModel::TreeView(file_model));
     let directory_rendered = render(RenderSemanticModel::TreeView(directory_model));
 
-    assert!(file_rendered.starts_with("[file] src/ "));
-    assert!(directory_rendered.starts_with("[directory] src/ "));
+    assert!(file_rendered.starts_with("[file] name(bytes=4)=\"src/\" "));
+    assert!(directory_rendered.starts_with("[directory] name(bytes=4)=\"src/\" "));
     assert_ne!(file_rendered, directory_rendered);
+}
+
+#[test]
+fn tree_view_structured_text_framing_distinguishes_icon_from_class() {
+    let mut embedded_class = TreeViewDiagramRenderModel::default();
+    embedded_class.root.icon = Some("folder, class=highlight".to_string());
+
+    let mut explicit_class = TreeViewDiagramRenderModel::default();
+    explicit_class.root.icon = Some("folder".to_string());
+    explicit_class.root.css_class = Some("highlight".to_string());
+
+    assert_ne!(
+        render(RenderSemanticModel::TreeView(embedded_class)),
+        render(RenderSemanticModel::TreeView(explicit_class)),
+        "authored icon text must not be able to forge a CSS class field",
+    );
+}
+
+#[test]
+fn tree_view_rejects_unknown_direct_model_node_types() {
+    let mut model = TreeViewDiagramRenderModel::default();
+    model.root.node_type = "mystery".to_string();
+
+    let error = render_model(
+        &RenderSemanticModel::TreeView(model),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("unknown TreeView node types must not be projected as authored syntax");
+    assert_eq!(
+        error,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "treeView",
+            feature: "unknown node types",
+        }
+    );
 }
 
 #[test]
@@ -303,10 +340,10 @@ fn mindmap_render_model_renders_rooted_outline() {
     assert_eq!(
         rendered,
         concat!(
-            "Root [id=root]\n",
-            "|-- Child 1 [id=child1]\n",
-            "|   \\-- Leaf [id=leaf]\n",
-            "\\-- Child 2 [id=child2]",
+            "node(bytes=4)=\"Root\" id(bytes=4)=\"root\"\n",
+            "|-- node(bytes=7)=\"Child 1\" id(bytes=6)=\"child1\"\n",
+            "|   \\-- node(bytes=4)=\"Leaf\" id(bytes=4)=\"leaf\"\n",
+            "\\-- node(bytes=7)=\"Child 2\" id(bytes=6)=\"child2\"",
         )
     );
 }
@@ -361,12 +398,12 @@ fn mindmap_render_model_keeps_disconnected_cycle_components() {
     assert_eq!(
         rendered,
         concat!(
-            "Root [id=root]\n",
-            "\\-- Child [id=child]\n",
+            "node(bytes=4)=\"Root\" id(bytes=4)=\"root\"\n",
+            "\\-- node(bytes=5)=\"Child\" id(bytes=5)=\"child\"\n",
             "\n",
-            "A [id=a]\n",
-            "\\-- B [id=b]\n",
-            "    \\-- A [id=a] (cycle)",
+            "node(bytes=1)=\"A\" id(bytes=1)=\"a\"\n",
+            "\\-- node(bytes=1)=\"B\" id(bytes=1)=\"b\"\n",
+            "    \\-- node(bytes=1)=\"A\" id(bytes=1)=\"a\" (cycle)",
         )
     );
 }
@@ -459,8 +496,59 @@ fn mindmap_structured_text_discloses_identity_shape_icon_and_section() {
 
     assert_eq!(
         rendered,
-        "Root [id=root] [shape=circle] [icon=home] [section=2]"
+        concat!(
+            "node(bytes=4)=\"Root\" id(bytes=4)=\"root\" shape(bytes=6)=\"circle\"\n",
+            "icon(bytes=4)=\"home\" section=2",
+        )
     );
+}
+
+#[test]
+fn mindmap_structured_text_framing_distinguishes_labels_from_authored_ids() {
+    let mut embedded_id = mindmap_node("0", "Root [id=x]", 0);
+    embedded_id.node_id = "y".to_string();
+
+    let mut explicit_id = mindmap_node("0", "Root", 0);
+    explicit_id.node_id = "x] [id=y".to_string();
+
+    assert_ne!(
+        render(RenderSemanticModel::Mindmap(MindmapDiagramRenderModel {
+            nodes: vec![embedded_id],
+            edges: Vec::new(),
+        })),
+        render(RenderSemanticModel::Mindmap(MindmapDiagramRenderModel {
+            nodes: vec![explicit_id],
+            edges: Vec::new(),
+        })),
+        "authored labels must not be able to forge authored node-id disclosure",
+    );
+}
+
+#[test]
+fn mindmap_honors_ascii_and_unicode_structural_charsets() {
+    let model = MindmapDiagramRenderModel {
+        nodes: vec![
+            mindmap_node("root", "Root", 0),
+            mindmap_node("child", "Child", 1),
+        ],
+        edges: vec![mindmap_edge("edge", "root", "child")],
+    };
+
+    let ascii = render_with_options(
+        RenderSemanticModel::Mindmap(model.clone()),
+        &AsciiRenderOptions::ascii(),
+    );
+    let unicode = render_with_options(
+        RenderSemanticModel::Mindmap(model),
+        &AsciiRenderOptions::unicode(),
+    );
+
+    assert!(ascii.contains("\\-- "), "missing ASCII connector:\n{ascii}");
+    assert!(
+        unicode.contains("└── "),
+        "missing Unicode connector:\n{unicode}"
+    );
+    assert_ne!(ascii, unicode);
 }
 
 #[test]
@@ -476,7 +564,7 @@ fn mindmap_uses_internal_ids_for_topology_and_authored_ids_for_disclosure() {
 
     assert_eq!(
         render(RenderSemanticModel::Mindmap(model)),
-        "Root [id=authored-root]\n\\-- Child [id=authored-child]"
+        "node(bytes=4)=\"Root\" id(bytes=13)=\"authored-root\"\n\\-- node(bytes=5)=\"Child\" id(bytes=14)=\"authored-child\""
     );
 }
 
@@ -486,13 +574,16 @@ fn mindmap_parser_preserves_authored_ids_in_structured_text() {
 
     for authored_id in ["root", "theId", "leaf1", "child2"] {
         assert!(
-            rendered.contains(&format!("[id={authored_id}]")),
+            rendered.contains(&format!(
+                "id(bytes={})=\"{authored_id}\"",
+                authored_id.len()
+            )),
             "missing authored id {authored_id}:\n{rendered}"
         );
     }
     for internal_id in ["0", "1", "2", "3"] {
         assert!(
-            !rendered.contains(&format!("[id={internal_id}]")),
+            !rendered.contains(&format!("id(bytes=1)=\"{internal_id}\"")),
             "internal id {internal_id} leaked:\n{rendered}"
         );
     }
@@ -950,12 +1041,46 @@ fn kanban_render_model_renders_groups_and_child_metadata() {
     assert_eq!(
         rendered,
         concat!(
-            "Backlog [id=backlog]\n",
-            "  - Ticket A [id=card-a, ticket=K-1, priority=high, assigned=alice, icon=bug]\n",
-            "  - Ticket B [id=card-b, ticket=K-2]\n",
-            "Doing [id=doing]\n",
-            "  - Ticket C [id=card-c, ticket=K-3]",
+            "group(bytes=7)=\"Backlog\" [id(bytes=7)=\"backlog\"]\n",
+            "  - card(bytes=8)=\"Ticket A\" [id(bytes=6)=\"card-a\", ticket(bytes=3)=\"K-1\",\n",
+            "    priority(bytes=4)=\"high\", assigned(bytes=5)=\"alice\", icon(bytes=3)=\"bug\"]\n",
+            "  - card(bytes=8)=\"Ticket B\" [id(bytes=6)=\"card-b\", ticket(bytes=3)=\"K-2\"]\n",
+            "group(bytes=5)=\"Doing\" [id(bytes=5)=\"doing\"]\n",
+            "  - card(bytes=8)=\"Ticket C\" [id(bytes=6)=\"card-c\", ticket(bytes=3)=\"K-3\"]",
         )
+    );
+}
+
+#[test]
+fn kanban_structured_text_framing_distinguishes_ticket_from_priority() {
+    let embedded_priority = KanbanDiagramRenderModel {
+        nodes: vec![kanban_node(
+            "card",
+            "Card",
+            false,
+            KanbanNodeMetadata {
+                ticket: Some("K-1, priority=high"),
+                ..Default::default()
+            },
+        )],
+    };
+    let explicit_priority = KanbanDiagramRenderModel {
+        nodes: vec![kanban_node(
+            "card",
+            "Card",
+            false,
+            KanbanNodeMetadata {
+                ticket: Some("K-1"),
+                priority: Some("high"),
+                ..Default::default()
+            },
+        )],
+    };
+
+    assert_ne!(
+        render(RenderSemanticModel::Kanban(embedded_priority)),
+        render(RenderSemanticModel::Kanban(explicit_priority)),
+        "authored ticket text must not be able to forge a priority field",
     );
 }
 
@@ -992,11 +1117,12 @@ fn kanban_render_model_keeps_unassigned_and_unknown_parent_cards() {
     assert_eq!(
         rendered,
         concat!(
-            "Backlog [id=backlog]\n",
-            "  - Known [id=known]\n",
+            "group(bytes=7)=\"Backlog\" [id(bytes=7)=\"backlog\"]\n",
+            "  - card(bytes=5)=\"Known\" [id(bytes=5)=\"known\"]\n",
             "Unassigned\n",
-            "  - Loose [id=loose]\n",
-            "  - Unknown [id=unknown, parent=missing, ticket=K-404]",
+            "  - card(bytes=5)=\"Loose\" [id(bytes=5)=\"loose\"]\n",
+            "  - card(bytes=7)=\"Unknown\" [id(bytes=7)=\"unknown\", parent(bytes=7)=\"missing\",\n",
+            "    ticket(bytes=5)=\"K-404\"]",
         )
     );
 }
@@ -1051,7 +1177,10 @@ fn kanban_parser_projection_keeps_group_metadata() {
 
     assert_eq!(
         rendered,
-        "root [id=root, priority=high, assigned=alice, icon=star]"
+        concat!(
+            "group(bytes=4)=\"root\" [id(bytes=4)=\"root\", priority(bytes=4)=\"high\",\n",
+            "assigned(bytes=5)=\"alice\", icon(bytes=4)=\"star\"]",
+        )
     );
 }
 

@@ -76,7 +76,9 @@ pub fn normalize_terminal_diagnostic(value: &str) -> String {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct NormalizedSegment<'a> {
     pub(super) kind: NormalizedSegmentKind<'a>,
+    #[cfg(test)]
     pub(super) source_start: usize,
+    #[cfg(test)]
     pub(super) source_end: usize,
     pub(super) source_grapheme_bytes: usize,
 }
@@ -132,12 +134,17 @@ pub(super) fn visit_normalized_segments<'a, E>(
     mut visit: impl FnMut(NormalizedSegment<'a>) -> std::result::Result<(), E>,
 ) -> std::result::Result<(), E> {
     for (source_start, grapheme) in value.grapheme_indices(true) {
+        #[cfg(not(test))]
+        let _ = source_start;
+        #[cfg(test)]
         let source_end = source_start + grapheme.len();
         let source_grapheme_bytes = grapheme.len();
         if grapheme == "\r\n" || grapheme == "\n" {
             visit(NormalizedSegment {
                 kind: NormalizedSegmentKind::LineBreak,
+                #[cfg(test)]
                 source_start,
+                #[cfg(test)]
                 source_end,
                 source_grapheme_bytes,
             })?;
@@ -156,7 +163,9 @@ pub(super) fn visit_normalized_segments<'a, E>(
                 };
                 visit(NormalizedSegment {
                     kind,
+                    #[cfg(test)]
                     source_start,
+                    #[cfg(test)]
                     source_end,
                     source_grapheme_bytes,
                 })?;
@@ -168,7 +177,9 @@ pub(super) fn visit_normalized_segments<'a, E>(
             for ch in grapheme.chars() {
                 visit(NormalizedSegment {
                     kind: NormalizedSegmentKind::VisibleEscape(ch),
+                    #[cfg(test)]
                     source_start,
+                    #[cfg(test)]
                     source_end,
                     source_grapheme_bytes,
                 })?;
@@ -176,7 +187,9 @@ pub(super) fn visit_normalized_segments<'a, E>(
         } else {
             visit(NormalizedSegment {
                 kind: NormalizedSegmentKind::Grapheme(grapheme),
+                #[cfg(test)]
                 source_start,
+                #[cfg(test)]
                 source_end,
                 source_grapheme_bytes,
             })?;

@@ -388,7 +388,6 @@ impl ResourceContext {
         self.layout_work_used.get()
     }
 
-    #[cfg(test)]
     pub(crate) fn document_cells_used(&self) -> usize {
         self.document_cells_used.get()
     }

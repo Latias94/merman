@@ -1,26 +1,52 @@
 use crate::Result;
 use crate::error::AsciiError;
-use crate::options::AsciiRenderOptions;
+use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::{
-    BudgetedTextDocument, charge_text_layout, try_clone_layout_text, try_concat_layout_text,
-    try_repeat_layout_char,
+    BudgetedTextDocument, charge_text_layout, push_wrapped_field, try_clone_layout_text,
+    try_concat_layout_text, try_repeat_layout_char,
 };
+use crate::text::display_width_with_profile;
 use merman_core::diagrams::mindmap::{
     MindmapDiagramRenderEdge, MindmapDiagramRenderModel, MindmapDiagramRenderNode,
 };
 use std::collections::{HashMap, HashSet};
 
 const SUMMARY_WRAP_WIDTH: usize = 80;
-const BRANCH: &str = "|-- ";
-const CONTINUE: &str = "|   ";
-const EMPTY: &str = "    ";
+
+#[derive(Clone, Copy)]
+struct MindmapChars {
+    branch: &'static str,
+    last_branch: &'static str,
+    child_continue: &'static str,
+    child_empty: &'static str,
+}
+
+impl MindmapChars {
+    fn from_options(options: &AsciiRenderOptions) -> Self {
+        match options.structural_charset() {
+            AsciiCharset::Ascii => Self {
+                branch: "|-- ",
+                last_branch: "\\-- ",
+                child_continue: "|   ",
+                child_empty: "    ",
+            },
+            AsciiCharset::Unicode => Self {
+                branch: "├── ",
+                last_branch: "└── ",
+                child_continue: "│   ",
+                child_empty: "    ",
+            },
+        }
+    }
+}
 
 pub fn render_mindmap_diagram(
     model: &MindmapDiagramRenderModel,
     options: &AsciiRenderOptions,
 ) -> Result<String> {
     let mut document = BudgetedTextDocument::new(options);
+    let chars = MindmapChars::from_options(options);
     let nodes_by_id = index_nodes(&model.nodes, document.resources_mut())?;
     let children_by_id = build_children_map(&model.edges, &nodes_by_id, document.resources_mut())?;
     let mut roots = root_ids(&model.nodes, &model.edges, document.resources_mut())?;
@@ -77,9 +103,9 @@ pub fn render_mindmap_diagram(
                     let branch = if is_root {
                         String::new()
                     } else {
-                        branch_prefix(&prefix, is_last, document.resources_mut())?
+                        branch_prefix(&prefix, is_last, chars, document.resources_mut())?
                     };
-                    push_wrapped_label(&mut document, &branch, |line| {
+                    push_wrapped_label(&mut document, &branch, options, |line| {
                         push_node_text(line, node, is_cycle)
                     })?;
 
@@ -102,7 +128,7 @@ pub fn render_mindmap_diagram(
                     let next_prefix = if is_root {
                         String::new()
                     } else {
-                        child_prefix(&prefix, is_last, document.resources_mut())?
+                        child_prefix(&prefix, is_last, chars, document.resources_mut())?
                     };
 
                     for (child_index, child_id) in children.iter().enumerate().rev() {
@@ -226,24 +252,16 @@ fn push_node_text(
     node: &MindmapDiagramRenderNode,
     is_cycle: bool,
 ) -> Result<()> {
-    line.push_str(&node.label)?;
-    if !node.node_id.is_empty() {
-        line.push_str(" [id=")?;
-        line.push_str(&node.node_id)?;
-        line.push_str("]")?;
-    }
+    push_wrapped_field(line, "", "node", &node.label)?;
+    push_wrapped_field(line, " ", "id", &node.node_id)?;
     if !node.shape.is_empty() && node.shape != "defaultMindmapNode" {
-        line.push_str(" [shape=")?;
-        line.push_str(&node.shape)?;
-        line.push_str("]")?;
+        push_wrapped_field(line, " ", "shape", &node.shape)?;
     }
     if let Some(icon) = node.icon.as_deref() {
-        line.push_str(" [icon=")?;
-        line.push_str(icon)?;
-        line.push_str("]")?;
+        push_wrapped_field(line, " ", "icon", icon)?;
     }
     if let Some(section) = node.section {
-        line.write_fmt(format_args!(" [section={section}]"))?;
+        line.write_fmt(format_args!(" section={section}"))?;
     }
     if is_cycle {
         line.push_str(" (cycle)")?;
@@ -410,20 +428,47 @@ fn push_exit_frame<'a>(
     Ok(())
 }
 
-fn branch_prefix(prefix: &str, is_last: bool, resources: &ResourceContext) -> Result<String> {
-    try_concat_layout_text(prefix, if is_last { "\\-- " } else { BRANCH }, resources)
+fn branch_prefix(
+    prefix: &str,
+    is_last: bool,
+    chars: MindmapChars,
+    resources: &ResourceContext,
+) -> Result<String> {
+    try_concat_layout_text(
+        prefix,
+        if is_last {
+            chars.last_branch
+        } else {
+            chars.branch
+        },
+        resources,
+    )
 }
 
-fn child_prefix(prefix: &str, is_last: bool, resources: &ResourceContext) -> Result<String> {
-    try_concat_layout_text(prefix, if is_last { EMPTY } else { CONTINUE }, resources)
+fn child_prefix(
+    prefix: &str,
+    is_last: bool,
+    chars: MindmapChars,
+    resources: &ResourceContext,
+) -> Result<String> {
+    try_concat_layout_text(
+        prefix,
+        if is_last {
+            chars.child_empty
+        } else {
+            chars.child_continue
+        },
+        resources,
+    )
 }
 
 fn push_wrapped_label(
     document: &mut BudgetedTextDocument,
     prefix: &str,
+    options: &AsciiRenderOptions,
     render: impl FnOnce(&mut crate::safe_text::BudgetedWrappedText<'_, '_>) -> Result<()>,
 ) -> Result<()> {
-    let continuation_width = prefix.len();
+    let continuation_width = display_width_with_profile(prefix, options.terminal_width_profile);
     let continuation_prefix =
         try_repeat_layout_char(' ', continuation_width, document.resources_mut())?;
     document.push_wrapped_prefixed_line_with(
