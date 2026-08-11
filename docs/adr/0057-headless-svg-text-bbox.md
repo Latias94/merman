@@ -159,6 +159,6 @@ provenance, host injection, and reproducible verification.
 ## Related Decisions
 
 - ADR-0049: Vendored Font Metrics for Headless Parity
-- ADR-0050: Release Quality Gates
+- ADR-0081: Release Quality Gates
 - ADR-0062: No Production Fixture Overrides
 - ADR-0073: Family-Owned Diagram Architecture

@@ -1,7 +1,7 @@
 # Publishing (crates.io)
 
 This repository is a Cargo workspace containing multiple publishable crates. Publishing is gated by
-ADR-0050 (`docs/adr/0050-release-quality-gates.md`) and requires publishing workspace crates in a
+ADR-0081 (`docs/adr/0081-release-quality-gates.md`) and requires publishing workspace crates in a
 dependency-safe order.
 
 ## Release gates (must pass)
@@ -18,7 +18,7 @@ dependency-safe order.
 Notes:
 
 - `--dom-mode strict` is intentionally not a release gate. It is treated as a parity KPI / debugging
-  tool (see ADR-0050).
+  tool (see ADR-0081).
 - A higher-precision viewport stress check exists but is non-blocking:
   - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --flowchart-text-measurer vendored`
 

@@ -98,6 +98,6 @@ dependency. Host measurement is the correct authority when exact system-font beh
 
 - ADR-0014: Upstream Parity Policy
 - ADR-0049: Vendored Font Metrics for Headless Parity
-- ADR-0050: Release Quality Gates
+- ADR-0081: Release Quality Gates
 - ADR-0057: Headless SVG Text `getBBox()` Approximation
 - ADR-0073: Family-Owned Diagram Architecture

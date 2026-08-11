@@ -508,7 +508,7 @@ report projections, and renderer lookup adapters.
 
 Related decisions:
 
-- ADR-0050 release quality gates / SVG viewBox parity
+- ADR-0081 release quality gates / ADR-0050 SVG viewBox parity
 - ADR-0057 headless SVG text bbox
 - ADR-0062 fixture-derived overrides
 

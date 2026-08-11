@@ -1,8 +1,8 @@
-# ADR-0050: Release Quality Gates (Parity Contract for Publishing)
+# ADR-0081: Release Quality Gates (Parity Contract for Publishing)
 
 ## Status
 
-Accepted; updated 2026-07-15 for Mermaid `@11.16.0` and ADR-0062.
+Accepted; updated 2026-08-11 for Mermaid `@11.16.1`, ADR-0050, and ADR-0062.
 
 ## Context
 
@@ -32,7 +32,7 @@ For a release, we require:
 - DOM parity checks (stable regression gates):
   - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`
   - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode structure --dom-decimals 3`
-- Root viewport parity (headless `getBBox()` approximation gate):
+- Root viewport invariants and descendant parity:
   - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 
 Notes:
@@ -40,17 +40,24 @@ Notes:
 - For Flowchart, use the vendored text measurer when running these gates locally to match the
   baseline corpus assumptions:
   - add `--flowchart-text-measurer vendored`
-- `parity-root` compares the root `<svg>` viewport surface (`viewBox` + `style="max-width: …px"`).
-  This is the most sensitive area to float lattice drift and is treated as its own gate.
+- `parity-root` keeps descendant parity blocking and invokes the root viewport contract for every
+  fixture. The contract rejects an invalid root SVG, malformed or non-finite viewport geometry,
+  non-positive dimensions, changed width/height strategy, changed non-numeric root style, and a
+  changed `max-width`/`viewBox` relationship.
+- A small exact set in `fixtures/_verification/deterministic-root-contracts.json` remains bound to
+  the pinned input and upstream SVG hashes. These deterministic roots are exact release evidence,
+  not production overrides or family tolerances.
 
-### Stress checks (not blocking, but tracked)
+### Browser diagnostics and cropping
 
-We also run (locally or in non-blocking CI) a higher-precision viewport stress check:
+Browser-owned exact bbox values are diagnostic rather than routine acceptance policy. Scheduled and
+release evidence records the fixed browser identity plus exact root and painted-content rectangles,
+so browser or font movement stays attributable without becoming a committed tolerance catalog.
 
-- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 6`
-
-This is explicitly a **stress test**, not a release gate, until the headless bbox + viewport
-pipeline converges further.
+Cropping remains blocking through an independent browser-mounted oracle. It mounts the final SVG,
+derives painted descendant rectangles from browser layout rather than production bounds, and
+requires SVG, HTML, MathML, and `foreignObject` content to remain inside the final viewport. Its
+single epsilon covers coordinate quantization only; it is never fixture- or family-specific.
 
 ### Strict mode is not a release gate
 
@@ -67,13 +74,16 @@ Rationale:
 
 Root viewports are computed from family-owned or emitted-content bounds through the shared Root
 Viewport module. Fixture ids and complete label strings are verification inputs, never production
-lookup keys. Browser-only root differences may be admitted only as a narrow, explicit comparator
-residual under ADR-0062; changed or additional mismatches must still fail the release gate.
+lookup keys. Browser-owned exact numeric movement remains diagnostic; it cannot become a production
+lookup, fixture-specific tolerance, or family acceptance envelope. Deterministic root fixtures and
+root policy remain exact under ADR-0050, while ADR-0062 continues to forbid fixture-derived
+production behavior.
 
 ## Consequences
 
-- Releases are gated on deterministic DOM parity modes (`structure`/`parity`) and a stable root
-  viewport contract (`parity-root` at 3 decimals).
+- Releases are gated on deterministic DOM parity modes (`structure`/`parity`), blocking root
+  invariants and deterministic root fixtures, and independent browser-mounted cropping containment.
 - “Strict SVG XML equality” is not promised for early releases; it remains an explicit future
   convergence goal.
-- Browser float residuals remain explicit verification policy and cannot alter production output.
+- Exact browser bbox movement remains attributable diagnostic evidence and cannot alter production
+  output or weaken the blocking root contract.

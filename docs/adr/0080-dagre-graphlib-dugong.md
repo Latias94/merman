@@ -1,4 +1,4 @@
-# ADR-0041: Dagre/Graphlib Port (dugong, dugong-graphlib)
+# ADR-0080: Dagre/Graphlib Port (dugong, dugong-graphlib)
 
 ## Status
 
