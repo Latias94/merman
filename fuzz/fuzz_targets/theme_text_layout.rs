@@ -35,8 +35,7 @@ fuzz_target!(|data: &[u8]| {
 
     let typography = ThemeTextStyle::default()
         .with_font_stack(
-            FontStack::new(["Excalifont", "Xiaolai"])
-                .expect("fixed fuzz font stack is valid"),
+            FontStack::new(["Excalifont", "Xiaolai"]).expect("fixed fuzz font stack is valid"),
         )
         .with_font_size_px(8.0 + f32::from(data[0] % 64))
         .expect("bounded fuzz font size is valid")
@@ -47,28 +46,36 @@ fuzz_target!(|data: &[u8]| {
         } else {
             FontStyle::Italic
         });
-    let request = PrepareTextRequest::new(text.as_ref(), typography)
-        .with_direction(direction)
-        .with_features(features)
-        .expect("fixed OpenType feature set is valid")
-        .with_variations([variation])
-        .expect("bounded numeric variation is valid");
-    let single_run = backend
-        .prepare_text_probe(
+    let request = PrepareTextRequest::for_fuzz_probe(
+        text.as_ref(),
+        typography,
+        direction,
+        features,
+        [variation],
+    )
+    .expect("bounded fuzz request is valid");
+    let Some(single_run) = backend
+        .prepare_text_probe_for_fuzz(
             &catalog_request,
             &request.clone().with_wrap(PreparedTextWrap::SingleRun),
         )
-        .expect("bounded single-run request should prepare");
+        .expect("bounded single-run request should prepare")
+    else {
+        return;
+    };
     let max_width = 1.0 + f64::from(data[1]) * 4.0;
-    let wrapped = backend
-        .prepare_text_probe(
+    let Some(wrapped) = backend
+        .prepare_text_probe_for_fuzz(
             &catalog_request,
             &request.with_wrap(PreparedTextWrap::SvgLike {
                 max_width_px: Some(max_width),
                 break_long_words: true,
             }),
         )
-        .expect("bounded wrapped request should prepare");
+        .expect("bounded wrapped request should prepare")
+    else {
+        return;
+    };
 
     for value in [
         single_run.metrics().width,
@@ -84,9 +91,7 @@ fuzz_target!(|data: &[u8]| {
     }
     assert!(single_run.metrics().line_count >= 1);
     assert!(wrapped.metrics().line_count >= 1);
-    assert!(
-        wrapped.metrics().line_count <= text.chars().count().saturating_add(1).max(1)
-    );
+    assert!(wrapped.metrics().line_count <= text.chars().count().saturating_add(1).max(1));
 });
 
 fn feature_set(selector: u8) -> Vec<&'static str> {

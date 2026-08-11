@@ -12,6 +12,7 @@ use crate::diagram_theme::{
     MAX_FONT_FACES_HARD_CAP, TextTransform as ThemeTextTransform, ThemePortabilityRequirement,
     ThemeTextStyle, WhiteSpace,
 };
+use crate::resources::OperationWorkMeter;
 use cssparser::{Delimiter, Parser, ParserInput};
 use rustybuzz::{
     Direction as BuzzDirection, Feature, Language, Script as BuzzScript, UnicodeBuffer, Variation,
@@ -37,6 +38,11 @@ const MAX_PREPARED_TEXT_LINES: usize = MAX_TEXT_PROJECTION_BYTES.saturating_add(
 const MAX_PREPARED_TEXT_RUNS: usize = MAX_TEXT_PROJECTION_BYTES;
 const MAX_PREPARED_TEXT_GEOMETRY_PX: f64 = 1_000_000_000.0;
 const MAX_PREPARED_TEXT_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
+const MAX_TEXT_PROJECTION_SPANS: usize = MAX_TEXT_PROJECTION_BYTES;
+// Stable 64-bit upper-bound accounting keeps native and wasm32 admission identical.
+const TEXT_PROJECTION_SPAN_RECORD_BYTES: usize = 32;
+const MAX_TEXT_PROJECTION_SPAN_BYTES: usize =
+    MAX_TEXT_PROJECTION_SPANS * TEXT_PROJECTION_SPAN_RECORD_BYTES;
 const PREPARED_TEXT_LINE_RECORD_BYTES: usize = 96;
 const PREPARED_TEXT_RUN_RECORD_BYTES: usize = 64;
 const MAX_STRUCTURED_COVERAGE_INPUT_BYTES: usize = MAX_TEXT_PROJECTION_BYTES * 16;
@@ -45,6 +51,9 @@ const STRUCTURED_COVERAGE_CACHE_LANES: usize = 2;
 const MAX_STRUCTURED_COVERAGE_CACHE_ENTRIES: usize =
     MAX_TEXT_PROJECTION_BYTES * STRUCTURED_COVERAGE_CACHE_LANES;
 const MAX_STRUCTURED_SPAN_VISITS: usize = MAX_TEXT_PROJECTION_BYTES * 4;
+const MAX_STRUCTURED_GLYPH_VISITS: usize = MAX_TEXT_PROJECTION_BYTES * 64;
+const MAX_STRUCTURED_CLUSTER_VISITS: usize = MAX_TEXT_PROJECTION_BYTES * 32;
+const MAX_STRUCTURED_WRAP_BOUNDARY_VISITS: usize = MAX_TEXT_PROJECTION_BYTES * 32;
 
 pub(crate) fn merge_prepared_text_typography(
     base: &ThemeTextStyle,
@@ -534,6 +543,9 @@ pub struct SourceVisibleSpan {
     visible: TextByteRange,
 }
 
+const _: () =
+    assert!(std::mem::size_of::<SourceVisibleSpan>() <= TEXT_PROJECTION_SPAN_RECORD_BYTES);
+
 impl SourceVisibleSpan {
     pub const fn new(source: TextByteRange, visible: TextByteRange) -> Self {
         Self { source, visible }
@@ -695,8 +707,60 @@ pub(crate) enum TextProjectionError {
     SourceLimitExceeded,
     #[error("text projection visible text exceeds its bounded byte limit")]
     VisibleLimitExceeded,
+    #[error("text projection spans exceed their bounded retained-byte limit")]
+    SpanLimitExceeded,
+    #[error("text projection exceeded the operation work budget")]
+    OperationWorkExceeded,
     #[error("text projection spans contain invalid or incomplete UTF-8 ranges")]
     InvalidRanges,
+}
+
+struct TextProjectionSpanBudget<'a> {
+    maximum: usize,
+    retained: usize,
+    work_meter: Option<&'a OperationWorkMeter>,
+}
+
+impl<'a> TextProjectionSpanBudget<'a> {
+    fn new(maximum: usize, work_meter: Option<&'a OperationWorkMeter>) -> Self {
+        Self {
+            maximum,
+            retained: 0,
+            work_meter,
+        }
+    }
+
+    fn admit_existing(&mut self, span_count: usize) -> Result<(), TextProjectionError> {
+        let retained = span_count
+            .checked_mul(TEXT_PROJECTION_SPAN_RECORD_BYTES)
+            .ok_or(TextProjectionError::SpanLimitExceeded)?;
+        self.preflight(retained)?;
+        self.retained = retained;
+        Ok(())
+    }
+
+    fn push(
+        &mut self,
+        spans: &mut Vec<SourceVisibleSpan>,
+        span: SourceVisibleSpan,
+    ) -> Result<(), TextProjectionError> {
+        let retained = self
+            .retained
+            .checked_add(TEXT_PROJECTION_SPAN_RECORD_BYTES)
+            .ok_or(TextProjectionError::SpanLimitExceeded)?;
+        self.preflight(retained)?;
+        charge_projection_work(self.work_meter, 1)?;
+        spans.push(span);
+        self.retained = retained;
+        Ok(())
+    }
+
+    fn preflight(&self, retained: usize) -> Result<(), TextProjectionError> {
+        if retained > self.maximum {
+            return Err(TextProjectionError::SpanLimitExceeded);
+        }
+        Ok(())
+    }
 }
 
 /// Validated source text, visible text, and their ordered grapheme-level mapping.
@@ -713,14 +777,28 @@ impl TextProjection {
         source: impl Into<Arc<str>>,
         transform: ThemeTextTransform,
     ) -> Result<Self, TextProjectionError> {
-        Self::build_with_limit(source.into(), transform, MAX_TEXT_PROJECTION_BYTES)
+        Self::build_with_options_and_budget(
+            source.into(),
+            transform,
+            MAX_TEXT_PROJECTION_BYTES,
+            true,
+            MAX_TEXT_PROJECTION_SPAN_BYTES,
+            None,
+        )
     }
 
     pub(crate) fn new_family_normalized(
         source: impl Into<Arc<str>>,
         transform: ThemeTextTransform,
     ) -> Result<Self, TextProjectionError> {
-        Self::build_with_options(source.into(), transform, MAX_TEXT_PROJECTION_BYTES, false)
+        Self::build_with_options_and_budget(
+            source.into(),
+            transform,
+            MAX_TEXT_PROJECTION_BYTES,
+            false,
+            MAX_TEXT_PROJECTION_SPAN_BYTES,
+            None,
+        )
     }
 
     fn build_with_limit(
@@ -728,14 +806,23 @@ impl TextProjection {
         transform: ThemeTextTransform,
         max_bytes: usize,
     ) -> Result<Self, TextProjectionError> {
-        Self::build_with_options(source, transform, max_bytes, true)
+        Self::build_with_options_and_budget(
+            source,
+            transform,
+            max_bytes,
+            true,
+            MAX_TEXT_PROJECTION_SPAN_BYTES,
+            None,
+        )
     }
 
-    fn build_with_options(
+    fn build_with_options_and_budget(
         source: Arc<str>,
         transform: ThemeTextTransform,
         max_bytes: usize,
         recognize_html_breaks: bool,
+        max_span_bytes: usize,
+        work_meter: Option<&OperationWorkMeter>,
     ) -> Result<Self, TextProjectionError> {
         if source.len() > max_bytes {
             return Err(TextProjectionError::SourceLimitExceeded);
@@ -743,6 +830,7 @@ impl TextProjection {
 
         let mut visible = String::with_capacity(source.len());
         let mut spans = Vec::new();
+        let mut span_budget = TextProjectionSpanBudget::new(max_span_bytes, work_meter);
         let mut source_cursor = 0;
         let mut capitalize_at_word_start = true;
 
@@ -758,6 +846,7 @@ impl TextProjection {
                 max_bytes,
                 &mut visible,
                 &mut spans,
+                &mut span_budget,
             )?;
             if plain_end == source.len() {
                 break;
@@ -768,15 +857,18 @@ impl TextProjection {
                 return Err(TextProjectionError::VisibleLimitExceeded);
             }
             visible.push('\n');
-            spans.push(SourceVisibleSpan::new(
-                TextByteRange::new(plain_end, break_end),
-                TextByteRange::new(visible_start, visible.len()),
-            ));
+            span_budget.push(
+                &mut spans,
+                SourceVisibleSpan::new(
+                    TextByteRange::new(plain_end, break_end),
+                    TextByteRange::new(visible_start, visible.len()),
+                ),
+            )?;
             capitalize_at_word_start = true;
             source_cursor = break_end;
         }
 
-        Self::from_parts_with_limit(source, Arc::from(visible), spans, max_bytes)
+        Self::finish_parts(source, Arc::from(visible), spans, max_bytes, work_meter)
     }
 
     /// Admits an already composed family projection after validating both coordinate spaces.
@@ -785,14 +877,35 @@ impl TextProjection {
         visible: Arc<str>,
         spans: Vec<SourceVisibleSpan>,
     ) -> Result<Self, TextProjectionError> {
-        Self::from_parts_with_limit(source, visible, spans, MAX_TEXT_PROJECTION_BYTES)
+        Self::from_parts_with_limits(
+            source,
+            visible,
+            spans,
+            MAX_TEXT_PROJECTION_BYTES,
+            MAX_TEXT_PROJECTION_SPAN_BYTES,
+            None,
+        )
     }
 
-    fn from_parts_with_limit(
+    fn from_parts_with_limits(
         source: Arc<str>,
         visible: Arc<str>,
         spans: Vec<SourceVisibleSpan>,
         max_bytes: usize,
+        max_span_bytes: usize,
+        work_meter: Option<&OperationWorkMeter>,
+    ) -> Result<Self, TextProjectionError> {
+        let mut span_budget = TextProjectionSpanBudget::new(max_span_bytes, work_meter);
+        span_budget.admit_existing(spans.len())?;
+        Self::finish_parts(source, visible, spans, max_bytes, work_meter)
+    }
+
+    fn finish_parts(
+        source: Arc<str>,
+        visible: Arc<str>,
+        spans: Vec<SourceVisibleSpan>,
+        max_bytes: usize,
+        work_meter: Option<&OperationWorkMeter>,
     ) -> Result<Self, TextProjectionError> {
         if source.len() > max_bytes {
             return Err(TextProjectionError::SourceLimitExceeded);
@@ -800,6 +913,17 @@ impl TextProjection {
         if visible.len() > max_bytes {
             return Err(TextProjectionError::VisibleLimitExceeded);
         }
+        let validation_and_fingerprint_work = source
+            .len()
+            .checked_add(visible.len())
+            .and_then(|work| {
+                spans
+                    .len()
+                    .checked_mul(2)
+                    .and_then(|spans| work.checked_add(spans))
+            })
+            .ok_or(TextProjectionError::SpanLimitExceeded)?;
+        charge_projection_work(work_meter, validation_and_fingerprint_work)?;
         validate_projection_spans(&source, &visible, &spans)?;
         let fingerprint = fingerprint_text_projection(&source, &visible, &spans);
         Ok(Self {
@@ -825,40 +949,18 @@ impl TextProjection {
     pub(crate) const fn fingerprint(&self) -> TextProjectionFingerprint {
         self.fingerprint
     }
+}
 
-    fn is_visible_atom_boundary(&self, offset: usize) -> bool {
-        offset == 0
-            || self
-                .spans
-                .binary_search_by_key(&offset, |span| span.visible().end())
-                .is_ok()
+fn charge_projection_work(
+    work_meter: Option<&OperationWorkMeter>,
+    units: usize,
+) -> Result<(), TextProjectionError> {
+    if let Some(work_meter) = work_meter {
+        work_meter
+            .charge(units)
+            .map_err(|_| TextProjectionError::OperationWorkExceeded)?;
     }
-
-    fn source_range_for_visible_range(
-        &self,
-        visible_range: TextByteRange,
-    ) -> Option<TextByteRange> {
-        if visible_range.start() >= visible_range.end() {
-            return None;
-        }
-        let first_index = self
-            .spans
-            .partition_point(|span| span.visible().end() <= visible_range.start());
-        let last_exclusive = self
-            .spans
-            .partition_point(|span| span.visible().start() < visible_range.end());
-        let first = self.spans.get(first_index)?;
-        let last = self.spans.get(last_exclusive.checked_sub(1)?)?;
-        if first.visible().start() != visible_range.start()
-            || last.visible().end() != visible_range.end()
-        {
-            return None;
-        }
-        Some(TextByteRange::new(
-            first.source().start(),
-            last.source().end(),
-        ))
-    }
+    Ok(())
 }
 
 fn next_explicit_break(
@@ -909,6 +1011,7 @@ fn append_transformed_graphemes(
     max_bytes: usize,
     visible: &mut String,
     spans: &mut Vec<SourceVisibleSpan>,
+    span_budget: &mut TextProjectionSpanBudget,
 ) -> Result<(), TextProjectionError> {
     let source_start = source_range.start;
     for (offset, grapheme) in source[source_range].grapheme_indices(true) {
@@ -920,10 +1023,13 @@ fn append_transformed_graphemes(
             .ok_or(TextProjectionError::VisibleLimitExceeded)?;
         visible.push_str(&transformed);
         let grapheme_start = source_start + offset;
-        spans.push(SourceVisibleSpan::new(
-            TextByteRange::new(grapheme_start, grapheme_start + grapheme.len()),
-            TextByteRange::new(visible_start, visible_end),
-        ));
+        span_budget.push(
+            spans,
+            SourceVisibleSpan::new(
+                TextByteRange::new(grapheme_start, grapheme_start + grapheme.len()),
+                TextByteRange::new(visible_start, visible_end),
+            ),
+        )?;
     }
     Ok(())
 }
@@ -1091,14 +1197,20 @@ impl PrepareTextRequest {
         self
     }
 
-    pub fn with_script(mut self, script: impl Into<String>) -> Result<Self, TextLayoutError> {
+    pub(crate) fn with_script(
+        mut self,
+        script: impl Into<String>,
+    ) -> Result<Self, TextLayoutError> {
         let script = script.into();
         validate_tag(&script, "script")?;
         self.script = Some(Arc::from(script));
         Ok(self)
     }
 
-    pub fn with_language(mut self, language: impl Into<String>) -> Result<Self, TextLayoutError> {
+    pub(crate) fn with_language(
+        mut self,
+        language: impl Into<String>,
+    ) -> Result<Self, TextLayoutError> {
         let language = language.into();
         if language.trim().is_empty() || language.len() > 64 {
             return Err(TextLayoutError::InvalidRequest("language"));
@@ -1107,7 +1219,7 @@ impl PrepareTextRequest {
         Ok(self)
     }
 
-    pub fn with_features(
+    pub(crate) fn with_features(
         mut self,
         features: impl IntoIterator<Item = impl Into<String>>,
     ) -> Result<Self, TextLayoutError> {
@@ -1115,12 +1227,28 @@ impl PrepareTextRequest {
         Ok(self)
     }
 
-    pub fn with_variations(
+    pub(crate) fn with_variations(
         mut self,
         variations: impl IntoIterator<Item = impl Into<String>>,
     ) -> Result<Self, TextLayoutError> {
         self.variations = parse_variations(variations)?;
         Ok(self)
+    }
+
+    #[cfg(feature = "fuzzing")]
+    #[doc(hidden)]
+    pub fn for_fuzz_probe(
+        text: impl Into<String>,
+        typography: ThemeTextStyle,
+        direction: TextLayoutDirection,
+        features: impl IntoIterator<Item = impl Into<String>>,
+        variations: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Result<Self, String> {
+        Self::new(text, typography)
+            .with_direction(direction)
+            .with_features(features)
+            .and_then(|request| request.with_variations(variations))
+            .map_err(|error| error.to_string())
     }
 
     pub fn with_wrap(mut self, wrap: PreparedTextWrap) -> Self {
@@ -1175,46 +1303,119 @@ impl PrepareTextRequest {
 
     /// Returns a versioned digest over every field that can affect prepared label geometry.
     pub fn digest(&self) -> TextLayoutRequestDigest {
-        use sha2::{Digest, Sha256};
+        self.digest_with_work_meter(None)
+            .expect("unmetered request digests cannot exhaust operation work")
+    }
 
-        let mut hasher = Sha256::new();
-        hasher.update(b"merman-prepared-text-request");
-        update_hash_field(&mut hasher, b"version");
-        hasher.update(TEXT_REQUEST_DIGEST_VERSION.to_le_bytes());
-        update_hash_field(&mut hasher, b"text");
-        update_hash_field(&mut hasher, self.text.as_bytes());
-        update_hash_field(&mut hasher, b"projection-input");
-        hasher.update([projection_input_id(self.projection_input)]);
-        update_hash_field(&mut hasher, b"wrapping-typography");
-        hash_text_style(&mut hasher, &self.wrapping_typography);
-        update_hash_field(&mut hasher, b"metrics-typography");
-        hash_text_style(&mut hasher, &self.metrics_typography);
-        update_hash_field(&mut hasher, b"direction");
-        hasher.update([direction_id(self.direction)]);
-        hash_optional_str(&mut hasher, b"script", self.script.as_deref());
-        hash_optional_str(&mut hasher, b"language", self.language.as_deref());
-        hash_string_sequence(&mut hasher, b"features", &self.features);
-        hash_string_sequence(&mut hasher, b"variations", &self.variations);
-        update_hash_field(&mut hasher, b"wrap");
-        hash_prepared_wrap(&mut hasher, self.wrap);
-        TextLayoutRequestDigest(hasher.finalize().into())
+    fn digest_with_work_meter(
+        &self,
+        work_meter: Option<&OperationWorkMeter>,
+    ) -> Result<TextLayoutRequestDigest, TextLayoutError> {
+        let mut digest = PreparedTextRequestDigestBuilder::new(work_meter);
+        digest.update(b"merman-prepared-text-request")?;
+        digest.update_field(b"version")?;
+        digest.update(TEXT_REQUEST_DIGEST_VERSION.to_le_bytes())?;
+        digest.update_field(b"text")?;
+        digest.update_field(self.text.as_bytes())?;
+        digest.update_field(b"projection-input")?;
+        digest.update([projection_input_id(self.projection_input)])?;
+        digest.update_field(b"wrapping-typography")?;
+        hash_text_style(&mut digest, &self.wrapping_typography)?;
+        digest.update_field(b"metrics-typography")?;
+        hash_text_style(&mut digest, &self.metrics_typography)?;
+        digest.update_field(b"direction")?;
+        digest.update([direction_id(self.direction)])?;
+        hash_optional_str(&mut digest, b"script", self.script.as_deref())?;
+        hash_optional_str(&mut digest, b"language", self.language.as_deref())?;
+        hash_string_sequence(&mut digest, b"features", &self.features)?;
+        hash_string_sequence(&mut digest, b"variations", &self.variations)?;
+        digest.update_field(b"wrap")?;
+        hash_prepared_wrap(&mut digest, self.wrap)?;
+        Ok(digest.finish())
+    }
+}
+
+struct PreparedTextRequestDigestBuilder<'a> {
+    hasher: sha2::Sha256,
+    work_meter: Option<&'a OperationWorkMeter>,
+}
+
+impl<'a> PreparedTextRequestDigestBuilder<'a> {
+    fn new(work_meter: Option<&'a OperationWorkMeter>) -> Self {
+        use sha2::Digest;
+
+        Self {
+            hasher: sha2::Sha256::new(),
+            work_meter,
+        }
+    }
+
+    fn update(&mut self, value: impl AsRef<[u8]>) -> Result<(), TextLayoutError> {
+        use sha2::Digest;
+
+        let value = value.as_ref();
+        charge_text_operation_work(self.work_meter, value.len())?;
+        self.hasher.update(value);
+        Ok(())
+    }
+
+    fn update_field(&mut self, value: &[u8]) -> Result<(), TextLayoutError> {
+        self.update((value.len() as u64).to_le_bytes())?;
+        self.update(value)
+    }
+
+    fn finish(self) -> TextLayoutRequestDigest {
+        use sha2::Digest;
+
+        TextLayoutRequestDigest(self.hasher.finalize().into())
     }
 }
 
 fn text_projection_for_request(
     request: &PrepareTextRequest,
 ) -> Result<TextProjection, TextLayoutError> {
+    text_projection_for_request_with_meter(request, None)
+}
+
+fn text_projection_for_request_with_meter(
+    request: &PrepareTextRequest,
+    work_meter: Option<&OperationWorkMeter>,
+) -> Result<TextProjection, TextLayoutError> {
     validate_prepare_text_request(request)?;
+    charge_text_operation_work(work_meter, request.text().len())?;
     match request.projection_input {
-        PrepareTextProjectionInput::MermaidSource => {
-            TextProjection::new(request.text(), request.wrapping_typography().transform())
-        }
-        PrepareTextProjectionInput::FamilyNormalized => TextProjection::new_family_normalized(
-            request.text(),
+        PrepareTextProjectionInput::MermaidSource => TextProjection::build_with_options_and_budget(
+            Arc::from(request.text()),
             request.wrapping_typography().transform(),
+            MAX_TEXT_PROJECTION_BYTES,
+            true,
+            MAX_TEXT_PROJECTION_SPAN_BYTES,
+            work_meter,
         ),
+        PrepareTextProjectionInput::FamilyNormalized => {
+            TextProjection::build_with_options_and_budget(
+                Arc::from(request.text()),
+                request.wrapping_typography().transform(),
+                MAX_TEXT_PROJECTION_BYTES,
+                false,
+                MAX_TEXT_PROJECTION_SPAN_BYTES,
+                work_meter,
+            )
+        }
     }
     .map_err(text_projection_layout_error)
+}
+
+fn charge_text_operation_work(
+    work_meter: Option<&OperationWorkMeter>,
+    units: usize,
+) -> Result<(), TextLayoutError> {
+    if let Some(work_meter) = work_meter {
+        work_meter
+            .charge(units)
+            .map_err(|_| TextLayoutError::LimitExceeded("operation_work"))?;
+    }
+    Ok(())
 }
 
 fn validate_prepare_text_request(request: &PrepareTextRequest) -> Result<(), TextLayoutError> {
@@ -1249,90 +1450,112 @@ fn validate_prepare_text_request(request: &PrepareTextRequest) -> Result<(), Tex
     Ok(())
 }
 
-fn hash_text_style(hasher: &mut impl sha2::Digest, style: &ThemeTextStyle) {
-    update_hash_field(hasher, b"font-stack");
-    hasher.update((style.font_stack().families().len() as u64).to_le_bytes());
+fn hash_text_style(
+    digest: &mut PreparedTextRequestDigestBuilder<'_>,
+    style: &ThemeTextStyle,
+) -> Result<(), TextLayoutError> {
+    digest.update_field(b"font-stack")?;
+    digest.update((style.font_stack().families().len() as u64).to_le_bytes())?;
     for family in style.font_stack().families() {
-        update_hash_field(hasher, family.as_bytes());
+        digest.update_field(family.as_bytes())?;
     }
-    update_hash_field(hasher, b"font-size-px");
-    hasher.update(normalized_f32_bits(style.font_size_px()).to_le_bytes());
-    update_hash_field(hasher, b"font-weight");
-    hasher.update(style.font_weight().to_le_bytes());
-    update_hash_field(hasher, b"font-style");
-    update_hash_field(hasher, style.font_style().id().as_bytes());
-    update_hash_field(hasher, b"line-height");
+    digest.update_field(b"font-size-px")?;
+    digest.update(normalized_f32_bits(style.font_size_px()).to_le_bytes())?;
+    digest.update_field(b"font-weight")?;
+    digest.update(style.font_weight().to_le_bytes())?;
+    digest.update_field(b"font-style")?;
+    digest.update_field(style.font_style().id().as_bytes())?;
+    digest.update_field(b"line-height")?;
     match style.line_height() {
-        LineHeight::Normal => hasher.update([0]),
+        LineHeight::Normal => digest.update([0])?,
         LineHeight::Multiplier(value) => {
-            hasher.update([1]);
-            hasher.update(normalized_f32_bits(value).to_le_bytes());
+            digest.update([1])?;
+            digest.update(normalized_f32_bits(value).to_le_bytes())?;
         }
         LineHeight::Px(value) => {
-            hasher.update([2]);
-            hasher.update(normalized_f32_bits(value).to_le_bytes());
+            digest.update([2])?;
+            digest.update(normalized_f32_bits(value).to_le_bytes())?;
         }
     }
-    update_hash_field(hasher, b"letter-spacing-px");
-    hasher.update(normalized_f32_bits(style.letter_spacing_px()).to_le_bytes());
-    update_hash_field(hasher, b"word-spacing-px");
-    hasher.update(normalized_f32_bits(style.word_spacing_px()).to_le_bytes());
-    update_hash_field(hasher, b"transform");
-    hasher.update([text_transform_id(style.transform())]);
-    update_hash_field(hasher, b"decoration");
-    hasher.update([text_decoration_id(style.decoration())]);
-    update_hash_field(hasher, b"text-align");
-    hasher.update([text_align_id(style.text_align())]);
-    update_hash_field(hasher, b"white-space");
-    hasher.update([white_space_id(style.white_space())]);
-    update_hash_field(hasher, b"theme-wrap");
-    hasher.update([theme_wrap_id(style.wrap())]);
+    digest.update_field(b"letter-spacing-px")?;
+    digest.update(normalized_f32_bits(style.letter_spacing_px()).to_le_bytes())?;
+    digest.update_field(b"word-spacing-px")?;
+    digest.update(normalized_f32_bits(style.word_spacing_px()).to_le_bytes())?;
+    digest.update_field(b"transform")?;
+    digest.update([text_transform_id(style.transform())])?;
+    digest.update_field(b"decoration")?;
+    digest.update([text_decoration_id(style.decoration())])?;
+    digest.update_field(b"text-align")?;
+    digest.update([text_align_id(style.text_align())])?;
+    digest.update_field(b"white-space")?;
+    digest.update([white_space_id(style.white_space())])?;
+    digest.update_field(b"theme-wrap")?;
+    digest.update([theme_wrap_id(style.wrap())])?;
+    Ok(())
 }
 
-fn hash_optional_str(hasher: &mut impl sha2::Digest, tag: &[u8], value: Option<&str>) {
-    update_hash_field(hasher, tag);
+fn hash_optional_str(
+    digest: &mut PreparedTextRequestDigestBuilder<'_>,
+    tag: &[u8],
+    value: Option<&str>,
+) -> Result<(), TextLayoutError> {
+    digest.update_field(tag)?;
     match value {
         Some(value) => {
-            hasher.update([1]);
-            update_hash_field(hasher, value.as_bytes());
+            digest.update([1])?;
+            digest.update_field(value.as_bytes())?;
         }
-        None => hasher.update([0]),
+        None => digest.update([0])?,
     }
+    Ok(())
 }
 
-fn hash_string_sequence(hasher: &mut impl sha2::Digest, tag: &[u8], values: &[Arc<str>]) {
-    update_hash_field(hasher, tag);
-    hasher.update((values.len() as u64).to_le_bytes());
+fn hash_string_sequence(
+    digest: &mut PreparedTextRequestDigestBuilder<'_>,
+    tag: &[u8],
+    values: &[Arc<str>],
+) -> Result<(), TextLayoutError> {
+    digest.update_field(tag)?;
+    digest.update((values.len() as u64).to_le_bytes())?;
     for value in values {
-        update_hash_field(hasher, value.as_bytes());
+        digest.update_field(value.as_bytes())?;
     }
+    Ok(())
 }
 
-fn hash_prepared_wrap(hasher: &mut impl sha2::Digest, wrap: PreparedTextWrap) {
+fn hash_prepared_wrap(
+    digest: &mut PreparedTextRequestDigestBuilder<'_>,
+    wrap: PreparedTextWrap,
+) -> Result<(), TextLayoutError> {
     match wrap {
-        PreparedTextWrap::SingleRun => hasher.update([0]),
+        PreparedTextWrap::SingleRun => digest.update([0])?,
         PreparedTextWrap::SvgLike {
             max_width_px,
             break_long_words,
         } => {
-            hasher.update([1, u8::from(break_long_words)]);
-            hash_optional_f64(hasher, max_width_px);
+            digest.update([1, u8::from(break_long_words)])?;
+            hash_optional_f64(digest, max_width_px)?;
         }
         PreparedTextWrap::HtmlLike { max_width_px } => {
-            hasher.update([2]);
-            hash_optional_f64(hasher, max_width_px);
+            digest.update([2])?;
+            hash_optional_f64(digest, max_width_px)?;
         }
     }
+    Ok(())
 }
 
-fn hash_optional_f64(hasher: &mut impl sha2::Digest, value: Option<f64>) {
+fn hash_optional_f64(
+    digest: &mut PreparedTextRequestDigestBuilder<'_>,
+    value: Option<f64>,
+) -> Result<(), TextLayoutError> {
     match value {
         Some(value) => {
-            hasher.update([1]);
-            hasher.update(normalized_f64_bits(value).to_le_bytes());
+            digest.update([1])?;
+            digest.update(normalized_f64_bits(value).to_le_bytes())?;
         }
-        None => hasher.update([0]),
+        None => digest.update([0])?,
     }
+    Ok(())
 }
 
 const fn normalized_f32_bits(value: f32) -> u32 {
@@ -1442,6 +1665,32 @@ impl PreparedTextLine {
             computed_length_px,
             bbox_x,
             bbox_height_px,
+        })
+    }
+
+    fn from_response(response: &PreparedTextLineResponse) -> Result<Self, TextLayoutError> {
+        if !response.computed_length_px.is_finite()
+            || response.computed_length_px < 0.0
+            || response.computed_length_px > MAX_PREPARED_TEXT_GEOMETRY_PX
+            || !response.bbox_x.0.is_finite()
+            || !response.bbox_x.1.is_finite()
+            || response.bbox_x.0 < 0.0
+            || response.bbox_x.1 < 0.0
+            || response.bbox_x.0 > MAX_PREPARED_TEXT_GEOMETRY_PX
+            || response.bbox_x.1 > MAX_PREPARED_TEXT_GEOMETRY_PX
+            || !response.bbox_height_px.is_finite()
+            || response.bbox_height_px < 0.0
+            || response.bbox_height_px > MAX_PREPARED_TEXT_GEOMETRY_PX
+            || response.visible_range.start() > response.visible_range.end()
+        {
+            return Err(TextLayoutError::InvalidPreparedText);
+        }
+        Ok(Self {
+            text: Arc::clone(&response.text),
+            visible_range: response.visible_range,
+            computed_length_px: response.computed_length_px,
+            bbox_x: response.bbox_x,
+            bbox_height_px: response.bbox_height_px,
         })
     }
 
@@ -1813,7 +2062,7 @@ impl PreparedTextBackendRequest {
         request: &PrepareTextRequest,
     ) -> Result<Self, TextLayoutError> {
         let projection = text_projection_for_request(request)?;
-        Self::from_projection(binding, request, projection)
+        Self::from_projection_with_digest(binding, request, projection, request.digest())
     }
 
     fn from_projection(
@@ -1821,7 +2070,16 @@ impl PreparedTextBackendRequest {
         request: &PrepareTextRequest,
         projection: TextProjection,
     ) -> Result<Self, TextLayoutError> {
-        if binding.request_digest() != request.digest() || projection.source() != request.text() {
+        Self::from_projection_with_digest(binding, request, projection, request.digest())
+    }
+
+    fn from_projection_with_digest(
+        binding: PreparedTextCallBinding,
+        request: &PrepareTextRequest,
+        projection: TextProjection,
+        request_digest: TextLayoutRequestDigest,
+    ) -> Result<Self, TextLayoutError> {
+        if binding.request_digest() != request_digest || projection.source() != request.text() {
             return Err(TextLayoutError::RequestDigestMismatch);
         }
         Ok(Self {
@@ -1912,53 +2170,52 @@ impl PreparedTextResponse {
         line_height_px: f64,
         raw_width_px: Option<f64>,
     ) -> Result<Self, TextLayoutError> {
-        let lines = collect_bounded(lines, MAX_PREPARED_TEXT_LINES, "lines")?;
-        let runs = collect_bounded(runs, MAX_PREPARED_TEXT_RUNS, "runs")?;
-        if lines.is_empty()
-            || !line_height_px.is_finite()
-            || line_height_px <= 0.0
-            || line_height_px > MAX_PREPARED_TEXT_GEOMETRY_PX
-            || raw_width_px.is_some_and(|width| {
-                !width.is_finite() || width < 0.0 || width > MAX_PREPARED_TEXT_GEOMETRY_PX
-            })
-        {
-            return Err(TextLayoutError::InvalidPreparedText);
-        }
-        validate_prepared_text_response_hard_budget(&lines, &runs, &[])?;
-        Ok(Self {
+        // External producers may already have allocated each yielded DTO. This constructor still
+        // stops pulling immediately at the hard retained-byte boundary; request-relative and
+        // operation-wide retained budgets remain a deferred C4b host-protocol concern.
+        let mut builder = PreparedTextResponseBuilder::new(
             binding,
-            lines: lines.into(),
-            runs: runs.into(),
             line_height_px,
             raw_width_px,
-            diagnostics: Arc::from([]),
-            invalidated: false,
-        })
+            MAX_PREPARED_TEXT_RESPONSE_BYTES,
+        )?;
+        for line in lines {
+            builder.push_line(line)?;
+        }
+        for run in runs {
+            builder.push_run(run)?;
+        }
+        builder.finish()
     }
 
     pub fn invalidated(
         binding: PreparedTextCallBinding,
         diagnostics: impl IntoIterator<Item = impl Into<String>>,
     ) -> Result<Self, TextLayoutError> {
-        let diagnostics = admit_text_diagnostics(diagnostics)?;
-        validate_prepared_text_response_hard_budget(&[], &[], &diagnostics)?;
-        Ok(Self {
-            binding,
-            lines: Arc::from([]),
-            runs: Arc::from([]),
-            line_height_px: 1.0,
-            raw_width_px: None,
-            diagnostics,
-            invalidated: true,
-        })
+        let mut builder =
+            PreparedTextResponseBuilder::new(binding, 1.0, None, MAX_PREPARED_TEXT_RESPONSE_BYTES)?;
+        builder.invalidated = true;
+        for diagnostic in diagnostics {
+            builder.push_diagnostic(diagnostic)?;
+        }
+        builder.finish()
     }
 
     pub fn with_diagnostics(
         mut self,
         diagnostics: impl IntoIterator<Item = impl Into<String>>,
     ) -> Result<Self, TextLayoutError> {
-        self.diagnostics = admit_text_diagnostics(diagnostics)?;
-        validate_prepared_text_response_hard_budget(&self.lines, &self.runs, &self.diagnostics)?;
+        let retained = prepared_text_response_bytes(&self.lines, &self.runs, &[])
+            .ok_or(TextLayoutError::LimitExceeded("response.bytes"))?;
+        let mut budget = PreparedTextResponseRetainedBudget::with_retained(
+            MAX_PREPARED_TEXT_RESPONSE_BYTES,
+            retained,
+        )?;
+        let mut admitted = Vec::new();
+        for diagnostic in diagnostics {
+            push_prepared_text_diagnostic(&mut admitted, diagnostic, &mut budget)?;
+        }
+        self.diagnostics = admitted.into();
         Ok(self)
     }
 
@@ -1999,36 +2256,160 @@ impl PreparedTextResponse {
     }
 }
 
-fn admit_text_diagnostics(
-    diagnostics: impl IntoIterator<Item = impl Into<String>>,
-) -> Result<Arc<[Arc<str>]>, TextLayoutError> {
-    let mut admitted = Vec::new();
-    for diagnostic in diagnostics {
-        if admitted.len() == MAX_PREPARED_TEXT_DIAGNOSTICS {
-            return Err(TextLayoutError::LimitExceeded("diagnostics"));
-        }
-        let diagnostic = diagnostic.into();
-        if diagnostic.len() > MAX_PREPARED_TEXT_DIAGNOSTIC_BYTES {
-            return Err(TextLayoutError::LimitExceeded("diagnostics"));
-        }
-        admitted.push(Arc::<str>::from(diagnostic));
-    }
-    Ok(admitted.into())
+struct PreparedTextResponseRetainedBudget {
+    maximum: usize,
+    retained: usize,
 }
 
-fn collect_bounded<T>(
-    values: impl IntoIterator<Item = T>,
-    limit: usize,
-    field: &'static str,
-) -> Result<Vec<T>, TextLayoutError> {
-    let mut admitted = Vec::new();
-    for value in values {
-        if admitted.len() == limit {
-            return Err(TextLayoutError::LimitExceeded(field));
+impl PreparedTextResponseRetainedBudget {
+    fn new(maximum: usize) -> Self {
+        Self {
+            maximum,
+            retained: 0,
         }
-        admitted.push(value);
     }
-    Ok(admitted)
+
+    fn with_retained(maximum: usize, retained: usize) -> Result<Self, TextLayoutError> {
+        if retained > maximum {
+            return Err(TextLayoutError::LimitExceeded("response.bytes"));
+        }
+        Ok(Self { maximum, retained })
+    }
+
+    fn preflight(&self, additional: usize) -> Result<(), TextLayoutError> {
+        let retained = self
+            .retained
+            .checked_add(additional)
+            .ok_or(TextLayoutError::LimitExceeded("response.bytes"))?;
+        if retained > self.maximum {
+            return Err(TextLayoutError::LimitExceeded("response.bytes"));
+        }
+        Ok(())
+    }
+
+    fn reserve(&mut self, additional: usize) -> Result<(), TextLayoutError> {
+        self.preflight(additional)?;
+        self.retained = self
+            .retained
+            .checked_add(additional)
+            .ok_or(TextLayoutError::LimitExceeded("response.bytes"))?;
+        Ok(())
+    }
+}
+
+struct PreparedTextResponseBuilder {
+    binding: PreparedTextCallBinding,
+    lines: Vec<PreparedTextLineResponse>,
+    runs: Vec<PreparedTextRunResponse>,
+    line_height_px: f64,
+    raw_width_px: Option<f64>,
+    diagnostics: Vec<Arc<str>>,
+    invalidated: bool,
+    budget: PreparedTextResponseRetainedBudget,
+}
+
+impl PreparedTextResponseBuilder {
+    fn new(
+        binding: PreparedTextCallBinding,
+        line_height_px: f64,
+        raw_width_px: Option<f64>,
+        maximum_bytes: usize,
+    ) -> Result<Self, TextLayoutError> {
+        if !line_height_px.is_finite()
+            || line_height_px <= 0.0
+            || line_height_px > MAX_PREPARED_TEXT_GEOMETRY_PX
+            || raw_width_px.is_some_and(|width| {
+                !width.is_finite() || width < 0.0 || width > MAX_PREPARED_TEXT_GEOMETRY_PX
+            })
+        {
+            return Err(TextLayoutError::InvalidPreparedText);
+        }
+        Ok(Self {
+            binding,
+            lines: Vec::new(),
+            runs: Vec::new(),
+            line_height_px,
+            raw_width_px,
+            diagnostics: Vec::new(),
+            invalidated: false,
+            budget: PreparedTextResponseRetainedBudget::new(maximum_bytes),
+        })
+    }
+
+    fn reserve_line(&mut self, text_bytes: usize) -> Result<(), TextLayoutError> {
+        if self.lines.len() == MAX_PREPARED_TEXT_LINES {
+            return Err(TextLayoutError::LimitExceeded("lines"));
+        }
+        self.budget.reserve(
+            PREPARED_TEXT_LINE_RECORD_BYTES
+                .checked_add(text_bytes)
+                .ok_or(TextLayoutError::LimitExceeded("response.bytes"))?,
+        )
+    }
+
+    fn preflight_runs(&self, additional_runs: usize) -> Result<(), TextLayoutError> {
+        if self.runs.len().saturating_add(additional_runs) > MAX_PREPARED_TEXT_RUNS {
+            return Err(TextLayoutError::LimitExceeded("runs"));
+        }
+        self.budget.preflight(
+            additional_runs
+                .checked_mul(PREPARED_TEXT_RUN_RECORD_BYTES)
+                .ok_or(TextLayoutError::LimitExceeded("response.bytes"))?,
+        )
+    }
+
+    fn push_line(&mut self, line: PreparedTextLineResponse) -> Result<(), TextLayoutError> {
+        self.reserve_line(line.text().len())?;
+        self.push_reserved_line(line);
+        Ok(())
+    }
+
+    fn push_reserved_line(&mut self, line: PreparedTextLineResponse) {
+        self.lines.push(line);
+    }
+
+    fn push_run(&mut self, run: PreparedTextRunResponse) -> Result<(), TextLayoutError> {
+        self.preflight_runs(1)?;
+        self.budget.reserve(PREPARED_TEXT_RUN_RECORD_BYTES)?;
+        self.runs.push(run);
+        Ok(())
+    }
+
+    fn push_diagnostic(&mut self, diagnostic: impl Into<String>) -> Result<(), TextLayoutError> {
+        push_prepared_text_diagnostic(&mut self.diagnostics, diagnostic, &mut self.budget)
+    }
+
+    fn finish(self) -> Result<PreparedTextResponse, TextLayoutError> {
+        if !self.invalidated && self.lines.is_empty() {
+            return Err(TextLayoutError::InvalidPreparedText);
+        }
+        Ok(PreparedTextResponse {
+            binding: self.binding,
+            lines: self.lines.into(),
+            runs: self.runs.into(),
+            line_height_px: self.line_height_px,
+            raw_width_px: self.raw_width_px,
+            diagnostics: self.diagnostics.into(),
+            invalidated: self.invalidated,
+        })
+    }
+}
+
+fn push_prepared_text_diagnostic(
+    admitted: &mut Vec<Arc<str>>,
+    diagnostic: impl Into<String>,
+    budget: &mut PreparedTextResponseRetainedBudget,
+) -> Result<(), TextLayoutError> {
+    if admitted.len() == MAX_PREPARED_TEXT_DIAGNOSTICS {
+        return Err(TextLayoutError::LimitExceeded("diagnostics"));
+    }
+    let diagnostic = diagnostic.into();
+    if diagnostic.len() > MAX_PREPARED_TEXT_DIAGNOSTIC_BYTES {
+        return Err(TextLayoutError::LimitExceeded("diagnostics"));
+    }
+    budget.reserve(diagnostic.len())?;
+    admitted.push(Arc::<str>::from(diagnostic));
+    Ok(())
 }
 
 fn prepared_text_response_bytes(
@@ -2048,17 +2429,17 @@ fn prepared_text_response_bytes(
         .checked_add(runs.len().checked_mul(PREPARED_TEXT_RUN_RECORD_BYTES)?)
 }
 
-fn validate_prepared_text_response_hard_budget(
-    lines: &[PreparedTextLineResponse],
-    runs: &[PreparedTextRunResponse],
-    diagnostics: &[Arc<str>],
-) -> Result<(), TextLayoutError> {
-    let estimated = prepared_text_response_bytes(lines, runs, diagnostics)
-        .ok_or(TextLayoutError::LimitExceeded("response.bytes"))?;
-    if estimated > MAX_PREPARED_TEXT_RESPONSE_BYTES {
-        return Err(TextLayoutError::LimitExceeded("response.bytes"));
-    }
-    Ok(())
+fn prepared_text_request_response_budget(visible_bytes: usize) -> usize {
+    visible_bytes
+        .checked_mul(
+            1usize
+                .saturating_add(PREPARED_TEXT_LINE_RECORD_BYTES)
+                .saturating_add(PREPARED_TEXT_RUN_RECORD_BYTES),
+        )
+        .and_then(|bytes| bytes.checked_add(PREPARED_TEXT_LINE_RECORD_BYTES))
+        .and_then(|bytes| bytes.checked_add(4_096))
+        .unwrap_or(MAX_PREPARED_TEXT_RESPONSE_BYTES)
+        .min(MAX_PREPARED_TEXT_RESPONSE_BYTES)
 }
 
 /// Immutable output of one label preparation.
@@ -2114,6 +2495,34 @@ impl PreparedText {
     ) -> Result<Self, TextLayoutError> {
         let lines = lines.into_iter().collect::<Vec<_>>();
         let runs = runs.into_iter().collect::<Vec<_>>();
+        let budget = PreparedTextAdmissionBudget::new(None);
+        validate_prepared_text_lines(&projection, &lines, &budget)?;
+        let summary = summarize_prepared_text_lines(&lines, &budget)?;
+        Self::new_with_validated_evidence(
+            projection,
+            lines,
+            runs,
+            summary,
+            line_height_px,
+            raw_width_px,
+            diagnostics,
+            evidence_context,
+            &budget,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn new_with_validated_evidence(
+        projection: TextProjection,
+        lines: Vec<PreparedTextLine>,
+        runs: Vec<PreparedTextLabelEvidence>,
+        summary: PreparedTextLineSummary,
+        line_height_px: f64,
+        raw_width_px: Option<f64>,
+        diagnostics: Arc<[Arc<str>]>,
+        evidence_context: Option<PreparedTextLabelEvidenceContext>,
+        budget: &PreparedTextAdmissionBudget<'_>,
+    ) -> Result<Self, TextLayoutError> {
         if lines.is_empty()
             || lines.len() > projection.visible().len().saturating_add(1)
             || runs.len() > projection.visible().len().saturating_add(1)
@@ -2126,31 +2535,15 @@ impl PreparedText {
         {
             return Err(TextLayoutError::InvalidPreparedText);
         }
-        validate_prepared_text_lines(&projection, &lines)?;
-        let computed_length_px = lines
-            .iter()
-            .map(PreparedTextLine::computed_length_px)
-            .fold(0.0, f64::max);
-        let bbox_x = lines.iter().map(PreparedTextLine::bbox_x).fold(
-            (0.0_f64, 0.0_f64),
-            |(left, right), (line_left, line_right)| (left.max(line_left), right.max(line_right)),
-        );
-        let bbox_width_px = lines
-            .iter()
-            .map(PreparedTextLine::bbox_width_px)
-            .fold(0.0, f64::max);
-        let max_line_bbox_height = lines
-            .iter()
-            .map(PreparedTextLine::bbox_height_px)
-            .fold(0.0, f64::max);
         let line_count = lines.len();
         let metrics = TextMetrics {
-            width: computed_length_px.max(bbox_width_px),
+            width: summary.computed_length_px.max(summary.bbox_width_px),
             height: line_height_px * line_count as f64,
             line_count,
         };
-        let bbox_height_px = max_line_bbox_height
-            .max(line_height_px * line_count.saturating_sub(1) as f64 + max_line_bbox_height);
+        let bbox_height_px = summary.max_line_bbox_height_px.max(
+            line_height_px * line_count.saturating_sub(1) as f64 + summary.max_line_bbox_height_px,
+        );
         if !metrics.height.is_finite()
             || metrics.height > MAX_PREPARED_TEXT_GEOMETRY_PX
             || !bbox_height_px.is_finite()
@@ -2158,8 +2551,12 @@ impl PreparedText {
         {
             return Err(TextLayoutError::InvalidPreparedText);
         }
+        budget.charge(lines.len().saturating_add(runs.len()))?;
         let lines: Arc<[PreparedTextLine]> = lines.into();
         let runs: Arc<[PreparedTextLabelEvidence]> = runs.into();
+        if evidence_context.is_some() {
+            budget.charge(lines.len())?;
+        }
         let label_ledger_entry =
             evidence_context.map(|context| PendingPreparedTextLabelLedgerEntry {
                 catalog_fingerprint: context.catalog_fingerprint,
@@ -2180,9 +2577,9 @@ impl PreparedText {
             label_ledger_entry,
             metrics,
             raw_width_px,
-            computed_length_px,
-            bbox_x,
-            bbox_width_px,
+            computed_length_px: summary.computed_length_px,
+            bbox_x: summary.bbox_x,
+            bbox_width_px: summary.bbox_width_px,
             bbox_height_px,
             diagnostics,
         })
@@ -2271,24 +2668,157 @@ impl PreparedTextFuzzProbe {
     }
 }
 
+fn classify_prepared_text_fuzz_probe<T>(
+    result: Result<T, TextLayoutError>,
+) -> Result<Option<T>, String> {
+    match result {
+        Ok(probe) => Ok(Some(probe)),
+        Err(TextLayoutError::GlyphUnavailable) => Ok(None),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+#[cfg(feature = "fuzzing")]
+impl NativeTextLayoutBackend {
+    /// Runs the fuzz-only probe while treating a missing catalog glyph as an expected input case.
+    #[doc(hidden)]
+    pub fn prepare_text_probe_for_fuzz(
+        &self,
+        catalog_request: &PrepareCatalogRequest,
+        text_request: &PrepareTextRequest,
+    ) -> Result<Option<PreparedTextFuzzProbe>, String> {
+        classify_prepared_text_fuzz_probe(self.prepare_text_probe(catalog_request, text_request))
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PreparedTextLineSummary {
+    computed_length_px: f64,
+    bbox_x: (f64, f64),
+    bbox_width_px: f64,
+    max_line_bbox_height_px: f64,
+}
+
+struct PreparedTextAdmissionBudget<'a> {
+    work_meter: Option<&'a OperationWorkMeter>,
+}
+
+impl<'a> PreparedTextAdmissionBudget<'a> {
+    const fn new(work_meter: Option<&'a OperationWorkMeter>) -> Self {
+        Self { work_meter }
+    }
+
+    fn charge(&self, units: usize) -> Result<(), TextLayoutError> {
+        charge_text_operation_work(self.work_meter, units)
+    }
+}
+
+fn summarize_prepared_text_lines(
+    lines: &[PreparedTextLine],
+    budget: &PreparedTextAdmissionBudget<'_>,
+) -> Result<PreparedTextLineSummary, TextLayoutError> {
+    budget.charge(lines.len())?;
+    let mut summary = PreparedTextLineSummary {
+        computed_length_px: 0.0,
+        bbox_x: (0.0, 0.0),
+        bbox_width_px: 0.0,
+        max_line_bbox_height_px: 0.0,
+    };
+    for line in lines {
+        summary.computed_length_px = summary.computed_length_px.max(line.computed_length_px());
+        let line_bbox_x = line.bbox_x();
+        summary.bbox_x.0 = summary.bbox_x.0.max(line_bbox_x.0);
+        summary.bbox_x.1 = summary.bbox_x.1.max(line_bbox_x.1);
+        summary.bbox_width_px = summary.bbox_width_px.max(line.bbox_width_px());
+        summary.max_line_bbox_height_px =
+            summary.max_line_bbox_height_px.max(line.bbox_height_px());
+    }
+    Ok(summary)
+}
+
+struct OrderedProjectionRangeCursor<'a> {
+    projection: &'a TextProjection,
+    next_span: usize,
+    previous_end: usize,
+}
+
+impl<'a> OrderedProjectionRangeCursor<'a> {
+    const fn new(projection: &'a TextProjection) -> Self {
+        Self {
+            projection,
+            next_span: 0,
+            previous_end: 0,
+        }
+    }
+
+    fn admit(
+        &mut self,
+        range: TextByteRange,
+        budget: &PreparedTextAdmissionBudget<'_>,
+        invalid: TextLayoutError,
+    ) -> Result<std::ops::Range<usize>, TextLayoutError> {
+        budget.charge(1)?;
+        let start = range.start();
+        let end = range.end();
+        if start > end
+            || start < self.previous_end
+            || end > self.projection.visible().len()
+            || !self.projection.visible().is_char_boundary(start)
+            || !self.projection.visible().is_char_boundary(end)
+        {
+            return Err(invalid);
+        }
+
+        let spans = self.projection.spans();
+        while let Some(span) = spans.get(self.next_span) {
+            budget.charge(1)?;
+            if span.visible().end() <= start {
+                self.next_span = self.next_span.saturating_add(1);
+                continue;
+            }
+            break;
+        }
+
+        let first = self.next_span;
+        let mut atom_cursor = start;
+        while let Some(span) = spans.get(self.next_span) {
+            budget.charge(1)?;
+            let visible = span.visible();
+            if visible.start() >= end {
+                break;
+            }
+            if visible.start() < start
+                || visible.end() > end
+                || visible.start() != atom_cursor
+                || visible.end() < visible.start()
+            {
+                return Err(invalid);
+            }
+            atom_cursor = visible.end();
+            self.next_span = self.next_span.saturating_add(1);
+        }
+        if atom_cursor != end {
+            return Err(invalid);
+        }
+        self.previous_end = end;
+        Ok(first..self.next_span)
+    }
+}
+
 fn validate_prepared_text_lines(
     projection: &TextProjection,
     lines: &[PreparedTextLine],
+    budget: &PreparedTextAdmissionBudget<'_>,
 ) -> Result<(), TextLayoutError> {
-    let mut previous_end = 0;
+    budget.charge(lines.len())?;
+    let mut cursor = OrderedProjectionRangeCursor::new(projection);
     for line in lines {
         let range = line.visible_range;
-        if range.start() < previous_end
-            || range.end() > projection.visible().len()
-            || !projection.visible().is_char_boundary(range.start())
-            || !projection.visible().is_char_boundary(range.end())
-            || !projection.is_visible_atom_boundary(range.start())
-            || !projection.is_visible_atom_boundary(range.end())
-            || &projection.visible()[range.as_range()] != line.text()
-        {
+        cursor.admit(range, budget, TextLayoutError::InvalidPreparedText)?;
+        budget.charge(line.text().len())?;
+        if projection.visible().get(range.as_range()) != Some(line.text()) {
             return Err(TextLayoutError::InvalidPreparedText);
         }
-        previous_end = range.end();
     }
     Ok(())
 }
@@ -2296,40 +2826,67 @@ fn validate_prepared_text_lines(
 fn validate_prepared_text_response_budget(
     projection: &TextProjection,
     response: &PreparedTextResponse,
-) -> Result<(), TextLayoutError> {
+    budget: &PreparedTextAdmissionBudget<'_>,
+) -> Result<PreparedTextLineSummary, TextLayoutError> {
     let visible_bytes = projection.visible().len();
     if response.lines.len() > visible_bytes.saturating_add(1) || response.runs.len() > visible_bytes
     {
         return Err(TextLayoutError::LimitExceeded("response.records"));
     }
-    let line_text_bytes = response
-        .lines
-        .iter()
-        .try_fold(0usize, |total, line| total.checked_add(line.text().len()));
-    if line_text_bytes.is_none_or(|bytes| bytes > visible_bytes) {
+    budget.charge(response.lines.len())?;
+    let mut line_text_bytes = 0usize;
+    let mut computed_length_px = 0.0_f64;
+    let mut bbox_x = (0.0_f64, 0.0_f64);
+    let mut bbox_width_px = 0.0_f64;
+    let mut max_line_bbox_height_px = 0.0_f64;
+    for line in response.lines.iter() {
+        line_text_bytes = line_text_bytes
+            .checked_add(line.text().len())
+            .ok_or(TextLayoutError::LimitExceeded("response.text_bytes"))?;
+        computed_length_px = computed_length_px.max(line.computed_length_px());
+        let line_bbox_x = line.bbox_x();
+        bbox_x.0 = bbox_x.0.max(line_bbox_x.0);
+        bbox_x.1 = bbox_x.1.max(line_bbox_x.1);
+        bbox_width_px = bbox_width_px.max(line_bbox_x.0 + line_bbox_x.1);
+        max_line_bbox_height_px = max_line_bbox_height_px.max(line.bbox_height_px());
+    }
+    if line_text_bytes > visible_bytes {
         return Err(TextLayoutError::LimitExceeded("response.text_bytes"));
     }
-    let estimated =
-        prepared_text_response_bytes(&response.lines, &response.runs, &response.diagnostics)
-            .ok_or(TextLayoutError::LimitExceeded("response.bytes"))?;
-    let request_budget = visible_bytes
-        .checked_mul(16)
-        .and_then(|bytes| bytes.checked_add(4_096))
-        .unwrap_or(MAX_PREPARED_TEXT_RESPONSE_BYTES)
-        .min(MAX_PREPARED_TEXT_RESPONSE_BYTES);
+    budget.charge(response.diagnostics.len())?;
+    let diagnostic_bytes = response
+        .diagnostics
+        .iter()
+        .try_fold(0usize, |total, diagnostic| {
+            total.checked_add(diagnostic.len())
+        })
+        .ok_or(TextLayoutError::LimitExceeded("response.bytes"))?;
+    let estimated = line_text_bytes
+        .checked_add(diagnostic_bytes)
+        .and_then(|bytes| {
+            response
+                .lines
+                .len()
+                .checked_mul(PREPARED_TEXT_LINE_RECORD_BYTES)
+                .and_then(|records| bytes.checked_add(records))
+        })
+        .and_then(|bytes| {
+            response
+                .runs
+                .len()
+                .checked_mul(PREPARED_TEXT_RUN_RECORD_BYTES)
+                .and_then(|records| bytes.checked_add(records))
+        })
+        .ok_or(TextLayoutError::LimitExceeded("response.bytes"))?;
+    let request_budget = prepared_text_request_response_budget(visible_bytes);
     if estimated > request_budget {
         return Err(TextLayoutError::LimitExceeded("response.bytes"));
     }
 
     let line_count = response.lines.len() as f64;
     let total_height = response.line_height_px * line_count;
-    let max_line_bbox_height = response
-        .lines
-        .iter()
-        .map(PreparedTextLineResponse::bbox_height_px)
-        .fold(0.0_f64, f64::max);
     let bbox_height = response.line_height_px * response.lines.len().saturating_sub(1) as f64
-        + max_line_bbox_height;
+        + max_line_bbox_height_px;
     if !total_height.is_finite()
         || total_height > MAX_PREPARED_TEXT_GEOMETRY_PX
         || !bbox_height.is_finite()
@@ -2337,7 +2894,12 @@ fn validate_prepared_text_response_budget(
     {
         return Err(TextLayoutError::InvalidPreparedText);
     }
-    Ok(())
+    Ok(PreparedTextLineSummary {
+        computed_length_px,
+        bbox_x,
+        bbox_width_px,
+        max_line_bbox_height_px,
+    })
 }
 
 fn validate_prepared_text_coverage(
@@ -2346,6 +2908,7 @@ fn validate_prepared_text_coverage(
     wrap: PreparedTextWrap,
     white_space: WhiteSpace,
     raw_width_px: Option<f64>,
+    budget: &PreparedTextAdmissionBudget<'_>,
 ) -> Result<(), TextLayoutError> {
     let expects_raw_width = matches!(wrap, PreparedTextWrap::HtmlLike { .. });
     if expects_raw_width != raw_width_px.is_some() {
@@ -2362,20 +2925,27 @@ fn validate_prepared_text_coverage(
             | PreparedTextWrap::HtmlLike { max_width_px: None }
     );
     if exact_explicit_lines {
-        let expected = split_projected_visible_lines(projection.visible());
-        if expected.len() != lines.len()
-            || expected
-                .iter()
-                .zip(lines)
-                .any(|(expected, actual)| expected.visible_range() != actual.visible_range)
-        {
+        budget.charge(projection.visible().len())?;
+        budget.charge(lines.len())?;
+        let mut expected = projected_visible_lines(projection.visible());
+        for actual in lines {
+            if expected
+                .next()
+                .is_none_or(|expected| expected.visible_range() != actual.visible_range)
+            {
+                return Err(TextLayoutError::InvalidPreparedText);
+            }
+        }
+        if expected.next().is_some() {
             return Err(TextLayoutError::InvalidPreparedText);
         }
         return Ok(());
     }
 
+    budget.charge(lines.len())?;
     let mut previous_end = 0;
     for line in lines {
+        budget.charge(line.text().len())?;
         if line.text().contains('\n') {
             return Err(TextLayoutError::InvalidPreparedText);
         }
@@ -2383,6 +2953,7 @@ fn validate_prepared_text_coverage(
             .visible()
             .get(previous_end..line.visible_range.start())
             .ok_or(TextLayoutError::InvalidPreparedText)?;
+        budget.charge(gap.len())?;
         if !omittable_wrapped_gap(gap, white_space) {
             return Err(TextLayoutError::InvalidPreparedText);
         }
@@ -2392,6 +2963,7 @@ fn validate_prepared_text_coverage(
         .visible()
         .get(previous_end..)
         .ok_or(TextLayoutError::InvalidPreparedText)?;
+    budget.charge(suffix.len())?;
     if !omittable_wrapped_gap(suffix, white_space) {
         return Err(TextLayoutError::InvalidPreparedText);
     }
@@ -2443,7 +3015,7 @@ pub struct TextLayoutBackendIdentity {
 }
 
 impl TextLayoutBackendIdentity {
-    pub fn new(
+    pub(crate) fn new(
         name: impl Into<String>,
         version: impl Into<String>,
     ) -> Result<Self, TextLayoutError> {
@@ -2591,8 +3163,10 @@ struct PreparedTextLayoutCandidate {
     capabilities: TextLayoutCapabilities,
     font_source: FontSource,
     face_evidence: TextLayoutFaceEvidence,
+    face_keys: Arc<[PreparedTextFaceKey]>,
     session_token: TextLayoutSessionToken,
     session: Arc<dyn PreparedTextBackendSession>,
+    native_session: Option<Arc<NativeCatalogTextMeasurer>>,
     fallback: Option<HostMeasurementFallback>,
     host_dependent: bool,
     evidence_provenance: PreparedTextLabelProvenance,
@@ -2635,6 +3209,7 @@ pub struct PreparedTextLayoutResponse {
     face_evidence: TextLayoutFaceEvidence,
     session_token: TextLayoutSessionToken,
     session: Arc<dyn PreparedTextBackendSession>,
+    native_session: Option<Arc<NativeCatalogTextMeasurer>>,
 }
 
 impl PreparedTextLayoutResponse {
@@ -2658,7 +3233,13 @@ impl PreparedTextLayoutResponse {
             face_evidence,
             session_token,
             session,
+            native_session: None,
         })
+    }
+
+    fn with_native_session(mut self, session: Arc<NativeCatalogTextMeasurer>) -> Self {
+        self.native_session = Some(session);
+        self
     }
 
     pub const fn catalog_fingerprint(&self) -> FontCatalogFingerprint {
@@ -2865,13 +3446,16 @@ impl PreparedTextLayoutBuilder {
         if host_dependent && portability == ThemePortabilityRequirement::RequirePortable {
             return Err(TextLayoutError::HostDependentNotPortable);
         }
+        let face_keys = prepared_text_face_keys(&self.request.catalog, &response.face_evidence)?;
         self.candidates.push(PreparedTextLayoutCandidate {
             backend: response.backend,
             capabilities: response.capabilities,
             font_source: response.font_source,
             face_evidence: response.face_evidence,
+            face_keys,
             session_token: response.session_token,
             session: response.session,
+            native_session: response.native_session,
             fallback,
             host_dependent,
             evidence_provenance,
@@ -2907,6 +3491,29 @@ impl PreparedTextLayoutBuilder {
             })),
         })
     }
+}
+
+fn prepared_text_face_keys(
+    catalog: &FontCatalog,
+    evidence: &TextLayoutFaceEvidence,
+) -> Result<Arc<[PreparedTextFaceKey]>, TextLayoutError> {
+    let assets = catalog
+        .assets()
+        .iter()
+        .map(|asset| (asset.id(), asset.fingerprint()))
+        .collect::<BTreeMap<_, _>>();
+    evidence
+        .faces()
+        .iter()
+        .map(|face| {
+            assets
+                .get(face.asset_id())
+                .copied()
+                .map(|fingerprint| PreparedTextFaceKey::new(fingerprint, face.face_index()))
+                .ok_or(TextLayoutError::LoadedFaceEvidenceMismatch)
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(Arc::from)
 }
 
 fn validate_catalog_response_binding(
@@ -3084,8 +3691,24 @@ impl PreparedTextLayout {
         &self,
         request: &PrepareTextRequest,
     ) -> Result<PreparedText, TextLayoutError> {
-        let projection = text_projection_for_request(request)?;
-        let request_digest = request.digest();
+        self.prepare_text_internal(request, None)
+    }
+
+    pub(crate) fn prepare_text_with_work_meter(
+        &self,
+        request: &PrepareTextRequest,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<PreparedText, TextLayoutError> {
+        self.prepare_text_internal(request, Some(work_meter))
+    }
+
+    fn prepare_text_internal(
+        &self,
+        request: &PrepareTextRequest,
+        work_meter: Option<&OperationWorkMeter>,
+    ) -> Result<PreparedText, TextLayoutError> {
+        let projection = text_projection_for_request_with_meter(request, work_meter)?;
+        let request_digest = request.digest_with_work_meter(work_meter)?;
         let mut last_error = None;
         for (candidate_index, candidate) in self.candidates.iter().enumerate() {
             if candidate.disabled.load(Ordering::Acquire) {
@@ -3097,6 +3720,7 @@ impl PreparedTextLayout {
                 request_digest,
                 request,
                 projection.clone(),
+                work_meter,
             ) {
                 Ok(prepared) => {
                     self.record_candidate_success(candidate_index, candidate.fallback.is_some());
@@ -3150,6 +3774,7 @@ impl PreparedTextLayout {
             self.contract_version,
             request,
             response,
+            None,
         )
     }
 
@@ -3199,6 +3824,7 @@ impl PreparedTextLayoutCandidate {
         request_digest: TextLayoutRequestDigest,
         request: &PrepareTextRequest,
         projection: TextProjection,
+        work_meter: Option<&OperationWorkMeter>,
     ) -> Result<PreparedText, TextLayoutError> {
         if !self.relaxed_capabilities {
             validate_text_capabilities(request, self.capabilities)?;
@@ -3210,10 +3836,27 @@ impl PreparedTextLayoutCandidate {
             self.session_token,
             request_digest,
         )?;
-        let backend_request =
-            PreparedTextBackendRequest::from_projection(binding, request, projection)?;
-        let response = self.session.prepare_text(&backend_request)?;
-        self.admit_text_response(catalog, contract_version, &backend_request, response)
+        let backend_request = PreparedTextBackendRequest::from_projection_with_digest(
+            binding,
+            request,
+            projection,
+            request_digest,
+        )?;
+        let response = if let (Some(native), Some(work_meter)) = (&self.native_session, work_meter)
+        {
+            let (response, _) = native
+                .prepare_structured_text_attempt_with_work_meter(&backend_request, work_meter);
+            response?
+        } else {
+            self.session.prepare_text(&backend_request)?
+        };
+        self.admit_text_response(
+            catalog,
+            contract_version,
+            &backend_request,
+            response,
+            work_meter,
+        )
     }
 
     fn admit_text_response(
@@ -3222,6 +3865,7 @@ impl PreparedTextLayoutCandidate {
         contract_version: u32,
         request: &PreparedTextBackendRequest,
         response: PreparedTextResponse,
+        work_meter: Option<&OperationWorkMeter>,
     ) -> Result<PreparedText, TextLayoutError> {
         let binding = response.binding();
         if binding.catalog_fingerprint() != catalog.fingerprint() {
@@ -3247,41 +3891,36 @@ impl PreparedTextLayoutCandidate {
         }
 
         let projection = request.projection().clone();
-        validate_prepared_text_response_budget(&projection, &response)?;
-        let lines = response
-            .lines()
-            .iter()
-            .map(|line| {
-                PreparedTextLine::new(
-                    line.text(),
-                    line.visible_range(),
-                    line.computed_length_px(),
-                    line.bbox_x(),
-                    line.bbox_height_px(),
-                )
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        validate_prepared_text_lines(&projection, &lines)?;
+        let budget = PreparedTextAdmissionBudget::new(work_meter);
+        let line_summary = validate_prepared_text_response_budget(&projection, &response, &budget)?;
+        budget.charge(response.lines().len())?;
+        let mut lines = Vec::with_capacity(response.lines().len());
+        for line in response.lines() {
+            lines.push(PreparedTextLine::from_response(line)?);
+        }
+        validate_prepared_text_lines(&projection, &lines, &budget)?;
         validate_prepared_text_coverage(
             &projection,
             &lines,
             request.wrap(),
             request.wrapping_typography().white_space(),
             response.raw_width_px(),
+            &budget,
         )?;
         let runs = admit_prepared_text_runs(
-            catalog,
             &projection,
             &lines,
             response.runs(),
-            &self.face_evidence,
+            &self.face_keys,
             self.font_source,
+            &budget,
         )?;
 
-        PreparedText::new_with_evidence(
+        PreparedText::new_with_validated_evidence(
             projection,
             lines,
             runs,
+            line_summary,
             response.line_height_px(),
             response.raw_width_px(),
             response.diagnostics.clone(),
@@ -3290,6 +3929,7 @@ impl PreparedTextLayoutCandidate {
                 request_digest: binding.request_digest(),
                 provenance: self.evidence_provenance,
             }),
+            &budget,
         )
     }
 }
@@ -3300,6 +3940,7 @@ fn text_layout_error_allows_fallback(error: &TextLayoutError) -> bool {
         TextLayoutError::InvalidRequest(_)
             | TextLayoutError::InvalidFeature
             | TextLayoutError::InvalidVariation
+            | TextLayoutError::LimitExceeded(_)
             | TextLayoutError::UnsupportedPreparedTextPath(_)
     )
 }
@@ -3320,50 +3961,46 @@ fn text_layout_error_invalidates_candidate(error: &TextLayoutError) -> bool {
 }
 
 fn admit_prepared_text_runs(
-    catalog: &FontCatalog,
     projection: &TextProjection,
     lines: &[PreparedTextLine],
     runs: &[PreparedTextRunResponse],
-    face_evidence: &TextLayoutFaceEvidence,
+    face_keys: &[PreparedTextFaceKey],
     font_source: FontSource,
+    budget: &PreparedTextAdmissionBudget<'_>,
 ) -> Result<Vec<PreparedTextLabelEvidence>, TextLayoutError> {
+    budget.charge(runs.len())?;
     let mut admitted = Vec::with_capacity(runs.len());
+    let mut span_cursor = OrderedProjectionRangeCursor::new(projection);
     for run in runs {
         let range = run.visible_range();
-        let Some(face) = usize::try_from(run.face_slot().index())
+        let Some(face_key) = usize::try_from(run.face_slot().index())
             .ok()
-            .and_then(|slot| face_evidence.faces().get(slot))
+            .and_then(|slot| face_keys.get(slot))
+            .copied()
         else {
             return Err(TextLayoutError::RunEvidenceMismatch);
         };
-        if range.start() >= range.end()
-            || range.end() > projection.visible().len()
-            || !projection.visible().is_char_boundary(range.start())
-            || !projection.visible().is_char_boundary(range.end())
-            || !projection.is_visible_atom_boundary(range.start())
-            || !projection.is_visible_atom_boundary(range.end())
-            || run.font_source() != font_source
-        {
+        if range.start() >= range.end() || run.font_source() != font_source {
             return Err(TextLayoutError::RunEvidenceMismatch);
         }
-        let Some(source_range) = projection.source_range_for_visible_range(range) else {
-            return Err(TextLayoutError::RunEvidenceMismatch);
-        };
-        let Some(asset) = catalog
-            .assets()
-            .iter()
-            .find(|asset| asset.id() == face.asset_id())
+        let span_range = span_cursor.admit(range, budget, TextLayoutError::RunEvidenceMismatch)?;
+        let Some((first, last)) = projection
+            .spans()
+            .get(span_range.clone())
+            .and_then(|spans| spans.first().zip(spans.last()))
         else {
             return Err(TextLayoutError::RunEvidenceMismatch);
         };
+        let source_range = TextByteRange::new(first.source().start(), last.source().end());
         admitted.push(PreparedTextLabelEvidence::new(
             source_range,
             range,
-            PreparedTextFaceKey::new(asset.fingerprint(), face.face_index()),
+            face_key,
             run.font_source(),
         ));
     }
 
+    budget.charge(lines.len().saturating_add(runs.len()))?;
     let mut run_index = 0;
     for line in lines {
         let line_range = line.visible_range;
@@ -3565,6 +4202,12 @@ pub(crate) fn text_projection_layout_error(error: TextProjectionError) -> TextLa
         TextProjectionError::SourceLimitExceeded | TextProjectionError::VisibleLimitExceeded => {
             TextLayoutError::LimitExceeded("text")
         }
+        TextProjectionError::SpanLimitExceeded => {
+            TextLayoutError::LimitExceeded("projection_spans")
+        }
+        TextProjectionError::OperationWorkExceeded => {
+            TextLayoutError::LimitExceeded("operation_work")
+        }
         TextProjectionError::InvalidRanges => TextLayoutError::InvalidPreparedText,
     }
 }
@@ -3705,7 +4348,7 @@ impl NativeTextLayoutBackend {
 
     #[cfg(feature = "fuzzing")]
     #[doc(hidden)]
-    pub fn prepare_text_probe(
+    fn prepare_text_probe(
         &self,
         catalog_request: &PrepareCatalogRequest,
         text_request: &PrepareTextRequest,
@@ -3750,7 +4393,7 @@ impl TextLayoutBackend for NativeTextLayoutBackend {
         )?);
         let face_evidence =
             TextLayoutFaceEvidence::new(native.faces.iter().map(|face| face.metadata.clone()))?;
-        let session: Arc<dyn PreparedTextBackendSession> = native;
+        let session: Arc<dyn PreparedTextBackendSession> = native.clone();
         PreparedTextLayoutResponse::new(
             request.catalog_fingerprint,
             request.contract_version,
@@ -3761,6 +4404,7 @@ impl TextLayoutBackend for NativeTextLayoutBackend {
             session_token,
             session,
         )
+        .map(|response| response.with_native_session(native))
     }
 }
 
@@ -3801,8 +4445,9 @@ struct CompiledStructuredTextRequest {
     metrics: CompiledStructuredTextStyle,
 }
 
+#[derive(Clone)]
 struct CompiledStructuredTextStyle {
-    candidate_faces: Vec<usize>,
+    candidate_faces: Arc<[usize]>,
     coverage_lane: usize,
 }
 
@@ -3873,15 +4518,23 @@ impl StructuredCoverageCache {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct StructuredShapingWork {
+    candidate_compilation_units: usize,
     coverage_input_bytes: usize,
     face_inspections: usize,
     coverage_cache_insertions: usize,
+    coverage_cache_slots: usize,
+    source_line_scan_bytes: usize,
+    source_line_visits: usize,
+    wrapped_line_emissions: usize,
     wrapping_input_bytes: usize,
     metrics_input_bytes: usize,
     wrapping_span_visits: usize,
     metrics_span_visits: usize,
     wrapping_line_ranges: usize,
     metrics_line_ranges: usize,
+    glyph_visits: usize,
+    cluster_visits: usize,
+    wrap_boundary_visits: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -3892,80 +4545,261 @@ enum StructuredShapingPass {
 }
 
 impl StructuredShapingWork {
+    fn total_units(self) -> Result<usize, TextLayoutError> {
+        [
+            self.candidate_compilation_units,
+            self.coverage_input_bytes,
+            self.face_inspections,
+            self.coverage_cache_insertions,
+            self.coverage_cache_slots,
+            self.source_line_scan_bytes,
+            self.source_line_visits,
+            self.wrapped_line_emissions,
+            self.wrapping_input_bytes,
+            self.metrics_input_bytes,
+            self.wrapping_span_visits,
+            self.metrics_span_visits,
+            self.wrapping_line_ranges,
+            self.metrics_line_ranges,
+            self.glyph_visits,
+            self.cluster_visits,
+            self.wrap_boundary_visits,
+        ]
+        .into_iter()
+        .try_fold(0usize, |total, units| total.checked_add(units))
+        .ok_or(TextLayoutError::LimitExceeded("operation_work"))
+    }
+}
+
+struct StructuredShapingBudget<'a> {
+    work: StructuredShapingWork,
+    work_meter: Option<&'a OperationWorkMeter>,
+}
+
+impl<'a> StructuredShapingBudget<'a> {
+    fn new(work_meter: Option<&'a OperationWorkMeter>) -> Self {
+        Self {
+            work: StructuredShapingWork::default(),
+            work_meter,
+        }
+    }
+
+    fn charge(&self, units: usize) -> Result<(), TextLayoutError> {
+        if let Some(work_meter) = self.work_meter {
+            work_meter
+                .charge(units)
+                .map_err(|_| TextLayoutError::LimitExceeded("operation_work"))?;
+        }
+        Ok(())
+    }
+
+    fn record_candidate_compilation(&mut self, units: usize) -> Result<(), TextLayoutError> {
+        let next = self
+            .work
+            .candidate_compilation_units
+            .checked_add(units)
+            .ok_or(TextLayoutError::LimitExceeded("candidate_compilation"))?;
+        self.charge(units)?;
+        self.work.candidate_compilation_units = next;
+        Ok(())
+    }
+
     fn record(
         &mut self,
         pass: StructuredShapingPass,
         input_bytes: usize,
     ) -> Result<(), TextLayoutError> {
-        let (counter, limit) = match pass {
+        let (current, limit) = match pass {
             StructuredShapingPass::Coverage => (
-                &mut self.coverage_input_bytes,
+                self.work.coverage_input_bytes,
                 MAX_STRUCTURED_COVERAGE_INPUT_BYTES,
             ),
             StructuredShapingPass::Wrapping => {
-                (&mut self.wrapping_input_bytes, MAX_TEXT_PROJECTION_BYTES)
+                (self.work.wrapping_input_bytes, MAX_TEXT_PROJECTION_BYTES)
             }
             StructuredShapingPass::Metrics => {
-                (&mut self.metrics_input_bytes, MAX_TEXT_PROJECTION_BYTES)
+                (self.work.metrics_input_bytes, MAX_TEXT_PROJECTION_BYTES)
             }
         };
-        *counter = counter
+        let next = current
             .checked_add(input_bytes)
             .ok_or(TextLayoutError::LimitExceeded("shaping_work"))?;
-        if *counter > limit {
+        if next > limit {
             return Err(TextLayoutError::LimitExceeded("shaping_work"));
+        }
+        self.charge(input_bytes)?;
+        match pass {
+            StructuredShapingPass::Coverage => self.work.coverage_input_bytes = next,
+            StructuredShapingPass::Wrapping => self.work.wrapping_input_bytes = next,
+            StructuredShapingPass::Metrics => self.work.metrics_input_bytes = next,
         }
         Ok(())
     }
 
     fn record_span_visit(&mut self, pass: StructuredShapingPass) -> Result<(), TextLayoutError> {
-        let counter = match pass {
-            StructuredShapingPass::Wrapping => &mut self.wrapping_span_visits,
-            StructuredShapingPass::Metrics => &mut self.metrics_span_visits,
+        let current = match pass {
+            StructuredShapingPass::Wrapping => self.work.wrapping_span_visits,
+            StructuredShapingPass::Metrics => self.work.metrics_span_visits,
             StructuredShapingPass::Coverage => return Ok(()),
         };
-        *counter = counter
+        let next = current
             .checked_add(1)
             .ok_or(TextLayoutError::LimitExceeded("span_work"))?;
-        if *counter > MAX_STRUCTURED_SPAN_VISITS {
+        if next > MAX_STRUCTURED_SPAN_VISITS {
             return Err(TextLayoutError::LimitExceeded("span_work"));
+        }
+        self.charge(1)?;
+        match pass {
+            StructuredShapingPass::Wrapping => self.work.wrapping_span_visits = next,
+            StructuredShapingPass::Metrics => self.work.metrics_span_visits = next,
+            StructuredShapingPass::Coverage => {}
         }
         Ok(())
     }
 
     fn record_face_inspection(&mut self) -> Result<(), TextLayoutError> {
-        self.face_inspections = self
+        let next = self
+            .work
             .face_inspections
             .checked_add(1)
             .ok_or(TextLayoutError::LimitExceeded("coverage_work"))?;
-        if self.face_inspections > MAX_STRUCTURED_FACE_INSPECTIONS {
+        if next > MAX_STRUCTURED_FACE_INSPECTIONS {
             return Err(TextLayoutError::LimitExceeded("coverage_work"));
         }
+        self.charge(1)?;
+        self.work.face_inspections = next;
         Ok(())
     }
 
     fn record_coverage_cache_insertion(&mut self) -> Result<(), TextLayoutError> {
-        self.coverage_cache_insertions = self
+        let next = self
+            .work
             .coverage_cache_insertions
             .checked_add(1)
             .ok_or(TextLayoutError::LimitExceeded("coverage_cache"))?;
-        if self.coverage_cache_insertions > MAX_STRUCTURED_COVERAGE_CACHE_ENTRIES {
+        if next > MAX_STRUCTURED_COVERAGE_CACHE_ENTRIES {
             return Err(TextLayoutError::LimitExceeded("coverage_cache"));
         }
+        self.charge(1)?;
+        self.work.coverage_cache_insertions = next;
+        Ok(())
+    }
+
+    fn record_coverage_cache_slots(&mut self, slots: usize) -> Result<(), TextLayoutError> {
+        let next = self
+            .work
+            .coverage_cache_slots
+            .checked_add(slots)
+            .ok_or(TextLayoutError::LimitExceeded("coverage_cache"))?;
+        if next > MAX_STRUCTURED_COVERAGE_CACHE_ENTRIES {
+            return Err(TextLayoutError::LimitExceeded("coverage_cache"));
+        }
+        self.charge(slots)?;
+        self.work.coverage_cache_slots = next;
+        Ok(())
+    }
+
+    fn record_source_line_scan(&mut self, bytes: usize) -> Result<(), TextLayoutError> {
+        let next = self
+            .work
+            .source_line_scan_bytes
+            .checked_add(bytes)
+            .ok_or(TextLayoutError::LimitExceeded("line_work"))?;
+        if next > MAX_TEXT_PROJECTION_BYTES {
+            return Err(TextLayoutError::LimitExceeded("line_work"));
+        }
+        self.charge(bytes)?;
+        self.work.source_line_scan_bytes = next;
+        Ok(())
+    }
+
+    fn record_source_line_visit(&mut self) -> Result<(), TextLayoutError> {
+        let next = self
+            .work
+            .source_line_visits
+            .checked_add(1)
+            .ok_or(TextLayoutError::LimitExceeded("line_work"))?;
+        if next > MAX_PREPARED_TEXT_LINES {
+            return Err(TextLayoutError::LimitExceeded("lines"));
+        }
+        self.charge(1)?;
+        self.work.source_line_visits = next;
+        Ok(())
+    }
+
+    fn record_wrapped_line_emission(&mut self) -> Result<(), TextLayoutError> {
+        let next = self
+            .work
+            .wrapped_line_emissions
+            .checked_add(1)
+            .ok_or(TextLayoutError::LimitExceeded("line_work"))?;
+        if next > MAX_PREPARED_TEXT_LINES {
+            return Err(TextLayoutError::LimitExceeded("lines"));
+        }
+        self.charge(1)?;
+        self.work.wrapped_line_emissions = next;
+        Ok(())
+    }
+
+    fn record_glyph_visits(&mut self, visits: usize) -> Result<(), TextLayoutError> {
+        let next = self
+            .work
+            .glyph_visits
+            .checked_add(visits)
+            .ok_or(TextLayoutError::LimitExceeded("glyph_work"))?;
+        if next > MAX_STRUCTURED_GLYPH_VISITS {
+            return Err(TextLayoutError::LimitExceeded("glyph_work"));
+        }
+        self.charge(visits)?;
+        self.work.glyph_visits = next;
+        Ok(())
+    }
+
+    fn record_cluster_visits(&mut self, visits: usize) -> Result<(), TextLayoutError> {
+        let next = self
+            .work
+            .cluster_visits
+            .checked_add(visits)
+            .ok_or(TextLayoutError::LimitExceeded("cluster_work"))?;
+        if next > MAX_STRUCTURED_CLUSTER_VISITS {
+            return Err(TextLayoutError::LimitExceeded("cluster_work"));
+        }
+        self.charge(visits)?;
+        self.work.cluster_visits = next;
+        Ok(())
+    }
+
+    fn record_wrap_boundary_visits(&mut self, visits: usize) -> Result<(), TextLayoutError> {
+        let next = self
+            .work
+            .wrap_boundary_visits
+            .checked_add(visits)
+            .ok_or(TextLayoutError::LimitExceeded("wrap_work"))?;
+        if next > MAX_STRUCTURED_WRAP_BOUNDARY_VISITS {
+            return Err(TextLayoutError::LimitExceeded("wrap_work"));
+        }
+        self.charge(visits)?;
+        self.work.wrap_boundary_visits = next;
         Ok(())
     }
 
     fn record_line_range(&mut self, pass: StructuredShapingPass) -> Result<(), TextLayoutError> {
-        let counter = match pass {
-            StructuredShapingPass::Wrapping => &mut self.wrapping_line_ranges,
-            StructuredShapingPass::Metrics => &mut self.metrics_line_ranges,
+        let current = match pass {
+            StructuredShapingPass::Wrapping => self.work.wrapping_line_ranges,
+            StructuredShapingPass::Metrics => self.work.metrics_line_ranges,
             StructuredShapingPass::Coverage => return Ok(()),
         };
-        *counter = counter
+        let next = current
             .checked_add(1)
             .ok_or(TextLayoutError::LimitExceeded("span_work"))?;
-        if *counter > MAX_PREPARED_TEXT_LINES {
+        if next > MAX_PREPARED_TEXT_LINES {
             return Err(TextLayoutError::LimitExceeded("span_work"));
+        }
+        self.charge(1)?;
+        match pass {
+            StructuredShapingPass::Wrapping => self.work.wrapping_line_ranges = next,
+            StructuredShapingPass::Metrics => self.work.metrics_line_ranges = next,
+            StructuredShapingPass::Coverage => {}
         }
         Ok(())
     }
@@ -3983,9 +4817,9 @@ impl ProjectionSpanCursor {
         projection: &TextProjection,
         line_range: TextByteRange,
         pass: StructuredShapingPass,
-        work: &mut StructuredShapingWork,
+        budget: &mut StructuredShapingBudget<'_>,
     ) -> Result<std::ops::Range<usize>, TextLayoutError> {
-        work.record_line_range(pass)?;
+        budget.record_line_range(pass)?;
         let start = line_range.start();
         let end = line_range.end();
         if start > end || start < self.previous_line_end || end > projection.visible().len() {
@@ -3994,7 +4828,7 @@ impl ProjectionSpanCursor {
 
         let spans = projection.spans();
         while let Some(span) = spans.get(self.next_index) {
-            work.record_span_visit(pass)?;
+            budget.record_span_visit(pass)?;
             if span.visible().end() <= start {
                 self.next_index = self.next_index.saturating_add(1);
                 continue;
@@ -4005,7 +4839,7 @@ impl ProjectionSpanCursor {
         let first = self.next_index;
         let mut atom_cursor = start;
         while let Some(span) = spans.get(self.next_index) {
-            work.record_span_visit(pass)?;
+            budget.record_span_visit(pass)?;
             let visible = span.visible();
             if visible.start() >= end {
                 break;
@@ -4040,8 +4874,8 @@ struct ShapedLineMetrics {
 
 struct ShapedStructuredLine {
     metrics: ShapedLineMetrics,
-    runs: Vec<PreparedTextRunResponse>,
     clusters: Vec<ShapedClusterMetric>,
+    span_range: std::ops::Range<usize>,
 }
 
 struct ShapedStructuredRun {
@@ -4253,19 +5087,17 @@ impl ProjectedVisibleLine {
 }
 
 fn split_projected_visible_lines(visible: &str) -> Vec<ProjectedVisibleLine> {
-    let mut lines = Vec::new();
-    let mut start = 0;
-    for (newline, _) in visible.match_indices('\n') {
-        lines.push(ProjectedVisibleLine::new(TextByteRange::new(
-            start, newline,
-        )));
-        start = newline + 1;
-    }
-    lines.push(ProjectedVisibleLine::new(TextByteRange::new(
-        start,
-        visible.len(),
-    )));
-    lines
+    projected_visible_lines(visible).collect()
+}
+
+fn projected_visible_lines(visible: &str) -> impl Iterator<Item = ProjectedVisibleLine> + '_ {
+    let mut start: usize = 0;
+    visible.split('\n').map(move |line| {
+        let end = start.saturating_add(line.len());
+        let projected = ProjectedVisibleLine::new(TextByteRange::new(start, end));
+        start = end.saturating_add(1);
+        projected
+    })
 }
 
 impl WrapLineState {
@@ -4333,21 +5165,31 @@ fn coalesce_wrap_atoms(
     text: &str,
     visible_start: usize,
     projection: &TextProjection,
+    span_range: std::ops::Range<usize>,
     clusters: &[ShapedClusterMetric],
+    budget: &mut StructuredShapingBudget<'_>,
 ) -> Result<Vec<WrapAtomMetric>, TextLayoutError> {
     if text.is_empty() {
         return Ok(Vec::new());
     }
-    let grapheme_boundaries = text
+    let mut grapheme_boundaries = text
         .grapheme_indices(true)
         .map(|(offset, _)| offset)
+        .skip(1)
         .chain(std::iter::once(text.len()))
-        .collect::<Vec<_>>();
+        .peekable();
+    let mut projection_boundaries = projection.spans()[span_range]
+        .iter()
+        .filter(|span| span.visible().start() < span.visible().end())
+        .map(|span| span.visible().end())
+        .peekable();
     let mut atoms = Vec::new();
     let mut current_start = 0;
     let mut current_end = 0;
+    let mut current_grapheme_count: usize = 0;
     let mut current_measure = WrapMeasure::default();
     for cluster in clusters {
+        budget.record_cluster_visits(1)?;
         if cluster.range.start() != current_end
             || cluster.range.end() <= cluster.range.start()
             || cluster.range.end() > text.len()
@@ -4366,16 +5208,44 @@ fn coalesce_wrap_atoms(
         let global_end = visible_start
             .checked_add(current_end)
             .ok_or(TextLayoutError::InvalidPreparedText)?;
-        if grapheme_boundaries.binary_search(&current_end).is_err()
-            || !projection.is_visible_atom_boundary(global_end)
+        let mut grapheme_boundary = false;
+        while grapheme_boundaries
+            .peek()
+            .is_some_and(|boundary| *boundary <= current_end)
         {
+            let boundary = grapheme_boundaries
+                .next()
+                .expect("peeked grapheme boundary is present");
+            budget.record_wrap_boundary_visits(1)?;
+            current_grapheme_count = current_grapheme_count.saturating_add(1);
+            if boundary == current_end {
+                grapheme_boundary = true;
+                break;
+            }
+        }
+        while projection_boundaries
+            .peek()
+            .is_some_and(|boundary| *boundary < global_end)
+        {
+            projection_boundaries.next();
+            budget.record_wrap_boundary_visits(1)?;
+        }
+        let projection_boundary = projection_boundaries
+            .peek()
+            .is_some_and(|boundary| *boundary == global_end);
+        if projection_boundary {
+            projection_boundaries.next();
+            budget.record_wrap_boundary_visits(1)?;
+        }
+        if !grapheme_boundary || !projection_boundary {
             continue;
         }
 
         let atom_text = text
             .get(current_start..current_end)
             .ok_or(TextLayoutError::InvalidPreparedText)?;
-        current_measure.grapheme_count = atom_text.graphemes(true).count();
+        budget.record_wrap_boundary_visits(atom_text.len())?;
+        current_measure.grapheme_count = current_grapheme_count;
         current_measure.ascii_space_count = atom_text.bytes().filter(|byte| *byte == b' ').count();
         if !current_measure.advance.is_finite()
             || current_measure.advance.abs() > MAX_PREPARED_TEXT_GEOMETRY_PX
@@ -4393,6 +5263,7 @@ fn coalesce_wrap_atoms(
             whitespace: atom_text.chars().all(char::is_whitespace),
         });
         current_start = current_end;
+        current_grapheme_count = 0;
         current_measure = WrapMeasure::default();
     }
     if current_end != text.len() || current_start != text.len() {
@@ -4435,20 +5306,24 @@ fn html_wrap_segment_ranges(text: &str) -> Vec<TextByteRange> {
 fn align_wrap_segments(
     atoms: &[WrapAtomMetric],
     ranges: &[TextByteRange],
+    budget: &mut StructuredShapingBudget<'_>,
 ) -> Result<Vec<WrapSegment>, TextLayoutError> {
     let mut segments = Vec::new();
     let mut atom_cursor = 0;
     let mut previous_end = 0;
     for range in ranges {
+        budget.record_wrap_boundary_visits(1)?;
         if range.start() < previous_end || range.end() < range.start() {
             return Err(TextLayoutError::InvalidPreparedText);
         }
         previous_end = range.end();
         while atom_cursor < atoms.len() && atoms[atom_cursor].range.end() <= range.start() {
+            budget.record_wrap_boundary_visits(1)?;
             atom_cursor += 1;
         }
         let atom_start = atom_cursor;
         while atom_cursor < atoms.len() && atoms[atom_cursor].range.start() < range.end() {
+            budget.record_wrap_boundary_visits(1)?;
             atom_cursor += 1;
         }
         if atom_start < atom_cursor {
@@ -4464,10 +5339,15 @@ fn align_wrap_segments(
     Ok(segments)
 }
 
-fn segment_is_whitespace(segment: WrapSegment, atoms: &[WrapAtomMetric]) -> bool {
-    atoms[segment.atom_start..segment.atom_end]
+fn segment_is_whitespace(
+    segment: WrapSegment,
+    atoms: &[WrapAtomMetric],
+    budget: &mut StructuredShapingBudget<'_>,
+) -> Result<bool, TextLayoutError> {
+    budget.record_wrap_boundary_visits(segment.atom_end.saturating_sub(segment.atom_start))?;
+    Ok(atoms[segment.atom_start..segment.atom_end]
         .iter()
-        .all(|atom| atom.whitespace)
+        .all(|atom| atom.whitespace))
 }
 
 fn push_wrapped_state(
@@ -4475,14 +5355,20 @@ fn push_wrapped_state(
     source: ProjectedVisibleLine,
     state: WrapLineState,
     atoms: &[WrapAtomMetric],
+    budget: &mut StructuredShapingBudget<'_>,
 ) -> Result<(), TextLayoutError> {
-    wrapped.push(ProjectedVisibleLine::from_local_range(
-        source,
-        state.trimmed_range(atoms)?,
-    )?);
-    if wrapped.len() > MAX_PREPARED_TEXT_LINES {
-        return Err(TextLayoutError::LimitExceeded("lines"));
-    }
+    let line = ProjectedVisibleLine::from_local_range(source, state.trimmed_range(atoms)?)?;
+    push_projected_visible_line(wrapped, line, budget)?;
+    Ok(())
+}
+
+fn push_projected_visible_line(
+    wrapped: &mut Vec<ProjectedVisibleLine>,
+    line: ProjectedVisibleLine,
+    budget: &mut StructuredShapingBudget<'_>,
+) -> Result<(), TextLayoutError> {
+    budget.record_wrapped_line_emission()?;
+    wrapped.push(line);
     Ok(())
 }
 
@@ -4558,24 +5444,32 @@ impl NativeCatalogTextMeasurer {
     fn structured_selector(
         &self,
         typography: &ThemeTextStyle,
+        budget: &mut StructuredShapingBudget<'_>,
     ) -> Result<FaceSelector, TextLayoutError> {
-        let resolved_families = typography
-            .font_stack()
-            .families()
-            .iter()
-            .map(|family| {
+        let families = typography.font_stack().families();
+        budget.record_candidate_compilation(families.len())?;
+        let mut resolved_families = Vec::with_capacity(families.len());
+        for family in families {
+            budget.record_candidate_compilation(family.len())?;
+            resolved_families.push(
                 self.catalog
                     .canonical_named_family_name(family)
                     .map(normalize_family)
-                    .unwrap_or_else(|| normalize_family(family))
-            })
-            .collect::<Vec<_>>();
+                    .unwrap_or_else(|| normalize_family(family)),
+            );
+        }
+        let family_face_comparisons = resolved_families
+            .len()
+            .checked_mul(self.faces.len())
+            .ok_or(TextLayoutError::LimitExceeded("candidate_compilation"))?;
+        budget.record_candidate_compilation(family_face_comparisons)?;
         let has_catalog_family = resolved_families
             .iter()
             .any(|family| self.faces.iter().any(|face| &face.family_key == family));
         if !has_catalog_family {
             return Err(TextLayoutError::FontFamilyUnavailable);
         }
+        budget.record_candidate_compilation(1)?;
         Ok(FaceSelector {
             resolved_families,
             requested_weight: typography.font_weight(),
@@ -4586,31 +5480,42 @@ impl NativeCatalogTextMeasurer {
     fn compile_structured_request(
         &self,
         request: &PrepareTextRequest,
+        budget: &mut StructuredShapingBudget<'_>,
     ) -> Result<CompiledStructuredTextRequest, TextLayoutError> {
         let features = request
             .features()
-            .map(|feature| Feature::from_str(feature).map_err(|_| TextLayoutError::InvalidFeature))
+            .map(|feature| {
+                budget.record_candidate_compilation(1usize.saturating_add(feature.len()))?;
+                Feature::from_str(feature).map_err(|_| TextLayoutError::InvalidFeature)
+            })
             .collect::<Result<Vec<_>, _>>()?;
         let variations = request
             .variations()
             .map(|variation| {
+                budget.record_candidate_compilation(1usize.saturating_add(variation.len()))?;
                 Variation::from_str(variation).map_err(|_| TextLayoutError::InvalidVariation)
             })
             .collect::<Result<Vec<_>, _>>()?;
         let requested_script = request
             .script()
             .map(|value| {
+                budget.record_candidate_compilation(1usize.saturating_add(value.len()))?;
                 BuzzScript::from_str(value).map_err(|_| TextLayoutError::InvalidRequest("script"))
             })
             .transpose()?;
         let language = request
             .language()
             .map(|value| {
+                budget.record_candidate_compilation(1usize.saturating_add(value.len()))?;
                 Language::from_str(value).map_err(|_| TextLayoutError::InvalidRequest("language"))
             })
             .transpose()?;
-        let wrapping = self.compile_structured_style(request.wrapping_typography())?;
-        let mut metrics = self.compile_structured_style(request.metrics_typography())?;
+        let wrapping = self.compile_structured_style(request.wrapping_typography(), budget)?;
+        let mut metrics = if request.metrics_typography() == request.wrapping_typography() {
+            wrapping.clone()
+        } else {
+            self.compile_structured_style(request.metrics_typography(), budget)?
+        };
         if metrics.candidate_faces != wrapping.candidate_faces {
             metrics.coverage_lane = 1;
         }
@@ -4627,14 +5532,15 @@ impl NativeCatalogTextMeasurer {
     fn compile_structured_style(
         &self,
         typography: &ThemeTextStyle,
+        budget: &mut StructuredShapingBudget<'_>,
     ) -> Result<CompiledStructuredTextStyle, TextLayoutError> {
-        let selector = self.structured_selector(typography)?;
-        let candidate_faces = self.strict_candidate_face_indices(&selector);
+        let selector = self.structured_selector(typography, budget)?;
+        let candidate_faces = self.strict_candidate_face_indices(&selector, budget)?;
         if candidate_faces.is_empty() {
             return Err(TextLayoutError::FontFamilyUnavailable);
         }
         Ok(CompiledStructuredTextStyle {
-            candidate_faces,
+            candidate_faces: candidate_faces.into(),
             coverage_lane: 0,
         })
     }
@@ -4675,7 +5581,25 @@ impl NativeCatalogTextMeasurer {
         candidates.into_iter().map(|(index, _)| index).collect()
     }
 
-    fn strict_candidate_face_indices(&self, selector: &FaceSelector) -> Vec<usize> {
+    fn strict_candidate_face_indices(
+        &self,
+        selector: &FaceSelector,
+        budget: &mut StructuredShapingBudget<'_>,
+    ) -> Result<Vec<usize>, TextLayoutError> {
+        let face_count = self.faces.len();
+        let family_count = selector.resolved_families.len();
+        let family_comparisons = face_count
+            .checked_mul(family_count)
+            .ok_or(TextLayoutError::LimitExceeded("candidate_compilation"))?;
+        let sort_comparisons = face_count
+            .checked_mul(usize::BITS as usize - face_count.max(1).leading_zeros() as usize)
+            .ok_or(TextLayoutError::LimitExceeded("candidate_compilation"))?;
+        budget.record_candidate_compilation(
+            family_comparisons
+                .checked_add(face_count)
+                .and_then(|units| units.checked_add(sort_comparisons))
+                .ok_or(TextLayoutError::LimitExceeded("candidate_compilation"))?,
+        )?;
         let mut candidates = self
             .faces
             .iter()
@@ -4697,7 +5621,7 @@ impl NativeCatalogTextMeasurer {
             })
             .collect::<Vec<_>>();
         candidates.sort_by_key(|(_, score)| *score);
-        candidates.into_iter().map(|(index, _)| index).collect()
+        Ok(candidates.into_iter().map(|(index, _)| index).collect())
     }
 
     fn choose_face_index(&self, text: &str, selector: &FaceSelector) -> Option<usize> {
@@ -4730,7 +5654,7 @@ impl NativeCatalogTextMeasurer {
         compiled: &CompiledStructuredTextRequest,
         script: Option<BuzzScript>,
         coverage_cache: &mut StructuredCoverageCache,
-        work: &mut StructuredShapingWork,
+        budget: &mut StructuredShapingBudget<'_>,
     ) -> Result<Option<usize>, TextLayoutError> {
         if let Some(face_index) = coverage_cache.get(span_index, coverage_lane)? {
             return Ok(face_index);
@@ -4738,8 +5662,8 @@ impl NativeCatalogTextMeasurer {
 
         let mut selected = None;
         for index in style.candidate_faces.iter().copied() {
-            work.record_face_inspection()?;
-            work.record(StructuredShapingPass::Coverage, text.len())?;
+            budget.record_face_inspection()?;
+            budget.record(StructuredShapingPass::Coverage, text.len())?;
             let covers = self.face_shapes_cluster(
                 index,
                 text,
@@ -4754,7 +5678,7 @@ impl NativeCatalogTextMeasurer {
                 break;
             }
         }
-        work.record_coverage_cache_insertion()?;
+        budget.record_coverage_cache_insertion()?;
         coverage_cache.insert(span_index, coverage_lane, selected)?;
         Ok(selected)
     }
@@ -4845,7 +5769,8 @@ impl NativeCatalogTextMeasurer {
         style: &CompiledStructuredTextStyle,
         coverage_cache: &mut StructuredCoverageCache,
         span_cursor: &mut ProjectionSpanCursor,
-        work: &mut StructuredShapingWork,
+        budget: &mut StructuredShapingBudget<'_>,
+        response_builder: &mut PreparedTextResponseBuilder,
     ) -> Result<ShapedStructuredLine, TextLayoutError> {
         self.shape_structured_line_internal(
             text,
@@ -4859,7 +5784,8 @@ impl NativeCatalogTextMeasurer {
             StructuredShapingPass::Metrics,
             coverage_cache,
             span_cursor,
-            work,
+            budget,
+            Some(response_builder),
         )
     }
 
@@ -4876,7 +5802,8 @@ impl NativeCatalogTextMeasurer {
         pass: StructuredShapingPass,
         coverage_cache: &mut StructuredCoverageCache,
         span_cursor: &mut ProjectionSpanCursor,
-        work: &mut StructuredShapingWork,
+        budget: &mut StructuredShapingBudget<'_>,
+        mut response_builder: Option<&mut PreparedTextResponseBuilder>,
     ) -> Result<ShapedStructuredLine, TextLayoutError> {
         let line_visible_start = line_range.start();
         let line_visible_end = line_range.end();
@@ -4886,12 +5813,12 @@ impl NativeCatalogTextMeasurer {
         {
             return Err(TextLayoutError::InvalidPreparedText);
         }
-        let span_range = span_cursor.range_for_line(projection, line_range, pass, work)?;
+        let span_range = span_cursor.range_for_line(projection, line_range, pass, budget)?;
         if text.is_empty() {
             return Ok(ShapedStructuredLine {
                 metrics: ShapedLineMetrics::default(),
-                runs: Vec::new(),
                 clusters: Vec::new(),
+                span_range,
             });
         }
 
@@ -4901,10 +5828,9 @@ impl NativeCatalogTextMeasurer {
         let mut current_script = None;
         let mut run = String::new();
         let mut run_start = 0;
-        let mut runs = Vec::new();
         let mut clusters = Vec::new();
         let mut atom_cursor = 0;
-        for span_index in span_range {
+        for span_index in span_range.clone() {
             let span = &projection.spans()[span_index];
             let visible = span.visible();
             if visible.start() < line_visible_start || visible.end() > line_visible_end {
@@ -4941,7 +5867,7 @@ impl NativeCatalogTextMeasurer {
                     compiled,
                     script,
                     coverage_cache,
-                    work,
+                    budget,
                 )?
                 .ok_or(TextLayoutError::GlyphUnavailable)?;
             if (Some(face_index) != current_face || script != current_script) && !run.is_empty() {
@@ -4954,7 +5880,7 @@ impl NativeCatalogTextMeasurer {
                     typography,
                     compiled,
                     pass,
-                    work,
+                    budget,
                 )?;
                 let run_metrics = shaped.metrics;
                 total.include_run(run_metrics, offset_x);
@@ -4966,17 +5892,20 @@ impl NativeCatalogTextMeasurer {
                 );
                 offset_x += run_metrics.advance;
                 if emit_evidence {
-                    runs.push(PreparedTextRunResponse::new(
-                        TextByteRange::new(
-                            line_visible_start + run_start,
-                            line_visible_start + atom_start,
-                        ),
-                        PreparedTextFaceSlot::new(
-                            u32::try_from(current_face)
-                                .expect("prepared catalog face count fits in a face slot"),
-                        ),
-                        self.font_source,
-                    ));
+                    response_builder
+                        .as_deref_mut()
+                        .expect("evidence shaping requires a response builder")
+                        .push_run(PreparedTextRunResponse::new(
+                            TextByteRange::new(
+                                line_visible_start + run_start,
+                                line_visible_start + atom_start,
+                            ),
+                            PreparedTextFaceSlot::new(
+                                u32::try_from(current_face)
+                                    .expect("prepared catalog face count fits in a face slot"),
+                            ),
+                            self.font_source,
+                        ))?;
                 }
                 run.clear();
                 run_start = atom_start;
@@ -5000,7 +5929,7 @@ impl NativeCatalogTextMeasurer {
                 typography,
                 compiled,
                 pass,
-                work,
+                budget,
             )?;
             let run_metrics = shaped.metrics;
             total.include_run(run_metrics, offset_x);
@@ -5011,17 +5940,20 @@ impl NativeCatalogTextMeasurer {
                     .map(|cluster| cluster.offset(run_start, offset_x)),
             );
             if emit_evidence {
-                runs.push(PreparedTextRunResponse::new(
-                    TextByteRange::new(
-                        line_visible_start + run_start,
-                        line_visible_start + text.len(),
-                    ),
-                    PreparedTextFaceSlot::new(
-                        u32::try_from(face_index)
-                            .expect("prepared catalog face count fits in a face slot"),
-                    ),
-                    self.font_source,
-                ));
+                response_builder
+                    .as_deref_mut()
+                    .expect("evidence shaping requires a response builder")
+                    .push_run(PreparedTextRunResponse::new(
+                        TextByteRange::new(
+                            line_visible_start + run_start,
+                            line_visible_start + text.len(),
+                        ),
+                        PreparedTextFaceSlot::new(
+                            u32::try_from(face_index)
+                                .expect("prepared catalog face count fits in a face slot"),
+                        ),
+                        self.font_source,
+                    ))?;
             }
         }
 
@@ -5033,8 +5965,8 @@ impl NativeCatalogTextMeasurer {
         total.advance += letter_spacing + word_spacing;
         Ok(ShapedStructuredLine {
             metrics: total,
-            runs,
             clusters,
+            span_range,
         })
     }
 
@@ -5047,9 +5979,9 @@ impl NativeCatalogTextMeasurer {
         typography: &ThemeTextStyle,
         compiled: &CompiledStructuredTextRequest,
         pass: StructuredShapingPass,
-        work: &mut StructuredShapingWork,
+        budget: &mut StructuredShapingBudget<'_>,
     ) -> Result<ShapedStructuredRun, TextLayoutError> {
-        work.record(pass, text.len())?;
+        budget.record(pass, text.len())?;
         let face = &self.faces[face_index];
         let mut font = rustybuzz::Face::from_slice(&face.data, face.face_index)
             .ok_or(TextLayoutError::NoUsableFace)?;
@@ -5066,46 +5998,93 @@ impl NativeCatalogTextMeasurer {
         if let Some(language) = compiled.language.clone() {
             buffer.set_language(language);
         }
+        let glyph_direction = buffer.direction();
         let glyphs = rustybuzz::shape(&font, &compiled.features, buffer);
-        if !shaped_glyph_coverage_is_complete(
-            text,
-            glyphs.glyph_infos().iter().map(|info| info.glyph_id),
-        ) {
+        let glyph_infos = glyphs.glyph_infos();
+        if glyph_infos.is_empty() && !text.chars().all(is_default_ignorable) {
             return Err(TextLayoutError::GlyphUnavailable);
         }
         let units_per_em = f64::from(font.units_per_em().max(1));
         let scale = f64::from(typography.font_size_px()) / units_per_em;
         let mut metrics = ShapedLineMetrics::default();
-        let mut cluster_starts = glyphs
-            .glyph_infos()
-            .iter()
-            .map(|info| usize::try_from(info.cluster).unwrap_or(usize::MAX))
-            .collect::<Vec<_>>();
-        if cluster_starts
-            .iter()
-            .any(|start| *start >= text.len() || !text.is_char_boundary(*start))
-        {
-            return Err(TextLayoutError::InvalidPreparedText);
+        let backward = matches!(
+            glyph_direction,
+            BuzzDirection::RightToLeft | BuzzDirection::BottomToTop
+        );
+        budget.record_glyph_visits(glyph_infos.len())?;
+        let mut glyph_order_cluster_starts = Vec::with_capacity(glyph_infos.len().min(text.len()));
+        let mut previous_cluster_start = None;
+        for info in glyph_infos {
+            if info.glyph_id == 0 {
+                return Err(TextLayoutError::GlyphUnavailable);
+            }
+            let cluster_start =
+                usize::try_from(info.cluster).map_err(|_| TextLayoutError::InvalidPreparedText)?;
+            if cluster_start >= text.len() || !text.is_char_boundary(cluster_start) {
+                return Err(TextLayoutError::InvalidPreparedText);
+            }
+            if let Some(previous) = previous_cluster_start {
+                let monotonic = if backward {
+                    cluster_start <= previous
+                } else {
+                    cluster_start >= previous
+                };
+                if !monotonic {
+                    return Err(TextLayoutError::InvalidPreparedText);
+                }
+            }
+            if previous_cluster_start != Some(cluster_start) {
+                glyph_order_cluster_starts.push(cluster_start);
+                previous_cluster_start = Some(cluster_start);
+            }
         }
-        cluster_starts.push(0);
-        cluster_starts.sort_unstable();
-        cluster_starts.dedup();
-        let mut clusters = cluster_starts
-            .iter()
-            .enumerate()
-            .map(|(index, start)| ShapedClusterMetric {
+        if backward {
+            budget.record_cluster_visits(glyph_order_cluster_starts.len())?;
+            glyph_order_cluster_starts.reverse();
+        }
+        let mut cluster_starts = Vec::with_capacity(
+            glyph_order_cluster_starts
+                .len()
+                .saturating_add(usize::from(glyph_order_cluster_starts.first() != Some(&0))),
+        );
+        if glyph_order_cluster_starts.first() != Some(&0) {
+            cluster_starts.push(0);
+        }
+        cluster_starts.extend(glyph_order_cluster_starts);
+        budget.record_cluster_visits(cluster_starts.len().saturating_sub(1))?;
+        for window in cluster_starts.windows(2) {
+            if window[0] >= window[1] {
+                return Err(TextLayoutError::InvalidPreparedText);
+            }
+        }
+        budget.record_cluster_visits(cluster_starts.len())?;
+        let mut clusters = Vec::with_capacity(cluster_starts.len());
+        for (index, start) in cluster_starts.iter().copied().enumerate() {
+            clusters.push(ShapedClusterMetric {
                 range: TextByteRange::new(
-                    *start,
+                    start,
                     cluster_starts.get(index + 1).copied().unwrap_or(text.len()),
                 ),
                 advance: 0.0,
                 min_x: 0.0,
                 max_x: 0.0,
                 has_bounds: false,
-            })
-            .collect::<Vec<_>>();
+            });
+        }
         let mut pen_x = 0.0;
-        for (info, position) in glyphs.glyph_infos().iter().zip(glyphs.glyph_positions()) {
+        let first_glyph_start = glyph_infos
+            .first()
+            .and_then(|info| usize::try_from(info.cluster).ok());
+        let mut cluster_index = if backward {
+            cluster_starts.len().saturating_sub(1)
+        } else if first_glyph_start == Some(0) {
+            0
+        } else {
+            usize::from(!cluster_starts.is_empty())
+        };
+        let mut active_glyph_cluster = None;
+        budget.record_glyph_visits(glyph_infos.len())?;
+        for (info, position) in glyph_infos.iter().zip(glyphs.glyph_positions()) {
             let x_advance = f64::from(position.x_advance) * scale;
             let glyph_id = ttf_parser::GlyphId(info.glyph_id as u16);
             let glyph_bounds = font.glyph_bounding_box(glyph_id).map(|bounds| {
@@ -5131,9 +6110,23 @@ impl NativeCatalogTextMeasurer {
             });
             let cluster_start =
                 usize::try_from(info.cluster).map_err(|_| TextLayoutError::InvalidPreparedText)?;
-            let cluster_index = cluster_starts
-                .binary_search(&cluster_start)
-                .map_err(|_| TextLayoutError::InvalidPreparedText)?;
+            if active_glyph_cluster != Some(cluster_start) {
+                if active_glyph_cluster.is_some() {
+                    cluster_index = if backward {
+                        cluster_index
+                            .checked_sub(1)
+                            .ok_or(TextLayoutError::InvalidPreparedText)?
+                    } else {
+                        cluster_index
+                            .checked_add(1)
+                            .ok_or(TextLayoutError::InvalidPreparedText)?
+                    };
+                }
+                if cluster_starts.get(cluster_index) != Some(&cluster_start) {
+                    return Err(TextLayoutError::InvalidPreparedText);
+                }
+                active_glyph_cluster = Some(cluster_start);
+            }
             clusters[cluster_index].include_glyph(x_advance, glyph_bounds);
             pen_x += x_advance;
         }
@@ -5158,7 +6151,7 @@ impl NativeCatalogTextMeasurer {
         compiled: &CompiledStructuredTextRequest,
         coverage_cache: &mut StructuredCoverageCache,
         span_cursor: &mut ProjectionSpanCursor,
-        work: &mut StructuredShapingWork,
+        budget: &mut StructuredShapingBudget<'_>,
     ) -> Result<ShapedWrapLine, TextLayoutError> {
         let text = source.text(projection.visible())?;
         let shaped = self.shape_structured_line_internal(
@@ -5173,15 +6166,19 @@ impl NativeCatalogTextMeasurer {
             StructuredShapingPass::Wrapping,
             coverage_cache,
             span_cursor,
-            work,
+            budget,
+            None,
         )?;
         let atoms = coalesce_wrap_atoms(
             text,
             source.visible_range().start(),
             projection,
+            shaped.span_range,
             &shaped.clusters,
+            budget,
         )?;
         let mut measure = WrapMeasure::default();
+        budget.record_wrap_boundary_visits(atoms.len())?;
         for atom in &atoms {
             measure.include(atom.measure);
         }
@@ -5196,22 +6193,29 @@ impl NativeCatalogTextMeasurer {
         typography: &ThemeTextStyle,
         max_width_px: f64,
         break_long_words: bool,
-    ) -> Result<Vec<ProjectedVisibleLine>, TextLayoutError> {
+        wrapped: &mut Vec<ProjectedVisibleLine>,
+        budget: &mut StructuredShapingBudget<'_>,
+    ) -> Result<(), TextLayoutError> {
         let line = source.text(projection.visible())?;
         if !max_width_px.is_finite() || max_width_px <= 0.0 || line.is_empty() {
-            return Ok(vec![source]);
+            return push_projected_visible_line(wrapped, source, budget);
         }
-        let segments = align_wrap_segments(&shaped.atoms, &svg_wrap_segment_ranges(line))?;
-        let mut wrapped = Vec::new();
+        budget.record_wrap_boundary_visits(line.len())?;
+        let ranges = svg_wrap_segment_ranges(line);
+        let segments = align_wrap_segments(&shaped.atoms, &ranges, budget)?;
+        let output_start = wrapped.len();
         let mut current = WrapLineState::default();
         let mut segment_index = 0;
         while let Some(segment) = segments.get(segment_index).copied() {
-            let whitespace = segment_is_whitespace(segment, &shaped.atoms);
+            budget.record_wrap_boundary_visits(1)?;
+            let whitespace = segment_is_whitespace(segment, &shaped.atoms, budget)?;
             if current.is_empty() && whitespace {
                 segment_index += 1;
                 continue;
             }
             let mut candidate = current;
+            budget
+                .record_wrap_boundary_visits(segment.atom_end.saturating_sub(segment.atom_start))?;
             candidate.append_segment(segment, &shaped.atoms);
             if candidate.width(typography) <= max_width_px {
                 current = candidate;
@@ -5219,7 +6223,7 @@ impl NativeCatalogTextMeasurer {
                 continue;
             }
             if current.has_visible_content() {
-                push_wrapped_state(&mut wrapped, source, current, &shaped.atoms)?;
+                push_wrapped_state(wrapped, source, current, &shaped.atoms, budget)?;
                 current = WrapLineState::default();
                 continue;
             }
@@ -5234,20 +6238,21 @@ impl NativeCatalogTextMeasurer {
             }
 
             for atom_index in segment.atom_start..segment.atom_end {
+                budget.record_wrap_boundary_visits(1)?;
                 let mut candidate = current;
                 candidate.append_atom(atom_index, shaped.atoms[atom_index]);
                 if current.has_visible_content() && candidate.width(typography) > max_width_px {
-                    push_wrapped_state(&mut wrapped, source, current, &shaped.atoms)?;
+                    push_wrapped_state(wrapped, source, current, &shaped.atoms, budget)?;
                     current = WrapLineState::default();
                 }
                 current.append_atom(atom_index, shaped.atoms[atom_index]);
             }
             segment_index += 1;
         }
-        if current.has_visible_content() || wrapped.is_empty() {
-            push_wrapped_state(&mut wrapped, source, current, &shaped.atoms)?;
+        if current.has_visible_content() || wrapped.len() == output_start {
+            push_wrapped_state(wrapped, source, current, &shaped.atoms, budget)?;
         }
-        Ok(wrapped)
+        Ok(())
     }
 
     fn wrap_html_structured_line(
@@ -5257,29 +6262,36 @@ impl NativeCatalogTextMeasurer {
         shaped: &ShapedWrapLine,
         typography: &ThemeTextStyle,
         max_width_px: f64,
-    ) -> Result<Vec<ProjectedVisibleLine>, TextLayoutError> {
+        wrapped: &mut Vec<ProjectedVisibleLine>,
+        budget: &mut StructuredShapingBudget<'_>,
+    ) -> Result<(), TextLayoutError> {
         let line = source.text(projection.visible())?;
         if !max_width_px.is_finite() || max_width_px <= 0.0 || line.is_empty() {
-            return Ok(vec![source]);
+            return push_projected_visible_line(wrapped, source, budget);
         }
-        let segments = align_wrap_segments(&shaped.atoms, &html_wrap_segment_ranges(line))?;
-        let mut wrapped = Vec::new();
+        budget.record_wrap_boundary_visits(line.len())?;
+        let ranges = html_wrap_segment_ranges(line);
+        let segments = align_wrap_segments(&shaped.atoms, &ranges, budget)?;
+        let output_start = wrapped.len();
         let mut current = WrapLineState::default();
         for segment in segments {
+            budget.record_wrap_boundary_visits(
+                1usize.saturating_add(segment.atom_end.saturating_sub(segment.atom_start)),
+            )?;
             let mut candidate = current;
             candidate.append_segment(segment, &shaped.atoms);
             if current.is_empty() || candidate.width(typography) <= max_width_px {
                 current = candidate;
             } else {
-                push_wrapped_state(&mut wrapped, source, current, &shaped.atoms)?;
+                push_wrapped_state(wrapped, source, current, &shaped.atoms, budget)?;
                 current = WrapLineState::default();
                 current.append_segment(segment, &shaped.atoms);
             }
         }
-        if !current.is_empty() || wrapped.is_empty() {
-            push_wrapped_state(&mut wrapped, source, current, &shaped.atoms)?;
+        if !current.is_empty() || wrapped.len() == output_start {
+            push_wrapped_state(wrapped, source, current, &shaped.atoms, budget)?;
         }
-        Ok(wrapped)
+        Ok(())
     }
 
     fn prepare_structured_text(
@@ -5294,112 +6306,153 @@ impl NativeCatalogTextMeasurer {
         &self,
         backend_request: &PreparedTextBackendRequest,
     ) -> Result<(PreparedTextResponse, StructuredShapingWork), TextLayoutError> {
-        let request = backend_request.request();
-        let projection = backend_request.projection();
-        let compiled = self.compile_structured_request(request)?;
-        let mut coverage_cache = StructuredCoverageCache::new(projection.spans().len())?;
-        let mut work = StructuredShapingWork::default();
-        let mut wrapping_span_cursor = ProjectionSpanCursor::default();
-        let source_lines = split_projected_visible_lines(projection.visible());
-        let mut wrapped_lines = Vec::new();
-        let mut raw_width_px: f64 = 0.0;
-        for source in source_lines {
-            match request.wrap() {
-                PreparedTextWrap::SingleRun
-                | PreparedTextWrap::SvgLike {
-                    max_width_px: None, ..
-                } => {
-                    wrapped_lines.push(source);
-                }
-                PreparedTextWrap::SvgLike {
-                    max_width_px: Some(max_width_px),
-                    break_long_words,
-                } => {
-                    let shaped = self.shape_wrap_line(
-                        source,
-                        projection,
-                        request,
-                        &compiled,
-                        &mut coverage_cache,
-                        &mut wrapping_span_cursor,
-                        &mut work,
-                    )?;
-                    wrapped_lines.extend(self.wrap_svg_structured_line(
-                        source,
-                        projection,
-                        &shaped,
-                        request.wrapping_typography(),
-                        max_width_px,
+        let (response, work) = self.prepare_structured_text_attempt(backend_request);
+        Ok((response?, work))
+    }
+
+    fn prepare_structured_text_attempt(
+        &self,
+        backend_request: &PreparedTextBackendRequest,
+    ) -> (
+        Result<PreparedTextResponse, TextLayoutError>,
+        StructuredShapingWork,
+    ) {
+        self.prepare_structured_text_attempt_internal(backend_request, None)
+    }
+
+    fn prepare_structured_text_attempt_with_work_meter(
+        &self,
+        backend_request: &PreparedTextBackendRequest,
+        work_meter: &OperationWorkMeter,
+    ) -> (
+        Result<PreparedTextResponse, TextLayoutError>,
+        StructuredShapingWork,
+    ) {
+        self.prepare_structured_text_attempt_internal(backend_request, Some(work_meter))
+    }
+
+    fn prepare_structured_text_attempt_internal(
+        &self,
+        backend_request: &PreparedTextBackendRequest,
+        work_meter: Option<&OperationWorkMeter>,
+    ) -> (
+        Result<PreparedTextResponse, TextLayoutError>,
+        StructuredShapingWork,
+    ) {
+        let mut budget = StructuredShapingBudget::new(work_meter);
+        let response = (|| {
+            let request = backend_request.request();
+            let projection = backend_request.projection();
+            let compiled = self.compile_structured_request(request, &mut budget)?;
+            let coverage_cache_slots = projection
+                .spans()
+                .len()
+                .checked_mul(STRUCTURED_COVERAGE_CACHE_LANES)
+                .ok_or(TextLayoutError::LimitExceeded("coverage_cache"))?;
+            budget.record_coverage_cache_slots(coverage_cache_slots)?;
+            let mut coverage_cache = StructuredCoverageCache::new(projection.spans().len())?;
+            let mut wrapping_span_cursor = ProjectionSpanCursor::default();
+            budget.record_source_line_scan(projection.visible().len())?;
+            let mut wrapped_lines = Vec::new();
+            let mut raw_width_px: f64 = 0.0;
+            for source in projected_visible_lines(projection.visible()) {
+                budget.record_source_line_visit()?;
+                match request.wrap() {
+                    PreparedTextWrap::SingleRun
+                    | PreparedTextWrap::SvgLike {
+                        max_width_px: None, ..
+                    } => {
+                        push_projected_visible_line(&mut wrapped_lines, source, &mut budget)?;
+                    }
+                    PreparedTextWrap::SvgLike {
+                        max_width_px: Some(max_width_px),
                         break_long_words,
-                    )?);
-                }
-                PreparedTextWrap::HtmlLike { max_width_px } => {
-                    let shaped = self.shape_wrap_line(
-                        source,
-                        projection,
-                        request,
-                        &compiled,
-                        &mut coverage_cache,
-                        &mut wrapping_span_cursor,
-                        &mut work,
-                    )?;
-                    raw_width_px =
-                        raw_width_px.max(shaped.measure.width(request.wrapping_typography()));
-                    if let Some(max_width_px) = max_width_px {
-                        wrapped_lines.extend(self.wrap_html_structured_line(
+                    } => {
+                        let shaped = self.shape_wrap_line(
+                            source,
+                            projection,
+                            request,
+                            &compiled,
+                            &mut coverage_cache,
+                            &mut wrapping_span_cursor,
+                            &mut budget,
+                        )?;
+                        self.wrap_svg_structured_line(
                             source,
                             projection,
                             &shaped,
                             request.wrapping_typography(),
                             max_width_px,
-                        )?);
-                    } else {
-                        wrapped_lines.push(source);
+                            break_long_words,
+                            &mut wrapped_lines,
+                            &mut budget,
+                        )?;
+                    }
+                    PreparedTextWrap::HtmlLike { max_width_px } => {
+                        let shaped = self.shape_wrap_line(
+                            source,
+                            projection,
+                            request,
+                            &compiled,
+                            &mut coverage_cache,
+                            &mut wrapping_span_cursor,
+                            &mut budget,
+                        )?;
+                        raw_width_px =
+                            raw_width_px.max(shaped.measure.width(request.wrapping_typography()));
+                        if let Some(max_width_px) = max_width_px {
+                            self.wrap_html_structured_line(
+                                source,
+                                projection,
+                                &shaped,
+                                request.wrapping_typography(),
+                                max_width_px,
+                                &mut wrapped_lines,
+                                &mut budget,
+                            )?;
+                        } else {
+                            push_projected_visible_line(&mut wrapped_lines, source, &mut budget)?;
+                        }
                     }
                 }
             }
-            if wrapped_lines.len() > MAX_PREPARED_TEXT_LINES {
-                return Err(TextLayoutError::LimitExceeded("lines"));
-            }
-        }
-        let line_height_px = self.structured_line_height(request.metrics_typography());
-        let mut lines = Vec::with_capacity(wrapped_lines.len());
-        let mut runs = Vec::new();
-        let mut metrics_span_cursor = ProjectionSpanCursor::default();
-        for line in &wrapped_lines {
-            let text = line.text(projection.visible())?;
-            let shaped = self.shape_structured_line_with_evidence(
-                text,
-                line.visible_range(),
-                projection,
-                request,
-                request.metrics_typography(),
-                &compiled,
-                &compiled.metrics,
-                &mut coverage_cache,
-                &mut metrics_span_cursor,
-                &mut work,
+            let line_height_px = self.structured_line_height(request.metrics_typography());
+            let raw_width_px =
+                matches!(request.wrap(), PreparedTextWrap::HtmlLike { .. }).then_some(raw_width_px);
+            let mut response_builder = PreparedTextResponseBuilder::new(
+                backend_request.binding().clone(),
+                line_height_px,
+                raw_width_px,
+                prepared_text_request_response_budget(projection.visible().len()),
             )?;
-            lines.push(PreparedTextLineResponse::new(
-                text,
-                line.visible_range(),
-                shaped.metrics.advance.abs(),
-                shaped.metrics.bbox_x(),
-                shaped.metrics.bbox_height(),
-            )?);
-            if runs.len().saturating_add(shaped.runs.len()) > MAX_PREPARED_TEXT_RUNS {
-                return Err(TextLayoutError::LimitExceeded("runs"));
+            let mut metrics_span_cursor = ProjectionSpanCursor::default();
+            for line in &wrapped_lines {
+                let text = line.text(projection.visible())?;
+                response_builder.reserve_line(text.len())?;
+                let shaped = self.shape_structured_line_with_evidence(
+                    text,
+                    line.visible_range(),
+                    projection,
+                    request,
+                    request.metrics_typography(),
+                    &compiled,
+                    &compiled.metrics,
+                    &mut coverage_cache,
+                    &mut metrics_span_cursor,
+                    &mut budget,
+                    &mut response_builder,
+                )?;
+                response_builder.push_reserved_line(PreparedTextLineResponse::new(
+                    text,
+                    line.visible_range(),
+                    shaped.metrics.advance.abs(),
+                    shaped.metrics.bbox_x(),
+                    shaped.metrics.bbox_height(),
+                )?);
             }
-            runs.extend(shaped.runs);
-        }
-        let response = PreparedTextResponse::new(
-            backend_request.binding().clone(),
-            lines,
-            runs,
-            line_height_px,
-            matches!(request.wrap(), PreparedTextWrap::HtmlLike { .. }).then_some(raw_width_px),
-        )?;
-        Ok((response, work))
+            response_builder.finish()
+        })();
+        (response, budget.work)
     }
 
     fn shape_run(
@@ -5697,6 +6750,7 @@ mod tests {
         FontAssetSpec, FontCatalogSpec, FontSourcePolicy, FontStack, ThemeResourcePolicy,
         ThemeTextStyle,
     };
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
 
     fn projection_span_text(projection: &TextProjection) -> Vec<(&str, &str)> {
         projection
@@ -5741,6 +6795,18 @@ mod tests {
         assert!(!shaped_glyph_coverage_is_complete("A", [0]));
         assert!(!shaped_glyph_coverage_is_complete("A", []));
         assert!(shaped_glyph_coverage_is_complete("\u{200d}", []));
+    }
+
+    #[test]
+    fn fuzz_probe_skips_only_glyph_unavailable() {
+        assert_eq!(
+            classify_prepared_text_fuzz_probe::<()>(Err(TextLayoutError::GlyphUnavailable)),
+            Ok(None)
+        );
+        assert!(
+            classify_prepared_text_fuzz_probe::<()>(Err(TextLayoutError::InvalidPreparedText))
+                .is_err()
+        );
     }
 
     #[test]
@@ -5868,6 +6934,56 @@ mod tests {
             ),
             Err(TextProjectionError::InvalidRanges)
         );
+    }
+
+    #[test]
+    fn text_projection_rejects_span_retention_before_the_next_record_is_pushed() {
+        assert!(TEXT_PROJECTION_SPAN_RECORD_BYTES > 0);
+        assert_eq!(
+            TextProjection::build_with_options_and_budget(
+                Arc::from("ab"),
+                ThemeTextTransform::None,
+                2,
+                true,
+                TEXT_PROJECTION_SPAN_RECORD_BYTES,
+                None,
+            ),
+            Err(TextProjectionError::SpanLimitExceeded)
+        );
+    }
+
+    #[test]
+    fn text_projection_span_admission_is_target_stable_at_the_text_limit() {
+        assert_eq!(MAX_TEXT_PROJECTION_SPANS, MAX_TEXT_PROJECTION_BYTES);
+        assert_eq!(TEXT_PROJECTION_SPAN_RECORD_BYTES, 32);
+        assert_eq!(
+            MAX_TEXT_PROJECTION_SPAN_BYTES,
+            MAX_TEXT_PROJECTION_BYTES * 32
+        );
+        assert!(std::mem::size_of::<SourceVisibleSpan>() <= TEXT_PROJECTION_SPAN_RECORD_BYTES);
+
+        let projection = TextProjection::new(
+            "a".repeat(MAX_TEXT_PROJECTION_BYTES),
+            ThemeTextTransform::None,
+        )
+        .expect("the documented text ceiling must admit the densest projection on every target");
+        assert_eq!(projection.spans().len(), MAX_TEXT_PROJECTION_SPANS);
+    }
+
+    #[test]
+    fn operation_budget_rejects_dense_projection_before_span_allocation() {
+        let request = prepared_test_request(&"\n".repeat(64 * 1024));
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
+            .expect("the narrow projection budget is valid");
+        let meter = OperationWorkMeter::new(policy);
+
+        assert_eq!(
+            text_projection_for_request_with_meter(&request, Some(&meter))
+                .expect_err("the source scan must be charged before projection allocation"),
+            TextLayoutError::LimitExceeded("operation_work")
+        );
+        assert_eq!(meter.used(), 0);
     }
 
     #[test]
@@ -6048,6 +7164,16 @@ mod tests {
         .expect("admitted layout identity is a valid call binding");
         PreparedTextBackendRequest::new(binding, request)
             .expect("bounded test request should normalize")
+    }
+
+    fn metered_projection_and_digest_work(request: &PrepareTextRequest) -> usize {
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        text_projection_for_request_with_meter(request, Some(&meter))
+            .expect("bounded test request should build its metered projection");
+        request
+            .digest_with_work_meter(Some(&meter))
+            .expect("bounded request digest work should be admitted");
+        meter.used()
     }
 
     fn valid_raw_response(request: &PreparedTextBackendRequest) -> PreparedTextResponse {
@@ -6473,6 +7599,66 @@ mod tests {
     }
 
     #[test]
+    fn prepared_text_response_stops_pulling_lines_at_the_first_retained_byte_overflow() {
+        let layout = NativeTextLayoutBackend::default()
+            .prepare(&PrepareCatalogRequest::new(
+                mixed_catalog(),
+                FontSourcePolicy::embedded_only(),
+            ))
+            .expect("native catalog should prepare");
+        let request = prepared_test_request("a");
+        let backend_request = backend_request_for(&layout, &request);
+        let line = PreparedTextLineResponse::new(
+            "x".repeat(MAX_TEXT_PROJECTION_BYTES),
+            TextByteRange::new(0, MAX_TEXT_PROJECTION_BYTES),
+            1.0,
+            (0.0, 1.0),
+            1.0,
+        )
+        .expect("one projection-sized line remains within the per-line hard cap");
+        let line_bytes = MAX_TEXT_PROJECTION_BYTES + PREPARED_TEXT_LINE_RECORD_BYTES;
+        let admitted_lines = MAX_PREPARED_TEXT_RESPONSE_BYTES / line_bytes;
+        let line_pulls = std::rc::Rc::new(std::cell::Cell::new(0usize));
+        let run_pulls = std::rc::Rc::new(std::cell::Cell::new(0usize));
+        let counted_lines = {
+            let line_pulls = std::rc::Rc::clone(&line_pulls);
+            std::iter::from_fn(move || {
+                line_pulls.set(line_pulls.get().saturating_add(1));
+                Some(line.clone())
+            })
+        };
+        let counted_runs = {
+            let run_pulls = std::rc::Rc::clone(&run_pulls);
+            std::iter::from_fn(move || {
+                run_pulls.set(run_pulls.get().saturating_add(1));
+                Some(PreparedTextRunResponse::new(
+                    TextByteRange::new(0, 1),
+                    PreparedTextFaceSlot::new(0),
+                    FontSource::Embedded,
+                ))
+            })
+        };
+
+        assert_eq!(
+            PreparedTextResponse::new(
+                backend_request.binding().clone(),
+                counted_lines,
+                counted_runs,
+                1.0,
+                None,
+            )
+            .expect_err("the first line beyond the retained-byte budget must stop collection"),
+            TextLayoutError::LimitExceeded("response.bytes")
+        );
+        assert_eq!(line_pulls.get(), admitted_lines.saturating_add(1));
+        assert_eq!(
+            run_pulls.get(),
+            0,
+            "runs must never be pulled after line overflow"
+        );
+    }
+
+    #[test]
     fn native_prepare_freezes_catalog_identity_and_session_token() {
         let catalog = mixed_catalog();
         let request =
@@ -6778,7 +7964,7 @@ mod tests {
         );
 
         let mut cursor = ProjectionSpanCursor::default();
-        let mut work = StructuredShapingWork::default();
+        let mut budget = StructuredShapingBudget::new(None);
         let ranges = lines
             .iter()
             .map(|line| {
@@ -6786,7 +7972,7 @@ mod tests {
                     &projection,
                     line.visible_range(),
                     StructuredShapingPass::Metrics,
-                    &mut work,
+                    &mut budget,
                 )
             })
             .collect::<Result<Vec<_>, _>>()
@@ -6795,6 +7981,7 @@ mod tests {
         assert_eq!(ranges[0], 0..4);
         assert!(ranges[1].is_empty());
         assert_eq!(ranges[2], 6..7);
+        let work = budget.work;
         assert_eq!(work.metrics_line_ranges, lines.len());
         assert!(
             work.metrics_span_visits
@@ -6875,6 +8062,332 @@ mod tests {
     }
 
     #[test]
+    fn native_prepared_text_charges_exact_structured_work_to_the_operation_meter() {
+        let catalog_request =
+            PrepareCatalogRequest::new(mixed_catalog(), FontSourcePolicy::embedded_only());
+        let layout = NativeTextLayoutBackend::default()
+            .prepare(&catalog_request)
+            .expect("native backend should prepare fixture catalog");
+        let typography = ThemeTextStyle::default().with_font_stack(
+            FontStack::new(["Excalifont", "Xiaolai"]).expect("fixture families are valid"),
+        );
+        let request = PrepareTextRequest::new("portable 图", typography).with_wrap(
+            PreparedTextWrap::SvgLike {
+                max_width_px: Some(64.0),
+                break_long_words: true,
+            },
+        );
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+
+        layout
+            .prepare_text_with_work_meter(&request, &meter)
+            .expect("the operation meter should admit one complete native preparation");
+        let one_label_work = meter.used();
+        assert!(one_label_work > 0);
+        layout
+            .prepare_text_with_work_meter(&request, &meter)
+            .expect("later labels should share the same operation meter");
+
+        assert_eq!(meter.used(), one_label_work.saturating_mul(2));
+    }
+
+    #[test]
+    fn request_digest_precharges_non_text_geometry_inputs() {
+        let base_typography = ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("Excalifont").expect("fixture family is valid"));
+        let base = PrepareTextRequest::new("", base_typography.clone());
+        let metrics_typography = base_typography.with_font_stack(
+            FontStack::new(["Excalifont", "Xiaolai"]).expect("fixture families are valid"),
+        );
+        let enriched = PrepareTextRequest::new("", metrics_typography.clone())
+            .with_metrics_typography(metrics_typography)
+            .with_script("Latn")
+            .expect("Latn is a valid script tag")
+            .with_language("en")
+            .expect("en is a valid language tag")
+            .with_features(["kern"])
+            .expect("kern is a valid OpenType feature");
+        let measure_digest = |request: &PrepareTextRequest| {
+            let meter =
+                OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+            request
+                .digest_with_work_meter(Some(&meter))
+                .expect("bounded request digest should be admitted");
+            meter.used()
+        };
+
+        let base_work = measure_digest(&base);
+        let enriched_work = measure_digest(&enriched);
+        assert!(enriched_work > base_work);
+
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, base_work)
+            .expect("the measured base digest limit is valid");
+        let meter = OperationWorkMeter::new(policy);
+        assert_eq!(
+            enriched
+                .digest_with_work_meter(Some(&meter))
+                .expect_err("non-text digest inputs must consume operation work"),
+            TextLayoutError::LimitExceeded("operation_work")
+        );
+        assert!(meter.used() <= base_work);
+    }
+
+    #[test]
+    fn structured_shaping_work_total_includes_every_bounded_lane() {
+        let work = StructuredShapingWork {
+            candidate_compilation_units: 65_536,
+            coverage_input_bytes: 1,
+            face_inspections: 2,
+            coverage_cache_insertions: 4,
+            coverage_cache_slots: 8,
+            source_line_scan_bytes: 16,
+            source_line_visits: 32,
+            wrapped_line_emissions: 64,
+            wrapping_input_bytes: 128,
+            metrics_input_bytes: 256,
+            wrapping_span_visits: 512,
+            metrics_span_visits: 1_024,
+            wrapping_line_ranges: 2_048,
+            metrics_line_ranges: 4_096,
+            glyph_visits: 8_192,
+            cluster_visits: 16_384,
+            wrap_boundary_visits: 32_768,
+        };
+
+        assert_eq!(work.total_units(), Ok(131_071));
+    }
+
+    #[test]
+    fn native_prepared_text_rejects_an_operation_budget_below_exact_work() {
+        let catalog_request =
+            PrepareCatalogRequest::new(mixed_catalog(), FontSourcePolicy::embedded_only());
+        let layout = NativeTextLayoutBackend::default()
+            .prepare(&catalog_request)
+            .expect("native backend should prepare fixture catalog");
+        let typography = ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("Excalifont").expect("fixture family is valid"));
+        let request =
+            PrepareTextRequest::new("bounded", typography).with_wrap(PreparedTextWrap::SvgLike {
+                max_width_px: Some(48.0),
+                break_long_words: true,
+            });
+        let exact_meter =
+            OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        layout
+            .prepare_text_with_work_meter(&request, &exact_meter)
+            .expect("the unbounded meter should measure one complete preparation");
+        let exact = exact_meter.used();
+        assert!(exact > 1);
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, exact - 1)
+            .expect("a positive narrow work limit is valid");
+        let meter = OperationWorkMeter::new(policy);
+
+        assert_eq!(
+            layout
+                .prepare_text_with_work_meter(&request, &meter)
+                .expect_err("one work unit below the exact cost must reject"),
+            TextLayoutError::LimitExceeded("operation_work")
+        );
+        assert!(
+            meter.used() > 0 && meter.used() <= exact - 1,
+            "completed shaping actions must remain charged when a later action is rejected"
+        );
+    }
+
+    #[test]
+    fn prepared_text_admission_work_scales_linearly_with_lines_and_runs() {
+        let catalog_request =
+            PrepareCatalogRequest::new(mixed_catalog(), FontSourcePolicy::embedded_only());
+        let layout = NativeTextLayoutBackend::default()
+            .prepare(&catalog_request)
+            .expect("native backend should prepare fixture catalog");
+        let measure_admission = |line_count: usize| {
+            let text = (0..line_count).map(|_| "a").collect::<Vec<_>>().join("\n");
+            let request = prepared_test_request(&text);
+            let backend_request = backend_request_for(&layout, &request);
+            let response = valid_raw_response(&backend_request);
+            let meter =
+                OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+
+            layout
+                .primary_candidate()
+                .admit_text_response(
+                    layout.catalog(),
+                    layout.contract_version(),
+                    &backend_request,
+                    response,
+                    Some(&meter),
+                )
+                .expect("bounded multiline response should be admitted");
+            meter.used()
+        };
+
+        let small = measure_admission(128);
+        let large = measure_admission(256);
+        let larger = measure_admission(384);
+        let first_delta = large.saturating_sub(small);
+        let second_delta = larger.saturating_sub(large);
+        assert!(large > small);
+        assert!(
+            first_delta.abs_diff(second_delta) <= 16,
+            "equal line/run increments must have linear admission cost: {small} -> {large} -> {larger}"
+        );
+    }
+
+    #[test]
+    fn native_right_to_left_shaping_preserves_projection_order() {
+        let catalog_request =
+            PrepareCatalogRequest::new(mixed_catalog(), FontSourcePolicy::embedded_only());
+        let layout = NativeTextLayoutBackend::default()
+            .prepare(&catalog_request)
+            .expect("native backend should prepare fixture catalog");
+        let typography = ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("Excalifont").expect("fixture family is valid"));
+        let request = PrepareTextRequest::new("alpha beta", typography)
+            .with_direction(TextLayoutDirection::RightToLeft)
+            .with_wrap(PreparedTextWrap::SvgLike {
+                max_width_px: Some(1_000.0),
+                break_long_words: true,
+            });
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+
+        let prepared = layout
+            .prepare_text_with_work_meter(&request, &meter)
+            .expect("right-to-left glyph clusters should admit in source projection order");
+
+        assert_eq!(prepared.visible_text(), "alpha beta");
+        assert_eq!(prepared.wrapped_lines().collect::<Vec<_>>(), ["alpha beta"]);
+        assert_eq!(prepared.run_evidence().len(), 1);
+        assert_eq!(
+            prepared.run_evidence()[0].visible_range(),
+            TextByteRange::new(0, "alpha beta".len())
+        );
+        assert!(meter.used() > 0);
+    }
+
+    #[test]
+    fn native_operation_budget_stops_before_the_next_coverage_shape() {
+        let catalog_request =
+            PrepareCatalogRequest::new(mixed_catalog(), FontSourcePolicy::embedded_only());
+        let layout = NativeTextLayoutBackend::default()
+            .prepare(&catalog_request)
+            .expect("native backend should prepare fixture catalog");
+        let measurer = NativeCatalogTextMeasurer::new(&catalog_request, FontSource::Embedded)
+            .expect("fixture catalog should construct the native measurer");
+        let typography = ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("Excalifont").expect("fixture family is valid"));
+        let request =
+            PrepareTextRequest::new("a", typography).with_wrap(PreparedTextWrap::SvgLike {
+                max_width_px: Some(32.0),
+                break_long_words: true,
+            });
+        let backend_request = backend_request_for(&layout, &request);
+        let (_, complete_work) = measurer
+            .prepare_structured_text_with_work(&backend_request)
+            .expect("fixture should expose deterministic native work");
+        let admitted_before_coverage_shape = complete_work
+            .candidate_compilation_units
+            .saturating_add(complete_work.coverage_cache_slots)
+            .saturating_add(complete_work.source_line_scan_bytes)
+            .saturating_add(complete_work.source_line_visits)
+            .saturating_add(complete_work.wrapping_line_ranges)
+            .saturating_add(complete_work.wrapping_span_visits)
+            .saturating_add(complete_work.face_inspections);
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(
+                ResourceLimitId::MaxLayoutWorkUnits,
+                admitted_before_coverage_shape,
+            )
+            .expect("the narrow shaping budget is valid");
+        let meter = OperationWorkMeter::new(policy);
+
+        let (attempt, work) =
+            measurer.prepare_structured_text_attempt_with_work_meter(&backend_request, &meter);
+
+        assert_eq!(
+            attempt.expect_err("coverage shaping must not begin after its pre-charge is rejected"),
+            TextLayoutError::LimitExceeded("operation_work")
+        );
+        assert_eq!(meter.used(), admitted_before_coverage_shape);
+        assert_eq!(
+            work.candidate_compilation_units,
+            complete_work.candidate_compilation_units
+        );
+        assert_eq!(work.coverage_cache_slots, 2);
+        assert_eq!(work.source_line_scan_bytes, 1);
+        assert_eq!(work.source_line_visits, 1);
+        assert_eq!(work.wrapping_line_ranges, 1);
+        assert_eq!(work.wrapping_span_visits, 2);
+        assert_eq!(work.face_inspections, 1);
+        assert_eq!(work.coverage_input_bytes, 0);
+        assert_eq!(work.coverage_cache_insertions, 0);
+        assert_eq!(work.wrapping_input_bytes, 0);
+        assert_eq!(work.metrics_input_bytes, 0);
+        assert_eq!(work.metrics_line_ranges, 0);
+    }
+
+    #[test]
+    fn failed_native_coverage_is_still_charged_to_the_operation_meter() {
+        let catalog_request =
+            PrepareCatalogRequest::new(mixed_catalog(), FontSourcePolicy::embedded_only());
+        let layout = NativeTextLayoutBackend::default()
+            .prepare(&catalog_request)
+            .expect("native backend should prepare fixture catalog");
+        let measurer = NativeCatalogTextMeasurer::new(&catalog_request, FontSource::Embedded)
+            .expect("fixture catalog should construct the native measurer");
+        let typography = ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("Excalifont").expect("fixture family is valid"));
+        let request = PrepareTextRequest::new("图", typography);
+        let backend_request = backend_request_for(&layout, &request);
+        let (attempt, work) = measurer.prepare_structured_text_attempt(&backend_request);
+        assert_eq!(
+            attempt.expect_err("the Latin-only face does not cover the CJK witness"),
+            TextLayoutError::GlyphUnavailable
+        );
+        let expected = work
+            .total_units()
+            .expect("bounded failed work should fit in usize")
+            .saturating_add(metered_projection_and_digest_work(&request));
+        assert!(expected > 0);
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+
+        assert_eq!(
+            layout
+                .prepare_text_with_work_meter(&request, &meter)
+                .expect_err("the missing glyph should remain the semantic error"),
+            TextLayoutError::GlyphUnavailable
+        );
+        assert_eq!(meter.used(), expected);
+    }
+
+    #[test]
+    fn legacy_native_prepare_entry_remains_unmetered_and_compatible() {
+        let layout = NativeTextLayoutBackend::default()
+            .prepare(&PrepareCatalogRequest::new(
+                mixed_catalog(),
+                FontSourcePolicy::embedded_only(),
+            ))
+            .expect("native backend should prepare fixture catalog");
+        let typography = ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("Excalifont").expect("fixture family is valid"));
+
+        let prepared = layout
+            .prepare_text(&PrepareTextRequest::new("compatible", typography))
+            .expect("the compatibility entry should retain its existing behavior");
+
+        assert!(prepared.metrics().width > 0.0);
+    }
+
+    #[test]
+    fn resource_limit_errors_never_advance_to_another_backend_candidate() {
+        assert!(!text_layout_error_allows_fallback(
+            &TextLayoutError::LimitExceeded("operation_work")
+        ));
+    }
+
+    #[test]
     fn native_scalar_coverage_confirms_cmap_candidates_with_shaping() {
         let catalog_request =
             PrepareCatalogRequest::new(mixed_catalog(), FontSourcePolicy::embedded_only());
@@ -6921,6 +8434,7 @@ mod tests {
 
     #[test]
     fn prepared_coverage_does_not_drop_non_breaking_or_preserved_whitespace() {
+        let budget = PreparedTextAdmissionBudget::new(None);
         let projection = TextProjection::new("alpha\u{00a0}beta", ThemeTextTransform::None)
             .expect("projection should build");
         let alpha = PreparedTextLine::new("alpha", TextByteRange::new(0, 5), 1.0, (0.0, 1.0), 1.0)
@@ -6937,6 +8451,7 @@ mod tests {
                 },
                 WhiteSpace::Normal,
                 Some(10.0),
+                &budget,
             ),
             Err(TextLayoutError::InvalidPreparedText)
         );
@@ -6955,6 +8470,7 @@ mod tests {
                 },
                 WhiteSpace::Normal,
                 Some(10.0),
+                &budget,
             ),
             Ok(())
         );
@@ -6967,6 +8483,7 @@ mod tests {
                 },
                 WhiteSpace::PreWrap,
                 Some(10.0),
+                &budget,
             ),
             Err(TextLayoutError::InvalidPreparedText)
         );
