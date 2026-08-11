@@ -67,6 +67,7 @@ pub(super) struct AsciiGraphNode {
 pub(crate) struct GraphNodeSemantics {
     pub(crate) compartments: Option<GraphNodeCompartments>,
     pub(crate) side_constraint: Option<GraphNodeSideConstraint>,
+    pub(crate) label_wrap_width: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -319,6 +320,7 @@ impl AsciiGraph {
         );
     }
 
+    #[cfg(test)]
     pub(crate) fn add_node_with_shape_and_style(
         &mut self,
         id: impl Into<String>,

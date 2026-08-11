@@ -347,6 +347,7 @@ mod tests {
         assert_eq!(options.box_border_padding, 1);
         assert_eq!(options.graph_padding_x, 5);
         assert_eq!(options.graph_padding_y, 5);
+        assert_eq!(options.flowchart_node_label_wrap_width, 40);
         assert_eq!(options.sequence_participant_spacing, 5);
         assert_eq!(options.sequence_message_spacing, 1);
         assert_eq!(options.sequence_self_message_width, 4);
@@ -400,6 +401,13 @@ mod tests {
     }
 
     #[test]
+    fn options_builder_sets_flowchart_node_label_wrap_width() {
+        let options = AsciiRenderOptions::unicode().with_flowchart_node_label_wrap_width(24);
+
+        assert_eq!(options.flowchart_node_label_wrap_width, 24);
+    }
+
+    #[test]
     fn options_builder_sets_xychart_plot_area_dimensions() {
         let options = AsciiRenderOptions::ascii()
             .with_xychart_vertical_plot_height(8)
@@ -442,6 +450,22 @@ mod tests {
             Err(AsciiError::InvalidOption {
                 field: "sequence_self_message_width",
                 message: "must be at least 2",
+            })
+        );
+    }
+
+    #[test]
+    fn validates_flowchart_node_label_wrap_width() {
+        let options = AsciiRenderOptions {
+            flowchart_node_label_wrap_width: 0,
+            ..AsciiRenderOptions::default()
+        };
+
+        assert_eq!(
+            options.validate(),
+            Err(AsciiError::InvalidOption {
+                field: "flowchart_node_label_wrap_width",
+                message: "must be greater than 0",
             })
         );
     }

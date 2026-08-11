@@ -102,6 +102,9 @@ fn ascii_options_from_json(
     if let Some(padding) = ascii.graph_padding_y {
         render_options.graph_padding_y = padding;
     }
+    if let Some(width) = ascii.flowchart_node_label_wrap_width {
+        render_options.flowchart_node_label_wrap_width = width;
+    }
     if let Some(spacing) = ascii.sequence_participant_spacing {
         render_options.sequence_participant_spacing = spacing;
     }
@@ -520,6 +523,26 @@ mod tests {
     }
 
     #[test]
+    fn render_ascii_applies_flowchart_node_label_wrap_width_from_json() {
+        for options_json in [
+            br#"{ "ascii": { "flowchart_node_label_wrap_width": 8 } }"#.as_slice(),
+            br#"{ "ascii": { "flowchartNodeLabelWrapWidth": 8 } }"#.as_slice(),
+        ] {
+            let text = String::from_utf8(
+                render_ascii(b"flowchart TD\nA[\"Alpha Beta Gamma Delta\"]", options_json).unwrap(),
+            )
+            .unwrap();
+
+            assert!(text.contains("Alpha"), "{text}");
+            assert!(text.contains("Gamma"), "{text}");
+            assert!(
+                !text.contains("Alpha Beta Gamma Delta"),
+                "flowchart node label should wrap before layout:\n{text}"
+            );
+        }
+    }
+
+    #[test]
     fn ascii_width_profile_compiles_from_snake_and_camel_case_json() {
         for options_json in [
             br#"{ "ascii": { "width_profile": "cjk" } }"#.as_slice(),
@@ -556,6 +579,7 @@ mod tests {
                     "boxBorderPadding": 2,
                     "graph_padding_x": 3,
                     "graphPaddingY": 4,
+                    "flowchartNodeLabelWrapWidth": 5,
                     "sequence_participant_spacing": 6,
                     "sequenceMessageSpacing": 7,
                     "sequence_self_message_width": 8
@@ -568,6 +592,7 @@ mod tests {
         assert_eq!(compiled.box_border_padding, 2);
         assert_eq!(compiled.graph_padding_x, 3);
         assert_eq!(compiled.graph_padding_y, 4);
+        assert_eq!(compiled.flowchart_node_label_wrap_width, 5);
         assert_eq!(compiled.sequence_participant_spacing, 6);
         assert_eq!(compiled.sequence_message_spacing, 7);
         assert_eq!(compiled.sequence_self_message_width, 8);
@@ -685,6 +710,21 @@ mod tests {
         assert_eq!(err.status(), BindingStatus::InvalidArgument);
         assert!(
             err.message().contains("sequence_self_message_width"),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn render_ascii_rejects_zero_flowchart_node_label_wrap_width() {
+        let err = render_ascii(
+            b"flowchart TD\nA[Hello]",
+            br#"{ "ascii": { "flowchartNodeLabelWrapWidth": 0 } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::InvalidArgument);
+        assert!(
+            err.message().contains("flowchart_node_label_wrap_width"),
             "{err:?}"
         );
     }

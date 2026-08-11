@@ -126,5 +126,6 @@ pub(super) fn override_member_semantics(
             try_clone_layout_text(&anchor_member.id, resources)?,
             constraint.side(),
         )),
+        label_wrap_width: None,
     })
 }

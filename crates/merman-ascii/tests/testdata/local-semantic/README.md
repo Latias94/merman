@@ -98,6 +98,7 @@ Current examples:
 - `flowchart/boundary_label_lane.mmd`
 - `flowchart/cjk_boundary_routes.mmd`
 - `flowchart/disconnected_subgraphs.mmd`
+- `flowchart/issue_53_long_node_labels.mmd`
 - `flowchart/multiline_edge_label.mmd`
 - `flowchart/multi_boundary_routes.mmd`
 - `flowchart/nested_direction_boundary.mmd`

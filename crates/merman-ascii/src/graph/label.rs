@@ -1,3 +1,4 @@
+use super::model::AsciiGraphNode;
 use crate::options::TerminalWidthProfile;
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::{
@@ -14,6 +15,28 @@ pub(super) const GRAPH_LABEL_LINE_GAP: usize = 1;
 pub(super) struct GraphLabelMetrics {
     pub(super) width: usize,
     pub(super) content_height: usize,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct GraphNodeLabelPlan {
+    kind: GraphNodeLabelPlanKind,
+    metrics: GraphLabelMetrics,
+    document_cells: usize,
+    materialized_bytes: usize,
+    width_profile: TerminalWidthProfile,
+}
+
+#[derive(Debug, Clone)]
+enum GraphNodeLabelPlanKind {
+    Single(Box<NormalizedLabelPlan>),
+    Compartmented(Box<CompartmentedGraphNodeLabelPlan>),
+}
+
+#[derive(Debug, Clone)]
+struct CompartmentedGraphNodeLabelPlan {
+    title: NormalizedLabelPlan,
+    body: NormalizedLabelPlan,
+    title_line_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,42 +85,6 @@ impl GraphLabel {
         let body_lines = split_label_lines(body);
         title_lines.extend(body_lines);
         Self::from_lines(title_lines, width_profile, Some(title_line_count))
-    }
-
-    pub(super) fn try_compartmented_with_profile(
-        title: &str,
-        body: &str,
-        width_profile: TerminalWidthProfile,
-        resources: &ResourceContext,
-    ) -> crate::Result<Self> {
-        let title_plan = required_label_plan(title, None, width_profile, resources)?;
-        let body_plan = required_label_plan(body, None, width_profile, resources)?;
-        let title_metrics = title_plan.metrics();
-        let body_metrics = body_plan.metrics();
-        let line_count = title_metrics
-            .line_count
-            .checked_add(body_metrics.line_count)
-            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
-        let width = title_metrics.max_width.max(body_metrics.max_width);
-        resources.grid_extent(width.max(1), line_count)?;
-        let materialized_bytes = title_metrics
-            .materialized_bytes
-            .checked_add(body_metrics.materialized_bytes)
-            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
-        resources.check(AsciiResourceLimitId::MaxOutputBytes, materialized_bytes)?;
-
-        let (mut title_lines, title_width) = title_plan.materialize(title, resources)?.into_parts();
-        title_lines
-            .try_reserve_exact(body_metrics.line_count)
-            .map_err(|_| label_allocation_failed())?;
-        let (mut body_lines, body_width) = body_plan.materialize(body, resources)?.into_parts();
-        title_lines.append(&mut body_lines);
-        Ok(Self {
-            lines: title_lines,
-            width: title_width.max(body_width),
-            width_profile,
-            compartment_break_after: Some(title_metrics.line_count.max(1)),
-        })
     }
 
     #[cfg(test)]
@@ -182,31 +169,6 @@ impl GraphLabel {
         graph_label_metrics(metrics.max_width, metrics.line_count, resources)
     }
 
-    pub(super) fn try_measure_compartmented_with_profile(
-        title: &str,
-        body: &str,
-        width_profile: TerminalWidthProfile,
-        resources: &ResourceContext,
-    ) -> crate::Result<GraphLabelMetrics> {
-        let title = try_measure_normalized_label_lines(title, width_profile, false, resources)?
-            .ok_or(crate::error::AsciiError::UnsupportedFeature {
-                diagram_type: "flowchart",
-                feature: "empty graph title metrics",
-            })?;
-        let body = try_measure_normalized_label_lines(body, width_profile, false, resources)?
-            .ok_or(crate::error::AsciiError::UnsupportedFeature {
-                diagram_type: "flowchart",
-                feature: "empty graph body metrics",
-            })?;
-        let line_count = title
-            .line_count
-            .checked_add(body.line_count)
-            .ok_or_else(|| {
-                resources.overflow(crate::resource::AsciiResourceLimitId::MaxDocumentCells)
-            })?;
-        graph_label_metrics(title.max_width.max(body.max_width), line_count, resources)
-    }
-
     fn from_lines(
         mut lines: Vec<String>,
         width_profile: TerminalWidthProfile,
@@ -263,6 +225,134 @@ impl GraphLabel {
     }
 }
 
+impl GraphNodeLabelPlan {
+    pub(super) fn try_for_node(
+        node: &AsciiGraphNode,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> crate::Result<Self> {
+        let (kind, width, line_count, document_cells, materialized_bytes) = match node
+            .semantics
+            .compartments
+            .as_ref()
+        {
+            Some(compartments) => {
+                let title =
+                    required_label_plan(&compartments.title, None, width_profile, resources)?;
+                let body = required_label_plan(&compartments.body, None, width_profile, resources)?;
+                let title_metrics = title.metrics();
+                let body_metrics = body.metrics();
+                let line_count = title_metrics
+                    .line_count
+                    .checked_add(body_metrics.line_count)
+                    .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+                let materialized_bytes = title_metrics
+                    .materialized_bytes
+                    .checked_add(body_metrics.materialized_bytes)
+                    .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+                let document_cells = title_metrics
+                    .document_cells
+                    .checked_add(body_metrics.document_cells)
+                    .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+                (
+                    GraphNodeLabelPlanKind::Compartmented(Box::new(
+                        CompartmentedGraphNodeLabelPlan {
+                            title,
+                            body,
+                            title_line_count: title_metrics.line_count,
+                        },
+                    )),
+                    title_metrics.max_width.max(body_metrics.max_width),
+                    line_count,
+                    document_cells,
+                    materialized_bytes,
+                )
+            }
+            None => {
+                let plan = required_label_plan(
+                    &node.label,
+                    node.semantics.label_wrap_width,
+                    width_profile,
+                    resources,
+                )?;
+                let metrics = plan.metrics();
+                (
+                    GraphNodeLabelPlanKind::Single(Box::new(plan)),
+                    metrics.max_width,
+                    metrics.line_count,
+                    metrics.document_cells,
+                    metrics.materialized_bytes,
+                )
+            }
+        };
+        Ok(Self {
+            kind,
+            metrics: graph_label_metrics(width, line_count, resources)?,
+            document_cells,
+            materialized_bytes,
+            width_profile,
+        })
+    }
+
+    pub(super) const fn metrics(&self) -> GraphLabelMetrics {
+        self.metrics
+    }
+
+    pub(super) const fn document_cells(&self) -> usize {
+        self.document_cells
+    }
+
+    pub(super) const fn materialized_bytes(&self) -> usize {
+        self.materialized_bytes
+    }
+
+    pub(super) fn materialize(
+        &self,
+        node: &AsciiGraphNode,
+        resources: &ResourceContext,
+    ) -> crate::Result<GraphLabel> {
+        match (&self.kind, node.semantics.compartments.as_ref()) {
+            (GraphNodeLabelPlanKind::Single(plan), None) => {
+                let (lines, width) = plan
+                    .as_ref()
+                    .materialize(&node.label, resources)?
+                    .into_parts();
+                Ok(GraphLabel {
+                    lines,
+                    width,
+                    width_profile: self.width_profile,
+                    compartment_break_after: None,
+                })
+            }
+            (GraphNodeLabelPlanKind::Compartmented(plan), Some(compartments)) => {
+                let CompartmentedGraphNodeLabelPlan {
+                    title,
+                    body,
+                    title_line_count,
+                } = plan.as_ref();
+                let (mut lines, title_width) = title
+                    .materialize(&compartments.title, resources)?
+                    .into_parts();
+                let body_metrics = body.metrics();
+                lines
+                    .try_reserve_exact(body_metrics.line_count)
+                    .map_err(|_| label_allocation_failed())?;
+                let (mut body_lines, body_width) = body
+                    .materialize(&compartments.body, resources)?
+                    .into_parts();
+                lines.append(&mut body_lines);
+                Ok(GraphLabel {
+                    lines,
+                    width: title_width.max(body_width),
+                    width_profile: self.width_profile,
+                    compartment_break_after: Some((*title_line_count).max(1)),
+                })
+            }
+            _ => Err(invalid_graph_label_plan()),
+        }
+    }
+}
+
 fn required_label_plan(
     raw: &str,
     wrap_width: Option<usize>,
@@ -285,6 +375,13 @@ fn required_label_plan(
 
 fn label_allocation_failed() -> crate::error::AsciiError {
     crate::error::AsciiError::allocation_failed(AsciiResourceLimitPhase::Document.as_str())
+}
+
+fn invalid_graph_label_plan() -> crate::error::AsciiError {
+    crate::error::AsciiError::UnsupportedFeature {
+        diagram_type: "flowchart",
+        feature: "invalid graph node label plan",
+    }
 }
 
 fn graph_label_metrics(

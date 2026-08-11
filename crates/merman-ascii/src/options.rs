@@ -42,6 +42,7 @@ pub struct AsciiRenderOptions {
     pub box_border_padding: usize,
     pub graph_padding_x: usize,
     pub graph_padding_y: usize,
+    pub flowchart_node_label_wrap_width: usize,
     pub sequence_participant_spacing: usize,
     pub sequence_message_spacing: usize,
     pub sequence_self_message_width: usize,
@@ -64,6 +65,7 @@ impl Default for AsciiRenderOptions {
             box_border_padding: 1,
             graph_padding_x: 5,
             graph_padding_y: 5,
+            flowchart_node_label_wrap_width: 40,
             sequence_participant_spacing: 5,
             sequence_message_spacing: 1,
             sequence_self_message_width: 4,
@@ -106,6 +108,11 @@ impl AsciiRenderOptions {
 
     pub fn with_sequence_mirror_actors(mut self, mirror_actors: bool) -> Self {
         self.sequence_mirror_actors = mirror_actors;
+        self
+    }
+
+    pub fn with_flowchart_node_label_wrap_width(mut self, width: usize) -> Self {
+        self.flowchart_node_label_wrap_width = width;
         self
     }
 
@@ -166,6 +173,13 @@ impl AsciiRenderOptions {
     }
 
     pub fn validate(&self) -> Result<()> {
+        if self.flowchart_node_label_wrap_width == 0 {
+            return Err(AsciiError::InvalidOption {
+                field: "flowchart_node_label_wrap_width",
+                message: "must be greater than 0",
+            });
+        }
+
         if self.sequence_self_message_width < 2 {
             return Err(AsciiError::InvalidOption {
                 field: "sequence_self_message_width",

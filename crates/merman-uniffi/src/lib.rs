@@ -2590,6 +2590,22 @@ mod tests {
 
     #[cfg(feature = "ascii")]
     #[test]
+    fn engine_applies_flowchart_node_label_wrap_width() {
+        let text = engine()
+            .render_ascii(
+                "flowchart TD\nA[\"Alpha Beta Gamma Delta\"]".to_string(),
+                Some(r#"{ "ascii": { "flowchartNodeLabelWrapWidth": 8 } }"#.to_string()),
+            )
+            .unwrap();
+
+        for expected in ["Alpha", "Beta", "Gamma", "Delta"] {
+            assert!(text.contains(expected), "missing {expected:?}:\n{text}");
+        }
+        assert!(!text.contains("Alpha Beta Gamma Delta"), "{text}");
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
     fn uniffi_ascii_operations_preserve_typed_exact_resource_boundaries() {
         let cases = [
             (

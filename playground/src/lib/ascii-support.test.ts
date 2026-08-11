@@ -122,4 +122,11 @@ test("fallback projection fields derive the compatibility support level", () => 
       "participant-bounded nested control frames"
     )
   );
+
+  const flowchart = byType.get("flowchart")!;
+  assert.ok(
+    flowchart.supported_semantics.includes(
+      "terminal-cell wrapped node labels"
+    )
+  );
 });

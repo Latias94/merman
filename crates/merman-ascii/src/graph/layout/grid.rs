@@ -1,4 +1,4 @@
-use super::super::label::{GraphLabel, GraphLabelMetrics};
+use super::super::label::{GraphLabel, GraphNodeLabelPlan};
 use super::super::model::{
     AsciiGraph, AsciiGraphEdge, AsciiGraphNode, GraphDirection, GraphNodeSide,
 };
@@ -75,21 +75,49 @@ pub(super) fn layout_nodes(
     graph: &AsciiGraph,
     options: &AsciiRenderOptions,
     topology: Option<&GraphGroupTopology<'_>>,
+    label_plans: &[GraphNodeLabelPlan],
     resources: &mut ResourceContext,
 ) -> Result<GridNodeLayoutParts> {
     match graph.direction.canonical() {
         GraphDirection::LeftRight => {
-            layout_left_right_grid_nodes(graph, options, topology, resources)
+            layout_left_right_grid_nodes(graph, options, topology, label_plans, resources)
         }
-        GraphDirection::TopDown => layout_top_down_grid_nodes(graph, options, topology, resources),
+        GraphDirection::TopDown => {
+            layout_top_down_grid_nodes(graph, options, topology, label_plans, resources)
+        }
         GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
     }
+}
+
+pub(super) fn plan_node_labels(
+    graph: &AsciiGraph,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<Vec<GraphNodeLabelPlan>> {
+    let mut plans = Vec::new();
+    try_reserve_vec(&mut plans, graph.nodes.len())?;
+    let mut document_cells = 0usize;
+    let mut materialized_bytes = 0usize;
+    for node in &graph.nodes {
+        let plan = GraphNodeLabelPlan::try_for_node(node, width_profile, resources)?;
+        document_cells = document_cells
+            .checked_add(plan.document_cells())
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxDocumentCells))?;
+        materialized_bytes = materialized_bytes
+            .checked_add(plan.materialized_bytes())
+            .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
+        plans.push(plan);
+    }
+    resources.check(AsciiResourceLimitId::MaxDocumentCells, document_cells)?;
+    resources.check(AsciiResourceLimitId::MaxOutputBytes, materialized_bytes)?;
+    Ok(plans)
 }
 
 fn layout_left_right_grid_nodes(
     graph: &AsciiGraph,
     options: &AsciiRenderOptions,
     topology: Option<&GraphGroupTopology<'_>>,
+    label_plans: &[GraphNodeLabelPlan],
     resources: &mut ResourceContext,
 ) -> Result<GridNodeLayoutParts> {
     let ranked =
@@ -102,7 +130,10 @@ fn layout_left_right_grid_nodes(
 
     for (index, coord) in placements.iter().copied().enumerate() {
         let node = &graph.nodes[index];
-        let shape_size = node_shape_size(node, options, resources)?;
+        let label_plan = label_plans
+            .get(index)
+            .ok_or_else(invalid_node_label_plans)?;
+        let shape_size = node_shape_size(node, label_plan, options, resources)?;
         set_axis_size(&mut column_widths, coord.x, 1);
         set_axis_size(
             &mut column_widths,
@@ -171,8 +202,8 @@ fn layout_left_right_grid_nodes(
         placements,
         &column_widths,
         &row_heights,
+        label_plans,
         options.terminal_width_profile,
-        resources,
     )?;
 
     Ok((layouts, column_widths, row_heights))
@@ -1212,6 +1243,7 @@ fn layout_top_down_grid_nodes(
     graph: &AsciiGraph,
     options: &AsciiRenderOptions,
     topology: Option<&GraphGroupTopology<'_>>,
+    label_plans: &[GraphNodeLabelPlan],
     resources: &mut ResourceContext,
 ) -> Result<GridNodeLayoutParts> {
     let ranked =
@@ -1224,7 +1256,10 @@ fn layout_top_down_grid_nodes(
 
     for (index, coord) in placements.iter().copied().enumerate() {
         let node = &graph.nodes[index];
-        let shape_size = node_shape_size(node, options, resources)?;
+        let label_plan = label_plans
+            .get(index)
+            .ok_or_else(invalid_node_label_plans)?;
+        let shape_size = node_shape_size(node, label_plan, options, resources)?;
         set_axis_size(&mut column_widths, coord.x, 1);
         set_axis_size(
             &mut column_widths,
@@ -1295,8 +1330,8 @@ fn layout_top_down_grid_nodes(
         placements,
         &column_widths,
         &row_heights,
+        label_plans,
         options.terminal_width_profile,
-        resources,
     )?;
 
     Ok((layouts, column_widths, row_heights))
@@ -1506,15 +1541,18 @@ fn build_node_layouts(
     placements: Vec<GridCoord>,
     column_widths: &AxisSizes,
     row_heights: &AxisSizes,
+    label_plans: &[GraphNodeLabelPlan],
     width_profile: TerminalWidthProfile,
-    resources: &ResourceContext,
 ) -> Result<Vec<NodeLayout>> {
+    if placements.len() != graph.nodes.len() || label_plans.len() != graph.nodes.len() {
+        return Err(invalid_node_label_plans());
+    }
     let mut layouts = Vec::new();
     try_reserve_vec(&mut layouts, placements.len())?;
     for (coord, node) in placements.into_iter().zip(graph.nodes.iter()) {
         layouts.push(NodeLayout {
             id: node.id.clone(),
-            label: graph_node_label(node, width_profile, resources)?,
+            label: GraphLabel::empty_with_profile(width_profile),
             shape: node.shape,
             style: node.style,
             grid: coord,
@@ -1525,6 +1563,25 @@ fn build_node_layouts(
         });
     }
     Ok(layouts)
+}
+
+pub(super) fn materialize_node_labels(
+    layouts: &mut [NodeLayout],
+    graph: &AsciiGraph,
+    label_plans: &[GraphNodeLabelPlan],
+    resources: &ResourceContext,
+) -> Result<()> {
+    if layouts.len() != graph.nodes.len() || label_plans.len() != graph.nodes.len() {
+        return Err(invalid_node_label_plans());
+    }
+    for ((layout, node), label_plan) in layouts
+        .iter_mut()
+        .zip(graph.nodes.iter())
+        .zip(label_plans.iter())
+    {
+        layout.label = label_plan.materialize(node, resources)?;
+    }
+    Ok(())
 }
 
 fn set_axis_size(axis_sizes: &mut AxisSizes, index: usize, size: usize) {
@@ -1551,10 +1608,11 @@ fn axis_span(axis_sizes: &AxisSizes, start: usize, len: usize) -> usize {
 
 fn node_shape_size(
     node: &AsciiGraphNode,
+    label_plan: &GraphNodeLabelPlan,
     options: &AsciiRenderOptions,
     resources: &ResourceContext,
 ) -> Result<GraphNodeShapeSize> {
-    let metrics = graph_node_label_metrics(node, options.terminal_width_profile, resources)?;
+    let metrics = label_plan.metrics();
     GraphNodeShapeSemantics::new(node.shape).try_size_for_label_metrics(
         metrics.width,
         metrics.content_height,
@@ -1563,35 +1621,10 @@ fn node_shape_size(
     )
 }
 
-fn graph_node_label_metrics(
-    node: &AsciiGraphNode,
-    width_profile: TerminalWidthProfile,
-    resources: &ResourceContext,
-) -> Result<GraphLabelMetrics> {
-    match node.semantics.compartments.as_ref() {
-        Some(compartments) => GraphLabel::try_measure_compartmented_with_profile(
-            &compartments.title,
-            &compartments.body,
-            width_profile,
-            resources,
-        ),
-        None => GraphLabel::try_measure_with_profile(&node.label, width_profile, resources),
-    }
-}
-
-fn graph_node_label(
-    node: &AsciiGraphNode,
-    width_profile: TerminalWidthProfile,
-    resources: &ResourceContext,
-) -> Result<GraphLabel> {
-    match node.semantics.compartments.as_ref() {
-        Some(compartments) => GraphLabel::try_compartmented_with_profile(
-            &compartments.title,
-            &compartments.body,
-            width_profile,
-            resources,
-        ),
-        None => GraphLabel::try_new_with_profile(&node.label, width_profile, resources),
+fn invalid_node_label_plans() -> AsciiError {
+    AsciiError::UnsupportedFeature {
+        diagram_type: "flowchart",
+        feature: "invalid graph node label plans",
     }
 }
 

@@ -1293,6 +1293,21 @@ mod tests {
 
     #[cfg(feature = "ascii")]
     #[test]
+    fn render_ascii_impl_applies_flowchart_node_label_wrap_width() {
+        let text = string_result(merman_bindings_core::render_ascii(
+            b"flowchart TD\nA[\"Alpha Beta Gamma Delta\"]",
+            br#"{ "ascii": { "flowchartNodeLabelWrapWidth": 8 } }"#,
+        ))
+        .unwrap();
+
+        for expected in ["Alpha", "Beta", "Gamma", "Delta"] {
+            assert!(text.contains(expected), "missing {expected:?}:\n{text}");
+        }
+        assert!(!text.contains("Alpha Beta Gamma Delta"), "{text}");
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
     fn wasm_ascii_operations_preserve_typed_exact_resource_boundaries() {
         let cases = [
             (

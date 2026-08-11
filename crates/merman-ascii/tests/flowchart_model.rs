@@ -1,10 +1,12 @@
 use merman_ascii::{
-    AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb, render_model,
+    AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions,
+    AsciiResourceLimitId, AsciiResourcePolicy, AsciiRgb, render_model,
 };
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::flowchart::{
     FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode, FlowchartModel,
 };
+use merman_core::resources::ResourceProfile;
 use merman_core::{Engine, ParseOptions};
 use std::path::Path;
 use unicode_width::UnicodeWidthStr;

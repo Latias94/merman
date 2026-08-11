@@ -276,6 +276,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         supported_semantics: &[
             "root directions",
             "boxed nodes and common shapes",
+            "terminal-cell wrapped node labels",
             "edge labels",
             "open dotted and thick edges",
             "subgraphs and nested groups",
@@ -302,6 +303,11 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
                 kind: AsciiEvidenceKind::LocalAdvantage,
                 source: "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#intentional-differences",
                 note: "true RL/BT handling is a local semantic target, not a beautiful-mermaid capability",
+            },
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/testdata/local-semantic/flowchart/issue_53_long_node_labels.mmd",
+                note: "Issue #53 verifies terminal-cell wrapping before node sizing while preserving labels and topology",
             },
         ],
     },
@@ -892,6 +898,15 @@ mod tests {
         assert!(flowchart.evidence.iter().any(|evidence| {
             matches!(evidence.kind, AsciiEvidenceKind::LocalAdvantage)
                 && evidence.note.contains("true RL/BT")
+        }));
+        assert!(
+            flowchart
+                .supported_semantics
+                .contains(&"terminal-cell wrapped node labels")
+        );
+        assert!(flowchart.evidence.iter().any(|evidence| {
+            matches!(evidence.kind, AsciiEvidenceKind::LocalSemanticProbe)
+                && evidence.source.ends_with("issue_53_long_node_labels.mmd")
         }));
     }
 

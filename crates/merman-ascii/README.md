@@ -60,6 +60,11 @@ Every concrete built-in typed family has one capability record. `semantic_covera
 derived from them. Other Mermaid families return `AsciiError::UnsupportedDiagram` through the typed
 model path. The tracked [ASCII/Unicode support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md) is the user-facing source of truth for exact limits. Family-specific engineering detail lives in [Flowchart](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/FLOWCHART_SUPPORT.md), [Sequence](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/SEQUENCE_SUPPORT.md), and [State](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/STATE_SUPPORT.md) support notes.
 
+Flowchart node labels wrap before layout at a default width of 40 terminal display cells. Use
+`AsciiRenderOptions::with_flowchart_node_label_wrap_width` to tune that family-owned terminal
+policy. The value is not a CSS-pixel conversion of Mermaid's SVG `wrappingWidth`; the same
+grapheme-safe plan drives node measurement and final text materialization.
+
 ## Resource Policy
 
 `AsciiRenderOptions::resources` owns six typed limits: checked grid extent, deterministic layout

@@ -77,6 +77,7 @@ pub(crate) fn from_state_model_with_context(
             GraphNodeSemantics {
                 compartments,
                 side_constraint: note_side_constraints.get(&node.id).cloned(),
+                label_wrap_width: None,
             },
         );
     }

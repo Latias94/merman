@@ -104,6 +104,7 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: Partial<
     primaryProjection: "diagrammatic",
     supportedSemantics: [
       "root directions and common node shapes",
+      "terminal-cell wrapped node labels",
       "edge labels and open, dotted, thick, and invisible edges",
       "subgraphs, nested groups, and boundary-aware routes",
       "terminal color roles",

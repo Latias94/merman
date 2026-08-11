@@ -26,6 +26,11 @@ or WASM artifact; versions from alpha.5 and alpha.6 are not wire-compatible.
   public variant and use `terminal_diagnostic_details()` for safe structured diagnostics.
 - `AsciiRenderOptions` now carries `terminal_width_profile`. Use its constructors and builders so
   Unicode and CJK width behavior remains explicit.
+- Ordinary Flowchart node labels now wrap before layout at `40` terminal display cells by default.
+  Use `with_flowchart_node_label_wrap_width(...)` or the binding JSON field
+  `ascii.flowchart_node_label_wrap_width` / `ascii.flowchartNodeLabelWrapWidth` to tune the limit.
+  The value must be non-zero and is independent of Mermaid's SVG pixel width. Review and regenerate
+  byte snapshots that contain long Flowchart node labels.
 
 ## Typed render models
 

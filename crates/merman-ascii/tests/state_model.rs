@@ -105,6 +105,21 @@ fn state_simple_transition_renders_through_render_model() {
 }
 
 #[test]
+fn state_labels_do_not_use_flowchart_node_label_wrap_width() {
+    let input = "stateDiagram-v2\nstate \"Alpha Beta Gamma Delta\" as A";
+    let rendered = render_state(
+        input,
+        &AsciiRenderOptions::ascii().with_flowchart_node_label_wrap_width(8),
+    )
+    .expect("state label should render");
+
+    assert!(
+        rendered.contains("Alpha Beta Gamma Delta"),
+        "flowchart label wrapping must not affect state nodes:\n{rendered}"
+    );
+}
+
+#[test]
 fn state_lr_direction_renders_states_on_one_row() {
     let rendered = render_state(
         "stateDiagram-v2\ndirection LR\nA --> B: go",

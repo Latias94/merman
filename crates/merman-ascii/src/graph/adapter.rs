@@ -1,4 +1,7 @@
-use super::model::{AsciiGraph, GraphDirection, GraphEdgeAttrs, GraphEdgeMarker, GraphEdgeStroke};
+use super::model::{
+    AsciiGraph, GraphDirection, GraphEdgeAttrs, GraphEdgeMarker, GraphEdgeStroke,
+    GraphNodeSemantics,
+};
 use super::shape::resolve_flowchart_node_shape;
 use super::style::{resolve_edge_style, resolve_group_style, resolve_node_style};
 use crate::AsciiDirection;
@@ -42,11 +45,15 @@ pub(crate) fn from_flowchart_model(
         let label = try_clone_projection_string(
             resolved_shape.projected_label(node.label.as_deref().unwrap_or(&node.id)),
         )?;
-        graph.add_node_with_shape_and_style(
+        graph.add_node_with_semantics(
             id,
             label,
             resolved_shape.shape,
             resolve_node_style(model, node),
+            GraphNodeSemantics {
+                label_wrap_width: Some(options.flowchart_node_label_wrap_width),
+                ..GraphNodeSemantics::default()
+            },
         );
     }
 

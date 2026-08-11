@@ -687,6 +687,8 @@ pub(crate) struct AsciiOptionsJson {
     pub(crate) graph_padding_x: Option<usize>,
     #[serde(default, alias = "graphPaddingY")]
     pub(crate) graph_padding_y: Option<usize>,
+    #[serde(default, alias = "flowchartNodeLabelWrapWidth")]
+    pub(crate) flowchart_node_label_wrap_width: Option<usize>,
     #[serde(default, alias = "sequenceParticipantSpacing")]
     pub(crate) sequence_participant_spacing: Option<usize>,
     #[serde(default, alias = "sequenceMessageSpacing")]

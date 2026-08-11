@@ -140,6 +140,28 @@ fn render_ascii_sync_uses_ascii_options_for_padding() {
 }
 
 #[test]
+fn public_ascii_renderers_apply_flowchart_node_label_wrapping() {
+    let source = "flowchart TD\nA[\"Alpha Beta Gamma Delta\"]";
+    let options = AsciiRenderOptions::ascii().with_flowchart_node_label_wrap_width(8);
+    let engine = merman::Engine::new();
+    let direct = render_ascii_sync(&engine, source, merman::ParseOptions::strict(), &options)
+        .unwrap()
+        .unwrap();
+    let headless = HeadlessAsciiRenderer::new()
+        .with_strict_parsing()
+        .with_ascii_options(options)
+        .render_ascii_sync(source)
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(headless, direct);
+    for expected in ["Alpha", "Beta", "Gamma", "Delta"] {
+        assert!(direct.contains(expected), "missing {expected:?}:\n{direct}");
+    }
+    assert!(!direct.contains("Alpha Beta Gamma Delta"), "{direct}");
+}
+
+#[test]
 fn headless_ascii_renderer_renders_sequence_with_unicode_defaults() {
     let renderer = HeadlessAsciiRenderer::new().with_strict_parsing();
     let rendered = renderer

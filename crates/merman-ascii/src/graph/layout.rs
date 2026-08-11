@@ -107,6 +107,7 @@ pub(super) fn layout_graph_with_resources(
 ) -> Result<GraphLayout> {
     grid::preflight_minimum_grid_extent(graph, options, resources)?;
     charge_graph_layout_work(graph, resources)?;
+    let label_plans = grid::plan_node_labels(graph, options.terminal_width_profile, resources)?;
     let topology = if graph.groups.is_empty() {
         None
     } else {
@@ -114,7 +115,7 @@ pub(super) fn layout_graph_with_resources(
     };
     check_graph_nesting_depth(graph, topology.as_ref(), resources)?;
     let (mut nodes, column_widths, row_heights) =
-        grid::layout_nodes(graph, options, topology.as_ref(), resources)?;
+        grid::layout_nodes(graph, options, topology.as_ref(), &label_plans, resources)?;
     let (group_offset_x, group_offset_y) = if graph.groups.is_empty() {
         (0, 0)
     } else {
@@ -132,7 +133,6 @@ pub(super) fn layout_graph_with_resources(
         node.x = resources.checked_grid_add(node.x, group_offset_x)?;
         node.y = resources.checked_grid_add(node.y, group_offset_y)?;
     }
-    check_node_layout_extent(&nodes, resources)?;
     let offset_x = nodes
         .first()
         .map(|node| {
@@ -160,6 +160,8 @@ pub(super) fn layout_graph_with_resources(
             resources,
         )?
     };
+    check_graph_layout_extent(&nodes, &groups, resources)?;
+    grid::materialize_node_labels(&mut nodes, graph, &label_plans, resources)?;
     Ok(GraphLayout {
         nodes,
         groups,
@@ -170,12 +172,20 @@ pub(super) fn layout_graph_with_resources(
     })
 }
 
-fn check_node_layout_extent(nodes: &[NodeLayout], resources: &ResourceContext) -> Result<()> {
+fn check_graph_layout_extent(
+    nodes: &[NodeLayout],
+    groups: &[GroupLayout],
+    resources: &ResourceContext,
+) -> Result<()> {
     let mut width = 0;
     let mut height = 0;
     for node in nodes {
         width = width.max(resources.checked_grid_add(node.x, node.width)?);
         height = height.max(resources.checked_grid_add(node.y, node.height)?);
+    }
+    for group in groups {
+        width = width.max(resources.checked_grid_add(group.x, group.width)?);
+        height = height.max(resources.checked_grid_add(group.y, group.height)?);
     }
     resources.grid_extent(width, height)?;
     Ok(())

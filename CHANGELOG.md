@@ -30,6 +30,8 @@ surfaces. See the [alpha.5 to alpha.6 upgrade guide](docs/release/ALPHA5_TO_ALPH
   parser-backed semantic evidence for the six diagrammatic ASCII families.
 - Added explicit structured-text projections for Gantt, GitGraph, Journey, Kanban, Mindmap, Packet,
   Timeline, and TreeView, with documented field disposition and direct-model validation boundaries.
+- Added configurable terminal-cell wrapping for ordinary Flowchart node labels, including the
+  Issue #53 regression fixture and binding JSON snake/camel aliases.
 
 ### Fixed
 

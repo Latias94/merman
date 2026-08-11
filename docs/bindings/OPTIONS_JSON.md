@@ -369,6 +369,7 @@ not affect SVG, parse JSON, layout JSON, or validation output.
 | `ascii.box_border_padding` / `ascii.boxBorderPadding` | non-negative integer | `1` | Horizontal padding inside terminal node boxes. |
 | `ascii.graph_padding_x` / `ascii.graphPaddingX` | non-negative integer | `5` | Horizontal padding around terminal graph layouts. |
 | `ascii.graph_padding_y` / `ascii.graphPaddingY` | non-negative integer | `5` | Vertical padding around terminal graph layouts. |
+| `ascii.flowchart_node_label_wrap_width` / `ascii.flowchartNodeLabelWrapWidth` | positive integer | `40` | Maximum display-cell width of an ordinary Flowchart node label before grapheme-safe wrapping and node sizing. This is a terminal-column policy, not Mermaid's SVG `wrappingWidth` in CSS pixels. |
 | `ascii.sequence_participant_spacing` / `ascii.sequenceParticipantSpacing` | non-negative integer | `5` | Minimum spacing between sequence participants. |
 | `ascii.sequence_message_spacing` / `ascii.sequenceMessageSpacing` | non-negative integer | `1` | Vertical spacing between sequence messages. |
 | `ascii.sequence_self_message_width` / `ascii.sequenceSelfMessageWidth` | integer at least `2` | `4` | Width reserved for sequence self-message loops. |

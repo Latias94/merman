@@ -926,6 +926,16 @@ if (hasCapability("ascii")) {
   const ascii = api.renderAscii(source, deterministicTime);
   assert.match(ascii, /Hello/);
   assert.match(ascii, /World/);
+  const wrappedAscii = api.renderAscii(
+    'flowchart TD\nA["Alpha Beta Gamma Delta"]',
+    {
+      ...deterministicTime,
+      ascii: { flowchartNodeLabelWrapWidth: 8 },
+    },
+  );
+  assert.match(wrappedAscii, /Alpha/);
+  assert.match(wrappedAscii, /Gamma/);
+  assert.equal(wrappedAscii.includes("Alpha Beta Gamma Delta"), false);
 } else {
   assert.equal(typeof api.renderAscii, "undefined");
   assert.equal(typeof api.asciiSupportedDiagrams, "undefined");
