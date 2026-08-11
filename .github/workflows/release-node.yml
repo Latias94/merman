@@ -36,7 +36,7 @@ jobs:
       version: ${{ steps.release.outputs.version }}
       npm_dist_tag: ${{ steps.release.outputs.npm_dist_tag }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
@@ -77,7 +77,7 @@ jobs:
             printf 'npm_dist_tag=%s\n' "$npm_dist_tag"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ steps.release.outputs.source_ref }}
           path: release-source
@@ -106,7 +106,7 @@ jobs:
     name: loader package
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
@@ -124,7 +124,7 @@ jobs:
           python3 scripts/sync-release-legal-materials.py --check
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
           cache: npm
@@ -152,7 +152,7 @@ jobs:
           test "$(find "$artifact_dir" -maxdepth 1 -name '*.tgz' -type f | wc -l | tr -d ' ')" = 1
 
       - name: Upload loader package
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: merman-node-npm-loader
           path: ${{ runner.temp }}/node-loader-artifact/*.tgz
@@ -185,7 +185,7 @@ jobs:
             runner: windows-2025-vs2026
             rust_target: x86_64-pc-windows-msvc
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
@@ -203,13 +203,13 @@ jobs:
 
       - name: Install Rust toolchain
         if: matrix.target != 'linux-x64-musl'
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
         with:
           targets: ${{ matrix.rust_target }}
 
       - name: Rust cache
         if: matrix.target != 'linux-x64-musl'
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: crates/merman-node
 
@@ -260,7 +260,7 @@ jobs:
 
       - name: Setup Node
         if: matrix.target != 'linux-x64-musl'
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
           cache: npm
@@ -313,7 +313,7 @@ jobs:
             --target "$TARGET"
 
       - name: Upload target package
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: merman-node-npm-${{ matrix.target }}
           path: ${{ runner.temp }}/node-platform-artifact/*.tgz
@@ -327,13 +327,13 @@ jobs:
     name: verified package group
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
 
       - name: Download all Node npm packages
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           pattern: merman-node-npm-*
           path: target/node-npm-package-group
@@ -361,7 +361,7 @@ jobs:
             --target-dist-tag "$NPM_DIST_TAG"
 
       - name: Upload verified Node package group
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: merman-node-npm-package-group
           path: target/node-npm-package-group
@@ -380,28 +380,28 @@ jobs:
       id-token: write
     steps:
       - name: Checkout trusted release verifier
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.workflow_sha }}
           path: trusted
           persist-credentials: false
 
       - name: Checkout immutable package descriptor
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           path: release-source
           persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
 
       - name: Download verified Node package group
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: merman-node-npm-package-group
           path: target/node-npm-package-group
@@ -433,7 +433,7 @@ jobs:
 
       - name: Upload npm reconciliation report
         if: ${{ always() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: merman-node-npm-reconciliation-report
           path: target/node-npm-package-group/reconciliation-report.json

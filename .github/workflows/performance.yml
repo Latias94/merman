@@ -114,7 +114,7 @@ jobs:
       CARGO_INCREMENTAL: "0"
     steps:
       - name: Checkout head
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           path: head
           fetch-depth: 1
@@ -123,7 +123,7 @@ jobs:
           repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
 
       - name: Check Python performance scripts
         working-directory: head
@@ -183,7 +183,7 @@ jobs:
       CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
       - name: Checkout head
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           path: head
           fetch-depth: 1
@@ -192,7 +192,7 @@ jobs:
           repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}
 
       - name: Checkout base
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           path: base
           fetch-depth: 1
@@ -201,7 +201,7 @@ jobs:
           repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
 
       - name: Run self regression comparison
         id: regression_comparison
@@ -237,7 +237,7 @@ jobs:
           set -e
           echo "comparison_exit=$comparison_exit" >> "$GITHUB_OUTPUT"
 
-      - name: Render regression PR comment
+      - name: Render regression job summary
         id: regression_comment_render
         if: ${{ always() }}
         working-directory: head
@@ -246,7 +246,7 @@ jobs:
           set +e
           python3 tools/bench/render_perf_comment.py \
             --json target/performance/self_comparison.json \
-            --out target/performance/pr_comment.md \
+            --out target/performance/regression_summary.md \
             --run-url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
             --artifact perf-regression \
             --process-exit-code "${{ steps.regression_comparison.outputs.comparison_exit || '2' }}"
@@ -256,27 +256,27 @@ jobs:
 
       - name: Upload regression artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: perf-regression
           path: |
             head/target/performance/self_comparison.md
             head/target/performance/self_comparison.json
-            head/target/performance/pr_comment.md
+            head/target/performance/regression_summary.md
 
       - name: Write regression job summary
         if: ${{ always() && github.event_name == 'pull_request' }}
         working-directory: head
         run: |
           set -euo pipefail
-          body_file="target/performance/pr_comment.md"
+          body_file="target/performance/regression_summary.md"
           if [ -s "$body_file" ]; then
             cat "$body_file" >> "$GITHUB_STEP_SUMMARY"
           else
             {
               echo "## Merman Performance Regression"
               echo
-              echo "The performance comment body was not generated. Check the job logs and artifact upload step."
+              echo "The performance summary was not generated. Check the job logs and artifact upload step."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
@@ -313,75 +313,6 @@ jobs:
               ;;
           esac
 
-  regression-comment:
-    name: perf-regression-comment
-    runs-on: ubuntu-24.04
-    needs:
-      - regression
-    if: ${{ always() && github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'perf') }}
-    permissions:
-      contents: read
-      issues: write
-    steps:
-      - name: Download regression artifacts
-        uses: actions/download-artifact@v7
-        with:
-          name: perf-regression
-          path: perf-regression
-
-      - name: Write regression job summary
-        run: |
-          set -euo pipefail
-          body_file="perf-regression/pr_comment.md"
-          if [ -s "$body_file" ]; then
-            cat "$body_file" >> "$GITHUB_STEP_SUMMARY"
-          else
-            {
-              echo "## Merman Performance Regression"
-              echo
-              echo "The performance comment body was not generated. Check the perf-regression artifact."
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Comment regression summary
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          marker="<!-- merman-perf-regression -->"
-          body_file="perf-regression/pr_comment.md"
-          if [ ! -s "$body_file" ]; then
-            echo "::warning title=Performance comment unavailable::Performance comment body is missing; see the job summary and uploaded artifacts."
-            exit 0
-          fi
-          if ! comment_ids="$(
-            gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
-              --jq ".[] | select(.body | contains(\"$marker\")) | .id"
-          )"; then
-            echo "::warning title=Performance comment unavailable::Could not read existing PR comments; see the job summary and perf-regression artifact."
-            exit 0
-          fi
-          comment_id="$(printf '%s\n' "$comment_ids" | sed -n '1p')"
-          python3 - "$body_file" <<'PY' > comment_payload.json
-          import json
-          import sys
-
-          body_path = sys.argv[1]
-          body = open(body_path, encoding="utf-8").read()
-          print(json.dumps({"body": body}))
-          PY
-          if [ -n "$comment_id" ]; then
-            if ! gh api --silent --method PATCH "repos/$REPO/issues/comments/$comment_id" --input comment_payload.json; then
-              echo "::warning title=Performance comment unavailable::Could not update the PR performance comment; see the job summary and perf-regression artifact."
-            fi
-          else
-            if ! gh api --silent --method POST "repos/$REPO/issues/$PR_NUMBER/comments" --input comment_payload.json; then
-              echo "::warning title=Performance comment unavailable::Could not create the PR performance comment; see the job summary and perf-regression artifact."
-            fi
-          fi
-
   frontmatter:
     name: perf-frontmatter
     runs-on: ubuntu-24.04
@@ -394,7 +325,7 @@ jobs:
       CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
       - name: Checkout head
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           path: head
           fetch-depth: 1
@@ -403,7 +334,7 @@ jobs:
           repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}
 
       - name: Checkout base
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           path: base
           fetch-depth: 1
@@ -412,7 +343,7 @@ jobs:
           repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
 
       - name: Run frontmatter regression comparison
         id: frontmatter_comparison
@@ -448,7 +379,7 @@ jobs:
           set -e
           echo "comparison_exit=$comparison_exit" >> "$GITHUB_OUTPUT"
 
-      - name: Render frontmatter PR comment
+      - name: Render frontmatter job summary
         id: frontmatter_comment_render
         if: ${{ always() }}
         working-directory: head
@@ -457,7 +388,7 @@ jobs:
           set +e
           python3 tools/bench/render_perf_comment.py \
             --json target/performance/frontmatter_comparison.json \
-            --out target/performance/frontmatter_pr_comment.md \
+            --out target/performance/frontmatter_summary.md \
             --run-url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
             --artifact perf-frontmatter \
             --marker "<!-- merman-perf-frontmatter -->" \
@@ -469,27 +400,27 @@ jobs:
 
       - name: Upload frontmatter artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: perf-frontmatter
           path: |
             head/target/performance/frontmatter_comparison.md
             head/target/performance/frontmatter_comparison.json
-            head/target/performance/frontmatter_pr_comment.md
+            head/target/performance/frontmatter_summary.md
 
       - name: Write frontmatter job summary
         if: ${{ always() && github.event_name == 'pull_request' }}
         working-directory: head
         run: |
           set -euo pipefail
-          body_file="target/performance/frontmatter_pr_comment.md"
+          body_file="target/performance/frontmatter_summary.md"
           if [ -s "$body_file" ]; then
             cat "$body_file" >> "$GITHUB_STEP_SUMMARY"
           else
             {
               echo "## Merman Frontmatter Performance Regression"
               echo
-              echo "The frontmatter performance comment body was not generated. Check the job logs and artifact upload step."
+              echo "The frontmatter performance summary was not generated. Check the job logs and artifact upload step."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
@@ -526,75 +457,6 @@ jobs:
               ;;
           esac
 
-  frontmatter-comment:
-    name: perf-frontmatter-comment
-    runs-on: ubuntu-24.04
-    needs:
-      - frontmatter
-    if: ${{ always() && github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'perf-frontmatter') }}
-    permissions:
-      contents: read
-      issues: write
-    steps:
-      - name: Download frontmatter artifacts
-        uses: actions/download-artifact@v7
-        with:
-          name: perf-frontmatter
-          path: perf-frontmatter
-
-      - name: Write frontmatter job summary
-        run: |
-          set -euo pipefail
-          body_file="perf-frontmatter/frontmatter_pr_comment.md"
-          if [ -s "$body_file" ]; then
-            cat "$body_file" >> "$GITHUB_STEP_SUMMARY"
-          else
-            {
-              echo "## Merman Frontmatter Performance Regression"
-              echo
-              echo "The frontmatter performance comment body was not generated. Check the perf-frontmatter artifact."
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Comment frontmatter summary
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          marker="<!-- merman-perf-frontmatter -->"
-          body_file="perf-frontmatter/frontmatter_pr_comment.md"
-          if [ ! -s "$body_file" ]; then
-            echo "::warning title=Frontmatter performance comment unavailable::Frontmatter performance comment body is missing; see the job summary and uploaded artifacts."
-            exit 0
-          fi
-          if ! comment_ids="$(
-            gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
-              --jq ".[] | select(.body | contains(\"$marker\")) | .id"
-          )"; then
-            echo "::warning title=Frontmatter performance comment unavailable::Could not read existing PR comments; see the job summary and perf-frontmatter artifact."
-            exit 0
-          fi
-          comment_id="$(printf '%s\n' "$comment_ids" | sed -n '1p')"
-          python3 - "$body_file" <<'PY' > comment_payload.json
-          import json
-          import sys
-
-          body_path = sys.argv[1]
-          body = open(body_path, encoding="utf-8").read()
-          print(json.dumps({"body": body}))
-          PY
-          if [ -n "$comment_id" ]; then
-            if ! gh api --silent --method PATCH "repos/$REPO/issues/comments/$comment_id" --input comment_payload.json; then
-              echo "::warning title=Frontmatter performance comment unavailable::Could not update the PR frontmatter performance comment; see the job summary and perf-frontmatter artifact."
-            fi
-          else
-            if ! gh api --silent --method POST "repos/$REPO/issues/$PR_NUMBER/comments" --input comment_payload.json; then
-              echo "::warning title=Frontmatter performance comment unavailable::Could not create the PR frontmatter performance comment; see the job summary and perf-frontmatter artifact."
-            fi
-          fi
-
   reference:
     name: perf-reference
     runs-on: ubuntu-24.04
@@ -605,7 +467,7 @@ jobs:
       CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
       - name: Checkout head
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           path: head
           fetch-depth: 1
@@ -614,7 +476,7 @@ jobs:
           repository: ${{ github.event_name == 'workflow_dispatch' && inputs.head_repository || github.repository }}
 
       - name: Checkout mermaid-rs-renderer
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: 1jehuang/mermaid-rs-renderer
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.mmdr_ref || '7ff1196ed297c32a65a6b3cdc28f3ca3787fb65e' }}
@@ -623,7 +485,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
 
       - name: Install mermaid-rs-renderer toolchain
         shell: bash
@@ -641,7 +503,7 @@ jobs:
 
       - name: Setup Node for Mermaid JS
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.include_mermaid_js }}
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "22"
           cache: npm
@@ -701,7 +563,7 @@ jobs:
           python3 tools/bench/compare_mermaid_renderers.py "${args[@]}"
 
       - name: Upload reference artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: perf-reference
           path: |

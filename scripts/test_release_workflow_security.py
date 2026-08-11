@@ -66,6 +66,7 @@ SOURCE_REF_WORKFLOWS = sorted(
 SOURCE_REF_RELEASE_WORKFLOWS = [
     path for path in RELEASE_WORKFLOWS if path in SOURCE_REF_WORKFLOWS
 ]
+PINNED_ACTION = re.compile(r"^[^@]+@[0-9a-f]{40}$")
 
 
 def read_workflow(path: Path) -> str:
@@ -290,7 +291,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             "validate-inputs",
         )
 
-        self.assertIn("uses: actions/checkout@v6", validate_job)
+        self.assertRegex(validate_job, r"uses: actions/checkout@[0-9a-f]{40}")
         self.assertIn("ref: ${{ github.workflow_sha }}", validate_job)
         self.assertIn("persist-credentials: false", validate_job)
         self.assertIn("scripts/release-version.py canonical", validate_job)
@@ -1026,10 +1027,10 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("python3 scripts/web_package_group.py verify-artifact", pack["run"])
         self.assertIn("--descriptor platforms/web/web-surface-descriptor.json", pack["run"])
         self.assertNotIn("cp scripts/web_package_group.py", pack["run"])
-        self.assertEqual(upload["uses"], "actions/upload-artifact@v6")
+        self.assertRegex(upload["uses"], PINNED_ACTION)
         self.assertEqual(upload["with"]["name"], "merman-web-npm-package-group")
         self.assertEqual(upload["with"]["path"], "${{ steps.pack.outputs.artifact_dir }}")
-        self.assertEqual(download["uses"], "actions/download-artifact@v7")
+        self.assertRegex(download["uses"], PINNED_ACTION)
         self.assertEqual(download["with"]["name"], "merman-web-npm-package-group")
         self.assertEqual(verify["shell"], "bash")
         self.assertIn("python3 scripts/web_package_group.py verify-artifact", verify["run"])
@@ -1038,7 +1039,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertEqual(publish_group["shell"], "bash")
         self.assertIn("python3 scripts/web_package_group.py reconcile", publish_group["run"])
         self.assertIn("--report target/npm-package-group/reconciliation-report.json", publish_group["run"])
-        self.assertEqual(report["uses"], "actions/upload-artifact@v6")
+        self.assertRegex(report["uses"], PINNED_ACTION)
         self.assertEqual(report["if"], "${{ always() }}")
         self.assertEqual(report["with"]["name"], "merman-web-npm-reconciliation-report")
 
@@ -1194,7 +1195,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             name="Verify exact Rust dependency license reports",
         )
 
-        self.assertEqual(install["uses"], "taiki-e/install-action@v2")
+        self.assertRegex(install["uses"], PINNED_ACTION)
         self.assertEqual(install["with"]["tool"], "cargo-about@0.9.1")
         self.assertEqual(fetch["run"], "cargo fetch --locked")
         self.assertLess(
@@ -1773,6 +1774,25 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             "echo third\necho fourth",
         )
 
+    def test_workflow_contract_preserves_hashes_inside_quoted_scalars(self) -> None:
+        source = """
+            jobs:
+              publish:
+                steps:
+                  - name: Quoted command
+                    run: "echo 'safe #'; npm ci; npm publish" # explanatory comment
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workflow = Path(temp_dir) / "workflow.yml"
+            workflow.write_text(textwrap.dedent(source).lstrip(), encoding="utf-8")
+            document = parse_workflow_structure(workflow)
+
+        job = workflow_job(document, "publish")
+        self.assertEqual(
+            workflow_step(job, name="Quoted command")["run"],
+            "echo 'safe #'; npm ci; npm publish",
+        )
+
     def test_github_release_upload_jobs_pin_repository_context(self) -> None:
         cases = [
             ("release-android.yml", "upload-release", "Upload AAR to GitHub Release"),
@@ -1790,6 +1810,58 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
 
 class CiWorkflowSecurityTests(unittest.TestCase):
+    def test_external_actions_are_commit_pinned_with_readable_versions(self) -> None:
+        uses_line = re.compile(r"^\s*(?:-\s+)?uses:\s+([^\s#]+)(?:\s+#\s+(.+))?$")
+
+        for path in sorted(WORKFLOW_ROOT.glob("*.yml")):
+            for line_number, line in enumerate(
+                read_workflow(path).splitlines(), start=1
+            ):
+                match = uses_line.match(line)
+                if match is None or match.group(1).startswith("./"):
+                    continue
+                with self.subTest(workflow=path.name, line=line_number):
+                    self.assertRegex(match.group(1), PINNED_ACTION)
+                    self.assertTrue(match.group(2), "pinned action needs a readable version comment")
+
+    def test_reusable_owner_workflows_isolate_dual_run_concurrency(self) -> None:
+        for workflow_name in (
+            "fuzz.yml",
+            "npm-audit.yml",
+            "pages.yml",
+            "security-audit.yml",
+            "vscode-extension.yml",
+        ):
+            with self.subTest(workflow=workflow_name):
+                text = read_workflow(WORKFLOW_ROOT / workflow_name)
+                self.assertIn("execution_lane:", text)
+                self.assertIn("default: same-run", text)
+                self.assertIn("inputs.execution_lane || 'standalone'", text)
+
+    def test_same_run_web_owner_cannot_enter_pages_deployment(self) -> None:
+        ci = read_workflow(WORKFLOW_ROOT / "ci.yml")
+        pages = read_workflow(WORKFLOW_ROOT / "pages.yml")
+
+        self.assertRegex(
+            ci,
+            re.compile(r"(?ms)^  web-owner:.*?^    with:\n      ci_only: true$"),
+        )
+        self.assertNotIn("inputs.deploy", pages)
+        self.assertEqual(pages.count("inputs.ci_only != true"), 4)
+
+    def test_workflow_analyzers_are_exact_and_executable(self) -> None:
+        text = read_workflow(WORKFLOW_ROOT / "ci.yml")
+
+        for contract in (
+            "ACTIONLINT_VERSION: 1.7.12",
+            "ZIZMOR_VERSION: 1.29.0",
+            'test -x "$tools_dir/actionlint/actionlint"',
+            'test -x "$tools_dir/zizmor/bin/zizmor"',
+            "actionlint -version",
+            "zizmor --version",
+        ):
+            self.assertIn(contract, text)
+
     def test_ci_workflow_declares_read_only_contents_permission(self) -> None:
         workflow = workflow_document(WORKFLOW_ROOT / "ci.yml")
         self.assertEqual(workflow["permissions"], {"contents": "read"})
@@ -1811,30 +1883,28 @@ class CiWorkflowSecurityTests(unittest.TestCase):
 
     def test_ci_runs_node_candidate_contracts_against_the_nested_lockfile(self) -> None:
         workflow = parse_workflow_structure(WORKFLOW_ROOT / "ci.yml")
-        job = workflow_job(workflow, "build-test")
-        setup = workflow_step(job, name="Setup Node for generated Mermaid artifacts")
+        build_job = workflow_job(workflow, "build-test")
+        node_job = workflow_job(workflow, "node-contracts")
+        setup = workflow_step(node_job, name="Setup Node")
         install = workflow_step(
-            job, name="Install Node candidate development dependencies"
+            node_job, name="Install Node candidate dependencies"
         )
         verify = workflow_step(
-            job, name="Verify Node candidate contracts and nested lock freshness"
+            node_job, name="Verify Node candidate contracts and nested lock freshness"
         )
         install_wasm_pack = workflow_step(
-            job, name="Install pinned wasm-pack for Node candidate builds"
+            build_job, name="Install pinned wasm-pack for Node candidate builds"
         )
         build_node_wasm = workflow_step(
-            job, name="Build and probe the Node-WASM candidate"
+            build_job, name="Build and probe the Node-WASM candidate"
         )
         build_napi = workflow_step(
-            job, name="Build and probe the Node N-API candidate"
+            build_job, name="Build and probe the Node N-API candidate"
         )
 
-        self.assertNotIn("if", job)
-        self.assertNotIn("continue-on-error", job)
-        self.assertEqual(
-            setup["with"]["cache-dependency-path"],
-            "platforms/node/package-lock.json\ntools/mermaid-cli/package-lock.json\n",
-        )
+        self.assertEqual(node_job["if"], "${{ needs.ci-plan.outputs.node == 'true' }}")
+        self.assertNotIn("continue-on-error", node_job)
+        self.assertEqual(setup["with"]["cache-dependency-path"], "platforms/node/package-lock.json")
         self.assertEqual(install["run"], "npm ci --prefix platforms/node")
         self.assertEqual(verify["run"], "npm test --prefix platforms/node")
         self.assertEqual(
@@ -1850,26 +1920,18 @@ class CiWorkflowSecurityTests(unittest.TestCase):
             "npm run --prefix platforms/node build:candidate -- --candidate napi --target linux-x64-gnu",
         )
         for step in (setup, install, verify):
-            self.assertEqual(step["if"], "matrix.parity")
             self.assertNotIn("continue-on-error", step)
         for step in (install_wasm_pack, build_node_wasm, build_napi):
-            self.assertEqual(
-                step["if"],
-                "matrix.parity && github.event_name != 'pull_request'",
-            )
+            self.assertEqual(step["if"], "matrix.parity && github.event_name == 'push'")
             self.assertNotIn("continue-on-error", step)
-        self.assertLess(job["steps"].index(install), job["steps"].index(verify))
+        self.assertLess(node_job["steps"].index(install), node_job["steps"].index(verify))
         self.assertLess(
-            job["steps"].index(verify),
-            job["steps"].index(install_wasm_pack),
+            build_job["steps"].index(install_wasm_pack),
+            build_job["steps"].index(build_node_wasm),
         )
         self.assertLess(
-            job["steps"].index(install_wasm_pack),
-            job["steps"].index(build_node_wasm),
-        )
-        self.assertLess(
-            job["steps"].index(build_node_wasm),
-            job["steps"].index(build_napi),
+            build_job["steps"].index(build_node_wasm),
+            build_job["steps"].index(build_napi),
         )
 
     def test_ci_compiles_the_apple_package_with_swift_5_9(self) -> None:
@@ -1877,11 +1939,7 @@ class CiWorkflowSecurityTests(unittest.TestCase):
         job = workflow_job(workflow, "apple-swift-5-9-smoke")
 
         self.assertEqual(job["runs-on"], "macos-14")
-        self.assertEqual(
-            job["if"],
-            "github.event_name != 'pull_request' || "
-            "contains(github.event.pull_request.labels.*.name, 'platform')",
-        )
+        self.assertEqual(job["if"], "${{ needs.ci-plan.outputs.platform == 'true' }}")
 
         select_step = workflow_step(
             job, name="Select Xcode 15.2 and verify Swift 5.9"
@@ -1897,7 +1955,7 @@ class CiWorkflowSecurityTests(unittest.TestCase):
         )
 
         toolchain_step = workflow_step(job, name="Install Rust toolchain")
-        self.assertEqual(toolchain_step["uses"], "dtolnay/rust-toolchain@1.95.0")
+        self.assertRegex(toolchain_step["uses"], PINNED_ACTION)
         self.assertEqual(
             toolchain_step["with"]["targets"],
             "aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios",
@@ -2051,22 +2109,18 @@ class PerformanceWorkflowSecurityTests(unittest.TestCase):
                 self.assertNotIn("GH_TOKEN:", job)
                 self.assertNotIn("gh api", job)
 
-    def test_performance_comment_jobs_are_isolated_from_pr_checkout(self) -> None:
+    def test_performance_pr_lifecycle_has_no_write_or_comment_jobs(self) -> None:
         path = WORKFLOW_ROOT / "performance.yml"
-        for job_name, artifact in [
-            ("regression-comment", "perf-regression"),
-            ("frontmatter-comment", "perf-frontmatter"),
-        ]:
-            job = job_contract_text(path, job_name)
-            with self.subTest(job=job_name):
-                self.assertIn("issues: write", job)
-                self.assertIn("actions/download-artifact", job)
-                self.assertIn(f"name: {artifact}", job)
-                self.assertIn("GH_TOKEN: ${{ github.token }}", job)
-                self.assertIn("gh api", job)
-                self.assertNotIn("actions/checkout", job)
-                self.assertNotIn("working-directory: head", job)
-                self.assertNotIn("tools/bench/", job)
+        workflow = workflow_document(path)
+        text = read_workflow(path)
+
+        self.assertNotIn("regression-comment", workflow["jobs"])
+        self.assertNotIn("frontmatter-comment", workflow["jobs"])
+        self.assertNotIn("issues: write", text)
+        self.assertNotIn("pull-requests: write", text)
+        self.assertNotIn("GH_TOKEN:", text)
+        self.assertNotIn("gh api", text)
+        self.assertNotIn("actions/download-artifact", text)
 
     def test_performance_paths_cover_render_dependencies(self) -> None:
         paths = workflow_document(WORKFLOW_ROOT / "performance.yml")["header"]
@@ -2081,15 +2135,15 @@ class PerformanceWorkflowSecurityTests(unittest.TestCase):
         cases = [
             (
                 "regression",
-                "Render regression PR comment",
+                "Render regression job summary",
                 "Upload regression artifacts",
-                "head/target/performance/pr_comment.md",
+                "head/target/performance/regression_summary.md",
             ),
             (
                 "frontmatter",
-                "Render frontmatter PR comment",
+                "Render frontmatter job summary",
                 "Upload frontmatter artifacts",
-                "head/target/performance/frontmatter_pr_comment.md",
+                "head/target/performance/frontmatter_summary.md",
             ),
         ]
 

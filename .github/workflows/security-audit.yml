@@ -1,6 +1,18 @@
 name: Security Audit
 
 on:
+  workflow_call:
+    inputs:
+      representative_targets:
+        description: Limit dependency closure probes to representative PR targets
+        required: false
+        default: false
+        type: boolean
+      execution_lane:
+        description: Distinguish same-run CI from the standalone compatibility workflow
+        required: false
+        default: same-run
+        type: string
   push:
     branches:
       - main
@@ -70,7 +82,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: security-audit-${{ github.ref }}
+  group: security-audit-${{ inputs.execution_lane || 'standalone' }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -80,7 +92,9 @@ jobs:
     outputs:
       cargo: ${{ steps.plan.outputs.cargo }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Build tracked lockfile matrices
         id: plan
@@ -94,13 +108,15 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.audit-plan.outputs.cargo) }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
 
       - name: Install cargo-audit
-        uses: taiki-e/install-action@cargo-audit
+        uses: taiki-e/install-action@e40e306b80d964fa5d3792fcbb48bf976d23dce8 # cargo-audit
 
       - name: Audit Rust dependencies
         env:
@@ -111,16 +127,18 @@ jobs:
     name: cargo-deny dependency policy
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
 
       - name: Install cargo-deny
-        uses: taiki-e/install-action@cargo-deny
+        uses: taiki-e/install-action@c0977eb8b4952c1e8e932703147dba6f76856a53 # cargo-deny
 
       - name: Install cargo-about
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
         with:
           tool: cargo-about@0.9.1
 
@@ -134,7 +152,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          if [[ "${{ github.event_name }}" == "pull_request" || "${{ inputs.representative_targets }}" == "true" ]]; then
             python3 scripts/verify_artifact_dependency_closures.py \
               --representative-targets
           else

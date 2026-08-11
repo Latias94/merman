@@ -17,6 +17,31 @@ Pull requests answer whether a change is safe to review and merge:
   change;
 - binding or package smoke in the workflow that owns that user surface.
 
+The central `CI` workflow is the pull-request and merge-queue orchestrator. Its planner compares the
+trusted base and head commits with a NUL-delimited Git name-status diff, selects owner jobs, and
+records the reasons in one JSON document. Unknown paths, workflow or classifier changes, malformed
+diffs, and missing Git objects select every owner. A valid empty diff is the only case that runs no
+owner job.
+
+Every selected owner completes in that same workflow run. The final `pr-gate` check rejects failed,
+cancelled, skipped, missing, or malformed selected results; unselected owners appear as deliberate
+skips. This stable check is the repository-side branch-protection target, but it is not a standalone
+trust root: a pull request can propose changes to repository workflows or the planner itself. The
+checked-in `CODEOWNERS` file therefore assigns those paths to the maintainer. A `main` ruleset must
+require pull requests, code-owner approval, and `pr-gate` before the check is enforcement rather
+than reporting. Repository rules and release-environment protection remain external maintainer
+configuration and must not be described as enabled until a read-only GitHub query confirms them.
+
+Performance evidence produced from pull-request code remains read-only: it may upload diagnostic
+artifacts and append a job summary, but it does not receive repository write permissions or feed a
+separate comment-writing job.
+
+During the workflow-contract migration, the previous path-filtered PR workflows continue to run
+beside `pr-gate` as comparison evidence. They are not inputs to `pr-gate` and will be removed from
+the PR lifecycle only after a real draft pull request proves equivalent owner coverage and a seeded
+owner failure is observed by the new aggregate. Reusable same-run calls use a separate concurrency
+lane so they cannot cancel, or be cancelled by, those standalone compatibility runs.
+
 The pull-request feature matrix validates the complete declared feature graph but compiles a curated
 set of representative products and transports. It deliberately does not compile every bounded
 pairwise combination and artifact recipe.
@@ -94,3 +119,9 @@ Before adding a standing PR check, identify:
 Prefer native tools such as Cargo, nextest, actionlint, npm, and package installers. Do not grow
 repository scripts into partial parsers for Rust, Cargo, GitHub Actions, or shell merely to prove a
 workflow row or source line is safe.
+
+Workflow syntax and expression semantics are checked with actionlint 1.7.12. High-severity workflow
+security findings are checked with zizmor 1.29.0. CI verifies the downloaded actionlint archive and
+the selected zizmor wheel by SHA-256 before execution, and prints both tool versions. GitHub Actions
+are pinned to reviewed commits with readable version comments; weekly Dependabot updates maintain
+those identities.

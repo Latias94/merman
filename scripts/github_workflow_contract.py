@@ -355,9 +355,40 @@ def _comment(line: str) -> bool:
 
 
 def _scalar(value: str) -> str:
+    value = _strip_inline_comment(value)
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
         return value[1:-1]
     return value
+
+
+def _strip_inline_comment(value: str) -> str:
+    """Strip a YAML comment without treating quoted ``#`` characters as comments."""
+
+    quote: str | None = None
+    index = 0
+    while index < len(value):
+        char = value[index]
+        if quote == "'":
+            if char == "'":
+                if index + 1 < len(value) and value[index + 1] == "'":
+                    index += 2
+                    continue
+                quote = None
+        elif quote == '"':
+            if char == "\\":
+                index += 2
+                continue
+            if char == '"':
+                quote = None
+        elif char in {"'", '"'}:
+            quote = char
+        elif char == "#" and (index == 0 or value[index - 1].isspace()):
+            return value[:index].rstrip()
+        index += 1
+
+    if quote is not None:
+        raise WorkflowContractError("unterminated quoted YAML scalar")
+    return value.rstrip()
 
 
 def _reject_unmodeled_scalar(value: str, owner: str) -> None:

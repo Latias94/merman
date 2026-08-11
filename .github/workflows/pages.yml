@@ -1,6 +1,18 @@
 name: GitHub Pages
 
 on:
+  workflow_call:
+    inputs:
+      ci_only:
+        description: Build and test without entering the Pages deployment path
+        required: false
+        default: true
+        type: boolean
+      execution_lane:
+        description: Distinguish same-run CI from the standalone compatibility workflow
+        required: false
+        default: same-run
+        type: string
   push:
     branches:
       - main
@@ -48,7 +60,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pages-${{ github.ref }}
+  group: pages-${{ inputs.execution_lane || 'standalone' }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -58,20 +70,20 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
         with:
           targets: wasm32-unknown-unknown
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
           cache: npm
@@ -84,13 +96,13 @@ jobs:
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@11.17.0
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@wasm-tools
+        uses: taiki-e/install-action@179faed5d7f555fa78d5b53e7a145219b4e85dba # wasm-tools
 
       - name: Install wasm-pack
         run: cargo install wasm-pack --version 0.15.0 --locked
 
       - name: Verify deployable browser projections
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && inputs.ci_only != true
         run: |
           cargo run --locked -p xtask -- verify-mermaid-reference
           cargo run --locked -p xtask -- verify-capability-surface
@@ -148,7 +160,7 @@ jobs:
 
       - name: Upload browser failure evidence
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playground-browser-failure-${{ github.run_attempt }}
           path: |
@@ -158,18 +170,18 @@ jobs:
           retention-days: 7
 
       - name: Configure Pages
-        if: github.event_name != 'pull_request'
-        uses: actions/configure-pages@v6
+        if: github.event_name != 'pull_request' && inputs.ci_only != true
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
 
       - name: Upload Pages artifact
-        if: github.event_name != 'pull_request'
-        uses: actions/upload-pages-artifact@v5
+        if: github.event_name != 'pull_request' && inputs.ci_only != true
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: playground/dist
 
   deploy:
     name: Deploy playground
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && inputs.ci_only != true
     needs: build
     runs-on: ubuntu-24.04
     permissions:
@@ -182,4 +194,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5

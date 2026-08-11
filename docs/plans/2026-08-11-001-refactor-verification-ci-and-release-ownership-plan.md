@@ -281,7 +281,7 @@ The diagram is an ownership map, not a mandate for one framework. Owner commands
 
 ### External Follow-Up
 
-- After the PR exposes a stable `pr-gate`, configure a `main` repository ruleset requiring pull requests and `pr-gate`, blocking force-push and deletion, and verify it by read-only API.
+- After the PR exposes a stable `pr-gate`, configure a `main` repository ruleset requiring pull requests, code-owner approval for the checked-in CI trust roots, and `pr-gate`, blocking force-push and deletion, and verify it by read-only API.
 - After the workflow names and permission boundaries settle, request explicit maintainer authorization for the documented registry and GitHub Release environment protections; until then, record them as unsolved external governance rather than a completed plan outcome.
 
 ---

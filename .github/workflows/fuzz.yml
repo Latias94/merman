@@ -43,6 +43,23 @@ on:
           - smoke
           - extended
           - long
+  workflow_call:
+    inputs:
+      target:
+        description: Fuzz target to run
+        required: false
+        default: all
+        type: string
+      preset:
+        description: Bounded fuzzing budget
+        required: false
+        default: smoke
+        type: string
+      execution_lane:
+        description: Distinguish same-run CI from the standalone compatibility workflow
+        required: false
+        default: same-run
+        type: string
 
 permissions:
   contents: read
@@ -50,7 +67,7 @@ permissions:
 concurrency:
   # PR and push smoke runs supersede older runs for the same PR/ref. Scheduled and manual
   # discovery runs get a unique group so a main push cannot discard their coverage budget.
-  group: fuzz-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.event_name == 'push' && github.ref || github.run_id }}
+  group: fuzz-${{ inputs.execution_lane || 'standalone' }}-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.event_name == 'push' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 env:
@@ -76,7 +93,7 @@ jobs:
           DISPATCH_PRESET: ${{ inputs.preset }}
         run: |
           case "$FUZZ_EVENT_NAME" in
-            pull_request|push)
+            pull_request|push|merge_group|workflow_call)
               selected_targets=all
               profile=smoke
               ;;

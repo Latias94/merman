@@ -146,14 +146,18 @@ class FuzzConfigTests(unittest.TestCase):
         self.assertNotEqual(workflow_event_list("pull_request", "paths"), [])
 
         plan_step = workflow_named_step("Select bounded target and budget")
-        self.assertIn("pull_request|push)", plan_step)
+        self.assertIn("pull_request|push|merge_group|workflow_call)", plan_step)
         self.assertIn("profile=smoke", plan_step)
         self.assertIn("schedule)", plan_step)
         self.assertIn("profile=scheduled", plan_step)
 
     def test_concurrency_keeps_discovery_runs_outside_push_cancellation(self) -> None:
         text = FUZZ_WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("group: fuzz-${{ github.workflow }}-${{ github.event_name }}-", text)
+        self.assertIn(
+            "group: fuzz-${{ inputs.execution_lane || 'standalone' }}-"
+            "${{ github.workflow }}-${{ github.event_name }}-",
+            text,
+        )
         self.assertIn("github.event.pull_request.number", text)
         self.assertIn("github.ref", text)
         self.assertIn("github.run_id", text)

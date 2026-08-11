@@ -1,0 +1,3 @@
+# CI trust roots require maintainer review before they can change.
+/.github/ @Latias94
+/scripts/ci_plan.py @Latias94

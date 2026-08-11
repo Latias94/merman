@@ -23,17 +23,17 @@ jobs:
       contents: read
     steps:
       - name: Checkout selected reference
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
         with:
           targets: wasm32-unknown-unknown
 
       - name: Setup exact Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24.6.0"
           cache: npm
@@ -46,7 +46,7 @@ jobs:
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@11.17.0
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@wasm-tools
+        uses: taiki-e/install-action@179faed5d7f555fa78d5b53e7a145219b4e85dba # wasm-tools
 
       - name: Install wasm-pack
         run: cargo install wasm-pack --version 0.15.0 --locked
@@ -81,7 +81,7 @@ jobs:
 
       - name: Upload admission reports
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: mermaid-admission-${{ github.run_id }}-${{ github.run_attempt }}
           path: |

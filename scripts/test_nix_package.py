@@ -184,9 +184,9 @@ class NixPackageContractTests(unittest.TestCase):
         job = workflow_job(workflow, "nix-cli-package")
         self.assertEqual(job["runs-on"], "ubuntu-24.04")
         install = workflow_step(job, name="Install Nix")
-        self.assertEqual(
+        self.assertRegex(
             install["uses"],
-            "DeterminateSystems/determinate-nix-action@v3.21.8",
+            r"^DeterminateSystems/determinate-nix-action@[0-9a-f]{40}$",
         )
         reusable = workflow_step(job, name="Build reusable Nix derivation")
         self.assertIn("nix-build", reusable["run"])
