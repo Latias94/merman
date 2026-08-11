@@ -32,7 +32,7 @@ pub(super) fn apply_group_placement_adjustments(
     let endpoint_index =
         GroupEndpointIndex::try_new(graph, topology, &original_root_axis, resources)?;
     let direction_overrides = plan_group_direction_overrides(graph, topology, resources)?;
-    let mut disabled_overrides = try_bool_slots(graph.groups.len())?;
+    let mut disabled_overrides = try_bool_slots(graph.groups.len(), resources)?;
     let placement_context = GroupPlacementContext {
         graph,
         topology,
@@ -1305,14 +1305,14 @@ impl NodePaddingIndex {
             });
         };
 
-        let node_passes = resources.checked_work_mul(graph.nodes.len(), 3)?;
+        let node_passes = resources.checked_work_mul(graph.nodes.len(), 2)?;
         let work = resources.checked_work_add(
             resources.checked_work_add(node_passes, graph.groups.len())?,
             graph.edges.len(),
         )?;
         resources.charge_layout_work(work)?;
 
-        let mut has_external_incoming = try_bool_slots(graph.nodes.len())?;
+        let mut has_external_incoming = try_bool_slots(graph.nodes.len(), resources)?;
         for edge in &graph.edges {
             let Some(to_index) = topology.node_index(&edge.to) else {
                 continue;
@@ -1346,7 +1346,7 @@ impl NodePaddingIndex {
             *minimum_y = Some(minimum_y.map_or(y, |current| current.min(y)));
         }
 
-        let mut has_external_incoming_overhead = try_bool_slots(graph.nodes.len())?;
+        let mut has_external_incoming_overhead = try_bool_slots(graph.nodes.len(), resources)?;
         for (node_index, node) in graph.nodes.iter().enumerate() {
             if !has_external_incoming[node_index] {
                 continue;
@@ -1369,7 +1369,8 @@ impl NodePaddingIndex {
     }
 }
 
-fn try_bool_slots(len: usize) -> Result<Vec<bool>> {
+fn try_bool_slots(len: usize, resources: &ResourceContext) -> Result<Vec<bool>> {
+    resources.charge_layout_work(len)?;
     let mut slots = Vec::new();
     slots
         .try_reserve(len)
@@ -1493,6 +1494,7 @@ fn group_placement_members(
         return Ok(Vec::new());
     };
 
+    resources.charge_layout_work(group.nodes.len())?;
     let mut members = Vec::new();
     members.try_reserve(group.nodes.len()).map_err(|_| {
         crate::error::AsciiError::AllocationFailed {
@@ -1504,7 +1506,7 @@ fn group_placement_members(
         match topology.endpoint_index(member) {
             Some(GraphEndpointIndex::Node(node_index)) => {
                 members.push(GroupPlacementMember {
-                    id: member.clone(),
+                    id: crate::safe_text::try_clone_layout_text(member, resources)?,
                     endpoint: GraphEndpointIndex::Node(node_index),
                     node_indices: vec![node_index],
                 });
@@ -1516,7 +1518,7 @@ fn group_placement_members(
                     continue;
                 }
                 members.push(GroupPlacementMember {
-                    id: member.clone(),
+                    id: crate::safe_text::try_clone_layout_text(member, resources)?,
                     endpoint: GraphEndpointIndex::Group(child_group_index),
                     node_indices,
                 });
