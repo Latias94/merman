@@ -738,24 +738,34 @@ impl From<EditorSemanticRole> for AnalysisSemanticRole {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AnalysisExpectedSyntaxKind {
+    Directive,
+    Frontmatter,
     IdList,
     NodeIdentifier,
+    ClassName,
     Operator,
     Shape,
     ShapeTrigger,
     Direction,
+    StyleValue,
+    InteractionAction,
     Payload,
 }
 
 impl From<EditorExpectedSyntaxKind> for AnalysisExpectedSyntaxKind {
     fn from(kind: EditorExpectedSyntaxKind) -> Self {
         match kind {
+            EditorExpectedSyntaxKind::Directive => Self::Directive,
+            EditorExpectedSyntaxKind::Frontmatter => Self::Frontmatter,
             EditorExpectedSyntaxKind::IdList => Self::IdList,
             EditorExpectedSyntaxKind::NodeIdentifier => Self::NodeIdentifier,
+            EditorExpectedSyntaxKind::ClassName => Self::ClassName,
             EditorExpectedSyntaxKind::Operator => Self::Operator,
             EditorExpectedSyntaxKind::ShapeValue => Self::Shape,
             EditorExpectedSyntaxKind::ShapeTrigger => Self::ShapeTrigger,
             EditorExpectedSyntaxKind::DirectionValue => Self::Direction,
+            EditorExpectedSyntaxKind::StyleValue => Self::StyleValue,
+            EditorExpectedSyntaxKind::InteractionAction => Self::InteractionAction,
             EditorExpectedSyntaxKind::Payload => Self::Payload,
         }
     }

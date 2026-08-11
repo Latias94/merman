@@ -980,7 +980,7 @@ fn parse_er_editor_facts_recovers_from_incomplete_input() {
 }
 
 #[test]
-fn parse_er_editor_facts_record_expected_id_list_spans() {
+fn parse_er_editor_facts_record_expected_class_name_spans() {
     let engine = Engine::new();
     let text = "erDiagram\nclassDef pink fill:#f9f\n";
     let facts = engine
@@ -989,9 +989,35 @@ fn parse_er_editor_facts_record_expected_id_list_spans() {
         .expect("er editor facts");
 
     assert!(facts.expected_syntax.iter().any(|expected| {
-        expected.kind == EditorExpectedSyntaxKind::IdList
+        expected.kind == EditorExpectedSyntaxKind::ClassName
             && expected.span.start == text.find("pink").unwrap()
     }));
+}
+
+#[test]
+fn parse_er_editor_facts_do_not_consume_classdef_names_across_line_endings() {
+    let engine = Engine::new();
+
+    for line_ending in ["\n", "\r", "\r\n"] {
+        let text = [
+            "erDiagram",
+            "classDef",
+            "CUSTOMER ||--o{ ORDER : places",
+            "",
+        ]
+        .join(line_ending);
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("er", &text)
+            .unwrap()
+            .expect("er editor facts");
+
+        assert!(
+            !facts.symbols.iter().any(|symbol| {
+                symbol.name == "CUSTOMER" && symbol.role == EditorSemanticRole::ClassDefinition
+            }),
+            "classDef consumed the next physical line for {line_ending:?}"
+        );
+    }
 }
 
 #[test]

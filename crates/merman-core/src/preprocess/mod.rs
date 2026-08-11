@@ -8,8 +8,8 @@ pub use source_config::{
 pub use source_edit_map::PreprocessedSource;
 
 use crate::{
-    DetectorRegistry, EditorLexemeKind, Error, MermaidConfig, ParseControl, ParseControlResult,
-    Result, SourceSpan,
+    DetectorRegistry, EditorExpectedSyntaxKind, EditorLexemeKind, Error, MermaidConfig,
+    ParseControl, ParseControlResult, Result, SourceSpan, editor::line_content_end,
 };
 use serde_json::{Map, Value};
 use source_edit_map::{ReplacementMapping, SourceEdit};
@@ -343,6 +343,7 @@ fn preprocess_single_pass_controlled(
     control: &ParseControl,
 ) -> ParseControlResult<PreprocessCaptureOutcome> {
     control.checkpoint()?;
+    let capture_editor_evidence = capture_mode.collects();
     cleanup_text_controlled(&mut source, control)?;
     let mut source_config = SourceConfigEvidence::empty();
     if capture_mode.collects() {
@@ -373,10 +374,17 @@ fn preprocess_single_pass_controlled(
         }
     };
     if frontmatter_len > 0 {
-        source.record_global_lexeme(
-            EditorLexemeKind::Frontmatter,
-            SourceSpan::new(0, frontmatter_len),
-        );
+        if capture_editor_evidence {
+            let expected_end = editor_evidence_line_end(source.text(), frontmatter_len);
+            source.record_global_expected_syntax(
+                EditorExpectedSyntaxKind::Frontmatter,
+                SourceSpan::new(0, expected_end),
+            );
+            source.record_global_lexeme(
+                EditorLexemeKind::Frontmatter,
+                SourceSpan::new(0, frontmatter_len),
+            );
+        }
         source.apply_edits(vec![SourceEdit::delete(0..frontmatter_len)], control)?;
     }
 
@@ -408,14 +416,20 @@ fn preprocess_single_pass_controlled(
     if processed_directives.recovered_incomplete_directive {
         source.mark_recovered_incomplete_directive();
     }
-    for prefix in processed_directives.editor_prefixes {
-        source.record_global_directive_prefix(prefix);
-    }
-    for removal in &processed_directives.removals {
-        source.record_global_lexeme(
-            EditorLexemeKind::Directive,
-            SourceSpan::new(removal.start, removal.end),
-        );
+    if capture_editor_evidence {
+        for prefix in processed_directives.editor_prefixes.iter().cloned() {
+            source.record_global_directive_prefix(prefix);
+        }
+        for removal in &processed_directives.removals {
+            source.record_global_expected_syntax(
+                EditorExpectedSyntaxKind::Directive,
+                SourceSpan::new(removal.start, removal.end),
+            );
+            source.record_global_lexeme(
+                EditorLexemeKind::Directive,
+                SourceSpan::new(removal.start, removal.end),
+            );
+        }
     }
     source.apply_edits(
         processed_directives
@@ -429,7 +443,7 @@ fn preprocess_single_pass_controlled(
     frontmatter_config.deep_merge(processed_directives.config.as_value());
 
     control.checkpoint()?;
-    remove_mermaid_comments_controlled(&mut source, control)?;
+    remove_mermaid_comments_controlled(&mut source, capture_editor_evidence, control)?;
     Ok(PreprocessCaptureOutcome {
         result: Ok(PreprocessResult {
             source,
@@ -604,6 +618,7 @@ fn strip_leading_utf8_bom(
 
 fn remove_mermaid_comments_controlled(
     source: &mut PreprocessedSource,
+    capture_editor_evidence: bool,
     control: &ParseControl,
 ) -> ParseControlResult<()> {
     let text = source.text();
@@ -621,7 +636,12 @@ fn remove_mermaid_comments_controlled(
             let has_comment_body = after_marker.chars().next().is_some_and(|ch| ch != '\n');
             if !after_marker.starts_with('{') && has_comment_body {
                 let range = line_start..line_end;
-                comments.push(SourceSpan::new(range.start, range.end));
+                if capture_editor_evidence {
+                    comments.push((
+                        SourceSpan::new(range.start, range.end),
+                        SourceSpan::new(range.start, editor_evidence_line_end(text, range.end)),
+                    ));
+                }
                 edits.push(SourceEdit::delete(range));
             }
         }
@@ -631,11 +651,12 @@ fn remove_mermaid_comments_controlled(
         line_start = newline + 1;
     }
     checkpoints.finish()?;
-    for (index, span) in comments.into_iter().enumerate() {
+    for (index, (lexeme_span, expected_span)) in comments.into_iter().enumerate() {
         if index.is_multiple_of(128) {
             control.checkpoint()?;
         }
-        source.record_global_lexeme(EditorLexemeKind::Comment, span);
+        source.record_global_lexeme(EditorLexemeKind::Comment, lexeme_span);
+        source.record_global_expected_syntax(EditorExpectedSyntaxKind::Directive, expected_span);
     }
     source.apply_edits(edits, control)?;
 
@@ -646,6 +667,15 @@ fn remove_mermaid_comments_controlled(
         source.apply_edits(vec![SourceEdit::delete(0..leading_whitespace)], control)?;
     }
     control.checkpoint()
+}
+
+fn editor_evidence_line_end(source: &str, end: usize) -> usize {
+    let end = end.min(source.len());
+    let newline_start = end
+        .checked_sub(1)
+        .filter(|index| source.as_bytes().get(*index) == Some(&b'\n'))
+        .unwrap_or(end);
+    line_content_end(source, newline_start)
 }
 
 fn normalize_crlf_controlled(
@@ -992,7 +1022,7 @@ struct FrontmatterCapture {
 
 enum FrontmatterYamlInput<'a> {
     Plain(Cow<'a, str>),
-    Mapped(PreprocessedSource),
+    Mapped(Box<PreprocessedSource>),
 }
 
 impl FrontmatterYamlInput<'_> {
@@ -1218,7 +1248,7 @@ fn dedented_frontmatter_yaml_input_controlled<'a>(
     }
     checkpoints.finish()?;
     source.apply_edits(edits, control)?;
-    Ok(FrontmatterYamlInput::Mapped(source))
+    Ok(FrontmatterYamlInput::Mapped(Box::new(source)))
 }
 
 /// Splits an optional frontmatter block using a private, non-cancellable parse control.

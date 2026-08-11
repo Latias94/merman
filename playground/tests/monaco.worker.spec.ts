@@ -205,7 +205,7 @@ test("the generated editor worker returns identity-bound packed tokens for all 3
       const ready = await request("initialize");
       if (
         ready.type !== "ready" ||
-        ready.transportApiVersion !== 3 ||
+        ready.transportApiVersion !== 4 ||
         ready.editorSchema !== editorSchema ||
         ready.legendDigest !== digest
       ) {

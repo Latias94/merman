@@ -45,7 +45,7 @@ The package boundary is deliberately narrower than the application boundary:
 - `merman-wasm` is wasm-bindgen browser transport. `merman-typst-plugin` remains the separate
   wasm-minimal-protocol transport.
 
-The Web transport API is version `3`. Editor diagnostics remain schema `1`; analysis/facts payloads
+The Web transport API is version `4`. Editor diagnostics remain schema `1`; analysis/facts payloads
 use schema `2`.
 
 ## Document Runtime

@@ -2,7 +2,7 @@
 
 - Status: accepted for transport separation; package and capability mapping superseded by ADR-0076
 - Date: 2026-06-10
-- Last amended: 2026-07-22
+- Last amended: 2026-08-11 (Web transport API 4 requires the editor-owned completion trigger export)
 
 ADR-0076 now owns Web artifact profiles, package mappings, Typst artifact mappings, and capability
 semantic IDs through `capabilities/feature-surface-v1.json`. The one-package/subpath and legacy
@@ -102,7 +102,7 @@ flowchart LR
 | --- | --- | --- |
 | Browser publication default | Default npm entry uses `browser-full` | `npm run prepack --prefix platforms/web` rejects a non-full default artifact unless an explicit local override is supplied |
 | Public browser packages | Every wrapper has matching TS, wasm-bindgen, WASM, profile metadata, exports, and size evidence | package contract/smoke checks, the Web descriptor, and `xtask wasm-size-matrix` |
-| Editor Worker surface | `./editor` exposes parser-backed language APIs on Web transport API 3/runtime-catalog schema 1 without render/ASCII/ELK | Web contract tests plus Playground Worker browser tests |
+| Editor Worker surface | `./editor` exposes parser-backed language APIs on Web transport API 4/runtime-catalog schema 1 without render/ASCII/ELK | Web contract tests plus Playground Worker browser tests |
 | Browser profile evidence | All named browser profiles build and report accurate capabilities | `npm run build:surfaces --prefix platforms/web`, package smoke, and profile manifests |
 | Runtime capability discovery | Active artifact reports compiled capabilities | `bindingCapabilities()` returns booleans and legacy artifacts fall back to full capabilities |
 | Typst import boundary | Only the two `typst_env` protocol imports are present | `cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm <plugin.wasm>` |
@@ -156,7 +156,7 @@ Keep `merman-typst-plugin` as an internal probe until the Typst package wrapper 
 | --- | --- | --- | --- |
 | Users assume every named artifact profile is a public npm package | Medium | Medium | Generate the exact package list from release/package manifests; document evidence-only profiles separately |
 | A package ships the wrong WASM capability set | High | Low | Bind wrapper, profile metadata, generated declarations, smoke, ABI, and size budget in one release gate |
-| Editor helpers drift from LSP/parser semantics | High | Low | Keep behavior in `merman-editor-core`; run it through the dedicated Web transport API 3/runtime-catalog schema 1 Worker rather than TypeScript heuristics |
+| Editor helpers drift from LSP/parser semantics | High | Low | Keep behavior in `merman-editor-core`; run it through the dedicated Web transport API 4/runtime-catalog schema 1 Worker rather than TypeScript heuristics |
 | Typst docs imply full package readiness from transport smoke | Medium | Medium | Label Typst package publication as manual/future; document smoke as transport validation only |
 | Browser changes reintroduce JS imports into Typst builds | High | Low | Keep `profile-budget check-wasm --profile typst-wasm` and `typst-plugin-smoke` as release gates |
 | A stale or different-profile WASM is assembled into the Typst package | High | Low | Use a profile-owned artifact manifest, validate it on `--skip-wasm-build`, and replace package directories transactionally |

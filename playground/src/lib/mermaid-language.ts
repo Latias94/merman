@@ -115,7 +115,7 @@ export function registerMermaidLanguage(
 
   disposables.push(
     monaco.languages.registerCompletionItemProvider(MERMAID_LANGUAGE_ID, {
-      triggerCharacters: [" ", "\n", "-", "@", ":"],
+      triggerCharacters: [...identity.completionTriggerCharacters],
       async provideCompletionItems(model, position, _context, token) {
         const completions = await query(
           model,

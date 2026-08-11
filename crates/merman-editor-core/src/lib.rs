@@ -4,6 +4,13 @@
 //!
 //! This crate owns editor-facing document state and query semantics without depending on LSP,
 //! WASM, Monaco, or TypeScript protocol types.
+//!
+//! Completion policy is exposed through [`completion_for_snapshot`]. The former public
+//! `CompletionContext` wrapper was deleted rather than retained as a compatibility alias.
+//!
+//! ```compile_fail
+//! use merman_editor_core::CompletionContext;
+//! ```
 
 mod code_actions;
 mod completion;
@@ -20,11 +27,10 @@ pub use code_actions::{
     EditorCodeAction, EditorCodeActionEdit, code_action_from_fix, code_actions_from_fixes,
 };
 pub use completion::{
-    CompletionDataKind, CompletionInsertTextFormat, CompletionItem, CompletionItemKind,
-    CompletionItemLabelDetails, CompletionList, CompletionResolveData, CompletionTextEdit,
-    completion_documentation, completion_for_snapshot,
+    COMPLETION_TRIGGER_CHARACTERS, CompletionDataKind, CompletionInsertTextFormat, CompletionItem,
+    CompletionItemKind, CompletionItemLabelDetails, CompletionList, CompletionResolveData,
+    CompletionTextEdit, completion_documentation, completion_for_snapshot,
 };
-pub use context::CompletionContext;
 pub use diagnostics::{
     DiagnosticCodeActionData, EditorDiagnostic, EditorDiagnosticRelated,
     analysis_diagnostic_to_editor, analysis_payload_to_diagnostics,

@@ -24,12 +24,26 @@ import {
 } from "./mermaid-language.ts";
 
 const IDENTITY: EditorLanguageIdentity = Object.freeze({
+  completionTriggerCharacters: Object.freeze([
+    " ",
+    "\n",
+    "-",
+    ">",
+    "%",
+    "[",
+    "(",
+    "{",
+    "/",
+    "\\",
+    "@",
+    ":",
+  ]),
   legend: Object.freeze({
     tokenTypes: Object.freeze(["string", "namespace"]),
     tokenModifiers: Object.freeze(["payload", "entity"]),
   }),
   legendDigest: "sha256:test-generated-token-descriptor",
-  transportApiVersion: 3,
+  transportApiVersion: 4,
 });
 
 test("Monaco publishes planner-packed tokens without rereading source", async () => {
@@ -51,6 +65,10 @@ test("Monaco publishes planner-packed tokens without rereading source", async ()
   const readsAfterOpen = model.getValueCalls();
 
   assert.equal(readsAfterOpen, 1);
+  assert.deepEqual(
+    providers.completions?.triggerCharacters,
+    IDENTITY.completionTriggerCharacters,
+  );
   assert.deepEqual(providers.semantic?.getLegend(), IDENTITY.legend);
   const result = await providers.semantic?.provideDocumentSemanticTokens(
     model.model,

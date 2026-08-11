@@ -54,11 +54,21 @@ When a host already owns an `Arc<AnalysisGeneration>`, use `DocumentSnapshot::tr
 
 The removed TextScan implementation is not maintained in parallel. This does not change LSP document revision numbers or Mermaid's own `*-v2` diagram IDs.
 
+Completion policy is evaluated only by `completion_for_snapshot`. The former public
+`CompletionContext` accessor wrapper was removed rather than retained as a compatibility alias.
+
+```compile_fail
+use merman_editor_core::CompletionContext;
+```
+
 ## Semantic Token Planning
 
 Use `plan_semantic_tokens_for_snapshot` or `plan_semantic_tokens_for_snapshot_range`. Both return `Result<SemanticTokenPlan, TokenPlanError>`; range planning accepts editor-core's protocol-neutral `Range`. Inspect `SemanticTokenPlan::tokens()` for `PlannedToken` values or `packed()` for the generated five-word LSP-relative UTF-16 representation.
 
 `semantic_token_descriptor()` is the single descriptor for `PlannedTokenKind` codes, `PlannedTokenModifier` bits, LSP legend indices, and packed-field order. Hosts should derive protocol tables from that descriptor rather than maintaining a second legend or numeric mapping.
+
+Completion adapters should likewise derive activation characters from
+`COMPLETION_TRIGGER_CHARACTERS`; LSP and browser adapters project that one editor-owned list.
 
 ## Boundary
 

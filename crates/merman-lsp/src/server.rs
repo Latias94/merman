@@ -35,6 +35,7 @@ use merman_analysis::{
 };
 #[cfg(test)]
 use merman_analysis::{Analyzer, analyze_document};
+use merman_editor_core::COMPLETION_TRIGGER_CHARACTERS;
 use merman_editor_core::{DocumentKind, TokenPlanError, analysis_payload_to_diagnostics};
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, OnceLock};
@@ -158,20 +159,12 @@ impl MermanLanguageServer {
             hover_provider: Some(HoverProviderCapability::Simple(true)),
             completion_provider: Some(CompletionOptions {
                 resolve_provider: Some(true),
-                trigger_characters: Some(vec![
-                    " ".to_string(),
-                    "\n".to_string(),
-                    "-".to_string(),
-                    ">".to_string(),
-                    "%".to_string(),
-                    "[".to_string(),
-                    "(".to_string(),
-                    "{".to_string(),
-                    "/".to_string(),
-                    "\\".to_string(),
-                    "@".to_string(),
-                    ":".to_string(),
-                ]),
+                trigger_characters: Some(
+                    COMPLETION_TRIGGER_CHARACTERS
+                        .iter()
+                        .map(char::to_string)
+                        .collect(),
+                ),
                 ..CompletionOptions::default()
             }),
             definition_provider: Some(OneOf::Left(true)),

@@ -103,7 +103,8 @@ Init-directive migration fixes are advisory and resource-bounded independently f
 The layer boundaries are deliberate:
 
 - `merman-core` emits structured parser facts and exact spans.
-- `merman-analysis` turns those facts into diagnostics and document-level results.
+- `merman-analysis` turns those facts into diagnostics and document-level results. It exposes
+  typed expected-syntax evidence, but does not select completion categories or items.
 - `merman-editor-core` queries typed analysis snapshots for editor behavior.
 - LSP, WASM, CLI, FFI, and UniFFI only project those results into their host protocols.
 
@@ -132,6 +133,20 @@ The diagnostics-only `AnalysisPayload` and richer `AnalysisFactsPayload` are ind
 Facts use `fact_source: "unavailable"` when parser-backed body semantics do not exist. They do not invent body symbols, references, or rename targets. Current writers include `rename_policy` on each semantic item; older additive readers that do not see it must treat the item as non-renamable.
 
 `DocumentDiagram::text`, `AnalyzedDiagram::text()`, and editor `FenceSnapshot::text()` use `SharedTextSlice`, so fence bodies share immutable document storage. `AnalysisGeneration` and `AnalyzedDiagram` are read-only canonical outputs; obtain them from `Analyzer` or the document-analysis entry points.
+
+## Prerelease Completion Migration
+
+The analysis-owned cursor policy types were deleted. Rust editor hosts should query a
+`DocumentSnapshot` with `merman_editor_core::completion_for_snapshot`; adapters that only inspect
+analysis facts should consume `FenceTextIndex::expected_syntax()` and its parser provenance.
+
+```compile_fail
+use merman_analysis::FenceCursorCompletionKind;
+```
+
+```compile_fail
+use merman_analysis::FenceCursorContext;
+```
 
 ## Related Documentation
 

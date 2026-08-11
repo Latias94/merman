@@ -1134,11 +1134,11 @@ fn parse_state_editor_facts_record_expected_syntax_spans() {
     );
     assert_expected_syntax_covers(
         &facts,
-        EditorExpectedSyntaxKind::Payload,
+        EditorExpectedSyntaxKind::ClassName,
         text,
         "classDef exampleStyleClass background:#bbb,border:1px solid red",
         "exampleStyleClass",
-        "state class definition payload",
+        "state class definition name",
     );
     assert_expected_syntax_covers(
         &facts,
@@ -1150,11 +1150,19 @@ fn parse_state_editor_facts_record_expected_syntax_spans() {
     );
     assert_expected_syntax_covers(
         &facts,
-        EditorExpectedSyntaxKind::Payload,
+        EditorExpectedSyntaxKind::ClassName,
+        text,
+        "class namedState exampleStyleClass",
+        "exampleStyleClass",
+        "state class name",
+    );
+    assert_expected_syntax_covers(
+        &facts,
+        EditorExpectedSyntaxKind::ClassName,
         text,
         "a --> b:::exampleStyleClass",
         "exampleStyleClass",
-        "state inline class payload",
+        "state inline class name",
     );
     assert_expected_syntax_covers(
         &facts,
@@ -1204,6 +1212,26 @@ fn parse_state_editor_facts_record_expected_syntax_spans() {
         "Run details",
         "state click tooltip",
     );
+}
+
+#[test]
+fn parse_state_editor_facts_do_not_consume_classdef_names_across_line_endings() {
+    let engine = Engine::new();
+
+    for line_ending in ["\n", "\r", "\r\n"] {
+        let text = ["stateDiagram-v2", "classDef", "Active --> Idle", ""].join(line_ending);
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("stateDiagram", &text)
+            .unwrap()
+            .expect("state editor facts");
+
+        assert!(
+            !facts.symbols.iter().any(|symbol| {
+                symbol.name == "Active" && symbol.role == EditorSemanticRole::ClassDefinition
+            }),
+            "classDef consumed the next physical line for {line_ending:?}"
+        );
+    }
 }
 
 #[test]

@@ -1,4 +1,7 @@
-use crate::{EditorLexeme, EditorLexemeKind, ParseControl, ParseControlResult, SourceSpan};
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexeme, EditorLexemeKind, ParseControl,
+    ParseControlResult, SourceSpan,
+};
 use std::ops::Range;
 
 const CONTROLLED_EDIT_REBUILD_CHECKPOINT_BYTES: usize = 4 * 1024;
@@ -45,6 +48,7 @@ pub struct PreprocessedSource {
     text: String,
     edit_map: SourceEditMap,
     global_lexemes: Vec<EditorLexeme>,
+    global_expected_syntax: Vec<EditorExpectedSyntax>,
     global_directive_prefixes: Vec<String>,
     recovered_incomplete_directive: bool,
 }
@@ -74,6 +78,7 @@ impl PreprocessedSource {
             text,
             edit_map: SourceEditMap::identity(source.len()),
             global_lexemes: Vec::new(),
+            global_expected_syntax: Vec::new(),
             global_directive_prefixes: Vec::new(),
             recovered_incomplete_directive: false,
         })
@@ -101,6 +106,10 @@ impl PreprocessedSource {
         &self.global_lexemes
     }
 
+    pub(crate) fn global_expected_syntax(&self) -> &[EditorExpectedSyntax] {
+        &self.global_expected_syntax
+    }
+
     pub(crate) fn global_directive_prefixes(&self) -> &[String] {
         &self.global_directive_prefixes
     }
@@ -126,6 +135,18 @@ impl PreprocessedSource {
         if span.start < span.end {
             self.global_lexemes.push(EditorLexeme::global(kind, span));
         }
+    }
+
+    pub(super) fn record_global_expected_syntax(
+        &mut self,
+        kind: EditorExpectedSyntaxKind,
+        span: SourceSpan,
+    ) {
+        let Some(span) = self.try_map_span(span) else {
+            return;
+        };
+        self.global_expected_syntax
+            .push(EditorExpectedSyntax::new(kind, span));
     }
 
     pub fn into_text(self) -> String {
@@ -1548,6 +1569,10 @@ mod tests {
         );
         assert_eq!(actual.edit_map.scan_stats, expected.edit_map.scan_stats);
         assert_eq!(actual.global_lexemes, expected.global_lexemes);
+        assert_eq!(
+            actual.global_expected_syntax,
+            expected.global_expected_syntax
+        );
         assert_eq!(
             actual.global_directive_prefixes,
             expected.global_directive_prefixes

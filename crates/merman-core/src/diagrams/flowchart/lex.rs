@@ -1,6 +1,6 @@
 use super::{
     ClassAssignStmt, ClassDefStmt, ClickAction, ClickStmt, FlowchartLexemeComponent, LabeledText,
-    LexError, LinkStylePos, LinkStyleStmt, StyleStmt, TitleKind,
+    LexError, LinkStylePos, LinkStyleStmt, StyleStmt, TitleKind, ast::FlowchartClickEditorEvidence,
 };
 use crate::{EditorLexemeKind, SourceSpan};
 
@@ -222,6 +222,7 @@ pub(super) fn parse_style_stmt(rest: &str) -> std::result::Result<StyleStmt, Lex
         styles,
         styles_text: None,
         styles_span: None,
+        editor_evidence: Default::default(),
         lexeme_components: Vec::new(),
     })
 }
@@ -242,6 +243,7 @@ pub(super) fn parse_classdef_stmt(rest: &str) -> std::result::Result<ClassDefStm
         styles,
         styles_text: None,
         styles_span: None,
+        editor_evidence: Default::default(),
         lexeme_components: Vec::new(),
     })
 }
@@ -266,6 +268,7 @@ pub(super) fn parse_class_assign_stmt(
         target_spans: Vec::new(),
         class_name,
         class_name_span: None,
+        editor_evidence: Default::default(),
         lexeme_components: Vec::new(),
     })
 }
@@ -503,6 +506,30 @@ impl<'a> ClickParse<'a> {
     fn finish(self) -> Vec<FlowchartLexemeComponent> {
         self.components
     }
+
+    fn source_span(&self, start: usize, end: usize) -> SourceSpan {
+        SourceSpan::new(self.base + start, self.base + end)
+    }
+}
+
+fn click_following_span(parser: &ClickParse<'_>, boundary_end: usize) -> Option<SourceSpan> {
+    (parser.i > boundary_end).then(|| {
+        parser.source_span(
+            boundary_end.saturating_add(1).min(parser.s.len()),
+            parser.s.len(),
+        )
+    })
+}
+
+fn click_action_prefix(word: &str) -> bool {
+    !word.is_empty() && ("href".starts_with(word) || "call".starts_with(word))
+}
+
+fn invalid_click_statement(evidence: FlowchartClickEditorEvidence) -> LexError {
+    evidence.iter().fold(
+        LexError::new("Invalid click statement".to_string()),
+        |error, expected| error.expecting(expected.kind, expected.span),
+    )
 }
 
 pub(super) fn parse_click_stmt(
@@ -515,7 +542,9 @@ pub(super) fn parse_click_stmt(
     };
     let ids = vec![id];
 
+    let target_end = p.i;
     p.skip_ws();
+    let after_target = click_following_span(&p, target_end);
     let tooltip: Option<String>;
     let action: ClickAction;
 
@@ -525,9 +554,17 @@ pub(super) fn parse_click_stmt(
             .get(4)
             .is_none_or(|b| b.is_ascii_whitespace())
     {
+        let action_start = p.i;
         let _ = p.take_word(EditorLexemeKind::Keyword);
+        let action_end = p.i;
+        let action_span = p.source_span(action_start, action_end);
+        p.skip_ws();
+        let interaction_evidence = FlowchartClickEditorEvidence::new(
+            Some(action_span),
+            click_following_span(&p, action_end),
+        );
         let Some(link) = p.take_quoted() else {
-            return Err(LexError::new("Invalid click statement".to_string()));
+            return Err(invalid_click_statement(interaction_evidence));
         };
         let maybe_tt = p.take_quoted();
         let maybe_target = p
@@ -543,6 +580,8 @@ pub(super) fn parse_click_stmt(
             ids,
             tooltip,
             action,
+            editor_evidence: Default::default(),
+            interaction_evidence,
             lexeme_components,
         });
     }
@@ -553,8 +592,14 @@ pub(super) fn parse_click_stmt(
             .get(4)
             .is_none_or(|b| b.is_ascii_whitespace())
     {
+        let action_start = p.i;
         let _ = p.take_word(EditorLexemeKind::Keyword);
+        let action_end = p.i;
         p.skip_ws();
+        let interaction_evidence = FlowchartClickEditorEvidence::new(
+            Some(p.source_span(action_start, action_end)),
+            click_following_span(&p, action_end),
+        );
         let start = p.i;
         while p.i < p.s.len() {
             let b = p.s.as_bytes()[p.i];
@@ -564,7 +609,7 @@ pub(super) fn parse_click_stmt(
             p.i += 1;
         }
         if p.i == start {
-            return Err(LexError::new("Invalid click statement".to_string()));
+            return Err(invalid_click_statement(interaction_evidence));
         }
         p.push_component(EditorLexemeKind::Identifier, start, p.i);
         p.skip_ws();
@@ -591,6 +636,8 @@ pub(super) fn parse_click_stmt(
             ids,
             tooltip,
             action,
+            editor_evidence: Default::default(),
+            interaction_evidence,
             lexeme_components,
         });
     }
@@ -610,12 +657,24 @@ pub(super) fn parse_click_stmt(
             ids,
             tooltip,
             action,
+            editor_evidence: Default::default(),
+            interaction_evidence: FlowchartClickEditorEvidence::new(None, after_target),
             lexeme_components,
         });
     }
 
-    let Some(_function_name) = p.take_word(EditorLexemeKind::Identifier) else {
-        return Err(LexError::new("Invalid click statement".to_string()));
+    let function_start = p.i;
+    let Some(function_name) = p.take_word(EditorLexemeKind::Identifier) else {
+        return Err(invalid_click_statement(FlowchartClickEditorEvidence::new(
+            after_target,
+            None,
+        )));
+    };
+    let function_span = p.source_span(function_start, p.i);
+    let interaction_evidence = if click_action_prefix(&function_name) {
+        FlowchartClickEditorEvidence::new(Some(function_span), None)
+    } else {
+        FlowchartClickEditorEvidence::new(None, after_target)
     };
     tooltip = p.take_quoted();
     action = ClickAction::Callback;
@@ -624,6 +683,8 @@ pub(super) fn parse_click_stmt(
         ids,
         tooltip,
         action,
+        editor_evidence: Default::default(),
+        interaction_evidence,
         lexeme_components,
     })
 }

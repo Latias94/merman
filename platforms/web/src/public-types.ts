@@ -510,11 +510,16 @@ export type AnalysisSemanticRole = "entity" | "outline" | "payload" | string;
 export type AnalysisRenamePolicy = EditorRenamePolicy;
 
 export type AnalysisExpectedSyntaxKind =
+  | "directive"
+  | "frontmatter"
   | "id_list"
   | "node_identifier"
+  | "class_name"
   | "shape"
   | "shape_trigger"
   | "direction"
+  | "style_value"
+  | "interaction_action"
   | "payload"
   | string;
 
@@ -995,6 +1000,7 @@ export interface MermanWasmModule extends MermanWasmModuleBase {
     optionsJson?: string | null
   ) => EditorWorkspaceEdit | null;
   editorSemanticTokenDescriptor?: () => WasmSemanticTokenDescriptor;
+  editorCompletionTriggerCharacters?: () => string[];
   editorSemanticTokens?: (
     source: string,
     uri?: string | null,

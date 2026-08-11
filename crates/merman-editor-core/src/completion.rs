@@ -1,14 +1,19 @@
-use crate::context::CompletionContext;
+use crate::context::CompletionQuery;
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{Position, Range};
 use merman_analysis::FenceTextIndexSource;
-use merman_core::diagram_header_facts;
+use merman_core::{EditorExpectedSyntaxKind, diagram_header_facts};
 use serde::{Deserialize, Serialize};
 
 const COMMON_TEMPLATE_DETAIL: &str = "diagram template";
+pub const COMPLETION_TRIGGER_CHARACTERS: &[char] =
+    &[' ', '\n', '-', '>', '%', '[', '(', '{', '/', '\\', '@', ':'];
+const TEMPLATE_PREFIXES: &[&str] = &[
+    "flow", "seq", "icon", "acc", "class", "state", "er", "gantt", "pie", "journey", "mind",
+];
 
 pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) -> CompletionList {
-    let Some(context) = CompletionContext::from_snapshot(snapshot, position) else {
+    let Some(query) = CompletionQuery::from_snapshot(snapshot, position) else {
         return CompletionList {
             is_incomplete: false,
             fact_source: None,
@@ -17,65 +22,113 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
     };
 
     let mut items = Vec::new();
+    let expected_syntax = query.expected_syntax.map(|expected| expected.kind);
+    let parser_backed = query.source.is_parser_backed();
+    let offer_headers =
+        expected_syntax.is_none() && offer_diagram_headers(query.source_start, query.prefix);
+    let offer_templates = offer_template_items(&query);
+    let offer_operator = expected_syntax == Some(EditorExpectedSyntaxKind::Operator);
+    let offer_direction = expected_syntax == Some(EditorExpectedSyntaxKind::DirectionValue);
+    let offer_shape = matches!(
+        expected_syntax,
+        Some(EditorExpectedSyntaxKind::ShapeValue | EditorExpectedSyntaxKind::ShapeTrigger)
+    );
+    let offer_directives =
+        parser_backed && expected_syntax == Some(EditorExpectedSyntaxKind::Directive);
+    let offer_frontmatter = expected_syntax == Some(EditorExpectedSyntaxKind::Frontmatter)
+        || (query.source_start && query.source.is_unavailable());
+    let offer_class_names =
+        parser_backed && expected_syntax == Some(EditorExpectedSyntaxKind::ClassName);
+    let offer_styles =
+        parser_backed && expected_syntax == Some(EditorExpectedSyntaxKind::StyleValue);
+    let offer_interactions =
+        parser_backed && expected_syntax == Some(EditorExpectedSyntaxKind::InteractionAction);
+    let offer_nodes = matches!(
+        expected_syntax,
+        Some(EditorExpectedSyntaxKind::NodeIdentifier | EditorExpectedSyntaxKind::IdList)
+    );
 
-    if context.offer_diagram_headers() {
-        items.extend(diagram_header_items(context.prefix_range()));
-        items.extend(template_items(context.prefix_range()));
-    } else if context.offer_template_items() {
-        items.extend(template_items(context.prefix_range()));
+    if offer_headers {
+        items.extend(diagram_header_items(query.prefix_range()));
+        items.extend(template_items(query.prefix_range()));
+    } else if offer_templates {
+        items.extend(template_items(query.prefix_range()));
     }
 
-    if context.offer_operator_items() {
-        items.extend(operator_items(&context, context.operator_range()));
+    if offer_operator {
+        items.extend(operator_items(&query, query.operator_range()));
     }
 
-    if context.offer_frontmatter_items() {
-        items.extend(frontmatter_items(context.frontmatter_text_edit_range()));
+    if offer_frontmatter {
+        items.extend(frontmatter_items(query.prefix_range()));
     }
 
-    if context.offer_direction_items() {
-        items.extend(direction_items(&context));
+    if offer_direction {
+        items.extend(direction_items(&query));
     }
 
-    if context.offer_directive_items() {
-        items.extend(directive_items(&context));
+    if offer_directives {
+        items.extend(directive_items(&query));
     }
 
-    if context.offer_shape_items() {
-        items.extend(shape_items(&context));
+    if offer_shape {
+        items.extend(shape_items(&query));
     }
 
-    if context.offer_class_name_items() {
+    if offer_class_names {
         items.extend(class_name_items(
-            context.fence(),
-            context.document_uri(),
-            context.class_name_text_edit_range(),
+            query.fence,
+            query.document_uri(),
+            query.class_name_range(),
         ));
     }
 
-    if context.offer_style_snippet_items() {
-        items.extend(style_snippet_items(context.style_text_edit_range()));
+    if offer_styles {
+        items.extend(style_snippet_items(query.style_range()));
     }
 
-    if context.offer_interaction_snippet_items() {
-        items.extend(interaction_snippet_items(
-            context.interaction_text_edit_range(),
-        ));
+    if offer_interactions {
+        items.extend(interaction_snippet_items(query.interaction_range()));
     }
 
-    if context.offer_node_items() {
+    if offer_nodes {
         items.extend(node_items(
-            context.fence(),
-            context.document_uri(),
-            context.node_text_edit_range(),
+            query.fence,
+            query.document_uri(),
+            query.expected_node_range(),
         ));
     }
 
     CompletionList {
         is_incomplete: false,
-        fact_source: Some(context.fact_source()),
+        fact_source: Some(query.source),
         items,
     }
+}
+
+fn offer_diagram_headers(source_start: bool, prefix: &str) -> bool {
+    if !source_start {
+        return false;
+    }
+    let prefix = prefix.trim_end();
+
+    prefix.is_empty()
+        || (!prefix.chars().any(char::is_whitespace)
+            && diagram_header_facts()
+                .iter()
+                .any(|fact| fact.label.starts_with(prefix)))
+}
+
+fn offer_template_items(query: &CompletionQuery<'_>) -> bool {
+    if !query.source_start || query.in_directive {
+        return false;
+    }
+    let prefix = query.prefix.trim_end();
+    !prefix.is_empty()
+        && !prefix.chars().any(char::is_whitespace)
+        && TEMPLATE_PREFIXES
+            .iter()
+            .any(|template_prefix| template_prefix.starts_with(prefix))
 }
 
 fn diagram_header_items(range: Option<Range>) -> Vec<CompletionItem> {
@@ -93,8 +146,10 @@ fn diagram_header_items(range: Option<Range>) -> Vec<CompletionItem> {
         .collect()
 }
 
-fn operator_items(context: &CompletionContext<'_>, range: Option<Range>) -> Vec<CompletionItem> {
-    context
+fn operator_items(query: &CompletionQuery<'_>, range: Option<Range>) -> Vec<CompletionItem> {
+    query
+        .fence
+        .text_index()
         .completion_vocabulary()
         .operators()
         .iter()
@@ -120,22 +175,12 @@ fn operator_items(context: &CompletionContext<'_>, range: Option<Range>) -> Vec<
         .collect()
 }
 
-fn directive_items(context: &CompletionContext<'_>) -> Vec<CompletionItem> {
-    let range = context.prefix_range();
-    let has_directives = context
-        .fence()
-        .text_index()
-        .directive_prefixes()
-        .any(|prefix| is_directive_helper_prefix(prefix.as_str()));
-    let directive_label = if has_directives {
-        "directive helper"
-    } else {
-        "comment"
-    };
+fn directive_items(query: &CompletionQuery<'_>) -> Vec<CompletionItem> {
+    let range = query.prefix_range();
     vec![
         snippet_completion(
             ":::className",
-            directive_label,
+            "directive helper",
             range,
             ":::${1:className}",
             CompletionDataKind::Directive,
@@ -157,24 +202,13 @@ fn directive_items(context: &CompletionContext<'_>) -> Vec<CompletionItem> {
     ]
 }
 
-fn is_directive_helper_prefix(prefix: &str) -> bool {
-    matches!(
-        prefix,
-        "classDef"
-            | "class"
-            | "style"
-            | "cssClass"
-            | "linkStyle"
-            | "click"
-            | "link"
-            | "callback"
-            | ":::"
-    )
-}
-
-fn direction_items(context: &CompletionContext<'_>) -> Vec<CompletionItem> {
-    let values = context.completion_vocabulary().directions();
-    if let Some(range) = context.direction_value_range() {
+fn direction_items(query: &CompletionQuery<'_>) -> Vec<CompletionItem> {
+    let values = query
+        .fence
+        .text_index()
+        .completion_vocabulary()
+        .directions();
+    if let Some(range) = query.direction_value_range() {
         return values
             .iter()
             .map(|candidate| {
@@ -195,7 +229,7 @@ fn direction_items(context: &CompletionContext<'_>) -> Vec<CompletionItem> {
             keyword_completion(
                 &format!("direction {}", candidate.label()),
                 candidate.detail(),
-                context.prefix_range(),
+                query.prefix_range(),
                 None,
                 CompletionDataKind::Direction,
             )
@@ -203,9 +237,9 @@ fn direction_items(context: &CompletionContext<'_>) -> Vec<CompletionItem> {
         .collect()
 }
 
-fn shape_items(context: &CompletionContext<'_>) -> Vec<CompletionItem> {
+fn shape_items(query: &CompletionQuery<'_>) -> Vec<CompletionItem> {
     merman_core::diagrams::flowchart::flowchart_public_shape_names()
-        .map(|shape| shape_completion(shape, &format!("{shape} shape"), context))
+        .map(|shape| shape_completion(shape, &format!("{shape} shape"), query))
         .collect()
 }
 
@@ -444,9 +478,9 @@ fn template_items(range: Option<Range>) -> Vec<CompletionItem> {
     ]
 }
 
-fn shape_completion(value: &str, detail: &str, context: &CompletionContext<'_>) -> CompletionItem {
+fn shape_completion(value: &str, detail: &str, query: &CompletionQuery<'_>) -> CompletionItem {
     let label = format!("@{{ shape: {value} }}");
-    if let Some(edit) = context.shape_value_edit(value) {
+    if let Some(edit) = query.shape_value_edit(value) {
         keyword_completion(
             &label,
             detail,
@@ -458,7 +492,7 @@ fn shape_completion(value: &str, detail: &str, context: &CompletionContext<'_>) 
         keyword_completion(
             &label,
             detail,
-            context.shape_trigger_range(),
+            query.shape_trigger_range(),
             Some(&label),
             CompletionDataKind::Shape,
         )

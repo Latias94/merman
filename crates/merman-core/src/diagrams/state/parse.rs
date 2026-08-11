@@ -5,7 +5,8 @@ use crate::{
     Result, SourceSpan,
     editor::{
         EditorLexemeBatchResult, EditorLexemeJournal, editor_keyword_value_span,
-        format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span,
+        format_lalrpop_parse_error, has_ascii_separator, lalrpop_parse_diagnostic,
+        lalrpop_recovery_span, line_content_end, source_value_span, trailing_ascii_whitespace_slot,
     },
 };
 use serde_json::Value;
@@ -378,6 +379,9 @@ fn collect_state_editor_facts_from_events(
         code,
         context: StateTokenContext::Default,
         pending_entity: None,
+        pending_directive_slot: None,
+        directive_start: None,
+        interaction_target_end: None,
         note_text_pending: false,
         note_position_seen: false,
         note_alias_pending: false,
@@ -403,7 +407,7 @@ fn collect_state_editor_facts_from_events(
             }
         }
     }
-    collector.flush_pending_entity(&mut events);
+    collector.finish_statement(line_content_end(code, code.len()), &mut events);
     control.checkpoint()?;
     Ok(state_editor_facts_from_events(events))
 }
@@ -412,11 +416,20 @@ struct StateTokenFactCollector<'a> {
     code: &'a str,
     context: StateTokenContext,
     pending_entity: Option<StatePendingEntity>,
+    pending_directive_slot: Option<PendingDirectiveSlot>,
+    directive_start: Option<usize>,
+    interaction_target_end: Option<usize>,
     note_text_pending: bool,
     note_position_seen: bool,
     note_alias_pending: bool,
     relation_label_pending: bool,
     relation_target_seen: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PendingDirectiveSlot {
+    kind: EditorExpectedSyntaxKind,
+    anchor_end: usize,
 }
 
 impl StateTokenFactCollector<'_> {
@@ -428,9 +441,8 @@ impl StateTokenFactCollector<'_> {
         events: &mut Vec<StateEditorEvent>,
     ) {
         match token {
-            Tok::Newline | Tok::StructStart | Tok::StructStop => {
-                self.finish_statement(events);
-            }
+            Tok::Newline => self.finish_statement(line_content_end(self.code, start), events),
+            Tok::StructStart | Tok::StructStop => self.reset_statement(events),
             Tok::Arrow => {
                 self.flush_pending_entity_as("state reference", events);
                 self.relation_label_pending = true;
@@ -439,30 +451,53 @@ impl StateTokenFactCollector<'_> {
             Tok::Click => {
                 self.flush_pending_entity(events);
                 events.push(StateEditorEvent::DirectivePrefix("click"));
+                self.directive_start = Some(start);
+                self.expect_after_separator(EditorExpectedSyntaxKind::NodeIdentifier, end);
                 self.context = StateTokenContext::ClickTarget;
             }
             Tok::Href if self.context == StateTokenContext::ClickAfterTarget => {
+                push_state_expected_syntax(
+                    events,
+                    EditorExpectedSyntaxKind::InteractionAction,
+                    SourceSpan::new(start, end),
+                );
                 self.context = StateTokenContext::ClickAfterHref;
+                self.interaction_target_end = None;
             }
             Tok::Id(id) if self.context == StateTokenContext::ClickTarget => {
+                self.pending_directive_slot = None;
+                self.interaction_target_end = Some(end);
                 push_state_entity_event(events, id, start, end, "state click target");
                 self.context = StateTokenContext::ClickAfterTarget;
             }
             Tok::StyledId((id, class_id)) if self.context == StateTokenContext::ClickTarget => {
+                self.pending_directive_slot = None;
+                self.interaction_target_end = Some(end);
                 push_state_entity_event(events, id, start, end, "state click target");
-                push_state_payload_event_from_token(
+                push_state_payload_event_from_token_as(
                     events,
                     self.code,
                     class_id.as_str(),
-                    start,
-                    end,
+                    SourceSpan::new(start, end),
                     "state inline class",
                     EditorSemanticKind::Property,
+                    EditorExpectedSyntaxKind::ClassName,
                 );
                 self.context = StateTokenContext::ClickAfterTarget;
             }
             Tok::EdgeState if self.context == StateTokenContext::ClickTarget => {
+                self.pending_directive_slot = None;
+                self.interaction_target_end = Some(end);
                 self.context = StateTokenContext::ClickAfterTarget;
+            }
+            Tok::Id(_) if self.context == StateTokenContext::ClickAfterTarget => {
+                push_state_expected_syntax(
+                    events,
+                    EditorExpectedSyntaxKind::InteractionAction,
+                    SourceSpan::new(start, end),
+                );
+                self.interaction_target_end = None;
+                self.context = StateTokenContext::Default;
             }
             Tok::EdgeState => {
                 self.flush_pending_entity(events);
@@ -530,6 +565,7 @@ impl StateTokenFactCollector<'_> {
                 ) =>
             {
                 self.flush_pending_entity(events);
+                self.interaction_target_end = None;
                 push_state_string_payload_event(
                     events,
                     text.as_str(),
@@ -560,14 +596,14 @@ impl StateTokenFactCollector<'_> {
             }
             Tok::StyledId((id, class_id)) => {
                 self.handle_state_entity(id, start, end, "state", events);
-                push_state_payload_event_from_token(
+                push_state_payload_event_from_token_as(
                     events,
                     self.code,
                     class_id.as_str(),
-                    start,
-                    end,
+                    SourceSpan::new(start, end),
                     "state inline class",
                     EditorSemanticKind::Property,
+                    EditorExpectedSyntaxKind::ClassName,
                 );
             }
             Tok::Fork(id) => {
@@ -582,13 +618,18 @@ impl StateTokenFactCollector<'_> {
             Tok::ClassDef => {
                 self.flush_pending_entity(events);
                 events.push(StateEditorEvent::DirectivePrefix("classDef"));
+                self.directive_start = Some(start);
+                self.expect_after_separator(EditorExpectedSyntaxKind::ClassName, end);
             }
             Tok::ClassDefId(id) => {
-                push_state_expected_syntax(
-                    events,
-                    EditorExpectedSyntaxKind::Payload,
-                    SourceSpan::new(start, end),
-                );
+                if !id.trim().is_empty() {
+                    push_state_expected_syntax(
+                        events,
+                        EditorExpectedSyntaxKind::ClassName,
+                        SourceSpan::new(start, end),
+                    );
+                    self.expect_after_separator(EditorExpectedSyntaxKind::StyleValue, end);
+                }
                 push_state_class_definition_event(
                     events,
                     id,
@@ -598,57 +639,92 @@ impl StateTokenFactCollector<'_> {
                     EditorSemanticKind::Property,
                 );
             }
-            Tok::ClassDefStyleOpts(raw) => push_state_payload_event_from_token(
-                events,
-                self.code,
-                raw.as_str(),
-                start,
-                end,
-                "state class definition style",
-                EditorSemanticKind::String,
-            ),
+            Tok::ClassDefStyleOpts(raw) => {
+                if let Some(span) = trailing_ascii_whitespace_slot(self.code, start, end) {
+                    push_state_expected_syntax(events, EditorExpectedSyntaxKind::StyleValue, span);
+                }
+                self.pending_directive_slot = None;
+                push_state_payload_event_from_token(
+                    events,
+                    self.code,
+                    raw.as_str(),
+                    start,
+                    end,
+                    "state class definition style",
+                    EditorSemanticKind::String,
+                );
+            }
             Tok::Class => {
                 self.flush_pending_entity(events);
                 events.push(StateEditorEvent::DirectivePrefix("class"));
+                self.directive_start = Some(start);
+                self.expect_after_separator(EditorExpectedSyntaxKind::IdList, end);
             }
-            Tok::ClassEntityIds(ids) => push_state_id_list_events(
-                events,
-                self.code,
-                ids.as_str(),
-                start,
-                end,
-                "state class target",
-            ),
-            Tok::StyleClass(class_id) => push_state_payload_event_from_token(
-                events,
-                self.code,
-                class_id.as_str(),
-                start,
-                end,
-                "state class reference",
-                EditorSemanticKind::Property,
-            ),
+            Tok::ClassEntityIds(ids) => {
+                let has_targets = !ids.trim().is_empty();
+                push_state_id_list_events(
+                    events,
+                    self.code,
+                    ids.as_str(),
+                    start,
+                    end,
+                    "state class target",
+                    EditorExpectedSyntaxKind::IdList,
+                );
+                if has_targets {
+                    self.expect_after_separator(EditorExpectedSyntaxKind::ClassName, end);
+                }
+            }
+            Tok::StyleClass(class_id) => {
+                if !class_id.trim().is_empty() {
+                    self.pending_directive_slot = None;
+                }
+                push_state_payload_event_from_token_as(
+                    events,
+                    self.code,
+                    class_id.as_str(),
+                    SourceSpan::new(start, end),
+                    "state class reference",
+                    EditorSemanticKind::Property,
+                    EditorExpectedSyntaxKind::ClassName,
+                );
+            }
             Tok::Style => {
                 self.flush_pending_entity(events);
                 events.push(StateEditorEvent::DirectivePrefix("style"));
+                self.directive_start = Some(start);
+                self.expect_after_separator(EditorExpectedSyntaxKind::IdList, end);
             }
-            Tok::StyleIds(ids) => push_state_id_list_events(
-                events,
-                self.code,
-                ids.as_str(),
-                start,
-                end,
-                "state style target",
-            ),
-            Tok::StyleDefStyleOpts(raw) => push_state_payload_event_from_token(
-                events,
-                self.code,
-                raw.as_str(),
-                start,
-                end,
-                "state style",
-                EditorSemanticKind::String,
-            ),
+            Tok::StyleIds(ids) => {
+                let has_targets = !ids.trim().is_empty();
+                push_state_id_list_events(
+                    events,
+                    self.code,
+                    ids.as_str(),
+                    start,
+                    end,
+                    "state style target",
+                    EditorExpectedSyntaxKind::IdList,
+                );
+                if has_targets {
+                    self.expect_after_separator(EditorExpectedSyntaxKind::StyleValue, end);
+                }
+            }
+            Tok::StyleDefStyleOpts(raw) => {
+                if let Some(span) = trailing_ascii_whitespace_slot(self.code, start, end) {
+                    push_state_expected_syntax(events, EditorExpectedSyntaxKind::StyleValue, span);
+                }
+                self.pending_directive_slot = None;
+                push_state_payload_event_from_token(
+                    events,
+                    self.code,
+                    raw.as_str(),
+                    start,
+                    end,
+                    "state style",
+                    EditorSemanticKind::String,
+                );
+            }
             Tok::AccTitle(value) => {
                 self.flush_pending_entity(events);
                 events.push(StateEditorEvent::DirectivePrefix("accTitle"));
@@ -769,14 +845,51 @@ impl StateTokenFactCollector<'_> {
         }
     }
 
-    fn finish_statement(&mut self, events: &mut Vec<StateEditorEvent>) {
+    fn finish_statement(&mut self, line_end: usize, events: &mut Vec<StateEditorEvent>) {
         self.flush_pending_entity(events);
+        if let Some(start) = self.directive_start {
+            push_state_expected_syntax(
+                events,
+                EditorExpectedSyntaxKind::Directive,
+                SourceSpan::new(start, line_end),
+            );
+        }
+        if let Some(slot) = self.pending_directive_slot
+            && has_ascii_separator(self.code, slot.anchor_end, line_end)
+        {
+            push_state_expected_syntax(events, slot.kind, SourceSpan::new(line_end, line_end));
+        }
+        if let Some(target_end) = self.interaction_target_end
+            && has_ascii_separator(self.code, target_end, line_end)
+        {
+            push_state_expected_syntax(
+                events,
+                EditorExpectedSyntaxKind::InteractionAction,
+                SourceSpan::new(line_end, line_end),
+            );
+        }
+        self.reset_statement_state();
+    }
+
+    fn reset_statement(&mut self, events: &mut Vec<StateEditorEvent>) {
+        self.flush_pending_entity(events);
+        self.reset_statement_state();
+    }
+
+    fn reset_statement_state(&mut self) {
         self.context = StateTokenContext::Default;
+        self.pending_directive_slot = None;
+        self.directive_start = None;
+        self.interaction_target_end = None;
         self.note_text_pending = false;
         self.note_position_seen = false;
         self.note_alias_pending = false;
         self.relation_label_pending = false;
         self.relation_target_seen = false;
+    }
+
+    fn expect_after_separator(&mut self, kind: EditorExpectedSyntaxKind, anchor_end: usize) {
+        self.pending_directive_slot = Some(PendingDirectiveSlot { kind, anchor_end });
     }
 }
 
@@ -868,7 +981,7 @@ fn push_state_expected_syntax(
     kind: EditorExpectedSyntaxKind,
     span: SourceSpan,
 ) {
-    if span.start >= span.end {
+    if span.start > span.end {
         return;
     }
 
@@ -882,12 +995,9 @@ fn push_state_id_list_events(
     start: usize,
     end: usize,
     detail: &'static str,
+    expected_kind: EditorExpectedSyntaxKind,
 ) {
-    push_state_expected_syntax(
-        events,
-        EditorExpectedSyntaxKind::IdList,
-        SourceSpan::new(start, end),
-    );
+    push_state_expected_syntax(events, expected_kind, SourceSpan::new(start, end));
 
     let Some(slice) = code.get(start..end) else {
         for id in fallback_ids
@@ -941,14 +1051,33 @@ fn push_state_payload_event_from_token(
     detail: &'static str,
     kind: EditorSemanticKind,
 ) {
+    push_state_payload_event_from_token_as(
+        events,
+        code,
+        value,
+        SourceSpan::new(start, end),
+        detail,
+        kind,
+        EditorExpectedSyntaxKind::Payload,
+    );
+}
+
+fn push_state_payload_event_from_token_as(
+    events: &mut Vec<StateEditorEvent>,
+    code: &str,
+    value: &str,
+    span: SourceSpan,
+    detail: &'static str,
+    kind: EditorSemanticKind,
+    expected_kind: EditorExpectedSyntaxKind,
+) {
     let value = value.trim();
     if value.is_empty() {
         return;
     }
 
-    let span = SourceSpan::new(start, end);
-    let selection = token_value_selection(code, start, end, value).unwrap_or(span);
-    push_state_expected_syntax(events, EditorExpectedSyntaxKind::Payload, selection);
+    let selection = source_value_span(code, span, value).unwrap_or(span);
+    push_state_expected_syntax(events, expected_kind, selection);
     events.push(StateEditorEvent::Payload {
         value: value.to_string(),
         span,
@@ -984,15 +1113,6 @@ fn push_state_string_payload_event(
         detail,
         kind,
     });
-}
-
-fn token_value_selection(code: &str, start: usize, end: usize, value: &str) -> Option<SourceSpan> {
-    let slice = code.get(start..end)?;
-    let relative_start = slice.find(value)?;
-    Some(SourceSpan::new(
-        start + relative_start,
-        start + relative_start + value.len(),
-    ))
 }
 
 fn is_editor_visible_state_name(id: &str) -> bool {

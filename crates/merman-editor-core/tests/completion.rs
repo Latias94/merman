@@ -1,8 +1,17 @@
 use merman_analysis::FenceTextIndexSource;
 use merman_editor_core::{
-    CompletionContext, CompletionDataKind, CompletionInsertTextFormat, CompletionItemKind,
-    DocumentKind, DocumentWorkspace, Position, completion_documentation, completion_for_snapshot,
+    COMPLETION_TRIGGER_CHARACTERS, CompletionDataKind, CompletionInsertTextFormat,
+    CompletionItemKind, DocumentKind, DocumentWorkspace, Position, completion_documentation,
+    completion_for_snapshot,
 };
+
+#[test]
+fn completion_trigger_characters_are_owned_by_editor_policy() {
+    assert_eq!(
+        COMPLETION_TRIGGER_CHARACTERS,
+        &[' ', '\n', '-', '>', '%', '[', '(', '{', '/', '\\', '@', ':']
+    );
+}
 
 #[test]
 fn completion_offers_known_node_ids_with_text_edits() {
@@ -77,6 +86,41 @@ fn completion_offers_node_ids_for_directive_targets() {
     assert_eq!(edit.range.start.line, 2);
     assert_eq!(edit.range.start.character, 6);
     assert!(list.items.iter().any(|item| item.label == "B"));
+}
+
+#[test]
+fn empty_style_targets_use_typed_id_slots_across_line_endings() {
+    let cases = [
+        ("flowchart", &["flowchart TD", "A", "style "][..], "A"),
+        ("class", &["classDiagram", "class A", "style "][..], "A"),
+        ("er", &["erDiagram", "A", "style "][..], "A"),
+        ("state", &["stateDiagram-v2", "state A", "style "][..], "A"),
+        ("block", &["block", "A", "style "][..], "A"),
+    ];
+
+    for (line_ending_name, line_ending) in [("lf", "\n"), ("crlf", "\r\n"), ("cr", "\r")] {
+        for (name, lines, expected_id) in cases {
+            let mut workspace = DocumentWorkspace::new();
+            let snapshot = workspace
+                .upsert(
+                    format!("file:///tmp/{name}-{line_ending_name}-style-target.mmd"),
+                    1,
+                    format!("{}{line_ending}", lines.join(line_ending)),
+                    DocumentKind::Diagram,
+                )
+                .unwrap_or_else(|error| panic!("{name} source should be accepted: {error:?}"));
+            let list = completion_for_snapshot(&snapshot, Position::new(2, 6));
+
+            assert!(
+                list.items.iter().any(|item| item.label == expected_id),
+                "{name} must retain its target slot before {line_ending_name}: {:?}",
+                list.items
+                    .iter()
+                    .map(|item| item.label.as_str())
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
 }
 
 #[test]
@@ -183,6 +227,646 @@ fn completion_offers_interaction_snippets_after_click_targets() {
 }
 
 #[test]
+fn completion_uses_typed_style_slots_across_directive_families() {
+    let cases = [
+        (
+            "class",
+            "classDiagram\nclass User\nstyle User \n",
+            Position::new(2, 11),
+        ),
+        (
+            "er",
+            "erDiagram\nCUSTOMER\nstyle CUSTOMER \n",
+            Position::new(2, 15),
+        ),
+        (
+            "state",
+            "stateDiagram-v2\nstate Running\nstyle Running \n",
+            Position::new(2, 14),
+        ),
+        ("block", "block\nA\nstyle A \n", Position::new(2, 8)),
+    ];
+
+    for (name, source, position) in cases {
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                format!("file:///tmp/{name}-style-completion.mmd"),
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .unwrap_or_else(|error| panic!("{name} source should be accepted: {error:?}"));
+        let list = completion_for_snapshot(&snapshot, position);
+
+        assert!(
+            list.items
+                .iter()
+                .any(|item| item.label == "fill/stroke style"),
+            "{name} must publish a typed style slot: {:?}",
+            list.items
+                .iter()
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn completion_uses_typed_class_name_slots_across_directive_families() {
+    let cases = [
+        (
+            "class",
+            "classDiagram\nclass User\nclassDef hot fill:#f00\ncssClass \"User\" h\n",
+            Position::new(3, 17),
+        ),
+        (
+            "er",
+            "erDiagram\nCUSTOMER\nclassDef hot fill:#f00\nclass CUSTOMER h\n",
+            Position::new(3, 16),
+        ),
+        (
+            "state",
+            "stateDiagram-v2\nstate Running\nclassDef hot fill:#f00\nclass Running h\n",
+            Position::new(3, 15),
+        ),
+        (
+            "block",
+            "block\nA\nclassDef hot fill:#f00\nclass A h\n",
+            Position::new(3, 9),
+        ),
+    ];
+
+    for (name, source, position) in cases {
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                format!("file:///tmp/{name}-class-completion.mmd"),
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .unwrap_or_else(|error| panic!("{name} source should be accepted: {error:?}"));
+        let list = completion_for_snapshot(&snapshot, position);
+
+        assert!(
+            list.items.iter().any(|item| item.label == "hot"),
+            "{name} must publish a typed class-name slot: {:?}",
+            list.items
+                .iter()
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn completion_uses_typed_interaction_slots_for_class_diagrams() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/class-interaction-completion.mmd",
+            1,
+            "classDiagram\nclass User\nclick User \n".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("class source should be accepted");
+    let list = completion_for_snapshot(&snapshot, Position::new(2, 11));
+
+    assert!(
+        list.items
+            .iter()
+            .any(|item| item.label == "href link action"),
+        "class parser must publish a typed interaction slot: {:?}",
+        list.items
+            .iter()
+            .map(|item| item.label.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn completion_requires_a_separator_before_post_target_slots() {
+    let cases = [
+        (
+            "flowchart-style",
+            "flowchart TD\nA\nstyle A",
+            Position::new(2, 7),
+            CompletionDataKind::Style,
+        ),
+        (
+            "class-style",
+            "classDiagram\nclass User\nstyle User",
+            Position::new(2, 10),
+            CompletionDataKind::Style,
+        ),
+        (
+            "er-style",
+            "erDiagram\nCUSTOMER\nstyle CUSTOMER",
+            Position::new(2, 14),
+            CompletionDataKind::Style,
+        ),
+        (
+            "state-style",
+            "stateDiagram-v2\nstate Running\nstyle Running",
+            Position::new(2, 13),
+            CompletionDataKind::Style,
+        ),
+        (
+            "block-style",
+            "block\nA\nstyle A",
+            Position::new(2, 7),
+            CompletionDataKind::Style,
+        ),
+        (
+            "flowchart-click",
+            "flowchart TD\nA\nclick A",
+            Position::new(2, 7),
+            CompletionDataKind::Interaction,
+        ),
+        (
+            "class-click",
+            "classDiagram\nclass User\nclick User",
+            Position::new(2, 10),
+            CompletionDataKind::Interaction,
+        ),
+        (
+            "state-click",
+            "stateDiagram-v2\nstate Running\nclick Running",
+            Position::new(2, 13),
+            CompletionDataKind::Interaction,
+        ),
+        (
+            "class-class-name",
+            "classDiagram\nclass User\nclassDef hot fill:#f00\ncssClass \"User\"",
+            Position::new(3, 15),
+            CompletionDataKind::ClassName,
+        ),
+        (
+            "er-class-name",
+            "erDiagram\nCUSTOMER\nclassDef hot fill:#f00\nclass CUSTOMER",
+            Position::new(3, 14),
+            CompletionDataKind::ClassName,
+        ),
+        (
+            "state-class-name",
+            "stateDiagram-v2\nstate Running\nclassDef hot fill:#f00\nclass Running",
+            Position::new(3, 13),
+            CompletionDataKind::ClassName,
+        ),
+        (
+            "block-class-name",
+            "block\nA\nclassDef hot fill:#f00\nclass A",
+            Position::new(3, 7),
+            CompletionDataKind::ClassName,
+        ),
+    ];
+
+    for (name, source, position, forbidden_kind) in cases {
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                format!("file:///tmp/{name}.mmd"),
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .unwrap_or_else(|error| panic!("{name} source should be accepted: {error:?}"));
+        let list = completion_for_snapshot(&snapshot, position);
+
+        assert!(
+            list.items.iter().all(|item| item
+                .data
+                .as_ref()
+                .is_none_or(|data| data.kind != forbidden_kind)),
+            "{name} must not offer {forbidden_kind:?} without a separator: {:?}",
+            list.items
+                .iter()
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn completion_uses_class_name_slots_after_real_separators() {
+    let cases = [
+        (
+            "class",
+            "classDiagram\nclass User\nclassDef hot fill:#f00\ncssClass \"User\" ",
+            Position::new(3, 16),
+        ),
+        (
+            "er",
+            "erDiagram\nCUSTOMER\nclassDef hot fill:#f00\nclass CUSTOMER ",
+            Position::new(3, 15),
+        ),
+        (
+            "state",
+            "stateDiagram-v2\nstate Running\nclassDef hot fill:#f00\nclass Running ",
+            Position::new(3, 14),
+        ),
+        (
+            "block",
+            "block\nA\nclassDef hot fill:#f00\nclass A ",
+            Position::new(3, 8),
+        ),
+    ];
+
+    for (name, source, position) in cases {
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                format!("file:///tmp/{name}-class-separator.mmd"),
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .unwrap_or_else(|error| panic!("{name} source should be accepted: {error:?}"));
+        let list = completion_for_snapshot(&snapshot, position);
+
+        assert!(
+            list.items.iter().any(|item| item.label == "hot"),
+            "{name} must offer class names after a real separator: {:?}",
+            list.items
+                .iter()
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn typed_style_slots_precede_line_endings() {
+    let cases = [
+        (
+            "class",
+            &["classDiagram", "class User", "style User "][..],
+            Position::new(2, 11),
+        ),
+        (
+            "er",
+            &["erDiagram", "CUSTOMER", "style CUSTOMER "][..],
+            Position::new(2, 15),
+        ),
+        (
+            "state",
+            &["stateDiagram-v2", "state Running", "style Running "][..],
+            Position::new(2, 14),
+        ),
+    ];
+
+    for (line_ending_name, line_ending) in [("lf", "\n"), ("crlf", "\r\n"), ("cr", "\r")] {
+        for (name, lines, position) in cases {
+            let mut workspace = DocumentWorkspace::new();
+            let snapshot = workspace
+                .upsert(
+                    format!("file:///tmp/{name}-{line_ending_name}-style.mmd"),
+                    1,
+                    format!("{}{line_ending}", lines.join(line_ending)),
+                    DocumentKind::Diagram,
+                )
+                .unwrap_or_else(|error| panic!("{name} source should be accepted: {error:?}"));
+            let list = completion_for_snapshot(&snapshot, position);
+
+            assert!(
+                list.items.iter().any(|item| item
+                    .data
+                    .as_ref()
+                    .is_some_and(|data| data.kind == CompletionDataKind::Style)),
+                "{name} must publish its typed style slot before {line_ending_name}: {:?}",
+                list.items
+                    .iter()
+                    .map(|item| item.label.as_str())
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
+}
+
+#[test]
+fn completion_recognizes_partial_and_complete_interaction_actions() {
+    for (name, source, position) in [
+        (
+            "class-partial",
+            "classDiagram\nclass User\nclick User h",
+            Position::new(2, 12),
+        ),
+        (
+            "class-complete",
+            "classDiagram\nclass User\nclick User href",
+            Position::new(2, 15),
+        ),
+        (
+            "class-call-partial",
+            "classDiagram\nclass User\nclick User c",
+            Position::new(2, 12),
+        ),
+        (
+            "class-call-complete",
+            "classDiagram\nclass User\nclick User call",
+            Position::new(2, 15),
+        ),
+        (
+            "state-partial",
+            "stateDiagram-v2\nstate Running\nclick Running h",
+            Position::new(2, 15),
+        ),
+        (
+            "state-complete",
+            "stateDiagram-v2\nstate Running\nclick Running href",
+            Position::new(2, 18),
+        ),
+    ] {
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                format!("file:///tmp/{name}.mmd"),
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .unwrap_or_else(|error| panic!("{name} source should be accepted: {error:?}"));
+        let list = completion_for_snapshot(&snapshot, position);
+
+        assert!(
+            list.items.iter().any(|item| item
+                .data
+                .as_ref()
+                .is_some_and(|data| data.kind == CompletionDataKind::Interaction)),
+            "{name} must retain the typed interaction-action span: {:?}",
+            list.items
+                .iter()
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn class_interaction_actions_replace_only_the_action_token() {
+    for (name, action, end_character) in [("partial", "c", 12), ("complete", "call", 15)] {
+        let source = format!("classDiagram\nclass User\nclick User {action}");
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                format!("file:///tmp/class-call-{name}.mmd"),
+                1,
+                source,
+                DocumentKind::Diagram,
+            )
+            .expect("class interaction source should be accepted");
+        let list = completion_for_snapshot(&snapshot, Position::new(2, end_character));
+        let item = list
+            .items
+            .iter()
+            .find(|item| item.label == "callback action")
+            .expect("callback action completion");
+        let edit = item.text_edit.as_ref().expect("callback action text edit");
+
+        assert_eq!(edit.range.start, Position::new(2, 11), "{name}");
+        assert_eq!(edit.range.end, Position::new(2, end_character), "{name}");
+        assert_eq!(edit.new_text, "call ${1:callback}(${2:arg})", "{name}");
+    }
+}
+
+#[test]
+fn class_interaction_payloads_suppress_action_completion() {
+    for (name, source) in [
+        (
+            "href-empty-payload",
+            "classDiagram\nclass User\nclick User href ",
+        ),
+        (
+            "call-empty-payload",
+            "classDiagram\nclass User\nclick User call ",
+        ),
+        (
+            "callback-unclosed-args",
+            "classDiagram\nclass User\nclick User call open(",
+        ),
+        (
+            "callback-name",
+            "classDiagram\nclass User\nclick User call open",
+        ),
+        (
+            "callback-args",
+            "classDiagram\nclass User\nclick User call open(arg)",
+        ),
+        (
+            "href-url",
+            "classDiagram\nclass User\nclick User href \"https://example.com\"",
+        ),
+        (
+            "href-target",
+            "classDiagram\nclass User\nclick User href \"https://example.com\" _blank",
+        ),
+        (
+            "link-url",
+            "classDiagram\nclass User\nlink User \"https://example.com\"",
+        ),
+        (
+            "callback",
+            "classDiagram\nclass User\ncallback User \"open\"",
+        ),
+    ] {
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                format!("file:///tmp/class-{name}.mmd"),
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .unwrap_or_else(|error| panic!("{name} source should be accepted: {error:?}"));
+        let position = snapshot
+            .source_map()
+            .utf16_position(source.len())
+            .map(|position| Position::new(position.line, position.character))
+            .unwrap();
+        let list = completion_for_snapshot(&snapshot, position);
+
+        assert!(
+            list.items
+                .iter()
+                .all(|item| item.data.as_ref().is_none_or(|data| {
+                    !matches!(
+                        data.kind,
+                        CompletionDataKind::Interaction | CompletionDataKind::Directive
+                    )
+                })),
+            "{name} payload must not offer action or directive snippets: {:?}",
+            list.items
+                .iter()
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn flowchart_interaction_actions_replace_only_the_action_token() {
+    for (name, action, end_character, label, replacement) in [
+        (
+            "href-partial",
+            "h",
+            9,
+            "href link action",
+            "href \"${1:https://example.com}\" \"${2:Tooltip}\" ${3|_blank,_self|}",
+        ),
+        (
+            "href-complete",
+            "href",
+            12,
+            "href link action",
+            "href \"${1:https://example.com}\" \"${2:Tooltip}\" ${3|_blank,_self|}",
+        ),
+        (
+            "call-partial",
+            "c",
+            9,
+            "callback action",
+            "call ${1:callback}(${2:arg})",
+        ),
+        (
+            "call-complete",
+            "call",
+            12,
+            "callback action",
+            "call ${1:callback}(${2:arg})",
+        ),
+    ] {
+        let source = format!("flowchart TD\nA\nclick A {action}");
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                format!("file:///tmp/flowchart-{name}.mmd"),
+                1,
+                source,
+                DocumentKind::Diagram,
+            )
+            .expect("flowchart interaction source should be accepted");
+        let list = completion_for_snapshot(&snapshot, Position::new(2, end_character));
+        let item = list
+            .items
+            .iter()
+            .find(|item| item.label == label)
+            .unwrap_or_else(|| panic!("missing {label} completion for {name}"));
+        let edit = item.text_edit.as_ref().expect("interaction text edit");
+
+        assert_eq!(edit.range.start, Position::new(2, 8), "{name}");
+        assert_eq!(edit.range.end, Position::new(2, end_character), "{name}");
+        assert_eq!(edit.new_text, replacement, "{name}");
+    }
+}
+
+#[test]
+fn flowchart_interaction_payloads_suppress_action_completion() {
+    for (name, source) in [
+        ("href-empty-payload", "flowchart TD\nA\nclick A href "),
+        (
+            "href-url",
+            "flowchart TD\nA\nclick A href \"https://example.com\"",
+        ),
+        (
+            "href-tooltip",
+            "flowchart TD\nA\nclick A href \"https://example.com\" \"Open\"",
+        ),
+        (
+            "href-target",
+            "flowchart TD\nA\nclick A href \"https://example.com\" \"Open\" _blank",
+        ),
+        ("call-empty-payload", "flowchart TD\nA\nclick A call "),
+        ("callback-name", "flowchart TD\nA\nclick A call open"),
+        (
+            "callback-unclosed-args",
+            "flowchart TD\nA\nclick A call open(",
+        ),
+        (
+            "callback-tooltip",
+            "flowchart TD\nA\nclick A call open(arg) \"Open\"",
+        ),
+        (
+            "legacy-link",
+            "flowchart TD\nA\nclick A \"https://example.com\"",
+        ),
+        ("legacy-callback", "flowchart TD\nA\nclick A open"),
+    ] {
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                format!("file:///tmp/flowchart-{name}.mmd"),
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .unwrap_or_else(|error| panic!("{name} source should be accepted: {error:?}"));
+        let position = snapshot
+            .source_map()
+            .utf16_position(source.len())
+            .map(|position| Position::new(position.line, position.character))
+            .unwrap();
+        let list = completion_for_snapshot(&snapshot, position);
+
+        assert!(
+            list.items
+                .iter()
+                .all(|item| item.data.as_ref().is_none_or(|data| {
+                    !matches!(
+                        data.kind,
+                        CompletionDataKind::Interaction | CompletionDataKind::Directive
+                    )
+                })),
+            "{name} payload must not offer action or directive snippets: {:?}",
+            list.items
+                .iter()
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn empty_class_definition_names_keep_directive_helpers_across_families() {
+    for (name, source) in [
+        ("flowchart", "flowchart TD\nclassDef "),
+        ("class", "classDiagram\nclassDef "),
+        ("er", "erDiagram\nclassDef "),
+        ("state", "stateDiagram-v2\nclassDef "),
+        ("block", "block\nclassDef "),
+    ] {
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                format!("file:///tmp/{name}-empty-classdef.mmd"),
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .unwrap_or_else(|error| panic!("{name} source should be accepted: {error:?}"));
+        let position = snapshot
+            .source_map()
+            .utf16_position(source.len())
+            .map(|position| Position::new(position.line, position.character))
+            .unwrap();
+        let list = completion_for_snapshot(&snapshot, position);
+
+        assert!(
+            list.items.iter().any(|item| item
+                .data
+                .as_ref()
+                .is_some_and(|data| data.kind == CompletionDataKind::Directive)),
+            "{name} must keep directive helpers for an empty classDef name"
+        );
+        assert!(list.items.iter().all(|item| {
+            item.data
+                .as_ref()
+                .is_none_or(|data| data.kind != CompletionDataKind::ClassName)
+        }));
+    }
+}
+
+#[test]
 fn completion_stays_fence_local_in_markdown_documents() {
     let mut workspace = DocumentWorkspace::new();
     let snapshot = workspace
@@ -242,13 +926,11 @@ fn completion_ignores_markdown_fence_delimiter_lines() {
         )
         .expect("test source should be accepted");
 
-    assert!(CompletionContext::from_snapshot(&snapshot, Position::new(1, 3)).is_none());
     assert!(
         completion_for_snapshot(&snapshot, Position::new(1, 3))
             .items
             .is_empty()
     );
-    assert!(CompletionContext::from_snapshot(&snapshot, Position::new(4, 0)).is_none());
     assert!(
         completion_for_snapshot(&snapshot, Position::new(4, 0))
             .items
@@ -268,7 +950,6 @@ fn completion_allows_unclosed_markdown_fence_body() {
         )
         .expect("test source should be accepted");
 
-    assert!(CompletionContext::from_snapshot(&snapshot, Position::new(2, 4)).is_some());
     assert!(
         completion_for_snapshot(&snapshot, Position::new(2, 4))
             .items
@@ -612,10 +1293,12 @@ fn completion_keeps_known_node_ids_when_parser_recovers() {
             DocumentKind::Diagram,
         )
         .expect("test source should be accepted");
-    let context = CompletionContext::from_snapshot(&snapshot, Position::new(3, 4)).unwrap();
     let list = completion_for_snapshot(&snapshot, Position::new(3, 4));
 
-    assert_eq!(context.fact_source(), FenceTextIndexSource::ParserRecovered);
+    assert_eq!(
+        list.fact_source,
+        Some(FenceTextIndexSource::ParserRecovered)
+    );
     assert!(
         list.items.iter().any(|item| item.label == "A"),
         "recovered parser context should still offer existing node ids"
@@ -651,6 +1334,46 @@ fn completion_payload_contexts_return_no_body_items() {
             Position::new(1, 5),
             "block",
         ),
+        (
+            "classDiagram\nclass User\nstyle User fill:#f00\n",
+            Position::new(2, 14),
+            "class style",
+        ),
+        (
+            "classDiagram\nclassDef hot fill:#f00\n",
+            Position::new(1, 16),
+            "class classDef",
+        ),
+        (
+            "erDiagram\nCUSTOMER\nstyle CUSTOMER fill:#f00\n",
+            Position::new(2, 18),
+            "er style",
+        ),
+        (
+            "erDiagram\nclassDef hot fill:#f00\n",
+            Position::new(1, 16),
+            "er classDef",
+        ),
+        (
+            "stateDiagram-v2\nstate Running\nstyle Running fill:#f00\n",
+            Position::new(2, 17),
+            "state style",
+        ),
+        (
+            "stateDiagram-v2\nclassDef hot fill:#f00\n",
+            Position::new(1, 16),
+            "state classDef",
+        ),
+        (
+            "block\nA\nstyle A fill:#f00\n",
+            Position::new(2, 11),
+            "block style",
+        ),
+        (
+            "block\nclassDef hot fill:#f00\n",
+            Position::new(1, 16),
+            "block classDef",
+        ),
     ] {
         let mut workspace = DocumentWorkspace::new();
         let snapshot = workspace
@@ -685,10 +1408,9 @@ fn completion_bounds_unavailable_facts_to_source_start() {
             DocumentKind::Diagram,
         )
         .expect("test source should be accepted");
-    let context = CompletionContext::from_snapshot(&source_start, Position::new(0, 4)).unwrap();
     let list = completion_for_snapshot(&source_start, Position::new(0, 4));
 
-    assert_eq!(context.fact_source(), FenceTextIndexSource::Unavailable);
+    assert_eq!(list.fact_source, Some(FenceTextIndexSource::Unavailable));
     assert!(list.items.iter().any(|item| {
         item.data
             .as_ref()
@@ -708,15 +1430,14 @@ fn completion_bounds_unavailable_facts_to_source_start() {
             DocumentKind::Diagram,
         )
         .expect("test source should be accepted");
-    let context = CompletionContext::from_snapshot(&body, Position::new(1, 2)).unwrap();
     let list = completion_for_snapshot(&body, Position::new(1, 2));
 
-    assert_eq!(context.fact_source(), FenceTextIndexSource::Unavailable);
+    assert_eq!(list.fact_source, Some(FenceTextIndexSource::Unavailable));
     assert!(list.items.is_empty());
 }
 
 #[test]
-fn context_uses_parser_expected_syntax_for_shape_values() {
+fn completion_uses_parser_expected_syntax_for_shape_values() {
     let mut workspace = DocumentWorkspace::new();
     let snapshot = workspace
         .upsert(
@@ -726,13 +1447,17 @@ fn context_uses_parser_expected_syntax_for_shape_values() {
             DocumentKind::Diagram,
         )
         .expect("test source should be accepted");
-    let context = CompletionContext::from_snapshot(&snapshot, Position::new(2, 11)).unwrap();
-    let edit = context.shape_value_edit("circle").expect("shape edit");
+    let list = completion_for_snapshot(&snapshot, Position::new(2, 11));
+    let edit = list
+        .items
+        .iter()
+        .find(|item| item.label == "@{ shape: circle }")
+        .and_then(|item| item.text_edit.as_ref())
+        .expect("circle shape edit");
 
-    assert!(context.offer_shape_items());
     assert_eq!(edit.range.start.line, 2);
     assert_eq!(edit.range.start.character, 9);
-    assert_eq!(edit.replacement, "circle");
+    assert_eq!(edit.new_text, "circle");
 }
 
 #[test]
@@ -746,14 +1471,19 @@ fn shape_value_completion_does_not_duplicate_existing_closing_brace() {
             DocumentKind::Diagram,
         )
         .expect("test source should be accepted");
-    let context = CompletionContext::from_snapshot(&snapshot, Position::new(1, 14)).unwrap();
-    let edit = context.shape_value_edit("circle").expect("shape edit");
+    let list = completion_for_snapshot(&snapshot, Position::new(1, 14));
+    let edit = list
+        .items
+        .iter()
+        .find(|item| item.label == "@{ shape: circle }")
+        .and_then(|item| item.text_edit.as_ref())
+        .expect("circle shape edit");
 
     assert_eq!(edit.range.start.line, 1);
     assert_eq!(edit.range.start.character, 11);
     assert_eq!(edit.range.end.line, 1);
     assert_eq!(edit.range.end.character, 14);
-    assert_eq!(edit.replacement, "circle");
+    assert_eq!(edit.new_text, "circle");
 }
 
 #[test]
@@ -773,9 +1503,13 @@ fn shape_value_completion_accepts_mermaid_whitespace_variants() {
             )
             .expect("test source should be accepted");
         let cursor = source.find("rou").unwrap() + "rou".len() - "flowchart TD\n".len();
-        let context = CompletionContext::from_snapshot(&snapshot, Position::new(1, cursor))
-            .expect("completion context");
-        let edit = context.shape_value_edit("circle").expect("shape edit");
+        let list = completion_for_snapshot(&snapshot, Position::new(1, cursor));
+        let edit = list
+            .items
+            .iter()
+            .find(|item| item.label == "@{ shape: circle }")
+            .and_then(|item| item.text_edit.as_ref())
+            .expect("circle shape edit");
 
         assert_eq!(edit.range.start.line, 1);
         assert_eq!(
@@ -784,7 +1518,7 @@ fn shape_value_completion_accepts_mermaid_whitespace_variants() {
         );
         assert_eq!(edit.range.end.line, 1);
         assert_eq!(edit.range.end.character, cursor);
-        assert_eq!(edit.replacement, "circle");
+        assert_eq!(edit.new_text, "circle");
     }
 }
 
@@ -807,14 +1541,19 @@ fn shape_value_completion_appends_missing_brace_before_markdown_fence_close() {
             DocumentKind::Markdown,
         )
         .expect("test source should be accepted");
-    let context = CompletionContext::from_snapshot(&snapshot, Position::new(3, 14)).unwrap();
-    let edit = context.shape_value_edit("circle").expect("shape edit");
+    let list = completion_for_snapshot(&snapshot, Position::new(3, 14));
+    let edit = list
+        .items
+        .iter()
+        .find(|item| item.label == "@{ shape: circle }")
+        .and_then(|item| item.text_edit.as_ref())
+        .expect("circle shape edit");
 
     assert_eq!(edit.range.start.line, 3);
     assert_eq!(edit.range.start.character, 11);
     assert_eq!(edit.range.end.line, 3);
     assert_eq!(edit.range.end.character, 14);
-    assert_eq!(edit.replacement, "circle }");
+    assert_eq!(edit.new_text, "circle }");
 }
 
 #[test]
@@ -836,10 +1575,15 @@ fn shape_value_completion_ignores_host_document_tail_after_markdown_fence() {
             DocumentKind::Markdown,
         )
         .expect("test source should be accepted");
-    let context = CompletionContext::from_snapshot(&snapshot, Position::new(3, 14)).unwrap();
-    let edit = context.shape_value_edit("circle").expect("shape edit");
+    let list = completion_for_snapshot(&snapshot, Position::new(3, 14));
+    let edit = list
+        .items
+        .iter()
+        .find(|item| item.label == "@{ shape: circle }")
+        .and_then(|item| item.text_edit.as_ref())
+        .expect("circle shape edit");
 
-    assert_eq!(edit.replacement, "circle }");
+    assert_eq!(edit.new_text, "circle }");
 }
 
 #[test]
@@ -853,14 +1597,19 @@ fn shape_value_completion_appends_missing_brace_before_next_diagram_statement() 
             DocumentKind::Diagram,
         )
         .expect("test source should be accepted");
-    let context = CompletionContext::from_snapshot(&snapshot, Position::new(1, 14)).unwrap();
-    let edit = context.shape_value_edit("circle").expect("shape edit");
+    let list = completion_for_snapshot(&snapshot, Position::new(1, 14));
+    let edit = list
+        .items
+        .iter()
+        .find(|item| item.label == "@{ shape: circle }")
+        .and_then(|item| item.text_edit.as_ref())
+        .expect("circle shape edit");
 
     assert_eq!(edit.range.start.line, 1);
     assert_eq!(edit.range.start.character, 11);
     assert_eq!(edit.range.end.line, 1);
     assert_eq!(edit.range.end.character, 14);
-    assert_eq!(edit.replacement, "circle }");
+    assert_eq!(edit.new_text, "circle }");
 }
 
 #[test]
@@ -1027,6 +1776,56 @@ fn completion_does_not_offer_frontmatter_items_in_diagram_body() {
             .as_ref()
             .is_some_and(|data| data.kind == CompletionDataKind::Frontmatter)
     }));
+}
+
+#[test]
+fn global_completion_evidence_stops_before_physical_line_endings() {
+    for (ending_name, ending) in [("lf", "\n"), ("crlf", "\r\n"), ("cr", "\r")] {
+        let frontmatter = [
+            "---",
+            "config:",
+            "  theme: dark",
+            "---",
+            "flowchart TD",
+            "A",
+        ]
+        .join(ending);
+        let comment = ["flowchart TD", "%% comment", "A"].join(ending);
+
+        for (kind, source, position) in [
+            ("frontmatter", frontmatter, Position::new(4, 0)),
+            ("comment", comment, Position::new(2, 0)),
+        ] {
+            let mut workspace = DocumentWorkspace::new();
+            let snapshot = workspace
+                .upsert(
+                    format!("file:///tmp/{kind}-{ending_name}-boundary.mmd"),
+                    1,
+                    source,
+                    DocumentKind::Diagram,
+                )
+                .unwrap_or_else(|error| {
+                    panic!("{kind} source with {ending_name} should be accepted: {error:?}")
+                });
+            let list = completion_for_snapshot(&snapshot, position);
+
+            assert!(
+                list.items
+                    .iter()
+                    .all(|item| item.data.as_ref().is_none_or(|data| {
+                        !matches!(
+                            data.kind,
+                            CompletionDataKind::Frontmatter | CompletionDataKind::Directive
+                        )
+                    })),
+                "{kind} evidence must stop before the {ending_name} line ending: {:?}",
+                list.items
+                    .iter()
+                    .map(|item| item.label.as_str())
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
 }
 
 #[test]

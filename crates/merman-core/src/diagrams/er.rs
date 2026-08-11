@@ -1,3 +1,4 @@
+use crate::diagrams::scan::consume_line_ending;
 use crate::{
     EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
     EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers,
@@ -5,7 +6,8 @@ use crate::{
     ParseControlResult, ParseMetadata, Result, SourceSpan,
     editor::{
         EditorLexemeBatchResult, EditorLexemeJournal, editor_keyword_value_span,
-        format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span,
+        format_lalrpop_parse_error, has_ascii_separator, lalrpop_parse_diagnostic,
+        lalrpop_recovery_span, line_content_end, source_value_span, trailing_ascii_whitespace_slot,
     },
 };
 use serde_json::{Value, json};
@@ -443,12 +445,12 @@ impl ErSyntax {
                 Err(error) => {
                     facts.mark_recovered();
                     if let Some(expected) = error.expected_syntax.as_ref() {
-                        facts.push_expected_syntax(expected.clone());
+                        facts.push_expected_syntax(*expected);
                     }
                 }
             }
         }
-        collector.finish(&mut facts);
+        collector.finish(code, &mut facts);
         facts.replace_family_lexemes(self.lexemes);
         control.checkpoint()?;
         let mut emitted = 0usize;
@@ -576,7 +578,10 @@ pub(crate) fn parse_er_json_and_editor_facts(
 #[derive(Debug, Default)]
 struct ErEditorFactCollector {
     pending_entity: Option<ErTokenSymbol>,
-    expected_id_list: Option<ExpectedErIdList>,
+    expected_id_list: Option<PendingErExpectation>,
+    directive_start: Option<usize>,
+    style_payload_pending: bool,
+    style_payload_anchor_end: Option<usize>,
     in_attribute_block: bool,
     in_alias: bool,
     in_relationship_role: bool,
@@ -584,11 +589,41 @@ struct ErEditorFactCollector {
 }
 
 impl ErEditorFactCollector {
-    fn finish(&mut self, facts: &mut EditorSemanticFacts) {
+    fn finish(&mut self, code: &str, facts: &mut EditorSemanticFacts) {
+        self.finish_line(code, line_content_end(code, code.len()), facts);
         self.push_pending_entity(facts);
     }
 
-    fn finish_line(&mut self, facts: &mut EditorSemanticFacts) {
+    fn finish_line(&mut self, code: &str, line_end: usize, facts: &mut EditorSemanticFacts) {
+        if let Some(start) = self.directive_start {
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::Directive,
+                SourceSpan::new(start, line_end),
+            ));
+        }
+        if let Some(expected) = self.expected_id_list {
+            let kind = er_expected_id_list_kind(expected.kind);
+            let separator_ready = expected
+                .anchor_end
+                .is_none_or(|anchor_end| has_ascii_separator(code, anchor_end, line_end));
+            if !matches!(expected.kind, ExpectedErIdList::ClassDef)
+                && (!matches!(kind, EditorExpectedSyntaxKind::ClassName) || separator_ready)
+            {
+                facts.push_expected_syntax(EditorExpectedSyntax::new(
+                    kind,
+                    SourceSpan::new(line_end, line_end),
+                ));
+            }
+        } else if self.style_payload_pending
+            && self
+                .style_payload_anchor_end
+                .is_some_and(|anchor_end| has_ascii_separator(code, anchor_end, line_end))
+        {
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::StyleValue,
+                SourceSpan::new(line_end, line_end),
+            ));
+        }
         if !self.in_alias && !self.in_relationship_role {
             self.push_pending_entity(facts);
         }
@@ -610,6 +645,12 @@ enum ExpectedErIdList {
     InlineClasses,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct PendingErExpectation {
+    kind: ExpectedErIdList,
+    anchor_end: Option<usize>,
+}
+
 impl ErEditorFactCollector {
     fn accept(
         &mut self,
@@ -622,24 +663,30 @@ impl ErEditorFactCollector {
         match token {
             Tok::ErDiagram => self.reset_line_state(),
             Tok::Newline => {
-                self.finish_line(facts);
+                self.finish_line(code, line_content_end(code, start), facts);
                 self.reset_line_state();
             }
             Tok::StyleKw => {
                 facts.push_directive_prefix("style");
-                self.expected_id_list = Some(ExpectedErIdList::StyleEntities);
+                self.directive_start = Some(start);
+                self.style_payload_pending = true;
+                self.expect_id_list(ExpectedErIdList::StyleEntities);
             }
             Tok::ClassDefKw => {
                 facts.push_directive_prefix("classDef");
-                self.expected_id_list = Some(ExpectedErIdList::ClassDef);
+                self.directive_start = Some(start);
+                self.style_payload_pending = true;
+                self.expect_id_list_after(ExpectedErIdList::ClassDef, end);
             }
             Tok::ClassKw => {
                 facts.push_directive_prefix("class");
-                self.expected_id_list = Some(ExpectedErIdList::ClassEntities);
+                self.directive_start = Some(start);
+                self.expect_id_list(ExpectedErIdList::ClassEntities);
             }
             Tok::StyleSeparator => {
                 self.push_pending_entity(facts);
-                self.expected_id_list = Some(ExpectedErIdList::InlineClasses);
+                self.directive_start = Some(start);
+                self.expect_id_list(ExpectedErIdList::InlineClasses);
             }
             Tok::IdList(ids) => self.push_id_list(ids.clone(), facts),
             Tok::Name(name) => {
@@ -777,13 +824,45 @@ impl ErEditorFactCollector {
                     ));
                 }
             }
-            Tok::RestOfLine(_) => {}
+            Tok::RestOfLine(raw) => {
+                if self.style_payload_pending {
+                    let line_end = line_content_end(code, end);
+                    let trailing_slot =
+                        trailing_ascii_whitespace_slot(code, start, end).or_else(|| {
+                            (raw.is_empty()
+                                && self.style_payload_anchor_end.is_some_and(|anchor_end| {
+                                    has_ascii_separator(code, anchor_end, line_end)
+                                }))
+                            .then_some(SourceSpan::new(line_end, line_end))
+                        });
+                    if let Some(span) = trailing_slot {
+                        facts.push_expected_syntax(EditorExpectedSyntax::new(
+                            EditorExpectedSyntaxKind::StyleValue,
+                            span,
+                        ));
+                    }
+                    let payload = raw.trim();
+                    if !payload.is_empty()
+                        && let Some(selection) =
+                            source_value_span(code, SourceSpan::new(start, end), payload)
+                    {
+                        facts.push_expected_syntax(EditorExpectedSyntax::new(
+                            EditorExpectedSyntaxKind::Payload,
+                            selection,
+                        ));
+                    }
+                    self.style_payload_pending = false;
+                }
+            }
         }
     }
 
     fn reset_line_state(&mut self) {
         self.pending_entity = None;
         self.expected_id_list = None;
+        self.directive_start = None;
+        self.style_payload_pending = false;
+        self.style_payload_anchor_end = None;
         self.in_alias = false;
         self.in_relationship_role = false;
         if !self.in_attribute_block {
@@ -798,8 +877,14 @@ impl ErEditorFactCollector {
     }
 
     fn push_id_list(&mut self, ids: SpannedIdList, facts: &mut EditorSemanticFacts) {
-        let expected = self.expected_id_list.take();
+        let expected = self.expected_id_list.take().map(|pending| pending.kind);
         let span = ids.span();
+        if matches!(
+            expected,
+            Some(ExpectedErIdList::StyleEntities | ExpectedErIdList::ClassDef)
+        ) {
+            self.style_payload_anchor_end = Some(span.end);
+        }
         let detail = match expected {
             Some(ExpectedErIdList::StyleEntities) => "er style target",
             Some(ExpectedErIdList::ClassDef) => "er class definition",
@@ -815,9 +900,9 @@ impl ErEditorFactCollector {
             _ => EditorSemanticKind::Struct,
         };
 
-        if expected.is_some() {
+        if let Some(expected) = expected {
             facts.push_expected_syntax(EditorExpectedSyntax::new(
-                EditorExpectedSyntaxKind::IdList,
+                er_expected_id_list_kind(expected),
                 span,
             ));
         }
@@ -846,8 +931,22 @@ impl ErEditorFactCollector {
         }
 
         if matches!(expected, Some(ExpectedErIdList::ClassEntities)) {
-            self.expected_id_list = Some(ExpectedErIdList::ClassNames);
+            self.expect_id_list_after(ExpectedErIdList::ClassNames, span.end);
         }
+    }
+
+    fn expect_id_list(&mut self, expected: ExpectedErIdList) {
+        self.expected_id_list = Some(PendingErExpectation {
+            kind: expected,
+            anchor_end: None,
+        });
+    }
+
+    fn expect_id_list_after(&mut self, expected: ExpectedErIdList, anchor_end: usize) {
+        self.expected_id_list = Some(PendingErExpectation {
+            kind: expected,
+            anchor_end: Some(anchor_end),
+        });
     }
 
     fn push_entity_symbol(
@@ -929,6 +1028,17 @@ impl ErEditorFactCollector {
             span,
             selection,
         );
+    }
+}
+
+fn er_expected_id_list_kind(expected: ExpectedErIdList) -> EditorExpectedSyntaxKind {
+    match expected {
+        ExpectedErIdList::ClassDef
+        | ExpectedErIdList::ClassNames
+        | ExpectedErIdList::InlineClasses => EditorExpectedSyntaxKind::ClassName,
+        ExpectedErIdList::StyleEntities | ExpectedErIdList::ClassEntities => {
+            EditorExpectedSyntaxKind::IdList
+        }
     }
 }
 
@@ -1294,7 +1404,7 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
 
     fn skip_ws_default(&mut self) {
         while let Some(b) = self.peek() {
-            if b == b' ' || b == b'\t' || b == b'\r' {
+            if b == b' ' || b == b'\t' {
                 self.pos += 1;
                 continue;
             }
@@ -1333,7 +1443,7 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
     fn read_to_newline(&mut self) -> String {
         let start = self.pos;
         while let Some(b) = self.peek() {
-            if b == b'\n' {
+            if matches!(b, b'\r' | b'\n') {
                 break;
             }
             self.pos += 1;
@@ -1353,12 +1463,10 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
         if self.mode == Mode::Block {
             return None;
         }
-        if self.peek()? != b'\n' {
-            return None;
-        }
         let start = self.pos;
-        while let Some(b'\n') = self.peek() {
-            self.pos += 1;
+        self.pos = consume_line_ending(self.input, self.pos)?;
+        while let Some(end) = consume_line_ending(self.input, self.pos) {
+            self.pos = end;
         }
         if self.mode == Mode::LineRest {
             self.mode = Mode::Default;

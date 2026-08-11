@@ -5,7 +5,7 @@ use crate::{
     EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers,
     EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig,
     ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
-    editor::EditorLexemeJournal,
+    editor::{EditorLexemeJournal, trailing_ascii_whitespace_slot},
 };
 use indexmap::IndexMap;
 use serde_json::{Map, Value, json};
@@ -977,6 +977,10 @@ fn push_block_class_definition(
     if text.text.is_empty() {
         return;
     }
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::ClassName,
+        text.span,
+    ));
     facts.push_symbol(EditorSemanticSymbol::class_definition(
         text.text,
         Some(detail.to_string()),
@@ -992,13 +996,20 @@ fn push_block_payload(
     detail: &str,
     kind: EditorSemanticKind,
 ) {
+    push_block_payload_as(facts, text, detail, kind, EditorExpectedSyntaxKind::Payload);
+}
+
+fn push_block_payload_as(
+    facts: &mut EditorSemanticFacts,
+    text: BlockSpannedText,
+    detail: &str,
+    kind: EditorSemanticKind,
+    expected_kind: EditorExpectedSyntaxKind,
+) {
     if text.text.is_empty() {
         return;
     }
-    facts.push_expected_syntax(EditorExpectedSyntax::new(
-        EditorExpectedSyntaxKind::Payload,
-        text.span,
-    ));
+    facts.push_expected_syntax(EditorExpectedSyntax::new(expected_kind, text.span));
     facts.push_symbol(EditorSemanticSymbol::payload(
         text.text,
         Some(detail.to_string()),
@@ -1361,10 +1372,14 @@ impl<'input, 'control> Parser<'input, 'control> {
     }
 
     fn statement_span(&self, start: usize) -> SourceSpan {
-        let rest = &self.input[start..];
-        let line_len = rest.find(['\n', '\r']).unwrap_or(rest.len());
-        let raw = &rest[..line_len];
+        let line_end = self.statement_line_end(start);
+        let raw = &self.input[start..line_end];
         SourceSpan::new(start, start + raw.trim_end().len())
+    }
+
+    fn statement_line_end(&self, start: usize) -> usize {
+        let rest = &self.input[start..];
+        start + rest.find(['\n', '\r']).unwrap_or(rest.len())
     }
 
     fn recover_to_next_statement(&mut self, statement_start: usize) {
@@ -1419,6 +1434,12 @@ impl<'input, 'control> Parser<'input, 'control> {
         }
     }
 
+    fn skip_inline_whitespace(&mut self) {
+        while self.peek_char().is_some_and(|ch| matches!(ch, ' ' | '\t')) {
+            self.bump();
+        }
+    }
+
     fn peek_keyword(&mut self, kw: &str) -> bool {
         self.skip_ws_and_comments();
         if !self.starts_with(kw) {
@@ -1448,9 +1469,7 @@ impl<'input, 'control> Parser<'input, 'control> {
         // Like `consume_keyword`, but does not skip newlines/comments. This is used for
         // statement-local infix tokens (e.g. `id1 space id2`), where treating the next line's
         // `space` statement as an infix separator would be incorrect.
-        while self.peek_char().is_some_and(|c| c == ' ' || c == '\t') {
-            self.bump();
-        }
+        self.skip_inline_whitespace();
         if self.starts_with("%%") {
             return false;
         }
@@ -1713,6 +1732,7 @@ impl<'input, 'control> Parser<'input, 'control> {
 
     fn parse_classdef_statement(&mut self) -> Result<Block> {
         self.skip_ws_and_comments();
+        let directive_start = self.pos;
         if !self.consume_keyword("classDef") {
             return Err(Error::diagram_parse_fallback(
                 "block".to_string(),
@@ -1720,7 +1740,14 @@ impl<'input, 'control> Parser<'input, 'control> {
             ));
         }
         self.editor_facts.push_directive_prefix("classDef");
+        let line_end = self.statement_line_end(directive_start);
+        self.editor_facts
+            .push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::Directive,
+                SourceSpan::new(directive_start, line_end),
+            ));
         let id = self.parse_classdef_id()?;
+        let rest_start = self.pos;
         let css = self.take_rest_of_line_trimmed();
         if id.text == "default" {
             self.record_lexeme(EditorLexemeKind::Keyword, id.span);
@@ -1738,6 +1765,13 @@ impl<'input, 'control> Parser<'input, 'control> {
             "block class definition",
             EditorSemanticKind::Class,
         );
+        if let Some(span) = trailing_ascii_whitespace_slot(self.input, rest_start, self.pos) {
+            self.editor_facts
+                .push_expected_syntax(EditorExpectedSyntax::new(
+                    EditorExpectedSyntaxKind::StyleValue,
+                    span,
+                ));
+        }
         push_block_payload(
             &mut self.editor_facts,
             css.clone(),
@@ -1752,6 +1786,7 @@ impl<'input, 'control> Parser<'input, 'control> {
 
     fn parse_apply_class_statement(&mut self) -> Result<Block> {
         self.skip_ws_and_comments();
+        let directive_start = self.pos;
         if !self.consume_keyword("class") {
             return Err(Error::diagram_parse_fallback(
                 "block".to_string(),
@@ -1759,7 +1794,22 @@ impl<'input, 'control> Parser<'input, 'control> {
             ));
         }
         self.editor_facts.push_directive_prefix("class");
-        let ids = self.parse_identifier_list(EditorLexemeModifier::Reference)?;
+        let line_end = self.statement_line_end(directive_start);
+        self.editor_facts
+            .push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::Directive,
+                SourceSpan::new(directive_start, line_end),
+            ));
+        let ids = self
+            .parse_identifier_list(EditorLexemeModifier::Reference)
+            .inspect_err(|_| {
+                self.editor_facts
+                    .push_expected_syntax(EditorExpectedSyntax::new(
+                        EditorExpectedSyntaxKind::IdList,
+                        SourceSpan::new(line_end, line_end),
+                    ));
+            })?;
+        let rest_start = self.pos;
         let style_class = self.take_rest_of_line_trimmed();
         self.record_lexeme_with_modifier(
             EditorLexemeKind::Identifier,
@@ -1772,11 +1822,21 @@ impl<'input, 'control> Parser<'input, 'control> {
             "block class target",
             EditorSemanticKind::Object,
         );
-        push_block_payload(
+        if style_class.text.is_empty()
+            && let Some(span) = trailing_ascii_whitespace_slot(self.input, rest_start, self.pos)
+        {
+            self.editor_facts
+                .push_expected_syntax(EditorExpectedSyntax::new(
+                    EditorExpectedSyntaxKind::ClassName,
+                    span,
+                ));
+        }
+        push_block_payload_as(
             &mut self.editor_facts,
             style_class.clone(),
             "block class name",
             EditorSemanticKind::Class,
+            EditorExpectedSyntaxKind::ClassName,
         );
         let mut b = Block::new(ids.text);
         b.block_type = "applyClass".to_string();
@@ -1786,6 +1846,7 @@ impl<'input, 'control> Parser<'input, 'control> {
 
     fn parse_style_statement(&mut self) -> Result<Block> {
         self.skip_ws_and_comments();
+        let directive_start = self.pos;
         if !self.consume_keyword("style") {
             return Err(Error::diagram_parse_fallback(
                 "block".to_string(),
@@ -1793,7 +1854,22 @@ impl<'input, 'control> Parser<'input, 'control> {
             ));
         }
         self.editor_facts.push_directive_prefix("style");
-        let ids = self.parse_identifier_list(EditorLexemeModifier::Reference)?;
+        let line_end = self.statement_line_end(directive_start);
+        self.editor_facts
+            .push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::Directive,
+                SourceSpan::new(directive_start, line_end),
+            ));
+        let ids = self
+            .parse_identifier_list(EditorLexemeModifier::Reference)
+            .inspect_err(|_| {
+                self.editor_facts
+                    .push_expected_syntax(EditorExpectedSyntax::new(
+                        EditorExpectedSyntaxKind::IdList,
+                        SourceSpan::new(line_end, line_end),
+                    ));
+            })?;
+        let rest_start = self.pos;
         let styles_str = self.take_rest_of_line_trimmed();
         self.record_lexeme(EditorLexemeKind::Style, styles_str.span);
         push_block_id_list(
@@ -1802,6 +1878,13 @@ impl<'input, 'control> Parser<'input, 'control> {
             "block style target",
             EditorSemanticKind::Object,
         );
+        if let Some(span) = trailing_ascii_whitespace_slot(self.input, rest_start, self.pos) {
+            self.editor_facts
+                .push_expected_syntax(EditorExpectedSyntax::new(
+                    EditorExpectedSyntaxKind::StyleValue,
+                    span,
+                ));
+        }
         push_block_payload(
             &mut self.editor_facts,
             styles_str.clone(),
@@ -1839,9 +1922,7 @@ impl<'input, 'control> Parser<'input, 'control> {
         let mut left = self.parse_node(detail, kind)?;
         if self.consume_keyword_same_line("space") {
             let mut width = 1;
-            while self.peek_char().is_some_and(|c| c == ' ' || c == '\t') {
-                self.bump();
-            }
+            self.skip_inline_whitespace();
             if self.peek_char() == Some(':') {
                 let delimiter_start = self.pos;
                 self.bump();
@@ -1849,9 +1930,7 @@ impl<'input, 'control> Parser<'input, 'control> {
                     EditorLexemeKind::Delimiter,
                     SourceSpan::new(delimiter_start, self.pos),
                 );
-                while self.peek_char().is_some_and(|c| c == ' ' || c == '\t') {
-                    self.bump();
-                }
+                self.skip_inline_whitespace();
                 let start = self.pos;
                 while self.peek_char().is_some_and(|c| c.is_ascii_digit()) {
                     self.bump();
@@ -1888,9 +1967,7 @@ impl<'input, 'control> Parser<'input, 'control> {
             space.width = Some(width);
 
             left.width_in_columns.get_or_insert(1);
-            while self.peek_char().is_some_and(|c| c == ' ' || c == '\t') {
-                self.bump();
-            }
+            self.skip_inline_whitespace();
             if self.starts_with("%%") || matches!(self.peek_char(), None | Some('\n' | '\r')) {
                 return Ok(vec![left, space]);
             }
@@ -2241,7 +2318,7 @@ impl<'input, 'control> Parser<'input, 'control> {
     }
 
     fn parse_classdef_id(&mut self) -> Result<BlockSpannedText> {
-        self.skip_ws_and_comments();
+        self.skip_inline_whitespace();
         let start = self.pos;
         while let Some(c) = self.peek_char() {
             if c.is_whitespace() || c == '\n' || c == '\r' {
@@ -2274,7 +2351,7 @@ impl<'input, 'control> Parser<'input, 'control> {
         &mut self,
         modifier: EditorLexemeModifier,
     ) -> Result<BlockSpannedText> {
-        self.skip_ws_and_comments();
+        self.skip_inline_whitespace();
         let start = self.pos;
         let mut identifier_start = self.pos;
         while let Some(c) = self.peek_char() {
@@ -2763,6 +2840,62 @@ C<["Route"]>(left,down)
             expected.kind == EditorExpectedSyntaxKind::IdList
                 && expected.span == SourceSpan::new(class_ids_start, class_ids_start + 3)
         }));
+    }
+
+    #[test]
+    fn block_editor_projection_publishes_typed_directive_slots() {
+        let text = "block\nA\nclassDef hot \nclass A hot\nstyle A \n";
+        let facts = crate::family::test_support::editor_facts(
+            parse_block_json_and_editor_facts,
+            text,
+            &meta(),
+        );
+
+        let class_definition = text.find("classDef hot").unwrap() + "classDef ".len();
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::ClassName
+                && expected.span
+                    == SourceSpan::new(class_definition, class_definition + "hot".len())
+        }));
+
+        let class_reference = text.find("class A hot").unwrap() + "class A ".len();
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::ClassName
+                && expected.span == SourceSpan::new(class_reference, class_reference + "hot".len())
+        }));
+
+        let style_start = text.find("style A ").unwrap();
+        let style_slot = style_start + "style A ".len();
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::Directive
+                && expected.span == SourceSpan::new(style_start, style_slot)
+        }));
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::StyleValue
+                && expected.span == SourceSpan::new(style_slot, style_slot)
+        }));
+    }
+
+    #[test]
+    fn block_classdef_does_not_consume_the_next_physical_line() {
+        for (name, line_ending) in [("lf", "\n"), ("crlf", "\r\n"), ("cr", "\r")] {
+            let text = ["block", "classDef", "A", ""].join(line_ending);
+            let facts = crate::family::test_support::editor_facts(
+                parse_block_json_and_editor_facts,
+                &text,
+                &meta(),
+            );
+
+            assert!(
+                facts.symbols.iter().any(|symbol| {
+                    symbol.name == "A" && symbol.detail.as_deref() == Some("block node")
+                }),
+                "{name} must retain the next-line node"
+            );
+            assert!(facts.symbols.iter().all(|symbol| {
+                symbol.name != "A" || symbol.detail.as_deref() != Some("block class definition")
+            }));
+        }
     }
 
     #[test]

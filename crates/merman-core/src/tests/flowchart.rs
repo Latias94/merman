@@ -3222,6 +3222,111 @@ fn parse_flowchart_editor_facts_emit_shape_value_expected_syntax() {
 }
 
 #[test]
+fn parse_flowchart_editor_facts_publish_typed_directive_slots() {
+    let engine = Engine::new();
+
+    let style = "flowchart TD\nA\nstyle A \nstyle A fill:red\n";
+    let style_facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", style)
+        .unwrap()
+        .expect("flowchart style facts");
+    let style_line_start = style.find("style A ").unwrap();
+    let style_slot = style_line_start + "style A ".len();
+    assert!(style_facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::Directive
+            && expected.span == SourceSpan::new(style_line_start, style_slot)
+    }));
+    assert!(style_facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::StyleValue
+            && expected.span == SourceSpan::new(style_slot, style_slot)
+    }));
+    let payload_start = style.rfind("fill:red").unwrap();
+    assert!(!style_facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::StyleValue
+            && expected.span.start <= payload_start
+            && expected.span.end >= payload_start + "fill:red".len()
+    }));
+
+    let class = "flowchart TD\nA\nclassDef hot \nclass A hot\n";
+    let class_facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", class)
+        .unwrap()
+        .expect("flowchart class facts");
+    let definition_start = class.find("classDef hot").unwrap() + "classDef ".len();
+    assert!(class_facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::ClassName
+            && expected.span == SourceSpan::new(definition_start, definition_start + 3)
+    }));
+    let class_reference_start = class.rfind("hot").unwrap();
+    assert!(class_facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::ClassName
+            && expected.span == SourceSpan::new(class_reference_start, class_reference_start + 3)
+    }));
+
+    let click = "flowchart TD\nA\nclick A \n";
+    let click_facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", click)
+        .unwrap()
+        .expect("flowchart click facts");
+    let click_target = click.find("click A").unwrap() + "click ".len();
+    assert!(click_facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+            && expected.span == SourceSpan::new(click_target, click_target + 1)
+    }));
+    let click_slot = click.find("click A ").unwrap() + "click A ".len();
+    assert!(click_facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::InteractionAction
+            && expected.span == SourceSpan::new(click_slot, click_slot)
+    }));
+}
+
+#[test]
+fn parse_flowchart_editor_facts_partition_click_actions_from_payloads() {
+    let engine = Engine::new();
+    let text = concat!(
+        "flowchart TD\n",
+        "A\n",
+        "click A h\n",
+        "click A href \n",
+        "click A href \"https://example.com\" \"Open\" _blank\n",
+        "click A call open(arg) \"Open\"\n",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
+        .unwrap()
+        .expect("flowchart click facts");
+
+    let partial = text.find("click A h").unwrap() + "click A ".len();
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::InteractionAction
+            && expected.span == SourceSpan::new(partial, partial + 1)
+    }));
+
+    let empty_payload_line = text.find("click A href \n").unwrap();
+    let href = empty_payload_line + "click A ".len();
+    let empty_payload = empty_payload_line + "click A href ".len();
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::InteractionAction
+            && expected.span == SourceSpan::new(href, href + "href".len())
+    }));
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::Payload
+            && expected.span == SourceSpan::new(empty_payload, empty_payload)
+    }));
+
+    for payload in [
+        "\"https://example.com\" \"Open\" _blank",
+        "open(arg) \"Open\"",
+    ] {
+        let start = text.find(payload).unwrap();
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::Payload
+                && expected.span == SourceSpan::new(start, start + payload.len())
+        }));
+    }
+}
+
+#[test]
 fn parse_flowchart_editor_facts_emit_standalone_shape_data_node_symbol() {
     let engine = Engine::new();
     let text = "flowchart TD\nD@{ shape: rounded }\nD --> E\n";

@@ -1,9 +1,13 @@
 use super::{
     ArrowToken, DirectionStatementToken, FlowchartLexemeComponent, LabeledText, LexError,
-    LinkToken, NodeLabelToken, SubgraphHeader, TitleKind, Tok, destruct_end_link,
-    destruct_start_link, is_ecmascript_trim_char, lex, parse_label_text,
+    LinkToken, NodeLabelToken, SubgraphHeader, TitleKind, Tok,
+    ast::FlowchartDirectiveEditorEvidence, destruct_end_link, destruct_start_link,
+    is_ecmascript_trim_char, lex, parse_label_text,
 };
-use crate::{EditorLexemeKind, SourceSpan};
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, SourceSpan,
+    editor::source_value_span,
+};
 use std::collections::VecDeque;
 
 fn prepend_statement_keyword(
@@ -15,6 +19,99 @@ fn prepend_statement_keyword(
         0,
         FlowchartLexemeComponent::new(EditorLexemeKind::Keyword, SourceSpan::new(start, end)),
     );
+}
+
+fn directive_argument_spans(
+    rest: &str,
+    rest_start: usize,
+) -> (Option<SourceSpan>, Option<SourceSpan>) {
+    let leading = rest
+        .as_bytes()
+        .iter()
+        .take_while(|byte| byte.is_ascii_whitespace())
+        .count();
+    let body = &rest[leading..];
+    if body.is_empty() {
+        return (None, None);
+    }
+
+    let first_len = body
+        .as_bytes()
+        .iter()
+        .position(|byte| byte.is_ascii_whitespace())
+        .unwrap_or(body.len());
+    let first_start = rest_start + leading;
+    let first_end = first_start + first_len;
+    let first = SourceSpan::new(first_start, first_end);
+    let remainder = &body[first_len..];
+    if remainder.is_empty() {
+        return (Some(first), None);
+    }
+
+    let remainder_leading = remainder
+        .as_bytes()
+        .iter()
+        .take_while(|byte| byte.is_ascii_whitespace())
+        .count();
+    let value_start = first_end + remainder_leading;
+    let value_end = rest_start + rest.len();
+    (Some(first), Some(SourceSpan::new(value_start, value_end)))
+}
+
+fn directive_error<I>(
+    mut error: LexError,
+    prefix: &'static str,
+    statement_span: SourceSpan,
+    expected_syntax: I,
+) -> LexError
+where
+    I: IntoIterator<Item = (EditorExpectedSyntaxKind, SourceSpan)>,
+{
+    for (kind, span) in expected_syntax {
+        error = error.expecting(kind, span);
+    }
+    error.in_directive(prefix, statement_span)
+}
+
+fn active_following_span(
+    rest: &str,
+    rest_start: usize,
+    following: Option<SourceSpan>,
+) -> Option<SourceSpan> {
+    let following = following?;
+    let local_start = following.start.checked_sub(rest_start)?;
+    let raw = rest.get(local_start..)?;
+    let trailing = raw
+        .as_bytes()
+        .iter()
+        .rev()
+        .take_while(|byte| byte.is_ascii_whitespace())
+        .count();
+    if raw.is_empty() || trailing > 0 {
+        return Some(SourceSpan::new(following.end, following.end));
+    }
+    Some(following)
+}
+
+fn trailing_value_slot(
+    rest: &str,
+    rest_start: usize,
+    following: Option<SourceSpan>,
+) -> Option<SourceSpan> {
+    let active = active_following_span(rest, rest_start, following)?;
+    (active.start == active.end).then_some(active)
+}
+
+fn directive_editor_evidence(
+    statement_span: SourceSpan,
+    first: Option<(EditorExpectedSyntaxKind, SourceSpan)>,
+    following: Option<(EditorExpectedSyntaxKind, SourceSpan)>,
+) -> FlowchartDirectiveEditorEvidence {
+    FlowchartDirectiveEditorEvidence::new(
+        EditorExpectedSyntax::new(EditorExpectedSyntaxKind::Directive, statement_span),
+        first.map(|(kind, span)| EditorExpectedSyntax::new(kind, span)),
+        following.map(|(kind, span)| EditorExpectedSyntax::new(kind, span)),
+    )
 }
 
 fn skip_ecmascript_whitespace(input: &str, mut pos: usize) -> usize {
@@ -541,13 +638,32 @@ impl<'input> Lexer<'input> {
         let keyword_end = self.pos;
         self.skip_ws();
         let (rest_start, rest, end) = self.capture_to_stmt_end();
+        let statement_span = SourceSpan::new(start, end);
+        let (target, style) = directive_argument_spans(&rest, rest_start);
+        let style_slot = trailing_value_slot(&rest, rest_start, style);
         match lex::parse_style_stmt(&rest) {
             Ok(mut stmt) => {
                 lex::attach_style_stmt_spans(&mut stmt, &rest, rest_start);
                 prepend_statement_keyword(&mut stmt.lexeme_components, start, keyword_end);
+                stmt.editor_evidence = directive_editor_evidence(
+                    statement_span,
+                    target.map(|span| (EditorExpectedSyntaxKind::NodeIdentifier, span)),
+                    style_slot.map(|span| (EditorExpectedSyntaxKind::StyleValue, span)),
+                );
                 Some(Ok((start, Tok::StyleStmt(stmt), end)))
             }
-            Err(e) => Some(Err(e)),
+            Err(error) => Some(Err(directive_error(
+                error,
+                "style",
+                statement_span,
+                target
+                    .map(|span| (EditorExpectedSyntaxKind::NodeIdentifier, span))
+                    .into_iter()
+                    .chain((target.is_none()).then_some((
+                        EditorExpectedSyntaxKind::NodeIdentifier,
+                        SourceSpan::new(end, end),
+                    ))),
+            ))),
         }
     }
 
@@ -562,13 +678,26 @@ impl<'input> Lexer<'input> {
         let keyword_end = self.pos;
         self.skip_ws();
         let (rest_start, rest, end) = self.capture_to_stmt_end();
+        let statement_span = SourceSpan::new(start, end);
+        let (class_name, style) = directive_argument_spans(&rest, rest_start);
+        let style_slot = trailing_value_slot(&rest, rest_start, style);
         match lex::parse_classdef_stmt(&rest) {
             Ok(mut stmt) => {
                 lex::attach_classdef_stmt_spans(&mut stmt, &rest, rest_start);
                 prepend_statement_keyword(&mut stmt.lexeme_components, start, keyword_end);
+                stmt.editor_evidence = directive_editor_evidence(
+                    statement_span,
+                    class_name.map(|span| (EditorExpectedSyntaxKind::ClassName, span)),
+                    style_slot.map(|span| (EditorExpectedSyntaxKind::StyleValue, span)),
+                );
                 Some(Ok((start, Tok::ClassDefStmt(stmt), end)))
             }
-            Err(e) => Some(Err(e)),
+            Err(error) => Some(Err(directive_error(
+                error,
+                "classDef",
+                statement_span,
+                class_name.map(|span| (EditorExpectedSyntaxKind::ClassName, span)),
+            ))),
         }
     }
 
@@ -583,13 +712,31 @@ impl<'input> Lexer<'input> {
         let keyword_end = self.pos;
         self.skip_ws();
         let (rest_start, rest, end) = self.capture_to_stmt_end();
+        let statement_span = SourceSpan::new(start, end);
+        let (targets, class_name) = directive_argument_spans(&rest, rest_start);
+        let class_name = active_following_span(&rest, rest_start, class_name);
         match lex::parse_class_assign_stmt(&rest) {
             Ok(mut stmt) => {
                 lex::attach_class_assign_stmt_spans(&mut stmt, &rest, rest_start);
                 prepend_statement_keyword(&mut stmt.lexeme_components, start, keyword_end);
+                stmt.editor_evidence = directive_editor_evidence(
+                    statement_span,
+                    targets.map(|span| (EditorExpectedSyntaxKind::IdList, span)),
+                    class_name.map(|span| (EditorExpectedSyntaxKind::ClassName, span)),
+                );
                 Some(Ok((start, Tok::ClassAssignStmt(stmt), end)))
             }
-            Err(e) => Some(Err(e)),
+            Err(error) => {
+                let target = targets.unwrap_or_else(|| SourceSpan::new(end, end));
+                Some(Err(directive_error(
+                    error,
+                    "class",
+                    statement_span,
+                    [(EditorExpectedSyntaxKind::IdList, target)]
+                        .into_iter()
+                        .chain(class_name.map(|span| (EditorExpectedSyntaxKind::ClassName, span))),
+                )))
+            }
         }
     }
 
@@ -604,12 +751,27 @@ impl<'input> Lexer<'input> {
         let keyword_end = self.pos;
         self.skip_ws();
         let (rest_start, rest, end) = self.capture_to_stmt_end();
+        let statement_span = SourceSpan::new(start, end);
+        let (target, _) = directive_argument_spans(&rest, rest_start);
         match lex::parse_click_stmt(&rest, rest_start) {
             Ok(mut stmt) => {
                 prepend_statement_keyword(&mut stmt.lexeme_components, start, keyword_end);
+                stmt.editor_evidence = directive_editor_evidence(
+                    statement_span,
+                    target.map(|span| (EditorExpectedSyntaxKind::NodeIdentifier, span)),
+                    None,
+                );
                 Some(Ok((start, Tok::ClickStmt(stmt), end)))
             }
-            Err(e) => Some(Err(e)),
+            Err(error) => {
+                let target = target.unwrap_or_else(|| SourceSpan::new(end, end));
+                Some(Err(directive_error(
+                    error,
+                    "click",
+                    statement_span,
+                    [(EditorExpectedSyntaxKind::NodeIdentifier, target)],
+                )))
+            }
         }
     }
 
@@ -1830,12 +1992,7 @@ fn label_value_selection(input: &str, content_span: SourceSpan, value: &str) -> 
     if value.is_empty() {
         return None;
     }
-    let slice = input.get(content_span.start..content_span.end)?;
-    let relative_start = slice.find(value)?;
-    Some(SourceSpan::new(
-        content_span.start + relative_start,
-        content_span.start + relative_start + value.len(),
-    ))
+    source_value_span(input, content_span, value)
 }
 
 fn trimmed_slice_with_span(input: &str, start: usize, end: usize) -> (&str, SourceSpan) {

@@ -280,6 +280,23 @@ export function editorSemanticTokenDescriptor(): EditorSemanticTokenDescriptor {
   return cloneSemanticTokenDescriptor(cachedEditorSemanticTokenDescriptor());
 }
 
+export function editorCompletionTriggerCharacters(): string[] {
+  const triggers = requireEditorLanguage(
+    "editorCompletionTriggerCharacters",
+    getMerman().editorCompletionTriggerCharacters
+  )();
+  if (
+    !Array.isArray(triggers) ||
+    triggers.length === 0 ||
+    triggers.some(
+      (trigger) => typeof trigger !== "string" || [...trigger].length !== 1
+    )
+  ) {
+    throw new Error("Merman editor completion trigger characters are invalid.");
+  }
+  return [...triggers];
+}
+
 function cachedEditorSemanticTokenDescriptor(): EditorSemanticTokenDescriptor {
   const state = currentRuntimeState();
   const cached = editorSemanticTokenDescriptorCaches.get(state);

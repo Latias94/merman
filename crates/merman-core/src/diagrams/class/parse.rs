@@ -4,8 +4,9 @@ use crate::{
     EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
     ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
     editor::{
-        editor_keyword_value_span, format_lalrpop_parse_error, lalrpop_parse_diagnostic,
-        lalrpop_recovery_span,
+        editor_keyword_value_span, format_lalrpop_parse_error, has_ascii_separator,
+        lalrpop_parse_diagnostic, lalrpop_recovery_span, line_content_end, source_value_span,
+        trailing_ascii_whitespace_slot,
     },
 };
 use serde_json::Value;
@@ -262,11 +263,12 @@ fn collect_class_editor_facts_from_events(
             Err(error) => {
                 facts.mark_recovered();
                 if let Some(expected) = error.expected_syntax.as_ref() {
-                    facts.push_expected_syntax(expected.clone());
+                    facts.push_expected_syntax(*expected);
                 }
             }
         }
     }
+    collector.finish(code.len(), &mut facts);
 
     control.checkpoint()?;
     Ok(facts)
@@ -275,13 +277,18 @@ fn collect_class_editor_facts_from_events(
 #[derive(Debug)]
 struct ClassEditorFactCollector<'a> {
     code: &'a str,
-    expected_name: Option<ExpectedClassName>,
+    expected_name: Option<PendingClassExpectation>,
     pending_relation_source: Option<ClassTokenSymbol>,
     after_annotation_start: bool,
     css_class_targets_pending: bool,
     interaction: Option<ClassInteractionKind>,
+    interaction_action_seen: bool,
+    interaction_action_end: Option<usize>,
     callback_statement_function_seen: bool,
     line_payload: Option<ClassLinePayloadKind>,
+    line_payload_anchor_end: Option<usize>,
+    directive_start: Option<usize>,
+    interaction_target_end: Option<usize>,
     note_text_pending: bool,
     class_label_pending: bool,
 }
@@ -307,9 +314,16 @@ enum ExpectedClassName {
     RelationTarget,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct PendingClassExpectation {
+    kind: ExpectedClassName,
+    anchor_end: Option<usize>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ClassInteractionKind {
-    ClickOrLink,
+    Click,
+    Link,
     CallbackStatement,
 }
 
@@ -328,8 +342,13 @@ impl<'a> ClassEditorFactCollector<'a> {
             after_annotation_start: false,
             css_class_targets_pending: false,
             interaction: None,
+            interaction_action_seen: false,
+            interaction_action_end: None,
             callback_statement_function_seen: false,
             line_payload: None,
+            line_payload_anchor_end: None,
+            directive_start: None,
+            interaction_target_end: None,
             note_text_pending: false,
             class_label_pending: false,
         }
@@ -337,9 +356,14 @@ impl<'a> ClassEditorFactCollector<'a> {
 
     fn accept(&mut self, token: &Tok, start: usize, end: usize, facts: &mut EditorSemanticFacts) {
         match token {
-            Tok::Newline | Tok::ClassDiagram | Tok::StructStop => self.reset_line_state(),
+            Tok::Newline => {
+                self.finish_line(line_content_end(self.code, start), facts);
+                self.reset_line_state();
+            }
+            Tok::ClassDiagram | Tok::StructStop => self.reset_line_state(),
             Tok::ClassKw => {
                 facts.push_directive_prefix("class");
+                self.directive_start = Some(start);
                 self.pending_relation_source = None;
                 self.expect_name(ExpectedClassName::Class);
             }
@@ -356,33 +380,42 @@ impl<'a> ClassEditorFactCollector<'a> {
             }
             Tok::CssClass => {
                 facts.push_directive_prefix("cssClass");
+                self.directive_start = Some(start);
                 self.css_class_targets_pending = true;
             }
             Tok::StyleKw => {
                 facts.push_directive_prefix("style");
+                self.directive_start = Some(start);
                 self.line_payload = Some(ClassLinePayloadKind::Style);
                 self.expect_name(ExpectedClassName::StyleTarget);
             }
             Tok::ClassDefKw => {
                 facts.push_directive_prefix("classDef");
+                self.directive_start = Some(start);
                 self.line_payload = Some(ClassLinePayloadKind::ClassDef);
-                self.expect_name(ExpectedClassName::ClassDef);
+                self.expect_name_after(ExpectedClassName::ClassDef, end);
             }
             Tok::ClickKw => {
                 facts.push_directive_prefix("click");
-                self.interaction = Some(ClassInteractionKind::ClickOrLink);
+                self.directive_start = Some(start);
+                self.interaction = Some(ClassInteractionKind::Click);
+                self.interaction_action_seen = false;
                 self.callback_statement_function_seen = false;
                 self.expect_name(ExpectedClassName::ClickTarget);
             }
             Tok::LinkKw => {
                 facts.push_directive_prefix("link");
-                self.interaction = Some(ClassInteractionKind::ClickOrLink);
+                self.directive_start = Some(start);
+                self.interaction = Some(ClassInteractionKind::Link);
+                self.interaction_action_seen = false;
                 self.callback_statement_function_seen = false;
                 self.expect_name(ExpectedClassName::ClickTarget);
             }
             Tok::CallbackKw => {
                 facts.push_directive_prefix("callback");
+                self.directive_start = Some(start);
                 self.interaction = Some(ClassInteractionKind::CallbackStatement);
+                self.interaction_action_seen = false;
                 self.callback_statement_function_seen = false;
                 self.expect_name(ExpectedClassName::ClickTarget);
             }
@@ -415,6 +448,29 @@ impl<'a> ClassEditorFactCollector<'a> {
                 }
             }
             Tok::Name(name) => {
+                if self.interaction == Some(ClassInteractionKind::Click)
+                    && self.expected_name.is_none()
+                    && !self.interaction_action_seen
+                    && self
+                        .interaction_target_end
+                        .is_some_and(|target_end| has_ascii_separator(self.code, target_end, start))
+                {
+                    if is_class_interaction_action_prefix(name) {
+                        self.push_interaction_expected_syntax(facts, start, end);
+                    } else {
+                        self.push_interaction_payload_expected_syntax(facts, start, end);
+                        self.push_payload_symbol(
+                            facts,
+                            ClassTokenSymbol {
+                                name: name.clone(),
+                                span: SourceSpan::new(start, end),
+                            },
+                            "class interaction payload",
+                            EditorSemanticKind::Function,
+                        );
+                    }
+                    return;
+                }
                 let symbol = ClassTokenSymbol {
                     name: name.clone(),
                     span: SourceSpan::new(start, end),
@@ -431,10 +487,20 @@ impl<'a> ClassEditorFactCollector<'a> {
                 }
 
                 if let Some(expected) = self.expected_name.take() {
+                    let expected = expected.kind;
                     facts.push_expected_syntax(EditorExpectedSyntax::new(
-                        EditorExpectedSyntaxKind::NodeIdentifier,
+                        class_expected_syntax_kind(expected),
                         SourceSpan::new(start, end),
                     ));
+                    if matches!(
+                        expected,
+                        ExpectedClassName::StyleTarget | ExpectedClassName::ClassDef
+                    ) {
+                        self.line_payload_anchor_end = Some(end);
+                    }
+                    if matches!(expected, ExpectedClassName::ClickTarget) {
+                        self.interaction_target_end = Some(end);
+                    }
                     self.push_symbol(facts, symbol, expected);
                 } else {
                     self.pending_relation_source = Some(symbol);
@@ -452,7 +518,7 @@ impl<'a> ClassEditorFactCollector<'a> {
                         SourceSpan::new(start, end),
                         "class css target",
                     );
-                    self.expect_name(ExpectedClassName::CssClassReference);
+                    self.expect_name_after(ExpectedClassName::CssClassReference, end);
                     return;
                 }
 
@@ -481,7 +547,13 @@ impl<'a> ClassEditorFactCollector<'a> {
                 }
 
                 if self.pending_relation_source.is_some()
-                    || matches!(self.expected_name, Some(ExpectedClassName::RelationTarget))
+                    || matches!(
+                        self.expected_name,
+                        Some(PendingClassExpectation {
+                            kind: ExpectedClassName::RelationTarget,
+                            ..
+                        })
+                    )
                 {
                     self.push_string_payload_symbol(
                         facts,
@@ -496,6 +568,7 @@ impl<'a> ClassEditorFactCollector<'a> {
                 if self.interaction == Some(ClassInteractionKind::CallbackStatement)
                     && !self.callback_statement_function_seen
                 {
+                    self.push_interaction_payload_expected_syntax(facts, start, end);
                     self.callback_statement_function_seen = true;
                     self.push_string_payload_symbol(
                         facts,
@@ -508,6 +581,7 @@ impl<'a> ClassEditorFactCollector<'a> {
                 }
 
                 if self.interaction.is_some() {
+                    self.push_interaction_payload_expected_syntax(facts, start, end);
                     self.push_string_payload_symbol(
                         facts,
                         text,
@@ -519,6 +593,7 @@ impl<'a> ClassEditorFactCollector<'a> {
             }
             Tok::LinkTarget(target) => {
                 if self.interaction.is_some() {
+                    self.push_interaction_payload_expected_syntax(facts, start, end);
                     self.push_payload_symbol(
                         facts,
                         ClassTokenSymbol {
@@ -532,6 +607,7 @@ impl<'a> ClassEditorFactCollector<'a> {
             }
             Tok::CallbackName(function) => {
                 if self.interaction.is_some() {
+                    self.push_interaction_payload_expected_syntax(facts, start, end);
                     self.push_payload_symbol(
                         facts,
                         ClassTokenSymbol {
@@ -545,6 +621,7 @@ impl<'a> ClassEditorFactCollector<'a> {
             }
             Tok::CallbackArgs(args) => {
                 if self.interaction.is_some() {
+                    self.push_interaction_payload_expected_syntax(facts, start, end);
                     self.push_payload_symbol_from_token(
                         facts,
                         args,
@@ -556,10 +633,35 @@ impl<'a> ClassEditorFactCollector<'a> {
             }
             Tok::RestOfLine(raw) => {
                 if let Some(kind) = self.line_payload.take() {
+                    let line_end = line_content_end(self.code, end);
+                    let trailing_slot = trailing_ascii_whitespace_slot(self.code, start, end)
+                        .or_else(|| {
+                            (raw.is_empty()
+                                && self.line_payload_anchor_end.is_some_and(|anchor_end| {
+                                    has_ascii_separator(self.code, anchor_end, line_end)
+                                }))
+                            .then_some(SourceSpan::new(line_end, line_end))
+                        });
+                    if let Some(span) = trailing_slot {
+                        facts.push_expected_syntax(EditorExpectedSyntax::new(
+                            EditorExpectedSyntaxKind::StyleValue,
+                            span,
+                        ));
+                    }
                     let detail = match kind {
                         ClassLinePayloadKind::Style => "class style",
                         ClassLinePayloadKind::ClassDef => "class definition style",
                     };
+                    let payload = raw.trim();
+                    if !payload.is_empty()
+                        && let Some(selection) =
+                            source_value_span(self.code, SourceSpan::new(start, end), payload)
+                    {
+                        facts.push_expected_syntax(EditorExpectedSyntax::new(
+                            EditorExpectedSyntaxKind::Payload,
+                            selection,
+                        ));
+                    }
                     self.push_payload_symbol_from_token(
                         facts,
                         raw,
@@ -597,7 +699,17 @@ impl<'a> ClassEditorFactCollector<'a> {
                     ));
                 }
             }
-            Tok::HrefKw | Tok::StructStart => {}
+            Tok::HrefKw => {
+                if self.interaction == Some(ClassInteractionKind::Click) {
+                    self.push_interaction_expected_syntax(facts, start, end);
+                }
+            }
+            Tok::CallKw => {
+                if self.interaction == Some(ClassInteractionKind::Click) {
+                    self.push_interaction_expected_syntax(facts, start, end);
+                }
+            }
+            Tok::StructStart => {}
             Tok::SquareStart => {
                 self.class_label_pending = true;
             }
@@ -605,9 +717,109 @@ impl<'a> ClassEditorFactCollector<'a> {
                 self.class_label_pending = false;
             }
             Tok::StyleSeparator => {
+                self.directive_start = Some(start);
                 self.expect_name(ExpectedClassName::InlineClassReference);
             }
         }
+    }
+
+    fn finish(&mut self, source_len: usize, facts: &mut EditorSemanticFacts) {
+        self.finish_line(line_content_end(self.code, source_len), facts);
+    }
+
+    fn finish_line(&mut self, line_end: usize, facts: &mut EditorSemanticFacts) {
+        if let Some(start) = self.directive_start {
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::Directive,
+                SourceSpan::new(start, line_end),
+            ));
+        }
+
+        if let Some(expected) = self.expected_name {
+            let kind = class_expected_syntax_kind(expected.kind);
+            let separator_ready = expected
+                .anchor_end
+                .is_none_or(|anchor_end| has_ascii_separator(self.code, anchor_end, line_end));
+            if !matches!(expected.kind, ExpectedClassName::ClassDef)
+                && (!matches!(kind, EditorExpectedSyntaxKind::ClassName) || separator_ready)
+            {
+                facts.push_expected_syntax(EditorExpectedSyntax::new(
+                    kind,
+                    SourceSpan::new(line_end, line_end),
+                ));
+            }
+        } else if self.line_payload.is_some()
+            && self
+                .line_payload_anchor_end
+                .is_some_and(|anchor_end| has_ascii_separator(self.code, anchor_end, line_end))
+        {
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::StyleValue,
+                SourceSpan::new(line_end, line_end),
+            ));
+        }
+
+        let expects_interaction_action = self.interaction == Some(ClassInteractionKind::Click)
+            && self.expected_name.is_none()
+            && !self.interaction_action_seen
+            && self
+                .interaction_target_end
+                .is_some_and(|target_end| has_ascii_separator(self.code, target_end, line_end));
+        if expects_interaction_action {
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::InteractionAction,
+                SourceSpan::new(line_end, line_end),
+            ));
+            return;
+        }
+
+        let click_payload_ready = self.interaction == Some(ClassInteractionKind::Click)
+            && self.expected_name.is_none()
+            && self
+                .interaction_action_end
+                .is_some_and(|action_end| has_ascii_separator(self.code, action_end, line_end));
+        let statement_payload_ready = matches!(
+            self.interaction,
+            Some(ClassInteractionKind::Link | ClassInteractionKind::CallbackStatement)
+        ) && self.expected_name.is_none()
+            && self
+                .interaction_target_end
+                .is_some_and(|target_end| has_ascii_separator(self.code, target_end, line_end));
+        if click_payload_ready || statement_payload_ready {
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::Payload,
+                SourceSpan::new(line_end, line_end),
+            ));
+        }
+    }
+
+    fn push_interaction_expected_syntax(
+        &mut self,
+        facts: &mut EditorSemanticFacts,
+        start: usize,
+        end: usize,
+    ) {
+        self.interaction_action_seen = true;
+        self.interaction_action_end = Some(end);
+        facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::InteractionAction,
+            SourceSpan::new(start, end),
+        ));
+    }
+
+    fn push_interaction_payload_expected_syntax(
+        &mut self,
+        facts: &mut EditorSemanticFacts,
+        start: usize,
+        end: usize,
+    ) {
+        if self.interaction == Some(ClassInteractionKind::Click) {
+            self.interaction_action_seen = true;
+        }
+        facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::Payload,
+            SourceSpan::new(start, end),
+        ));
     }
 
     fn reset_line_state(&mut self) {
@@ -616,14 +828,29 @@ impl<'a> ClassEditorFactCollector<'a> {
         self.after_annotation_start = false;
         self.css_class_targets_pending = false;
         self.interaction = None;
+        self.interaction_action_seen = false;
+        self.interaction_action_end = None;
         self.callback_statement_function_seen = false;
         self.line_payload = None;
+        self.line_payload_anchor_end = None;
+        self.directive_start = None;
+        self.interaction_target_end = None;
         self.note_text_pending = false;
         self.class_label_pending = false;
     }
 
     fn expect_name(&mut self, expected: ExpectedClassName) {
-        self.expected_name = Some(expected);
+        self.expected_name = Some(PendingClassExpectation {
+            kind: expected,
+            anchor_end: None,
+        });
+    }
+
+    fn expect_name_after(&mut self, expected: ExpectedClassName, anchor_end: usize) {
+        self.expected_name = Some(PendingClassExpectation {
+            kind: expected,
+            anchor_end: Some(anchor_end),
+        });
     }
 
     fn push_pending_relation_source(&mut self, facts: &mut EditorSemanticFacts) {
@@ -725,7 +952,7 @@ impl<'a> ClassEditorFactCollector<'a> {
             return;
         }
 
-        let selection = token_value_selection(self.code, span, value).unwrap_or(span);
+        let selection = source_value_span(self.code, span, value).unwrap_or(span);
         facts.push_symbol(EditorSemanticSymbol::payload(
             value,
             Some(detail.to_string()),
@@ -853,6 +1080,29 @@ impl<'a> ClassEditorFactCollector<'a> {
     }
 }
 
+fn class_expected_syntax_kind(expected: ExpectedClassName) -> EditorExpectedSyntaxKind {
+    match expected {
+        ExpectedClassName::ClassDef
+        | ExpectedClassName::CssClassReference
+        | ExpectedClassName::InlineClassReference => EditorExpectedSyntaxKind::ClassName,
+        ExpectedClassName::Class
+        | ExpectedClassName::Namespace
+        | ExpectedClassName::MemberOwner
+        | ExpectedClassName::AnnotationName
+        | ExpectedClassName::NoteTarget
+        | ExpectedClassName::StyleTarget
+        | ExpectedClassName::ClickTarget
+        | ExpectedClassName::RelationTarget => EditorExpectedSyntaxKind::NodeIdentifier,
+    }
+}
+
+fn is_class_interaction_action_prefix(value: &str) -> bool {
+    !value.is_empty()
+        && ["href", "call"]
+            .iter()
+            .any(|action| action.starts_with(value))
+}
+
 fn selection_span_for_class_name(code: &str, name: &str, span: SourceSpan) -> SourceSpan {
     if let Some(raw) = name.strip_prefix(MERMAID_DOM_ID_PREFIX) {
         if let Some(source) = code.get(span.start..span.end)
@@ -905,13 +1155,4 @@ fn class_label_member_selection(label: &str, span: SourceSpan) -> Option<(String
     let text = &text[..trimmed_len];
     let start = span.start + colon_offset + leading;
     Some((text.to_string(), SourceSpan::new(start, start + text.len())))
-}
-
-fn token_value_selection(code: &str, span: SourceSpan, value: &str) -> Option<SourceSpan> {
-    let slice = code.get(span.start..span.end)?;
-    let relative_start = slice.find(value)?;
-    Some(SourceSpan::new(
-        span.start + relative_start,
-        span.start + relative_start + value.len(),
-    ))
 }

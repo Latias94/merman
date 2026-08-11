@@ -719,8 +719,11 @@ fn recover_flowchart_editor_facts_from_tokens(
             | FlowchartTracedItem::LexerError(strict_error) => Some(strict_error),
             FlowchartTracedItem::Token(_) => None,
         };
-        if let Some(expected) = error.and_then(|error| error.expected_syntax.as_ref()) {
-            facts.push_expected_syntax(expected.clone());
+        if let Some(error) = error {
+            push_flowchart_expected_syntax(&mut facts, error.expected_syntax.iter().copied());
+        }
+        if let Some(prefix) = error.and_then(|error| error.directive_prefix) {
+            facts.push_directive_prefix(prefix);
         }
     }
     facts.replace_family_lexemes(trace.lexemes);
@@ -934,7 +937,7 @@ fn collect_editor_fact_from_token(
         Tok::StyleStmt(stmt) => push_flowchart_style_stmt_facts(facts, stmt),
         Tok::ClassDefStmt(stmt) => push_flowchart_classdef_stmt_facts(facts, stmt),
         Tok::ClassAssignStmt(stmt) => push_flowchart_class_assign_stmt_facts(facts, stmt),
-        Tok::ClickStmt(_) => facts.push_directive_prefix("click"),
+        Tok::ClickStmt(stmt) => push_flowchart_click_stmt_facts(facts, stmt),
         Tok::LinkStyleStmt(_) => facts.push_directive_prefix("linkStyle"),
         Tok::KwGraph
         | Tok::KwFlowchart
@@ -1015,7 +1018,7 @@ fn collect_editor_facts_from_statements_with_seen_edges(
             Stmt::Style(stmt) => push_flowchart_style_stmt_facts(facts, stmt),
             Stmt::ClassDef(stmt) => push_flowchart_classdef_stmt_facts(facts, stmt),
             Stmt::ClassAssign(stmt) => push_flowchart_class_assign_stmt_facts(facts, stmt),
-            Stmt::Click(_) => facts.push_directive_prefix("click"),
+            Stmt::Click(stmt) => push_flowchart_click_stmt_facts(facts, stmt),
             Stmt::LinkStyle(_) => facts.push_directive_prefix("linkStyle"),
             Stmt::ShapeData {
                 target,
@@ -1089,6 +1092,7 @@ fn push_flowchart_edge_label_symbol(
 
 fn push_flowchart_style_stmt_facts(facts: &mut EditorSemanticFacts, stmt: &StyleStmt) {
     facts.push_directive_prefix("style");
+    push_flowchart_expected_syntax(facts, stmt.editor_evidence.iter());
     push_flowchart_span_symbol(
         facts,
         &stmt.target,
@@ -1104,6 +1108,7 @@ fn push_flowchart_style_stmt_facts(facts: &mut EditorSemanticFacts, stmt: &Style
 
 fn push_flowchart_classdef_stmt_facts(facts: &mut EditorSemanticFacts, stmt: &ClassDefStmt) {
     facts.push_directive_prefix("classDef");
+    push_flowchart_expected_syntax(facts, stmt.editor_evidence.iter());
     for (id, span) in stmt.ids.iter().zip(stmt.id_spans.iter().copied()) {
         push_flowchart_span_symbol(
             facts,
@@ -1127,6 +1132,7 @@ fn push_flowchart_classdef_stmt_facts(facts: &mut EditorSemanticFacts, stmt: &Cl
 
 fn push_flowchart_class_assign_stmt_facts(facts: &mut EditorSemanticFacts, stmt: &ClassAssignStmt) {
     facts.push_directive_prefix("class");
+    push_flowchart_expected_syntax(facts, stmt.editor_evidence.iter());
     for (target, span) in stmt.targets.iter().zip(stmt.target_spans.iter().copied()) {
         push_flowchart_span_symbol(
             facts,
@@ -1145,6 +1151,21 @@ fn push_flowchart_class_assign_stmt_facts(facts: &mut EditorSemanticFacts, stmt:
         stmt.class_name_span,
         EditorSemanticRole::Payload,
     );
+}
+
+fn push_flowchart_click_stmt_facts(facts: &mut EditorSemanticFacts, stmt: &ClickStmt) {
+    facts.push_directive_prefix("click");
+    push_flowchart_expected_syntax(facts, stmt.editor_evidence.iter());
+    push_flowchart_expected_syntax(facts, stmt.interaction_evidence.iter());
+}
+
+fn push_flowchart_expected_syntax(
+    facts: &mut EditorSemanticFacts,
+    expected_syntax: impl IntoIterator<Item = EditorExpectedSyntax>,
+) {
+    for expected in expected_syntax {
+        facts.push_expected_syntax(expected);
+    }
 }
 
 fn push_flowchart_span_symbol(

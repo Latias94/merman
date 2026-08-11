@@ -858,7 +858,7 @@ fn parse_class_editor_facts_preserve_every_crlf_unicode_occurrence_and_payload_s
 }
 
 #[test]
-fn parse_class_editor_facts_record_expected_node_identifier_spans() {
+fn parse_class_editor_facts_record_expected_class_name_spans() {
     let engine = Engine::new();
     let text = "classDiagram\nclassDef service fill:#eee\n";
     let facts = engine
@@ -867,9 +867,29 @@ fn parse_class_editor_facts_record_expected_node_identifier_spans() {
         .expect("class editor facts");
 
     assert!(facts.expected_syntax.iter().any(|expected| {
-        expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+        expected.kind == EditorExpectedSyntaxKind::ClassName
             && expected.span.start == text.find("service").unwrap()
     }));
+}
+
+#[test]
+fn parse_class_editor_facts_do_not_consume_classdef_names_across_line_endings() {
+    let engine = Engine::new();
+
+    for line_ending in ["\n", "\r", "\r\n"] {
+        let text = ["classDiagram", "classDef", "User <|-- Admin", ""].join(line_ending);
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("classDiagram", &text)
+            .unwrap()
+            .expect("class editor facts");
+
+        assert!(
+            !facts.symbols.iter().any(|symbol| {
+                symbol.name == "User" && symbol.role == EditorSemanticRole::ClassDefinition
+            }),
+            "classDef consumed the next physical line for {line_ending:?}"
+        );
+    }
 }
 
 #[test]

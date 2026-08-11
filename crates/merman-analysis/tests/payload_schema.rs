@@ -255,8 +255,7 @@ fn analysis_facts_projects_class_definition_to_outline_wire_role() {
     assert!(!value.to_string().contains("class_definition"));
 
     let mut invalid = value;
-    invalid["diagrams"][0]["syntax"]["semantic_items"][0]["role"] =
-        json!("class_definition");
+    invalid["diagrams"][0]["syntax"]["semantic_items"][0]["role"] = json!("class_definition");
     let error = serde_json::from_value::<AnalysisFactsPayload>(invalid)
         .expect_err("class_definition must stay out of the wire schema");
     assert!(error.to_string().contains("class_definition"));

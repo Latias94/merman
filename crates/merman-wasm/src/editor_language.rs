@@ -7,13 +7,13 @@ use merman_analysis::{
 use merman_bindings_core::{BindingError, BindingStatus};
 use merman_core::EditorSemanticKind;
 use merman_editor_core::{
-    DiagramDetectionValidity, DocumentAnalysisContext, DocumentKind, DocumentSnapshot,
-    DocumentWorkspace, EditorDiagnostic, EditorDiagramDetection, EditorDocumentSymbol, EditorHover,
-    EditorLocation, EditorPrepareRename, EditorTextEdit, EditorWorkspaceEdit, Position, Range,
-    RenameError, SemanticTokenDescriptor, analysis_payload_to_diagnostics, code_actions_from_fixes,
-    completion_for_snapshot, document_symbols, goto_definition, hover,
-    plan_semantic_tokens_for_snapshot, prepare_rename, references, rename, search_document_symbols,
-    semantic_token_descriptor,
+    COMPLETION_TRIGGER_CHARACTERS, DiagramDetectionValidity, DocumentAnalysisContext, DocumentKind,
+    DocumentSnapshot, DocumentWorkspace, EditorDiagnostic, EditorDiagramDetection,
+    EditorDocumentSymbol, EditorHover, EditorLocation, EditorPrepareRename, EditorTextEdit,
+    EditorWorkspaceEdit, Position, Range, RenameError, SemanticTokenDescriptor,
+    analysis_payload_to_diagnostics, code_actions_from_fixes, completion_for_snapshot,
+    document_symbols, goto_definition, hover, plan_semantic_tokens_for_snapshot, prepare_rename,
+    references, rename, search_document_symbols, semantic_token_descriptor,
 };
 use serde::Serialize;
 use std::{
@@ -698,6 +698,11 @@ pub fn editor_semantic_token_descriptor() -> Result<JsValue, JsValue> {
     js_value(&WasmSemanticTokenDescriptor::from(
         semantic_token_descriptor(),
     ))
+}
+
+#[wasm_bindgen(js_name = editorCompletionTriggerCharacters)]
+pub fn editor_completion_trigger_characters() -> Result<JsValue, JsValue> {
+    js_value(&COMPLETION_TRIGGER_CHARACTERS)
 }
 
 #[wasm_bindgen(js_name = editorSemanticTokens)]

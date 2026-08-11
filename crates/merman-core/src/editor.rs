@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
 pub use crate::generated::editor_rename_policy::EditorRenamePolicy;
@@ -12,6 +14,39 @@ use crate::{
 pub struct SourceSpan {
     pub start: usize,
     pub end: usize,
+}
+
+pub(crate) fn line_content_end(source: &str, end: usize) -> usize {
+    let end = end.min(source.len());
+    end.checked_sub(1)
+        .filter(|index| source.as_bytes().get(*index) == Some(&b'\r'))
+        .unwrap_or(end)
+}
+
+pub(crate) fn has_ascii_separator(source: &str, start: usize, end: usize) -> bool {
+    source.get(start..end).is_some_and(|slice| {
+        !slice.is_empty() && slice.as_bytes().iter().all(u8::is_ascii_whitespace)
+    })
+}
+
+pub(crate) fn trailing_ascii_whitespace_slot(
+    source: &str,
+    start: usize,
+    end: usize,
+) -> Option<SourceSpan> {
+    let end = line_content_end(source, end);
+    let slice = source.get(start..end)?;
+    (!slice.is_empty() && slice.as_bytes().last().is_some_and(u8::is_ascii_whitespace))
+        .then_some(SourceSpan::new(end, end))
+}
+
+pub(crate) fn source_value_span(source: &str, span: SourceSpan, value: &str) -> Option<SourceSpan> {
+    let slice = source.get(span.start..span.end)?;
+    let relative_start = slice.find(value)?;
+    Some(SourceSpan::new(
+        span.start + relative_start,
+        span.start + relative_start + value.len(),
+    ))
 }
 
 /// Grammar-domain lexical classification emitted by preprocessing or one diagram family.
@@ -659,12 +694,17 @@ impl EditorSemanticDiagnostic {
 /// Parser-known syntax category that is expected at a source span.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EditorExpectedSyntaxKind {
+    Directive,
+    Frontmatter,
     IdList,
     NodeIdentifier,
+    ClassName,
     Operator,
     ShapeValue,
     ShapeTrigger,
     DirectionValue,
+    StyleValue,
+    InteractionAction,
     Payload,
 }
 
@@ -881,9 +921,28 @@ impl EditorSemanticFacts {
     }
 
     pub fn push_expected_syntax(&mut self, expected: EditorExpectedSyntax) {
-        if !self.expected_syntax.contains(&expected) {
-            self.expected_syntax.push(expected);
+        self.expected_syntax.push(expected);
+    }
+
+    pub(crate) fn finalize_expected_syntax_controlled(
+        &mut self,
+        control: &ParseControl,
+    ) -> ParseControlResult<()> {
+        let mut seen = BTreeSet::new();
+        let mut unique = Vec::with_capacity(self.expected_syntax.len());
+        for (index, expected) in std::mem::take(&mut self.expected_syntax)
+            .into_iter()
+            .enumerate()
+        {
+            if index.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            if seen.insert((expected.kind, expected.span.start, expected.span.end)) {
+                unique.push(expected);
+            }
         }
+        self.expected_syntax = unique;
+        control.checkpoint()
     }
 }
 

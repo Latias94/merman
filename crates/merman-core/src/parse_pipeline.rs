@@ -541,6 +541,11 @@ impl<'a> ParsePipeline<'a> {
         let family = family::diagram_type_family_id(&meta.diagram_type)
             .expect("built-in combined semantic facts belong to a catalog family");
         facts.finalize_lexemes_controlled(family, source_map.source.global_lexemes(), control)?;
+        for expected in source_map.source.global_expected_syntax().chunks(128) {
+            control.checkpoint()?;
+            facts.expected_syntax.extend_from_slice(expected);
+        }
+        facts.finalize_expected_syntax_controlled(control)?;
         for (index, prefix) in source_map
             .source
             .global_directive_prefixes()
