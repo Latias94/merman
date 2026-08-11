@@ -291,9 +291,8 @@ mod tests {
             GraphNodeShape::Rect,
             GraphNodeStyle::default(),
             GraphNodeSemantics {
-                compartments: None,
                 side_constraint: Some(GraphNodeSideConstraint::new("anchor", GraphNodeSide::Right)),
-                label_wrap_width: None,
+                ..GraphNodeSemantics::default()
             },
         );
         graph.add_group_with_style(

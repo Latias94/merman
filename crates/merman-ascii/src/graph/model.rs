@@ -1,6 +1,7 @@
 use crate::color::AsciiRgb;
 use crate::error::{AsciiError, Result};
 use crate::resource::AsciiResourceLimitPhase;
+use std::num::NonZeroUsize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GraphDirection {
@@ -49,6 +50,7 @@ pub(crate) struct AsciiGraph {
     pub(super) diagram_type: &'static str,
     pub(super) direction: GraphDirection,
     pub(super) root_policy: GraphRootPolicy,
+    node_label_policy: GraphNodeLabelPolicy,
     pub(super) nodes: Vec<AsciiGraphNode>,
     pub(super) edges: Vec<AsciiGraphEdge>,
     pub(super) groups: Vec<AsciiGraphGroup>,
@@ -67,7 +69,22 @@ pub(super) struct AsciiGraphNode {
 pub(crate) struct GraphNodeSemantics {
     pub(crate) compartments: Option<GraphNodeCompartments>,
     pub(crate) side_constraint: Option<GraphNodeSideConstraint>,
-    pub(crate) label_wrap_width: Option<usize>,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum GraphNodeLabelPolicy {
+    #[default]
+    Preserve,
+    WrapAt(NonZeroUsize),
+}
+
+impl GraphNodeLabelPolicy {
+    const fn wrap_width(self) -> Option<usize> {
+        match self {
+            Self::Preserve => None,
+            Self::WrapAt(width) => Some(width.get()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -272,6 +289,7 @@ impl AsciiGraph {
             diagram_type,
             direction,
             root_policy: GraphRootPolicy::DeclaredFirst,
+            node_label_policy: GraphNodeLabelPolicy::Preserve,
             nodes: Vec::new(),
             edges: Vec::new(),
             groups: Vec::new(),
@@ -304,6 +322,14 @@ impl AsciiGraph {
 
     pub(crate) fn diagram_type(&self) -> &'static str {
         self.diagram_type
+    }
+
+    pub(crate) fn wrap_node_labels_at(&mut self, width: NonZeroUsize) {
+        self.node_label_policy = GraphNodeLabelPolicy::WrapAt(width);
+    }
+
+    pub(super) const fn node_label_wrap_width(&self) -> Option<usize> {
+        self.node_label_policy.wrap_width()
     }
 
     pub(crate) fn use_incoming_edge_roots(&mut self) {

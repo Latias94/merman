@@ -121,11 +121,10 @@ pub(super) fn override_member_semantics(
         return Ok(GraphNodeSemantics::default());
     };
     Ok(GraphNodeSemantics {
-        compartments: None,
         side_constraint: Some(GraphNodeSideConstraint::new(
             try_clone_layout_text(&anchor_member.id, resources)?,
             constraint.side(),
         )),
-        label_wrap_width: None,
+        ..GraphNodeSemantics::default()
     })
 }

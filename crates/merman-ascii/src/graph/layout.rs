@@ -3,7 +3,7 @@ use super::model::{AsciiGraph, GraphGroupKind, GraphGroupStyle, GraphNodeShape, 
 use super::topology::GraphGroupTopology;
 use crate::error::Result;
 use crate::options::AsciiRenderOptions;
-use crate::resource::ResourceContext;
+use crate::resource::{LogicalExtent, ResourceContext};
 use std::collections::HashMap;
 
 mod grid;
@@ -160,7 +160,7 @@ pub(super) fn layout_graph_with_resources(
             resources,
         )?
     };
-    check_graph_layout_extent(&nodes, &groups, resources)?;
+    graph_canvas_extent(&nodes, &groups, 0, 0, resources)?;
     grid::materialize_node_labels(&mut nodes, graph, &label_plans, resources)?;
     Ok(GraphLayout {
         nodes,
@@ -172,13 +172,15 @@ pub(super) fn layout_graph_with_resources(
     })
 }
 
-fn check_graph_layout_extent(
+pub(super) fn graph_canvas_extent(
     nodes: &[NodeLayout],
     groups: &[GroupLayout],
+    edge_width: usize,
+    edge_height: usize,
     resources: &ResourceContext,
-) -> Result<()> {
-    let mut width = 0;
-    let mut height = 0;
+) -> Result<LogicalExtent> {
+    let mut width = edge_width;
+    let mut height = edge_height;
     for node in nodes {
         width = width.max(resources.checked_grid_add(node.x, node.width)?);
         height = height.max(resources.checked_grid_add(node.y, node.height)?);
@@ -187,8 +189,7 @@ fn check_graph_layout_extent(
         width = width.max(resources.checked_grid_add(group.x, group.width)?);
         height = height.max(resources.checked_grid_add(group.y, group.height)?);
     }
-    resources.grid_extent(width, height)?;
-    Ok(())
+    resources.grid_extent(width, height)
 }
 
 fn check_graph_nesting_depth(

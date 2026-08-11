@@ -15,6 +15,7 @@ use merman_core::diagrams::flowchart::{
     FlowEdgeVisibility as CoreFlowEdgeVisibility, FlowchartModel,
 };
 use std::collections::{HashMap, HashSet};
+use std::num::NonZeroUsize;
 
 pub(crate) fn from_flowchart_model(
     model: &FlowchartModel,
@@ -34,6 +35,13 @@ pub(crate) fn from_flowchart_model(
         }
     };
     let mut graph = AsciiGraph::new(direction);
+    let wrap_width = NonZeroUsize::new(options.flowchart_node_label_wrap_width).ok_or(
+        AsciiError::InvalidOption {
+            field: "flowchart_node_label_wrap_width",
+            message: "must be greater than 0",
+        },
+    )?;
+    graph.wrap_node_labels_at(wrap_width);
     graph.try_reserve_projection(model.nodes.len(), model.edges.len(), model.subgraphs.len())?;
 
     for node in &model.nodes {
@@ -50,10 +58,7 @@ pub(crate) fn from_flowchart_model(
             label,
             resolved_shape.shape,
             resolve_node_style(model, node),
-            GraphNodeSemantics {
-                label_wrap_width: Some(options.flowchart_node_label_wrap_width),
-                ..GraphNodeSemantics::default()
-            },
+            GraphNodeSemantics::default(),
         );
     }
 

@@ -1294,10 +1294,10 @@ mod tests {
     #[cfg(feature = "ascii")]
     #[test]
     fn render_ascii_impl_applies_flowchart_node_label_wrap_width() {
-        let text = string_result(merman_bindings_core::render_ascii(
-            b"flowchart TD\nA[\"Alpha Beta Gamma Delta\"]",
-            br#"{ "ascii": { "flowchartNodeLabelWrapWidth": 8 } }"#,
-        ))
+        let text = render_ascii(
+            "flowchart TD\nA[\"Alpha Beta Gamma Delta\"]",
+            Some(r#"{ "ascii": { "flowchartNodeLabelWrapWidth": 8 } }"#.to_string()),
+        )
         .unwrap();
 
         for expected in ["Alpha", "Beta", "Gamma", "Delta"] {

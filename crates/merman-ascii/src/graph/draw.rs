@@ -1,6 +1,6 @@
 use super::charset::GraphCharset;
 use super::label::GRAPH_LABEL_LINE_GAP;
-use super::layout::{GroupLayout, NodeLayout, layout_graph_with_resources};
+use super::layout::{GroupLayout, NodeLayout, graph_canvas_extent, layout_graph_with_resources};
 use super::model::{AsciiGraph, GraphGroupKind, GraphGroupStyle, GraphNodeShape, GraphNodeStyle};
 use super::routing;
 use super::surface::{GraphSurface, OutputTransform, TransformedSurface};
@@ -8,7 +8,7 @@ use crate::canvas::Canvas as RawCanvas;
 use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
 use crate::options::AsciiRenderOptions;
-use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
+use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 use std::collections::HashSet;
 
 type Canvas<'surface> = dyn GraphSurface + 'surface;
@@ -122,26 +122,6 @@ pub(crate) fn render_graph_with_resources(
     }
 
     canvas.finish_with_options(options)
-}
-
-fn graph_canvas_extent(
-    nodes: &[NodeLayout],
-    groups: &[GroupLayout],
-    edge_width: usize,
-    edge_height: usize,
-    resources: &ResourceContext,
-) -> Result<LogicalExtent> {
-    let mut width = edge_width;
-    let mut height = edge_height;
-    for layout in nodes {
-        width = width.max(resources.checked_grid_add(layout.x, layout.width)?);
-        height = height.max(resources.checked_grid_add(layout.y, layout.height)?);
-    }
-    for layout in groups {
-        width = width.max(resources.checked_grid_add(layout.x, layout.width)?);
-        height = height.max(resources.checked_grid_add(layout.y, layout.height)?);
-    }
-    resources.grid_extent(width, height)
 }
 
 impl OutputTransform {
