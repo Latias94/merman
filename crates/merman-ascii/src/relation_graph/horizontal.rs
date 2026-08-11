@@ -11,6 +11,10 @@ use crate::color::AsciiColorRole;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 use crate::resource::{LogicalExtent, ResourceContext};
 
+mod collision;
+
+use collision::{HorizontalEdgeGeometry, VerticalOwnershipSpan};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RelationGraphHorizontalDirection {
     LeftRight,
@@ -182,54 +186,6 @@ struct HorizontalEdgePlan {
     style: HorizontalRelationStyle,
     label_top: usize,
     lane_y: usize,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct VerticalOwnershipSpan {
-    x: usize,
-    top: usize,
-    bottom: usize,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct HorizontalEdgeGeometry {
-    lane_y: usize,
-    left_x: usize,
-    right_x: usize,
-    left_port_y: usize,
-    right_port_y: usize,
-    left_stem: VerticalOwnershipSpan,
-    right_stem: VerticalOwnershipSpan,
-}
-
-impl HorizontalEdgeGeometry {
-    fn vertical_stems(self) -> [VerticalOwnershipSpan; 2] {
-        [self.left_stem, self.right_stem]
-    }
-
-    fn owns_crossing_with(self, other: Self) -> bool {
-        self.vertical_stems().into_iter().any(|stem| {
-            other.horizontal_owns_vertical(stem)
-                || other
-                    .vertical_stems()
-                    .into_iter()
-                    .any(|other_stem| stems_overlap(stem, other_stem))
-        }) || other
-            .vertical_stems()
-            .into_iter()
-            .any(|stem| self.horizontal_owns_vertical(stem))
-    }
-
-    fn horizontal_owns_vertical(self, stem: VerticalOwnershipSpan) -> bool {
-        self.left_x <= stem.x
-            && stem.x <= self.right_x
-            && stem.top <= self.lane_y
-            && self.lane_y <= stem.bottom
-    }
-}
-
-fn stems_overlap(left: VerticalOwnershipSpan, right: VerticalOwnershipSpan) -> bool {
-    left.x == right.x && left.top.max(right.top) <= left.bottom.min(right.bottom)
 }
 
 struct HorizontalComponentPlanContext<'a, R, A> {
@@ -811,23 +767,18 @@ fn horizontal_edge_geometry(
         left_port_y,
         right_port_y,
         left_stem: VerticalOwnershipSpan {
+            node_index: left_index,
             x: left_x,
             top: edge.lane_y.min(left_port_y),
             bottom: edge.lane_y.max(left_port_y),
         },
         right_stem: VerticalOwnershipSpan {
+            node_index: right_index,
             x: right_x,
             top: edge.lane_y.min(right_port_y),
             bottom: edge.lane_y.max(right_port_y),
         },
     })
-}
-
-fn horizontal_edges_share_node(left: &HorizontalEdgePlan, right: &HorizontalEdgePlan) -> bool {
-    left.source_index == right.source_index
-        || left.source_index == right.target_index
-        || left.target_index == right.source_index
-        || left.target_index == right.target_index
 }
 
 fn horizontal_edge_ownership_differs(
@@ -864,13 +815,12 @@ fn horizontal_edge_owners_overlap(
     resources.charge_layout_work(pair_count)?;
     for left_index in 0..edges.len() {
         for right_index in (left_index + 1)..edges.len() {
-            let share_node = horizontal_edges_share_node(&edges[left_index], &edges[right_index]);
-            if share_node
-                && !horizontal_edge_ownership_differs(&edges[left_index], &edges[right_index])
-            {
-                continue;
-            }
-            if geometries[left_index].owns_crossing_with(geometries[right_index]) {
+            let compatible_shared_endpoint_ownership =
+                !horizontal_edge_ownership_differs(&edges[left_index], &edges[right_index]);
+            if geometries[left_index].has_owner_collision_with(
+                geometries[right_index],
+                compatible_shared_endpoint_ownership,
+            ) {
                 return Ok(true);
             }
         }
@@ -1087,4 +1037,94 @@ fn box_index(boxes: &[&RelationGraphBox], id: &str) -> Option<usize> {
 
 fn node_index(nodes: &[HorizontalNode<'_>], id: &str) -> Option<usize> {
     nodes.iter().position(|node| node.original.id() == id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
+    use merman_core::resources::ResourceProfile;
+
+    #[test]
+    fn horizontal_owner_scan_has_an_exact_work_boundary() {
+        let boxes = [
+            RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
+            RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
+            RelationGraphBox::new("c".to_string(), vec!["C".to_string()], 1),
+        ];
+        let nodes = vec![
+            HorizontalNode {
+                original: &boxes[0],
+                visual: boxes[0].shared_projection(),
+                x: 0,
+            },
+            HorizontalNode {
+                original: &boxes[1],
+                visual: boxes[1].shared_projection(),
+                x: 10,
+            },
+            HorizontalNode {
+                original: &boxes[2],
+                visual: boxes[2].shared_projection(),
+                x: 20,
+            },
+        ];
+        let style = HorizontalRelationStyle::new(
+            HorizontalRelationEndpoint::new(None, None),
+            HorizontalRelationEndpoint::new(None, None),
+            None,
+            '-',
+            '|',
+            RelationLineChars::new(['-', '|', '.', ':'], '+'),
+        );
+        let edges = vec![
+            HorizontalEdgePlan {
+                source_index: 0,
+                target_index: 1,
+                style: style.clone(),
+                label_top: 0,
+                lane_y: 2,
+            },
+            HorizontalEdgePlan {
+                source_index: 0,
+                target_index: 2,
+                style,
+                label_top: 0,
+                lane_y: 4,
+            },
+        ];
+
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let mut measured_resources = ResourceContext::new(unbounded);
+        assert!(
+            horizontal_edge_owners_overlap(&nodes, &edges, 8, &mut measured_resources)
+                .expect("shared-source owner scan should succeed")
+        );
+        let exact_work = measured_resources.layout_work_used();
+        assert_eq!(exact_work, 3);
+
+        let exact_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
+            .expect("exact owner-scan work limit should be valid");
+        let mut exact_resources = ResourceContext::new(exact_policy);
+        assert!(
+            horizontal_edge_owners_overlap(&nodes, &edges, 8, &mut exact_resources)
+                .expect("exact owner-scan work should pass")
+        );
+        assert_eq!(exact_resources.layout_work_used(), exact_work);
+
+        let below_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
+            .expect("max-minus-one owner-scan work limit should be valid");
+        let mut below_resources = ResourceContext::new(below_policy);
+        let error = horizontal_edge_owners_overlap(&nodes, &edges, 8, &mut below_resources)
+            .expect_err("max-minus-one owner-scan work should reject");
+        assert!(matches!(
+            error,
+            crate::error::AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual == exact_work
+                    && details.max == exact_work - 1
+        ));
+    }
 }

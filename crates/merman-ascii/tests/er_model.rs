@@ -695,6 +695,28 @@ fn er_parser_horizontal_unrelated_edge_crossings_use_lossless_summary() {
 }
 
 #[test]
+fn er_parser_horizontal_shared_source_crossings_use_lossless_summary() {
+    let rendered = render_er(
+        concat!(
+            "erDiagram\n",
+            "direction LR\n",
+            "A ||--|| B : short\n",
+            "A ||--|| C : long",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("shared-source horizontal crossings should remain recoverable");
+
+    assert!(rendered.contains("relations:"), "{rendered}");
+    for expected in ["A ||--|| B : short", "A ||--|| C : long"] {
+        assert!(
+            rendered.contains(expected),
+            "summary must preserve {expected:?} after shared-source crossing fallback:\n{rendered}"
+        );
+    }
+}
+
+#[test]
 fn er_parser_horizontal_cardinalities_mirror_at_physical_ports() {
     for direction in ["LR", "RL"] {
         let rendered = render_er(
