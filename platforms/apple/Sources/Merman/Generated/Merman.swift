@@ -2432,6 +2432,7 @@ public struct MermanLintRuleCatalogEntry: Equatable, Hashable {
     public var evidence: [String]
     public var defaultSeverity: String
     public var category: String
+    public var tags: [String]
     public var defaultEnabled: Bool
     public var defaultProfile: String
     public var origin: String
@@ -2440,12 +2441,13 @@ public struct MermanLintRuleCatalogEntry: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, description: String, evidence: [String], defaultSeverity: String, category: String, defaultEnabled: Bool, defaultProfile: String, origin: String, configurable: Bool, fixable: Bool) {
+    public init(id: String, description: String, evidence: [String], defaultSeverity: String, category: String, tags: [String], defaultEnabled: Bool, defaultProfile: String, origin: String, configurable: Bool, fixable: Bool) {
         self.id = id
         self.description = description
         self.evidence = evidence
         self.defaultSeverity = defaultSeverity
         self.category = category
+        self.tags = tags
         self.defaultEnabled = defaultEnabled
         self.defaultProfile = defaultProfile
         self.origin = origin
@@ -2474,6 +2476,7 @@ public struct FfiConverterTypeMermanLintRuleCatalogEntry: FfiConverterRustBuffer
                 evidence: FfiConverterSequenceString.read(from: &buf),
                 defaultSeverity: FfiConverterString.read(from: &buf),
                 category: FfiConverterString.read(from: &buf),
+                tags: FfiConverterSequenceString.read(from: &buf),
                 defaultEnabled: FfiConverterBool.read(from: &buf),
                 defaultProfile: FfiConverterString.read(from: &buf),
                 origin: FfiConverterString.read(from: &buf),
@@ -2488,6 +2491,7 @@ public struct FfiConverterTypeMermanLintRuleCatalogEntry: FfiConverterRustBuffer
         FfiConverterSequenceString.write(value.evidence, into: &buf)
         FfiConverterString.write(value.defaultSeverity, into: &buf)
         FfiConverterString.write(value.category, into: &buf)
+        FfiConverterSequenceString.write(value.tags, into: &buf)
         FfiConverterBool.write(value.defaultEnabled, into: &buf)
         FfiConverterString.write(value.defaultProfile, into: &buf)
         FfiConverterString.write(value.origin, into: &buf)

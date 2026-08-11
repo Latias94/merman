@@ -49,9 +49,10 @@ pub use options_json::{
     ResourceOptionsJson, analysis_options_from_json_value, analysis_options_json_from_json_value,
 };
 pub use payload::{
-    ANALYSIS_FACTS_PAYLOAD_VERSION, ANALYSIS_PAYLOAD_VERSION, AnalysisDiagnostic, AnalysisPayload,
-    DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit, DiagnosticRelated, DiagnosticSeverity,
-    DiagnosticSpan, LspRange, SourceDescriptor, SourceKind, SourcePosition, Summary, Utf16Position,
+    ANALYSIS_FACTS_PAYLOAD_VERSION, ANALYSIS_PAYLOAD_VERSION, AnalysisDiagnostic,
+    AnalysisDiagnosticTag, AnalysisPayload, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit,
+    DiagnosticRelated, DiagnosticSeverity, DiagnosticSpan, LspRange, SourceDescriptor, SourceKind,
+    SourcePosition, Summary, Utf16Position,
 };
 pub use result::{
     AnalysisCaptureOutcome, AnalysisDiagramFacts, AnalysisDiagramSyntaxFacts,

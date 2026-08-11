@@ -5,7 +5,6 @@ use super::documents::{
     DocumentDiagnosticState, SemanticTokensState, SnapshotLease, StoredDocument,
 };
 use crate::snapshot::{DocumentSnapshot, SnapshotContext};
-use merman_analysis::AnalysisPayload;
 use std::sync::Arc;
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::Uri;
@@ -134,7 +133,7 @@ impl LanguageSession {
     pub(crate) async fn pull_diagnostics(
         &self,
         uri: &Uri,
-        compute: impl Fn(&StoredDocument, Option<&AnalysisPayload>) -> DocumentDiagnosticState,
+        compute: impl Fn(&StoredDocument, Option<&SnapshotContext>) -> DocumentDiagnosticState,
     ) -> Result<Option<DocumentDiagnosticState>> {
         for _ in 0..MAX_DIAGNOSTIC_RECOMPUTE_ATTEMPTS {
             let (diagnostic_context, cached) = {
@@ -159,12 +158,7 @@ impl LanguageSession {
                 continue;
             }
 
-            let state_value = compute(
-                &diagnostic_context.document,
-                analysis_context
-                    .as_ref()
-                    .map(SnapshotContext::analysis_payload),
-            );
+            let state_value = compute(&diagnostic_context.document, analysis_context.as_ref());
             let mut state = self.inner.state.lock().await;
             let Some(committed) = self.commit_state_if_active(&mut state, |state| {
                 let current = state.diagnostic_contexts_are_current(
@@ -188,7 +182,7 @@ impl LanguageSession {
     pub(crate) async fn query_push_diagnostics<T>(
         &self,
         context: &DiagnosticContext,
-        compute: impl FnOnce(&StoredDocument, Option<&AnalysisPayload>) -> T,
+        compute: impl FnOnce(&StoredDocument, Option<&SnapshotContext>) -> T,
     ) -> Result<Option<T>> {
         let analysis_context = if context.document.is_analysis_unavailable() {
             None
@@ -199,12 +193,7 @@ impl LanguageSession {
         if !context.document.is_analysis_unavailable() && analysis_context.is_none() {
             return Ok(None);
         }
-        let result = compute(
-            &context.document,
-            analysis_context
-                .as_ref()
-                .map(SnapshotContext::analysis_payload),
-        );
+        let result = compute(&context.document, analysis_context.as_ref());
         let state = self.inner.state.lock().await;
         let current = state.diagnostic_contexts_are_current(context, analysis_context.as_ref());
         Ok(current.then_some(result))

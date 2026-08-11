@@ -531,6 +531,7 @@ function fakeMonaco(capture: ProviderCapture) {
         this.endColumn = endColumn;
       }
     },
+    MarkerTag: { Deprecated: 2, Unnecessary: 1 },
     MarkerSeverity: { Error: 8, Hint: 1, Info: 2, Warning: 4 },
     editor: { setModelMarkers() {} },
     languages,

@@ -270,6 +270,7 @@ pub struct MermanLintRuleCatalogEntry {
     pub evidence: Vec<String>,
     pub default_severity: String,
     pub category: String,
+    pub tags: Vec<String>,
     pub default_enabled: bool,
     pub default_profile: String,
     pub origin: String,
@@ -560,6 +561,7 @@ fn uniffi_lint_rule(rule: merman_bindings_core::RuleCatalogEntry) -> MermanLintR
             .collect(),
         default_severity: rule.default_severity.to_string(),
         category: rule.category.to_string(),
+        tags: rule.tags.into_iter().map(str::to_string).collect(),
         default_enabled: rule.default_enabled,
         default_profile: rule.default_profile.to_string(),
         origin: rule.origin.to_string(),
@@ -2757,6 +2759,10 @@ mod tests {
                     && rule
                         .evidence
                         .contains(&"docs/adr/0072-lint-rule-governance.md".to_string())
+            }));
+            assert!(lint_rules.iter().any(|rule| {
+                rule.id == "merman.compatibility.config.deprecated_flowchart_html_labels"
+                    && rule.tags == vec!["deprecated"]
             }));
             assert!(
                 engine

@@ -1,25 +1,23 @@
 use crate::client_profile::{ClientProtocolProfile, MarkupPreference};
 use crate::protocol::{
-    WorkspaceEditEncoding, core_position_from_lsp, document_uri_to_lsp,
-    generated_markdown_to_plain_text, location_to_lsp, range_to_lsp,
+    core_position_from_lsp, generated_markdown_to_plain_text, location_to_lsp, range_to_lsp,
 };
 use crate::snapshot::DocumentSnapshot;
+use crate::workspace_edit::{WorkspaceEditChange, WorkspaceEditEncoding, project_workspace_edit};
 use merman_editor_core::{
     EditorDocumentSymbol, EditorFoldingRange, EditorFoldingRangeKind, EditorHover,
-    EditorPrepareRename, EditorSelectionRange, EditorSemanticKind, EditorWorkspaceEdit,
-    RenameError, document_symbols as core_document_symbols, folding_ranges as core_folding_ranges,
+    EditorPrepareRename, EditorSelectionRange, EditorSemanticKind, RenameError,
+    document_symbols as core_document_symbols, folding_ranges as core_folding_ranges,
     goto_definition as core_goto_definition, hover as core_hover,
     prepare_rename as core_prepare_rename, references as core_references, rename as core_rename,
     selection_ranges as core_selection_ranges,
 };
-use std::collections::HashMap;
 use tower_lsp_server::jsonrpc::{Error, Result};
-use tower_lsp_server::ls_types::{DocumentChanges, OneOf};
 use tower_lsp_server::ls_types::{
     DocumentSymbol, DocumentSymbolResponse, FoldingRange, FoldingRangeKind, GotoDefinitionResponse,
-    Hover, HoverContents, Location, MarkedString, MarkupContent, MarkupKind,
-    OptionalVersionedTextDocumentIdentifier, Position, PrepareRenameResponse, Range, RenameParams,
-    SelectionRange, SymbolInformation, SymbolKind, TextDocumentEdit, TextEdit, Uri, WorkspaceEdit,
+    Hover, HoverContents, Location, MarkedString, MarkupContent, MarkupKind, Position,
+    PrepareRenameResponse, Range, RenameParams, SelectionRange, SymbolInformation, SymbolKind, Uri,
+    WorkspaceEdit,
 };
 
 #[allow(deprecated)]
@@ -139,8 +137,13 @@ pub fn rename_with_workspace_edit_encoding(
     )
     .map(|edit| {
         edit.and_then(|edit| {
-            workspace_edit_to_lsp(
-                edit,
+            let changes = edit.changes.into_iter().flat_map(|(uri, edits)| {
+                edits.into_iter().map(move |edit| {
+                    WorkspaceEditChange::new(uri.clone(), edit.range, edit.new_text)
+                })
+            });
+            project_workspace_edit(
+                changes,
                 snapshot.uri(),
                 snapshot.version(),
                 workspace_edit_encoding,
@@ -256,55 +259,6 @@ fn prepare_to_lsp(rename: EditorPrepareRename) -> PrepareRenameResponse {
     }
 }
 
-fn workspace_edit_to_lsp(
-    edit: EditorWorkspaceEdit,
-    fallback_uri: &Uri,
-    version: i32,
-    workspace_edit_encoding: WorkspaceEditEncoding,
-) -> Option<WorkspaceEdit> {
-    let mut document_edits = Vec::new();
-    let mut plain_changes = HashMap::new();
-    for (uri, edits) in edit.changes {
-        let uri = document_uri_to_lsp(&uri, fallback_uri);
-        let text_edits = edits
-            .into_iter()
-            .map(|edit| TextEdit::new(range_to_lsp(edit.range), edit.new_text))
-            .collect::<Vec<_>>();
-        if text_edits.is_empty() {
-            continue;
-        }
-        match workspace_edit_encoding {
-            WorkspaceEditEncoding::DocumentChanges => {
-                document_edits.push(TextDocumentEdit {
-                    text_document: OptionalVersionedTextDocumentIdentifier {
-                        uri,
-                        version: Some(version),
-                    },
-                    edits: text_edits.into_iter().map(OneOf::Left).collect(),
-                });
-            }
-            WorkspaceEditEncoding::Changes => {
-                plain_changes.insert(uri, text_edits);
-            }
-        }
-    }
-
-    match workspace_edit_encoding {
-        WorkspaceEditEncoding::DocumentChanges if document_edits.is_empty() => None,
-        WorkspaceEditEncoding::DocumentChanges => Some(WorkspaceEdit {
-            changes: None,
-            document_changes: Some(DocumentChanges::Edits(document_edits)),
-            change_annotations: None,
-        }),
-        WorkspaceEditEncoding::Changes if plain_changes.is_empty() => None,
-        WorkspaceEditEncoding::Changes => Some(WorkspaceEdit {
-            changes: Some(plain_changes),
-            document_changes: None,
-            change_annotations: None,
-        }),
-    }
-}
-
 fn rename_error_to_lsp(error: RenameError) -> Error {
     Error::invalid_params(error.to_string())
 }
@@ -332,8 +286,8 @@ mod tests {
         hover, prepare_rename, references, rename, rename_with_workspace_edit_encoding,
         selection_ranges,
     };
-    use crate::protocol::WorkspaceEditEncoding;
     use crate::snapshot::snapshot_for_test;
+    use crate::workspace_edit::WorkspaceEditEncoding;
     use std::str::FromStr;
     use tower_lsp_server::ls_types::{
         DocumentChanges, DocumentSymbolResponse, FoldingRangeKind, GotoDefinitionResponse,

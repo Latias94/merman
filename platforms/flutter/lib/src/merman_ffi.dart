@@ -544,6 +544,7 @@ class MermanLintRuleCatalogEntry {
     required this.evidence,
     required this.defaultSeverity,
     required this.category,
+    required this.tags,
     required this.defaultEnabled,
     required this.defaultProfile,
     required this.origin,
@@ -556,6 +557,7 @@ class MermanLintRuleCatalogEntry {
   final List<String> evidence;
   final String defaultSeverity;
   final String category;
+  final List<String> tags;
   final bool defaultEnabled;
   final String defaultProfile;
   final String origin;
@@ -586,6 +588,15 @@ class MermanLintRuleCatalogEntry {
           json,
           'category',
           'lint rule catalog entry',
+        ),
+        tags: List.unmodifiable(
+          json.containsKey('tags')
+              ? _requiredStringList(
+                  json,
+                  'tags',
+                  'lint rule catalog entry.tags',
+                )
+              : const <String>[],
         ),
         defaultEnabled: _requiredBool(
           json,

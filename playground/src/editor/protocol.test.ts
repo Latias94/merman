@@ -28,6 +28,7 @@ const diagnostic = {
   severity: "warning",
   code: "rule-id",
   source: "merman",
+  tags: ["deprecated"],
   message: "A diagnostic",
   related: [{ message: "Related", range }],
   data: {

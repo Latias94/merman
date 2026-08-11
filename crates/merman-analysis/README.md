@@ -93,7 +93,7 @@ Init-directive migration fixes are advisory and resource-bounded independently f
 
 ## What This Crate Owns
 
-- Stable diagnostic IDs, severities, metadata, fixes, and source ranges.
+- Stable diagnostic IDs, severities, protocol-neutral tags, metadata, fixes, and source ranges.
 - Plain Mermaid, Markdown, and MDX document extraction.
 - UTF-8 byte, line/column, and LSP-compatible source mapping.
 - Parser-backed semantic items, outline items, references, expected syntax, and provenance.
@@ -139,7 +139,7 @@ Direct `serde_json` decoding of `LintOptionsJson`, `LintRuleSeverityOverrideJson
 
 ## Payload Contracts
 
-The diagnostics-only `AnalysisPayload` and richer `AnalysisFactsPayload` are independent, versioned JSON contracts. Their current public versions are diagnostics `1` and facts `2`; consumers must validate the version belonging to the payload they decode. Facts schema `2` contains generic parser/editor facts only; the removed Flowchart-only rich graph is not available through this wire contract.
+The diagnostics-only `AnalysisPayload` and richer `AnalysisFactsPayload` are independent, versioned JSON contracts. Their current public versions are diagnostics `1` and facts `2`; consumers must validate the version belonging to the payload they decode. Diagnostic tags are optional additive schema-1 metadata: missing `tags` means no tags, while rule-backed diagnostics inherit tags from the canonical rule descriptor. Facts schema `2` contains generic parser/editor facts only; the removed Flowchart-only rich graph is not available through this wire contract.
 
 Facts use `fact_source: "unavailable"` when parser-backed body semantics do not exist. They do not invent body symbols, references, or rename targets. Current writers include `rename_policy` on each semantic item; older additive readers that do not see it must treat the item as non-renamable.
 

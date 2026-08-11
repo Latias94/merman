@@ -117,7 +117,7 @@ impl AnalysisCache {
         };
         if existing.incarnation != authority.0
             || context.diagnostic_generation() != target_diagnostic_generation
-            || existing.snapshot().generation_identity() != context.generation_identity()
+            || existing.snapshot().analysis_result_identity() != context.analysis_result_identity()
             || !Arc::ptr_eq(existing.snapshot(), &context.snapshot)
         {
             return AnalysisCachePromotion::Stale;
@@ -337,6 +337,7 @@ mod tests {
             DocumentAnalysisContext::project_cancellable(
                 snapshot,
                 analyzer.options().diagnostic_policy(),
+                DocumentEpoch(1),
                 diagnostic_generation,
                 &AnalysisCancellationToken::new(),
             )
@@ -432,9 +433,9 @@ mod tests {
             DocumentSnapshot::try_from_editor(resident.as_editor().clone())
                 .expect("cloned editor snapshot should preserve its URI"),
         );
-        assert_eq!(
-            resident.generation_identity(),
-            equivalent.generation_identity()
+        assert_ne!(
+            resident.analysis_result_identity(),
+            equivalent.analysis_result_identity()
         );
         assert!(!Arc::ptr_eq(&resident, &equivalent));
         let mut cache = AnalysisCache::new(complete_entry_weight(

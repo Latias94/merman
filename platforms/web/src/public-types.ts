@@ -8,6 +8,7 @@ import type {
   LintRuleCatalogResponse,
   LintRuleCategory,
   LintRuleSeverity,
+  LintRuleTag,
   RuntimeCapabilities,
 } from "./public-catalog.js";
 import type {
@@ -451,6 +452,7 @@ export interface AnalysisDiagnostic {
   id: string;
   severity: LintRuleSeverity;
   category: LintRuleCategory | string;
+  tags?: LintRuleTag[];
   message: string;
   code?: number | null;
   code_name?: string | null;
@@ -712,6 +714,7 @@ export interface EditorDiagnostic {
   severity: EditorDiagnosticSeverity;
   code: number | string;
   source: string;
+  tags?: LintRuleTag[];
   message: string;
   related: EditorDiagnosticRelated[];
   data?: EditorDiagnosticData | null;

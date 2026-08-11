@@ -1,5 +1,4 @@
 use crate::client_profile::ClientProtocolProfile;
-use crate::code_actions::code_actions_for_snapshot_diagnostics_with_profile;
 use crate::completion::{
     completion_for_snapshot_with_profile, resolve_completion_item_with_profile,
 };
@@ -36,7 +35,7 @@ use merman_analysis::{
 #[cfg(test)]
 use merman_analysis::{Analyzer, analyze_document};
 use merman_editor_core::COMPLETION_TRIGGER_CHARACTERS;
-use merman_editor_core::{DocumentKind, TokenPlanError, analysis_payload_to_diagnostics};
+use merman_editor_core::{DocumentKind, TokenPlanError};
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, OnceLock};
 use tower_lsp_server::jsonrpc::Result;
@@ -410,17 +409,16 @@ impl DiagnosticPublisher {
         context: &DiagnosticContext,
     ) -> Result<Option<Vec<tower_lsp_server::ls_types::Diagnostic>>> {
         self.session
-            .query_push_diagnostics(context, |document, payload| {
+            .query_push_diagnostics(context, |document, analysis| {
                 MermanLanguageServer::unavailable_document_diagnostics_with_profile(
                     document,
                     &self.profile,
                 )
                 .unwrap_or_else(|| {
-                    MermanLanguageServer::analysis_payload_diagnostics_with_profile(
-                        document,
-                        payload.expect("available documents require an analysis payload"),
-                        &self.profile,
-                    )
+                    analysis
+                        .expect("available documents require an analysis context")
+                        .diagnostic_round_trip()
+                        .diagnostics_with_profile(&self.profile)
                 })
             })
             .await
@@ -587,18 +585,23 @@ impl LanguageServer for MermanLanguageServer {
         let profile = self.client_profile();
         let state = self
             .session
-            .pull_diagnostics(&uri, |document, payload| {
-                let diagnostics =
+            .pull_diagnostics(&uri, |document, analysis| {
+                let (diagnostics, result_id) = if let Some(diagnostics) =
                     Self::unavailable_document_diagnostics_with_profile(document, profile)
-                        .unwrap_or_else(|| {
-                            Self::analysis_payload_diagnostics_with_profile(
-                                document,
-                                payload.expect("available documents require an analysis payload"),
-                                profile,
-                            )
-                        });
+                {
+                    let result_id = Self::diagnostic_result_id(&diagnostics);
+                    (diagnostics, result_id)
+                } else {
+                    let round_trip = analysis
+                        .expect("available documents require an analysis context")
+                        .diagnostic_round_trip();
+                    (
+                        round_trip.diagnostics_with_profile(profile),
+                        round_trip.result_id(),
+                    )
+                };
                 DocumentDiagnosticState {
-                    result_id: Self::diagnostic_result_id(&diagnostics),
+                    result_id,
                     diagnostics,
                 }
             })
@@ -646,13 +649,9 @@ impl LanguageServer for MermanLanguageServer {
         let uri = params.text_document.uri.clone();
         self.session
             .query_code_actions(&uri, |context| {
-                let diagnostics = analysis_payload_to_diagnostics(context.analysis_payload());
-                Ok(code_actions_for_snapshot_diagnostics_with_profile(
-                    &context.snapshot,
-                    &diagnostics,
-                    &params,
-                    profile,
-                ))
+                Ok(context
+                    .diagnostic_round_trip()
+                    .code_actions_with_profile(&params, profile))
             })
             .await
     }

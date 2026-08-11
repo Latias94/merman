@@ -1,10 +1,12 @@
 use std::str::FromStr;
 
 use crate::client_profile::{ClientProtocolProfile, DiagnosticProtocolProfile};
-use crate::protocol::{DiagnosticIdentityData, range_to_lsp};
+#[cfg(test)]
+use crate::protocol::DiagnosticIdentityData;
+use crate::protocol::{DiagnosticVersionData, range_to_lsp};
 #[cfg(test)]
 use merman_analysis::AnalysisDiagnostic;
-use merman_analysis::{AnalysisPayload, DiagnosticSeverity};
+use merman_analysis::{AnalysisDiagnosticTag, AnalysisPayload, DiagnosticSeverity};
 #[cfg(test)]
 use merman_editor_core::analysis_diagnostic_to_editor;
 use merman_editor_core::{
@@ -42,31 +44,19 @@ pub(crate) fn analysis_payload_to_versioned_diagnostics_with_profile(
     document_version: i32,
     profile: &ClientProtocolProfile,
 ) -> Vec<Diagnostic> {
+    let data = profile
+        .diagnostics
+        .data
+        .then(|| serde_json::to_value(DiagnosticVersionData { document_version }).ok());
     analysis_payload_to_editor_diagnostics(payload)
         .into_iter()
         .map(|diagnostic| {
-            editor_diagnostic_to_versioned_lsp(
-                diagnostic,
+            editor_diagnostic_to_lsp_with_data(
+                &diagnostic,
                 uri,
-                document_version,
+                data.clone().flatten(),
                 profile.diagnostics,
             )
-        })
-        .collect()
-}
-
-#[cfg(test)]
-pub(crate) fn editor_diagnostics_to_versioned_diagnostics(
-    diagnostics: &[EditorDiagnostic],
-    uri: &Uri,
-    document_version: i32,
-) -> Vec<Diagnostic> {
-    let profile = ClientProtocolProfile::permissive().diagnostics;
-    diagnostics
-        .iter()
-        .cloned()
-        .map(|diagnostic| {
-            editor_diagnostic_to_versioned_lsp(diagnostic, uri, document_version, profile)
         })
         .collect()
 }
@@ -101,9 +91,10 @@ fn editor_diagnostic_to_lsp(
     profile: DiagnosticProtocolProfile,
 ) -> Diagnostic {
     let data = diagnostic_identity_data(&diagnostic, None, profile);
-    editor_diagnostic_to_lsp_with_data(diagnostic, uri, data, profile)
+    editor_diagnostic_to_lsp_with_data(&diagnostic, uri, data, profile)
 }
 
+#[cfg(test)]
 fn editor_diagnostic_to_versioned_lsp(
     diagnostic: EditorDiagnostic,
     uri: &Uri,
@@ -111,9 +102,10 @@ fn editor_diagnostic_to_versioned_lsp(
     profile: DiagnosticProtocolProfile,
 ) -> Diagnostic {
     let data = diagnostic_identity_data(&diagnostic, Some(document_version), profile);
-    editor_diagnostic_to_lsp_with_data(diagnostic, uri, data, profile)
+    editor_diagnostic_to_lsp_with_data(&diagnostic, uri, data, profile)
 }
 
+#[cfg(test)]
 fn diagnostic_identity_data(
     diagnostic: &EditorDiagnostic,
     document_version: Option<i32>,
@@ -130,8 +122,8 @@ fn diagnostic_identity_data(
     .ok()
 }
 
-fn editor_diagnostic_to_lsp_with_data(
-    diagnostic: EditorDiagnostic,
+pub(crate) fn editor_diagnostic_to_lsp_with_data(
+    diagnostic: &EditorDiagnostic,
     uri: &Uri,
     data: Option<serde_json::Value>,
     profile: DiagnosticProtocolProfile,
@@ -143,7 +135,7 @@ fn editor_diagnostic_to_lsp_with_data(
         None
     };
     let tags = if profile.deprecated_tag {
-        diagnostic_tags(diagnostic.data.as_ref())
+        diagnostic_tags(&diagnostic.tags)
     } else {
         None
     };
@@ -151,10 +143,10 @@ fn editor_diagnostic_to_lsp_with_data(
         range: range_to_lsp(diagnostic.range),
         severity: Some(severity_to_lsp(diagnostic.severity)),
         code: Some(code),
-        source: Some(diagnostic.source),
-        message: diagnostic.message,
+        source: Some(diagnostic.source.clone()),
+        message: diagnostic.message.clone(),
         related_information: if profile.related_information {
-            related_information(diagnostic.related, uri)
+            related_information(&diagnostic.related, uri)
         } else {
             None
         },
@@ -175,16 +167,14 @@ fn code_description(code: &str) -> Option<CodeDescription> {
     .map(|href| CodeDescription { href })
 }
 
-fn diagnostic_tags(
-    data: Option<&merman_editor_core::DiagnosticCodeActionData>,
-) -> Option<Vec<DiagnosticTag>> {
-    let data = data?;
-    let deprecated = data.id.contains(".deprecated_")
-        || data
-            .help
-            .as_deref()
-            .is_some_and(|help| help.to_ascii_lowercase().contains("deprecated"));
-    deprecated.then(|| vec![DiagnosticTag::DEPRECATED])
+fn diagnostic_tags(tags: &[AnalysisDiagnosticTag]) -> Option<Vec<DiagnosticTag>> {
+    let projected = tags
+        .iter()
+        .map(|tag| match tag {
+            AnalysisDiagnosticTag::Deprecated => DiagnosticTag::DEPRECATED,
+        })
+        .collect::<Vec<_>>();
+    (!projected.is_empty()).then_some(projected)
 }
 
 fn severity_to_lsp(severity: DiagnosticSeverity) -> LspSeverity {
@@ -197,17 +187,17 @@ fn severity_to_lsp(severity: DiagnosticSeverity) -> LspSeverity {
 }
 
 fn related_information(
-    related: Vec<EditorDiagnosticRelated>,
+    related: &[EditorDiagnosticRelated],
     uri: &Uri,
 ) -> Option<Vec<DiagnosticRelatedInformation>> {
     let infos = related
-        .into_iter()
+        .iter()
         .map(|related| DiagnosticRelatedInformation {
             location: Location {
                 uri: uri.clone(),
                 range: range_to_lsp(related.range),
             },
-            message: related.message,
+            message: related.message.clone(),
         })
         .collect::<Vec<_>>();
 

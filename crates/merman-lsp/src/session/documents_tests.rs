@@ -283,10 +283,16 @@ fn project_snapshot_for_test(
     store: &SessionState,
     snapshot: Arc<DocumentSnapshot>,
 ) -> Arc<DocumentAnalysisContext> {
+    let document_epoch = store
+        .documents
+        .get(snapshot.uri())
+        .expect("test snapshot document must remain open")
+        .epoch;
     Arc::new(
         DocumentAnalysisContext::project_cancellable(
             snapshot,
             store.analyzer.options().diagnostic_policy(),
+            document_epoch,
             store.diagnostic_generation,
             &AnalysisCancellationToken::new(),
         )

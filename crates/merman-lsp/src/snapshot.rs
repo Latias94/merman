@@ -1,3 +1,4 @@
+use crate::diagnostic_round_trip::DiagnosticRoundTrip;
 use merman_analysis::{
     AnalysisCancellationToken, AnalysisCancelled, AnalysisDiagnosticPolicy, AnalysisGeneration,
     AnalysisPayload,
@@ -12,14 +13,40 @@ use merman_editor_core::EditorDiagramDetection;
 use std::mem::size_of;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tower_lsp_server::ls_types::Uri;
 
 #[derive(Debug, Clone)]
 pub(crate) struct DocumentSnapshot {
     uri: Uri,
     editor: merman_editor_core::DocumentSnapshot,
+    analysis_result_identity: AnalysisResultIdentity,
     generation_weight: usize,
     snapshot_weight: usize,
+}
+
+static NEXT_ANALYSIS_RESULT_IDENTITY: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub(crate) struct AnalysisResultIdentity(u64);
+
+impl AnalysisResultIdentity {
+    fn issue() -> Self {
+        let identity = NEXT_ANALYSIS_RESULT_IDENTITY
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                current.checked_add(1)
+            })
+            .expect("analysis result identity exhausted");
+        Self(identity)
+    }
+
+    pub(crate) const fn get(self) -> u64 {
+        self.0
+    }
+
+    pub(crate) const fn from_wire_value(value: u64) -> Self {
+        Self(value)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +74,7 @@ impl std::error::Error for InvalidDocumentUri {}
 pub(crate) struct DocumentAnalysisContext {
     pub(crate) snapshot: Arc<DocumentSnapshot>,
     pub(crate) payload: Arc<AnalysisPayload>,
+    round_trip: Arc<DiagnosticRoundTrip>,
     diagnostic_generation: DiagnosticGeneration,
     owned_weight: AnalysisOwnedWeight,
 }
@@ -85,7 +113,9 @@ pub(crate) struct SnapshotContext {
 
 #[derive(Debug, Clone)]
 struct SnapshotAnalysis {
+    #[cfg(test)]
     payload: Arc<AnalysisPayload>,
+    round_trip: Arc<DiagnosticRoundTrip>,
     generation: DiagnosticGeneration,
 }
 
@@ -93,14 +123,19 @@ impl SnapshotContext {
     pub(crate) fn with_analysis(
         snapshot: Arc<DocumentSnapshot>,
         payload: Arc<AnalysisPayload>,
+        round_trip: Arc<DiagnosticRoundTrip>,
         generation: SnapshotGeneration,
         diagnostic_generation: DiagnosticGeneration,
         document_epoch: DocumentEpoch,
     ) -> Self {
+        #[cfg(not(test))]
+        let _ = payload;
         Self {
             snapshot,
             analysis: SnapshotAnalysis {
+                #[cfg(test)]
                 payload,
+                round_trip,
                 generation: diagnostic_generation,
             },
             generation,
@@ -108,12 +143,17 @@ impl SnapshotContext {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn analysis_payload(&self) -> &AnalysisPayload {
         self.analysis.payload.as_ref()
     }
 
     pub(crate) fn diagnostic_generation(&self) -> DiagnosticGeneration {
         self.analysis.generation
+    }
+
+    pub(crate) fn diagnostic_round_trip(&self) -> &DiagnosticRoundTrip {
+        self.analysis.round_trip.as_ref()
     }
 }
 
@@ -140,6 +180,7 @@ impl DocumentSnapshot {
         Ok(Self {
             uri,
             editor,
+            analysis_result_identity: AnalysisResultIdentity::issue(),
             generation_weight,
             snapshot_weight,
         })
@@ -149,8 +190,8 @@ impl DocumentSnapshot {
         self.editor.analysis_generation()
     }
 
-    pub(crate) fn generation_identity(&self) -> usize {
-        self.analysis_generation() as *const AnalysisGeneration as usize
+    pub(crate) fn analysis_result_identity(&self) -> AnalysisResultIdentity {
+        self.analysis_result_identity
     }
 
     pub(crate) fn estimated_owned_weight(&self) -> usize {
@@ -175,13 +216,17 @@ impl DocumentAnalysisContext {
         Ok(Self::from_projected_parts(
             snapshot,
             payload,
+            DocumentEpoch::default(),
             diagnostic_generation,
-        ))
+            &AnalysisCancellationToken::new(),
+        )
+        .expect("a private analysis cancellation token cannot be cancelled"))
     }
 
     pub(crate) fn project_cancellable(
         snapshot: Arc<DocumentSnapshot>,
         policy: &AnalysisDiagnosticPolicy,
+        document_epoch: DocumentEpoch,
         diagnostic_generation: DiagnosticGeneration,
         cancellation: &AnalysisCancellationToken,
     ) -> Result<Self, AnalysisCancelled> {
@@ -191,42 +236,61 @@ impl DocumentAnalysisContext {
                 .project_cancellable(policy, cancellation)?,
         );
         cancellation.checkpoint()?;
-        Ok(Self::from_projected_parts(
+        Self::from_projected_parts(
             snapshot,
             payload,
+            document_epoch,
             diagnostic_generation,
-        ))
+            cancellation,
+        )
     }
 
     fn from_projected_parts(
         snapshot: Arc<DocumentSnapshot>,
         payload: Arc<AnalysisPayload>,
+        document_epoch: DocumentEpoch,
         diagnostic_generation: DiagnosticGeneration,
-    ) -> Self {
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
+        let round_trip = Arc::new(DiagnosticRoundTrip::build(
+            &snapshot,
+            document_epoch,
+            diagnostic_generation,
+            payload.as_ref(),
+            cancellation,
+        )?);
+        cancellation.checkpoint()?;
         let arc_overhead = 2usize.saturating_mul(size_of::<usize>());
         let owned_weight = AnalysisOwnedWeight {
             generation: snapshot.generation_weight,
             payload: arc_overhead
+                .saturating_mul(2)
                 .saturating_add(size_of::<AnalysisPayload>())
-                .saturating_add(payload.estimated_owned_heap_bytes()),
+                .saturating_add(payload.estimated_owned_heap_bytes())
+                .saturating_add(round_trip.estimated_owned_heap_bytes()),
             snapshots: arc_overhead
                 .saturating_add(size_of::<DocumentAnalysisContext>())
                 .saturating_add(snapshot.snapshot_weight),
         };
-        Self {
+        Ok(Self {
             snapshot,
             payload,
+            round_trip,
             diagnostic_generation,
             owned_weight,
-        }
+        })
     }
 
     pub(crate) fn diagnostic_generation(&self) -> DiagnosticGeneration {
         self.diagnostic_generation
     }
 
-    pub(crate) fn generation_identity(&self) -> usize {
-        self.snapshot.generation_identity()
+    pub(crate) fn analysis_result_identity(&self) -> AnalysisResultIdentity {
+        self.snapshot.analysis_result_identity()
+    }
+
+    pub(crate) fn diagnostic_round_trip(&self) -> &Arc<DiagnosticRoundTrip> {
+        &self.round_trip
     }
 
     pub(crate) fn estimated_owned_weight(&self) -> AnalysisOwnedWeight {
@@ -454,6 +518,7 @@ mod tests {
         let projected = super::DocumentAnalysisContext::project_cancellable(
             Arc::clone(&lsp.snapshot),
             analyzer.options().diagnostic_policy(),
+            super::DocumentEpoch::default(),
             super::DiagnosticGeneration(2),
             &AnalysisCancellationToken::new(),
         )

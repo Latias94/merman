@@ -504,6 +504,35 @@ if (hasCapability("analysis")) {
     ),
     true
   );
+  const deprecatedRule = lintRules.find(
+    (rule) =>
+      rule.id === "merman.compatibility.config.deprecated_flowchart_html_labels"
+  );
+  assert.ok(deprecatedRule);
+  assert.deepEqual(deprecatedRule.tags, ["deprecated"]);
+  assert.deepEqual(
+    rawLintRuleCatalog.rules.find(
+      (rule) =>
+        rule.id === "merman.compatibility.config.deprecated_flowchart_html_labels"
+    )?.tags,
+    ["deprecated"]
+  );
+  deprecatedRule.tags.push("mutated-copy");
+  assert.deepEqual(
+    api
+      .lintRuleCatalog()
+      .find(
+        (rule) =>
+          rule.id === "merman.compatibility.config.deprecated_flowchart_html_labels"
+      )?.tags,
+    ["deprecated"]
+  );
+
+  const deprecatedAnalysis = api.analyze(
+    '%%{init: { "flowchart": { "htmlLabels": false } }}%%\nflowchart TD\nA-->B\n',
+    deterministicTime
+  );
+  assert.deepEqual(deprecatedAnalysis.diagnostics[0].tags, ["deprecated"]);
 
   const markdownAnalysis = api.analyzeDocument(
     "before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",

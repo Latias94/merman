@@ -83,7 +83,7 @@ impl SessionState {
         {
             return None;
         }
-        if projected.generation_identity() != key.generation_identity() {
+        if projected.analysis_result_identity() != key.analysis_result_identity() {
             return None;
         }
         if projected.diagnostic_generation() != key.target_diagnostic_generation() {
@@ -93,6 +93,7 @@ impl SessionState {
         let context = SnapshotContext::with_analysis(
             Arc::clone(&projected.snapshot),
             Arc::clone(&projected.payload),
+            Arc::clone(projected.diagnostic_round_trip()),
             key.snapshot_generation(),
             key.target_diagnostic_generation(),
             key.document_epoch(),
@@ -542,6 +543,7 @@ impl SessionState {
         SnapshotContext::with_analysis(
             Arc::clone(&context.snapshot),
             Arc::clone(&context.payload),
+            Arc::clone(context.diagnostic_round_trip()),
             stamp.snapshot_generation,
             context.diagnostic_generation(),
             stamp.document_epoch,

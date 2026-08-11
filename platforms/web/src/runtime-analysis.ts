@@ -164,6 +164,7 @@ export function lintRuleCatalog(): LintRuleCatalogEntry[] {
   return cache.lintRuleCatalog.map((rule) => ({
     ...rule,
     evidence: [...rule.evidence],
+    tags: [...(rule.tags ?? [])],
   }));
 }
 
@@ -242,6 +243,7 @@ function normalizeLintRuleCatalogEntry(
       "render",
       "internal",
     ]),
+    tags: normalizeLintRuleTags(rule.tags),
     default_enabled: Boolean(rule.default_enabled),
     default_profile: assertCatalogValue(rule.default_profile, [
       "core",
@@ -258,6 +260,18 @@ function normalizeLintRuleCatalogEntry(
     configurable: Boolean(rule.configurable),
     fixable: Boolean(rule.fixable),
   };
+}
+
+function normalizeLintRuleTags(
+  tags: LintRuleCatalogEntry["tags"]
+): NonNullable<LintRuleCatalogEntry["tags"]> {
+  if (tags === undefined) {
+    return [];
+  }
+  if (!Array.isArray(tags)) {
+    throw new Error("Merman WASM returned invalid lint rule tags.");
+  }
+  return tags.map((tag) => assertCatalogValue(tag, ["deprecated"]));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

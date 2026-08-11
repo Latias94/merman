@@ -18,12 +18,6 @@ pub const CONFIG_SCHEMA_RESPONSE_VERSION: u32 = 1;
 pub const RULE_CATALOG_METHOD: &str = "merman/ruleCatalog";
 pub const CONFIG_SCHEMA_METHOD: &str = "merman/configSchema";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WorkspaceEditEncoding {
-    DocumentChanges,
-    Changes,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DiagnosticIdentityData {
@@ -36,16 +30,6 @@ pub(crate) struct DiagnosticIdentityData {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DiagnosticVersionData {
     pub(crate) document_version: i32,
-}
-
-impl WorkspaceEditEncoding {
-    pub const fn from_document_changes_support(supported: bool) -> Self {
-        if supported {
-            Self::DocumentChanges
-        } else {
-            Self::Changes
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -1485,6 +1485,7 @@ mod tests {
             severity: merman_analysis::DiagnosticSeverity::Warning,
             code: "merman.test".to_string(),
             source: "merman".to_string(),
+            tags: Vec::new(),
             message: "test".to_string(),
             related: Vec::new(),
             data: Some(merman_editor_core::DiagnosticCodeActionData {

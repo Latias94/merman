@@ -1,4 +1,4 @@
-use crate::protocol::WorkspaceEditEncoding;
+use crate::workspace_edit::WorkspaceEditEncoding;
 use merman_editor_core::SemanticTokenSupport;
 use std::sync::OnceLock;
 use tower_lsp_server::ls_types::{

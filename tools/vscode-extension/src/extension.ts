@@ -383,6 +383,7 @@ function renderRuleMarkdown(rule: LspRuleCatalogEntry): string {
     `- Default profile: ${rule.default_profile}`,
     `- Category: ${rule.category}`,
     `- Origin: ${rule.origin}`,
+    `- Tags: ${rule.tags?.join(", ") || "none"}`,
     `- Enabled by default: ${rule.default_enabled ? "yes" : "no"}`,
     `- Configurable: ${rule.configurable ? "yes" : "no"}`,
     `- Quickfix available: ${rule.fixable ? "yes" : "no"}`,

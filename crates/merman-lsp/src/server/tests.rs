@@ -2187,6 +2187,118 @@ async fn code_action_rejects_stale_diagnostic_edits_after_document_change() {
     assert!(actions.is_none());
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn code_action_rejects_close_reopen_aba_with_reused_uri_and_version() {
+    let (_service, _socket, server) = test_service();
+    let server = &server;
+    server
+        .client_profile
+        .set(crate::client_profile::ClientProtocolProfile::permissive())
+        .expect("test profile should initialize once");
+    let uri = Uri::from_str("file:///tmp/code-action-aba.mmd").unwrap();
+    let source = "flowchart\nA-->B\n";
+
+    server
+        .session
+        .update_configuration(
+            default_lsp_analysis_options().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_rule_enabled("merman.authoring.flowchart.explicit_direction")
+                    .unwrap(),
+            ),
+        )
+        .await;
+
+    assert!(
+        server
+            .session
+            .open_document(uri.clone(), 1, source.to_string(), DocumentKind::Diagram,)
+            .await
+    );
+    let old_context = server
+        .session
+        .diagnostic_context(&uri)
+        .await
+        .expect("first document incarnation");
+    let old_diagnostic = server
+        .diagnostic_publisher()
+        .expect("permissive profile uses push diagnostics")
+        .diagnostics_for_current_context(&old_context)
+        .await
+        .expect("first diagnostic projection")
+        .expect("first diagnostics")
+        .into_iter()
+        .find(|diagnostic| {
+            diagnostic.code
+                == Some(NumberOrString::String(
+                    "merman.authoring.flowchart.explicit_direction".to_string(),
+                ))
+        })
+        .expect("first direction diagnostic");
+
+    server.session.close_document(&uri).await;
+    assert!(
+        server
+            .session
+            .open_document(uri.clone(), 1, source.to_string(), DocumentKind::Diagram,)
+            .await
+    );
+    let new_context = server
+        .session
+        .diagnostic_context(&uri)
+        .await
+        .expect("second document incarnation");
+    let new_diagnostic = server
+        .diagnostic_publisher()
+        .expect("permissive profile uses push diagnostics")
+        .diagnostics_for_current_context(&new_context)
+        .await
+        .expect("second diagnostic projection")
+        .expect("second diagnostics")
+        .into_iter()
+        .find(|diagnostic| {
+            diagnostic.code
+                == Some(NumberOrString::String(
+                    "merman.authoring.flowchart.explicit_direction".to_string(),
+                ))
+        })
+        .expect("second direction diagnostic");
+    assert_ne!(old_diagnostic.data, new_diagnostic.data);
+
+    let old_actions = server
+        .code_action(CodeActionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            range: old_diagnostic.range,
+            context: CodeActionContext {
+                diagnostics: vec![old_diagnostic],
+                only: Some(vec![CodeActionKind::QUICKFIX]),
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        })
+        .await
+        .expect("stale code-action request");
+    assert!(old_actions.is_none());
+
+    let new_actions = server
+        .code_action(CodeActionParams {
+            text_document: TextDocumentIdentifier { uri },
+            range: new_diagnostic.range,
+            context: CodeActionContext {
+                diagnostics: vec![new_diagnostic],
+                only: Some(vec![CodeActionKind::QUICKFIX]),
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        })
+        .await
+        .expect("current code-action request")
+        .expect("current diagnostic must retain its fix");
+    assert_eq!(new_actions.len(), 1);
+}
+
 #[test]
 fn structure_helpers_produce_hover_and_nested_symbols() {
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();

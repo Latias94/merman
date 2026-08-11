@@ -1,6 +1,6 @@
 use merman_analysis::{
-    AnalysisDiagnostic, AnalysisFactsPayload, AnalysisPayload, Analyzer, DiagnosticCategory,
-    SourceDescriptor, SourceMap,
+    AnalysisDiagnostic, AnalysisDiagnosticTag, AnalysisFactsPayload, AnalysisPayload, Analyzer,
+    DiagnosticCategory, SourceDescriptor, SourceMap,
 };
 use merman_core::EditorRenamePolicy;
 use serde_json::{Value, json};
@@ -64,6 +64,34 @@ fn analysis_payload_matches_adr_0070_schema_shape() {
             ]
         })
     );
+}
+
+#[test]
+fn analysis_payload_v1_carries_optional_typed_diagnostic_tags() {
+    let payload = AnalysisPayload::new(
+        SourceDescriptor::diagram(),
+        vec![
+            AnalysisDiagnostic::error(
+                "merman.compatibility.config.explicit_tag",
+                DiagnosticCategory::Config,
+                "legacy option",
+            )
+            .with_tag(AnalysisDiagnosticTag::Deprecated)
+            .with_tag(AnalysisDiagnosticTag::Deprecated),
+        ],
+    );
+    let mut value = serde_json::to_value(&payload).expect("serialize tagged payload");
+
+    assert_eq!(value["version"], json!(1));
+    assert_eq!(value["diagnostics"][0]["tags"], json!(["deprecated"]));
+
+    value["diagnostics"][0]
+        .as_object_mut()
+        .expect("diagnostic object")
+        .remove("tags");
+    let decoded: AnalysisPayload =
+        serde_json::from_value(value).expect("schema-1 payload without tags remains accepted");
+    assert!(decoded.diagnostics[0].tags.is_empty());
 }
 
 #[test]

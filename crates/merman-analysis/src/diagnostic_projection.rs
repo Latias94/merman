@@ -127,6 +127,7 @@ impl DiagnosticCandidate {
         weight: &mut crate::payload::DiagnosticRetainedWeight,
     ) {
         weight.add_candidate(crate::payload::DiagnosticDynamicWeight {
+            tags_capacity: 0,
             message_capacity: self.message.capacity(),
             diagram_type_capacity: self.diagram_type.as_ref().map(String::capacity),
             help_capacity: self.help.as_ref().map(String::capacity),
@@ -142,6 +143,7 @@ impl DiagnosticCandidate {
             id: self.descriptor.id.to_string(),
             severity,
             category: self.descriptor.category,
+            tags: self.descriptor.tags.to_vec(),
             message: self.message.clone(),
             code: self.status.map(AnalysisStatus::code),
             code_name: self.status.map(|status| status.code_name().to_string()),

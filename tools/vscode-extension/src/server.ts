@@ -29,12 +29,15 @@ import { workspaceRoots } from "./workspace.js";
 export const RULE_CATALOG_METHOD = "merman/ruleCatalog";
 export const CONFIG_SCHEMA_METHOD = "merman/configSchema";
 
+export type LspRuleTag = "deprecated";
+
 export interface LspRuleCatalogEntry {
   id: string;
   description: string;
   evidence: string[];
   default_severity: string;
   category: string;
+  tags?: LspRuleTag[];
   default_enabled: boolean;
   default_profile: string;
   origin: string;

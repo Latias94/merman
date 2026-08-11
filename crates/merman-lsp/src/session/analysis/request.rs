@@ -1,7 +1,7 @@
 use super::AnalysisJobGeneration;
 use crate::snapshot::{
-    DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch, DocumentSnapshot,
-    SnapshotGeneration,
+    AnalysisResultIdentity, DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch,
+    DocumentSnapshot, SnapshotGeneration,
 };
 #[cfg(test)]
 use crate::sync::{lock_recovering_poison, recover_poison};
@@ -46,7 +46,7 @@ pub(in crate::session) struct DiagnosticReprojectionKey {
     document_epoch: DocumentEpoch,
     snapshot_generation: SnapshotGeneration,
     target_diagnostic_generation: DiagnosticGeneration,
-    generation_identity: usize,
+    analysis_result_identity: AnalysisResultIdentity,
 }
 
 #[derive(Debug, Clone)]
@@ -191,7 +191,7 @@ impl DiagnosticReprojectionKey {
             document_epoch,
             snapshot_generation,
             target_diagnostic_generation,
-            generation_identity: snapshot.generation_identity(),
+            analysis_result_identity: snapshot.analysis_result_identity(),
         }
     }
 
@@ -215,8 +215,8 @@ impl DiagnosticReprojectionKey {
         self.target_diagnostic_generation
     }
 
-    pub(in crate::session) fn generation_identity(&self) -> usize {
-        self.generation_identity
+    pub(in crate::session) fn analysis_result_identity(&self) -> AnalysisResultIdentity {
+        self.analysis_result_identity
     }
 }
 
@@ -287,6 +287,7 @@ impl DiagnosticReprojectionRequest {
         let projected = Arc::new(DocumentAnalysisContext::project_cancellable(
             Arc::clone(&self.snapshot),
             &self.policy,
+            self.key.document_epoch(),
             self.key.target_diagnostic_generation(),
             cancellation,
         )?);

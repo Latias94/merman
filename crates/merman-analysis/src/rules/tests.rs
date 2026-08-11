@@ -394,6 +394,7 @@ fn source_lint_reports_deprecated_flowchart_html_labels_directive() {
     assert_eq!(diagnostic.id, DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID);
     assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
     assert_eq!(diagnostic.category, DiagnosticCategory::Config);
+    assert_eq!(diagnostic.tags, vec![AnalysisDiagnosticTag::Deprecated]);
     assert!(diagnostic.fixes.is_empty());
     let span = diagnostic.span.as_ref().expect("htmlLabels span");
     assert_eq!(&source[span.byte_start..span.byte_end], "htmlLabels");
@@ -685,6 +686,7 @@ fn source_lint_reports_deprecated_external_diagram_loading_directive_config() {
         diagnostic.id == DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE_ID
             && diagnostic.severity == DiagnosticSeverity::Warning
             && diagnostic.category == DiagnosticCategory::Config
+            && diagnostic.tags == vec![AnalysisDiagnosticTag::Deprecated]
             && diagnostic.fixes.is_empty()
     }));
     let spans: Vec<_> = diagnostics
@@ -1222,6 +1224,23 @@ fn rule_descriptors_enforce_governance_boundaries() {
             "{} must publish evidence",
             descriptor.id
         );
+        let mut tags = std::collections::BTreeSet::new();
+        assert!(
+            descriptor.tags.iter().copied().all(|tag| tags.insert(tag)),
+            "{} must not publish duplicate diagnostic tags",
+            descriptor.id
+        );
+        if descriptor.tags.contains(&AnalysisDiagnosticTag::Deprecated) {
+            assert!(
+                matches!(
+                    descriptor.id,
+                    DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID
+                        | DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE_ID
+                ),
+                "{} must declare deprecation explicitly rather than inherit it from origin or wording",
+                descriptor.id
+            );
+        }
 
         match descriptor.origin {
             RuleOrigin::MermaidSyntax | RuleOrigin::MermaidCompatibility => {
@@ -1465,6 +1484,10 @@ fn rule_catalog_serializes_public_rule_metadata() {
     );
     assert!(deprecated_html_labels.default_enabled);
     assert!(!deprecated_html_labels.fixable);
+    assert_eq!(
+        deprecated_html_labels.tags,
+        &[AnalysisDiagnosticTag::Deprecated]
+    );
     for rule_id in [RESOURCE_LIMIT_RULE_ID, DOCUMENT_DIAGRAM_LIMIT_RULE_ID] {
         let resource_limit = catalog
             .iter()
@@ -1491,6 +1514,7 @@ fn rule_catalog_serializes_public_rule_metadata() {
     assert_eq!(first["default_profile"], "recommended");
     assert_eq!(first["default_severity"], "hint");
     assert_eq!(first["category"], "config");
+    assert_eq!(first["tags"], json!([]));
     assert_eq!(first["configurable"], true);
     assert_eq!(first["fixable"], true);
     assert!(
@@ -1500,6 +1524,11 @@ fn rule_catalog_serializes_public_rule_metadata() {
             .iter()
             .any(|value| value == "docs/adr/0072-lint-rule-governance.md")
     );
+    let deprecated = response_rules
+        .iter()
+        .find(|rule| rule["id"] == DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID)
+        .expect("deprecated rule catalog entry");
+    assert_eq!(deprecated["tags"], json!(["deprecated"]));
 }
 
 #[test]
