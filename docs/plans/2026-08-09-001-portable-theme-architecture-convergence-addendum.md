@@ -113,7 +113,7 @@ without penalizing the unchanged default path.
   invalidation, and missing glyph may advance to the next allowed candidate. A custom catalog can
   never fall back to vendored default metrics. Do not expose a general multi-backend graph until a
   second non-native production adapter exists.
-- The C4a external seam includes the safety needed by any renderable host result: a Merman-issued
+- The C4b external seam includes the safety needed by any renderable host result: a Merman-issued
   per-session generation binding, request/effective-policy binding, operation-level call/work and
   retained-response budgets, bounded candidate attempts, and session-local invalidation after
   protocol or budget violations. A same-process Rust callback remains trusted blocking host code;
@@ -163,8 +163,9 @@ The freeze is stage-specific rather than one condition that expires too early:
 - **After C4a closure:** do not expand the prepared-text DTO, backend graph, or assurance vocabulary
   before C5/C6 produce another real consumer. C4a closure permits crate-private Sequence work; it
   does not permit presets, public `Resolved*` evaluator APIs, stable binding schema fields, CLI theme
-  flags, or public family adapters to freeze early. The external seam retains its bounded replay,
-  budget, invalidation, and circuit-breaker safety; stronger trust/promotion remains deferred.
+  flags, or public family adapters to freeze early. External backend injection remains crate-private
+  and must not become a stable product path until C4b closes its replay, budget, invalidation, and
+  circuit-breaker safety.
 - **Before C5/C6 close:** State, `{Flowchart, Swimlane}`, and Sequence cutover work remains
   crate-private. C5 may prepare and internally cut over Sequence; only C6 may claim positive
   Sequence output evidence or a settled shared family interface.
@@ -190,7 +191,7 @@ The freeze is stage-specific rather than one condition that expires too early:
 | C2 | In progress | Root/family reports, trusted-lane residuals, sealed document reports, consuming SVG admission, and target-specific prepared PNG/JPEG/PDF exports exist. State cascade evidence now attributes only final property winners. The terminal SVG consumer proves solid root base/layers (including explicit transparent base, opacity, placement, and blend declarations); native PNG/JPEG/PDF admission uses an explicit root-capability whitelist rather than assuming exporter support. Gradients, patterns, bleed/viewport expansion, effects, and complete emission-owned family evidence remain residual. Any untrusted postprocessor or raw theme CSS invalidates positive root evidence before document/target admission. |
 | C3 | Complete for the current render session | `RenderEnvironment` owns runtime ceilings, sessions freeze the effective intersection, and themes cannot widen host policy. |
 | C4a | Complete for the deterministic native boundary | Native rustybuzz shaping rejects `.notdef`, cluster fallback is used consistently by legacy and structured paths, and wrapping plus final metrics use separate monotonic span cursors with linear-visit regression coverage. Flowchart/State sidecars freeze only labels consumed by real SVG emission. Public SVG remains token-free while the sealed private SVG carries exact base-or-contiguous-line label tokens. PNG/JPEG/PDF verify the final token-associated face/source set against the retained per-label ledger and can produce `Portable` only from the owned catalog path. Exact final fallback byte ranges remain an explicit `usvg` integration hook, not inferred evidence. |
-| C4b | Partial infrastructure retained; optional assurance deferred | Session-private fallback candidates, basic response admission, and usage reporting may remain, but no further general host-protocol expansion should precede C5/C6 proof. External backend output remains `HostDependent` unless an explicit independent host trust authority is later designed and admitted. |
+| C4b | Partial infrastructure retained; safety and optional assurance deferred | Session-private fallback candidates, basic response admission, and usage reporting may remain, but generation/policy replay binding, operation-level budgets, and candidate circuit breaking are not closed. External injection stays crate-private and must not become a stable product path before those safety gates. External output remains `HostDependent` unless an explicit independent host trust authority is later designed and admitted. |
 | C5 | In progress; stages 1-2 converged, stage 3 partial | Explicit Mermaid compatibility now comes only from `spec.mermaid()`. The transitional bridge is family-local, runs after detection, preserves explicit site/source/detector ownership, and records compatibility residuals that strict portability rejects. `FamilyThemeProgram` owns the recipe, premerges static rules, retains source-order winners, meters only ordinal candidates, and now carries a private facet-level `TypedAdapter` / `LegacyCompatibility` / `Unsupported` route matrix. The bridge can read only route-approved legacy winners and never turns the matrix into positive evidence. State consumes the metered program directly; `{Flowchart, Swimlane}` and Sequence still use the bridge and remain the next cutovers. Final surviving compatibility provenance and parse/session theme binding remain convergence gates. |
 | C6 | Not yet proven | The representative themes do not yet have a Flowchart/State/Sequence by SVG/PNG/PDF positive-output matrix. |
 | C7a | Not eligible; intentionally blocked | Do not freeze the native theme recipe/token Rust, Options, binding, CLI, or preset surface before C1-C3, C4a, C5, and C6 close. Existing preset/CLI/binding selectors remain alpha inputs, not a completed compatibility promise. |
@@ -275,21 +276,15 @@ The freeze is stage-specific rather than one condition that expires too early:
 - **Done when:** Session creation is the only place that produces effective runtime admission and
   every downstream consumer reads the same frozen result.
 
-### C4a. Finish The Deterministic Prepared Text Core
+### C4a. Finish The Deterministic Native Prepared Text Core
 
-- **Covers:** R12-R16a, R19-R19a, R43, R45, R49. R13 is satisfied by a prepared handshake plus a
-  bounded `HostDependent` fallback path; it does not require an external backend to become
-  `Portable`.
-- **Approach:** Keep the public response DTO narrow and bounded, but make the native catalog path
-  the first-class deterministic producer. Add request-derived aggregate response budgets, source/
-  visible cluster ranges, native cluster-level fallback, actual face/source usage, and one-pass
-  shaping with retained advances. Route layout, SVG, PNG, and PDF through the same native prepared
-  result. Keep the configured host adapter behind a basic binding/range/geometry admission seam and
-  report its accepted output as `HostDependent`. Bind every external call to a Merman-issued session
-  generation and effective policy, charge aggregate backend work/response retention to the render
-  operation, bound candidate attempts, and disable a candidate for the session after protocol or
-  budget violations. Keep the provisional trait/DTO out of stable binding schemas. Treat the
-  session-level prepared-layout report as candidate/backend summary only: family sidecars allocate
+- **Covers:** R12-R16a, R19-R19a, R43, R45, R49 for the Merman-owned native catalog path.
+- **Approach:** Make the native catalog path the first-class deterministic producer. Add
+  request-derived native limits, source/visible cluster ranges, native cluster-level fallback,
+  actual face/source usage, and retained-advance wrapping followed by a bounded final-line reshape
+  where line context can change shaping. Route layout, SVG, PNG, and PDF through the same native
+  prepared result. Keep every external trait/DTO and backend injection point crate-private until
+  C4b. Treat the session-level prepared-layout report as backend summary only: family sidecars allocate
   operation-local deterministic label keys, mark evidence consumed only from real SVG emission, and
   freeze the consumed ledger after successful family rendering. Carry that read-only ledger on the
   sealed `ResvgCompatibleSvg` so the native exporter verifies the same artifact it parses instead of
@@ -303,30 +298,28 @@ The freeze is stage-specific rather than one condition that expires too early:
   native missing-glyph fallback; cmap-positive but shaped-`.notdef` rejection; variation selector,
   ZWJ, and complex-script positive/negative coverage; linear-work wrapping; the same per-label
   run/face/source ledger (including source/visible ranges) retained by layout and SVG, with the
-  native exporter validating the token-associated final face/source set; an external response with
-  basic valid evidence renders but remains `HostDependent`; replayed generation,
-  operation-budget exhaustion, repeated protocol violation, and candidate circuit-breaker cases.
+  native exporter validating the token-associated final face/source set.
 - **Done when:** No geometry reaches layout without basic request admission, the native path can
   produce `Portable` evidence from one retained catalog only after final shaping has rejected every
   `.notdef` cluster/run, native target admission verifies the actual token-associated final
-  face/source set against the prepared per-label ledger, every renderable external result passes
-  the C4a safety boundary, and at least a second crate-private family consumer can use the
-  prepared result without widening its interface. Exact fallback byte-range evidence in the
-  exporter remains an explicit follow-up requiring a maintained `usvg` hook; it is not inferred
-  from resolver callback order or glyph text search. The interface remains reopenable until the
-  Sequence witness in C6.
+  face/source set against the prepared per-label ledger, and at least a second crate-private family
+  consumer can use the prepared result without widening its interface. Exact fallback byte-range
+  evidence in the exporter remains an explicit follow-up requiring a maintained `usvg` hook; it is
+  not inferred from resolver callback order or glyph text search. The interface remains reopenable
+  until the Sequence witness in C6.
 
-### C4b. Stabilize Optional External Host Assurance
+### C4b. Close External Host Safety And Optional Assurance
 
-- **Covers:** optional stronger host assurance, stable browser/FFI projection, and host-specific parts
-  of R43/R45 beyond the required R13 `HostDependent` path. Family typography and long-label
-  semantics remain owned by C5/C6.
-- **Approach:** Preserve the bounded C4a raw DTO seam and any already-working session-private
-  fallback/admission infrastructure, but defer further protocol breadth until the C5/C6 vertical
-  slices expose real requirements. The public raw response DTO, request/session binding,
-  capability/face/run evidence, invalidation, bounded diagnostics, and two-candidate fallback are
-  provisional infrastructure to retain, not fields to redesign by default. Finish only the
-  bounded fallback evidence and stabilize the corresponding FFI/binding projection. If a real
+- **Covers:** R13's renderable external `HostDependent` path, optional stronger host assurance,
+  stable browser/FFI projection, and host-specific parts of R43/R45. Family typography and
+  long-label semantics remain owned by C5/C6.
+- **Approach:** Preserve only already-working session-private fallback/admission infrastructure and
+  defer protocol breadth until the C5/C6 vertical slices expose real requirements. Before enabling
+  any external backend as a product path, add a Merman-issued generation and effective-policy
+  binding, operation-level call/work/retained-response budgets, bounded candidate attempts, and
+  session-local invalidation after protocol or budget violations. The raw response DTO,
+  capability/face/run evidence, bounded diagnostics, and two-candidate fallback remain provisional,
+  not fields to redesign or publish by default. If a real
   product requires promotion beyond `HostDependent`, introduce a private unforgeable provenance
   state such as `NativeOwned`, `ExternalUnassured`, and `ExternalAssured`; `ExternalAssured` requires
   a configured independent host trust authority and never follows from the backend's own DTO alone.
@@ -335,14 +328,17 @@ The freeze is stage-specific rather than one condition that expires too early:
 - **Files:** `crates/merman-render/src/text/prepared.rs`,
   `crates/merman-render/src/environment.rs`, binding/FFI adapters, exporter reports, and fuzz
   targets.
-- **Test scenarios:** capability and face-evidence mismatch; stale session/request binding;
-  invalidation; host rejection/timeout/missing glyph; policy ordering between native and accepted
-  host-dependent results; strict portability rejection; actual per-label fallback usage; bounded
-  diagnostics and fuzz smoke.
+- **Test scenarios:** replayed generation; operation-budget exhaustion; repeated protocol or budget
+  violations and candidate circuit breaking; capability and face-evidence mismatch; stale
+  session/request binding; host rejection/timeout/missing glyph; policy ordering between native and
+  accepted host-dependent results; strict portability rejection; actual per-label fallback usage;
+  bounded diagnostics and fuzz smoke.
 - **Done when:** The stable binding contract cannot confuse backend self-assertion with a trust root,
-  every fallback outcome is represented by a bounded `(from, to, reason)` histogram plus candidate
-  invalidation generation, and no public evaluator surface depends on provisional assurance fields.
-  It is valid to close C4b with all external results permanently `HostDependent`.
+  every enabled external call is operation-bounded and generation-bound, every fallback outcome is
+  represented by a bounded `(from, to, reason)` histogram plus candidate invalidation generation,
+  and no public evaluator surface depends on provisional assurance fields. It is valid to close
+  C4b with all external results permanently `HostDependent`, or by keeping external injection
+  unavailable in stable product surfaces.
 
 ### C5. Compile Family-Scoped Theme Programs
 
