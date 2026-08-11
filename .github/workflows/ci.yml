@@ -453,6 +453,7 @@ jobs:
 
       - name: Test host-sensitive contracts on pull requests
         if: runner.os != 'Linux' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
+        shell: bash
         run: |
           cargo nextest run --locked -p merman-layout-elk --lib --cargo-quiet \
             -E 'test(separate_children_layout_is_small_stack_safe_and_deterministic) | test(source_graph_dump_is_small_stack_safe_for_deep_hierarchy)'
@@ -1075,7 +1076,7 @@ jobs:
           python3 tools/bench/test_perf_contracts.py
 
   pr-gate:
-    name: pr-gate
+    name: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'pr-gate' || format('{0}-gate', github.event_name) }}
     if: ${{ always() }}
     needs:
       - ci-plan

@@ -42,7 +42,9 @@ them after classification, so one owner executes once and its result is availabl
 `pr-gate`. Main pushes still select every owner. A weekly and manually dispatchable core safety-net
 run executes the full workspace on Linux, macOS, and Windows; routine pull requests keep the full
 Linux suite while host runners compile the workspace and run focused filesystem, process, FFI, and
-ELK stack-safety contracts.
+ELK stack-safety contracts. Only pull-request and merge-queue runs emit the required `pr-gate`
+status name; push, schedule, and manual lifecycles use event-specific gate names so their results
+cannot satisfy the pull-request check by identity collision.
 
 Editor-language descriptors are shared inputs to the browser editor and VS Code extension. Changes
 under `contracts/editor-language/` therefore select both owners. Other shared authorities and
