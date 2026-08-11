@@ -6,7 +6,6 @@ use super::{
     CLIENT_LOG_TRUNCATION_SUFFIX, MAX_CLIENT_LOG_MESSAGE_BYTES, MermanLanguageServer,
     bounded_client_log_message,
 };
-use crate::diagnostics::analysis_diagnostic_to_versioned_lsp;
 use crate::protocol::{CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION};
 use crate::session::{
     ClientEffectKey, DocumentDiscardedSource, DocumentResourceLimit, DocumentSyncError,
@@ -2119,6 +2118,20 @@ async fn code_action_rejects_stale_diagnostic_edits_after_document_change() {
     let (_service, _socket, server) = test_service();
     let server = &server;
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+    server
+        .client_profile
+        .set(crate::client_profile::ClientProtocolProfile::permissive())
+        .expect("test profile should initialize once");
+    server
+        .session
+        .update_configuration(
+            default_lsp_analysis_options().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_rule_enabled("merman.authoring.flowchart.explicit_direction")
+                    .unwrap(),
+            ),
+        )
+        .await;
 
     server
         .did_open(DidOpenTextDocumentParams {
@@ -2126,27 +2139,30 @@ async fn code_action_rejects_stale_diagnostic_edits_after_document_change() {
                 uri: uri.clone(),
                 language_id: "mermaid".to_string(),
                 version: 1,
-                text: "bad".to_string(),
+                text: "flowchart\nA-->B\n".to_string(),
             },
         })
         .await;
-
-    let map = SourceMap::new("bad");
-    let stale_diagnostic = AnalysisDiagnostic::error(
-        "merman.test.fix",
-        DiagnosticCategory::Semantic,
-        "test diagnostic",
-    )
-    .with_fix(
-        DiagnosticFix::new(
-            "Replace invalid text",
-            vec![DiagnosticFixEdit::new(
-                map.whole_source_span().unwrap(),
-                "fixed",
-            )],
-        )
-        .preferred(),
-    );
+    let diagnostic_context = server
+        .session
+        .diagnostic_context(&uri)
+        .await
+        .expect("opened document diagnostic context");
+    let stale_diagnostic = server
+        .diagnostic_publisher()
+        .expect("permissive profile uses push diagnostics")
+        .diagnostics_for_current_context(&diagnostic_context)
+        .await
+        .expect("initial diagnostic projection")
+        .expect("initial diagnostics")
+        .into_iter()
+        .find(|diagnostic| {
+            diagnostic.code
+                == Some(NumberOrString::String(
+                    "merman.authoring.flowchart.explicit_direction".to_string(),
+                ))
+        })
+        .expect("direction diagnostic with server-owned identity");
 
     server
         .did_change(DidChangeTextDocumentParams {
@@ -2165,16 +2181,9 @@ async fn code_action_rejects_stale_diagnostic_edits_after_document_change() {
     let actions = server
         .code_action(CodeActionParams {
             text_document: TextDocumentIdentifier { uri: uri.clone() },
-            range: Range {
-                start: Position::new(0, 0),
-                end: Position::new(0, 3),
-            },
+            range: stale_diagnostic.range,
             context: CodeActionContext {
-                diagnostics: vec![analysis_diagnostic_to_versioned_lsp(
-                    &stale_diagnostic,
-                    &uri,
-                    1,
-                )],
+                diagnostics: vec![stale_diagnostic],
                 only: Some(vec![CodeActionKind::QUICKFIX]),
                 trigger_kind: None,
             },

@@ -62,6 +62,7 @@ Response:
       ],
       "default_severity": "hint",
       "category": "semantic",
+      "tags": [],
       "default_enabled": false,
       "default_profile": "recommended",
       "origin": "merman_authoring",
@@ -77,6 +78,7 @@ Response:
       ],
       "default_severity": "hint",
       "category": "config",
+      "tags": [],
       "default_enabled": false,
       "default_profile": "recommended",
       "origin": "merman_authoring",
@@ -93,6 +95,7 @@ Response:
       ],
       "default_severity": "warning",
       "category": "config",
+      "tags": ["deprecated"],
       "default_enabled": true,
       "default_profile": "core",
       "origin": "mermaid_compatibility",
@@ -109,6 +112,7 @@ Response:
       ],
       "default_severity": "warning",
       "category": "config",
+      "tags": ["deprecated"],
       "default_enabled": true,
       "default_profile": "core",
       "origin": "mermaid_compatibility",
@@ -122,7 +126,9 @@ Response:
 Rules use the same metadata vocabulary as CLI and binding catalog surfaces. Plugin authors should
 filter `configurable == true` for settings UI, use `origin` and `evidence` when explaining rule
 authority, and use `fixable` only as a hint that diagnostics from the rule may carry quickfix
-metadata.
+metadata. `tags` is optional additive schema-1 metadata; clients must treat a missing field as an
+empty list. Current deprecation metadata is emitted explicitly as `"deprecated"` rather than
+inferred from rule IDs or descriptions.
 
 ## `merman/configSchema`
 

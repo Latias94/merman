@@ -116,6 +116,9 @@ impl DiagnosticRoundTrip {
         let mut seen = HashSet::with_capacity(params.context.diagnostics.len());
         let mut requested = Vec::with_capacity(params.context.diagnostics.len());
         for diagnostic in &params.context.diagnostics {
+            if diagnostic.source.as_deref() != Some("merman") {
+                continue;
+            }
             let (identity, server_diagnostic) = self.resolve(diagnostic)?;
             if !seen.insert(identity) {
                 return None;
@@ -333,6 +336,17 @@ mod tests {
             panic!("expected code action");
         };
         assert_eq!(action.title, "Insert `TB` into the flowchart header");
+
+        let mut external = diagnostic.clone();
+        external.source = Some("other-linter".to_string());
+        external.data = None;
+        let mixed_actions = round_trip
+            .code_actions_with_profile(
+                &params(uri.clone(), vec![external, diagnostic.clone()]),
+                &profile,
+            )
+            .expect("external diagnostics must not suppress a valid Merman quickfix");
+        assert_eq!(mixed_actions.len(), 1);
 
         let mut forged_fix = diagnostic.clone();
         forged_fix
