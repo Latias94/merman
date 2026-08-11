@@ -2938,12 +2938,9 @@ fn treemap_documents_use_parser_facts() {
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     assert!(index.node_ids().any(|candidate| candidate == "Root"));
     assert!(index.node_ids().any(|candidate| candidate == "Leaf"));
-    assert!(
-        index
-            .semantic_items()
-            .iter()
-            .any(|item| item.name == "highlight" && item.role == EditorSemanticRole::Outline)
-    );
+    assert!(index.semantic_items().iter().any(|item| {
+        item.name == "highlight" && item.role == EditorSemanticRole::ClassDefinition
+    }));
     assert!(
         index
             .semantic_items()
@@ -2983,7 +2980,7 @@ fn block_documents_use_parser_facts() {
         index
             .semantic_items()
             .iter()
-            .any(|item| item.name == "hot" && item.role == EditorSemanticRole::Outline)
+            .any(|item| item.name == "hot" && item.role == EditorSemanticRole::ClassDefinition)
     );
     for payload in ["Group label", "Start", "edge label", "End", "go", "right"] {
         assert!(
