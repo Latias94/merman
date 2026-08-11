@@ -8,6 +8,8 @@ import packageJson from "playwright/package.json" with { type: "json" };
 
 import {
   auditMountedSvg,
+  ROOT_VIEWPORT_MAX_CAPTURE_CSS_PX,
+  ROOT_VIEWPORT_PAINT_GUARD_CSS_PX,
   ROOT_VIEWPORT_QUANTIZATION_EPSILON_CSS_PX,
 } from "./root-viewport-oracle.ts";
 
@@ -30,25 +32,28 @@ try {
     const localPath = path.join(localRoot, relativePath);
     const upstreamPath = path.join(upstreamRoot, relativePath);
     const localSvg = await readFile(localPath, "utf8");
-    const upstreamSvg = await readFile(upstreamPath, "utf8").catch(() => null);
-    const local = await page.evaluate(auditMountedSvg, {
+    const local = await auditMountedSvg(page, {
       svgSource: localSvg,
-      quantizationEpsilon: ROOT_VIEWPORT_QUANTIZATION_EPSILON_CSS_PX,
     });
+    const compareWithUpstream =
+      local.paintAudit.status === "collected" && local.violations.length > 0;
+    const upstreamSvg = compareWithUpstream
+      ? await readFile(upstreamPath, "utf8").catch(() => null)
+      : null;
     const upstream =
       upstreamSvg === null
         ? null
-        : await page.evaluate(auditMountedSvg, {
+        : await auditMountedSvg(page, {
             svgSource: upstreamSvg,
-            quantizationEpsilon: ROOT_VIEWPORT_QUANTIZATION_EPSILON_CSS_PX,
           });
+    const containmentClassification = classifyContainment(local, upstream);
     entries.push({
       fixture: relativePath.replaceAll(path.sep, "/").replace(/\.svg$/u, ""),
       localSha256: sha256(localSvg),
       upstreamSha256: upstreamSvg === null ? null : sha256(upstreamSvg),
+      containmentClassification,
       local,
       upstream,
-      exactBrowserDelta: exactBrowserDelta(upstream, local),
     });
   }
 } finally {
@@ -56,22 +61,41 @@ try {
 }
 
 const report = {
-  schemaVersion: 1,
-  contractRevision: "browser-root-viewport-v1",
+  schemaVersion: 5,
+  contractRevision: "browser-root-paint-containment-v5",
   quantizationEpsilonCssPx: ROOT_VIEWPORT_QUANTIZATION_EPSILON_CSS_PX,
+  paintGuardCssPx: ROOT_VIEWPORT_PAINT_GUARD_CSS_PX,
+  maxCaptureCssPx: ROOT_VIEWPORT_MAX_CAPTURE_CSS_PX,
   environment: {
     playwright: packageJson.version,
     browser: `Chromium ${browserVersion}`,
     locale: "en-US",
     timezone: "UTC",
     platform: `${process.platform}-${process.arch}`,
+    localPaintAudit: "transparent Chromium screenshot alpha",
+    upstreamPaintAudit:
+      "collected only after a local pixel failure; otherwise browser geometry diagnostics only",
   },
   summary: {
     fixtures: entries.length,
     localContainmentFailures: entries.filter(
-      (entry) => entry.local.root === null || entry.local.violations.length > 0,
+      (entry) => entry.containmentClassification !== "contained",
     ).length,
-    upstreamDiagnosticsMissing: entries.filter((entry) => entry.upstream === null).length,
+    blockingContainmentFailures: entries.filter(
+      (entry) => entry.containmentClassification === "blocking",
+    ).length,
+    upstreamInheritedContainmentFailures: entries.filter(
+      (entry) => entry.containmentClassification === "upstream-inherited",
+    ).length,
+    localIndeterminate: entries.filter(
+      (entry) => entry.local.paintAudit.status === "indeterminate",
+    ).length,
+    upstreamDiagnosticsMissing: entries.filter(
+      (entry) =>
+        entry.local.paintAudit.status === "collected" &&
+        entry.local.violations.length > 0 &&
+        entry.upstream === null,
+    ).length,
   },
   entries,
 };
@@ -79,9 +103,9 @@ const report = {
 await mkdir(path.dirname(outputPath), { recursive: true });
 await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`);
 console.log(
-  `root viewport oracle fixtures=${report.summary.fixtures} local_containment_failures=${report.summary.localContainmentFailures} output=${outputPath}`,
+  `root viewport oracle fixtures=${report.summary.fixtures} blocking_containment_failures=${report.summary.blockingContainmentFailures} upstream_inherited=${report.summary.upstreamInheritedContainmentFailures} output=${outputPath}`,
 );
-if (report.summary.localContainmentFailures > 0) process.exitCode = 1;
+if (report.summary.blockingContainmentFailures > 0) process.exitCode = 1;
 
 function parseArguments(arguments_) {
   const options = {
@@ -111,37 +135,41 @@ function requiredValue(arguments_, index, flag) {
 
 async function collectSvgFiles(root) {
   const output = [];
-  async function visit(directory, prefix) {
-    const entries = await readdir(directory, { withFileTypes: true });
-    entries.sort((left, right) => left.name.localeCompare(right.name));
-    for (const entry of entries) {
-      const relative = path.join(prefix, entry.name);
-      if (entry.isDirectory()) await visit(path.join(directory, entry.name), relative);
-      else if (entry.isFile() && entry.name.endsWith(".svg")) output.push(relative);
+  const diagrams = await readdir(root, { withFileTypes: true });
+  diagrams.sort((left, right) => left.name.localeCompare(right.name));
+  for (const diagram of diagrams) {
+    if (!diagram.isDirectory()) continue;
+    const fixtures = await readdir(path.join(root, diagram.name), {
+      withFileTypes: true,
+    });
+    fixtures.sort((left, right) => left.name.localeCompare(right.name));
+    for (const fixture of fixtures) {
+      if (fixture.isFile() && fixture.name.endsWith(".svg")) {
+        output.push(path.join(diagram.name, fixture.name));
+      }
     }
   }
-  await visit(root, "");
   return output;
 }
 
-function exactBrowserDelta(upstream, local) {
-  if (!upstream?.root || !local.root) return null;
-  return {
-    root: deltaRect(upstream.root, local.root),
-    paintedUnion:
-      upstream.paintedUnion && local.paintedUnion
-        ? deltaRect(upstream.paintedUnion, local.paintedUnion)
-        : null,
-  };
+function classifyContainment(local, upstream) {
+  if (local.paintAudit.status !== "collected") return "blocking";
+  if (local.violations.length === 0) return "contained";
+  return paintFailureExactlyMatches(local, upstream) ? "upstream-inherited" : "blocking";
 }
 
-function deltaRect(upstream, local) {
-  return Object.fromEntries(
-    ["left", "top", "right", "bottom", "width", "height"].map((field) => [
-      field,
-      local[field] - upstream[field],
-    ]),
+function paintFailureExactlyMatches(local, upstream) {
+  return (
+    upstream !== null &&
+    upstream.paintAudit.status === "collected" &&
+    exactJson(local.root, upstream.root) &&
+    exactJson(local.geometryUnion, upstream.geometryUnion) &&
+    exactJson(local.violations, upstream.violations)
   );
+}
+
+function exactJson(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function sha256(value) {

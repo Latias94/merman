@@ -432,6 +432,7 @@ jobs:
           cache: npm
           cache-dependency-path: |
             platforms/node/package-lock.json
+            playground/tests/package-lock.json
             tools/mermaid-cli/package-lock.json
 
       - name: Install pinned Mermaid runtime
@@ -540,6 +541,31 @@ jobs:
       - name: SVG DOM parity (parity-root)
         if: matrix.parity
         run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --flowchart-text-measurer vendored --report-root
+
+      - name: Install root viewport oracle dependencies
+        if: matrix.parity
+        run: npm ci --prefix playground/tests
+
+      - name: Install Chromium for root viewport oracle
+        if: matrix.parity
+        run: npm run install:browser:chromium --prefix playground/tests
+
+      - name: Audit rendered SVG root viewports in Chromium
+        if: matrix.parity
+        run: |
+          npm run oracle:root-viewport --prefix playground/tests -- \
+            --local ../../target/compare \
+            --upstream ../../fixtures/upstream-svgs \
+            --output ../../target/root-viewport-diagnostic.json
+
+      - name: Upload root viewport oracle report
+        if: matrix.parity && always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: root-viewport-oracle-${{ github.run_attempt }}
+          path: target/root-viewport-diagnostic.json
+          if-no-files-found: ignore
+          retention-days: 7
 
   node-contracts:
     name: node-contracts

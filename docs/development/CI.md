@@ -46,6 +46,21 @@ ELK stack-safety contracts. Only pull-request and merge-queue runs emit the requ
 status name; push, schedule, and manual lifecycles use event-specific gate names so their results
 cannot satisfy the pull-request check by identity collision.
 
+The Linux parity lane also mounts the real `target/compare/<diagram>/*.svg` files emitted by the
+blocking `parity-root` comparison in Chromium and checks that painted content stays inside each root
+viewport. It reuses that job's Node environment and generated SVGs, installs only the locked
+`playground/tests` dependencies and Chromium, and preserves the outer SVG's own width, height, and
+max-width while mounting it in a fixed-width host. A local paint failure triggers the same paint
+audit for its upstream SVG. An exactly matching root, geometry union, and pixel violation is reported
+as an upstream-inherited diagnostic; local-only, new, or worse overflow remains blocking, as does
+every indeterminate result. No fixture-specific tolerance or inheritance list is used.
+The JSON report at `target/root-viewport-diagnostic.json` is uploaded as a diagnostic artifact even
+when the oracle fails; upstream browser measurements in that report remain diagnostic rather than
+an acceptance policy. The oracle expands its transparent screenshot capture from browser geometry
+only to ensure coverage; acceptance still comes from painted alpha pixels outside the root. A
+capture that exceeds the global bound, or paint such as an active filter whose extent cannot be
+proven, is indeterminate and fails closed instead of being treated as contained.
+
 Editor-language descriptors are shared inputs to the browser editor and VS Code extension. Changes
 under `contracts/editor-language/` therefore select both owners. Other shared authorities and
 unknown paths fail broad instead of guessing a narrow consumer set.
