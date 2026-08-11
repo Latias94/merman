@@ -58,9 +58,10 @@ Upstream baseline: Mermaid `11.16.1` at
 
 - Namespace, class, note, lollipop interface, note-edge, and relation insertion order follows
   Mermaid `ClassDB.getData()` and the shared Dagre renderer.
-- `compare-dagre-layout --diagram class` captures the production graph before layout and compares
-  graph dimensions, node positions, edge-label anchors, routed points, and stable identities with
-  pinned `dagre-d3-es`.
+- Historical direct comparison against pinned `dagre-d3-es` established zero drift for graph
+  dimensions, node positions, edge-label anchors, routed points, and stable identities. The
+  standing contract is now owned by Dugong algorithm tests plus the signed Class SVG and semantic
+  canaries below.
 - Edge labels use shared updated-path geometry while cardinality terminal labels retain their
   Class-specific marker offsets.
 - The complete embedded stylesheet is tested byte-for-byte after scope-id normalization. Common

@@ -77,6 +77,35 @@ build action for evidence, inspect the script and dependencies first, record why
 or an existing repository harness is insufficient, and add only the audited action to an explicit
 allowlist. Keep downloaded checkouts and caches out of commits.
 
+For retained Mermaid Cypress evidence, use the executable collector in
+`tools/upstreams/cypress-collector/`. The repository does not maintain a Rust JavaScript evaluator:
+the collector must execute the pinned Mermaid runtime and transpilation path. Install the pinned
+checkout with lifecycle scripts disabled, run the collector through the exact Node and pnpm
+versions declared by the collector scope catalog, and collect both retained scopes:
+
+```bash
+cd repo-ref/mermaid
+npx --yes --package=node@22.14.0 --package=pnpm@10.30.3 -- \
+  pnpm install --frozen-lockfile --ignore-scripts
+cd ../..
+
+npx --yes --package=node@22.14.0 --package=pnpm@10.30.3 -- \
+  node tools/upstreams/cypress-collector/collect.mjs \
+  --scope new-family \
+  --output target/upstream-cypress-new-family.json
+
+npx --yes --package=node@22.14.0 --package=pnpm@10.30.3 -- \
+  node tools/upstreams/cypress-collector/collect.mjs \
+  --scope flowchart-elk \
+  --output target/upstream-cypress-flowchart-elk.json
+```
+
+Review call additions, removals, skips, runtime effects, and supplemental fixture identities before
+projecting either collection. Project reviewed observations with
+`project-upstream-cypress-collection --scope <scope> --input <file> --refresh`. Standing Rust checks
+must validate only the committed manifests and local digests; they must not execute or statically
+interpret upstream JavaScript.
+
 Completion criterion: every selected package has verified source and tarball provenance, admission
 reports bind the exact official tool/version/package/integrity/raw-output digest, and no unreviewed
 lifecycle action executed.

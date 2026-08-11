@@ -17,33 +17,6 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     compare_selected_diagram_svgs(options, diagram_selection)
 }
 
-pub(crate) fn compare_all_svgs_with_transaction_locks(
-    args: Vec<String>,
-    family_lock: &crate::cmd::UpstreamSvgFamilyLock,
-    toolchain_lock: &crate::cmd::UpstreamSvgToolchainLock,
-) -> Result<(), XtaskError> {
-    let options = CompareAllOptions::parse(args)?;
-    let diagram_selection = CompareAllDiagramSelection::from_options(&options)?;
-    let [diagram] = diagram_selection.diagrams.as_slice() else {
-        return Err(XtaskError::SvgCompareFailed(format!(
-            "compare-all with borrowed upstream SVG transaction locks requires exactly one diagram, selected {}",
-            diagram_selection.diagrams.len()
-        )));
-    };
-    let diagram = *diagram;
-    let upstream_dir =
-        crate::cmd::compare_diagram_paths_with_roots(diagram, None, None, None).upstream_dir;
-
-    let tools_root = crate::cmd::mermaid_cli_root();
-    super::with_borrowed_upstream_svg_transaction_locks(
-        toolchain_lock,
-        &tools_root,
-        family_lock,
-        &upstream_dir,
-        || compare_selected_diagram_svgs(options, diagram_selection),
-    )
-}
-
 fn compare_selected_diagram_svgs(
     options: CompareAllOptions,
     diagram_selection: CompareAllDiagramSelection,

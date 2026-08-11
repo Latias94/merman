@@ -106,8 +106,8 @@ flowchart LR
 | Browser profile evidence | All named browser profiles build and report accurate capabilities | `npm run build:surfaces --prefix platforms/web`, package smoke, and profile manifests |
 | Runtime capability discovery | Active artifact reports compiled capabilities | `bindingCapabilities()` returns booleans and legacy artifacts fall back to full capabilities |
 | Typst import boundary | Only the two `typst_env` protocol imports are present | `cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm <plugin.wasm>` |
-| Typst export boundary | Exactly five callable ABI operations, `memory`, and immutable `i32` `__data_end`/`__heap_base` linker globals are present; every other export is rejected | The shared Wasmi module-surface validator used by `profile-budget check-wasm` and `typst-plugin-smoke` |
-| Typst execution boundary | Plugin can be loaded by a Typst-compatible host and every Typst ABI-2 operation matches the selected profile | `cargo run -p xtask -- typst-plugin-smoke --profile publish --wasm <plugin.wasm>` |
+| Typst export boundary | Exactly five callable ABI operations, `memory`, and immutable `i32` `__data_end`/`__heap_base` linker globals are present; every other export is rejected | The shared Wasmi module-surface validator used by `profile-budget check-wasm` and the Typst package builder |
+| Typst execution boundary | Plugin can be loaded by a Typst-compatible host and every Typst ABI-2 operation matches the selected profile | `cargo run -p xtask -- build-typst-package --profile publish`, followed by `cargo run -p xtask -- typst-package-smoke --profile publish --skip-wasm-build` |
 | Surface documentation | Browser and Typst/pure-WASM surfaces are not conflated | `docs/release/PACKAGE_SURFACES.md`, `docs/FEATURES.md`, and README surface sections |
 
 ## Alternatives Considered
@@ -158,7 +158,7 @@ Keep `merman-typst-plugin` as an internal probe until the Typst package wrapper 
 | A package ships the wrong WASM capability set | High | Low | Bind wrapper, profile metadata, generated declarations, smoke, ABI, and size budget in one release gate |
 | Editor helpers drift from LSP/parser semantics | High | Low | Keep behavior in `merman-editor-core`; run it through the dedicated Web transport API 3/runtime-catalog schema 1 Worker rather than TypeScript heuristics |
 | Typst docs imply full package readiness from transport smoke | Medium | Medium | Label Typst package publication as manual/future; document smoke as transport validation only |
-| Browser changes reintroduce JS imports into Typst builds | High | Low | Keep `profile-budget check-wasm --profile typst-wasm` and `typst-plugin-smoke` as release gates |
+| Browser changes reintroduce JS imports into Typst builds | High | Low | Keep `profile-budget check-wasm --profile typst-wasm` and `typst-package-smoke` as release gates; package assembly runs the shared plugin validator internally |
 | A stale or different-profile WASM is assembled into the Typst package | High | Low | Use a profile-owned artifact manifest, validate it on `--skip-wasm-build`, and replace package directories transactionally |
 | Feature defaults become unclear across crates | Medium | Medium | Record defaults in `docs/FEATURES.md`, README, and package surface docs |
 | Source-build profile sizes are compared across unlike surfaces | Low | Medium | Use `xtask wasm-size-matrix` with explicit `browser` and `typst` surfaces |

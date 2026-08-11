@@ -362,6 +362,9 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
     failures.extend(crate::cmd::committed_cypress_corpus_alignment_failures(
         &workspace_root,
     ));
+    failures.extend(crate::cmd::committed_flowchart_elk_collection_failures(
+        &workspace_root,
+    ));
 
     fn is_flowchart_elk_parity_fixture(path: &Path) -> bool {
         let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {

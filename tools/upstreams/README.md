@@ -76,6 +76,19 @@ After the admission reports are reviewed and a new graph is selected, update the
 write a new selection receipt from the raw workflow outputs, regenerate projections, and run the
 standing verifier with `--base` before refreshing upstream SVG provenance.
 
+## Executable Cypress evidence
+
+The retained new-family and Flowchart ELK Cypress scopes are collected by
+`tools/upstreams/cypress-collector/`. This upgrade-only tool executes the selected Mermaid specs
+through the Node, pnpm, and esbuild versions pinned by the selected checkout. It rejects unknown
+imports, helpers, runtime effects, skips, call-count drift, and toolchain drift.
+
+Generated collection files belong under `target/` and are review inputs, not committed evidence.
+After reviewing them, use `project-upstream-cypress-collection` to update the scope manifests under
+`fixtures/_upstream/`. Ordinary alignment checks validate those manifests and local digests without
+requiring `repo-ref/mermaid` or executing upstream JavaScript. See the collector README for exact
+commands.
+
 ## Baseline generation
 
 After reviewed render evidence confirms the selected graph, run:

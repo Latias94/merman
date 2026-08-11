@@ -334,7 +334,7 @@ Rule of thumb for an upstream-invalid input that still carries useful parser evi
 
 Generate local Stage-B C4 SVG outputs (not upstream baselines):
 
-- `cargo run -p xtask -- gen-c4-svgs`
+- `cargo run -p xtask -- gen-debug-svgs --diagram c4 --out target/svgs`
 
 Outputs to:
 
@@ -412,7 +412,7 @@ Generate a small report comparing upstream SVGs and the current Rust Stage-B ER 
 
 Generate local Stage-B flowchart SVG outputs (not upstream baselines):
 
-- `cargo run -p xtask -- gen-flowchart-svgs`
+- `cargo run -p xtask -- gen-debug-svgs --diagram flowchart --out target/svgs`
 
 Outputs to:
 
@@ -450,7 +450,7 @@ Notes:
 
 Generate local Stage-B stateDiagram SVG outputs (not upstream baselines):
 
-- `cargo run -p xtask -- gen-state-svgs`
+- `cargo run -p xtask -- gen-debug-svgs --diagram state --out target/svgs`
 
 Outputs to:
 
@@ -460,7 +460,7 @@ Outputs to:
 
 Generate local Stage-B classDiagram SVG outputs (not upstream baselines):
 
-- `cargo run -p xtask -- gen-class-svgs`
+- `cargo run -p xtask -- gen-debug-svgs --diagram class --out target/svgs`
 
 Outputs to:
 

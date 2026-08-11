@@ -2890,57 +2890,71 @@ fn render_family_fixture_svg(
         .map_err(|err| format!("render failed for {}: {err}", mmd_path.display()))
 }
 
-pub(crate) fn gen_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
-    let mut out_root: Option<PathBuf> = None;
-    let mut filter: Option<String> = None;
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct DebugSvgFamily {
+    fixture_dir: &'static str,
+    family: merman_render::family::RenderFamilyKind,
+    suppress_errors: bool,
+    seeded_site_config: bool,
+    deterministic_diagram_id: bool,
+}
 
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--out" => {
-                i += 1;
-                out_root = args.get(i).map(PathBuf::from);
-            }
-            "--filter" => {
-                i += 1;
-                filter = args.get(i).map(|s| s.to_string());
-            }
-            "--help" | "-h" => return Err(XtaskError::Usage),
-            _ => return Err(XtaskError::Usage),
-        }
-        i += 1;
-    }
-
-    let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("svgs"));
-
-    let fixtures_dir = crate::cmd::fixtures_root().join("er");
-    let out_dir = out_root.join("er");
-
-    let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
-        serde_json::json!({ "handDrawnSeed": 1 }),
-    ));
-    export_svg_fixtures(
-        &fixtures_dir,
-        &out_dir,
-        filter.as_deref(),
-        |mmd_path, stem, text| {
-            let svg_opts = merman_render::svg::SvgRenderOptions {
-                diagram_id: Some(stem.to_string()),
-                ..Default::default()
-            };
-            render_family_fixture_svg(
-                &engine,
-                mmd_path,
-                text,
-                merman::ParseOptions {
-                    suppress_errors: true,
-                },
-                merman_render::family::RenderFamilyKind::Er,
-                &svg_opts,
-                &merman_render::svg::SvgDebugOptions::default(),
+fn debug_svg_family(diagram: &str) -> Option<DebugSvgFamily> {
+    let standard = |fixture_dir, family| DebugSvgFamily {
+        fixture_dir,
+        family,
+        suppress_errors: false,
+        seeded_site_config: false,
+        deterministic_diagram_id: true,
+    };
+    match diagram {
+        "flowchart" | "flowchart-v2" | "flowchartV2" => Some(standard(
+            "flowchart",
+            merman_render::family::RenderFamilyKind::Flowchart,
+        )),
+        "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => Some(standard(
+            "state",
+            merman_render::family::RenderFamilyKind::State,
+        )),
+        "class" | "classDiagram" => Some(standard(
+            "class",
+            merman_render::family::RenderFamilyKind::Class,
+        )),
+        "er" | "erDiagram" => Some(DebugSvgFamily {
+            fixture_dir: "er",
+            family: merman_render::family::RenderFamilyKind::Er,
+            suppress_errors: true,
+            seeded_site_config: true,
+            deterministic_diagram_id: true,
+        }),
+        "c4" => Some(DebugSvgFamily {
+            fixture_dir: "c4",
+            family: merman_render::family::RenderFamilyKind::C4,
+            suppress_errors: true,
+            seeded_site_config: false,
+            deterministic_diagram_id: true,
+        }),
+        "sequence" => Some(DebugSvgFamily {
+            deterministic_diagram_id: false,
+            ..standard(
+                "sequence",
+                merman_render::family::RenderFamilyKind::Sequence,
             )
-        },
-    )
+        }),
+        "info" => Some(DebugSvgFamily {
+            deterministic_diagram_id: false,
+            ..standard("info", merman_render::family::RenderFamilyKind::Info)
+        }),
+        "pie" => Some(DebugSvgFamily {
+            deterministic_diagram_id: false,
+            ..standard("pie", merman_render::family::RenderFamilyKind::Pie)
+        }),
+        "packet" => Some(DebugSvgFamily {
+            deterministic_diagram_id: false,
+            ..standard("packet", merman_render::family::RenderFamilyKind::Packet)
+        }),
+        _ => None,
+    }
 }
 
 pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
@@ -2972,64 +2986,36 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("debug-svgs"));
 
     fn gen_one(out_root: &Path, diagram: &str, filter: Option<&str>) -> Result<(), XtaskError> {
-        let (fixtures_dir, out_dir, expected_family) = match diagram {
-            "flowchart" | "flowchart-v2" | "flowchartV2" => (
-                crate::cmd::fixtures_root().join("flowchart"),
-                out_root.join("flowchart"),
-                merman_render::family::RenderFamilyKind::Flowchart,
-            ),
-            "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => (
-                crate::cmd::fixtures_root().join("state"),
-                out_root.join("state"),
-                merman_render::family::RenderFamilyKind::State,
-            ),
-            "class" | "classDiagram" => (
-                crate::cmd::fixtures_root().join("class"),
-                out_root.join("class"),
-                merman_render::family::RenderFamilyKind::Class,
-            ),
-            "er" | "erDiagram" => (
-                crate::cmd::fixtures_root().join("er"),
-                out_root.join("er"),
-                merman_render::family::RenderFamilyKind::Er,
-            ),
-            "sequence" => (
-                crate::cmd::fixtures_root().join("sequence"),
-                out_root.join("sequence"),
-                merman_render::family::RenderFamilyKind::Sequence,
-            ),
-            "info" => (
-                crate::cmd::fixtures_root().join("info"),
-                out_root.join("info"),
-                merman_render::family::RenderFamilyKind::Info,
-            ),
-            "pie" => (
-                crate::cmd::fixtures_root().join("pie"),
-                out_root.join("pie"),
-                merman_render::family::RenderFamilyKind::Pie,
-            ),
-            "packet" => (
-                crate::cmd::fixtures_root().join("packet"),
-                out_root.join("packet"),
-                merman_render::family::RenderFamilyKind::Packet,
-            ),
-            other => {
-                return Err(XtaskError::DebugSvgFailed(format!(
-                    "unsupported diagram for debug svg export: {other} (supported: flowchart, state, class, er, sequence, info, pie, packet)"
-                )));
-            }
+        let profile = debug_svg_family(diagram).ok_or_else(|| {
+            XtaskError::DebugSvgFailed(format!(
+                "unsupported diagram for debug svg export: {diagram} (supported: flowchart, state, class, er, c4, sequence, info, pie, packet)"
+            ))
+        })?;
+        let fixtures_dir = crate::cmd::fixtures_root().join(profile.fixture_dir);
+        let out_dir = out_root.join(profile.fixture_dir);
+        let engine = if profile.seeded_site_config {
+            merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
+                serde_json::json!({ "handDrawnSeed": 1 }),
+            ))
+        } else {
+            merman::Engine::new()
+        };
+        let parse_options = merman::ParseOptions {
+            suppress_errors: profile.suppress_errors,
         };
 
-        let engine = merman::Engine::new();
-
-        export_svg_fixtures(&fixtures_dir, &out_dir, filter, |mmd_path, _stem, text| {
+        export_svg_fixtures(&fixtures_dir, &out_dir, filter, |mmd_path, stem, text| {
+            let svg_options = merman_render::svg::SvgRenderOptions {
+                diagram_id: profile.deterministic_diagram_id.then(|| stem.to_string()),
+                ..Default::default()
+            };
             render_family_fixture_svg(
                 &engine,
                 mmd_path,
                 text,
-                merman::ParseOptions::default(),
-                expected_family,
-                &merman_render::svg::SvgRenderOptions::default(),
+                parse_options.clone(),
+                profile.family,
+                &svg_options,
                 &merman_render::svg::SvgDebugOptions::default(),
             )
         })
@@ -3037,7 +3023,7 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
     let filter = filter.as_deref();
     let diagrams: Vec<&str> = match diagram.as_str() {
-        "all" => vec!["flowchart", "state", "class", "er"],
+        "all" => vec!["flowchart", "state", "class", "er", "c4"],
         other => vec![other],
     };
 
@@ -3211,213 +3197,13 @@ where
     set.into_iter().collect()
 }
 
-pub(crate) fn gen_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
-    let mut out_root: Option<PathBuf> = None;
-    let mut filter: Option<String> = None;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--out" => {
-                i += 1;
-                out_root = args.get(i).map(PathBuf::from);
-            }
-            "--filter" => {
-                i += 1;
-                filter = args.get(i).map(|s| s.to_string());
-            }
-            "--help" | "-h" => return Err(XtaskError::Usage),
-            _ => return Err(XtaskError::Usage),
-        }
-        i += 1;
-    }
-
-    let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("svgs"));
-
-    let fixtures_dir = crate::cmd::fixtures_root().join("flowchart");
-    let out_dir = out_root.join("flowchart");
-
-    let engine = merman::Engine::new();
-    export_svg_fixtures(
-        &fixtures_dir,
-        &out_dir,
-        filter.as_deref(),
-        |mmd_path, stem, text| {
-            let svg_opts = merman_render::svg::SvgRenderOptions {
-                diagram_id: Some(stem.to_string()),
-                ..Default::default()
-            };
-            render_family_fixture_svg(
-                &engine,
-                mmd_path,
-                text,
-                merman::ParseOptions::default(),
-                merman_render::family::RenderFamilyKind::Flowchart,
-                &svg_opts,
-                &merman_render::svg::SvgDebugOptions::default(),
-            )
-        },
-    )
-}
-
-pub(crate) fn gen_state_svgs(args: Vec<String>) -> Result<(), XtaskError> {
-    let mut out_root: Option<PathBuf> = None;
-    let mut filter: Option<String> = None;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--out" => {
-                i += 1;
-                out_root = args.get(i).map(PathBuf::from);
-            }
-            "--filter" => {
-                i += 1;
-                filter = args.get(i).map(|s| s.to_string());
-            }
-            "--help" | "-h" => return Err(XtaskError::Usage),
-            _ => return Err(XtaskError::Usage),
-        }
-        i += 1;
-    }
-
-    let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("svgs"));
-
-    let fixtures_dir = crate::cmd::fixtures_root().join("state");
-    let out_dir = out_root.join("state");
-
-    let engine = merman::Engine::new();
-    export_svg_fixtures(
-        &fixtures_dir,
-        &out_dir,
-        filter.as_deref(),
-        |mmd_path, stem, text| {
-            let svg_opts = merman_render::svg::SvgRenderOptions {
-                diagram_id: Some(stem.to_string()),
-                ..Default::default()
-            };
-            render_family_fixture_svg(
-                &engine,
-                mmd_path,
-                text,
-                merman::ParseOptions::default(),
-                merman_render::family::RenderFamilyKind::State,
-                &svg_opts,
-                &merman_render::svg::SvgDebugOptions::default(),
-            )
-        },
-    )
-}
-
-pub(crate) fn gen_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
-    let mut out_root: Option<PathBuf> = None;
-    let mut filter: Option<String> = None;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--out" => {
-                i += 1;
-                out_root = args.get(i).map(PathBuf::from);
-            }
-            "--filter" => {
-                i += 1;
-                filter = args.get(i).map(|s| s.to_string());
-            }
-            "--help" | "-h" => return Err(XtaskError::Usage),
-            _ => return Err(XtaskError::Usage),
-        }
-        i += 1;
-    }
-
-    let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("svgs"));
-
-    let fixtures_dir = crate::cmd::fixtures_root().join("class");
-    let out_dir = out_root.join("class");
-
-    let engine = merman::Engine::new();
-    export_svg_fixtures(
-        &fixtures_dir,
-        &out_dir,
-        filter.as_deref(),
-        |mmd_path, stem, text| {
-            let svg_opts = merman_render::svg::SvgRenderOptions {
-                diagram_id: Some(stem.to_string()),
-                ..Default::default()
-            };
-            render_family_fixture_svg(
-                &engine,
-                mmd_path,
-                text,
-                merman::ParseOptions::default(),
-                merman_render::family::RenderFamilyKind::Class,
-                &svg_opts,
-                &merman_render::svg::SvgDebugOptions::default(),
-            )
-        },
-    )
-}
-
-pub(crate) fn gen_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
-    let mut out_root: Option<PathBuf> = None;
-    let mut filter: Option<String> = None;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--out" => {
-                i += 1;
-                out_root = args.get(i).map(PathBuf::from);
-            }
-            "--filter" => {
-                i += 1;
-                filter = args.get(i).map(|s| s.to_string());
-            }
-            "--help" | "-h" => return Err(XtaskError::Usage),
-            _ => return Err(XtaskError::Usage),
-        }
-        i += 1;
-    }
-
-    let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("svgs"));
-
-    let fixtures_dir = crate::cmd::fixtures_root().join("c4");
-    let out_dir = out_root.join("c4");
-
-    // Keep this aligned with `crates/merman-render/tests/layout_snapshots_test.rs` so the
-    // `update-layout-snapshots` output matches the test's computed layouts.
-    let engine = merman_core::Engine::new();
-    export_svg_fixtures(
-        &fixtures_dir,
-        &out_dir,
-        filter.as_deref(),
-        |mmd_path, stem, text| {
-            let svg_opts = merman_render::svg::SvgRenderOptions {
-                diagram_id: Some(stem.to_string()),
-                ..Default::default()
-            };
-            render_family_fixture_svg(
-                &engine,
-                mmd_path,
-                text,
-                merman_core::ParseOptions {
-                    suppress_errors: true,
-                },
-                merman_render::family::RenderFamilyKind::C4,
-                &svg_opts,
-                &merman_render::svg::SvgDebugOptions::default(),
-            )
-        },
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         PINNED_DOMPURIFY_VERSION, PINNED_MERMAID_CLI_PACKAGE_SHA256, PINNED_MERMAID_PACKAGE_SHA256,
         PendingUpstreamSvg, REQUIREMENT_FONT_PRECEDENCE_FIXTURE, UPSTREAM_SVG_DIAGRAMS,
         UpstreamSvgRenderProbe, UpstreamSvgRuntimePackageRoots, absolutize_workspace_path,
-        captures_parse_error_svg, create_upstream_svg_check_output_root,
+        captures_parse_error_svg, create_upstream_svg_check_output_root, debug_svg_family,
         ensure_content_addressed_js_script, ensure_fresh_upstream_svg_output_is_empty,
         ensure_seeded_upstream_svg_renderer_script,
         ensure_upstream_svg_render_environment_probe_script, map_bounded_in_order,
@@ -3649,6 +3435,28 @@ mod tests {
     #[test]
     fn upstream_svg_all_commands_use_the_same_diagram_set() {
         assert!(UPSTREAM_SVG_DIAGRAMS.contains(&"xychart"));
+    }
+
+    #[test]
+    fn debug_svg_family_profiles_replace_family_specific_wrappers() {
+        let flowchart = debug_svg_family("flowchart-v2").expect("flowchart alias");
+        assert_eq!(flowchart.fixture_dir, "flowchart");
+        assert!(flowchart.deterministic_diagram_id);
+        assert!(!flowchart.suppress_errors);
+
+        let er = debug_svg_family("erDiagram").expect("ER alias");
+        assert_eq!(er.fixture_dir, "er");
+        assert!(er.seeded_site_config);
+        assert!(er.suppress_errors);
+
+        let c4 = debug_svg_family("c4").expect("C4 family");
+        assert_eq!(c4.fixture_dir, "c4");
+        assert!(c4.deterministic_diagram_id);
+        assert!(c4.suppress_errors);
+
+        let info = debug_svg_family("info").expect("general debug family");
+        assert!(!info.deterministic_diagram_id);
+        assert!(debug_svg_family("unsupported").is_none());
     }
 
     #[test]
