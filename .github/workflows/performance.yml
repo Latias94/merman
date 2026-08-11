@@ -108,7 +108,7 @@ concurrency:
 jobs:
   contracts:
     name: perf-contracts
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')
     runs-on: ubuntu-24.04
     env:
       CARGO_BUILD_JOBS: "1"
@@ -127,6 +127,7 @@ jobs:
         uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
 
       - name: Check Python performance scripts
+        if: github.event_name != 'pull_request'
         working-directory: head
         run: |
           python3 -m py_compile \
@@ -148,6 +149,7 @@ jobs:
             tools/bench/verify_pipeline_bench_list.py
 
       - name: Check performance helper contracts
+        if: github.event_name != 'pull_request'
         working-directory: head
         run: |
           python3 tools/bench/test_perf_baseline_manifest.py
@@ -289,7 +291,7 @@ jobs:
         working-directory: head
         env:
           PRESET: ${{ github.event_name == 'pull_request' && 'quick' || inputs.preset || 'long' }}
-          SUITE: ${{ matrix.suite }}
+          SUITE: ${{ github.event_name == 'workflow_dispatch' && matrix.id == 'regression' && inputs.suite || matrix.suite }}
           GROUP: ${{ matrix.group }}
           EVIDENCE_MODE: ${{ github.event_name == 'pull_request' && 'diagnostic' || inputs.evidence_mode || 'confirmation' }}
           RELATIVE_THRESHOLD_PERCENT: ${{ inputs.relative_threshold_percent || '10' }}
