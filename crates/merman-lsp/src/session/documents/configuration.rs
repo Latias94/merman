@@ -205,50 +205,16 @@ impl SessionState {
     ) {
         let max_source_bytes = self.analyzer.options().max_source_bytes();
         for (uri, record) in &mut self.documents {
-            let next_source = match &record.document.source {
-                DocumentSource::ResourceLimited(limit) => {
-                    let source_len = limit.source_len;
-                    let previous_max_source_bytes = limit.max_source_bytes;
-                    let span = limit.span;
-                    match max_source_bytes {
-                        Some(max_source_bytes) if source_len > max_source_bytes => {
-                            DocumentSource::ResourceLimited(DocumentResourceLimit {
-                                source_len,
-                                max_source_bytes,
-                                span,
-                            })
-                        }
-                        _ => DocumentSource::Discarded(DocumentDiscardedSource {
-                            source_len,
-                            previous_max_source_bytes,
-                            span,
-                        }),
-                    }
-                }
-                DocumentSource::Discarded(discarded) => match max_source_bytes {
-                    Some(max_source_bytes) if discarded.source_len > max_source_bytes => {
-                        DocumentSource::ResourceLimited(DocumentResourceLimit {
-                            source_len: discarded.source_len,
-                            max_source_bytes,
-                            span: discarded.span,
-                        })
-                    }
-                    _ => DocumentSource::Discarded(*discarded),
-                },
-                DocumentSource::Available(text) | DocumentSource::AnalysisRejected { text, .. } => {
-                    match resource_rejections
-                        .get(uri)
-                        .expect("resource reclassification must cover every retained document")
-                    {
-                        None => DocumentSource::Available(Arc::clone(text)),
-                        Some(rejection) => {
-                            document_source_from_rejection(Arc::clone(text), rejection.clone())
-                        }
-                    }
-                }
-                DocumentSource::SyncError(_) => continue,
-            };
-            record.document.source = next_source;
+            let retained_rejection = record.document.source.retained_text().map(|_| {
+                resource_rejections
+                    .get(uri)
+                    .expect("resource reclassification must cover every retained document")
+                    .as_ref()
+            });
+            record.document.source = record
+                .document
+                .source
+                .reclassify(max_source_bytes, retained_rejection.flatten());
         }
     }
 

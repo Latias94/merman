@@ -4,9 +4,14 @@ use crate::client_profile::{ClientProtocolProfile, DiagnosticProtocolProfile};
 #[cfg(test)]
 use crate::protocol::DiagnosticIdentityData;
 use crate::protocol::{DiagnosticVersionData, range_to_lsp};
+use crate::session::{DocumentSyncLoss, DocumentUnavailableDiagnostic, StoredDocument};
 #[cfg(test)]
 use merman_analysis::AnalysisDiagnostic;
-use merman_analysis::{AnalysisDiagnosticTag, AnalysisPayload, DiagnosticSeverity};
+use merman_analysis::{
+    AnalysisDiagnosticTag, AnalysisPayload, DiagnosticSeverity, source_descriptor_for_kind,
+    source_discarded_after_limit_change_diagnostic_with_span,
+    source_limit_diagnostic_for_len_and_span,
+};
 #[cfg(test)]
 use merman_editor_core::analysis_diagnostic_to_editor;
 use merman_editor_core::{
@@ -15,8 +20,106 @@ use merman_editor_core::{
 };
 use tower_lsp_server::ls_types::{
     CodeDescription, Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity as LspSeverity,
-    DiagnosticTag, Location, NumberOrString, Uri,
+    DiagnosticTag, Location, NumberOrString, Position, Range, Uri,
 };
+
+pub(crate) fn unavailable_document_diagnostics_with_profile(
+    document: &StoredDocument,
+    profile: &ClientProtocolProfile,
+) -> Option<Vec<Diagnostic>> {
+    let outcome = document.unavailable_diagnostic()?;
+    match outcome {
+        DocumentUnavailableDiagnostic::AnalysisRejected(rejection) => {
+            Some(analysis_payload_to_versioned_diagnostics_with_profile(
+                rejection.payload(),
+                &document.uri,
+                document.version,
+                profile,
+            ))
+        }
+        DocumentUnavailableDiagnostic::ResourceLimited {
+            source_len,
+            max_source_bytes,
+            span,
+        } => Some(project_unavailable_analysis_diagnostic(
+            document,
+            source_limit_diagnostic_for_len_and_span(source_len, max_source_bytes, span),
+            profile,
+        )),
+        DocumentUnavailableDiagnostic::Discarded {
+            source_len,
+            previous_max_source_bytes,
+            span,
+        } => Some(project_unavailable_analysis_diagnostic(
+            document,
+            source_discarded_after_limit_change_diagnostic_with_span(
+                source_len,
+                previous_max_source_bytes,
+                span,
+            ),
+            profile,
+        )),
+        DocumentUnavailableDiagnostic::SyncLost(reason) => {
+            Some(vec![document_sync_lost_diagnostic(
+                reason,
+                document.version,
+                profile,
+            )])
+        }
+    }
+}
+
+fn project_unavailable_analysis_diagnostic(
+    document: &StoredDocument,
+    diagnostic: merman_analysis::AnalysisDiagnostic,
+    profile: &ClientProtocolProfile,
+) -> Vec<Diagnostic> {
+    let payload = AnalysisPayload::new(
+        source_descriptor_for_kind(Some(document.uri.as_str()), document.kind.source_kind()),
+        vec![diagnostic],
+    );
+    analysis_payload_to_versioned_diagnostics_with_profile(
+        &payload,
+        &document.uri,
+        document.version,
+        profile,
+    )
+}
+
+fn document_sync_lost_diagnostic(
+    reason: DocumentSyncLoss,
+    document_version: i32,
+    profile: &ClientProtocolProfile,
+) -> Diagnostic {
+    let message = match reason {
+        DocumentSyncLoss::InvalidIncrementalRange => {
+            "document text is out of sync after an invalid incremental edit range; send a full document replacement or reopen the document".to_string()
+        }
+        DocumentSyncLoss::SourceUnavailable {
+            source_len,
+            last_max_source_bytes,
+        } => format!(
+            "document text is unavailable after rejecting a {source_len}-byte source with a {last_max_source_bytes}-byte limit; ranged edits cannot recover discarded text, so send a full document replacement or reopen the document"
+        ),
+    };
+    Diagnostic {
+        range: Range::new(Position::new(0, 0), Position::new(0, 0)),
+        severity: Some(LspSeverity::ERROR),
+        code: Some(NumberOrString::String(
+            "merman.lsp.document_sync_lost".to_string(),
+        )),
+        source: Some("merman".to_string()),
+        message,
+        related_information: None,
+        tags: None,
+        code_description: None,
+        data: profile
+            .diagnostics
+            .data
+            .then(|| serde_json::to_value(DiagnosticVersionData { document_version }).ok())
+            .flatten(),
+    }
+}
 
 #[cfg(test)]
 pub(crate) fn analysis_payload_to_diagnostics(
@@ -71,37 +174,12 @@ fn analysis_diagnostic_to_lsp(diagnostic: &AnalysisDiagnostic, uri: &Uri) -> Dia
 }
 
 #[cfg(test)]
-pub(crate) fn analysis_diagnostic_to_versioned_lsp(
-    diagnostic: &AnalysisDiagnostic,
-    uri: &Uri,
-    document_version: i32,
-) -> Diagnostic {
-    editor_diagnostic_to_versioned_lsp(
-        analysis_diagnostic_to_editor(diagnostic),
-        uri,
-        document_version,
-        ClientProtocolProfile::permissive().diagnostics,
-    )
-}
-
-#[cfg(test)]
 fn editor_diagnostic_to_lsp(
     diagnostic: EditorDiagnostic,
     uri: &Uri,
     profile: DiagnosticProtocolProfile,
 ) -> Diagnostic {
     let data = diagnostic_identity_data(&diagnostic, None, profile);
-    editor_diagnostic_to_lsp_with_data(&diagnostic, uri, data, profile)
-}
-
-#[cfg(test)]
-fn editor_diagnostic_to_versioned_lsp(
-    diagnostic: EditorDiagnostic,
-    uri: &Uri,
-    document_version: i32,
-    profile: DiagnosticProtocolProfile,
-) -> Diagnostic {
-    let data = diagnostic_identity_data(&diagnostic, Some(document_version), profile);
     editor_diagnostic_to_lsp_with_data(&diagnostic, uri, data, profile)
 }
 

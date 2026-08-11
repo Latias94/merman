@@ -34,11 +34,9 @@ pub(crate) use client_effects::LSP_CLIENT_EFFECT_QUEUE_LIMIT;
 
 pub(crate) use documents::{
     DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS, DEFAULT_LSP_MAX_SOURCE_BYTES, DiagnosticContext,
-    DocumentDiagnosticState, DocumentSyncError, SemanticTokensState, StoredDocument,
-    analysis_options_with_lsp_resource_defaults, default_lsp_analysis_options,
+    DocumentDiagnosticState, DocumentSyncLoss, DocumentUnavailableDiagnostic, SemanticTokensState,
+    StoredDocument, analysis_options_with_lsp_resource_defaults, default_lsp_analysis_options,
 };
-#[cfg(test)]
-pub(crate) use documents::{DocumentDiscardedSource, DocumentResourceLimit};
 
 /// Owns all mutable language state and the workers derived from that state.
 #[derive(Debug, Clone)]

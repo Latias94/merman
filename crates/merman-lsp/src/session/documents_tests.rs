@@ -6,9 +6,9 @@ use super::{
     AnalyzerOptionsPreparation, ConfigurationUpdateOutcome,
     DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES, DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS,
     DEFAULT_LSP_MAX_SOURCE_BYTES, DiagnosticProjectionPreparation, DiagnosticProjectionTicket,
-    DocumentDiagnosticState, DocumentDiscardedSource, DocumentResourceLimit, DocumentSyncError,
-    PreparedDocumentText, SemanticTokensState, SessionState, SnapshotConfigurationPlan,
-    StoredDocument, TextChangePreparation, TextDocumentUpdate, default_lsp_analysis_options,
+    DocumentDiagnosticState, DocumentSource, SemanticTokensState, SessionState,
+    SnapshotConfigurationPlan, StoredDocument, default_lsp_analysis_options,
+    prepare_document_source_cancellable,
 };
 use crate::session::analysis::request::{AnalysisBuildError, AnalysisBuildRequest};
 use crate::snapshot::{DocumentAnalysisContext, DocumentSnapshot, SnapshotContext};
@@ -74,17 +74,68 @@ fn repeated_diagnostic_flowchart_parser(
     Ok(Ok(serde_json::json!({ "warningFacts": [] })))
 }
 
-trait PreparedDocumentTextTestExt {
-    fn new(text: String) -> Self;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SourceState {
+    Available,
+    AnalysisRejected,
+    ResourceLimited {
+        source_len: usize,
+        last_max_source_bytes: usize,
+        span: merman_analysis::DiagnosticSpan,
+        incremental_sync_lost: bool,
+    },
+    Discarded {
+        source_len: usize,
+        last_max_source_bytes: usize,
+        span: merman_analysis::DiagnosticSpan,
+        incremental_sync_lost: bool,
+    },
+    SyncError,
 }
 
-impl PreparedDocumentTextTestExt for PreparedDocumentText {
-    fn new(text: String) -> Self {
-        Self {
-            text,
-            rejection: None,
-        }
+fn source_state(document: &StoredDocument) -> SourceState {
+    match &document.source {
+        DocumentSource::Available(_) => SourceState::Available,
+        DocumentSource::AnalysisRejected { .. } => SourceState::AnalysisRejected,
+        DocumentSource::ResourceLimited(evidence) => SourceState::ResourceLimited {
+            source_len: evidence.source_len,
+            last_max_source_bytes: evidence.last_max_source_bytes,
+            span: evidence.span,
+            incremental_sync_lost: evidence.incremental_sync_lost,
+        },
+        DocumentSource::Discarded(evidence) => SourceState::Discarded {
+            source_len: evidence.source_len,
+            last_max_source_bytes: evidence.last_max_source_bytes,
+            span: evidence.span,
+            incremental_sync_lost: evidence.incremental_sync_lost,
+        },
+        DocumentSource::SyncError => SourceState::SyncError,
     }
+}
+
+fn analysis_rejection(document: &StoredDocument) -> Option<&merman_analysis::AnalysisRejection> {
+    match &document.source {
+        DocumentSource::AnalysisRejected { rejection, .. } => Some(rejection),
+        DocumentSource::Available(_)
+        | DocumentSource::ResourceLimited(_)
+        | DocumentSource::Discarded(_)
+        | DocumentSource::SyncError => None,
+    }
+}
+
+fn prepare_source_for_test(
+    store: &SessionState,
+    uri: &Uri,
+    text: String,
+    kind: DocumentKind,
+) -> DocumentSource {
+    prepare_document_source_cancellable(
+        text,
+        store.analyzer_options().resource_limits(),
+        &super::document_source_descriptor(uri, kind),
+        &AnalysisCancellationToken::new(),
+    )
+    .expect("a private source preparation token cannot be cancelled")
 }
 
 trait SessionStateTestExt: Sized {
@@ -124,7 +175,7 @@ trait SessionStateTestExt: Sized {
         uri: Uri,
         version: i32,
         changes: impl IntoIterator<Item = TextDocumentContentChangeEvent>,
-    ) -> TextDocumentUpdate;
+    ) -> bool;
 
     fn upsert(&mut self, uri: Uri, version: i32, text: String) -> Arc<DocumentSnapshot>;
 
@@ -188,23 +239,8 @@ impl SessionStateTestExt for SessionState {
         text: String,
         kind: DocumentKind,
     ) -> StoredDocument {
-        let text = Arc::<str>::from(text);
-        let source = super::document_source_descriptor(&uri, kind);
-        let document = match self
-            .analyzer
-            .options()
-            .resource_limits()
-            .preflight_document(text.as_ref(), &source)
-        {
-            Some(rejection) => StoredDocument {
-                uri: uri.clone(),
-                version,
-                kind,
-                source: super::document_source_from_rejection(Arc::clone(&text), rejection),
-            },
-            None => StoredDocument::available(uri.clone(), version, kind, text),
-        };
-        self.upsert_document(uri, document)
+        let source = prepare_source_for_test(self, &uri, text, kind);
+        self.open_document_source(uri, version, source, kind)
     }
 
     fn open_text(
@@ -222,14 +258,14 @@ impl SessionStateTestExt for SessionState {
         uri: Uri,
         version: i32,
         changes: impl IntoIterator<Item = TextDocumentContentChangeEvent>,
-    ) -> TextDocumentUpdate {
-        match self.capture_text_changes(uri, version, changes) {
-            TextChangePreparation::Immediate(update) => update,
-            TextChangePreparation::Prepare(plan) => self.commit_prepared_text_changes(
-                plan.prepare()
-                    .expect("a private text-change token cannot be cancelled"),
-            ),
-        }
+    ) -> bool {
+        let Some(plan) = self.capture_text_changes(uri, version, changes) else {
+            return false;
+        };
+        self.commit_prepared_document_change(
+            plan.prepare()
+                .expect("a private text-change token cannot be cancelled"),
+        )
     }
 
     fn upsert(&mut self, uri: Uri, version: i32, text: String) -> Arc<DocumentSnapshot> {
@@ -259,7 +295,7 @@ impl SessionStateTestExt for SessionState {
                         .retained_text()
                         .expect("a rejected build must still have its captured source"),
                 );
-                let source = super::document_source_from_rejection(text, rejection);
+                let source = DocumentSource::from_rejection(text, rejection);
                 self.upsert_document(
                     document.uri.clone(),
                     StoredDocument {
@@ -373,13 +409,13 @@ fn markdown_diagram_limit_retains_text_without_admitting_a_snapshot() {
     assert_eq!(document.retained_text().unwrap().as_ref(), source);
     assert!(document.is_analysis_unavailable());
     assert_eq!(
-        document.analysis_rejection().unwrap().resource_limit(),
+        analysis_rejection(&document).unwrap().resource_limit(),
         AnalysisResourceLimit::DocumentDiagrams {
             observed_document_diagrams: 2,
             max_document_diagrams: 1,
         }
     );
-    assert_eq!(document.resource_limit(), None);
+    assert_eq!(source_state(&document), SourceState::AnalysisRejected);
     assert!(store.snapshot_build_request(&uri).is_none());
     assert!(store.snapshot(&uri).is_none());
 }
@@ -405,10 +441,10 @@ fn ranged_changes_cross_markdown_diagram_limit_in_both_directions() {
             text: "text".to_string(),
         }],
     );
-    assert_eq!(recovered, TextDocumentUpdate::Applied);
+    assert!(recovered);
     let document = store.get(&uri).unwrap();
     assert!(!document.is_analysis_unavailable());
-    assert!(document.analysis_rejection().is_none());
+    assert_eq!(source_state(document), SourceState::Available);
     assert!(store.snapshot(&uri).is_some());
 
     let rejected = store.apply_text_changes(
@@ -420,10 +456,10 @@ fn ranged_changes_cross_markdown_diagram_limit_in_both_directions() {
             text: "mermaid".to_string(),
         }],
     );
-    assert_eq!(rejected, TextDocumentUpdate::Applied);
+    assert!(rejected);
     let document = store.get(&uri).unwrap();
     assert!(document.is_analysis_unavailable());
-    assert!(document.analysis_rejection().is_some());
+    assert_eq!(source_state(document), SourceState::AnalysisRejected);
     assert!(!store.has_snapshot(&uri));
 }
 
@@ -443,14 +479,14 @@ fn configuration_reclassifies_retained_markdown_without_reopening() {
     store
         .apply_analyzer_options(default_lsp_analysis_options().with_max_document_diagrams(Some(1)));
     let rejected = store.get(&uri).unwrap();
-    assert!(rejected.analysis_rejection().is_some());
+    assert_eq!(source_state(rejected), SourceState::AnalysisRejected);
     assert!(Arc::ptr_eq(&original, rejected.retained_text().unwrap()));
 
     store
         .apply_analyzer_options(default_lsp_analysis_options().with_max_document_diagrams(Some(2)));
     let recovered = store.get(&uri).unwrap();
     assert!(!recovered.is_analysis_unavailable());
-    assert!(recovered.analysis_rejection().is_none());
+    assert_eq!(source_state(recovered), SourceState::Available);
     assert!(Arc::ptr_eq(&original, recovered.retained_text().unwrap()));
 }
 
@@ -468,8 +504,10 @@ fn source_byte_limit_precedes_document_diagram_limit_and_discards_text() {
     let document = store.open_text(uri, 1, source.to_string(), DocumentKind::Markdown);
 
     assert!(document.retained_text().is_none());
-    assert!(document.analysis_rejection().is_none());
-    assert!(document.resource_limit().is_some());
+    assert!(matches!(
+        source_state(&document),
+        SourceState::ResourceLimited { .. }
+    ));
 }
 
 #[test]
@@ -621,14 +659,14 @@ fn upsert_text_limits_oversized_documents_without_retaining_source() {
     assert_eq!(document.version, 1);
     assert!(document.text().is_none());
     assert_eq!(
-        document.resource_limit(),
-        Some(DocumentResourceLimit {
+        source_state(&document),
+        SourceState::ResourceLimited {
             source_len: source.len(),
-            max_source_bytes: 8,
+            last_max_source_bytes: 8,
             span: source_limit_diagnostic_span(&source),
-        })
+            incremental_sync_lost: false,
+        }
     );
-    assert_eq!(document.discarded_source(), None);
     assert!(store.snapshot(&uri).is_none());
 }
 
@@ -639,24 +677,18 @@ fn prepared_text_limits_oversized_documents_without_scanning_under_the_store_loc
     let source = "flowchart TD\nA-->B\n".to_string();
 
     store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
-    let cancellation = AnalysisCancellationToken::new();
-    let prepared = PreparedDocumentText::new_cancellable(
-        source.clone(),
-        store.analyzer_options().resource_limits(),
-        &super::document_source_descriptor(&uri, DocumentKind::Diagram),
-        &cancellation,
-    )
-    .unwrap();
-    let document = store.open_prepared_text(uri, 1, prepared, DocumentKind::Diagram);
+    let prepared = prepare_source_for_test(&store, &uri, source.clone(), DocumentKind::Diagram);
+    let document = store.open_document_source(uri, 1, prepared, DocumentKind::Diagram);
 
     assert!(document.text().is_none());
     assert_eq!(
-        document.resource_limit(),
-        Some(DocumentResourceLimit {
+        source_state(&document),
+        SourceState::ResourceLimited {
             source_len: source.len(),
-            max_source_bytes: 8,
+            last_max_source_bytes: 8,
             span: source_limit_diagnostic_span(&source),
-        })
+            incremental_sync_lost: false,
+        }
     );
 }
 
@@ -669,7 +701,7 @@ fn prepared_text_only_projects_a_span_when_the_source_is_oversized() {
         &Uri::from_str("file:///tmp/prepared.mmd").unwrap(),
         DocumentKind::Diagram,
     );
-    let admitted = PreparedDocumentText::new_cancellable(
+    let admitted = prepare_document_source_cancellable(
         source.clone(),
         AnalysisOptions::default()
             .with_max_source_bytes(Some(source.len()))
@@ -678,18 +710,18 @@ fn prepared_text_only_projects_a_span_when_the_source_is_oversized() {
         &cancellation,
     )
     .expect("the admitted source should be prepared");
-    assert_eq!(admitted.rejection, None);
+    assert!(matches!(admitted, DocumentSource::Available(_)));
 
-    let unlimited = PreparedDocumentText::new_cancellable(
+    let unlimited = prepare_document_source_cancellable(
         source.clone(),
         AnalysisOptions::default().resource_limits(),
         &descriptor,
         &cancellation,
     )
     .expect("the unlimited source should be prepared");
-    assert_eq!(unlimited.rejection, None);
+    assert!(matches!(unlimited, DocumentSource::Available(_)));
 
-    let oversized = PreparedDocumentText::new_cancellable(
+    let oversized = prepare_document_source_cancellable(
         source.clone(),
         AnalysisOptions::default()
             .with_max_source_bytes(Some(source.len() - 1))
@@ -699,11 +731,11 @@ fn prepared_text_only_projects_a_span_when_the_source_is_oversized() {
     )
     .expect("the oversized source should be prepared");
     assert_eq!(
-        oversized
-            .rejection
-            .as_ref()
-            .and_then(|rejection| rejection.payload().diagnostics[0].span),
-        Some(source_limit_diagnostic_span(&source)),
+        match oversized {
+            DocumentSource::ResourceLimited(evidence) => Some(evidence.span),
+            _ => None,
+        },
+        Some(source_limit_diagnostic_span(&source))
     );
 }
 
@@ -730,7 +762,7 @@ fn source_limit_reclassification_rejects_a_stale_document_epoch() {
     assert!(store.commit_snapshot_configuration(batch).is_none());
     let document = store.get(&uri).expect("replacement document should remain");
     assert_eq!(document.version, 2);
-    assert_eq!(document.resource_limit(), None);
+    assert_eq!(source_state(document), SourceState::Available);
     assert_eq!(
         store.analyzer_options().max_source_bytes(),
         Some(DEFAULT_LSP_MAX_SOURCE_BYTES)
@@ -801,7 +833,7 @@ fn source_limit_reclassification_rejects_a_superseded_configuration_request() {
     );
     let document = store.get(&uri).expect("latest configuration keeps source");
     assert_eq!(document.text().unwrap().as_ref(), source);
-    assert_eq!(document.resource_limit(), None);
+    assert_eq!(source_state(document), SourceState::Available);
 }
 
 #[test]
@@ -827,12 +859,11 @@ fn full_replacement_recovers_from_resource_limited_document() {
         }],
     );
 
-    assert_eq!(update, TextDocumentUpdate::Applied);
+    assert!(update);
     let stored = store.get(&uri).expect("expected recovered document");
     assert_eq!(stored.version, 2);
     assert_eq!(stored.text().unwrap().as_ref(), "A-->B\n");
-    assert_eq!(stored.resource_limit(), None);
-    assert_eq!(stored.discarded_source(), None);
+    assert_eq!(source_state(stored), SourceState::Available);
 }
 
 #[test]
@@ -854,20 +885,42 @@ fn ranged_changes_on_resource_limited_documents_keep_lightweight_state() {
         }],
     );
 
-    assert_eq!(update, TextDocumentUpdate::NeedsFullSync);
+    assert!(update);
     let stored = store.get(&uri).expect("expected limited document");
     assert_eq!(stored.version, 2);
     assert!(stored.text().is_none());
-    assert_eq!(stored.resource_limit(), None);
-    assert_eq!(stored.discarded_source(), None);
     assert_eq!(
-        stored.sync_error_state(),
-        Some(DocumentSyncError::FullReplacementRequired {
+        source_state(stored),
+        SourceState::ResourceLimited {
             source_len: source.len(),
             last_max_source_bytes: 8,
-        })
+            span: source_limit_diagnostic_span(&source),
+            incremental_sync_lost: true,
+        }
     );
     assert!(store.snapshot(&uri).is_none());
+
+    store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(64)));
+    assert_eq!(
+        source_state(store.get(&uri).expect("expected discarded document")),
+        SourceState::Discarded {
+            source_len: source.len(),
+            last_max_source_bytes: 8,
+            span: source_limit_diagnostic_span(&source),
+            incremental_sync_lost: true,
+        }
+    );
+
+    store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(16)));
+    assert_eq!(
+        source_state(store.get(&uri).expect("expected limited document")),
+        SourceState::ResourceLimited {
+            source_len: source.len(),
+            last_max_source_bytes: 16,
+            span: source_limit_diagnostic_span(&source),
+            incremental_sync_lost: true,
+        }
+    );
 }
 
 #[test]
@@ -882,14 +935,14 @@ fn resource_limited_documents_update_limit_when_configuration_still_excludes_the
 
     let stored = store.get(&uri).expect("expected limited document");
     assert_eq!(
-        stored.resource_limit(),
-        Some(DocumentResourceLimit {
+        source_state(stored),
+        SourceState::ResourceLimited {
             source_len: source.len(),
-            max_source_bytes: 16,
+            last_max_source_bytes: 16,
             span: source_limit_diagnostic_span(&source),
-        })
+            incremental_sync_lost: false,
+        }
     );
-    assert_eq!(stored.discarded_source(), None);
     assert!(store.snapshot(&uri).is_none());
 }
 
@@ -904,14 +957,14 @@ fn resource_limited_documents_become_discarded_when_configuration_would_allow_th
     store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(64)));
 
     let stored = store.get(&uri).expect("expected discarded document");
-    assert_eq!(stored.resource_limit(), None);
     assert_eq!(
-        stored.discarded_source(),
-        Some(DocumentDiscardedSource {
+        source_state(stored),
+        SourceState::Discarded {
             source_len: source.len(),
-            previous_max_source_bytes: 8,
+            last_max_source_bytes: 8,
             span: source_limit_diagnostic_span(&source),
-        })
+            incremental_sync_lost: false,
+        }
     );
     assert!(store.snapshot(&uri).is_none());
 
@@ -925,10 +978,9 @@ fn resource_limited_documents_become_discarded_when_configuration_would_allow_th
         }],
     );
 
-    assert_eq!(update, TextDocumentUpdate::Applied);
+    assert!(update);
     let stored = store.get(&uri).expect("expected recovered document");
-    assert_eq!(stored.resource_limit(), None);
-    assert_eq!(stored.discarded_source(), None);
+    assert_eq!(source_state(stored), SourceState::Available);
     assert_eq!(stored.text().unwrap().as_ref(), source);
 }
 
@@ -979,7 +1031,7 @@ fn apply_text_change_rejects_missing_documents() {
         }],
     );
 
-    assert_eq!(update, TextDocumentUpdate::MissingDocument);
+    assert!(!update);
     assert!(store.get(&uri).is_none());
     assert!(!store.has_snapshot(&uri));
 }
@@ -1011,13 +1063,7 @@ fn apply_text_change_rejects_stale_versions_without_invalidating_current_state()
         }],
     );
 
-    assert_eq!(
-        update,
-        TextDocumentUpdate::StaleVersion {
-            current_version: 3,
-            attempted_version: 2,
-        }
-    );
+    assert!(!update);
     let stored = store.get(&uri).expect("expected current document");
     assert_eq!(stored.version, 3);
     assert!(stored.text().unwrap().contains("sequenceDiagram"));
@@ -1053,7 +1099,7 @@ fn apply_text_changes_applies_lsp_utf16_ranges_in_order() {
         ],
     );
 
-    assert_eq!(update, TextDocumentUpdate::Applied);
+    assert!(update);
     let stored = store.get(&uri).expect("expected updated document");
     assert_eq!(stored.version, 2);
     assert_eq!(
@@ -1072,17 +1118,17 @@ fn prepared_text_changes_cannot_overwrite_a_newer_document_epoch() {
         "flowchart TD\nA-->B\n".to_string(),
         DocumentKind::Diagram,
     );
-    let TextChangePreparation::Prepare(plan) = store.capture_text_changes(
-        uri.clone(),
-        2,
-        [TextDocumentContentChangeEvent {
-            range: None,
-            range_length: None,
-            text: "flowchart TD\nA-->C\n".to_string(),
-        }],
-    ) else {
-        panic!("valid change should require lock-free preparation");
-    };
+    let plan = store
+        .capture_text_changes(
+            uri.clone(),
+            2,
+            [TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "flowchart TD\nA-->C\n".to_string(),
+            }],
+        )
+        .expect("valid change should require lock-free preparation");
 
     store.open_text(
         uri.clone(),
@@ -1090,12 +1136,12 @@ fn prepared_text_changes_cannot_overwrite_a_newer_document_epoch() {
         "sequenceDiagram\nAlice->>Bob: newer\n".to_string(),
         DocumentKind::Diagram,
     );
-    let update = store.commit_prepared_text_changes(
+    let update = store.commit_prepared_document_change(
         plan.prepare()
             .expect("test text preparation should not be cancelled"),
     );
 
-    assert_eq!(update, TextDocumentUpdate::Superseded);
+    assert!(!update);
     let stored = store
         .get(&uri)
         .expect("newer document should remain stored");
@@ -1114,17 +1160,17 @@ fn session_cancellation_aborts_pending_text_change_preparation() {
         "flowchart TD\nA-->B\n".to_string(),
         DocumentKind::Diagram,
     );
-    let TextChangePreparation::Prepare(plan) = store.capture_text_changes(
-        uri,
-        2,
-        [TextDocumentContentChangeEvent {
-            range: None,
-            range_length: None,
-            text: "flowchart TD\nA-->C\n".to_string(),
-        }],
-    ) else {
-        panic!("valid change should require lock-free preparation");
-    };
+    let plan = store
+        .capture_text_changes(
+            uri,
+            2,
+            [TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "flowchart TD\nA-->C\n".to_string(),
+            }],
+        )
+        .expect("valid change should require lock-free preparation");
 
     cancellation.cancel();
 
@@ -1171,7 +1217,7 @@ fn apply_text_changes_updates_line_index_between_batched_edits() {
         ],
     );
 
-    assert_eq!(update, TextDocumentUpdate::Applied);
+    assert!(update);
     let stored = store.get(&uri).expect("expected updated document");
     assert_eq!(
         stored.text().unwrap().as_ref(),
@@ -1201,7 +1247,7 @@ fn apply_text_changes_allows_nonconsecutive_versions_for_incremental_ranges() {
         }],
     );
 
-    assert_eq!(update, TextDocumentUpdate::Applied);
+    assert!(update);
     let stored = store.get(&uri).expect("expected updated document");
     assert_eq!(stored.version, 3);
     assert_eq!(stored.text().unwrap().as_ref(), "flowchart TD\nC-->B\n");
@@ -1221,7 +1267,7 @@ fn apply_text_changes_rejects_empty_change_sets_without_advancing_version() {
 
     let update = store.apply_text_changes(uri.clone(), 3, []);
 
-    assert_eq!(update, TextDocumentUpdate::EmptyChangeSet);
+    assert!(!update);
     let stored = store.get(&uri).expect("expected current document");
     assert_eq!(stored.version, 1);
     assert_eq!(stored.text().unwrap().as_ref(), "flowchart TD\nA-->B\n");
@@ -1249,7 +1295,7 @@ fn apply_text_changes_allows_skipped_versions_for_full_replacements() {
         }],
     );
 
-    assert_eq!(update, TextDocumentUpdate::Applied);
+    assert!(update);
     let stored = store.get(&uri).expect("expected updated document");
     assert_eq!(stored.version, 4);
     assert_eq!(
@@ -1285,16 +1331,11 @@ fn apply_text_changes_marks_document_unsynced_after_invalid_range() {
         }],
     );
 
-    assert_eq!(update, TextDocumentUpdate::InvalidRange);
+    assert!(update);
     let stored = store.get(&uri).expect("expected current document");
     assert_eq!(stored.version, 2);
     assert!(stored.text().is_none());
-    assert_eq!(stored.resource_limit(), None);
-    assert_eq!(stored.discarded_source(), None);
-    assert_eq!(
-        stored.sync_error_state(),
-        Some(DocumentSyncError::InvalidIncrementalRange)
-    );
+    assert_eq!(source_state(stored), SourceState::SyncError);
     assert!(!store.has_snapshot(&uri));
 }
 
@@ -1320,13 +1361,10 @@ fn apply_text_changes_marks_document_unsynced_after_reversed_range() {
         }],
     );
 
-    assert_eq!(update, TextDocumentUpdate::InvalidRange);
+    assert!(update);
     let stored = store.get(&uri).expect("expected unsynced document");
     assert!(stored.text().is_none());
-    assert_eq!(
-        stored.sync_error_state(),
-        Some(DocumentSyncError::InvalidIncrementalRange)
-    );
+    assert_eq!(source_state(stored), SourceState::SyncError);
 }
 
 #[test]
@@ -1354,14 +1392,14 @@ fn apply_text_changes_clamps_utf16_positions_past_line_end() {
         }],
     );
 
-    assert_eq!(update, TextDocumentUpdate::Applied);
+    assert!(update);
     let stored = store.get(&uri).expect("expected updated document");
     assert_eq!(stored.version, 2);
     assert_eq!(
         stored.text().unwrap().as_ref(),
         "flowchart TD\nA[🤓]-->Bbad\n"
     );
-    assert_eq!(stored.sync_error_state(), None);
+    assert_eq!(source_state(stored), SourceState::Available);
 }
 
 #[test]
@@ -1376,18 +1414,15 @@ fn full_replacement_recovers_from_unsynced_document_after_invalid_range() {
         DocumentKind::Diagram,
     );
 
-    assert_eq!(
-        store.apply_text_changes(
-            uri.clone(),
-            2,
-            [TextDocumentContentChangeEvent {
-                range: Some(Range::new(Position::new(20, 0), Position::new(20, 1))),
-                range_length: None,
-                text: "bad".to_string(),
-            }],
-        ),
-        TextDocumentUpdate::InvalidRange
-    );
+    assert!(store.apply_text_changes(
+        uri.clone(),
+        2,
+        [TextDocumentContentChangeEvent {
+            range: Some(Range::new(Position::new(20, 0), Position::new(20, 1))),
+            range_length: None,
+            text: "bad".to_string(),
+        }],
+    ));
 
     let update = store.apply_text_changes(
         uri.clone(),
@@ -1399,14 +1434,14 @@ fn full_replacement_recovers_from_unsynced_document_after_invalid_range() {
         }],
     );
 
-    assert_eq!(update, TextDocumentUpdate::Applied);
+    assert!(update);
     let stored = store.get(&uri).expect("expected recovered document");
     assert_eq!(stored.version, 3);
     assert_eq!(
         stored.text().unwrap().as_ref(),
         "sequenceDiagram\nAlice->>Bob: Hi\n"
     );
-    assert_eq!(stored.sync_error_state(), None);
+    assert_eq!(source_state(stored), SourceState::Available);
 }
 
 #[test]
@@ -1421,18 +1456,15 @@ fn ranged_changes_on_unsynced_documents_keep_lightweight_state() {
         DocumentKind::Diagram,
     );
 
-    assert_eq!(
-        store.apply_text_changes(
-            uri.clone(),
-            2,
-            [TextDocumentContentChangeEvent {
-                range: Some(Range::new(Position::new(20, 0), Position::new(20, 1))),
-                range_length: None,
-                text: "bad".to_string(),
-            }],
-        ),
-        TextDocumentUpdate::InvalidRange
-    );
+    assert!(store.apply_text_changes(
+        uri.clone(),
+        2,
+        [TextDocumentContentChangeEvent {
+            range: Some(Range::new(Position::new(20, 0), Position::new(20, 1))),
+            range_length: None,
+            text: "bad".to_string(),
+        }],
+    ));
 
     let update = store.apply_text_changes(
         uri.clone(),
@@ -1444,13 +1476,21 @@ fn ranged_changes_on_unsynced_documents_keep_lightweight_state() {
         }],
     );
 
-    assert_eq!(update, TextDocumentUpdate::NeedsFullSync);
+    assert!(update);
     let stored = store.get(&uri).expect("expected unsynced document");
     assert_eq!(stored.version, 3);
     assert!(stored.text().is_none());
+    assert_eq!(source_state(stored), SourceState::SyncError);
+
+    store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
     assert_eq!(
-        stored.sync_error_state(),
-        Some(DocumentSyncError::InvalidIncrementalRange)
+        source_state(store.get(&uri).expect("expected unsynced document")),
+        SourceState::SyncError
+    );
+    store.apply_analyzer_options(default_lsp_analysis_options());
+    assert_eq!(
+        source_state(store.get(&uri).expect("expected unsynced document")),
+        SourceState::SyncError
     );
 }
 
@@ -1466,18 +1506,15 @@ fn full_replacement_later_in_unsynced_batch_recovers_document() {
         DocumentKind::Diagram,
     );
 
-    assert_eq!(
-        store.apply_text_changes(
-            uri.clone(),
-            2,
-            [TextDocumentContentChangeEvent {
-                range: Some(Range::new(Position::new(20, 0), Position::new(20, 1))),
-                range_length: None,
-                text: "bad".to_string(),
-            }],
-        ),
-        TextDocumentUpdate::InvalidRange
-    );
+    assert!(store.apply_text_changes(
+        uri.clone(),
+        2,
+        [TextDocumentContentChangeEvent {
+            range: Some(Range::new(Position::new(20, 0), Position::new(20, 1))),
+            range_length: None,
+            text: "bad".to_string(),
+        }],
+    ));
 
     let update = store.apply_text_changes(
         uri.clone(),
@@ -1496,14 +1533,14 @@ fn full_replacement_later_in_unsynced_batch_recovers_document() {
         ],
     );
 
-    assert_eq!(update, TextDocumentUpdate::Applied);
+    assert!(update);
     let stored = store.get(&uri).expect("expected recovered document");
     assert_eq!(stored.version, 3);
     assert_eq!(
         stored.text().unwrap().as_ref(),
         "sequenceDiagram\nAlice->>Bob: Hi\n"
     );
-    assert_eq!(stored.sync_error_state(), None);
+    assert_eq!(source_state(stored), SourceState::Available);
 }
 
 #[test]
@@ -1535,14 +1572,14 @@ fn full_replacement_later_in_available_batch_ignores_prior_invalid_ranges() {
         ],
     );
 
-    assert_eq!(update, TextDocumentUpdate::Applied);
+    assert!(update);
     let stored = store.get(&uri).expect("expected replaced document");
     assert_eq!(stored.version, 2);
     assert_eq!(
         stored.text().unwrap().as_ref(),
         "sequenceDiagram\nAlice->>Bob: Hi\n"
     );
-    assert_eq!(stored.sync_error_state(), None);
+    assert_eq!(source_state(stored), SourceState::Available);
 }
 
 #[test]
@@ -1574,7 +1611,7 @@ fn ranged_changes_after_a_full_replacement_apply_to_the_replacement() {
         ],
     );
 
-    assert_eq!(update, TextDocumentUpdate::Applied);
+    assert!(update);
     let stored = store.get(&uri).expect("expected updated document");
     assert_eq!(
         stored.text().unwrap().as_ref(),
@@ -1791,17 +1828,17 @@ fn no_op_configuration_does_not_supersede_prepared_text_changes() {
         "flowchart TD\nA-->B\n".to_string(),
         DocumentKind::Diagram,
     );
-    let TextChangePreparation::Prepare(plan) = store.capture_text_changes(
-        uri.clone(),
-        2,
-        [TextDocumentContentChangeEvent {
-            range: None,
-            range_length: None,
-            text: "flowchart TD\nA-->C\n".to_string(),
-        }],
-    ) else {
-        panic!("expected a prepared text transaction");
-    };
+    let plan = store
+        .capture_text_changes(
+            uri.clone(),
+            2,
+            [TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "flowchart TD\nA-->C\n".to_string(),
+            }],
+        )
+        .expect("expected a prepared text transaction");
     let prepared = plan.prepare().expect("text preparation should succeed");
 
     let request = store.begin_analyzer_configuration_request();
@@ -1813,10 +1850,7 @@ fn no_op_configuration_does_not_supersede_prepared_text_changes() {
         AnalyzerOptionsPreparation::Applied(AnalysisConfigChange::Unchanged)
     ));
 
-    assert_eq!(
-        store.commit_prepared_text_changes(prepared),
-        TextDocumentUpdate::Applied
-    );
+    assert!(store.commit_prepared_document_change(prepared));
     assert_eq!(store.get(&uri).unwrap().version, 2);
 }
 
@@ -1830,17 +1864,17 @@ fn applied_configuration_supersedes_prepared_text_changes() {
         "flowchart TD\nA-->B\n".to_string(),
         DocumentKind::Diagram,
     );
-    let TextChangePreparation::Prepare(plan) = store.capture_text_changes(
-        uri.clone(),
-        2,
-        [TextDocumentContentChangeEvent {
-            range: None,
-            range_length: None,
-            text: "flowchart TD\nA-->C\n".to_string(),
-        }],
-    ) else {
-        panic!("expected a prepared text transaction");
-    };
+    let plan = store
+        .capture_text_changes(
+            uri.clone(),
+            2,
+            [TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "flowchart TD\nA-->C\n".to_string(),
+            }],
+        )
+        .expect("expected a prepared text transaction");
     let prepared = plan.prepare().expect("text preparation should succeed");
 
     store.apply_analyzer_options(
@@ -1851,10 +1885,7 @@ fn applied_configuration_supersedes_prepared_text_changes() {
         ),
     );
 
-    assert_eq!(
-        store.commit_prepared_text_changes(prepared),
-        TextDocumentUpdate::Superseded
-    );
+    assert!(!store.commit_prepared_document_change(prepared));
     assert_eq!(store.get(&uri).unwrap().version, 1);
 }
 
@@ -2692,12 +2723,13 @@ fn snapshot_affecting_source_limit_update_rejects_the_cached_generation() {
     let stored = store.get(&uri).expect("expected resource-limited document");
     assert!(stored.text().is_none());
     assert_eq!(
-        stored.resource_limit(),
-        Some(DocumentResourceLimit {
+        source_state(stored),
+        SourceState::ResourceLimited {
             source_len: "flowchart TD\nA-->B\n".len(),
-            max_source_bytes: "flowchart TD\nA-->B\n".len() - 1,
+            last_max_source_bytes: "flowchart TD\nA-->B\n".len() - 1,
             span: source_limit_diagnostic_span("flowchart TD\nA-->B\n"),
-        })
+            incremental_sync_lost: false,
+        }
     );
     assert!(store.snapshot_build_request(&uri).is_none());
     assert!(store.snapshot(&uri).is_none());
@@ -4322,7 +4354,7 @@ fn open_commit_is_uri_local_and_rejects_changed_target_or_configuration_state() 
     assert!(state.commit_open_document(
         ticket,
         1,
-        PreparedDocumentText::new("flowchart TD\nA-->B\n".to_string()),
+        DocumentSource::Available(Arc::from("flowchart TD\nA-->B\n")),
         DocumentKind::Diagram,
     ));
     assert_eq!(state.get(&uri).unwrap().version, 1);
@@ -4337,7 +4369,7 @@ fn open_commit_is_uri_local_and_rejects_changed_target_or_configuration_state() 
     assert!(!state.commit_open_document(
         ticket,
         3,
-        PreparedDocumentText::new("flowchart TD\nA-->D\n".to_string()),
+        DocumentSource::Available(Arc::from("flowchart TD\nA-->D\n")),
         DocumentKind::Diagram,
     ));
     assert_eq!(state.get(&uri).unwrap().version, 2);
@@ -4353,7 +4385,7 @@ fn open_commit_is_uri_local_and_rejects_changed_target_or_configuration_state() 
     assert!(!state.commit_open_document(
         ticket,
         3,
-        PreparedDocumentText::new("flowchart TD\nA-->D\n".to_string()),
+        DocumentSource::Available(Arc::from("flowchart TD\nA-->D\n")),
         DocumentKind::Diagram,
     ));
     assert_eq!(state.get(&uri).unwrap().version, 2);
@@ -4365,10 +4397,10 @@ fn open_commit_rejects_an_absent_present_absent_aba() {
     let uri = Uri::from_str("file:///tmp/open-ticket-aba.mmd").unwrap();
     let ticket = state.capture_open_document(uri.clone());
 
-    state.open_prepared_text(
+    state.open_document_source(
         uri.clone(),
         1,
-        PreparedDocumentText::new("flowchart TD\nA-->B\n".to_string()),
+        DocumentSource::Available(Arc::from("flowchart TD\nA-->B\n")),
         DocumentKind::Diagram,
     );
     state.remove(&uri);
@@ -4377,7 +4409,7 @@ fn open_commit_rejects_an_absent_present_absent_aba() {
     assert!(!state.commit_open_document(
         ticket,
         2,
-        PreparedDocumentText::new("flowchart TD\nA-->C\n".to_string()),
+        DocumentSource::Available(Arc::from("flowchart TD\nA-->C\n")),
         DocumentKind::Diagram,
     ));
     assert!(state.get(&uri).is_none());
@@ -4412,7 +4444,7 @@ fn open_tickets_share_a_uri_clock_until_the_last_ticket_finishes() {
     assert!(state.commit_open_document(
         second,
         1,
-        PreparedDocumentText::new("flowchart TD\nA-->B\n".to_string()),
+        DocumentSource::Available(Arc::from("flowchart TD\nA-->B\n")),
         DocumentKind::Diagram,
     ));
     assert!(

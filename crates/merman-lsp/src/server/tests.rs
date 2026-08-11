@@ -8,8 +8,7 @@ use super::{
 };
 use crate::protocol::{CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION};
 use crate::session::{
-    ClientEffectKey, DocumentDiscardedSource, DocumentResourceLimit, DocumentSyncError,
-    LSP_CLIENT_EFFECT_QUEUE_LIMIT, StoredDocument, default_lsp_analysis_options,
+    ClientEffectKey, LSP_CLIENT_EFFECT_QUEUE_LIMIT, default_lsp_analysis_options,
 };
 use crate::snapshot::snapshot_for_test;
 use crate::structure::{
@@ -17,11 +16,7 @@ use crate::structure::{
     selection_ranges,
 };
 use futures::StreamExt;
-use merman_analysis::{
-    AnalysisDiagnostic, AnalysisOptions, AnalysisRuleConfig, DiagnosticCategory, DiagnosticFix,
-    DiagnosticFixEdit, SourceKind, SourceMap, source_descriptor_for_kind,
-    source_limit_diagnostic_span,
-};
+use merman_analysis::AnalysisRuleConfig;
 use merman_core::EditorRenamePolicy;
 use merman_editor_core::{DocumentKind, semantic_token_descriptor};
 use tower::{Service, ServiceExt};
@@ -30,7 +25,7 @@ use tower_lsp_server::jsonrpc::Request;
 use tower_lsp_server::ls_types::SemanticTokensResult;
 use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams, CompletionParams,
-    CompletionResponse, DidChangeConfigurationParams, DidChangeTextDocumentParams,
+    CompletionResponse, Diagnostic, DidChangeConfigurationParams, DidChangeTextDocumentParams,
     DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
     DocumentChanges, DocumentDiagnosticParams, DocumentDiagnosticReport,
     DocumentDiagnosticReportResult, DocumentSymbolParams, DocumentSymbolResponse,
@@ -187,6 +182,39 @@ async fn initialize_test_backend(server: &MermanLanguageServer, capabilities: se
     server.initialize(params).await.expect("initialize backend");
 }
 
+async fn initialize_pull_test_backend(server: &MermanLanguageServer) {
+    initialize_test_backend(
+        server,
+        serde_json::json!({
+            "textDocument": {
+                "diagnostic": {},
+                "publishDiagnostics": { "dataSupport": true }
+            }
+        }),
+    )
+    .await;
+}
+
+async fn pull_document_diagnostics(server: &MermanLanguageServer, uri: Uri) -> Vec<Diagnostic> {
+    let report = server
+        .diagnostic(DocumentDiagnosticParams {
+            text_document: TextDocumentIdentifier { uri },
+            identifier: None,
+            previous_result_id: None,
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        })
+        .await
+        .expect("document diagnostics should be available");
+
+    match report {
+        DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(report)) => {
+            report.full_document_diagnostic_report.items
+        }
+        other => panic!("unexpected diagnostic report: {other:?}"),
+    }
+}
+
 fn diagnostic_only_configuration() -> DidChangeConfigurationParams {
     DidChangeConfigurationParams {
         settings: serde_json::json!({
@@ -250,24 +278,32 @@ fn invalid_semantic_token_ranges_are_invalid_params() {
     assert!(error.data.is_none());
 }
 
-#[test]
-fn diagnostics_for_resource_limited_documents_emit_resource_limit_with_document_version() {
+#[tokio::test(flavor = "current_thread")]
+async fn pull_diagnostics_follow_discarded_source_lifecycle() {
+    let (_service, _socket, server) = test_service();
+    initialize_pull_test_backend(&server).await;
     let uri = Uri::from_str("file:///tmp/large.mmd").unwrap();
     let source = "flowchart TD\nA-->B\n";
-    let document = StoredDocument::resource_limited(
-        uri.clone(),
-        5,
-        DocumentKind::Diagram,
-        DocumentResourceLimit {
-            source_len: source.len(),
-            max_source_bytes: 8,
-            span: source_limit_diagnostic_span(source),
-        },
-    );
-    let analyzer = merman_analysis::Analyzer::with_options(
-        AnalysisOptions::default().with_max_source_bytes(Some(8)),
-    );
-    let diagnostics = MermanLanguageServer::diagnostics_for_document(&document, &analyzer);
+
+    server
+        .did_change_configuration(DidChangeConfigurationParams {
+            settings: serde_json::json!({
+                "resources": { "limits": { "max_source_bytes": 8 } }
+            }),
+        })
+        .await;
+    server
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "mermaid".to_string(),
+                version: 5,
+                text: source.to_string(),
+            },
+        })
+        .await;
+
+    let diagnostics = pull_document_diagnostics(&server, uri.clone()).await;
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(
@@ -292,73 +328,15 @@ fn diagnostics_for_resource_limited_documents_emit_resource_limit_with_document_
             .and_then(|data| data.get("documentVersion")),
         Some(&serde_json::json!(5))
     );
-}
 
-#[test]
-fn diagnostics_for_document_diagram_rejection_use_canonical_resource_payload() {
-    let uri = Uri::from_str("file:///tmp/limited.md").unwrap();
-    let source = concat!(
-        "```mermaid\nflowchart TD\nA-->B\n```\n",
-        "```mermaid\nsequenceDiagram\nA->>B: hi\n```\n",
-    );
-    let options = AnalysisOptions::default().with_max_document_diagrams(Some(1));
-    let descriptor = source_descriptor_for_kind(Some(uri.as_str()), SourceKind::Markdown);
-    let rejection = options
-        .resource_limits()
-        .preflight_document(source, &descriptor)
-        .expect("the second Mermaid fence must exceed the document budget");
-    let document = StoredDocument::analysis_rejected(
-        uri,
-        5,
-        DocumentKind::Markdown,
-        std::sync::Arc::from(source),
-        rejection,
-    );
-
-    let diagnostics = MermanLanguageServer::diagnostics_for_document(
-        &document,
-        &merman_analysis::Analyzer::with_options(options),
-    );
-
-    assert_eq!(diagnostics.len(), 1);
-    assert_eq!(
-        diagnostics[0].code,
-        Some(NumberOrString::String(
-            "merman.resource.document_diagrams_exceeded".to_string()
-        ))
-    );
-    assert_eq!(
-        diagnostics[0].range,
-        Range::new(Position::new(4, 0), Position::new(4, 3))
-    );
-    assert!(!diagnostics[0].message.contains("document_sync_lost"));
-    assert_eq!(
-        diagnostics[0]
-            .data
-            .as_ref()
-            .and_then(|data| data.get("documentVersion")),
-        Some(&serde_json::json!(5))
-    );
-}
-
-#[test]
-fn diagnostics_for_discarded_documents_request_full_resync_after_limit_increase() {
-    let uri = Uri::from_str("file:///tmp/large.mmd").unwrap();
-    let source = "flowchart TD\nA-->B\n";
-    let document = StoredDocument::discarded(
-        uri.clone(),
-        5,
-        DocumentKind::Diagram,
-        DocumentDiscardedSource {
-            source_len: source.len(),
-            previous_max_source_bytes: 8,
-            span: source_limit_diagnostic_span(source),
-        },
-    );
-    let analyzer = merman_analysis::Analyzer::with_options(
-        AnalysisOptions::default().with_max_source_bytes(Some(64)),
-    );
-    let diagnostics = MermanLanguageServer::diagnostics_for_document(&document, &analyzer);
+    server
+        .did_change_configuration(DidChangeConfigurationParams {
+            settings: serde_json::json!({
+                "resources": { "limits": { "max_source_bytes": 64 } }
+            }),
+        })
+        .await;
+    let diagnostics = pull_document_diagnostics(&server, uri.clone()).await;
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(
@@ -379,22 +357,21 @@ fn diagnostics_for_discarded_documents_request_full_resync_after_limit_increase(
             .and_then(|data| data.get("documentVersion")),
         Some(&serde_json::json!(5))
     );
-}
 
-#[test]
-fn diagnostics_for_unsynced_documents_request_full_replacement() {
-    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-    let document = StoredDocument::sync_error(
-        uri,
-        9,
-        DocumentKind::Diagram,
-        DocumentSyncError::InvalidIncrementalRange,
-    );
-
-    let diagnostics = MermanLanguageServer::diagnostics_for_document(
-        &document,
-        &merman_analysis::Analyzer::new(),
-    );
+    server
+        .did_change(DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier {
+                uri: uri.clone(),
+                version: 6,
+            },
+            content_changes: vec![TextDocumentContentChangeEvent {
+                range: Some(Range::new(Position::new(1, 0), Position::new(1, 1))),
+                range_length: None,
+                text: "C".to_string(),
+            }],
+        })
+        .await;
+    let diagnostics = pull_document_diagnostics(&server, uri).await;
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(
@@ -403,36 +380,11 @@ fn diagnostics_for_unsynced_documents_request_full_replacement() {
             "merman.lsp.document_sync_lost".to_string()
         ))
     );
-    assert!(diagnostics[0].message.contains("full document replacement"));
-    assert_eq!(
+    assert!(
         diagnostics[0]
-            .data
-            .as_ref()
-            .and_then(|data| data.get("documentVersion")),
-        Some(&serde_json::json!(9))
+            .message
+            .contains(&format!("{}-byte source", source.len()))
     );
-}
-
-#[test]
-fn diagnostics_for_discarded_sources_preserve_rejection_metadata_after_ranged_edits() {
-    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-    let document = StoredDocument::sync_error(
-        uri,
-        10,
-        DocumentKind::Diagram,
-        DocumentSyncError::FullReplacementRequired {
-            source_len: 21,
-            last_max_source_bytes: 8,
-        },
-    );
-
-    let diagnostics = MermanLanguageServer::diagnostics_for_document(
-        &document,
-        &merman_analysis::Analyzer::new(),
-    );
-
-    assert_eq!(diagnostics.len(), 1);
-    assert!(diagnostics[0].message.contains("21-byte source"));
     assert!(diagnostics[0].message.contains("8-byte limit"));
     assert!(diagnostics[0].message.contains("full document replacement"));
     assert_eq!(
@@ -440,7 +392,58 @@ fn diagnostics_for_discarded_sources_preserve_rejection_metadata_after_ranged_ed
             .data
             .as_ref()
             .and_then(|data| data.get("documentVersion")),
-        Some(&serde_json::json!(10))
+        Some(&serde_json::json!(6))
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn pull_diagnostics_for_document_diagram_rejection_use_canonical_resource_payload() {
+    let (_service, _socket, server) = test_service();
+    initialize_pull_test_backend(&server).await;
+    let uri = Uri::from_str("file:///tmp/limited.md").unwrap();
+    let source = concat!(
+        "```mermaid\nflowchart TD\nA-->B\n```\n",
+        "```mermaid\nsequenceDiagram\nA->>B: hi\n```\n",
+    );
+
+    server
+        .did_change_configuration(DidChangeConfigurationParams {
+            settings: serde_json::json!({
+                "resources": { "limits": { "max_document_diagrams": 1 } }
+            }),
+        })
+        .await;
+    server
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "markdown".to_string(),
+                version: 5,
+                text: source.to_string(),
+            },
+        })
+        .await;
+
+    let diagnostics = pull_document_diagnostics(&server, uri).await;
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0].code,
+        Some(NumberOrString::String(
+            "merman.resource.document_diagrams_exceeded".to_string()
+        ))
+    );
+    assert_eq!(
+        diagnostics[0].range,
+        Range::new(Position::new(4, 0), Position::new(4, 3))
+    );
+    assert!(!diagnostics[0].message.contains("document_sync_lost"));
+    assert_eq!(
+        diagnostics[0]
+            .data
+            .as_ref()
+            .and_then(|data| data.get("documentVersion")),
+        Some(&serde_json::json!(5))
     );
 }
 
@@ -809,19 +812,22 @@ async fn stalled_client_logs_are_latest_wins() {
     assert_eq!(params.message, "latest client log");
 }
 
-#[test]
-fn diagnostics_use_stored_markdown_kind_for_extensionless_documents() {
+#[tokio::test(flavor = "current_thread")]
+async fn diagnostics_use_stored_markdown_kind_for_extensionless_documents() {
+    let (_service, _socket, server) = test_service();
+    initialize_pull_test_backend(&server).await;
     let uri = Uri::from_str("untitled:notes").unwrap();
-    let document = StoredDocument::available(
-        uri.clone(),
-        7,
-        DocumentKind::Markdown,
-        "before\n```mermaid\nflowchart TD\nA[unterminated\n```\nafter\n",
-    );
-    let diagnostics = MermanLanguageServer::diagnostics_for_document(
-        &document,
-        &merman_analysis::Analyzer::new(),
-    );
+    server
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "markdown".to_string(),
+                version: 7,
+                text: "before\n```mermaid\nflowchart TD\nA[unterminated\n```\nafter\n".to_string(),
+            },
+        })
+        .await;
+    let diagnostics = pull_document_diagnostics(&server, uri).await;
 
     assert!(
         diagnostics.iter().all(|diagnostic| {
@@ -855,20 +861,22 @@ fn diagnostics_use_stored_markdown_kind_for_extensionless_documents() {
     );
 }
 
-#[test]
-fn diagnostics_include_rich_editor_projection_warnings() {
+#[tokio::test(flavor = "current_thread")]
+async fn diagnostics_include_rich_editor_projection_warnings() {
+    let (_service, _socket, server) = test_service();
+    initialize_pull_test_backend(&server).await;
     let uri = Uri::from_str("file:///tmp/cynefin.mmd").unwrap();
-    let document = StoredDocument::available(
-        uri,
-        3,
-        DocumentKind::Diagram,
-        "cynefin-beta\n  complicated --> complicated : \"Self-loop\"\n",
-    );
-
-    let diagnostics = MermanLanguageServer::diagnostics_for_document(
-        &document,
-        &merman_analysis::Analyzer::new(),
-    );
+    server
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "mermaid".to_string(),
+                version: 3,
+                text: "cynefin-beta\n  complicated --> complicated : \"Self-loop\"\n".to_string(),
+            },
+        })
+        .await;
+    let diagnostics = pull_document_diagnostics(&server, uri).await;
 
     assert!(diagnostics.iter().any(|diagnostic| {
         diagnostic
@@ -1730,8 +1738,7 @@ async fn session_admission_orders_configuration_before_document_open() {
         .expect("open must run after the queued configuration");
     assert_eq!(document.version, 1);
     assert_eq!(document.text().unwrap().as_ref(), source);
-    assert_eq!(document.resource_limit(), None);
-    assert_eq!(document.sync_error_state(), None);
+    assert!(!document.is_analysis_unavailable());
 }
 
 #[tokio::test(flavor = "current_thread")]

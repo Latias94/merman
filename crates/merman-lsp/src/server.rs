@@ -2,10 +2,10 @@ use crate::client_profile::ClientProtocolProfile;
 use crate::completion::{
     completion_for_snapshot_with_profile, resolve_completion_item_with_profile,
 };
-use crate::diagnostics::analysis_payload_to_versioned_diagnostics_with_profile;
+use crate::diagnostics::unavailable_document_diagnostics_with_profile;
 use crate::protocol::{
-    CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, DiagnosticVersionData, RULE_CATALOG_METHOD,
-    RuleCatalogResponse, experimental_capabilities,
+    CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, RULE_CATALOG_METHOD, RuleCatalogResponse,
+    experimental_capabilities,
 };
 use crate::refresh_transport::{MermanClientSocket, RefreshClient};
 use crate::semantic_tokens::{
@@ -15,8 +15,8 @@ use crate::semantic_tokens::{
 };
 use crate::session::{ClientEffectKey, LanguageSession, MermanLspService, commit_active_mutation};
 use crate::session::{
-    DiagnosticContext, DocumentDiagnosticState, DocumentSyncError, SemanticTokensState,
-    StoredDocument, analysis_options_with_lsp_resource_defaults, default_lsp_analysis_options,
+    DiagnosticContext, DocumentDiagnosticState, SemanticTokensState,
+    analysis_options_with_lsp_resource_defaults, default_lsp_analysis_options,
 };
 use crate::snapshot::DocumentSnapshot;
 use crate::structure::{
@@ -27,13 +27,7 @@ use crate::structure::{
     rename_with_workspace_edit_encoding as structure_rename_with_workspace_edit_encoding,
     selection_ranges as structure_selection_ranges,
 };
-use merman_analysis::{
-    AnalysisPayload, options_json::analysis_options_from_json_value, source_descriptor_for_kind,
-    source_discarded_after_limit_change_diagnostic_with_span,
-    source_limit_diagnostic_for_len_and_span,
-};
-#[cfg(test)]
-use merman_analysis::{Analyzer, analyze_document};
+use merman_analysis::options_json::analysis_options_from_json_value;
 use merman_editor_core::COMPLETION_TRIGGER_CHARACTERS;
 use merman_editor_core::{DocumentKind, TokenPlanError};
 use std::hash::{Hash, Hasher};
@@ -42,17 +36,16 @@ use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::{
     CodeActionKind, CodeActionOptions, CodeActionParams, CodeActionProviderCapability,
     CodeActionResponse, CompletionItem, CompletionOptions, CompletionParams, CompletionResponse,
-    Diagnostic, DiagnosticOptions, DiagnosticServerCapabilities, DiagnosticSeverity,
-    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DidSaveTextDocumentParams, DocumentDiagnosticParams, DocumentDiagnosticReport,
-    DocumentDiagnosticReportResult, DocumentSymbolParams, DocumentSymbolResponse, FoldingRange,
-    FoldingRangeParams, FoldingRangeProviderCapability, FullDocumentDiagnosticReport,
-    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability,
-    InitializeParams, InitializeResult, MessageType, NumberOrString, OneOf, Position,
-    PrepareRenameResponse, Range, ReferenceParams, RelatedFullDocumentDiagnosticReport,
-    RelatedUnchangedDocumentDiagnosticReport, RenameOptions, RenameParams, SelectionRange,
-    SelectionRangeParams, SelectionRangeProviderCapability, SemanticTokens,
-    SemanticTokensDeltaParams, SemanticTokensFullDeltaResult, SemanticTokensParams,
+    DiagnosticOptions, DiagnosticServerCapabilities, DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
+    DocumentSymbolParams, DocumentSymbolResponse, FoldingRange, FoldingRangeParams,
+    FoldingRangeProviderCapability, FullDocumentDiagnosticReport, GotoDefinitionParams,
+    GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability, InitializeParams,
+    InitializeResult, MessageType, OneOf, PrepareRenameResponse, ReferenceParams,
+    RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport, RenameOptions,
+    RenameParams, SelectionRange, SelectionRangeParams, SelectionRangeProviderCapability,
+    SemanticTokens, SemanticTokensDeltaParams, SemanticTokensFullDeltaResult, SemanticTokensParams,
     SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensResult,
     SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentPositionParams,
     TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
@@ -224,82 +217,6 @@ impl MermanLanguageServer {
         self.session.structure_snapshot(uri).await
     }
 
-    #[cfg(test)]
-    fn diagnostics_for_document(document: &StoredDocument, analyzer: &Analyzer) -> Vec<Diagnostic> {
-        let profile = ClientProtocolProfile::permissive();
-        if let Some(diagnostics) =
-            Self::unavailable_document_diagnostics_with_profile(document, &profile)
-        {
-            return diagnostics;
-        }
-
-        let source = source_descriptor_for_document(&document.uri, document.kind);
-        let payload = analyze_document(
-            document
-                .text()
-                .expect("available document diagnostics require retained source"),
-            analyzer,
-            source,
-        );
-        Self::analysis_payload_diagnostics_with_profile(document, &payload, &profile)
-    }
-
-    fn unavailable_document_diagnostics_with_profile(
-        document: &StoredDocument,
-        profile: &ClientProtocolProfile,
-    ) -> Option<Vec<Diagnostic>> {
-        if let Some(rejection) = document.analysis_rejection() {
-            return Some(Self::analysis_payload_diagnostics_with_profile(
-                document,
-                rejection.payload(),
-                profile,
-            ));
-        }
-
-        let diagnostic = if let Some(resource_limit) = document.resource_limit() {
-            source_limit_diagnostic_for_len_and_span(
-                resource_limit.source_len,
-                resource_limit.max_source_bytes,
-                resource_limit.span,
-            )
-        } else if let Some(discarded_source) = document.discarded_source() {
-            source_discarded_after_limit_change_diagnostic_with_span(
-                discarded_source.source_len,
-                discarded_source.previous_max_source_bytes,
-                discarded_source.span,
-            )
-        } else if let Some(sync_error) = document.sync_error_state() {
-            return Some(vec![document_sync_error_diagnostic(
-                sync_error,
-                document.version,
-                profile,
-            )]);
-        } else {
-            return None;
-        };
-        let payload = AnalysisPayload::new(
-            source_descriptor_for_document(&document.uri, document.kind),
-            vec![diagnostic],
-        );
-
-        Some(Self::analysis_payload_diagnostics_with_profile(
-            document, &payload, profile,
-        ))
-    }
-
-    fn analysis_payload_diagnostics_with_profile(
-        document: &StoredDocument,
-        payload: &AnalysisPayload,
-        profile: &ClientProtocolProfile,
-    ) -> Vec<Diagnostic> {
-        analysis_payload_to_versioned_diagnostics_with_profile(
-            payload,
-            &document.uri,
-            document.version,
-            profile,
-        )
-    }
-
     fn diagnostic_result_id(diagnostics: &[tower_lsp_server::ls_types::Diagnostic]) -> String {
         let serialized = serde_json::to_vec(diagnostics).unwrap_or_default();
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -410,16 +327,13 @@ impl DiagnosticPublisher {
     ) -> Result<Option<Vec<tower_lsp_server::ls_types::Diagnostic>>> {
         self.session
             .query_push_diagnostics(context, |document, analysis| {
-                MermanLanguageServer::unavailable_document_diagnostics_with_profile(
-                    document,
-                    &self.profile,
-                )
-                .unwrap_or_else(|| {
-                    analysis
-                        .expect("available documents require an analysis context")
-                        .diagnostic_round_trip()
-                        .diagnostics_with_profile(&self.profile)
-                })
+                unavailable_document_diagnostics_with_profile(document, &self.profile)
+                    .unwrap_or_else(|| {
+                        analysis
+                            .expect("available documents require an analysis context")
+                            .diagnostic_round_trip()
+                            .diagnostics_with_profile(&self.profile)
+                    })
             })
             .await
     }
@@ -515,7 +429,7 @@ impl LanguageServer for MermanLanguageServer {
             .change_document(doc.uri.clone(), doc.version, params.content_changes)
             .await;
         commit_active_mutation();
-        if update.is_some_and(|update| update.affects_document_state()) {
+        if update == Some(true) {
             self.enqueue_diagnostic_sync(doc.uri).await;
         }
     }
@@ -587,7 +501,7 @@ impl LanguageServer for MermanLanguageServer {
             .session
             .pull_diagnostics(&uri, |document, analysis| {
                 let (diagnostics, result_id) = if let Some(diagnostics) =
-                    Self::unavailable_document_diagnostics_with_profile(document, profile)
+                    unavailable_document_diagnostics_with_profile(document, profile)
                 {
                     let result_id = Self::diagnostic_result_id(&diagnostics);
                     (diagnostics, result_id)
@@ -903,48 +817,6 @@ fn semantic_token_planning_error(
         "detail": error.to_string(),
     }));
     response
-}
-
-fn document_sync_error_diagnostic(
-    sync_error: DocumentSyncError,
-    document_version: i32,
-    profile: &ClientProtocolProfile,
-) -> Diagnostic {
-    let message = match sync_error {
-        DocumentSyncError::InvalidIncrementalRange => {
-            "document text is out of sync after an invalid incremental edit range; send a full document replacement or reopen the document".to_string()
-        }
-        DocumentSyncError::FullReplacementRequired {
-            source_len,
-            last_max_source_bytes,
-        } => format!(
-            "document text is unavailable after rejecting a {source_len}-byte source with a {last_max_source_bytes}-byte limit; ranged edits cannot recover discarded text, so send a full document replacement or reopen the document"
-        ),
-    };
-    Diagnostic {
-        range: Range::new(Position::new(0, 0), Position::new(0, 0)),
-        severity: Some(DiagnosticSeverity::ERROR),
-        code: Some(NumberOrString::String(
-            "merman.lsp.document_sync_lost".to_string(),
-        )),
-        source: Some("merman".to_string()),
-        message,
-        related_information: None,
-        tags: None,
-        code_description: None,
-        data: profile
-            .diagnostics
-            .data
-            .then(|| serde_json::to_value(DiagnosticVersionData { document_version }).ok())
-            .flatten(),
-    }
-}
-
-fn source_descriptor_for_document(
-    uri: &tower_lsp_server::ls_types::Uri,
-    kind: DocumentKind,
-) -> merman_analysis::SourceDescriptor {
-    source_descriptor_for_kind(Some(uri.as_str()), kind.source_kind())
 }
 
 fn document_kind_for_language_id(
