@@ -1,6 +1,100 @@
+use super::normalization::visit_normalized_segments;
 use crate::Result;
 use crate::error::AsciiError;
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct NormalizedTrimmedTextPlan<'a> {
+    source: &'a str,
+    start: usize,
+    end: usize,
+    retained_bytes: usize,
+    materialization_work_units: usize,
+}
+
+impl NormalizedTrimmedTextPlan<'_> {
+    #[cfg(test)]
+    pub(crate) fn retained_bytes(self) -> usize {
+        self.retained_bytes
+    }
+
+    pub(crate) fn materialization_work_units(self) -> usize {
+        self.materialization_work_units
+    }
+
+    /// Materializes the exact normalized range after its caller has admitted the aggregate work.
+    pub(crate) fn materialize_after_admission(self) -> Result<String> {
+        let mut output = String::new();
+        output
+            .try_reserve_exact(self.retained_bytes)
+            .map_err(|_| layout_allocation_failed())?;
+
+        let mut offset = 0usize;
+        visit_normalized_segments(self.source, |segment| {
+            let mut buffer = [0u8; 10];
+            let text = segment.text(&mut buffer);
+            let segment_end = offset
+                .checked_add(text.len())
+                .ok_or_else(layout_allocation_failed)?;
+            let kept_start = self.start.max(offset);
+            let kept_end = self.end.min(segment_end);
+            if kept_start < kept_end {
+                output.push_str(&text[kept_start - offset..kept_end - offset]);
+            }
+            offset = segment_end;
+            Ok::<(), AsciiError>(())
+        })?;
+
+        debug_assert_eq!(output.len(), self.retained_bytes);
+        Ok(output)
+    }
+}
+
+/// Plans terminal normalization and `str::trim` semantics without retaining the normalized text.
+pub(crate) fn try_plan_normalized_trimmed_text<'a>(
+    value: &'a str,
+    resources: &ResourceContext,
+) -> Result<Option<NormalizedTrimmedTextPlan<'a>>> {
+    let mut offset = 0usize;
+    let mut start = None;
+    let mut end = 0usize;
+
+    resources.charge_layout_work(1)?;
+    visit_normalized_segments(value, |segment| {
+        segment.check_grapheme_budget(resources)?;
+        resources.charge_layout_work(segment.layout_work())?;
+        let mut buffer = [0u8; 10];
+        let text = segment.text(&mut buffer);
+        resources.charge_layout_work(text.len().max(1))?;
+        let segment_end = resources.checked_work_add(offset, text.len())?;
+        for (relative, ch) in text.char_indices() {
+            if ch.is_whitespace() {
+                continue;
+            }
+            let absolute = resources.checked_work_add(offset, relative)?;
+            start.get_or_insert(absolute);
+            end = resources.checked_work_add(absolute, ch.len_utf8())?;
+        }
+        offset = segment_end;
+        Ok::<(), AsciiError>(())
+    })?;
+
+    let Some(start) = start else {
+        return Ok(None);
+    };
+    let retained_bytes = end
+        .checked_sub(start)
+        .ok_or_else(layout_allocation_failed)?;
+    let materialization_work_units =
+        resources.checked_work_add(value.len().max(1), retained_bytes)?;
+    Ok(Some(NormalizedTrimmedTextPlan {
+        source: value,
+        start,
+        end,
+        retained_bytes,
+        materialization_work_units,
+    }))
+}
 
 pub(crate) fn try_concat_layout_text(
     left: &str,
@@ -57,8 +151,40 @@ fn layout_allocation_failed() -> AsciiError {
 mod tests {
     use super::*;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
+    use crate::text::normalize_optional_text;
     use merman_core::resources::ResourceProfile;
     use std::cell::Cell;
+
+    #[test]
+    fn normalized_trimmed_plan_matches_existing_optional_text_semantics() {
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        for raw in [
+            "",
+            "   ",
+            " alpha ",
+            "\r\n alpha \r\n",
+            "\talpha\t",
+            " \u{301}word ",
+            "  边\u{7}  ",
+        ] {
+            let resources = ResourceContext::new(policy);
+            let plan = try_plan_normalized_trimmed_text(raw, &resources)
+                .expect("optional text normalization should be measurable");
+            let actual = match plan {
+                Some(plan) => {
+                    resources
+                        .charge_layout_work(plan.materialization_work_units())
+                        .expect("unbounded policy should admit optional text materialization");
+                    Some(
+                        plan.materialize_after_admission()
+                            .expect("admitted optional text should materialize"),
+                    )
+                }
+                None => None,
+            };
+            assert_eq!(actual, normalize_optional_text(Some(raw)), "raw={raw:?}");
+        }
+    }
 
     #[test]
     fn layout_text_accepts_exact_work_and_rejects_n_minus_one_before_materializing() {
