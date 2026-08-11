@@ -239,7 +239,7 @@ async fn termination_fences_a_ready_semantic_token_state_before_final_commit() {
                     Ok(Some((
                         (),
                         Some(SemanticTokensState::new(
-                            Some("terminated".to_owned()),
+                            "terminated".to_owned(),
                             Vec::new(),
                         )),
                     )))

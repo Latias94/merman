@@ -1,4 +1,6 @@
-use crate::generated::{PlannedTokenKind, PlannedTokenModifier, TokenOverlayKind};
+use crate::generated::{
+    PlannedTokenKind, PlannedTokenModifier, TokenOverlayKind, semantic_token_descriptor,
+};
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::Range;
 use merman_analysis::{ByteSpan, SourceMap};
@@ -23,6 +25,100 @@ impl PlannedToken {
     }
 }
 
+/// Protocol-neutral client support negotiated before semantic-token planning.
+///
+/// The planner keeps the generated descriptor as the only source of canonical ordering and
+/// assigns compact type/modifier indices after unsupported entries have been removed. Hosts such
+/// as LSP may build this value from their capability objects without bringing protocol types into
+/// editor-core.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SemanticTokenSupport {
+    supported_types: [bool; PlannedTokenKind::ALL.len()],
+    supported_modifiers: [bool; PlannedTokenModifier::ALL.len()],
+}
+
+impl SemanticTokenSupport {
+    pub const fn all() -> Self {
+        Self {
+            supported_types: [true; PlannedTokenKind::ALL.len()],
+            supported_modifiers: [true; PlannedTokenModifier::ALL.len()],
+        }
+    }
+
+    pub fn from_support(
+        supports_type: impl Fn(PlannedTokenKind) -> bool,
+        supports_modifier: impl Fn(PlannedTokenModifier) -> bool,
+    ) -> Self {
+        Self {
+            supported_types: std::array::from_fn(|index| {
+                supports_type(PlannedTokenKind::ALL[index])
+            }),
+            supported_modifiers: std::array::from_fn(|index| {
+                supports_modifier(PlannedTokenModifier::ALL[index])
+            }),
+        }
+    }
+
+    pub const fn supports_kind(self, kind: PlannedTokenKind) -> bool {
+        self.supported_types[kind.code() as usize]
+    }
+
+    pub const fn supports_modifier(self, modifier: PlannedTokenModifier) -> bool {
+        self.supported_modifiers[modifier.index() as usize]
+    }
+
+    pub fn supported_kinds(self) -> impl Iterator<Item = PlannedTokenKind> {
+        PlannedTokenKind::ALL
+            .into_iter()
+            .filter(move |kind| self.supports_kind(*kind))
+    }
+
+    pub fn supported_modifiers(self) -> impl Iterator<Item = PlannedTokenModifier> {
+        PlannedTokenModifier::ALL
+            .into_iter()
+            .filter(move |modifier| self.supports_modifier(*modifier))
+    }
+
+    fn mask_modifier_bits(self, canonical_bits: u32) -> u32 {
+        PlannedTokenModifier::ALL
+            .iter()
+            .filter(|modifier| self.supports_modifier(**modifier))
+            .fold(0, |bits, modifier| bits | (canonical_bits & modifier.bit()))
+    }
+
+    fn token_type_index(self, kind: PlannedTokenKind) -> Option<u32> {
+        if !self.supports_kind(kind) {
+            return None;
+        }
+        let mut index = 0u32;
+        for descriptor in semantic_token_descriptor().token_kinds {
+            if !self.supports_kind(descriptor.kind) {
+                continue;
+            }
+            if descriptor.kind == kind {
+                return Some(index);
+            }
+            index += 1;
+        }
+        None
+    }
+
+    fn project_modifier_bits(self, canonical_bits: u32) -> u32 {
+        let mut projected_bits = 0u32;
+        let mut projected_index = 0u32;
+        for descriptor in semantic_token_descriptor().modifiers {
+            if !self.supports_modifier(descriptor.modifier) {
+                continue;
+            }
+            if canonical_bits & descriptor.bit != 0 {
+                projected_bits |= 1u32 << projected_index;
+            }
+            projected_index += 1;
+        }
+        projected_bits
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SemanticTokenPlan {
     tokens: Vec<PlannedToken>,
@@ -30,10 +126,15 @@ pub struct SemanticTokenPlan {
 }
 
 impl SemanticTokenPlan {
+    /// Returns canonical token kinds and modifier bits after negotiated filtering.
+    ///
+    /// Unlike [`Self::packed`], these values stay in the generated descriptor's canonical enum
+    /// and bit spaces rather than the negotiated compact legend space.
     pub fn tokens(&self) -> &[PlannedToken] {
         &self.tokens
     }
 
+    /// Returns the negotiated compact legend indices, modifier bits, and relative positions.
     pub fn packed(&self) -> &[u32] {
         &self.packed
     }
@@ -211,7 +312,15 @@ impl TokenPlanError {
 pub fn plan_semantic_tokens_for_snapshot(
     snapshot: &DocumentSnapshot,
 ) -> Result<SemanticTokenPlan, TokenPlanError> {
-    plan_semantic_tokens(snapshot, None)
+    plan_semantic_tokens(snapshot, None, SemanticTokenSupport::all())
+}
+
+/// Plans semantic tokens for a negotiated, protocol-neutral client profile.
+pub fn plan_semantic_tokens_for_snapshot_with_support(
+    snapshot: &DocumentSnapshot,
+    support: SemanticTokenSupport,
+) -> Result<SemanticTokenPlan, TokenPlanError> {
+    plan_semantic_tokens(snapshot, None, support)
 }
 
 /// Plans only the token candidates that overlap `range`.
@@ -223,12 +332,22 @@ pub fn plan_semantic_tokens_for_snapshot_range(
     snapshot: &DocumentSnapshot,
     range: Range,
 ) -> Result<SemanticTokenPlan, TokenPlanError> {
-    plan_semantic_tokens(snapshot, Some(range))
+    plan_semantic_tokens(snapshot, Some(range), SemanticTokenSupport::all())
+}
+
+/// Plans only the negotiated token candidates that overlap `range`.
+pub fn plan_semantic_tokens_for_snapshot_range_with_support(
+    snapshot: &DocumentSnapshot,
+    range: Range,
+    support: SemanticTokenSupport,
+) -> Result<SemanticTokenPlan, TokenPlanError> {
+    plan_semantic_tokens(snapshot, Some(range), support)
 }
 
 fn plan_semantic_tokens(
     snapshot: &DocumentSnapshot,
     range: Option<Range>,
+    support: SemanticTokenSupport,
 ) -> Result<SemanticTokenPlan, TokenPlanError> {
     let requested = match range {
         Some(range) => RequestedTokenRange::new(snapshot.source_map(), range)?,
@@ -249,13 +368,7 @@ fn plan_semantic_tokens(
         }
         collect_fence_candidates(snapshot, fence, requested, &mut candidates)?;
     }
-    let mut plan = plan_candidates(snapshot.source_map(), candidates)?;
-    if let Some(range) = range {
-        plan.tokens
-            .retain(|token| token_overlaps_range(*token, range));
-        plan.packed = pack_tokens(&plan.tokens);
-    }
-    Ok(plan)
+    plan_candidates_with_support(snapshot.source_map(), candidates, support, range)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -412,6 +525,7 @@ fn collect_fence_candidates(
 
     let mut previous_lexeme: Option<ByteSpan> = None;
     for lexeme in fence.text_index().lexemes() {
+        let kind = planned_kind_for_lexeme(lexeme.kind());
         let relative = lexeme.span();
         let span = absolute_fence_span(
             snapshot,
@@ -441,7 +555,7 @@ fn collect_fence_candidates(
         previous_lexeme = Some(span);
         candidates.push(TokenCandidate {
             span,
-            kind: planned_kind_for_lexeme(lexeme.kind()),
+            kind,
             modifier_bits: pack_modifier_bits(
                 lexeme.modifiers().iter().map(planned_modifier_for_lexeme),
             ),
@@ -450,6 +564,7 @@ fn collect_fence_candidates(
     }
 
     for item in fence.text_index().semantic_items() {
+        let kind = planned_kind_for_symbol(item.kind);
         let span = absolute_fence_span(
             snapshot,
             fence,
@@ -463,7 +578,7 @@ fn collect_fence_candidates(
         }
         candidates.push(TokenCandidate {
             span,
-            kind: planned_kind_for_symbol(item.kind),
+            kind,
             modifier_bits: Ok(planned_modifier_for_role(item.role).bit()),
             origin: token_overlay_for_role(item.role),
         });
@@ -589,12 +704,26 @@ fn collect_fence_delimiters(
     Ok(())
 }
 
+#[cfg(test)]
 fn plan_candidates(
     source_map: &SourceMap,
     candidates: Vec<TokenCandidate>,
 ) -> Result<SemanticTokenPlan, TokenPlanError> {
+    plan_candidates_with_support(source_map, candidates, SemanticTokenSupport::all(), None)
+}
+
+fn plan_candidates_with_support(
+    source_map: &SourceMap,
+    candidates: Vec<TokenCandidate>,
+    support: SemanticTokenSupport,
+    range: Option<Range>,
+) -> Result<SemanticTokenPlan, TokenPlanError> {
     let mut candidates = validate_candidates(source_map.source(), candidates)?;
     validate_lexical_non_overlap(&candidates)?;
+    candidates.retain(|candidate| support.supports_kind(candidate.kind));
+    for candidate in &mut candidates {
+        candidate.modifier_bits = support.mask_modifier_bits(candidate.modifier_bits);
+    }
     candidates.sort_by_key(|candidate| {
         (
             candidate.span.start,
@@ -616,7 +745,8 @@ fn plan_candidates(
         )
     });
     validate_planned_non_overlap(&tokens)?;
-    let packed = pack_tokens(&tokens);
+    tokens.retain(|token| range.is_none_or(|range| token_overlaps_range(*token, range)));
+    let packed = pack_tokens(&tokens, support);
     Ok(SemanticTokenPlan { tokens, packed })
 }
 
@@ -877,7 +1007,7 @@ fn validate_planned_non_overlap(tokens: &[PlannedToken]) -> Result<(), TokenPlan
     Ok(())
 }
 
-fn pack_tokens(tokens: &[PlannedToken]) -> Vec<u32> {
+fn pack_tokens(tokens: &[PlannedToken], support: SemanticTokenSupport) -> Vec<u32> {
     let mut packed = Vec::with_capacity(tokens.len() * 5);
     let mut previous_line = 0u32;
     let mut previous_start = 0u32;
@@ -888,12 +1018,15 @@ fn pack_tokens(tokens: &[PlannedToken]) -> Vec<u32> {
         } else {
             token.start
         };
+        let token_type = support
+            .token_type_index(token.kind)
+            .expect("planned token kinds are filtered by the negotiated support set");
         packed.extend_from_slice(&[
             delta_line,
             delta_start,
             token.length,
-            token.kind.code(),
-            token.modifier_bits,
+            token_type,
+            support.project_modifier_bits(token.modifier_bits),
         ]);
         previous_line = token.line;
         previous_start = token.start;
@@ -1444,6 +1577,168 @@ mod tests {
             ]
         );
         assert_eq!(plan.packed, vec![0, 4, 7, 9, 0, 1, 0, 4, 9, 0]);
+    }
+
+    #[test]
+    fn negotiated_support_filters_and_packs_the_canonical_sequence_once() {
+        let source_map = SourceMap::new(Arc::<str>::from("aa bb cc"));
+        let support = SemanticTokenSupport::from_support(
+            |kind| matches!(kind, PlannedTokenKind::String | PlannedTokenKind::Variable),
+            |modifier| modifier == PlannedTokenModifier::Payload,
+        );
+        let plan = plan_candidates_with_support(
+            &source_map,
+            vec![
+                candidate(
+                    0..2,
+                    PlannedTokenKind::String,
+                    vec![PlannedTokenModifier::Payload, PlannedTokenModifier::Entity],
+                    TokenOverlayKind::Lexeme,
+                ),
+                candidate(
+                    3..5,
+                    PlannedTokenKind::Keyword,
+                    vec![PlannedTokenModifier::Reference],
+                    TokenOverlayKind::Lexeme,
+                ),
+                candidate(
+                    6..8,
+                    PlannedTokenKind::Variable,
+                    vec![PlannedTokenModifier::Entity],
+                    TokenOverlayKind::Lexeme,
+                ),
+            ],
+            support,
+            None,
+        )
+        .expect("negotiated token plan");
+
+        assert_eq!(
+            plan.tokens,
+            vec![
+                PlannedToken {
+                    line: 0,
+                    start: 0,
+                    length: 2,
+                    kind: PlannedTokenKind::String,
+                    modifier_bits: PlannedTokenModifier::Payload.bit(),
+                },
+                PlannedToken {
+                    line: 0,
+                    start: 6,
+                    length: 2,
+                    kind: PlannedTokenKind::Variable,
+                    modifier_bits: 0,
+                },
+            ]
+        );
+        assert_eq!(plan.packed, vec![0, 0, 2, 0, 1, 0, 6, 2, 1, 0]);
+        assert_eq!(
+            support.supported_kinds().collect::<Vec<_>>(),
+            vec![PlannedTokenKind::String, PlannedTokenKind::Variable]
+        );
+        assert_eq!(
+            support.supported_modifiers().collect::<Vec<_>>(),
+            vec![PlannedTokenModifier::Payload]
+        );
+    }
+
+    #[test]
+    fn unsupported_overlay_does_not_hide_a_supported_lexeme() {
+        let source_map = SourceMap::new(Arc::<str>::from("\"alpha\""));
+        let support =
+            SemanticTokenSupport::from_support(|kind| kind == PlannedTokenKind::String, |_| false);
+        let plan = plan_candidates_with_support(
+            &source_map,
+            vec![
+                candidate(
+                    0..7,
+                    PlannedTokenKind::String,
+                    Vec::new(),
+                    TokenOverlayKind::Lexeme,
+                ),
+                candidate(
+                    1..6,
+                    PlannedTokenKind::Variable,
+                    vec![PlannedTokenModifier::Entity],
+                    TokenOverlayKind::SemanticEntity,
+                ),
+            ],
+            support,
+            None,
+        )
+        .expect("supported lexical fallback");
+
+        assert_eq!(
+            plan.tokens,
+            vec![PlannedToken {
+                line: 0,
+                start: 0,
+                length: 7,
+                kind: PlannedTokenKind::String,
+                modifier_bits: 0,
+            }]
+        );
+        assert_eq!(plan.packed, vec![0, 0, 7, 0, 0]);
+    }
+
+    #[test]
+    fn negotiated_range_repacks_filtered_middle_tokens_after_astral_unicode() {
+        let source_map = SourceMap::new(Arc::<str>::from("🤓 aa bb cc"));
+        let support = SemanticTokenSupport::from_support(
+            |kind| matches!(kind, PlannedTokenKind::String | PlannedTokenKind::Variable),
+            |modifier| modifier == PlannedTokenModifier::Payload,
+        );
+        let plan = plan_candidates_with_support(
+            &source_map,
+            vec![
+                candidate(
+                    5..7,
+                    PlannedTokenKind::String,
+                    vec![PlannedTokenModifier::Payload, PlannedTokenModifier::Entity],
+                    TokenOverlayKind::Lexeme,
+                ),
+                candidate(
+                    8..10,
+                    PlannedTokenKind::Keyword,
+                    Vec::new(),
+                    TokenOverlayKind::Lexeme,
+                ),
+                candidate(
+                    11..13,
+                    PlannedTokenKind::Variable,
+                    vec![PlannedTokenModifier::Entity],
+                    TokenOverlayKind::Lexeme,
+                ),
+            ],
+            support,
+            Some(Range::new(
+                crate::Position::new(0, 4),
+                crate::Position::new(0, 10),
+            )),
+        )
+        .expect("negotiated ranged token plan");
+
+        assert_eq!(
+            plan.tokens,
+            vec![
+                PlannedToken {
+                    line: 0,
+                    start: 3,
+                    length: 2,
+                    kind: PlannedTokenKind::String,
+                    modifier_bits: PlannedTokenModifier::Payload.bit(),
+                },
+                PlannedToken {
+                    line: 0,
+                    start: 9,
+                    length: 2,
+                    kind: PlannedTokenKind::Variable,
+                    modifier_bits: 0,
+                },
+            ]
+        );
+        assert_eq!(plan.packed, vec![0, 3, 2, 0, 1, 0, 6, 2, 1, 0]);
     }
 
     #[test]

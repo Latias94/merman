@@ -56,8 +56,10 @@ pub use structure::{
     selection_range, selection_ranges,
 };
 pub use token_planner::{
-    PlannedToken, SemanticTokenPlan, TokenPlanError, plan_semantic_tokens_for_snapshot,
-    plan_semantic_tokens_for_snapshot_range,
+    PlannedToken, SemanticTokenPlan, SemanticTokenSupport, TokenPlanError,
+    plan_semantic_tokens_for_snapshot, plan_semantic_tokens_for_snapshot_range,
+    plan_semantic_tokens_for_snapshot_range_with_support,
+    plan_semantic_tokens_for_snapshot_with_support,
 };
 
 pub use types::{DocumentKind, DocumentUri, Position, Range};

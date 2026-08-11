@@ -19,9 +19,7 @@ use merman_analysis::{
 };
 use merman_core::{EditorSemanticRole, EditorSemanticSymbol};
 use merman_editor_core::DocumentKind;
-use tower_lsp_server::ls_types::{
-    Position, Range, SemanticToken, TextDocumentContentChangeEvent, Uri,
-};
+use tower_lsp_server::ls_types::{Position, Range, TextDocumentContentChangeEvent, Uri};
 
 static CUSTOM_SESSION_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 static CUSTOM_ASYNC_SESSION_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
@@ -1681,7 +1679,7 @@ fn unchanged_analyzer_update_preserves_context_generations_snapshots_and_tokens(
         .expect("expected initial diagnostic context");
     assert!(store.set_semantic_tokens_state_if_current(
         &snapshot_context,
-        SemanticTokensState::new(Some("tokens-1".to_string()), Vec::new()),
+        SemanticTokensState::new("tokens-1".to_string(), Vec::new()),
     ));
     assert!(store.set_diagnostic_state_if_current(
         &diagnostic_context,
@@ -1706,7 +1704,7 @@ fn unchanged_analyzer_update_preserves_context_generations_snapshots_and_tokens(
     assert_eq!(
         store
             .semantic_tokens_state(&uri)
-            .and_then(|state| state.result_id.as_deref()),
+            .map(|state| state.result_id.as_str()),
         Some("tokens-1")
     );
 }
@@ -2167,7 +2165,7 @@ async fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
         .expect("expected initial diagnostic context");
     assert!(store.set_semantic_tokens_state_if_current(
         &snapshot_context,
-        SemanticTokensState::new(Some("tokens-1".to_string()), Vec::new()),
+        SemanticTokensState::new("tokens-1".to_string(), Vec::new()),
     ));
 
     let change = store.begin_analyzer_options(
@@ -2231,7 +2229,7 @@ async fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
     assert_eq!(
         store
             .semantic_tokens_state(&uri)
-            .and_then(|state| state.result_id.as_deref()),
+            .map(|state| state.result_id.as_str()),
         Some("tokens-1")
     );
 }
@@ -2498,7 +2496,7 @@ fn text_replacement_stales_contexts_but_keeps_committed_token_baseline() {
         .expect("expected initial diagnostic context");
     assert!(store.set_semantic_tokens_state_if_current(
         &snapshot_context,
-        SemanticTokensState::new(Some("tokens-1".to_string()), Vec::new()),
+        SemanticTokensState::new("tokens-1".to_string(), Vec::new()),
     ));
 
     store.upsert_text(
@@ -2514,7 +2512,7 @@ fn text_replacement_stales_contexts_but_keeps_committed_token_baseline() {
     assert_eq!(
         store
             .semantic_tokens_state(&uri)
-            .and_then(|state| state.result_id.as_deref()),
+            .map(|state| state.result_id.as_str()),
         Some("tokens-1")
     );
 }
@@ -2538,7 +2536,7 @@ fn snapshot_affecting_analyzer_update_stales_all_contexts_and_clears_snapshot_st
         .expect("expected initial diagnostic context");
     assert!(store.set_semantic_tokens_state_if_current(
         &snapshot_context,
-        SemanticTokensState::new(Some("tokens-1".to_string()), Vec::new()),
+        SemanticTokensState::new("tokens-1".to_string(), Vec::new()),
     ));
 
     store.apply_analyzer_options(
@@ -2570,7 +2568,7 @@ fn remove_stales_existing_contexts_and_clears_document_state() {
         .expect("expected initial diagnostic context");
     assert!(store.set_semantic_tokens_state_if_current(
         &snapshot_context,
-        SemanticTokensState::new(Some("tokens-1".to_string()), Vec::new()),
+        SemanticTokensState::new("tokens-1".to_string(), Vec::new()),
     ));
 
     store.remove(&uri);
@@ -2606,7 +2604,7 @@ fn stale_snapshot_context_cannot_record_semantic_token_state_after_text_replacem
 
     assert!(!store.set_semantic_tokens_state_if_current(
         &snapshot_context,
-        SemanticTokensState::new(Some("tokens-stale".to_string()), Vec::new()),
+        SemanticTokensState::new("tokens-stale".to_string(), Vec::new()),
     ));
     assert!(store.semantic_tokens_state(&uri).is_none());
 }
@@ -2627,16 +2625,7 @@ fn semantic_token_delta_baseline_survives_text_replacement_but_not_snapshot_conf
         .expect("expected initial snapshot context");
     assert!(store.set_semantic_tokens_state_if_current(
         &snapshot_context,
-        SemanticTokensState::new(
-            Some("tokens-1".to_string()),
-            vec![SemanticToken {
-                delta_line: 0,
-                delta_start: 0,
-                length: 4,
-                token_type: 0,
-                token_modifiers_bitset: 0,
-            }],
-        ),
+        SemanticTokensState::new("tokens-1".to_string(), vec![0, 0, 4, 0, 0]),
     ));
 
     store.upsert_text(
@@ -2685,7 +2674,7 @@ fn snapshot_affecting_source_limit_update_rejects_the_cached_generation() {
         .expect("expected initial snapshot context");
     assert!(store.set_semantic_tokens_state_if_current(
         &token_context,
-        SemanticTokensState::new(Some("tokens-1".to_string()), Vec::new()),
+        SemanticTokensState::new("tokens-1".to_string(), Vec::new()),
     ));
 
     store.apply_analyzer_options(
@@ -4202,7 +4191,7 @@ fn eviction_keeps_open_document_diagnostic_and_token_identity() {
     let snapshot = store.snapshot_context(&a).unwrap();
     assert!(store.set_semantic_tokens_state_if_current(
         &snapshot,
-        SemanticTokensState::new(Some("tokens-a".to_string()), Vec::new()),
+        SemanticTokensState::new("tokens-a".to_string(), Vec::new()),
     ));
     let diagnostic = store
         .diagnostic_contexts()
@@ -4229,7 +4218,7 @@ fn eviction_keeps_open_document_diagnostic_and_token_identity() {
     assert_eq!(
         store
             .semantic_tokens_state(&a)
-            .and_then(|state| state.result_id.as_deref()),
+            .map(|state| state.result_id.as_str()),
         Some("tokens-a")
     );
 }

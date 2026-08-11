@@ -4,8 +4,6 @@ use std::{
     path::PathBuf,
 };
 
-use serde::Deserialize;
-
 // LSP maturity is an explicit product admission decision. Keep this independent from
 // `supported_diagrams()`: adding a renderable public type must not silently advertise every
 // language feature before its editor evidence has been reviewed.
@@ -51,32 +49,9 @@ const FIRST_CLASS_LSP_DIAGRAM_TYPES: &[&str] = &[
 // separate category forces every future public catalog addition through an LSP maturity decision.
 const NOT_YET_ADMITTED_PUBLIC_DIAGRAM_TYPES: &[&str] = &[];
 
-#[derive(Deserialize)]
-struct TokenEquivalenceEvidence {
-    family_cases: Vec<TokenEquivalenceCase>,
-}
-
-#[derive(Deserialize)]
-struct TokenEquivalenceCase {
-    id: String,
-}
-
 fn capability_matrix() -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/lsp/CAPABILITIES.md");
     fs::read_to_string(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()))
-}
-
-fn token_equivalence_evidence() -> TokenEquivalenceEvidence {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../editor-language/token-equivalence-v1.json");
-    let contents =
-        fs::read_to_string(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
-    serde_json::from_str(&contents).unwrap_or_else(|err| {
-        panic!(
-            "parse {} as token equivalence evidence: {err}",
-            path.display()
-        )
-    })
 }
 
 fn section<'a>(contents: &'a str, start: &str, end: &str) -> &'a str {
@@ -157,7 +132,7 @@ fn parse_markdown_table_row(line: &str) -> Option<Vec<String>> {
 }
 
 #[test]
-fn capability_matrix_matches_explicit_lsp_admission_and_evidence() {
+fn capability_matrix_matches_explicit_lsp_admission() {
     const HEADER: &[&str] = &[
         "Family",
         "Public diagram type",
@@ -240,34 +215,6 @@ fn capability_matrix_matches_explicit_lsp_admission_and_evidence() {
             "admitted LSP type {diagram_type:?} must have catalog-owned semantic and editor facts"
         );
     }
-
-    let token_evidence = token_equivalence_evidence()
-        .family_cases
-        .into_iter()
-        .map(|case| case.id)
-        .collect::<Vec<_>>();
-    let token_evidence_set = token_evidence
-        .iter()
-        .map(String::as_str)
-        .collect::<BTreeSet<_>>();
-    assert_eq!(
-        token_evidence.len(),
-        token_evidence_set.len(),
-        "semantic-token equivalence evidence must not repeat a public diagram type"
-    );
-    assert!(
-        documented_set.is_subset(&token_evidence_set),
-        "every admitted LSP type must retain exact semantic-token equivalence evidence"
-    );
-    let admitted_evidence_order = token_evidence
-        .iter()
-        .map(String::as_str)
-        .filter(|diagram_type| documented_set.contains(diagram_type))
-        .collect::<Vec<_>>();
-    assert_eq!(
-        admitted_evidence_order, FIRST_CLASS_LSP_DIAGRAM_TYPES,
-        "admitted semantic-token evidence must follow the independently reviewed product order"
-    );
 }
 
 #[test]

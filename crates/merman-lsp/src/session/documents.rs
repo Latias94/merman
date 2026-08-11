@@ -26,7 +26,7 @@ use ropey::{Rope, RopeSlice};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tower_lsp_server::ls_types::{
-    Diagnostic, Position, Range, SemanticToken, TextDocumentContentChangeEvent, Uri,
+    Diagnostic, Position, Range, TextDocumentContentChangeEvent, Uri,
 };
 
 mod analysis_state;
@@ -717,15 +717,15 @@ impl TextDocumentUpdate {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub(crate) struct SemanticTokensState {
-    pub result_id: Option<String>,
-    pub tokens: Vec<SemanticToken>,
+    pub result_id: String,
+    pub packed: Vec<u32>,
 }
 
 impl SemanticTokensState {
-    pub fn new(result_id: Option<String>, tokens: Vec<SemanticToken>) -> Self {
-        Self { result_id, tokens }
+    pub fn new(result_id: String, packed: Vec<u32>) -> Self {
+        Self { result_id, packed }
     }
 }
 

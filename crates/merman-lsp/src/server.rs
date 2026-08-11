@@ -10,9 +10,9 @@ use crate::protocol::{
 };
 use crate::refresh_transport::{MermanClientSocket, RefreshClient};
 use crate::semantic_tokens::{
-    semantic_tokens_delta_result, semantic_tokens_for_snapshot_range_with_profile,
-    semantic_tokens_for_snapshot_with_profile, semantic_tokens_options_with_profile,
-    semantic_tokens_result_id,
+    semantic_token_plan_for_snapshot_range_with_profile,
+    semantic_token_plan_for_snapshot_with_profile, semantic_tokens_delta_result,
+    semantic_tokens_from_packed, semantic_tokens_options_with_profile, semantic_tokens_result_id,
 };
 use crate::session::{ClientEffectKey, LanguageSession, MermanLspService, commit_active_mutation};
 use crate::session::{
@@ -52,12 +52,12 @@ use tower_lsp_server::ls_types::{
     InitializeParams, InitializeResult, MessageType, NumberOrString, OneOf, Position,
     PrepareRenameResponse, Range, ReferenceParams, RelatedFullDocumentDiagnosticReport,
     RelatedUnchangedDocumentDiagnosticReport, RenameOptions, RenameParams, SelectionRange,
-    SelectionRangeParams, SelectionRangeProviderCapability, SemanticTokensDeltaParams,
-    SemanticTokensFullDeltaResult, SemanticTokensParams, SemanticTokensRangeParams,
-    SemanticTokensRangeResult, SemanticTokensResult, SemanticTokensServerCapabilities,
-    ServerCapabilities, TextDocumentPositionParams, TextDocumentSyncCapability,
-    TextDocumentSyncKind, TextDocumentSyncOptions, TextDocumentSyncSaveOptions,
-    UnchangedDocumentDiagnosticReport, WorkspaceEdit,
+    SelectionRangeParams, SelectionRangeProviderCapability, SemanticTokens,
+    SemanticTokensDeltaParams, SemanticTokensFullDeltaResult, SemanticTokensParams,
+    SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensResult,
+    SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentPositionParams,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    TextDocumentSyncSaveOptions, UnchangedDocumentDiagnosticReport, WorkspaceEdit,
 };
 use tower_lsp_server::{Client, LanguageServer, LspService};
 
@@ -663,17 +663,30 @@ impl LanguageServer for MermanLanguageServer {
     ) -> Result<Option<SemanticTokensResult>> {
         let uri = params.text_document.uri;
         let profile = self.client_profile();
+        let Some(projection) = profile
+            .semantic_tokens
+            .as_ref()
+            .filter(|projection| projection.supports_full())
+        else {
+            return Ok(None);
+        };
+        let supports_delta = projection.supports_delta();
         self.session
             .query_semantic_tokens(&uri, None, |snapshot, _| {
-                let Some(mut tokens) = semantic_tokens_for_snapshot_with_profile(snapshot, profile)
+                let Some(plan) = semantic_token_plan_for_snapshot_with_profile(snapshot, profile)
                     .map_err(|error| semantic_token_planning_error(snapshot, error))?
                 else {
                     return Ok(None);
                 };
-                let result_id = semantic_tokens_result_id(snapshot, &tokens.data);
-                tokens.result_id = Some(result_id.clone());
-                let state = SemanticTokensState::new(tokens.result_id.clone(), tokens.data.clone());
-                Ok(Some((SemanticTokensResult::Tokens(tokens), Some(state))))
+                let result_id =
+                    supports_delta.then(|| semantic_tokens_result_id(snapshot, plan.packed()));
+                let tokens = SemanticTokens {
+                    result_id: result_id.clone(),
+                    data: semantic_tokens_from_packed(plan.packed()),
+                };
+                let state = result_id
+                    .map(|result_id| SemanticTokensState::new(result_id, plan.packed().to_vec()));
+                Ok(Some((SemanticTokensResult::Tokens(tokens), state)))
             })
             .await
     }
@@ -684,33 +697,39 @@ impl LanguageServer for MermanLanguageServer {
     ) -> Result<Option<SemanticTokensFullDeltaResult>> {
         let uri = params.text_document.uri;
         let profile = self.client_profile();
+        if !profile
+            .semantic_tokens
+            .as_ref()
+            .is_some_and(|projection| projection.supports_delta())
+        {
+            return Ok(None);
+        }
         self.session
             .query_semantic_tokens(
                 &uri,
                 Some(params.previous_result_id.as_str()),
                 |snapshot, previous| {
-                    let Some(current_tokens) =
-                        semantic_tokens_for_snapshot_with_profile(snapshot, profile)
+                    let Some(current_plan) =
+                        semantic_token_plan_for_snapshot_with_profile(snapshot, profile)
                             .map_err(|error| semantic_token_planning_error(snapshot, error))?
                     else {
                         return Ok(None);
                     };
                     let current_result_id =
-                        semantic_tokens_result_id(snapshot, &current_tokens.data);
+                        semantic_tokens_result_id(snapshot, current_plan.packed());
                     let delta = match previous {
                         Some(previous) => semantic_tokens_delta_result(
-                            &previous.tokens,
-                            &current_tokens.data,
+                            &previous.packed,
+                            current_plan.packed(),
                             current_result_id.clone(),
                         ),
-                        None => {
-                            let mut tokens = current_tokens.clone();
-                            tokens.result_id = Some(current_result_id.clone());
-                            SemanticTokensFullDeltaResult::Tokens(tokens)
-                        }
+                        None => SemanticTokensFullDeltaResult::Tokens(SemanticTokens {
+                            result_id: Some(current_result_id.clone()),
+                            data: semantic_tokens_from_packed(current_plan.packed()),
+                        }),
                     };
                     let state =
-                        SemanticTokensState::new(Some(current_result_id), current_tokens.data);
+                        SemanticTokensState::new(current_result_id, current_plan.packed().to_vec());
                     Ok(Some((delta, Some(state))))
                 },
             )
@@ -723,9 +742,16 @@ impl LanguageServer for MermanLanguageServer {
     ) -> Result<Option<SemanticTokensRangeResult>> {
         let uri = params.text_document.uri;
         let profile = self.client_profile();
+        if !profile
+            .semantic_tokens
+            .as_ref()
+            .is_some_and(|projection| projection.supports_range())
+        {
+            return Ok(None);
+        }
         self.session
             .query_semantic_tokens(&uri, None, |snapshot, _| {
-                let Some(result) = semantic_tokens_for_snapshot_range_with_profile(
+                let Some(plan) = semantic_token_plan_for_snapshot_range_with_profile(
                     snapshot,
                     params.range,
                     profile,
@@ -733,6 +759,10 @@ impl LanguageServer for MermanLanguageServer {
                 .map_err(|error| semantic_token_planning_error(snapshot, error))?
                 else {
                     return Ok(None);
+                };
+                let result = SemanticTokens {
+                    result_id: None,
+                    data: semantic_tokens_from_packed(plan.packed()),
                 };
                 Ok(Some((SemanticTokensRangeResult::from(result), None)))
             })

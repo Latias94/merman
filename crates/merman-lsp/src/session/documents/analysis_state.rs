@@ -569,8 +569,8 @@ impl SessionState {
             .and_then(|record| record.semantic_tokens_state.as_ref())
             .and_then(|stored| {
                 (stored.snapshot_generation == self.snapshot_generation
-                    && stored.state.result_id.as_deref() == Some(previous_result_id))
-                .then(|| Arc::clone(&stored.state))
+                    && stored.state.result_id == previous_result_id)
+                    .then(|| Arc::clone(&stored.state))
             })
     }
 
