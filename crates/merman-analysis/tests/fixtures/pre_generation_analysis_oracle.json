@@ -1,0 +1,319 @@
+{
+  "oracle_version": 1,
+  "baseline_commit": "0be1a409286f044f40954aec686bd316ff78cb16",
+  "cases": [
+    {
+      "name": "recommended_flowchart_fix",
+      "source": "flowchart\nA[Hello] --> B[World]\n",
+      "diagnostics": {
+        "version": 1,
+        "valid": true,
+        "summary": {
+          "errors": 0,
+          "warnings": 0,
+          "infos": 0,
+          "hints": 1
+        },
+        "source": {
+          "kind": "diagram",
+          "path": null,
+          "diagram_index": null,
+          "language": "mermaid"
+        },
+        "diagnostics": [
+          {
+            "id": "merman.authoring.flowchart.explicit_direction",
+            "severity": "hint",
+            "category": "semantic",
+            "message": "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`",
+            "code": null,
+            "code_name": null,
+            "diagram_type": "flowchart-v2",
+            "span": {
+              "byte_start": 0,
+              "byte_end": 9,
+              "line": 1,
+              "column": 1,
+              "end_line": 1,
+              "end_column": 10,
+              "lsp_range": {
+                "start": {
+                  "line": 0,
+                  "character": 0
+                },
+                "end": {
+                  "line": 0,
+                  "character": 9
+                }
+              }
+            },
+            "related": [],
+            "help": null,
+            "fixes": [
+              {
+                "title": "Insert `TB` into the flowchart header",
+                "edits": [
+                  {
+                    "span": {
+                      "byte_start": 9,
+                      "byte_end": 9,
+                      "line": 1,
+                      "column": 10,
+                      "end_line": 1,
+                      "end_column": 10,
+                      "lsp_range": {
+                        "start": {
+                          "line": 0,
+                          "character": 9
+                        },
+                        "end": {
+                          "line": 0,
+                          "character": 9
+                        }
+                      }
+                    },
+                    "replacement": " TB"
+                  }
+                ],
+                "is_preferred": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "recovered_flowchart_default",
+      "source": "flowchart TD\nA[unterminated\n",
+      "diagnostics": {
+        "version": 1,
+        "valid": false,
+        "summary": {
+          "errors": 1,
+          "warnings": 1,
+          "infos": 0,
+          "hints": 0
+        },
+        "source": {
+          "kind": "diagram",
+          "path": null,
+          "diagram_index": null,
+          "language": "mermaid"
+        },
+        "diagnostics": [
+          {
+            "id": "merman.parse.diagram_parse",
+            "severity": "error",
+            "category": "parse",
+            "message": "Unterminated node label (missing `]`)",
+            "code": 5,
+            "code_name": "MERMAN_PARSE_ERROR",
+            "diagram_type": "flowchart-v2",
+            "span": {
+              "byte_start": 14,
+              "byte_end": 27,
+              "line": 2,
+              "column": 2,
+              "end_line": 2,
+              "end_column": 15,
+              "lsp_range": {
+                "start": {
+                  "line": 1,
+                  "character": 1
+                },
+                "end": {
+                  "line": 1,
+                  "character": 14
+                }
+              }
+            },
+            "related": [],
+            "help": null
+          },
+          {
+            "id": "merman.parse.recovered_editor_facts",
+            "severity": "warning",
+            "category": "parse",
+            "message": "flowchart parser recovered after parse error: Unterminated node label (missing `]`)",
+            "code": 5,
+            "code_name": "MERMAN_PARSE_ERROR",
+            "diagram_type": "flowchart-v2",
+            "span": {
+              "byte_start": 28,
+              "byte_end": 28,
+              "line": 3,
+              "column": 1,
+              "end_line": 3,
+              "end_column": 1,
+              "lsp_range": {
+                "start": {
+                  "line": 2,
+                  "character": 0
+                },
+                "end": {
+                  "line": 2,
+                  "character": 0
+                }
+              }
+            },
+            "related": [],
+            "help": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "recovered_flowchart_warning_override",
+      "source": "flowchart TD\nA[unterminated\n",
+      "diagnostics": {
+        "version": 1,
+        "valid": true,
+        "summary": {
+          "errors": 0,
+          "warnings": 2,
+          "infos": 0,
+          "hints": 0
+        },
+        "source": {
+          "kind": "diagram",
+          "path": null,
+          "diagram_index": null,
+          "language": "mermaid"
+        },
+        "diagnostics": [
+          {
+            "id": "merman.parse.diagram_parse",
+            "severity": "warning",
+            "category": "parse",
+            "message": "Unterminated node label (missing `]`)",
+            "code": 5,
+            "code_name": "MERMAN_PARSE_ERROR",
+            "diagram_type": "flowchart-v2",
+            "span": {
+              "byte_start": 14,
+              "byte_end": 27,
+              "line": 2,
+              "column": 2,
+              "end_line": 2,
+              "end_column": 15,
+              "lsp_range": {
+                "start": {
+                  "line": 1,
+                  "character": 1
+                },
+                "end": {
+                  "line": 1,
+                  "character": 14
+                }
+              }
+            },
+            "related": [],
+            "help": null
+          },
+          {
+            "id": "merman.parse.recovered_editor_facts",
+            "severity": "warning",
+            "category": "parse",
+            "message": "flowchart parser recovered after parse error: Unterminated node label (missing `]`)",
+            "code": 5,
+            "code_name": "MERMAN_PARSE_ERROR",
+            "diagram_type": "flowchart-v2",
+            "span": {
+              "byte_start": 28,
+              "byte_end": 28,
+              "line": 3,
+              "column": 1,
+              "end_line": 3,
+              "end_column": 1,
+              "lsp_range": {
+                "start": {
+                  "line": 2,
+                  "character": 0
+                },
+                "end": {
+                  "line": 2,
+                  "character": 0
+                }
+              }
+            },
+            "related": [],
+            "help": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "markdown_recovered_editor_facts",
+      "source": "before\n```mermaid\ncynefin-beta\n  complex\n  complicated\n  complicated --> complicated : \"Self-loop\"\n```\nafter\n",
+      "diagnostics": {
+        "version": 1,
+        "valid": true,
+        "summary": {
+          "errors": 0,
+          "warnings": 1,
+          "infos": 0,
+          "hints": 0
+        },
+        "source": {
+          "kind": "markdown",
+          "path": "compatibility-oracle.md",
+          "diagram_index": null,
+          "language": "markdown"
+        },
+        "diagnostics": [
+          {
+            "id": "merman.parse.recovered_editor_facts",
+            "severity": "warning",
+            "category": "parse",
+            "message": "cynefin self-loop transition on domain \"complicated\" is skipped",
+            "code": 5,
+            "code_name": "MERMAN_PARSE_ERROR",
+            "diagram_type": "cynefin",
+            "span": {
+              "byte_start": 57,
+              "byte_end": 68,
+              "line": 6,
+              "column": 3,
+              "end_line": 6,
+              "end_column": 14,
+              "lsp_range": {
+                "start": {
+                  "line": 5,
+                  "character": 2
+                },
+                "end": {
+                  "line": 5,
+                  "character": 13
+                }
+              }
+            },
+            "related": [
+              {
+                "message": "Mermaid fence 1",
+                "span": {
+                  "byte_start": 7,
+                  "byte_end": 103,
+                  "line": 2,
+                  "column": 1,
+                  "end_line": 8,
+                  "end_column": 1,
+                  "lsp_range": {
+                    "start": {
+                      "line": 1,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 0
+                    }
+                  }
+                }
+              }
+            ],
+            "help": null
+          }
+        ]
+      }
+    }
+  ]
+}

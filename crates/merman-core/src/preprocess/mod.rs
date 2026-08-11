@@ -1,6 +1,7 @@
 mod source_config;
 mod source_edit_map;
 
+pub(crate) use source_config::SourceConfigPath;
 pub use source_config::{
     FrontmatterSourceEvidence, SourceConfigEvidence, SourceConfigKeyEvidence, SourceConfigOrigin,
     SourceDirectiveEvidence,
@@ -59,7 +60,7 @@ impl SourceConfigCaptureMode {
 
 #[derive(Debug)]
 struct LocalConfigKeyEvidence {
-    path: Vec<String>,
+    path: SourceConfigPath,
     span: Option<SourceSpan>,
     rewrite_safe: bool,
 }
@@ -1152,9 +1153,7 @@ fn process_frontmatter_controlled(
                 full: Some(location.full),
                 body: Some(location.body),
                 indent: location.indent.to_string(),
-                has_config: keys
-                    .iter()
-                    .any(|key| key.path.first().is_some_and(|segment| segment == "config")),
+                has_config: keys.iter().any(|key| key.path.first() == Some("config")),
                 keys,
                 rewrite_safe: false,
                 fields: None,
@@ -2986,6 +2985,10 @@ mod tests {
             })
             .expect("frontmatter htmlLabels evidence");
         assert_eq!(
+            frontmatter_key.path_segments().collect::<Vec<_>>(),
+            ["config", "flowchart", "htmlLabels"]
+        );
+        assert_eq!(
             &source[frontmatter_key.span().start..frontmatter_key.span().end],
             "htmlLabels"
         );
@@ -3119,6 +3122,26 @@ mod tests {
             large.estimated_owned_heap_bytes()
         );
         assert!(large.estimated_owned_heap_bytes() < large_source.len() / 100);
+    }
+
+    #[test]
+    fn source_config_evidence_paths_remain_linear_for_deep_wide_json5() {
+        let mut config = String::new();
+        for depth in 0..64 {
+            config.push_str(&format!("level{depth}:{{"));
+        }
+        config.push_str(&"repeated:0,".repeat(2_048));
+        config.push_str("tail:1");
+        config.push_str(&"}".repeat(64));
+        let source = format!("%%{{init: {{{config}}}}}%%\nflowchart TD\nA-->B\n");
+
+        let captured = capture_source_config(&source);
+        assert!(captured.result.is_ok());
+        assert!(captured.source_config.keys().len() > 2_048);
+        assert!(
+            captured.source_config.estimated_owned_heap_bytes() < source.len().saturating_mul(64),
+            "shared path prefixes must keep retained evidence proportional to source bytes"
+        );
     }
 
     #[test]

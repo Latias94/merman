@@ -3,8 +3,9 @@ use serde::Deserialize;
 use serde::de::{DeserializeSeed, IgnoredAny, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Number, Value};
 use std::fmt;
+use std::sync::Arc;
 #[cfg(test)]
-use std::mem::size_of;
+use std::{collections::HashSet, mem::size_of};
 
 /// Mermaid source construct that supplied one configuration key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,6 +74,122 @@ impl SourceDirectiveEvidence {
     }
 }
 
+/// Persistent configuration-key path shared by parser capture and retained source evidence.
+///
+/// Each key contributes one segment node and shares its ancestor nodes, so retained path data stays
+/// proportional to the source rather than `key_count * nesting_depth`.
+#[derive(Clone)]
+pub(crate) struct SourceConfigPath {
+    root: Option<Arc<SourceConfigPathNode>>,
+    leaf: Option<Arc<SourceConfigPathNode>>,
+}
+
+struct SourceConfigPathNode {
+    parent: Option<Arc<SourceConfigPathNode>>,
+    segment: String,
+    depth: usize,
+}
+
+impl SourceConfigPath {
+    pub(crate) const fn root() -> Self {
+        Self {
+            root: None,
+            leaf: None,
+        }
+    }
+
+    pub(crate) fn child(&self, segment: String) -> Self {
+        let leaf = Arc::new(SourceConfigPathNode {
+            parent: self.leaf.clone(),
+            segment,
+            depth: self.len().saturating_add(1),
+        });
+        Self {
+            root: self.root.clone().or_else(|| Some(leaf.clone())),
+            leaf: Some(leaf),
+        }
+    }
+
+    pub(crate) fn first(&self) -> Option<&str> {
+        self.root.as_deref().map(|node| node.segment.as_str())
+    }
+
+    fn len(&self) -> usize {
+        self.leaf.as_deref().map_or(0, |node| node.depth)
+    }
+
+    fn segments_rev(&self) -> SourceConfigPathSegmentsRev<'_> {
+        SourceConfigPathSegmentsRev {
+            next: self.leaf.as_deref(),
+        }
+    }
+
+    fn segments(&self) -> Vec<&str> {
+        let mut segments = self.segments_rev().collect::<Vec<_>>();
+        segments.reverse();
+        segments
+    }
+
+    pub(crate) fn matches(&self, expected: &[&str]) -> bool {
+        self.len() == expected.len()
+            && self
+                .segments_rev()
+                .zip(expected.iter().rev().copied())
+                .all(|(actual, expected)| actual == expected)
+    }
+
+    #[cfg(test)]
+    fn add_estimated_owned_heap_bytes(
+        &self,
+        seen: &mut HashSet<*const SourceConfigPathNode>,
+    ) -> usize {
+        let mut retained = 0usize;
+        let mut next = self.leaf.as_deref();
+        while let Some(node) = next {
+            if !seen.insert(node as *const SourceConfigPathNode) {
+                break;
+            }
+            retained = retained
+                .saturating_add(size_of::<SourceConfigPathNode>())
+                .saturating_add(node.segment.capacity());
+            next = node.parent.as_deref();
+        }
+        retained
+    }
+}
+
+struct SourceConfigPathSegmentsRev<'a> {
+    next: Option<&'a SourceConfigPathNode>,
+}
+
+impl<'a> Iterator for SourceConfigPathSegmentsRev<'a> {
+    type Item = &'a str;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let node = self.next?;
+        self.next = node.parent.as_deref();
+        Some(node.segment.as_str())
+    }
+}
+
+impl fmt::Debug for SourceConfigPath {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.debug_list().entries(self.segments()).finish()
+    }
+}
+
+impl PartialEq for SourceConfigPath {
+    fn eq(&self, other: &Self) -> bool {
+        self.len() == other.len()
+            && self
+                .segments_rev()
+                .zip(other.segments_rev())
+                .all(|(left, right)| left == right)
+    }
+}
+
+impl Eq for SourceConfigPath {}
+
 /// Source-backed evidence for one source-addressable configuration key accepted by the owning
 /// YAML or JSON5 parser.
 ///
@@ -82,7 +199,7 @@ impl SourceDirectiveEvidence {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceConfigKeyEvidence {
     origin: SourceConfigOrigin,
-    path: Box<[String]>,
+    path: SourceConfigPath,
     span: SourceSpan,
     order: usize,
     rewrite_safe: bool,
@@ -91,14 +208,14 @@ pub struct SourceConfigKeyEvidence {
 impl SourceConfigKeyEvidence {
     pub(super) fn new(
         origin: SourceConfigOrigin,
-        path: Vec<String>,
+        path: SourceConfigPath,
         span: SourceSpan,
         order: usize,
         rewrite_safe: bool,
     ) -> Self {
         Self {
             origin,
-            path: path.into_boxed_slice(),
+            path,
             span,
             order,
             rewrite_safe,
@@ -109,18 +226,16 @@ impl SourceConfigKeyEvidence {
         self.origin
     }
 
-    pub fn path(&self) -> &[String] {
-        &self.path
+    /// Returns the decoded path segments in source order.
+    ///
+    /// The iterator owns only a temporary index of borrowed segments; iterating paths never adds
+    /// retained storage to the captured evidence.
+    pub fn path_segments(&self) -> impl DoubleEndedIterator<Item = &str> + ExactSizeIterator + '_ {
+        self.path.segments().into_iter()
     }
 
     pub fn matches_path(&self, expected: &[&str]) -> bool {
-        self.path.len() == expected.len()
-            && self
-                .path
-                .iter()
-                .map(String::as_str)
-                .zip(expected.iter().copied())
-                .all(|(actual, expected)| actual == expected)
+        self.path.matches(expected)
     }
 
     pub const fn span(&self) -> SourceSpan {
@@ -136,11 +251,11 @@ impl SourceConfigKeyEvidence {
     }
 
     #[cfg(test)]
-    fn estimated_owned_heap_bytes(&self) -> usize {
-        self.path.iter().fold(
-            self.path.len().saturating_mul(size_of::<String>()),
-            |weight, segment| weight.saturating_add(segment.capacity()),
-        )
+    fn estimated_owned_heap_bytes(
+        &self,
+        seen_paths: &mut HashSet<*const SourceConfigPathNode>,
+    ) -> usize {
+        self.path.add_estimated_owned_heap_bytes(seen_paths)
     }
 }
 
@@ -271,6 +386,7 @@ impl SourceConfigEvidence {
             .keys
             .capacity()
             .saturating_mul(size_of::<SourceConfigKeyEvidence>());
+        let mut seen_paths = HashSet::new();
         let payload = self
             .directives
             .iter()
@@ -278,7 +394,7 @@ impl SourceConfigEvidence {
             .chain(
                 self.keys
                     .iter()
-                    .map(SourceConfigKeyEvidence::estimated_owned_heap_bytes),
+                    .map(|key| key.estimated_owned_heap_bytes(&mut seen_paths)),
             )
             .fold(0usize, usize::saturating_add);
         let frontmatter = self
@@ -331,7 +447,7 @@ pub(super) struct Json5ConfigCapture {
 
 #[derive(Debug, Clone)]
 pub(super) struct Json5ConfigKeyEvidence {
-    pub(super) path: Vec<String>,
+    pub(super) path: SourceConfigPath,
     pub(super) span: Option<std::ops::Range<usize>>,
     pub(super) rewrite_safe: bool,
 }
@@ -345,7 +461,7 @@ pub(super) fn parse_json5_config(input: &str) -> Json5ConfigCapture {
     let mut deserializer = json5::Deserializer::from_str(input);
     let value = Json5ValueSeed {
         capture: &mut capture,
-        path: Vec::new(),
+        path: SourceConfigPath::root(),
         capture_keys: true,
     }
     .deserialize(&mut deserializer)
@@ -381,7 +497,7 @@ struct Json5CaptureState<'source> {
 
 struct Json5ValueSeed<'capture, 'source> {
     capture: &'capture mut Json5CaptureState<'source>,
-    path: Vec<String>,
+    path: SourceConfigPath,
     capture_keys: bool,
 }
 
@@ -402,7 +518,7 @@ impl<'de> DeserializeSeed<'de> for Json5ValueSeed<'_, '_> {
 
 struct Json5ValueVisitor<'capture, 'source> {
     capture: &'capture mut Json5CaptureState<'source>,
-    path: Vec<String>,
+    path: SourceConfigPath,
     capture_keys: bool,
 }
 
@@ -479,7 +595,7 @@ impl<'de> Visitor<'de> for Json5ValueVisitor<'_, '_> {
         let mut values = Vec::with_capacity(sequence.size_hint().unwrap_or(0));
         while let Some(value) = sequence.next_element_seed(Json5ValueSeed {
             capture: self.capture,
-            path: Vec::new(),
+            path: SourceConfigPath::root(),
             // Mermaid config paths do not traverse array indices. Emitting an object's keys with
             // the parent object path would flatten the array and create false diagnostics.
             capture_keys: false,
@@ -497,13 +613,12 @@ impl<'de> Visitor<'de> for Json5ValueVisitor<'_, '_> {
         while let Some(key) = object.next_key_seed(Json5KeySeed {
             input: self.capture.input,
         })? {
-            let mut path = if self.capture_keys {
-                self.path.clone()
+            let path = if self.capture_keys {
+                self.path.child(key.name.clone())
             } else {
-                Vec::new()
+                SourceConfigPath::root()
             };
             if self.capture_keys {
-                path.push(key.name.clone());
                 self.capture.keys.push(Json5ConfigKeyEvidence {
                     path: path.clone(),
                     span: key.span.clone(),

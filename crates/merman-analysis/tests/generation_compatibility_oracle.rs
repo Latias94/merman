@@ -1,35 +1,125 @@
 use merman_analysis::{
-    AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, Analyzer, FenceTextIndexSource,
+    AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, Analyzer, DiagnosticSeverity,
+    FenceTextIndexSource, SourceDescriptor, analyze_document, source_descriptor_for_markdown_path,
 };
+use serde_json::{Value, json};
+
+const BASELINE_COMMIT: &str = "0be1a409286f044f40954aec686bd316ff78cb16";
+// This fixture was emitted by the public diagnostics APIs at BASELINE_COMMIT before U1 replaced
+// the retained evidence path. It intentionally excludes facts because their approved schema-2
+// break is characterized separately below. Never regenerate this oracle from the current code.
+const ORACLE: &str = include_str!("fixtures/pre_generation_analysis_oracle.json");
+
+struct CaseSpec {
+    name: &'static str,
+    source: &'static str,
+    document: bool,
+}
+
+const CASES: &[CaseSpec] = &[
+    CaseSpec {
+        name: "recommended_flowchart_fix",
+        source: "flowchart\nA[Hello] --> B[World]\n",
+        document: false,
+    },
+    CaseSpec {
+        name: "recovered_flowchart_default",
+        source: "flowchart TD\nA[unterminated\n",
+        document: false,
+    },
+    CaseSpec {
+        name: "recovered_flowchart_warning_override",
+        source: "flowchart TD\nA[unterminated\n",
+        document: false,
+    },
+    CaseSpec {
+        name: "markdown_recovered_editor_facts",
+        source: concat!(
+            "before\n",
+            "```mermaid\n",
+            "cynefin-beta\n",
+            "  complex\n",
+            "  complicated\n",
+            "  complicated --> complicated : \"Self-loop\"\n",
+            "```\n",
+            "after\n",
+        ),
+        document: true,
+    },
+];
+
+fn analyzer_for(case_name: &str) -> Analyzer {
+    match case_name {
+        "recommended_flowchart_fix" => {
+            Analyzer::with_options(AnalysisOptions::default().with_rule_config(
+                AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+            ))
+        }
+        "recovered_flowchart_warning_override" => Analyzer::with_options(
+            AnalysisOptions::default().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_rule_severity("merman.parse.diagram_parse", DiagnosticSeverity::Warning)
+                    .expect("parse rule severity override"),
+            ),
+        ),
+        "recovered_flowchart_default" | "markdown_recovered_editor_facts" => Analyzer::new(),
+        unknown => panic!("unknown compatibility oracle case {unknown}"),
+    }
+}
+
+fn diagram_case(name: &str, source: &str, analyzer: &Analyzer) -> Value {
+    json!({
+        "name": name,
+        "source": source,
+        "diagnostics": analyzer.analyze(source),
+    })
+}
+
+fn document_case(
+    name: &str,
+    source: &str,
+    analyzer: &Analyzer,
+    descriptor: SourceDescriptor,
+) -> Value {
+    json!({
+        "name": name,
+        "source": source,
+        "diagnostics": analyze_document(source, analyzer, descriptor),
+    })
+}
 
 #[test]
-fn representative_diagnostics_still_match_rich_generation_projection() {
-    let cases = [
-        (
-            AnalysisOptions::default().with_rule_config(
-                AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
-            ),
-            "flowchart\nA[Hello] --> B[World]\n",
-        ),
-        (AnalysisOptions::default(), "flowchart TD\nA[unterminated\n"),
-        (
-            AnalysisOptions::default(),
-            "before\n```mermaid\ncynefin-beta\n  complex\n  complicated\n  complicated --> complicated : \"Self-loop\"\n```\nafter\n",
-        ),
-    ];
+fn generation_refactor_preserves_independent_public_diagnostics_json() {
+    let oracle: Value = serde_json::from_str(ORACLE).expect("valid compatibility oracle JSON");
+    assert_eq!(oracle["oracle_version"], 1);
+    assert_eq!(oracle["baseline_commit"], BASELINE_COMMIT);
 
-    for (options, source) in cases {
-        let analyzer = Analyzer::with_options(options);
-        let rich = analyzer
-            .analyze_generation(source)
-            .into_ready()
-            .expect("characterization sources stay within the analysis limit");
-        assert_eq!(
-            analyzer.analyze(source),
-            rich.project(analyzer.options().diagnostic_policy()),
-            "diagnostic projection drifted for {source:?}"
-        );
-    }
+    let expected_cases = oracle["cases"]
+        .as_array()
+        .expect("compatibility oracle cases");
+    assert_eq!(
+        expected_cases.len(),
+        CASES.len(),
+        "the baseline fixture must contain every fixed compatibility case"
+    );
+    let actual_cases = CASES
+        .iter()
+        .map(|case| {
+            let analyzer = analyzer_for(case.name);
+            if case.document {
+                document_case(
+                    case.name,
+                    case.source,
+                    &analyzer,
+                    source_descriptor_for_markdown_path(Some("compatibility-oracle.md")),
+                )
+            } else {
+                diagram_case(case.name, case.source, &analyzer)
+            }
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(actual_cases, *expected_cases);
 }
 
 #[test]

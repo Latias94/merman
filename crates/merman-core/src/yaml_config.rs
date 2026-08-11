@@ -1,4 +1,4 @@
-use crate::{ParseControl, ParseControlResult};
+use crate::{ParseControl, ParseControlResult, preprocess::SourceConfigPath};
 use granit_parser::{Event, Parser, ScalarStyle, Span, Tag};
 use serde_json::{Map, Number, Value};
 use std::collections::{HashMap, HashSet};
@@ -35,7 +35,7 @@ pub(crate) fn parse_yaml_value_controlled(
 
 #[derive(Debug)]
 pub(crate) struct YamlConfigKeyEvidence {
-    pub(crate) path: Vec<String>,
+    pub(crate) path: SourceConfigPath,
     pub(crate) span: Option<std::ops::Range<usize>>,
     pub(crate) rewrite_safe: bool,
 }
@@ -309,17 +309,13 @@ impl YamlValueBuilder {
         (std::mem::take(&mut self.key_evidence), self.rewrite_safe)
     }
 
-    fn path_for_role(&self, role: &Role) -> Option<Vec<String>> {
+    fn path_for_role(&self, role: &Role) -> Option<SourceConfigPath> {
         if !self.capture_keys {
             return None;
         }
         match role {
-            Role::MappingValue(MappingKey::String { name, .. }) => {
-                let mut path = self.stack.last()?.path.clone()?;
-                path.push(name.clone());
-                Some(path)
-            }
-            Role::Root => Some(Vec::new()),
+            Role::MappingValue(MappingKey::String { path, .. }) => path.clone(),
+            Role::Root => Some(SourceConfigPath::root()),
             // Collection-valued mapping keys are discarded by materialization. Their descendants
             // must not publish paths as if they belonged to the surrounding object.
             Role::MappingKey => None,
@@ -389,26 +385,28 @@ impl YamlValueBuilder {
                 Ok(())
             }
             Role::MappingKey => {
-                let key = node_to_mapping_key(&self.arena, node);
+                let mut key = node_to_mapping_key(&self.arena, node);
                 if self.capture_keys {
                     let parent_path = self.stack.last().and_then(|frame| frame.path.clone());
-                    match (&key, source_addressable, parent_path) {
+                    match (&mut key, source_addressable, parent_path) {
                         (
                             MappingKey::String {
                                 name,
                                 span,
                                 rewrite_safe,
+                                path,
                             },
                             true,
-                            Some(mut path),
+                            Some(parent_path),
                         ) => {
-                            path.push(name.clone());
+                            let key_path = parent_path.child(name.clone());
                             self.key_evidence.push(YamlConfigKeyEvidence {
-                                path,
+                                path: key_path.clone(),
                                 span: span.clone(),
                                 rewrite_safe: *rewrite_safe,
                             });
-                            if name == "<<" || !rewrite_safe {
+                            *path = Some(key_path);
+                            if name.as_str() == "<<" || !*rewrite_safe {
                                 self.rewrite_safe = false;
                             }
                         }
@@ -487,7 +485,7 @@ struct Frame {
     container: Container,
     role: Role,
     anchor_id: usize,
-    path: Option<Vec<String>>,
+    path: Option<SourceConfigPath>,
 }
 
 struct YamlKeySource {
@@ -516,6 +514,7 @@ enum MappingKey {
         name: String,
         span: Option<std::ops::Range<usize>>,
         rewrite_safe: bool,
+        path: Option<SourceConfigPath>,
     },
     Ignored,
 }
@@ -529,6 +528,7 @@ fn node_to_mapping_key(arena: &[YamlNode], node: NodeId) -> MappingKey {
             name: key.clone(),
             span: key_source.as_ref().and_then(|source| source.span.clone()),
             rewrite_safe: key_source.as_ref().is_none_or(|source| source.rewrite_safe),
+            path: None,
         },
         YamlNode::Scalar {
             value: Value::Number(key),
@@ -537,6 +537,7 @@ fn node_to_mapping_key(arena: &[YamlNode], node: NodeId) -> MappingKey {
             name: key.to_string(),
             span: key_source.as_ref().and_then(|source| source.span.clone()),
             rewrite_safe: false,
+            path: None,
         },
         YamlNode::Scalar {
             value: Value::Bool(true),
@@ -545,6 +546,7 @@ fn node_to_mapping_key(arena: &[YamlNode], node: NodeId) -> MappingKey {
             name: "true".to_string(),
             span: key_source.as_ref().and_then(|source| source.span.clone()),
             rewrite_safe: false,
+            path: None,
         },
         YamlNode::Scalar {
             value: Value::Bool(false),
@@ -553,6 +555,7 @@ fn node_to_mapping_key(arena: &[YamlNode], node: NodeId) -> MappingKey {
             name: "false".to_string(),
             span: key_source.as_ref().and_then(|source| source.span.clone()),
             rewrite_safe: false,
+            path: None,
         },
         YamlNode::Scalar {
             value: Value::Null,
@@ -561,6 +564,7 @@ fn node_to_mapping_key(arena: &[YamlNode], node: NodeId) -> MappingKey {
             name: "null".to_string(),
             span: key_source.as_ref().and_then(|source| source.span.clone()),
             rewrite_safe: false,
+            path: None,
         },
         YamlNode::Scalar {
             value: Value::Array(_) | Value::Object(_),
@@ -1034,10 +1038,11 @@ plain:
             captured
                 .keys
                 .iter()
-                .any(|key| key.path == ["plain", "lazyLoadedDiagrams"])
+                .any(|key| key.path.matches(&["plain", "lazyLoadedDiagrams"]))
         );
         assert!(!captured.keys.iter().any(|key| {
-            key.path == ["config", "lazyLoadedDiagrams"] || key.path == ["lazyLoadedDiagrams"]
+            key.path.matches(&["config", "lazyLoadedDiagrams"])
+                || key.path.matches(&["lazyLoadedDiagrams"])
         }));
     }
 
@@ -1058,10 +1063,11 @@ plain:
             captured
                 .keys
                 .iter()
-                .any(|key| key.path == ["plain", "htmlLabels"])
+                .any(|key| key.path.matches(&["plain", "htmlLabels"]))
         );
         assert!(!captured.keys.iter().any(|key| {
-            key.path == ["config", "flowchart"] || key.path == ["config", "flowchart", "htmlLabels"]
+            key.path.matches(&["config", "flowchart"])
+                || key.path.matches(&["config", "flowchart", "htmlLabels"])
         }));
         assert!(!captured.rewrite_safe);
     }
@@ -1080,16 +1086,21 @@ config: *defaults
         );
         captured.value.expect("yaml aliases parse");
 
-        assert!(captured.keys.iter().any(|key| key.path == ["name"]));
+        assert!(captured.keys.iter().any(|key| key.path.matches(&["name"])));
         assert!(
             captured
                 .keys
                 .iter()
-                .any(|key| key.path == ["defaults", "htmlLabels"])
+                .any(|key| key.path.matches(&["defaults", "htmlLabels"]))
         );
-        assert!(captured.keys.iter().any(|key| key.path == ["config"]));
+        assert!(
+            captured
+                .keys
+                .iter()
+                .any(|key| key.path.matches(&["config"]))
+        );
         assert!(!captured.keys.iter().any(|key| {
-            key.path == ["lazyLoadedDiagrams"] || key.path == ["config", "htmlLabels"]
+            key.path.matches(&["lazyLoadedDiagrams"]) || key.path.matches(&["config", "htmlLabels"])
         }));
         assert!(!captured.rewrite_safe);
     }
