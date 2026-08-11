@@ -247,6 +247,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "complex cyclic or collision-prone topology can summarize",
             "unknown cardinality markers are unsupported",
             "unknown relationship identity kinds are unsupported",
+            "accessibility, comments, and styling metadata are intentionally omitted from terminal output",
         ],
         evidence: &[
             AsciiCapabilityEvidence {
@@ -1029,6 +1030,18 @@ mod tests {
                 .supported_semantics
                 .contains(&"participant-bounded nested control frames")
         );
+    }
+
+    #[test]
+    fn er_capability_discloses_presentation_metadata_omission() {
+        let er = find("er");
+
+        assert!(er.limits.iter().any(|limit| {
+            limit.contains("accessibility")
+                && limit.contains("comments")
+                && limit.contains("styling")
+                && limit.contains("intentionally omitted")
+        }));
     }
 
     #[test]

@@ -1,7 +1,7 @@
 # ASCII Reference Comparison
 
 Status: living comparison note
-Last updated: 2026-08-09
+Last updated: 2026-08-11
 
 This note records comparison evidence for the pinned upstream revisions used by `merman-ascii` and
 notes what may be visible in the two optional local reference checkouts:
@@ -48,7 +48,7 @@ The tracked corpus based on `mermaid-ascii` commit
 `6fffb8e2714acab2c4cb41c78894fabbc62cee56`, plus the two supplemental graph fixtures from
 `876b5b4` named in its inventory, contains 54 `ascii` graph fixtures, 25 `extended-chars` graph
 fixtures, 12 `sequence` fixtures, and 5 `sequence-ascii` fixtures. The graph gate currently keeps
-45 fixtures as an exact-output subset and names 34 deterministic Dagre/route/compound differences
+40 fixtures as an exact-output subset and names 39 deterministic Dagre/route/compound differences
 that must still render and retain their semantics. Copied bytes are never rewritten to match local
 output. Its 3 `multibyte` examples for accented Latin, Greek, and Cyrillic labels are useful semantic
 evidence, but they are not admitted as byte-level fixtures: `merman-ascii` preserves the labels
@@ -60,7 +60,7 @@ and routed relationships since the pinned copied-source revision. No ER fixture 
 checkout is part of the tracked copied inventory, so those additions do not silently change Merman's
 support or evidence boundary.
 
-The 137-path moving fixture delta and its validity, admission, feature, and evidence dispositions
+The 140-path moving fixture delta and its validity, admission, feature, and evidence dispositions
 are tracked in `ASCII_MOVING_REFERENCE_MANIFEST.md`. Release CI does not need either reference
 checkout to verify that inventory.
 

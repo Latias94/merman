@@ -41,7 +41,7 @@ Each entry inherits classification, admission, semantic feature, and evidence fr
 - Classification: `mermaid_valid`
 - Admission: `semantic_probe`
 - Semantic feature: bidirectional endpoints, labels, and LR/TD direction
-- Evidence: `tests/flowchart_model/graph_routing.rs::flowchart_parser_preserves_bidirectional_point_markers_in_both_charsets`
+- Evidence: `crates/merman-ascii/tests/flowchart_model/graph_routing.rs::flowchart_parser_preserves_bidirectional_point_markers_in_both_charsets`
 
 - `ascii/bidirectional_labeled_lr.txt`
 - `ascii/bidirectional_lr.txt`
@@ -54,7 +54,7 @@ Each entry inherits classification, admission, semantic feature, and evidence fr
 - Classification: `mermaid_valid`
 - Admission: `semantic_probe`
 - Semantic feature: accented Latin, Greek, and Cyrillic node and edge labels retain authored text
-- Evidence: `tests/flowchart_model/direction_and_labels.rs::flowchart_parser_multibyte_reference_labels_render_readably`
+- Evidence: `crates/merman-ascii/tests/flowchart_model/direction_and_labels.rs::flowchart_parser_multibyte_reference_labels_render_readably`
 
 - `multibyte/accented_latin_node_and_edge_labels.txt`
 - `multibyte/cyrillic_node_and_edge_labels.txt`
@@ -66,7 +66,7 @@ Each entry inherits classification, admission, semantic feature, and evidence fr
 - Admission: `semantic_probe`
 - Semantic feature: aliases, actor/participant mixing, spaces, dashes, and actor identity inside
   central, fragment, note, and self-message contexts
-- Evidence: `merman-core/src/tests/sequence.rs::parse_diagram_sequence_preserves_mermaid_valid_spaced_actor_ids` and `tests/sequence_model/signals.rs::sequence_spaced_actor_names_render_without_splitting_participants`
+- Evidence: `crates/merman-core/src/tests/sequence.rs::parse_diagram_sequence_preserves_mermaid_valid_spaced_actor_ids`, `crates/merman-ascii/tests/sequence_model/signals.rs::sequence_spaced_actor_names_render_without_splitting_participants`
 
 - `sequence/actor_alias.txt`
 - `sequence/actor_participant_mix.txt`
@@ -89,7 +89,7 @@ Each entry inherits classification, admission, semantic feature, and evidence fr
 - Admission: `discovery_only`
 - Semantic feature: a quoted actor token containing arrow text is accepted by the moving reference
   but is outside pinned Mermaid 11.16.1 actor syntax
-- Evidence: `merman-core/src/tests/sequence.rs::parse_diagram_sequence_rejects_reference_private_quoted_actor_ids`
+- Evidence: `crates/merman-core/src/tests/sequence.rs::parse_diagram_sequence_rejects_reference_private_quoted_actor_ids`
 
 - `sequence/quoted_name_with_arrow.txt`
 
@@ -99,7 +99,7 @@ Each entry inherits classification, admission, semantic feature, and evidence fr
 - Admission: `discovery_only`
 - Semantic feature: `data=svc as DS` is a Mermaid alias, while `cron job as Cron` is one literal
   spaced actor id under pinned Mermaid and a split alias under the moving reference
-- Evidence: `merman-core/src/tests/sequence.rs::parse_diagram_sequence_keeps_pinned_spaced_alias_boundary`
+- Evidence: `crates/merman-core/src/tests/sequence.rs::parse_diagram_sequence_keeps_pinned_spaced_alias_boundary`
 
 - `sequence/participant_names_alias_equals.txt`
 - `sequence-ascii/participant_names_alias_equals.txt`
@@ -110,7 +110,7 @@ Each entry inherits classification, admission, semantic feature, and evidence fr
 - Admission: `semantic_probe`
 - Semantic feature: open/filled/cross/point/bidirectional markers, central connections, and self
   message endpoint ownership in ASCII and Unicode
-- Evidence: `tests/sequence_model/signals.rs::sequence_extended_signal_markers_render_from_typed_endpoint_semantics` and `tests/sequence_model/signals.rs::sequence_ascii_half_arrows_preserve_filled_and_open_semantics`
+- Evidence: `crates/merman-ascii/tests/sequence_model/signals.rs::sequence_extended_signal_markers_render_from_typed_endpoint_semantics`, `crates/merman-ascii/tests/sequence_model/signals.rs::sequence_ascii_half_arrows_preserve_filled_and_open_semantics`
 
 - `sequence/arrow_types.txt`
 - `sequence/async_point_arrows.txt`
@@ -133,7 +133,7 @@ Each entry inherits classification, admission, semantic feature, and evidence fr
 - Admission: `semantic_probe`
 - Semantic feature: empty and nested controls, alternate sections, autonumber, notes, participant
   span, and control labels
-- Evidence: `tests/sequence_model/control_composition.rs::sequence_control_frame_uses_the_local_participant_span`, `tests/sequence_model/control_core.rs`, and `tests/sequence_model/layout_and_lifecycle.rs`
+- Evidence: `crates/merman-ascii/tests/sequence_model/control_composition.rs::sequence_control_frame_uses_the_local_participant_span`, `crates/merman-ascii/tests/sequence_model/control_core.rs::sequence_sectioned_control_blocks_frame_multiple_sections_and_notes`, `crates/merman-ascii/tests/sequence_model/layout_and_lifecycle.rs::sequence_autonumber_accepts_decimal_start_and_step`
 
 - `sequence/alt_basic.txt`
 - `sequence/alt_multiple_else.txt`
@@ -162,7 +162,7 @@ Each entry inherits classification, admission, semantic feature, and evidence fr
 - Admission: `semantic_probe`
 - Semantic feature: attribute type/name roles, keys, comments, quoted names, repeated blocks, and
   relationship coexistence
-- Evidence: `tests/er_model.rs::er_attribute_keys_and_comments_have_distinct_terminal_roles`
+- Evidence: `crates/merman-ascii/tests/er_model.rs::er_attribute_keys_and_comments_have_distinct_terminal_roles`
 
 - `er/attributes_asterisk_names.txt`
 - `er/attributes_backtick_names.txt`
@@ -183,7 +183,7 @@ Each entry inherits classification, admission, semantic feature, and evidence fr
 - Admission: `semantic_probe`
 - Semantic feature: numeric and word aliases plus every identifying/non-identifying cardinality
   endpoint combination
-- Evidence: `tests/er_model.rs::er_parser_relationship_chain_renders_each_cardinality_and_label`
+- Evidence: `crates/merman-ascii/tests/er_model.rs::er_parser_relationship_chain_renders_each_cardinality_and_label`
 
 - `er/cardinality_numeric.txt`
 - `er/cardinality_numeric_all.txt`
@@ -233,7 +233,7 @@ Each entry inherits classification, admission, semantic feature, and evidence fr
 - Admission: `semantic_probe`
 - Semantic feature: aliases, quoted and multiword names, CJK, empty labels, standalone entities,
   and long terminal labels
-- Evidence: parser identity tests in `merman-core` and `tests/er_model.rs::er_parser_preserves_entity_declaration_order`
+- Evidence: `crates/merman-core/src/tests/er.rs::parse_diagram_er_parses_alias_and_attributes`, `crates/merman-core/src/tests/er.rs::parse_diagram_er_allows_standalone_entities`, `crates/merman-ascii/tests/er_model.rs::er_parser_preserves_entity_declaration_order`
 
 - `er/alias_forms.txt`
 - `er/cjk_entities.txt`
@@ -253,7 +253,7 @@ Each entry inherits classification, admission, semantic feature, and evidence fr
 - Admission: `semantic_probe`
 - Semantic feature: declaration order, dense components, duplicate and self relationships,
   identifying kind, dashed variants, and relation labels
-- Evidence: `tests/er_model.rs::er_parser_parallel_relationship_layout_keeps_diagram_when_ports_fit` and `tests/er_model.rs::er_parser_self_relationship_renders_single_box_with_loop`
+- Evidence: `crates/merman-ascii/tests/er_model.rs::er_parser_parallel_relationship_layout_keeps_diagram_when_ports_fit`, `crates/merman-ascii/tests/er_model.rs::er_parser_self_relationship_renders_single_box_with_loop`
 
 - `er/classic_order_example.txt`
 - `er/dash_dot_variants.txt`
@@ -276,7 +276,7 @@ Each entry inherits classification, admission, semantic feature, and evidence fr
 - Admission: `semantic_probe`
 - Semantic feature: accessibility metadata, comments, style, and direction are either consumed by
   the typed model or intentionally classified instead of leaking parser bookkeeping
-- Evidence: ER parser tests, capability limits, and `tests/er_model.rs`
+- Evidence: `crates/merman-core/src/tests/er.rs::parse_diagram_er_acc_title_and_multiline_description`, `crates/merman-core/src/tests/er.rs::parse_diagram_er_parses_many_constraints_and_comments`, `crates/merman-core/src/tests/er.rs::parse_diagram_er_style_statement_applies_styles`, `crates/merman-core/src/tests/er.rs::parse_diagram_er_direction_statement_sets_direction`, `crates/merman-ascii/tests/er_model.rs::er_parser_presentation_metadata_is_intentionally_omitted`, `crates/merman-ascii/tests/er_model.rs::er_parser_direction_controls_terminal_layout`
 
 - `er/acc_title_descr_skipped.txt`
 - `er/comments_skipped.txt`

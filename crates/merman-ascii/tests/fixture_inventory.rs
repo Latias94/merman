@@ -305,6 +305,35 @@ fn fixture_inventory_documents_graph_exact_and_gap_disposition() {
 }
 
 #[test]
+fn reference_comparison_matches_executable_fixture_evidence() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let comparison = fs::read_to_string(manifest_dir.join("ASCII_REFERENCE_COMPARISON.md"))
+        .expect("reference comparison must be readable");
+
+    for expected in [
+        "40 fixtures as an exact-output subset",
+        "39 deterministic Dagre/route/compound differences",
+        "The 140-path moving fixture delta",
+    ] {
+        assert!(
+            comparison.contains(expected),
+            "reference comparison must mention `{expected}`"
+        );
+    }
+
+    for stale in [
+        "45 fixtures as an exact-output subset",
+        "34 deterministic Dagre/route/compound differences",
+        "The 137-path moving fixture delta",
+    ] {
+        assert!(
+            !comparison.contains(stale),
+            "reference comparison contains stale evidence `{stale}`"
+        );
+    }
+}
+
+#[test]
 fn moving_reference_manifest_records_each_discovery_fixture_once() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let manifest = fs::read_to_string(manifest_dir.join("ASCII_MOVING_REFERENCE_MANIFEST.md"))
@@ -436,6 +465,48 @@ fn moving_reference_manifest_records_each_discovery_fixture_once() {
             manifest.contains(test_name),
             "moving-reference manifest must cite executable evidence `{test_name}`"
         );
+    }
+}
+
+#[test]
+fn moving_reference_evidence_anchors_resolve_to_executable_tests() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir.join("../..");
+    let manifest = fs::read_to_string(manifest_dir.join("ASCII_MOVING_REFERENCE_MANIFEST.md"))
+        .expect("moving reference manifest must be readable");
+    let dispositions = parse_moving_fixture_dispositions(&manifest);
+    let evidence_sets = dispositions
+        .iter()
+        .map(|disposition| disposition.evidence.as_str())
+        .collect::<BTreeSet<_>>();
+
+    for evidence in evidence_sets {
+        for encoded_anchor in evidence.split(", ") {
+            let anchor = encoded_anchor
+                .strip_prefix('`')
+                .and_then(|value| value.strip_suffix('`'))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "moving-reference evidence must be a comma-separated list of backticked executable anchors: {evidence}"
+                    )
+                });
+            let (relative_path, test_name) = anchor.rsplit_once("::").unwrap_or_else(|| {
+                panic!("moving-reference evidence anchor must name a test: {anchor}")
+            });
+            assert!(
+                relative_path.ends_with(".rs") && !test_name.is_empty(),
+                "invalid moving-reference evidence anchor: {anchor}"
+            );
+
+            let source_path = workspace_root.join(relative_path);
+            let source = fs::read_to_string(&source_path).unwrap_or_else(|error| {
+                panic!("failed to read {}: {error}", source_path.display())
+            });
+            assert!(
+                source.contains(&format!("fn {test_name}")),
+                "moving-reference evidence anchor `{anchor}` does not resolve to an executable test"
+            );
+        }
     }
 }
 
