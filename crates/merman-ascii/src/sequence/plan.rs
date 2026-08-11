@@ -1,6 +1,9 @@
 use super::boxes::render_sequence_boxes;
 use super::control::render_sequence_control_frames;
-use super::control::{SequenceControlFrame, SequenceControlFrameSeparator};
+use super::control::{
+    SequenceControlBoundaryState, SequenceControlFrame, SequenceControlFrameSeparator,
+    SequenceParticipantSpan,
+};
 use super::events::{
     MessageActorState, ensure_message_actors_visible, prepare_message_rows,
     prepare_self_message_rows, render_message, render_self_message,
@@ -83,6 +86,7 @@ impl<'diagram> SequenceRowPlanner<'diagram> {
         resources: &mut ResourceContext,
     ) -> Result<Option<SequenceRowStep<'diagram>>> {
         resources.charge_layout_work(1)?;
+        self.record_control_participant_span(event, resources)?;
         match event {
             SequenceEvent::ActivationStart { actor, .. } => {
                 let Some(count) = self.active_counts.get_mut(*actor) else {
@@ -119,12 +123,20 @@ impl<'diagram> SequenceRowPlanner<'diagram> {
                 self.active_control_frames
                     .try_reserve(1)
                     .map_err(|_| allocation_failed())?;
+                let start_boundary = SequenceControlBoundaryState::try_capture(
+                    &self.active_counts,
+                    &self.visible_actors,
+                    resources,
+                )?;
                 self.control_frames.push(SequenceControlFrame {
                     kind: start.kind,
                     label: &start.label,
                     background: start.background,
+                    participant_span: None,
+                    start_boundary,
                     start_row: current_row,
                     separators: Vec::new(),
+                    end_boundary: None,
                     end_row: None,
                 });
                 self.active_control_frames.push(frame_index);
@@ -144,14 +156,20 @@ impl<'diagram> SequenceRowPlanner<'diagram> {
                     .separators
                     .try_reserve(1)
                     .map_err(|_| allocation_failed())?;
+                let boundary = SequenceControlBoundaryState::try_capture(
+                    &self.active_counts,
+                    &self.visible_actors,
+                    resources,
+                )?;
                 frame.separators.push(SequenceControlFrameSeparator {
                     label: &separator.label,
+                    boundary,
                     row: current_row,
                 });
                 Ok(None)
             }
             SequenceEvent::ControlEnd { kind, .. } => {
-                self.end_control_frame(*kind, current_row)?;
+                self.end_control_frame(*kind, current_row, resources)?;
                 Ok(None)
             }
             SequenceEvent::Message(_) | SequenceEvent::Note(_) => {
@@ -198,6 +216,28 @@ impl<'diagram> SequenceRowPlanner<'diagram> {
         }
     }
 
+    fn record_control_participant_span(
+        &mut self,
+        event: &SequenceEvent,
+        resources: &mut ResourceContext,
+    ) -> Result<()> {
+        let Some(event_span) = SequenceParticipantSpan::from_event(event) else {
+            return Ok(());
+        };
+        resources.charge_layout_work(self.active_control_frames.len())?;
+        for frame_index in &self.active_control_frames {
+            let frame = self
+                .control_frames
+                .get_mut(*frame_index)
+                .ok_or_else(|| unsupported("control block ordering"))?;
+            match &mut frame.participant_span {
+                Some(span) => span.include(event_span),
+                None => frame.participant_span = Some(event_span),
+            }
+        }
+        Ok(())
+    }
+
     fn finish(self) -> Result<Vec<SequenceControlFrame<'diagram>>> {
         if !self.active_control_frames.is_empty() {
             return Err(unsupported("control block ordering"));
@@ -240,11 +280,21 @@ impl<'diagram> SequenceRowPlanner<'diagram> {
         Ok(frame.current_section_start_row() == current_row)
     }
 
-    fn end_control_frame(&mut self, kind: SequenceControlKind, current_row: usize) -> Result<()> {
+    fn end_control_frame(
+        &mut self,
+        kind: SequenceControlKind,
+        current_row: usize,
+        resources: &mut ResourceContext,
+    ) -> Result<()> {
         let Some(frame_index) = self.active_control_frames.last().copied() else {
             return Err(unsupported("control block ordering"));
         };
 
+        let end_boundary = SequenceControlBoundaryState::try_capture(
+            &self.active_counts,
+            &self.visible_actors,
+            resources,
+        )?;
         {
             let frame = &mut self.control_frames[frame_index];
             if !frame.kind.accepts_end(kind) {
@@ -257,6 +307,7 @@ impl<'diagram> SequenceRowPlanner<'diagram> {
                     .checked_sub(1)
                     .ok_or_else(|| unsupported("control block ordering"))?
             };
+            frame.end_boundary = Some(end_boundary);
             frame.end_row = Some(end_row);
         }
         self.active_control_frames.pop();
@@ -626,7 +677,13 @@ impl<'diagram> SequenceRowPlan<'diagram> {
     ) -> Result<String> {
         let mut lines = self.lines;
         if !self.control_frames.is_empty() {
-            lines = render_sequence_control_frames(lines, &self.control_frames, chars, resources)?;
+            lines = render_sequence_control_frames(
+                lines,
+                &self.control_frames,
+                layout,
+                chars,
+                resources,
+            )?;
         }
         if !diagram.boxes.is_empty() {
             lines = render_sequence_boxes(lines, diagram, layout, chars, resources)?;

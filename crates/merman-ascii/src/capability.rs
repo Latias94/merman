@@ -497,7 +497,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "notes",
             "lifecycles",
             "actor boxes",
-            "control blocks",
+            "participant-bounded nested control frames",
             "diagram-wide empty boxes",
             "sequence box inner padding",
             "all-participant boxes around dynamic lifecycle content",
@@ -967,6 +967,17 @@ mod tests {
                 .limits
                 .iter()
                 .any(|limit| limit.contains("dependency source expressions"))
+        );
+    }
+
+    #[test]
+    fn sequence_capability_claims_participant_bounded_control_frames() {
+        let sequence = find("sequence");
+
+        assert!(
+            sequence
+                .supported_semantics
+                .contains(&"participant-bounded nested control frames")
         );
     }
 

@@ -1,6 +1,99 @@
 use super::*;
 
 #[test]
+fn sequence_control_frame_uses_the_local_participant_span() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A\nparticipant B\nparticipant C\nA->>C: kickoff\nloop poll\nB->>C: check\nend",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("a partial-span control frame should render");
+
+    let frame_top = rendered
+        .lines()
+        .find(|line| line.contains("loop poll"))
+        .unwrap_or_else(|| panic!("loop frame should render:\n{rendered}"));
+    let outer_lifeline = frame_top.find('|').unwrap_or_else(|| {
+        panic!("A's lifeline should remain visible outside the frame:\n{rendered}")
+    });
+    let frame_left = frame_top
+        .find('+')
+        .unwrap_or_else(|| panic!("the local frame should have a left border:\n{rendered}"));
+    assert!(
+        outer_lifeline < frame_left,
+        "the loop frame should start after A's unrelated lifeline:\n{rendered}"
+    );
+
+    let message_row = rendered
+        .lines()
+        .find(|line| line.contains("check"))
+        .unwrap_or_else(|| panic!("the local message should remain visible:\n{rendered}"));
+    let frame_border = message_row
+        .match_indices('|')
+        .nth(1)
+        .map(|(index, _)| index)
+        .unwrap_or_else(|| {
+            panic!("the local frame body should preserve both borders:\n{rendered}")
+        });
+    assert!(
+        message_row[..frame_border].contains('|'),
+        "A's lifeline should remain outside the local frame body:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_local_control_frame_includes_note_gutters_in_both_charsets() {
+    let input = concat!(
+        "sequenceDiagram\n",
+        "participant A\n",
+        "participant B\n",
+        "participant C\n",
+        "A->>C: kickoff\n",
+        "loop poll\n",
+        "Note right of C: queued\n",
+        "B->>C: check\n",
+        "end",
+    );
+
+    for (options, top_left, top_right, lifeline) in [
+        (AsciiRenderOptions::ascii(), '+', '+', '|'),
+        (AsciiRenderOptions::unicode(), '┌', '┐', '│'),
+    ] {
+        let rendered = render_sequence(input, &options)
+            .expect("a partial-span frame should reserve its note gutter");
+        let frame_top = rendered
+            .lines()
+            .find(|line| line.contains("loop poll"))
+            .unwrap_or_else(|| panic!("the local loop should render:\n{rendered}"));
+        let frame_left = frame_top
+            .find(top_left)
+            .unwrap_or_else(|| panic!("the local frame should have a left border:\n{rendered}"));
+        let frame_right = frame_top
+            .rfind(top_right)
+            .unwrap_or_else(|| panic!("the local frame should have a right border:\n{rendered}"));
+        let unrelated_lifeline = frame_top
+            .find(lifeline)
+            .unwrap_or_else(|| panic!("A's unrelated lifeline should remain visible:\n{rendered}"));
+        assert!(
+            unrelated_lifeline < frame_left,
+            "the local frame should not claim actor A:\n{rendered}"
+        );
+
+        let note_row = rendered
+            .lines()
+            .find(|line| line.contains("queued"))
+            .unwrap_or_else(|| panic!("the note should render inside the frame:\n{rendered}"));
+        let note_start = note_row
+            .find("queued")
+            .unwrap_or_else(|| panic!("the note text should have a stable row:\n{rendered}"));
+        let note_end = note_start + "queued".len();
+        assert!(
+            frame_left < note_start && note_end <= frame_right,
+            "the planned frame should include the right-side note gutter:\n{rendered}"
+        );
+    }
+}
+
+#[test]
 fn sequence_nested_control_blocks_render() {
     let rendered = render_sequence(
         "sequenceDiagram\nparticipant A\nparticipant B\nloop Outer\nopt Inner\nA->>B: Work\nend\nend",
@@ -126,24 +219,22 @@ fn sequence_control_blocks_support_created_and_destroyed_actors() {
     )
     .expect("control blocks should support create and destroy lifecycle rows");
 
+    let frame_top = rendered
+        .lines()
+        .find(|line| line.contains("loop Setup"))
+        .unwrap_or_else(|| panic!("loop should render around lifecycle rows:\n{rendered}"));
+    let unrelated_lifeline = frame_top
+        .find('│')
+        .unwrap_or_else(|| panic!("A's lifeline should remain visible:\n{rendered}"));
+    let frame_left = frame_top
+        .find('┌')
+        .unwrap_or_else(|| panic!("the lifecycle frame should have a left border:\n{rendered}"));
     assert!(
-        rendered
-            .lines()
-            .any(|line| line.starts_with("┌ loop Setup ")),
-        "loop should render around create/destroy lifecycle rows:\n{rendered}"
+        unrelated_lifeline < frame_left,
+        "the B-C lifecycle frame should leave unrelated actor A outside:\n{rendered}"
     );
-    assert!(
-        rendered
-            .lines()
-            .any(|line| line.starts_with('│') && line.contains("Hello C")),
-        "created actor message should remain inside the frame:\n{rendered}"
-    );
-    assert!(
-        rendered
-            .lines()
-            .any(|line| line.starts_with('│') && line.contains("Bye C")),
-        "destroying message should remain inside the frame:\n{rendered}"
-    );
+    assert_text_between_borders(&rendered, "Hello C", '│');
+    assert_text_between_borders(&rendered, "Bye C", '│');
 }
 
 #[test]
@@ -161,6 +252,44 @@ fn sequence_control_blocks_render_inside_participant_boxes() {
     assert!(
         rendered.contains("loop Work"),
         "control frame should still render inside participant box output:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_local_control_frame_can_extend_beyond_a_partial_participant_box() {
+    let rendered = render_sequence(
+        concat!(
+            "sequenceDiagram\n",
+            "box Pair\n",
+            "participant A\n",
+            "participant B\n",
+            "end\n",
+            "participant C\n",
+            "alt choose\n",
+            "A->>C: yes\n",
+            "else retry\n",
+            "A->>C: no\n",
+            "end",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("a local frame may extend beyond a partial participant box");
+
+    assert!(
+        rendered.contains("Pair"),
+        "the partial box should render:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("alt choose"),
+        "the local frame should render:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("yes"),
+        "the first section should render:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("no"),
+        "the second section should render:\n{rendered}"
     );
 }
 
@@ -267,10 +396,18 @@ fn sequence_box_with_lifecycle_and_mirror_keeps_boundaries() {
         rendered.contains('x'),
         "destroyed actor should render a termination marker:\n{rendered}"
     );
+    let frame_top = rendered
+        .lines()
+        .find(|line| line.contains("loop Setup"))
+        .unwrap_or_else(|| panic!("the lifecycle control frame should render:\n{rendered}"));
+    let outer_border = frame_top
+        .find('|')
+        .unwrap_or_else(|| panic!("the outer sequence box should render:\n{rendered}"));
+    let frame_left = frame_top
+        .find('+')
+        .unwrap_or_else(|| panic!("the inner control frame should render:\n{rendered}"));
     assert!(
-        rendered
-            .lines()
-            .any(|line| line.starts_with("| + loop Setup ")),
+        frame_left >= outer_border + 2,
         "control frame should keep padding inside the outer sequence box:\n{rendered}"
     );
     assert!(
@@ -280,5 +417,20 @@ fn sequence_box_with_lifecycle_and_mirror_keeps_boundaries() {
     assert!(
         !rendered.lines().any(|line| line.starts_with("||")),
         "outer sequence box and participant or frame borders should not merge:\n{rendered}"
+    );
+}
+
+fn assert_text_between_borders(rendered: &str, text: &str, border: char) {
+    let line = rendered
+        .lines()
+        .find(|line| line.contains(text))
+        .unwrap_or_else(|| panic!("{text:?} should render inside the frame:\n{rendered}"));
+    let start = line
+        .find(text)
+        .unwrap_or_else(|| panic!("{text:?} should have a stable row:\n{rendered}"));
+    let end = start + text.len();
+    assert!(
+        line[..start].contains(border) && line[end..].contains(border),
+        "{text:?} should remain between both frame borders:\n{rendered}"
     );
 }

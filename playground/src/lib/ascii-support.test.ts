@@ -115,4 +115,11 @@ test("fallback projection fields derive the compatibility support level", () => 
       (limit) => !limit.includes("namespace containers are not drawn")
     )
   );
+
+  const sequence = byType.get("sequence")!;
+  assert.ok(
+    sequence.supported_semantics.includes(
+      "participant-bounded nested control frames"
+    )
+  );
 });

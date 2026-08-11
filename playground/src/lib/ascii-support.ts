@@ -207,7 +207,8 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: Partial<
     supportedSemantics: [
       "participants with Mermaid-valid spaced and Unicode identifiers",
       "typed headless, filled, cross, point, bidirectional, and half-arrow messages",
-      "central decorations, notes, lifecycles, boxes, and control blocks",
+      "central decorations, notes, lifecycles, and boxes",
+      "participant-bounded nested control frames",
       "optional mirrored actors and terminal color roles",
     ],
     limits: [

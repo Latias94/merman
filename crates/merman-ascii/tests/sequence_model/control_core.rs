@@ -1,4 +1,5 @@
 use super::*;
+use unicode_width::UnicodeWidthStr;
 
 #[test]
 fn sequence_control_blocks_are_core_control_signals() {
@@ -328,43 +329,44 @@ fn sequence_nested_loop_inside_alt_keeps_frame_padding() {
         .lines()
         .find(|line| line.contains("loop Poll status"))
         .unwrap_or_else(|| panic!("loop frame should render:\n{rendered}"));
+    let outer_top = rendered
+        .lines()
+        .find(|line| line.contains("alt Valid request"))
+        .unwrap_or_else(|| panic!("outer alt frame should render:\n{rendered}"));
+    let outer_left = outer_top
+        .find('+')
+        .unwrap_or_else(|| panic!("outer alt frame should have a left border:\n{rendered}"));
+    let loop_left = loop_top
+        .find('+')
+        .unwrap_or_else(|| panic!("nested loop should have a left border:\n{rendered}"));
     assert!(
-        loop_top.starts_with("| + loop Poll status "),
+        loop_left >= outer_left + 2,
         "nested loop frame should not touch the parent frame border:\n{rendered}"
     );
+    let submit_label = text_display_column(&rendered, "Submit job");
+    let nested_label = text_display_column(&rendered, "GET /jobs/123");
     assert!(
-        rendered
-            .lines()
-            .any(|line| line.starts_with("| |  |") && line.contains("GET /jobs/123")),
+        submit_label == nested_label,
         "nested loop body should keep participant lifelines aligned with the outer frame:\n{rendered}"
-    );
-    assert!(
-        !rendered
-            .lines()
-            .any(|line| line.starts_with("| |    |") && line.contains("GET /jobs/123")),
-        "nested frame padding must not shift participant lifelines to the right:\n{rendered}"
-    );
-    assert!(
-        !rendered.lines().any(|line| line.starts_with("|+")),
-        "nested frame top border must not touch the parent border:\n{rendered}"
-    );
-    assert!(
-        !rendered.lines().any(|line| line.starts_with("||")),
-        "nested frame body border must not touch the parent border:\n{rendered}"
     );
 
     let rendered = render_sequence(input, &AsciiRenderOptions::unicode())
         .expect("nested loop inside alt should render as Unicode");
+    let submit_label = text_display_column(&rendered, "Submit job");
+    let nested_label = text_display_column(&rendered, "GET /jobs/123");
     assert!(
-        rendered
-            .lines()
-            .any(|line| line.starts_with("│ │  │") && line.contains("GET /jobs/123")),
+        submit_label == nested_label,
         "nested Unicode loop body should keep participant lifelines aligned with the outer frame:\n{rendered}"
     );
-    assert!(
-        !rendered
-            .lines()
-            .any(|line| line.starts_with("│ │    │") && line.contains("GET /jobs/123")),
-        "nested Unicode frame padding must not shift participant lifelines to the right:\n{rendered}"
-    );
+}
+
+fn text_display_column(rendered: &str, text: &str) -> usize {
+    let line = rendered
+        .lines()
+        .find(|line| line.contains(text))
+        .unwrap_or_else(|| panic!("{text:?} should render:\n{rendered}"));
+    let byte_index = line
+        .find(text)
+        .unwrap_or_else(|| panic!("{text:?} should have a stable row:\n{rendered}"));
+    UnicodeWidthStr::width(&line[..byte_index])
 }

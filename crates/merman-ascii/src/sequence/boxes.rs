@@ -183,7 +183,7 @@ fn planned_box_output_extent(
     let top_and_label_rows = std::iter::repeat_n(box_width, top_row_count);
     let content_rows = lines.iter().map(|line| {
         resources
-            .checked_grid_add(SEQUENCE_BOX_CONTENT_OFFSET, line.len())
+            .checked_grid_add(SEQUENCE_BOX_CONTENT_OFFSET, line.trimmed_len(false))
             .map(|content_width| content_width.max(box_width))
     });
     SequenceBatchExtent::try_from_line_lengths(
@@ -526,6 +526,35 @@ mod tests {
                     && details.max == 59
         ));
         assert!(!below_materialized.get());
+    }
+
+    #[test]
+    fn box_output_extent_uses_trimmed_content_width() {
+        let mut resources = ResourceContext::new(AsciiResourcePolicy::default());
+        let mut input_row = blank_line(8, TerminalWidthProfile::Unicode, &resources)
+            .expect("the padded input row should fit");
+        input_row
+            .try_set_role(3, 'x', AsciiColorRole::Text)
+            .expect("the retained content should fit");
+        let input = vec![input_row];
+        let batch = planned_box_output_extent(&input, 0, 3, 8, &resources)
+            .expect("the trimmed output extent should be planned");
+        let mut extent = SequenceExtentLedger::default();
+        let reservation = extent
+            .reserve(batch, &mut resources)
+            .expect("the padded output extent should be admitted");
+        let rendered = vec![
+            blank_line(3, TerminalWidthProfile::Unicode, &resources)
+                .expect("the top box row should fit"),
+            blank_line(6, TerminalWidthProfile::Unicode, &resources)
+                .expect("the trimmed content row should fit"),
+            blank_line(3, TerminalWidthProfile::Unicode, &resources)
+                .expect("the bottom box row should fit"),
+        ];
+
+        reservation
+            .commit(&mut extent, &rendered, &resources)
+            .expect("the descriptor should ignore trimmable materialized padding");
     }
 
     fn prepare_and_materialize_box_with_grid_limit(

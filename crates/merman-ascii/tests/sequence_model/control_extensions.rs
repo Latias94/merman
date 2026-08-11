@@ -229,19 +229,24 @@ fn sequence_rect_par_over_control_blocks_support_created_and_destroyed_actors() 
             rendered.contains(label),
             "{label} should render the control frame:\n{rendered}"
         );
-        assert!(
-            rendered
-                .lines()
-                .any(|line| line.starts_with('│') && line.contains("Hello C")),
-            "{label} should keep created actor messages inside the frame:\n{rendered}"
-        );
-        assert!(
-            rendered
-                .lines()
-                .any(|line| line.starts_with('│') && line.contains("Bye C")),
-            "{label} should keep destroying messages inside the frame:\n{rendered}"
-        );
+        assert_control_text_between_borders(&rendered, label, "Hello C");
+        assert_control_text_between_borders(&rendered, label, "Bye C");
     }
+}
+
+fn assert_control_text_between_borders(rendered: &str, label: &str, text: &str) {
+    let line = rendered
+        .lines()
+        .find(|line| line.contains(text))
+        .unwrap_or_else(|| panic!("{label} should render {text:?}:\n{rendered}"));
+    let start = line
+        .find(text)
+        .unwrap_or_else(|| panic!("{text:?} should have a stable row:\n{rendered}"));
+    let end = start + text.len();
+    assert!(
+        line[..start].contains('│') && line[end..].contains('│'),
+        "{label} should keep {text:?} between both frame borders:\n{rendered}"
+    );
 }
 
 #[test]
