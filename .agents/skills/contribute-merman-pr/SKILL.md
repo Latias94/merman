@@ -48,42 +48,31 @@ Do not run every matrix combination locally by habit. The central CI workflow ow
 workspace test; local work should prove the changed seam first and record any intentionally deferred
 lane. Completion criterion: baseline checks pass and deferred checks have a stated owner and reason.
 
-## Close Mermaid SVG provenance cascades
+## Validate Mermaid SVG provenance and root contracts
 
-When the branch changes tracked SVG bytes under `fixtures/upstream-svgs/`, treat the root residual
-catalog and its review document as downstream evidence. Run the reference verifier and the focused
-catalog contract before handoff:
+When tracked SVG bytes under `fixtures/upstream-svgs/` change, verify the selected upstream source:
 
 ```text
 cargo run --locked -p xtask -- verify-mermaid-reference
-cargo nextest run --locked -p xtask -E 'test(review_document_matches_catalog_statistics)' --cargo-quiet
 ```
 
-If the focused test reports an upstream SVG SHA-256 drift, generate the canonical full candidate:
+When comparator or root viewport behavior changes, run the focused root-contract tests. Run the full
+`parity-root` sweep only when the change can affect tracked SVG structure or viewport policy:
 
 ```text
+cargo nextest run --locked -p xtask -E 'test(root_contract)' --cargo-quiet
 cargo run --locked --release -p xtask -- compare-all-svgs \
   --check-dom --dom-mode parity-root --dom-decimals 3 \
-  --flowchart-text-measurer vendored \
-  --write-root-residual-candidate
+  --flowchart-text-measurer vendored --report-root
 ```
 
-Review `target/root-parity-residuals.candidate.json` against
-`fixtures/_verification/root-parity-residuals.json`. Retain inherited evidence only when the input,
-root signatures, and descendant profile still agree. Classify every `unreviewed` entry against
-`docs/alignment/ROOT_PARITY_RESIDUAL_CATALOG.md`, update that document when statistics, signatures,
-or evidence assignments change, then accept the reviewed candidate with its exact SHA-256:
+`parity-root` blocks descendant parity regressions, malformed viewports, strategy changes, and the
+deterministic root canaries. Browser-measured bbox numbers remain diagnostic. Pages CI owns the
+painted-content containment oracle; run the focused Playground desktop browser suite locally only
+when changing that oracle or its browser integration.
 
-```text
-python3 -c 'import hashlib, pathlib; p = pathlib.Path("target/root-parity-residuals.candidate.json"); print(hashlib.sha256(p.read_bytes()).hexdigest())'
-cargo run --locked -p xtask -- accept-root-residual-candidate --sha256 <candidate-sha256>
-```
-
-Rerun the focused catalog contract after acceptance. Skip the full candidate when only provenance
-manifests or generated projections changed and no tracked upstream SVG byte changed.
-
-Completion criterion: reference verification passes, the catalog contains no `unreviewed` entries,
-the review document matches catalog statistics, and the focused catalog test passes.
+Completion criterion: selected-source verification passes when applicable, root-contract tests pass,
+and the full parity or browser owner lane is either green or explicitly deferred to its PR workflow.
 
 ## Refresh generated legal material in dependency order
 
