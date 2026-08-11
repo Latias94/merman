@@ -8,7 +8,7 @@ use crate::resource::{
 };
 use crate::safe_text::{
     SafeLine, SafeText, terminal_char_display_width, terminal_line_display_width,
-    visit_safe_line_graphemes,
+    visit_quoted_terminal_text, visit_safe_line_graphemes,
 };
 #[cfg(test)]
 use crate::terminal::try_mirror_surface;
@@ -365,6 +365,17 @@ impl StyledLine {
             return self.record_error(error);
         }
         Ok(())
+    }
+
+    pub(crate) fn try_push_role_quoted_text(
+        &mut self,
+        text: &str,
+        role: AsciiColorRole,
+    ) -> Result<()> {
+        let resources = self.resources.clone();
+        visit_quoted_terminal_text(text, &resources, |fragment| {
+            self.try_push_role_text(fragment, role)
+        })
     }
 
     pub(crate) fn try_push_role_text_with_unstyled_trailing_spaces(

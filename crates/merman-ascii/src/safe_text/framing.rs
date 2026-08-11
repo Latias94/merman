@@ -1,5 +1,47 @@
+use super::normalization::visible_escape;
 use super::{BudgetedTextDocument, BudgetedTextLine, BudgetedWrappedText};
 use crate::Result;
+use crate::resource::ResourceContext;
+use unicode_segmentation::UnicodeSegmentation;
+
+/// Visits one injective, terminal-safe quoted field value without allocating an escaped copy.
+pub(crate) fn visit_quoted_terminal_text(
+    value: &str,
+    resources: &ResourceContext,
+    mut visit: impl FnMut(&str) -> Result<()>,
+) -> Result<()> {
+    visit("\"")?;
+    for grapheme in value.graphemes(true) {
+        resources.charge_layout_work(1)?;
+        if !grapheme
+            .chars()
+            .any(|ch| ch == '\\' || ch == '"' || (ch != ' ' && ch.is_whitespace()))
+        {
+            visit(grapheme)?;
+            continue;
+        }
+
+        for ch in grapheme.chars() {
+            match ch {
+                '\\' => visit("\\\\")?,
+                '"' => visit("\\\"")?,
+                ' ' => visit(" ")?,
+                '\t' => visit("\\t")?,
+                '\n' => visit("\\n")?,
+                '\r' => visit("\\r")?,
+                ch if ch.is_whitespace() => {
+                    let mut buffer = [0u8; 10];
+                    visit(visible_escape(ch, &mut buffer))?;
+                }
+                ch => {
+                    let mut buffer = [0u8; 4];
+                    visit(ch.encode_utf8(&mut buffer))?;
+                }
+            }
+        }
+    }
+    visit("\"")
+}
 
 /// Writes one length-framed authored field to a non-wrapping StructuredText row.
 pub(crate) fn push_line_field(

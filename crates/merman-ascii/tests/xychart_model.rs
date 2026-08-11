@@ -57,6 +57,24 @@ fn strip_html_spans(input: &str) -> String {
             index += "</span>".len();
             continue;
         }
+        let mut decoded_entity = false;
+        for (entity, decoded) in [
+            ("&quot;", '"'),
+            ("&#39;", '\''),
+            ("&gt;", '>'),
+            ("&lt;", '<'),
+            ("&amp;", '&'),
+        ] {
+            if rest.starts_with(entity) {
+                output.push(decoded);
+                index += entity.len();
+                decoded_entity = true;
+                break;
+            }
+        }
+        if decoded_entity {
+            continue;
+        }
         let ch = rest
             .chars()
             .next()
@@ -199,8 +217,8 @@ line [8, 2]
         strip_html_spans(&rendered),
         concat!(
             "# Bar 1  * Line 1\n",
-            "values: # Bar 1: A=2, B=8\n",
-            "values: * Line 1: A=8, B=2\n",
+            "values: # series=0 type=bar title=none samples=[{index=0 x(bytes=1)=\"A\" value=2 pointLabel=none clipped=false}, {index=1 x(bytes=1)=\"B\" value=8 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
+            "values: * series=1 type=line title=none samples=[{index=0 x(bytes=1)=\"A\" value=8 pointLabel=none clipped=false}, {index=1 x(bytes=1)=\"B\" value=2 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
             "10 +\n",
             " 8 + *-+###\n",
             " 6 +   |###\n",
@@ -297,8 +315,8 @@ line [8, 2]
         rendered,
         concat!(
             "# Bar 1  * Line 1\n",
-            "values: # Bar 1: A=2, B=8\n",
-            "values: * Line 1: A=8, B=2\n",
+            "values: # series=0 type=bar title=none samples=[{index=0 x(bytes=1)=\"A\" value=2 pointLabel=none clipped=false}, {index=1 x(bytes=1)=\"B\" value=8 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
+            "values: * series=1 type=line title=none samples=[{index=0 x(bytes=1)=\"A\" value=8 pointLabel=none clipped=false}, {index=1 x(bytes=1)=\"B\" value=2 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
             "10 +\n",
             " 8 + *-+###\n",
             " 6 +   |###\n",
@@ -441,7 +459,7 @@ line [4, 8]
     assert_eq!(
         rendered,
         concat!(
-            "values: * Line 1: A=4, B=8\n",
+            "values: * series=0 type=line title=none samples=[{index=0 x(bytes=1)=\"A\" value=4 pointLabel=none clipped=false}, {index=1 x(bytes=1)=\"B\" value=8 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
             "A +   *-+\n",
             "B +     +-*\n",
             "  ++--------+\n",
@@ -468,8 +486,8 @@ line "Forecast" [8, 2]
         rendered,
         concat!(
             "# Revenue  * Forecast\n",
-            "values: # Revenue: A=2, B=8\n",
-            "values: * Forecast: A=8, B=2\n",
+            "values: # series=0 type=bar title(bytes=7)=\"Revenue\" samples=[{index=0 x(bytes=1)=\"A\" value=2 pointLabel=none clipped=false}, {index=1 x(bytes=1)=\"B\" value=8 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
+            "values: * series=1 type=line title(bytes=8)=\"Forecast\" samples=[{index=0 x(bytes=1)=\"A\" value=8 pointLabel=none clipped=false}, {index=1 x(bytes=1)=\"B\" value=2 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
             "10 +\n",
             " 8 + *-+###\n",
             " 6 +   |###\n",
@@ -849,7 +867,11 @@ fn xychart_typed_data_is_the_coordinate_and_value_source_of_truth() {
     let rendered = render_typed_xychart(&model, &AsciiRenderOptions::ascii())
         .expect("typed XYChart data should render");
 
-    for expected in ["0=0.001 [tiny]", "1=0.75 [ratio]", "10=-2.5 [loss]"] {
+    for expected in [
+        "x(bytes=1)=\"0\" value=0.001 pointLabel(bytes=4)=\"tiny\"",
+        "x(bytes=1)=\"1\" value=0.75 pointLabel(bytes=5)=\"ratio\"",
+        "x(bytes=2)=\"10\" value=-2.5 pointLabel(bytes=4)=\"loss\"",
+    ] {
         assert!(
             rendered.contains(expected),
             "typed sample {expected:?} should survive exact disclosure:\n{rendered}"
@@ -1015,11 +1037,11 @@ fn xychart_empty_band_domain_discloses_authored_sample_coordinates() {
         let alpha = render("alpha");
         let beta = render("beta");
         assert!(
-            alpha.contains("alpha=5"),
+            alpha.contains("x(bytes=5)=\"alpha\" value=5"),
             "{orientation} output must disclose the authored x coordinate:\n{alpha}"
         );
         assert!(
-            beta.contains("beta=5"),
+            beta.contains("x(bytes=4)=\"beta\" value=5"),
             "{orientation} output must disclose the authored x coordinate:\n{beta}"
         );
         assert_ne!(
@@ -1027,6 +1049,223 @@ fn xychart_empty_band_domain_discloses_authored_sample_coordinates() {
             "distinct authored x coordinates must not collapse to the same output"
         );
     }
+}
+
+#[test]
+fn xychart_exact_disclosure_is_injective_for_authored_delimiters() {
+    let split_fields = typed_xychart_model(
+        "vertical",
+        XyChartAxisRenderModel::Band {
+            title: String::new(),
+            categories: vec!["A".to_string(), "B".to_string()],
+        },
+        0.0,
+        2.0,
+        vec![XyChartPlotRenderModel {
+            plot_type: XyChartPlotType::Bar,
+            title: None,
+            values: vec![0.0, 2.0],
+            data: vec![("A".to_string(), Some(0.0)), ("B".to_string(), Some(2.0))],
+            point_labels: vec![String::new(), "p".to_string()],
+        }],
+    );
+    let authored_delimiters = typed_xychart_model(
+        "vertical",
+        XyChartAxisRenderModel::Band {
+            title: String::new(),
+            categories: vec!["unused".to_string(), "A=0, B".to_string()],
+        },
+        0.0,
+        2.0,
+        vec![XyChartPlotRenderModel {
+            plot_type: XyChartPlotType::Bar,
+            title: None,
+            values: vec![2.0],
+            data: vec![("A=0, B".to_string(), Some(2.0))],
+            point_labels: vec!["p".to_string()],
+        }],
+    );
+
+    let split_fields = render_typed_xychart(&split_fields, &AsciiRenderOptions::ascii())
+        .expect("split XYChart fields should render");
+    let authored_delimiters =
+        render_typed_xychart(&authored_delimiters, &AsciiRenderOptions::ascii())
+            .expect("authored XYChart delimiters should render");
+
+    assert_ne!(
+        split_fields, authored_delimiters,
+        "authored delimiters must not forge disclosure field ownership"
+    );
+}
+
+#[test]
+fn xychart_exact_disclosure_quotes_control_and_field_delimiters() {
+    let model = typed_xychart_model(
+        "vertical",
+        XyChartAxisRenderModel::Band {
+            title: String::new(),
+            categories: vec!["A\nB".to_string()],
+        },
+        0.0,
+        2.0,
+        vec![XyChartPlotRenderModel {
+            plot_type: XyChartPlotType::Line,
+            title: Some("series=\"one\"\\two".to_string()),
+            values: vec![2.0],
+            data: vec![("A\nB".to_string(), Some(2.0))],
+            point_labels: vec!["point=\"peak\"\\tail".to_string()],
+        }],
+    );
+
+    let rendered = render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+        .expect("quoted XYChart disclosure should render");
+
+    assert!(
+        rendered.contains(r#"title(bytes=16)="series=\"one\"\\two""#),
+        "series title was not injectively quoted:\n{rendered}"
+    );
+    assert!(
+        rendered.contains(r#"x(bytes=3)="A\nB""#),
+        "structural newline was not escaped inside the framed x field:\n{rendered}"
+    );
+    assert!(
+        rendered.contains(r#"pointLabel(bytes=17)="point=\"peak\"\\tail""#),
+        "point label was not injectively quoted:\n{rendered}"
+    );
+}
+
+#[test]
+fn xychart_single_series_title_remains_visible() {
+    let render = |title: Option<&str>| {
+        let model = typed_xychart_model(
+            "vertical",
+            XyChartAxisRenderModel::Band {
+                title: String::new(),
+                categories: vec!["A".to_string()],
+            },
+            0.0,
+            10.0,
+            vec![XyChartPlotRenderModel {
+                plot_type: XyChartPlotType::Line,
+                title: title.map(str::to_string),
+                values: vec![5.0],
+                data: vec![("A".to_string(), Some(5.0))],
+                point_labels: Vec::new(),
+            }],
+        );
+        render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+            .expect("single-series XYChart should render")
+    };
+
+    let titled = render(Some("Revenue"));
+    let untitled = render(None);
+
+    assert!(
+        titled.contains("Revenue"),
+        "missing series title:\n{titled}"
+    );
+    assert_ne!(
+        titled, untitled,
+        "an authored series title must not collapse into an untitled series"
+    );
+}
+
+#[test]
+fn xychart_rejects_unknown_direct_model_orientation() {
+    let model = typed_xychart_model(
+        "diagonal",
+        XyChartAxisRenderModel::Band {
+            title: String::new(),
+            categories: vec!["A".to_string()],
+        },
+        0.0,
+        10.0,
+        vec![XyChartPlotRenderModel {
+            plot_type: XyChartPlotType::Line,
+            title: None,
+            values: vec![5.0],
+            data: vec![("A".to_string(), Some(5.0))],
+            point_labels: Vec::new(),
+        }],
+    );
+
+    let error = render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+        .expect_err("unknown direct-model orientations must not become vertical charts");
+    assert!(matches!(
+        error,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "xychart",
+            feature: "chart orientation"
+        }
+    ));
+}
+
+#[test]
+fn xychart_rejects_direct_model_band_y_axis() {
+    let mut model = typed_xychart_model(
+        "vertical",
+        XyChartAxisRenderModel::Band {
+            title: String::new(),
+            categories: vec!["A".to_string()],
+        },
+        0.0,
+        10.0,
+        vec![XyChartPlotRenderModel {
+            plot_type: XyChartPlotType::Line,
+            title: None,
+            values: vec![5.0],
+            data: vec![("A".to_string(), Some(5.0))],
+            point_labels: Vec::new(),
+        }],
+    );
+    model.y_axis = XyChartAxisRenderModel::Band {
+        title: "invalid".to_string(),
+        categories: vec!["low".to_string(), "high".to_string()],
+    };
+
+    let error = render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+        .expect_err("Mermaid-invalid Band y-axes must not be silently linearized");
+    assert!(matches!(
+        error,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "xychart",
+            feature: "band y-axis"
+        }
+    ));
+}
+
+#[test]
+fn xychart_accessibility_metadata_is_intentionally_omitted() {
+    let model = typed_xychart_model(
+        "vertical",
+        XyChartAxisRenderModel::Band {
+            title: String::new(),
+            categories: vec!["A".to_string()],
+        },
+        0.0,
+        10.0,
+        vec![XyChartPlotRenderModel {
+            plot_type: XyChartPlotType::Line,
+            title: None,
+            values: vec![5.0],
+            data: vec![("A".to_string(), Some(5.0))],
+            point_labels: Vec::new(),
+        }],
+    );
+    let mut with_accessibility_metadata = model.clone();
+    with_accessibility_metadata.acc_title = Some("Screen reader title".to_string());
+    with_accessibility_metadata.acc_descr = Some("Browser-only chart description".to_string());
+
+    let baseline = render_typed_xychart(&model, &AsciiRenderOptions::ascii())
+        .expect("baseline XYChart should render");
+    let with_accessibility_metadata =
+        render_typed_xychart(&with_accessibility_metadata, &AsciiRenderOptions::ascii())
+            .expect("accessibility metadata should not block terminal rendering");
+
+    assert_eq!(
+        baseline, with_accessibility_metadata,
+        "browser accessibility metadata is an intentional terminal omission"
+    );
 }
 
 #[test]
@@ -1078,8 +1317,11 @@ fn xychart_horizontal_unequal_linear_series_share_exact_sample_labels() {
         );
     }
     for expected in [
-        "values: * Sparse: 0=1, 10=9",
-        "values: * Dense: 0=2, 3=4, 7=6, 10=8",
+        "title(bytes=6)=\"Sparse\" samples=[{index=0 x(bytes=1)=\"0\" value=1",
+        "title(bytes=5)=\"Dense\" samples=[{index=0 x(bytes=1)=\"0\" value=2",
+        "index=1 x(bytes=1)=\"3\" value=4",
+        "index=2 x(bytes=1)=\"7\" value=6",
+        "index=3 x(bytes=2)=\"10\" value=8",
     ] {
         assert!(rendered.contains(expected), "{rendered}");
     }
@@ -1405,11 +1647,11 @@ fn xychart_orphan_point_labels_and_clipped_values_are_disclosed() {
         .expect("clipped and orphan XYChart semantics should render through disclosure");
 
     assert!(
-        rendered.contains("A=2 (clipped) [peak]"),
+        rendered.contains("x(bytes=1)=\"A\" value=2 pointLabel(bytes=4)=\"peak\" clipped=true"),
         "clipped value and anchored point label should remain exact:\n{rendered}"
     );
     assert!(
-        rendered.contains("orphan-label=detached"),
+        rendered.contains("orphanPointLabels=[bytes=8=\"detached\"]"),
         "orphan point labels must not disappear silently:\n{rendered}"
     );
 }
@@ -1441,7 +1683,9 @@ fn xychart_duplicate_categories_keep_source_order_and_disclosure_identity() {
         .expect("duplicate categories should render deterministically");
 
     assert!(
-        rendered.contains("B=0, A[1]=1, A[2]=2"),
+        rendered.contains("index=0 x(bytes=1)=\"B\" value=0")
+            && rendered.contains("index=1 x(bytes=1)=\"A\" value=1")
+            && rendered.contains("index=2 x(bytes=1)=\"A\" value=2"),
         "duplicate categories need stable occurrence identities:\n{rendered}"
     );
     let plotted_points = rendered
@@ -1482,7 +1726,7 @@ fn xychart_missing_samples_break_paths_and_remain_explicit() {
         let rendered = render_typed_xychart(&model, &AsciiRenderOptions::ascii())
             .unwrap_or_else(|error| panic!("{orientation} sparse line should render: {error}"));
         assert!(
-            rendered.contains("B=n/a"),
+            rendered.contains("x(bytes=1)=\"B\" value=none"),
             "{orientation} sparse line must disclose the missing sample:\n{rendered}"
         );
         let plot = rendered
@@ -1526,7 +1770,8 @@ fn xychart_quantized_line_collision_triggers_exact_disclosure() {
         .expect("quantized line collision should render through disclosure");
 
     assert!(
-        rendered.contains("0=5, 0.1=5"),
+        rendered.contains("index=0 x(bytes=1)=\"0\" value=5")
+            && rendered.contains("index=1 x(bytes=3)=\"0.1\" value=5"),
         "colliding typed coordinates must remain exact:\n{rendered}"
     );
     let plotted_points = rendered
@@ -1564,7 +1809,8 @@ fn xychart_dense_linear_bar_overlap_triggers_exact_disclosure() {
         .expect("dense linear bars should render through disclosure");
 
     assert!(
-        rendered.contains("0=5, 20=8"),
+        rendered.contains("index=0 x(bytes=1)=\"0\" value=5")
+            && rendered.contains("index=1 x(bytes=2)=\"20\" value=8"),
         "overlapping bar identities must remain exact:\n{rendered}"
     );
 }

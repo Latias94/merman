@@ -568,6 +568,9 @@ impl TerminalChartPlan {
 
         for series in &self.series {
             resources.charge_layout_work(1)?;
+            if series.title.is_some() {
+                return Ok(true);
+            }
             if !series.orphan_point_labels.is_empty() {
                 return Ok(true);
             }

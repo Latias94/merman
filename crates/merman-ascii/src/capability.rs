@@ -647,13 +647,15 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "horizontal and vertical orientation",
             "titles and axes",
             "legends",
-            "exact data labels and semantic disclosure",
+            "length-framed exact data labels and semantic disclosure",
             "configurable plot dimensions",
         ],
         limits: &[
             "browser hover tooltips are replaced by deterministic terminal disclosure",
             "typed chart coordinates are independently quantized by the terminal plan",
             "cross-series same-cell collisions use deterministic paint order plus exact disclosure",
+            "unknown direct-model orientations and band y-axes are rejected",
+            "accessibility title and description metadata are intentionally omitted from terminal output",
         ],
         evidence: &[
             AsciiCapabilityEvidence {
@@ -664,7 +666,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
                 source: "crates/merman-ascii/tests/xychart_model.rs",
-                note: "semantic tests assert model-owned coordinates, parser-derived x positions, grouped lanes, missing-sample gaps, connected horizontal paths, precision, clipping, collisions, labels, and resource extents",
+                note: "semantic tests assert model-owned coordinates, parser-derived x positions, grouped lanes, missing-sample gaps, connected horizontal paths, precision, injective disclosure, clipping, collisions, direct-model validation, labels, and resource extents",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::GapRegistry,
@@ -1027,6 +1029,26 @@ mod tests {
                 .supported_semantics
                 .contains(&"participant-bounded nested control frames")
         );
+    }
+
+    #[test]
+    fn xychart_capability_discloses_injective_fields_and_direct_model_boundaries() {
+        let xychart = find("xychart");
+
+        assert!(
+            xychart
+                .supported_semantics
+                .contains(&"length-framed exact data labels and semantic disclosure")
+        );
+        assert!(
+            xychart
+                .limits
+                .contains(&"unknown direct-model orientations and band y-axes are rejected")
+        );
+        assert!(xychart.limits.iter().any(|limit| {
+            limit.contains("accessibility title and description metadata")
+                && limit.contains("intentionally omitted")
+        }));
     }
 
     fn find(diagram_type: &str) -> AsciiCapability {

@@ -335,7 +335,10 @@ impl BudgetedTextLine<'_> {
     }
 
     pub(crate) fn push_quoted_text(&mut self, value: &str) -> Result<()> {
-        push_quoted_terminal_text(self, value)
+        let resources = self.document.resources.clone();
+        super::framing::visit_quoted_terminal_text(value, &resources, |fragment| {
+            self.push_str(fragment)
+        })
     }
 
     #[cfg(test)]
@@ -390,37 +393,10 @@ impl BudgetedWrappedText<'_, '_> {
     }
 
     pub(crate) fn push_quoted_text(&mut self, value: &str) -> Result<()> {
-        self.push_exact_normalized_text("\"")?;
-        for grapheme in value.graphemes(true) {
-            self.document.resources.charge_layout_work(1)?;
-            if !grapheme
-                .chars()
-                .any(|ch| ch == '\\' || ch == '"' || (ch != ' ' && ch.is_whitespace()))
-            {
-                self.push_exact_normalized_text(grapheme)?;
-                continue;
-            }
-
-            for ch in grapheme.chars() {
-                match ch {
-                    '\\' => self.push_exact_normalized_text("\\\\")?,
-                    '"' => self.push_exact_normalized_text("\\\"")?,
-                    ' ' => self.push_exact_normalized_text(" ")?,
-                    '\t' => self.push_exact_normalized_text("\\t")?,
-                    '\n' => self.push_exact_normalized_text("\\n")?,
-                    '\r' => self.push_exact_normalized_text("\\r")?,
-                    ch if ch.is_whitespace() => {
-                        let mut buffer = [0u8; 10];
-                        self.push_exact_normalized_text(visible_escape(ch, &mut buffer))?;
-                    }
-                    ch => {
-                        let mut buffer = [0u8; 4];
-                        self.push_exact_normalized_text(ch.encode_utf8(&mut buffer))?;
-                    }
-                }
-            }
-        }
-        self.push_exact_normalized_text("\"")
+        let resources = self.document.resources.clone();
+        super::framing::visit_quoted_terminal_text(value, &resources, |fragment| {
+            self.push_exact_normalized_text(fragment)
+        })
     }
 
     fn push_exact_normalized_text(&mut self, value: &str) -> Result<()> {
@@ -784,45 +760,6 @@ fn try_push_document_str(output: &mut String, value: &str) -> Result<()> {
         .map_err(|_| document_allocation_error())?;
     output.push_str(value);
     Ok(())
-}
-
-/// Writes an injective, terminal-safe quoted field value without materializing an escaped copy.
-///
-/// Field owners use non-wrapping rows so ordinary authored spaces and grapheme clusters remain
-/// readable. Quotes, backslashes, and structural whitespace are escaped to keep the mapping
-/// injective.
-fn push_quoted_terminal_text(line: &mut BudgetedTextLine<'_>, value: &str) -> Result<()> {
-    line.push_str("\"")?;
-    for grapheme in value.graphemes(true) {
-        line.document.resources.charge_layout_work(1)?;
-        if !grapheme
-            .chars()
-            .any(|ch| ch == '\\' || ch == '"' || (ch != ' ' && ch.is_whitespace()))
-        {
-            line.push_str(grapheme)?;
-            continue;
-        }
-
-        for ch in grapheme.chars() {
-            match ch {
-                '\\' => line.push_str("\\\\")?,
-                '"' => line.push_str("\\\"")?,
-                ' ' => line.push_str(" ")?,
-                '\t' => line.push_str("\\t")?,
-                '\n' => line.push_str("\\n")?,
-                '\r' => line.push_str("\\r")?,
-                ch if ch.is_whitespace() => {
-                    let mut buffer = [0u8; 10];
-                    line.push_str(visible_escape(ch, &mut buffer))?;
-                }
-                ch => {
-                    let mut buffer = [0u8; 4];
-                    line.push_str(ch.encode_utf8(&mut buffer))?;
-                }
-            }
-        }
-    }
-    line.push_str("\"")
 }
 
 fn try_write_fmt(
