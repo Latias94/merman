@@ -56,7 +56,8 @@ impl RenderRequestPlan {
         let RenderOutput::Svg(svg) = output else {
             return Err(unexpected_render_output("svg"));
         };
-        svg.map(String::into_bytes).ok_or_else(no_diagram_error)
+        svg.map(|output| output.into_parts().0.into_bytes())
+            .ok_or_else(no_diagram_error)
     }
 
     pub(super) fn layout_json(
@@ -75,7 +76,9 @@ impl RenderRequestPlan {
         let RenderOutput::LayoutJson(layout_json) = output else {
             return Err(unexpected_render_output("layout-json"));
         };
-        let layout_json = layout_json.ok_or_else(no_diagram_error)?;
+        let layout_json = layout_json
+            .map(|output| output.into_parts().0)
+            .ok_or_else(no_diagram_error)?;
 
         serde_json::to_vec(&layout_json).map_err(internal_json_error)
     }

@@ -507,7 +507,7 @@ B -->|No| D[Debug]";
         let merman::RenderOutput::Svg(Some(rust_svg)) = rust_svg else {
             panic!("typed SVG request should produce SVG output");
         };
-        assert_eq!(binding_svg, rust_svg);
+        assert_eq!(binding_svg, rust_svg.svg());
 
         let binding_plan: Value = serde_json::from_slice(
             &crate::svg_plan_json(source.as_bytes(), options).expect("binding plan should succeed"),
