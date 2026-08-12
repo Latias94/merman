@@ -84,16 +84,12 @@ thiserror = { workspace = true, optional = true }
 [dev-dependencies]
 base64.workspace = true
 criterion = "0.8.2"
-image.workspace = true
-lopdf.workspace = true
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
-merman-theme-fixtures = { path = "../merman-theme-fixtures" }
 png.workspace = true
 roxmltree.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-svgtypes.workspace = true
 
 [[test]]
 name = "prepared_render"
@@ -116,10 +112,6 @@ required-features = [
 [[test]]
 name = "mermaid_11_16_corpus"
 required-features = ["layout-elk"]
-
-[[test]]
-name = "c6_runtime_acceptance"
-required-features = ["png", "jpeg", "pdf"]
 
 [[bench]]
 name = "pipeline"

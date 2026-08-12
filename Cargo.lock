@@ -2327,8 +2327,6 @@ version = "0.8.0-alpha.5"
 dependencies = [
  "base64 0.22.1",
  "criterion",
- "image",
- "lopdf",
  "merman-analysis",
  "merman-ascii",
  "merman-core",
@@ -2336,14 +2334,12 @@ dependencies = [
  "merman-export",
  "merman-fixture-render-context",
  "merman-render",
- "merman-theme-fixtures",
  "png",
  "quick-xml",
  "roxmltree 0.21.1",
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "svgtypes",
  "thiserror 2.0.19",
 ]
 
@@ -2590,6 +2586,22 @@ dependencies = [
  "roxmltree 0.21.1",
  "serde_json",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "merman-theme-acceptance"
+version = "0.8.0-alpha.5"
+dependencies = [
+ "image",
+ "lopdf",
+ "merman",
+ "merman-export",
+ "merman-theme-fixtures",
+ "png",
+ "roxmltree 0.21.1",
+ "serde_json",
+ "sha2 0.10.9",
+ "svgtypes",
 ]
 
 [[package]]

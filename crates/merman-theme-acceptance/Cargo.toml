@@ -1,0 +1,33 @@
+[package]
+name = "merman-theme-acceptance"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Private runtime acceptance harness for Merman theme evidence."
+
+[features]
+default = ["png", "jpeg", "pdf"]
+png = ["merman/png", "merman-export/png"]
+jpeg = ["merman/jpeg", "merman-export/jpeg"]
+pdf = ["merman/pdf", "merman-export/pdf"]
+
+[dependencies]
+merman.workspace = true
+merman-export.workspace = true
+merman-theme-fixtures = { path = "../merman-theme-fixtures" }
+image.workspace = true
+lopdf.workspace = true
+png.workspace = true
+roxmltree.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+svgtypes.workspace = true
+
+[[test]]
+name = "c6_runtime"
+required-features = ["png", "jpeg", "pdf"]

@@ -477,8 +477,9 @@ jobs:
       - name: Test enforced C6 runtime tranche
         if: matrix.parity
         run: |
-          cargo nextest run --locked -p merman --no-default-features \
-            --features png,jpeg,pdf --test c6_runtime_acceptance --cargo-quiet
+          cargo nextest run --locked -p merman-theme-acceptance \
+            --no-default-features --features png,jpeg,pdf --test c6_runtime \
+            --cargo-quiet
 
       - name: Test exact Rustdoc artifact recipe
         if: matrix.parity

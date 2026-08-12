@@ -1,10 +1,9 @@
 use std::collections::BTreeMap;
 
 use image::ImageFormat;
-use merman_theme_fixtures::{
-    C6ObservedMechanismDisposition, ReferenceSemanticRule, ReferenceThemeInput,
-    ReferenceThemeMechanism,
-};
+use merman_theme_fixtures::{ReferenceSemanticRule, ReferenceThemeInput, ReferenceThemeMechanism};
+
+use super::C6ObservedMechanismDisposition;
 
 const STATE_IDS: [&str; 4] = ["Ready", "Review", "Done", "Archive"];
 const MIN_PNG_CANVAS_COVERAGE: f64 = 0.78;

@@ -4,10 +4,9 @@ use lopdf::{
     Document, Object, ObjectId, Stream,
     content::{Content, Operation},
 };
-use merman_theme_fixtures::{
-    C6ObservedMechanismDisposition, ReferenceSemanticRule, ReferenceThemeInput,
-    ReferenceThemeMechanism,
-};
+use merman_theme_fixtures::{ReferenceSemanticRule, ReferenceThemeInput, ReferenceThemeMechanism};
+
+use super::C6ObservedMechanismDisposition;
 
 const MAX_PAGE_CONTENT_BYTES: usize = 1024 * 1024;
 const MAX_FILTER_IMAGE_BYTES: usize = 16 * 1024 * 1024;

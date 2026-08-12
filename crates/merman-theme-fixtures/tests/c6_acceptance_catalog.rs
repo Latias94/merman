@@ -1,14 +1,12 @@
 use merman_theme_fixtures::{
     C6_ACCEPTANCE_CELL_COUNT, C6_ACCEPTANCE_RELATIVE_PATH, C6_PROOF_FAMILIES, C6_PROOF_THEMES,
-    C6AcceptanceCatalog, C6AcceptanceEvaluationError, C6ArtifactAssertion, C6CellKey,
-    C6ExpectationField, C6ExpectedFontSource, C6ExpectedMechanismDisposition,
-    C6ObservedArtifactStatus, C6ObservedCellReport, C6ObservedMechanismDisposition,
-    C6ObservedReport, C6ObservedReportError, C6ProofFamily, C6ProofTheme, C6ReadinessBlocker,
+    C6AcceptanceCatalog, C6ArtifactAssertion, C6CellKey, C6ExpectedFontSource,
+    C6ExpectedMechanismDisposition, C6ProofFamily, C6ProofTheme, C6ReadinessBlocker,
     C6RequiredAdmission, CatalogError, EXPECTED_OUTPUT_TARGETS, ExpectedOutputTarget,
     ThemeFixtureCatalog,
 };
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -50,15 +48,6 @@ fn cell_mut<'a>(value: &'a mut Value, theme: &str, family: &str, target: &str) -
         .iter_mut()
         .find(|cell| cell["theme"] == theme && cell["family"] == family && cell["target"] == target)
         .expect("requested acceptance cell")
-}
-
-fn defer_brutalist_state_native_tranche(value: &mut Value) {
-    for target in ["standalone-svg", "png", "jpeg", "pdf"] {
-        cell_mut(value, "brutalist", "state", target)["enforcement"] = json!({
-            "kind": "deferred",
-            "blocker": "runtime-runner-missing"
-        });
-    }
 }
 
 #[test]
@@ -336,191 +325,4 @@ fn expectation_and_enforcement_invariants_fail_closed() {
         }
         other => panic!("Sequence enforcement accepted a Flowchart fixture: {other:?}"),
     }
-}
-
-#[test]
-fn an_empty_tranche_cannot_vacuously_pass_acceptance() {
-    let source_catalog = source_catalog();
-    let mut value = committed_acceptance_value();
-    defer_brutalist_state_native_tranche(&mut value);
-    let catalog = parse_value(&value, &source_catalog).expect("all-deferred test catalog");
-    let report = C6ObservedReport::from_enforced_cells(
-        catalog.enforced_tranche(),
-        std::iter::empty::<C6ObservedCellReport>(),
-    )
-    .expect("empty raw report matches the empty tranche");
-    assert!(matches!(
-        report.evaluate(catalog.specification(), catalog.enforced_tranche()),
-        Err(C6AcceptanceEvaluationError::EmptyTranche)
-    ));
-}
-
-#[test]
-fn raw_observations_preserve_failures_but_acceptance_evaluation_is_exact() {
-    let source_catalog = source_catalog();
-    let mut value = committed_acceptance_value();
-    defer_brutalist_state_native_tranche(&mut value);
-    cell_mut(&mut value, "brutalist", "state", "browser-svg")["enforcement"] = json!({
-        "kind": "enforced",
-        "sourceFixtureId": "fixture-semantic-style-capabilities"
-    });
-    let catalog = parse_value(&value, &source_catalog).expect("one-cell staged tranche");
-    let key = C6CellKey::new(
-        C6ProofTheme::Brutalist,
-        C6ProofFamily::State,
-        ExpectedOutputTarget::BrowserSvg,
-    );
-    let expectation = catalog
-        .specification()
-        .cell(key)
-        .expect("staged expectation")
-        .expectation();
-    let expected_mechanisms = expectation
-        .mechanism_requirements()
-        .iter()
-        .map(|(mechanism, disposition)| {
-            let observed = match disposition {
-                C6ExpectedMechanismDisposition::MustApply => {
-                    C6ObservedMechanismDisposition::Applied
-                }
-                C6ExpectedMechanismDisposition::MustRemainResidual => {
-                    C6ObservedMechanismDisposition::Residual
-                }
-                C6ExpectedMechanismDisposition::MustReject => {
-                    C6ObservedMechanismDisposition::Rejected
-                }
-                C6ExpectedMechanismDisposition::NotApplicable => {
-                    C6ObservedMechanismDisposition::NotApplicable
-                }
-            };
-            (*mechanism, observed)
-        })
-        .collect::<BTreeMap<_, _>>();
-    let build_observation =
-        |mechanisms, residual_ids, font_source, admission, artifact_assertion, artifact_status| {
-            C6ObservedCellReport::new(
-                key,
-                mechanisms,
-                residual_ids,
-                font_source,
-                admission,
-                artifact_assertion,
-                artifact_status,
-            )
-        };
-    let evaluate = |observation| {
-        let report =
-            C6ObservedReport::from_enforced_cells(catalog.enforced_tranche(), [observation])
-                .expect("raw observation is retained");
-        report.evaluate(catalog.specification(), catalog.enforced_tranche())
-    };
-
-    let passing = build_observation(
-        expected_mechanisms.clone(),
-        BTreeSet::new(),
-        C6ExpectedFontSource::Embedded,
-        C6RequiredAdmission::Portable,
-        C6ArtifactAssertion::BrowserSvgDom,
-        C6ObservedArtifactStatus::Passed,
-    );
-    assert_eq!(
-        evaluate(passing.clone())
-            .expect("matching observation passes")
-            .verified_cell_count(),
-        1
-    );
-
-    let assert_field = |result, expected_field| {
-        assert!(matches!(
-            result,
-            Err(C6AcceptanceEvaluationError::ExpectationMismatch { field, .. })
-                if field == expected_field
-        ));
-    };
-
-    let mut wrong_mechanisms = expected_mechanisms.clone();
-    let first_mechanism = *wrong_mechanisms.keys().next().expect("proof mechanism");
-    wrong_mechanisms.insert(first_mechanism, C6ObservedMechanismDisposition::Residual);
-    assert_field(
-        evaluate(build_observation(
-            wrong_mechanisms,
-            BTreeSet::new(),
-            C6ExpectedFontSource::Embedded,
-            C6RequiredAdmission::Portable,
-            C6ArtifactAssertion::BrowserSvgDom,
-            C6ObservedArtifactStatus::Passed,
-        )),
-        C6ExpectationField::MechanismDisposition,
-    );
-
-    assert_field(
-        evaluate(build_observation(
-            expected_mechanisms.clone(),
-            ["unexpected-residual".to_string()].into_iter().collect(),
-            C6ExpectedFontSource::Embedded,
-            C6RequiredAdmission::Portable,
-            C6ArtifactAssertion::BrowserSvgDom,
-            C6ObservedArtifactStatus::Passed,
-        )),
-        C6ExpectationField::ResidualIds,
-    );
-    assert_field(
-        evaluate(build_observation(
-            expected_mechanisms.clone(),
-            BTreeSet::new(),
-            C6ExpectedFontSource::System,
-            C6RequiredAdmission::Portable,
-            C6ArtifactAssertion::BrowserSvgDom,
-            C6ObservedArtifactStatus::Passed,
-        )),
-        C6ExpectationField::FontSource,
-    );
-    assert_field(
-        evaluate(build_observation(
-            expected_mechanisms.clone(),
-            BTreeSet::new(),
-            C6ExpectedFontSource::Embedded,
-            C6RequiredAdmission::HostDependent,
-            C6ArtifactAssertion::BrowserSvgDom,
-            C6ObservedArtifactStatus::Passed,
-        )),
-        C6ExpectationField::Admission,
-    );
-    assert_field(
-        evaluate(build_observation(
-            expected_mechanisms.clone(),
-            BTreeSet::new(),
-            C6ExpectedFontSource::Embedded,
-            C6RequiredAdmission::Portable,
-            C6ArtifactAssertion::StandaloneSvgDocument,
-            C6ObservedArtifactStatus::Passed,
-        )),
-        C6ExpectationField::ArtifactAssertion,
-    );
-    assert_field(
-        evaluate(build_observation(
-            expected_mechanisms,
-            BTreeSet::new(),
-            C6ExpectedFontSource::Embedded,
-            C6RequiredAdmission::Portable,
-            C6ArtifactAssertion::BrowserSvgDom,
-            C6ObservedArtifactStatus::Failed,
-        )),
-        C6ExpectationField::ArtifactStatus,
-    );
-
-    assert!(matches!(
-        C6ObservedReport::from_enforced_cells(
-            catalog.enforced_tranche(),
-            std::iter::empty::<C6ObservedCellReport>(),
-        ),
-        Err(C6ObservedReportError::CellSetMismatch { .. })
-    ));
-    assert!(matches!(
-        C6ObservedReport::from_enforced_cells(
-            catalog.enforced_tranche(),
-            [passing.clone(), passing]
-        ),
-        Err(C6ObservedReportError::DuplicateCell { .. })
-    ));
 }
