@@ -211,6 +211,7 @@ fn member_origin(
     member_indices: &[usize],
     resources: &ResourceContext,
 ) -> Result<Option<GridCoord>> {
+    resources.charge_layout_work(member_indices.len())?;
     let Some(bounds) = member_grid_bounds(member_indices, placements, resources)? else {
         return Ok(None);
     };
@@ -261,6 +262,7 @@ fn shift_member_indices(
         return Ok(());
     }
 
+    resources.charge_layout_work(member_indices.len())?;
     for index in member_indices {
         if let Some(coord) = placements.get_mut(*index) {
             if delta_x.is_positive() {
@@ -386,13 +388,156 @@ fn mirror_local_placements(
 mod tests {
     use super::*;
     use crate::graph::model::GraphGroupStyle;
-    use crate::resource::AsciiResourcePolicy;
+    use crate::options::AsciiRenderOptions;
+    use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_core::resources::ResourceProfile;
 
     fn unbounded_resources() -> ResourceContext {
         ResourceContext::new(AsciiResourcePolicy::for_profile(
             ResourceProfile::UnboundedForTrustedInput,
         ))
+    }
+
+    fn policy_with_work_limit(limit: usize) -> AsciiResourcePolicy {
+        AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, limit)
+            .expect("positive layout-work limit should be valid")
+    }
+
+    #[test]
+    fn descendant_bounds_scan_accepts_exact_work_and_rejects_max_minus_one() {
+        let placements = [
+            GridCoord { x: 0, y: 0 },
+            GridCoord { x: 4, y: 4 },
+            GridCoord { x: 8, y: 8 },
+        ];
+        let member_indices = [0, 1, 2];
+        let exact_work = member_indices.len();
+
+        let exact_resources = ResourceContext::new(policy_with_work_limit(exact_work));
+        let origin = member_origin(&placements, &member_indices, &exact_resources)
+            .expect("the exact descendant-bounds work limit should pass")
+            .expect("the member should have bounds");
+        assert_eq!(origin, GridCoord { x: 0, y: 0 });
+        assert_eq!(exact_resources.layout_work_used(), exact_work);
+
+        let below_resources = ResourceContext::new(policy_with_work_limit(exact_work - 1));
+        let error = member_origin(&placements, &member_indices, &below_resources)
+            .expect_err("max-minus-one descendant-bounds work should fail");
+        let crate::AsciiError::ResourceLimitExceeded(details) = error else {
+            panic!("expected a layout-work resource error, got {error:?}");
+        };
+        assert_eq!(details.limit, AsciiResourceLimitId::MaxLayoutWorkUnits);
+        assert_eq!(details.actual, exact_work);
+        assert_eq!(details.max, exact_work - 1);
+    }
+
+    #[test]
+    fn descendant_shift_accepts_exact_work_and_rejects_before_mutation_at_max_minus_one() {
+        let original = [
+            GridCoord { x: 4, y: 8 },
+            GridCoord { x: 8, y: 12 },
+            GridCoord { x: 12, y: 16 },
+        ];
+        let member_indices = [0, 1, 2];
+        let exact_work = member_indices.len();
+
+        let mut exact_placements = original;
+        let exact_resources = ResourceContext::new(policy_with_work_limit(exact_work));
+        shift_member_indices(
+            &mut exact_placements,
+            &member_indices,
+            4,
+            -4,
+            &exact_resources,
+        )
+        .expect("the exact descendant-shift work limit should pass");
+        assert_eq!(
+            exact_placements,
+            [
+                GridCoord { x: 8, y: 4 },
+                GridCoord { x: 12, y: 8 },
+                GridCoord { x: 16, y: 12 },
+            ]
+        );
+        assert_eq!(exact_resources.layout_work_used(), exact_work);
+
+        let mut below_placements = original;
+        let below_resources = ResourceContext::new(policy_with_work_limit(exact_work - 1));
+        let error = shift_member_indices(
+            &mut below_placements,
+            &member_indices,
+            4,
+            -4,
+            &below_resources,
+        )
+        .expect_err("max-minus-one descendant-shift work should fail before mutation");
+        let crate::AsciiError::ResourceLimitExceeded(details) = error else {
+            panic!("expected a layout-work resource error, got {error:?}");
+        };
+        assert_eq!(details.limit, AsciiResourceLimitId::MaxLayoutWorkUnits);
+        assert_eq!(details.actual, exact_work);
+        assert_eq!(details.max, exact_work - 1);
+        assert_eq!(below_placements, original);
+    }
+
+    #[test]
+    fn nested_local_direction_layout_accepts_exact_work_and_rejects_max_minus_one() {
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        for id in ["a", "b", "c"] {
+            graph.add_node(id, id.to_uppercase());
+        }
+        graph.add_group_with_style(
+            "inner",
+            "Inner",
+            Some(GraphDirection::TopDown),
+            vec!["b".to_string(), "c".to_string()],
+            GraphGroupStyle::default(),
+        );
+        graph.add_group_with_style(
+            "outer",
+            "Outer",
+            Some(GraphDirection::LeftRight),
+            vec!["a".to_string(), "inner".to_string()],
+            GraphGroupStyle::default(),
+        );
+        graph.add_edge("b", "c");
+        graph.add_edge("a", "b");
+
+        let options = AsciiRenderOptions::unicode();
+        let mut measured_resources = unbounded_resources();
+        let measured = crate::graph::layout::layout_graph_with_resources(
+            &graph,
+            &options,
+            &mut measured_resources,
+        )
+        .expect("the nested local-direction graph should lay out");
+        let exact_work = measured_resources.layout_work_used();
+        assert!(exact_work > 1);
+
+        let mut exact_resources = ResourceContext::new(policy_with_work_limit(exact_work));
+        let exact = crate::graph::layout::layout_graph_with_resources(
+            &graph,
+            &options,
+            &mut exact_resources,
+        )
+        .expect("the production layout entry should accept its exact work budget");
+        assert_eq!(exact, measured);
+        assert_eq!(exact_resources.layout_work_used(), exact_work);
+
+        let mut below_resources = ResourceContext::new(policy_with_work_limit(exact_work - 1));
+        let error = crate::graph::layout::layout_graph_with_resources(
+            &graph,
+            &options,
+            &mut below_resources,
+        )
+        .expect_err("the production layout entry should reject at max-minus-one");
+        let crate::AsciiError::ResourceLimitExceeded(details) = error else {
+            panic!("expected a layout-work resource error, got {error:?}");
+        };
+        assert_eq!(details.limit, AsciiResourceLimitId::MaxLayoutWorkUnits);
+        assert_eq!(details.actual, exact_work);
+        assert_eq!(details.max, exact_work - 1);
     }
 
     #[test]
