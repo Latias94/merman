@@ -80,6 +80,12 @@ pub(super) struct MaterializedSequenceParticipantLabel {
     lines: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(super) struct PreparedSequenceParticipantLabel<'a> {
+    label: &'a SequenceParticipantLabel,
+    plan: crate::safe_text::NormalizedLabelPlan,
+}
+
 impl SequenceParticipantLabel {
     pub(super) fn try_from_raw(
         raw: &str,
@@ -136,10 +142,10 @@ impl SequenceParticipantLabel {
         self.metrics.max_width
     }
 
-    pub(super) fn materialize(
+    pub(super) fn prepare_materialization(
         &self,
         resources: &ResourceContext,
-    ) -> Result<MaterializedSequenceParticipantLabel> {
+    ) -> Result<PreparedSequenceParticipantLabel<'_>> {
         let plan = try_plan_normalized_label_lines_with_policy(
             &self.raw,
             self.width_profile,
@@ -161,8 +167,23 @@ impl SequenceParticipantLabel {
                 feature: "participant label plan",
             });
         }
-        let (lines, width) = plan.materialize(&self.raw, resources)?.into_parts();
-        if lines.len() != self.metrics.line_count || width != self.metrics.max_width {
+        Ok(PreparedSequenceParticipantLabel { label: self, plan })
+    }
+}
+
+impl PreparedSequenceParticipantLabel<'_> {
+    pub(super) const fn materialization_work_units(self) -> usize {
+        self.plan.materialization_work_units()
+    }
+
+    pub(super) fn materialize_after_admission(
+        self,
+    ) -> Result<MaterializedSequenceParticipantLabel> {
+        let (lines, width) = self
+            .plan
+            .materialize_after_admission(&self.label.raw)?
+            .into_parts();
+        if lines.len() != self.label.metrics.line_count || width != self.label.metrics.max_width {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: "sequence",
                 feature: "participant label plan",

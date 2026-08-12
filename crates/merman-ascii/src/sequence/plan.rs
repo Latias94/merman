@@ -1,25 +1,13 @@
 use super::boxes::render_sequence_boxes;
-use super::control::render_sequence_control_frames;
 use super::control::{
     SequenceControlBoundaryState, SequenceControlFrame, SequenceControlFrameSeparator,
-    SequenceParticipantSpan,
+    SequenceParticipantSpan, prepare_sequence_control_frames,
 };
-use super::events::{
-    MessageActorState, ensure_message_actors_visible, prepare_message_rows,
-    prepare_self_message_rows, render_message, render_self_message,
-};
-use super::layout::{
-    LifecycleEdge, SequenceLayout, initial_visible_actors, lifecycle_actors_at, participant_left,
-};
-use super::model::{
-    AsciiSequenceDiagram, MaterializedSequenceParticipantLabel, SequenceControlKind, SequenceEvent,
-};
-use super::notes::{ensure_note_actors_known, prepare_note_rows, render_note};
-use super::render::{SequenceChars, build_lifeline_line, retained_lifeline_width};
-use super::text::{
-    SequenceBatchExtent, SequenceExtentLedger, SequenceExtentReservation, SequenceLine, blank_line,
-    charge_text_work, padded_line, trim_right,
-};
+use super::layout::{LifecycleEdge, SequenceLayout, initial_visible_actors, lifecycle_actors_at};
+use super::model::{AsciiSequenceDiagram, SequenceControlKind, SequenceEvent};
+use super::prepared_body::{SequencePreparedBody, SequenceRowStep};
+use super::render::SequenceChars;
+use super::text::{SequenceLine, blank_line, charge_text_work, trim_right};
 use crate::canvas::finish_styled_lines_with_resources;
 use crate::color::AsciiColorMode;
 use crate::color::AsciiColorRole;
@@ -27,15 +15,6 @@ use crate::error::{AsciiError, Result};
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitPhase, CheckedOutput, ResourceContext};
 use crate::text::display_width_with_profile;
-
-#[derive(Debug)]
-struct SequenceRowStep<'event> {
-    event: &'event SequenceEvent,
-    active_counts: Vec<usize>,
-    visible_actors: Vec<bool>,
-    created_actors: Vec<usize>,
-    destroyed_actors: Vec<usize>,
-}
 
 #[derive(Debug)]
 struct SequenceRowPlanner<'diagram> {
@@ -313,355 +292,85 @@ impl<'diagram> SequenceRowPlanner<'diagram> {
 }
 
 #[derive(Debug)]
-struct SequenceRowEmitter<'diagram, 'layout, 'chars> {
-    diagram: &'diagram AsciiSequenceDiagram,
-    participant_labels: Vec<MaterializedSequenceParticipantLabel>,
-    layout: &'layout SequenceLayout,
-    chars: &'chars SequenceChars,
+pub(super) struct SequenceRowPlan {
     lines: Vec<SequenceLine>,
-    extent: SequenceExtentLedger,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct SequenceParticipantRenderModel<'a> {
-    diagram: &'a AsciiSequenceDiagram,
-    labels: &'a [MaterializedSequenceParticipantLabel],
-}
-
-impl<'a> SequenceParticipantRenderModel<'a> {
-    fn try_new(
-        diagram: &'a AsciiSequenceDiagram,
-        labels: &'a [MaterializedSequenceParticipantLabel],
-    ) -> Result<Self> {
-        if diagram.participants.len() != labels.len() {
-            return Err(unsupported("participant label materialization"));
-        }
-        Ok(Self { diagram, labels })
-    }
-}
-
-impl<'diagram, 'layout, 'chars> SequenceRowEmitter<'diagram, 'layout, 'chars> {
-    fn new(
-        diagram: &'diagram AsciiSequenceDiagram,
-        layout: &'layout SequenceLayout,
-        chars: &'chars SequenceChars,
-        visible_actors: &[bool],
-        resources: &mut ResourceContext,
-    ) -> Result<Self> {
-        Self::new_with_label_materializer(diagram, layout, chars, visible_actors, resources, || {})
-    }
-
-    fn new_with_label_materializer(
-        diagram: &'diagram AsciiSequenceDiagram,
-        layout: &'layout SequenceLayout,
-        chars: &'chars SequenceChars,
-        visible_actors: &[bool],
-        resources: &mut ResourceContext,
-        before_materialize: impl FnOnce(),
-    ) -> Result<Self> {
-        let batch = participant_box_batch_extent(diagram, layout, visible_actors, resources)?;
-        let mut extent = SequenceExtentLedger::default();
-        let reservation = extent.reserve(batch, resources)?;
-        let participant_labels =
-            materialize_participant_labels(diagram, resources, before_materialize)?;
-        let participants = SequenceParticipantRenderModel::try_new(diagram, &participant_labels)?;
-        let lines = render_participant_box_rows(
-            participants,
-            layout,
-            chars,
-            visible_actors,
-            ParticipantBoxFrame::Header,
-            resources,
-        )?;
-        reservation.commit(&mut extent, &lines, resources)?;
-        Ok(Self {
-            diagram,
-            participant_labels,
-            layout,
-            chars,
-            lines,
-            extent,
-        })
-    }
-
-    fn current_row(&self) -> usize {
-        self.lines.len()
-    }
-
-    fn emit_step(
-        &mut self,
-        step: &SequenceRowStep<'_>,
-        resources: &mut ResourceContext,
-    ) -> Result<()> {
-        self.emit_message_spacing(step, resources)?;
-        self.emit_created_actors(step, resources)?;
-        self.emit_message_or_note(step, resources)
-    }
-
-    fn emit_message_spacing(
-        &mut self,
-        step: &SequenceRowStep<'_>,
-        resources: &mut ResourceContext,
-    ) -> Result<()> {
-        for _ in 0..self.layout.message_spacing {
-            let batch = lifeline_batch_extent(self.layout, &step.visible_actors, resources)?;
-            let reservation = self.reserve_batch(batch, resources)?;
-            let line = self.lifeline_line(step, resources)?;
-            self.commit_line(reservation, line, resources)?;
-        }
-        Ok(())
-    }
-
-    fn emit_created_actors(
-        &mut self,
-        step: &SequenceRowStep<'_>,
-        resources: &mut ResourceContext,
-    ) -> Result<()> {
-        if step.created_actors.is_empty() {
-            return Ok(());
-        }
-
-        let batch = lifecycle_participant_batch_extent(
-            self.diagram,
-            self.layout,
-            &step.visible_actors,
-            &step.created_actors,
-            resources,
-        )?;
-        let reservation = self.reserve_batch(batch, resources)?;
-        let participants =
-            SequenceParticipantRenderModel::try_new(self.diagram, &self.participant_labels)?;
-        let lines = render_lifecycle_participants(
-            participants,
-            self.layout,
-            self.chars,
-            &step.active_counts,
-            &step.visible_actors,
-            &step.created_actors,
-            resources,
-        )?;
-        self.commit_lines(reservation, lines, resources)
-    }
-
-    fn emit_control_lifeline(
-        &mut self,
-        active_counts: &[usize],
-        visible_actors: &[bool],
-        resources: &mut ResourceContext,
-    ) -> Result<()> {
-        let batch = lifeline_batch_extent(self.layout, visible_actors, resources)?;
-        let reservation = self.reserve_batch(batch, resources)?;
-        let line = self.lifeline_line_state(active_counts, visible_actors, resources)?;
-        self.commit_line(reservation, line, resources)
-    }
-
-    fn emit_message_or_note(
-        &mut self,
-        step: &SequenceRowStep<'_>,
-        resources: &mut ResourceContext,
-    ) -> Result<()> {
-        match step.event {
-            SequenceEvent::Message(message) => {
-                ensure_message_actors_visible(message, &step.visible_actors)?;
-                if message.from == message.to {
-                    let prepared = prepare_self_message_rows(
-                        message,
-                        self.layout,
-                        self.chars,
-                        &step.visible_actors,
-                        resources,
-                    )?;
-                    let reservation = self.reserve_batch(prepared.extent(), resources)?;
-                    let actor_state = MessageActorState::new(
-                        &step.active_counts,
-                        &step.visible_actors,
-                        &step.destroyed_actors,
-                    );
-                    let lines = render_self_message(
-                        prepared,
-                        message,
-                        self.layout,
-                        self.chars,
-                        actor_state,
-                        resources,
-                    )?;
-                    self.commit_lines(reservation, lines, resources)?;
-                } else {
-                    let prepared = prepare_message_rows(
-                        message,
-                        self.layout,
-                        &step.visible_actors,
-                        resources,
-                    )?;
-                    let reservation = self.reserve_batch(prepared.extent(), resources)?;
-                    let actor_state = MessageActorState::new(
-                        &step.active_counts,
-                        &step.visible_actors,
-                        &step.destroyed_actors,
-                    );
-                    let lines = render_message(
-                        prepared,
-                        message,
-                        self.layout,
-                        self.chars,
-                        actor_state,
-                        resources,
-                    )?;
-                    self.commit_lines(reservation, lines, resources)?;
-                }
-            }
-            SequenceEvent::Note(note) => {
-                ensure_note_actors_known(note, self.layout)?;
-                let prepared =
-                    prepare_note_rows(note, self.layout, &step.visible_actors, resources)?;
-                let reservation = self.reserve_batch(prepared.extent(), resources)?;
-                let lines = render_note(
-                    prepared,
-                    note,
-                    self.layout,
-                    self.chars,
-                    &step.active_counts,
-                    &step.visible_actors,
-                    resources,
-                )?;
-                self.commit_lines(reservation, lines, resources)?;
-            }
-            SequenceEvent::ActivationStart { .. }
-            | SequenceEvent::ActivationEnd { .. }
-            | SequenceEvent::ControlStart(_)
-            | SequenceEvent::ControlEnd { .. }
-            | SequenceEvent::ControlSeparator(_) => {}
-        }
-        Ok(())
-    }
-
-    fn finish(
-        mut self,
-        planner: &SequenceRowPlanner<'_>,
-        mirror_actors: bool,
-        resources: &mut ResourceContext,
-    ) -> Result<Vec<SequenceLine>> {
-        let batch = lifeline_batch_extent(self.layout, planner.visible_actors(), resources)?;
-        let reservation = self.reserve_batch(batch, resources)?;
-        let lifeline =
-            self.lifeline_line_state(planner.active_counts(), planner.visible_actors(), resources)?;
-        self.commit_line(reservation, lifeline, resources)?;
-        if mirror_actors {
-            let batch = participant_box_batch_extent(
-                self.diagram,
-                self.layout,
-                planner.visible_actors(),
-                resources,
-            )?;
-            let reservation = self.reserve_batch(batch, resources)?;
-            let participants =
-                SequenceParticipantRenderModel::try_new(self.diagram, &self.participant_labels)?;
-            let lines = render_participant_box_rows(
-                participants,
-                self.layout,
-                self.chars,
-                planner.visible_actors(),
-                ParticipantBoxFrame::Mirror,
-                resources,
-            )?;
-            self.commit_lines(reservation, lines, resources)?;
-        }
-        Ok(self.lines)
-    }
-
-    fn lifeline_line(
-        &self,
-        step: &SequenceRowStep<'_>,
-        resources: &ResourceContext,
-    ) -> Result<SequenceLine> {
-        self.lifeline_line_state(&step.active_counts, &step.visible_actors, resources)
-    }
-
-    fn lifeline_line_state(
-        &self,
-        active_counts: &[usize],
-        visible_actors: &[bool],
-        resources: &ResourceContext,
-    ) -> Result<SequenceLine> {
-        build_lifeline_line(
-            self.layout,
-            self.chars,
-            active_counts,
-            visible_actors,
-            resources,
-        )
-    }
-
-    fn reserve_batch(
-        &mut self,
-        batch: SequenceBatchExtent,
-        resources: &mut ResourceContext,
-    ) -> Result<SequenceExtentReservation> {
-        let reservation = self.extent.reserve(batch, resources)?;
-        self.lines
-            .try_reserve(batch.height())
-            .map_err(|_| allocation_failed())?;
-        Ok(reservation)
-    }
-
-    fn commit_lines(
-        &mut self,
-        reservation: SequenceExtentReservation,
-        lines: Vec<SequenceLine>,
-        resources: &ResourceContext,
-    ) -> Result<()> {
-        reservation.commit(&mut self.extent, &lines, resources)?;
-        self.lines.extend(lines);
-        Ok(())
-    }
-
-    fn commit_line(
-        &mut self,
-        reservation: SequenceExtentReservation,
-        line: SequenceLine,
-        resources: &ResourceContext,
-    ) -> Result<()> {
-        reservation.commit(&mut self.extent, std::slice::from_ref(&line), resources)?;
-        self.lines.push(line);
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-pub(super) struct SequenceRowPlan<'diagram> {
-    lines: Vec<SequenceLine>,
-    control_frames: Vec<SequenceControlFrame<'diagram>>,
-}
-
-impl<'diagram> SequenceRowPlan<'diagram> {
+impl SequenceRowPlan {
     pub(super) fn build(
-        diagram: &'diagram AsciiSequenceDiagram,
+        diagram: &AsciiSequenceDiagram,
         layout: &SequenceLayout,
         chars: &SequenceChars,
         mirror_actors: bool,
         resources: &mut ResourceContext,
     ) -> Result<Self> {
+        Self::build_with_materialization_probe(
+            diagram,
+            layout,
+            chars,
+            mirror_actors,
+            resources,
+            || {},
+        )
+    }
+
+    fn build_with_materialization_probe(
+        diagram: &AsciiSequenceDiagram,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        mirror_actors: bool,
+        resources: &mut ResourceContext,
+        before_materialize: impl FnOnce(),
+    ) -> Result<Self> {
         let mut planner = SequenceRowPlanner::new(diagram, resources)?;
-        let mut emitter =
-            SequenceRowEmitter::new(diagram, layout, chars, planner.visible_actors(), resources)?;
+        let mut prepared =
+            SequencePreparedBody::new(diagram, layout, planner.visible_actors(), resources)?;
 
         for event in &diagram.events {
-            if planner.empty_control_section_before(event, emitter.current_row())? {
-                emitter.emit_control_lifeline(
+            if planner.empty_control_section_before(event, prepared.current_row())? {
+                prepared.push_lifeline(
                     planner.active_counts(),
                     planner.visible_actors(),
+                    layout,
                     resources,
                 )?;
             }
-            if let Some(step) = planner.advance(diagram, event, emitter.current_row(), resources)? {
-                emitter.emit_step(&step, resources)?;
+            if let Some(step) =
+                planner.advance(diagram, event, prepared.current_row(), resources)?
+            {
+                prepared.prepare_step(diagram, step, layout, chars, resources)?;
             }
         }
+        prepared.finish(
+            planner.active_counts(),
+            planner.visible_actors(),
+            diagram,
+            layout,
+            mirror_actors,
+            resources,
+        )?;
 
-        Ok(Self {
-            lines: emitter.finish(&planner, mirror_actors, resources)?,
-            control_frames: planner.finish()?,
-        })
+        let prepared_controls = prepare_sequence_control_frames(
+            planner.finish()?,
+            prepared.footprints(),
+            layout,
+            resources,
+        )?;
+        let materialization_work = match prepared_controls.as_ref() {
+            Some(control) => resources.checked_work_add(
+                prepared.materialization_work_units(resources)?,
+                control.materialization_work_units(resources)?,
+            )?,
+            None => prepared.materialization_work_units(resources)?,
+        };
+        resources.charge_layout_work(materialization_work)?;
+        before_materialize();
+        let mut lines = prepared.materialize(diagram, layout, chars, resources)?;
+        if let Some(control) = prepared_controls {
+            lines = control.materialize(lines, layout, chars, resources)?;
+        }
+
+        Ok(Self { lines })
     }
 
     pub(super) fn render(
@@ -673,15 +382,6 @@ impl<'diagram> SequenceRowPlan<'diagram> {
         resources: &mut ResourceContext,
     ) -> Result<String> {
         let mut lines = self.lines;
-        if !self.control_frames.is_empty() {
-            lines = render_sequence_control_frames(
-                lines,
-                &self.control_frames,
-                layout,
-                chars,
-                resources,
-            )?;
-        }
         if !diagram.boxes.is_empty() {
             lines = render_sequence_boxes(lines, diagram, layout, chars, resources)?;
         }
@@ -690,304 +390,6 @@ impl<'diagram> SequenceRowPlan<'diagram> {
         }
         finish_sequence_lines(lines, options, resources)
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ParticipantBoxFrame {
-    Header,
-    Mirror,
-}
-
-fn lifeline_batch_extent(
-    layout: &SequenceLayout,
-    visible_actors: &[bool],
-    resources: &ResourceContext,
-) -> Result<SequenceBatchExtent> {
-    let materialized_width = resources.checked_grid_add(layout.total_width, 1)?;
-    let retained_width = retained_lifeline_width(layout, visible_actors, resources)?;
-    SequenceBatchExtent::uniform(1, materialized_width, retained_width, resources)
-}
-
-fn participant_box_batch_extent(
-    diagram: &AsciiSequenceDiagram,
-    layout: &SequenceLayout,
-    visible_actors: &[bool],
-    resources: &ResourceContext,
-) -> Result<SequenceBatchExtent> {
-    let height = resources.checked_grid_add(participant_label_row_count(diagram), 2)?;
-    let retained_width = (0..diagram.participants.len())
-        .filter(|index| visible_actors.get(*index).copied().unwrap_or(true))
-        .try_fold(0usize, |width, index| {
-            Ok::<usize, AsciiError>(width.max(participant_box_right(layout, index, resources)?))
-        })?;
-    let materialized_width = resources
-        .checked_grid_add(layout.total_width, 1)?
-        .max(retained_width);
-    SequenceBatchExtent::uniform(height, materialized_width, retained_width, resources)
-}
-
-fn lifecycle_participant_batch_extent(
-    diagram: &AsciiSequenceDiagram,
-    layout: &SequenceLayout,
-    visible_actors: &[bool],
-    actor_indices: &[usize],
-    resources: &ResourceContext,
-) -> Result<SequenceBatchExtent> {
-    let height = resources.checked_grid_add(participant_label_row_count(diagram), 2)?;
-    let retained_width = actor_indices.iter().try_fold(
-        retained_lifeline_width(layout, visible_actors, resources)?,
-        |width, index| {
-            Ok::<usize, AsciiError>(width.max(participant_box_right(layout, *index, resources)?))
-        },
-    )?;
-    let materialized_width = resources
-        .checked_grid_add(layout.total_width, 1)?
-        .max(retained_width);
-    SequenceBatchExtent::uniform(height, materialized_width, retained_width, resources)
-}
-
-fn participant_box_right(
-    layout: &SequenceLayout,
-    index: usize,
-    resources: &ResourceContext,
-) -> Result<usize> {
-    let width = layout
-        .participant_widths
-        .get(index)
-        .copied()
-        .ok_or_else(|| unsupported("participant layout"))?;
-    let segment_width = resources.checked_grid_add(width, super::BOX_BORDER_WIDTH)?;
-    resources.checked_grid_add(participant_left(layout, index, resources)?, segment_width)
-}
-
-fn materialize_participant_labels(
-    diagram: &AsciiSequenceDiagram,
-    resources: &ResourceContext,
-    before_materialize: impl FnOnce(),
-) -> Result<Vec<MaterializedSequenceParticipantLabel>> {
-    let mut labels = Vec::new();
-    labels
-        .try_reserve_exact(diagram.participants.len())
-        .map_err(|_| allocation_failed())?;
-    if !diagram.participants.is_empty() {
-        before_materialize();
-    }
-    for participant in &diagram.participants {
-        labels.push(participant.label.materialize(resources)?);
-    }
-    Ok(labels)
-}
-
-fn render_participant_box_rows(
-    participants: SequenceParticipantRenderModel<'_>,
-    layout: &SequenceLayout,
-    chars: &SequenceChars,
-    visible_actors: &[bool],
-    frame: ParticipantBoxFrame,
-    resources: &mut ResourceContext,
-) -> Result<Vec<SequenceLine>> {
-    let rows = participant_box_rows(participants.diagram, frame, resources)?;
-    let width = resources.checked_grid_add(layout.total_width, 1)?;
-    resources.grid_extent(width, rows.len())?;
-    charge_work_product(
-        resources,
-        participants.diagram.participants.len(),
-        rows.len(),
-    )?;
-    let mut rendered = Vec::new();
-    rendered
-        .try_reserve_exact(rows.len())
-        .map_err(|_| allocation_failed())?;
-    let resource_view: &ResourceContext = resources;
-    for row in rows {
-        rendered.push(build_participant_line(
-            participants.diagram,
-            layout,
-            visible_actors,
-            resource_view,
-            |index| {
-                build_participant_box_row(participants, layout, chars, index, row, resource_view)
-            },
-        )?);
-    }
-    Ok(rendered)
-}
-
-fn participant_box_rows(
-    diagram: &AsciiSequenceDiagram,
-    frame: ParticipantBoxFrame,
-    resources: &mut ResourceContext,
-) -> Result<Vec<ParticipantBoxRow>> {
-    let label_rows = participant_label_row_count(diagram);
-    let capacity = resources.checked_grid_add(label_rows, 2)?;
-    resources.charge_layout_work(capacity)?;
-    resources.grid_extent(1, capacity)?;
-    let mut rows = Vec::new();
-    rows.try_reserve_exact(capacity)
-        .map_err(|_| allocation_failed())?;
-    rows.push(match frame {
-        ParticipantBoxFrame::Header => ParticipantBoxRow::Top,
-        ParticipantBoxFrame::Mirror => ParticipantBoxRow::MirrorTop,
-    });
-    rows.extend((0..label_rows).map(ParticipantBoxRow::Label));
-    rows.push(match frame {
-        ParticipantBoxFrame::Header => ParticipantBoxRow::Bottom,
-        ParticipantBoxFrame::Mirror => ParticipantBoxRow::MirrorBottom,
-    });
-    Ok(rows)
-}
-
-fn participant_label_row_count(diagram: &AsciiSequenceDiagram) -> usize {
-    diagram
-        .participants
-        .iter()
-        .map(|participant| participant.label.line_count())
-        .max()
-        .unwrap_or(1)
-        .max(1)
-}
-
-fn build_participant_line(
-    diagram: &AsciiSequenceDiagram,
-    layout: &SequenceLayout,
-    visible_actors: &[bool],
-    resources: &ResourceContext,
-    draw: impl Fn(usize) -> Result<SequenceLine>,
-) -> Result<SequenceLine> {
-    let mut line = blank_line(0, layout.width_profile, resources)?;
-    for index in 0..diagram.participants.len() {
-        if !visible_actors.get(index).copied().unwrap_or(true) {
-            continue;
-        }
-        let left = participant_left(layout, index, resources)?;
-        let needed = left.saturating_sub(line.len());
-        line.try_push_spaces(needed)?;
-        line.try_push_line(&draw(index)?)?;
-    }
-    Ok(line)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ParticipantBoxRow {
-    Top,
-    Label(usize),
-    Bottom,
-    MirrorTop,
-    MirrorBottom,
-}
-
-fn build_participant_box_row(
-    participants: SequenceParticipantRenderModel<'_>,
-    layout: &SequenceLayout,
-    chars: &SequenceChars,
-    index: usize,
-    row: ParticipantBoxRow,
-    resources: &ResourceContext,
-) -> Result<SequenceLine> {
-    let width = layout
-        .participant_widths
-        .get(index)
-        .copied()
-        .ok_or_else(|| unsupported("participant layout"))?;
-    let total_width = resources.checked_grid_add(width, super::BOX_BORDER_WIDTH)?;
-    let mut line = blank_line(total_width, layout.width_profile, resources)?;
-    let center_offset = resources.checked_grid_add(width / 2, 1)?;
-    let right = resources.checked_grid_add(width, 1)?;
-    match row {
-        ParticipantBoxRow::Top | ParticipantBoxRow::MirrorTop => {
-            line.try_set_role(0, chars.top_left, AsciiColorRole::SequenceFrame)?;
-            for x in 1..=width {
-                let ch = if row == ParticipantBoxRow::MirrorTop && x == center_offset {
-                    chars.tee_up
-                } else {
-                    chars.horizontal
-                };
-                line.try_set_role(x, ch, AsciiColorRole::SequenceFrame)?;
-            }
-            line.try_set_role(right, chars.top_right, AsciiColorRole::SequenceFrame)?;
-        }
-        ParticipantBoxRow::Label(label_row) => {
-            let label = participants
-                .labels
-                .get(index)
-                .ok_or_else(|| unsupported("participant label materialization"))?;
-            let label_lines = label.lines();
-            let row_count = label_lines.len().max(1);
-            let top_padding =
-                (participant_label_row_count(participants.diagram).saturating_sub(row_count)) / 2;
-            let row_label = label_row
-                .checked_sub(top_padding)
-                .and_then(|index| label_lines.get(index));
-            let label_width = row_label
-                .map(|line| display_width_with_profile(line, layout.width_profile))
-                .unwrap_or(0);
-            let left_padding = width
-                .checked_sub(label_width)
-                .ok_or_else(|| unsupported("participant label width"))?
-                / 2;
-            line.try_set_role(0, chars.vertical, AsciiColorRole::SequenceFrame)?;
-            if let Some(label) = row_label {
-                let label_start = resources.checked_grid_add(1, left_padding)?;
-                line.try_write_text_role(label_start, label, AsciiColorRole::Text)?;
-            }
-            line.try_set_role(right, chars.vertical, AsciiColorRole::SequenceFrame)?;
-        }
-        ParticipantBoxRow::Bottom | ParticipantBoxRow::MirrorBottom => {
-            line.try_set_role(0, chars.bottom_left, AsciiColorRole::SequenceFrame)?;
-            for x in 1..=width {
-                let ch = if row == ParticipantBoxRow::Bottom && x == center_offset {
-                    chars.tee_down
-                } else {
-                    chars.horizontal
-                };
-                line.try_set_role(x, ch, AsciiColorRole::SequenceFrame)?;
-            }
-            line.try_set_role(right, chars.bottom_right, AsciiColorRole::SequenceFrame)?;
-        }
-    }
-    Ok(line)
-}
-
-fn render_lifecycle_participants(
-    participants: SequenceParticipantRenderModel<'_>,
-    layout: &SequenceLayout,
-    chars: &SequenceChars,
-    active_counts: &[usize],
-    visible_actors: &[bool],
-    actor_indices: &[usize],
-    resources: &mut ResourceContext,
-) -> Result<Vec<SequenceLine>> {
-    let rows = participant_box_rows(participants.diagram, ParticipantBoxFrame::Header, resources)?;
-    charge_work_product(resources, actor_indices.len(), rows.len())?;
-    let base_width = resources.checked_grid_add(layout.total_width, 1)?;
-    resources.grid_extent(base_width, rows.len())?;
-
-    let mut rendered = Vec::new();
-    rendered
-        .try_reserve_exact(rows.len())
-        .map_err(|_| allocation_failed())?;
-    for row in rows {
-        let mut width = base_width;
-        for index in actor_indices {
-            let segment =
-                build_participant_box_row(participants, layout, chars, *index, row, resources)?;
-            let participant_left = participant_left(layout, *index, resources)?;
-            let segment_right = resources.checked_grid_add(participant_left, segment.len())?;
-            width = width.max(segment_right);
-        }
-        resources.grid_extent(width, 1)?;
-        let mut line = padded_line(
-            build_lifeline_line(layout, chars, active_counts, visible_actors, resources)?,
-            width,
-        )?;
-        for index in actor_indices {
-            let segment =
-                build_participant_box_row(participants, layout, chars, *index, row, resources)?;
-            line.try_write_line(participant_left(layout, *index, resources)?, &segment)?;
-        }
-        rendered.push(trim_right(line)?);
-    }
-    Ok(rendered)
 }
 
 fn finish_sequence_lines(
@@ -1093,12 +495,15 @@ mod tests {
     use crate::color::AsciiColorMode;
     use crate::options::AsciiRenderOptions;
     use crate::resource::AsciiResourceLimitId;
+    use crate::sequence::events::prepare_message_rows;
     use crate::sequence::layout::{calculate_layout, calculate_layout_with_resources};
     use crate::sequence::model::{
         SequenceActorLifecycle, SequenceArrowHead, SequenceCentralDecoration,
         SequenceControlSeparator, SequenceControlStart, SequenceEvent, SequenceLineStyle,
         SequenceMessage, SequenceMessageDirection, SequenceParticipant, SequenceParticipantLabel,
     };
+    use crate::sequence::prepared_body::{lifeline_batch_extent, participant_box_batch_extent};
+    use crate::sequence::text::{SequenceBatchExtent, SequenceExtentLedger};
 
     #[test]
     fn event_plan_tracks_activation_counts() {
@@ -1417,42 +822,74 @@ mod tests {
         let mut measuring = ResourceContext::new(options.resources);
         let layout = calculate_layout_with_resources(&diagram, &options, &mut measuring).unwrap();
         let visible_actors = initial_visible_actors(&diagram, &measuring).unwrap();
-        let batch =
+        let header =
             participant_box_batch_extent(&diagram, &layout, &visible_actors, &measuring).unwrap();
-        let batch_cells = batch
+        let lifeline = lifeline_batch_extent(&layout, &visible_actors, &measuring).unwrap();
+        let total_height = header.height() + lifeline.height();
+        let total_width = header
             .materialized_width()
-            .checked_mul(batch.height())
-            .unwrap();
+            .max(lifeline.materialized_width());
+        let aggregate_cells = total_width.checked_mul(total_height).unwrap();
 
         let exact_materialized = std::cell::Cell::new(false);
-        build_participant_header_with_grid_limit(
-            &diagram,
-            &options,
-            batch_cells,
-            &exact_materialized,
-        )
-        .expect("the exact participant-box grid should be admitted");
+        build_row_plan_with_grid_limit(&diagram, &options, aggregate_cells, &exact_materialized)
+            .expect("the exact row-plan grid should be admitted");
         assert!(exact_materialized.get());
 
         let below_materialized = std::cell::Cell::new(false);
-        let error = build_participant_header_with_grid_limit(
+        let error = build_row_plan_with_grid_limit(
             &diagram,
             &options,
-            batch_cells - 1,
+            aggregate_cells - 1,
             &below_materialized,
         )
-        .expect_err("the participant-box grid should reject its limit minus one");
+        .expect_err("the row-plan grid should reject its limit minus one");
         assert!(!below_materialized.get());
         assert!(matches!(
             error,
             AsciiError::ResourceLimitExceeded(details)
                 if details.limit == AsciiResourceLimitId::MaxGridCells
-                    && details.actual == batch_cells
-                    && details.max == batch_cells - 1
+                    && details.actual == aggregate_cells
+                    && details.max == aggregate_cells - 1
         ));
     }
 
-    fn build_participant_header_with_grid_limit(
+    #[test]
+    fn control_row_plan_admits_grid_and_document_limits_before_materialization() {
+        let diagram = nested_control_diagram();
+        let options = AsciiRenderOptions::ascii();
+
+        for limit in [
+            AsciiResourceLimitId::MaxGridCells,
+            AsciiResourceLimitId::MaxDocumentCells,
+        ] {
+            let exact = first_admitted_row_plan_limit(&diagram, &options, limit);
+            let exact_materialized = std::cell::Cell::new(false);
+            build_row_plan_with_limit(&diagram, &options, limit, exact, &exact_materialized)
+                .expect("the exact aggregate row-plan limit should be admitted");
+            assert!(exact_materialized.get());
+
+            let below_materialized = std::cell::Cell::new(false);
+            let error = build_row_plan_with_limit(
+                &diagram,
+                &options,
+                limit,
+                exact - 1,
+                &below_materialized,
+            )
+            .expect_err("the aggregate row-plan limit minus one should be rejected");
+            assert!(!below_materialized.get());
+            assert!(matches!(
+                error,
+                AsciiError::ResourceLimitExceeded(details)
+                    if details.limit == limit
+                        && details.actual == exact
+                        && details.max == exact - 1
+            ));
+        }
+    }
+
+    fn build_row_plan_with_grid_limit(
         diagram: &AsciiSequenceDiagram,
         options: &AsciiRenderOptions,
         maximum: usize,
@@ -1462,17 +899,100 @@ mod tests {
             (*options).with_resource_limit(AsciiResourceLimitId::MaxGridCells, maximum)?;
         let mut resources = ResourceContext::new(limited.resources);
         let layout = calculate_layout_with_resources(diagram, &limited, &mut resources)?;
-        let visible_actors = initial_visible_actors(diagram, &resources)?;
         let chars = ascii_chars();
-        SequenceRowEmitter::new_with_label_materializer(
+        SequenceRowPlan::build_with_materialization_probe(
             diagram,
             &layout,
             &chars,
-            &visible_actors,
+            false,
             &mut resources,
             || materialized.set(true),
         )?;
         Ok(())
+    }
+
+    fn build_row_plan_with_limit(
+        diagram: &AsciiSequenceDiagram,
+        options: &AsciiRenderOptions,
+        limit: AsciiResourceLimitId,
+        maximum: usize,
+        materialized: &std::cell::Cell<bool>,
+    ) -> Result<()> {
+        let limited = (*options).with_resource_limit(limit, maximum)?;
+        let mut resources = ResourceContext::new(limited.resources);
+        let layout = calculate_layout_with_resources(diagram, &limited, &mut resources)?;
+        SequenceRowPlan::build_with_materialization_probe(
+            diagram,
+            &layout,
+            &ascii_chars(),
+            false,
+            &mut resources,
+            || materialized.set(true),
+        )?;
+        Ok(())
+    }
+
+    fn first_admitted_row_plan_limit(
+        diagram: &AsciiSequenceDiagram,
+        options: &AsciiRenderOptions,
+        limit: AsciiResourceLimitId,
+    ) -> usize {
+        let mut low = 1usize;
+        let mut high = options
+            .resources
+            .value(limit)
+            .expect("the test profile should bound sequence resources");
+        while low < high {
+            let mid = low + (high - low) / 2;
+            let materialized = std::cell::Cell::new(false);
+            match build_row_plan_with_limit(diagram, options, limit, mid, &materialized) {
+                Ok(()) => high = mid,
+                Err(AsciiError::ResourceLimitExceeded(details)) if details.limit == limit => {
+                    low = mid + 1;
+                }
+                Err(error) => panic!("unexpected sequence admission error: {error}"),
+            }
+        }
+        low
+    }
+
+    fn nested_control_diagram() -> AsciiSequenceDiagram {
+        let mut diagram = diagram(2);
+        diagram.events = vec![
+            SequenceEvent::ControlStart(SequenceControlStart {
+                model_index: 0,
+                kind: SequenceControlKind::Loop,
+                label: "outer".to_string(),
+                background: None,
+            }),
+            SequenceEvent::ControlStart(SequenceControlStart {
+                model_index: 1,
+                kind: SequenceControlKind::Opt,
+                label: "inner".to_string(),
+                background: None,
+            }),
+            SequenceEvent::Message(SequenceMessage {
+                model_index: 2,
+                from: 0,
+                to: 1,
+                label: "work".to_string(),
+                wrap: false,
+                style: SequenceLineStyle::Solid,
+                source_marker: SequenceArrowHead::None,
+                target_marker: SequenceArrowHead::Filled,
+                direction: SequenceMessageDirection::Forward,
+                central_decoration: SequenceCentralDecoration::None,
+            }),
+            SequenceEvent::ControlEnd {
+                kind: SequenceControlKind::Opt,
+                model_index: 3,
+            },
+            SequenceEvent::ControlEnd {
+                kind: SequenceControlKind::Loop,
+                model_index: 4,
+            },
+        ];
+        diagram
     }
 
     #[test]

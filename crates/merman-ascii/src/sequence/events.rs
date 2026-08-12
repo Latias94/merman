@@ -16,12 +16,16 @@ use super::model::{
 use super::render::{
     SequenceChars, build_lifeline_line, lifeline_char, lifeline_role, retained_lifeline_width,
 };
-use super::text::{SequenceBatchExtent, SequenceLine, padded_line, trim_right, write_text_role};
+use super::text::{
+    SequenceBatchExtent, SequenceLine, SequenceRowFootprint, padded_line, trim_right,
+    validate_batch_footprints, write_text_role,
+};
 
 #[derive(Debug)]
 pub(super) struct PreparedMessageRows {
     label_plan: Option<NormalizedLabelPlan>,
     extent: SequenceBatchExtent,
+    footprints: Vec<SequenceRowFootprint>,
 }
 
 #[derive(Debug)]
@@ -29,6 +33,7 @@ pub(super) struct PreparedSelfMessageRows {
     label_plan: Option<NormalizedLabelPlan>,
     extent: SequenceBatchExtent,
     geometry: SelfMessageGeometry,
+    footprints: Vec<SequenceRowFootprint>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,6 +71,15 @@ impl PreparedMessageRows {
         self.extent
     }
 
+    pub(super) fn footprints(&self) -> &[SequenceRowFootprint] {
+        &self.footprints
+    }
+
+    pub(super) fn materialization_work_units(&self) -> usize {
+        self.label_plan
+            .map_or(0, NormalizedLabelPlan::materialization_work_units)
+    }
+
     #[cfg(test)]
     pub(super) fn materialize_label_with_probe(
         &self,
@@ -83,6 +97,15 @@ impl PreparedMessageRows {
 impl PreparedSelfMessageRows {
     pub(super) const fn extent(&self) -> SequenceBatchExtent {
         self.extent
+    }
+
+    pub(super) fn footprints(&self) -> &[SequenceRowFootprint] {
+        &self.footprints
+    }
+
+    pub(super) fn materialization_work_units(&self) -> usize {
+        self.label_plan
+            .map_or(0, NormalizedLabelPlan::materialization_work_units)
     }
 }
 
@@ -186,15 +209,42 @@ pub(super) fn prepare_message_rows(
 
     let lifeline_width = retained_lifeline_width(layout, visible_actors, resources)?;
     let mut extent = SequenceBatchExtent::with_materialized_width(max_width);
+    let mut footprints = Vec::new();
+    footprints
+        .try_reserve_exact(row_count)
+        .map_err(|_| allocation_failed())?;
     if let Some(plan) = label_plan {
         plan.try_visit_row_metrics(&message.label, resources, |row| {
             let label_right = resources.checked_grid_add(start, row.retained_width)?;
-            extent.try_push_line_length(lifeline_width.max(label_right), resources)
+            let retained_width = lifeline_width.max(label_right);
+            extent.try_push_line_length(retained_width, resources)?;
+            footprints.push(if row.retained_width == 0 {
+                SequenceRowFootprint::lifeline(retained_width)
+            } else {
+                SequenceRowFootprint::with_content(
+                    retained_width,
+                    start,
+                    label_right
+                        .checked_sub(1)
+                        .ok_or_else(invalid_message_geometry)?,
+                )?
+            });
+            Ok(())
         })?;
     }
     extent.try_push_line_length(lifeline_width, resources)?;
+    footprints.push(SequenceRowFootprint::with_content(
+        lifeline_width,
+        from.min(to),
+        from.max(to),
+    )?);
+    validate_batch_footprints(extent, &footprints, resources)?;
 
-    Ok(PreparedMessageRows { label_plan, extent })
+    Ok(PreparedMessageRows {
+        label_plan,
+        extent,
+        footprints,
+    })
 }
 
 pub(super) fn render_message(
@@ -210,9 +260,17 @@ pub(super) fn render_message(
         visible_actors,
         destroyed_actors,
     } = actor_state;
-    let PreparedMessageRows { label_plan, extent } = prepared;
+    let PreparedMessageRows {
+        label_plan,
+        extent,
+        footprints: _,
+    } = prepared;
     let label_lines = match label_plan {
-        Some(plan) => plan.materialize(&message.label, resources)?.into_parts().0,
+        Some(plan) => {
+            plan.materialize_after_admission(&message.label)?
+                .into_parts()
+                .0
+        }
         None => Vec::new(),
     };
     let row_count = extent.height();
@@ -361,20 +419,44 @@ pub(super) fn prepare_self_message_rows(
     let lifeline_width = retained_lifeline_width(layout, visible_actors, resources)?;
     let message_row_width = lifeline_width.max(geometry.loop_needed);
     let mut extent = SequenceBatchExtent::with_materialized_width(max_width);
+    let mut footprints = Vec::new();
+    footprints
+        .try_reserve_exact(row_count)
+        .map_err(|_| allocation_failed())?;
     if let Some(plan) = label_plan {
         plan.try_visit_row_metrics(&message.label, resources, |row| {
             let label_right = resources.checked_grid_add(start, row.retained_width)?;
-            extent.try_push_line_length(lifeline_width.max(label_right), resources)
+            let retained_width = lifeline_width.max(label_right);
+            extent.try_push_line_length(retained_width, resources)?;
+            footprints.push(if row.retained_width == 0 {
+                SequenceRowFootprint::lifeline(retained_width)
+            } else {
+                SequenceRowFootprint::with_content(
+                    retained_width,
+                    start,
+                    label_right
+                        .checked_sub(1)
+                        .ok_or_else(invalid_message_geometry)?,
+                )?
+            });
+            Ok(())
         })?;
     }
     for _ in 0..3 {
         extent.try_push_line_length(message_row_width, resources)?;
+        footprints.push(SequenceRowFootprint::with_content(
+            message_row_width,
+            center,
+            geometry.loop_right,
+        )?);
     }
+    validate_batch_footprints(extent, &footprints, resources)?;
 
     Ok(PreparedSelfMessageRows {
         label_plan,
         extent,
         geometry,
+        footprints,
     })
 }
 
@@ -395,9 +477,14 @@ pub(super) fn render_self_message(
         label_plan,
         extent,
         geometry,
+        footprints: _,
     } = prepared;
     let label_lines = match label_plan {
-        Some(plan) => plan.materialize(&message.label, resources)?.into_parts().0,
+        Some(plan) => {
+            plan.materialize_after_admission(&message.label)?
+                .into_parts()
+                .0
+        }
         None => Vec::new(),
     };
     let row_count = extent.height();

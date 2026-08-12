@@ -1,12 +1,10 @@
 use super::{
     SequenceControlFrame, SequenceControlFrameForest, SequenceControlFramePlan,
     SequenceControlFrameSeparator, SequenceControlOutputAdmission, allocation_failed,
-    frame_title_plan, invalid_control_frame, separator_title_plan, valid_frame_end_row,
-    work_overflow,
+    invalid_control_frame, valid_frame_end_row, work_overflow,
 };
 use crate::color::{AsciiColorRole, AsciiRgb};
 use crate::error::Result;
-use crate::options::TerminalWidthProfile;
 use crate::resource::ResourceContext;
 use crate::sequence::layout::SequenceLayout;
 use crate::sequence::render::SequenceChars;
@@ -29,17 +27,13 @@ pub(super) fn materialize_control_frames(
     lines: Vec<SequenceLine>,
     forest: &SequenceControlFrameForest,
     frames: &[SequenceControlFrame<'_>],
-    frame_plans: &[SequenceControlFramePlan],
+    frame_plans: &[SequenceControlFramePlan<'_>],
     output_admission: SequenceControlOutputAdmission,
     layout: &SequenceLayout,
     chars: &SequenceChars,
     resources: &mut ResourceContext,
 ) -> Result<Vec<SequenceLine>> {
     let line_count = lines.len();
-    let width_profile = lines
-        .first()
-        .map(SequenceLine::width_profile)
-        .ok_or_else(invalid_control_frame)?;
     let mut remaining_lines = Vec::new();
     remaining_lines
         .try_reserve_exact(line_count)
@@ -68,7 +62,6 @@ pub(super) fn materialize_control_frames(
                 &mut remaining_lines,
                 layout,
                 chars,
-                width_profile,
                 &mut rendered_nodes,
                 resources,
             )?;
@@ -138,11 +131,10 @@ fn render_frame_node_iterative(
     node_index: usize,
     forest: &SequenceControlFrameForest,
     frames: &[SequenceControlFrame<'_>],
-    frame_plans: &[SequenceControlFramePlan],
+    frame_plans: &[SequenceControlFramePlan<'_>],
     lines: &mut [Option<SequenceLine>],
     layout: &SequenceLayout,
     chars: &SequenceChars,
-    width_profile: TerminalWidthProfile,
     rendered_nodes: &mut [Option<Vec<SequenceLine>>],
     resources: &mut ResourceContext,
 ) -> Result<Vec<SequenceLine>> {
@@ -155,7 +147,6 @@ fn render_frame_node_iterative(
         .ok_or_else(invalid_control_frame)?;
     let plan = frame_plans
         .get(node_index)
-        .copied()
         .ok_or_else(invalid_control_frame)?;
     let mut rendered = Vec::new();
     rendered
@@ -171,14 +162,7 @@ fn render_frame_node_iterative(
         resources,
     )?;
     let mut content = body.content.into_iter();
-    rendered.push(render_top_border(
-        frame,
-        plan,
-        layout,
-        chars,
-        width_profile,
-        resources,
-    )?);
+    rendered.push(render_top_border(frame, plan, layout, chars, resources)?);
 
     for row in body.rows {
         match row {
@@ -200,10 +184,10 @@ fn render_frame_node_iterative(
                 rendered.push(render_separator_border(
                     frame,
                     separator,
+                    separator_index,
                     plan,
                     layout,
                     chars,
-                    width_profile,
                     resources,
                 )?);
             }
@@ -301,13 +285,12 @@ fn render_frame_body_iterative(
 
 fn render_top_border(
     frame: &SequenceControlFrame<'_>,
-    plan: SequenceControlFramePlan,
+    plan: &SequenceControlFramePlan<'_>,
     layout: &SequenceLayout,
     chars: &SequenceChars,
-    width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
 ) -> Result<SequenceLine> {
-    let title = frame_title_plan(frame, width_profile, resources)?.materialize(resources)?;
+    let title = plan.title.materialize_after_admission()?;
     let base = frame
         .start_boundary
         .render_lifeline(layout, chars, resources)?;
@@ -325,7 +308,7 @@ fn render_top_border(
 
 fn render_bottom_border(
     frame: &SequenceControlFrame<'_>,
-    plan: SequenceControlFramePlan,
+    plan: &SequenceControlFramePlan<'_>,
     layout: &SequenceLayout,
     chars: &SequenceChars,
     resources: &ResourceContext,
@@ -350,14 +333,18 @@ fn render_bottom_border(
 fn render_separator_border(
     frame: &SequenceControlFrame<'_>,
     separator: &SequenceControlFrameSeparator<'_>,
-    plan: SequenceControlFramePlan,
+    separator_index: usize,
+    plan: &SequenceControlFramePlan<'_>,
     layout: &SequenceLayout,
     chars: &SequenceChars,
-    width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
 ) -> Result<SequenceLine> {
-    let title =
-        separator_title_plan(frame, separator, width_profile, resources)?.materialize(resources)?;
+    let title = plan
+        .separator_titles
+        .get(separator_index)
+        .copied()
+        .ok_or_else(invalid_control_frame)?
+        .materialize_after_admission()?;
     let base = separator
         .boundary
         .render_lifeline(layout, chars, resources)?;
@@ -381,7 +368,7 @@ fn render_border_row(
     left: char,
     right: char,
     horizontal: char,
-    plan: SequenceControlFramePlan,
+    plan: &SequenceControlFramePlan<'_>,
     label: Option<&str>,
     background: Option<AsciiRgb>,
     resources: &ResourceContext,
@@ -408,7 +395,7 @@ fn render_border_row(
 
 fn render_content_row(
     row: SequenceLine,
-    plan: SequenceControlFramePlan,
+    plan: &SequenceControlFramePlan<'_>,
     chars: &SequenceChars,
     background: Option<AsciiRgb>,
     resources: &ResourceContext,

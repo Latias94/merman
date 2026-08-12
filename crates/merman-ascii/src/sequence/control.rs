@@ -6,7 +6,7 @@ pub(super) use geometry::{SequenceControlBoundaryState, SequenceParticipantSpan}
 use super::layout::SequenceLayout;
 use super::model::SequenceControlKind;
 use super::render::SequenceChars;
-use super::text::SequenceLine;
+use super::text::{SequenceLine, SequenceRowFootprint};
 use crate::color::AsciiRgb;
 use crate::error::{AsciiError, Result};
 use crate::options::TerminalWidthProfile;
@@ -58,20 +58,28 @@ struct SequenceControlFrameForest {
     roots: Vec<usize>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct SequenceControlFramePlan {
+#[derive(Debug)]
+pub(super) struct PreparedSequenceControlFrames<'diagram> {
+    forest: SequenceControlFrameForest,
+    frames: Vec<SequenceControlFrame<'diagram>>,
+    frame_plans: Vec<SequenceControlFramePlan<'diagram>>,
+    output_admission: SequenceControlOutputAdmission,
+}
+
+#[derive(Debug)]
+struct SequenceControlFramePlan<'a> {
     body_rows: usize,
     bounds: SequenceFrameBounds,
     row_count: usize,
     total_width: usize,
+    title: SequenceControlTitlePlan<'a>,
+    separator_titles: Vec<SequenceControlTitlePlan<'a>>,
 }
 
 struct SequenceFrameBodyPlanContext<'a, 'diagram> {
     forest: &'a SequenceControlFrameForest,
     frames: &'a [SequenceControlFrame<'diagram>],
-    lines: &'a [SequenceLine],
-    layout: &'a SequenceLayout,
-    chars: &'a SequenceChars,
+    footprints: &'a [SequenceRowFootprint],
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -135,20 +143,33 @@ impl<'a> SequenceControlTitlePlan<'a> {
         self.width
     }
 
-    fn materialize(self, resources: &ResourceContext) -> Result<String> {
-        self.materialize_with(resources, || {})
+    fn materialization_work_units(self, resources: &ResourceContext) -> Result<usize> {
+        resources.checked_work_add(
+            self.capacity.max(1),
+            self.label_plan
+                .map_or(0, NormalizedLabelPlan::materialization_work_units),
+        )
     }
 
+    fn materialize_after_admission(self) -> Result<String> {
+        self.materialize_impl(|| {})
+    }
+
+    #[cfg(test)]
     fn materialize_with(
         self,
         resources: &ResourceContext,
         before_materialize: impl FnOnce(),
     ) -> Result<String> {
-        resources.charge_layout_work(self.capacity.max(1))?;
+        resources.charge_layout_work(self.materialization_work_units(resources)?)?;
+        self.materialize_impl(before_materialize)
+    }
+
+    fn materialize_impl(self, before_materialize: impl FnOnce()) -> Result<String> {
         before_materialize();
         let label = match self.label_plan {
             Some(plan) => {
-                let (mut lines, _) = plan.materialize(self.label, resources)?.into_parts();
+                let (mut lines, _) = plan.materialize_after_admission(self.label)?.into_parts();
                 if lines.len() != 1 {
                     return Err(invalid_control_frame());
                 }
@@ -191,6 +212,7 @@ struct SequenceControlOutputAdmission {
     work_units: usize,
 }
 
+#[cfg(test)]
 pub(super) fn render_sequence_control_frames(
     lines: Vec<SequenceLine>,
     frames: &[SequenceControlFrame<'_>],
@@ -205,6 +227,10 @@ pub(super) fn render_sequence_control_frames(
     let line_count = lines.len();
     let width_profile = lines[0].width_profile();
     let input_width = lines.iter().map(SequenceLine::len).max().unwrap_or(0);
+    let footprints = lines
+        .iter()
+        .map(line_footprint)
+        .collect::<Result<Vec<_>>>()?;
     resources.grid_extent(input_width, line_count)?;
     charge_work_product(resources, frames.len(), 2)?;
     resources.grid_extent(frames.len(), 1)?;
@@ -215,13 +241,14 @@ pub(super) fn render_sequence_control_frames(
     let frame_plans = plan_control_frames(
         &forest,
         frames,
-        &lines,
+        &footprints,
         layout,
-        chars,
         width_profile,
         resources,
     )?;
-    let output_admission = admit_control_output(&lines, &forest, frames, &frame_plans, resources)?;
+    let output_admission =
+        admit_control_output(&footprints, &forest, frames, &frame_plans, resources)?;
+    resources.charge_layout_work(control_materialization_work_units(&frame_plans, resources)?)?;
     materialize_control_frames(
         lines,
         &forest,
@@ -234,28 +261,122 @@ pub(super) fn render_sequence_control_frames(
     )
 }
 
-fn plan_control_frames(
-    forest: &SequenceControlFrameForest,
-    frames: &[SequenceControlFrame<'_>],
-    lines: &[SequenceLine],
+pub(super) fn prepare_sequence_control_frames<'diagram>(
+    frames: Vec<SequenceControlFrame<'diagram>>,
+    footprints: &[SequenceRowFootprint],
     layout: &SequenceLayout,
-    chars: &SequenceChars,
+    resources: &mut ResourceContext,
+) -> Result<Option<PreparedSequenceControlFrames<'diagram>>> {
+    if frames.is_empty() || footprints.is_empty() {
+        return Ok(None);
+    }
+
+    let input_width = footprints
+        .iter()
+        .map(|footprint| footprint.retained_width())
+        .max()
+        .unwrap_or(0);
+    resources.grid_extent(input_width, footprints.len())?;
+    charge_work_product(resources, frames.len(), 2)?;
+    resources.grid_extent(frames.len(), 1)?;
+    let forest = control_frame_tree(&frames, footprints.len(), resources)?;
+    if forest.nodes.is_empty() {
+        return Ok(None);
+    }
+    let frame_plans = plan_control_frames(
+        &forest,
+        &frames,
+        footprints,
+        layout,
+        layout.width_profile,
+        resources,
+    )?;
+    let output_admission =
+        admit_control_output(footprints, &forest, &frames, &frame_plans, resources)?;
+    Ok(Some(PreparedSequenceControlFrames {
+        forest,
+        frames,
+        frame_plans,
+        output_admission,
+    }))
+}
+
+impl PreparedSequenceControlFrames<'_> {
+    pub(super) fn materialization_work_units(&self, resources: &ResourceContext) -> Result<usize> {
+        control_materialization_work_units(&self.frame_plans, resources)
+    }
+
+    pub(super) fn materialize(
+        self,
+        lines: Vec<SequenceLine>,
+        layout: &SequenceLayout,
+        chars: &SequenceChars,
+        resources: &mut ResourceContext,
+    ) -> Result<Vec<SequenceLine>> {
+        materialize_control_frames(
+            lines,
+            &self.forest,
+            &self.frames,
+            &self.frame_plans,
+            self.output_admission,
+            layout,
+            chars,
+            resources,
+        )
+    }
+}
+
+fn control_materialization_work_units(
+    frame_plans: &[SequenceControlFramePlan<'_>],
+    resources: &ResourceContext,
+) -> Result<usize> {
+    frame_plans.iter().try_fold(0usize, |total, plan| {
+        let total =
+            resources.checked_work_add(total, plan.title.materialization_work_units(resources)?)?;
+        plan.separator_titles
+            .iter()
+            .try_fold(total, |total, title| {
+                resources.checked_work_add(total, title.materialization_work_units(resources)?)
+            })
+    })
+}
+
+#[cfg(test)]
+fn line_footprint(line: &SequenceLine) -> Result<SequenceRowFootprint> {
+    let retained_width = line.len();
+    let left = (0..retained_width).find(|index| line.get(*index).is_some_and(|ch| ch != ' '));
+    let right = (0..retained_width)
+        .rev()
+        .find(|index| line.get(*index).is_some_and(|ch| ch != ' '));
+    match left.zip(right) {
+        Some((left, right)) => SequenceRowFootprint::with_content(retained_width, left, right),
+        None => Ok(SequenceRowFootprint::lifeline(retained_width)),
+    }
+}
+
+fn plan_control_frames<'diagram>(
+    forest: &SequenceControlFrameForest,
+    frames: &[SequenceControlFrame<'diagram>],
+    footprints: &[SequenceRowFootprint],
+    layout: &SequenceLayout,
     width_profile: TerminalWidthProfile,
     resources: &mut ResourceContext,
-) -> Result<Vec<SequenceControlFramePlan>> {
-    let input_width = lines.iter().map(SequenceLine::len).max().unwrap_or(0);
+) -> Result<Vec<SequenceControlFramePlan<'diagram>>> {
+    let input_width = footprints
+        .iter()
+        .map(|footprint| footprint.retained_width())
+        .max()
+        .unwrap_or(0);
     let body_context = SequenceFrameBodyPlanContext {
         forest,
         frames,
-        lines,
-        layout,
-        chars,
+        footprints,
     };
     let mut pending = Vec::new();
     pending
         .try_reserve_exact(forest.nodes.len())
         .map_err(|_| allocation_failed())?;
-    pending.resize(forest.nodes.len(), None);
+    pending.resize_with(forest.nodes.len(), || None);
 
     for node_index in (0..forest.nodes.len()).rev() {
         let node = forest
@@ -287,10 +408,30 @@ fn plan_control_frames(
             initial_bounds,
             resources,
         )?;
-        bounds.ensure_width(
-            minimum_frame_width(frame, width_profile, resources)?,
-            resources,
-        )?;
+        let title = frame_title_plan(frame, width_profile, resources)?;
+        let mut separator_titles = Vec::new();
+        separator_titles
+            .try_reserve_exact(frame.separators.len())
+            .map_err(|_| allocation_failed())?;
+        for separator in &frame.separators {
+            separator_titles.push(separator_title_plan(
+                frame,
+                separator,
+                width_profile,
+                resources,
+            )?);
+        }
+        let minimum_width = resources.checked_grid_add(title.width(), 2)?.max(3).max(
+            resources.checked_grid_add(
+                separator_titles
+                    .iter()
+                    .map(|title| title.width())
+                    .max()
+                    .unwrap_or(0),
+                2,
+            )?,
+        );
+        bounds.ensure_width(minimum_width, resources)?;
         let inset_levels = node
             .depth
             .checked_sub(1)
@@ -308,6 +449,8 @@ fn plan_control_frames(
             bounds,
             row_count,
             total_width,
+            title,
+            separator_titles,
         });
     }
 
@@ -324,7 +467,7 @@ fn plan_control_frames(
 fn planned_frame_body_extent(
     node_index: usize,
     context: &SequenceFrameBodyPlanContext<'_, '_>,
-    frame_plans: &[Option<SequenceControlFramePlan>],
+    frame_plans: &[Option<SequenceControlFramePlan<'_>>],
     participant_span: Option<SequenceParticipantSpan>,
     mut bounds: SequenceFrameBounds,
     resources: &mut ResourceContext,
@@ -379,16 +522,14 @@ fn planned_frame_body_extent(
             }
         }
 
-        let line = context.lines.get(row).ok_or_else(invalid_control_frame)?;
+        let footprint = context
+            .footprints
+            .get(row)
+            .copied()
+            .ok_or_else(invalid_control_frame)?;
         planned_rows = resources.checked_grid_add(planned_rows, 1)?;
-        if let Some(participant_span) = participant_span {
-            bounds.include_line_content(
-                line,
-                participant_span,
-                context.layout,
-                context.chars,
-                resources,
-            )?;
+        if participant_span.is_some() {
+            bounds.include_footprint_content(footprint, resources)?;
         }
         row = resources.checked_grid_add(row, 1)?;
     }
@@ -397,10 +538,10 @@ fn planned_frame_body_extent(
 }
 
 fn admit_control_output(
-    lines: &[SequenceLine],
+    footprints: &[SequenceRowFootprint],
     forest: &SequenceControlFrameForest,
     frames: &[SequenceControlFrame<'_>],
-    frame_plans: &[SequenceControlFramePlan],
+    frame_plans: &[SequenceControlFramePlan<'_>],
     resources: &mut ResourceContext,
 ) -> Result<SequenceControlOutputAdmission> {
     let mut admission = SequenceControlOutputAdmission::default();
@@ -411,26 +552,24 @@ fn admit_control_output(
         let frame = frames
             .get(node.frame_index)
             .ok_or_else(invalid_control_frame)?;
-        let end_row = valid_frame_end_row(frame, lines.len()).ok_or_else(invalid_control_frame)?;
+        let end_row =
+            valid_frame_end_row(frame, footprints.len()).ok_or_else(invalid_control_frame)?;
         if frame.start_row < row {
             return Err(invalid_control_frame());
         }
-        for line in lines
+        for footprint in footprints
             .get(row..frame.start_row)
             .ok_or_else(invalid_control_frame)?
         {
-            admission.add_line(line.len(), resources)?;
+            admission.add_line(footprint.retained_width(), resources)?;
         }
-        let plan = frame_plans
-            .get(*root)
-            .copied()
-            .ok_or_else(invalid_control_frame)?;
+        let plan = frame_plans.get(*root).ok_or_else(invalid_control_frame)?;
         admission.add_uniform(plan.total_width, plan.row_count, resources)?;
         row = resources.checked_grid_add(end_row, 1)?;
     }
 
-    for line in lines.get(row..).ok_or_else(invalid_control_frame)? {
-        admission.add_line(line.len(), resources)?;
+    for footprint in footprints.get(row..).ok_or_else(invalid_control_frame)? {
+        admission.add_line(footprint.retained_width(), resources)?;
     }
     admission.admit(resources)?;
     Ok(admission)
@@ -583,24 +722,6 @@ fn valid_frame_end_row(frame: &SequenceControlFrame<'_>, line_count: usize) -> O
         .then_some(end_row)
 }
 
-fn minimum_frame_width(
-    frame: &SequenceControlFrame<'_>,
-    width_profile: TerminalWidthProfile,
-    resources: &ResourceContext,
-) -> Result<usize> {
-    let title_width = frame_title_plan(frame, width_profile, resources)?.width();
-    let mut separator_width = 0;
-    for separator in &frame.separators {
-        separator_width = separator_width
-            .max(separator_title_plan(frame, separator, width_profile, resources)?.width());
-    }
-
-    Ok(resources
-        .checked_grid_add(title_width, 2)?
-        .max(3)
-        .max(resources.checked_grid_add(separator_width, 2)?))
-}
-
 fn frame_title_plan<'a>(
     frame: &SequenceControlFrame<'a>,
     width_profile: TerminalWidthProfile,
@@ -738,7 +859,7 @@ mod tests {
             .with_limit(AsciiResourceLimitId::MaxGridCells, maximum)
             .expect("the aggregate control grid limit override should be valid");
         let mut resources = ResourceContext::new(policy);
-        let lines = vec![
+        let lines = [
             blank_line(4, TerminalWidthProfile::Unicode, &resources)?,
             blank_line(4, TerminalWidthProfile::Unicode, &resources)?,
         ];
@@ -746,21 +867,25 @@ mod tests {
             test_frame(SequenceControlKind::Loop, "batch", 0, 0),
             test_frame(SequenceControlKind::Loop, "batch", 1, 1),
         ];
+        let footprints = lines
+            .iter()
+            .map(line_footprint)
+            .collect::<Result<Vec<_>>>()?;
         let forest = control_frame_tree(&frames, lines.len(), &mut resources)?;
         let frame_plans = plan_control_frames(
             &forest,
             &frames,
-            &lines,
+            &footprints,
             &test_layout(),
-            &ascii_chars(),
             TerminalWidthProfile::Unicode,
             &mut resources,
         )?;
         let admission =
-            admit_control_output(&lines, &forest, &frames, &frame_plans, &mut resources)?;
+            admit_control_output(&footprints, &forest, &frames, &frame_plans, &mut resources)?;
         assert_eq!(admission.max_width, 14);
         assert_eq!(admission.height, 6);
-        frame_title_plan(&frames[0], TerminalWidthProfile::Unicode, &resources)?
+        frame_plans[0]
+            .title
             .materialize_with_probe(&resources, materialized)?;
         Ok(())
     }

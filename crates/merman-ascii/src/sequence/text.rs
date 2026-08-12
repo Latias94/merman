@@ -6,6 +6,62 @@ use crate::text::StyledLine;
 
 pub(super) type SequenceLine = StyledLine;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct SequenceContentSpan {
+    left: usize,
+    right: usize,
+}
+
+impl SequenceContentSpan {
+    pub(super) fn inclusive(left: usize, right: usize) -> Result<Self> {
+        if left > right {
+            return Err(invalid_extent_plan());
+        }
+        Ok(Self { left, right })
+    }
+
+    pub(super) const fn left(self) -> usize {
+        self.left
+    }
+
+    pub(super) const fn right(self) -> usize {
+        self.right
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct SequenceRowFootprint {
+    retained_width: usize,
+    content: Option<SequenceContentSpan>,
+}
+
+impl SequenceRowFootprint {
+    pub(super) const fn lifeline(retained_width: usize) -> Self {
+        Self {
+            retained_width,
+            content: None,
+        }
+    }
+
+    pub(super) fn with_content(retained_width: usize, left: usize, right: usize) -> Result<Self> {
+        if right >= retained_width {
+            return Err(invalid_extent_plan());
+        }
+        Ok(Self {
+            retained_width,
+            content: Some(SequenceContentSpan::inclusive(left, right)?),
+        })
+    }
+
+    pub(super) const fn retained_width(self) -> usize {
+        self.retained_width
+    }
+
+    pub(super) const fn content(self) -> Option<SequenceContentSpan> {
+        self.content
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(super) struct SequenceBatchExtent {
     height: usize,
@@ -88,6 +144,10 @@ impl SequenceBatchExtent {
         self.height
     }
 
+    pub(super) const fn retained_width(self) -> usize {
+        self.retained_width
+    }
+
     #[cfg(test)]
     pub(super) const fn materialized_width(self) -> usize {
         self.materialized_width
@@ -152,6 +212,17 @@ pub(super) struct SequenceExtentReservation {
 }
 
 impl SequenceExtentReservation {
+    pub(super) fn commit_footprints(
+        self,
+        ledger: &mut SequenceExtentLedger,
+        footprints: &[SequenceRowFootprint],
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        validate_batch_footprints(self.batch, footprints, resources)?;
+        *ledger = self.next;
+        Ok(())
+    }
+
     pub(super) fn commit(
         self,
         ledger: &mut SequenceExtentLedger,
@@ -173,6 +244,48 @@ impl SequenceExtentReservation {
         *ledger = self.next;
         Ok(())
     }
+}
+
+pub(super) fn validate_batch_lines(
+    batch: SequenceBatchExtent,
+    lines: &[SequenceLine],
+    resources: &ResourceContext,
+) -> Result<()> {
+    let actual = SequenceBatchExtent::from_line_lengths(
+        batch.materialized_width,
+        lines.iter().map(SequenceLine::len),
+        resources,
+    )?;
+    if actual.height != batch.height
+        || actual.retained_width != batch.retained_width
+        || actual.document_cells != batch.document_cells
+        || actual.work_units != batch.work_units
+    {
+        return Err(invalid_extent_plan());
+    }
+    Ok(())
+}
+
+pub(super) fn validate_batch_footprints(
+    batch: SequenceBatchExtent,
+    footprints: &[SequenceRowFootprint],
+    resources: &ResourceContext,
+) -> Result<()> {
+    let actual = SequenceBatchExtent::from_line_lengths(
+        batch.materialized_width,
+        footprints
+            .iter()
+            .map(|footprint| footprint.retained_width()),
+        resources,
+    )?;
+    if actual.height != batch.height
+        || actual.retained_width != batch.retained_width
+        || actual.document_cells != batch.document_cells
+        || actual.work_units != batch.work_units
+    {
+        return Err(invalid_extent_plan());
+    }
+    Ok(())
 }
 
 fn invalid_extent_plan() -> AsciiError {

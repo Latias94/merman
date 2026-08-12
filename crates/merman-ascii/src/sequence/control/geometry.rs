@@ -1,7 +1,7 @@
 use super::super::layout::SequenceLayout;
 use super::super::model::SequenceEvent;
 use super::super::render::{SequenceChars, build_lifeline_line};
-use super::super::text::SequenceLine;
+use super::super::text::{SequenceLine, SequenceRowFootprint};
 use crate::error::{AsciiError, Result};
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 
@@ -56,6 +56,7 @@ impl SequenceParticipantSpan {
         }
     }
 
+    #[cfg(test)]
     fn contains(self, actor: usize) -> bool {
         (self.first..=self.last).contains(&actor)
     }
@@ -152,6 +153,7 @@ impl SequenceFrameBounds {
         resources.checked_grid_add(self.right, 1)
     }
 
+    #[cfg(test)]
     pub(super) fn include_line_content(
         &mut self,
         line: &SequenceLine,
@@ -173,6 +175,23 @@ impl SequenceFrameBounds {
                 .right
                 .max(resources.checked_grid_add(index, CONTENT_FRAME_MARGIN)?);
         }
+        Ok(())
+    }
+
+    pub(super) fn include_footprint_content(
+        &mut self,
+        footprint: SequenceRowFootprint,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        let Some(content) = footprint.content() else {
+            return Ok(());
+        };
+        self.left = self
+            .left
+            .min(content.left().saturating_sub(CONTENT_FRAME_MARGIN));
+        self.right = self
+            .right
+            .max(resources.checked_grid_add(content.right(), CONTENT_FRAME_MARGIN)?);
         Ok(())
     }
 
@@ -205,6 +224,7 @@ impl SequenceFrameBounds {
     }
 }
 
+#[cfg(test)]
 fn is_unrelated_lifeline(
     index: usize,
     ch: char,

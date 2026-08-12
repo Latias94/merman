@@ -12,7 +12,9 @@ use crate::text::display_width_with_profile;
 use super::layout::SequenceLayout;
 use super::model::{AsciiSequenceDiagram, SequenceEvent, SequenceNote, SequenceNotePlacement};
 use super::render::{SequenceChars, render_overlay_row, retained_lifeline_width};
-use super::text::{SequenceBatchExtent, SequenceLine, blank_line};
+use super::text::{
+    SequenceBatchExtent, SequenceLine, SequenceRowFootprint, blank_line, validate_batch_footprints,
+};
 
 #[derive(Debug)]
 pub(super) struct PreparedNoteRows {
@@ -20,11 +22,20 @@ pub(super) struct PreparedNoteRows {
     inner_width: usize,
     left: usize,
     extent: SequenceBatchExtent,
+    footprints: Vec<SequenceRowFootprint>,
 }
 
 impl PreparedNoteRows {
     pub(super) const fn extent(&self) -> SequenceBatchExtent {
         self.extent
+    }
+
+    pub(super) fn footprints(&self) -> &[SequenceRowFootprint] {
+        &self.footprints
+    }
+
+    pub(super) const fn materialization_work_units(&self) -> usize {
+        self.label_plan.materialization_work_units()
     }
 
     #[cfg(test)]
@@ -160,11 +171,23 @@ pub(super) fn prepare_note_rows(
     let retained_width =
         retained_lifeline_width(layout, visible_actors, resources)?.max(overlay_right);
     let extent = SequenceBatchExtent::uniform(row_count, max_width, retained_width, resources)?;
+    let content_right = overlay_right
+        .checked_sub(1)
+        .ok_or_else(invalid_note_geometry)?;
+    let footprint = SequenceRowFootprint::with_content(retained_width, left, content_right)?;
+    resources.grid_extent(row_count, 1)?;
+    let mut footprints = Vec::new();
+    footprints
+        .try_reserve_exact(row_count)
+        .map_err(|_| allocation_failed())?;
+    footprints.resize(row_count, footprint);
+    validate_batch_footprints(extent, &footprints, resources)?;
     Ok(PreparedNoteRows {
         label_plan,
         inner_width,
         left,
         extent,
+        footprints,
     })
 }
 
@@ -182,9 +205,10 @@ pub(super) fn render_note(
         inner_width,
         left,
         extent,
+        footprints: _,
     } = prepared;
     let label_lines = label_plan
-        .materialize(&note.label, resources)?
+        .materialize_after_admission(&note.label)?
         .into_parts()
         .0;
     let row_count = extent.height();

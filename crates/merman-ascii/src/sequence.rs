@@ -6,6 +6,7 @@ mod lifecycle;
 mod model;
 mod notes;
 mod plan;
+mod prepared_body;
 mod render;
 mod text;
 mod validate;
