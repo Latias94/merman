@@ -3,6 +3,7 @@ use crate::capability::{OperationKey, operation_is_compiled};
 use crate::payload_contract::BINDING_OPERATION_SCHEMA_VERSION;
 use crate::resource_contract::BindingResourceScope;
 use crate::{BindingEngine, BindingError, BindingStatus};
+use merman::{OperationControl, OperationPhase};
 use serde::Serialize;
 use serde_json::{Map, Value};
 #[cfg(test)]
@@ -136,12 +137,13 @@ impl ValidatedArtifactContract {
 }
 
 /// Borrowed request consumed by the shared binding execution path.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct BindingOperationRequest<'a> {
     operation_id: &'a str,
     source: &'a [u8],
     uri: Option<&'a [u8]>,
     options_json: &'a [u8],
+    operation_control: Option<OperationControl>,
 }
 
 impl<'a> BindingOperationRequest<'a> {
@@ -156,6 +158,7 @@ impl<'a> BindingOperationRequest<'a> {
             source,
             uri: None,
             options_json: b"",
+            operation_control: None,
         }
     }
 
@@ -182,6 +185,14 @@ impl<'a> BindingOperationRequest<'a> {
         self
     }
 
+    /// Attaches a caller-owned operation control. The request clones the control's shared state;
+    /// cancellation and deadline changes made by the caller remain visible during execution.
+    #[must_use]
+    pub fn with_control(mut self, control: OperationControl) -> Self {
+        self.operation_control = Some(control);
+        self
+    }
+
     #[must_use]
     pub const fn operation_id(&self) -> &'a str {
         self.operation_id
@@ -200,6 +211,16 @@ impl<'a> BindingOperationRequest<'a> {
     #[must_use]
     pub const fn options_json(&self) -> &'a [u8] {
         self.options_json
+    }
+
+    #[must_use]
+    pub fn operation_control(&self) -> Option<&OperationControl> {
+        self.operation_control.as_ref()
+    }
+
+    #[must_use]
+    pub(crate) fn control_or_default(&self) -> OperationControl {
+        self.operation_control.clone().unwrap_or_default()
     }
 }
 
@@ -759,7 +780,11 @@ impl ValidatedArtifactContract {
         )?;
         let engine = self.create_engine(request.options_json)?;
         let admitted = self.admit_operation(operation)?;
-        engine.execute_admitted(admitted, request.source, request.uri)
+        let control = request.control_or_default();
+        control
+            .checkpoint_at(OperationPhase::Admission)
+            .map_err(BindingError::cancelled)?;
+        engine.execute_admitted(admitted, request.source, request.uri, control)
     }
 
     pub(crate) fn execute_once_data(
@@ -773,7 +798,11 @@ impl ValidatedArtifactContract {
         )?;
         let engine = self.create_engine(request.options_json)?;
         let admitted = self.admit_operation(operation)?;
-        engine.execute_admitted_data(admitted, request.source, request.uri)
+        let control = request.control_or_default();
+        control
+            .checkpoint_at(OperationPhase::Admission)
+            .map_err(BindingError::cancelled)?;
+        engine.execute_admitted_data(admitted, request.source, request.uri, control)
     }
 }
 
@@ -800,15 +829,24 @@ impl BindingEngine {
         request: BindingOperationRequest<'_>,
     ) -> Result<BindingOperationExecution, BindingError> {
         let operation = resolve_operation_request(&request)?;
+        let control = request.control_or_default();
+        control
+            .checkpoint_at(OperationPhase::Admission)
+            .map_err(BindingError::cancelled)?;
         let prepared = self.prepare_request_overlay(operation, request.options_json)?;
         let admitted = self.admit_operation(operation)?;
         let output = match prepared {
             crate::engine::PreparedRequestOverlay::Unchanged => {
-                self.execute_admitted_output(admitted, request.source, request.uri)
+                self.execute_admitted_output(admitted, request.source, request.uri, control.clone())
             }
-            crate::engine::PreparedRequestOverlay::Override(configs) => {
-                self.execute_request_projection(admitted, *configs, request.source, request.uri)
-            }
+            crate::engine::PreparedRequestOverlay::Override(configs) => self
+                .execute_request_projection(
+                    admitted,
+                    *configs,
+                    request.source,
+                    request.uri,
+                    control.clone(),
+                ),
         }?;
         Ok(BindingOperationExecution { operation, output })
     }
@@ -818,8 +856,9 @@ impl BindingEngine {
         admitted: AdmittedArtifactOperation,
         source: &[u8],
         uri: Option<&[u8]>,
+        control: OperationControl,
     ) -> Result<BindingOperationResult, BindingError> {
-        self.execute_admitted_request(admitted, source, uri)
+        self.execute_admitted_request(admitted, source, uri, control)
             .and_then(|execution| execution.into_result(self.runtime_policy_id()))
     }
 
@@ -828,8 +867,9 @@ impl BindingEngine {
         admitted: AdmittedArtifactOperation,
         source: &[u8],
         uri: Option<&[u8]>,
+        control: OperationControl,
     ) -> Result<Vec<u8>, BindingError> {
-        self.execute_admitted_request(admitted, source, uri)
+        self.execute_admitted_request(admitted, source, uri, control)
             .and_then(BindingOperationExecution::into_data)
     }
 
@@ -838,9 +878,10 @@ impl BindingEngine {
         admitted: AdmittedArtifactOperation,
         source: &[u8],
         uri: Option<&[u8]>,
+        control: OperationControl,
     ) -> Result<BindingOperationExecution, BindingError> {
         let operation = admitted.operation();
-        let output = self.execute_admitted_output(admitted, source, uri)?;
+        let output = self.execute_admitted_output(admitted, source, uri, control)?;
         Ok(BindingOperationExecution { operation, output })
     }
 
@@ -849,26 +890,30 @@ impl BindingEngine {
         admitted: AdmittedArtifactOperation,
         source: &[u8],
         uri: Option<&[u8]>,
+        control: OperationControl,
     ) -> Result<BindingOperationOutput, BindingError> {
+        control
+            .checkpoint_at(OperationPhase::Parse)
+            .map_err(BindingError::cancelled)?;
         let operation = admitted.operation();
-        match operation.key() {
-            OperationKey::Png => self.render_png_output(source),
-            OperationKey::Jpeg => self.render_jpeg_output(source),
-            OperationKey::Pdf => self.render_pdf_output(source),
+        let output = match operation.key() {
+            OperationKey::Png => self.render_png_output(source, control.clone()),
+            OperationKey::Jpeg => self.render_jpeg_output(source, control.clone()),
+            OperationKey::Pdf => self.render_pdf_output(source, control.clone()),
             OperationKey::Svg => self
-                .render_svg_data(source)
+                .render_svg_data(source, control.clone())
                 .map(BindingOperationOutput::plain),
             OperationKey::SvgPlanJson => self
-                .svg_plan_json_data(source)
+                .svg_plan_json_data(source, control.clone())
                 .map(BindingOperationOutput::plain),
             OperationKey::Ascii => self
-                .render_ascii_data(source)
+                .render_ascii_data(source, control.clone())
                 .map(BindingOperationOutput::plain),
             OperationKey::SemanticJson => self
-                .parse_json_data(source)
+                .parse_json_data_controlled(source, &control)
                 .map(BindingOperationOutput::plain),
             OperationKey::LayoutJson => self
-                .layout_json_data(source)
+                .layout_json_data(source, control.clone())
                 .map(BindingOperationOutput::plain),
             OperationKey::AnalysisJson => self
                 .analyze_json_data(source)
@@ -888,7 +933,11 @@ impl BindingEngine {
                     uri.expect("validated document URI presence"),
                 )
                 .map(BindingOperationOutput::plain),
-        }
+        }?;
+        control
+            .checkpoint_at(OperationPhase::Postprocess)
+            .map_err(BindingError::cancelled)?;
+        Ok(output)
     }
 }
 

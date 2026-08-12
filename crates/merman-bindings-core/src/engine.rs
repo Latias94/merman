@@ -3,6 +3,7 @@ use crate::operation::{AdmittedArtifactOperation, BindingOperationOutput};
 use crate::{
     BindingEngineServices, BindingError, BindingRuntimePolicy, RuntimePolicyExposure, common,
 };
+use merman::{OperationControl, OperationPhase};
 #[cfg(feature = "analysis")]
 use merman_analysis::Analyzer;
 use std::sync::{Arc, OnceLock};
@@ -231,13 +232,17 @@ impl BindingEngine {
         configs: BindingOperationConfigs,
         source: &[u8],
         _uri: Option<&[u8]>,
+        control: OperationControl,
     ) -> Result<BindingOperationOutput, BindingError> {
+        control
+            .checkpoint_at(OperationPhase::Admission)
+            .map_err(BindingError::cancelled)?;
         let operation = admitted.operation();
         match operation.key() {
             crate::OperationKey::SemanticJson => configs
                 .semantic
                 .materialize()
-                .parse_json(source)
+                .parse_json_controlled(source, &control)
                 .map(BindingOperationOutput::plain),
             crate::OperationKey::AnalysisJson
             | crate::OperationKey::AnalysisFactsJson
@@ -247,6 +252,9 @@ impl BindingEngine {
                 #[cfg(feature = "analysis")]
                 {
                     let analyzer = Analyzer::with_options(configs.analysis);
+                    control
+                        .checkpoint_at(OperationPhase::Analysis)
+                        .map_err(BindingError::cancelled)?;
                     let data = match operation.key() {
                         crate::OperationKey::AnalysisJson => analyze_json_with(&analyzer, source),
                         crate::OperationKey::AnalysisFactsJson => {
@@ -269,6 +277,9 @@ impl BindingEngine {
                         }
                         _ => unreachable!("analysis projection requires an analysis operation"),
                     }?;
+                    control
+                        .checkpoint_at(OperationPhase::Postprocess)
+                        .map_err(BindingError::cancelled)?;
                     Ok(BindingOperationOutput::plain(data))
                 }
                 #[cfg(not(feature = "analysis"))]
@@ -297,11 +308,20 @@ impl BindingEngine {
             crate::OperationKey::Ascii => {
                 #[cfg(feature = "ascii")]
                 {
+                    control
+                        .checkpoint_at(OperationPhase::Layout)
+                        .map_err(BindingError::cancelled)?;
                     configs
                         .ascii
                         .materialize()
-                        .render_ascii(source)
+                        .render_ascii(source, control.clone())
                         .map(BindingOperationOutput::plain)
+                        .and_then(|output| {
+                            control
+                                .checkpoint_at(OperationPhase::Emit)
+                                .map_err(BindingError::cancelled)?;
+                            Ok(output)
+                        })
                 }
                 #[cfg(not(feature = "ascii"))]
                 {
@@ -317,21 +337,24 @@ impl BindingEngine {
             | crate::OperationKey::LayoutJson => {
                 #[cfg(feature = "svg")]
                 {
+                    control
+                        .checkpoint_at(OperationPhase::Layout)
+                        .map_err(BindingError::cancelled)?;
                     let render = configs.render.materialize(&self.services);
-                    match operation.key() {
-                        crate::OperationKey::Svg => {
-                            render.render_svg(source).map(BindingOperationOutput::plain)
-                        }
+                    let output = match operation.key() {
+                        crate::OperationKey::Svg => render
+                            .render_svg(source, control.clone())
+                            .map(BindingOperationOutput::plain),
                         crate::OperationKey::SvgPlanJson => render
-                            .svg_plan_json(source)
+                            .svg_plan_json(source, control.clone())
                             .map(BindingOperationOutput::plain),
                         crate::OperationKey::LayoutJson => render
-                            .layout_json(source)
+                            .layout_json(source, control.clone())
                             .map(BindingOperationOutput::plain),
                         crate::OperationKey::Png => {
                             #[cfg(feature = "png")]
                             {
-                                render.render_png_output(source)
+                                render.render_png_output(source, control.clone())
                             }
                             #[cfg(not(feature = "png"))]
                             {
@@ -342,7 +365,7 @@ impl BindingEngine {
                         crate::OperationKey::Jpeg => {
                             #[cfg(feature = "jpeg")]
                             {
-                                render.render_jpeg_output(source)
+                                render.render_jpeg_output(source, control.clone())
                             }
                             #[cfg(not(feature = "jpeg"))]
                             {
@@ -353,7 +376,7 @@ impl BindingEngine {
                         crate::OperationKey::Pdf => {
                             #[cfg(feature = "pdf")]
                             {
-                                render.render_pdf_output(source)
+                                render.render_pdf_output(source, control.clone())
                             }
                             #[cfg(not(feature = "pdf"))]
                             {
@@ -362,7 +385,11 @@ impl BindingEngine {
                             }
                         }
                         _ => unreachable!("render projection requires a render operation"),
-                    }
+                    }?;
+                    control
+                        .checkpoint_at(OperationPhase::Postprocess)
+                        .map_err(BindingError::cancelled)?;
+                    Ok(output)
                 }
                 #[cfg(not(feature = "svg"))]
                 {
@@ -410,15 +437,19 @@ impl BindingEngine {
         self.execute_data(crate::BindingOperationRequest::new("svg", source))
     }
 
-    pub(crate) fn render_svg_data(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+    pub(crate) fn render_svg_data(
+        &self,
+        source: &[u8],
+        control: OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "svg")]
         {
-            self.render.render_svg(source)
+            self.render.render_svg(source, control)
         }
 
         #[cfg(not(feature = "svg"))]
         {
-            let _ = source;
+            let _ = (source, control);
             Err(common::feature_required_error("SVG rendering", "svg"))
         }
     }
@@ -437,15 +468,16 @@ impl BindingEngine {
     pub(crate) fn render_png_output(
         &self,
         source: &[u8],
+        control: OperationControl,
     ) -> Result<BindingOperationOutput, BindingError> {
         #[cfg(feature = "png")]
         {
-            self.render.render_png_output(source)
+            self.render.render_png_output(source, control)
         }
 
         #[cfg(not(feature = "png"))]
         {
-            let _ = source;
+            let _ = (source, control);
             Err(common::feature_required_error("PNG rendering", "png"))
         }
     }
@@ -464,15 +496,16 @@ impl BindingEngine {
     pub(crate) fn render_jpeg_output(
         &self,
         source: &[u8],
+        control: OperationControl,
     ) -> Result<BindingOperationOutput, BindingError> {
         #[cfg(feature = "jpeg")]
         {
-            self.render.render_jpeg_output(source)
+            self.render.render_jpeg_output(source, control)
         }
 
         #[cfg(not(feature = "jpeg"))]
         {
-            let _ = source;
+            let _ = (source, control);
             Err(common::feature_required_error("JPEG rendering", "jpeg"))
         }
     }
@@ -491,15 +524,16 @@ impl BindingEngine {
     pub(crate) fn render_pdf_output(
         &self,
         source: &[u8],
+        control: OperationControl,
     ) -> Result<BindingOperationOutput, BindingError> {
         #[cfg(feature = "pdf")]
         {
-            self.render.render_pdf_output(source)
+            self.render.render_pdf_output(source, control)
         }
 
         #[cfg(not(feature = "pdf"))]
         {
-            let _ = source;
+            let _ = (source, control);
             Err(common::feature_required_error("PDF rendering", "pdf"))
         }
     }
@@ -508,15 +542,19 @@ impl BindingEngine {
         self.execute_data(crate::BindingOperationRequest::new("ascii", source))
     }
 
-    pub(crate) fn render_ascii_data(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+    pub(crate) fn render_ascii_data(
+        &self,
+        source: &[u8],
+        control: OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "ascii")]
         {
-            self.ascii.render_ascii(source)
+            self.ascii.render_ascii(source, control)
         }
 
         #[cfg(not(feature = "ascii"))]
         {
-            let _ = source;
+            let _ = (source, control);
             Err(common::feature_required_error("ASCII rendering", "ascii"))
         }
     }
@@ -529,19 +567,31 @@ impl BindingEngine {
         self.semantic.parse_json(source)
     }
 
+    pub(crate) fn parse_json_data_controlled(
+        &self,
+        source: &[u8],
+        control: &OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
+        self.semantic.parse_json_controlled(source, control)
+    }
+
     pub fn layout_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         self.execute_data(crate::BindingOperationRequest::new("layout-json", source))
     }
 
-    pub(crate) fn layout_json_data(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+    pub(crate) fn layout_json_data(
+        &self,
+        source: &[u8],
+        control: OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "svg")]
         {
-            self.render.layout_json(source)
+            self.render.layout_json(source, control)
         }
 
         #[cfg(not(feature = "svg"))]
         {
-            let _ = source;
+            let _ = (source, control);
             Err(common::feature_required_error("layout_json", "svg"))
         }
     }
@@ -550,15 +600,19 @@ impl BindingEngine {
         self.execute_data(crate::BindingOperationRequest::new("svg-plan-json", source))
     }
 
-    pub(crate) fn svg_plan_json_data(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+    pub(crate) fn svg_plan_json_data(
+        &self,
+        source: &[u8],
+        control: OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "svg")]
         {
-            self.render.svg_plan_json(source)
+            self.render.svg_plan_json(source, control)
         }
 
         #[cfg(not(feature = "svg"))]
         {
-            let _ = source;
+            let _ = (source, control);
             Err(common::feature_required_error(
                 "SVG capability planning",
                 "svg",
@@ -863,15 +917,34 @@ struct SemanticOperationEngine {
 
 impl SemanticOperationEngine {
     fn parse_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        self.parse_json_controlled(source, &OperationControl::default())
+    }
+
+    fn parse_json_controlled(
+        &self,
+        source: &[u8],
+        control: &OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
+        control
+            .checkpoint_at(OperationPhase::Parse)
+            .map_err(BindingError::cancelled)?;
         let source = common::source_text(source)?;
         self.resources
             .check_source_bytes(source)
             .map_err(common::input_resource_limit_error)?;
-        let parsed = self
-            .engine
-            .parse_diagram_for_render_model_sync(source, self.parse_options)
-            .map_err(classify_semantic_error)?
-            .ok_or_else(common::no_diagram_error)?;
+        let parsed = match self.engine.parse_diagram_for_render_model_controlled_sync(
+            source,
+            self.parse_options,
+            control,
+        ) {
+            Err(error) => return Err(BindingError::cancelled(error)),
+            Ok(result) => result.map_err(classify_semantic_error)?,
+        }
+        .ok_or_else(common::no_diagram_error)?;
+
+        control
+            .checkpoint_at(OperationPhase::Semantic)
+            .map_err(BindingError::cancelled)?;
 
         self.resources
             .check_render_model(parsed.model())
@@ -881,6 +954,9 @@ impl SemanticOperationEngine {
             .model()
             .compatibility_json(parsed.metadata())
             .map_err(classify_semantic_error)?;
+        control
+            .checkpoint_at(OperationPhase::Postprocess)
+            .map_err(BindingError::cancelled)?;
         serde_json::to_vec(&model).map_err(common::internal_json_error)
     }
 }

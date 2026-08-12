@@ -98,6 +98,27 @@ impl BindingResourceLimitCause {
     }
 }
 
+/// Structured cooperative-cancellation details carried by the additive error payload.
+///
+/// The binding layer projects the core operation error to stable strings so transports do not
+/// need to depend on the non-exhaustive core phase enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct BindingCancellationErrorDetails {
+    pub reason: &'static str,
+    pub phase: &'static str,
+}
+
+impl BindingCancellationErrorDetails {
+    #[must_use]
+    pub const fn from_operation(error: merman::OperationCancelled) -> Self {
+        Self {
+            reason: error.reason.as_str(),
+            phase: error.phase.as_str(),
+        }
+    }
+}
+
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BindingStatus {
@@ -113,6 +134,7 @@ pub enum BindingStatus {
     InternalError = 9,
     ResourceLimitExceeded = 10,
     Busy = 11,
+    Cancelled = 12,
 }
 
 impl BindingStatus {
@@ -134,6 +156,7 @@ impl BindingStatus {
             Self::InternalError => "MERMAN_INTERNAL_ERROR",
             Self::ResourceLimitExceeded => "MERMAN_RESOURCE_LIMIT_EXCEEDED",
             Self::Busy => "MERMAN_BUSY",
+            Self::Cancelled => "MERMAN_CANCELLED",
         }
     }
 }
@@ -144,6 +167,7 @@ pub struct BindingError {
     kind: BindingErrorKind,
     capability_id: Option<&'static str>,
     resource: Option<BindingResourceErrorDetails>,
+    cancellation: Option<BindingCancellationErrorDetails>,
     icon_registry: Option<Box<BindingIconRegistryErrorDetails>>,
     message: Box<str>,
 }
@@ -222,6 +246,7 @@ impl BindingError {
             kind: BindingErrorKind::Generic,
             capability_id: None,
             resource: None,
+            cancellation: None,
             icon_registry: None,
             message: message.into().into_boxed_str(),
         }
@@ -248,6 +273,7 @@ impl BindingError {
             kind: BindingErrorKind::UnknownOperation,
             capability_id: None,
             resource: None,
+            cancellation: None,
             icon_registry: None,
             message: message.into().into_boxed_str(),
         }
@@ -259,6 +285,7 @@ impl BindingError {
             kind: BindingErrorKind::MissingCapability,
             capability_id: Some(capability_id),
             resource: None,
+            cancellation: None,
             icon_registry: None,
             message: message.into().into_boxed_str(),
         }
@@ -276,6 +303,7 @@ impl BindingError {
             kind: BindingErrorKind::ReentrantCall,
             capability_id: None,
             resource: None,
+            cancellation: None,
             icon_registry: None,
             message: message.into().into_boxed_str(),
         }
@@ -287,6 +315,7 @@ impl BindingError {
             kind: BindingErrorKind::Busy,
             capability_id: None,
             resource: None,
+            cancellation: None,
             icon_registry: None,
             message: message.into().into_boxed_str(),
         }
@@ -333,6 +362,7 @@ impl BindingError {
                 max,
                 profile,
             }),
+            cancellation: None,
             icon_registry: None,
             message: message.into().into_boxed_str(),
         }
@@ -385,6 +415,7 @@ impl BindingError {
             kind: BindingErrorKind::Generic,
             capability_id: None,
             resource,
+            cancellation: None,
             icon_registry: Some(Box::new(BindingIconRegistryErrorDetails {
                 kind_id: kind.stable_id(),
                 pack_index: pack_index.and_then(|index| u64::try_from(index).ok()),
@@ -408,6 +439,24 @@ impl BindingError {
 
     pub const fn resource_details(&self) -> Option<BindingResourceErrorDetails> {
         self.resource
+    }
+
+    #[must_use]
+    pub const fn cancellation_details(&self) -> Option<BindingCancellationErrorDetails> {
+        self.cancellation
+    }
+
+    /// Creates the canonical structured failure for cooperative cancellation or deadline expiry.
+    pub fn cancelled(error: merman::OperationCancelled) -> Self {
+        Self {
+            status: BindingStatus::Cancelled,
+            kind: BindingErrorKind::Generic,
+            capability_id: None,
+            resource: None,
+            cancellation: Some(BindingCancellationErrorDetails::from_operation(error)),
+            icon_registry: None,
+            message: error.to_string().into_boxed_str(),
+        }
     }
 
     pub fn icon_registry_details(&self) -> Option<&BindingIconRegistryErrorDetails> {
@@ -470,6 +519,7 @@ impl From<merman::svg::IconRegistryBuildError> for BindingError {
             kind: BindingErrorKind::Generic,
             capability_id: None,
             resource,
+            cancellation: None,
             icon_registry: Some(Box::new(details)),
             message: message.into_boxed_str(),
         }
@@ -512,6 +562,8 @@ struct ErrorDetails<'a, R> {
     resource: Option<R>,
     #[serde(skip_serializing_if = "Option::is_none")]
     icon_registry: Option<&'a BindingIconRegistryErrorDetails>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cancellation: Option<&'a BindingCancellationErrorDetails>,
 }
 
 #[derive(Debug, Serialize)]
@@ -745,6 +797,7 @@ pub fn error_payload_json_bytes(status: BindingStatus, message: &str) -> Vec<u8>
         None,
         None,
         None,
+        None,
         message,
     )
 }
@@ -756,6 +809,7 @@ pub fn binding_error_payload_json_bytes(error: &BindingError) -> Vec<u8> {
         error.capability_id(),
         error.resource.as_ref(),
         error.icon_registry.as_deref(),
+        error.cancellation.as_ref(),
         error.message(),
     )
 }
@@ -771,6 +825,7 @@ pub fn binding_error_js_payload_json_bytes(error: &BindingError) -> Vec<u8> {
             .resource_details()
             .map(BindingResourceErrorDetails::js_safe_json),
         error.icon_registry.as_deref(),
+        error.cancellation.as_ref(),
         error.message(),
     )
 }
@@ -781,6 +836,7 @@ fn error_payload_json_bytes_with_details<R>(
     capability_id: Option<&str>,
     resource: Option<R>,
     icon_registry: Option<&BindingIconRegistryErrorDetails>,
+    cancellation: Option<&BindingCancellationErrorDetails>,
     message: &str,
 ) -> Vec<u8>
 where
@@ -793,10 +849,12 @@ where
         code_name: status.code_name(),
         kind: kind.id(),
         capability_id,
-        details: (resource.is_some() || icon_registry.is_some()).then_some(ErrorDetails {
-            resource,
-            icon_registry,
-        }),
+        details: (resource.is_some() || icon_registry.is_some() || cancellation.is_some())
+            .then_some(ErrorDetails {
+                resource,
+                icon_registry,
+                cancellation,
+            }),
         message,
     };
     serde_json::to_vec(&payload).unwrap_or_else(|_| {
@@ -2330,6 +2388,35 @@ mod tests {
         assert_eq!(json["details"]["resource"]["max"], 800_000);
         assert_eq!(std::mem::size_of::<BindingResourceLimitCause>(), 1);
         assert!(std::mem::size_of::<BindingError>() < 128);
+    }
+
+    #[test]
+    fn cancellation_payload_is_structured_and_disjoint_from_resource_details() {
+        let cancelled = BindingError::cancelled(merman::OperationCancelled {
+            phase: merman::OperationPhase::Layout,
+            reason: merman::CancelReason::DeadlineExceeded,
+        });
+        assert_eq!(cancelled.status(), BindingStatus::Cancelled);
+        assert_eq!(cancelled.status().code(), 12);
+        assert_eq!(cancelled.status().code_name(), "MERMAN_CANCELLED");
+        assert_eq!(cancelled.resource_details(), None);
+        assert_eq!(
+            cancelled.cancellation_details(),
+            Some(BindingCancellationErrorDetails {
+                reason: "deadline_exceeded",
+                phase: "layout",
+            })
+        );
+
+        let json: Value =
+            serde_json::from_slice(&binding_error_payload_json_bytes(&cancelled)).unwrap();
+        assert_eq!(json["code_name"], "MERMAN_CANCELLED");
+        assert_eq!(
+            json["details"]["cancellation"]["reason"],
+            "deadline_exceeded"
+        );
+        assert_eq!(json["details"]["cancellation"]["phase"], "layout");
+        assert!(json["details"].get("resource").is_none());
     }
 
     #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]

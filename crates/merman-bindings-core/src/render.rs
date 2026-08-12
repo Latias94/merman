@@ -23,46 +23,61 @@ pub(crate) struct RenderOperationConfig {
 }
 
 impl CachedRenderEngine {
-    pub(crate) fn render_svg(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+    pub(crate) fn render_svg(
+        &self,
+        source: &[u8],
+        control: merman::OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
-        self.plan.render_svg(source)
+        self.plan.render_svg(source, control)
     }
 
-    pub(crate) fn layout_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+    pub(crate) fn layout_json(
+        &self,
+        source: &[u8],
+        control: merman::OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
-        self.plan.layout_json(source)
+        self.plan.layout_json(source, control)
     }
 
-    pub(crate) fn svg_plan_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+    pub(crate) fn svg_plan_json(
+        &self,
+        source: &[u8],
+        control: merman::OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
-        self.plan.svg_plan_json(source)
+        self.plan.svg_plan_json(source, control)
     }
 
     #[cfg(feature = "png")]
     pub(crate) fn render_png_output(
         &self,
         source: &[u8],
+        control: merman::OperationControl,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let source = source_text(source)?;
-        self.plan.render_png_output(source)
+        self.plan.render_png_output(source, control)
     }
 
     #[cfg(feature = "jpeg")]
     pub(crate) fn render_jpeg_output(
         &self,
         source: &[u8],
+        control: merman::OperationControl,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let source = source_text(source)?;
-        self.plan.render_jpeg_output(source)
+        self.plan.render_jpeg_output(source, control)
     }
 
     #[cfg(feature = "pdf")]
     pub(crate) fn render_pdf_output(
         &self,
         source: &[u8],
+        control: merman::OperationControl,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let source = source_text(source)?;
-        self.plan.render_pdf_output(source)
+        self.plan.render_pdf_output(source, control)
     }
 }
 

@@ -30,6 +30,7 @@ pub(super) struct RenderRequestPlan {
 
 pub(super) struct RenderOperationConfig {
     environment: RenderEnvironment,
+    input_resources: merman::resources::InputResourcePolicy,
     lenient_parsing: bool,
     presentation: Option<Presentation>,
     site_config: Option<merman::MermaidConfig>,
@@ -43,10 +44,14 @@ pub(super) struct RenderOperationConfig {
 }
 
 impl RenderRequestPlan {
-    pub(super) fn render_svg(&self, source: &str) -> Result<Vec<u8>, BindingError> {
+    pub(super) fn render_svg(
+        &self,
+        source: &str,
+        control: OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
         let output = self
             .renderer
-            .render(self.request(source, merman::RenderTarget::Svg(self.svg.clone())))
+            .render(self.request(source, merman::RenderTarget::Svg(self.svg.clone()), control))
             .map_err(|error| classify_render_error(error, self.resource_profile))?;
         let RenderOutput::Svg(svg) = output else {
             return Err(unexpected_render_output("svg"));
@@ -54,10 +59,18 @@ impl RenderRequestPlan {
         svg.map(String::into_bytes).ok_or_else(no_diagram_error)
     }
 
-    pub(super) fn layout_json(&self, source: &str) -> Result<Vec<u8>, BindingError> {
+    pub(super) fn layout_json(
+        &self,
+        source: &str,
+        control: OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
         let output = self
             .renderer
-            .render(self.request(source, merman::RenderTarget::LayoutJson(self.svg.clone())))
+            .render(self.request(
+                source,
+                merman::RenderTarget::LayoutJson(self.svg.clone()),
+                control,
+            ))
             .map_err(|error| classify_render_error(error, self.resource_profile))?;
         let RenderOutput::LayoutJson(layout_json) = output else {
             return Err(unexpected_render_output("layout-json"));
@@ -67,10 +80,18 @@ impl RenderRequestPlan {
         serde_json::to_vec(&layout_json).map_err(internal_json_error)
     }
 
-    pub(super) fn svg_plan_json(&self, source: &str) -> Result<Vec<u8>, BindingError> {
+    pub(super) fn svg_plan_json(
+        &self,
+        source: &str,
+        control: OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
         let output = self
             .renderer
-            .render(self.request(source, merman::RenderTarget::SvgPlan(self.svg.clone())))
+            .render(self.request(
+                source,
+                merman::RenderTarget::SvgPlan(self.svg.clone()),
+                control,
+            ))
             .map_err(|error| classify_render_error(error, self.resource_profile))?;
         let RenderOutput::SvgPlan(plan) = output else {
             return Err(unexpected_render_output("svg-plan"));
@@ -84,6 +105,7 @@ impl RenderRequestPlan {
     pub(super) fn render_png_output(
         &self,
         source: &str,
+        control: OperationControl,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let output = self
             .renderer
@@ -93,6 +115,7 @@ impl RenderRequestPlan {
                     svg: self.svg.clone(),
                     options: self.raster_options.clone(),
                 }),
+                control,
             ))
             .map_err(|error| classify_render_error(error, self.resource_profile))?;
         let RenderOutput::Png(output) = output else {
@@ -109,6 +132,7 @@ impl RenderRequestPlan {
     pub(super) fn render_jpeg_output(
         &self,
         source: &str,
+        control: OperationControl,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let output = self
             .renderer
@@ -118,6 +142,7 @@ impl RenderRequestPlan {
                     svg: self.svg.clone(),
                     options: self.raster_options.clone(),
                 }),
+                control,
             ))
             .map_err(|error| classify_render_error(error, self.resource_profile))?;
         let RenderOutput::Jpeg(output) = output else {
@@ -134,6 +159,7 @@ impl RenderRequestPlan {
     pub(super) fn render_pdf_output(
         &self,
         source: &str,
+        control: OperationControl,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let output = self
             .renderer
@@ -143,6 +169,7 @@ impl RenderRequestPlan {
                     svg: self.svg.clone(),
                     options: self.pdf_options.clone(),
                 }),
+                control,
             ))
             .map_err(|error| classify_render_error(error, self.resource_profile))?;
         let RenderOutput::Pdf(output) = output else {
@@ -155,11 +182,16 @@ impl RenderRequestPlan {
         ))
     }
 
-    fn request<'a>(&self, source: &'a str, target: merman::RenderTarget) -> RenderRequest<'a> {
+    fn request<'a>(
+        &self,
+        source: &'a str,
+        target: merman::RenderTarget,
+        control: OperationControl,
+    ) -> RenderRequest<'a> {
         RenderRequest {
             source,
             target,
-            control: OperationControl::new(),
+            control,
             parse_options: self.parse_options,
             resources: self.input_resources,
         }
@@ -195,12 +227,12 @@ impl RenderOperationConfig {
         runtime_policy: merman::runtime::RuntimePolicy,
         capability_policy: RenderCapabilityPolicy,
     ) -> Result<Self, BindingError> {
+        let render_resources = binding_resource_policy(options.analysis.resources.as_ref())?;
+        let input_resources = *render_resources.input_policy();
         let mut environment = RenderEnvironment::deterministic()
             .with_capability_policy(capability_policy)
             .with_runtime_policy(runtime_policy);
-        environment = environment.with_resource_policy(binding_resource_policy(
-            options.analysis.resources.as_ref(),
-        )?);
+        environment = environment.with_resource_policy(render_resources);
         if let Some(environment_json) = options.environment.as_ref() {
             if let Some(kind) = environment_json.text_measurement.as_deref() {
                 environment = environment.with_text_measurement_policy(
@@ -327,6 +359,7 @@ impl RenderOperationConfig {
 
         Ok(Self {
             environment,
+            input_resources,
             lenient_parsing,
             presentation,
             site_config,
@@ -362,14 +395,16 @@ impl RenderOperationConfig {
             merman::ParseOptions::strict()
         };
 
-        let input_resources = *environment.resource_policy().input_policy();
+        let input_resources = self.input_resources;
         let resource_profile = input_resources.profile();
         let mut engine =
             merman::Engine::new().with_runtime_policy(environment.runtime_policy().clone());
-        let mut presentation_policy = merman::svg::PresentationRenderPolicy::default();
-        if let Some(presentation) = self.presentation {
-            let presentation = presentation.resolve();
-            presentation_policy = presentation.render_policy();
+        let resolved_presentation = self.presentation.map(Presentation::resolve);
+        let presentation_policy = resolved_presentation
+            .as_ref()
+            .map(|presentation| presentation.render_policy())
+            .unwrap_or_default();
+        if let Some(presentation) = resolved_presentation {
             engine = presentation.materialize_engine(engine);
         }
         if let Some(site_config) = self.site_config {
@@ -618,9 +653,7 @@ fn classify_render_error(
     profile: merman::resources::ResourceProfile,
 ) -> BindingError {
     match err {
-        merman::RenderError::Cancelled(err) => {
-            BindingError::new(BindingStatus::RenderError, err.to_string())
-        }
+        merman::RenderError::Cancelled(err) => BindingError::cancelled(err),
         merman::RenderError::Parse(err) => {
             BindingError::new(BindingStatus::ParseError, err.to_string())
         }
