@@ -21,6 +21,7 @@ default = []
 png = [
     "dep:cssparser",
     "dep:data-url",
+    "dep:merman-core",
     "dep:merman-render",
     "dep:quick-xml",
     "dep:resvg",
@@ -33,6 +34,7 @@ jpeg = [
     "dep:cssparser",
     "dep:data-url",
     "dep:image",
+    "dep:merman-core",
     "dep:merman-render",
     "dep:quick-xml",
     "dep:resvg",
@@ -45,6 +47,7 @@ pdf = [
     "dep:data-url",
     "dep:krilla",
     "dep:krilla-svg",
+    "dep:merman-core",
     "dep:merman-render",
     "dep:quick-xml",
     "dep:thiserror",
@@ -57,6 +60,7 @@ data-url = { workspace = true, optional = true }
 image = { workspace = true, optional = true }
 krilla = { workspace = true, optional = true }
 krilla-svg = { workspace = true, optional = true }
+merman-core = { workspace = true, optional = true }
 merman-render = { workspace = true, optional = true }
 quick-xml = { workspace = true, optional = true }
 resvg = { workspace = true, optional = true, features = ["raster-images"] }
@@ -67,5 +71,4 @@ usvg = { workspace = true, optional = true, features = ["system-fonts", "text"] 
 
 [dev-dependencies]
 base64.workspace = true
-merman-core.workspace = true
 png.workspace = true
