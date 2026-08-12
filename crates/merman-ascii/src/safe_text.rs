@@ -244,6 +244,164 @@ mod tests {
     }
 
     #[test]
+    fn document_output_admission_precedes_materialization_for_all_encodings() {
+        let cases = [
+            (AsciiColorMode::Plain, "<&>\"'中\ntail"),
+            (AsciiColorMode::Ansi16, "<&>\"'中\ntail"),
+            (AsciiColorMode::Ansi256, "<&>\"'中\ntail"),
+            (AsciiColorMode::TrueColor, "<&>\"'中\ntail"),
+            (AsciiColorMode::Html, "&lt;&amp;&gt;&quot;&#39;中\ntail"),
+        ];
+
+        for (color_mode, expected) in cases {
+            let exact = options_with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len())
+                .with_color_mode(color_mode);
+            let exact_materialized = Cell::new(false);
+            let mut document = BudgetedTextDocument::new(&exact);
+            document
+                .push_line("<&>\"'中")
+                .expect("the first row should enter the document");
+            document
+                .push_line("tail")
+                .expect("the second row should enter the document");
+            let rendered = document
+                .finish_with_probe(&exact, &exact_materialized)
+                .expect("the exact encoded output should be admitted");
+
+            assert!(exact_materialized.get(), "mode={color_mode:?}");
+            assert_eq!(rendered, expected, "mode={color_mode:?}");
+
+            let below =
+                options_with_limit(AsciiResourceLimitId::MaxOutputBytes, expected.len() - 1)
+                    .with_color_mode(color_mode);
+            let below_retained = std::rc::Rc::new(Cell::new(0));
+            let mut document = BudgetedTextDocument::new(&below);
+            document.set_retain_probe(std::rc::Rc::clone(&below_retained));
+            document
+                .push_line("<&>\"'中")
+                .expect("the first row still fits below the complete document boundary");
+            let retained_before_second_row = below_retained.get();
+            let error = document
+                .push_line("tail")
+                .expect_err("N-1 must reject before retaining the second row");
+
+            assert_eq!(
+                below_retained.get(),
+                retained_before_second_row,
+                "mode={color_mode:?}",
+            );
+            assert_limit_error(
+                error,
+                AsciiResourceLimitId::MaxOutputBytes,
+                expected.len(),
+                expected.len() - 1,
+            );
+        }
+    }
+
+    #[test]
+    fn line_fragment_output_admission_precedes_any_retained_append() {
+        let cases = [
+            (AsciiColorMode::Plain, "abc", 3),
+            (AsciiColorMode::Plain, "\u{1b}", "\\u{1B}".len()),
+            (AsciiColorMode::Html, "<", "&lt;".len()),
+        ];
+
+        for (color_mode, raw, encoded_len) in cases {
+            let options = options_with_limit(AsciiResourceLimitId::MaxOutputBytes, encoded_len - 1)
+                .with_color_mode(color_mode);
+            let retained = std::rc::Rc::new(Cell::new(0));
+            let mut document = BudgetedTextDocument::new(&options);
+            document.set_retain_probe(std::rc::Rc::clone(&retained));
+
+            let error = document
+                .push_line(raw)
+                .expect_err("N-1 must reject the complete normalized fragment before append");
+
+            assert_eq!(retained.get(), 0, "mode={color_mode:?}, raw={raw:?}");
+            assert_limit_error(
+                error,
+                AsciiResourceLimitId::MaxOutputBytes,
+                encoded_len,
+                encoded_len - 1,
+            );
+        }
+    }
+
+    #[test]
+    fn wrapped_output_admission_covers_prefix_word_space_and_continuation_prefix() {
+        let prefix_options = options_with_limit(AsciiResourceLimitId::MaxOutputBytes, 1);
+        let prefix_retained = std::rc::Rc::new(Cell::new(0));
+        let prefix_producer_visited = Cell::new(false);
+        let mut document = BudgetedTextDocument::new(&prefix_options);
+        document.set_retain_probe(std::rc::Rc::clone(&prefix_retained));
+        let error = document
+            .push_wrapped_prefixed_line_with("- ", "  ", 80, |line| {
+                prefix_producer_visited.set(true);
+                line.push_str("a")
+            })
+            .expect_err("N-1 prefix bytes must reject before starting the producer");
+        assert!(!prefix_producer_visited.get());
+        assert_eq!(prefix_retained.get(), 0);
+        assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 2, 1);
+
+        let word_options = options_with_limit(AsciiResourceLimitId::MaxOutputBytes, 4);
+        let word_retained = std::rc::Rc::new(Cell::new(0));
+        let mut document = BudgetedTextDocument::new(&word_options);
+        document.set_retain_probe(std::rc::Rc::clone(&word_retained));
+        let error = document
+            .push_wrapped_prefixed_line_with("- ", "  ", 80, |line| line.push_str("abc"))
+            .expect_err("N-1 word bytes must reject before retaining the final grapheme");
+        assert_eq!(word_retained.get(), 2);
+        assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 5, 4);
+
+        let space_options = options_with_limit(AsciiResourceLimitId::MaxOutputBytes, 2);
+        let space_retained = std::rc::Rc::new(Cell::new(0));
+        let mut document = BudgetedTextDocument::new(&space_options);
+        document.set_retain_probe(std::rc::Rc::clone(&space_retained));
+        let error = document
+            .push_wrapped_prefixed_line_with("", "", 80, |line| line.push_str("a b"))
+            .expect_err("N-1 synthesized space must reject before entering the row");
+        assert_eq!(space_retained.get(), 2);
+        assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 3, 2);
+
+        let continuation_options = options_with_limit(AsciiResourceLimitId::MaxOutputBytes, 4);
+        let continuation_retained = std::rc::Rc::new(Cell::new(0));
+        let mut document = BudgetedTextDocument::new(&continuation_options);
+        document.set_retain_probe(std::rc::Rc::clone(&continuation_retained));
+        let error = document
+            .push_wrapped_prefixed_line_with("", ">>", 1, |line| line.push_str("ab"))
+            .expect_err("N-1 continuation prefix must reject before prefix insertion");
+        // The next word is retained in the bounded word buffer before wrapping decides that it
+        // needs a continuation row. The continuation prefix itself must not be inserted.
+        assert_eq!(continuation_retained.get(), 2);
+        assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 5, 4);
+    }
+
+    #[test]
+    fn quoted_output_admission_precedes_rejected_fragment_materialization() {
+        let line_options = options_with_limit(AsciiResourceLimitId::MaxOutputBytes, 2);
+        let line_retained = std::rc::Rc::new(Cell::new(0));
+        let mut document = BudgetedTextDocument::new(&line_options);
+        document.set_retain_probe(std::rc::Rc::clone(&line_retained));
+        let error = document
+            .push_line_with(|line| line.push_quoted_text("a"))
+            .expect_err("N-1 closing quote must reject before append");
+        assert_eq!(line_retained.get(), 2);
+        assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 3, 2);
+
+        let wrapped_options = options_with_limit(AsciiResourceLimitId::MaxOutputBytes, 3);
+        let wrapped_retained = std::rc::Rc::new(Cell::new(0));
+        let mut document = BudgetedTextDocument::new(&wrapped_options);
+        document.set_retain_probe(std::rc::Rc::clone(&wrapped_retained));
+        let error = document
+            .push_wrapped_prefixed_line_with("", "", 80, |line| line.push_quoted_text("\""))
+            .expect_err("N-1 wrapped closing quote must reject before normalization");
+        assert_eq!(wrapped_retained.get(), 2);
+        assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 4, 3);
+    }
+
+    #[test]
     fn structured_rows_debit_layout_work_at_exact_boundary() {
         let lines = vec!["one".to_string(), "two".to_string()];
         let exact = options_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 8);

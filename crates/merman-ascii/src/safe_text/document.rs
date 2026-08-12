@@ -1,10 +1,11 @@
-use super::encode::encode_budgeted_lines;
+use super::encode::encode_budgeted_lines_with_expected;
 use super::normalization::{
     NormalizedSegment, NormalizedSegmentKind, try_append_normalized_segment, visible_escape,
     visible_escape_len, visit_normalized_segments,
 };
 use super::width::{MeasuredGrapheme, grapheme_display_width, measured_graphemes};
 use crate::Result;
+use crate::color::AsciiColorMode;
 use crate::error::AsciiError;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
@@ -31,6 +32,12 @@ pub(crate) struct BudgetedTextDocument {
     lines: Vec<String>,
     resources: ResourceContext,
     width_profile: TerminalWidthProfile,
+    color_mode: AsciiColorMode,
+    // Debit bytes only when new semantic text enters retained storage. Buffer-to-buffer moves keep
+    // ownership of their original debit; line separators and prefixes are admitted separately.
+    encoded_bytes_used: usize,
+    #[cfg(test)]
+    retain_probe: Option<std::rc::Rc<std::cell::Cell<usize>>>,
 }
 
 /// Streams one structured-text row from borrowed fragments.
@@ -57,6 +64,7 @@ pub(crate) struct BudgetedWrappedText<'document, 'prefix> {
     current: String,
     current_width: usize,
     emitted: bool,
+    row_prefix_admitted: bool,
 }
 
 #[cfg(test)]
@@ -78,11 +86,20 @@ impl BudgetedTextDocument {
             lines: Vec::new(),
             resources,
             width_profile: options.terminal_width_profile,
+            color_mode: options.color_mode,
+            encoded_bytes_used: 0,
+            #[cfg(test)]
+            retain_probe: None,
         }
     }
 
     pub(crate) fn resources_mut(&mut self) -> &mut ResourceContext {
         &mut self.resources
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_retain_probe(&mut self, probe: std::rc::Rc<std::cell::Cell<usize>>) {
+        self.retain_probe = Some(probe);
     }
 
     #[cfg(test)]
@@ -118,6 +135,7 @@ impl BudgetedTextDocument {
         render: impl FnOnce(&mut BudgetedTextLine<'_>) -> Result<()>,
     ) -> Result<()> {
         self.resources.charge_layout_work(1)?;
+        self.admit_output_line_prefix("")?;
         let mut writer = BudgetedTextLine {
             document: self,
             current: String::new(),
@@ -158,6 +176,7 @@ impl BudgetedTextDocument {
             max_width.max(1)
         };
         self.resources.charge_layout_work(1)?;
+        self.admit_output_line_prefix(first_prefix)?;
         let mut writer = BudgetedWrappedText {
             document: self,
             first_prefix,
@@ -169,6 +188,7 @@ impl BudgetedTextDocument {
             current: String::new(),
             current_width: 0,
             emitted: false,
+            row_prefix_admitted: true,
         };
         render(&mut writer)?;
         writer.finish()
@@ -176,9 +196,35 @@ impl BudgetedTextDocument {
 
     pub(crate) fn finish(self, options: &AsciiRenderOptions) -> Result<String> {
         debug_assert_eq!(self.width_profile, options.terminal_width_profile);
+        debug_assert_eq!(self.color_mode, options.color_mode);
         debug_assert_eq!(self.resources.policy(), options.resources);
         let policy = self.resources.policy();
-        encode_budgeted_lines(self.lines, options.color_mode, policy)
+        encode_budgeted_lines_with_expected(
+            self.lines,
+            options.color_mode,
+            policy,
+            self.encoded_bytes_used,
+            || {},
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn finish_with_probe(
+        self,
+        options: &AsciiRenderOptions,
+        materialized: &std::cell::Cell<bool>,
+    ) -> Result<String> {
+        debug_assert_eq!(self.width_profile, options.terminal_width_profile);
+        debug_assert_eq!(self.color_mode, options.color_mode);
+        debug_assert_eq!(self.resources.policy(), options.resources);
+        let policy = self.resources.policy();
+        encode_budgeted_lines_with_expected(
+            self.lines,
+            options.color_mode,
+            policy,
+            self.encoded_bytes_used,
+            || materialized.set(true),
+        )
     }
 
     pub(crate) fn preflight_text_work(&mut self, value: &str) -> Result<()> {
@@ -284,7 +330,7 @@ impl BudgetedTextDocument {
         Ok(())
     }
 
-    fn push_normalized_fragments(&mut self, fragments: &[&str]) -> Result<()> {
+    fn push_prebudgeted_normalized_fragments(&mut self, fragments: &[&str]) -> Result<()> {
         self.resources.charge_layout_work(1)?;
         let mut bytes = 0usize;
         for fragment in fragments {
@@ -304,16 +350,85 @@ impl BudgetedTextDocument {
         let mut line = String::new();
         line.try_reserve_exact(bytes)
             .map_err(|_| document_allocation_error())?;
+        self.note_retain_materialization();
         for fragment in fragments {
             line.push_str(fragment);
         }
         self.lines.push(line);
         Ok(())
     }
+
+    fn admit_output_line_prefix(&mut self, prefix: &str) -> Result<()> {
+        let separator = usize::from(!self.lines.is_empty());
+        let prefix_bytes =
+            super::encode::encoded_text_len(prefix, self.color_mode, self.resources.policy())?;
+        let additional = separator.checked_add(prefix_bytes).ok_or_else(|| {
+            self.resources
+                .policy()
+                .overflow(AsciiResourceLimitId::MaxOutputBytes)
+        })?;
+        self.admit_output_bytes(additional)
+    }
+
+    fn admit_output_text(&mut self, value: &str) -> Result<()> {
+        let additional =
+            super::encode::encoded_text_len(value, self.color_mode, self.resources.policy())?;
+        self.admit_output_bytes(additional)
+    }
+
+    fn admit_normalized_line_fragment(&mut self, value: &str) -> Result<()> {
+        let mut additional = 0usize;
+        visit_normalized_segments(value, |segment| {
+            let segment_bytes = match segment.kind {
+                NormalizedSegmentKind::LineBreak => 1,
+                _ => {
+                    let mut buffer = [0u8; 10];
+                    super::encode::encoded_text_len(
+                        segment.text(&mut buffer),
+                        self.color_mode,
+                        self.resources.policy(),
+                    )?
+                }
+            };
+            additional = additional.checked_add(segment_bytes).ok_or_else(|| {
+                self.resources
+                    .policy()
+                    .overflow(AsciiResourceLimitId::MaxOutputBytes)
+            })?;
+            Ok::<(), AsciiError>(())
+        })?;
+        self.admit_output_bytes(additional)
+    }
+
+    fn admit_output_bytes(&mut self, additional: usize) -> Result<()> {
+        let actual = self
+            .encoded_bytes_used
+            .checked_add(additional)
+            .ok_or_else(|| {
+                self.resources
+                    .policy()
+                    .overflow(AsciiResourceLimitId::MaxOutputBytes)
+            })?;
+        self.resources
+            .check(AsciiResourceLimitId::MaxOutputBytes, actual)?;
+        self.encoded_bytes_used = actual;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn note_retain_materialization(&self) {
+        if let Some(probe) = &self.retain_probe {
+            probe.set(probe.get() + 1);
+        }
+    }
+
+    #[cfg(not(test))]
+    fn note_retain_materialization(&self) {}
 }
 
 impl BudgetedTextLine<'_> {
     pub(crate) fn push_str(&mut self, value: &str) -> Result<()> {
+        self.document.admit_normalized_line_fragment(value)?;
         visit_normalized_segments(value, |segment| {
             self.document.budget_layout_segment(segment)?;
             match segment.kind {
@@ -324,6 +439,7 @@ impl BudgetedTextLine<'_> {
                 }
                 _ => {
                     self.document.budget_document_segment(segment)?;
+                    self.document.note_retain_materialization();
                     try_append_normalized_segment(
                         &mut self.current,
                         segment,
@@ -447,6 +563,33 @@ impl BudgetedWrappedText<'_, '_> {
             .resources
             .check(AsciiResourceLimitId::MaxDocumentCells, total_cells)?;
 
+        self.prepare_atomic_word_fragment(width)?;
+        self.admit_row_before_new_content()?;
+
+        let mut encoded_bytes = 0usize;
+        visit_normalized_segments(value, |segment| {
+            let mut buffer = [0u8; 10];
+            let text = match segment.kind {
+                NormalizedSegmentKind::LineBreak => "\\n",
+                _ => segment.text(&mut buffer),
+            };
+            encoded_bytes = encoded_bytes
+                .checked_add(super::encode::encoded_text_len(
+                    text,
+                    self.document.color_mode,
+                    self.document.resources.policy(),
+                )?)
+                .ok_or_else(|| {
+                    self.document
+                        .resources
+                        .policy()
+                        .overflow(AsciiResourceLimitId::MaxOutputBytes)
+                })?;
+            Ok::<(), AsciiError>(())
+        })?;
+        self.document.admit_output_bytes(encoded_bytes)?;
+        self.document.note_retain_materialization();
+
         let mut normalized = String::new();
         normalized
             .try_reserve(bytes)
@@ -462,7 +605,7 @@ impl BudgetedWrappedText<'_, '_> {
         })?;
 
         self.document.resources.charge_document_cells(width)?;
-        self.push_atomic_word_fragment_with_width(&normalized, width)
+        self.push_prepared_atomic_word_fragment_with_width(&normalized, width)
     }
 
     fn push_normalized_text(&mut self, value: &str) -> Result<()> {
@@ -486,6 +629,14 @@ impl BudgetedWrappedText<'_, '_> {
     }
 
     fn push_atomic_word_fragment_with_width(&mut self, value: &str, width: usize) -> Result<()> {
+        self.prepare_atomic_word_fragment(width)?;
+        self.admit_row_before_new_content()?;
+        self.document.admit_output_text(value)?;
+        self.document.note_retain_materialization();
+        self.push_prepared_atomic_word_fragment_with_width(value, width)
+    }
+
+    fn prepare_atomic_word_fragment(&mut self, width: usize) -> Result<()> {
         let prospective = self.word_width.checked_add(width).ok_or_else(|| {
             self.document
                 .resources
@@ -508,7 +659,14 @@ impl BudgetedWrappedText<'_, '_> {
             }
             self.long_word = true;
         }
+        Ok(())
+    }
 
+    fn push_prepared_atomic_word_fragment_with_width(
+        &mut self,
+        value: &str,
+        width: usize,
+    ) -> Result<()> {
         try_push_document_str(&mut self.word, value)?;
         self.word_width = self.word_width.checked_add(width).ok_or_else(|| {
             self.document
@@ -546,6 +704,9 @@ impl BudgetedWrappedText<'_, '_> {
             self.emit_word_chunk()?;
         }
 
+        self.admit_row_before_new_content()?;
+        self.document.admit_output_text(grapheme.text())?;
+        self.document.note_retain_materialization();
         try_push_document_str(&mut self.word, grapheme.text())?;
         self.word_width = self
             .word_width
@@ -589,6 +750,8 @@ impl BudgetedWrappedText<'_, '_> {
         }
         if !self.current.is_empty() {
             self.document.resources.charge_document_cells(1)?;
+            self.document.admit_output_text(" ")?;
+            self.document.note_retain_materialization();
             try_push_document_str(&mut self.current, " ")?;
             self.current_width = self.current_width.checked_add(1).ok_or_else(|| {
                 self.document
@@ -649,6 +812,10 @@ impl BudgetedWrappedText<'_, '_> {
                     self.document.width_profile,
                 ))?;
         }
+        if !self.row_prefix_admitted {
+            self.document.admit_output_line_prefix(prefix)?;
+            self.row_prefix_admitted = true;
+        }
         self.document
             .lines
             .try_reserve(1)
@@ -656,9 +823,24 @@ impl BudgetedWrappedText<'_, '_> {
         content
             .try_reserve(prefix.len())
             .map_err(|_| document_allocation_error())?;
+        self.document.note_retain_materialization();
         content.insert_str(0, prefix);
         self.document.lines.push(content);
         self.emitted = true;
+        self.row_prefix_admitted = false;
+        Ok(())
+    }
+
+    fn admit_row_before_new_content(&mut self) -> Result<()> {
+        if self.emitted
+            && !self.row_prefix_admitted
+            && self.word.is_empty()
+            && self.current.is_empty()
+        {
+            self.document
+                .admit_output_line_prefix(self.continuation_prefix)?;
+            self.row_prefix_admitted = true;
+        }
         Ok(())
     }
 
@@ -671,7 +853,7 @@ impl BudgetedWrappedText<'_, '_> {
         self.finish_paragraph()?;
         if !self.emitted {
             self.document
-                .push_normalized_fragments(&[self.first_prefix])?;
+                .push_prebudgeted_normalized_fragments(&[self.first_prefix])?;
         }
         Ok(())
     }
