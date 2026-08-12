@@ -308,6 +308,7 @@ pub enum ReferenceDiagramFamily {
     ClassDiagram,
     ErDiagram,
     Flowchart,
+    Sequence,
     StateDiagram,
 }
 

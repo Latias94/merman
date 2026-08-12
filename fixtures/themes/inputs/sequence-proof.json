@@ -1,0 +1,17 @@
+{
+  "themeInputVersion": 2,
+  "fixtureId": "fixture-sequence-proof",
+  "tokens": {
+    "background": "#ffffff",
+    "surface": "#f8fafc",
+    "primary": "#2563eb",
+    "text": "#0f172a"
+  },
+  "typography": null,
+  "canvas": [],
+  "blendMode": null,
+  "nodeStyle": null,
+  "semanticRules": [],
+  "svgEffects": [],
+  "residualMechanisms": []
+}

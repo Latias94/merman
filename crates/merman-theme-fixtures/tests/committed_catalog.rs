@@ -25,7 +25,7 @@ fn committed_catalog_is_hash_bound_licensed_and_complete() {
 
     assert_eq!(catalog.sources().len(), 3);
     assert_eq!(catalog.assets().len(), 2);
-    assert_eq!(catalog.fixtures().len(), 17);
+    assert_eq!(catalog.fixtures().len(), 19);
     assert_eq!(catalog.themes().len(), MODERN_MERMAID_REFERENCE_THEME_COUNT);
     assert!(
         catalog
@@ -72,6 +72,64 @@ fn committed_catalog_is_hash_bound_licensed_and_complete() {
                 .source_text(fixture.id())
                 .expect("read validated fixture source")
                 .is_empty()
+        );
+    }
+}
+
+#[test]
+fn sequence_proof_fixture_registers_the_closed_family_and_source_inventory() {
+    let catalog = ThemeFixtureCatalog::load(themes_root()).expect("load committed theme corpus");
+    let fixture = catalog
+        .fixture("fixture-sequence-proof")
+        .expect("Sequence proof fixture");
+
+    assert_eq!(fixture.source_family(), ReferenceDiagramFamily::Sequence);
+    assert_eq!(
+        fixture.expectation().evidence_kind(),
+        FixtureEvidenceKind::TypedCapability
+    );
+    assert!(fixture.source_reference_mechanisms().is_empty());
+    assert_eq!(
+        fixture
+            .theme_input()
+            .expect("Sequence typed theme input")
+            .mechanisms(),
+        *fixture.expectation().reference_mechanisms()
+    );
+
+    let visible_text = fixture
+        .expectation()
+        .visible_text()
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        visible_text,
+        BTreeSet::from([
+            "Complete",
+            "Poll status",
+            "Processing",
+            "Request accepted",
+            "Service",
+            "Submit request",
+            "User",
+        ])
+    );
+
+    let source = catalog
+        .source_text(fixture.id())
+        .expect("read validated Sequence source");
+    for construct in [
+        "actor User",
+        "User->>Service: Submit request",
+        "Note over User,Service: Request accepted",
+        "activate Service",
+        "loop Poll status",
+        "deactivate Service",
+    ] {
+        assert!(
+            source.contains(construct),
+            "missing Sequence source construct `{construct}`"
         );
     }
 }

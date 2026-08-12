@@ -28,6 +28,146 @@ pub(crate) struct ParsedFixtureSource {
     pub(crate) style_evidence_ids: BTreeSet<String>,
 }
 
+impl ReferenceThemeTokens {
+    pub fn background(&self) -> &str {
+        &self.background
+    }
+
+    pub fn surface(&self) -> &str {
+        &self.surface
+    }
+
+    pub fn primary(&self) -> &str {
+        &self.primary
+    }
+
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+}
+
+impl ReferenceTypographyInput {
+    pub fn font_stack(&self) -> Option<&ReferenceFontStack> {
+        self.font_stack.as_ref()
+    }
+
+    pub const fn letter_spacing_milli_em(&self) -> Option<i16> {
+        self.letter_spacing_milli_em
+    }
+
+    pub const fn text_transform(&self) -> Option<crate::ReferenceTextTransform> {
+        self.text_transform
+    }
+}
+
+impl ReferenceGradientStop {
+    pub const fn offset_percent(&self) -> u8 {
+        self.offset_percent
+    }
+
+    pub fn color(&self) -> &str {
+        &self.color
+    }
+}
+
+impl ReferenceBorderInput {
+    pub fn color(&self) -> &str {
+        &self.color
+    }
+
+    pub const fn width_px(&self) -> u16 {
+        self.width_px
+    }
+}
+
+impl ReferenceShadowInput {
+    pub const fn offset_x_px(&self) -> i16 {
+        self.offset_x_px
+    }
+
+    pub const fn offset_y_px(&self) -> i16 {
+        self.offset_y_px
+    }
+
+    pub const fn blur_px(&self) -> u16 {
+        self.blur_px
+    }
+
+    pub const fn spread_px(&self) -> u16 {
+        self.spread_px
+    }
+
+    pub fn color(&self) -> &str {
+        &self.color
+    }
+}
+
+impl ReferenceNodeStyleInput {
+    pub const fn border(&self) -> Option<&ReferenceBorderInput> {
+        self.border.as_ref()
+    }
+
+    pub fn dash_pattern(&self) -> &[u16] {
+        &self.dash_pattern
+    }
+
+    pub const fn corner_radius_px(&self) -> Option<u16> {
+        self.corner_radius_px
+    }
+
+    pub const fn shadow(&self) -> Option<&ReferenceShadowInput> {
+        self.shadow.as_ref()
+    }
+}
+
+impl ReferenceSemanticStylePatch {
+    pub fn fill(&self) -> Option<&str> {
+        self.fill.as_deref()
+    }
+
+    pub const fn border(&self) -> Option<&ReferenceBorderInput> {
+        self.border.as_ref()
+    }
+
+    pub const fn corner_radius_px(&self) -> Option<u16> {
+        self.corner_radius_px
+    }
+
+    pub const fn shadow(&self) -> Option<&ReferenceShadowInput> {
+        self.shadow.as_ref()
+    }
+
+    pub fn text_color(&self) -> Option<&str> {
+        self.text_color.as_deref()
+    }
+
+    pub const fn font_weight(&self) -> Option<u16> {
+        self.font_weight
+    }
+}
+
+impl ReferenceThemeInput {
+    pub const fn tokens(&self) -> Option<&ReferenceThemeTokens> {
+        self.tokens.as_ref()
+    }
+
+    pub const fn typography(&self) -> Option<&ReferenceTypographyInput> {
+        self.typography.as_ref()
+    }
+
+    pub fn canvas(&self) -> &[ReferenceCanvasLayer] {
+        &self.canvas
+    }
+
+    pub const fn node_style(&self) -> Option<&ReferenceNodeStyleInput> {
+        self.node_style.as_ref()
+    }
+
+    pub fn semantic_rules(&self) -> &[ReferenceSemanticRule] {
+        &self.semantic_rules
+    }
+}
+
 pub(crate) fn parse_fixture_source(
     fixture_id: &str,
     source: &str,
@@ -102,6 +242,10 @@ pub(crate) fn parse_fixture_source(
             collect_er_visible_text(model, &mut visible);
             collect_er_style_evidence(model, &mut style_evidence_ids);
             ReferenceDiagramFamily::ErDiagram
+        }
+        RenderSemanticModel::Sequence(model) => {
+            collect_sequence_visible_text(model, &mut visible);
+            ReferenceDiagramFamily::Sequence
         }
         _ => {
             let value = parsed.metadata().diagram_type.as_str();
@@ -616,6 +760,53 @@ fn collect_er_visible_text(
     for relationship in &model.relationships {
         insert_er_visible_text(visible, &relationship.role_a);
     }
+}
+
+fn collect_sequence_visible_text(
+    model: &merman_core::diagrams::sequence::SequenceDiagramRenderModel,
+    visible: &mut BTreeSet<String>,
+) {
+    if let Some(title) = &model.title {
+        insert_visible_text(visible, title);
+    }
+    if model.actor_order.is_empty() {
+        for (actor_id, actor) in &model.actors {
+            insert_sequence_actor_visible_text(visible, actor_id, actor);
+        }
+    } else {
+        for actor_id in &model.actor_order {
+            let Some(actor) = model.actors.get(actor_id) else {
+                continue;
+            };
+            insert_sequence_actor_visible_text(visible, actor_id, actor);
+        }
+    }
+    for sequence_box in &model.boxes {
+        if let Some(name) = &sequence_box.name {
+            insert_visible_text(visible, name);
+        }
+    }
+    for message in &model.messages {
+        insert_visible_text(visible, message.message_text());
+    }
+    for note in &model.notes {
+        insert_visible_text(visible, &note.message);
+    }
+}
+
+fn insert_sequence_actor_visible_text(
+    visible: &mut BTreeSet<String>,
+    actor_id: &str,
+    actor: &merman_core::diagrams::sequence::SequenceActor,
+) {
+    let label = if !actor.description.trim().is_empty() {
+        &actor.description
+    } else if !actor.name.trim().is_empty() {
+        &actor.name
+    } else {
+        actor_id
+    };
+    insert_visible_text(visible, label);
 }
 
 fn insert_er_visible_text(visible: &mut BTreeSet<String>, source: &str) {

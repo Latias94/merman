@@ -293,6 +293,7 @@ const fn diagram_family_code(family: ReferenceDiagramFamily) -> u8 {
         ReferenceDiagramFamily::ErDiagram => 1,
         ReferenceDiagramFamily::Flowchart => 2,
         ReferenceDiagramFamily::StateDiagram => 3,
+        ReferenceDiagramFamily::Sequence => 4,
     }
 }
 

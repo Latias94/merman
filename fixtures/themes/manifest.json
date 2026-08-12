@@ -203,6 +203,35 @@
       "assetIds": []
     },
     {
+      "id": "fixture-c6-brutalist-state",
+      "sourcePath": "sources/c6-brutalist-state.mmd",
+      "sourceSha256": "e857c3b89942d25e5fcf1170b0e61b44add609e66abc0736ffc2373b6d9e00be",
+      "expectationPath": "expectations/c6-brutalist-state.json",
+      "expectationSha256": "86103f4fb27cbc221263076b8bbc47992f3fbe161f0da26525d8fb6c34411590",
+      "themeInputPath": "inputs/c6-brutalist-state.json",
+      "themeInputSha256": "12181d4b64a69fd6fddc798b61c89277b13f24dc74083375a53a9d0fb3793548",
+      "evidenceSourceIds": [
+        "source-excalidraw",
+        "source-modern-mermaid"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    {
+      "id": "fixture-sequence-proof",
+      "sourcePath": "sources/sequence-proof.mmd",
+      "sourceSha256": "dbac54565c93b5e2d733b350e4cde7ecb7b464a79daf28d1ed6a0dc51b367d91",
+      "expectationPath": "expectations/sequence-proof.json",
+      "expectationSha256": "777c6dada6fcd1c8cd4fd54b2fc6920c80625c6a6f0bdb4fd79ddfc3043e676a",
+      "themeInputPath": "inputs/sequence-proof.json",
+      "themeInputSha256": "16d1a40ee83778ccfac77b65af56d3c2e9f7bc4d65917f37cb871eec89bf5733",
+      "evidenceSourceIds": [
+        "source-modern-mermaid"
+      ],
+      "assetIds": []
+    },
+    {
       "id": "fixture-mixed-script-typography",
       "sourcePath": "sources/mixed-script-typography.mmd",
       "sourceSha256": "201786b42c1e09c7357c60e0a7ae0854f2d746a0be659b4d9c1fa6b508a2d9df",
@@ -633,6 +662,7 @@
       "referenceName": "brutalist",
       "sourceId": "source-modern-mermaid",
       "fixtureIds": [
+        "fixture-c6-brutalist-state",
         "fixture-layered-canvas",
         "fixture-mixed-script-typography",
         "fixture-ordinal-palette",
