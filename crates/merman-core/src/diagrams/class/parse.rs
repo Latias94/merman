@@ -2,7 +2,7 @@ use crate::models::class_diagram as class_typed;
 use crate::{
     EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
     EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
-    ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
+    OperationControl, OperationControlResult, ParseMetadata, Result, SourceSpan,
     editor::{
         editor_keyword_value_span, format_lalrpop_parse_error, lalrpop_parse_diagnostic,
         lalrpop_recovery_span,
@@ -51,7 +51,7 @@ struct ClassSyntax {
 }
 
 impl ClassSyntax {
-    fn lex(code: &str, control: &ParseControl) -> ParseControlResult<Self> {
+    fn lex(code: &str, control: &OperationControl) -> OperationControlResult<Self> {
         #[cfg(test)]
         CLASS_SYNTAX_CONSTRUCTION_COUNT.set(CLASS_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
@@ -79,8 +79,8 @@ impl ClassSyntax {
     fn into_editor_facts_and_actions(
         self,
         code: &str,
-        control: &ParseControl,
-    ) -> ParseControlResult<(
+        control: &OperationControl,
+    ) -> OperationControlResult<(
         EditorSemanticFacts,
         std::result::Result<Vec<super::Action>, ClassGrammarError>,
     )> {
@@ -174,8 +174,9 @@ impl ClassSemanticFailure {
 fn construct_class_semantic_source<'a>(
     code: &str,
     meta: &'a ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<ClassSemanticSource<'a>, Box<ClassSemanticFailure>>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<ClassSemanticSource<'a>, Box<ClassSemanticFailure>>>
+{
     let syntax = ClassSyntax::lex(code, control)?;
     let (editor_facts, actions) = syntax.into_editor_facts_and_actions(code, control)?;
     let actions = match actions {
@@ -209,7 +210,7 @@ fn parse_class_semantic_source<'a>(
     code: &str,
     meta: &'a ParseMetadata,
 ) -> Result<ClassSemanticSource<'a>> {
-    construct_class_semantic_source(code, meta, &ParseControl::new())
+    construct_class_semantic_source(code, meta, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
         .map_err(|failure| (*failure).into_parse_error(meta, code.len()))
 }
@@ -230,8 +231,8 @@ pub(crate) fn parse_class_typed(
 pub(crate) fn parse_class_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_class_semantic_source(code, meta, control)?;
     let parsed = crate::family::CombinedSemanticParse::from_construction(
         construction,
@@ -246,8 +247,8 @@ fn collect_class_editor_facts_from_events(
     events: &[ClassLexicalEvent],
     code: &str,
     lexemes: crate::editor::EditorLexemeBatchResult,
-    control: &ParseControl,
-) -> ParseControlResult<EditorSemanticFacts> {
+    control: &OperationControl,
+) -> OperationControlResult<EditorSemanticFacts> {
     let mut facts =
         EditorSemanticFacts::new().with_completion_vocabulary(CLASS_COMPLETION_VOCABULARY);
     facts.replace_family_lexemes(lexemes);

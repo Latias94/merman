@@ -1,7 +1,7 @@
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifiers,
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, ParseControl,
-    ParseControlResult, SourceSpan, editor::EditorLexemeJournal,
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, OperationControl,
+    OperationControlResult, SourceSpan, editor::EditorLexemeJournal,
 };
 #[cfg(test)]
 use std::{cell::RefCell, collections::BTreeMap};
@@ -110,7 +110,7 @@ impl LangiumLexemeTrace {
     }
 
     pub(crate) fn attach(self, source: &str, facts: &mut EditorSemanticFacts) {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         self.attach_controlled(source, facts, &control)
             .expect("a private parse control cannot be cancelled");
     }
@@ -119,8 +119,8 @@ impl LangiumLexemeTrace {
         self,
         source: &str,
         facts: &mut EditorSemanticFacts,
-        control: &ParseControl,
-    ) -> ParseControlResult<()> {
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
         let mut journal = EditorLexemeJournal::family_parser(source);
         for (index, lexeme) in self.lexemes.into_iter().enumerate() {
             if index % 128 == 0 {

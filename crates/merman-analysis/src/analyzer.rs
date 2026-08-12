@@ -659,7 +659,10 @@ impl Analyzer {
         let cancellation = AnalysisCancellationToken::new();
         self.capture_evidence_cancellable(source, &cancellation)
             .unwrap_or_else(|_| DiagramAnalysisEvidence::OperationError {
-                error: CoreError::from(merman_core::ParseCancelled),
+                error: CoreError::from(merman_core::OperationCancelled {
+                    phase: merman_core::OperationPhase::Analysis,
+                    reason: merman_core::CancelReason::Requested,
+                }),
             })
     }
 
@@ -674,7 +677,7 @@ impl Analyzer {
         }
         let parse_result = panic::catch_unwind(AssertUnwindSafe(|| {
             self.engine
-                .parse_diagram_snapshot_controlled_sync(source, cancellation.parse_control())
+                .parse_diagram_snapshot_controlled_sync(source, cancellation.operation_control())
         }));
         let evidence = match parse_result {
             Err(panic_payload) => DiagramAnalysisEvidence::Panic {

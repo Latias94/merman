@@ -1597,8 +1597,8 @@ mod tests {
     fn custom_semantic_parser(
         _code: &str,
         meta: &ParseMetadata,
-        control: &merman_core::ParseControl,
-    ) -> merman_core::ParseControlResult<merman_core::Result<Value>> {
+        control: &merman_core::OperationControl,
+    ) -> merman_core::OperationControlResult<merman_core::Result<Value>> {
         control.checkpoint()?;
         Ok(Ok(
             json!({ "type": meta.diagram_type, "owner": "semantic" }),
@@ -1608,8 +1608,8 @@ mod tests {
     fn custom_render_parser(
         _code: &str,
         _meta: &ParseMetadata,
-        control: &merman_core::ParseControl,
-    ) -> merman_core::ParseControlResult<merman_core::Result<CustomJsonRenderModel>> {
+        control: &merman_core::OperationControl,
+    ) -> merman_core::OperationControlResult<merman_core::Result<CustomJsonRenderModel>> {
         control.checkpoint()?;
         Ok(Ok(CustomJsonRenderModel::new(
             "custom-flowchart",

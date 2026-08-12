@@ -1,13 +1,13 @@
 /// A cheap, runtime-independent cancellation signal for CPU-bound analysis.
 #[derive(Debug, Clone)]
 pub struct AnalysisCancellationToken {
-    parse_control: merman_core::ParseControl,
+    operation: merman_core::OperationControl,
 }
 
 impl Default for AnalysisCancellationToken {
     fn default() -> Self {
         Self {
-            parse_control: merman_core::ParseControl::new(),
+            operation: merman_core::OperationControl::new(),
         }
     }
 }
@@ -20,31 +20,29 @@ impl AnalysisCancellationToken {
     /// Creates an independently cancellable child that also observes this token.
     pub fn child(&self) -> Self {
         Self {
-            parse_control: self.parse_control.child(),
+            operation: self.operation.child(),
         }
     }
 
     pub fn cancel(&self) {
-        self.parse_control.cancel();
+        self.operation.cancel();
     }
 
     pub fn is_cancelled(&self) -> bool {
-        self.parse_control.is_cancelled()
+        self.operation.is_cancelled()
     }
 
     pub fn checkpoint(&self) -> Result<(), AnalysisCancelled> {
-        self.parse_control
-            .checkpoint()
-            .map_err(|_| AnalysisCancelled)
+        self.operation.checkpoint().map_err(|_| AnalysisCancelled)
     }
 
-    pub(crate) fn parse_control(&self) -> &merman_core::ParseControl {
-        &self.parse_control
+    pub(crate) fn operation_control(&self) -> &merman_core::OperationControl {
+        &self.operation
     }
 
     #[doc(hidden)]
     pub fn cancel_after_checkpoints(&self, successful_checkpoints: usize) {
-        self.parse_control
+        self.operation
             .cancel_after_checkpoints(successful_checkpoints);
     }
 }

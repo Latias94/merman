@@ -237,7 +237,7 @@ fn source_frontmatter_block_cancellable<'source>(
     cancellation.checkpoint()?;
     let frontmatter = merman_core::preprocess::locate_frontmatter_block_controlled(
         source,
-        cancellation.parse_control(),
+        cancellation.operation_control(),
     )
     .map_err(|_| crate::AnalysisCancelled)?;
     cancellation.checkpoint()?;

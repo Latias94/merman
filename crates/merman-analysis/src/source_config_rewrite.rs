@@ -35,7 +35,7 @@ impl BoundedMigrationConfig {
             .clone_value_bounded_controlled(
                 MAX_CONFIG_MIGRATION_FIX_WEIGHT_BYTES,
                 MAX_FRONTMATTER_MIGRATION_NESTING_DEPTH,
-                cancellation.parse_control(),
+                cancellation.operation_control(),
             )
             .map_err(|_| AnalysisCancelled)
             .map(|config| config.map(Self))
@@ -198,8 +198,9 @@ fn frontmatter_config_edit_cancellable(
     let config = config.into_value();
     let newline = newline_for_source_cancellable(source, cancellation)?;
     cancellation.checkpoint()?;
-    let Some(location) = locate_frontmatter_block_controlled(source, cancellation.parse_control())
-        .map_err(|_| AnalysisCancelled)?
+    let Some(location) =
+        locate_frontmatter_block_controlled(source, cancellation.operation_control())
+            .map_err(|_| AnalysisCancelled)?
     else {
         cancellation.checkpoint()?;
         let replacement = frontmatter_document_cancellable(
@@ -219,7 +220,7 @@ fn frontmatter_config_edit_cancellable(
         return Ok(None);
     }
     let Some(frontmatter) =
-        split_frontmatter_block_controlled(source, cancellation.parse_control())
+        split_frontmatter_block_controlled(source, cancellation.operation_control())
             .map_err(|_| AnalysisCancelled)?
     else {
         return Ok(None);
@@ -630,7 +631,7 @@ fn parse_frontmatter_fields_cancellable(
         MAX_FRONTMATTER_MIGRATION_INPUT_BYTES,
         MAX_FRONTMATTER_MIGRATION_NESTING_DEPTH,
         MAX_FRONTMATTER_MIGRATION_MATERIALIZED_BYTES,
-        cancellation.parse_control(),
+        cancellation.operation_control(),
     )
     .map_err(|_| AnalysisCancelled)
     .map(|parsed| parsed.ok())

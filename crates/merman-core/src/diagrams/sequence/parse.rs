@@ -1,6 +1,6 @@
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseControl, ParseControlResult, ParseMetadata, Result,
+    EditorSemanticSymbol, Error, OperationControl, OperationControlResult, ParseMetadata, Result,
     SourceSpan,
     editor::{format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span},
 };
@@ -38,7 +38,7 @@ struct SequenceSyntax {
 }
 
 impl SequenceSyntax {
-    fn lex(code: &str, control: &ParseControl) -> ParseControlResult<Self> {
+    fn lex(code: &str, control: &OperationControl) -> OperationControlResult<Self> {
         #[cfg(test)]
         SEQUENCE_SYNTAX_CONSTRUCTION_COUNT.set(SEQUENCE_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
@@ -66,8 +66,8 @@ impl SequenceSyntax {
     fn into_editor_facts_and_actions(
         self,
         code: &str,
-        control: &ParseControl,
-    ) -> ParseControlResult<(
+        control: &OperationControl,
+    ) -> OperationControlResult<(
         EditorSemanticFacts,
         std::result::Result<Vec<super::Action>, SequenceGrammarError>,
     )> {
@@ -177,8 +177,8 @@ pub(crate) fn parse_sequence_model_for_render(
 pub(crate) fn parse_sequence_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction =
         construct_sequence_semantic_source(code, sequence_wrap_enabled(meta), control)?;
     let parsed = crate::family::CombinedSemanticParse::from_construction(
@@ -194,7 +194,7 @@ fn parse_sequence_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<SequenceSemanticSource> {
-    construct_sequence_semantic_source(code, sequence_wrap_enabled(meta), &ParseControl::new())
+    construct_sequence_semantic_source(code, sequence_wrap_enabled(meta), &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
         .map_err(|failure| (*failure).into_parse_error(meta, code.len()))
 }
@@ -202,8 +202,9 @@ fn parse_sequence_semantic_source(
 fn construct_sequence_semantic_source(
     code: &str,
     wrap_enabled: Option<bool>,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<SequenceSemanticSource, Box<SequenceSemanticFailure>>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<SequenceSemanticSource, Box<SequenceSemanticFailure>>>
+{
     let syntax = SequenceSyntax::lex(code, control)?;
     let (editor_facts, actions) = syntax.into_editor_facts_and_actions(code, control)?;
     let actions = match actions {
@@ -233,8 +234,8 @@ fn construct_sequence_semantic_source(
 fn build_sequence_db(
     actions: Vec<super::Action>,
     wrap_enabled: Option<bool>,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<SequenceDb, String>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<SequenceDb, String>> {
     let mut db = SequenceDb::new(wrap_enabled);
     for (index, action) in actions.into_iter().enumerate() {
         if index % 128 == 0 {
@@ -265,8 +266,8 @@ fn collect_sequence_editor_facts_from_events(
     events: &[SequenceLexicalEvent],
     code: &str,
     lexemes: crate::editor::EditorLexemeBatchResult,
-    control: &ParseControl,
-) -> ParseControlResult<EditorSemanticFacts> {
+    control: &OperationControl,
+) -> OperationControlResult<EditorSemanticFacts> {
     let mut facts = EditorSemanticFacts::new();
     facts.replace_family_lexemes(lexemes);
     let mut collector = SequenceEditorFactCollector::default();

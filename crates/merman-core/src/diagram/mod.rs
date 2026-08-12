@@ -1,6 +1,6 @@
 use crate::{
-    EditorSemanticFacts, Error, MermaidConfig, ParseControl, ParseControlResult, ParseMetadata,
-    Result, editor::SourceSpan,
+    EditorSemanticFacts, Error, MermaidConfig, OperationControl, OperationControlResult,
+    ParseMetadata, Result, editor::SourceSpan,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -53,15 +53,15 @@ pub(crate) fn legacy_warning_messages(facts: &[DiagramWarningFact]) -> Vec<Strin
 
 /// Parser used by a custom semantic JSON registry overlay.
 ///
-/// Implementations must call [`ParseControl::checkpoint`] inside potentially long-running loops.
-/// The outer [`ParseControlResult`] reports cooperative cancellation; the inner [`Result`]
+/// Implementations must call [`OperationControl::checkpoint`] inside potentially long-running loops.
+/// The outer [`OperationControlResult`] reports cooperative cancellation; the inner [`Result`]
 /// reports Mermaid detection or parse failures. Non-cancellable `Engine` snapshot and model APIs
-/// surface an unexpected outer cancellation as [`crate::Error::ParseCancelled`].
+/// surface an unexpected outer cancellation as [`crate::Error::OperationCancelled`].
 pub type DiagramSemanticParser = fn(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<Result<Value>>;
+    control: &OperationControl,
+) -> OperationControlResult<Result<Value>>;
 
 /// Parser used by the pinned built-in semantic JSON path.
 pub(crate) type BuiltInDiagramSemanticParser =
@@ -72,8 +72,8 @@ pub(crate) type BuiltInRenderSemanticParser =
     fn(
         code: &str,
         meta: &ParseMetadata,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<RenderSemanticParseOutput>>;
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<RenderSemanticParseOutput>>;
 
 /// Parser used by a custom render-model registry overlay.
 ///
@@ -82,8 +82,8 @@ pub(crate) type BuiltInRenderSemanticParser =
 pub type CustomJsonRenderParser = fn(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<Result<CustomJsonRenderModel>>;
+    control: &OperationControl,
+) -> OperationControlResult<Result<CustomJsonRenderModel>>;
 
 /// Ownership of a parser resolved from a built-in registry plus its custom overlay.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -948,7 +948,7 @@ pub(crate) fn parse_or_unsupported(
     match parser {
         ResolvedSemanticParser::BuiltIn(parser) => parser(code, meta),
         ResolvedSemanticParser::Custom(parser) => {
-            let control = ParseControl::new();
+            let control = OperationControl::new();
             parser(code, meta, &control).map_err(Error::from)?
         }
     }
@@ -960,8 +960,8 @@ pub(crate) fn parse_or_unsupported_controlled(
     diagram_type: &str,
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<Result<Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<Value>> {
     control.checkpoint()?;
     let Some(parser) = registry.resolve(diagram_type) else {
         return Ok(Err(Error::UnsupportedDiagram {
@@ -984,8 +984,8 @@ mod registry_clone_tests {
     fn custom_semantic_parser(
         _code: &str,
         _meta: &ParseMetadata,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<Value>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<Value>> {
         control.checkpoint()?;
         Ok(Ok(Value::Null))
     }
@@ -993,8 +993,8 @@ mod registry_clone_tests {
     fn custom_render_parser(
         _code: &str,
         _meta: &ParseMetadata,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<CustomJsonRenderModel>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<CustomJsonRenderModel>> {
         control.checkpoint()?;
         Ok(Ok(CustomJsonRenderModel::new(
             "copy-on-write-render-test",
@@ -1005,8 +1005,8 @@ mod registry_clone_tests {
     fn cancelling_semantic_parser(
         _code: &str,
         _meta: &ParseMetadata,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<Value>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<Value>> {
         control.cancel();
         control.checkpoint()?;
         unreachable!("cancelled parser must stop at its checkpoint")
@@ -1032,16 +1032,16 @@ mod registry_clone_tests {
     }
 
     #[test]
-    fn custom_semantic_parsers_share_the_operation_parse_control() {
+    fn custom_semantic_parsers_share_the_operation_control() {
         let mut engine = crate::Engine::new();
         engine
             .diagram_registry_mut()
             .insert("flowchart-v2", cancelling_semantic_parser);
-        let control = ParseControl::new();
+        let control = OperationControl::new();
 
         assert!(matches!(
             engine.parse_diagram_snapshot_controlled_sync("flowchart TD\nA-->B\n", &control),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
         assert!(control.is_cancelled());
     }
@@ -1056,11 +1056,11 @@ mod registry_clone_tests {
 
         assert!(matches!(
             engine.parse_diagram_snapshot_sync(source),
-            Err(Error::ParseCancelled(_))
+            Err(Error::OperationCancelled(_))
         ));
         assert!(matches!(
             engine.parse_diagram_snapshot_with_type_sync("flowchart-v2", source),
-            Err(Error::ParseCancelled(_))
+            Err(Error::OperationCancelled(_))
         ));
     }
 

@@ -787,15 +787,15 @@ fn parse_xychart_statement(
 }
 
 fn construct_xychart_semantic_source(code: &str, meta: &ParseMetadata) -> XyChartParseOutcome {
-    construct_xychart_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+    construct_xychart_semantic_source_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_xychart_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<XyChartParseOutcome> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<XyChartParseOutcome> {
     #[cfg(test)]
     XYCHART_SYNTAX_CONSTRUCTION_COUNT.set(XYCHART_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
@@ -980,8 +980,8 @@ pub(crate) fn parse_xychart(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_xychart_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     let parsed = crate::family::CombinedSemanticParse::from_construction(
         construct_xychart_semantic_source_controlled(code, meta, control)?.into_strict_result(),
         |XyChartSemanticSource {
@@ -2202,8 +2202,8 @@ impl SpannedStatement {
 
 fn split_statements_spanned_controlled(
     input: &str,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<XyChartSyntaxFragments> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<XyChartSyntaxFragments> {
     control.checkpoint()?;
     let mut out = Vec::new();
     let mut comments = Vec::new();
@@ -2658,10 +2658,13 @@ bar [1, 2]
         assert_eq!(xychart_syntax_construction_count(), 1);
 
         reset_xychart_syntax_construction_count();
-        let (combined_json, combined_editor) = crate::family::test_support::into_result(
-            parse_xychart_json_and_editor_facts(text, &parsed.meta, &crate::ParseControl::new()),
-        )
-        .expect("XYChart combined projection succeeds");
+        let (combined_json, combined_editor) =
+            crate::family::test_support::into_result(parse_xychart_json_and_editor_facts(
+                text,
+                &parsed.meta,
+                &crate::OperationControl::new(),
+            ))
+            .expect("XYChart combined projection succeeds");
         assert_eq!(xychart_syntax_construction_count(), 1);
         for field in [
             "orientation",

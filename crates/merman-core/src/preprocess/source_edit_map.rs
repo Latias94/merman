@@ -1,4 +1,4 @@
-use crate::{EditorLexeme, EditorLexemeKind, ParseControl, ParseControlResult, SourceSpan};
+use crate::{EditorLexeme, EditorLexemeKind, OperationControl, OperationControlResult, SourceSpan};
 use std::ops::Range;
 
 const CONTROLLED_EDIT_REBUILD_CHECKPOINT_BYTES: usize = 4 * 1024;
@@ -51,11 +51,14 @@ pub struct PreprocessedSource {
 
 impl PreprocessedSource {
     pub fn new(source: &str) -> Self {
-        Self::new_controlled(source, &ParseControl::new())
+        Self::new_controlled(source, &OperationControl::new())
             .expect("a private parse control cannot be cancelled")
     }
 
-    pub(super) fn new_controlled(source: &str, control: &ParseControl) -> ParseControlResult<Self> {
+    pub(super) fn new_controlled(
+        source: &str,
+        control: &OperationControl,
+    ) -> OperationControlResult<Self> {
         control.checkpoint()?;
         let mut text = String::with_capacity(source.len());
         let mut chunk_start = 0usize;
@@ -128,8 +131,8 @@ impl PreprocessedSource {
     pub(super) fn apply_edits(
         &mut self,
         edits: Vec<SourceEdit>,
-        control: &ParseControl,
-    ) -> ParseControlResult<()> {
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
         let mut checkpoints = ControlledEditRebuildCheckpoints::new(control)?;
         if edits.is_empty() {
             return Ok(());
@@ -193,19 +196,19 @@ impl PreprocessedSource {
 
     #[cfg(test)]
     fn apply_edits_uncontrolled(&mut self, edits: Vec<SourceEdit>) {
-        self.apply_edits(edits, &ParseControl::new())
+        self.apply_edits(edits, &OperationControl::new())
             .expect("a private parse control cannot be cancelled");
     }
 }
 
 struct ControlledEditRebuildCheckpoints<'a> {
-    control: &'a ParseControl,
+    control: &'a OperationControl,
     bytes_since_checkpoint: usize,
     items_since_checkpoint: usize,
 }
 
 impl<'a> ControlledEditRebuildCheckpoints<'a> {
-    fn new(control: &'a ParseControl) -> ParseControlResult<Self> {
+    fn new(control: &'a OperationControl) -> OperationControlResult<Self> {
         control.checkpoint()?;
         Ok(Self {
             control,
@@ -214,7 +217,7 @@ impl<'a> ControlledEditRebuildCheckpoints<'a> {
         })
     }
 
-    fn push_str(&mut self, output: &mut String, value: &str) -> ParseControlResult<()> {
+    fn push_str(&mut self, output: &mut String, value: &str) -> OperationControlResult<()> {
         let mut start = 0usize;
         while start < value.len() {
             let remaining_budget = CONTROLLED_EDIT_REBUILD_CHECKPOINT_BYTES
@@ -243,7 +246,7 @@ impl<'a> ControlledEditRebuildCheckpoints<'a> {
         Ok(())
     }
 
-    fn processed_item(&mut self) -> ParseControlResult<()> {
+    fn processed_item(&mut self) -> OperationControlResult<()> {
         self.items_since_checkpoint += 1;
         if self.items_since_checkpoint == CONTROLLED_EDIT_REBUILD_CHECKPOINT_ITEMS {
             self.checkpoint()?;
@@ -251,14 +254,14 @@ impl<'a> ControlledEditRebuildCheckpoints<'a> {
         Ok(())
     }
 
-    fn checkpoint(&mut self) -> ParseControlResult<()> {
+    fn checkpoint(&mut self) -> OperationControlResult<()> {
         self.control.checkpoint()?;
         self.bytes_since_checkpoint = 0;
         self.items_since_checkpoint = 0;
         Ok(())
     }
 
-    fn finish(&self) -> ParseControlResult<()> {
+    fn finish(&self) -> OperationControlResult<()> {
         self.control.checkpoint()
     }
 }
@@ -409,7 +412,7 @@ impl SourceEditMap {
 
     #[cfg(test)]
     fn is_well_formed(&self) -> bool {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         let mut checkpoints = ControlledEditRebuildCheckpoints::new(&control)
             .expect("a private parse control cannot be cancelled");
         self.is_well_formed_controlled(&mut checkpoints)
@@ -420,7 +423,7 @@ impl SourceEditMap {
     fn is_well_formed_controlled(
         &self,
         checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
-    ) -> ParseControlResult<bool> {
+    ) -> OperationControlResult<bool> {
         let mut previous_segment: Option<&EditMapSegment> = None;
         let mut unmapped_index = 0usize;
         for segment in &self.segments {
@@ -553,7 +556,7 @@ impl EditMapCursor {
         old: &SourceEditMap,
         offset: usize,
         checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
-    ) -> ParseControlResult<()> {
+    ) -> OperationControlResult<()> {
         #[cfg(debug_assertions)]
         {
             debug_assert!(self.last_lookup_offset <= offset);
@@ -602,7 +605,7 @@ impl EditMapCursor {
         old: &SourceEditMap,
         offset: usize,
         checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
-    ) -> ParseControlResult<Option<usize>> {
+    ) -> OperationControlResult<Option<usize>> {
         if offset > old.output_len {
             return Ok(None);
         }
@@ -628,7 +631,7 @@ impl EditMapCursor {
         old: &SourceEditMap,
         offset: usize,
         checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
-    ) -> ParseControlResult<Option<usize>> {
+    ) -> OperationControlResult<Option<usize>> {
         if offset > old.output_len {
             return Ok(None);
         }
@@ -661,7 +664,7 @@ impl EditMapCursor {
         old: &SourceEditMap,
         offset: usize,
         checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
-    ) -> ParseControlResult<usize> {
+    ) -> OperationControlResult<usize> {
         self.advance_lookup_to(old, offset, checkpoints)?;
         if let Some(gap) = self.gap_at_lookup_offset(old, offset) {
             return Ok(gap.original_right);
@@ -681,7 +684,7 @@ impl EditMapCursor {
         old: &SourceEditMap,
         range: &Range<usize>,
         checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
-    ) -> ParseControlResult<bool> {
+    ) -> OperationControlResult<bool> {
         #[cfg(debug_assertions)]
         {
             debug_assert!(self.last_exact_end <= range.start);
@@ -778,7 +781,7 @@ impl EditMapBuilder {
         old: &SourceEditMap,
         range: Range<usize>,
         checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
-    ) -> ParseControlResult<()> {
+    ) -> OperationControlResult<()> {
         if range.start >= range.end {
             return Ok(());
         }
@@ -888,7 +891,7 @@ impl EditMapBuilder {
         old: &SourceEditMap,
         range: Range<usize>,
         checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
-    ) -> ParseControlResult<()> {
+    ) -> OperationControlResult<()> {
         let left = match self.cursor.original_at_end(old, range.start, checkpoints)? {
             Some(offset) => offset,
             None => self.cursor.original_anchor(old, range.start, checkpoints)?,
@@ -912,7 +915,7 @@ impl EditMapBuilder {
         replacement_len: usize,
         mapping: ReplacementMapping,
         checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
-    ) -> ParseControlResult<()> {
+    ) -> OperationControlResult<()> {
         let original_start = self
             .cursor
             .original_at_start(old, range.start, checkpoints)?;
@@ -977,7 +980,7 @@ impl EditMapBuilder {
         self,
         output_len: usize,
         checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
-    ) -> ParseControlResult<SourceEditMap> {
+    ) -> OperationControlResult<SourceEditMap> {
         debug_assert_eq!(self.output_len, output_len);
         let segments = self.segments;
         let mut unmapped_output_ranges = Vec::new();
@@ -1002,7 +1005,7 @@ impl EditMapBuilder {
 fn edits_are_sorted_controlled(
     edits: &[SourceEdit],
     checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
-) -> ParseControlResult<bool> {
+) -> OperationControlResult<bool> {
     for pair in edits.windows(2) {
         checkpoints.processed_item()?;
         if (pair[0].range.start, pair[0].range.end) > (pair[1].range.start, pair[1].range.end) {
@@ -1016,7 +1019,7 @@ fn assert_valid_edits_controlled(
     source: &str,
     edits: &[SourceEdit],
     checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
-) -> ParseControlResult<(usize, usize)> {
+) -> OperationControlResult<(usize, usize)> {
     let mut cursor = 0usize;
     let mut replacement_bytes = 0usize;
     let mut removed_bytes = 0usize;
@@ -1111,7 +1114,7 @@ mod tests {
         let mut source = PreprocessedSource::new(&original);
         let before = source.clone();
         let tail = source.text().len() - "TAIL".len();
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel_after_checkpoints(1);
 
         let result = source.apply_edits(
@@ -1143,7 +1146,7 @@ mod tests {
         assert!(source.text().len() < CONTROLLED_EDIT_REBUILD_CHECKPOINT_BYTES);
 
         let before = source.clone();
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel_after_checkpoints(1);
         let last_byte = source.text().len() - 1;
         let result =

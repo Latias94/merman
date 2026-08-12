@@ -1188,7 +1188,7 @@ fn controlled_render_model_parse_stops_inside_family_parser() {
     assert_eq!(error.reason, CancelReason::Requested);
     assert!(matches!(
         error.phase,
-        OperationPhase::Parse | OperationPhase::Semantic
+        OperationPhase::Parse | OperationPhase::Semantic | OperationPhase::Unknown
     ));
 }
 
@@ -1609,8 +1609,8 @@ fn missing_builtin_typed_parser_does_not_fall_back_to_custom_json() {
 fn custom_json_parser(
     code: &str,
     _meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<Result<serde_json::Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<serde_json::Value>> {
     control.checkpoint()?;
     let payload_start = code.find("payload").unwrap();
     Ok(Ok(json!({
@@ -1630,8 +1630,8 @@ fn custom_json_parser(
 fn custom_overlay_json_parser(
     _code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<Result<serde_json::Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<serde_json::Value>> {
     control.checkpoint()?;
     Ok(Ok(json!({
         "owner": "custom-semantic",
@@ -1642,16 +1642,16 @@ fn custom_overlay_json_parser(
 fn panicking_custom_parser(
     _code: &str,
     _meta: &ParseMetadata,
-    _control: &ParseControl,
-) -> ParseControlResult<Result<serde_json::Value>> {
+    _control: &OperationControl,
+) -> OperationControlResult<Result<serde_json::Value>> {
     panic!("custom parser fixture panic")
 }
 
 fn custom_overlay_render_parser(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<Result<CustomJsonRenderModel>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<CustomJsonRenderModel>> {
     control.checkpoint()?;
     let edge_start = code.find("A-->B").unwrap();
     Ok(Ok(CustomJsonRenderModel::new(

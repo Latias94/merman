@@ -123,8 +123,8 @@ impl SankeySemanticSource {
     fn editor_facts_controlled(
         &self,
         source: &str,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<EditorSemanticFacts> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<EditorSemanticFacts> {
         let mut facts = EditorSemanticFacts::new();
         for (index, record) in self.records.iter().enumerate() {
             if index % 128 == 0 {
@@ -196,8 +196,8 @@ pub(crate) fn parse_sankey(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_sankey_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<family::CombinedSemanticParse> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     let construction = construct_sankey_semantic_source_controlled(code, meta, control)?;
     let parsed = family::CombinedSemanticParse::from_construction(
         construction,
@@ -232,15 +232,15 @@ fn construct_sankey_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<SankeySemanticConstruction, family::CombinedSemanticFailure> {
-    construct_sankey_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+    construct_sankey_semantic_source_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_sankey_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<
     std::result::Result<SankeySemanticConstruction, family::CombinedSemanticFailure>,
 > {
     control.checkpoint()?;
@@ -387,8 +387,8 @@ fn attach_sankey_lexemes_controlled(
     source: &str,
     lexemes: &[SankeyLexeme],
     facts: &mut EditorSemanticFacts,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<()> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<()> {
     let mut journal = EditorLexemeJournal::family_parser(source);
     for (index, lexeme) in lexemes.iter().enumerate() {
         if index % 128 == 0 {
@@ -407,10 +407,10 @@ struct PreparedSankeyText {
 }
 
 fn checkpoint_sankey_scan(
-    control: &crate::ParseControl,
+    control: &crate::OperationControl,
     progress: usize,
     next_checkpoint: &mut usize,
-) -> crate::ParseControlResult<()> {
+) -> crate::OperationControlResult<()> {
     if progress >= *next_checkpoint {
         control.checkpoint()?;
         *next_checkpoint = progress.saturating_add(SANKEY_SCAN_CHECKPOINT_BYTES);
@@ -421,8 +421,8 @@ fn checkpoint_sankey_scan(
 impl PreparedSankeyText {
     fn new_controlled(
         source: &str,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<Self> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<Self> {
         control.checkpoint()?;
         // Mermaid's prepareTextForParsing trims non-newline whitespace at the source edges,
         // collapses each CR/LF run to one LF, and then trims the complete result.
@@ -541,8 +541,8 @@ impl PreparedSankeyText {
 
 fn find_sankey_newline_controlled(
     input: &str,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<Option<usize>> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Option<usize>> {
     let mut next_checkpoint = 0usize;
     for (index, byte) in input.bytes().enumerate() {
         checkpoint_sankey_scan(control, index, &mut next_checkpoint)?;
@@ -556,8 +556,8 @@ fn find_sankey_newline_controlled(
 
 fn parse_sankey_syntax_outcome_controlled(
     code: &str,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<SankeySyntaxOutcome> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<SankeySyntaxOutcome> {
     let prepared = PreparedSankeyText::new_controlled(code, control)?;
     let Some(header_end) = find_sankey_newline_controlled(&prepared.text, control)? else {
         let span = prepared.map_span(SourceSpan::new(0, prepared.text.len()));
@@ -674,17 +674,17 @@ fn sankey_value_lexeme_kind(value: &str) -> EditorLexemeKind {
 }
 
 type ControlledSankeySyntaxResult<T> =
-    crate::ParseControlResult<std::result::Result<T, SankeySyntaxError>>;
+    crate::OperationControlResult<std::result::Result<T, SankeySyntaxError>>;
 
 struct CsvParser<'input, 'control> {
     input: &'input str,
     pos: usize,
     lexemes: Vec<SankeyLexeme>,
-    control: &'control crate::ParseControl,
+    control: &'control crate::OperationControl,
 }
 
 impl<'input, 'control> CsvParser<'input, 'control> {
-    fn new(input: &'input str, pos: usize, control: &'control crate::ParseControl) -> Self {
+    fn new(input: &'input str, pos: usize, control: &'control crate::OperationControl) -> Self {
         Self {
             input,
             pos,
@@ -881,7 +881,7 @@ impl<'input, 'control> CsvParser<'input, 'control> {
         )))
     }
 
-    fn recover_to_next_record(&mut self, record_start: usize) -> crate::ParseControlResult<()> {
+    fn recover_to_next_record(&mut self, record_start: usize) -> crate::OperationControlResult<()> {
         let search_start = self.pos.max(record_start).min(self.input.len());
         let mut next_checkpoint = 0usize;
         for (relative, byte) in self.input[search_start..].bytes().enumerate() {
@@ -914,11 +914,14 @@ mod tests {
     #[test]
     fn csv_parser_can_cancel_inside_a_large_quoted_field() {
         let input = format!("\"{}\",target,1", "a".repeat(12 * 1024));
-        let control = crate::ParseControl::new();
+        let control = crate::OperationControl::new();
         control.cancel_after_checkpoints(2);
         let mut parser = CsvParser::new(&input, 0, &control);
 
-        assert!(matches!(parser.parse_record(), Err(crate::ParseCancelled)));
+        assert!(matches!(
+            parser.parse_record(),
+            Err(crate::OperationCancelled { .. })
+        ));
     }
 
     #[test]

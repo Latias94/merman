@@ -245,7 +245,7 @@ pub(crate) fn core_error_diagnostic(
     rule_config: &crate::rules::AnalysisRuleConfig,
 ) -> CoreErrorDiagnostic {
     match error {
-        CoreError::ParseCancelled(error) => CoreErrorDiagnostic {
+        CoreError::OperationCancelled(error) => CoreErrorDiagnostic {
             diagnostic: rule_diagnostic(
                 PARSER_CONTRACT_VIOLATION_RULE_ID,
                 AnalysisStatus::InternalError,

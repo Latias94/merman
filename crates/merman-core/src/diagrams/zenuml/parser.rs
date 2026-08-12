@@ -1,6 +1,6 @@
 use super::ast::*;
 use super::lexer::{self, Keyword, Token, TokenChannel, TokenKind};
-use crate::{MAX_DIAGRAM_NESTING_DEPTH, ParseControl, ParseControlResult, SourceSpan};
+use crate::{MAX_DIAGRAM_NESTING_DEPTH, OperationControl, OperationControlResult, SourceSpan};
 use std::cell::Cell;
 use std::collections::{HashSet, VecDeque};
 
@@ -11,15 +11,15 @@ const MAX_HEAD_PARTICIPANT_PREDICTION_STATES: usize =
 
 #[cfg(test)]
 pub(super) fn parse(source: &str, raw_tokens: &[Token]) -> ParsedSyntax {
-    parse_controlled(source, raw_tokens, &ParseControl::new())
+    parse_controlled(source, raw_tokens, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 pub(super) fn parse_controlled(
     source: &str,
     raw_tokens: &[Token],
-    control: &ParseControl,
-) -> ParseControlResult<ParsedSyntax> {
+    control: &OperationControl,
+) -> OperationControlResult<ParsedSyntax> {
     control.checkpoint()?;
     let tokens = lexer::parser_tokens_controlled(raw_tokens, control)?;
     let comments = comments_before_default_tokens(raw_tokens, control)?;
@@ -32,7 +32,7 @@ struct Parser<'a> {
     comments: Vec<Option<SpannedText>>,
     cursor: usize,
     diagnostics: Vec<SyntaxDiagnostic>,
-    control: ParseControl,
+    control: OperationControl,
 }
 
 impl<'a> Parser<'a> {
@@ -40,7 +40,7 @@ impl<'a> Parser<'a> {
         source: &'a str,
         tokens: Vec<Token>,
         comments: Vec<Option<SpannedText>>,
-        control: &ParseControl,
+        control: &OperationControl,
     ) -> Self {
         Self {
             source,
@@ -52,7 +52,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse(mut self) -> ParseControlResult<ParsedSyntax> {
+    fn parse(mut self) -> OperationControlResult<ParsedSyntax> {
         self.control.checkpoint()?;
         match self.take_name() {
             Some(header)
@@ -120,7 +120,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn restore_header_suffix(&mut self, header: SpannedText) -> ParseControlResult<()> {
+    fn restore_header_suffix(&mut self, header: SpannedText) -> OperationControlResult<()> {
         let Some(suffix) = header.value.get("zenuml".len()..) else {
             return Ok(());
         };
@@ -937,8 +937,8 @@ impl<'a> Parser<'a> {
 
 fn comments_before_default_tokens(
     raw_tokens: &[Token],
-    control: &ParseControl,
-) -> ParseControlResult<Vec<Option<SpannedText>>> {
+    control: &OperationControl,
+) -> OperationControlResult<Vec<Option<SpannedText>>> {
     let mut slots = Vec::new();
     let mut pending = Vec::new();
     for (index, token) in raw_tokens.iter().enumerate() {
@@ -1101,7 +1101,7 @@ struct ParExprMatch {
 struct Grammar<'a> {
     source: &'a str,
     tokens: &'a [Token],
-    control: ParseControl,
+    control: OperationControl,
     expression_depth_error: Cell<Option<SourceSpan>>,
     #[cfg(test)]
     participant_candidate_evaluations: Cell<usize>,
@@ -1295,10 +1295,10 @@ fn take_parameter(result: &mut Option<GrammarValue>) -> Option<ParameterMatch> {
 impl<'a> Grammar<'a> {
     #[cfg(test)]
     fn new(source: &'a str, tokens: &'a [Token]) -> Self {
-        Self::with_control(source, tokens, &ParseControl::new())
+        Self::with_control(source, tokens, &OperationControl::new())
     }
 
-    fn with_control(source: &'a str, tokens: &'a [Token], control: &ParseControl) -> Self {
+    fn with_control(source: &'a str, tokens: &'a [Token], control: &OperationControl) -> Self {
         Self {
             source,
             tokens,

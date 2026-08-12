@@ -2,7 +2,7 @@ use super::ast::*;
 use super::model::*;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticRole, EditorSemanticSymbol, ParseControl, ParseControlResult, SourceSpan,
+    EditorSemanticRole, EditorSemanticSymbol, OperationControl, OperationControlResult, SourceSpan,
 };
 use indexmap::IndexMap;
 
@@ -14,14 +14,14 @@ pub(super) struct SemanticBuild {
 
 #[cfg(test)]
 pub(super) fn build(parsed: ParsedSyntax) -> SemanticBuild {
-    build_controlled(parsed, &ParseControl::new())
+    build_controlled(parsed, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 pub(super) fn build_controlled(
     parsed: ParsedSyntax,
-    control: &ParseControl,
-) -> ParseControlResult<SemanticBuild> {
+    control: &OperationControl,
+) -> OperationControlResult<SemanticBuild> {
     SemanticBuilder::new(parsed, control).build()
 }
 
@@ -38,7 +38,7 @@ struct SemanticBuilder {
     generated_statement_id: usize,
     ownable_statement_count: usize,
     some_statement_misses_from: bool,
-    control: ParseControl,
+    control: OperationControl,
 }
 
 #[derive(Clone)]
@@ -49,7 +49,7 @@ struct ResolveContext {
 }
 
 impl SemanticBuilder {
-    fn new(parsed: ParsedSyntax, control: &ParseControl) -> Self {
+    fn new(parsed: ParsedSyntax, control: &OperationControl) -> Self {
         Self {
             syntax: parsed.document,
             diagnostics: parsed.diagnostics,
@@ -63,7 +63,7 @@ impl SemanticBuilder {
         }
     }
 
-    fn build(mut self) -> ParseControlResult<SemanticBuild> {
+    fn build(mut self) -> OperationControlResult<SemanticBuild> {
         self.control.checkpoint()?;
         self.facts.push_directive_prefix("title");
         if let Some(title) = self.syntax.title.clone() {
@@ -276,7 +276,7 @@ impl SemanticBuilder {
         &mut self,
         statements: &[StatementSyntax],
         context: &ResolveContext,
-    ) -> ParseControlResult<Vec<ZenumlStatement>> {
+    ) -> OperationControlResult<Vec<ZenumlStatement>> {
         let mut resolved = Vec::with_capacity(statements.len());
         for (index, statement) in statements.iter().enumerate() {
             if index % 128 == 0 {
@@ -291,7 +291,7 @@ impl SemanticBuilder {
         &mut self,
         statement: &StatementSyntax,
         context: &ResolveContext,
-    ) -> ParseControlResult<ZenumlStatement> {
+    ) -> OperationControlResult<ZenumlStatement> {
         let id = format!("zenuml-statement-{}", self.generated_statement_id);
         self.generated_statement_id += 1;
         let kind = match &statement.kind {
@@ -466,7 +466,7 @@ impl SemanticBuilder {
                 let sections = fragment
                     .sections
                     .iter()
-                    .map(|section| -> ParseControlResult<ZenumlFragmentSection> {
+                    .map(|section| -> OperationControlResult<ZenumlFragmentSection> {
                         self.control.checkpoint()?;
                         if let Some(label) = &section.label {
                             self.push_payload(
@@ -485,7 +485,7 @@ impl SemanticBuilder {
                             span: section.span,
                         })
                     })
-                    .collect::<ParseControlResult<Vec<_>>>()?;
+                    .collect::<OperationControlResult<Vec<_>>>()?;
                 ZenumlStatementKind::Fragment {
                     fragment_kind,
                     label: fragment.label.as_ref().map(|label| label.value.clone()),

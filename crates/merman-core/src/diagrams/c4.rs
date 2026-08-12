@@ -4,7 +4,7 @@ use crate::{
     EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
     EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers,
     EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, Error,
-    MermaidConfig, ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
+    MermaidConfig, OperationControl, OperationControlResult, ParseMetadata, Result, SourceSpan,
     editor::EditorLexemeJournal,
 };
 use serde::{Deserialize, Serialize};
@@ -489,8 +489,8 @@ pub(crate) fn parse_c4_model_for_render(
 pub(crate) fn parse_c4_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     Ok(construct_c4_semantic_source_controlled(code, meta, control)?.into_combined(meta))
 }
 
@@ -793,8 +793,8 @@ fn parse_acc_descr_spanned_c4(
     line: &str,
     line_start: usize,
     lexemes: &mut EditorLexemeJournal<'_>,
-    control: &ParseControl,
-) -> ParseControlResult<Option<SpannedAccDescr>> {
+    control: &OperationControl,
+) -> OperationControlResult<Option<SpannedAccDescr>> {
     control.checkpoint()?;
     let trimmed = line.trim_start();
     let keyword_start = line_start + line.len() - trimmed.len();
@@ -2098,15 +2098,15 @@ fn value_as_i64(v: &Value) -> Option<i64> {
 }
 
 fn construct_c4_semantic_source(code: &str, meta: &ParseMetadata) -> C4ParseOutcome {
-    construct_c4_semantic_source_controlled(code, meta, &ParseControl::new())
+    construct_c4_semantic_source_controlled(code, meta, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_c4_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<C4ParseOutcome> {
+    control: &OperationControl,
+) -> OperationControlResult<C4ParseOutcome> {
     control.checkpoint()?;
     #[cfg(test)]
     C4_SYNTAX_CONSTRUCTION_COUNT.set(C4_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
@@ -2124,8 +2124,8 @@ fn parse_c4_semantic_source(
     code: &str,
     meta: &ParseMetadata,
     lexemes: &mut EditorLexemeJournal<'_>,
-    control: &ParseControl,
-) -> ParseControlResult<C4ParseOutcome> {
+    control: &OperationControl,
+) -> OperationControlResult<C4ParseOutcome> {
     control.checkpoint()?;
     let mut db = C4Db::new(&meta.effective_config);
     let mut editor_facts =
@@ -2466,8 +2466,8 @@ fn apply_c4_semantic_statements(
     parent_boundary: &str,
     meta: &ParseMetadata,
     issues: &mut Vec<C4ParseIssue>,
-    control: &ParseControl,
-) -> ParseControlResult<()> {
+    control: &OperationControl,
+) -> OperationControlResult<()> {
     struct ReplayFrame<'a> {
         statements: &'a [C4SemanticStatement],
         next_statement: usize,
@@ -2756,7 +2756,7 @@ mod tests {
 
         reset_c4_syntax_construction_count();
         let (json, facts) = crate::family::test_support::into_result(
-            parse_c4_json_and_editor_facts(text, &meta(), &ParseControl::new()),
+            parse_c4_json_and_editor_facts(text, &meta(), &OperationControl::new()),
         )
         .unwrap();
 

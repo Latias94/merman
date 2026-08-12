@@ -35,8 +35,8 @@ fn reprojection_for(store: &SessionState, uri: &Uri) -> DiagnosticProjectionTick
 fn custom_session_flowchart_parser(
     _source: &str,
     _metadata: &merman_core::ParseMetadata,
-    control: &merman_core::ParseControl,
-) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    control: &merman_core::OperationControl,
+) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
     control.checkpoint()?;
     CUSTOM_SESSION_PARSE_CALLS.fetch_add(1, Ordering::SeqCst);
     Ok(Ok(serde_json::json!({ "warningFacts": [] })))
@@ -45,8 +45,8 @@ fn custom_session_flowchart_parser(
 fn custom_async_session_flowchart_parser(
     _source: &str,
     _metadata: &merman_core::ParseMetadata,
-    control: &merman_core::ParseControl,
-) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    control: &merman_core::OperationControl,
+) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
     control.checkpoint()?;
     CUSTOM_ASYNC_SESSION_PARSE_CALLS.fetch_add(1, Ordering::SeqCst);
     Ok(Ok(serde_json::json!({ "warningFacts": [] })))
@@ -55,8 +55,8 @@ fn custom_async_session_flowchart_parser(
 fn repeated_diagnostic_flowchart_parser(
     _source: &str,
     _metadata: &merman_core::ParseMetadata,
-    control: &merman_core::ParseControl,
-) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    control: &merman_core::OperationControl,
+) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
     control.checkpoint()?;
     REPEATED_DIAGNOSTIC_PARSE_CALLS.fetch_add(1, Ordering::SeqCst);
     Ok(Ok(serde_json::json!({ "warningFacts": [] })))

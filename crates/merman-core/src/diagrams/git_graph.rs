@@ -188,12 +188,12 @@ struct GitGraphCommandParseError {
 }
 
 enum GitGraphCommandParseAbort {
-    Cancelled(crate::ParseCancelled),
+    Cancelled(crate::OperationCancelled),
     Invalid(GitGraphCommandParseError),
 }
 
-impl From<crate::ParseCancelled> for GitGraphCommandParseAbort {
-    fn from(cancelled: crate::ParseCancelled) -> Self {
+impl From<crate::OperationCancelled> for GitGraphCommandParseAbort {
+    fn from(cancelled: crate::OperationCancelled) -> Self {
         Self::Cancelled(cancelled)
     }
 }
@@ -662,8 +662,8 @@ impl GitGraphDb {
 
     fn commits_in_seq_order_controlled(
         &self,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<Vec<Commit>> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<Vec<Commit>> {
         let mut out = Vec::with_capacity(self.commits.len());
         for commit in self.commits.values() {
             control.checkpoint()?;
@@ -677,8 +677,8 @@ impl GitGraphDb {
 
     fn branches_in_order_controlled(
         &self,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<Vec<GitGraphBranchRenderModel>> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<Vec<GitGraphBranchRenderModel>> {
         let mut entries: Vec<(String, f64)> = Vec::new();
         for (i, name) in self.branch_config_order.iter().enumerate() {
             control.checkpoint()?;
@@ -777,7 +777,7 @@ impl<'a> LineParser<'a> {
         Some(ch)
     }
 
-    fn skip_ws(&mut self, control: &crate::ParseControl) -> crate::ParseControlResult<()> {
+    fn skip_ws(&mut self, control: &crate::OperationControl) -> crate::OperationControlResult<()> {
         control.checkpoint()?;
         let mut next_checkpoint = self.pos.saturating_add(4096);
         while self.peek_char().is_some_and(|c| c.is_whitespace()) {
@@ -796,8 +796,8 @@ impl<'a> LineParser<'a> {
 
     fn parse_word_until_ws_or_colon_spanned(
         &mut self,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<Option<SpannedValue>> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<Option<SpannedValue>> {
         self.skip_ws(control)?;
         let start = self.pos;
         let mut next_checkpoint = self.pos.saturating_add(4096);
@@ -824,8 +824,8 @@ impl<'a> LineParser<'a> {
     fn consume_argument_name(
         &mut self,
         name: &str,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<Option<(SourceSpan, SourceSpan)>> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<Option<(SourceSpan, SourceSpan)>> {
         self.skip_ws(control)?;
         let rest = self.remaining();
         let Some(after_name) = rest.strip_prefix(name) else {
@@ -844,8 +844,8 @@ impl<'a> LineParser<'a> {
 
     fn parse_quoted_spanned(
         &mut self,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<Result<SpannedValue>> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<Result<SpannedValue>> {
         self.skip_ws(control)?;
         let Some(parsed) = parse_langium_string(self.remaining(), self.base_offset + self.pos)
         else {
@@ -865,8 +865,8 @@ impl<'a> LineParser<'a> {
 
     fn parse_name_token_spanned(
         &mut self,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<Result<SpannedValue>> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<Result<SpannedValue>> {
         self.skip_ws(control)?;
         if matches!(self.peek_char(), Some('"' | '\'')) {
             return self.parse_quoted_spanned(control);
@@ -906,8 +906,8 @@ impl<'a> LineParser<'a> {
     fn parse_bare_token_spanned(
         &mut self,
         expected: &str,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<Result<SpannedValue>> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<Result<SpannedValue>> {
         self.skip_ws(control)?;
         let start = self.pos;
         let mut next_checkpoint = self.pos.saturating_add(4096);
@@ -934,8 +934,8 @@ impl<'a> LineParser<'a> {
     fn expect_eof(
         &mut self,
         command: &str,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<Result<()>> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<Result<()>> {
         self.skip_ws(control)?;
         if self.is_eof() {
             return Ok(Ok(()));
@@ -964,8 +964,8 @@ fn is_gitgraph_reference(value: &str) -> bool {
 
 fn is_gitgraph_reference_controlled(
     value: &str,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<bool> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<bool> {
     fn is_word(byte: u8) -> bool {
         byte.is_ascii_alphanumeric() || byte == b'_'
     }
@@ -1028,8 +1028,8 @@ impl GitGraphCommand {
     fn push_editor_facts_controlled(
         &self,
         facts: &mut EditorSemanticFacts,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<()> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<()> {
         for fact in &self.editor_facts {
             control.checkpoint()?;
             fact.push_to(facts);
@@ -1125,7 +1125,7 @@ fn unexpected_gitgraph_argument(
 fn parse_git_graph_command(
     raw: &str,
     line_start: usize,
-    control: &crate::ParseControl,
+    control: &crate::OperationControl,
 ) -> std::result::Result<Option<GitGraphCommand>, GitGraphCommandParseAbort> {
     control.checkpoint()?;
     let line = raw.trim_end_matches('\r');
@@ -1633,8 +1633,8 @@ pub(crate) fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value>
 pub(crate) fn parse_git_graph_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<family::CombinedSemanticParse> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     control.checkpoint()?;
     let parsed = family::CombinedSemanticParse::from_construction(
         construct_git_graph_semantic_source_controlled(code, meta, control)?,
@@ -1735,15 +1735,16 @@ fn construct_git_graph_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<GitGraphSemanticSource, GitGraphParseFailure> {
-    construct_git_graph_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+    construct_git_graph_semantic_source_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_git_graph_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<std::result::Result<GitGraphSemanticSource, GitGraphParseFailure>> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<std::result::Result<GitGraphSemanticSource, GitGraphParseFailure>>
+{
     control.checkpoint()?;
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("gitGraph");
@@ -1873,8 +1874,8 @@ fn gitgraph_parse_failure(
 
 fn parse_gitgraph_header(
     code: &str,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<Result<GitGraphHeader>> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<GitGraphHeader>> {
     let mut offset = 0usize;
     while offset < code.len() {
         control.checkpoint()?;
@@ -1972,8 +1973,8 @@ fn collect_gitgraph_commands(
     mut offset: usize,
     mut lexemes: LangiumLexemeTrace,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<GitGraphSyntaxOutcome> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<GitGraphSyntaxOutcome> {
     let mut commands = Vec::new();
     let mut common = LangiumCommonFacts::default();
     let mut editor_facts = EditorSemanticFacts::new();
@@ -2069,8 +2070,8 @@ fn apply_git_graph_commands_controlled(
     commands: &[GitGraphCommand],
     db: &mut GitGraphDb,
     effective_config: &MermaidConfig,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<Result<()>> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<()>> {
     for command in commands {
         control.checkpoint()?;
         if let Err(error) = command.apply(db, effective_config) {
@@ -2139,12 +2140,12 @@ mod tests {
             text.push_str(&format!(" tag:\"tag-{index}\""));
         }
         text.push('\n');
-        let control = crate::ParseControl::new();
+        let control = crate::OperationControl::new();
         control.cancel_after_checkpoints(20);
 
         assert!(matches!(
             construct_git_graph_semantic_source_controlled(&text, &test_meta(), &control),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
     }
 

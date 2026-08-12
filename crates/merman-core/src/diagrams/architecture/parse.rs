@@ -835,7 +835,7 @@ pub(super) fn parse_semantic_source(
         code,
         meta,
         ArchitectureParseMode::Strict,
-        &crate::ParseControl::new(),
+        &crate::OperationControl::new(),
     )
     .expect("a private parse control cannot be cancelled")?;
     let db = trace.build_db()?;
@@ -846,8 +846,8 @@ pub(super) fn parse_semantic_source(
 pub(super) fn parse_combined_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<
     std::result::Result<ArchitectureSemanticSource, crate::family::CombinedSemanticFailure>,
 > {
     control.checkpoint()?;
@@ -902,8 +902,8 @@ fn parse_trace_controlled(
     code: &str,
     meta: &ParseMetadata,
     mode: ArchitectureParseMode,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<Result<ArchitectureTrace>> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<ArchitectureTrace>> {
     control.checkpoint()?;
     let mut trace = ArchitectureTrace::default();
     let mut lines = ArchitectureLineCursor::new(code);
@@ -1229,15 +1229,15 @@ fn push_recovery_error(facts: &mut EditorSemanticFacts, error: &Error) {
 
 impl ArchitectureTrace {
     fn build_db(&self) -> Result<ArchitectureDb> {
-        let control = crate::ParseControl::new();
+        let control = crate::OperationControl::new();
         self.build_db_controlled(&control)
             .expect("a private parse control cannot be cancelled")
     }
 
     fn build_db_controlled(
         &self,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<Result<ArchitectureDb>> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<Result<ArchitectureDb>> {
         let mut db = ArchitectureDb::default();
 
         for (index, entry) in self.entries.iter().enumerate() {
@@ -1338,7 +1338,7 @@ impl ArchitectureTrace {
     }
 
     fn editor_facts(&self, source: &str, validation_error: Option<&Error>) -> EditorSemanticFacts {
-        let control = crate::ParseControl::new();
+        let control = crate::OperationControl::new();
         self.editor_facts_controlled(source, validation_error, &control)
             .expect("a private parse control cannot be cancelled")
     }
@@ -1347,8 +1347,8 @@ impl ArchitectureTrace {
         &self,
         source: &str,
         validation_error: Option<&Error>,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<EditorSemanticFacts> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<EditorSemanticFacts> {
         let mut facts = EditorSemanticFacts::new();
         for (entry_index, entry) in self.entries.iter().enumerate() {
             if entry_index % 128 == 0 {
@@ -1418,8 +1418,8 @@ impl ArchitectureSemanticSource {
     pub(super) fn into_combined_parts_controlled(
         self,
         meta: &ParseMetadata,
-        control: &crate::ParseControl,
-    ) -> crate::ParseControlResult<(Result<Value>, EditorSemanticFacts)> {
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<(Result<Value>, EditorSemanticFacts)> {
         control.checkpoint()?;
         let model = self.db.render_model_controlled(control)?;
         let json = super::render_model_to_compat_json_controlled(&model, meta, control)?;

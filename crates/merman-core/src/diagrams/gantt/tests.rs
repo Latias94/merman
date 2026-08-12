@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticRole, Engine, Error,
-    MermaidConfig, ParseControl, ParseDiagnosticSpanKind, ParseOptions, RenderSemanticModel,
+    MermaidConfig, OperationControl, ParseDiagnosticSpanKind, ParseOptions, RenderSemanticModel,
     SourceSpan,
 };
 use futures::executor::block_on;
@@ -123,7 +123,7 @@ fn gantt_combined_projection_constructs_once_and_matches_standalone_entrypoints(
     let standalone_json = parse_gantt(text, &meta).unwrap();
     reset_gantt_syntax_construction_count();
     let (combined_json, combined_editor) = crate::family::test_support::into_result(
-        parse_gantt_json_and_editor_facts(text, &meta, &ParseControl::new()),
+        parse_gantt_json_and_editor_facts(text, &meta, &OperationControl::new()),
     )
     .unwrap();
 
@@ -135,7 +135,7 @@ fn gantt_combined_projection_constructs_once_and_matches_standalone_entrypoints(
 #[test]
 fn gantt_task_finalization_observes_cancellation_inside_large_task_sets() {
     let mut db = large_gantt_db(512);
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     control.cancel_after_checkpoints(2);
 
     assert!(db.finalize_tasks_controlled(&control).is_err());
@@ -144,10 +144,10 @@ fn gantt_task_finalization_observes_cancellation_inside_large_task_sets() {
 #[test]
 fn gantt_model_projection_observes_cancellation_inside_large_task_sets() {
     let mut db = large_gantt_db(512);
-    db.finalize_tasks_controlled(&ParseControl::new())
+    db.finalize_tasks_controlled(&OperationControl::new())
         .unwrap()
         .unwrap();
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     control.cancel_after_checkpoints(2);
 
     assert!(super::parse::gantt_db_to_render_model_controlled(db, &control).is_err());
@@ -159,7 +159,7 @@ fn gantt_json_projection_observes_cancellation_inside_large_task_sets() {
         tasks: vec![GanttRenderTask::default(); 512],
         ..GanttDiagramRenderModel::default()
     };
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     control.cancel_after_checkpoints(2);
 
     assert!(

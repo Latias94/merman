@@ -1282,15 +1282,15 @@ fn construct_kanban_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<KanbanSemanticSource, KanbanParseFailure> {
-    construct_kanban_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+    construct_kanban_semantic_source_controlled(code, meta, &crate::OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_kanban_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<std::result::Result<KanbanSemanticSource, KanbanParseFailure>> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<std::result::Result<KanbanSemanticSource, KanbanParseFailure>> {
     control.checkpoint()?;
     #[cfg(test)]
     KANBAN_SYNTAX_CONSTRUCTION_COUNT.set(KANBAN_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
@@ -1426,7 +1426,7 @@ struct KanbanStatementContext<'a> {
     facts: &'a mut EditorSemanticFacts,
     lexemes: &'a mut KanbanLexemeTrace,
     meta: &'a ParseMetadata,
-    control: &'a crate::ParseControl,
+    control: &'a crate::OperationControl,
 }
 
 fn parse_kanban_statement(
@@ -1434,7 +1434,7 @@ fn parse_kanban_statement(
     context: KanbanStatementContext<'_>,
     source: &str,
     source_start: usize,
-) -> crate::ParseControlResult<Result<()>> {
+) -> crate::OperationControlResult<Result<()>> {
     let KanbanStatementContext {
         db,
         facts,
@@ -1679,8 +1679,8 @@ pub(crate) fn parse_kanban(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_kanban_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &crate::ParseControl,
-) -> crate::ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     control.checkpoint()?;
     let parsed = crate::family::CombinedSemanticParse::from_construction(
         construct_kanban_semantic_source_controlled(code, meta, control)?,
@@ -1853,7 +1853,7 @@ mod tests {
 
         reset_kanban_syntax_construction_count();
         let (json, facts) = crate::family::test_support::into_result(
-            parse_kanban_json_and_editor_facts(text, &meta, &crate::ParseControl::new()),
+            parse_kanban_json_and_editor_facts(text, &meta, &crate::OperationControl::new()),
         )
         .unwrap();
 
@@ -2294,7 +2294,7 @@ mod tests {
         assert!(sections[0].get("icon").is_none());
 
         let (_, facts) = crate::family::test_support::into_result(
-            parse_kanban_json_and_editor_facts(text, &meta(), &crate::ParseControl::new()),
+            parse_kanban_json_and_editor_facts(text, &meta(), &crate::OperationControl::new()),
         )
         .unwrap();
         assert!(facts.directive_prefixes.iter().any(|value| value == "icon"));

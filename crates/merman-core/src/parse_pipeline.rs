@@ -1,14 +1,14 @@
+use crate::operation::OperationPhase;
 use crate::preprocess::{
     DirectiveRecoveryMode, PreprocessedSource,
     preprocess_diagram_with_known_type_and_directive_recovery_controlled,
     preprocess_mermaid_public_parse_pipeline_with_directive_recovery_controlled,
 };
 use crate::{
-    EditorSemanticFacts, Engine, Error, MermaidConfig, ParseControl, ParseControlResult,
+    EditorSemanticFacts, Engine, Error, MermaidConfig, OperationControl, OperationControlResult,
     ParseMetadata, ParseOptions, Result, SourceSpan, common_db, diagram, diagrams::error_diagram,
     family, runtime, sanitize, theme,
 };
-use crate::{OperationControl, OperationControlResult, OperationPhase};
 use diagram::{
     CustomJsonRenderModel, DiagramParseOutcome, DiagramParseSnapshot, DiagramWarningFact,
     ParsedDiagram, ParsedDiagramRender, ParsedEditorFacts, RegistryOwner, RenderSemanticModel,
@@ -67,8 +67,8 @@ impl<'a> EditorParseSourceMap<'a> {
     fn remap_facts(
         &self,
         facts: &mut EditorSemanticFacts,
-        control: &ParseControl,
-    ) -> ParseControlResult<()> {
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
         let original_symbol_count = facts.symbols.len();
         let mut remapped_symbols = Vec::with_capacity(original_symbol_count);
         for (index, mut symbol) in std::mem::take(&mut facts.symbols).into_iter().enumerate() {
@@ -219,7 +219,7 @@ impl<'a> ParsePipeline<'a> {
         &self,
         timing: ParseTiming,
     ) -> Result<Option<DiagramParseSnapshot>> {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         self.parse_editor_snapshot_controlled(timing, &control)
             .map_err(Error::from)?
     }
@@ -227,8 +227,8 @@ impl<'a> ParsePipeline<'a> {
     pub(crate) fn parse_editor_snapshot_controlled(
         &self,
         timing: ParseTiming,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<Option<DiagramParseSnapshot>>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<Option<DiagramParseSnapshot>>> {
         control.checkpoint()?;
         let operation_context = match self.engine.begin_operation() {
             Ok(context) => context,
@@ -243,8 +243,8 @@ impl<'a> ParsePipeline<'a> {
         &self,
         timing: ParseTiming,
         operation_context: &runtime::OperationContext,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<Option<DiagramParseSnapshot>>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<Option<DiagramParseSnapshot>>> {
         control.checkpoint()?;
         let operation_timing = timing.operation_timing(operation_context);
         let total_start = operation_timing.map(runtime::OperationTiming::start);
@@ -273,7 +273,7 @@ impl<'a> ParsePipeline<'a> {
 
         let parse_start = operation_timing.map(runtime::OperationTiming::start);
         let parse_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
-            || -> ParseControlResult<(Result<Value>, Option<EditorSemanticFacts>)> {
+            || -> OperationControlResult<(Result<Value>, Option<EditorSemanticFacts>)> {
                 let parsed = match resolved {
                     Some(ResolvedSemanticParser::BuiltIn(parser)) => {
                         if let Some(parser) = combined {
@@ -372,8 +372,8 @@ impl<'a> ParsePipeline<'a> {
         facts: Option<EditorSemanticFacts>,
         meta: &ParseMetadata,
         source_map: &EditorParseSourceMap<'_>,
-        control: &ParseControl,
-    ) -> ParseControlResult<ParsedEditorFacts> {
+        control: &OperationControl,
+    ) -> OperationControlResult<ParsedEditorFacts> {
         control.checkpoint()?;
         let facts = match (owner, facts) {
             (Some(RegistryOwner::Custom), _) | (None, _) => ParsedEditorFacts::Unavailable,
@@ -436,8 +436,8 @@ impl<'a> ParsePipeline<'a> {
         operation_context: &runtime::OperationContext,
     ) -> OperationControlResult<Result<Option<ParsedDiagramRender>>> {
         operation.checkpoint_at(OperationPhase::Admission)?;
-        let control = ParseControl::from_operation_control(operation.clone());
-        control.checkpoint_operation(OperationPhase::Parse)?;
+        let control = operation.clone();
+        control.checkpoint_at(OperationPhase::Parse)?;
         runtime::with_operation_context(operation_context, || {
             operation.checkpoint_at(OperationPhase::Parse)?;
             let directive_recovery = if self.options.suppress_errors {
@@ -445,13 +445,10 @@ impl<'a> ParsePipeline<'a> {
             } else {
                 DirectiveRecoveryMode::Strict
             };
-            let preprocessed = control.map_cancellation(
-                self.preprocess_for_with_directive_recovery_controlled(
-                    PreprocessPath::Render,
-                    directive_recovery,
-                    &control,
-                ),
-                OperationPhase::Parse,
+            let preprocessed = self.preprocess_for_with_directive_recovery_controlled(
+                PreprocessPath::Render,
+                directive_recovery,
+                &control,
             )?;
             let Some((code, meta)) = (match preprocessed {
                 Ok(preprocessed) => preprocessed,
@@ -461,13 +458,10 @@ impl<'a> ParsePipeline<'a> {
             };
             operation.checkpoint_at(OperationPhase::Semantic)?;
             let source_map = EditorParseSourceMap::new(&code);
-            let parsed = control.map_cancellation(
-                self.parse_render_semantic_model_controlled(
-                    source_map.parser_input(),
-                    &meta,
-                    &control,
-                ),
-                OperationPhase::Semantic,
+            let parsed = self.parse_render_semantic_model_controlled(
+                source_map.parser_input(),
+                &meta,
+                &control,
             )?;
             let mut output = match parsed {
                 Ok(output) => output,
@@ -500,8 +494,8 @@ impl<'a> ParsePipeline<'a> {
         mut facts: EditorSemanticFacts,
         meta: &ParseMetadata,
         source_map: &EditorParseSourceMap<'_>,
-        control: &ParseControl,
-    ) -> ParseControlResult<EditorSemanticFacts> {
+        control: &OperationControl,
+    ) -> OperationControlResult<EditorSemanticFacts> {
         let family_directive_prefixes = std::mem::take(&mut facts.directive_prefixes);
         source_map.remap_facts(&mut facts, control)?;
         let family = family::diagram_type_family_id(&meta.diagram_type)
@@ -658,7 +652,7 @@ impl<'a> ParsePipeline<'a> {
         code: &str,
         meta: &ParseMetadata,
     ) -> Result<RenderSemanticParseOutput> {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         self.parse_render_semantic_model_controlled(code, meta, &control)
             .map_err(Error::from)?
     }
@@ -667,8 +661,8 @@ impl<'a> ParsePipeline<'a> {
         &self,
         code: &str,
         meta: &ParseMetadata,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<RenderSemanticParseOutput>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<RenderSemanticParseOutput>> {
         control.checkpoint()?;
         let semantic = self.engine.diagram_registry.resolve(&meta.diagram_type);
         let render = self
@@ -735,7 +729,7 @@ impl<'a> ParsePipeline<'a> {
         path: PreprocessPath,
         directive_recovery: DirectiveRecoveryMode,
     ) -> Result<Option<(PreprocessedSource, ParseMetadata)>> {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         self.preprocess_for_with_directive_recovery_controlled(path, directive_recovery, &control)
             .expect("a private parse control cannot be cancelled")
     }
@@ -744,8 +738,8 @@ impl<'a> ParsePipeline<'a> {
         &self,
         path: PreprocessPath,
         directive_recovery: DirectiveRecoveryMode,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<Option<(PreprocessedSource, ParseMetadata)>>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<Option<(PreprocessedSource, ParseMetadata)>>> {
         let preprocessed =
             self.preprocess_with_directive_recovery_controlled(path, directive_recovery, control)?;
         Ok(match preprocessed {
@@ -766,7 +760,7 @@ impl<'a> ParsePipeline<'a> {
         path: PreprocessPath,
         directive_recovery: DirectiveRecoveryMode,
     ) -> Result<(PreprocessedSource, ParseMetadata)> {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         self.preprocess_with_directive_recovery_controlled(path, directive_recovery, &control)
             .expect("a private parse control cannot be cancelled")
     }
@@ -775,8 +769,8 @@ impl<'a> ParsePipeline<'a> {
         &self,
         path: PreprocessPath,
         directive_recovery: DirectiveRecoveryMode,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<(PreprocessedSource, ParseMetadata)>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<(PreprocessedSource, ParseMetadata)>> {
         control.checkpoint()?;
         match self.source {
             ParseSource::Detect => {
@@ -795,8 +789,8 @@ impl<'a> ParsePipeline<'a> {
         &self,
         path: PreprocessPath,
         directive_recovery: DirectiveRecoveryMode,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<(PreprocessedSource, ParseMetadata)>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<(PreprocessedSource, ParseMetadata)>> {
         let pre = match self.preprocess_input_with_directive_recovery_controlled(
             path,
             None,
@@ -867,8 +861,8 @@ impl<'a> ParsePipeline<'a> {
         diagram_type: &str,
         path: PreprocessPath,
         directive_recovery: DirectiveRecoveryMode,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<(PreprocessedSource, ParseMetadata)>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<(PreprocessedSource, ParseMetadata)>> {
         let pre = match self.preprocess_input_with_directive_recovery_controlled(
             path,
             Some(diagram_type),
@@ -940,7 +934,7 @@ impl<'a> ParsePipeline<'a> {
         diagram_type: Option<&str>,
         directive_recovery: DirectiveRecoveryMode,
     ) -> Result<crate::PreprocessResult> {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         self.preprocess_input_with_directive_recovery_controlled(
             path,
             diagram_type,
@@ -955,8 +949,8 @@ impl<'a> ParsePipeline<'a> {
         path: PreprocessPath,
         diagram_type: Option<&str>,
         directive_recovery: DirectiveRecoveryMode,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<crate::PreprocessResult>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<crate::PreprocessResult>> {
         control.checkpoint()?;
         match path {
             PreprocessPath::PublicParse => {
@@ -1099,18 +1093,19 @@ mod editor_parse_source_map_tests {
     use super::{EditorParseSourceMap, ParsePipeline, PreprocessPath};
     use crate::{
         EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-        EditorSemanticSymbol, Engine, ParseCancelled, ParseControl, ParseOptions, SourceSpan,
+        EditorSemanticSymbol, Engine, OperationCancelled, OperationControl, ParseOptions,
+        SourceSpan,
     };
 
     #[test]
     fn controlled_snapshot_stops_before_a_cancelled_operation() {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel();
 
         let result =
             Engine::new().parse_diagram_snapshot_controlled_sync("flowchart TD\nA-->B\n", &control);
 
-        assert!(matches!(result, Err(ParseCancelled)));
+        assert!(matches!(result, Err(OperationCancelled { .. })));
     }
 
     #[test]
@@ -1119,13 +1114,13 @@ mod editor_parse_source_map_tests {
         for index in 0..4_096 {
             source.push_str(&format!("n{index}-->n{}\n", index + 1));
         }
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel_after_checkpoints(128);
         crate::diagrams::flowchart::reset_flowchart_token_trace_construction_count();
 
         let result = Engine::new().parse_diagram_snapshot_controlled_sync(&source, &control);
 
-        assert!(matches!(result, Err(ParseCancelled)));
+        assert!(matches!(result, Err(OperationCancelled { .. })));
         assert_eq!(
             crate::diagrams::flowchart::flowchart_token_trace_construction_count(),
             0,
@@ -1142,7 +1137,7 @@ mod editor_parse_source_map_tests {
             .expect("regular parse succeeds")
             .expect("regular snapshot");
         let controlled = engine
-            .parse_diagram_snapshot_controlled_sync(source, &ParseControl::new())
+            .parse_diagram_snapshot_controlled_sync(source, &OperationControl::new())
             .expect("active control")
             .expect("controlled parse succeeds")
             .expect("controlled snapshot");
@@ -1235,7 +1230,7 @@ mod editor_parse_source_map_tests {
             SourceSpan::new(c, c + 1),
         ));
 
-        map.remap_facts(&mut facts, &ParseControl::new())
+        map.remap_facts(&mut facts, &OperationControl::new())
             .expect("a private parse control cannot be cancelled");
 
         assert_eq!(facts.symbols.len(), 1);
@@ -1276,12 +1271,12 @@ mod editor_parse_source_map_tests {
                 SourceSpan::new(offset, offset + 1),
             ));
         }
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel_after_checkpoints(1);
 
         assert!(matches!(
             map.remap_facts(&mut facts, &control),
-            Err(crate::ParseCancelled)
+            Err(crate::OperationCancelled { .. })
         ));
         assert!(control.is_cancelled());
     }

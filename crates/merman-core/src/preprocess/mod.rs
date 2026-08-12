@@ -3,8 +3,8 @@ mod source_edit_map;
 pub use source_edit_map::PreprocessedSource;
 
 use crate::{
-    DetectorRegistry, EditorLexemeKind, Error, MermaidConfig, ParseControl, ParseControlResult,
-    Result, SourceSpan,
+    DetectorRegistry, EditorLexemeKind, Error, MermaidConfig, OperationControl,
+    OperationControlResult, Result, SourceSpan,
 };
 use serde_json::{Map, Value};
 use source_edit_map::{ReplacementMapping, SourceEdit};
@@ -97,7 +97,7 @@ pub(crate) fn preprocess_diagram_with_known_type_and_directive_recovery(
     diagram_type: Option<&str>,
     directive_recovery: DirectiveRecoveryMode,
 ) -> Result<PreprocessResult> {
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     preprocess_diagram_with_known_type_and_directive_recovery_controlled(
         input,
         registry,
@@ -113,8 +113,8 @@ pub(crate) fn preprocess_diagram_with_known_type_and_directive_recovery_controll
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
     directive_recovery: DirectiveRecoveryMode,
-    control: &ParseControl,
-) -> ParseControlResult<Result<PreprocessResult>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<PreprocessResult>> {
     let preprocessed = preprocess_single_pass_controlled(
         PreprocessedSource::new_controlled(input, control)?,
         registry,
@@ -152,7 +152,7 @@ pub(crate) fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery(
     diagram_type: Option<&str>,
     directive_recovery: DirectiveRecoveryMode,
 ) -> Result<PreprocessResult> {
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     preprocess_mermaid_public_parse_pipeline_with_directive_recovery_controlled(
         input,
         registry,
@@ -168,8 +168,8 @@ pub(crate) fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_c
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
     directive_recovery: DirectiveRecoveryMode,
-    control: &ParseControl,
-) -> ParseControlResult<Result<PreprocessResult>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<PreprocessResult>> {
     #[cfg(test)]
     PUBLIC_PARSE_PREPROCESS_COUNT.set(PUBLIC_PARSE_PREPROCESS_COUNT.get() + 1);
 
@@ -212,8 +212,8 @@ fn preprocess_single_pass_controlled(
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
     directive_recovery: DirectiveRecoveryMode,
-    control: &ParseControl,
-) -> ParseControlResult<Result<PreprocessResult>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<PreprocessResult>> {
     control.checkpoint()?;
     cleanup_text_controlled(&mut source, control)?;
     let frontmatter = process_frontmatter_controlled(source.text(), control)?;
@@ -278,24 +278,24 @@ fn preprocess_single_pass_controlled(
 
 fn prepare_parser_code_controlled(
     mut preprocessed: PreprocessResult,
-    control: &ParseControl,
-) -> ParseControlResult<PreprocessResult> {
+    control: &OperationControl,
+) -> OperationControlResult<PreprocessResult> {
     preprocessed.source = prepare_parser_text_controlled(preprocessed.source, control)?;
     Ok(preprocessed)
 }
 
 fn prepare_parser_text_controlled(
     mut source: PreprocessedSource,
-    control: &ParseControl,
-) -> ParseControlResult<PreprocessedSource> {
+    control: &OperationControl,
+) -> OperationControlResult<PreprocessedSource> {
     encode_mermaid_entities_like_upstream_controlled(&mut source, control)?;
     Ok(source)
 }
 
 fn cleanup_text_controlled(
     source: &mut PreprocessedSource,
-    control: &ParseControl,
-) -> ParseControlResult<()> {
+    control: &OperationControl,
+) -> OperationControlResult<()> {
     control.checkpoint()?;
     strip_leading_utf8_bom(source, control)?;
     normalize_crlf_controlled(source, control)?;
@@ -307,8 +307,8 @@ fn cleanup_text_controlled(
 
 fn strip_leading_utf8_bom(
     source: &mut PreprocessedSource,
-    control: &ParseControl,
-) -> ParseControlResult<()> {
+    control: &OperationControl,
+) -> OperationControlResult<()> {
     if source.text().starts_with('\u{feff}') {
         source.apply_edits(vec![SourceEdit::delete(0..'\u{feff}'.len_utf8())], control)?;
     }
@@ -317,8 +317,8 @@ fn strip_leading_utf8_bom(
 
 fn remove_mermaid_comments_controlled(
     source: &mut PreprocessedSource,
-    control: &ParseControl,
-) -> ParseControlResult<()> {
+    control: &OperationControl,
+) -> OperationControlResult<()> {
     let text = source.text();
     let mut checkpoints = ControlledScanCheckpoints::new(control)?;
     let mut edits = Vec::new();
@@ -363,8 +363,8 @@ fn remove_mermaid_comments_controlled(
 
 fn normalize_crlf_controlled(
     source: &mut PreprocessedSource,
-    control: &ParseControl,
-) -> ParseControlResult<()> {
+    control: &OperationControl,
+) -> OperationControlResult<()> {
     let bytes = source.text().as_bytes();
     let mut checkpoints = ControlledScanCheckpoints::new(control)?;
     let mut edits = Vec::new();
@@ -394,14 +394,14 @@ fn normalize_crlf_controlled(
 
 #[cfg(test)]
 fn normalize_crlf(source: &mut PreprocessedSource) {
-    normalize_crlf_controlled(source, &ParseControl::new())
+    normalize_crlf_controlled(source, &OperationControl::new())
         .expect("a private parse control cannot be cancelled");
 }
 
 fn normalize_html_tag_attributes_like_upstream_controlled(
     source: &mut PreprocessedSource,
-    control: &ParseControl,
-) -> ParseControlResult<()> {
+    control: &OperationControl,
+) -> OperationControlResult<()> {
     let text = source.text();
     let bytes = text.as_bytes();
     let mut checkpoints = ControlledScanCheckpoints::new(control)?;
@@ -439,7 +439,7 @@ fn normalize_html_tag_attributes_like_upstream_controlled(
 
 #[cfg(test)]
 fn normalize_html_tag_attributes_like_upstream(source: &mut PreprocessedSource) {
-    normalize_html_tag_attributes_like_upstream_controlled(source, &ParseControl::new())
+    normalize_html_tag_attributes_like_upstream_controlled(source, &OperationControl::new())
         .expect("a private parse control cannot be cancelled");
 }
 
@@ -449,7 +449,7 @@ fn html_attribute_quote_edits_controlled(
     attributes_end: usize,
     edits: &mut Vec<SourceEdit>,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> ParseControlResult<()> {
+) -> OperationControlResult<()> {
     let mut probe = attributes_start;
     while let Some(start) =
         find_ascii_pattern_in_range_controlled(text, probe, attributes_end, b"=\"", checkpoints)?
@@ -487,8 +487,8 @@ fn html_attribute_quote_edits_controlled(
 
 fn encode_mermaid_entities_like_upstream_controlled(
     source: &mut PreprocessedSource,
-    control: &ParseControl,
-) -> ParseControlResult<()> {
+    control: &OperationControl,
+) -> OperationControlResult<()> {
     // Mirrors Mermaid `encodeEntities` (Mermaid@11.12.2):
     //
     // 1) Protect `style...:#...;` and `classDef...:#...;` so color hex fragments are not mistaken
@@ -502,14 +502,14 @@ fn encode_mermaid_entities_like_upstream_controlled(
 
 #[cfg(test)]
 fn encode_mermaid_entities_like_upstream(source: &mut PreprocessedSource) {
-    encode_mermaid_entities_like_upstream_controlled(source, &ParseControl::new())
+    encode_mermaid_entities_like_upstream_controlled(source, &OperationControl::new())
         .expect("a private parse control cannot be cancelled");
 }
 
 fn encode_entity_placeholders_like_upstream_controlled(
     source: &mut PreprocessedSource,
-    control: &ParseControl,
-) -> ParseControlResult<()> {
+    control: &OperationControl,
+) -> OperationControlResult<()> {
     let text = source.text();
     let bytes = text.as_bytes();
     let mut checkpoints = ControlledScanCheckpoints::new(control)?;
@@ -561,8 +561,8 @@ fn is_mermaid_js_word_byte(byte: u8) -> bool {
 fn strip_hex_style_semicolons_like_upstream_controlled(
     source: &mut PreprocessedSource,
     keyword: &str,
-    control: &ParseControl,
-) -> ParseControlResult<()> {
+    control: &OperationControl,
+) -> OperationControlResult<()> {
     let text = source.text();
     let mut checkpoints = ControlledScanCheckpoints::new(control)?;
     let mut edits = Vec::new();
@@ -597,7 +597,7 @@ fn collect_hex_style_semicolon_edits_controlled(
     keyword: &str,
     edits: &mut Vec<SourceEdit>,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> ParseControlResult<()> {
+) -> OperationControlResult<()> {
     let mut cursor = line_start;
     while let Some(semicolon) =
         find_hex_style_match_controlled(text, line_start, line_end, keyword, cursor, checkpoints)?
@@ -615,7 +615,7 @@ fn find_hex_style_match_controlled(
     keyword: &str,
     search_start: usize,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> ParseControlResult<Option<usize>> {
+) -> OperationControlResult<Option<usize>> {
     let Some(start) = find_ascii_pattern_in_range_controlled(
         text,
         search_start.max(line_start),
@@ -634,7 +634,7 @@ fn find_hex_style_match_end_controlled(
     search_start: usize,
     line_end: usize,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> ParseControlResult<Option<usize>> {
+) -> OperationControlResult<Option<usize>> {
     let mut probe = search_start;
     while let Some(colon) =
         find_ascii_pattern_in_range_controlled(text, probe, line_end, b":", checkpoints)?
@@ -677,7 +677,7 @@ fn rfind_ascii_byte_in_range_controlled(
     end: usize,
     needle: u8,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> ParseControlResult<Option<usize>> {
+) -> OperationControlResult<Option<usize>> {
     for offset in (start..end.min(text.len())).rev() {
         checkpoints.scanned(1)?;
         if text.as_bytes()[offset] == needle {
@@ -689,8 +689,8 @@ fn rfind_ascii_byte_in_range_controlled(
 
 fn process_frontmatter_controlled<'a>(
     input: &'a str,
-    control: &ParseControl,
-) -> ParseControlResult<Result<(&'a str, Option<String>, MermaidConfig)>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<(&'a str, Option<String>, MermaidConfig)>> {
     control.checkpoint()?;
     let Some(frontmatter) = split_frontmatter_block_controlled(input, control)? else {
         return Ok(Ok((input, None, MermaidConfig::empty_object())));
@@ -750,7 +750,7 @@ fn process_frontmatter_controlled<'a>(
 
 /// Splits an optional frontmatter block using a private, non-cancellable parse control.
 pub fn split_frontmatter_block(input: &str) -> Option<FrontmatterBlock<'_>> {
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     split_frontmatter_block_controlled(input, &control)
         .expect("a private parse control cannot be cancelled")
 }
@@ -758,8 +758,8 @@ pub fn split_frontmatter_block(input: &str) -> Option<FrontmatterBlock<'_>> {
 /// Locates an optional frontmatter block without allocating a dedented body.
 pub fn locate_frontmatter_block_controlled<'a>(
     input: &'a str,
-    control: &ParseControl,
-) -> ParseControlResult<Option<FrontmatterBlockLocation<'a>>> {
+    control: &OperationControl,
+) -> OperationControlResult<Option<FrontmatterBlockLocation<'a>>> {
     let mut checkpoints = ControlledScanCheckpoints::new(control)?;
     let Some(open_line_newline) = find_newline_controlled(input, 0, &mut checkpoints)? else {
         checkpoints.finish()?;
@@ -828,8 +828,8 @@ pub fn locate_frontmatter_block_controlled<'a>(
 /// Splits an optional frontmatter block while observing cooperative cancellation.
 pub fn split_frontmatter_block_controlled<'a>(
     input: &'a str,
-    control: &ParseControl,
-) -> ParseControlResult<Option<FrontmatterBlock<'a>>> {
+    control: &OperationControl,
+) -> OperationControlResult<Option<FrontmatterBlock<'a>>> {
     let Some(location) = locate_frontmatter_block_controlled(input, control)? else {
         return Ok(None);
     };
@@ -848,7 +848,7 @@ pub fn split_frontmatter_block_controlled<'a>(
 pub fn parse_frontmatter_yaml_fields(
     input: &str,
 ) -> std::result::Result<Map<String, Value>, String> {
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     parse_frontmatter_yaml_fields_controlled(input, &control)
         .expect("a private parse control cannot be cancelled")
 }
@@ -856,8 +856,8 @@ pub fn parse_frontmatter_yaml_fields(
 /// Parses frontmatter YAML fields while observing cooperative cancellation.
 pub fn parse_frontmatter_yaml_fields_controlled(
     input: &str,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<Map<String, Value>, String>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<Map<String, Value>, String>> {
     let parsed =
         crate::yaml_config::parse_yaml_value_controlled(input, MAX_CONFIG_NESTING_DEPTH, control)?;
     Ok(frontmatter_fields_from_yaml_value(parsed))
@@ -869,8 +869,8 @@ pub fn parse_frontmatter_yaml_fields_bounded_controlled(
     max_input_bytes: usize,
     max_nesting_depth: usize,
     max_materialized_bytes: usize,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<Map<String, Value>, String>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<Map<String, Value>, String>> {
     let parsed = crate::yaml_config::parse_yaml_value_with_limits_controlled(
         input,
         max_input_bytes,
@@ -899,12 +899,12 @@ pub fn diagram_config_key_for_type(diagram_type: &str) -> &str {
 }
 
 struct ControlledScanCheckpoints<'a> {
-    control: &'a ParseControl,
+    control: &'a OperationControl,
     bytes_since_checkpoint: usize,
 }
 
 impl<'a> ControlledScanCheckpoints<'a> {
-    fn new(control: &'a ParseControl) -> ParseControlResult<Self> {
+    fn new(control: &'a OperationControl) -> OperationControlResult<Self> {
         control.checkpoint()?;
         Ok(Self {
             control,
@@ -912,7 +912,7 @@ impl<'a> ControlledScanCheckpoints<'a> {
         })
     }
 
-    fn scanned(&mut self, bytes: usize) -> ParseControlResult<()> {
+    fn scanned(&mut self, bytes: usize) -> OperationControlResult<()> {
         self.bytes_since_checkpoint = self.bytes_since_checkpoint.saturating_add(bytes);
         while self.bytes_since_checkpoint >= CONTROLLED_SCAN_CHECKPOINT_BYTES {
             self.control.checkpoint()?;
@@ -921,7 +921,7 @@ impl<'a> ControlledScanCheckpoints<'a> {
         Ok(())
     }
 
-    fn finish(&self) -> ParseControlResult<()> {
+    fn finish(&self) -> OperationControlResult<()> {
         self.control.checkpoint()
     }
 }
@@ -930,7 +930,7 @@ fn find_newline_controlled(
     input: &str,
     start: usize,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> ParseControlResult<Option<usize>> {
+) -> OperationControlResult<Option<usize>> {
     for (offset, byte) in input.as_bytes()[start..].iter().enumerate() {
         checkpoints.scanned(1)?;
         if *byte == b'\n' {
@@ -946,7 +946,7 @@ fn trim_frontmatter_line_end_controlled(
     mut end: usize,
     trim: &[u8],
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> ParseControlResult<usize> {
+) -> OperationControlResult<usize> {
     while end > start && trim.contains(&input.as_bytes()[end - 1]) {
         checkpoints.scanned(1)?;
         end -= 1;
@@ -957,7 +957,7 @@ fn trim_frontmatter_line_end_controlled(
 fn frontmatter_indent_end_controlled(
     line: &str,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> ParseControlResult<usize> {
+) -> OperationControlResult<usize> {
     let mut end = 0usize;
     for (idx, ch) in line.char_indices() {
         checkpoints.scanned(ch.len_utf8())?;
@@ -973,7 +973,7 @@ fn is_frontmatter_closing_line_controlled(
     line: &str,
     indent: &str,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> ParseControlResult<bool> {
+) -> OperationControlResult<bool> {
     if !frontmatter_has_prefix_controlled(line, indent, checkpoints)? {
         return Ok(false);
     }
@@ -986,7 +986,7 @@ fn frontmatter_has_prefix_controlled(
     text: &str,
     prefix: &str,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> ParseControlResult<bool> {
+) -> OperationControlResult<bool> {
     if text.len() < prefix.len() {
         return Ok(false);
     }
@@ -1005,7 +1005,7 @@ fn frontmatter_has_prefix_controlled(
 fn frontmatter_is_whitespace_controlled(
     text: &str,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> ParseControlResult<bool> {
+) -> OperationControlResult<bool> {
     for ch in text.chars() {
         checkpoints.scanned(ch.len_utf8())?;
         if !ch.is_whitespace() {
@@ -1018,8 +1018,8 @@ fn frontmatter_is_whitespace_controlled(
 fn dedent_frontmatter_body_controlled<'a>(
     body: &'a str,
     indent: &str,
-    control: &ParseControl,
-) -> ParseControlResult<Cow<'a, str>> {
+    control: &OperationControl,
+) -> OperationControlResult<Cow<'a, str>> {
     if indent.is_empty() {
         control.checkpoint()?;
         return Ok(Cow::Borrowed(body));
@@ -1052,7 +1052,7 @@ fn push_frontmatter_str_controlled(
     out: &mut String,
     text: &str,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> ParseControlResult<()> {
+) -> OperationControlResult<()> {
     let mut chunk_start = 0usize;
     let mut chunk_len = 0usize;
     for (idx, ch) in text.char_indices() {
@@ -1125,8 +1125,8 @@ fn process_directives_controlled(
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
     directive_recovery: DirectiveRecoveryMode,
-    control: &ParseControl,
-) -> ParseControlResult<Result<ProcessedDirectives>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<ProcessedDirectives>> {
     control.checkpoint()?;
     let blocks = directive_blocks_controlled(input, directive_recovery, control)?;
     if blocks.is_empty() {
@@ -1198,7 +1198,7 @@ fn detect_init(
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
 ) -> Result<MermaidConfig> {
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     detect_init_controlled(directives, input, registry, diagram_type, &control)
         .expect("a private parse control cannot be cancelled")
 }
@@ -1208,8 +1208,8 @@ fn detect_init_controlled(
     input: &str,
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
-    control: &ParseControl,
-) -> ParseControlResult<Result<MermaidConfig>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<MermaidConfig>> {
     control.checkpoint()?;
     let mut merged = MermaidConfig::empty_object();
     let mut config_for_detect = MermaidConfig::empty_object();
@@ -1284,8 +1284,8 @@ struct DirectiveBlock<'a> {
 fn remove_directive_blocks_controlled<'a>(
     input: &'a str,
     blocks: &[DirectiveBlock<'_>],
-    control: &ParseControl,
-) -> ParseControlResult<Cow<'a, str>> {
+    control: &OperationControl,
+) -> OperationControlResult<Cow<'a, str>> {
     if blocks.is_empty() {
         control.checkpoint()?;
         return Ok(Cow::Borrowed(input));
@@ -1319,7 +1319,7 @@ fn directive_blocks(
     input: &str,
     directive_recovery: DirectiveRecoveryMode,
 ) -> Vec<DirectiveBlock<'_>> {
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     directive_blocks_controlled(input, directive_recovery, &control)
         .expect("a private parse control cannot be cancelled")
 }
@@ -1327,8 +1327,8 @@ fn directive_blocks(
 fn directive_blocks_controlled<'a>(
     input: &'a str,
     directive_recovery: DirectiveRecoveryMode,
-    control: &ParseControl,
-) -> ParseControlResult<Vec<DirectiveBlock<'a>>> {
+    control: &OperationControl,
+) -> OperationControlResult<Vec<DirectiveBlock<'a>>> {
     let mut checkpoints = ControlledScanCheckpoints::new(control)?;
     let mut blocks = Vec::new();
     let mut pos = 0;
@@ -1385,7 +1385,7 @@ fn find_ascii_pattern_controlled(
     start: usize,
     pattern: &[u8],
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> ParseControlResult<Option<usize>> {
+) -> OperationControlResult<Option<usize>> {
     find_ascii_pattern_in_range_controlled(input, start, input.len(), pattern, checkpoints)
 }
 
@@ -1395,7 +1395,7 @@ fn find_ascii_pattern_in_range_controlled(
     end: usize,
     pattern: &[u8],
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> ParseControlResult<Option<usize>> {
+) -> OperationControlResult<Option<usize>> {
     let end = end.min(input.len());
     if pattern.is_empty() || start > end || pattern.len() > end.saturating_sub(start) {
         return Ok(None);
@@ -1415,7 +1415,7 @@ fn find_line_break_controlled(
     input: &str,
     start: usize,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> ParseControlResult<Option<usize>> {
+) -> OperationControlResult<Option<usize>> {
     for (offset, byte) in input.as_bytes()[start..].iter().copied().enumerate() {
         checkpoints.scanned(1)?;
         if matches!(byte, b'\r' | b'\n') {
@@ -1427,23 +1427,23 @@ fn find_line_break_controlled(
 
 #[cfg(test)]
 fn parse_directive_like_upstream(raw: &str) -> Result<Option<Directive>> {
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     parse_directive_like_upstream_controlled(raw, &control)
         .expect("a private parse control cannot be cancelled")
 }
 
 fn parse_directive_like_upstream_controlled(
     raw: &str,
-    control: &ParseControl,
-) -> ParseControlResult<Result<Option<Directive>>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<Option<Directive>>> {
     let normalized = normalize_directive_quotes_controlled(raw, control)?;
     parse_directive_controlled(normalized.as_ref(), control)
 }
 
 fn normalize_directive_quotes_controlled<'a>(
     raw: &'a str,
-    control: &ParseControl,
-) -> ParseControlResult<Cow<'a, str>> {
+    control: &OperationControl,
+) -> OperationControlResult<Cow<'a, str>> {
     let mut checkpoints = ControlledScanCheckpoints::new(control)?;
     let mut first_quote = None;
     for (index, byte) in raw.as_bytes().iter().copied().enumerate() {
@@ -1503,15 +1503,15 @@ enum DirectiveDictionaryKind {
 
 #[cfg(test)]
 fn sanitize_directive(value: &mut Value) {
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     sanitize_directive_controlled(value, &control)
         .expect("a private parse control cannot be cancelled");
 }
 
 fn sanitize_directive_controlled(
     value: &mut Value,
-    control: &ParseControl,
-) -> ParseControlResult<()> {
+    control: &OperationControl,
+) -> OperationControlResult<()> {
     control.checkpoint()?;
     let mut stack = vec![Vec::<DirectiveValuePathSegment>::new()];
     let mut visited = 0usize;
@@ -1776,8 +1776,8 @@ fn directive_value_at_path_mut<'a>(
 
 pub(crate) fn directive_removal_ranges_controlled(
     text: &str,
-    control: &ParseControl,
-) -> ParseControlResult<Vec<std::ops::Range<usize>>> {
+    control: &OperationControl,
+) -> OperationControlResult<Vec<std::ops::Range<usize>>> {
     Ok(
         directive_blocks_controlled(text, DirectiveRecoveryMode::Strict, control)?
             .into_iter()
@@ -1788,8 +1788,8 @@ pub(crate) fn directive_removal_ranges_controlled(
 
 fn parse_directive_controlled(
     raw: &str,
-    control: &ParseControl,
-) -> ParseControlResult<Result<Option<Directive>>> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<Option<Directive>>> {
     let mut checkpoints = ControlledScanCheckpoints::new(control)?;
     let (raw_start, raw_end) = trim_whitespace_bounds_controlled(raw, &mut checkpoints)?;
     let raw = &raw[raw_start..raw_end];
@@ -1856,8 +1856,8 @@ fn parse_directive_controlled(
 
 fn parse_directive_config_value_controlled(
     input: &str,
-    control: &ParseControl,
-) -> ParseControlResult<Option<Value>> {
+    control: &OperationControl,
+) -> OperationControlResult<Option<Value>> {
     control.checkpoint()?;
     // `json5` has no cancellation hook. The caller enforces a hard input and nesting bound, so
     // this is a bounded atomic parser region rather than an unbounded cancellation gap.
@@ -1873,15 +1873,15 @@ fn parse_directive_config_value_controlled(
 
 #[cfg(test)]
 fn config_nesting_exceeds_limit(text: &str) -> bool {
-    let control = ParseControl::new();
+    let control = OperationControl::new();
     config_nesting_exceeds_limit_controlled(text, &control)
         .expect("a private parse control cannot be cancelled")
 }
 
 fn config_nesting_exceeds_limit_controlled(
     text: &str,
-    control: &ParseControl,
-) -> ParseControlResult<bool> {
+    control: &OperationControl,
+) -> OperationControlResult<bool> {
     let mut checkpoints = ControlledScanCheckpoints::new(control)?;
     if max_flow_collection_depth_controlled(text, &mut checkpoints)? > MAX_CONFIG_NESTING_DEPTH {
         checkpoints.finish()?;
@@ -1896,7 +1896,7 @@ fn config_nesting_exceeds_limit_controlled(
 fn max_flow_collection_depth_controlled(
     text: &str,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> ParseControlResult<usize> {
+) -> OperationControlResult<usize> {
     let mut max_depth = 0usize;
     let mut depth = 0usize;
     let mut quote = None;
@@ -1938,7 +1938,7 @@ fn max_flow_collection_depth_controlled(
 fn max_yaml_indent_depth_controlled(
     text: &str,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> ParseControlResult<usize> {
+) -> OperationControlResult<usize> {
     let mut indents = Vec::<usize>::new();
     let mut max_depth = 0usize;
     let mut line_start = 0usize;
@@ -1981,7 +1981,7 @@ fn max_yaml_indent_depth_controlled(
 fn trim_whitespace_bounds_controlled(
     text: &str,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> ParseControlResult<(usize, usize)> {
+) -> OperationControlResult<(usize, usize)> {
     let mut start = text.len();
     for (idx, ch) in text.char_indices() {
         checkpoints.scanned(ch.len_utf8())?;
@@ -2008,7 +2008,7 @@ fn trim_whitespace_bounds_controlled(
 fn leading_ascii_space_count_controlled(
     text: &str,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> ParseControlResult<usize> {
+) -> OperationControlResult<usize> {
     let mut count = 0usize;
     for byte in text.bytes() {
         checkpoints.scanned(1)?;
@@ -2023,7 +2023,7 @@ fn leading_ascii_space_count_controlled(
 fn trim_start_whitespace_controlled(
     text: &str,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> ParseControlResult<usize> {
+) -> OperationControlResult<usize> {
     let mut start = text.len();
     for (idx, ch) in text.char_indices() {
         checkpoints.scanned(ch.len_utf8())?;
@@ -2038,7 +2038,7 @@ fn trim_start_whitespace_controlled(
 fn yaml_inline_sequence_indicator_count_controlled(
     mut text: &str,
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> ParseControlResult<usize> {
+) -> OperationControlResult<usize> {
     let mut count = 0usize;
     loop {
         let Some(after_dash) = text.strip_prefix('-') else {
@@ -2092,7 +2092,7 @@ mod tests {
             ("---\ntitle: Demo\n \t---\nflowchart TD", false),
             ("---", false),
         ] {
-            let control = ParseControl::new();
+            let control = OperationControl::new();
             let controlled = split_frontmatter_block_controlled(source, &control)
                 .expect("an active parse control must not cancel");
             let wrapped = split_frontmatter_block(source);
@@ -2113,9 +2113,10 @@ mod tests {
                 );
                 assert_eq!(controlled.stripped, wrapped.stripped, "source: {source:?}");
 
-                let location = locate_frontmatter_block_controlled(source, &ParseControl::new())
-                    .expect("an active parse control must not cancel")
-                    .expect("a split block must have a location");
+                let location =
+                    locate_frontmatter_block_controlled(source, &OperationControl::new())
+                        .expect("an active parse control must not cancel")
+                        .expect("a split block must have a location");
                 assert_eq!(location.full, controlled.full, "source: {source:?}");
                 assert_eq!(location.body, controlled.body, "source: {source:?}");
                 assert_eq!(location.indent, controlled.indent, "source: {source:?}");
@@ -2129,7 +2130,7 @@ mod tests {
     fn controlled_frontmatter_split_preserves_indented_body_bytes() {
         let source =
             "  ---\r\n  title: Demo\r\n  config:\r\n    theme: dark\r\n  ---\r\nflowchart TD";
-        let block = split_frontmatter_block_controlled(source, &ParseControl::new())
+        let block = split_frontmatter_block_controlled(source, &OperationControl::new())
             .expect("an active parse control must not cancel")
             .expect("frontmatter block");
 
@@ -2151,7 +2152,7 @@ mod tests {
         let value = "x".repeat(8 * 1024);
         let indented_body = format!("{indent}title: {value}");
         let source = format!("{indent}---\n{indented_body}\n{indent}---\nflowchart TD");
-        let block = split_frontmatter_block_controlled(&source, &ParseControl::new())
+        let block = split_frontmatter_block_controlled(&source, &OperationControl::new())
             .expect("an active parse control must not cancel")
             .expect("frontmatter block");
 
@@ -2169,7 +2170,7 @@ mod tests {
     fn frontmatter_location_cancels_deterministically_on_a_long_opening_line() {
         let indent = " ".repeat(16 * 1024);
         let source = format!("{indent}---\n{indent}---\nflowchart TD");
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel_after_checkpoints(2);
 
         assert!(locate_frontmatter_block_controlled(&source, &control).is_err());
@@ -2178,7 +2179,7 @@ mod tests {
     #[test]
     fn frontmatter_location_cancels_deterministically_on_a_long_body() {
         let source = format!("---\n{}\n---\nflowchart TD", "x".repeat(16 * 1024));
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel_after_checkpoints(2);
 
         assert!(locate_frontmatter_block_controlled(&source, &control).is_err());
@@ -2190,7 +2191,7 @@ mod tests {
             "---\ntitle: Demo\n---{}\nflowchart TD",
             " ".repeat(16 * 1024)
         );
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel_after_checkpoints(2);
 
         assert!(locate_frontmatter_block_controlled(&source, &control).is_err());
@@ -2199,7 +2200,7 @@ mod tests {
     #[test]
     fn frontmatter_dedent_cancels_deterministically_on_a_long_indented_body() {
         let body = format!("  {}", "x".repeat(16 * 1024));
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel_after_checkpoints(2);
 
         assert!(dedent_frontmatter_body_controlled(&body, "  ", &control).is_err());
@@ -2208,13 +2209,13 @@ mod tests {
     #[test]
     fn controlled_frontmatter_yaml_fields_match_the_legacy_wrapper() {
         let yaml = "title: Demo\nconfig:\n  theme: dark\n";
-        let controlled = parse_frontmatter_yaml_fields_controlled(yaml, &ParseControl::new())
+        let controlled = parse_frontmatter_yaml_fields_controlled(yaml, &OperationControl::new())
             .expect("an active parse control must not cancel")
             .expect("valid frontmatter YAML");
 
         assert_eq!(controlled, parse_frontmatter_yaml_fields(yaml).unwrap());
 
-        let cancelled = ParseControl::new();
+        let cancelled = OperationControl::new();
         cancelled.cancel();
         assert!(parse_frontmatter_yaml_fields_controlled(yaml, &cancelled).is_err());
     }
@@ -2226,7 +2227,7 @@ mod tests {
             1024,
             16,
             8,
-            &ParseControl::new(),
+            &OperationControl::new(),
         )
         .expect("an active parse control must not cancel");
 
@@ -2619,8 +2620,9 @@ A["<span title="😀">Label</span>"]
             ("# [ignored]\nconfig: { theme: dark }\n", false),
             (deep_flow.as_str(), true),
         ] {
-            let controlled = config_nesting_exceeds_limit_controlled(yaml, &ParseControl::new())
-                .expect("an active parse control must not cancel");
+            let controlled =
+                config_nesting_exceeds_limit_controlled(yaml, &OperationControl::new())
+                    .expect("an active parse control must not cancel");
 
             assert_eq!(controlled, expected, "yaml: {yaml:?}");
             assert_eq!(controlled, config_nesting_exceeds_limit(yaml));
@@ -2630,7 +2632,7 @@ A["<span title="😀">Label</span>"]
     #[test]
     fn config_nesting_flow_scan_cancels_deterministically_on_a_long_line() {
         let yaml = format!("title: \"{}\"", "x".repeat(16 * 1024));
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel_after_checkpoints(2);
 
         assert!(config_nesting_exceeds_limit_controlled(&yaml, &control).is_err());
@@ -2639,7 +2641,7 @@ A["<span title="😀">Label</span>"]
     #[test]
     fn config_nesting_indent_scan_cancels_deterministically_on_a_long_line() {
         let yaml = format!("{}key: value", " ".repeat(16 * 1024));
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel_after_checkpoints(2);
         let mut checkpoints = ControlledScanCheckpoints::new(&control).unwrap();
 
@@ -2649,7 +2651,7 @@ A["<span title="😀">Label</span>"]
     #[test]
     fn config_nesting_trim_cancels_deterministically_on_long_whitespace() {
         let line = format!("{}value{}", " ".repeat(16 * 1024), " ".repeat(16 * 1024));
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         control.cancel_after_checkpoints(2);
         let mut checkpoints = ControlledScanCheckpoints::new(&control).unwrap();
 

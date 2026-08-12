@@ -3,7 +3,7 @@ use crate::{
     EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
     EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers,
     EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, Error,
-    ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
+    OperationControl, OperationControlResult, ParseMetadata, Result, SourceSpan,
     editor::EditorLexemeJournal, family::CombinedSemanticFailure,
 };
 use serde_json::{Map, Value, json};
@@ -368,8 +368,8 @@ pub(crate) fn parse_requirement_model_for_render(
 pub(crate) fn parse_requirement_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control: &OperationControl,
+) -> OperationControlResult<crate::family::CombinedSemanticParse> {
     let construction = construct_requirement_semantic_source_controlled(code, meta, control)?;
     Ok(crate::family::CombinedSemanticParse::from_construction(
         construction,
@@ -578,15 +578,16 @@ fn construct_requirement_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<RequirementSemanticSource, CombinedSemanticFailure> {
-    construct_requirement_semantic_source_controlled(code, meta, &ParseControl::new())
+    construct_requirement_semantic_source_controlled(code, meta, &OperationControl::new())
         .expect("a private parse control cannot be cancelled")
 }
 
 fn construct_requirement_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<RequirementSemanticSource, CombinedSemanticFailure>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<RequirementSemanticSource, CombinedSemanticFailure>>
+{
     control.checkpoint()?;
     #[cfg(test)]
     REQUIREMENT_SYNTAX_CONSTRUCTION_COUNT.set(REQUIREMENT_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
@@ -610,8 +611,9 @@ fn parse_requirement_semantic_source_once(
     code: &str,
     meta: &ParseMetadata,
     lexemes: &mut EditorLexemeJournal<'_>,
-    control: &ParseControl,
-) -> ParseControlResult<std::result::Result<RequirementSemanticSource, CombinedSemanticFailure>> {
+    control: &OperationControl,
+) -> OperationControlResult<std::result::Result<RequirementSemanticSource, CombinedSemanticFailure>>
+{
     control.checkpoint()?;
     let mut db = RequirementDb::new();
     let mut acc_title: Option<String> = None;
@@ -997,8 +999,8 @@ fn parse_requirement_acc_descr(
     line_start: usize,
     cursor: &mut LineCursor<'_>,
     lexemes: &mut EditorLexemeJournal<'_>,
-    control: &ParseControl,
-) -> ParseControlResult<Option<RequirementAccDescr>> {
+    control: &OperationControl,
+) -> OperationControlResult<Option<RequirementAccDescr>> {
     control.checkpoint()?;
     let Some((rest, rest_start)) = parse_keyword_rest_ci(line, "accDescr") else {
         return Ok(None);
@@ -1614,8 +1616,8 @@ fn parse_requirement_body(
     meta: &ParseMetadata,
     facts: &mut EditorSemanticFacts,
     lexemes: &mut EditorLexemeJournal<'_>,
-    control: &ParseControl,
-) -> ParseControlResult<RequirementBodyParse<RequirementBuilder>> {
+    control: &OperationControl,
+) -> OperationControlResult<RequirementBodyParse<RequirementBuilder>> {
     control.checkpoint()?;
     let mut b = RequirementBuilder::new();
     let mut error = None;
@@ -1746,8 +1748,8 @@ fn parse_element_body(
     meta: &ParseMetadata,
     facts: &mut EditorSemanticFacts,
     lexemes: &mut EditorLexemeJournal<'_>,
-    control: &ParseControl,
-) -> ParseControlResult<RequirementBodyParse<ElementBuilder>> {
+    control: &OperationControl,
+) -> OperationControlResult<RequirementBodyParse<ElementBuilder>> {
     control.checkpoint()?;
     let mut b = ElementBuilder::new();
     let mut error = None;
@@ -2942,7 +2944,7 @@ mod tests {
         let standalone_json = parse_requirement(text, &meta).unwrap();
         reset_requirement_syntax_construction_count();
         let (combined_json, combined_editor) = crate::family::test_support::into_result(
-            parse_requirement_json_and_editor_facts(text, &meta, &ParseControl::new()),
+            parse_requirement_json_and_editor_facts(text, &meta, &OperationControl::new()),
         )
         .unwrap();
 

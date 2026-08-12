@@ -23,7 +23,6 @@ pub mod geom;
 mod inline_config;
 pub mod models;
 pub mod operation;
-mod parse_control;
 mod parse_pipeline;
 pub mod preprocess;
 pub mod resources;
@@ -63,7 +62,6 @@ pub use operation::{
     CancelReason, OperationCancelled, OperationControl, OperationControlResult, OperationLedger,
     OperationLedgerError, OperationPhase, OperationResourceLimitExceeded,
 };
-pub use parse_control::{ParseCancelled, ParseControl, ParseControlResult};
 pub use preprocess::{
     PreprocessResult, PreprocessedSource, preprocess_diagram, preprocess_diagram_with_known_type,
 };
@@ -432,20 +430,20 @@ impl Engine {
     /// Error suppression is deliberately absent from this API; suppression remains limited to
     /// model-producing JSON and render facades.
     pub fn parse_diagram_snapshot_sync(&self, text: &str) -> Result<Option<DiagramParseSnapshot>> {
-        let control = ParseControl::new();
+        let control = OperationControl::new();
         self.parse_diagram_snapshot_controlled_sync(text, &control)
             .map_err(Error::from)?
     }
 
     /// Captures an editor-facing parse operation with cooperative cancellation.
     ///
-    /// Cancellation is returned through the outer [`ParseControlResult`] and is never converted
+    /// Cancellation is returned through the outer [`OperationControlResult`] and is never converted
     /// into a Mermaid parse error, failed snapshot, or recovery diagnostic.
     pub fn parse_diagram_snapshot_controlled_sync(
         &self,
         text: &str,
-        control: &ParseControl,
-    ) -> ParseControlResult<Result<Option<DiagramParseSnapshot>>> {
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<Option<DiagramParseSnapshot>>> {
         parse_pipeline::ParsePipeline::detect(self, text, ParseOptions::strict())
             .parse_editor_snapshot_controlled(parse_pipeline::ParseTiming::Json, control)
     }
