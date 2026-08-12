@@ -15,6 +15,11 @@ const fullWasmTypes = path.join(root, "pkg", "full", "merman_wasm.d.ts");
 const publicEntry = path.join(root, "src", "index.ts");
 const publicCatalog = path.join(root, "src", "public-catalog.ts");
 const publicTypes = path.join(root, "src", "public-types.ts");
+const bindingOptionsTypeTests = path.join(
+  root,
+  "type-tests",
+  "binding-options.ts",
+);
 const generatedTokenDescriptor = path.join(
   root,
   "src",
@@ -26,7 +31,7 @@ const packageEntries = webPackages.map((descriptor) => descriptor.id);
 
 const contract = loadTypeScriptContract({
   tsconfigPath: path.join(root, "tsconfig.json"),
-  extraRootNames: [fullWasmTypes],
+  extraRootNames: [fullWasmTypes, bindingOptionsTypeTests],
 });
 const diagnostics = contract.diagnostics();
 if (diagnostics.length > 0) {
@@ -196,25 +201,6 @@ const requiredTypeStringLiterals = new Map([
       "parser_complete",
       "parser_recovered",
     ],
-  ],
-]);
-const knownTypeStringLiterals = new Map([
-  [
-    "AnalysisExpectedSyntaxKind",
-    new Set([
-      "directive",
-      "frontmatter",
-      "id_list",
-      "node_identifier",
-      "class_name",
-      "operator",
-      "shape",
-      "shape_trigger",
-      "direction",
-      "style_value",
-      "interaction_action",
-      "payload",
-    ]),
   ],
 ]);
 const exactTypeStringLiterals = new Map([
@@ -415,18 +401,6 @@ for (const [typeName, expectedLiterals] of exactTypeStringLiterals) {
   );
   failed ||= reportUnexpected(
     `check-contracts: ${typeName} has members outside the generated contract`,
-    difference(literals, expectedLiterals),
-  );
-}
-
-for (const [typeName, expectedLiterals] of knownTypeStringLiterals) {
-  const literals = contract.exportedStringLiteralMembers(publicEntry, typeName);
-  failed ||= reportMissing(
-    `check-contracts: ${typeName} is missing known string members`,
-    difference(expectedLiterals, literals),
-  );
-  failed ||= reportUnexpected(
-    `check-contracts: ${typeName} has unknown string members`,
     difference(literals, expectedLiterals),
   );
 }

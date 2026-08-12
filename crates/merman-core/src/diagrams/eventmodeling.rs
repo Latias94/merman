@@ -1783,7 +1783,7 @@ fn push_eventmodeling_frame_facts(
     for source in &frame.source_frames {
         control.checkpoint()?;
         facts.push_symbol(
-            EditorSemanticSymbol::new(
+            EditorSemanticSymbol::reference(
                 source.text.clone(),
                 Some("eventmodeling source frame".to_string()),
                 EditorSemanticKind::Namespace,
@@ -1793,33 +1793,34 @@ fn push_eventmodeling_frame_facts(
             .with_rename_policy(EditorRenamePolicy::EventModelingFrameId),
         );
     }
+    if let Some(reference) = &frame.data_reference {
+        control.checkpoint()?;
+        facts.push_symbol(
+            EditorSemanticSymbol::reference(
+                reference.text.clone(),
+                Some("eventmodeling data reference".to_string()),
+                EditorSemanticKind::Namespace,
+                reference.span,
+                reference.span,
+            )
+            .with_rename_policy(EditorRenamePolicy::EventModelingId),
+        );
+    }
     for (field, detail) in [
-        (&frame.data_reference, "eventmodeling data reference"),
         (&frame.data_type, "eventmodeling data type"),
         (&frame.data_inline_value, "eventmodeling inline data"),
     ] {
         control.checkpoint()?;
-        if let Some(field) = field {
-            let symbol = if detail == "eventmodeling data reference" {
-                EditorSemanticSymbol::new(
-                    field.text.clone(),
-                    Some(detail.to_string()),
-                    EditorSemanticKind::Namespace,
-                    field.span,
-                    field.span,
-                )
-                .with_rename_policy(EditorRenamePolicy::EventModelingId)
-            } else {
-                EditorSemanticSymbol::payload(
-                    field.text.clone(),
-                    Some(detail.to_string()),
-                    EditorSemanticKind::String,
-                    field.span,
-                    field.span,
-                )
-            };
-            facts.push_symbol(symbol);
-        }
+        let Some(field) = field else {
+            continue;
+        };
+        facts.push_symbol(EditorSemanticSymbol::payload(
+            field.text.clone(),
+            Some(detail.to_string()),
+            EditorSemanticKind::String,
+            field.span,
+            field.span,
+        ));
     }
     Ok(())
 }
@@ -1865,7 +1866,7 @@ fn push_eventmodeling_data_facts(
 fn push_eventmodeling_note_facts(facts: &mut EditorSemanticFacts, note: &EventModelingNoteFacts) {
     if !note.source_frame.text.is_empty() {
         facts.push_symbol(
-            EditorSemanticSymbol::new(
+            EditorSemanticSymbol::reference(
                 note.source_frame.text.clone(),
                 Some("eventmodeling note source frame".to_string()),
                 EditorSemanticKind::Namespace,
@@ -1903,7 +1904,7 @@ fn push_eventmodeling_gwt_facts(
     control: &crate::ParseControl,
 ) -> crate::ParseControlResult<()> {
     facts.push_symbol(
-        EditorSemanticSymbol::new(
+        EditorSemanticSymbol::reference(
             gwt.source_frame.text.clone(),
             Some("eventmodeling gwt source frame".to_string()),
             EditorSemanticKind::Namespace,
@@ -1922,7 +1923,7 @@ fn push_eventmodeling_gwt_facts(
             statement.model_entity_type.span,
         ));
         facts.push_symbol(
-            EditorSemanticSymbol::new(
+            EditorSemanticSymbol::reference(
                 statement.entity_reference.text.clone(),
                 Some("eventmodeling gwt entity reference".to_string()),
                 EditorSemanticKind::Object,
@@ -1939,8 +1940,8 @@ fn push_eventmodeling_gwt_facts(
 mod tests {
     use super::*;
     use crate::{
-        EditorLexemeProducerKind, EditorSemanticCompleteness, Engine, MermaidConfig,
-        ParseDiagnosticSpanKind, ParseMetadata,
+        EditorLexemeProducerKind, EditorSemanticCompleteness, EditorSemanticRole, Engine,
+        MermaidConfig, ParseDiagnosticSpanKind, ParseMetadata,
     };
 
     fn meta() -> ParseMetadata {
@@ -2307,6 +2308,71 @@ data ItemAddedData {
             expected.kind == EditorExpectedSyntaxKind::Payload
                 && expected.span == SourceSpan::new(frame_start, frame_start + "01".len())
         }));
+    }
+
+    #[test]
+    fn editor_facts_assign_entity_reference_and_payload_roles_explicitly() {
+        let text = concat!(
+            "eventmodeling\n",
+            "entity CartUpdated\n",
+            "tf 001 cmd UpdateCart\n",
+            "tf 002 evt Cart.Updated ->> 001 [[CartData]] `json`{ \"ok\": true }\n",
+            "data CartData `json` {\n",
+            "  { \"ok\": true }\n",
+            "}\n",
+            "note 002 `md` {\n",
+            "  Cart changed\n",
+            "}\n",
+            "gwt 002\n",
+            "  given\n",
+            "    evt CartUpdated\n",
+            "  then\n",
+            "    evt CartUpdated\n",
+        );
+        let facts = crate::family::test_support::editor_facts(
+            parse_eventmodeling_json_and_editor_facts,
+            text,
+            &meta(),
+        );
+
+        for (name, detail) in [
+            ("CartUpdated", "eventmodeling model entity"),
+            ("001", "eventmodeling frame"),
+            ("002", "eventmodeling frame"),
+            ("CartData", "eventmodeling data entity"),
+        ] {
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == name
+                    && symbol.detail.as_deref() == Some(detail)
+                    && symbol.role == EditorSemanticRole::Entity
+            }));
+        }
+        for (name, detail) in [
+            ("001", "eventmodeling source frame"),
+            ("CartData", "eventmodeling data reference"),
+            ("002", "eventmodeling note source frame"),
+            ("002", "eventmodeling gwt source frame"),
+            ("CartUpdated", "eventmodeling gwt entity reference"),
+        ] {
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == name
+                    && symbol.detail.as_deref() == Some(detail)
+                    && symbol.role == EditorSemanticRole::Reference
+            }));
+        }
+        for detail in [
+            "eventmodeling entity type",
+            "eventmodeling entity identifier",
+            "eventmodeling data type",
+            "eventmodeling inline data",
+            "eventmodeling data block",
+            "eventmodeling note block",
+        ] {
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.detail.as_deref() == Some(detail)
+                    && symbol.role == EditorSemanticRole::Payload
+            }));
+        }
     }
 
     #[test]

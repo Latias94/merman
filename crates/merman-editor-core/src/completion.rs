@@ -232,8 +232,12 @@ fn is_frontmatter_authoring_position(query: &CompletionQuery<'_>) -> bool {
 }
 
 fn starts_with_frontmatter_opening_line(text: &str) -> bool {
-    let first_line_end = text.find('\n').unwrap_or(text.len());
-    let first_line = text[..first_line_end].trim_end_matches('\r');
+    let first_line_end = text
+        .as_bytes()
+        .iter()
+        .position(|byte| matches!(byte, b'\n' | b'\r'))
+        .unwrap_or(text.len());
+    let first_line = &text[..first_line_end];
     first_line.trim_start() == "---"
 }
 

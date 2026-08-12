@@ -229,6 +229,82 @@ fn completion_offers_interaction_snippets_after_click_targets() {
 }
 
 #[test]
+fn gantt_completion_offers_interaction_snippets_after_click_targets() {
+    for (name, line_ending, trailing_line_ending) in [
+        ("eof", "\n", ""),
+        ("lf", "\n", "\n"),
+        ("crlf", "\r\n", "\r\n"),
+    ] {
+        let source = format!(
+            "gantt{line_ending}Task: task1, 2026-08-12, 1d{line_ending}click task1 {trailing_line_ending}"
+        );
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
+                format!("file:///tmp/gantt-interaction-{name}.mmd"),
+                1,
+                source,
+                DocumentKind::Diagram,
+            )
+            .expect("Gantt recovery source should be accepted");
+        let list = completion_for_snapshot(&snapshot, Position::new(2, 12));
+
+        assert_eq!(
+            list.fact_source,
+            Some(FenceTextIndexSource::ParserRecovered),
+            "{name}"
+        );
+        let edit = list
+            .items
+            .iter()
+            .find(|item| item.label == "href link action")
+            .and_then(|item| item.text_edit.as_ref())
+            .unwrap_or_else(|| panic!("{name} must offer an interaction action: {:?}", list.items));
+        assert_eq!(edit.range.start, Position::new(2, 12), "{name}");
+        assert_eq!(edit.range.end, Position::new(2, 12), "{name}");
+    }
+}
+
+#[test]
+fn gantt_completion_recognizes_partial_interaction_actions_case_insensitively() {
+    for (name, action, label) in [
+        ("href-lower-partial", "h", "href link action"),
+        ("href-upper-partial", "H", "href link action"),
+        ("href-upper-complete", "HREF", "href link action"),
+        ("call-lower-partial", "c", "callback action"),
+        ("call-upper-partial", "C", "callback action"),
+        ("call-upper-complete", "CALL", "callback action"),
+    ] {
+        let source = format!("gantt\nTask: task1, 2026-08-12, 1d\nclick task1 {action}");
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
+                format!("file:///tmp/gantt-interaction-{name}.mmd"),
+                1,
+                source,
+                DocumentKind::Diagram,
+            )
+            .expect("Gantt recovery source should be accepted");
+        let end = 12 + action.len();
+        let list = completion_for_snapshot(&snapshot, Position::new(2, end));
+
+        assert_eq!(
+            list.fact_source,
+            Some(FenceTextIndexSource::ParserRecovered),
+            "{name}"
+        );
+        let edit = list
+            .items
+            .iter()
+            .find(|item| item.label == label)
+            .and_then(|item| item.text_edit.as_ref())
+            .unwrap_or_else(|| panic!("{name} must offer {label}: {:?}", list.items));
+        assert_eq!(edit.range.start, Position::new(2, 12), "{name}");
+        assert_eq!(edit.range.end, Position::new(2, end), "{name}");
+    }
+}
+
+#[test]
 fn completion_uses_typed_style_slots_across_directive_families() {
     let cases = [
         (
@@ -1312,6 +1388,35 @@ fn completion_keeps_known_node_ids_when_parser_recovers() {
 }
 
 #[test]
+fn sequence_link_payload_slot_does_not_offer_interaction_actions() {
+    for (name, line_ending) in [("eof", ""), ("lf", "\n"), ("crlf", "\r\n")] {
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
+                format!("file:///tmp/sequence-link-{name}.mmd"),
+                1,
+                format!("sequenceDiagram\nparticipant Alice\nlink Alice {line_ending}"),
+                DocumentKind::Diagram,
+            )
+            .expect("sequence source should be accepted");
+        let list = completion_for_snapshot(&snapshot, Position::new(2, 11));
+
+        assert_eq!(
+            list.fact_source,
+            Some(FenceTextIndexSource::ParserRecovered),
+            "{name}"
+        );
+        assert!(
+            list.items.iter().all(|item| {
+                item.label != "href link action" && item.label != "callback action"
+            }),
+            "sequence link expects `label @ URL`, not flowchart interaction actions: {:?}",
+            list.items
+        );
+    }
+}
+
+#[test]
 fn completion_payload_contexts_return_no_body_items() {
     for (source, position, label) in [
         (
@@ -1781,29 +1886,36 @@ fn incomplete_frontmatter_opening_keeps_authoring_completion_across_line_endings
 }
 
 #[test]
-fn completion_offers_themecss_inside_frontmatter() {
-    let harness = SnapshotHarness::new();
-    let snapshot = harness
-        .analyze(
-            "file:///tmp/example.mmd",
-            1,
-            "---\nconfig:\n  theme\n---\nflowchart TD\nA-->B\n".to_string(),
-            DocumentKind::Diagram,
-        )
-        .expect("test source should be accepted");
-    let list = completion_for_snapshot(&snapshot, Position::new(2, 7));
+fn completion_offers_themecss_inside_frontmatter_across_line_endings() {
+    for (ending_name, ending) in [("lf", "\n"), ("crlf", "\r\n"), ("cr", "\r")] {
+        let harness = SnapshotHarness::new();
+        let snapshot = harness
+            .analyze(
+                format!("file:///tmp/frontmatter-themecss-{ending_name}.mmd"),
+                1,
+                format!("---{ending}config:{ending}  theme{ending}---{ending}flowchart TD{ending}A-->B{ending}"),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
+        let list = completion_for_snapshot(&snapshot, Position::new(2, 7));
 
-    let item = list
-        .items
-        .iter()
-        .find(|item| item.label == "themeCSS: |")
-        .expect("themeCSS frontmatter completion");
+        let item = list
+            .items
+            .iter()
+            .find(|item| item.label == "themeCSS: |")
+            .unwrap_or_else(|| panic!("{ending_name} must offer themeCSS completion"));
 
-    assert_eq!(item.insert_text_format, CompletionInsertTextFormat::Snippet);
-    assert_eq!(
-        item.data.as_ref().unwrap().kind,
-        CompletionDataKind::Frontmatter
-    );
+        assert_eq!(
+            item.insert_text_format,
+            CompletionInsertTextFormat::Snippet,
+            "{ending_name}"
+        );
+        assert_eq!(
+            item.data.as_ref().unwrap().kind,
+            CompletionDataKind::Frontmatter,
+            "{ending_name}"
+        );
+    }
 }
 
 #[test]

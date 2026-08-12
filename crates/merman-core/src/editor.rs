@@ -431,6 +431,9 @@ pub enum EditorSemanticRole {
     /// A parser-declared CSS/class definition. It participates in class completion and outline
     /// projection, but is not a diagram-node entity or a reference/rename target.
     ClassDefinition,
+    /// A source occurrence that resolves to an addressable entity. References participate in
+    /// navigation and rename, but never become completion or outline declarations themselves.
+    Reference,
     /// Structural symbol that belongs in outline/hover, but is not a graph-node completion item.
     Outline,
     /// Span-rich parser payload for lint or future semantic consumers; not projected into LSP
@@ -497,7 +500,7 @@ impl EditorSemanticRole {
     }
 
     pub fn contributes_references(self) -> bool {
-        matches!(self, Self::Entity)
+        matches!(self, Self::Entity | Self::Reference)
     }
 
     pub fn contributes_outline(self) -> bool {
@@ -574,6 +577,23 @@ impl EditorSemanticSymbol {
         )
     }
 
+    pub fn reference(
+        name: impl Into<String>,
+        detail: Option<String>,
+        kind: EditorSemanticKind,
+        span: SourceSpan,
+        selection: SourceSpan,
+    ) -> Self {
+        Self::with_role(
+            name,
+            detail,
+            kind,
+            EditorSemanticRole::Reference,
+            span,
+            selection,
+        )
+    }
+
     pub fn payload(
         name: impl Into<String>,
         detail: Option<String>,
@@ -599,7 +619,10 @@ impl EditorSemanticSymbol {
         span: SourceSpan,
         selection: SourceSpan,
     ) -> Self {
-        let rename_policy = if role == EditorSemanticRole::Entity {
+        let rename_policy = if matches!(
+            role,
+            EditorSemanticRole::Entity | EditorSemanticRole::Reference
+        ) {
             EditorRenamePolicy::Identifier
         } else {
             EditorRenamePolicy::None
@@ -1225,6 +1248,26 @@ mod tests {
         );
         assert_eq!(symbol.role, role);
         assert_eq!(symbol.rename_policy, EditorRenamePolicy::None);
+    }
+
+    #[test]
+    fn reference_role_is_navigation_only() {
+        let role = EditorSemanticRole::Reference;
+        assert!(!role.contributes_completion());
+        assert!(role.contributes_references());
+        assert!(!role.contributes_outline());
+        assert!(!role.is_class_definition());
+
+        let span = crate::SourceSpan::new(0, 3);
+        let symbol = EditorSemanticSymbol::reference(
+            "ref",
+            Some("display text may change".to_string()),
+            EditorSemanticKind::Class,
+            span,
+            span,
+        );
+        assert_eq!(symbol.role, role);
+        assert_eq!(symbol.rename_policy, EditorRenamePolicy::Identifier);
     }
 
     #[test]

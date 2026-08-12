@@ -101,6 +101,16 @@ struct ArchitectureDb {
 mod parse;
 
 impl ArchitectureDb {
+    fn editor_kind_for_id(&self, id: &str) -> Option<EditorSemanticKind> {
+        if self.groups.contains_key(id) {
+            return Some(EditorSemanticKind::Namespace);
+        }
+        self.nodes.get(id).map(|node| match node.ty {
+            ArchitectureNodeType::Service => EditorSemanticKind::Variable,
+            ArchitectureNodeType::Junction => EditorSemanticKind::Object,
+        })
+    }
+
     fn set_title(&mut self, title: String) {
         self.title = title;
     }
@@ -1976,26 +1986,155 @@ group root(cloud)[Root]\n";
             .collect::<Vec<_>>();
         assert_eq!(node_ids, ["api", "join"]);
 
-        let lexical_details = facts
+        let lexical_symbols = facts
+            .symbols
+            .iter()
+            .filter(|symbol| {
+                matches!(
+                    symbol.role,
+                    crate::EditorSemanticRole::Entity | crate::EditorSemanticRole::Reference
+                )
+            })
+            .map(|symbol| {
+                (
+                    symbol.name.as_str(),
+                    symbol.detail.as_deref().unwrap(),
+                    symbol.kind,
+                    symbol.role,
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            lexical_symbols,
+            [
+                (
+                    "api",
+                    "architecture edge endpoint",
+                    crate::EditorSemanticKind::Variable,
+                    crate::EditorSemanticRole::Reference,
+                ),
+                (
+                    "join",
+                    "architecture edge endpoint",
+                    crate::EditorSemanticKind::Object,
+                    crate::EditorSemanticRole::Reference,
+                ),
+                (
+                    "api",
+                    "architecture alignment member",
+                    crate::EditorSemanticKind::Variable,
+                    crate::EditorSemanticRole::Reference,
+                ),
+                (
+                    "join",
+                    "architecture alignment member",
+                    crate::EditorSemanticKind::Object,
+                    crate::EditorSemanticRole::Reference,
+                ),
+                (
+                    "join",
+                    "architecture junction",
+                    crate::EditorSemanticKind::Object,
+                    crate::EditorSemanticRole::Entity,
+                ),
+                (
+                    "root",
+                    "architecture junction parent",
+                    crate::EditorSemanticKind::Namespace,
+                    crate::EditorSemanticRole::Reference,
+                ),
+                (
+                    "api",
+                    "architecture service",
+                    crate::EditorSemanticKind::Variable,
+                    crate::EditorSemanticRole::Entity,
+                ),
+                (
+                    "root",
+                    "architecture service parent",
+                    crate::EditorSemanticKind::Namespace,
+                    crate::EditorSemanticRole::Reference,
+                ),
+                (
+                    "root",
+                    "architecture group",
+                    crate::EditorSemanticKind::Namespace,
+                    crate::EditorSemanticRole::Entity,
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn architecture_editor_roles_keep_declarations_and_references_in_separate_projections() {
+        let text = "architecture-beta\n\
+group platform\n\
+service api in platform\n\
+junction hub in platform\n\
+align row api hub\n\
+api:R -- L:hub\n";
+        let facts = crate::family::test_support::editor_facts(
+            parse_architecture_json_and_editor_facts,
+            text,
+            &test_meta(),
+        );
+
+        let declarations = facts
             .symbols
             .iter()
             .filter(|symbol| symbol.role == crate::EditorSemanticRole::Entity)
-            .map(|symbol| symbol.detail.as_deref().unwrap())
             .collect::<Vec<_>>();
         assert_eq!(
-            lexical_details,
+            declarations
+                .iter()
+                .map(|symbol| (symbol.name.as_str(), symbol.kind))
+                .collect::<Vec<_>>(),
             [
-                "architecture edge endpoint",
-                "architecture edge endpoint",
-                "architecture alignment member",
-                "architecture alignment member",
-                "architecture junction",
-                "architecture junction parent",
-                "architecture service",
-                "architecture service parent",
-                "architecture group",
+                ("platform", crate::EditorSemanticKind::Namespace),
+                ("api", crate::EditorSemanticKind::Variable),
+                ("hub", crate::EditorSemanticKind::Object),
             ]
         );
+
+        let references = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.role == crate::EditorSemanticRole::Reference)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            references
+                .iter()
+                .map(|symbol| (symbol.name.as_str(), symbol.kind))
+                .collect::<Vec<_>>(),
+            [
+                ("platform", crate::EditorSemanticKind::Namespace),
+                ("platform", crate::EditorSemanticKind::Namespace),
+                ("api", crate::EditorSemanticKind::Variable),
+                ("hub", crate::EditorSemanticKind::Object),
+                ("api", crate::EditorSemanticKind::Variable),
+                ("hub", crate::EditorSemanticKind::Object),
+            ]
+        );
+
+        for declaration in declarations {
+            assert!(declaration.role.contributes_completion());
+            assert!(declaration.role.contributes_outline());
+            assert!(declaration.role.contributes_references());
+        }
+        for reference in references {
+            assert!(!reference.role.contributes_completion());
+            assert!(!reference.role.contributes_outline());
+            assert!(reference.role.contributes_references());
+            assert_eq!(
+                reference.rename_policy,
+                crate::EditorRenamePolicy::ArchitectureIdentifier
+            );
+            assert!(facts.symbols.iter().any(|declaration| {
+                declaration.role == crate::EditorSemanticRole::Entity
+                    && declaration.name == reference.name
+                    && declaration.kind == reference.kind
+            }));
+        }
     }
 
     #[test]

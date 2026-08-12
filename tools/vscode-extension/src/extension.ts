@@ -119,6 +119,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         context,
         languageClientConfigurationAction({
           affectsMerman: true,
+          affectsAnalysis: event.affectsConfiguration("merman.analysis"),
           affectsLanguageIntelligence: event.affectsConfiguration(LANGUAGE_INTELLIGENCE_SETTING),
           diagnosticsEnabledChanged,
           diagnosticsEnabled: diagnosticsSettings.enabled,

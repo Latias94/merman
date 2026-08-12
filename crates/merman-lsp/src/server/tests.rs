@@ -159,6 +159,33 @@ async fn pull_document_diagnostics(server: &MermanLanguageServer, uri: Uri) -> V
     }
 }
 
+async fn pull_document_diagnostic_state(
+    server: &MermanLanguageServer,
+    uri: Uri,
+) -> (String, Vec<Diagnostic>) {
+    let report = server
+        .diagnostic(DocumentDiagnosticParams {
+            text_document: TextDocumentIdentifier { uri },
+            identifier: None,
+            previous_result_id: None,
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        })
+        .await
+        .expect("document diagnostics should be available");
+
+    match report {
+        DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(report)) => (
+            report
+                .full_document_diagnostic_report
+                .result_id
+                .expect("open documents require a result id"),
+            report.full_document_diagnostic_report.items,
+        ),
+        other => panic!("unexpected diagnostic report: {other:?}"),
+    }
+}
+
 fn diagnostic_only_configuration() -> DidChangeConfigurationParams {
     DidChangeConfigurationParams {
         settings: serde_json::json!({
@@ -247,7 +274,8 @@ async fn pull_diagnostics_follow_discarded_source_lifecycle() {
         })
         .await;
 
-    let diagnostics = pull_document_diagnostics(&server, uri.clone()).await;
+    let (limited_result_id, diagnostics) =
+        pull_document_diagnostic_state(&server, uri.clone()).await;
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(
@@ -272,6 +300,14 @@ async fn pull_diagnostics_follow_discarded_source_lifecycle() {
             .and_then(|data| data.get("documentVersion")),
         Some(&serde_json::json!(5))
     );
+    assert!(
+        diagnostics[0]
+            .data
+            .as_ref()
+            .and_then(|data| data.get("id"))
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|id| id.starts_with("u1:"))
+    );
 
     server
         .did_change_configuration(DidChangeConfigurationParams {
@@ -280,7 +316,8 @@ async fn pull_diagnostics_follow_discarded_source_lifecycle() {
             }),
         })
         .await;
-    let diagnostics = pull_document_diagnostics(&server, uri.clone()).await;
+    let (discarded_result_id, diagnostics) =
+        pull_document_diagnostic_state(&server, uri.clone()).await;
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(
@@ -300,6 +337,15 @@ async fn pull_diagnostics_follow_discarded_source_lifecycle() {
             .as_ref()
             .and_then(|data| data.get("documentVersion")),
         Some(&serde_json::json!(5))
+    );
+    assert_ne!(limited_result_id, discarded_result_id);
+    assert!(
+        diagnostics[0]
+            .data
+            .as_ref()
+            .and_then(|data| data.get("id"))
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|id| id.starts_with("u1:"))
     );
 
     server
@@ -338,6 +384,79 @@ async fn pull_diagnostics_follow_discarded_source_lifecycle() {
             .and_then(|data| data.get("documentVersion")),
         Some(&serde_json::json!(6))
     );
+    assert_eq!(
+        diagnostics[0]
+            .data
+            .as_ref()
+            .and_then(serde_json::Value::as_object)
+            .map(serde_json::Map::len),
+        Some(1)
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn unavailable_pull_result_id_rejects_close_reopen_aba_at_the_same_client_version() {
+    let (_service, _socket, server) = test_service();
+    initialize_pull_test_backend(&server).await;
+    let uri = Uri::from_str("file:///tmp/unavailable-aba.mmd").unwrap();
+    let source = "flowchart TD\nA-->B\n";
+    server
+        .did_change_configuration(DidChangeConfigurationParams {
+            settings: serde_json::json!({
+                "resources": { "limits": { "max_source_bytes": 8 } }
+            }),
+        })
+        .await;
+    server
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "mermaid".to_string(),
+                version: 5,
+                text: source.to_string(),
+            },
+        })
+        .await;
+
+    let (first_result_id, first_diagnostics) =
+        pull_document_diagnostic_state(&server, uri.clone()).await;
+    let first_id = first_diagnostics[0].data.as_ref().unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    server.session.close_document(&uri).await;
+    server
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "mermaid".to_string(),
+                version: 5,
+                text: source.to_string(),
+            },
+        })
+        .await;
+    let (second_result_id, second_diagnostics) =
+        pull_document_diagnostic_state(&server, uri.clone()).await;
+    let second_id = second_diagnostics[0].data.as_ref().unwrap()["id"]
+        .as_str()
+        .unwrap();
+
+    assert_ne!(first_result_id, second_result_id);
+    assert_ne!(first_id, second_id);
+    let report = server
+        .diagnostic(DocumentDiagnosticParams {
+            text_document: TextDocumentIdentifier { uri },
+            identifier: None,
+            previous_result_id: Some(first_result_id),
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        })
+        .await
+        .unwrap();
+    assert!(matches!(
+        report,
+        DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(_))
+    ));
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -368,7 +487,7 @@ async fn pull_diagnostics_for_document_diagram_rejection_use_canonical_resource_
         })
         .await;
 
-    let diagnostics = pull_document_diagnostics(&server, uri).await;
+    let (_, diagnostics) = pull_document_diagnostic_state(&server, uri).await;
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(
@@ -388,6 +507,14 @@ async fn pull_diagnostics_for_document_diagram_rejection_use_canonical_resource_
             .as_ref()
             .and_then(|data| data.get("documentVersion")),
         Some(&serde_json::json!(5))
+    );
+    assert!(
+        diagnostics[0]
+            .data
+            .as_ref()
+            .and_then(|data| data.get("id"))
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|id| id.starts_with("u1:"))
     );
 }
 
@@ -546,6 +673,18 @@ async fn configuration_refreshes_are_scheduled_before_diagnostic_republish_backp
         }),
     )
     .await;
+    let uri = Uri::from_str("file:///tmp/configuration-backpressure.mmd").unwrap();
+    assert!(
+        server
+            .session
+            .open_document(
+                uri,
+                1,
+                "flowchart TD\nA-->B\n".to_string(),
+                DocumentKind::Diagram,
+            )
+            .await
+    );
     let release = server.client_effects.saturate_serial_lane_for_test().await;
     let change = server
         .session
@@ -716,6 +855,145 @@ async fn queued_diagnostic_sync_publishes_a_document_opened_before_execution() {
     assert_eq!(params.uri, uri);
     assert_eq!(params.version, Some(7));
     assert!(!params.diagnostics.is_empty());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn edited_document_cancels_stale_diagnostics_before_client_admission() {
+    let (mut service, socket, server) = test_service();
+    let (mut socket, _responses) = socket.split();
+    initialize_push_test_service(&mut service).await;
+    let uri = Uri::from_str("file:///tmp/active-diagnostic-edit.mmd").unwrap();
+    let (pre_admission_started, release_stale_pre_admission) = server
+        .client_effects
+        .block_next_diagnostic_pre_admission_for_test();
+
+    server
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "mermaid".to_string(),
+                version: 1,
+                text: String::new(),
+            },
+        })
+        .await;
+    pre_admission_started
+        .await
+        .expect("stale diagnostic publish should reach the pre-admission gate");
+
+    server
+        .did_change(DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier {
+                uri: uri.clone(),
+                version: 2,
+            },
+            content_changes: vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "flowchart TD\nA-->B\n".to_string(),
+            }],
+        })
+        .await;
+
+    let notification = socket
+        .next()
+        .await
+        .expect("expected the edited document diagnostics");
+    server.client_effects.wait_idle().await;
+    assert!(
+        release_stale_pre_admission.send(()).is_err(),
+        "the superseded pre-admission future must already be dropped"
+    );
+    assert_eq!(notification.method(), "textDocument/publishDiagnostics");
+    let params: PublishDiagnosticsParams = serde_json::from_value(
+        notification
+            .params()
+            .cloned()
+            .expect("diagnostic publish params"),
+    )
+    .expect("valid diagnostic publish params");
+    assert_eq!(params.uri, uri);
+    assert_eq!(params.version, Some(2));
+    let mut unexpected = Box::pin(socket.next());
+    assert!(
+        futures::poll!(&mut unexpected).is_pending(),
+        "the stale version-one publish must never reach the client socket"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn reopen_cancels_stale_clear_before_client_admission_at_the_same_version() {
+    let (mut service, socket, server) = test_service();
+    let (mut socket, _responses) = socket.split();
+    initialize_push_test_service(&mut service).await;
+    let uri = Uri::from_str("file:///tmp/active-diagnostic-reopen.mmd").unwrap();
+    let source = "gitGraph\ncommit id:\"dup\"\ncommit id:\"dup\"\n";
+
+    server
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "mermaid".to_string(),
+                version: 5,
+                text: source.to_string(),
+            },
+        })
+        .await;
+    let initial = socket
+        .next()
+        .await
+        .expect("expected initial diagnostic publish");
+    assert_eq!(initial.method(), "textDocument/publishDiagnostics");
+    server.client_effects.wait_idle().await;
+
+    let (pre_admission_started, release_stale_pre_admission) = server
+        .client_effects
+        .block_next_diagnostic_pre_admission_for_test();
+    server
+        .did_close(DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+        })
+        .await;
+    pre_admission_started
+        .await
+        .expect("stale diagnostic clear should reach the pre-admission gate");
+
+    server
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "mermaid".to_string(),
+                version: 5,
+                text: source.to_string(),
+            },
+        })
+        .await;
+
+    let notification = socket
+        .next()
+        .await
+        .expect("expected reopened document diagnostics");
+    server.client_effects.wait_idle().await;
+    assert!(
+        release_stale_pre_admission.send(()).is_err(),
+        "the superseded pre-admission clear future must already be dropped"
+    );
+    assert_eq!(notification.method(), "textDocument/publishDiagnostics");
+    let params: PublishDiagnosticsParams = serde_json::from_value(
+        notification
+            .params()
+            .cloned()
+            .expect("diagnostic publish params"),
+    )
+    .expect("valid diagnostic publish params");
+    assert_eq!(params.uri, uri);
+    assert_eq!(params.version, Some(5));
+    assert!(!params.diagnostics.is_empty());
+    let mut unexpected = Box::pin(socket.next());
+    assert!(
+        futures::poll!(&mut unexpected).is_pending(),
+        "the pre-reopen clear must never reach the client socket"
+    );
 }
 
 #[test]

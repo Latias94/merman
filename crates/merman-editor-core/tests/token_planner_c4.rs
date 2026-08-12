@@ -43,7 +43,7 @@ fn c4_complete_plan_merges_parser_lexemes_semantics_and_utf16_exactly() {
     let root_reference = exact_token(source, &snapshot, &plan, "root", 1);
     assert_eq!(root_reference.kind, PlannedTokenKind::Variable);
     assert!(root_reference.has_modifier(PlannedTokenModifier::Reference));
-    assert!(root_reference.has_modifier(PlannedTokenModifier::Entity));
+    assert!(!root_reference.has_modifier(PlannedTokenModifier::Entity));
     assert!(!root_reference.has_modifier(PlannedTokenModifier::Definition));
 
     let unicode_definition = exact_token(source, &snapshot, &plan, "用户", 0);

@@ -1,13 +1,18 @@
 use crate::{
     AnalysisOptions, AnalysisRuleProfile, DiagnosticSeverity,
-    MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID, configurable_rule_descriptors,
-    options_json::{
-        AnalysisOptionsJson, AnalysisOptionsJsonError, LintOptionsJson,
-        LintRuleSeverityOverrideJson, ResourceOptionsJson,
-    },
+    MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID,
+    options_json::{AnalysisOptionsJson, AnalysisOptionsJsonError},
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value, json};
+use serde_json::Value;
+use std::collections::BTreeMap;
+
+mod decode;
+mod schema;
+#[cfg(test)]
+mod tests;
+
+pub(crate) use decode::decode_resource_options;
 
 pub const FIXED_TODAY_SCHEMA_PATTERN: &str = concat!(
     r"^(?:\d{4}|\+(?:[1-9]\d{4,8}|1\d{9}|20\d{8}|21[0-3]\d{7}|214[0-6]\d{6}|",
@@ -17,6 +22,9 @@ pub const FIXED_TODAY_SCHEMA_PATTERN: &str = concat!(
     r"2147[0-3]\d{5}|21474[0-7]\d{4}|214748[0-2]\d{3}|2147483[0-5]\d{2}|",
     r"21474836[0-3]\d|214748364[0-8]))-\d{2}-\d{2}$",
 );
+
+/// Version of the host-neutral client constraints projected from the analysis contract.
+pub const ANALYSIS_CONFIG_CLIENT_CONSTRAINTS_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -70,9 +78,10 @@ impl AnalysisConfigChange {
     }
 }
 
+/// Invalidation scope owned by one analysis configuration policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum AnalysisConfigChangeScope {
+pub enum AnalysisConfigChangeScope {
     DiagnosticsOnly,
     SnapshotAffecting,
 }
@@ -235,6 +244,21 @@ enum AnalysisConfigArrayItem {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AnalysisConfigRuntimeConstraint {
+    CanonicalCivilDate,
+    RepresentableLocalMidnight { offset_setting_path: &'static str },
+}
+
+impl AnalysisConfigRuntimeConstraint {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::CanonicalCivilDate => "canonical_civil_date",
+            Self::RepresentableLocalMidnight { .. } => "representable_local_midnight",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AnalysisConfigValueKind {
     String {
         enum_source: Option<AnalysisConfigEnumSource>,
@@ -276,7 +300,7 @@ struct AnalysisConfigFieldDescriptor {
     required: bool,
     default: AnalysisConfigDefault,
     description: &'static str,
-    runtime_constraints: &'static [&'static str],
+    runtime_constraints: &'static [AnalysisConfigRuntimeConstraint],
 }
 
 impl AnalysisConfigFieldDescriptor {
@@ -326,7 +350,12 @@ const ANALYSIS_CONFIG_FIELDS: [AnalysisConfigFieldDescriptor; 12] = [
         required: false,
         default: AnalysisConfigDefault::None,
         description: "Canonical fixed local civil date. Years 0000 through 9999 use YYYY-MM-DD; later years use +YEAR-MM-DD and negative years use -YEAR-MM-DD. Calendar validity and the representable local-midnight instant are validated when the configuration is applied.",
-        runtime_constraints: &["canonical_civil_date", "representable_local_midnight"],
+        runtime_constraints: &[
+            AnalysisConfigRuntimeConstraint::CanonicalCivilDate,
+            AnalysisConfigRuntimeConstraint::RepresentableLocalMidnight {
+                offset_setting_path: "fixed_local_offset_minutes",
+            },
+        ],
     },
     AnalysisConfigFieldDescriptor {
         id: AnalysisConfigFieldId::Options(AnalysisOptionsFieldId::FixedLocalOffsetMinutes),
@@ -476,18 +505,173 @@ const ANALYSIS_CONFIG_FIELDS: [AnalysisConfigFieldDescriptor; 12] = [
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct AnalysisConfigHostDefaults {
-    pub max_source_bytes: Option<usize>,
-    pub max_document_diagrams: Option<usize>,
+    max_source_bytes: Option<usize>,
+    max_document_diagrams: Option<usize>,
 }
 
 impl AnalysisConfigHostDefaults {
+    /// Creates validated host defaults for the generated analysis schema.
+    pub fn try_new(
+        max_source_bytes: Option<usize>,
+        max_document_diagrams: Option<usize>,
+    ) -> Result<Self, AnalysisConfigHostDefaultsError> {
+        let defaults = Self {
+            max_source_bytes,
+            max_document_diagrams,
+        };
+        for descriptor in resource_limit_descriptors() {
+            let Some(value) = defaults.value_for(descriptor.stable_id) else {
+                continue;
+            };
+            if value < descriptor.minimum_value || value > descriptor.maximum_value {
+                return Err(AnalysisConfigHostDefaultsError {
+                    limit_id: descriptor.stable_id,
+                    value,
+                    minimum: descriptor.minimum_value,
+                    maximum: descriptor.maximum_value,
+                });
+            }
+        }
+        Ok(defaults)
+    }
+
     fn value_for(self, limit_id: &str) -> Option<usize> {
         match limit_id {
-            "max_source_bytes" => self.max_source_bytes,
+            id if id == merman_core::resources::InputResourceLimitId::MaxSourceBytes.as_str() => {
+                self.max_source_bytes
+            }
             MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID => self.max_document_diagrams,
             _ => None,
         }
     }
+}
+
+pub(crate) fn lint_profile_requirement() -> String {
+    enum_requirement(AnalysisRuleProfile::ALL.map(AnalysisRuleProfile::as_str))
+}
+
+pub(crate) fn diagnostic_severity_requirement() -> String {
+    enum_requirement(DiagnosticSeverity::ALL.map(DiagnosticSeverity::as_str))
+}
+
+fn enum_requirement<const N: usize>(values: [&'static str; N]) -> String {
+    let allowed = match values.as_slice() {
+        [] => String::new(),
+        [only] => (*only).to_string(),
+        [left, right] => format!("{left} or {right}"),
+        many => format!(
+            "{}, or {}",
+            many[..many.len() - 1].join(", "),
+            many[many.len() - 1]
+        ),
+    };
+    format!("must be {allowed}")
+}
+
+/// Error returned when a host schema default violates the owning resource contract.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error(
+    "analysis host default for {limit_id} must be between {minimum} and {maximum}, got {value}"
+)]
+pub struct AnalysisConfigHostDefaultsError {
+    limit_id: &'static str,
+    value: usize,
+    minimum: usize,
+    maximum: usize,
+}
+
+/// Stable constraints consumed by editor clients without interpreting JSON Schema internals.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnalysisConfigClientConstraints {
+    /// Version of this client-constraint DTO.
+    pub version: u32,
+    /// Leaf settings and their owner-projected normalization policy.
+    pub settings: Vec<AnalysisConfigClientSetting>,
+}
+
+/// Named value catalog referenced by a client setting normalizer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnalysisConfigClientValueSet {
+    Profiles,
+    Severities,
+    ConfigurableRuleIds,
+}
+
+/// Runtime validation projected in a host-neutral form for editor normalization.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AnalysisConfigClientRuntimeConstraint {
+    CanonicalCivilDate,
+    RepresentableLocalMidnight {
+        /// Setting whose normalized offset participates in the instant-range check.
+        offset_setting_path: String,
+    },
+}
+
+/// One field of an object-valued client setting item.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnalysisConfigClientObjectField {
+    /// Wire field name owned by the analysis configuration descriptor.
+    pub name: String,
+    /// Whether an object item must contain this field.
+    pub required: bool,
+    /// Value normalization projected from the field's owning descriptor.
+    pub normalization: AnalysisConfigClientSettingNormalization,
+}
+
+/// Typed normalization policy projected from one analysis field descriptor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AnalysisConfigClientSettingNormalization {
+    String {
+        /// Optional lexical pattern owned by the field descriptor.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pattern: Option<String>,
+        /// Optional owner-defined catalog of accepted string values.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        values: Option<AnalysisConfigClientValueSet>,
+    },
+    Integer {
+        /// Inclusive minimum accepted value.
+        minimum: i64,
+        /// Inclusive maximum accepted value.
+        maximum: i64,
+    },
+    Object,
+    RuleIdList,
+    RuleSeverityOverrides {
+        /// Item fields projected mechanically from the owned object descriptor.
+        fields: Vec<AnalysisConfigClientObjectField>,
+    },
+}
+
+/// One leaf setting owned by the analysis configuration contract.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnalysisConfigClientSetting {
+    /// Dot-separated path below the `merman.analysis` VS Code namespace.
+    pub path: String,
+    /// Runtime invalidation scope inherited from the setting's owning policy.
+    pub change_scope: AnalysisConfigChangeScope,
+    /// Server-owned validation steps projected for bootstrap-safe normalization.
+    pub runtime_constraints: Vec<AnalysisConfigClientRuntimeConstraint>,
+    /// Value shape and shallow normalization constraints.
+    pub normalization: AnalysisConfigClientSettingNormalization,
+}
+
+/// Host-neutral client projection of the analysis configuration contract.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnalysisConfigClientProjection {
+    /// Accepted direct and wrapped configuration roots.
+    pub accepted_roots: Vec<String>,
+    /// Current lint profile identifiers.
+    pub profiles: Vec<String>,
+    /// Current diagnostic severity identifiers.
+    pub severities: Vec<String>,
+    /// Current rule identifiers accepted in lint configuration.
+    pub configurable_rule_ids: Vec<String>,
+    /// Typed constraints consumed by clients without evaluating JSON Schema.
+    pub constraints: AnalysisConfigClientConstraints,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -496,6 +680,7 @@ pub struct AnalysisConfigSchemaProjection {
     pub profiles: Vec<String>,
     pub severities: Vec<String>,
     pub configurable_rule_ids: Vec<String>,
+    /// Complete Draft 2020-12 schema for inspection and standards-based validation.
     pub schema: Value,
 }
 
@@ -503,24 +688,25 @@ pub struct AnalysisConfigSchemaProjection {
 pub struct AnalysisConfigContract;
 
 impl AnalysisConfigContract {
+    /// Returns the current analysis configuration contract.
     pub const fn current() -> Self {
         Self
     }
 
+    /// Decodes a supported direct or wrapped JSON value into analysis options.
     pub fn decode(self, value: &Value) -> Result<AnalysisOptions, AnalysisOptionsJsonError> {
         self.decode_json(value)?.to_analysis_options()
     }
 
+    /// Decodes a supported direct or wrapped JSON value into its transport representation.
     pub fn decode_json(
         self,
         value: &Value,
     ) -> Result<AnalysisOptionsJson, AnalysisOptionsJsonError> {
-        reject_removed_parse(value)?;
-        let options = select_analysis_options_root(value)?;
-        validate_config_object(AnalysisConfigObjectId::Options, options)?;
-        decode_analysis_options_object(options)
+        decode::decode_json(value)
     }
 
+    /// Classifies the invalidation scope of an accepted configuration change.
     pub fn classify_change(
         self,
         current: &AnalysisOptions,
@@ -554,50 +740,17 @@ impl AnalysisConfigContract {
         }
     }
 
+    /// Projects the complete Draft 2020-12 schema with validated host defaults.
     pub fn json_schema(
         self,
         host_defaults: AnalysisConfigHostDefaults,
     ) -> AnalysisConfigSchemaProjection {
-        let profiles = AnalysisRuleProfile::ALL
-            .into_iter()
-            .map(AnalysisRuleProfile::as_str)
-            .map(str::to_string)
-            .collect::<Vec<_>>();
-        let severities = DiagnosticSeverity::ALL
-            .into_iter()
-            .map(DiagnosticSeverity::as_str)
-            .map(str::to_string)
-            .collect::<Vec<_>>();
-        let configurable_rule_ids = configurable_rule_descriptors()
-            .map(|descriptor| descriptor.id.to_string())
-            .collect::<Vec<_>>();
-        let analysis_options = analysis_options_schema(
-            &profiles,
-            &severities,
-            &configurable_rule_ids,
-            host_defaults,
-        );
-        let schema = root_schema(analysis_options, &configurable_rule_ids, &severities);
-
-        AnalysisConfigSchemaProjection {
-            accepted_roots: AnalysisConfigRoot::ALL
-                .into_iter()
-                .map(AnalysisConfigRoot::as_str)
-                .map(str::to_string)
-                .collect(),
-            profiles,
-            severities,
-            configurable_rule_ids,
-            schema,
-        }
+        schema::project(host_defaults)
     }
 
-    pub(crate) fn resource_limit_minimum(self, limit_id: &str) -> Option<usize> {
-        resource_limit_descriptor(limit_id).map(|descriptor| descriptor.minimum_value)
-    }
-
-    pub(crate) fn resource_limit_maximum(self, limit_id: &str) -> Option<usize> {
-        resource_limit_descriptor(limit_id).map(|descriptor| descriptor.maximum_value)
+    /// Projects the host-neutral contract consumed by editor clients and manifest generators.
+    pub fn client_projection(self) -> AnalysisConfigClientProjection {
+        client_projection()
     }
 
     /// Returns whether this contract owns the named analysis resource limit.
@@ -640,52 +793,178 @@ fn resource_limit_descriptor(limit_id: &str) -> Option<ResourceLimitSchemaDescri
     resource_limit_descriptors().find(|descriptor| descriptor.stable_id == limit_id)
 }
 
-fn resource_limit_properties(host_defaults: AnalysisConfigHostDefaults) -> Value {
-    let change_scope = field_by_id(AnalysisConfigFieldId::Resources(
-        ResourceOptionsFieldId::Limits,
-    ))
-    .change_scope()
-    .as_str();
-    let mut properties = Map::new();
-    for descriptor in resource_limit_descriptors() {
-        let mut schema = json!({
-            "type": "integer",
-            "minimum": descriptor.minimum_value,
-            "maximum": descriptor.maximum_value,
-            "description": descriptor.description,
-            "x-merman-change-scope": change_scope,
-        });
-        if let Some(default) = host_defaults.value_for(descriptor.stable_id) {
-            assert!(
-                default >= descriptor.minimum_value,
-                "analysis host default for {} must satisfy its owner minimum",
-                descriptor.stable_id
-            );
-            assert!(
-                default <= descriptor.maximum_value,
-                "analysis host default for {} must satisfy its owner maximum",
-                descriptor.stable_id
-            );
-            schema["default"] = json!(default);
-        }
-        properties.insert(descriptor.stable_id.to_string(), schema);
-    }
-    Value::Object(properties)
+fn resource_limit_descriptor_or_error(
+    limit_id: &str,
+) -> Result<ResourceLimitSchemaDescriptor, AnalysisOptionsJsonError> {
+    resource_limit_descriptor(limit_id).ok_or_else(|| {
+        AnalysisOptionsJsonError::new(format!("unknown analysis resource limit id: {limit_id}"))
+    })
 }
 
-fn analysis_options_schema(
-    profiles: &[String],
-    severities: &[String],
-    configurable_rule_ids: &[String],
-    host_defaults: AnalysisConfigHostDefaults,
-) -> Value {
-    object_schema(
-        AnalysisConfigObjectId::Options,
-        profiles,
-        severities,
-        configurable_rule_ids,
-        host_defaults,
-    )
+pub(crate) fn validate_resource_limit_values(
+    limits: &BTreeMap<String, usize>,
+) -> Result<(), AnalysisOptionsJsonError> {
+    for (limit_id, value) in limits {
+        let descriptor = resource_limit_descriptor_or_error(limit_id)?;
+        if *value < descriptor.minimum_value {
+            return Err(AnalysisOptionsJsonError::new(format!(
+                "resources.limits.{limit_id} must be at least {}",
+                descriptor.minimum_value
+            )));
+        }
+        if *value > descriptor.maximum_value {
+            return Err(AnalysisOptionsJsonError::new(format!(
+                "resources.limits.{limit_id} must be at most {}",
+                descriptor.maximum_value
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn client_projection() -> AnalysisConfigClientProjection {
+    AnalysisConfigClientProjection {
+        accepted_roots: AnalysisConfigRoot::ALL
+            .into_iter()
+            .map(AnalysisConfigRoot::as_str)
+            .map(str::to_string)
+            .collect(),
+        profiles: AnalysisRuleProfile::ALL
+            .into_iter()
+            .map(AnalysisRuleProfile::as_str)
+            .map(str::to_string)
+            .collect(),
+        severities: DiagnosticSeverity::ALL
+            .into_iter()
+            .map(DiagnosticSeverity::as_str)
+            .map(str::to_string)
+            .collect(),
+        configurable_rule_ids: crate::configurable_rule_descriptors()
+            .map(|descriptor| descriptor.id.to_string())
+            .collect(),
+        constraints: AnalysisConfigClientConstraints {
+            version: ANALYSIS_CONFIG_CLIENT_CONSTRAINTS_VERSION,
+            settings: client_settings(),
+        },
+    }
+}
+
+fn client_settings() -> Vec<AnalysisConfigClientSetting> {
+    let mut settings = Vec::new();
+    collect_client_settings(AnalysisConfigObjectId::Options, &mut settings);
+    settings
+}
+
+fn collect_client_settings(
+    parent: AnalysisConfigObjectId,
+    settings: &mut Vec<AnalysisConfigClientSetting>,
+) {
+    for field in fields_for_object(parent) {
+        match field.value_kind {
+            AnalysisConfigValueKind::Object(child) => {
+                collect_client_settings(child, settings);
+            }
+            AnalysisConfigValueKind::ResourceLimits => {
+                settings.extend(resource_limit_descriptors().map(|descriptor| {
+                    client_setting(
+                        field,
+                        format!("{}.{}", field.path, descriptor.stable_id),
+                        AnalysisConfigClientSettingNormalization::Integer {
+                            minimum: descriptor.minimum_value as i64,
+                            maximum: descriptor.maximum_value as i64,
+                        },
+                    )
+                }));
+            }
+            value_kind => settings.push(client_setting(
+                field,
+                field.path.to_string(),
+                client_normalization(value_kind),
+            )),
+        }
+    }
+}
+
+fn client_normalization(
+    value_kind: AnalysisConfigValueKind,
+) -> AnalysisConfigClientSettingNormalization {
+    match value_kind {
+        AnalysisConfigValueKind::String {
+            enum_source,
+            pattern,
+        } => AnalysisConfigClientSettingNormalization::String {
+            pattern: pattern.map(str::to_string),
+            values: enum_source.map(client_value_set),
+        },
+        AnalysisConfigValueKind::Integer { minimum, maximum } => {
+            AnalysisConfigClientSettingNormalization::Integer { minimum, maximum }
+        }
+        AnalysisConfigValueKind::JsonObject | AnalysisConfigValueKind::Object(_) => {
+            AnalysisConfigClientSettingNormalization::Object
+        }
+        AnalysisConfigValueKind::Array(AnalysisConfigArrayItem::RuleId) => {
+            AnalysisConfigClientSettingNormalization::RuleIdList
+        }
+        AnalysisConfigValueKind::Array(AnalysisConfigArrayItem::RuleSeverityOverride) => {
+            AnalysisConfigClientSettingNormalization::RuleSeverityOverrides {
+                fields: client_object_fields(AnalysisConfigObjectId::RuleSeverityOverride),
+            }
+        }
+        AnalysisConfigValueKind::ResourceLimits => {
+            unreachable!("resource limits must be expanded into leaf client settings")
+        }
+    }
+}
+
+fn client_object_fields(parent: AnalysisConfigObjectId) -> Vec<AnalysisConfigClientObjectField> {
+    fields_for_object(parent)
+        .map(|field| AnalysisConfigClientObjectField {
+            name: field.key.to_string(),
+            required: field.required,
+            normalization: client_normalization(field.value_kind),
+        })
+        .collect()
+}
+
+fn client_setting(
+    field: AnalysisConfigFieldDescriptor,
+    path: String,
+    normalization: AnalysisConfigClientSettingNormalization,
+) -> AnalysisConfigClientSetting {
+    AnalysisConfigClientSetting {
+        path,
+        change_scope: field.change_scope(),
+        runtime_constraints: field
+            .runtime_constraints
+            .iter()
+            .copied()
+            .map(client_runtime_constraint)
+            .collect(),
+        normalization,
+    }
+}
+
+fn client_runtime_constraint(
+    constraint: AnalysisConfigRuntimeConstraint,
+) -> AnalysisConfigClientRuntimeConstraint {
+    match constraint {
+        AnalysisConfigRuntimeConstraint::CanonicalCivilDate => {
+            AnalysisConfigClientRuntimeConstraint::CanonicalCivilDate
+        }
+        AnalysisConfigRuntimeConstraint::RepresentableLocalMidnight {
+            offset_setting_path,
+        } => AnalysisConfigClientRuntimeConstraint::RepresentableLocalMidnight {
+            offset_setting_path: offset_setting_path.to_string(),
+        },
+    }
+}
+
+const fn client_value_set(source: AnalysisConfigEnumSource) -> AnalysisConfigClientValueSet {
+    match source {
+        AnalysisConfigEnumSource::Profiles => AnalysisConfigClientValueSet::Profiles,
+        AnalysisConfigEnumSource::RuleIds => AnalysisConfigClientValueSet::ConfigurableRuleIds,
+        AnalysisConfigEnumSource::Severities => AnalysisConfigClientValueSet::Severities,
+    }
 }
 
 fn object_descriptor(id: AnalysisConfigObjectId) -> AnalysisConfigObjectDescriptor {
@@ -704,275 +983,6 @@ fn policy_descriptor(id: AnalysisConfigPolicyId) -> AnalysisConfigPolicyDescript
         .expect("analysis config policy must have one typed descriptor")
 }
 
-fn object_schema(
-    id: AnalysisConfigObjectId,
-    profiles: &[String],
-    severities: &[String],
-    configurable_rule_ids: &[String],
-    host_defaults: AnalysisConfigHostDefaults,
-) -> Value {
-    let descriptor = object_descriptor(id);
-    let mut properties = Map::new();
-    let mut required = Vec::new();
-    for field in fields_for_object(id) {
-        properties.insert(
-            field.key.to_string(),
-            field_schema(
-                field,
-                profiles,
-                severities,
-                configurable_rule_ids,
-                host_defaults,
-            ),
-        );
-        if field.required {
-            required.push(field.key);
-        }
-    }
-
-    let mut schema = json!({
-        "type": "object",
-        "additionalProperties": descriptor.compatibility
-            == AnalysisConfigCompatibility::ForwardCompatible,
-        "x-merman-unknown-fields": descriptor.compatibility.as_str(),
-        "properties": properties,
-    });
-    if !required.is_empty() {
-        schema["required"] = json!(required);
-    }
-    if !descriptor.removed_keys.is_empty() {
-        schema["not"] = json!({
-            "anyOf": descriptor
-                .removed_keys
-                .iter()
-                .map(|key| json!({ "required": [key] }))
-                .collect::<Vec<_>>()
-        });
-    }
-    schema
-}
-
-fn field_schema(
-    field: AnalysisConfigFieldDescriptor,
-    profiles: &[String],
-    severities: &[String],
-    configurable_rule_ids: &[String],
-    host_defaults: AnalysisConfigHostDefaults,
-) -> Value {
-    let mut schema = match field.value_kind {
-        AnalysisConfigValueKind::String {
-            enum_source,
-            pattern,
-        } => {
-            let mut schema = match enum_source {
-                Some(AnalysisConfigEnumSource::RuleIds) => {
-                    json!({ "$ref": "#/$defs/ruleId" })
-                }
-                Some(AnalysisConfigEnumSource::Severities) => {
-                    json!({ "$ref": "#/$defs/severity" })
-                }
-                Some(AnalysisConfigEnumSource::Profiles) => json!({
-                    "type": "string",
-                    "enum": enum_values(
-                        AnalysisConfigEnumSource::Profiles,
-                        profiles,
-                        severities,
-                        configurable_rule_ids,
-                    ),
-                }),
-                None => json!({ "type": "string" }),
-            };
-            if let Some(pattern) = pattern {
-                schema["pattern"] = json!(pattern);
-            }
-            schema
-        }
-        AnalysisConfigValueKind::Integer { minimum, maximum } => json!({
-            "type": "integer",
-            "minimum": minimum,
-            "maximum": maximum,
-        }),
-        AnalysisConfigValueKind::JsonObject => json!({
-            "type": "object",
-            "additionalProperties": true,
-        }),
-        AnalysisConfigValueKind::Object(id) => object_schema(
-            id,
-            profiles,
-            severities,
-            configurable_rule_ids,
-            host_defaults,
-        ),
-        AnalysisConfigValueKind::Array(item) => json!({
-            "type": "array",
-            "items": array_item_schema(
-                item,
-                profiles,
-                severities,
-                configurable_rule_ids,
-                host_defaults,
-            ),
-        }),
-        AnalysisConfigValueKind::ResourceLimits => json!({
-            "type": "object",
-            "additionalProperties": false,
-            "x-merman-unknown-fields": AnalysisConfigCompatibility::Strict.as_str(),
-            "properties": resource_limit_properties(host_defaults),
-        }),
-    };
-
-    if field.nullable {
-        make_schema_nullable(&mut schema);
-    }
-    match field.default {
-        AnalysisConfigDefault::None => {}
-        AnalysisConfigDefault::RuleProfile(profile) => {
-            schema["default"] = json!(profile.as_str());
-        }
-        AnalysisConfigDefault::EmptyArray => {
-            schema["default"] = json!([]);
-        }
-    }
-    schema["description"] = json!(field.description);
-    schema["x-merman-change-scope"] = json!(field.change_scope().as_str());
-    if !field.runtime_constraints.is_empty() {
-        schema["x-merman-runtime-constraints"] = json!(field.runtime_constraints);
-    }
-    schema
-}
-
-fn array_item_schema(
-    item: AnalysisConfigArrayItem,
-    profiles: &[String],
-    severities: &[String],
-    configurable_rule_ids: &[String],
-    host_defaults: AnalysisConfigHostDefaults,
-) -> Value {
-    match item {
-        AnalysisConfigArrayItem::RuleId => json!({ "$ref": "#/$defs/ruleId" }),
-        AnalysisConfigArrayItem::RuleSeverityOverride => object_schema(
-            AnalysisConfigObjectId::RuleSeverityOverride,
-            profiles,
-            severities,
-            configurable_rule_ids,
-            host_defaults,
-        ),
-    }
-}
-
-fn enum_values<'a>(
-    source: AnalysisConfigEnumSource,
-    profiles: &'a [String],
-    severities: &'a [String],
-    configurable_rule_ids: &'a [String],
-) -> &'a [String] {
-    match source {
-        AnalysisConfigEnumSource::Profiles => profiles,
-        AnalysisConfigEnumSource::RuleIds => configurable_rule_ids,
-        AnalysisConfigEnumSource::Severities => severities,
-    }
-}
-
-fn make_schema_nullable(schema: &mut Value) {
-    let type_value = schema
-        .get_mut("type")
-        .expect("nullable analysis config fields must expose a JSON Schema type");
-    let base = type_value
-        .as_str()
-        .expect("analysis config field type must be a single string before null projection")
-        .to_string();
-    *type_value = json!([base, "null"]);
-    if let Some(values) = schema.get_mut("enum").and_then(Value::as_array_mut) {
-        values.insert(0, Value::Null);
-    }
-}
-
-fn root_schema(
-    analysis_options: Value,
-    configurable_rule_ids: &[String],
-    severities: &[String],
-) -> Value {
-    let mut roots = vec![direct_root_schema()];
-    roots.extend(wrapped_config_roots().map(|(root, _)| wrapped_root_schema(root)));
-    json!({
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "title": "Merman analysis options",
-        "description": "Options accepted directly or under exactly one merman or analysis wrapper.",
-        "$defs": {
-            "ruleId": {
-                "type": "string",
-                "enum": configurable_rule_ids,
-                "description": "A configurable Merman analysis rule id."
-            },
-            "severity": {
-                "type": "string",
-                "enum": severities,
-                "description": "Diagnostic severity for an explicit rule override."
-            },
-            "analysisOptions": analysis_options
-        },
-        "oneOf": roots
-    })
-}
-
-fn direct_root_schema() -> Value {
-    let wrappers = wrapped_config_roots()
-        .map(|(_, key)| json!({ "required": [key] }))
-        .collect::<Vec<_>>();
-    json!({
-        "allOf": [
-            { "$ref": "#/$defs/analysisOptions" },
-            {
-                "not": {
-                    "anyOf": wrappers
-                }
-            }
-        ]
-    })
-}
-
-fn wrapped_root_schema(root: AnalysisConfigRoot) -> Value {
-    let wrapper = root
-        .wrapper_key()
-        .expect("wrapped root must expose its wrapper key");
-    let mut forbidden = wrapped_config_roots()
-        .filter(|(other, _)| *other != root)
-        .map(|(_, key)| json!({ "required": [key] }))
-        .collect::<Vec<_>>();
-    for removed in object_descriptor(AnalysisConfigObjectId::Options).removed_keys {
-        forbidden.push(json!({ "required": [removed] }));
-    }
-    for root_key in unique_root_keys() {
-        forbidden.push(json!({ "required": [root_key] }));
-    }
-    json!({
-        "type": "object",
-        "required": [wrapper],
-        "additionalProperties": true,
-        "properties": {
-            (wrapper): { "$ref": "#/$defs/analysisOptions" }
-        },
-        "not": { "anyOf": forbidden }
-    })
-}
-
-fn unique_root_keys() -> Vec<&'static str> {
-    let mut keys = Vec::new();
-    for field in fields_for_object(AnalysisConfigObjectId::Options) {
-        if !keys.contains(&field.key) {
-            keys.push(field.key);
-        }
-    }
-    keys
-}
-
-fn field_descriptor(
-    parent: AnalysisConfigObjectId,
-    key: &str,
-) -> Option<AnalysisConfigFieldDescriptor> {
-    fields_for_object(parent).find(|field| field.key == key)
-}
-
 fn fields_for_object(
     parent: AnalysisConfigObjectId,
 ) -> impl Iterator<Item = AnalysisConfigFieldDescriptor> {
@@ -980,362 +990,6 @@ fn fields_for_object(
         .iter()
         .copied()
         .filter(move |field| field.id.parent() == parent)
-}
-
-fn validate_config_object(
-    id: AnalysisConfigObjectId,
-    value: &Value,
-) -> Result<(), AnalysisOptionsJsonError> {
-    let descriptor = object_descriptor(id);
-    let map = value.as_object().ok_or_else(|| {
-        AnalysisOptionsJsonError::new(format!(
-            "invalid analysis options JSON: {} must be an object",
-            descriptor.path
-        ))
-    })?;
-
-    for removed in descriptor.removed_keys {
-        if map.contains_key(*removed) {
-            return Err(AnalysisOptionsJsonError::new(format!(
-                "analysis option `{removed}` was removed; analysis always retains family parse failures"
-            )));
-        }
-    }
-
-    for field in fields_for_object(id).filter(|field| field.required) {
-        if !map.contains_key(field.key) {
-            return Err(AnalysisOptionsJsonError::new(format!(
-                "invalid analysis options JSON: {}.{} is required",
-                descriptor.path, field.key
-            )));
-        }
-    }
-
-    for (key, value) in map {
-        let Some(field) = field_descriptor(id, key) else {
-            if descriptor.compatibility == AnalysisConfigCompatibility::Strict {
-                return Err(AnalysisOptionsJsonError::new(format!(
-                    "invalid analysis options JSON: unknown field `{key}` in {}",
-                    descriptor.path
-                )));
-            }
-            continue;
-        };
-        validate_config_field(field, value)?;
-    }
-    Ok(())
-}
-
-fn validate_config_field(
-    field: AnalysisConfigFieldDescriptor,
-    value: &Value,
-) -> Result<(), AnalysisOptionsJsonError> {
-    if value.is_null() {
-        return if field.nullable {
-            Ok(())
-        } else {
-            Err(AnalysisOptionsJsonError::new(format!(
-                "invalid analysis options JSON: {} must not be null",
-                field.path
-            )))
-        };
-    }
-
-    match field.value_kind {
-        AnalysisConfigValueKind::String {
-            enum_source,
-            pattern: _,
-        } => {
-            let string = value.as_str().ok_or_else(|| {
-                AnalysisOptionsJsonError::new(format!(
-                    "invalid analysis options JSON: {} must be a string",
-                    field.path
-                ))
-            })?;
-            if let Some(source) = enum_source {
-                validate_enum_value(source, string, field.path)?;
-            }
-            Ok(())
-        }
-        AnalysisConfigValueKind::Integer { minimum, maximum } => {
-            decode_json_integer(value, field.path, minimum, maximum).map(|_| ())
-        }
-        AnalysisConfigValueKind::JsonObject => value.as_object().map(|_| ()).ok_or_else(|| {
-            AnalysisOptionsJsonError::new(format!(
-                "invalid analysis options JSON: {} must be an object",
-                field.path
-            ))
-        }),
-        AnalysisConfigValueKind::Object(id) => validate_config_object(id, value),
-        AnalysisConfigValueKind::Array(item) => {
-            let values = value.as_array().ok_or_else(|| {
-                AnalysisOptionsJsonError::new(format!(
-                    "invalid analysis options JSON: {} must be an array",
-                    field.path
-                ))
-            })?;
-            for (index, value) in values.iter().enumerate() {
-                match item {
-                    AnalysisConfigArrayItem::RuleId => {
-                        let rule_id = value.as_str().ok_or_else(|| {
-                            AnalysisOptionsJsonError::new(format!(
-                                "invalid analysis options JSON: {}[{index}] must be a string",
-                                field.path
-                            ))
-                        })?;
-                        validate_enum_value(
-                            AnalysisConfigEnumSource::RuleIds,
-                            rule_id,
-                            field.path,
-                        )?;
-                    }
-                    AnalysisConfigArrayItem::RuleSeverityOverride => {
-                        validate_config_object(
-                            AnalysisConfigObjectId::RuleSeverityOverride,
-                            value,
-                        )?;
-                    }
-                }
-            }
-            Ok(())
-        }
-        AnalysisConfigValueKind::ResourceLimits => validate_resource_limits(value),
-    }
-}
-
-fn validate_enum_value(
-    source: AnalysisConfigEnumSource,
-    value: &str,
-    path: &str,
-) -> Result<(), AnalysisOptionsJsonError> {
-    let valid = match source {
-        AnalysisConfigEnumSource::Profiles => AnalysisRuleProfile::from_config_str(value).is_some(),
-        AnalysisConfigEnumSource::RuleIds => {
-            configurable_rule_descriptors().any(|descriptor| descriptor.id == value)
-        }
-        AnalysisConfigEnumSource::Severities => {
-            DiagnosticSeverity::from_config_str(value).is_some()
-        }
-    };
-    if valid {
-        return Ok(());
-    }
-    let requirement = match source {
-        AnalysisConfigEnumSource::Profiles => "must be core, recommended, or strict",
-        AnalysisConfigEnumSource::RuleIds => "must reference a configurable analysis rule id",
-        AnalysisConfigEnumSource::Severities => "must be error, warning, info, or hint",
-    };
-    Err(AnalysisOptionsJsonError::new(format!(
-        "{path} entry `{value}` {requirement}"
-    )))
-}
-
-fn validate_resource_limits(value: &Value) -> Result<(), AnalysisOptionsJsonError> {
-    let limits = value.as_object().ok_or_else(|| {
-        AnalysisOptionsJsonError::new(
-            "invalid analysis options JSON: resources.limits must be an object",
-        )
-    })?;
-    for (limit_id, value) in limits {
-        let Some(descriptor) = resource_limit_descriptor(limit_id) else {
-            return Err(AnalysisOptionsJsonError::new(format!(
-                "unknown analysis resource limit id: {limit_id}"
-            )));
-        };
-        decode_json_integer(
-            value,
-            &format!("resources.limits.{limit_id}"),
-            descriptor.minimum_value as i64,
-            descriptor.maximum_value as i64,
-        )?;
-    }
-    Ok(())
-}
-
-fn reject_removed_parse(value: &Value) -> Result<(), AnalysisOptionsJsonError> {
-    let Value::Object(map) = value else {
-        return Ok(());
-    };
-    let descriptor = object_descriptor(AnalysisConfigObjectId::Options);
-    for removed in descriptor.removed_keys {
-        let present = map.contains_key(*removed)
-            || wrapped_config_roots().any(|(_, key)| {
-                map.get(key)
-                    .and_then(Value::as_object)
-                    .is_some_and(|options| options.contains_key(*removed))
-            });
-        if present {
-            return Err(AnalysisOptionsJsonError::new(format!(
-                "analysis option `{removed}` was removed; analysis always retains family parse failures"
-            )));
-        }
-    }
-    Ok(())
-}
-
-fn select_analysis_options_root(value: &Value) -> Result<&Value, AnalysisOptionsJsonError> {
-    let Value::Object(map) = value else {
-        return Err(AnalysisOptionsJsonError::new(
-            "analysis options JSON must be an object",
-        ));
-    };
-    let mut selected_wrapper = None;
-    for (_, key) in wrapped_config_roots() {
-        let Some(wrapped) = map.get(key) else {
-            continue;
-        };
-        if selected_wrapper.is_some() {
-            return Err(AnalysisOptionsJsonError::new(
-                "options JSON must not contain both `merman` and `analysis` wrappers",
-            ));
-        }
-        selected_wrapper = Some((key, wrapped));
-    }
-
-    if let Some((key, wrapped)) = selected_wrapper {
-        if root_option_key_present(map) {
-            return Err(AnalysisOptionsJsonError::new(
-                "options JSON must not mix top-level analysis options with `analysis` or `merman` wrappers",
-            ));
-        }
-        if !wrapped.is_object() {
-            return Err(AnalysisOptionsJsonError::new(format!(
-                "options JSON wrapper `{key}` must contain an object"
-            )));
-        }
-        return Ok(wrapped);
-    }
-    Ok(value)
-}
-
-fn root_option_key_present(map: &Map<String, Value>) -> bool {
-    fields_for_object(AnalysisConfigObjectId::Options).any(|field| map.contains_key(field.key))
-}
-
-fn decode_analysis_options_object(
-    value: &Value,
-) -> Result<AnalysisOptionsJson, AnalysisOptionsJsonError> {
-    let map = value
-        .as_object()
-        .ok_or_else(|| AnalysisOptionsJsonError::new("analysis options JSON must be an object"))?;
-    let mut decoded = AnalysisOptionsJson::default();
-    for field in fields_for_object(AnalysisConfigObjectId::Options) {
-        let Some(value) = map.get(field.key).filter(|value| !value.is_null()) else {
-            continue;
-        };
-        let AnalysisConfigFieldId::Options(field_id) = field.id else {
-            unreachable!("options object contained a non-options field descriptor")
-        };
-        match field_id {
-            AnalysisOptionsFieldId::FixedToday => {
-                decoded.fixed_today = Some(decoded_string(value));
-            }
-            AnalysisOptionsFieldId::FixedLocalOffsetMinutes => {
-                decoded.fixed_local_offset_minutes = Some(decoded_integer(field, value)? as i32);
-            }
-            AnalysisOptionsFieldId::SiteConfig => decoded.site_config = Some(value.clone()),
-            AnalysisOptionsFieldId::Resources => {
-                decoded.resources = Some(decode_resource_options(value)?);
-            }
-            AnalysisOptionsFieldId::Lint => decoded.lint = Some(decode_lint(value)?),
-        }
-    }
-    Ok(decoded)
-}
-
-pub(crate) fn decode_resource_options(
-    value: &Value,
-) -> Result<ResourceOptionsJson, AnalysisOptionsJsonError> {
-    validate_config_object(AnalysisConfigObjectId::Resources, value)?;
-    let map = value
-        .as_object()
-        .expect("validated resources configuration must be an object");
-    let mut resources = ResourceOptionsJson::default();
-    for field in fields_for_object(AnalysisConfigObjectId::Resources) {
-        let Some(value) = map.get(field.key) else {
-            continue;
-        };
-        let AnalysisConfigFieldId::Resources(field_id) = field.id else {
-            unreachable!("resources object contained a non-resource field descriptor")
-        };
-        match field_id {
-            ResourceOptionsFieldId::Limits => {
-                let limits = value
-                    .as_object()
-                    .expect("validated resource limits must be an object");
-                for (limit_id, value) in limits {
-                    let descriptor = resource_limit_descriptor(limit_id)
-                        .expect("validated resource limit ids must have owner descriptors");
-                    let integer = decode_json_integer(
-                        value,
-                        &format!("{}.{}", field.path, limit_id),
-                        descriptor.minimum_value as i64,
-                        descriptor.maximum_value as i64,
-                    )?;
-                    resources.limits.insert(limit_id.clone(), integer as usize);
-                }
-            }
-        }
-    }
-    Ok(resources)
-}
-
-fn decode_lint(value: &Value) -> Result<LintOptionsJson, AnalysisOptionsJsonError> {
-    let map = value
-        .as_object()
-        .expect("validated lint configuration must be an object");
-    let mut lint = LintOptionsJson::default();
-    for field in fields_for_object(AnalysisConfigObjectId::Lint) {
-        let Some(value) = map.get(field.key).filter(|value| !value.is_null()) else {
-            continue;
-        };
-        let AnalysisConfigFieldId::Lint(field_id) = field.id else {
-            unreachable!("lint object contained a non-lint field descriptor")
-        };
-        match field_id {
-            LintOptionsFieldId::Profile => lint.profile = Some(decoded_string(value)),
-            LintOptionsFieldId::EnableRules => lint.enable_rules = decoded_string_array(value),
-            LintOptionsFieldId::DisableRules => lint.disable_rules = decoded_string_array(value),
-            LintOptionsFieldId::RuleSeverities => {
-                lint.rule_severities = decode_rule_severities(value)?
-            }
-        }
-    }
-    Ok(lint)
-}
-
-fn decode_rule_severities(
-    value: &Value,
-) -> Result<Vec<LintRuleSeverityOverrideJson>, AnalysisOptionsJsonError> {
-    let values = value
-        .as_array()
-        .expect("validated lint rule severities must be an array");
-    Ok(values
-        .iter()
-        .map(|value| {
-            let map = value
-                .as_object()
-                .expect("validated rule severity override must be an object");
-            let mut override_json = LintRuleSeverityOverrideJson::default();
-            for field in fields_for_object(AnalysisConfigObjectId::RuleSeverityOverride) {
-                let value = map
-                    .get(field.key)
-                    .expect("validated rule severity field must be present");
-                let AnalysisConfigFieldId::RuleSeverityOverride(field_id) = field.id else {
-                    unreachable!("rule severity object contained a non-override field descriptor")
-                };
-                match field_id {
-                    RuleSeverityOverrideFieldId::RuleId => {
-                        override_json.rule_id = decoded_string(value)
-                    }
-                    RuleSeverityOverrideFieldId::Severity => {
-                        override_json.severity = decoded_string(value)
-                    }
-                }
-            }
-            override_json
-        })
-        .collect())
 }
 
 fn field_by_id(id: AnalysisConfigFieldId) -> AnalysisConfigFieldDescriptor {
@@ -1352,277 +1006,5 @@ pub(crate) fn default_lint_profile() -> AnalysisRuleProfile {
         AnalysisConfigDefault::None | AnalysisConfigDefault::EmptyArray => {
             unreachable!("lint profile descriptor must declare a rule-profile default")
         }
-    }
-}
-
-fn decoded_string(value: &Value) -> String {
-    value
-        .as_str()
-        .expect("validated analysis config string must be a string")
-        .to_string()
-}
-
-fn decoded_integer(
-    field: AnalysisConfigFieldDescriptor,
-    value: &Value,
-) -> Result<i64, AnalysisOptionsJsonError> {
-    let AnalysisConfigValueKind::Integer { minimum, maximum } = field.value_kind else {
-        unreachable!("integer decoder must consume an integer field descriptor")
-    };
-    decode_json_integer(value, field.path, minimum, maximum)
-}
-
-fn decoded_string_array(value: &Value) -> Vec<String> {
-    value
-        .as_array()
-        .expect("validated analysis config array must be an array")
-        .iter()
-        .map(decoded_string)
-        .collect()
-}
-
-fn decode_json_integer(
-    value: &Value,
-    field: &str,
-    minimum: i64,
-    maximum: i64,
-) -> Result<i64, AnalysisOptionsJsonError> {
-    let integer = value
-        .as_i64()
-        .or_else(|| value.as_u64().and_then(|value| i64::try_from(value).ok()))
-        .or_else(|| {
-            let value = value.as_f64()?;
-            (value.is_finite()
-                && value.fract() == 0.0
-                && value >= minimum as f64
-                && value <= maximum as f64)
-                .then_some(value as i64)
-        })
-        .ok_or_else(|| {
-            AnalysisOptionsJsonError::new(format!(
-                "invalid analysis options JSON: {field} must be an integer between {minimum} and {maximum}"
-            ))
-        })?;
-    if !(minimum..=maximum).contains(&integer) {
-        return Err(AnalysisOptionsJsonError::new(format!(
-            "invalid analysis options JSON: {field} must be an integer between {minimum} and {maximum}"
-        )));
-    }
-    Ok(integer)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::BTreeSet;
-
-    #[test]
-    fn typed_descriptor_tree_projects_every_runtime_field_once() {
-        let projection =
-            AnalysisConfigContract::current().json_schema(AnalysisConfigHostDefaults::default());
-        let analysis = &projection.schema["$defs"]["analysisOptions"];
-
-        for object in ANALYSIS_CONFIG_OBJECTS {
-            let schema = match object.id {
-                AnalysisConfigObjectId::Options => analysis,
-                AnalysisConfigObjectId::Resources => &analysis["properties"]["resources"],
-                AnalysisConfigObjectId::Lint => &analysis["properties"]["lint"],
-                AnalysisConfigObjectId::RuleSeverityOverride => {
-                    &analysis["properties"]["lint"]["properties"]["rule_severities"]["items"]
-                }
-            };
-            let projected = schema["properties"]
-                .as_object()
-                .expect("typed config objects must project properties")
-                .keys()
-                .map(String::as_str)
-                .collect::<BTreeSet<_>>();
-            let declared = ANALYSIS_CONFIG_FIELDS
-                .iter()
-                .filter(|field| field.id.parent() == object.id)
-                .map(|field| field.key)
-                .collect::<BTreeSet<_>>();
-            assert_eq!(projected, declared, "field drift for {:?}", object.id);
-            assert_eq!(
-                schema["additionalProperties"],
-                json!(object.compatibility == AnalysisConfigCompatibility::ForwardCompatible),
-                "compatibility drift for {:?}",
-                object.id
-            );
-
-            let required = schema
-                .get("required")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .filter_map(Value::as_str)
-                .collect::<BTreeSet<_>>();
-            let declared_required = ANALYSIS_CONFIG_FIELDS
-                .iter()
-                .filter(|field| field.id.parent() == object.id && field.required)
-                .map(|field| field.key)
-                .collect::<BTreeSet<_>>();
-            assert_eq!(required, declared_required);
-        }
-
-        let paths = ANALYSIS_CONFIG_FIELDS
-            .iter()
-            .map(|field| field.path)
-            .collect::<BTreeSet<_>>();
-        assert_eq!(paths.len(), ANALYSIS_CONFIG_FIELDS.len());
-        let ids = ANALYSIS_CONFIG_FIELDS
-            .iter()
-            .map(|field| field.id)
-            .collect::<BTreeSet<_>>();
-        assert_eq!(ids.len(), ANALYSIS_CONFIG_FIELDS.len());
-    }
-
-    #[test]
-    fn descriptor_bounds_nullability_and_scope_drive_both_projections() {
-        let profiles = AnalysisRuleProfile::ALL
-            .into_iter()
-            .map(AnalysisRuleProfile::as_str)
-            .map(str::to_string)
-            .collect::<Vec<_>>();
-        let severities = DiagnosticSeverity::ALL
-            .into_iter()
-            .map(DiagnosticSeverity::as_str)
-            .map(str::to_string)
-            .collect::<Vec<_>>();
-        let rule_ids = configurable_rule_descriptors()
-            .map(|descriptor| descriptor.id.to_string())
-            .collect::<Vec<_>>();
-
-        for field in ANALYSIS_CONFIG_FIELDS {
-            let schema = field_schema(
-                field,
-                &profiles,
-                &severities,
-                &rule_ids,
-                AnalysisConfigHostDefaults::default(),
-            );
-            assert_eq!(
-                schema["x-merman-change-scope"],
-                json!(field.change_scope().as_str())
-            );
-            assert_eq!(schema["description"], json!(field.description));
-
-            let schema_accepts_null = schema["type"]
-                .as_array()
-                .is_some_and(|types| types.iter().any(|value| value.as_str() == Some("null")));
-            assert_eq!(schema_accepts_null, field.nullable);
-            assert_eq!(
-                validate_config_field(field, &Value::Null).is_ok(),
-                field.nullable
-            );
-
-            if let AnalysisConfigValueKind::Integer { minimum, maximum } = field.value_kind {
-                assert_eq!(schema["minimum"], json!(minimum));
-                assert_eq!(schema["maximum"], json!(maximum));
-                assert!(validate_config_field(field, &json!(minimum)).is_ok());
-                assert!(validate_config_field(field, &json!(maximum)).is_ok());
-                assert!(validate_config_field(field, &json!(minimum - 1)).is_err());
-                assert!(validate_config_field(field, &json!(maximum + 1)).is_err());
-            }
-        }
-    }
-
-    #[test]
-    fn policy_descriptors_drive_runtime_classification_and_field_schema_scope() {
-        let current = AnalysisOptions::default();
-        let policy_ids = ANALYSIS_CONFIG_POLICIES
-            .iter()
-            .map(|policy| policy.id)
-            .collect::<BTreeSet<_>>();
-        assert_eq!(policy_ids.len(), ANALYSIS_CONFIG_POLICIES.len());
-
-        for policy in ANALYSIS_CONFIG_POLICIES {
-            let next = match policy.id {
-                AnalysisConfigPolicyId::FixedToday => {
-                    AnalysisOptions::default().with_fixed_today(Some("2026-08-11".parse().unwrap()))
-                }
-                AnalysisConfigPolicyId::FixedLocalOffsetMinutes => AnalysisOptions::default()
-                    .try_with_fixed_local_offset_minutes(60)
-                    .unwrap(),
-                AnalysisConfigPolicyId::SiteConfig => AnalysisOptions::default().with_site_config(
-                    merman_core::MermaidConfig::from_value(json!({ "theme": "dark" })),
-                ),
-                AnalysisConfigPolicyId::Resources => {
-                    AnalysisOptions::default().with_max_source_bytes(Some(1))
-                }
-                AnalysisConfigPolicyId::Lint => AnalysisOptions::default().with_rule_config(
-                    crate::AnalysisRuleConfig::default()
-                        .with_profile(AnalysisRuleProfile::Recommended),
-                ),
-            };
-            assert!(policy.changed(&current, &next));
-            assert_eq!(
-                AnalysisConfigContract::current().classify_change(&current, &next),
-                policy.change_scope.change(),
-                "classification drifted for {:?}",
-                policy.id
-            );
-        }
-
-        for field in ANALYSIS_CONFIG_FIELDS {
-            assert!(policy_ids.contains(&field.policy));
-            assert_eq!(
-                field.change_scope(),
-                policy_descriptor(field.policy).change_scope
-            );
-        }
-    }
-
-    #[test]
-    fn descriptor_defaults_match_runtime_defaults() {
-        let contract = AnalysisConfigContract::current();
-        let projection = contract.json_schema(AnalysisConfigHostDefaults::default());
-        let decoded_json = contract.decode_json(&json!({ "lint": {} })).unwrap();
-        let decoded = contract.decode(&json!({ "lint": {} })).unwrap();
-        let lint = decoded_json.lint.expect("decoded lint options");
-
-        assert_eq!(
-            projection.schema["$defs"]["analysisOptions"]["properties"]["lint"]["properties"]["profile"]
-                ["default"],
-            json!(default_lint_profile().as_str())
-        );
-        assert_eq!(
-            decoded.diagnostic_policy().rule_config.profile(),
-            default_lint_profile()
-        );
-        for (field_id, values) in [
-            (
-                AnalysisConfigFieldId::Lint(LintOptionsFieldId::EnableRules),
-                lint.enable_rules,
-            ),
-            (
-                AnalysisConfigFieldId::Lint(LintOptionsFieldId::DisableRules),
-                lint.disable_rules,
-            ),
-        ] {
-            assert_eq!(
-                field_by_id(field_id).default,
-                AnalysisConfigDefault::EmptyArray
-            );
-            assert!(values.is_empty());
-        }
-        assert_eq!(
-            field_by_id(AnalysisConfigFieldId::Lint(
-                LintOptionsFieldId::RuleSeverities
-            ))
-            .default,
-            AnalysisConfigDefault::EmptyArray
-        );
-        assert!(lint.rule_severities.is_empty());
-    }
-
-    #[cfg(target_pointer_width = "64")]
-    #[test]
-    #[should_panic(expected = "must satisfy its owner maximum")]
-    fn host_defaults_cannot_exceed_the_published_resource_maximum() {
-        let _ = AnalysisConfigContract::current().json_schema(AnalysisConfigHostDefaults {
-            max_source_bytes: Some(u32::MAX as usize + 1),
-            max_document_diagrams: None,
-        });
     }
 }

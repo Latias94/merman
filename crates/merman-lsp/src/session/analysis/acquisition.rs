@@ -2,7 +2,7 @@ use super::executor::{AnalysisExecutionError, AnalysisExecutor};
 use super::request::DiagnosticReprojectionRequest;
 use crate::session::LanguageSession;
 use crate::session::analysis_cache::AnalysisCacheStamp;
-use crate::session::documents::{DocumentDiagnosticState, StoredDocument};
+use crate::session::documents::{DiagnosticContext, DocumentDiagnosticState};
 use crate::snapshot::{DocumentSnapshot, SnapshotContext};
 use std::sync::Arc;
 use tower_lsp_server::jsonrpc::Result;
@@ -121,7 +121,7 @@ impl LanguageSession {
     pub(crate) async fn pull_diagnostics(
         &self,
         uri: &Uri,
-        compute: impl Fn(&StoredDocument, Option<&SnapshotContext>) -> DocumentDiagnosticState,
+        compute: impl Fn(&DiagnosticContext, Option<&SnapshotContext>) -> DocumentDiagnosticState,
     ) -> Result<Option<DocumentDiagnosticState>> {
         for _ in 0..MAX_DIAGNOSTIC_RECOMPUTE_ATTEMPTS {
             let (diagnostic_context, cached) = {
@@ -145,7 +145,7 @@ impl LanguageSession {
                 }
             };
 
-            let state_value = compute(&diagnostic_context.document, analysis_context.as_ref());
+            let state_value = compute(&diagnostic_context, analysis_context.as_ref());
             let mut state = self.inner.state.lock().await;
             let Some(committed) = self.commit_state_if_active(&mut state, |state| {
                 let current = state.diagnostic_contexts_are_current(

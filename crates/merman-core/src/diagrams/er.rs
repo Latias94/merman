@@ -12,7 +12,7 @@ use crate::{
 use serde_json::{Value, json};
 #[cfg(test)]
 use std::cell::Cell;
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 #[cfg(test)]
 thread_local! {
@@ -566,6 +566,10 @@ pub(crate) fn parse_er_json_and_editor_facts(
 #[derive(Debug, Default)]
 struct ErEditorFactCollector {
     pending_entity: Option<ErTokenSymbol>,
+    deferred_styled_entity: Option<ErTokenSymbol>,
+    deferred_styled_ids: Option<SpannedIdList>,
+    relationship_started: bool,
+    known_entities: HashSet<String>,
     expected_id_list: Option<PendingErExpectation>,
     directive_start: Option<usize>,
     style_payload_pending: bool,
@@ -579,7 +583,8 @@ struct ErEditorFactCollector {
 impl ErEditorFactCollector {
     fn finish(&mut self, code: &str, facts: &mut EditorSemanticFacts) {
         self.finish_line(code, line_content_end(code, code.len()), facts);
-        self.push_pending_entity(facts);
+        self.push_deferred_styled_entity(facts, ErEntityOccurrence::Definition);
+        self.push_pending_entity(facts, ErEntityOccurrence::Definition);
     }
 
     fn finish_line(&mut self, code: &str, line_end: usize, facts: &mut EditorSemanticFacts) {
@@ -613,7 +618,13 @@ impl ErEditorFactCollector {
             ));
         }
         if !self.in_alias && !self.in_relationship_role {
-            self.push_pending_entity(facts);
+            let occurrence = if self.relationship_started {
+                ErEntityOccurrence::Relationship
+            } else {
+                ErEntityOccurrence::Definition
+            };
+            self.push_deferred_styled_entity(facts, occurrence);
+            self.push_pending_entity(facts, occurrence);
         }
     }
 }
@@ -622,6 +633,12 @@ impl ErEditorFactCollector {
 struct ErTokenSymbol {
     name: String,
     span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ErEntityOccurrence {
+    Definition,
+    Relationship,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -648,6 +665,24 @@ impl ErEditorFactCollector {
         end: usize,
         facts: &mut EditorSemanticFacts,
     ) {
+        if self.deferred_styled_entity.is_some() && !matches!(token, Tok::IdList(_)) {
+            let occurrence = if matches!(
+                token,
+                Tok::ZeroOrOne
+                    | Tok::ZeroOrMore
+                    | Tok::OneOrMore
+                    | Tok::OnlyOne
+                    | Tok::MdParent
+                    | Tok::Identifying
+                    | Tok::NonIdentifying
+            ) {
+                ErEntityOccurrence::Relationship
+            } else {
+                ErEntityOccurrence::Definition
+            };
+            self.push_deferred_styled_entity(facts, occurrence);
+        }
+
         match token {
             Tok::ErDiagram => self.reset_line_state(),
             Tok::Newline => {
@@ -672,11 +707,21 @@ impl ErEditorFactCollector {
                 self.expect_id_list(ExpectedErIdList::ClassEntities);
             }
             Tok::StyleSeparator => {
-                self.push_pending_entity(facts);
+                if self.relationship_started {
+                    self.push_pending_entity(facts, ErEntityOccurrence::Relationship);
+                } else {
+                    self.deferred_styled_entity = self.pending_entity.take();
+                }
                 self.directive_start = Some(start);
                 self.expect_id_list(ExpectedErIdList::InlineClasses);
             }
-            Tok::IdList(ids) => self.push_id_list(ids.clone(), facts),
+            Tok::IdList(ids) => {
+                if self.deferred_styled_entity.is_some() {
+                    self.deferred_styled_ids = Some(ids.clone());
+                } else {
+                    self.push_id_list(ids.clone(), facts);
+                }
+            }
             Tok::Name(name) => {
                 if self.in_attribute_block {
                     return;
@@ -706,7 +751,12 @@ impl ErEditorFactCollector {
                     span,
                 };
                 if let Some(entity) = self.pending_entity.replace(symbol) {
-                    self.push_entity_symbol(facts, entity, "er entity reference");
+                    let occurrence = if self.relationship_started {
+                        ErEntityOccurrence::Relationship
+                    } else {
+                        ErEntityOccurrence::Definition
+                    };
+                    self.push_entity_symbol(facts, entity, "er entity reference", occurrence);
                 }
             }
             Tok::ZeroOrOne
@@ -715,13 +765,23 @@ impl ErEditorFactCollector {
             | Tok::OnlyOne
             | Tok::MdParent
             | Tok::Identifying
-            | Tok::NonIdentifying => self.push_pending_entity(facts),
+            | Tok::NonIdentifying => {
+                self.push_pending_entity(facts, ErEntityOccurrence::Relationship);
+                self.relationship_started = true;
+            }
             Tok::Colon => {
-                self.push_pending_entity(facts);
+                let occurrence = if self.relationship_started {
+                    ErEntityOccurrence::Relationship
+                } else {
+                    ErEntityOccurrence::Definition
+                };
+                self.push_deferred_styled_entity(facts, occurrence);
+                self.push_pending_entity(facts, occurrence);
                 self.in_relationship_role = true;
             }
             Tok::BlockStart => {
-                self.push_pending_entity(facts);
+                self.push_deferred_styled_entity(facts, ErEntityOccurrence::Definition);
+                self.push_pending_entity(facts, ErEntityOccurrence::Definition);
                 self.in_attribute_block = true;
                 self.attr_word_index = 0;
             }
@@ -787,7 +847,8 @@ impl ErEditorFactCollector {
             Tok::AccTitle(_) => facts.push_directive_prefix("accTitle"),
             Tok::AccDescr(_) | Tok::AccDescrMultiline(_) => facts.push_directive_prefix("accDescr"),
             Tok::SquareStart => {
-                self.push_pending_entity(facts);
+                self.push_deferred_styled_entity(facts, ErEntityOccurrence::Definition);
+                self.push_pending_entity(facts, ErEntityOccurrence::Definition);
                 self.in_alias = true;
             }
             Tok::SquareStop => self.in_alias = false,
@@ -847,20 +908,48 @@ impl ErEditorFactCollector {
 
     fn reset_line_state(&mut self) {
         self.pending_entity = None;
+        self.deferred_styled_entity = None;
+        self.deferred_styled_ids = None;
         self.expected_id_list = None;
         self.directive_start = None;
         self.style_payload_pending = false;
         self.style_payload_anchor_end = None;
         self.in_alias = false;
         self.in_relationship_role = false;
+        self.relationship_started = false;
         if !self.in_attribute_block {
             self.attr_word_index = 0;
         }
     }
 
-    fn push_pending_entity(&mut self, facts: &mut EditorSemanticFacts) {
+    fn push_pending_entity(
+        &mut self,
+        facts: &mut EditorSemanticFacts,
+        occurrence: ErEntityOccurrence,
+    ) {
         if let Some(entity) = self.pending_entity.take() {
-            self.push_entity_symbol(facts, entity, "er entity");
+            let detail = match occurrence {
+                ErEntityOccurrence::Definition => "er entity",
+                ErEntityOccurrence::Relationship => "er relationship entity",
+            };
+            self.push_entity_symbol(facts, entity, detail, occurrence);
+        }
+    }
+
+    fn push_deferred_styled_entity(
+        &mut self,
+        facts: &mut EditorSemanticFacts,
+        occurrence: ErEntityOccurrence,
+    ) {
+        if let Some(entity) = self.deferred_styled_entity.take() {
+            let detail = match occurrence {
+                ErEntityOccurrence::Definition => "er entity",
+                ErEntityOccurrence::Relationship => "er relationship entity",
+            };
+            self.push_entity_symbol(facts, entity, detail, occurrence);
+        }
+        if let Some(ids) = self.deferred_styled_ids.take() {
+            self.push_id_list(ids, facts);
         }
     }
 
@@ -907,7 +996,25 @@ impl ErEditorFactCollector {
                     id.span,
                     id.span,
                 ),
-                _ => EditorSemanticSymbol::new(
+                Some(ExpectedErIdList::StyleEntities | ExpectedErIdList::ClassEntities) => {
+                    EditorSemanticSymbol::reference(
+                        id.name,
+                        Some(detail.to_string()),
+                        kind,
+                        id.span,
+                        id.span,
+                    )
+                }
+                Some(ExpectedErIdList::ClassNames | ExpectedErIdList::InlineClasses) => {
+                    EditorSemanticSymbol::payload(
+                        id.name,
+                        Some(detail.to_string()),
+                        kind,
+                        id.span,
+                        id.span,
+                    )
+                }
+                None => EditorSemanticSymbol::payload(
                     id.name,
                     Some(detail.to_string()),
                     kind,
@@ -938,21 +1045,44 @@ impl ErEditorFactCollector {
     }
 
     fn push_entity_symbol(
-        &self,
+        &mut self,
         facts: &mut EditorSemanticFacts,
         symbol: ErTokenSymbol,
         detail: &'static str,
+        occurrence: ErEntityOccurrence,
     ) {
         if symbol.name.is_empty() {
             return;
         }
-        facts.push_symbol(EditorSemanticSymbol::new(
-            symbol.name,
-            Some(detail.to_string()),
-            EditorSemanticKind::Struct,
-            symbol.span,
-            symbol.span,
-        ));
+        let is_implicit_definition = matches!(occurrence, ErEntityOccurrence::Relationship)
+            && !self.known_entities.contains(&symbol.name);
+        if matches!(occurrence, ErEntityOccurrence::Definition) || is_implicit_definition {
+            self.known_entities.insert(symbol.name.clone());
+        }
+        let detail = Some(if is_implicit_definition {
+            "er implicit entity".to_string()
+        } else {
+            detail.to_string()
+        });
+        let entity =
+            if matches!(occurrence, ErEntityOccurrence::Relationship) && !is_implicit_definition {
+                EditorSemanticSymbol::reference(
+                    symbol.name,
+                    detail,
+                    EditorSemanticKind::Struct,
+                    symbol.span,
+                    symbol.span,
+                )
+            } else {
+                EditorSemanticSymbol::new(
+                    symbol.name,
+                    detail,
+                    EditorSemanticKind::Struct,
+                    symbol.span,
+                    symbol.span,
+                )
+            };
+        facts.push_symbol(entity);
     }
 
     fn push_attribute_symbol(
@@ -2079,7 +2209,7 @@ impl Iterator for Lexer<'_, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::MermaidConfig;
+    use crate::{EditorSemanticRole, MermaidConfig};
 
     fn meta() -> ParseMetadata {
         ParseMetadata {
@@ -2119,5 +2249,31 @@ mod tests {
         assert!(model["entities"].get("1.5").is_some());
         assert!(model["entities"].get("Sales.Order").is_some());
         assert_eq!(model["relationships"].as_array().map(Vec::len), Some(1));
+    }
+
+    #[test]
+    fn er_entity_occurrence_role_does_not_depend_on_display_detail() {
+        let span = SourceSpan::new(0, "CUSTOMER".len());
+        let symbol = || ErTokenSymbol {
+            name: "CUSTOMER".to_string(),
+            span,
+        };
+        let mut collector = ErEditorFactCollector::default();
+        let mut facts = EditorSemanticFacts::new();
+        collector.push_entity_symbol(
+            &mut facts,
+            symbol(),
+            "reference-looking definition",
+            ErEntityOccurrence::Definition,
+        );
+        collector.push_entity_symbol(
+            &mut facts,
+            symbol(),
+            "definition-looking relationship occurrence",
+            ErEntityOccurrence::Relationship,
+        );
+
+        assert_eq!(facts.symbols[0].role, EditorSemanticRole::Entity);
+        assert_eq!(facts.symbols[1].role, EditorSemanticRole::Reference);
     }
 }

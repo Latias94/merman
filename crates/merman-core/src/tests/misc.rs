@@ -2470,11 +2470,11 @@ style req,elem fill:#ffa,stroke:#000
     let elem_class_target_start = req_class_target_start + "req,".len();
     assert_eq!(
         symbol_at("req", "requirement class target", req_class_target_start).role,
-        EditorSemanticRole::Entity
+        EditorSemanticRole::Reference
     );
     assert_eq!(
         symbol_at("elem", "requirement class target", elem_class_target_start).role,
-        EditorSemanticRole::Entity
+        EditorSemanticRole::Reference
     );
 
     let first_class_ref_start = class_stmt_start + "class req,elem ".len();
@@ -2493,11 +2493,11 @@ style req,elem fill:#ffa,stroke:#000
     let elem_style_target_start = req_style_target_start + "req,".len();
     assert_eq!(
         symbol_at("req", "requirement style target", req_style_target_start).role,
-        EditorSemanticRole::Payload
+        EditorSemanticRole::Reference
     );
     assert_eq!(
         symbol_at("elem", "requirement style target", elem_style_target_start).role,
-        EditorSemanticRole::Payload
+        EditorSemanticRole::Reference
     );
 }
 

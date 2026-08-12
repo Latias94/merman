@@ -207,7 +207,7 @@ fn source_lint_pipeline_observes_cancellation_for_large_migration_source() {
     source.push_str("flowchart TD\nA-->B\n");
     let source_map = SourceMap::new(source.as_str());
     let captured_config = merman_core::MermaidConfig::from_value(json!({ "theme": "dark" }));
-    let source_config = source_config_evidence_for_test(&source);
+    let source_config = crate::test_support::capture_source_config_evidence(&source);
     let cancellation = crate::AnalysisCancellationToken::new();
     cancellation.cancel_after_checkpoints(12);
 
@@ -408,7 +408,7 @@ fn config_key_scan_observes_cancellation_without_matching_keys() {
         .join(", ");
     let source = format!("%%{{init: {{{unrelated_keys}}}}}%%\nflowchart TD\nA-->B\n");
     let source_map = SourceMap::new(source.as_str());
-    let source_config = source_config_evidence_for_test(&source);
+    let source_config = crate::test_support::capture_source_config_evidence(&source);
     let cancellation = crate::AnalysisCancellationToken::new();
     cancellation.cancel_after_checkpoints(2);
 

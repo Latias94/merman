@@ -213,6 +213,16 @@ impl RequirementDb {
         });
     }
 
+    fn editor_entity_kind(&self, name: &str) -> Option<EditorSemanticKind> {
+        if self.requirements.contains_key(name) {
+            Some(EditorSemanticKind::Struct)
+        } else if self.elements.contains_key(name) {
+            Some(EditorSemanticKind::Object)
+        } else {
+            None
+        }
+    }
+
     fn set_css_style(&mut self, ids: &[String], styles: &[String]) {
         for id in ids {
             let node_req = self.requirements.get_mut(id);
@@ -493,37 +503,14 @@ fn emit_parsed_requirement_ids(
     role: EditorSemanticRole,
 ) {
     for id in &ids.items {
-        let symbol = match role {
-            EditorSemanticRole::Entity => EditorSemanticSymbol::new(
-                id.value.clone(),
-                Some(detail.to_string()),
-                kind,
-                statement_span,
-                id.selection,
-            ),
-            EditorSemanticRole::Outline => EditorSemanticSymbol::outline(
-                id.value.clone(),
-                Some(detail.to_string()),
-                kind,
-                statement_span,
-                id.selection,
-            ),
-            EditorSemanticRole::ClassDefinition => EditorSemanticSymbol::class_definition(
-                id.value.clone(),
-                Some(detail.to_string()),
-                kind,
-                statement_span,
-                id.selection,
-            ),
-            EditorSemanticRole::Payload => EditorSemanticSymbol::payload(
-                id.value.clone(),
-                Some(detail.to_string()),
-                kind,
-                statement_span,
-                id.selection,
-            ),
-        };
-        facts.push_symbol(symbol);
+        facts.push_symbol(EditorSemanticSymbol::with_role(
+            id.value.clone(),
+            Some(detail.to_string()),
+            kind,
+            role,
+            statement_span,
+            id.selection,
+        ));
     }
 }
 
@@ -931,6 +918,8 @@ fn parse_requirement_semantic_source_once(
         ));
     }
 
+    resolve_requirement_reference_kinds(&mut editor_facts, &db);
+
     if let Some(error) = first_error {
         return Ok(Err(CombinedSemanticFailure::parser_recovery(
             "requirement",
@@ -1178,10 +1167,10 @@ fn emit_requirement_shorthand_class(
     statement: &ParsedRequirementClassShorthand,
     statement_span: SourceSpan,
 ) {
-    facts.push_symbol(EditorSemanticSymbol::outline(
+    facts.push_symbol(EditorSemanticSymbol::reference(
         statement.target.value.clone(),
         Some("requirement class target".to_string()),
-        EditorSemanticKind::Namespace,
+        EditorSemanticKind::Struct,
         statement_span,
         statement.target.selection,
     ));
@@ -1205,8 +1194,8 @@ fn emit_requirement_style(
         &statement.ids,
         statement_span,
         "requirement style target",
-        EditorSemanticKind::Property,
-        EditorSemanticRole::Payload,
+        EditorSemanticKind::Struct,
+        EditorSemanticRole::Reference,
     );
     emit_parsed_requirement_styles(facts, &statement.styles, "requirement style");
 }
@@ -1245,8 +1234,8 @@ fn emit_requirement_class(
         &statement.targets,
         statement_span,
         "requirement class target",
-        EditorSemanticKind::Namespace,
-        EditorSemanticRole::Entity,
+        EditorSemanticKind::Struct,
+        EditorSemanticRole::Reference,
     );
 }
 
@@ -1262,20 +1251,30 @@ fn emit_requirement_relationship(
         statement_span,
         relationship.kind_span,
     ));
-    facts.push_symbol(EditorSemanticSymbol::new(
+    facts.push_symbol(EditorSemanticSymbol::reference(
         relationship.source.value.clone(),
         Some("requirement relationship source".to_string()),
         EditorSemanticKind::Struct,
         statement_span,
         relationship.source.selection,
     ));
-    facts.push_symbol(EditorSemanticSymbol::new(
+    facts.push_symbol(EditorSemanticSymbol::reference(
         relationship.target.value.clone(),
         Some("requirement relationship target".to_string()),
         EditorSemanticKind::Struct,
         statement_span,
         relationship.target.selection,
     ));
+}
+
+fn resolve_requirement_reference_kinds(facts: &mut EditorSemanticFacts, db: &RequirementDb) {
+    for symbol in &mut facts.symbols {
+        if symbol.role == EditorSemanticRole::Reference
+            && let Some(kind) = db.editor_entity_kind(&symbol.name)
+        {
+            symbol.kind = kind;
+        }
+    }
 }
 
 fn split_requirement_line(line: &str, line_start: usize) -> RequirementLine<'_> {
@@ -2756,6 +2755,82 @@ mod tests {
             ),
             vec![verifies[2]],
         );
+    }
+
+    #[test]
+    fn requirement_targets_use_reference_roles_and_resolve_forward_definition_kinds() {
+        let source = concat!(
+            "requirementDiagram\n",
+            "future - verifies -> later\n",
+            "style future,later fill:#fff\n",
+            "class future,later important\n",
+            "future:::important\n",
+            "element future {\n",
+            "}\n",
+            "requirement later {\n",
+            "}\n",
+            "classDef important fill:#fff\n",
+        );
+        let facts = crate::family::test_support::editor_facts(
+            parse_requirement_json_and_editor_facts,
+            source,
+            &test_meta(),
+        );
+        let symbols_for = |name: &str| {
+            facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.name == name)
+                .collect::<Vec<_>>()
+        };
+
+        let future = symbols_for("future");
+        assert_eq!(future.len(), 5);
+        assert!(
+            future[..4]
+                .iter()
+                .all(|symbol| symbol.role == EditorSemanticRole::Reference)
+        );
+        assert!(
+            future
+                .iter()
+                .all(|symbol| symbol.kind == EditorSemanticKind::Object)
+        );
+        assert_eq!(future[4].role, EditorSemanticRole::Entity);
+
+        let later = symbols_for("later");
+        assert_eq!(later.len(), 4);
+        assert!(
+            later[..3]
+                .iter()
+                .all(|symbol| symbol.role == EditorSemanticRole::Reference)
+        );
+        assert!(
+            later
+                .iter()
+                .all(|symbol| symbol.kind == EditorSemanticKind::Struct)
+        );
+        assert_eq!(later[3].role, EditorSemanticRole::Entity);
+    }
+
+    #[test]
+    fn requirement_reference_kind_resolution_does_not_inspect_display_detail() {
+        let mut db = RequirementDb::new();
+        db.add_element("node", ElementBuilder::new());
+        let span = SourceSpan::new(0, "node".len());
+        let mut facts = EditorSemanticFacts::new();
+        facts.push_symbol(EditorSemanticSymbol::reference(
+            "node",
+            Some("definition-looking display text".to_string()),
+            EditorSemanticKind::Struct,
+            span,
+            span,
+        ));
+
+        resolve_requirement_reference_kinds(&mut facts, &db);
+
+        assert_eq!(facts.symbols[0].role, EditorSemanticRole::Reference);
+        assert_eq!(facts.symbols[0].kind, EditorSemanticKind::Object);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use super::{DiagnosticContext, LanguageSession};
 use crate::client_profile::ClientProtocolProfile;
-use crate::diagnostics::unavailable_document_diagnostics_with_profile;
+use crate::diagnostics::unavailable_document_diagnostic_round_trip;
 use crate::sync::lock_recovering_poison;
 use futures::FutureExt;
 use futures::future::{AbortHandle, AbortRegistration, Abortable};
@@ -9,6 +9,7 @@ use std::future::Future;
 use std::panic::AssertUnwindSafe;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, OnceLock};
+use std::task::{Context, Poll};
 use tokio::sync::Notify;
 use tower_lsp_server::Client;
 use tower_lsp_server::jsonrpc::Result;
@@ -43,6 +44,8 @@ pub(crate) struct ClientEffects {
     client: Client,
     session: LanguageSession,
     client_profile: Arc<OnceLock<ClientProtocolProfile>>,
+    #[cfg(test)]
+    diagnostic_pre_admission_gate: DiagnosticPreAdmissionTestGate,
 }
 
 impl ClientEffects {
@@ -55,6 +58,8 @@ impl ClientEffects {
             client,
             session,
             client_profile,
+            #[cfg(test)]
+            diagnostic_pre_admission_gate: DiagnosticPreAdmissionTestGate::default(),
         }
     }
 
@@ -134,6 +139,8 @@ impl ClientEffects {
             client: self.client.clone(),
             session: self.session.clone(),
             profile,
+            #[cfg(test)]
+            diagnostic_pre_admission_gate: self.diagnostic_pre_admission_gate.clone(),
         })
     }
 
@@ -179,6 +186,16 @@ impl ClientEffects {
     }
 
     #[cfg(test)]
+    pub(crate) fn block_next_diagnostic_pre_admission_for_test(
+        &self,
+    ) -> (
+        tokio::sync::oneshot::Receiver<()>,
+        tokio::sync::oneshot::Sender<()>,
+    ) {
+        self.diagnostic_pre_admission_gate.block_next()
+    }
+
+    #[cfg(test)]
     pub(crate) async fn saturate_serial_lane_for_test(&self) -> tokio::sync::oneshot::Sender<()> {
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
         let (release_tx, release_rx) = tokio::sync::oneshot::channel();
@@ -211,25 +228,29 @@ struct DiagnosticPublisher {
     client: Client,
     session: LanguageSession,
     profile: ClientProtocolProfile,
+    #[cfg(test)]
+    diagnostic_pre_admission_gate: DiagnosticPreAdmissionTestGate,
 }
 
 impl DiagnosticPublisher {
     async fn enqueue_uri(&self, uri: Uri) {
         let publisher = self.clone();
         self.session
-            .enqueue_latest_client_effect(ClientEffectKey::Document(uri.clone()), async move {
-                publisher.synchronize_uri(uri).await;
-            })
+            .enqueue_latest_client_effect_with_transport_admission(
+                ClientEffectKey::Document(uri.clone()),
+                move |admission| async move {
+                    publisher.synchronize_uri(uri, &admission).await;
+                },
+            )
             .await;
     }
 
     async fn enqueue_all(&self) {
-        let publisher = self.clone();
-        self.session
-            .enqueue_latest_client_effect(ClientEffectKey::AllDiagnostics, async move {
-                publisher.publish_all().await;
-            })
-            .await;
+        let mut uris = self.session.diagnostic_uris().await;
+        uris.sort_by(|left, right| left.as_str().cmp(right.as_str()));
+        for uri in uris {
+            self.enqueue_uri(uri).await;
+        }
     }
 
     async fn diagnostics_for_current_context(
@@ -237,8 +258,9 @@ impl DiagnosticPublisher {
         context: &DiagnosticContext,
     ) -> Result<Option<Vec<Diagnostic>>> {
         self.session
-            .query_push_diagnostics(context, |document, analysis| {
-                unavailable_document_diagnostics_with_profile(document, &self.profile)
+            .query_push_diagnostics(context, |context, analysis| {
+                unavailable_document_diagnostic_round_trip(context)
+                    .map(|round_trip| round_trip.diagnostics_with_profile(&self.profile))
                     .unwrap_or_else(|| {
                         analysis
                             .expect("available documents require an analysis context")
@@ -249,33 +271,30 @@ impl DiagnosticPublisher {
             .await
     }
 
-    async fn synchronize_uri(&self, uri: Uri) {
+    async fn synchronize_uri(&self, uri: Uri, admission: &ClientEffectTransportAdmission) {
         match self.session.diagnostic_context(&uri).await {
-            Some(context) => self.publish_current(&context).await,
-            None => self.clear(uri).await,
+            Some(context) => self.publish_current(&context, admission).await,
+            None => self.clear(uri, admission).await,
         }
     }
 
-    async fn publish_all(&self) {
-        let contexts = self.session.diagnostic_contexts().await;
-        for context in contexts {
-            self.publish_current(&context).await;
-        }
-    }
-
-    async fn publish_current(&self, context: &DiagnosticContext) {
+    async fn publish_current(
+        &self,
+        context: &DiagnosticContext,
+        admission: &ClientEffectTransportAdmission,
+    ) {
         match self.diagnostics_for_current_context(context).await {
             Ok(Some(diagnostics)) => {
-                self.client
-                    .publish_diagnostics(
-                        context.document.uri.clone(),
-                        diagnostics,
-                        self.profile
-                            .diagnostics
-                            .version
-                            .then_some(context.document.version),
-                    )
-                    .await;
+                self.publish(
+                    context.document.uri.clone(),
+                    diagnostics,
+                    self.profile
+                        .diagnostics
+                        .version
+                        .then_some(context.document.version),
+                    admission,
+                )
+                .await;
             }
             Ok(None) => {}
             Err(error) => {
@@ -289,15 +308,83 @@ impl DiagnosticPublisher {
         }
     }
 
-    async fn clear(&self, uri: Uri) {
-        self.client.publish_diagnostics(uri, Vec::new(), None).await;
+    async fn clear(&self, uri: Uri, admission: &ClientEffectTransportAdmission) {
+        self.publish(uri, Vec::new(), None, admission).await;
+    }
+
+    async fn publish(
+        &self,
+        uri: Uri,
+        diagnostics: Vec<Diagnostic>,
+        version: Option<i32>,
+        admission: &ClientEffectTransportAdmission,
+    ) {
+        #[cfg(test)]
+        self.diagnostic_pre_admission_gate.wait_if_blocked().await;
+        let client = self.client.clone();
+        let _ = admission
+            .send(async move {
+                client.publish_diagnostics(uri, diagnostics, version).await;
+            })
+            .await;
+    }
+}
+
+#[cfg(test)]
+#[derive(Clone, Default)]
+struct DiagnosticPreAdmissionTestGate {
+    pending: Arc<Mutex<Option<PendingDiagnosticPreAdmissionTestGate>>>,
+}
+
+#[cfg(test)]
+struct PendingDiagnosticPreAdmissionTestGate {
+    started: tokio::sync::oneshot::Sender<()>,
+    release: tokio::sync::oneshot::Receiver<()>,
+}
+
+#[cfg(test)]
+impl DiagnosticPreAdmissionTestGate {
+    fn block_next(
+        &self,
+    ) -> (
+        tokio::sync::oneshot::Receiver<()>,
+        tokio::sync::oneshot::Sender<()>,
+    ) {
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        let previous =
+            lock_recovering_poison(&self.pending).replace(PendingDiagnosticPreAdmissionTestGate {
+                started: started_tx,
+                release: release_rx,
+            });
+        assert!(
+            previous.is_none(),
+            "only one diagnostic pre-admission test gate may be installed at a time"
+        );
+        (started_rx, release_tx)
+    }
+
+    async fn wait_if_blocked(&self) {
+        let pending = lock_recovering_poison(&self.pending).take();
+        if let Some(pending) = pending {
+            let _ = pending.started.send(());
+            let _ = pending.release.await;
+        }
+    }
+}
+
+#[cfg(test)]
+impl std::fmt::Debug for DiagnosticPreAdmissionTestGate {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("DiagnosticPreAdmissionTestGate")
+            .finish_non_exhaustive()
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum ClientEffectKey {
     Document(Uri),
-    AllDiagnostics,
     LogMessage,
 }
 
@@ -316,6 +403,24 @@ struct QueuedClientEffect {
     key: ClientEffectKey,
     intent: u64,
     effect: ClientEffect,
+}
+
+fn drop_client_effect_safely(effect: QueuedClientEffect) {
+    if std::panic::catch_unwind(AssertUnwindSafe(|| drop(effect))).is_err() {
+        tracing::error!("LSP client effect panicked while being dropped");
+    }
+}
+
+fn drop_client_effects_safely(effects: VecDeque<QueuedClientEffect>) {
+    for effect in effects {
+        drop_client_effect_safely(effect);
+    }
+}
+
+struct ActiveClientEffect {
+    key: ClientEffectKey,
+    intent: u64,
+    abort: AbortHandle,
 }
 
 enum ClientEffectAdmission {
@@ -342,14 +447,62 @@ pub(super) struct ClientEffectDispatcher {
 
 struct ClientEffectDispatcherInner {
     state: Mutex<ClientEffectState>,
+    transport_admission: Mutex<()>,
     changed: Notify,
     idle: Notify,
+}
+
+#[derive(Clone)]
+pub(super) struct ClientEffectTransportAdmission {
+    inner: Arc<ClientEffectDispatcherInner>,
+    key: ClientEffectKey,
+    intent: u64,
+}
+
+impl ClientEffectTransportAdmission {
+    fn new(inner: Arc<ClientEffectDispatcherInner>, key: ClientEffectKey, intent: u64) -> Self {
+        Self { inner, key, intent }
+    }
+
+    fn is_current(&self) -> bool {
+        let state = lock_recovering_poison(&self.inner.state);
+        !state.cancelled && state.latest_intents.get(&self.key) == Some(&self.intent)
+    }
+
+    async fn send(&self, transport: impl Future<Output = ()> + Send + 'static) -> bool {
+        ClientEffectTransportFuture {
+            admission: self.clone(),
+            transport: Box::pin(transport),
+        }
+        .await
+    }
+}
+
+struct ClientEffectTransportFuture {
+    admission: ClientEffectTransportAdmission,
+    transport: ClientEffect,
+}
+
+impl Future for ClientEffectTransportFuture {
+    type Output = bool;
+
+    fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
+        let admission = self.admission.clone();
+        // Intent registration and the one synchronous poll that may call the transport's
+        // irreversible `start_send` share this gate. The gate is never held across `.await`.
+        let _transport_admission = lock_recovering_poison(&admission.inner.transport_admission);
+        if !admission.is_current() {
+            return Poll::Ready(false);
+        }
+        self.transport.as_mut().poll(context).map(|()| true)
+    }
 }
 
 #[derive(Default)]
 struct ClientEffectState {
     queue: VecDeque<QueuedClientEffect>,
     latest_intents: HashMap<ClientEffectKey, u64>,
+    active_effect: Option<ActiveClientEffect>,
     cancelled: bool,
     next_intent_id: u64,
     next_worker_id: u64,
@@ -368,7 +521,15 @@ impl ClientEffectState {
             .checked_add(1)
             .expect("client effect intent sequence exhausted");
         let intent = self.next_intent_id;
+        let active_abort = self
+            .active_effect
+            .as_ref()
+            .filter(|active| active.key == key && matches!(&key, ClientEffectKey::Document(_)))
+            .map(|active| active.abort.clone());
         self.latest_intents.insert(key, intent);
+        if let Some(active_abort) = active_abort {
+            active_abort.abort();
+        }
         Some(intent)
     }
 
@@ -416,14 +577,58 @@ impl ClientEffectState {
             return ClientEffectClaim::Superseded(queued);
         }
 
-        self.latest_intents.remove(&queued.key);
         ClientEffectClaim::Current(queued)
+    }
+
+    fn begin_effect(&mut self, key: ClientEffectKey, intent: u64, abort: AbortHandle) -> bool {
+        if self.cancelled
+            || self.latest_intents.get(&key) != Some(&intent)
+            || self.active_effect.is_some()
+        {
+            return false;
+        }
+        self.active_effect = Some(ActiveClientEffect { key, intent, abort });
+        true
+    }
+
+    fn finish_effect(&mut self, key: &ClientEffectKey, intent: u64) {
+        if self
+            .active_effect
+            .as_ref()
+            .is_some_and(|active| active.key == *key && active.intent == intent)
+        {
+            self.active_effect = None;
+        }
+        let _ = self.remove_intent_if_current(key, intent);
+    }
+
+    fn abandon_active_effect(&mut self) {
+        let Some(active) = self.active_effect.take() else {
+            return;
+        };
+        let _ = self.remove_intent_if_current(&active.key, active.intent);
+    }
+
+    #[cfg(test)]
+    fn has_active_effect(&self) -> bool {
+        self.active_effect.is_some()
     }
 }
 
 struct ActiveClientEffectWorker {
     id: u64,
     abort: AbortHandle,
+}
+
+struct ClientEffectWorkerGuard {
+    dispatcher: ClientEffectDispatcher,
+    worker_id: u64,
+}
+
+impl Drop for ClientEffectWorkerGuard {
+    fn drop(&mut self) {
+        self.dispatcher.worker_finished(self.worker_id);
+    }
 }
 
 struct ClientEffectIntentGuard {
@@ -435,8 +640,12 @@ struct ClientEffectIntentGuard {
 
 impl ClientEffectIntentGuard {
     fn register(inner: Arc<ClientEffectDispatcherInner>, key: ClientEffectKey) -> Option<Self> {
-        let intent = lock_recovering_poison(&inner.state).register_intent(key.clone())?;
-        inner.changed.notify_waiters();
+        let intent = {
+            let _transport_admission = lock_recovering_poison(&inner.transport_admission);
+            let intent = lock_recovering_poison(&inner.state).register_intent(key.clone())?;
+            inner.changed.notify_waiters();
+            intent
+        };
         Some(Self {
             inner,
             key,
@@ -459,6 +668,10 @@ impl Drop for ClientEffectIntentGuard {
         if !self.armed {
             return;
         }
+        // This guard only rolls back an intent that has not been admitted into
+        // the queue. Registration already linearizes against transport polls;
+        // taking the admission lock again here would only add a destructor
+        // blocking/reentrancy hazard.
         let removed = lock_recovering_poison(&self.inner.state)
             .remove_intent_if_current(&self.key, self.intent);
         if removed {
@@ -484,6 +697,7 @@ impl ClientEffectDispatcher {
         Self {
             inner: Arc::new(ClientEffectDispatcherInner {
                 state: Mutex::new(ClientEffectState::default()),
+                transport_admission: Mutex::new(()),
                 changed: Notify::new(),
                 idle: Notify::new(),
             }),
@@ -495,15 +709,32 @@ impl ClientEffectDispatcher {
         key: ClientEffectKey,
         effect: impl Future<Output = ()> + Send + 'static,
     ) {
+        self.enqueue_latest_with_transport_admission(key, |_| effect)
+            .await;
+    }
+
+    pub(super) async fn enqueue_latest_with_transport_admission<F, Fut>(
+        &self,
+        key: ClientEffectKey,
+        effect: F,
+    ) where
+        F: FnOnce(ClientEffectTransportAdmission) -> Fut,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
         let Some(mut intent) =
             ClientEffectIntentGuard::register(Arc::clone(&self.inner), key.clone())
         else {
             return;
         };
+        let transport_admission = ClientEffectTransportAdmission::new(
+            Arc::clone(&self.inner),
+            key.clone(),
+            intent.intent(),
+        );
         let mut queued = Some(QueuedClientEffect {
             key,
             intent: intent.intent(),
-            effect: Box::pin(effect),
+            effect: Box::pin(effect(transport_admission)),
         });
 
         let registration = loop {
@@ -530,7 +761,7 @@ impl ClientEffectDispatcher {
             match admission {
                 ClientEffectAdmission::Cancelled(cancelled)
                 | ClientEffectAdmission::Superseded(cancelled) => {
-                    drop(cancelled);
+                    drop_client_effect_safely(cancelled);
                     return;
                 }
                 ClientEffectAdmission::Pending(pending) => {
@@ -539,7 +770,9 @@ impl ClientEffectDispatcher {
                 }
                 ClientEffectAdmission::Admitted { replaced } => {
                     intent.disarm();
-                    drop(replaced);
+                    if let Some(replaced) = replaced {
+                        drop_client_effect_safely(replaced);
+                    }
                     break registration;
                 }
             }
@@ -552,22 +785,27 @@ impl ClientEffectDispatcher {
     }
 
     pub(super) fn cancel(&self) {
-        let (worker_abort, queued) = {
+        let (worker_abort, active_effect, queued) = {
+            let _transport_admission = lock_recovering_poison(&self.inner.transport_admission);
             let mut state = lock_recovering_poison(&self.inner.state);
             state.cancelled = true;
             let queued = std::mem::take(&mut state.queue);
             state.latest_intents.clear();
+            let active_effect = state.active_effect.take();
             let worker_abort = state
                 .active_worker
                 .as_ref()
                 .map(|worker| worker.abort.clone());
-            (worker_abort, queued)
+            (worker_abort, active_effect, queued)
         };
 
-        drop(queued);
+        if let Some(active_effect) = active_effect {
+            active_effect.abort.abort();
+        }
         if let Some(worker_abort) = worker_abort {
             worker_abort.abort();
         }
+        drop_client_effects_safely(queued);
         self.inner.changed.notify_waiters();
         self.inner.idle.notify_waiters();
     }
@@ -582,6 +820,11 @@ impl ClientEffectDispatcher {
         lock_recovering_poison(&self.inner.state)
             .latest_intents
             .len()
+    }
+
+    #[cfg(test)]
+    pub(super) fn has_active_effect(&self) -> bool {
+        lock_recovering_poison(&self.inner.state).has_active_effect()
     }
 
     #[cfg(test)]
@@ -608,15 +851,33 @@ impl ClientEffectDispatcher {
                 ClientEffectClaim::Cancelled | ClientEffectClaim::Empty => return,
                 ClientEffectClaim::Superseded(superseded) => {
                     self.inner.changed.notify_waiters();
-                    drop(superseded);
+                    drop_client_effect_safely(superseded);
                 }
                 ClientEffectClaim::Current(current) => {
+                    let key = current.key.clone();
+                    let intent = current.intent;
+                    let (abort, registration) = AbortHandle::new_pair();
+                    let is_current = lock_recovering_poison(&self.inner.state).begin_effect(
+                        key.clone(),
+                        intent,
+                        abort,
+                    );
+                    if !is_current {
+                        let _ = lock_recovering_poison(&self.inner.state)
+                            .remove_intent_if_current(&key, intent);
+                        self.inner.changed.notify_waiters();
+                        drop_client_effect_safely(current);
+                        continue;
+                    }
                     self.inner.changed.notify_waiters();
-                    if AssertUnwindSafe(current.effect)
-                        .catch_unwind()
-                        .await
-                        .is_err()
-                    {
+                    let outcome = Abortable::new(
+                        AssertUnwindSafe(current.effect).catch_unwind(),
+                        registration,
+                    )
+                    .await;
+                    lock_recovering_poison(&self.inner.state).finish_effect(&key, intent);
+                    self.inner.changed.notify_waiters();
+                    if matches!(outcome, Ok(Err(_))) {
                         tracing::error!("LSP client effect panicked");
                     }
                 }
@@ -641,8 +902,18 @@ impl ClientEffectDispatcher {
     fn spawn_worker(&self, worker_id: u64, registration: AbortRegistration) {
         let dispatcher = self.clone();
         tokio::spawn(async move {
-            let _ = Abortable::new(dispatcher.drain(), registration).await;
-            dispatcher.worker_finished(worker_id);
+            let _worker = ClientEffectWorkerGuard {
+                dispatcher: dispatcher.clone(),
+                worker_id,
+            };
+            let outcome = Abortable::new(
+                AssertUnwindSafe(dispatcher.drain()).catch_unwind(),
+                registration,
+            )
+            .await;
+            if matches!(outcome, Ok(Err(_))) {
+                tracing::error!("LSP client effect worker panicked");
+            }
         });
     }
 
@@ -657,6 +928,7 @@ impl ClientEffectDispatcher {
                 return;
             }
             state.active_worker = None;
+            state.abandon_active_effect();
             if !state.cancelled && !state.queue.is_empty() {
                 Some(Self::register_worker(&mut state))
             } else {
@@ -678,6 +950,14 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::task::{Context, Poll, Wake, Waker};
+
+    struct PanicOnDrop;
+
+    impl Drop for PanicOnDrop {
+        fn drop(&mut self) {
+            panic!("intentional client-effect drop panic");
+        }
+    }
 
     #[test]
     fn registering_new_intent_before_claim_supersedes_queued_effect() {
@@ -824,6 +1104,8 @@ mod tests {
             .await
             .expect("a later enqueue should use the surviving dispatcher worker");
         dispatcher.wait_idle().await;
+        assert!(!dispatcher.has_active_effect());
+        assert_eq!(dispatcher.latest_intent_count(), 0);
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -860,6 +1142,42 @@ mod tests {
 
         assert!(!superseded_ran.load(Ordering::Acquire));
         assert!(latest_ran.load(Ordering::Acquire));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn superseded_effect_drop_panic_does_not_stall_the_serial_lane() {
+        let dispatcher = ClientEffectDispatcher::new();
+        let key = ClientEffectKey::document_for_test("same");
+        let (blocker_started_tx, blocker_started_rx) = tokio::sync::oneshot::channel();
+        let (release_blocker_tx, release_blocker_rx) = tokio::sync::oneshot::channel();
+
+        dispatcher
+            .enqueue_latest(ClientEffectKey::document_for_test("blocker"), async move {
+                let _ = blocker_started_tx.send(());
+                let _ = release_blocker_rx.await;
+            })
+            .await;
+        blocker_started_rx.await.unwrap();
+        let panic_on_drop = PanicOnDrop;
+        dispatcher
+            .enqueue_latest(key.clone(), async move {
+                let _panic_on_drop = panic_on_drop;
+                std::future::pending::<()>().await;
+            })
+            .await;
+
+        let (latest_done_tx, latest_done_rx) = tokio::sync::oneshot::channel();
+        dispatcher
+            .enqueue_latest(key, async move {
+                let _ = latest_done_tx.send(());
+            })
+            .await;
+
+        release_blocker_tx.send(()).unwrap();
+        latest_done_rx.await.unwrap();
+        dispatcher.wait_idle().await;
+        assert!(!dispatcher.has_active_effect());
+        assert_eq!(dispatcher.latest_intent_count(), 0);
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -968,7 +1286,7 @@ mod tests {
         let (effect_alive_tx, effect_dropped_rx) = tokio::sync::oneshot::channel::<()>();
 
         dispatcher
-            .enqueue_latest(ClientEffectKey::AllDiagnostics, async move {
+            .enqueue_latest(ClientEffectKey::document_for_test("active"), async move {
                 let _effect_alive = effect_alive_tx;
                 let _ = started_tx.send(());
                 std::future::pending::<()>().await;
@@ -983,6 +1301,8 @@ mod tests {
             effect_dropped_rx.await.is_err(),
             "idle must mean the aborted effect future has actually been dropped"
         );
+        assert!(!dispatcher.has_active_effect());
+        assert_eq!(dispatcher.latest_intent_count(), 0);
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -1024,19 +1344,60 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn active_effect_is_not_preempted_by_new_same_key_intent() {
+    async fn full_queue_admits_latest_after_cancelling_active_same_key() {
         let dispatcher = ClientEffectDispatcher::new();
         let key = ClientEffectKey::document_for_test("same");
         let (active_started_tx, active_started_rx) = tokio::sync::oneshot::channel();
-        let (release_active_tx, release_active_rx) = tokio::sync::oneshot::channel();
-        let (active_done_tx, active_done_rx) = tokio::sync::oneshot::channel();
-        let (queued_done_tx, mut queued_done_rx) = tokio::sync::oneshot::channel();
+        let (active_alive_tx, active_dropped_rx) = tokio::sync::oneshot::channel::<()>();
 
         dispatcher
             .enqueue_latest(key.clone(), async move {
+                let _active_alive = active_alive_tx;
                 let _ = active_started_tx.send(());
-                let _ = release_active_rx.await;
-                let _ = active_done_tx.send(());
+                std::future::pending::<()>().await;
+            })
+            .await;
+        active_started_rx.await.unwrap();
+        for index in 0..LSP_CLIENT_EFFECT_QUEUE_LIMIT {
+            dispatcher
+                .enqueue_latest(
+                    ClientEffectKey::document_for_test(format!("queued-{index}")),
+                    async {},
+                )
+                .await;
+        }
+
+        let (latest_done_tx, latest_done_rx) = tokio::sync::oneshot::channel();
+        let latest = dispatcher.enqueue_latest(key, async move {
+            let _ = latest_done_tx.send(());
+        });
+        tokio::pin!(latest);
+        assert!(futures::poll!(&mut latest).is_pending());
+        assert!(
+            active_dropped_rx.await.is_err(),
+            "queue saturation must not keep the superseded active effect alive"
+        );
+
+        latest.await;
+        latest_done_rx.await.unwrap();
+        dispatcher.wait_idle().await;
+        assert!(!dispatcher.has_active_effect());
+        assert_eq!(dispatcher.latest_intent_count(), 0);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn new_same_key_intent_cancels_active_effect_before_running_latest() {
+        let dispatcher = ClientEffectDispatcher::new();
+        let key = ClientEffectKey::document_for_test("same");
+        let (active_started_tx, active_started_rx) = tokio::sync::oneshot::channel();
+        let (active_alive_tx, active_dropped_rx) = tokio::sync::oneshot::channel::<()>();
+        let (queued_done_tx, queued_done_rx) = tokio::sync::oneshot::channel();
+
+        dispatcher
+            .enqueue_latest(key.clone(), async move {
+                let _active_alive = active_alive_tx;
+                let _ = active_started_tx.send(());
+                std::future::pending::<()>().await;
             })
             .await;
         active_started_rx.await.unwrap();
@@ -1046,11 +1407,13 @@ mod tests {
                 let _ = queued_done_tx.send(());
             })
             .await;
-        assert!(matches!(futures::poll!(&mut queued_done_rx), Poll::Pending));
-
-        release_active_tx.send(()).unwrap();
-        active_done_rx.await.unwrap();
+        assert!(
+            active_dropped_rx.await.is_err(),
+            "superseding intent must drop the active transport future"
+        );
         queued_done_rx.await.unwrap();
         dispatcher.wait_idle().await;
+        assert!(!dispatcher.has_active_effect());
+        assert_eq!(dispatcher.latest_intent_count(), 0);
     }
 }

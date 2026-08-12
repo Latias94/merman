@@ -537,10 +537,13 @@ pub(super) fn parse_click_stmt(
     rest_start: usize,
 ) -> std::result::Result<ClickStmt, LexError> {
     let mut p = ClickParse::new(rest, rest_start);
+    p.skip_ws();
+    let id_start = p.i;
     let Some(id) = p.take_word(EditorLexemeKind::Identifier) else {
         return Err(LexError::new("Invalid click statement".to_string()));
     };
     let ids = vec![id];
+    let id_spans = vec![p.source_span(id_start, p.i)];
 
     let target_end = p.i;
     p.skip_ws();
@@ -578,11 +581,13 @@ pub(super) fn parse_click_stmt(
         let lexeme_components = p.finish();
         return Ok(ClickStmt {
             ids,
+            id_spans,
             tooltip,
             action,
             editor_evidence: Default::default(),
             interaction_evidence,
             lexeme_components,
+            recovery_error: None,
         });
     }
 
@@ -634,11 +639,13 @@ pub(super) fn parse_click_stmt(
         let lexeme_components = p.finish();
         return Ok(ClickStmt {
             ids,
+            id_spans,
             tooltip,
             action,
             editor_evidence: Default::default(),
             interaction_evidence,
             lexeme_components,
+            recovery_error: None,
         });
     }
 
@@ -655,11 +662,13 @@ pub(super) fn parse_click_stmt(
         let lexeme_components = p.finish();
         return Ok(ClickStmt {
             ids,
+            id_spans,
             tooltip,
             action,
             editor_evidence: Default::default(),
             interaction_evidence: FlowchartClickEditorEvidence::new(None, after_target),
             lexeme_components,
+            recovery_error: None,
         });
     }
 
@@ -681,11 +690,13 @@ pub(super) fn parse_click_stmt(
     let lexeme_components = p.finish();
     Ok(ClickStmt {
         ids,
+        id_spans,
         tooltip,
         action,
         editor_evidence: Default::default(),
         interaction_evidence,
         lexeme_components,
+        recovery_error: None,
     })
 }
 

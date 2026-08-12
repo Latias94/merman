@@ -1,5 +1,5 @@
 use super::LanguageSession;
-use super::documents::{DiagnosticContext, SemanticTokensState, StoredDocument};
+use super::documents::{DiagnosticContext, SemanticTokensState};
 use crate::snapshot::{DocumentSnapshot, SnapshotContext};
 use std::sync::Arc;
 use tower_lsp_server::jsonrpc::Result;
@@ -88,7 +88,7 @@ impl LanguageSession {
     pub(crate) async fn query_push_diagnostics<T>(
         &self,
         context: &DiagnosticContext,
-        compute: impl FnOnce(&StoredDocument, Option<&SnapshotContext>) -> T,
+        compute: impl FnOnce(&DiagnosticContext, Option<&SnapshotContext>) -> T,
     ) -> Result<Option<T>> {
         let analysis_context = if context.document.is_analysis_unavailable() {
             None
@@ -99,7 +99,7 @@ impl LanguageSession {
         if !context.document.is_analysis_unavailable() && analysis_context.is_none() {
             return Ok(None);
         }
-        let result = compute(&context.document, analysis_context.as_ref());
+        let result = compute(context, analysis_context.as_ref());
         let state = self.inner.state.lock().await;
         let current = state.diagnostic_contexts_are_current(context, analysis_context.as_ref());
         Ok(current.then_some(result))

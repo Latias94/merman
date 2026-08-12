@@ -845,7 +845,7 @@ fn push_quadrant_class_fact(
         EditorExpectedSyntaxKind::NodeIdentifier,
         span,
     ));
-    facts.push_symbol(EditorSemanticSymbol::new(
+    facts.push_symbol(EditorSemanticSymbol::class_definition(
         name.text.to_string(),
         Some("quadrant chart class".to_string()),
         EditorSemanticKind::Class,
@@ -877,7 +877,7 @@ fn push_quadrant_point_facts(
     let Some(class_name) = point.class_name else {
         return;
     };
-    facts.push_symbol(EditorSemanticSymbol::new(
+    facts.push_symbol(EditorSemanticSymbol::reference(
         class_name.text.to_string(),
         Some("quadrant chart class".to_string()),
         EditorSemanticKind::Class,
@@ -1688,6 +1688,79 @@ mod tests {
         assert_eq!(styles["color"].as_str().unwrap(), "#ff0000");
         assert_eq!(styles["strokeColor"].as_str().unwrap(), "#ff00ff");
         assert_eq!(styles["strokeWidth"].as_str().unwrap(), "10px");
+    }
+
+    #[test]
+    fn quadrant_class_definitions_and_uses_have_typed_roles() {
+        let text = concat!(
+            "quadrantChart\n",
+            "classDef priority color: #109060\n",
+            "Project A:::priority: [0.2, 0.8]\n",
+        );
+        let facts = Engine::new()
+            .parse_editor_semantic_facts_with_type_sync("quadrantChart", text)
+            .unwrap()
+            .expect("quadrant editor facts");
+
+        let class_definition = facts
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.name == "priority" && symbol.role == EditorSemanticRole::ClassDefinition
+            })
+            .expect("quadrant class definition");
+        assert_eq!(class_definition.kind, EditorSemanticKind::Class);
+        assert!(class_definition.role.contributes_completion());
+        assert!(class_definition.role.contributes_outline());
+        assert!(!class_definition.role.contributes_references());
+
+        let class_reference = facts
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.name == "priority" && symbol.role == EditorSemanticRole::Reference
+            })
+            .expect("quadrant class reference");
+        assert_eq!(class_reference.kind, EditorSemanticKind::Class);
+        assert!(!class_reference.role.contributes_completion());
+        assert!(!class_reference.role.contributes_outline());
+        assert!(class_reference.role.contributes_references());
+
+        let class_names = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.role == EditorSemanticRole::ClassDefinition)
+            .map(|symbol| symbol.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(class_names, vec!["priority"]);
+
+        let node_ids = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.role == EditorSemanticRole::Entity)
+            .map(|symbol| symbol.name.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            !node_ids.contains(&"priority"),
+            "class names must not enter node-id completion"
+        );
+
+        let outline_names = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.role.contributes_outline())
+            .map(|symbol| symbol.name.as_str())
+            .collect::<Vec<_>>();
+        assert!(outline_names.contains(&"priority"));
+        assert!(outline_names.contains(&"Project A"));
+        assert_eq!(
+            outline_names
+                .iter()
+                .filter(|name| **name == "priority")
+                .count(),
+            1,
+            "class use must not create a second outline entry"
+        );
     }
 
     #[test]

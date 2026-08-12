@@ -102,7 +102,7 @@ pub(crate) fn init_directives_to_frontmatter_fix(
     config: &MermaidConfig,
 ) -> Option<DiagnosticFix> {
     let cancellation = AnalysisCancellationToken::new();
-    let evidence = source_config_evidence_for_test(source);
+    let evidence = crate::test_support::capture_source_config_evidence(source);
     init_directives_to_frontmatter_fix_cancellable(
         source,
         source_map,
@@ -204,7 +204,7 @@ pub(crate) fn frontmatter_config_fix(
     let config = MermaidConfig::from_value(config);
     let config = BoundedMigrationConfig::capture(&config, &cancellation)
         .expect("a private analysis cancellation token cannot be cancelled")?;
-    let evidence = source_config_evidence_for_test(source);
+    let evidence = crate::test_support::capture_source_config_evidence(source);
     frontmatter_config_fix_cancellable(
         source,
         source_map,
@@ -690,22 +690,6 @@ fn checkpoint_scan_offset(
 }
 
 #[cfg(test)]
-fn source_config_evidence_for_test(source: &str) -> SourceConfigEvidence {
-    let control = merman_core::ParseControl::new();
-    match merman_core::Engine::new()
-        .capture_diagram_snapshot_controlled_sync(source, &control)
-        .expect("a private parse control cannot be cancelled")
-    {
-        merman_core::DiagramSnapshotCapture::Snapshot(Some(snapshot)) => {
-            snapshot.source_config().clone()
-        }
-        merman_core::DiagramSnapshotCapture::Snapshot(None) => SourceConfigEvidence::default(),
-        merman_core::DiagramSnapshotCapture::Failed { source_config, .. }
-        | merman_core::DiagramSnapshotCapture::Panicked { source_config, .. } => source_config,
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use merman_core::Engine;
@@ -749,7 +733,7 @@ mod tests {
                 &source,
                 &source_map,
                 &config,
-                &source_config_evidence_for_test(&source),
+                &crate::test_support::capture_source_config_evidence(&source),
                 &cancellation,
             ),
             Err(AnalysisCancelled)
@@ -770,7 +754,7 @@ mod tests {
                 &source,
                 &source_map,
                 &config,
-                &source_config_evidence_for_test(&source),
+                &crate::test_support::capture_source_config_evidence(&source),
                 &cancellation,
             ),
             Err(AnalysisCancelled)

@@ -1,8 +1,8 @@
 use merman_analysis::{
     ANALYSIS_FACTS_PAYLOAD_VERSION, ANALYSIS_PAYLOAD_VERSION, AnalysisExpectedSyntaxKind,
     AnalysisOptions, AnalysisResourceLimit, AnalysisRuleConfig, AnalysisRuleProfile,
-    AnalysisStatus, Analyzer, DiagnosticCategory, DiagnosticSeverity, FenceTextIndexSource,
-    SourceDescriptor, analyze_document_facts,
+    AnalysisSemanticRole, AnalysisStatus, Analyzer, DiagnosticCategory, DiagnosticSeverity,
+    FenceTextIndexSource, SourceDescriptor, analyze_document_facts,
     document::{analyze_document, analyze_document_generation},
     source_descriptor_for_markdown_path,
 };
@@ -436,7 +436,14 @@ fn analysis_generation_preserves_exact_spans_through_entity_normalization() {
     let canonical_outline = syntax
         .semantic_items
         .iter()
-        .filter(|item| item.role.contributes_outline())
+        .filter(|item| {
+            matches!(
+                item.role,
+                AnalysisSemanticRole::Entity
+                    | AnalysisSemanticRole::ClassDefinition
+                    | AnalysisSemanticRole::Outline
+            )
+        })
         .map(|item| {
             (
                 item.name.as_str(),

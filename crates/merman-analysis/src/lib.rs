@@ -24,6 +24,8 @@ mod source_config_rewrite;
 mod source_limits;
 mod source_map;
 mod status;
+#[cfg(test)]
+mod test_support;
 
 pub use analyzer::{
     ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS, AnalysisDiagnosticPolicy, AnalysisEnvironmentIdentity,
@@ -33,8 +35,12 @@ pub use analyzer::{
 };
 pub use cancellation::{AnalysisCancellationToken, AnalysisCancelled};
 pub use config_contract::{
-    AnalysisConfigChange, AnalysisConfigContract, AnalysisConfigHostDefaults,
-    AnalysisConfigSchemaProjection, FIXED_TODAY_SCHEMA_PATTERN,
+    ANALYSIS_CONFIG_CLIENT_CONSTRAINTS_VERSION, AnalysisConfigChange, AnalysisConfigChangeScope,
+    AnalysisConfigClientConstraints, AnalysisConfigClientObjectField,
+    AnalysisConfigClientProjection, AnalysisConfigClientRuntimeConstraint,
+    AnalysisConfigClientSetting, AnalysisConfigClientSettingNormalization,
+    AnalysisConfigClientValueSet, AnalysisConfigContract, AnalysisConfigHostDefaults,
+    AnalysisConfigHostDefaultsError, AnalysisConfigSchemaProjection, FIXED_TODAY_SCHEMA_PATTERN,
 };
 pub use document::{
     DocumentDiagram, DocumentDiagramKind, DocumentSource, FenceDelimiter, FenceDelimiterSpans,

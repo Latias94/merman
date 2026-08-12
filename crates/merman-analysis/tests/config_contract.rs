@@ -73,10 +73,9 @@ fn runtime_only_date_constraints_are_named_in_the_published_schema() {
 #[test]
 fn projected_metadata_comes_from_the_analysis_authorities_once() {
     let contract = AnalysisConfigContract::current();
-    let projection = contract.json_schema(AnalysisConfigHostDefaults {
-        max_source_bytes: Some(4 * 1024 * 1024),
-        max_document_diagrams: Some(256),
-    });
+    let host_defaults = AnalysisConfigHostDefaults::try_new(Some(4 * 1024 * 1024), Some(256))
+        .expect("test defaults satisfy the resource contract");
+    let projection = contract.json_schema(host_defaults);
 
     assert_eq!(projection.accepted_roots, ["direct", "merman", "analysis"]);
     assert_eq!(projection.profiles, ["core", "recommended", "strict"]);

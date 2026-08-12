@@ -139,7 +139,7 @@ Response. The JSON below is abbreviated; implementations return the complete
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "rule_catalog_method": "merman/ruleCatalog",
   "accepted_roots": ["direct", "merman", "analysis"],
   "profiles": ["core", "recommended", "strict"],
@@ -151,6 +151,109 @@ Response. The JSON below is abbreviated; implementations return the complete
     "merman.compatibility.config.deprecated_flowchart_html_labels",
     "merman.compatibility.config.deprecated_external_diagram_loading"
   ],
+  "constraints": {
+    "version": 1,
+    "settings": [
+      {
+        "path": "fixed_today",
+        "change_scope": "snapshot_affecting",
+        "runtime_constraints": [
+          { "kind": "canonical_civil_date" },
+          {
+            "kind": "representable_local_midnight",
+            "offset_setting_path": "fixed_local_offset_minutes"
+          }
+        ],
+        "normalization": {
+          "kind": "string",
+          "pattern": "^(?:...)-\\d{2}-\\d{2}$"
+        }
+      },
+      {
+        "path": "fixed_local_offset_minutes",
+        "change_scope": "snapshot_affecting",
+        "runtime_constraints": [],
+        "normalization": {
+          "kind": "integer",
+          "minimum": -1439,
+          "maximum": 1439
+        }
+      },
+      {
+        "path": "site_config",
+        "change_scope": "snapshot_affecting",
+        "runtime_constraints": [],
+        "normalization": { "kind": "object" }
+      },
+      {
+        "path": "resources.limits.max_source_bytes",
+        "change_scope": "snapshot_affecting",
+        "runtime_constraints": [],
+        "normalization": {
+          "kind": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        }
+      },
+      {
+        "path": "resources.limits.max_document_diagrams",
+        "change_scope": "snapshot_affecting",
+        "runtime_constraints": [],
+        "normalization": {
+          "kind": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        }
+      },
+      {
+        "path": "lint.profile",
+        "change_scope": "diagnostics_only",
+        "runtime_constraints": [],
+        "normalization": {
+          "kind": "string",
+          "values": "profiles"
+        }
+      },
+      {
+        "path": "lint.enable_rules",
+        "change_scope": "diagnostics_only",
+        "runtime_constraints": [],
+        "normalization": { "kind": "rule_id_list" }
+      },
+      {
+        "path": "lint.disable_rules",
+        "change_scope": "diagnostics_only",
+        "runtime_constraints": [],
+        "normalization": { "kind": "rule_id_list" }
+      },
+      {
+        "path": "lint.rule_severities",
+        "change_scope": "diagnostics_only",
+        "runtime_constraints": [],
+        "normalization": {
+          "kind": "rule_severity_overrides",
+          "fields": [
+            {
+              "name": "rule_id",
+              "required": true,
+              "normalization": {
+                "kind": "string",
+                "values": "configurable_rule_ids"
+              }
+            },
+            {
+              "name": "severity",
+              "required": true,
+              "normalization": {
+                "kind": "string",
+                "values": "severities"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
   "schema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "title": "Merman analysis options",
@@ -199,6 +302,16 @@ forward-compatible, while `resources` and its limit IDs are strict. The schema i
 `merman-analysis`; the LSP adapter adds only host defaults. Calendar validity and the
 fixed-date/fixed-offset representable-instant check remain named runtime constraints because a
 standard JSON Schema pattern is not a second civil-date parser.
+
+Editor clients should treat `schema` as an opaque standards-based inspection surface. Static
+settings manifests and runtime normalization consume the versioned `constraints` DTO instead of
+depending on JSON Schema implementation details such as `$defs`, `$ref`, or `allOf` layout. The
+abbreviated pattern above stands in for the complete analysis-owned value returned by the server.
+Each setting carries its invalidation scope, runtime constraints, and typed normalization metadata;
+object-list normalizers also carry their owner-defined field names, requiredness, and catalog
+references. A bundled settings manifest may expose the baseline catalogs as open `examples`, but it
+must not use them as a closed `enum`: the connected server's negotiated catalogs remain authoritative
+and may add profiles, severities, or configurable rules.
 
 The schema describes the same analysis options accepted by `initialize.initializationOptions` and
 `workspace/didChangeConfiguration`: `lint`, `resources.limits.max_source_bytes`,

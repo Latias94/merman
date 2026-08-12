@@ -280,17 +280,8 @@ impl SessionState {
         self.analysis_executor.clone()
     }
 
-    pub(in crate::session::documents) fn diagnostic_contexts(&self) -> Vec<DiagnosticContext> {
-        self.documents
-            .values()
-            .map(|record| {
-                DiagnosticContext::new(
-                    record.document.clone(),
-                    self.diagnostic_generation,
-                    record.epoch,
-                )
-            })
-            .collect()
+    pub(in crate::session::documents) fn diagnostic_uris(&self) -> Vec<Uri> {
+        self.documents.keys().cloned().collect()
     }
 
     pub(in crate::session::documents) fn cached_snapshot_context(
@@ -379,8 +370,8 @@ impl LanguageSession {
         self.inner.state.lock().await.diagnostic_context(uri)
     }
 
-    pub(crate) async fn diagnostic_contexts(&self) -> Vec<DiagnosticContext> {
-        self.inner.state.lock().await.diagnostic_contexts()
+    pub(crate) async fn diagnostic_uris(&self) -> Vec<Uri> {
+        self.inner.state.lock().await.diagnostic_uris()
     }
 }
 

@@ -258,7 +258,7 @@ fn analysis_facts_v2_writers_always_emit_rename_policy() {
 }
 
 #[test]
-fn analysis_facts_projects_class_definition_to_outline_wire_role() {
+fn analysis_facts_preserve_typed_class_definition_wire_role() {
     let value = serde_json::to_value(
         Analyzer::new().analyze_facts("flowchart TD\nclassDef hot fill:#f00;\nA:::hot\n"),
     )
@@ -269,7 +269,7 @@ fn analysis_facts_projects_class_definition_to_outline_wire_role() {
         .and_then(|items| items.iter().find(|item| item["name"] == "hot"))
         .expect("class definition semantic item");
 
-    assert_eq!(class_definition["role"], json!("outline"));
+    assert_eq!(class_definition["role"], json!("class_definition"));
     assert!(
         syntax["class_names"]
             .as_array()
@@ -280,13 +280,33 @@ fn analysis_facts_projects_class_definition_to_outline_wire_role() {
             .as_array()
             .is_some_and(|items| items.iter().any(|item| item["name"] == "hot"))
     );
-    assert!(!value.to_string().contains("class_definition"));
-
     let mut invalid = value;
-    invalid["diagrams"][0]["syntax"]["semantic_items"][0]["role"] = json!("class_definition");
+    invalid["diagrams"][0]["syntax"]["semantic_items"][0]["role"] = json!("unknown_role");
     let error = serde_json::from_value::<AnalysisFactsPayload>(invalid)
-        .expect_err("class_definition must stay out of the wire schema");
-    assert!(error.to_string().contains("class_definition"));
+        .expect_err("unknown semantic roles must stay out of the wire schema");
+    assert!(error.to_string().contains("unknown_role"));
+}
+
+#[test]
+fn analysis_facts_preserve_typed_reference_wire_role() {
+    let value = serde_json::to_value(Analyzer::new().analyze_facts(
+        "sequenceDiagram\nparticipant Alice\nAlice->>Bob: Hello\nBob-->>Alice: Done\n",
+    ))
+    .expect("serialize reference facts");
+    let syntax = &value["diagrams"][0]["syntax"];
+
+    assert!(syntax["semantic_items"].as_array().is_some_and(|items| {
+        items
+            .iter()
+            .any(|item| item["name"] == "Alice" && item["role"] == "reference")
+    }));
+    assert!(
+        syntax["outline_items"].as_array().is_some_and(|items| items
+            .iter()
+            .filter(|item| item["name"] == "Alice")
+            .count()
+            == 1)
+    );
 }
 
 #[test]

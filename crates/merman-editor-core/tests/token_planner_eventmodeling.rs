@@ -71,7 +71,7 @@ fn eventmodeling_plan_projects_parser_lexemes_semantics_and_multiline_utf16() {
     let source_frame = exact_token(source, &snapshot, &plan, "001", 1);
     assert_eq!(source_frame.kind, PlannedTokenKind::Namespace);
     assert!(source_frame.has_modifier(PlannedTokenModifier::Reference));
-    assert!(source_frame.has_modifier(PlannedTokenModifier::Entity));
+    assert!(!source_frame.has_modifier(PlannedTokenModifier::Entity));
 
     let data_reference = exact_token(source, &snapshot, &plan, "Payload", 0);
     assert_eq!(data_reference.kind, PlannedTokenKind::Namespace);

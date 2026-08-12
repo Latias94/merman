@@ -420,7 +420,7 @@ enum GeneratedArtifactCheck {
     CapabilitySurface,
     DefaultConfig,
     DompurifyDefaults,
-    EditorTokenDescriptor,
+    EditorLanguageContract,
     LalrpopParsers,
     NativeAbi,
     PlaygroundExampleCatalog,
@@ -457,7 +457,7 @@ fn verify_generated_checks() -> [GeneratedArtifactCheck; 13] {
         GeneratedArtifactCheck::CapabilitySurface,
         GeneratedArtifactCheck::DefaultConfig,
         GeneratedArtifactCheck::DompurifyDefaults,
-        GeneratedArtifactCheck::EditorTokenDescriptor,
+        GeneratedArtifactCheck::EditorLanguageContract,
         GeneratedArtifactCheck::LalrpopParsers,
         GeneratedArtifactCheck::NativeAbi,
         GeneratedArtifactCheck::PlaygroundExampleCatalog,
@@ -476,7 +476,7 @@ impl GeneratedArtifactCheck {
             GeneratedArtifactCheck::CapabilitySurface => "capability surface",
             GeneratedArtifactCheck::DefaultConfig => "default config",
             GeneratedArtifactCheck::DompurifyDefaults => "dompurify defaults",
-            GeneratedArtifactCheck::EditorTokenDescriptor => "editor token descriptor",
+            GeneratedArtifactCheck::EditorLanguageContract => "editor language contract",
             GeneratedArtifactCheck::LalrpopParsers => "checked-in LALRPOP parsers",
             GeneratedArtifactCheck::NativeAbi => "native ABI",
             GeneratedArtifactCheck::PlaygroundExampleCatalog => "Playground example catalog",
@@ -536,8 +536,8 @@ fn verify_generated_artifact_check(
         GeneratedArtifactCheck::CapabilitySurface => super::verify_capability_surface_artifacts(),
         GeneratedArtifactCheck::DefaultConfig => verify_default_config_artifact(tmp_dir),
         GeneratedArtifactCheck::DompurifyDefaults => verify_dompurify_defaults_artifact(tmp_dir),
-        GeneratedArtifactCheck::EditorTokenDescriptor => {
-            super::verify_editor_token_descriptor_artifacts()
+        GeneratedArtifactCheck::EditorLanguageContract => {
+            super::verify_editor_language_contract_artifacts()
         }
         GeneratedArtifactCheck::LalrpopParsers => super::verify_lalrpop_parsers_artifacts(),
         GeneratedArtifactCheck::NativeAbi => super::verify_native_abi_artifacts(),
@@ -890,7 +890,7 @@ mod tests {
                 GeneratedArtifactCheck::CapabilitySurface,
                 GeneratedArtifactCheck::DefaultConfig,
                 GeneratedArtifactCheck::DompurifyDefaults,
-                GeneratedArtifactCheck::EditorTokenDescriptor,
+                GeneratedArtifactCheck::EditorLanguageContract,
                 GeneratedArtifactCheck::LalrpopParsers,
                 GeneratedArtifactCheck::NativeAbi,
                 GeneratedArtifactCheck::PlaygroundExampleCatalog,
@@ -922,8 +922,8 @@ mod tests {
             "dompurify defaults"
         );
         assert_eq!(
-            GeneratedArtifactCheck::EditorTokenDescriptor.label(),
-            "editor token descriptor"
+            GeneratedArtifactCheck::EditorLanguageContract.label(),
+            "editor language contract"
         );
         assert_eq!(
             GeneratedArtifactCheck::LalrpopParsers.label(),

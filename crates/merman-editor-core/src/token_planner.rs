@@ -1,6 +1,4 @@
-use crate::generated::{
-    PlannedTokenKind, PlannedTokenModifier, TokenOverlayKind, semantic_token_descriptor,
-};
+use crate::generated::{PlannedTokenKind, PlannedTokenModifier, TokenOverlayKind};
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::Range;
 use merman_analysis::{ByteSpan, SourceMap};
@@ -35,27 +33,54 @@ impl PlannedToken {
 pub struct SemanticTokenSupport {
     supported_types: [bool; PlannedTokenKind::ALL.len()],
     supported_modifiers: [bool; PlannedTokenModifier::ALL.len()],
+    token_type_indices: [Option<u32>; PlannedTokenKind::ALL.len()],
+    canonical_modifier_mask: u32,
+    projected_modifier_bits: [u32; PlannedTokenModifier::ALL.len()],
 }
 
 impl SemanticTokenSupport {
-    pub const fn all() -> Self {
-        Self {
-            supported_types: [true; PlannedTokenKind::ALL.len()],
-            supported_modifiers: [true; PlannedTokenModifier::ALL.len()],
-        }
+    pub fn all() -> Self {
+        Self::from_support(|_| true, |_| true)
     }
 
     pub fn from_support(
         supports_type: impl Fn(PlannedTokenKind) -> bool,
         supports_modifier: impl Fn(PlannedTokenModifier) -> bool,
     ) -> Self {
+        let supported_types =
+            std::array::from_fn(|index| supports_type(PlannedTokenKind::ALL[index]));
+        let supported_modifiers =
+            std::array::from_fn(|index| supports_modifier(PlannedTokenModifier::ALL[index]));
+        let mut next_type_index = 0u32;
+        let token_type_indices = std::array::from_fn(|index| {
+            if !supported_types[index] {
+                return None;
+            }
+            let projected = next_type_index;
+            next_type_index += 1;
+            Some(projected)
+        });
+        let canonical_modifier_mask = PlannedTokenModifier::ALL
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| supported_modifiers[*index])
+            .fold(0, |mask, (_, modifier)| mask | modifier.bit());
+        let mut next_modifier_index = 0u32;
+        let projected_modifier_bits = std::array::from_fn(|index| {
+            if !supported_modifiers[index] {
+                return 0;
+            }
+            let projected = 1u32 << next_modifier_index;
+            next_modifier_index += 1;
+            projected
+        });
+
         Self {
-            supported_types: std::array::from_fn(|index| {
-                supports_type(PlannedTokenKind::ALL[index])
-            }),
-            supported_modifiers: std::array::from_fn(|index| {
-                supports_modifier(PlannedTokenModifier::ALL[index])
-            }),
+            supported_types,
+            supported_modifiers,
+            token_type_indices,
+            canonical_modifier_mask,
+            projected_modifier_bits,
         }
     }
 
@@ -80,42 +105,24 @@ impl SemanticTokenSupport {
     }
 
     fn mask_modifier_bits(self, canonical_bits: u32) -> u32 {
-        PlannedTokenModifier::ALL
-            .iter()
-            .filter(|modifier| self.supports_modifier(**modifier))
-            .fold(0, |bits, modifier| bits | (canonical_bits & modifier.bit()))
+        canonical_bits & self.canonical_modifier_mask
     }
 
     fn token_type_index(self, kind: PlannedTokenKind) -> Option<u32> {
-        if !self.supports_kind(kind) {
-            return None;
-        }
-        let mut index = 0u32;
-        for descriptor in semantic_token_descriptor().token_kinds {
-            if !self.supports_kind(descriptor.kind) {
-                continue;
-            }
-            if descriptor.kind == kind {
-                return Some(index);
-            }
-            index += 1;
-        }
-        None
+        self.token_type_indices[kind.code() as usize]
     }
 
     fn project_modifier_bits(self, canonical_bits: u32) -> u32 {
-        let mut projected_bits = 0u32;
-        let mut projected_index = 0u32;
-        for descriptor in semantic_token_descriptor().modifiers {
-            if !self.supports_modifier(descriptor.modifier) {
-                continue;
+        let mut remaining = canonical_bits;
+        let mut projected = 0u32;
+        while remaining != 0 {
+            let index = remaining.trailing_zeros() as usize;
+            if let Some(projected_bit) = self.projected_modifier_bits.get(index) {
+                projected |= projected_bit;
             }
-            if canonical_bits & descriptor.bit != 0 {
-                projected_bits |= 1u32 << projected_index;
-            }
-            projected_index += 1;
+            remaining &= remaining - 1;
         }
-        projected_bits
+        projected
     }
 }
 
@@ -1141,6 +1148,7 @@ const fn planned_kind_for_symbol(kind: EditorSemanticKind) -> PlannedTokenKind {
 const fn planned_modifier_for_role(role: EditorSemanticRole) -> PlannedTokenModifier {
     match role {
         EditorSemanticRole::Entity => PlannedTokenModifier::Entity,
+        EditorSemanticRole::Reference => PlannedTokenModifier::Reference,
         EditorSemanticRole::ClassDefinition | EditorSemanticRole::Outline => {
             PlannedTokenModifier::Outline
         }
@@ -1150,7 +1158,9 @@ const fn planned_modifier_for_role(role: EditorSemanticRole) -> PlannedTokenModi
 
 const fn token_overlay_for_role(role: EditorSemanticRole) -> TokenOverlayKind {
     match role {
-        EditorSemanticRole::Entity => TokenOverlayKind::SemanticEntity,
+        EditorSemanticRole::Entity | EditorSemanticRole::Reference => {
+            TokenOverlayKind::SemanticEntity
+        }
         EditorSemanticRole::ClassDefinition | EditorSemanticRole::Outline => {
             TokenOverlayKind::SemanticOutline
         }

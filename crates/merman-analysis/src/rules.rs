@@ -845,7 +845,7 @@ pub(crate) fn source_lint_diagnostics(
         .parse_metadata_sync(source)
         .ok()
         .map(|metadata| metadata.config);
-    let source_config = source_config_evidence_for_test(source);
+    let source_config = crate::test_support::capture_source_config_evidence(source);
     let candidates = source_lint_candidates_cancellable(
         source,
         source_map,
@@ -865,22 +865,6 @@ pub(crate) fn source_lint_diagnostics(
 }
 
 #[cfg(test)]
-fn source_config_evidence_for_test(source: &str) -> SourceConfigEvidence {
-    let control = merman_core::ParseControl::new();
-    match merman_core::Engine::new()
-        .capture_diagram_snapshot_controlled_sync(source, &control)
-        .expect("a private parse control cannot be cancelled")
-    {
-        merman_core::DiagramSnapshotCapture::Snapshot(Some(snapshot)) => {
-            snapshot.source_config().clone()
-        }
-        merman_core::DiagramSnapshotCapture::Snapshot(None) => SourceConfigEvidence::default(),
-        merman_core::DiagramSnapshotCapture::Failed { source_config, .. }
-        | merman_core::DiagramSnapshotCapture::Panicked { source_config, .. } => source_config,
-    }
-}
-
-#[cfg(test)]
 pub(crate) fn parsed_source_lint_diagnostics(
     source: &str,
     source_map: &SourceMap,
@@ -888,7 +872,7 @@ pub(crate) fn parsed_source_lint_diagnostics(
     diagram_type: &str,
 ) -> Vec<AnalysisDiagnostic> {
     let cancellation = crate::AnalysisCancellationToken::new();
-    let source_config = source_config_evidence_for_test(source);
+    let source_config = crate::test_support::capture_source_config_evidence(source);
     let candidates = parsed_source_lint_candidates_cancellable(
         source_map,
         diagram_type,
@@ -1205,7 +1189,7 @@ fn prefer_frontmatter_config_diagnostics_with_config(
     captured_config: Option<&MermaidConfig>,
 ) -> Vec<AnalysisDiagnostic> {
     let cancellation = crate::AnalysisCancellationToken::new();
-    let source_config = source_config_evidence_for_test(source);
+    let source_config = crate::test_support::capture_source_config_evidence(source);
     let candidates = prefer_frontmatter_config_candidates_with_config_cancellable(
         source,
         source_map,

@@ -161,28 +161,25 @@
         "properties": {
           "merman.analysis.fixed_today": {
             "type": "string",
-            "default": "",
-            "pattern": "^$|^(?:\\d{4}|\\+(?:[1-9]\\d{4,8}|1\\d{9}|20\\d{8}|21[0-3]\\d{7}|214[0-6]\\d{6}|2147[0-3]\\d{5}|21474[0-7]\\d{4}|214748[0-2]\\d{3}|2147483[0-5]\\d{2}|21474836[0-3]\\d|214748364[0-7])|-(?:000[1-9]|00[1-9]\\d|0[1-9]\\d{2}|[1-9]\\d{3}|[1-9]\\d{4,8}|1\\d{9}|20\\d{8}|21[0-3]\\d{7}|214[0-6]\\d{6}|2147[0-3]\\d{5}|21474[0-7]\\d{4}|214748[0-2]\\d{3}|2147483[0-5]\\d{2}|21474836[0-3]\\d|214748364[0-8]))-\\d{2}-\\d{2}$",
-            "markdownDescription": "Optional canonical deterministic local civil date forwarded to `merman-lsp`. Years 0000 through 9999 use `YYYY-MM-DD`; later years use `+YEAR-MM-DD`, and negative years use `-YEAR-MM-DD`. The date and its local-midnight instant are validated when the configuration is applied.",
+            "markdownDescription": "Optional canonical deterministic local civil date forwarded to `merman-lsp`. Leave unset to use the connected server's default. Years 0000 through 9999 use `YYYY-MM-DD`; later years use `+YEAR-MM-DD`, and negative years use `-YEAR-MM-DD`. The date and its local-midnight instant are validated when the configuration is applied.",
             "scope": "window",
-            "order": 10
+            "order": 10,
+            "pattern": "^(?:\\d{4}|\\+(?:[1-9]\\d{4,8}|1\\d{9}|20\\d{8}|21[0-3]\\d{7}|214[0-6]\\d{6}|2147[0-3]\\d{5}|21474[0-7]\\d{4}|214748[0-2]\\d{3}|2147483[0-5]\\d{2}|21474836[0-3]\\d|214748364[0-7])|-(?:000[1-9]|00[1-9]\\d|0[1-9]\\d{2}|[1-9]\\d{3}|[1-9]\\d{4,8}|1\\d{9}|20\\d{8}|21[0-3]\\d{7}|214[0-6]\\d{6}|2147[0-3]\\d{5}|21474[0-7]\\d{4}|214748[0-2]\\d{3}|2147483[0-5]\\d{2}|21474836[0-3]\\d|214748364[0-8]))-\\d{2}-\\d{2}$"
           },
           "merman.analysis.fixed_local_offset_minutes": {
             "type": [
               "integer",
               "null"
             ],
-            "default": null,
-            "minimum": -1439,
-            "maximum": 1439,
-            "markdownDescription": "Optional deterministic local UTC offset in minutes forwarded to `merman-lsp` analysis options.",
+            "markdownDescription": "Optional deterministic local UTC offset in minutes forwarded to `merman-lsp` analysis options. Leave unset or set `null` to use the connected server's default.",
             "scope": "window",
-            "order": 20
+            "order": 20,
+            "minimum": -1439,
+            "maximum": 1439
           },
           "merman.analysis.site_config": {
             "type": "object",
-            "default": {},
-            "markdownDescription": "Optional Mermaid site configuration object forwarded to `merman-lsp` analysis options.",
+            "markdownDescription": "Optional Mermaid site configuration object forwarded to `merman-lsp` analysis options. Leave unset to use the connected server's default.",
             "scope": "window",
             "order": 30
           },
@@ -191,43 +188,33 @@
               "integer",
               "null"
             ],
-            "default": null,
-            "markdownDescription": "Optional source size cap forwarded to `merman-lsp`. `null` uses the server default.",
+            "markdownDescription": "Optional source size cap forwarded to `merman-lsp`. Leave unset or set `null` to use the connected server's default.",
             "scope": "window",
+            "order": 40,
             "minimum": 1,
-            "maximum": 4294967295,
-            "order": 40
+            "maximum": 4294967295
           },
           "merman.analysis.resources.limits.max_document_diagrams": {
             "type": [
               "integer",
               "null"
             ],
-            "default": null,
-            "markdownDescription": "Optional Mermaid fence count cap for Markdown and MDX documents. `null` uses the server default; `0` rejects documents containing any Mermaid diagram.",
+            "markdownDescription": "Optional Mermaid fence count cap for Markdown and MDX documents. Leave unset or set `null` to use the connected server's default; `0` rejects documents containing any Mermaid diagram.",
             "scope": "window",
+            "order": 41,
             "minimum": 0,
-            "maximum": 4294967295,
-            "order": 41
+            "maximum": 4294967295
           },
           "merman.analysis.lint.profile": {
             "type": "string",
-            "enum": [
-              "",
+            "markdownDescription": "Lint profile forwarded to `merman-lsp`. Leave unset to use the connected server's default profile.",
+            "scope": "window",
+            "order": 50,
+            "examples": [
               "core",
               "recommended",
               "strict"
-            ],
-            "default": "core",
-            "markdownDescription": "Lint profile forwarded to `merman-lsp`.",
-            "scope": "window",
-            "enumDescriptions": [
-              "Use the server's core profile and apply any explicit rule configuration.",
-              "Core diagnostics only.",
-              "Opt-in recommended authoring diagnostics.",
-              "Strict authoring diagnostics."
-            ],
-            "order": 50
+            ]
           },
           "merman.analysis.lint.enable_rules": {
             "type": "array",
@@ -252,7 +239,6 @@
                 "merman.git_graph.duplicate_commit_id"
               ]
             },
-            "default": [],
             "markdownDescription": "Additional lint rules enabled in `merman-lsp`.",
             "scope": "window",
             "order": 60
@@ -280,7 +266,6 @@
                 "merman.git_graph.duplicate_commit_id"
               ]
             },
-            "default": [],
             "markdownDescription": "Lint rules disabled in `merman-lsp`.",
             "scope": "window",
             "order": 70
@@ -289,10 +274,6 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": [
-                "rule_id",
-                "severity"
-              ],
               "properties": {
                 "rule_id": {
                   "type": "string",
@@ -317,16 +298,19 @@
                 },
                 "severity": {
                   "type": "string",
-                  "enum": [
+                  "examples": [
                     "error",
                     "warning",
                     "info",
                     "hint"
                   ]
                 }
-              }
+              },
+              "required": [
+                "rule_id",
+                "severity"
+              ]
             },
-            "default": [],
             "markdownDescription": "Per-rule severity overrides forwarded to `merman-lsp`.",
             "scope": "window",
             "order": 80

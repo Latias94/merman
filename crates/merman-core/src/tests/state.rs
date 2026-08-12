@@ -954,13 +954,22 @@ click Running "https://example.com/run" "Run details""#;
         symbol.name == "Idle"
             && symbol.detail.as_deref() == Some("state reference")
             && symbol.selection.start == idle_relation_source_start
+            && symbol.role == EditorSemanticRole::Reference
     }));
 
     let running_relation_target_start = text.find("Idle --> Running").unwrap() + "Idle --> ".len();
+    assert_eq!(
+        symbol_at("Running", running_relation_target_start).role,
+        EditorSemanticRole::Entity
+    );
+
+    let repeated_running_target_start =
+        text.find("Idle --> Running: starts").unwrap() + "Idle --> ".len();
     assert!(facts.symbols.iter().any(|symbol| {
         symbol.name == "Running"
             && symbol.detail.as_deref() == Some("state reference")
-            && symbol.selection.start == running_relation_target_start
+            && symbol.selection.start == repeated_running_target_start
+            && symbol.role == EditorSemanticRole::Reference
     }));
 
     let active_start = text.find("Active").unwrap();
@@ -1040,7 +1049,7 @@ click Running "https://example.com/run" "Run details""#;
             symbol.name == "Idle" && symbol.detail.as_deref() == Some("state class target")
         })
         .unwrap();
-    assert_eq!(idle_class_target.role, EditorSemanticRole::Entity);
+    assert_eq!(idle_class_target.role, EditorSemanticRole::Reference);
 
     let running_style = facts
         .symbols
@@ -1081,6 +1090,11 @@ click Running "https://example.com/run" "Run details""#;
         .unwrap();
     assert_eq!(click_url.role, EditorSemanticRole::Payload);
     assert_eq!(click_url.detail.as_deref(), Some("state click url"));
+
+    let click_target_start = text.find("click Running").unwrap() + "click ".len();
+    let click_target = symbol_at("Running", click_target_start);
+    assert_eq!(click_target.role, EditorSemanticRole::Reference);
+    assert_eq!(click_target.detail.as_deref(), Some("state click target"));
 
     let click_tooltip = facts
         .symbols
@@ -1214,6 +1228,52 @@ fn parse_state_editor_facts_record_expected_syntax_spans() {
         "click namedState \"https://example.com/run\" \"Run details\"",
         "Run details",
         "state click tooltip",
+    );
+}
+
+#[test]
+fn state_relations_create_only_the_first_implicit_entity_occurrence() {
+    let engine = Engine::new();
+    let text = concat!(
+        "stateDiagram-v2\n",
+        "Future --> Known\n",
+        "Known --> Future\n",
+        "state Known\n",
+        "style Later fill:#fff\n",
+        "state Later\n",
+        "click Known \"https://example.com\"\n",
+        "note right of Known : Existing state note\n",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("stateDiagram", text)
+        .unwrap()
+        .expect("state editor facts");
+
+    let roles = |name: &str| {
+        facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == name)
+            .map(|symbol| symbol.role)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        roles("Future"),
+        [EditorSemanticRole::Entity, EditorSemanticRole::Reference]
+    );
+    assert_eq!(
+        roles("Known"),
+        [
+            EditorSemanticRole::Entity,
+            EditorSemanticRole::Reference,
+            EditorSemanticRole::Entity,
+            EditorSemanticRole::Reference,
+            EditorSemanticRole::Reference,
+        ]
+    );
+    assert_eq!(
+        roles("Later"),
+        [EditorSemanticRole::Reference, EditorSemanticRole::Entity]
     );
 }
 

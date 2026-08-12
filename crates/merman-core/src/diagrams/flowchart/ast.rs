@@ -1,4 +1,4 @@
-use super::{Edge, FlowchartLexemeComponent, Node, SubgraphHeader};
+use super::{Edge, FlowchartLexemeComponent, LexError, Node, SubgraphHeader};
 use crate::{EditorExpectedSyntax, SourceSpan};
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -89,11 +89,13 @@ pub(crate) enum ClickAction {
 #[derive(Debug, Clone)]
 pub(crate) struct ClickStmt {
     pub ids: Vec<String>,
+    pub id_spans: Vec<SourceSpan>,
     pub tooltip: Option<String>,
     pub action: ClickAction,
     pub editor_evidence: FlowchartDirectiveEditorEvidence,
     pub interaction_evidence: FlowchartClickEditorEvidence,
     pub lexeme_components: Vec<FlowchartLexemeComponent>,
+    pub recovery_error: Option<LexError>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

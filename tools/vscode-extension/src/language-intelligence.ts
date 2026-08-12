@@ -14,6 +14,7 @@ export type LanguageClientLifecycleAction =
 
 export interface LanguageClientConfigurationChange {
   affectsMerman: boolean;
+  affectsAnalysis: boolean;
   affectsLanguageIntelligence: boolean;
   diagnosticsEnabledChanged: boolean;
   diagnosticsEnabled: boolean;
@@ -61,7 +62,7 @@ export function languageClientConfigurationAction(
   if (change.serverShapeChanged) {
     return "restart";
   }
-  return change.hasClient ? "pushConfiguration" : "ignore";
+  return change.affectsAnalysis && change.hasClient ? "pushConfiguration" : "ignore";
 }
 
 export function serverBackedCommandAction(

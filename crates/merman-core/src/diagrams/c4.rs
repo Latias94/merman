@@ -2,9 +2,9 @@ use crate::diagrams::scan::{LineCursor, leading_whitespace_len};
 use crate::sanitize::sanitize_text;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
-    EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
-    EditorSemanticSymbol, Error, MermaidConfig, ParseControl, ParseControlResult, ParseMetadata,
-    Result, SourceSpan, editor::EditorLexemeJournal,
+    EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
+    MermaidConfig, ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
+    editor::EditorLexemeJournal,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -626,10 +626,17 @@ fn c4_argument_lexeme(
     (kind, EditorLexemeModifiers::NONE)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum C4EntityOccurrence {
+    Definition,
+    Reference,
+}
+
 fn push_c4_entity_fact(
     facts: &mut EditorSemanticFacts,
     value: &SpannedText,
     detail: impl Into<String>,
+    occurrence: C4EntityOccurrence,
 ) {
     if value.text.is_empty() {
         facts.push_expected_syntax(EditorExpectedSyntax::new(
@@ -639,14 +646,24 @@ fn push_c4_entity_fact(
         return;
     }
 
-    facts.push_symbol(EditorSemanticSymbol::with_role(
-        value.text.clone(),
-        Some(detail.into()),
-        EditorSemanticKind::Object,
-        EditorSemanticRole::Entity,
-        value.span,
-        value.span,
-    ));
+    let detail = Some(detail.into());
+    let symbol = match occurrence {
+        C4EntityOccurrence::Definition => EditorSemanticSymbol::new(
+            value.text.clone(),
+            detail,
+            EditorSemanticKind::Object,
+            value.span,
+            value.span,
+        ),
+        C4EntityOccurrence::Reference => EditorSemanticSymbol::reference(
+            value.text.clone(),
+            detail,
+            EditorSemanticKind::Object,
+            value.span,
+            value.span,
+        ),
+    };
+    facts.push_symbol(symbol);
 }
 
 fn push_c4_payload_fact(
@@ -682,12 +699,17 @@ fn push_c4_payload_arg(facts: &mut EditorSemanticFacts, arg: &SpannedArg, fallba
     push_c4_payload_fact(facts, &value, detail);
 }
 
-fn push_c4_entity_arg(facts: &mut EditorSemanticFacts, arg: &SpannedArg, detail: &str) {
+fn push_c4_entity_arg(
+    facts: &mut EditorSemanticFacts,
+    arg: &SpannedArg,
+    detail: &str,
+    occurrence: C4EntityOccurrence,
+) {
     let value = SpannedText {
         text: arg.text().to_string(),
         span: arg.span(),
     };
-    push_c4_entity_fact(facts, &value, detail.to_string());
+    push_c4_entity_fact(facts, &value, detail.to_string(), occurrence);
 }
 
 fn parse_title_spanned_c4(
@@ -944,7 +966,12 @@ fn parse_macro_stmt_facts_c4(
         "Person" | "Person_Ext" | "System" | "SystemDb" | "SystemQueue" | "System_Ext"
         | "SystemDb_Ext" | "SystemQueue_Ext" => {
             if let Some(alias) = stmt.args.first() {
-                push_c4_entity_arg(facts, alias, c4_shape_detail(&stmt.name));
+                push_c4_entity_arg(
+                    facts,
+                    alias,
+                    c4_shape_detail(&stmt.name),
+                    C4EntityOccurrence::Definition,
+                );
             }
             if let Some(label) = stmt.args.get(1) {
                 push_c4_payload_arg(facts, label, "c4 label");
@@ -961,7 +988,12 @@ fn parse_macro_stmt_facts_c4(
         | "ContainerQueue_Ext" | "Component" | "ComponentDb" | "ComponentQueue"
         | "Component_Ext" | "ComponentDb_Ext" | "ComponentQueue_Ext" => {
             if let Some(alias) = stmt.args.first() {
-                push_c4_entity_arg(facts, alias, c4_shape_detail(&stmt.name));
+                push_c4_entity_arg(
+                    facts,
+                    alias,
+                    c4_shape_detail(&stmt.name),
+                    C4EntityOccurrence::Definition,
+                );
             }
             if let Some(label) = stmt.args.get(1) {
                 push_c4_payload_arg(facts, label, "c4 label");
@@ -979,7 +1011,7 @@ fn parse_macro_stmt_facts_c4(
         }
         "Boundary" | "Enterprise_Boundary" | "System_Boundary" | "Container_Boundary" => {
             if let Some(alias) = stmt.args.first() {
-                push_c4_entity_arg(facts, alias, "c4 boundary");
+                push_c4_entity_arg(facts, alias, "c4 boundary", C4EntityOccurrence::Definition);
             }
             if let Some(label) = stmt.args.get(1) {
                 push_c4_payload_arg(facts, label, "c4 label");
@@ -994,7 +1026,12 @@ fn parse_macro_stmt_facts_c4(
         }
         "Node" | "Deployment_Node" | "Node_L" | "Node_R" => {
             if let Some(alias) = stmt.args.first() {
-                push_c4_entity_arg(facts, alias, "c4 deployment node");
+                push_c4_entity_arg(
+                    facts,
+                    alias,
+                    "c4 deployment node",
+                    C4EntityOccurrence::Definition,
+                );
             }
             if let Some(label) = stmt.args.get(1) {
                 push_c4_payload_arg(facts, label, "c4 label");
@@ -1018,14 +1055,24 @@ fn parse_macro_stmt_facts_c4(
                     "missing relation source".to_string(),
                 ));
             };
-            push_c4_entity_arg(facts, from, "c4 relation source");
+            push_c4_entity_arg(
+                facts,
+                from,
+                "c4 relation source",
+                C4EntityOccurrence::Reference,
+            );
             let Some(to) = stmt.args.get(1) else {
                 return Err(Error::diagram_parse_fallback(
                     "c4".to_string(),
                     "missing relation target".to_string(),
                 ));
             };
-            push_c4_entity_arg(facts, to, "c4 relation target");
+            push_c4_entity_arg(
+                facts,
+                to,
+                "c4 relation target",
+                C4EntityOccurrence::Reference,
+            );
             if let Some(label) = stmt.args.get(2) {
                 push_c4_payload_arg(facts, label, "c4 relation label");
             } else {
@@ -1056,14 +1103,24 @@ fn parse_macro_stmt_facts_c4(
                     "missing relation source".to_string(),
                 ));
             };
-            push_c4_entity_arg(facts, from, "c4 relation source");
+            push_c4_entity_arg(
+                facts,
+                from,
+                "c4 relation source",
+                C4EntityOccurrence::Reference,
+            );
             let Some(to) = stmt.args.get(2) else {
                 return Err(Error::diagram_parse_fallback(
                     "c4".to_string(),
                     "missing relation target".to_string(),
                 ));
             };
-            push_c4_entity_arg(facts, to, "c4 relation target");
+            push_c4_entity_arg(
+                facts,
+                to,
+                "c4 relation target",
+                C4EntityOccurrence::Reference,
+            );
             if let Some(label) = stmt.args.get(3) {
                 push_c4_payload_arg(facts, label, "c4 relation label");
             } else {
@@ -1087,7 +1144,12 @@ fn parse_macro_stmt_facts_c4(
                     "missing style target".to_string(),
                 ));
             };
-            push_c4_entity_arg(facts, target, "c4 style target");
+            push_c4_entity_arg(
+                facts,
+                target,
+                "c4 style target",
+                C4EntityOccurrence::Reference,
+            );
             for arg in stmt.args.iter().skip(1) {
                 push_c4_payload_arg(facts, arg, "c4 style value");
             }
@@ -1100,14 +1162,24 @@ fn parse_macro_stmt_facts_c4(
                     "missing relation style source".to_string(),
                 ));
             };
-            push_c4_entity_arg(facts, from, "c4 relation style source");
+            push_c4_entity_arg(
+                facts,
+                from,
+                "c4 relation style source",
+                C4EntityOccurrence::Reference,
+            );
             let Some(to) = stmt.args.get(1) else {
                 return Err(Error::diagram_parse_fallback(
                     "c4".to_string(),
                     "missing relation style target".to_string(),
                 ));
             };
-            push_c4_entity_arg(facts, to, "c4 relation style target");
+            push_c4_entity_arg(
+                facts,
+                to,
+                "c4 relation style target",
+                C4EntityOccurrence::Reference,
+            );
             for arg in stmt.args.iter().skip(2) {
                 push_c4_payload_arg(facts, arg, "c4 relation style value");
             }
@@ -2663,8 +2735,8 @@ mod tests {
     use super::*;
     use crate::{
         EditorLexemeKind, EditorLexemeModifier, EditorLexemeProducerKind,
-        EditorSemanticCompleteness, Engine, MermaidConfig, ParseDiagnosticSpanKind, ParseMetadata,
-        ParseOptions, RenderSemanticModel,
+        EditorSemanticCompleteness, EditorSemanticRole, Engine, MermaidConfig,
+        ParseDiagnosticSpanKind, ParseMetadata, ParseOptions, RenderSemanticModel,
     };
     use futures::executor::block_on;
     use serde_json::json;
@@ -3920,14 +3992,43 @@ UpdateRelStyle(customer, system, $lineColor="blue")
             );
         }
 
+        let roles_for = |name: &str| {
+            facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.name == name)
+                .map(|symbol| symbol.role)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(roles_for("bank"), vec![EditorSemanticRole::Entity]);
+        assert_eq!(
+            roles_for("customer"),
+            vec![
+                EditorSemanticRole::Entity,
+                EditorSemanticRole::Reference,
+                EditorSemanticRole::Reference,
+            ]
+        );
+        assert_eq!(
+            roles_for("system"),
+            vec![
+                EditorSemanticRole::Entity,
+                EditorSemanticRole::Reference,
+                EditorSemanticRole::Reference,
+                EditorSemanticRole::Reference,
+            ]
+        );
+
         let system_refs = facts
             .symbols
             .iter()
-            .filter(|symbol| symbol.name == "system" && symbol.role == EditorSemanticRole::Entity)
+            .filter(|symbol| {
+                symbol.name == "system" && symbol.role == EditorSemanticRole::Reference
+            })
             .count();
         assert_eq!(
-            system_refs, 4,
-            "system should appear in definition, relation target, element style, and relation style"
+            system_refs, 3,
+            "system relation and style occurrences must remain references"
         );
 
         let title_start = input.find("Banking Context").unwrap();
@@ -3936,6 +4037,81 @@ UpdateRelStyle(customer, system, $lineColor="blue")
                 && expected.span
                     == SourceSpan::new(title_start, title_start + "Banking Context".len())
         }));
+    }
+
+    #[test]
+    fn c4_forward_relation_and_style_targets_remain_typed_references() {
+        let input = concat!(
+            "C4Context\n",
+            "Rel(customer, system, \"Uses\")\n",
+            "UpdateElementStyle(system, $bgColor=\"red\")\n",
+            "UpdateRelStyle(customer, system, $lineColor=\"blue\")\n",
+            "Person(customer, \"Customer\")\n",
+            "System(system, \"System\")\n",
+        );
+        let facts = crate::family::test_support::editor_facts(
+            parse_c4_json_and_editor_facts,
+            input,
+            &meta(),
+        );
+        let roles_for = |name: &str| {
+            facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.name == name)
+                .map(|symbol| symbol.role)
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(
+            roles_for("customer"),
+            vec![
+                EditorSemanticRole::Reference,
+                EditorSemanticRole::Reference,
+                EditorSemanticRole::Entity,
+            ]
+        );
+        assert_eq!(
+            roles_for("system"),
+            vec![
+                EditorSemanticRole::Reference,
+                EditorSemanticRole::Reference,
+                EditorSemanticRole::Reference,
+                EditorSemanticRole::Entity,
+            ]
+        );
+
+        let relation_source = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.detail.as_deref() == Some("c4 relation source"))
+            .expect("relation source");
+        assert_eq!(relation_source.role, EditorSemanticRole::Reference);
+    }
+
+    #[test]
+    fn c4_entity_occurrence_role_does_not_depend_on_display_detail() {
+        let span = SourceSpan::new(0, "node".len());
+        let value = SpannedText {
+            text: "node".to_string(),
+            span,
+        };
+        let mut facts = EditorSemanticFacts::new();
+        push_c4_entity_fact(
+            &mut facts,
+            &value,
+            "reference-looking definition",
+            C4EntityOccurrence::Definition,
+        );
+        push_c4_entity_fact(
+            &mut facts,
+            &value,
+            "definition-looking reference",
+            C4EntityOccurrence::Reference,
+        );
+
+        assert_eq!(facts.symbols[0].role, EditorSemanticRole::Entity);
+        assert_eq!(facts.symbols[1].role, EditorSemanticRole::Reference);
     }
 
     #[test]

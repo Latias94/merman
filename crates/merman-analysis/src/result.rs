@@ -1,6 +1,5 @@
 use crate::analyzer::{AnalysisDiagnosticPolicy, AnalysisEnvironmentIdentity, Analyzer};
 use crate::diagnostic_projection::{DiagnosticCandidate, append_projected_diagnostic_candidates};
-use crate::editor::FenceReferenceGroup;
 use crate::payload::DiagnosticRetainedWeight;
 use crate::{
     ANALYSIS_FACTS_PAYLOAD_VERSION, AnalysisCancellationToken, AnalysisCancelled,
@@ -650,9 +649,12 @@ impl AnalysisDiagramSyntaxFacts {
             class_names: text_index.class_names().cloned().collect(),
             directive_prefixes: text_index.directive_prefixes().cloned().collect(),
             references: text_index
-                .references()
+                .reference_groups()
+                .into_iter()
                 .map(|(group, spans)| {
-                    AnalysisReferenceFacts::from_reference(group, spans, source_map, body_start)
+                    AnalysisReferenceFacts::from_reference(
+                        group.name, group.kind, spans, source_map, body_start,
+                    )
                 })
                 .collect(),
             outline_items: text_index
@@ -715,21 +717,19 @@ impl From<EditorSemanticKind> for AnalysisEditorSymbolKind {
 #[serde(rename_all = "snake_case")]
 pub enum AnalysisSemanticRole {
     Entity,
+    ClassDefinition,
+    Reference,
     Outline,
     Payload,
-}
-
-impl AnalysisSemanticRole {
-    pub const fn contributes_outline(self) -> bool {
-        matches!(self, Self::Entity | Self::Outline)
-    }
 }
 
 impl From<EditorSemanticRole> for AnalysisSemanticRole {
     fn from(role: EditorSemanticRole) -> Self {
         match role {
             EditorSemanticRole::Entity => Self::Entity,
-            EditorSemanticRole::ClassDefinition | EditorSemanticRole::Outline => Self::Outline,
+            EditorSemanticRole::ClassDefinition => Self::ClassDefinition,
+            EditorSemanticRole::Reference => Self::Reference,
+            EditorSemanticRole::Outline => Self::Outline,
             EditorSemanticRole::Payload => Self::Payload,
         }
     }
@@ -782,17 +782,17 @@ pub struct AnalysisReferenceFacts {
 
 impl AnalysisReferenceFacts {
     fn from_reference(
-        group: &FenceReferenceGroup,
-        spans: &[crate::ByteSpan],
+        name: String,
+        kind: EditorSemanticKind,
+        spans: Vec<crate::ByteSpan>,
         source_map: &SourceMap,
         body_start: usize,
     ) -> Self {
         Self {
-            name: group.name.clone(),
-            kind: group.kind.into(),
+            name,
+            kind: kind.into(),
             spans: spans
-                .iter()
-                .copied()
+                .into_iter()
                 .map(|span| AnalysisFactSpan::from_local(span, source_map, body_start))
                 .collect(),
         }

@@ -21,6 +21,7 @@ import {
 import {
   CONFIG_SCHEMA_METHOD,
   RULE_CATALOG_METHOD,
+  type AnalysisConfigSchemaProjection,
   type NegotiatedAnalysisConfig,
 } from "./analysis-config-contract.js";
 import { resolveMermanBinary } from "./binaries.js";
@@ -52,15 +53,7 @@ export interface RuleCatalogResponse {
   rules: LspRuleCatalogEntry[];
 }
 
-export interface ConfigSchemaResponse {
-  version: number;
-  rule_catalog_method: string;
-  accepted_roots: string[];
-  profiles: string[];
-  severities: string[];
-  configurable_rule_ids: string[];
-  schema: unknown;
-}
+export type ConfigSchemaResponse = AnalysisConfigSchemaProjection;
 
 export async function createLanguageClient(
   context: vscode.ExtensionContext,
@@ -132,9 +125,7 @@ export async function pushConfiguration(
   client: LanguageClient,
   contract: NegotiatedAnalysisConfig,
 ): Promise<void> {
-  const { payload, unsupportedRuleIds } = getDidChangeConfigurationPayload(
-    contract.configurableRuleIds,
-  );
+  const { payload, unsupportedRuleIds } = getDidChangeConfigurationPayload(contract);
   if (unsupportedRuleIds.length > 0) {
     client.outputChannel.warn(
       `Connected Merman server does not advertise these rule IDs as configurable; ignoring them: ${unsupportedRuleIds.join(", ")}`,

@@ -35,7 +35,7 @@ pub(crate) use client_effects::{
 pub(crate) use documents::{
     DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS, DEFAULT_LSP_MAX_SOURCE_BYTES, DiagnosticContext,
     DocumentDiagnosticState, DocumentSyncLoss, DocumentUnavailableDiagnostic, SemanticTokensState,
-    StoredDocument, analysis_options_with_lsp_resource_defaults, default_lsp_analysis_options,
+    analysis_options_with_lsp_resource_defaults, default_lsp_analysis_options,
 };
 
 /// Owns all mutable language state and the workers derived from that state.
@@ -206,6 +206,20 @@ impl LanguageSession {
         effect: impl Future<Output = ()> + Send + 'static,
     ) {
         self.inner.client_effects.enqueue_latest(key, effect).await;
+    }
+
+    async fn enqueue_latest_client_effect_with_transport_admission<F, Fut>(
+        &self,
+        key: client_effects::ClientEffectKey,
+        effect: F,
+    ) where
+        F: FnOnce(client_effects::ClientEffectTransportAdmission) -> Fut,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        self.inner
+            .client_effects
+            .enqueue_latest_with_transport_admission(key, effect)
+            .await;
     }
 
     fn request_semantic_tokens_refresh(&self) {

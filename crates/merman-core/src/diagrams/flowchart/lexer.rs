@@ -1,8 +1,8 @@
 use super::{
-    ArrowToken, DirectionStatementToken, FlowchartLexemeComponent, LabeledText, LexError,
-    LinkToken, NodeLabelToken, SubgraphHeader, TitleKind, Tok,
-    ast::FlowchartDirectiveEditorEvidence, destruct_end_link, destruct_start_link,
-    is_ecmascript_trim_char, lex, parse_label_text,
+    ArrowToken, ClickAction, ClickStmt, DirectionStatementToken, FlowchartLexemeComponent,
+    LabeledText, LexError, LinkToken, NodeLabelToken, SubgraphHeader, TitleKind, Tok,
+    ast::{FlowchartClickEditorEvidence, FlowchartDirectiveEditorEvidence},
+    destruct_end_link, destruct_start_link, is_ecmascript_trim_char, lex, parse_label_text,
 };
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, SourceSpan,
@@ -767,12 +767,39 @@ impl<'input> Lexer<'input> {
             }
             Err(error) => {
                 let target = target.unwrap_or_else(|| SourceSpan::new(end, end));
-                Some(Err(directive_error(
+                let error = directive_error(
                     error,
                     "click",
                     statement_span,
                     [(EditorExpectedSyntaxKind::NodeIdentifier, target)],
-                )))
+                );
+                if self.recover_partial_node_labels && target.start < target.end {
+                    let mut lexeme_components = vec![FlowchartLexemeComponent::new(
+                        EditorLexemeKind::Identifier,
+                        target,
+                    )];
+                    prepend_statement_keyword(&mut lexeme_components, start, keyword_end);
+                    Some(Ok((
+                        start,
+                        Tok::ClickStmt(ClickStmt {
+                            ids: vec![self.input[target.start..target.end].to_string()],
+                            id_spans: vec![target],
+                            tooltip: None,
+                            action: ClickAction::Callback,
+                            editor_evidence: directive_editor_evidence(
+                                statement_span,
+                                Some((EditorExpectedSyntaxKind::NodeIdentifier, target)),
+                                None,
+                            ),
+                            interaction_evidence: FlowchartClickEditorEvidence::default(),
+                            lexeme_components,
+                            recovery_error: Some(error),
+                        }),
+                        end,
+                    )))
+                } else {
+                    Some(Err(error))
+                }
             }
         }
     }

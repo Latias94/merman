@@ -11,13 +11,14 @@ generated bindings together.
 | Alpha.5 or development-snapshot API | Unreleased replacement |
 | --- | --- |
 | Direct UniFFI binding API `3` generated Swift/Python plus the matching native library | Regenerate against UniFFI binding API `4`, replace `binding_api_version` / `bindingApiVersion` with `transport_api_version` / `transportApiVersion`, and deploy the generated projection and native library together; API 4 lint rule records require `tags` |
-| Analysis facts schema `1` with Flowchart-only graph facts | Analysis facts schema `2` with generic parser/editor facts; diagnostics remain schema `1` |
+| Analysis facts schema `1` with Flowchart-only graph facts and the former semantic-role set | Analysis facts schema `2` with generic parser/editor facts and the explicit `entity`, `class_definition`, `reference`, `outline`, and `payload` roles; update exhaustive role handling, while diagnostics remain schema `1` |
 | `FenceCursorCompletionKind`, `FenceCursorContext`, or `CompletionContext` | `completion_for_snapshot` over parser-backed typed facts |
 | Adapter-owned completion trigger lists | `COMPLETION_TRIGGER_CHARACTERS` |
 | `EditorCompletionCandidate`, `EditorCompletionVocabulary`, `EditorSemanticFacts::completion_vocabulary`, or `with_completion_vocabulary(...)` | Keep parser evidence in `EditorSemanticFacts::family_semantics` / `expected_syntax`; call editor-core `completion_for_snapshot` for candidate labels, details, snippets, and edits |
 | `EditorExpectedSyntaxKind::Operator` | `EditorExpectedSyntaxKind::FlowchartOperator` |
 | `EditorExpectedSyntaxKind::DirectionValue` | Use the owning family slot: `FlowchartDirectionValue`, `CardinalDirectionValue`, or `BlockDirectionValue`; new typed authoring slots also include `Directive`, `Frontmatter`, `ClassName`, `StyleValue`, and `InteractionAction` |
 | Case-folded profile/severity values or `warn` | Exact lowercase analysis-owned values, including `warning` |
+| `merman/configSchema` response version `1` | Response version `2` with mandatory typed `constraints`; clients that only understand version `1` must decline the response rather than partially parsing it |
 | `DocumentWorkspace::upsert(...)` | `analyze_document_snapshot_with_shared_text(...)` and caller-owned document storage |
 | `DocumentWorkspace::build_analysis_context_with_shared_text(...)` | `analyze_document_context_with_shared_text(...)` |
 | `DocumentAnalysisOutcome` | `Result<DocumentAnalysisContext, AnalysisRejection>` |

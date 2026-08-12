@@ -36,6 +36,7 @@ describe("language intelligence adoption", () => {
   it("restarts only enabled clients for server-shape configuration changes", () => {
     assert.equal(languageClientConfigurationAction({
       affectsMerman: true,
+      affectsAnalysis: false,
       affectsLanguageIntelligence: false,
       diagnosticsEnabledChanged: false,
       diagnosticsEnabled: true,
@@ -45,6 +46,7 @@ describe("language intelligence adoption", () => {
     }), "restart");
     assert.equal(languageClientConfigurationAction({
       affectsMerman: true,
+      affectsAnalysis: false,
       affectsLanguageIntelligence: false,
       diagnosticsEnabledChanged: false,
       diagnosticsEnabled: true,
@@ -57,6 +59,7 @@ describe("language intelligence adoption", () => {
   it("restarts existing clients when diagnostics are re-enabled", () => {
     assert.equal(languageClientConfigurationAction({
       affectsMerman: true,
+      affectsAnalysis: false,
       affectsLanguageIntelligence: false,
       diagnosticsEnabledChanged: true,
       diagnosticsEnabled: true,
@@ -66,21 +69,44 @@ describe("language intelligence adoption", () => {
     }), "restart");
     assert.equal(languageClientConfigurationAction({
       affectsMerman: true,
+      affectsAnalysis: false,
       affectsLanguageIntelligence: false,
       diagnosticsEnabledChanged: true,
       diagnosticsEnabled: false,
       serverShapeChanged: false,
       hasClient: true,
       settings: { enabled: true },
-    }), "pushConfiguration");
+    }), "ignore");
     assert.equal(languageClientConfigurationAction({
       affectsMerman: true,
+      affectsAnalysis: false,
       affectsLanguageIntelligence: false,
       diagnosticsEnabledChanged: true,
       diagnosticsEnabled: true,
       serverShapeChanged: false,
       hasClient: false,
       settings: { enabled: true },
+    }), "ignore");
+  });
+
+  it("pushes configuration only for analysis settings", () => {
+    const base = {
+      affectsMerman: true,
+      affectsLanguageIntelligence: false,
+      diagnosticsEnabledChanged: false,
+      diagnosticsEnabled: true,
+      serverShapeChanged: false,
+      hasClient: true,
+      settings: { enabled: true },
+    };
+
+    assert.equal(languageClientConfigurationAction({
+      ...base,
+      affectsAnalysis: true,
+    }), "pushConfiguration");
+    assert.equal(languageClientConfigurationAction({
+      ...base,
+      affectsAnalysis: false,
     }), "ignore");
   });
 
@@ -127,7 +153,7 @@ describe("language intelligence adoption", () => {
     assert.match(pkg.capabilities?.untrustedWorkspaces?.description ?? "", /Workspace Trust/);
   });
 
-  it("declares analysis numeric settings with LSP-compatible integer bounds", () => {
+  it("declares analysis settings from the generated build-time contract", () => {
     const pkg = JSON.parse(
       fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
     ) as {
@@ -135,6 +161,7 @@ describe("language intelligence adoption", () => {
         configuration:
           | {
               properties: Record<string, {
+                default?: unknown;
                 maximum?: number;
                 minimum?: number;
                 pattern?: string;
@@ -143,6 +170,7 @@ describe("language intelligence adoption", () => {
             }
           | Array<{
               properties: Record<string, {
+                default?: unknown;
                 maximum?: number;
                 minimum?: number;
                 pattern?: string;
@@ -153,35 +181,30 @@ describe("language intelligence adoption", () => {
     };
     const properties = configurationProperties(pkg.contributes.configuration);
 
+    for (const setting of [
+      "merman.analysis.fixed_today",
+      "merman.analysis.fixed_local_offset_minutes",
+      "merman.analysis.site_config",
+      "merman.analysis.resources.limits.max_source_bytes",
+      "merman.analysis.resources.limits.max_document_diagrams",
+      "merman.analysis.lint.profile",
+      "merman.analysis.lint.enable_rules",
+      "merman.analysis.lint.disable_rules",
+      "merman.analysis.lint.rule_severities",
+    ]) {
+      assert.equal(
+        properties[setting]?.default,
+        undefined,
+        `${setting} must defer defaults to the connected server`,
+      );
+    }
+
     const fixedTodayPattern = properties["merman.analysis.fixed_today"]?.pattern;
-    assert.equal(
-      fixedTodayPattern,
-      "^$|^(?:\\d{4}|\\+(?:[1-9]\\d{4,8}|1\\d{9}|20\\d{8}|21[0-3]\\d{7}|214[0-6]\\d{6}|2147[0-3]\\d{5}|21474[0-7]\\d{4}|214748[0-2]\\d{3}|2147483[0-5]\\d{2}|21474836[0-3]\\d|214748364[0-7])|-(?:000[1-9]|00[1-9]\\d|0[1-9]\\d{2}|[1-9]\\d{3}|[1-9]\\d{4,8}|1\\d{9}|20\\d{8}|21[0-3]\\d{7}|214[0-6]\\d{6}|2147[0-3]\\d{5}|21474[0-7]\\d{4}|214748[0-2]\\d{3}|2147483[0-5]\\d{2}|21474836[0-3]\\d|214748364[0-8]))-\\d{2}-\\d{2}$",
-    );
+    assert.equal(typeof fixedTodayPattern, "string");
     const fixedToday = new RegExp(fixedTodayPattern ?? "");
-    for (const value of [
-      "",
-      "0000-01-01",
-      "9999-12-31",
-      "+10000-01-01",
-      "+2147483647-12-31",
-      "-0001-01-01",
-      "-10000-01-01",
-      "-2147483648-01-01",
-    ]) {
-      assert.equal(fixedToday.test(value), true, value);
-    }
-    for (const value of [
-      "+9999-01-01",
-      "+010000-01-01",
-      "+2147483648-01-01",
-      "-0000-01-01",
-      "-010000-01-01",
-      "-2147483649-01-01",
-      "10000-01-01",
-    ]) {
-      assert.equal(fixedToday.test(value), false, value);
-    }
+    assert.equal(fixedToday.test("2026-08-12"), true);
+    assert.equal(fixedToday.test("+10000-01-01"), true);
+    assert.equal(fixedToday.test("20260812"), false);
     assert.deepEqual(properties["merman.analysis.fixed_local_offset_minutes"]?.type, [
       "integer",
       "null",
@@ -254,7 +277,7 @@ describe("language intelligence adoption", () => {
     assert.equal(properties["merman.sourceActions.enabled"]?.scope, "resource");
   });
 
-  it("documents current lint rule ids without rejecting future catalog entries", () => {
+  it("projects lint candidates from the generated build-time contract", () => {
     const pkg = JSON.parse(
       fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
     ) as {
@@ -267,6 +290,8 @@ describe("language intelligence adoption", () => {
     const properties = configurationProperties(pkg.contributes.configuration) as Record<
       string,
       {
+        enum?: unknown[];
+        examples?: unknown[];
         items?: {
           enum?: unknown[];
           examples?: unknown[];
@@ -275,23 +300,33 @@ describe("language intelligence adoption", () => {
       }
     >;
 
+    const profile = properties["merman.analysis.lint.profile"];
+    const profiles = profile?.examples ?? [];
+    assert.ok(profiles.includes("core"));
+    assert.equal(new Set(profiles).size, profiles.length);
+    assert.equal(profile?.enum, undefined);
+
     for (const setting of [
       "merman.analysis.lint.enable_rules",
       "merman.analysis.lint.disable_rules",
     ]) {
-      assert.equal(properties[setting]?.items?.enum, undefined, setting);
       assert.ok(
-        properties[setting]?.items?.examples?.includes(
-          "merman.parse.no_diagram",
-        ),
+        properties[setting]?.items?.examples?.includes("merman.parse.no_diagram"),
         setting,
       );
+      assert.equal(properties[setting]?.items?.enum, undefined, setting);
     }
 
     const ruleId = properties["merman.analysis.lint.rule_severities"]
       ?.items?.properties?.rule_id;
-    assert.equal(ruleId?.enum, undefined);
     assert.ok(ruleId?.examples?.includes("merman.parse.no_diagram"));
+    assert.equal(ruleId?.enum, undefined);
+    const severity = properties["merman.analysis.lint.rule_severities"]
+      ?.items?.properties?.severity;
+    const severities = severity?.examples ?? [];
+    assert.ok(severities.includes("warning"));
+    assert.equal(new Set(severities).size, severities.length);
+    assert.equal(severity?.enum, undefined);
   });
 
   it("declares preview defaults in the native settings schema", () => {

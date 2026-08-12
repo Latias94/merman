@@ -434,6 +434,7 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
     let id1_def_start = text.find("id1,2014").unwrap();
     assert!(facts.symbols.iter().any(|symbol| {
         symbol.name == "id1"
+            && symbol.role == EditorSemanticRole::Entity
             && symbol.detail.as_deref() == Some("gantt task")
             && symbol.selection.start == id1_def_start
             && symbol.selection.end == id1_def_start + "id1".len()
@@ -442,6 +443,7 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
     let id1_after_start = text.find("after id1").unwrap() + "after ".len();
     assert!(facts.symbols.iter().any(|symbol| {
         symbol.name == "id1"
+            && symbol.role == EditorSemanticRole::Reference
             && symbol.detail.as_deref() == Some("gantt dependency")
             && symbol.selection.start == id1_after_start
             && symbol.selection.end == id1_after_start + "id1".len()
@@ -450,6 +452,7 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
     let id1_until_start = text.find("until id1").unwrap() + "until ".len();
     assert!(facts.symbols.iter().any(|symbol| {
         symbol.name == "id1"
+            && symbol.role == EditorSemanticRole::Reference
             && symbol.detail.as_deref() == Some("gantt dependency")
             && symbol.selection.start == id1_until_start
             && symbol.selection.end == id1_until_start + "id1".len()
@@ -458,6 +461,7 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
     let id2_def_start = text.find("id2,after").unwrap();
     assert!(facts.symbols.iter().any(|symbol| {
         symbol.name == "id2"
+            && symbol.role == EditorSemanticRole::Entity
             && symbol.detail.as_deref() == Some("gantt task")
             && symbol.selection.start == id2_def_start
             && symbol.selection.end == id2_def_start + "id2".len()
@@ -466,6 +470,7 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
     let id2_click_start = text.find("click id2").unwrap() + "click ".len();
     assert!(facts.symbols.iter().any(|symbol| {
         symbol.name == "id2"
+            && symbol.role == EditorSemanticRole::Reference
             && symbol.detail.as_deref() == Some("gantt click target")
             && symbol.selection.start == id2_click_start
             && symbol.selection.end == id2_click_start + "id2".len()
@@ -532,6 +537,35 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
             "missing gantt payload expected syntax for {payload:?}"
         );
     }
+}
+
+#[test]
+fn gantt_forward_dependency_is_a_reference_before_its_task_definition() {
+    let source = concat!(
+        "gantt\n",
+        "dateFormat YYYY-MM-DD\n",
+        "Forward: early,after later,1d\n",
+        "Later: later,2026-01-01,1d\n",
+    );
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("gantt", source)
+        .unwrap()
+        .expect("gantt editor facts");
+    let later: Vec<_> = facts
+        .symbols
+        .iter()
+        .filter(|symbol| symbol.name == "later")
+        .collect();
+
+    assert_eq!(later.len(), 2);
+    assert_eq!(later[0].role, EditorSemanticRole::Reference);
+    assert_eq!(later[1].role, EditorSemanticRole::Entity);
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .any(|symbol| { symbol.name == "early" && symbol.role == EditorSemanticRole::Entity })
+    );
 }
 
 #[test]

@@ -140,10 +140,10 @@ fn product_families_are_parser_backed_and_role_aware() {
                 "commit id:\"F1\"\n",
                 "merge main id:\"M1\"\n",
             ),
-            required_ids: &["C1", "feature", "F1", "main", "M1"],
+            required_ids: &["C1", "feature", "F1", "M1"],
             required_outline: &[],
             required_prefixes: &[],
-            forbidden_ids: &[],
+            forbidden_ids: &["main"],
         },
         CapabilityCase {
             label: "radar",

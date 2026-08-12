@@ -295,7 +295,13 @@ pub struct CapturedPanic {
 }
 
 impl CapturedPanic {
-    pub(crate) fn new(message: String, payload: Box<dyn Any + Send + 'static>) -> Self {
+    pub(crate) fn from_payload(payload: Box<dyn Any + Send + 'static>) -> Self {
+        let message = payload
+            .downcast_ref::<&str>()
+            .copied()
+            .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+            .unwrap_or("panic while analyzing Mermaid source")
+            .to_string();
         Self { message, payload }
     }
 
@@ -303,7 +309,7 @@ impl CapturedPanic {
         &self.message
     }
 
-    fn into_payload(self) -> Box<dyn Any + Send + 'static> {
+    pub(crate) fn into_payload(self) -> Box<dyn Any + Send + 'static> {
         self.payload
     }
 }

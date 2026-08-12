@@ -247,9 +247,9 @@ async fn pull_diagnostics_retries_an_execution_that_becomes_stale() {
         let uri = uri.clone();
         async move {
             session
-                .pull_diagnostics(&uri, |document, _| {
+                .pull_diagnostics(&uri, |context, _| {
                     super::documents::DocumentDiagnosticState {
-                        result_id: document.version.to_string(),
+                        result_id: context.document.version.to_string(),
                         diagnostics: Vec::new(),
                     }
                 })
@@ -295,9 +295,9 @@ async fn pull_diagnostics_recaptures_a_document_that_becomes_unavailable() {
         let compute_calls = Arc::clone(&compute_calls);
         async move {
             session
-                .pull_diagnostics(&uri, move |document, analysis| {
+                .pull_diagnostics(&uri, move |context, analysis| {
                     compute_calls.fetch_add(1, Ordering::SeqCst);
-                    assert!(document.is_analysis_unavailable());
+                    assert!(context.document.is_analysis_unavailable());
                     assert!(analysis.is_none());
                     super::documents::DocumentDiagnosticState {
                         result_id: "unavailable".to_owned(),
@@ -345,12 +345,12 @@ async fn pull_diagnostics_stops_after_three_total_stale_attempts() {
         let releases = Arc::clone(&releases);
         async move {
             session
-                .pull_diagnostics(&uri, move |document, _| {
+                .pull_diagnostics(&uri, move |context, _| {
                     let attempt = attempts.fetch_add(1, Ordering::SeqCst);
                     entered[attempt].wait();
                     releases[attempt].wait();
                     super::documents::DocumentDiagnosticState {
-                        result_id: document.version.to_string(),
+                        result_id: context.document.version.to_string(),
                         diagnostics: Vec::new(),
                     }
                 })
@@ -420,10 +420,10 @@ async fn pull_diagnostics_starts_at_most_three_stale_reprojections() {
         let compute_calls = Arc::clone(&compute_calls);
         async move {
             session
-                .pull_diagnostics(&uri, move |document, _| {
+                .pull_diagnostics(&uri, move |context, _| {
                     compute_calls.fetch_add(1, Ordering::SeqCst);
                     super::documents::DocumentDiagnosticState {
-                        result_id: document.version.to_string(),
+                        result_id: context.document.version.to_string(),
                         diagnostics: Vec::new(),
                     }
                 })

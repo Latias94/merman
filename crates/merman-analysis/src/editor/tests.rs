@@ -156,18 +156,18 @@ fn typed_reference_groups_separate_same_name_different_kinds() {
 
     assert_eq!(
         index.reference_spans_for_item(module_item),
-        &[ByteSpan { start: 0, end: 6 }]
+        vec![ByteSpan { start: 0, end: 6 }]
     );
     assert_eq!(
         index.reference_spans_for_item(property_item),
-        &[ByteSpan { start: 7, end: 13 }]
+        vec![ByteSpan { start: 7, end: 13 }]
     );
     assert_eq!(
-        index.first_reference_span_for_item(module_item),
+        index.definition_span_for_item(module_item),
         Some(ByteSpan { start: 0, end: 6 })
     );
     assert_eq!(
-        index.first_reference_span_for_item(property_item),
+        index.definition_span_for_item(property_item),
         Some(ByteSpan { start: 7, end: 13 })
     );
     assert_eq!(index.reference_spans("Shared").len(), 1);
@@ -213,7 +213,7 @@ fn text_index_skips_payload_only_core_facts_for_completion() {
             .map(|item| item.name.as_str()),
         Some("PK")
     );
-    assert_eq!(index.entity_item_at_offset(9), None);
+    assert_eq!(index.reference_item_at_offset(9), None);
     assert_eq!(index.symbol_at_offset(9), None);
     assert!(outline_items(&index).any(|item| item.name == "section"));
     assert!(!outline_items(&index).any(|item| item.name == "PK"));
@@ -317,10 +317,15 @@ fn indexed_semantic_lookup_preserves_full_ties_and_post_selection_entity_filteri
             .map(|item| item.name.as_str()),
         Some("inner")
     );
-    assert_eq!(index.entity_item_at_offset(4), None);
     assert_eq!(
         index
-            .entity_item_at_offset(1)
+            .reference_item_at_offset(4)
+            .map(|item| item.name.as_str()),
+        Some("outer")
+    );
+    assert_eq!(
+        index
+            .reference_item_at_offset(1)
             .map(|item| item.name.as_str()),
         Some("outer")
     );
@@ -329,7 +334,10 @@ fn indexed_semantic_lookup_preserves_full_ties_and_post_selection_entity_filteri
         Some(EditorSemanticRole::Payload),
         "a complete tie must keep the first canonical item"
     );
-    assert_eq!(index.entity_item_at_offset(8), None);
+    assert_eq!(
+        index.reference_item_at_offset(8).map(|item| item.role),
+        Some(EditorSemanticRole::Entity)
+    );
 }
 
 #[test]

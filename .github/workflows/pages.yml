@@ -61,7 +61,7 @@ jobs:
         run: |
           cargo run --locked -p xtask -- verify-mermaid-reference
           cargo run --locked -p xtask -- verify-capability-surface
-          cargo run --locked -p xtask -- verify-editor-token-descriptor
+          cargo run --locked -p xtask -- verify-editor-language-contract
           cargo run --locked -p xtask -- verify-text-measurement-protocol
           cargo run --locked -p xtask -- verify-web-diagram-catalog
           cargo run --locked -p xtask -- verify-resource-contract

@@ -659,7 +659,7 @@ style User fill:#fff
 
     let href_target_start = text.find("click User href").unwrap() + "click ".len();
     let href_target = symbol_at("User", href_target_start);
-    assert_eq!(href_target.role, EditorSemanticRole::Entity);
+    assert_eq!(href_target.role, EditorSemanticRole::Reference);
     assert_eq!(href_target.kind, EditorSemanticKind::Class);
     assert_eq!(
         href_target.detail.as_deref(),
@@ -691,7 +691,7 @@ style User fill:#fff
     assert_eq!(inline_service.detail.as_deref(), Some("class inline class"));
 
     let css_admin = symbol_with_detail("Admin", "class css target");
-    assert_eq!(css_admin.role, EditorSemanticRole::Entity);
+    assert_eq!(css_admin.role, EditorSemanticRole::Reference);
 
     let css_service = symbol_with_detail("service", "class css reference");
     assert_eq!(css_service.role, EditorSemanticRole::Payload);
@@ -761,6 +761,67 @@ fn parse_class_editor_facts_preserve_quoted_numeric_class_selection_spans() {
         let symbol = symbol_at(detail, start);
         assert_eq!(symbol.selection.end, start + "123".len());
     }
+
+    assert_eq!(
+        symbol_at("class", numeric_starts[0]).role,
+        EditorSemanticRole::Entity
+    );
+    assert_eq!(
+        symbol_at("class relation target", numeric_starts[1]).role,
+        EditorSemanticRole::Reference
+    );
+    assert_eq!(
+        symbol_at("class interaction target", numeric_starts[2]).role,
+        EditorSemanticRole::Reference
+    );
+}
+
+#[test]
+fn class_relations_create_only_the_first_implicit_entity_occurrence() {
+    let engine = Engine::new();
+    let text = concat!(
+        "classDiagram\n",
+        "Future --> Known\n",
+        "Known --> Future\n",
+        "class Known\n",
+        "style Later fill:#fff\n",
+        "class Later\n",
+        "<<interface>> Annotated\n",
+        "class Annotated\n",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
+        .unwrap()
+        .expect("class editor facts");
+
+    let roles = |name: &str| {
+        facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == name)
+            .map(|symbol| symbol.role)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        roles("Future"),
+        [EditorSemanticRole::Entity, EditorSemanticRole::Reference]
+    );
+    assert_eq!(
+        roles("Known"),
+        [
+            EditorSemanticRole::Entity,
+            EditorSemanticRole::Reference,
+            EditorSemanticRole::Entity,
+        ]
+    );
+    assert_eq!(
+        roles("Later"),
+        [EditorSemanticRole::Reference, EditorSemanticRole::Entity]
+    );
+    assert_eq!(
+        roles("Annotated"),
+        [EditorSemanticRole::Entity, EditorSemanticRole::Entity]
+    );
 }
 
 #[test]

@@ -1,9 +1,7 @@
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{DocumentUri, Position, Range};
 use merman_analysis::{ByteSpan, FenceTextIndexSource, SourceMap};
-use merman_core::{
-    EditorRenamePolicy, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, SourceSpan,
-};
+use merman_core::{EditorRenamePolicy, EditorSemanticKind, EditorSemanticSymbol, SourceSpan};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -280,11 +278,8 @@ pub fn hover(snapshot: &DocumentSnapshot, position: Position) -> Option<EditorHo
 pub fn goto_definition(snapshot: &DocumentSnapshot, position: Position) -> Option<EditorLocation> {
     let fence = snapshot.fence_at_position(position)?;
     let offset = fence_relative_offset(snapshot, fence, position)?;
-    let item = fence.text_index().entity_item_at_offset(offset)?;
-    let span = absolute_span(
-        fence,
-        fence.text_index().first_reference_span_for_item(item)?,
-    );
+    let item = fence.text_index().reference_item_at_offset(offset)?;
+    let span = absolute_span(fence, fence.text_index().definition_span_for_item(item)?);
     let range = range_from_span(snapshot.source_map(), span)?;
     Some(EditorLocation {
         uri: snapshot.uri().clone(),
@@ -300,12 +295,11 @@ pub fn references(
 ) -> Option<Vec<EditorLocation>> {
     let fence = snapshot.fence_at_position(position)?;
     let offset = fence_relative_offset(snapshot, fence, position)?;
-    let item = fence.text_index().entity_item_at_offset(offset)?;
+    let item = fence.text_index().reference_item_at_offset(offset)?;
     let mut locations = fence
         .text_index()
         .reference_spans_for_item(item)
-        .iter()
-        .copied()
+        .into_iter()
         .filter_map(|span| {
             let span = absolute_span(fence, span);
             range_from_span(snapshot.source_map(), span).map(|range| EditorLocation {
@@ -317,7 +311,7 @@ pub fn references(
         .collect::<Vec<_>>();
 
     if !include_declaration
-        && let Some(def_span) = fence.text_index().first_reference_span_for_item(item)
+        && let Some(def_span) = fence.text_index().definition_span_for_item(item)
     {
         let def_span = absolute_span(fence, def_span);
         locations.retain(|location| !same_span(snapshot.source_map(), location.range, def_span));
@@ -333,7 +327,7 @@ pub fn prepare_rename(
 ) -> Option<EditorPrepareRename> {
     let fence = snapshot.fence_at_position(position)?;
     let offset = fence_relative_offset(snapshot, fence, position)?;
-    let item = fence.text_index().entity_item_at_offset(offset)?;
+    let item = fence.text_index().reference_item_at_offset(offset)?;
     if !rename_group_allows(fence, item, EditorRenamePolicy::is_renameable) {
         return None;
     }
@@ -362,7 +356,7 @@ pub fn rename(
         fence_relative_offset(snapshot, fence, position).ok_or(RenameError::NoRenameableSymbol)?;
     let item = fence
         .text_index()
-        .entity_item_at_offset(offset)
+        .reference_item_at_offset(offset)
         .ok_or(RenameError::NoRenameableSymbol)?;
     if !rename_group_allows(fence, item, |policy| policy.accepts(new_name)) {
         return Err(RenameError::InvalidName);
@@ -378,8 +372,7 @@ fn rename_edits(
 ) -> Option<EditorWorkspaceEdit> {
     let spans = fence.text_index().reference_spans_for_item(item);
     let mut edits = spans
-        .iter()
-        .copied()
+        .into_iter()
         .filter_map(|span| range_from_span(snapshot.source_map(), absolute_span(fence, span)))
         .map(|range| EditorTextEdit {
             fact_source: fence.text_index().source(),
@@ -410,7 +403,7 @@ fn rename_group_allows(
         .semantic_items()
         .iter()
         .filter(|candidate| {
-            candidate.role == EditorSemanticRole::Entity
+            candidate.role.contributes_references()
                 && candidate.name == item.name
                 && candidate.kind == item.kind
         })

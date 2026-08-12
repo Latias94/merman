@@ -206,7 +206,7 @@ repository gates:
 
 ```bash
 cargo run -p xtask -- verify-mermaid-reference --materialized
-cargo run -p xtask -- verify-editor-token-descriptor
+cargo run -p xtask -- verify-editor-language-contract
 cargo run -p xtask -- verify-playground-example-catalog
 cargo run -p xtask -- verify-web-diagram-catalog
 cargo run -p xtask -- check-alignment

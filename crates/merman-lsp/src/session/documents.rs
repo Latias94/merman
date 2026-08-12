@@ -801,6 +801,14 @@ impl DiagnosticContext {
             document_epoch,
         }
     }
+
+    pub(crate) const fn diagnostic_generation(&self) -> DiagnosticGeneration {
+        self.generation
+    }
+
+    pub(crate) const fn document_epoch(&self) -> DocumentEpoch {
+        self.document_epoch
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

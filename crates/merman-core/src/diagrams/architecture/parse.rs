@@ -15,6 +15,7 @@ struct ArchitectureSpannedValue {
 #[derive(Debug, Clone, Copy)]
 enum ArchitectureTraceFactRole {
     Entity,
+    Reference,
     Payload,
 }
 
@@ -182,7 +183,7 @@ impl<'a> ArchitectureStatementParser<'a> {
             );
         }
         let in_group = if self.consume_keyword("in") {
-            Some(self.parse_id(
+            Some(self.parse_reference(
                 "invalid group parent id",
                 "architecture group parent",
                 EditorSemanticKind::Namespace,
@@ -239,7 +240,7 @@ impl<'a> ArchitectureStatementParser<'a> {
             );
         }
         let in_group = if self.consume_keyword("in") {
-            Some(self.parse_id(
+            Some(self.parse_reference(
                 "invalid service parent id",
                 "architecture service parent",
                 EditorSemanticKind::Namespace,
@@ -265,7 +266,7 @@ impl<'a> ArchitectureStatementParser<'a> {
             EditorSemanticKind::Object,
         )?;
         let in_group = if self.consume_keyword("in") {
-            Some(self.parse_id(
+            Some(self.parse_reference(
                 "invalid junction parent id",
                 "architecture junction parent",
                 EditorSemanticKind::Namespace,
@@ -299,7 +300,7 @@ impl<'a> ArchitectureStatementParser<'a> {
             self.skip_ws();
             !self.is_eof()
         } {
-            members.push(self.parse_id(
+            members.push(self.parse_reference(
                 "invalid align member id",
                 "architecture alignment member",
                 EditorSemanticKind::Variable,
@@ -315,7 +316,7 @@ impl<'a> ArchitectureStatementParser<'a> {
     }
 
     fn parse_edge(&mut self) -> Result<ArchitectureStatement> {
-        let lhs = self.parse_id(
+        let lhs = self.parse_reference(
             "invalid id",
             "architecture edge endpoint",
             EditorSemanticKind::Variable,
@@ -366,7 +367,7 @@ impl<'a> ArchitectureStatementParser<'a> {
             EditorSemanticKind::String,
         );
         self.expect_delimiter(':', "expected ':' for rhs port")?;
-        let rhs = self.parse_id(
+        let rhs = self.parse_reference(
             "invalid id",
             "architecture edge endpoint",
             EditorSemanticKind::Variable,
@@ -405,6 +406,28 @@ impl<'a> ArchitectureStatementParser<'a> {
             ));
         }
         self.push_entity(token.clone(), detail, kind);
+        Ok(ArchitectureIdentifier {
+            text: token.value,
+            span: token.selection,
+        })
+    }
+
+    fn parse_reference(
+        &mut self,
+        message: &str,
+        detail: &'static str,
+        kind: EditorSemanticKind,
+    ) -> Result<ArchitectureIdentifier> {
+        let token = self.parse_raw_id(message)?;
+        self.lexemes.identifier(token.selection);
+        if is_architecture_reserved_id(&token.value) {
+            return Err(Error::diagram_parse_exact(
+                "architecture",
+                architecture_reserved_id_message(&token.value),
+                token.selection,
+            ));
+        }
+        self.push_reference(token.clone(), detail, kind);
         Ok(ArchitectureIdentifier {
             text: token.value,
             span: token.selection,
@@ -658,6 +681,21 @@ impl<'a> ArchitectureStatementParser<'a> {
         });
     }
 
+    fn push_reference(
+        &mut self,
+        value: ArchitectureSpannedValue,
+        detail: &'static str,
+        kind: EditorSemanticKind,
+    ) {
+        self.facts.push(ArchitectureTraceFact {
+            value,
+            detail,
+            kind,
+            role: ArchitectureTraceFactRole::Reference,
+            expected: EditorExpectedSyntaxKind::NodeIdentifier,
+        });
+    }
+
     fn push_payload(
         &mut self,
         value: ArchitectureSpannedValue,
@@ -839,7 +877,7 @@ pub(super) fn parse_semantic_source(
     )
     .expect("a private parse control cannot be cancelled")?;
     let db = trace.build_db()?;
-    let editor_facts = trace.editor_facts(code, None);
+    let editor_facts = trace.editor_facts(code, Some(&db), None);
     Ok(ArchitectureSemanticSource { db, editor_facts })
 }
 
@@ -878,7 +916,8 @@ pub(super) fn parse_combined_semantic_source_controlled(
     }
     control.checkpoint()?;
     let db = trace.build_db_controlled(control)?;
-    let editor_facts = trace.editor_facts_controlled(code, db.as_ref().err(), control)?;
+    let editor_facts =
+        trace.editor_facts_controlled(code, db.as_ref().ok(), db.as_ref().err(), control)?;
     control.checkpoint()?;
 
     if let Some(error) = syntax_error {
@@ -1337,15 +1376,21 @@ impl ArchitectureTrace {
         Ok(Ok(db))
     }
 
-    fn editor_facts(&self, source: &str, validation_error: Option<&Error>) -> EditorSemanticFacts {
+    fn editor_facts(
+        &self,
+        source: &str,
+        db: Option<&ArchitectureDb>,
+        validation_error: Option<&Error>,
+    ) -> EditorSemanticFacts {
         let control = crate::ParseControl::new();
-        self.editor_facts_controlled(source, validation_error, &control)
+        self.editor_facts_controlled(source, db, validation_error, &control)
             .expect("a private parse control cannot be cancelled")
     }
 
     fn editor_facts_controlled(
         &self,
         source: &str,
+        db: Option<&ArchitectureDb>,
         validation_error: Option<&Error>,
         control: &crate::ParseControl,
     ) -> crate::ParseControlResult<EditorSemanticFacts> {
@@ -1366,11 +1411,25 @@ impl ArchitectureTrace {
                     fact.expected,
                     fact.value.selection,
                 ));
+                let kind = match fact.role {
+                    ArchitectureTraceFactRole::Entity | ArchitectureTraceFactRole::Reference => db
+                        .and_then(|db| db.editor_kind_for_id(&fact.value.value))
+                        .unwrap_or(fact.kind),
+                    ArchitectureTraceFactRole::Payload => fact.kind,
+                };
                 let symbol = match fact.role {
                     ArchitectureTraceFactRole::Entity => EditorSemanticSymbol::new(
                         fact.value.value.clone(),
                         Some(fact.detail.to_string()),
-                        fact.kind,
+                        kind,
+                        fact.value.span,
+                        fact.value.selection,
+                    )
+                    .with_rename_policy(EditorRenamePolicy::ArchitectureIdentifier),
+                    ArchitectureTraceFactRole::Reference => EditorSemanticSymbol::reference(
+                        fact.value.value.clone(),
+                        Some(fact.detail.to_string()),
+                        kind,
                         fact.value.span,
                         fact.value.selection,
                     )
@@ -1378,7 +1437,7 @@ impl ArchitectureTrace {
                     ArchitectureTraceFactRole::Payload => EditorSemanticSymbol::payload(
                         fact.value.value.clone(),
                         Some(fact.detail.to_string()),
-                        fact.kind,
+                        kind,
                         fact.value.span,
                         fact.value.selection,
                     ),

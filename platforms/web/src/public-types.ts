@@ -232,15 +232,41 @@ export interface AnalysisBindingOptions {
   lint?: LintBindingOptions;
 }
 
-export interface EditorBindingOptions extends AnalysisBindingOptions {
+interface BindingVersionOptions {
   version?: 2;
-  analysis?: AnalysisBindingOptions;
-  merman?: AnalysisBindingOptions;
 }
 
-export interface CommonBindingOptions extends EditorBindingOptions {
+type NoDirectAnalysisBindingOptions = {
+  [Property in keyof AnalysisBindingOptions]?: never;
+};
+
+type DirectAnalysisBindingRoot = AnalysisBindingOptions & {
+  analysis?: never;
+  merman?: never;
+};
+
+type AnalysisWrappedBindingRoot = NoDirectAnalysisBindingOptions & {
+  analysis: AnalysisBindingOptions;
+  merman?: never;
+};
+
+type MermanWrappedBindingRoot = NoDirectAnalysisBindingOptions & {
+  analysis?: never;
+  merman: AnalysisBindingOptions;
+};
+
+export type EditorBindingOptions = BindingVersionOptions &
+  (
+    | DirectAnalysisBindingRoot
+    | AnalysisWrappedBindingRoot
+    | MermanWrappedBindingRoot
+  );
+
+interface CommonBindingFields {
   parse?: ParseOptions;
 }
+
+export type CommonBindingOptions = EditorBindingOptions & CommonBindingFields;
 
 export type AsciiCharsetOption = "ascii" | "unicode";
 export type AsciiDirectionOption =
@@ -310,16 +336,20 @@ export interface AsciiRenderOptions {
   relationSummaryDiagnostics?: boolean;
 }
 
-export interface AsciiBindingOptions extends CommonBindingOptions {
+interface AsciiBindingFields {
   ascii?: AsciiRenderOptions;
 }
 
-export interface SvgBindingOptions extends CommonBindingOptions {
+export type AsciiBindingOptions = CommonBindingOptions & AsciiBindingFields;
+
+interface SvgBindingFields {
   presentation?: PresentationOptions;
   environment?: RenderEnvironmentOptions;
   layout?: LayoutOptions;
   svg?: SvgOptions;
 }
+
+export type SvgBindingOptions = CommonBindingOptions & SvgBindingFields;
 
 export type BindingOptions = SvgBindingOptions;
 
@@ -510,7 +540,13 @@ export type AnalysisEditorSymbolKind =
   | "variable"
   | string;
 
-export type AnalysisSemanticRole = "entity" | "outline" | "payload" | string;
+export type AnalysisSemanticRole =
+  | "entity"
+  | "class_definition"
+  | "reference"
+  | "outline"
+  | "payload"
+  | string;
 
 export type AnalysisRenamePolicy = EditorRenamePolicy;
 

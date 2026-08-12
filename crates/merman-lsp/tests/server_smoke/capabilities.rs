@@ -412,7 +412,7 @@ async fn lsp_service_smoke_serves_rule_catalog_custom_request() {
         .expect("rule catalog response");
     let result = response.result().expect("rule catalog result");
 
-    assert_eq!(result["version"], 1);
+    assert_eq!(result["version"], RULE_CATALOG_RESPONSE_VERSION);
     assert!(result["rules"].as_array().unwrap().iter().any(|rule| {
         rule["id"] == "merman.authoring.flowchart.explicit_direction"
             && rule["origin"] == "merman_authoring"
@@ -456,7 +456,7 @@ async fn lsp_service_smoke_serves_config_schema_custom_request() {
         .expect("config schema response");
     let result = response.result().expect("config schema result");
 
-    assert_eq!(result["version"], 1);
+    assert_eq!(result["version"], CONFIG_SCHEMA_RESPONSE_VERSION);
     assert_eq!(result["rule_catalog_method"], RULE_CATALOG_METHOD);
     assert!(
         result["configurable_rule_ids"]

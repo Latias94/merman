@@ -12,6 +12,7 @@ use crate::{
 use serde_json::Value;
 #[cfg(test)]
 use std::cell::Cell;
+use std::collections::HashSet;
 
 use super::class_grammar;
 use super::db::ClassDb;
@@ -280,6 +281,7 @@ struct ClassEditorFactCollector<'a> {
     interaction_target_end: Option<usize>,
     note_text_pending: bool,
     class_label_pending: bool,
+    declared_entities: HashSet<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -340,6 +342,7 @@ impl<'a> ClassEditorFactCollector<'a> {
             interaction_target_end: None,
             note_text_pending: false,
             class_label_pending: false,
+            declared_entities: HashSet::new(),
         }
     }
 
@@ -849,7 +852,7 @@ impl<'a> ClassEditorFactCollector<'a> {
     }
 
     fn push_symbol(
-        &self,
+        &mut self,
         facts: &mut EditorSemanticFacts,
         symbol: ClassTokenSymbol,
         expected: ExpectedClassName,
@@ -874,13 +877,31 @@ impl<'a> ClassEditorFactCollector<'a> {
         let kind = match expected {
             ExpectedClassName::Namespace => EditorSemanticKind::Namespace,
             ExpectedClassName::ClassDef
-            | ExpectedClassName::StyleTarget
             | ExpectedClassName::CssClassReference
             | ExpectedClassName::InlineClassReference => EditorSemanticKind::Property,
             _ => EditorSemanticKind::Class,
         };
         let selection = selection_span_for_class_name(self.code, &symbol.name, symbol.span);
         match expected {
+            ExpectedClassName::Class => {
+                self.declared_entities.insert(symbol.name.clone());
+                facts.push_symbol(EditorSemanticSymbol::new(
+                    symbol.name,
+                    Some(detail.to_string()),
+                    kind,
+                    symbol.span,
+                    selection,
+                ));
+            }
+            ExpectedClassName::Namespace => {
+                facts.push_symbol(EditorSemanticSymbol::new(
+                    symbol.name,
+                    Some(detail.to_string()),
+                    kind,
+                    symbol.span,
+                    selection,
+                ));
+            }
             ExpectedClassName::ClassDef => {
                 facts.push_symbol(EditorSemanticSymbol::class_definition(
                     symbol.name,
@@ -899,13 +920,34 @@ impl<'a> ClassEditorFactCollector<'a> {
                     selection,
                 ));
             }
-            _ => facts.push_symbol(EditorSemanticSymbol::new(
-                symbol.name,
-                Some(detail.to_string()),
-                kind,
-                symbol.span,
-                selection,
-            )),
+            ExpectedClassName::MemberOwner
+            | ExpectedClassName::AnnotationName
+            | ExpectedClassName::RelationTarget => {
+                let role = if self.declared_entities.insert(symbol.name.clone()) {
+                    crate::EditorSemanticRole::Entity
+                } else {
+                    crate::EditorSemanticRole::Reference
+                };
+                facts.push_symbol(EditorSemanticSymbol::with_role(
+                    symbol.name,
+                    Some(detail.to_string()),
+                    kind,
+                    role,
+                    symbol.span,
+                    selection,
+                ));
+            }
+            ExpectedClassName::NoteTarget
+            | ExpectedClassName::StyleTarget
+            | ExpectedClassName::ClickTarget => {
+                facts.push_symbol(EditorSemanticSymbol::reference(
+                    symbol.name,
+                    Some(detail.to_string()),
+                    kind,
+                    symbol.span,
+                    selection,
+                ));
+            }
         }
     }
 
@@ -977,7 +1019,7 @@ impl<'a> ClassEditorFactCollector<'a> {
                 let id_end = cursor + trailing;
                 let id = &value[id_start..id_end];
                 let selection = SourceSpan::new(body_start + id_start, body_start + id_end);
-                facts.push_symbol(EditorSemanticSymbol::new(
+                facts.push_symbol(EditorSemanticSymbol::reference(
                     id,
                     Some(detail.to_string()),
                     EditorSemanticKind::Class,

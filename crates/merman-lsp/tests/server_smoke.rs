@@ -1,7 +1,8 @@
 mod prelude {
     pub use futures::{SinkExt, StreamExt};
     pub use merman_lsp::{
-        CONFIG_SCHEMA_METHOD, FIXED_TODAY_SCHEMA_PATTERN, MermanLanguageServer, RULE_CATALOG_METHOD,
+        CONFIG_SCHEMA_METHOD, CONFIG_SCHEMA_RESPONSE_VERSION, FIXED_TODAY_SCHEMA_PATTERN,
+        MermanLanguageServer, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION,
     };
     pub use serde_json::from_value;
     pub use tokio::time::{Duration, timeout};

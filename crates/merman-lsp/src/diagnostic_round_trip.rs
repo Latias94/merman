@@ -16,8 +16,9 @@ use tower_lsp_server::ls_types::{
 };
 
 const DIAGNOSTIC_ID_PREFIX: &str = "m1";
+const UNAVAILABLE_DIAGNOSTIC_ID_PREFIX: &str = "u1";
 
-/// One immutable server-owned diagnostic projection and its code-action provenance.
+/// One immutable server-owned diagnostic result projection and its optional fix provenance.
 #[derive(Debug)]
 pub(crate) struct DiagnosticRoundTrip {
     scope: DiagnosticResultScope,
@@ -29,8 +30,23 @@ struct DiagnosticResultScope {
     uri: Uri,
     document_epoch: DocumentEpoch,
     document_version: i32,
-    analysis_result_identity: AnalysisResultIdentity,
+    source: DiagnosticResultSource,
     diagnostic_generation: DiagnosticGeneration,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiagnosticResultSource {
+    Analysis(AnalysisResultIdentity),
+    Unavailable(UnavailableDiagnosticSource),
+}
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub(crate) enum UnavailableDiagnosticSource {
+    AnalysisRejected,
+    ResourceLimited,
+    Discarded,
+    SyncLostInvalidIncrementalRange,
+    SyncLostSourceUnavailable,
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
@@ -71,11 +87,31 @@ impl DiagnosticRoundTrip {
                 uri: snapshot.uri().clone(),
                 document_epoch,
                 document_version: snapshot.version(),
-                analysis_result_identity: snapshot.analysis_result_identity(),
+                source: DiagnosticResultSource::Analysis(snapshot.analysis_result_identity()),
                 diagnostic_generation,
             },
             diagnostics: diagnostics.into_boxed_slice(),
         })
+    }
+
+    pub(crate) fn build_unavailable(
+        uri: Uri,
+        document_epoch: DocumentEpoch,
+        document_version: i32,
+        diagnostic_generation: DiagnosticGeneration,
+        source: UnavailableDiagnosticSource,
+        diagnostics: Vec<EditorDiagnostic>,
+    ) -> Self {
+        Self {
+            scope: DiagnosticResultScope {
+                uri,
+                document_epoch,
+                document_version,
+                source: DiagnosticResultSource::Unavailable(source),
+                diagnostic_generation,
+            },
+            diagnostics: diagnostics.into_boxed_slice(),
+        }
     }
 
     pub(crate) fn diagnostics_with_profile(
@@ -86,17 +122,15 @@ impl DiagnosticRoundTrip {
             .iter()
             .enumerate()
             .map(|(ordinal, diagnostic)| {
-                let data = profile.diagnostics.data.then(|| {
-                    serde_json::to_value(DiagnosticIdentityData {
-                        id: self.server_id(ordinal).to_wire(),
-                        document_version: Some(self.scope.document_version),
-                    })
-                    .ok()
-                });
+                let data = profile
+                    .diagnostics
+                    .data
+                    .then(|| self.diagnostic_data(ordinal))
+                    .flatten();
                 editor_diagnostic_to_lsp_with_data(
                     diagnostic,
                     &self.scope.uri,
-                    data.flatten(),
+                    data,
                     profile.diagnostics,
                 )
             })
@@ -159,12 +193,17 @@ impl DiagnosticRoundTrip {
     }
 
     pub(crate) fn result_id(&self) -> String {
-        format!(
-            "r1:{:016x}:{:016x}:{:016x}",
-            self.scope.analysis_result_identity.get(),
-            self.scope.document_epoch.0,
-            self.scope.diagnostic_generation.0,
-        )
+        match self.scope.source {
+            DiagnosticResultSource::Analysis(identity) => format!(
+                "r1:{:016x}:{:016x}:{:016x}",
+                identity.get(),
+                self.scope.document_epoch.0,
+                self.scope.diagnostic_generation.0,
+            ),
+            DiagnosticResultSource::Unavailable(source) => {
+                format!("ur1:{}", self.unavailable_scope(source))
+            }
+        }
     }
 
     pub(crate) fn estimated_owned_heap_bytes(&self) -> usize {
@@ -215,6 +254,9 @@ impl DiagnosticRoundTrip {
     }
 
     fn resolve(&self, diagnostic: &Diagnostic) -> Option<(ServerDiagnosticId, &EditorDiagnostic)> {
+        let DiagnosticResultSource::Analysis(analysis_result_identity) = self.scope.source else {
+            return None;
+        };
         let identity =
             serde_json::from_value::<DiagnosticIdentityData>(diagnostic.data.as_ref()?.clone())
                 .ok()?;
@@ -222,7 +264,7 @@ impl DiagnosticRoundTrip {
             return None;
         }
         let server_id = ServerDiagnosticId::from_wire(&identity.id)?;
-        if server_id.analysis_result_identity != self.scope.analysis_result_identity
+        if server_id.analysis_result_identity != analysis_result_identity
             || server_id.document_epoch != self.scope.document_epoch
             || server_id.diagnostic_generation != self.scope.diagnostic_generation
         {
@@ -244,11 +286,70 @@ impl DiagnosticRoundTrip {
     }
 
     fn server_id(&self, ordinal: usize) -> ServerDiagnosticId {
+        let DiagnosticResultSource::Analysis(analysis_result_identity) = self.scope.source else {
+            unreachable!("analysis server ids are only emitted for analysis result scopes");
+        };
         ServerDiagnosticId {
-            analysis_result_identity: self.scope.analysis_result_identity,
+            analysis_result_identity,
             document_epoch: self.scope.document_epoch,
             diagnostic_generation: self.scope.diagnostic_generation,
             ordinal: u64::try_from(ordinal).expect("diagnostic ordinal must fit u64"),
+        }
+    }
+
+    fn diagnostic_data(&self, ordinal: usize) -> Option<serde_json::Value> {
+        let data = match self.scope.source {
+            DiagnosticResultSource::Analysis(_) => DiagnosticIdentityData {
+                id: self.server_id(ordinal).to_wire(),
+                document_version: Some(self.scope.document_version),
+            },
+            DiagnosticResultSource::Unavailable(source) if source.is_analysis_owned() => {
+                DiagnosticIdentityData {
+                    id: format!(
+                        "{UNAVAILABLE_DIAGNOSTIC_ID_PREFIX}:{}:{ordinal:016x}",
+                        self.unavailable_scope(source),
+                    ),
+                    document_version: Some(self.scope.document_version),
+                }
+            }
+            DiagnosticResultSource::Unavailable(_) => {
+                return serde_json::to_value(crate::protocol::DiagnosticVersionData {
+                    document_version: self.scope.document_version,
+                })
+                .ok();
+            }
+        };
+        serde_json::to_value(data).ok()
+    }
+
+    fn unavailable_scope(&self, source: UnavailableDiagnosticSource) -> String {
+        let uri = self.scope.uri.as_str();
+        format!(
+            "{:x}:{uri}:{:016x}:{}:{:016x}:{}",
+            uri.len(),
+            self.scope.document_epoch.0,
+            self.scope.document_version,
+            self.scope.diagnostic_generation.0,
+            source.wire_name(),
+        )
+    }
+}
+
+impl UnavailableDiagnosticSource {
+    const fn is_analysis_owned(self) -> bool {
+        matches!(
+            self,
+            Self::AnalysisRejected | Self::ResourceLimited | Self::Discarded
+        )
+    }
+
+    const fn wire_name(self) -> &'static str {
+        match self {
+            Self::AnalysisRejected => "analysis-rejected",
+            Self::ResourceLimited => "resource-limited",
+            Self::Discarded => "discarded",
+            Self::SyncLostInvalidIncrementalRange => "sync-lost-invalid-incremental-range",
+            Self::SyncLostSourceUnavailable => "sync-lost-source-unavailable",
         }
     }
 }
@@ -300,7 +401,7 @@ impl SharedFixIdentity {
 
 #[cfg(test)]
 mod tests {
-    use super::DiagnosticRoundTrip;
+    use super::{DiagnosticRoundTrip, UnavailableDiagnosticSource};
     use crate::client_profile::ClientProtocolProfile;
     use crate::snapshot::{DiagnosticGeneration, DocumentEpoch, snapshot_for_test};
     use merman_analysis::{
@@ -309,6 +410,7 @@ mod tests {
         DiagnosticFixEdit, DiagnosticSeverity, DiagnosticSpan, LspRange, SourceDescriptor,
         SourcePosition, Utf16Position,
     };
+    use merman_editor_core::analysis_diagnostic_to_editor;
     use serde_json::json;
     use std::str::FromStr;
     use tower_lsp_server::ls_types::{
@@ -470,6 +572,146 @@ mod tests {
     }
 
     #[test]
+    fn unavailable_analysis_identity_binds_the_exact_document_scope_and_state() {
+        let uri = Uri::from_str("file:///tmp/unavailable.mmd").unwrap();
+        let diagnostic = analysis_diagnostic_to_editor(&AnalysisDiagnostic::error(
+            "merman.resource.source_bytes_exceeded",
+            DiagnosticCategory::Resource,
+            "source unavailable",
+        ));
+        let original = unavailable_round_trip(
+            uri.clone(),
+            DOCUMENT_VERSION,
+            DocumentEpoch(1),
+            DiagnosticGeneration(1),
+            UnavailableDiagnosticSource::ResourceLimited,
+            diagnostic.clone(),
+        );
+        let repeated = unavailable_round_trip(
+            uri.clone(),
+            DOCUMENT_VERSION,
+            DocumentEpoch(1),
+            DiagnosticGeneration(1),
+            UnavailableDiagnosticSource::ResourceLimited,
+            diagnostic.clone(),
+        );
+        let reopened = unavailable_round_trip(
+            uri.clone(),
+            DOCUMENT_VERSION,
+            DocumentEpoch(2),
+            DiagnosticGeneration(1),
+            UnavailableDiagnosticSource::ResourceLimited,
+            diagnostic.clone(),
+        );
+        let reconfigured = unavailable_round_trip(
+            uri.clone(),
+            DOCUMENT_VERSION,
+            DocumentEpoch(1),
+            DiagnosticGeneration(2),
+            UnavailableDiagnosticSource::ResourceLimited,
+            diagnostic.clone(),
+        );
+        let relocated = unavailable_round_trip(
+            Uri::from_str("file:///tmp/relocated.mmd").unwrap(),
+            DOCUMENT_VERSION,
+            DocumentEpoch(1),
+            DiagnosticGeneration(1),
+            UnavailableDiagnosticSource::ResourceLimited,
+            diagnostic.clone(),
+        );
+        let changed_version = unavailable_round_trip(
+            uri,
+            DOCUMENT_VERSION + 1,
+            DocumentEpoch(1),
+            DiagnosticGeneration(1),
+            UnavailableDiagnosticSource::ResourceLimited,
+            diagnostic.clone(),
+        );
+        let changed_state = unavailable_round_trip(
+            Uri::from_str("file:///tmp/unavailable.mmd").unwrap(),
+            DOCUMENT_VERSION,
+            DocumentEpoch(1),
+            DiagnosticGeneration(1),
+            UnavailableDiagnosticSource::Discarded,
+            diagnostic,
+        );
+
+        assert_eq!(original.result_id(), repeated.result_id());
+        assert_eq!(first_id(&original), first_id(&repeated));
+        assert_ne!(original.result_id(), reopened.result_id());
+        assert_ne!(first_id(&original), first_id(&reopened));
+        assert_ne!(original.result_id(), reconfigured.result_id());
+        assert_ne!(first_id(&original), first_id(&reconfigured));
+        assert_ne!(original.result_id(), relocated.result_id());
+        assert_ne!(first_id(&original), first_id(&relocated));
+        assert_ne!(original.result_id(), changed_version.result_id());
+        assert_ne!(first_id(&original), first_id(&changed_version));
+        assert_ne!(original.result_id(), changed_state.result_id());
+        assert_ne!(first_id(&original), first_id(&changed_state));
+        assert!(first_id(&original).starts_with("u1:"));
+        let data = original.diagnostics_with_profile(&ClientProtocolProfile::permissive())[0]
+            .data
+            .clone()
+            .expect("unavailable analysis diagnostic identity");
+        assert_eq!(data.as_object().map(serde_json::Map::len), Some(2));
+        assert_eq!(data["documentVersion"], DOCUMENT_VERSION);
+    }
+
+    #[test]
+    fn unavailable_analysis_identity_assigns_each_diagnostic_a_stable_ordinal() {
+        let uri = Uri::from_str("file:///tmp/unavailable-ordinals.mmd").unwrap();
+        let diagnostic = analysis_diagnostic_to_editor(&AnalysisDiagnostic::error(
+            "merman.resource.source_bytes_exceeded",
+            DiagnosticCategory::Resource,
+            "source unavailable",
+        ));
+        let round_trip = DiagnosticRoundTrip::build_unavailable(
+            uri,
+            DocumentEpoch(1),
+            DOCUMENT_VERSION,
+            DiagnosticGeneration(1),
+            UnavailableDiagnosticSource::AnalysisRejected,
+            vec![diagnostic.clone(), diagnostic],
+        );
+        let diagnostics = round_trip.diagnostics_with_profile(&ClientProtocolProfile::permissive());
+        let first = diagnostics[0].data.as_ref().unwrap()["id"]
+            .as_str()
+            .unwrap();
+        let second = diagnostics[1].data.as_ref().unwrap()["id"]
+            .as_str()
+            .unwrap();
+
+        assert_ne!(first, second);
+        assert!(first.ends_with(":0000000000000000"));
+        assert!(second.ends_with(":0000000000000001"));
+    }
+
+    #[test]
+    fn sync_lost_preserves_the_version_only_data_exception() {
+        let uri = Uri::from_str("file:///tmp/sync-lost.mmd").unwrap();
+        let diagnostic = analysis_diagnostic_to_editor(&AnalysisDiagnostic::error(
+            "merman.lsp.document_sync_lost",
+            DiagnosticCategory::Internal,
+            "document text is unavailable",
+        ));
+        let round_trip = unavailable_round_trip(
+            uri,
+            DOCUMENT_VERSION,
+            DocumentEpoch(1),
+            DiagnosticGeneration(1),
+            UnavailableDiagnosticSource::SyncLostSourceUnavailable,
+            diagnostic,
+        );
+        let data = round_trip.diagnostics_with_profile(&ClientProtocolProfile::permissive())[0]
+            .data
+            .clone()
+            .expect("sync-lost version data");
+
+        assert_eq!(data, json!({ "documentVersion": DOCUMENT_VERSION }));
+        assert!(round_trip.result_id().starts_with("ur1:"));
+    }
+
+    #[test]
     fn fix_aggregation_uses_shared_arc_provenance_not_equal_contents() {
         let uri = Uri::from_str("file:///tmp/provenance.mmd").unwrap();
         let snapshot = snapshot_for_test(uri.clone(), DOCUMENT_VERSION, "flowchart TD\nA-->B\n");
@@ -559,6 +801,24 @@ mod tests {
             &AnalysisCancellationToken::new(),
         )
         .expect("test projection must not be cancelled")
+    }
+
+    fn unavailable_round_trip(
+        uri: Uri,
+        version: i32,
+        epoch: DocumentEpoch,
+        generation: DiagnosticGeneration,
+        source: UnavailableDiagnosticSource,
+        diagnostic: merman_editor_core::EditorDiagnostic,
+    ) -> DiagnosticRoundTrip {
+        DiagnosticRoundTrip::build_unavailable(
+            uri,
+            epoch,
+            version,
+            generation,
+            source,
+            vec![diagnostic],
+        )
     }
 
     fn direction_diagnostic(

@@ -125,9 +125,16 @@ impl AnalysisOptionsJson {
     pub fn to_analysis_options(&self) -> Result<AnalysisOptions, AnalysisOptionsJsonError> {
         let today = self.fixed_today()?;
         let offset_minutes = self.fixed_local_offset_minutes()?;
+        let limits = self.validated_resource_limits()?;
         let mut analysis = AnalysisOptions::default()
-            .with_max_source_bytes(self.max_source_bytes()?)
-            .with_max_document_diagrams(self.max_document_diagrams()?);
+            .with_max_source_bytes(Self::resource_limit_from(
+                limits,
+                merman_core::resources::InputResourceLimitId::MaxSourceBytes.as_str(),
+            ))
+            .with_max_document_diagrams(Self::resource_limit_from(
+                limits,
+                crate::MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID,
+            ));
 
         if let Some(site_config) = self.site_config()? {
             analysis = analysis.with_site_config(site_config);
@@ -148,44 +155,34 @@ impl AnalysisOptionsJson {
     }
 
     pub fn max_source_bytes(&self) -> Result<Option<usize>, AnalysisOptionsJsonError> {
-        self.resource_limit(merman_core::resources::InputResourceLimitId::MaxSourceBytes.as_str())
+        Ok(Self::resource_limit_from(
+            self.validated_resource_limits()?,
+            merman_core::resources::InputResourceLimitId::MaxSourceBytes.as_str(),
+        ))
     }
 
     pub fn max_document_diagrams(&self) -> Result<Option<usize>, AnalysisOptionsJsonError> {
-        self.resource_limit(crate::MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID)
+        Ok(Self::resource_limit_from(
+            self.validated_resource_limits()?,
+            crate::MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID,
+        ))
     }
 
-    fn resource_limit(&self, limit_id: &str) -> Result<Option<usize>, AnalysisOptionsJsonError> {
+    fn validated_resource_limits(
+        &self,
+    ) -> Result<Option<&BTreeMap<String, usize>>, AnalysisOptionsJsonError> {
         let Some(resources) = self.resources.as_ref() else {
             return Ok(None);
         };
-        if let Some(unknown) = resources.limits.keys().find(|id| {
-            AnalysisConfigContract::current()
-                .resource_limit_minimum(id)
-                .is_none()
-        }) {
-            return Err(AnalysisOptionsJsonError::new(format!(
-                "unknown analysis resource limit id: {unknown}"
-            )));
-        }
-        let limit = resources.limits.get(limit_id).copied();
-        let minimum_value = AnalysisConfigContract::current()
-            .resource_limit_minimum(limit_id)
-            .expect("analysis resource limit id must be validated by its owner descriptor");
-        let maximum_value = AnalysisConfigContract::current()
-            .resource_limit_maximum(limit_id)
-            .expect("analysis resource limit id must be validated by its owner descriptor");
-        if limit.is_some_and(|value| value < minimum_value) {
-            return Err(AnalysisOptionsJsonError::new(format!(
-                "resources.limits.{limit_id} must be at least {minimum_value}"
-            )));
-        }
-        if limit.is_some_and(|value| value > maximum_value) {
-            return Err(AnalysisOptionsJsonError::new(format!(
-                "resources.limits.{limit_id} must be at most {maximum_value}"
-            )));
-        }
-        Ok(limit)
+        crate::config_contract::validate_resource_limit_values(&resources.limits)?;
+        Ok(Some(&resources.limits))
+    }
+
+    fn resource_limit_from(
+        limits: Option<&BTreeMap<String, usize>>,
+        limit_id: &str,
+    ) -> Option<usize> {
+        limits.and_then(|limits| limits.get(limit_id).copied())
     }
 
     pub fn rule_config(&self) -> Result<AnalysisRuleConfig, AnalysisOptionsJsonError> {
@@ -276,15 +273,19 @@ impl AnalysisOptionsJson {
 
 fn parse_lint_profile(value: &str) -> Result<AnalysisRuleProfile, AnalysisOptionsJsonError> {
     AnalysisRuleProfile::from_config_str(value).ok_or_else(|| {
-        AnalysisOptionsJsonError::new("lint.profile must be core, recommended, or strict")
+        AnalysisOptionsJsonError::new(format!(
+            "lint.profile {}",
+            crate::config_contract::lint_profile_requirement()
+        ))
     })
 }
 
 fn parse_lint_severity(value: &str) -> Result<DiagnosticSeverity, AnalysisOptionsJsonError> {
     DiagnosticSeverity::from_config_str(value).ok_or_else(|| {
-        AnalysisOptionsJsonError::new(
-            "lint.rule_severities.severity must be error, warning, info, or hint",
-        )
+        AnalysisOptionsJsonError::new(format!(
+            "lint.rule_severities.severity {}",
+            crate::config_contract::diagnostic_severity_requirement()
+        ))
     })
 }
 

@@ -1,7 +1,4 @@
-use super::{
-    FenceReferenceGroup, FenceTextIndex, FenceTextIndexData, FenceTextIndexSource,
-    byte_span_from_source,
-};
+use super::{FenceTextIndex, FenceTextIndexData, FenceTextIndexSource};
 
 #[cfg(test)]
 pub(super) fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> FenceTextIndex {
@@ -46,14 +43,6 @@ pub(super) fn from_core_facts_cancellable(
     for (symbol_index, symbol) in facts.symbols.iter().enumerate() {
         if symbol_index.is_multiple_of(128) {
             cancellation.checkpoint()?;
-        }
-        let role = symbol.role;
-        if role.contributes_references() {
-            index
-                .references
-                .entry(FenceReferenceGroup::from_semantic_item(symbol))
-                .or_default()
-                .push(byte_span_from_source(symbol.selection));
         }
         index.semantic_items.push(symbol.clone());
     }

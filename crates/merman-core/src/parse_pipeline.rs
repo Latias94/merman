@@ -19,15 +19,6 @@ use diagram::{
 use serde::Deserialize;
 use serde_json::Value;
 
-fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
-    payload
-        .downcast_ref::<&str>()
-        .copied()
-        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
-        .unwrap_or("panic while analyzing Mermaid source")
-        .to_string()
-}
-
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ParseSource<'a> {
     Detect,
@@ -426,7 +417,9 @@ impl<'a> ParsePipeline<'a> {
                 return Ok(DiagramSnapshotCapture::Snapshot(Some(
                     DiagramParseSnapshot::new(
                         meta,
-                        DiagramParseOutcome::Panicked(panic_payload_message(payload.as_ref())),
+                        DiagramParseOutcome::Panicked(
+                            CapturedPanic::from_payload(payload).message().to_string(),
+                        ),
                         ParsedEditorFacts::Unavailable,
                         source_config,
                         recovered_incomplete_directive,
@@ -920,20 +913,28 @@ impl<'a> ParsePipeline<'a> {
             directive_recovery,
             control,
         )?;
-        let outcome = match captured.result {
-            Ok(preprocessed) => match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                self.finish_preprocessed_controlled(preprocessed, known_type, control)
-            })) {
-                Ok(result) => match result? {
-                    Ok((source, metadata)) => PreparedPreprocessOutcome::Ready(source, metadata),
-                    Err(error) => PreparedPreprocessOutcome::Failed(error),
-                },
-                Err(payload) => PreparedPreprocessOutcome::Panicked(CapturedPanic::new(
-                    panic_payload_message(payload.as_ref()),
-                    payload,
-                )),
-            },
-            Err(error) => PreparedPreprocessOutcome::Failed(error),
+        let outcome = match captured.outcome {
+            crate::preprocess::PreprocessCaptureResult::Ready(preprocessed) => {
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    self.finish_preprocessed_controlled(preprocessed, known_type, control)
+                })) {
+                    Ok(result) => match result? {
+                        Ok((source, metadata)) => {
+                            PreparedPreprocessOutcome::Ready(source, metadata)
+                        }
+                        Err(error) => PreparedPreprocessOutcome::Failed(error),
+                    },
+                    Err(payload) => {
+                        PreparedPreprocessOutcome::Panicked(CapturedPanic::from_payload(payload))
+                    }
+                }
+            }
+            crate::preprocess::PreprocessCaptureResult::Failed(error) => {
+                PreparedPreprocessOutcome::Failed(error)
+            }
+            crate::preprocess::PreprocessCaptureResult::Panicked(panic) => {
+                PreparedPreprocessOutcome::Panicked(panic)
+            }
         };
         Ok(PreparedPreprocessCapture {
             outcome,
@@ -1246,6 +1247,8 @@ fn sanitized_title(title: Option<&str>, effective_config: &MermaidConfig) -> Opt
 
 #[cfg(test)]
 mod editor_parse_source_map_tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use super::{EditorParseSourceMap, ParsePipeline, PreprocessPath};
     use crate::{
         DetectorRegistry, DiagramSnapshotCapture, EditorExpectedSyntax, EditorExpectedSyntaxKind,
@@ -1255,6 +1258,13 @@ mod editor_parse_source_map_tests {
 
     fn panicking_detector(_source: &str, _config: &mut MermaidConfig) -> bool {
         panic!("detector fixture panic")
+    }
+
+    static FRONTMATTER_PROBE_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+    fn frontmatter_probe_detector(_source: &str, _config: &mut MermaidConfig) -> bool {
+        FRONTMATTER_PROBE_CALLS.fetch_add(1, Ordering::Relaxed);
+        panic!("frontmatter probe detector must not run")
     }
 
     #[test]
@@ -1301,9 +1311,9 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
-    fn editor_capture_retains_source_config_when_detection_panics() {
+    fn editor_capture_retains_source_config_when_init_config_detection_panics() {
         let source = concat!(
-            "%%{ initialize: { lazyLoadedDiagrams: true } }%%\n",
+            "%%{ initialize: { lazyLoadedDiagrams: true, config: { htmlLabels: false } } }%%\n",
             "detector-panic-fixture\n",
         );
         let mut engine = Engine::new();
@@ -1378,6 +1388,39 @@ mod editor_parse_source_map_tests {
         assert_eq!(source_config.directives().len(), 1);
         assert_eq!(source_config.directives()[0].keyword(), "initialize");
         assert!(!source_config.rewrite_safe());
+    }
+
+    #[test]
+    fn editor_capture_preserves_frontmatter_error_before_later_detector_panic() {
+        let source = concat!(
+            "---\n",
+            "config: [\n",
+            "---\n",
+            "%%{ initialize: { config: { htmlLabels: false } } }%%\n",
+            "detector-panic-fixture\n",
+        );
+        let mut engine = Engine::new();
+        *engine.registry_mut() = DetectorRegistry::new();
+        FRONTMATTER_PROBE_CALLS.store(0, Ordering::Relaxed);
+        engine
+            .registry_mut()
+            .add_fn("detector-panic-fixture", frontmatter_probe_detector);
+
+        let captured = engine
+            .capture_diagram_snapshot_controlled_sync(source, &ParseControl::new())
+            .expect("an active parse control must not cancel");
+
+        let DiagramSnapshotCapture::Failed {
+            error: Error::InvalidFrontMatterYaml { .. },
+            source_config,
+        } = captured
+        else {
+            panic!("the first preprocessing error must win over later detector work");
+        };
+        assert_eq!(source_config.directives().len(), 1);
+        assert_eq!(source_config.directives()[0].keyword(), "initialize");
+        assert!(!source_config.rewrite_safe());
+        assert_eq!(FRONTMATTER_PROBE_CALLS.load(Ordering::Relaxed), 0);
     }
 
     #[test]

@@ -7,7 +7,11 @@ import type {
   PreviewDisplayMode,
 } from "./preview-model.js";
 import {
-  analysisInitializationSettings,
+  BUNDLED_ANALYSIS_CONFIG,
+  type NegotiatedAnalysisConfig,
+} from "./analysis-config-contract.js";
+import {
+  bootstrapAnalysisSettings,
   normalizeAnalysisSettings,
   projectAnalysisSettings,
   type AnalysisSettings,
@@ -103,32 +107,31 @@ export function getLanguageIntelligenceSettings(): LanguageIntelligenceSettings 
   };
 }
 
-export function getAnalysisSettings(): AnalysisSettings {
-  const analysisConfig = vscode.workspace.getConfiguration("merman.analysis");
-  return normalizeAnalysisSettings({
-    fixedToday: analysisConfig.get<unknown>("fixed_today", ""),
-    fixedLocalOffsetMinutes: analysisConfig.get<unknown>("fixed_local_offset_minutes", null),
-    siteConfig: analysisConfig.get<unknown>("site_config", {}),
-    maxSourceBytes: analysisConfig.get<unknown>("resources.limits.max_source_bytes", null),
-    maxDocumentDiagrams: analysisConfig.get<unknown>(
-      "resources.limits.max_document_diagrams",
-      null,
-    ),
-    lintProfile: analysisConfig.get<string>("lint.profile", "core"),
-    enableRules: analysisConfig.get<unknown[]>("lint.enable_rules", []),
-    disableRules: analysisConfig.get<unknown[]>("lint.disable_rules", []),
-    ruleSeverities: analysisConfig.get<unknown[]>("lint.rule_severities", []),
-  });
+export function getAnalysisSettings(contract: NegotiatedAnalysisConfig): AnalysisSettings {
+  return normalizeAnalysisSettings(getRawAnalysisSettings(contract), contract);
 }
 
 export function getInitializationAnalysisSettings(): AnalysisSettings {
-  return analysisInitializationSettings(getAnalysisSettings());
+  return bootstrapAnalysisSettings(getRawAnalysisSettings(BUNDLED_ANALYSIS_CONFIG));
+}
+
+function getRawAnalysisSettings(contract: Pick<NegotiatedAnalysisConfig, "settings">) {
+  const analysisConfig = vscode.workspace.getConfiguration("merman.analysis");
+  return Object.fromEntries(
+    contract.settings.map((setting) => [
+      setting.path,
+      analysisConfig.get<unknown>(setting.path),
+    ]),
+  );
 }
 
 export function getDidChangeConfigurationPayload(
-  configurableRuleIds: readonly string[],
+  contract: NegotiatedAnalysisConfig,
 ): { payload: Record<string, unknown>; unsupportedRuleIds: string[] } {
-  const projection = projectAnalysisSettings(getAnalysisSettings(), configurableRuleIds);
+  const projection = projectAnalysisSettings(
+    getAnalysisSettings(contract),
+    contract.configurableRuleIds,
+  );
   return {
     payload: { analysis: projection.settings },
     unsupportedRuleIds: projection.unsupportedRuleIds,

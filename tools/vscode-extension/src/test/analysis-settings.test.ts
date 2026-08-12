@@ -2,34 +2,75 @@ import * as assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
-  analysisInitializationSettings,
+  bootstrapAnalysisSettings,
   normalizeAnalysisSettings,
   projectAnalysisSettings,
   type RawAnalysisSettings,
 } from "../analysis-settings.js";
+import {
+  BUNDLED_ANALYSIS_CONFIG,
+  type AnalysisConfigClientSetting,
+  type NegotiatedAnalysisConfig,
+} from "../analysis-config-contract.js";
 
 describe("analysis settings normalization", () => {
-  it("keeps only integer analysis values accepted by the LSP parser", () => {
-    assert.deepEqual(normalizeAnalysisSettings({
-      ...defaultRawAnalysisSettings(),
-      fixedToday: "2024-02-29",
-      fixedLocalOffsetMinutes: -1439,
-      siteConfig: {
-        theme: "dark",
-        flowchart: {
-          htmlLabels: false,
+  it("bootstraps only generated snapshot-affecting settings before documents open", () => {
+    assert.deepEqual(bootstrapAnalysisSettings(rawSettings({
+      fixed_today: "2026-08-12",
+      "resources.limits.max_source_bytes": 8 * 1024 * 1024,
+      "resources.limits.max_document_diagrams": 512,
+      "lint.profile": "recommended",
+      "lint.enable_rules": ["merman.parse.no_diagram"],
+    })), {
+      fixed_today: "2026-08-12",
+      resources: {
+        limits: {
+          max_source_bytes: 8 * 1024 * 1024,
+          max_document_diagrams: 512,
         },
       },
-      maxSourceBytes: 1024,
-      maxDocumentDiagrams: 256,
-    }), {
+    });
+  });
+
+  it("rejects invalid bootstrap dates and numeric ranges before initialize", () => {
+    for (const fixedToday of ["2026-02-29", "2026-13-01", "20260812"]) {
+      assert.deepEqual(bootstrapAnalysisSettings(rawSettings({
+        fixed_today: fixedToday,
+      })), {});
+    }
+
+    assert.deepEqual(bootstrapAnalysisSettings(rawSettings({
+      fixed_today: "-2147483648-01-01",
+      fixed_local_offset_minutes: 1439,
+      "resources.limits.max_source_bytes": 0,
+      "resources.limits.max_document_diagrams": 0x1_0000_0000,
+    })), {
+      fixed_local_offset_minutes: 1439,
+    });
+
+    assert.deepEqual(bootstrapAnalysisSettings(rawSettings({
+      fixed_local_offset_minutes: 1440,
+      "resources.limits.max_source_bytes": 4096.5,
+      "resources.limits.max_document_diagrams": -1,
+    })), {});
+  });
+
+  it("uses the same bundled constraints for negotiated normalization", () => {
+    assert.deepEqual(normalizeAnalysisSettings(rawSettings({
       fixed_today: "2024-02-29",
       fixed_local_offset_minutes: -1439,
       site_config: {
         theme: "dark",
-        flowchart: {
-          htmlLabels: false,
-        },
+        flowchart: { htmlLabels: false },
+      },
+      "resources.limits.max_source_bytes": 1024,
+      "resources.limits.max_document_diagrams": 256,
+    }), BUNDLED_ANALYSIS_CONFIG), {
+      fixed_today: "2024-02-29",
+      fixed_local_offset_minutes: -1439,
+      site_config: {
+        theme: "dark",
+        flowchart: { htmlLabels: false },
       },
       resources: {
         limits: {
@@ -37,232 +78,162 @@ describe("analysis settings normalization", () => {
           max_document_diagrams: 256,
         },
       },
-      lint: {
-        profile: "core",
-      },
+      lint: { profile: "core" },
     });
   });
 
-  it("drops non-object site_config values before sending LSP settings", () => {
+  it("keeps representable wide dates and drops unrepresentable signed-year boundaries", () => {
+    for (const fixedToday of ["+10000-01-01", "-10000-01-01"]) {
+      assert.equal(normalizeAnalysisSettings(rawSettings({
+        fixed_today: fixedToday,
+      }), BUNDLED_ANALYSIS_CONFIG).fixed_today, fixedToday);
+    }
+
+    for (const fixedToday of ["+2147483647-12-31", "-2147483648-01-01"]) {
+      assert.equal(normalizeAnalysisSettings(rawSettings({
+        fixed_today: fixedToday,
+      }), BUNDLED_ANALYSIS_CONFIG).fixed_today, undefined);
+    }
+  });
+
+  it("omits invalid object values and preserves the owner-defined zero diagram limit", () => {
     for (const siteConfig of [null, [], "dark"]) {
-      assert.deepEqual(normalizeAnalysisSettings({
-        ...defaultRawAnalysisSettings(),
-        siteConfig,
-      }), {
-        lint: {
-          profile: "core",
-        },
+      assert.deepEqual(normalizeAnalysisSettings(rawSettings({
+        site_config: siteConfig,
+        "resources.limits.max_document_diagrams": 0,
+      }), BUNDLED_ANALYSIS_CONFIG), {
+        resources: { limits: { max_document_diagrams: 0 } },
+        lint: { profile: "core" },
       });
     }
   });
 
-  it("keeps a document-diagram limit without requiring a source-byte override", () => {
+  it("omits unset values so the connected server owns defaults", () => {
     assert.deepEqual(normalizeAnalysisSettings({
-      ...defaultRawAnalysisSettings(),
-      maxDocumentDiagrams: 128,
-    }), {
-      resources: {
-        limits: {
-          max_document_diagrams: 128,
-        },
-      },
-      lint: {
-        profile: "core",
-      },
-    });
+      fixed_today: undefined,
+      fixed_local_offset_minutes: undefined,
+      site_config: undefined,
+      "resources.limits.max_source_bytes": undefined,
+      "resources.limits.max_document_diagrams": undefined,
+      "lint.profile": undefined,
+      "lint.enable_rules": undefined,
+      "lint.disable_rules": undefined,
+      "lint.rule_severities": undefined,
+    }, BUNDLED_ANALYSIS_CONFIG), {});
   });
 
-  it("drops invalid fixed_today strings before sending LSP settings", () => {
-    for (const fixedToday of [
-      "2026-02-29",
-      "2026-13-01",
-      "20260705",
-      "+2026-08-03",
-      "+010000-01-01",
-      "-0000-01-01",
-      "-010000-01-01",
-      "+2147483648-01-01",
-      "-2147483649-01-01",
-    ]) {
-      assert.deepEqual(normalizeAnalysisSettings({
-        ...defaultRawAnalysisSettings(),
-        fixedToday,
-      }), {
-        lint: {
-          profile: "core",
-        },
-      });
-    }
-  });
-
-  it("keeps canonical signed 32-bit civil-year boundaries", () => {
-    for (const fixedToday of [
-      "+10000-01-01",
-      "-10000-01-01",
-      "+2147483647-12-31",
-      "-2147483648-01-01",
-    ]) {
-      assert.equal(normalizeAnalysisSettings({
-        ...defaultRawAnalysisSettings(),
-        fixedToday,
-      }).fixed_today, fixedToday);
-    }
-  });
-
-  it("drops fractional and out-of-range numeric values before sending LSP settings", () => {
-    assert.deepEqual(normalizeAnalysisSettings({
-      ...defaultRawAnalysisSettings(),
-      fixedLocalOffsetMinutes: 1439.5,
-      maxSourceBytes: 4096.25,
-      maxDocumentDiagrams: 256.5,
-    }), {
-      lint: {
-        profile: "core",
-      },
-    });
-    assert.deepEqual(normalizeAnalysisSettings({
-      ...defaultRawAnalysisSettings(),
-      fixedLocalOffsetMinutes: 1440,
-      maxSourceBytes: -1,
-      maxDocumentDiagrams: -1,
-    }), {
-      lint: {
-        profile: "core",
-      },
-    });
-    assert.deepEqual(normalizeAnalysisSettings({
-      ...defaultRawAnalysisSettings(),
-      maxSourceBytes: 0x1_0000_0000,
-      maxDocumentDiagrams: 0x1_0000_0000,
-    }), {
-      lint: {
-        profile: "core",
-      },
-    });
-  });
-
-  it("preserves the analysis-owned zero document limit", () => {
-    assert.deepEqual(normalizeAnalysisSettings({
-      ...defaultRawAnalysisSettings(),
-      maxDocumentDiagrams: 0,
-    }), {
-      resources: {
-        limits: {
-          max_document_diagrams: 0,
-        },
-      },
-      lint: {
-        profile: "core",
-      },
-    });
-  });
-
-  it("keeps recommended authoring diagnostics as an explicit opt-in", () => {
-    assert.deepEqual(normalizeAnalysisSettings({
-      ...defaultRawAnalysisSettings(),
-      lintProfile: "recommended",
-    }), {
-      lint: {
-        profile: "recommended",
-      },
-    });
-  });
-
-  it("preserves future rule ids while still validating the surrounding shape", () => {
-    assert.deepEqual(normalizeAnalysisSettings({
-      ...defaultRawAnalysisSettings(),
-      enableRules: [
-        "merman.authoring.flowchart.explicit_direction",
-        "merman.unknown.rule",
-        "   ",
-      ],
-      disableRules: ["merman.resource.source_bytes_exceeded"],
-      ruleSeverities: [
+  it("accepts additive catalogs and per-setting ranges from a connected server", () => {
+    const contract: NegotiatedAnalysisConfig = {
+      ...BUNDLED_ANALYSIS_CONFIG,
+      profiles: [...BUNDLED_ANALYSIS_CONFIG.profiles, "pedantic"],
+      severities: [...BUNDLED_ANALYSIS_CONFIG.severities, "notice"],
+      settings: [
+        ...replaceSetting(
+          BUNDLED_ANALYSIS_CONFIG.settings,
+          "resources.limits.max_source_bytes",
+          (setting) => ({
+            ...setting,
+            normalization: { kind: "integer", minimum: 8, maximum: 2048 },
+          }),
+        ),
         {
-          rule_id: "merman.config.invalid_theme_color",
-          severity: "hint",
-        },
-        {
-          rule_id: "merman.internal.panic",
-          severity: "warning",
+          path: "lint.future_config",
+          changeScope: "diagnostics_only",
+          runtimeConstraints: [],
+          normalization: { kind: "object" },
         },
       ],
-    }), {
+    };
+
+    assert.deepEqual(normalizeAnalysisSettings(rawSettings({
+      "resources.limits.max_source_bytes": 8,
+      "lint.profile": "pedantic",
+      "lint.future_config": { mode: "fast" },
+      "lint.rule_severities": [
+        { rule_id: "merman.future.rule", severity: "notice" },
+      ],
+    }), contract), {
+      resources: { limits: { max_source_bytes: 8 } },
       lint: {
-        profile: "core",
-        enable_rules: [
-          "merman.authoring.flowchart.explicit_direction",
-          "merman.unknown.rule",
-        ],
-        disable_rules: ["merman.resource.source_bytes_exceeded"],
+        profile: "pedantic",
+        future_config: { mode: "fast" },
+        rule_severities: [{ rule_id: "merman.future.rule", severity: "notice" }],
+      },
+    });
+  });
+
+  it("rejects surrounding whitespace instead of rewriting contract strings", () => {
+    assert.deepEqual(normalizeAnalysisSettings(rawSettings({
+      fixed_today: " 2026-08-12",
+      "lint.profile": "core ",
+      "lint.enable_rules": [" merman.parse.no_diagram"],
+      "lint.disable_rules": ["merman.parse.no_diagram "],
+      "lint.rule_severities": [
+        { rule_id: " merman.parse.no_diagram", severity: "warning" },
+        { rule_id: "merman.parse.no_diagram", severity: " warning" },
+        { rule_id: "merman.parse.no_diagram", severity: "warning" },
+      ],
+    }), BUNDLED_ANALYSIS_CONFIG), {
+      lint: {
         rule_severities: [
-          {
-            rule_id: "merman.config.invalid_theme_color",
-            severity: "hint",
-          },
-          {
-            rule_id: "merman.internal.panic",
-            severity: "warning",
-          },
+          { rule_id: "merman.parse.no_diagram", severity: "warning" },
         ],
       },
     });
-  });
 
-  it("defers rule ids during initialization while preserving other analysis settings", () => {
-    const settings = normalizeAnalysisSettings({
-      ...defaultRawAnalysisSettings(),
-      fixedToday: "2024-02-29",
-      maxSourceBytes: 1024,
-      lintProfile: "recommended",
-      enableRules: ["merman.future.rule"],
-      ruleSeverities: [{ rule_id: "merman.future.rule", severity: "hint" }],
-    });
-
-    assert.deepEqual(analysisInitializationSettings(settings), {
-      fixed_today: "2024-02-29",
-      resources: { limits: { max_source_bytes: 1024 } },
-      lint: { profile: "recommended" },
-    });
+    assert.deepEqual(bootstrapAnalysisSettings(rawSettings({
+      fixed_today: "2026-08-12 ",
+    })), {});
   });
 
   it("projects rule settings through the connected server catalog", () => {
-    const settings = normalizeAnalysisSettings({
-      ...defaultRawAnalysisSettings(),
-      maxDocumentDiagrams: 12,
-      enableRules: ["merman.future.rule", "merman.unsupported.rule"],
-      disableRules: ["merman.internal.panic", "merman.future.rule"],
-      ruleSeverities: [
+    const settings = normalizeAnalysisSettings(rawSettings({
+      "resources.limits.max_document_diagrams": 12,
+      "lint.enable_rules": ["merman.parse.no_diagram", "merman.unsupported.rule"],
+      "lint.disable_rules": ["merman.config.invalid_theme_color", "merman.parse.no_diagram"],
+      "lint.rule_severities": [
         { rule_id: "merman.unsupported.rule", severity: "warning" },
-        { rule_id: "merman.future.rule", severity: "hint" },
+        { rule_id: "merman.parse.no_diagram", severity: "hint" },
       ],
-    });
+    }), BUNDLED_ANALYSIS_CONFIG);
 
-    assert.deepEqual(projectAnalysisSettings(settings, ["merman.future.rule"]), {
+    assert.deepEqual(projectAnalysisSettings(settings, ["merman.parse.no_diagram"]), {
       settings: {
         resources: { limits: { max_document_diagrams: 12 } },
         lint: {
           profile: "core",
-          enable_rules: ["merman.future.rule"],
-          disable_rules: ["merman.future.rule"],
-          rule_severities: [{ rule_id: "merman.future.rule", severity: "hint" }],
+          enable_rules: ["merman.parse.no_diagram"],
+          disable_rules: ["merman.parse.no_diagram"],
+          rule_severities: [{ rule_id: "merman.parse.no_diagram", severity: "hint" }],
         },
       },
-      unsupportedRuleIds: ["merman.unsupported.rule", "merman.internal.panic"],
+      unsupportedRuleIds: [
+        "merman.unsupported.rule",
+        "merman.config.invalid_theme_color",
+      ],
     });
   });
 });
 
-function defaultRawAnalysisSettings(): RawAnalysisSettings {
+function rawSettings(overrides: RawAnalysisSettings = {}): RawAnalysisSettings {
   return {
-    fixedToday: "",
-    fixedLocalOffsetMinutes: null,
-    siteConfig: {},
-    maxSourceBytes: null,
-    maxDocumentDiagrams: null,
-    lintProfile: "core",
-    enableRules: [],
-    disableRules: [],
-    ruleSeverities: [],
+    fixed_today: "",
+    fixed_local_offset_minutes: null,
+    site_config: {},
+    "resources.limits.max_source_bytes": null,
+    "resources.limits.max_document_diagrams": null,
+    "lint.profile": "core",
+    "lint.enable_rules": [],
+    "lint.disable_rules": [],
+    "lint.rule_severities": [],
+    ...overrides,
   };
+}
+
+function replaceSetting(
+  settings: readonly AnalysisConfigClientSetting[],
+  path: string,
+  replace: (setting: AnalysisConfigClientSetting) => AnalysisConfigClientSetting,
+): AnalysisConfigClientSetting[] {
+  return settings.map((setting) => setting.path === path ? replace(setting) : setting);
 }

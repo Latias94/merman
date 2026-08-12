@@ -11,6 +11,7 @@ use crate::{
 use serde_json::Value;
 #[cfg(test)]
 use std::cell::Cell;
+use std::collections::HashSet;
 
 use super::db::StateDb;
 use super::{Lexer, StateDiagramRenderModel, Stmt, Tok};
@@ -287,6 +288,12 @@ enum StateEditorEvent {
         detail: &'static str,
         kind: EditorSemanticKind,
     },
+    Reference {
+        name: String,
+        selection: SourceSpan,
+        detail: &'static str,
+        kind: EditorSemanticKind,
+    },
     ClassDefinition {
         name: String,
         selection: SourceSpan,
@@ -315,6 +322,18 @@ impl StateEditorEvent {
                 detail,
                 kind,
             } => facts.push_symbol(EditorSemanticSymbol::new(
+                name,
+                Some(detail.to_string()),
+                kind,
+                selection,
+                selection,
+            )),
+            Self::Reference {
+                name,
+                selection,
+                detail,
+                kind,
+            } => facts.push_symbol(EditorSemanticSymbol::reference(
                 name,
                 Some(detail.to_string()),
                 kind,
@@ -375,6 +394,7 @@ fn collect_state_editor_facts_from_events(
         note_alias_pending: false,
         relation_label_pending: false,
         relation_target_seen: false,
+        declared_entities: HashSet::new(),
     };
     let mut events = Vec::new();
     for (index, event) in lexical_events.iter().enumerate() {
@@ -412,6 +432,7 @@ struct StateTokenFactCollector<'a> {
     note_alias_pending: bool,
     relation_label_pending: bool,
     relation_target_seen: bool,
+    declared_entities: HashSet<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -432,7 +453,7 @@ impl StateTokenFactCollector<'_> {
             Tok::Newline => self.finish_statement(line_content_end(self.code, start), events),
             Tok::StructStart | Tok::StructStop => self.reset_statement(events),
             Tok::Arrow => {
-                self.flush_pending_entity_as("state reference", events);
+                self.flush_pending_entity_for_relation(events);
                 self.relation_label_pending = true;
                 self.relation_target_seen = false;
             }
@@ -455,13 +476,13 @@ impl StateTokenFactCollector<'_> {
             Tok::Id(id) if self.context == StateTokenContext::ClickTarget => {
                 self.pending_directive_slot = None;
                 self.interaction_target_end = Some(end);
-                push_state_entity_event(events, id, start, end, "state click target");
+                push_state_reference_event(events, id, start, end, "state click target");
                 self.context = StateTokenContext::ClickAfterTarget;
             }
             Tok::StyledId((id, class_id)) if self.context == StateTokenContext::ClickTarget => {
                 self.pending_directive_slot = None;
                 self.interaction_target_end = Some(end);
-                push_state_entity_event(events, id, start, end, "state click target");
+                push_state_reference_event(events, id, start, end, "state click target");
                 push_state_payload_event_from_token_as(
                     events,
                     self.code,
@@ -650,7 +671,7 @@ impl StateTokenFactCollector<'_> {
             }
             Tok::ClassEntityIds(ids) => {
                 let has_targets = !ids.trim().is_empty();
-                push_state_id_list_events(
+                push_state_reference_id_list_events(
                     events,
                     self.code,
                     ids.as_str(),
@@ -685,7 +706,7 @@ impl StateTokenFactCollector<'_> {
             }
             Tok::StyleIds(ids) => {
                 let has_targets = !ids.trim().is_empty();
-                push_state_id_list_events(
+                push_state_reference_id_list_events(
                     events,
                     self.code,
                     ids.as_str(),
@@ -777,9 +798,14 @@ impl StateTokenFactCollector<'_> {
             return;
         }
 
+        if self.note_text_pending && self.note_position_seen {
+            self.push_state_relation_occurrence(id, start, end, "state note target", events);
+            return;
+        }
+
         if self.relation_label_pending {
             self.flush_pending_entity(events);
-            push_state_entity_event(events, id, start, end, "state reference");
+            self.push_state_relation_occurrence(id, start, end, "state reference", events);
             self.relation_target_seen = true;
             return;
         }
@@ -809,6 +835,7 @@ impl StateTokenFactCollector<'_> {
 
     fn flush_pending_entity(&mut self, events: &mut Vec<StateEditorEvent>) {
         if let Some(entity) = self.pending_entity.take() {
+            self.declared_entities.insert(entity.name.clone());
             events.push(StateEditorEvent::Entity {
                 name: entity.name,
                 selection: entity.selection,
@@ -818,17 +845,62 @@ impl StateTokenFactCollector<'_> {
         }
     }
 
-    fn flush_pending_entity_as(
+    fn flush_pending_entity_for_relation(&mut self, events: &mut Vec<StateEditorEvent>) {
+        if let Some(entity) = self.pending_entity.take() {
+            self.push_state_relation_occurrence_with_selection(
+                entity.name,
+                entity.selection,
+                "state reference",
+                events,
+            );
+        }
+    }
+
+    fn push_state_relation_occurrence(
         &mut self,
+        id: String,
+        start: usize,
+        end: usize,
         detail: &'static str,
         events: &mut Vec<StateEditorEvent>,
     ) {
-        if let Some(entity) = self.pending_entity.take() {
+        let Some(entity) = state_pending_entity(id, start, end, detail) else {
+            return;
+        };
+        push_state_expected_syntax(
+            events,
+            EditorExpectedSyntaxKind::NodeIdentifier,
+            entity.selection,
+        );
+        self.push_state_relation_occurrence_with_selection(
+            entity.name,
+            entity.selection,
+            entity.detail,
+            events,
+        );
+    }
+
+    fn push_state_relation_occurrence_with_selection(
+        &mut self,
+        name: String,
+        selection: SourceSpan,
+        detail: &'static str,
+        events: &mut Vec<StateEditorEvent>,
+    ) {
+        let kind = EditorSemanticKind::Class;
+        if self.declared_entities.insert(name.clone()) {
             events.push(StateEditorEvent::Entity {
-                name: entity.name,
-                selection: entity.selection,
+                name,
+                selection,
                 detail,
-                kind: entity.kind,
+                kind,
+            });
+        } else {
+            events.push(StateEditorEvent::Reference {
+                name,
+                selection,
+                detail,
+                kind,
             });
         }
     }
@@ -901,7 +973,7 @@ fn state_pending_entity(
     })
 }
 
-fn push_state_entity_event(
+fn push_state_reference_event(
     events: &mut Vec<StateEditorEvent>,
     id: String,
     start: usize,
@@ -916,7 +988,7 @@ fn push_state_entity_event(
         EditorExpectedSyntaxKind::NodeIdentifier,
         entity.selection,
     );
-    events.push(StateEditorEvent::Entity {
+    events.push(StateEditorEvent::Reference {
         name: entity.name,
         selection: entity.selection,
         detail: entity.detail,
@@ -924,7 +996,7 @@ fn push_state_entity_event(
     });
 }
 
-fn push_state_entity_event_with_selection(
+fn push_state_reference_event_with_selection(
     events: &mut Vec<StateEditorEvent>,
     id: String,
     selection: SourceSpan,
@@ -935,7 +1007,7 @@ fn push_state_entity_event_with_selection(
     }
 
     push_state_expected_syntax(events, EditorExpectedSyntaxKind::NodeIdentifier, selection);
-    events.push(StateEditorEvent::Entity {
+    events.push(StateEditorEvent::Reference {
         name: id,
         selection,
         detail,
@@ -976,7 +1048,7 @@ fn push_state_expected_syntax(
     events.push(StateEditorEvent::ExpectedSyntax { kind, span });
 }
 
-fn push_state_id_list_events(
+fn push_state_reference_id_list_events(
     events: &mut Vec<StateEditorEvent>,
     code: &str,
     fallback_ids: &str,
@@ -993,7 +1065,7 @@ fn push_state_id_list_events(
             .map(str::trim)
             .filter(|id| !id.is_empty())
         {
-            push_state_entity_event_with_selection(
+            push_state_reference_event_with_selection(
                 events,
                 id.to_string(),
                 SourceSpan::new(start, end),
@@ -1015,7 +1087,7 @@ fn push_state_id_list_events(
         if leading < trailing {
             let id_start = cursor + leading;
             let id_end = cursor + trailing;
-            push_state_entity_event_with_selection(
+            push_state_reference_event_with_selection(
                 events,
                 slice[id_start..id_end].to_string(),
                 SourceSpan::new(start + id_start, start + id_end),

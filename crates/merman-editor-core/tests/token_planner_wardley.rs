@@ -43,7 +43,7 @@ fn wardley_complete_plan_projects_parser_lexemes_semantics_and_utf16() {
     let reference = exact_token(source, &snapshot, &plan, "重复 🤓", 2);
     assert_eq!(reference.kind, PlannedTokenKind::Variable);
     assert!(reference.has_modifier(PlannedTokenModifier::Reference));
-    assert!(reference.has_modifier(PlannedTokenModifier::Entity));
+    assert!(!reference.has_modifier(PlannedTokenModifier::Entity));
 
     assert_eq!(
         exact_token(source, &snapshot, &plan, "+'同步'>", 0).kind,

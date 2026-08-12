@@ -2,7 +2,7 @@ use crate::client_profile::ClientProtocolProfile;
 use crate::completion::{
     completion_for_snapshot_with_profile, resolve_completion_item_with_profile,
 };
-use crate::diagnostics::unavailable_document_diagnostics_with_profile;
+use crate::diagnostics::unavailable_document_diagnostic_round_trip;
 use crate::protocol::{
     CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, RULE_CATALOG_METHOD, RuleCatalogResponse,
     experimental_capabilities,
@@ -30,7 +30,6 @@ use crate::structure::{
 use merman_analysis::options_json::analysis_options_from_json_value;
 use merman_editor_core::COMPLETION_TRIGGER_CHARACTERS;
 use merman_editor_core::{DocumentKind, TokenPlanError};
-use std::hash::{Hash, Hasher};
 use std::sync::{Arc, OnceLock};
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::{
@@ -52,6 +51,8 @@ use tower_lsp_server::ls_types::{
     TextDocumentSyncSaveOptions, UnchangedDocumentDiagnosticReport, WorkspaceEdit,
 };
 use tower_lsp_server::{Client, LanguageServer, LspService};
+
+const MISSING_DOCUMENT_DIAGNOSTIC_RESULT_ID: &str = "missing-document";
 
 #[derive(Debug, Clone)]
 pub struct MermanLanguageServer {
@@ -183,13 +184,6 @@ impl MermanLanguageServer {
             workspace_diagnostics: false,
             work_done_progress_options: Default::default(),
         }
-    }
-
-    fn diagnostic_result_id(diagnostics: &[tower_lsp_server::ls_types::Diagnostic]) -> String {
-        let serialized = serde_json::to_vec(diagnostics).unwrap_or_default();
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        serialized.hash(&mut hasher);
-        format!("{:016x}", hasher.finish())
     }
 
     fn document_diagnostic_report(
@@ -353,21 +347,22 @@ impl LanguageServer for MermanLanguageServer {
         let profile = self.client_profile();
         let state = self
             .session
-            .pull_diagnostics(&uri, |document, analysis| {
-                let (diagnostics, result_id) = if let Some(diagnostics) =
-                    unavailable_document_diagnostics_with_profile(document, profile)
-                {
-                    let result_id = Self::diagnostic_result_id(&diagnostics);
-                    (diagnostics, result_id)
-                } else {
-                    let round_trip = analysis
-                        .expect("available documents require an analysis context")
-                        .diagnostic_round_trip();
-                    (
-                        round_trip.diagnostics_with_profile(profile),
-                        round_trip.result_id(),
-                    )
-                };
+            .pull_diagnostics(&uri, |context, analysis| {
+                let (diagnostics, result_id) =
+                    if let Some(round_trip) = unavailable_document_diagnostic_round_trip(context) {
+                        (
+                            round_trip.diagnostics_with_profile(profile),
+                            round_trip.result_id(),
+                        )
+                    } else {
+                        let round_trip = analysis
+                            .expect("available documents require an analysis context")
+                            .diagnostic_round_trip();
+                        (
+                            round_trip.diagnostics_with_profile(profile),
+                            round_trip.result_id(),
+                        )
+                    };
                 DocumentDiagnosticState {
                     result_id,
                     diagnostics,
@@ -376,10 +371,9 @@ impl LanguageServer for MermanLanguageServer {
             .await?;
         let Some(state) = state else {
             let diagnostics = Vec::new();
-            let result_id = Some(Self::diagnostic_result_id(&diagnostics));
             return Ok(Self::document_diagnostic_report(
                 diagnostics,
-                result_id,
+                Some(MISSING_DOCUMENT_DIAGNOSTIC_RESULT_ID.to_string()),
                 previous_result_id,
             ));
         };

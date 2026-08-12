@@ -7,7 +7,7 @@ Accepted
 ## Dates
 
 - Accepted: 2026-06-24
-- Updated: 2026-08-02
+- Updated: 2026-08-12
 
 ## Context
 
@@ -37,9 +37,23 @@ with render semantics.
 Semantic facts are classified by projection role:
 
 - **Entity** facts may feed completion, definitions, references, rename, hover, and outline.
+- **ClassDefinition** facts may feed class-name completion, hover, outline, and semantic tokens,
+  but do not become diagram-entity navigation or rename targets.
+- **Reference** facts may feed definitions, references, rename, hover, and semantic tokens, but do
+  not become completion declarations or outline entries.
 - **Outline** facts may feed document symbols and hover without becoming completion identifiers.
 - **Payload** facts retain source spans for diagnostics and semantic tokens without being promoted
   to entities.
+
+The projection matrix is therefore:
+
+| Role | Completion | Definition / references / rename | Outline | Hover / semantic tokens |
+| --- | --- | --- | --- | --- |
+| `entity` | Yes | Yes, as the declaration occurrence | Yes | Yes |
+| `class_definition` | Yes | No | Yes | Yes |
+| `reference` | No | Yes, resolving to an `entity` declaration | No | Yes |
+| `outline` | No | No | Yes | Yes |
+| `payload` | No | No | No | Yes |
 
 Every renameable entity carries a family-owned `FenceRenamePolicy`. LSP does not impose a second
 identifier grammar.
@@ -91,6 +105,8 @@ parser-only semantic contract produced after this migration. It contains generic
 facts and no Flowchart-only rich graph:
 
 - `fact_source: "text_scan"` is removed and `"unavailable"` represents honest absence;
+- semantic item roles are the closed schema-2 set `entity`, `class_definition`, `reference`,
+  `outline`, and `payload`;
 - current writers include `rename_policy` on every semantic item;
 - parser-backed, recovered, and source-mapped-span flags retain their explicit meanings; and
 - no TextScan-shape decoder, legacy executor, deprecated alias, or dual projection path remains.

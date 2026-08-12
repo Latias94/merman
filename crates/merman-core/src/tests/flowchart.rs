@@ -3110,7 +3110,7 @@ fn parse_flowchart_editor_facts_emit_directive_payload_spans() {
 
     let style_target_start = text.find("style A").unwrap() + "style ".len();
     let style_target = symbol_at("A", "flowchart style target", style_target_start);
-    assert_eq!(style_target.role, EditorSemanticRole::Entity);
+    assert_eq!(style_target.role, EditorSemanticRole::Reference);
     assert_eq!(style_target.kind, EditorSemanticKind::Module);
 
     let style_payload_start = text.find("fill:#fff").unwrap();
@@ -3120,12 +3120,12 @@ fn parse_flowchart_editor_facts_emit_directive_payload_spans() {
 
     let class_target_a_start = text.find("class A,B").unwrap() + "class ".len();
     let class_target_a = symbol_at("A", "flowchart class target", class_target_a_start);
-    assert_eq!(class_target_a.role, EditorSemanticRole::Entity);
+    assert_eq!(class_target_a.role, EditorSemanticRole::Reference);
     assert_eq!(class_target_a.kind, EditorSemanticKind::Module);
 
     let class_target_b_start = class_target_a_start + "A,".len();
     let class_target_b = symbol_at("B", "flowchart class target", class_target_b_start);
-    assert_eq!(class_target_b.role, EditorSemanticRole::Entity);
+    assert_eq!(class_target_b.role, EditorSemanticRole::Reference);
     assert_eq!(class_target_b.kind, EditorSemanticKind::Module);
 
     let class_name_start = text.rfind("hot").unwrap();
@@ -3178,7 +3178,7 @@ fn parse_flowchart_editor_facts_recover_directive_payload_spans() {
     let style_target_start = text.find("style A").unwrap() + "style ".len();
     assert_eq!(
         symbol_at("A", "flowchart style target", style_target_start).role,
-        EditorSemanticRole::Entity
+        EditorSemanticRole::Reference
     );
 
     let style_payload_start = text.find("fill:#fff").unwrap();
@@ -3190,7 +3190,7 @@ fn parse_flowchart_editor_facts_recover_directive_payload_spans() {
     let class_target_b_start = text.find("class A,B").unwrap() + "class A,".len();
     assert_eq!(
         symbol_at("B", "flowchart class target", class_target_b_start).role,
-        EditorSemanticRole::Entity
+        EditorSemanticRole::Reference
     );
 
     let class_name_start = text.rfind("hot").unwrap();
@@ -3273,6 +3273,17 @@ fn parse_flowchart_editor_facts_publish_typed_directive_slots() {
         expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
             && expected.span == SourceSpan::new(click_target, click_target + 1)
     }));
+    let click_target_symbol = click_facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "A"
+                && symbol.detail.as_deref() == Some("flowchart interaction target")
+                && symbol.selection == SourceSpan::new(click_target, click_target + 1)
+        })
+        .expect("flowchart click target reference");
+    assert_eq!(click_target_symbol.role, EditorSemanticRole::Reference);
+    assert!(click_target_symbol.rename_policy.is_renameable());
     let click_slot = click.find("click A ").unwrap() + "click A ".len();
     assert!(click_facts.expected_syntax.iter().any(|expected| {
         expected.kind == EditorExpectedSyntaxKind::InteractionAction
@@ -3327,6 +3338,83 @@ fn parse_flowchart_editor_facts_partition_click_actions_from_payloads() {
 }
 
 #[test]
+fn flowchart_directive_targets_remain_references_before_later_definitions() {
+    let engine = Engine::new();
+    let text = concat!(
+        "flowchart TD\n",
+        "style Future fill:#fff\n",
+        "class Future hot\n",
+        "click Future href \"https://example.com\"\n",
+        "Future[\"Defined later\"]\n",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    let roles: Vec<_> = facts
+        .symbols
+        .iter()
+        .filter(|symbol| symbol.name == "Future")
+        .map(|symbol| symbol.role)
+        .collect();
+    assert_eq!(
+        roles,
+        [
+            EditorSemanticRole::Reference,
+            EditorSemanticRole::Reference,
+            EditorSemanticRole::Reference,
+            EditorSemanticRole::Entity,
+        ]
+    );
+}
+
+#[test]
+fn flowchart_node_occurrences_only_define_the_first_implicit_node() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nA --> B\nA --> C\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    let a_roles: Vec<_> = facts
+        .symbols
+        .iter()
+        .filter(|symbol| symbol.name == "A")
+        .map(|symbol| symbol.role)
+        .collect();
+    assert_eq!(
+        a_roles,
+        [EditorSemanticRole::Entity, EditorSemanticRole::Reference]
+    );
+    for name in ["B", "C"] {
+        assert!(
+            facts
+                .symbols
+                .iter()
+                .any(|symbol| { symbol.name == name && symbol.role == EditorSemanticRole::Entity })
+        );
+    }
+
+    let explicit = "flowchart TD\nA --> B\nA[\"Defined later\"]\n";
+    let explicit_facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", explicit)
+        .unwrap()
+        .expect("flowchart editor facts");
+    let explicit_a_roles: Vec<_> = explicit_facts
+        .symbols
+        .iter()
+        .filter(|symbol| symbol.name == "A")
+        .map(|symbol| symbol.role)
+        .collect();
+    assert_eq!(
+        explicit_a_roles,
+        [EditorSemanticRole::Entity, EditorSemanticRole::Entity]
+    );
+}
+
+#[test]
 fn parse_flowchart_editor_facts_emit_standalone_shape_data_node_symbol() {
     let engine = Engine::new();
     let text = "flowchart TD\nD@{ shape: rounded }\nD --> E\n";
@@ -3350,6 +3438,17 @@ fn parse_flowchart_editor_facts_emit_standalone_shape_data_node_symbol() {
 
     assert_eq!(standalone_d.role, EditorSemanticRole::Entity);
     assert_eq!(standalone_d.kind, EditorSemanticKind::Module);
+
+    let relation_d_start = text.find("D --> E").unwrap();
+    let relation_d = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "D"
+                && symbol.selection == SourceSpan::new(relation_d_start, relation_d_start + 1)
+        })
+        .expect("shapeData node relation reference");
+    assert_eq!(relation_d.role, EditorSemanticRole::Reference);
 }
 
 #[test]

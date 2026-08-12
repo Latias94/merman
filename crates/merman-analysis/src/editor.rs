@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::mem::size_of;
 use std::sync::Arc;
 
@@ -45,6 +45,10 @@ impl FenceReferenceGroup {
             kind: item.kind,
         }
     }
+
+    fn matches(&self, item: &EditorSemanticSymbol) -> bool {
+        self.name == item.name && self.kind == item.kind
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -84,8 +88,6 @@ pub struct FenceTextIndex {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct ReferenceIntervalId {
-    group_ordinal: usize,
-    span_ordinal: usize,
     semantic_item_id: usize,
 }
 
@@ -187,7 +189,6 @@ fn populate_subtree_max_ends<T>(entries: &mut [PointIntervalEntry<T>]) -> Option
 #[derive(Debug, Default)]
 pub(super) struct FenceTextIndexData {
     pub(super) directive_prefixes: BTreeSet<String>,
-    pub(super) references: BTreeMap<FenceReferenceGroup, Vec<ByteSpan>>,
     pub(super) semantic_items: Vec<EditorSemanticSymbol>,
     pub(super) lexemes: Vec<merman_core::EditorLexeme>,
     pub(super) lexeme_failure: Option<merman_core::EditorLexemeFailure>,
@@ -204,40 +205,17 @@ impl FenceTextIndexData {
         cancellation: &crate::AnalysisCancellationToken,
     ) -> Result<(), crate::AnalysisCancelled> {
         let mut semantic_intervals = Vec::with_capacity(self.semantic_items.len());
-        let mut reference_item_ids = BTreeMap::new();
+        let mut reference_intervals = Vec::new();
         for (semantic_item_id, item) in self.semantic_items.iter().enumerate() {
             if semantic_item_id.is_multiple_of(128) {
                 cancellation.checkpoint()?;
             }
             semantic_intervals.push((byte_span_from_source(item.span), semantic_item_id));
-            if item.role == EditorSemanticRole::Entity {
-                let group = FenceReferenceGroup::from_semantic_item(item);
-                if self.references.contains_key(&group) {
-                    reference_item_ids.entry(group).or_insert(semantic_item_id);
-                }
-            }
-        }
-
-        let reference_count = self.references.values().map(Vec::len).sum();
-        let mut reference_intervals = Vec::with_capacity(reference_count);
-        let mut reference_index = 0usize;
-        for (group_ordinal, (group, spans)) in self.references.iter().enumerate() {
-            let semantic_item_id = *reference_item_ids
-                .get(group)
-                .expect("reference groups are derived from canonical semantic items");
-            for (span_ordinal, span) in spans.iter().copied().enumerate() {
-                if reference_index.is_multiple_of(128) {
-                    cancellation.checkpoint()?;
-                }
+            if item.role.contributes_references() {
                 reference_intervals.push((
-                    span,
-                    ReferenceIntervalId {
-                        group_ordinal,
-                        span_ordinal,
-                        semantic_item_id,
-                    },
+                    byte_span_from_source(item.selection),
+                    ReferenceIntervalId { semantic_item_id },
                 ));
-                reference_index += 1;
             }
         }
         reference_intervals.sort_by(|(left_span, left_id), (right_span, right_id)| {
@@ -265,18 +243,6 @@ impl FenceTextIndexData {
         );
         for value in &self.directive_prefixes {
             weight.add_string(value);
-        }
-        weight.add(
-            self.references
-                .len()
-                .saturating_mul(conservative_btree_entry_bytes::<
-                    FenceReferenceGroup,
-                    Vec<ByteSpan>,
-                >()),
-        );
-        for (group, spans) in &self.references {
-            weight.add_string(&group.name);
-            weight.add_array::<ByteSpan>(spans.capacity());
         }
         weight.add_array::<EditorSemanticSymbol>(self.semantic_items.capacity());
         for item in &self.semantic_items {
@@ -342,54 +308,79 @@ impl FenceTextIndex {
     }
 
     pub fn first_reference_span(&self, name: &str) -> Option<ByteSpan> {
-        self.data
-            .references
+        let kind = self
+            .data
+            .semantic_items
             .iter()
-            .find(|(group, _)| group.name == name)
-            .map(|(_, spans)| spans)
-            .and_then(|spans| spans.first().copied())
-    }
-
-    pub fn reference_spans(&self, name: &str) -> &[ByteSpan] {
+            .filter(|item| item.role.contributes_references() && item.name == name)
+            .map(|item| item.kind)
+            .min()?;
         self.data
-            .references
+            .semantic_items
             .iter()
-            .find(|(group, _)| group.name == name)
-            .map(|(_, spans)| spans.as_slice())
-            .unwrap_or(&[])
+            .find(|item| {
+                item.role.contributes_references() && item.name == name && item.kind == kind
+            })
+            .map(|item| byte_span_from_source(item.selection))
     }
 
-    pub fn first_reference_span_for_item(&self, item: &EditorSemanticSymbol) -> Option<ByteSpan> {
-        self.first_reference_span_in_group(&FenceReferenceGroup::from_semantic_item(item))
-    }
-
-    pub fn reference_spans_for_item(&self, item: &EditorSemanticSymbol) -> &[ByteSpan] {
-        self.reference_spans_in_group(&FenceReferenceGroup::from_semantic_item(item))
-    }
-
-    pub(crate) fn first_reference_span_in_group(
-        &self,
-        group: &FenceReferenceGroup,
-    ) -> Option<ByteSpan> {
-        self.data
-            .references
-            .get(group)
-            .and_then(|spans| spans.first().copied())
-    }
-
-    pub(crate) fn reference_spans_in_group(&self, group: &FenceReferenceGroup) -> &[ByteSpan] {
-        self.data
-            .references
-            .get(group)
-            .map(Vec::as_slice)
-            .unwrap_or(&[])
-    }
-
-    pub(crate) fn references(&self) -> impl Iterator<Item = (&FenceReferenceGroup, &[ByteSpan])> {
-        self.data
-            .references
+    pub fn reference_spans(&self, name: &str) -> Vec<ByteSpan> {
+        let Some(kind) = self
+            .data
+            .semantic_items
             .iter()
-            .map(|(group, spans)| (group, spans.as_slice()))
+            .filter(|item| item.role.contributes_references() && item.name == name)
+            .map(|item| item.kind)
+            .min()
+        else {
+            return Vec::new();
+        };
+        self.data
+            .semantic_items
+            .iter()
+            .filter(|item| {
+                item.role.contributes_references() && item.name == name && item.kind == kind
+            })
+            .map(|item| byte_span_from_source(item.selection))
+            .collect()
+    }
+
+    pub fn definition_span_for_item(&self, item: &EditorSemanticSymbol) -> Option<ByteSpan> {
+        let group = FenceReferenceGroup::from_semantic_item(item);
+        self.data
+            .semantic_items
+            .iter()
+            .find(|candidate| {
+                candidate.role == EditorSemanticRole::Entity && group.matches(candidate)
+            })
+            .map(|candidate| byte_span_from_source(candidate.selection))
+    }
+
+    pub fn reference_spans_for_item(&self, item: &EditorSemanticSymbol) -> Vec<ByteSpan> {
+        let group = FenceReferenceGroup::from_semantic_item(item);
+        self.data
+            .semantic_items
+            .iter()
+            .filter(|candidate| candidate.role.contributes_references() && group.matches(candidate))
+            .map(|candidate| byte_span_from_source(candidate.selection))
+            .collect()
+    }
+
+    pub(crate) fn reference_groups(&self) -> Vec<(FenceReferenceGroup, Vec<ByteSpan>)> {
+        let mut groups = std::collections::BTreeMap::<FenceReferenceGroup, Vec<ByteSpan>>::new();
+        for item in self
+            .data
+            .semantic_items
+            .iter()
+            .filter(|item| item.role.contributes_references())
+        {
+            let group = FenceReferenceGroup::from_semantic_item(item);
+            groups
+                .entry(group)
+                .or_default()
+                .push(byte_span_from_source(item.selection));
+        }
+        groups.into_iter().collect()
     }
 
     pub fn symbol_at_offset(&self, offset: usize) -> Option<(String, ByteSpan)> {
@@ -404,9 +395,9 @@ impl FenceTextIndex {
         self.data.semantic_items.get(item_id?)
     }
 
-    pub fn entity_item_at_offset(&self, offset: usize) -> Option<&EditorSemanticSymbol> {
-        self.semantic_item_at_offset(offset)
-            .filter(|item| item.role == EditorSemanticRole::Entity)
+    pub fn reference_item_at_offset(&self, offset: usize) -> Option<&EditorSemanticSymbol> {
+        let (reference, _) = self.reference_at_offset_indexed(offset);
+        self.data.semantic_items.get(reference?.0.semantic_item_id)
     }
 
     pub fn semantic_items(&self) -> &[EditorSemanticSymbol] {
@@ -478,14 +469,37 @@ impl FenceTextIndex {
             .data
             .reference_point_index
             .for_each_at(offset, |reference, span| {
-                if best
-                    .as_ref()
-                    .is_none_or(|(current, _)| reference < *current)
-                {
+                if best.as_ref().is_none_or(|(current, _)| {
+                    self.compare_reference_interval_ids(reference, *current)
+                        .is_lt()
+                }) {
                     best = Some((reference, span));
                 }
             });
         (best, visited)
+    }
+
+    fn compare_reference_interval_ids(
+        &self,
+        left: ReferenceIntervalId,
+        right: ReferenceIntervalId,
+    ) -> std::cmp::Ordering {
+        let left_item = &self.data.semantic_items[left.semantic_item_id];
+        let right_item = &self.data.semantic_items[right.semantic_item_id];
+        (
+            left_item.name.as_str(),
+            left_item.kind,
+            left_item.selection.start,
+            std::cmp::Reverse(left_item.selection.end),
+            left.semantic_item_id,
+        )
+            .cmp(&(
+                right_item.name.as_str(),
+                right_item.kind,
+                right_item.selection.start,
+                std::cmp::Reverse(right_item.selection.end),
+                right.semantic_item_id,
+            ))
     }
 
     #[cfg(test)]
@@ -517,31 +531,16 @@ impl FenceTextIndex {
     #[cfg(test)]
     fn reference_at_offset_linear(&self, offset: usize) -> Option<(ReferenceIntervalId, ByteSpan)> {
         self.data
-            .references
+            .semantic_items
             .iter()
             .enumerate()
-            .find_map(|(group_ordinal, (group, spans))| {
-                let semantic_item_id = self.data.semantic_items.iter().position(|item| {
-                    item.role == EditorSemanticRole::Entity
-                        && item.name == group.name
-                        && item.kind == group.kind
-                })?;
-                spans
-                    .iter()
-                    .copied()
-                    .enumerate()
-                    .find(|(_, span)| span.contains(offset))
-                    .map(|(span_ordinal, span)| {
-                        (
-                            ReferenceIntervalId {
-                                group_ordinal,
-                                span_ordinal,
-                                semantic_item_id,
-                            },
-                            span,
-                        )
-                    })
+            .filter(|(_, item)| item.role.contributes_references())
+            .filter_map(|(semantic_item_id, item)| {
+                let span = byte_span_from_source(item.selection);
+                span.contains(offset)
+                    .then_some((ReferenceIntervalId { semantic_item_id }, span))
             })
+            .min_by(|(left, _), (right, _)| self.compare_reference_interval_ids(*left, *right))
     }
 }
 

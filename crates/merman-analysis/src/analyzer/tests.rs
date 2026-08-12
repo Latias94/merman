@@ -1425,7 +1425,7 @@ fn captured_config_survives_custom_parser_panic_without_a_second_engine() {
 }
 
 #[test]
-fn source_config_diagnostics_survive_detector_panic_without_metadata() {
+fn source_config_diagnostics_survive_init_config_detector_panic_without_metadata() {
     let mut engine = merman_core::Engine::new();
     *engine.registry_mut() = merman_core::DetectorRegistry::new();
     engine
@@ -1433,7 +1433,7 @@ fn source_config_diagnostics_survive_detector_panic_without_metadata() {
         .add_fn("detector-panic-fixture", panicking_detector);
     let analyzer = Analyzer::with_engine(engine, AnalysisOptions::default());
     let source = concat!(
-        "%%{ init: { lazyLoadedDiagrams: true } }%%\n",
+        "%%{ init: { lazyLoadedDiagrams: true, config: { htmlLabels: false } } }%%\n",
         "detector-panic-fixture\n",
     );
 

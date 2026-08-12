@@ -10,7 +10,8 @@ pub use source_edit_map::PreprocessedSource;
 
 use crate::{
     DetectorRegistry, EditorExpectedSyntaxKind, EditorLexemeKind, Error, MermaidConfig,
-    ParseControl, ParseControlResult, Result, SourceSpan, editor::line_content_end,
+    ParseControl, ParseControlResult, Result, SourceSpan, diagram::CapturedPanic,
+    editor::line_content_end,
 };
 use serde_json::{Map, Value};
 use source_edit_map::{ReplacementMapping, SourceEdit};
@@ -42,8 +43,27 @@ pub struct PreprocessResult {
 
 #[derive(Debug)]
 pub(crate) struct PreprocessCaptureOutcome {
-    pub(crate) result: Result<PreprocessResult>,
+    pub(crate) outcome: PreprocessCaptureResult,
     pub(crate) source_config: SourceConfigEvidence,
+}
+
+#[derive(Debug)]
+pub(crate) enum PreprocessCaptureResult {
+    Ready(PreprocessResult),
+    Failed(Error),
+    Panicked(CapturedPanic),
+}
+
+impl PreprocessCaptureOutcome {
+    fn into_result(self) -> Result<PreprocessResult> {
+        match self.outcome {
+            PreprocessCaptureResult::Ready(result) => Ok(result),
+            PreprocessCaptureResult::Failed(error) => Err(error),
+            PreprocessCaptureResult::Panicked(panic) => {
+                std::panic::resume_unwind(panic.into_payload())
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -155,7 +175,7 @@ pub(crate) fn preprocess_diagram_with_known_type_and_directive_recovery_controll
             SourceConfigCaptureMode::Omit,
             control,
         )?
-        .result,
+        .into_result(),
     )
 }
 
@@ -176,13 +196,16 @@ fn preprocess_diagram_with_known_type_and_directive_recovery_capture_controlled(
         control,
     )?;
     control.checkpoint()?;
-    let result = match captured.result {
-        Ok(preprocessed) => Ok(prepare_parser_code_controlled(preprocessed, control)?),
-        Err(error) => Err(error),
+    let outcome = match captured.outcome {
+        PreprocessCaptureResult::Ready(preprocessed) => {
+            PreprocessCaptureResult::Ready(prepare_parser_code_controlled(preprocessed, control)?)
+        }
+        PreprocessCaptureResult::Failed(error) => PreprocessCaptureResult::Failed(error),
+        PreprocessCaptureResult::Panicked(panic) => PreprocessCaptureResult::Panicked(panic),
     };
     control.checkpoint()?;
     Ok(PreprocessCaptureOutcome {
-        result,
+        outcome,
         source_config: captured.source_config,
     })
 }
@@ -252,7 +275,7 @@ pub(crate) fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_c
             SourceConfigCaptureMode::Omit,
             control,
         )?
-        .result,
+        .into_result(),
     )
 }
 
@@ -293,11 +316,17 @@ fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_cont
         capture_mode,
         control,
     )?;
-    let outer_result = match outer.result {
-        Ok(outer) => outer,
-        Err(error) => {
+    let outer_result = match outer.outcome {
+        PreprocessCaptureResult::Ready(outer) => outer,
+        PreprocessCaptureResult::Failed(error) => {
             return Ok(PreprocessCaptureOutcome {
-                result: Err(error),
+                outcome: PreprocessCaptureResult::Failed(error),
+                source_config: outer.source_config,
+            });
+        }
+        PreprocessCaptureResult::Panicked(panic) => {
+            return Ok(PreprocessCaptureOutcome {
+                outcome: PreprocessCaptureResult::Panicked(panic),
                 source_config: outer.source_config,
             });
         }
@@ -313,11 +342,17 @@ fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_cont
         SourceConfigCaptureMode::Omit,
         control,
     )?;
-    let inner = match inner.result {
-        Ok(inner) => inner,
-        Err(error) => {
+    let inner = match inner.outcome {
+        PreprocessCaptureResult::Ready(inner) => inner,
+        PreprocessCaptureResult::Failed(error) => {
             return Ok(PreprocessCaptureOutcome {
-                result: Err(error),
+                outcome: PreprocessCaptureResult::Failed(error),
+                source_config: outer.source_config,
+            });
+        }
+        PreprocessCaptureResult::Panicked(panic) => {
+            return Ok(PreprocessCaptureOutcome {
+                outcome: PreprocessCaptureResult::Panicked(panic),
                 source_config: outer.source_config,
             });
         }
@@ -330,7 +365,7 @@ fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_capture_cont
     };
     control.checkpoint()?;
     Ok(PreprocessCaptureOutcome {
-        result: Ok(result),
+        outcome: PreprocessCaptureResult::Ready(result),
         source_config: outer.source_config,
     })
 }
@@ -366,7 +401,7 @@ fn preprocess_single_pass_controlled(
             source_config.mark_rewrite_unsafe();
             if !capture_mode.collects() {
                 return Ok(PreprocessCaptureOutcome {
-                    result: Err(error),
+                    outcome: PreprocessCaptureResult::Failed(error),
                     source_config,
                 });
             }
@@ -396,10 +431,17 @@ fn preprocess_single_pass_controlled(
         diagram_type,
         directive_recovery,
         capture_mode,
+        first_error.is_none(),
         control,
     )?;
     if capture_mode.collects() {
         append_directive_evidence(&source, &processed_directives, &mut source_config, control)?;
+    }
+    if let Some(panic) = processed_directives.panic {
+        return Ok(PreprocessCaptureOutcome {
+            outcome: PreprocessCaptureResult::Panicked(panic),
+            source_config,
+        });
     }
     if let Some(error) = processed_directives.error {
         source_config.mark_rewrite_unsafe();
@@ -410,7 +452,7 @@ fn preprocess_single_pass_controlled(
     if let Some(error) = first_error {
         control.checkpoint()?;
         return Ok(PreprocessCaptureOutcome {
-            result: Err(error),
+            outcome: PreprocessCaptureResult::Failed(error),
             source_config,
         });
     }
@@ -446,7 +488,7 @@ fn preprocess_single_pass_controlled(
     control.checkpoint()?;
     remove_mermaid_comments_controlled(&mut source, capture_editor_evidence, control)?;
     Ok(PreprocessCaptureOutcome {
-        result: Ok(PreprocessResult {
+        outcome: PreprocessCaptureResult::Ready(PreprocessResult {
             source,
             title,
             config: frontmatter_config,
@@ -1234,16 +1276,16 @@ fn dedented_frontmatter_yaml_input_controlled<'a>(
     let mut edits = Vec::new();
     let mut line_start = 0usize;
     loop {
-        let line_end =
-            find_newline_controlled(body, line_start, &mut checkpoints)?.unwrap_or(body.len());
+        let line_ending = find_physical_line_ending_controlled(body, line_start, &mut checkpoints)?;
+        let (line_end, next_line_start) = line_ending.unwrap_or((body.len(), body.len()));
         let line = &body[line_start..line_end];
         if frontmatter_has_prefix_controlled(line, indent, &mut checkpoints)? {
             edits.push(SourceEdit::delete(line_start..line_start + indent.len()));
         }
-        if line_end == body.len() {
+        if line_ending.is_none() || next_line_start == body.len() {
             break;
         }
-        line_start = line_end + 1;
+        line_start = next_line_start;
     }
     checkpoints.finish()?;
     source.apply_edits(edits, control)?;
@@ -1263,12 +1305,12 @@ pub fn locate_frontmatter_block_controlled<'a>(
     control: &ParseControl,
 ) -> ParseControlResult<Option<FrontmatterBlockLocation<'a>>> {
     let mut checkpoints = ControlledScanCheckpoints::new(control)?;
-    let Some(open_line_newline) = find_newline_controlled(input, 0, &mut checkpoints)? else {
+    let Some((open_line_end, open_line_next)) =
+        find_physical_line_ending_controlled(input, 0, &mut checkpoints)?
+    else {
         checkpoints.finish()?;
         return Ok(None);
     };
-    let open_line_end =
-        trim_frontmatter_line_end_controlled(input, 0, open_line_newline, b"\r", &mut checkpoints)?;
     let open_line = &input[..open_line_end];
     let indent_end = frontmatter_indent_end_controlled(open_line, &mut checkpoints)?;
     let indent = &open_line[..indent_end];
@@ -1280,22 +1322,16 @@ pub fn locate_frontmatter_block_controlled<'a>(
         return Ok(None);
     }
 
-    let body_start = open_line_newline + 1;
+    let body_start = open_line_next;
     let mut line_start = body_start;
     while line_start < input.len() {
-        let line_end_with_newline = find_newline_controlled(input, line_start, &mut checkpoints)?
-            .map_or(input.len(), |newline| newline + 1);
-        let line_end = trim_frontmatter_line_end_controlled(
-            input,
-            line_start,
-            line_end_with_newline,
-            b"\r\n",
-            &mut checkpoints,
-        )?;
+        let line_ending =
+            find_physical_line_ending_controlled(input, line_start, &mut checkpoints)?;
+        let (line_end, line_end_with_newline) = line_ending.unwrap_or((input.len(), input.len()));
         let line = &input[line_start..line_end];
         if is_frontmatter_closing_line_controlled(line, indent, &mut checkpoints)? {
             let body_end = if line_start > body_start
-                && input.as_bytes().get(line_start - 1) == Some(&b'\n')
+                && matches!(input.as_bytes().get(line_start - 1), Some(b'\n' | b'\r'))
             {
                 line_start - 1
             } else {
@@ -1442,18 +1478,27 @@ fn find_newline_controlled(
     Ok(None)
 }
 
-fn trim_frontmatter_line_end_controlled(
+fn find_physical_line_ending_controlled(
     input: &str,
     start: usize,
-    mut end: usize,
-    trim: &[u8],
     checkpoints: &mut ControlledScanCheckpoints<'_>,
-) -> ParseControlResult<usize> {
-    while end > start && trim.contains(&input.as_bytes()[end - 1]) {
+) -> ParseControlResult<Option<(usize, usize)>> {
+    let bytes = input.as_bytes();
+    for offset in start..bytes.len() {
         checkpoints.scanned(1)?;
-        end -= 1;
+        match bytes[offset] {
+            b'\r' => {
+                let end = offset + 1 + usize::from(bytes.get(offset + 1) == Some(&b'\n'));
+                if end == offset + 2 {
+                    checkpoints.scanned(1)?;
+                }
+                return Ok(Some((offset, end)));
+            }
+            b'\n' => return Ok(Some((offset, offset + 1))),
+            _ => {}
+        }
     }
-    Ok(end)
+    Ok(None)
 }
 
 fn frontmatter_indent_end_controlled(
@@ -1531,8 +1576,8 @@ fn dedent_frontmatter_body_controlled<'a>(
     let mut out = String::with_capacity(body.len());
     let mut line_start = 0usize;
     loop {
-        let line_end =
-            find_newline_controlled(body, line_start, &mut checkpoints)?.unwrap_or(body.len());
+        let line_ending = find_physical_line_ending_controlled(body, line_start, &mut checkpoints)?;
+        let (line_end, next_line_start) = line_ending.unwrap_or((body.len(), body.len()));
         let line = &body[line_start..line_end];
         let content = if frontmatter_has_prefix_controlled(line, indent, &mut checkpoints)? {
             &line[indent.len()..]
@@ -1543,8 +1588,15 @@ fn dedent_frontmatter_body_controlled<'a>(
         if line_end == body.len() {
             break;
         }
-        out.push('\n');
-        line_start = line_end + 1;
+        push_frontmatter_str_controlled(
+            &mut out,
+            &body[line_end..next_line_start],
+            &mut checkpoints,
+        )?;
+        if next_line_start == body.len() {
+            break;
+        }
+        line_start = next_line_start;
     }
     checkpoints.finish()?;
     Ok(Cow::Owned(out))
@@ -1622,6 +1674,7 @@ struct ProcessedDirectives {
     recovered_incomplete_directive: bool,
     evidence: Vec<LocalDirectiveEvidence>,
     error: Option<Error>,
+    panic: Option<CapturedPanic>,
 }
 
 struct LocalDirectiveEvidence {
@@ -1639,6 +1692,7 @@ fn process_directives_controlled(
     diagram_type: Option<&str>,
     directive_recovery: DirectiveRecoveryMode,
     capture_mode: SourceConfigCaptureMode,
+    evaluate_config: bool,
     control: &ParseControl,
 ) -> ParseControlResult<ProcessedDirectives> {
     control.checkpoint()?;
@@ -1651,6 +1705,7 @@ fn process_directives_controlled(
             recovered_incomplete_directive: false,
             evidence: Vec::new(),
             error: None,
+            panic: None,
         });
     }
     let recovered_incomplete_directive = blocks.iter().any(|block| !block.complete);
@@ -1714,26 +1769,12 @@ fn process_directives_controlled(
                 recovered_incomplete_directive,
                 evidence,
                 error: first_error,
+                panic: None,
             });
         }
     }
     control.checkpoint()?;
     let input_without_directives = remove_directive_blocks_controlled(input, &blocks, control)?;
-    let init = match detect_init_controlled(
-        &directives,
-        input_without_directives.as_ref(),
-        registry,
-        diagram_type,
-        control,
-    )? {
-        Ok(init) => init,
-        Err(error) => {
-            if first_error.is_none() {
-                first_error = Some(error);
-            }
-            MermaidConfig::empty_object()
-        }
-    };
     let wrap = directives.iter().any(|d| d.ty == "wrap");
     let mut editor_prefixes = Vec::new();
     for (index, directive) in directives.iter().enumerate() {
@@ -1747,6 +1788,49 @@ fn process_directives_controlled(
         }
     }
 
+    let detected_init = if !evaluate_config || first_error.is_some() {
+        Ok(MermaidConfig::empty_object())
+    } else if capture_mode.collects() {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            detect_init_controlled(
+                &directives,
+                input_without_directives.as_ref(),
+                registry,
+                diagram_type,
+                control,
+            )
+        })) {
+            Ok(result) => result?,
+            Err(payload) => {
+                return Ok(ProcessedDirectives {
+                    config: MermaidConfig::empty_object(),
+                    removals: blocks.into_iter().map(|block| block.range).collect(),
+                    editor_prefixes,
+                    recovered_incomplete_directive,
+                    evidence,
+                    error: first_error,
+                    panic: Some(CapturedPanic::from_payload(payload)),
+                });
+            }
+        }
+    } else {
+        detect_init_controlled(
+            &directives,
+            input_without_directives.as_ref(),
+            registry,
+            diagram_type,
+            control,
+        )?
+    };
+    let init = match detected_init {
+        Ok(init) => init,
+        Err(error) => {
+            if first_error.is_none() {
+                first_error = Some(error);
+            }
+            MermaidConfig::empty_object()
+        }
+    };
     let mut merged = init;
     if wrap {
         merged.set_value("wrap", Value::Bool(true));
@@ -1760,6 +1844,7 @@ fn process_directives_controlled(
         recovered_incomplete_directive,
         evidence,
         error: first_error,
+        panic: None,
     })
 }
 
@@ -2787,6 +2872,7 @@ mod tests {
                 true,
             ),
             ("---\r\r\ntitle: Demo\r\n---\r\r\nflowchart TD", true),
+            ("---\rtitle: Demo\r---\rflowchart TD", true),
             ("---\ntitle: Demo\n--- \u{2003}\nflowchart TD", true),
             ("---\ntitle: Demo\n---", true),
             ("--- trailing\ntitle: Demo\n---\nflowchart TD", false),
@@ -2843,6 +2929,22 @@ mod tests {
             block.dedented_body,
             "title: Demo\r\nconfig:\r\n  theme: dark\r"
         );
+        assert_eq!(block.stripped, "flowchart TD");
+    }
+
+    #[test]
+    fn controlled_frontmatter_split_preserves_bare_cr_body_bytes() {
+        let source = "  ---\r  title: Demo\r  config:\r    theme: dark\r  ---\rflowchart TD";
+        let block = split_frontmatter_block_controlled(source, &ParseControl::new())
+            .expect("an active parse control must not cancel")
+            .expect("frontmatter block");
+
+        assert_eq!(block.indent, "  ");
+        assert_eq!(
+            &source[block.body.start..block.body.end],
+            "  title: Demo\r  config:\r    theme: dark"
+        );
+        assert_eq!(block.dedented_body, "title: Demo\rconfig:\r  theme: dark");
         assert_eq!(block.stripped, "flowchart TD");
     }
 
@@ -2960,7 +3062,10 @@ mod tests {
             "A-->B\r\n",
         );
         let captured = capture_source_config(source);
-        assert!(captured.result.is_ok());
+        assert!(matches!(
+            &captured.outcome,
+            PreprocessCaptureResult::Ready(_)
+        ));
         let evidence = captured.source_config;
 
         let frontmatter = evidence.frontmatter().expect("frontmatter evidence");
@@ -3015,7 +3120,10 @@ mod tests {
             "\nflowchart TD\nA-->B\n",
         );
         let captured = capture_source_config(source);
-        assert!(captured.result.is_ok());
+        assert!(matches!(
+            &captured.outcome,
+            PreprocessCaptureResult::Ready(_)
+        ));
         let evidence = captured.source_config;
 
         assert!(evidence.rewrite_safe());
@@ -3045,8 +3153,8 @@ mod tests {
         );
         let captured = capture_source_config(source);
         assert!(matches!(
-            captured.result,
-            Err(Error::InvalidFrontMatterYaml { .. })
+            &captured.outcome,
+            PreprocessCaptureResult::Failed(Error::InvalidFrontMatterYaml { .. })
         ));
         assert!(!captured.source_config.rewrite_safe());
         assert!(captured.source_config.keys().iter().any(|key| {
@@ -3079,8 +3187,8 @@ mod tests {
         );
         let captured = capture_source_config(&source);
         assert!(matches!(
-            captured.result,
-            Err(Error::InvalidDirectiveJson { .. })
+            &captured.outcome,
+            PreprocessCaptureResult::Failed(Error::InvalidDirectiveJson { .. })
         ));
         assert_eq!(captured.source_config.directives().len(), 2);
         assert_eq!(captured.source_config.directives()[0].keyword(), "init");
@@ -3101,7 +3209,10 @@ mod tests {
         let source = format!("%%{{ initialize: {nested}\nflowchart TD\nA-->B\n");
         let captured = capture_source_config(&source);
 
-        assert!(captured.result.is_ok());
+        assert!(matches!(
+            &captured.outcome,
+            PreprocessCaptureResult::Ready(_)
+        ));
         let directive = &captured.source_config.directives()[0];
         assert_eq!(directive.keyword(), "initialize");
         assert!(!directive.complete());
@@ -3136,7 +3247,10 @@ mod tests {
         let source = format!("%%{{init: {{{config}}}}}%%\nflowchart TD\nA-->B\n");
 
         let captured = capture_source_config(&source);
-        assert!(captured.result.is_ok());
+        assert!(matches!(
+            &captured.outcome,
+            PreprocessCaptureResult::Ready(_)
+        ));
         assert!(captured.source_config.keys().len() > 2_048);
         assert!(
             captured.source_config.estimated_owned_heap_bytes() < source.len().saturating_mul(64),

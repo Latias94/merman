@@ -8,7 +8,7 @@ use crate::{
 };
 use indexmap::IndexMap;
 use serde_json::{Map, Value, json};
-use std::collections::{HashMap, hash_map::Entry};
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 
 #[cfg(test)]
 use std::cell::Cell;
@@ -919,6 +919,19 @@ struct BlockSpannedText {
     span: SourceSpan,
 }
 
+#[derive(Debug)]
+struct ParsedBlockNode {
+    block: Block,
+    id: BlockSpannedText,
+    definition_emitted: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum BlockNodeOccurrence {
+    Definition,
+    RelationEndpoint,
+}
+
 fn validate_block_space_width(width: i64, span: SourceSpan) -> Result<()> {
     if width > MAX_BLOCK_SPACE_EXPANSION_ITEMS {
         return Err(Error::diagram_parse_exact(
@@ -947,6 +960,28 @@ fn push_block_entity(
         text.span,
     ));
     facts.push_symbol(EditorSemanticSymbol::new(
+        text.text,
+        Some(detail.to_string()),
+        kind,
+        text.span,
+        text.span,
+    ));
+}
+
+fn push_block_reference(
+    facts: &mut EditorSemanticFacts,
+    text: BlockSpannedText,
+    detail: &str,
+    kind: EditorSemanticKind,
+) {
+    if text.text.is_empty() {
+        return;
+    }
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::NodeIdentifier,
+        text.span,
+    ));
+    facts.push_symbol(EditorSemanticSymbol::reference(
         text.text,
         Some(detail.to_string()),
         kind,
@@ -1030,7 +1065,7 @@ fn push_block_id_list(
         let leading = raw.len().saturating_sub(raw.trim_start().len());
         let trailing = raw.trim_end().len();
         if leading < trailing {
-            push_block_entity(
+            push_block_reference(
                 facts,
                 BlockSpannedText {
                     text: ids.text[cursor + leading..cursor + trailing].to_string(),
@@ -1258,6 +1293,7 @@ struct Parser<'input, 'control> {
     control: &'control ParseControl,
     pos: usize,
     gen_counter: i64,
+    declared_entities: HashSet<String>,
     editor_facts: EditorSemanticFacts,
     lexemes: EditorLexemeJournal<'input>,
 }
@@ -1269,6 +1305,7 @@ impl<'input, 'control> Parser<'input, 'control> {
             control,
             pos: 0,
             gen_counter: 0,
+            declared_entities: HashSet::new(),
             editor_facts: EditorSemanticFacts::new(),
             lexemes: EditorLexemeJournal::family_parser(input),
         }
@@ -1952,38 +1989,100 @@ impl<'input, 'control> Parser<'input, 'control> {
             space.label = Some("".to_string());
             space.width = Some(width);
 
-            left.width_in_columns.get_or_insert(1);
+            left.block.width_in_columns.get_or_insert(1);
             self.skip_inline_whitespace();
             if self.starts_with("%%") || matches!(self.peek_char(), None | Some('\n' | '\r')) {
-                return Ok(vec![left, space]);
+                if !left.definition_emitted {
+                    self.push_block_node_occurrence(
+                        &left.id,
+                        detail,
+                        kind,
+                        BlockNodeOccurrence::Definition,
+                    );
+                }
+                return Ok(vec![left.block, space]);
             }
 
+            if !left.definition_emitted {
+                self.push_block_node_occurrence(
+                    &left.id,
+                    detail,
+                    kind,
+                    BlockNodeOccurrence::Definition,
+                );
+            }
             let mut right = self.parse_node("block node", EditorSemanticKind::Object)?;
-            right.width_in_columns.get_or_insert(1);
-            return Ok(vec![left, space, right]);
+            right.block.width_in_columns.get_or_insert(1);
+            if !right.definition_emitted {
+                self.push_block_node_occurrence(
+                    &right.id,
+                    "block node",
+                    EditorSemanticKind::Object,
+                    BlockNodeOccurrence::Definition,
+                );
+            }
+            return Ok(vec![left.block, space, right.block]);
         }
 
         self.skip_ws_and_comments();
-        if let Some((label, edge_marker)) = self.parse_link()? {
+        let link = match self.parse_link() {
+            Ok(link) => link,
+            Err(error) => {
+                if !left.definition_emitted {
+                    self.push_block_node_occurrence(
+                        &left.id,
+                        detail,
+                        kind,
+                        BlockNodeOccurrence::Definition,
+                    );
+                }
+                return Err(error);
+            }
+        };
+        if let Some((label, edge_marker)) = link {
+            if !left.definition_emitted {
+                self.push_block_node_occurrence(
+                    &left.id,
+                    detail,
+                    kind,
+                    BlockNodeOccurrence::RelationEndpoint,
+                );
+            }
+            if let Some(label) = label.as_ref() {
+                push_block_payload(
+                    &mut self.editor_facts,
+                    label.clone(),
+                    "block edge label",
+                    EditorSemanticKind::String,
+                );
+            }
             let mut right = self.parse_node("block edge endpoint", EditorSemanticKind::Object)?;
             let arrow_type_end = edge_str_to_edge_data(&edge_marker);
-            let edge_id = format!("{}-{}", left.id, right.id);
+            let edge_id = format!("{}-{}", left.block.id, right.block.id);
             let edge = Block {
                 id: edge_id,
                 block_type: "edge".to_string(),
-                label: Some(label),
+                label: Some(label.map(|label| label.text).unwrap_or_default()),
                 children: Vec::new(),
-                start: Some(left.id.clone()),
-                end: Some(right.id.clone()),
+                start: Some(left.block.id.clone()),
+                end: Some(right.block.id.clone()),
                 arrow_type_end: Some(arrow_type_end),
                 arrow_type_start: Some("arrow_open".to_string()),
-                directions: right.directions.clone(),
+                directions: right.block.directions.clone(),
                 ..Default::default()
             };
 
-            left.width_in_columns.get_or_insert(1);
-            right.width_in_columns.get_or_insert(1);
-            return Ok(vec![left, edge, right]);
+            if !right.definition_emitted {
+                self.push_block_node_occurrence(
+                    &right.id,
+                    "block edge endpoint",
+                    EditorSemanticKind::Object,
+                    BlockNodeOccurrence::RelationEndpoint,
+                );
+            }
+            left.block.width_in_columns.get_or_insert(1);
+            right.block.width_in_columns.get_or_insert(1);
+            return Ok(vec![left.block, edge, right.block]);
         }
 
         self.skip_ws_and_comments();
@@ -1995,15 +2094,23 @@ impl<'input, 'control> Parser<'input, 'control> {
                 "block width",
                 EditorSemanticKind::Property,
             );
-            left.width_in_columns = Some(w);
+            left.block.width_in_columns = Some(w);
         } else {
-            left.width_in_columns.get_or_insert(1);
+            left.block.width_in_columns.get_or_insert(1);
         }
 
-        Ok(vec![left])
+        if !left.definition_emitted {
+            self.push_block_node_occurrence(
+                &left.id,
+                detail,
+                kind,
+                BlockNodeOccurrence::Definition,
+            );
+        }
+        Ok(vec![left.block])
     }
 
-    fn parse_link(&mut self) -> Result<Option<(String, String)>> {
+    fn parse_link(&mut self) -> Result<Option<(Option<BlockSpannedText>, String)>> {
         self.skip_ws_and_comments();
         if self.is_eof() {
             return Ok(None);
@@ -2019,13 +2126,7 @@ impl<'input, 'control> Parser<'input, 'control> {
                 self.skip_ws_and_comments();
                 if let Some(edge_marker) = self.try_read_link_full_marker() {
                     self.record_lexeme(EditorLexemeKind::Operator, edge_marker.span);
-                    push_block_payload(
-                        &mut self.editor_facts,
-                        label.clone(),
-                        "block edge label",
-                        EditorSemanticKind::String,
-                    );
-                    return Ok(Some((label.text, edge_marker.text)));
+                    return Ok(Some((Some(label), edge_marker.text)));
                 }
                 self.pos = snapshot;
                 return Err(Error::diagram_parse_fallback(
@@ -2039,7 +2140,7 @@ impl<'input, 'control> Parser<'input, 'control> {
 
         if let Some(edge_marker) = self.try_read_link_full_marker() {
             self.record_lexeme(EditorLexemeKind::Operator, edge_marker.span);
-            return Ok(Some(("".to_string(), edge_marker.text)));
+            return Ok(Some((None, edge_marker.text)));
         }
         if let Some(start_marker) = partial_start_marker {
             self.record_lexeme(EditorLexemeKind::Operator, start_marker.span);
@@ -2106,17 +2207,17 @@ impl<'input, 'control> Parser<'input, 'control> {
         })
     }
 
-    fn parse_node(&mut self, detail: &str, kind: EditorSemanticKind) -> Result<Block> {
+    fn parse_node(&mut self, detail: &str, kind: EditorSemanticKind) -> Result<ParsedBlockNode> {
         self.skip_ws_and_comments();
         let id = self.parse_node_id()?;
-        push_block_entity(&mut self.editor_facts, id.clone(), detail, kind);
-        let mut b = Block::new(id.text);
+        let mut b = Block::new(id.text.clone());
         b.label = None;
         b.block_type = "na".to_string();
 
         self.skip_ws_and_comments();
 
         if self.starts_with("<[") {
+            self.push_block_node_occurrence(&id, detail, kind, BlockNodeOccurrence::Definition);
             let delimiter_start = self.pos;
             self.pos += 2;
             self.record_lexeme(
@@ -2157,10 +2258,15 @@ impl<'input, 'control> Parser<'input, 'control> {
             b.block_type = "block_arrow".to_string();
             b.directions = Some(dirs);
             b.width_in_columns = Some(1);
-            return Ok(b);
+            return Ok(ParsedBlockNode {
+                block: b,
+                id,
+                definition_emitted: true,
+            });
         }
 
         if let Some(delims) = node_delims_at_start(&self.input[self.pos..]) {
+            self.push_block_node_occurrence(&id, detail, kind, BlockNodeOccurrence::Definition);
             let start_delim = delims.start;
             let delimiter_start = self.pos;
             self.pos += start_delim.len();
@@ -2204,10 +2310,45 @@ impl<'input, 'control> Parser<'input, 'control> {
             b.label = Some(label.text);
             b.block_type = type_str_to_type(&type_str);
             b.width_in_columns = Some(1);
-            return Ok(b);
+            return Ok(ParsedBlockNode {
+                block: b,
+                id,
+                definition_emitted: true,
+            });
         }
 
-        Ok(b)
+        Ok(ParsedBlockNode {
+            block: b,
+            id,
+            definition_emitted: false,
+        })
+    }
+
+    fn push_block_node_occurrence(
+        &mut self,
+        id: &BlockSpannedText,
+        detail: &str,
+        kind: EditorSemanticKind,
+        occurrence: BlockNodeOccurrence,
+    ) {
+        let is_entity = match occurrence {
+            BlockNodeOccurrence::Definition => {
+                self.declared_entities.insert(id.text.clone());
+                true
+            }
+            BlockNodeOccurrence::RelationEndpoint => self.declared_entities.insert(id.text.clone()),
+        };
+        let modifier = if is_entity {
+            EditorLexemeModifier::Definition
+        } else {
+            EditorLexemeModifier::Reference
+        };
+        self.record_lexeme_with_modifier(EditorLexemeKind::Identifier, modifier, id.span);
+        if is_entity {
+            push_block_entity(&mut self.editor_facts, id.clone(), detail, kind);
+        } else {
+            push_block_reference(&mut self.editor_facts, id.clone(), detail, kind);
+        }
     }
 
     fn parse_direction_list(&mut self) -> Result<Vec<String>> {
@@ -2295,11 +2436,6 @@ impl<'input, 'control> Parser<'input, 'control> {
             text: self.input[start..self.pos].to_string(),
             span: SourceSpan::new(start, self.pos),
         };
-        self.record_lexeme_with_modifier(
-            EditorLexemeKind::Identifier,
-            EditorLexemeModifier::Definition,
-            id.span,
-        );
         Ok(id)
     }
 
@@ -2821,11 +2957,90 @@ C<["Route"]>(left,down)
             crate::EditorSemanticRole::ClassDefinition
         );
 
+        for target in ["A", "B"] {
+            let class_target = facts
+                .symbols
+                .iter()
+                .find(|symbol| {
+                    symbol.name == target && symbol.detail.as_deref() == Some("block class target")
+                })
+                .unwrap_or_else(|| panic!("missing block class target {target}"));
+            assert_eq!(class_target.role, crate::EditorSemanticRole::Reference);
+        }
+
         let class_ids_start = text.find("A,B important").unwrap();
         assert!(facts.expected_syntax.iter().any(|expected| {
             expected.kind == EditorExpectedSyntaxKind::IdList
                 && expected.span == SourceSpan::new(class_ids_start, class_ids_start + 3)
         }));
+    }
+
+    #[test]
+    fn block_style_targets_are_references_without_creating_definitions() {
+        let text = "block\nstyle Future fill:#f00\nFuture[\"Defined later\"]\n";
+        let facts = crate::family::test_support::editor_facts(
+            parse_block_json_and_editor_facts,
+            text,
+            &meta(),
+        );
+
+        let future: Vec<_> = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "Future")
+            .collect();
+        assert_eq!(future.len(), 2);
+        assert_eq!(future[0].role, crate::EditorSemanticRole::Reference);
+        assert_eq!(future[1].role, crate::EditorSemanticRole::Entity);
+    }
+
+    #[test]
+    fn block_node_occurrences_only_define_the_first_implicit_block() {
+        let text = "block\nA --> B\nA --> C\n";
+        let facts = crate::family::test_support::editor_facts(
+            parse_block_json_and_editor_facts,
+            text,
+            &meta(),
+        );
+
+        let a_roles: Vec<_> = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "A")
+            .map(|symbol| symbol.role)
+            .collect();
+        assert_eq!(
+            a_roles,
+            [
+                crate::EditorSemanticRole::Entity,
+                crate::EditorSemanticRole::Reference,
+            ]
+        );
+        for name in ["B", "C"] {
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == name && symbol.role == crate::EditorSemanticRole::Entity
+            }));
+        }
+
+        let explicit = "block\nA --> B\nA[\"Defined later\"]\n";
+        let explicit_facts = crate::family::test_support::editor_facts(
+            parse_block_json_and_editor_facts,
+            explicit,
+            &meta(),
+        );
+        let explicit_a_roles: Vec<_> = explicit_facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "A")
+            .map(|symbol| symbol.role)
+            .collect();
+        assert_eq!(
+            explicit_a_roles,
+            [
+                crate::EditorSemanticRole::Entity,
+                crate::EditorSemanticRole::Entity,
+            ]
+        );
     }
 
     #[test]
