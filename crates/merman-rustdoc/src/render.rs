@@ -2,8 +2,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use merman::{
-    MermaidConfig,
-    svg::{HeadlessRenderer, RenderEnvironment},
+    MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
+    svg::{RenderEnvironment, SvgPipeline},
 };
 use serde_json::Value;
 
@@ -144,35 +144,44 @@ fn render_mermaid_svg(
     site_theme: Option<&str>,
     context: &str,
 ) -> Result<String> {
-    let mut renderer = HeadlessRenderer::new()
-        .with_environment(RenderEnvironment::deterministic())
-        .with_diagram_id(diagram_id);
+    let mut engine = merman::Engine::new();
     if let Some(theme) = site_theme {
         let mut config = MermaidConfig::empty_object();
         config.set_value("theme", Value::String(theme.to_string()));
-        renderer = renderer.with_site_config(config);
+        engine = engine.with_site_config(config);
     }
 
-    let rendered = match pipeline {
-        PipelineMode::Parity => renderer.render_svg_sync(source),
-        PipelineMode::Readable => renderer.render_svg_readable_sync(source),
-        PipelineMode::ResvgSafe => renderer
-            .render_resvg_compatible_svg_sync(source)
-            .map(|svg| svg.map(merman::svg::ResvgCompatibleSvg::into_string)),
+    let request = SvgRequest {
+        environment: RenderEnvironment::deterministic(),
+        pipeline: match pipeline {
+            PipelineMode::Parity => None,
+            PipelineMode::Readable => Some(SvgPipeline::readable()),
+            PipelineMode::ResvgSafe => Some(SvgPipeline::resvg_safe()),
+        },
+        options: merman::svg::SvgRenderOptions {
+            diagram_id: Some(diagram_id.to_string()),
+            ..Default::default()
+        },
+        ..Default::default()
     };
-    rendered
+    let rendered = Renderer::new()
+        .with_engine(engine)
+        .render(RenderRequest::svg(source, OperationControl::new(), request))
         .map_err(|err| {
             Error::new(format!(
                 "failed to render Mermaid diagram #{} for rustdoc ({context}): {err}",
                 index + 1
             ))
-        })?
-        .ok_or_else(|| {
-            Error::new(format!(
-                "Mermaid diagram #{} did not produce SVG output",
-                index + 1
-            ))
-        })
+        })?;
+    let RenderOutput::Svg(svg) = rendered else {
+        unreachable!("SVG request must return SVG output");
+    };
+    svg.ok_or_else(|| {
+        Error::new(format!(
+            "Mermaid diagram #{} did not produce SVG output",
+            index + 1
+        ))
+    })
 }
 
 fn read_include_mmd(path: &str) -> Result<String> {
