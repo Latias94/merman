@@ -27,6 +27,34 @@ pub(super) enum C6ObservedMechanismDisposition {
     Residual,
 }
 
+/// Target-local proof sealed by a real artifact checker.
+///
+/// This type deliberately carries no caller-supplied success flag. A target adapter can only
+/// create it after its parser/geometry checker has accepted the final artifact bytes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct C6TargetProof {
+    artifact_assertion: C6ArtifactAssertion,
+    artifact_digest: [u8; 32],
+    mechanism_digest: [u8; 32],
+    mechanism_dispositions: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
+}
+
+impl C6TargetProof {
+    pub(super) fn verified(
+        artifact_assertion: C6ArtifactAssertion,
+        artifact_bytes: &[u8],
+        mechanism_dispositions: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
+    ) -> Self {
+        let mechanism_digest = mechanism_digest(&mechanism_dispositions);
+        Self {
+            artifact_assertion,
+            artifact_digest: sha256(artifact_bytes),
+            mechanism_digest,
+            mechanism_dispositions,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct C6ObservedCell {
     key: C6CellKey,
@@ -200,21 +228,19 @@ fn observe_cell_from_reports(
     catalog: &ThemeFixtureCatalog,
     recipe_fingerprint: Option<merman::svg::ThemeRecipeFingerprint>,
     sealed_svg: &str,
-    mechanisms: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
     document: &merman::svg::DocumentRenderReport,
     admission: &merman::svg::TargetAdmissionReport,
-    artifact_assertion: C6ArtifactAssertion,
-    artifact_bytes: &[u8],
+    proof: C6TargetProof,
 ) -> C6ObservedCell {
     let fixture = catalog
         .fixture(enforced.source_fixture_id())
         .expect("the acceptance catalog validated the enforced fixture");
     assert_eq!(
-        artifact_assertion,
+        proof.artifact_assertion,
         expected_artifact_assertion(enforced.key().target())
     );
     assert_eq!(
-        artifact_assertion,
+        proof.artifact_assertion,
         expected_artifact_assertion(match admission.target() {
             RenderTargetKind::Svg => ExpectedOutputTarget::StandaloneSvg,
             RenderTargetKind::Png => ExpectedOutputTarget::Png,
@@ -256,6 +282,8 @@ fn observe_cell_from_reports(
         assert!(admission.reasons().is_empty());
     }
 
+    assert_ne!(proof.artifact_digest, [0; 32]);
+    assert_ne!(proof.mechanism_digest, [0; 32]);
     C6ObservedCell {
         key: enforced.key(),
         source_fixture_id: fixture.id().to_owned(),
@@ -268,14 +296,14 @@ fn observe_cell_from_reports(
         resource_fingerprint: *document.resource_fingerprint().as_bytes(),
         target: admission.target(),
         admission_digest: admission_digest(admission),
-        artifact_digest: sha256(artifact_bytes),
-        mechanism_digest: mechanism_digest(&mechanisms),
+        artifact_digest: proof.artifact_digest,
+        mechanism_digest: proof.mechanism_digest,
         proof_stages: C6_COMPLETE_PROOF_STAGES,
-        mechanism_dispositions: mechanisms,
+        mechanism_dispositions: proof.mechanism_dispositions,
         residual_ids: BTreeSet::new(),
         font_source,
         admission: observed_admission,
-        artifact_assertion,
+        artifact_assertion: proof.artifact_assertion,
     }
 }
 
@@ -652,16 +680,19 @@ fn observe_brutalist_state_standalone(
         .expect("the C6 standalone SVG must pass strict terminal admission");
     let observed_mechanisms = assert_brutalist_state_svg(input, admitted.as_str());
     assert_eq!(&observed_mechanisms, mechanisms);
+    let proof = C6TargetProof::verified(
+        C6ArtifactAssertion::StandaloneSvgDocument,
+        admitted.as_str().as_bytes(),
+        observed_mechanisms,
+    );
     observe_cell_from_reports(
         enforced,
         theme_catalog,
         document.theme_recipe_fingerprint(),
         admitted.as_str(),
-        mechanisms.clone(),
         admitted.document_report(),
         admitted.target_admission(),
-        C6ArtifactAssertion::StandaloneSvgDocument,
-        admitted.as_str().as_bytes(),
+        proof,
     )
 }
 
@@ -693,6 +724,7 @@ fn observe_brutalist_state_png(
         .expect("encode the enforced C6 PNG artifact");
     assert_png_artifact(&png);
     let proof = prove_brutalist_state_png(input, sealed_svg, &png);
+    let target_proof = proof.target_proof(&png);
     assert_eq!(
         report.export_report().native_filter_receipt(),
         Some(native_filter_receipt)
@@ -711,11 +743,9 @@ fn observe_brutalist_state_png(
             theme_catalog,
             report.operation_report().theme_recipe_fingerprint(),
             sealed_svg,
-            proof.mechanisms().clone(),
             report.document_report(),
             report.target_admission(),
-            C6ArtifactAssertion::PngImage,
-            &png,
+            target_proof,
         ),
         proof,
     )
@@ -749,7 +779,7 @@ fn observe_brutalist_state_jpeg(
         .encode()
         .expect("encode the enforced C6 JPEG artifact");
     assert_jpeg_artifact(&jpeg);
-    let mechanisms = prove_brutalist_state_jpeg(input, sealed_svg, &jpeg, png_proof);
+    let proof = prove_brutalist_state_jpeg(input, sealed_svg, &jpeg, png_proof);
     assert_eq!(
         report.export_report().native_filter_receipt(),
         Some(native_filter_receipt)
@@ -767,11 +797,9 @@ fn observe_brutalist_state_jpeg(
         theme_catalog,
         report.operation_report().theme_recipe_fingerprint(),
         sealed_svg,
-        mechanisms,
         report.document_report(),
         report.target_admission(),
-        C6ArtifactAssertion::JpegImage,
-        &jpeg,
+        proof,
     )
 }
 
@@ -806,8 +834,7 @@ fn observe_brutalist_state_pdf(
         .encode()
         .expect("encode the enforced C6 PDF artifact");
     assert_pdf_artifact(&pdf);
-    let mechanisms =
-        prove_brutalist_state_pdf(input, sealed_svg, &pdf, filter_plan.effective_scale);
+    let proof = prove_brutalist_state_pdf(input, sealed_svg, &pdf, filter_plan.effective_scale);
     assert_eq!(
         report.export_report().native_filter_receipt(),
         Some(native_filter_receipt)
@@ -826,11 +853,9 @@ fn observe_brutalist_state_pdf(
         theme_catalog,
         report.operation_report().theme_recipe_fingerprint(),
         sealed_svg,
-        mechanisms,
         report.document_report(),
         report.target_admission(),
-        C6ArtifactAssertion::PdfDocument,
-        &pdf,
+        proof,
     )
 }
 

@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
 use image::ImageFormat;
-use merman_theme_fixtures::{ReferenceSemanticRule, ReferenceThemeInput, ReferenceThemeMechanism};
+use merman_theme_fixtures::{
+    C6ArtifactAssertion, ReferenceSemanticRule, ReferenceThemeInput, ReferenceThemeMechanism,
+};
 
 use super::C6ObservedMechanismDisposition;
 
@@ -32,10 +34,12 @@ pub(crate) struct PngArtifactProof {
 }
 
 impl PngArtifactProof {
-    pub(crate) fn mechanisms(
-        &self,
-    ) -> &BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition> {
-        &self.mechanisms
+    pub(crate) fn target_proof(&self, bytes: &[u8]) -> super::C6TargetProof {
+        super::C6TargetProof::verified(
+            C6ArtifactAssertion::PngImage,
+            bytes,
+            self.mechanisms.clone(),
+        )
     }
 }
 
@@ -62,7 +66,7 @@ pub(crate) fn prove_brutalist_state_jpeg(
     sealed_svg: &str,
     bytes: &[u8],
     png: &PngArtifactProof,
-) -> BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition> {
+) -> super::C6TargetProof {
     let contract = BrutalistStateVisualContract::from_fixture(input);
     let geometry = StateRasterGeometry::from_sealed_svg(sealed_svg);
     assert_eq!(geometry, png.geometry);
@@ -71,7 +75,7 @@ pub(crate) fn prove_brutalist_state_jpeg(
     assert_eq!(raster.height, png.raster.height);
     assert_brutalist_state_raster(&contract, &geometry, &raster, 18);
     assert_jpeg_tracks_png(&raster, &png.raster, &contract, &geometry);
-    applied_mechanisms()
+    super::C6TargetProof::verified(C6ArtifactAssertion::JpegImage, bytes, applied_mechanisms())
 }
 
 fn applied_mechanisms() -> BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition> {

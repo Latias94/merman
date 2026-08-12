@@ -4,7 +4,9 @@ use lopdf::{
     Document, Object, ObjectId, Stream,
     content::{Content, Operation},
 };
-use merman_theme_fixtures::{ReferenceSemanticRule, ReferenceThemeInput, ReferenceThemeMechanism};
+use merman_theme_fixtures::{
+    C6ArtifactAssertion, ReferenceSemanticRule, ReferenceThemeInput, ReferenceThemeMechanism,
+};
 
 use super::C6ObservedMechanismDisposition;
 
@@ -21,7 +23,7 @@ pub(crate) fn prove_brutalist_state_pdf(
     sealed_svg: &str,
     bytes: &[u8],
     filter_scale: f32,
-) -> BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition> {
+) -> super::C6TargetProof {
     let contract = BrutalistStatePdfContract::from_fixture(input, filter_scale);
     let geometry = StateSvgGeometry::from_sealed_svg(sealed_svg)
         .unwrap_or_else(|error| panic!("read the sealed C6 State geometry: {error}"));
@@ -82,7 +84,11 @@ pub(crate) fn prove_brutalist_state_pdf(
     )
     .unwrap_or_else(|error| panic!("prove the final C6 PDF State labels: {error}"));
 
-    applied_mechanisms()
+    super::C6TargetProof::verified(
+        C6ArtifactAssertion::PdfDocument,
+        bytes,
+        applied_mechanisms(),
+    )
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
