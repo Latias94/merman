@@ -8,8 +8,8 @@ This document tracks the remaining gaps for Mindmap SVG output parity against up
 
 - Compare (parity-root):
   - `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
-- Debug node positions for a single fixture:
-  - `cargo run -p xtask -- debug-mindmap-svg-positions --fixture basic`
+- Inspect the emitted bounds for a generated local or upstream SVG:
+  - `cargo run -p xtask -- debug-svg-bbox --svg <path-to-svg>`
 
 ## Current mismatches (parity-root)
 

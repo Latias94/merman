@@ -19,7 +19,7 @@ symbols, navigation, rename, folding, and semantic-token facts. LSP owns request
 capability advertising, URI/range conversion, token delta encoding, and client cache state.
 
 Semantic-token codes, modifier bits, legend indices, and the five-word relative UTF-16 record are
-owned by `editor-language/token-descriptor-v1.json` and generated into Rust, Web, and the VS Code
+owned by `contracts/editor-language/token-descriptor-v1.json` and generated into Rust, Web, and the VS Code
 extension. LSP initialization publishes the descriptor digest and packed encoding under
 `capabilities.experimental.merman.editorLanguage`; the extension fails closed when that identity or
 the standard LSP legend differs. The same capability publishes the descriptor-owned rename-policy
@@ -29,7 +29,7 @@ theme supertypes, source-owned TextMate fallback scopes, and Mermaid semantic-hi
 standard VS Code types and modifiers are not redeclared. Editor-only theme metadata is excluded from
 the packed-protocol digest and guarded by the generated manifest drift check instead, so a scope or
 description change cannot create a false LSP/WASM incompatibility.
-`editor-language/token-equivalence-v1.json` records the exact planner output for the 35-public-type
+`contracts/editor-language/token-equivalence-v1.json` records the exact planner output for the 35-public-type
 baseline plus malformed recovery, and LSP, Web WASM, Monaco, and VS Code gates consume that one
 generated evidence artifact without transport-local sorting or token name lookup.
 

@@ -24,9 +24,9 @@ Before changing anything, classify the work as development, a workspace release,
 Treat the request as `prepare` unless the maintainer explicitly authorizes `ship` for a concrete version, source commit, channel, and surface set.
 
 - `prepare` may update source files, run local checks, dispatch non-publishing preflight when requested, and inspect external state read-only.
-- `ship` may create or push a tag, dispatch a publishing workflow, modify a GitHub Release, or mutate a registry only within the named scope.
+- `ship` may create or push a tag, dispatch a publishing or deployment workflow, modify a GitHub Release, or mutate a registry only within the named scope.
 - Pushing a release tag starts one inseparable tag-triggered publication bundle: `release.yml`, `release-crates.yml`, and `release-flutter.yml`. The maintainer must authorize all three tag-triggered surfaces; authorization for only part of that bundle does not authorize a tag push.
-- Python, Android, Apple, Web, VS Code, and Homebrew are separately authorized surfaces.
+- Python, Android, Apple, Web, VS Code, Homebrew, and GitHub Pages are separately authorized surfaces. Pages authorization must name a reviewed ref and approved 40-character commit; Web/npm or CI authorization does not cover dispatching `pages-deploy.yml` or a matching-path push to `main` or `master`.
 - Preparation, a green preflight, an existing plan, a partial prior release, or authorization from an earlier release never implies current shipping authorization.
 
 If scope is incomplete, report what is ready and stop before the first external mutation.
@@ -63,7 +63,13 @@ Treat `Cargo.toml` `[workspace.package].version` as the workspace release author
 
 Run the version projection only after the maintainer selects the next workspace version. A channel-only npm alpha test may reuse the current workspace prerelease version from a newer reviewed commit without selecting the next workspace release; keep the root changelog at `Unreleased` and leave workspace versions unchanged.
 
-Do not hand-edit generated version projections. If the command is interrupted, preserve the partial diff and rerun the same command; the workspace authority is written last.
+Run `release-version.py set` only from a clean linked release worktree, never the primary checkout.
+Use the exact npm version pinned by `playground/package.json`; the command rejects tool drift. Cargo,
+npm, and platform owners prepare their manifests and locks in disposable state, after which the
+coordinator validates the full projection and source preimage, checks one binary patch, and applies
+that patch once. Preparation and pre-apply failures leave the caller unchanged. Do not hand-edit
+generated projections or copy partial files from the disposable worktree; fix the owner failure and
+rerun the same command.
 
 README files are ordinary documentation and are not generated version projections. Before immutable preflight, perform a release-state documentation pass across the root README, every package README shipped by an authorized surface, and the closest installation guides:
 
@@ -78,7 +84,7 @@ Use a broad README version search before preflight and again after every publica
 ```bash
 rg -n --glob '**/README.md' --glob '**/CHANGELOG.md' \
   '0\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+|\[[^]]+\] - Unreleased|published registry packages can still|candidate from Git|[Aa]fter .*is published|[Ww]hen .*is published|git\s*=\s*"https://github\.com/Latias94/merman' \
-  README.md CHANGELOG.md crates docs platforms packages tools
+  README.md CHANGELOG.md crates distribution docs platforms tools
 ```
 
 Classify every match instead of blindly replacing it. Historical reports may retain historical wording; current installation guidance must match the intended release state. A cancelled or completed release has no generated README mode to restore, but a successful or partially recovered publication can require a new documentation commit so `main` stops describing an already-published version as unavailable.
@@ -94,6 +100,20 @@ Keep release smoke tests strict about user-observable behavior and loose about v
 Resolve the intended commit to a 40-character `SOURCE_SHA`. Use the exact preflight dispatch from `docs/release/RELEASING.md`, passing that immutable SHA instead of a branch. Wait for every job and diagnose failures before tagging. A local build is not a substitute for preflight.
 
 Preparation is complete when version projections and release notes are committed, the release-ready check passes, preflight is green for the exact version and `SOURCE_SHA`, and every tag-triggered package fits the current registry upload constraints. Treat an exit-zero package dry-run that reports a server-enforced size or content hint as unresolved release evidence.
+
+For crates.io, inspect the derived topological batches before shipping. The credentialed workflow
+must emit a prepared receipt for every batch, and its result receipt must reach `complete` with each
+registry checksum equal to the locally prepared `.crate` digest before the next batch begins. The
+receipt schema is owned by `distribution/crates-io/receipt-schema-v1.json`; do not generalize it to
+other registries.
+
+Within one crates.io batch, every missing member must complete `cargo publish --dry-run --locked`
+before any member is uploaded. A later dry-run failure must therefore leave the whole batch
+unpublished.
+
+For Flutter, keep the package archive and its source/tree/version/digest receipt together. The
+pub.dev job must verify and safely extract that archive with the trusted workflow revision before
+configuring Dart OIDC credentials; never replace this boundary with direct `tar -x` extraction.
 
 ### npm Package Groups
 
@@ -120,16 +140,109 @@ Watch the tag-triggered cargo-dist, crates.io, and pub.dev workflows first. Afte
 
 Skipped jobs must be explained by channel rules. A manual surface is not authorized merely because the tag-triggered bundle succeeded.
 
+### GitHub Pages Deployment
+
+Under explicit Pages `ship` authorization, dispatch `.github/workflows/pages-deploy.yml`, bind the
+run to the approved commit, wait for both build and deploy, and inspect failed logs before retrying:
+
+```bash
+PAGES_REF="<reviewed-branch-or-tag>"
+PAGES_SHA="<approved-40-character-commit>"
+
+gh workflow run pages-deploy.yml --ref "$PAGES_REF"
+PAGES_RUN_ID="$(gh run list \
+  --workflow pages-deploy.yml \
+  --event workflow_dispatch \
+  --commit "$PAGES_SHA" \
+  --limit 1 \
+  --json databaseId \
+  --jq '.[0].databaseId')"
+test -n "$PAGES_RUN_ID"
+test "$(gh run view "$PAGES_RUN_ID" --json headSha --jq .headSha)" = "$PAGES_SHA"
+if ! gh run watch "$PAGES_RUN_ID" --exit-status; then
+  gh run view "$PAGES_RUN_ID" --log-failed
+  exit 1
+fi
+
+PAGES_DEPLOYMENT_ID="$(gh api --method GET repos/{owner}/{repo}/deployments \
+  -f environment=github-pages \
+  -f sha="$PAGES_SHA" \
+  -f per_page=10 \
+  --jq 'map(select(.task == "deploy")) | first | .id')"
+test -n "$PAGES_DEPLOYMENT_ID"
+PAGES_URL="$(gh api "repos/{owner}/{repo}/deployments/$PAGES_DEPLOYMENT_ID/statuses" \
+  --jq 'map(select(.state == "success" and ((.environment_url // "") != ""))) | first | .environment_url')"
+test -n "$PAGES_URL"
+curl --fail --location --silent --show-error --output /dev/null "$PAGES_URL"
+printf '%s\n' "$PAGES_URL"
+```
+
+The workflow run, successful `github-pages` deployment status, and reachable deployment URL must
+all refer to the approved commit before reporting Pages complete.
+
 ## Verify
 
 Use direct GitHub, registry, and artifact evidence documented in `docs/release/RELEASING.md`. Confirm that:
 
 - the GitHub Release state and assets match the channel and configured target matrix;
 - crates.io, npm, PyPI, and pub.dev show only the surfaces that were actually published;
+- every crates.io batch result receipt is `complete`, with no `pending_recovery` or `mismatch`
+  state and no dependent batch started before its predecessors matched;
 - separately authorized Android, Apple, Web, VS Code, and Homebrew outputs match their declared channel semantics;
 - `main` remains green after any release-workflow repair.
 
 Workflow success is not publication evidence. Registry and GitHub state must agree with the release contract.
+
+### Crates.io Receipt Inspection
+
+Download the exact `release-crates.yml` receipt artifact for read-only inspection. Use the
+preflighted source SHA, not the workflow head SHA of a manual recovery run:
+
+```bash
+CRATES_RUN_ID="<release-crates-run-id>"
+SOURCE_SHA="<preflighted-40-character-source-sha>"
+CRATES_ATTEMPT="$(gh run view "$CRATES_RUN_ID" --json attempt --jq .attempt)"
+RECEIPTS_DIR="target/crates-io-receipts/$CRATES_RUN_ID"
+RECEIPT_SCHEMA="distribution/crates-io/receipt-schema-v1.json"
+
+gh run download "$CRATES_RUN_ID" \
+  --name "crates-io-receipts-${SOURCE_SHA}-attempt-${CRATES_ATTEMPT}" \
+  --dir "$RECEIPTS_DIR"
+
+jq -s -e --slurpfile schema "$RECEIPT_SCHEMA" '
+  def fields_match($shape):
+    (($shape.required - keys) | length == 0)
+    and ((keys - ($shape.properties | keys)) | length == 0);
+  ($schema[0]) as $schema
+  | all(.[];
+      fields_match($schema)
+      and (.source | fields_match($schema.properties.source))
+      and (.toolchain | fields_match($schema.properties.toolchain))
+      and all(.packages[];
+        fields_match($schema["$defs"].package)
+        and (.artifact | fields_match($schema["$defs"].package.properties.artifact))
+        and (.registry | fields_match($schema["$defs"].package.properties.registry))))
+' "$RECEIPTS_DIR"/batch-*.json
+
+jq -s -e --arg source_sha "$SOURCE_SHA" '
+  all(.[];
+    .schema_version == 1
+    and .schema == "distribution/crates-io/receipt-schema-v1.json"
+    and .channel == "crates.io"
+    and .kind == "topological-batch"
+    and .source.commit == $source_sha)
+  and ((map(select(.state == "prepared") | .batch_index) | sort)
+    == (map(select(.state != "prepared") | .batch_index) | sort))
+  and all(.[];
+    .state == "prepared"
+    or (.state == "complete"
+      and all(.packages[];
+        .registry.observed_checksum != null
+        and .registry.observed_checksum == .artifact.sha256)))
+' "$RECEIPTS_DIR"/batch-*.json
+```
+
+These commands only download and inspect evidence; they do not authorize recovery or publication.
 
 ### Post-Publication Documentation Reconciliation
 
@@ -161,7 +274,17 @@ Classify the failure before changing anything:
 
 - Source or manifest failure before publication: fix source, rerun preflight, and use a new tag only if nothing external accepted the broken version.
 - Workflow-only failure after tagging: fix the workflow on `main`, then rerun the authorized workflow against `refs/tags/<tag>` so provenance remains anchored to the release.
-- Partial registry publication: rerun only idempotent or unfinished surfaces; never republish a version a registry accepted.
+- Partial crates.io publication: retain the receipt artifact and rerun from the exact same immutable
+  source. A rerun must download the prior attempt receipts; a new workflow run supplies the prior
+  run id through `recovery_run_id`. Deterministic re-packaging must match the prior source, tree,
+  toolchain, plan, manifest, artifact identities, and every existing registry checksum; matching
+  members are skipped and missing members continue only after the current batch barrier completes.
+- A crates.io `pending_recovery` result means visibility or response status is unresolved. Wait and
+  rerun the same workflow; do not issue a second manual publish attempt while acceptance is unknown.
+- A crates.io `mismatch` result is an incident requiring an explicit maintainer decision. Never
+  auto-yank, silently resume, or publish dependent batches.
+- Partial publication on other registries: rerun only idempotent or unfinished surfaces; never
+  republish a version a registry accepted.
 - Any accepted external publication makes the release tag immutable unless the maintainer explicitly accepts the provenance risk of changing it.
 
 Diagnosis and local fixes are `prepare` work. Rerunning a publisher, uploading an asset, changing a tag, or mutating a registry requires fresh `ship` authorization.
@@ -169,6 +292,9 @@ Diagnosis and local fixes are `prepare` work. Rerunning a publisher, uploading a
 ## Known Traps
 
 - `cargo pkgid` may print versions with either `#` or `@`.
+- `cargo publish` re-packages from source; crates.io integrity is therefore proven by deterministic
+  local `.crate` preparation plus the registry checksum, not by claiming Cargo uploaded an arbitrary
+  prebuilt file.
 - GitHub Release jobs without checkout need `GH_REPO`.
 - cargo-dist workflow changes require `dist generate --check`.
 - `npm pack --json` output must not be contaminated by lifecycle logs.

@@ -394,7 +394,7 @@ pub(crate) fn typst_package_smoke(args: Vec<String>) -> Result<(), XtaskError> {
 
     let typst = find_typst_command(options.typst.as_deref())?;
     let root = paths::workspace_root();
-    let package_source = root.join("packages").join("typst").join("merman");
+    let package_source = root.join("distribution").join("typst").join("merman");
     let manifest_path = package_source.join("typst.toml");
     let package_version = read_typst_package_version(&manifest_path)?;
     let smoke_run = create_smoke_run_root(&paths::target_root())?;
@@ -506,7 +506,7 @@ fn build_typst_package_with_options(options: &Options) -> Result<TypstPackageBui
         .ok_or_else(|| {
             XtaskError::TypstPackageFailed("the exact Typst artifact recipe is missing".to_string())
         })?;
-    let package_source = root.join("packages").join("typst").join("merman");
+    let package_source = root.join("distribution").join("typst").join("merman");
     let source_snapshot =
         RuntimePackageSourceSnapshot::capture(&package_source, profile_catalog.artifact_name())?;
     let artifact_spec =
@@ -1957,7 +1957,7 @@ mod tests {
 
     fn package_fixture(temporary: &tempfile::TempDir) -> PackageFixture {
         let workspace = temporary.path().join("workspace");
-        let package_source = workspace.join("packages/typst/merman");
+        let package_source = workspace.join("distribution/typst/merman");
         let out_dir = temporary.path().join("dist/typst");
         fs::create_dir_all(package_source.join("src")).unwrap();
         fs::create_dir_all(package_source.join("examples")).unwrap();

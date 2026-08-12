@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "mermaidVersion": "11.16.1",
+  "mermaidSourceTag": "mermaid@11.16.1",
+  "mermaidSourceCommit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
+  "nodeVersion": "22.14.0",
+  "pnpmVersion": "10.30.3",
+  "esbuildVersion": "0.25.12",
+  "testConfig": "cypress.config.ts",
+  "renderHelper": "cypress/helpers/util.ts",
+  "scopes": {
+    "new-family": {
+      "description": "Mermaid 11.16 new-family Cypress render calls",
+      "manifest": "fixtures/_upstream/cypress-11.16.1/_manifest.json",
+      "selectors": [
+        {
+          "kind": "directory",
+          "path": "cypress/integration/rendering/treeView"
+        },
+        {
+          "kind": "directory",
+          "path": "cypress/integration/rendering/cynefin"
+        },
+        {
+          "kind": "directory",
+          "path": "cypress/integration/rendering/railroad"
+        }
+      ],
+      "capturedHelpers": [
+        "imgSnapshotTest"
+      ],
+      "passiveHelperImports": [],
+      "allowedRuntimeEffects": [],
+      "expectedActiveCalls": 36,
+      "expectedSkippedRegistrations": 0,
+      "reviewedSkippedRegistrations": [],
+      "reviewedRemovals": [],
+      "supplementalFixtures": [],
+      "timeoutMs": 5000
+    },
+    "flowchart-elk": {
+      "description": "Mermaid 11.16 Flowchart ELK Cypress coverage",
+      "manifest": "fixtures/_upstream/flowchart-elk-11.16.1/_manifest.json",
+      "selectors": [
+        {
+          "kind": "file",
+          "path": "cypress/integration/rendering/flowchart/flowchart-elk.spec.js"
+        }
+      ],
+      "capturedHelpers": [
+        "imgSnapshotTest",
+        "renderGraph"
+      ],
+      "passiveHelperImports": [
+        "verifyNumber"
+      ],
+      "allowedRuntimeEffects": [
+        "cy.get.should"
+      ],
+      "expectedActiveCalls": 64,
+      "expectedSkippedRegistrations": 1,
+      "reviewedSkippedRegistrations": [
+        {
+          "registration": "Flowchart ELK > Markdown strings flowchart-elk (#4220) > html labels > Wrapping long text with a new line",
+          "reason": "The pinned upstream Cypress suite explicitly registers this case with it.skip."
+        }
+      ],
+      "reviewedRemovals": [],
+      "supplementalFixtures": [
+        "fixtures/flowchart/upstream_html_demos_ashish2_example_009.mmd",
+        "fixtures/flowchart/upstream_html_demos_flow_elk_example_001.mmd",
+        "fixtures/flowchart/upstream_html_demos_flowchart_elk_flowchart_elk_001.mmd",
+        "fixtures/flowchart/upstream_html_demos_knsv2_example_011.mmd"
+      ],
+      "timeoutMs": 5000
+    }
+  }
+}

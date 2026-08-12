@@ -33,6 +33,10 @@ import {
 import { summarize } from "../scripts/benchmark/stats.mjs";
 import { svgTransportEvidence } from "../scripts/benchmark/svg-signature.mjs";
 import { digestJson } from "../scripts/stable-json.mjs";
+import {
+  assertSuccessfulNpmSpawn,
+  spawnNpmSync,
+} from "../../../scripts/npm-command.mjs";
 import { measureWarmSample } from "../scripts/benchmark/worker.mjs";
 import {
   BINDING_OPTION_GROUP_SPECS,
@@ -1303,11 +1307,11 @@ test("WASM footprint staging preserves generated artifacts despite wasm-pack's w
   ]) {
     assert.match(entrypoint, new RegExp(`\\b${exported}\\b`));
   }
-  const result = spawnSync("npm", ["pack", "--json", "--dry-run"], {
+  const result = spawnNpmSync(["pack", "--json", "--dry-run"], {
     cwd: packageRoot,
     encoding: "utf8",
   });
-  assert.equal(result.status, 0, result.stderr);
+  assertSuccessfulNpmSpawn(result, "npm pack for WASM footprint staging test");
   const files = JSON.parse(result.stdout)[0].files.map((file) => file.path);
   assert(files.includes("artifact/merman_node.js"));
   assert(files.includes("artifact/merman_node_bg.wasm"));

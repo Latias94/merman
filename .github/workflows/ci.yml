@@ -6,6 +6,12 @@ on:
       - main
       - master
   pull_request:
+  merge_group:
+    types:
+      - checks_requested
+  schedule:
+    - cron: "7 2 * * 0"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,11 +21,140 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  hygiene:
-    name: hygiene
+  ci-plan:
+    name: ci-plan
+    runs-on: ubuntu-24.04
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+      cli: ${{ steps.plan.outputs.cli }}
+      core: ${{ steps.plan.outputs.core }}
+      fuzz: ${{ steps.plan.outputs.fuzz }}
+      hygiene: ${{ steps.plan.outputs.hygiene }}
+      node: ${{ steps.plan.outputs.node }}
+      npm: ${{ steps.plan.outputs.npm }}
+      performance: ${{ steps.plan.outputs.performance }}
+      platform: ${{ steps.plan.outputs.platform }}
+      python: ${{ steps.plan.outputs.python }}
+      security: ${{ steps.plan.outputs.security }}
+      typst: ${{ steps.plan.outputs.typst }}
+      vscode: ${{ steps.plan.outputs.vscode }}
+      web: ${{ steps.plan.outputs.web }}
+      workflow: ${{ steps.plan.outputs.workflow }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve same-run CI owners
+        id: plan
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          MERGE_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+          PUSH_BASE_SHA: ${{ github.event.before }}
+          PUSH_HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            pull_request)
+              base="$PR_BASE_SHA"
+              head="$PR_HEAD_SHA"
+              extra=()
+              ;;
+            merge_group)
+              base="$MERGE_BASE_SHA"
+              head="$MERGE_HEAD_SHA"
+              extra=()
+              ;;
+            push)
+              base="$PUSH_BASE_SHA"
+              head="$PUSH_HEAD_SHA"
+              extra=(--select-all --reason "main push full lifecycle")
+              ;;
+            schedule|workflow_dispatch)
+              base="$PUSH_HEAD_SHA"
+              head="$PUSH_HEAD_SHA"
+              extra=(--select-owner core --reason "scheduled or manual full host safety net")
+              ;;
+            *)
+              echo "unsupported CI event: $EVENT_NAME" >&2
+              exit 1
+              ;;
+          esac
+          python3 scripts/ci_plan.py plan \
+            --base "$base" \
+            --head "$head" \
+            --github-output "$GITHUB_OUTPUT" \
+            "${extra[@]}"
+
+  workflow-analysis:
+    name: workflow-analysis
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.workflow == 'true' }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install exact workflow analyzers
+        shell: bash
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          ZIZMOR_VERSION: 1.29.0
+          ZIZMOR_SHA256: 587b99c2e1b34575c6c8565c2bfde415ca8bc0310f5589f19bc948c8dea10a20
+        run: |
+          set -euo pipefail
+          tools_dir="$RUNNER_TEMP/workflow-tools"
+          mkdir -p "$tools_dir/actionlint" "$tools_dir/zizmor"
+
+          actionlint_archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl --proto '=https' --tlsv1.2 --fail --location --show-error \
+            --retry 3 \
+            --output "$actionlint_archive" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          printf '%s  %s\n' "$ACTIONLINT_SHA256" "$actionlint_archive" | sha256sum --check
+          tar -xzf "$actionlint_archive" -C "$tools_dir/actionlint" actionlint
+
+          cat > "$RUNNER_TEMP/zizmor-requirements.txt" <<EOF
+          zizmor==${ZIZMOR_VERSION} --hash=sha256:${ZIZMOR_SHA256}
+          EOF
+          python3 -m pip install \
+            --disable-pip-version-check \
+            --no-deps \
+            --only-binary=:all: \
+            --require-hashes \
+            --target "$tools_dir/zizmor" \
+            --requirement "$RUNNER_TEMP/zizmor-requirements.txt"
+
+          test -x "$tools_dir/actionlint/actionlint"
+          test -x "$tools_dir/zizmor/bin/zizmor"
+          echo "$tools_dir/actionlint" >> "$GITHUB_PATH"
+          echo "$tools_dir/zizmor/bin" >> "$GITHUB_PATH"
+
+      - name: Verify analyzer identities
+        run: |
+          actionlint -version
+          zizmor --version
+
+      - name: Validate GitHub Actions syntax and expressions
+        run: actionlint
+
+      - name: Audit GitHub Actions security
+        run: zizmor --min-severity high .
+
+  hygiene:
+    name: hygiene
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.hygiene == 'true' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -31,9 +166,6 @@ jobs:
 
       - name: Check Rust formatting
         run: cargo fmt --all --check
-
-      - name: Verify release crate order docs
-        run: python3 scripts/verify-release-crate-order.py
 
       - name: Verify release version projections
         run: python3 scripts/release-version.py
@@ -53,12 +185,15 @@ jobs:
       - name: Test release and workflow hygiene scripts
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
-      - name: Check whitespace (pull request)
-        if: github.event_name == 'pull_request'
-        run: git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.sha }}"
+      - name: Check whitespace (pull request or merge queue)
+        if: github.event_name != 'push'
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: git diff --check "$BASE_SHA" "$HEAD_SHA"
 
       - name: Check whitespace (push)
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'push'
         run: |
           base="${{ github.event.before }}"
           if [[ "$base" =~ ^0+$ ]]; then
@@ -69,6 +204,8 @@ jobs:
 
   cli-contracts:
     name: cli-contracts
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.cli == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -76,7 +213,7 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -86,10 +223,12 @@ jobs:
           components: clippy
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@nextest
+        uses: taiki-e/install-action@v2.85.11
+        with:
+          tool: nextest
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2.9.2
         with:
           cache-targets: false
 
@@ -112,15 +251,17 @@ jobs:
 
   nix-cli-package:
     name: nix-cli-package
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.cli == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3.21.8
+        uses: DeterminateSystems/determinate-nix-action@v3.21.9
 
       - name: Build reusable Nix derivation
         run: |
@@ -140,6 +281,8 @@ jobs:
 
   cli-artifact-profiles:
     name: cli-artifact-profiles (${{ matrix.target }})
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.cli == 'true' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     env:
@@ -158,7 +301,7 @@ jobs:
           - os: windows-2025-vs2026
             target: x86_64-pc-windows-msvc
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -170,7 +313,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2.9.2
         with:
           cache-targets: false
 
@@ -181,6 +324,8 @@ jobs:
 
   build-test:
     name: build-test (${{ matrix.os }})
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.core == 'true' }}
     runs-on: ${{ matrix.os }}
     env:
       CARGO_INCREMENTAL: "0"
@@ -198,53 +343,9 @@ jobs:
             parity: false
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-
-      - name: Resolve pinned Mermaid source
-        id: mermaid-source
-        if: matrix.parity
-        shell: bash
-        run: |
-          commit="$(python3 - <<'PY'
-          import json
-          from pathlib import Path
-
-          bundle = json.loads(
-              Path("tools/upstreams/MERMAID_REFERENCE_BUNDLE.json").read_text(encoding="utf-8")
-          )
-          print(bundle["release"]["source"]["commit"])
-          PY
-          )"
-          if [[ ! "$commit" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "Invalid Mermaid source commit in reference bundle: $commit" >&2
-            exit 1
-          fi
-          echo "commit=$commit" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/checkout@v6
-        name: Checkout pinned Mermaid Cypress sources
-        if: matrix.parity
-        with:
-          repository: mermaid-js/mermaid
-          ref: ${{ steps.mermaid-source.outputs.commit }}
-          path: repo-ref/mermaid
-          persist-credentials: false
-          sparse-checkout: |
-            cypress/integration/rendering/treeView/treeView.spec.ts
-            cypress/integration/rendering/cynefin/cynefin.spec.js
-            cypress/integration/rendering/railroad/railroad.spec.ts
-          sparse-checkout-cone-mode: false
-
-      - name: Verify pinned Mermaid source checkout
-        if: matrix.parity
-        shell: bash
-        env:
-          MERMAID_SOURCE_COMMIT: ${{ steps.mermaid-source.outputs.commit }}
-        run: |
-          actual="$(git -C repo-ref/mermaid rev-parse HEAD)"
-          test "$actual" = "$MERMAID_SOURCE_COMMIT"
 
       - name: Resolve pinned DOMPurify source
         id: dompurify-source
@@ -267,7 +368,7 @@ jobs:
           fi
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         name: Checkout pinned DOMPurify source
         if: matrix.parity
         with:
@@ -296,7 +397,9 @@ jobs:
         run: rustup target add aarch64-linux-android wasm32-unknown-unknown
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@nextest
+        uses: taiki-e/install-action@v2.85.11
+        with:
+          tool: nextest
 
       - name: Free disk space (Ubuntu)
         if: runner.os == 'Linux'
@@ -313,7 +416,7 @@ jobs:
           df -h
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2.9.2
         with:
           cache-targets: false
 
@@ -323,12 +426,13 @@ jobs:
 
       - name: Setup Node for generated Mermaid artifacts
         if: matrix.parity
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7.0.0
         with:
           node-version: "24"
           cache: npm
           cache-dependency-path: |
             platforms/node/package-lock.json
+            playground/tests/package-lock.json
             tools/mermaid-cli/package-lock.json
 
       - name: Install pinned Mermaid runtime
@@ -343,10 +447,26 @@ jobs:
         run: |
           cargo run --locked -p xtask -- verify-generated
           cargo run --locked -p xtask -- verify-feature-matrix
-          python3 .agents/skills/align-mermaid-release/scripts/validate_workflow.py
 
-      - name: Test (nextest)
-        run: cargo nextest run --cargo-quiet
+      - name: Test full workspace (Linux and safety-net lifecycles)
+        if: runner.os == 'Linux' || github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: cargo nextest run --locked --cargo-quiet
+
+      - name: Compile workspace on pull-request host runners
+        if: runner.os != 'Linux' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
+        run: cargo check --workspace --all-targets --locked
+
+      - name: Test host-sensitive contracts on pull requests
+        if: runner.os != 'Linux' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
+        shell: bash
+        run: |
+          cargo nextest run --locked -p merman-layout-elk --lib --cargo-quiet \
+            -E 'test(separate_children_layout_is_small_stack_safe_and_deterministic) | test(source_graph_dump_is_small_stack_safe_for_deep_hierarchy)'
+          cargo nextest run --locked -p xtask --cargo-quiet \
+            -E 'test(two_contenders_are_serialized) | test(dead_owner_is_recovered)'
+          cargo nextest run --locked -p merman-ffi \
+            --test header_smoke --test c_consumer_smoke --cargo-quiet
+          cargo nextest run --locked -p merman-cli --test markdown_cli --cargo-quiet
 
       - name: Test architecture compile-fail contracts
         if: matrix.parity
@@ -371,28 +491,24 @@ jobs:
             -E '(package(merman-bindings-core) & test(ambient_render_backends_are_really_compiled)) | (package(merman-ffi) & test(ambient_render_dependencies_do_not_widen_the_native_c_owner_contract))'
 
       - name: Install Node candidate development dependencies
-        if: matrix.parity
+        if: matrix.parity && github.event_name == 'push'
         run: npm ci --prefix platforms/node
 
-      - name: Verify Node candidate contracts and nested lock freshness
-        if: matrix.parity
-        run: npm test --prefix platforms/node
-
       - name: Install pinned wasm-pack for Node candidate builds
-        if: matrix.parity && github.event_name != 'pull_request'
+        if: matrix.parity && github.event_name == 'push'
         run: cargo install wasm-pack --version 0.15.0 --locked
 
       - name: Build and probe the Node-WASM candidate
-        if: matrix.parity && github.event_name != 'pull_request'
+        if: matrix.parity && github.event_name == 'push'
         run: npm run --prefix platforms/node build:candidate -- --candidate node-wasm
 
       - name: Build and probe the Node N-API candidate
-        if: matrix.parity && github.event_name != 'pull_request'
+        if: matrix.parity && github.event_name == 'push'
         run: npm run --prefix platforms/node build:candidate -- --candidate napi --target linux-x64-gnu
 
-      - name: Verify Cypress corpus against pinned Mermaid source
+      - name: Verify committed upstream alignment manifests
         if: matrix.parity
-        run: cargo run --locked -p xtask -- import-upstream-cypress --check-11-16-corpus-manifest-source
+        run: cargo run --locked -p xtask -- check-alignment
 
       - name: Test system adapter feature contracts
         if: matrix.parity
@@ -426,16 +542,68 @@ jobs:
         if: matrix.parity
         run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --flowchart-text-measurer vendored --report-root
 
+      - name: Install root viewport oracle dependencies
+        if: matrix.parity
+        run: npm ci --prefix playground/tests
+
+      - name: Install Chromium for root viewport oracle
+        if: matrix.parity
+        run: npm run install:browser:chromium --prefix playground/tests
+
+      - name: Audit rendered SVG root viewports in Chromium
+        if: matrix.parity
+        run: |
+          npm run oracle:root-viewport --prefix playground/tests -- \
+            --local ../../target/compare \
+            --upstream ../../fixtures/upstream-svgs \
+            --output ../../target/root-viewport-diagnostic.json
+
+      - name: Upload root viewport oracle report
+        if: matrix.parity && always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: root-viewport-oracle-${{ github.run_attempt }}
+          path: target/root-viewport-diagnostic.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  node-contracts:
+    name: node-contracts
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.node == 'true' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: platforms/node/package-lock.json
+
+      - name: Install npm toolchain
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@11.17.0
+
+      - name: Install Node candidate dependencies
+        run: npm ci --prefix platforms/node
+
+      - name: Verify Node candidate contracts and nested lock freshness
+        run: npm test --prefix platforms/node
+
   typst-package:
     name: typst-package
-    if: github.event_name == 'pull_request'
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.typst == 'true' && github.event_name != 'push' }}
     runs-on: ubuntu-24.04
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
       TYPST_CLI_VERSION: "0.15.0"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -445,15 +613,17 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2.9.2
         with:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@wasm-tools
+        uses: taiki-e/install-action@v2.85.11
+        with:
+          tool: wasm-tools
 
       - name: Install wasm-opt
-        uses: sigoden/install-binary@7eb4b088aedf19fe9b2bc6c6bbdc12379ffb355c # v1
+        uses: sigoden/install-binary@v1.2.0
         with:
           repo: WebAssembly/binaryen
           name: wasm-opt
@@ -484,7 +654,7 @@ jobs:
         run: cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
       - name: Check exact Typst dependency closure
-        run: cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm
+        run: python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm
 
       - name: Build and validate Typst package
         run: cargo run --locked -p xtask -- build-typst-package --profile publish
@@ -498,7 +668,7 @@ jobs:
 
       - name: Upload Typst package smoke artifacts
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: typst-package-smoke
           path: target/typst-package-smoke
@@ -506,14 +676,15 @@ jobs:
 
   typst-package-compat:
     name: typst-package-compat
-    if: github.event_name == 'push'
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.typst == 'true' && github.event_name == 'push' }}
     runs-on: ubuntu-24.04
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
       TYPST_COMPAT_CLI_VERSION: "0.15.0"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -523,15 +694,17 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2.9.2
         with:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@wasm-tools
+        uses: taiki-e/install-action@v2.85.11
+        with:
+          tool: wasm-tools
 
       - name: Install wasm-opt
-        uses: sigoden/install-binary@7eb4b088aedf19fe9b2bc6c6bbdc12379ffb355c # v1
+        uses: sigoden/install-binary@v1.2.0
         with:
           repo: WebAssembly/binaryen
           name: wasm-opt
@@ -541,7 +714,7 @@ jobs:
         run: cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
       - name: Check exact Typst dependency closure
-        run: cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm
+        run: python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm
 
       - name: Build and validate Typst package
         run: cargo run --locked -p xtask -- build-typst-package --profile publish
@@ -570,7 +743,7 @@ jobs:
 
       - name: Upload Typst package compatibility artifacts
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: typst-package-compat-smoke
           path: target/typst-package-smoke
@@ -578,9 +751,11 @@ jobs:
 
   platform-script-syntax:
     name: platform-script-syntax
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.platform == 'true' }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -598,13 +773,15 @@ jobs:
 
   platform-bindings:
     name: platform-bindings
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.platform == 'true' }}
     runs-on: ubuntu-24.04
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -619,21 +796,23 @@ jobs:
           targets: aarch64-linux-android
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@nextest
+        uses: taiki-e/install-action@v2.85.11
+        with:
+          tool: nextest
 
       - name: Setup JDK
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v5.7.0
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2.9.2
         with:
           cache-targets: false
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@v2.23.0
         with:
           flutter-version: "3.38.3"
           channel: stable
@@ -643,7 +822,7 @@ jobs:
         run: flutter precache --android
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v4
+        uses: android-actions/setup-android@v4.0.1
 
       - name: Install Android NDK
         shell: bash
@@ -662,14 +841,15 @@ jobs:
 
   android-instrumentation:
     name: android-instrumentation
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'platform')
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.platform == 'true' }}
     runs-on: ubuntu-24.04
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -685,21 +865,21 @@ jobs:
           targets: aarch64-linux-android,x86_64-linux-android
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2.9.2
         with:
           cache-targets: false
 
       - name: Setup JDK
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v5.7.0
         with:
           distribution: temurin
           java-version: ${{ steps.android-toolchain.outputs.java }}
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v5
+        uses: gradle/actions/setup-gradle@v6.3.0
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v4
+        uses: android-actions/setup-android@v4.0.1
 
       - name: Install Android NDK
         shell: bash
@@ -727,7 +907,7 @@ jobs:
           ls -l /dev/kvm
 
       - name: Run Android instrumentation smoke
-        uses: reactivecircus/android-emulator-runner@v2.37.0
+        uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
           # The JNI smoke only needs minSdk coverage; the default image boots faster and flakes less.
           api-level: 29
@@ -740,14 +920,16 @@ jobs:
 
   python-uniffi-wheel:
     name: python-uniffi-wheel
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.python == 'true' }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7.0.0
         with:
           python-version: "3.12"
 
@@ -755,16 +937,18 @@ jobs:
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2.9.2
 
       - name: Build and smoke Python UniFFI wheel
         run: python scripts/build-python-uniffi-wheel.py --run-smoke
 
   c-ffi-example:
     name: c-ffi-example
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.platform == 'true' }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -772,7 +956,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2.9.2
 
       - name: Build merman C ABI library
         run: python3 scripts/artifact_profile_recipe.py c-abi-native --build --locked
@@ -790,10 +974,11 @@ jobs:
 
   apple-swift-5-9-smoke:
     name: apple-swift-5-9-smoke
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'platform')
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.platform == 'true' }}
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -809,7 +994,7 @@ jobs:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2.9.2
 
       - name: Build iOS XCFramework with Swift 5.9
         env:
@@ -832,9 +1017,11 @@ jobs:
 
   apple-uniffi-smoke:
     name: apple-uniffi-smoke
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.platform == 'true' }}
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -844,7 +1031,7 @@ jobs:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2.9.2
 
       - name: Build Apple XCFramework
         env:
@@ -859,3 +1046,128 @@ jobs:
           swift build --triple arm64-apple-ios14.0-simulator --sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)"
           swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
           git diff --exit-code -- platforms/apple/Sources/Merman/Generated
+
+  npm-owner:
+    name: npm-owner
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.npm == 'true' }}
+    uses: ./.github/workflows/npm-audit.yml
+
+  security-owner:
+    name: security-owner
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.security == 'true' }}
+    uses: ./.github/workflows/security-audit.yml
+    with:
+      representative_targets: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+
+  fuzz-owner:
+    name: fuzz-owner
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.fuzz == 'true' }}
+    uses: ./.github/workflows/fuzz.yml
+
+  web-owner:
+    name: web-owner
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.web == 'true' }}
+    uses: ./.github/workflows/pages.yml
+    with:
+      ci_only: true
+
+  vscode-owner:
+    name: vscode-owner
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.vscode == 'true' }}
+    uses: ./.github/workflows/vscode-extension.yml
+
+  performance-contracts:
+    name: performance-contracts
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.performance == 'true' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check performance owner contracts
+        run: |
+          python3 -m py_compile \
+            tools/bench/compare_mermaid_renderers.py \
+            tools/bench/compare_self.py \
+            tools/bench/corpus_utils.py \
+            tools/bench/freeze_perf_baseline.py \
+            tools/bench/native_memory.py \
+            tools/bench/perf_runner.py \
+            tools/bench/render_perf_comment.py \
+            tools/bench/run_layout_work_calibration.py \
+            tools/bench/run_native_memory.py \
+            tools/bench/stage_spotcheck.py \
+            tools/bench/verify_pipeline_bench_list.py
+          python3 tools/bench/test_perf_baseline_manifest.py
+          python3 -m unittest tools.bench.test_layout_work_calibration
+          python3 tools/bench/test_native_memory_contracts.py
+          python3 tools/bench/test_native_memory_driver_contracts.py
+          python3 tools/bench/test_perf_contracts.py
+
+  pr-gate:
+    name: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'pr-gate' || format('{0}-gate', github.event_name) }}
+    if: ${{ always() }}
+    needs:
+      - ci-plan
+      - workflow-analysis
+      - hygiene
+      - cli-contracts
+      - nix-cli-package
+      - cli-artifact-profiles
+      - build-test
+      - node-contracts
+      - typst-package
+      - typst-package-compat
+      - platform-script-syntax
+      - platform-bindings
+      - android-instrumentation
+      - python-uniffi-wheel
+      - c-ffi-example
+      - apple-swift-5-9-smoke
+      - apple-uniffi-smoke
+      - npm-owner
+      - security-owner
+      - fuzz-owner
+      - web-owner
+      - vscode-owner
+      - performance-contracts
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Aggregate selected owner results
+        env:
+          CI_PLAN_JSON: ${{ needs.ci-plan.outputs.plan }}
+          CI_JOBS_JSON: |
+            {"workflow-analysis":{"owner":"workflow","required":true,"result":"${{ needs.workflow-analysis.result }}"},
+            "hygiene":{"owner":"hygiene","required":true,"result":"${{ needs.hygiene.result }}"},
+            "cli-contracts":{"owner":"cli","required":true,"result":"${{ needs.cli-contracts.result }}"},
+            "nix-cli-package":{"owner":"cli","required":true,"result":"${{ needs.nix-cli-package.result }}"},
+            "cli-artifact-profiles":{"owner":"cli","required":true,"result":"${{ needs.cli-artifact-profiles.result }}"},
+            "build-test":{"owner":"core","required":true,"result":"${{ needs.build-test.result }}"},
+            "node-contracts":{"owner":"node","required":true,"result":"${{ needs.node-contracts.result }}"},
+            "typst-package":{"owner":"typst","required":${{ github.event_name != 'push' }},"result":"${{ needs.typst-package.result }}"},
+            "typst-package-compat":{"owner":"typst","required":${{ github.event_name == 'push' }},"result":"${{ needs.typst-package-compat.result }}"},
+            "platform-script-syntax":{"owner":"platform","required":true,"result":"${{ needs.platform-script-syntax.result }}"},
+            "platform-bindings":{"owner":"platform","required":true,"result":"${{ needs.platform-bindings.result }}"},
+            "android-instrumentation":{"owner":"platform","required":true,"result":"${{ needs.android-instrumentation.result }}"},
+            "python-uniffi-wheel":{"owner":"python","required":true,"result":"${{ needs.python-uniffi-wheel.result }}"},
+            "c-ffi-example":{"owner":"platform","required":true,"result":"${{ needs.c-ffi-example.result }}"},
+            "apple-swift-5-9-smoke":{"owner":"platform","required":true,"result":"${{ needs.apple-swift-5-9-smoke.result }}"},
+            "apple-uniffi-smoke":{"owner":"platform","required":true,"result":"${{ needs.apple-uniffi-smoke.result }}"},
+            "npm-owner":{"owner":"npm","required":true,"result":"${{ needs.npm-owner.result }}"},
+            "security-owner":{"owner":"security","required":true,"result":"${{ needs.security-owner.result }}"},
+            "fuzz-owner":{"owner":"fuzz","required":true,"result":"${{ needs.fuzz-owner.result }}"},
+            "web-owner":{"owner":"web","required":true,"result":"${{ needs.web-owner.result }}"},
+            "vscode-owner":{"owner":"vscode","required":true,"result":"${{ needs.vscode-owner.result }}"},
+            "performance-contracts":{"owner":"performance","required":true,"result":"${{ needs.performance-contracts.result }}"}}
+        run: python3 scripts/ci_plan.py gate --plan-json "$CI_PLAN_JSON" --jobs-json "$CI_JOBS_JSON"

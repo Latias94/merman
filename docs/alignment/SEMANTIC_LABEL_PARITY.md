@@ -68,11 +68,12 @@ allowed.
 
 ## Source-Side Evidence
 
-State and Class expose the exact production Dagre input to `compare-dagre-layout`. Both the JS
-reference and Dugong consume the same serialized graph, including insertion order, compound
-parents, named multiedges, and label dimensions. The command compares graph dimensions, node
-positions, edge-label anchors, routed points, and identity sets, and exits non-zero for drift above
-`1e-6` or any missing identity.
+Historical State and Class audits fed the exact same serialized production graph to pinned
+`dagre-d3-es` and Dugong, including insertion order, compound parents, named multiedges, and label
+dimensions. Those audits established parity for graph dimensions, node positions, edge-label
+anchors, routed points, and identity sets. The retained contract is now expressed by focused
+Dugong tests and signed State and Class semantic-label and SVG canaries instead of a standing JS
+differential command.
 
 Flowchart ELK preserves the source edge id through importer, model-order, routing, and SVG
 `data-id`. Focused importer and renderer tests cover distinct labels, repeated labels, unlabeled
@@ -89,8 +90,7 @@ cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root --do
 cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3
 cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3
 cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3
-cargo run -p xtask -- compare-dagre-layout --diagram state --fixture stress_state_batch5_parallel_edges_labels_styles_067
-cargo run -p xtask -- compare-dagre-layout --diagram class --fixture stress_class_many_relations_labels_020
+cargo nextest run -p dugong-graphlib -p dugong --no-fail-fast
 ```
 
 The mutation suite must continue rejecting the historical C4 offset swap, path and label identity

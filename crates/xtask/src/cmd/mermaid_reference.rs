@@ -1,7 +1,6 @@
 use crate::XtaskError;
-use base64::Engine as _;
 use regex::Regex;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -11,19 +10,17 @@ use std::process::Command;
 
 const BUNDLE_RELATIVE_PATH: &str = "tools/upstreams/MERMAID_REFERENCE_BUNDLE.json";
 const REPOS_LOCK_RELATIVE_PATH: &str = "tools/upstreams/REPOS.lock.json";
-const EXPECTED_BUNDLE_SCHEMA_VERSION: u32 = 4;
+const SELECTION_DECISION_RELATIVE_PATH: &str = "tools/upstreams/MERMAID_SELECTION_DECISION.json";
+const EXPECTED_BUNDLE_SCHEMA_VERSION: u32 = 5;
 const EXPECTED_PROJECTION_SCHEMA_VERSION: u32 = 3;
+const EXPECTED_SELECTION_DECISION_SCHEMA_VERSION: u32 = 1;
 const CORE_PROJECTION_RELATIVE_PATH: &str = "crates/merman-core/src/generated/mermaid_reference.rs";
 const XTASK_PROJECTION_RELATIVE_PATH: &str = "crates/xtask/src/generated/mermaid_reference.rs";
 const TYPESCRIPT_PROJECTION_RELATIVE_PATH: &str = "playground/src/generated/mermaid-reference.ts";
 const UPSTREAM_SVG_PROVENANCE_RELATIVE_PATH: &str = "fixtures/upstream-svgs";
 const OFFICIAL_NPM_REGISTRY_PREFIX: &str = "https://registry.npmjs.org/";
-const PUBLISH_ATTESTATION_PREDICATE: &str =
-    "https://github.com/npm/attestation/tree/main/specs/publish/v0.1";
-const SLSA_ATTESTATION_PREDICATE: &str = "https://slsa.dev/provenance/v1";
-const ATTESTATION_ARTIFACT_SCHEMA_VERSION: u32 = 1;
-const MAX_ATTESTATION_ARTIFACT_BYTES: u64 = 64 * 1024;
-const MAX_ATTESTATION_PAYLOAD_BYTES: usize = 32 * 1024;
+const OFFICIAL_NPM_SIGNATURE_COMMAND: &str =
+    "npm audit signatures --json --include-attestations --registry=https://registry.npmjs.org/";
 const BUILTIN_DIAGRAM_METADATA_SCRIPT: &str = r#"
 import mermaid from 'mermaid';
 
@@ -32,23 +29,13 @@ process.stdout.write(
   JSON.stringify(mermaid.getRegisteredDiagramsMetadata().map(({ id }) => id)),
 );
 "#;
-const ZENUML_ADMISSION_GATES: [&str; 9] = [
-    "plugin-contract",
-    "corpus",
-    "semantic",
-    "render",
-    "strict-inline-artifact",
-    "execution-isolation",
-    "security",
-    "dependency-isolation",
-    "resource",
-];
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct MermaidReferenceBundle {
     schema_version: u32,
     projection_schema_version: u32,
+    selection_decision: SelectionDecisionReference,
     release: PackageReference,
     parser: PackageReference,
     sanitizer: PackageReference,
@@ -62,7 +49,14 @@ struct MermaidReferenceBundle {
     generated_outputs: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SelectionDecisionReference {
+    path: String,
+    sha256: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct PackageReference {
     id: String,
@@ -70,74 +64,16 @@ struct PackageReference {
     package: String,
     version: String,
     declared_range: Option<String>,
-    latest_stable: String,
     integrity: String,
     tarball_url: String,
-    attestation_url: String,
-    publish_git_head: Option<String>,
     source: SourceReference,
     required_surfaces: Vec<String>,
     installed_content_sha256: Option<String>,
     #[serde(default)]
     runtime_registration: Option<RuntimeRegistration>,
-    #[serde(default)]
-    publish_provenance: Option<PublishProvenance>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct PublishProvenance {
-    workflow: PublishWorkflow,
-    attestation_artifact: AttestationArtifactReference,
-}
-
-#[derive(Debug, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct PublishWorkflow {
-    repository: String,
-    path: String,
-    r#ref: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct AttestationArtifactReference {
-    path: String,
-    sha256: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct AttestationArtifact {
-    schema_version: u32,
-    package: String,
-    version: String,
-    attestations: Vec<AttestationRecord>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct AttestationRecord {
-    predicate_type: String,
-    bundle: JsonValue,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct DsseEnvelope {
-    payload: String,
-    payload_type: String,
-    signatures: Vec<DsseSignature>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct DsseSignature {
-    keyid: String,
-    sig: String,
-}
-
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct RuntimeRegistration {
     module_id: String,
@@ -147,19 +83,14 @@ struct RuntimeRegistration {
     source_sha256: String,
 }
 
-/// A source-backed inventory of Mermaid registrations owned by the core package.
-///
-/// External packages have their own runtime registrations. Built-ins must be listed here so an
-/// upstream upgrade cannot silently add, remove, or rename a family or default layout while the
-/// local admission inventory remains self-consistent.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct BuiltinRegistryInventory {
     diagrams: RegistryInventory,
     layouts: RegistryInventory,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct RegistryInventory {
     source_path: String,
@@ -167,7 +98,7 @@ struct RegistryInventory {
     ids: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SourceReference {
     repository: String,
@@ -177,29 +108,15 @@ struct SourceReference {
     package_path: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ExternalDiagramReference {
     id: String,
     plugin: PackageReference,
-    behavior_source: BehaviorSource,
+    behavior: PackageReference,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct BehaviorSource {
-    declared_range: String,
-    workspace_range: String,
-    oracle: PackageReference,
-    candidate: PackageReference,
-    selected_version: String,
-    decision: String,
-    admission_evidence: String,
-    delta_owner: String,
-    latest_stable: PackageReference,
-}
-
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ReferenceCli {
     package: PackageReference,
@@ -209,13 +126,13 @@ struct ReferenceCli {
     config_sha256: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct WorkspaceLocation {
     workspace: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct InstallPolicy {
     registry: String,
@@ -224,7 +141,7 @@ struct InstallPolicy {
     known_install_scripts: Vec<InstallScript>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct InstallScript {
     workspace: String,
@@ -233,12 +150,89 @@ struct InstallScript {
     reason: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct FeatureDecision {
     add_cargo_feature: bool,
     reason: String,
     evidence: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SelectionDecisionReceipt {
+    schema_version: u32,
+    receipt_kind: String,
+    decision: String,
+    #[serde(default)]
+    bootstrap: Option<BootstrapDecision>,
+    previous: SelectionSnapshot,
+    current: SelectionSnapshot,
+    changes: Vec<SelectionChange>,
+    verification: SelectionVerification,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BootstrapDecision {
+    reason: String,
+    source_evidence_git_object: String,
+    source_evidence_sha256: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SelectionSnapshot {
+    identity_digest: String,
+    identity: JsonValue,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SelectionChange {
+    path: String,
+    previous: JsonValue,
+    current: JsonValue,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SelectionVerification {
+    tool: OfficialVerificationTool,
+    packages: Vec<VerifiedPackage>,
+    behavior_result: String,
+    raw_output: VerificationOutput,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct OfficialVerificationTool {
+    name: String,
+    version: String,
+    command: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct VerifiedPackage {
+    package: String,
+    version: String,
+    integrity: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct VerificationOutput {
+    kind: String,
+    sha256: String,
+    official_tool_stdout_archived: bool,
+}
+
+#[derive(Debug)]
+struct VerifiedSelectionReceipt {
+    receipt: SelectionDecisionReceipt,
+    reference: SelectionDecisionReference,
+    current_identity: JsonValue,
 }
 
 fn load_bundle(path: &Path) -> Result<MermaidReferenceBundle, XtaskError> {
@@ -258,42 +252,16 @@ fn package_references(bundle: &MermaidReferenceBundle) -> Vec<&PackageReference>
     ];
     references.extend(bundle.external_layouts.iter());
     for diagram in &bundle.external_diagrams {
-        references.push(&diagram.plugin);
-        references.push(&diagram.behavior_source.oracle);
-        references.push(&diagram.behavior_source.candidate);
-        references.push(&diagram.behavior_source.latest_stable);
+        references.extend([&diagram.plugin, &diagram.behavior]);
     }
     references
-}
-
-fn selected_behavior_source(behavior: &BehaviorSource) -> Option<&PackageReference> {
-    [&behavior.oracle, &behavior.candidate]
-        .into_iter()
-        .find(|reference| reference.version == behavior.selected_version)
 }
 
 fn materialized_runtime_references(
     bundle: &MermaidReferenceBundle,
 ) -> Result<Vec<&PackageReference>, XtaskError> {
-    let mut references = vec![
-        &bundle.release,
-        &bundle.parser,
-        &bundle.sanitizer,
-        &bundle.reference_cli.package,
-    ];
-    references.extend(bundle.external_layouts.iter());
-    for diagram in &bundle.external_diagrams {
-        let selected = selected_behavior_source(&diagram.behavior_source).ok_or_else(|| {
-            XtaskError::MermaidReference(format!(
-                "{} selectedVersion must identify a materialized behavior package",
-                diagram.id
-            ))
-        })?;
-        references.extend([&diagram.plugin, selected]);
-    }
-
     let mut packages = BTreeMap::new();
-    for reference in references {
+    for reference in package_references(bundle) {
         if let Some(previous) = packages.insert(reference.package.as_str(), reference)
             && previous.version != reference.version
         {
@@ -318,6 +286,18 @@ fn validate_bundle(bundle: &MermaidReferenceBundle) -> Result<(), XtaskError> {
         failures.push(format!(
             "projectionSchemaVersion must be {EXPECTED_PROJECTION_SCHEMA_VERSION}, found {}",
             bundle.projection_schema_version
+        ));
+    }
+    if bundle.selection_decision.path != SELECTION_DECISION_RELATIVE_PATH
+        || !crate::util::is_canonical_sha256(&bundle.selection_decision.sha256)
+        || bundle
+            .selection_decision
+            .sha256
+            .bytes()
+            .all(|byte| byte == b'0')
+    {
+        failures.push(format!(
+            "selectionDecision must bind {SELECTION_DECISION_RELATIVE_PATH} by SHA-256"
         ));
     }
     if bundle.release.package != "mermaid" || bundle.release.role != "core" {
@@ -357,36 +337,10 @@ fn validate_bundle(bundle: &MermaidReferenceBundle) -> Result<(), XtaskError> {
     {
         failures.push("ZenUML must own an external-diagram plugin reference".to_string());
     }
-    let Some(selected_behavior) = selected_behavior_source(&zenuml.behavior_source) else {
-        failures.push(
-            "ZenUML selectedVersion must identify either the recorded oracle or candidate"
-                .to_string(),
-        );
-        return Err(XtaskError::MermaidReference(failures.join("\n")));
-    };
-    let expected_decision = if selected_behavior.version == zenuml.behavior_source.candidate.version
+    if zenuml.behavior.package != "@zenuml/core"
+        || zenuml.behavior.role != "external-diagram-behavior"
     {
-        "candidate-selected"
-    } else {
-        "oracle-retained"
-    };
-    if zenuml.behavior_source.decision != expected_decision
-        || zenuml.behavior_source.declared_range.trim().is_empty()
-        || zenuml.behavior_source.workspace_range.trim().is_empty()
-        || zenuml.behavior_source.delta_owner.trim().is_empty()
-    {
-        failures.push("ZenUML behavior selection has incomplete decision evidence".to_string());
-    }
-    if zenuml.behavior_source.oracle.publish_provenance.is_none()
-        || zenuml
-            .behavior_source
-            .candidate
-            .publish_provenance
-            .is_none()
-    {
-        failures.push(
-            "ZenUML oracle and candidate must own their publish provenance descriptors".to_string(),
-        );
+        failures.push("ZenUML must name one selected behavior package".to_string());
     }
     if bundle.external_layouts.is_empty()
         || bundle
@@ -394,8 +348,9 @@ fn validate_bundle(bundle: &MermaidReferenceBundle) -> Result<(), XtaskError> {
             .iter()
             .any(|reference| reference.role != "external-layout")
     {
-        failures
-            .push("externalLayouts must contain only owned external-layout packages".to_string());
+        failures.push(
+            "externalLayouts must contain only selected external-layout packages".to_string(),
+        );
     }
     for reference in materialized_runtime_references(bundle)? {
         if reference.installed_content_sha256.is_none() {
@@ -449,11 +404,9 @@ fn validate_bundle(bundle: &MermaidReferenceBundle) -> Result<(), XtaskError> {
         );
     }
     let mut identities = BTreeSet::new();
-    let mut attestation_artifact_paths = BTreeSet::new();
     for reference in package_references(bundle) {
         if reference.id.trim().is_empty()
             || reference.role.trim().is_empty()
-            || reference.latest_stable.trim().is_empty()
             || reference.version.trim().is_empty()
             || reference
                 .declared_range
@@ -470,7 +423,7 @@ fn validate_bundle(bundle: &MermaidReferenceBundle) -> Result<(), XtaskError> {
                 .is_some_and(str::is_empty)
         {
             failures.push(format!(
-                "{}@{} has incomplete identity/source provenance",
+                "{}@{} has incomplete selected identity/source provenance",
                 reference.package, reference.version
             ));
         }
@@ -483,22 +436,9 @@ fn validate_bundle(bundle: &MermaidReferenceBundle) -> Result<(), XtaskError> {
         if !reference
             .tarball_url
             .starts_with(OFFICIAL_NPM_REGISTRY_PREFIX)
-            || !reference
-                .attestation_url
-                .starts_with("https://registry.npmjs.org/-/npm/v1/attestations/")
         {
             failures.push(format!(
-                "{}@{} must record official npm tarball and attestation URLs",
-                reference.package, reference.version
-            ));
-        }
-        if reference
-            .publish_git_head
-            .as_deref()
-            .is_some_and(|commit| commit.len() != 40 || commit != reference.source.commit)
-        {
-            failures.push(format!(
-                "{}@{} publishGitHead must match its source commit",
+                "{}@{} must record its official npm tarball",
                 reference.package, reference.version
             ));
         }
@@ -511,27 +451,6 @@ fn validate_bundle(bundle: &MermaidReferenceBundle) -> Result<(), XtaskError> {
                 "{}@{} has invalid installedContentSha256",
                 reference.package, reference.version
             ));
-        }
-        if let Some(provenance) = &reference.publish_provenance {
-            let expected_repository = reference.source.repository.trim_end_matches(".git");
-            if provenance.workflow.repository != expected_repository
-                || !provenance.workflow.repository.starts_with("https://")
-                || !is_owned_relative_path(&provenance.workflow.path)
-                || provenance.workflow.r#ref.trim().is_empty()
-                || !is_owned_relative_path(&provenance.attestation_artifact.path)
-                || !crate::util::is_canonical_sha256(&provenance.attestation_artifact.sha256)
-                || provenance
-                    .attestation_artifact
-                    .sha256
-                    .bytes()
-                    .all(|byte| byte == b'0')
-                || !attestation_artifact_paths.insert(provenance.attestation_artifact.path.as_str())
-            {
-                failures.push(format!(
-                    "{}@{} has invalid publishProvenance ownership",
-                    reference.package, reference.version
-                ));
-            }
         }
         if !identities.insert(reference.id.as_str()) {
             failures.push(format!("duplicate package reference id {}", reference.id));
@@ -666,7 +585,6 @@ fn validate_builtin_registry_inventory(
                 "{kind} registry inventory has an invalid source or is empty"
             ));
         }
-
         let mut ids = BTreeSet::new();
         for id in &registry.ids {
             if id.trim().is_empty() || id.trim() != id || !ids.insert(id.as_str()) {
@@ -788,8 +706,6 @@ fn render_typescript_projection(bundle: &MermaidReferenceBundle) -> Result<Strin
         .iter()
         .find(|diagram| diagram.id == "zenuml")
         .ok_or_else(|| XtaskError::MermaidReference("missing ZenUML reference".to_string()))?;
-    let selected = selected_behavior_source(&zenuml.behavior_source)
-        .ok_or_else(|| XtaskError::MermaidReference("invalid ZenUML selection".to_string()))?;
     let elk = bundle
         .external_layouts
         .iter()
@@ -817,7 +733,7 @@ fn render_typescript_projection(bundle: &MermaidReferenceBundle) -> Result<Strin
         ("MERMAID_JS_VERSION", bundle.release.version.as_str()),
         ("MERMAID_PARSER_VERSION", bundle.parser.version.as_str()),
         ("MERMAID_ZENUML_VERSION", zenuml.plugin.version.as_str()),
-        ("ZENUML_CORE_VERSION", selected.version.as_str()),
+        ("ZENUML_CORE_VERSION", zenuml.behavior.version.as_str()),
         ("MERMAID_LAYOUT_ELK_VERSION", elk.version.as_str()),
         (
             "MERMAID_LAYOUT_TIDY_TREE_VERSION",
@@ -1184,7 +1100,6 @@ fn verify_builtin_registry_inventory(
     };
     let checkout = root.join(checkout_path);
     if !checkout.is_dir() {
-        // `verify_source_checkouts` reports the missing checkout with the pinned source identity.
         return;
     }
 
@@ -1218,7 +1133,6 @@ fn verify_builtin_registry_inventory(
                 registry.source_sha256
             ));
         }
-
         let (actual_ids, inventory_path) = if kind == "built-in diagram" {
             if !mermaid_runtime_verified {
                 continue;
@@ -1272,7 +1186,6 @@ fn installed_builtin_diagram_ids(
             String::from_utf8_lossy(&output.stderr).trim()
         ));
     }
-
     let ids = serde_json::from_slice::<Vec<String>>(&output.stdout).map_err(|error| {
         format!(
             "Mermaid {} diagram metadata API returned invalid JSON: {error}",
@@ -1412,21 +1325,18 @@ struct WorkspaceGraphExpectation<'a> {
 fn workspace_graph_expectations<'a>(
     bundle: &'a MermaidReferenceBundle,
     zenuml: &'a ExternalDiagramReference,
-    selected_behavior: &'a PackageReference,
 ) -> Vec<WorkspaceGraphExpectation<'a>> {
     let layout_refs = bundle.external_layouts.iter().collect::<Vec<_>>();
-
     let mut playground_direct = vec![&bundle.release, &zenuml.plugin];
     playground_direct.extend(layout_refs.iter().copied());
     let mut playground_expected = vec![
         &bundle.release,
         &bundle.parser,
         &zenuml.plugin,
-        selected_behavior,
+        &zenuml.behavior,
         &bundle.sanitizer,
     ];
     playground_expected.extend(layout_refs.iter().copied());
-
     let mut cli_direct = vec![&bundle.reference_cli.package, &zenuml.plugin];
     cli_direct.extend(layout_refs.iter().copied());
     let mut cli_expected = vec![
@@ -1434,23 +1344,22 @@ fn workspace_graph_expectations<'a>(
         &bundle.release,
         &bundle.parser,
         &zenuml.plugin,
-        selected_behavior,
+        &zenuml.behavior,
         &bundle.sanitizer,
     ];
     cli_expected.extend(layout_refs.iter().copied());
-
     vec![
         WorkspaceGraphExpectation {
             workspace: "playground",
             direct_dependencies: playground_direct,
             expected_packages: playground_expected,
-            required_overrides: vec![selected_behavior, &bundle.sanitizer],
+            required_overrides: vec![&zenuml.behavior, &bundle.sanitizer],
         },
         WorkspaceGraphExpectation {
             workspace: &bundle.reference_cli.workspace,
             direct_dependencies: cli_direct,
             expected_packages: cli_expected,
-            required_overrides: vec![selected_behavior, &bundle.sanitizer],
+            required_overrides: vec![&zenuml.behavior, &bundle.sanitizer],
         },
     ]
 }
@@ -1496,7 +1405,6 @@ fn verify_workspace_graph(
             "{workspace}/.npmrc must require the official registry and ignore scripts"
         ));
     }
-
     let lock = read_json(&workspace_root.join("package-lock.json"))?;
     verify_lock_registry_sources(&lock, workspace, failures);
     for package in &expectation.expected_packages {
@@ -1540,7 +1448,6 @@ fn verify_workspace_graph(
             }
         }
     }
-
     let actual_scripts = lock
         .get("packages")
         .and_then(JsonValue::as_object)
@@ -1568,1481 +1475,6 @@ fn verify_workspace_graph(
         ));
     }
     Ok(())
-}
-
-fn verify_admission(
-    root: &Path,
-    mermaid_release: &PackageReference,
-    plugin: &PackageReference,
-    behavior: &BehaviorSource,
-    failures: &mut Vec<String>,
-) -> Result<(), XtaskError> {
-    let evidence = read_json(&root.join(&behavior.admission_evidence))?;
-    let expected_plugin = format!("{}@{}", plugin.package, plugin.version);
-    if evidence.get("mermaidRelease").and_then(JsonValue::as_str)
-        != Some(mermaid_release.version.as_str())
-        || evidence.get("plugin").and_then(JsonValue::as_str) != Some(expected_plugin.as_str())
-    {
-        failures
-            .push("ZenUML admission host graph does not match the reference bundle".to_string());
-    }
-    if evidence.get("decision").and_then(JsonValue::as_str) != Some(behavior.decision.as_str()) {
-        failures.push("ZenUML admission decision does not match the reference bundle".to_string());
-    }
-    validate_candidate_status(&evidence, &behavior.decision, failures);
-    for (field, reference) in [
-        ("oracle", &behavior.oracle),
-        ("candidate", &behavior.candidate),
-    ] {
-        let value = evidence.get(field);
-        if value
-            .and_then(|value| value.get("version"))
-            .and_then(JsonValue::as_str)
-            != Some(reference.version.as_str())
-            || value
-                .and_then(|value| value.get("commit"))
-                .and_then(JsonValue::as_str)
-                != Some(reference.source.commit.as_str())
-        {
-            failures.push(format!("ZenUML admission {field} provenance drift"));
-        }
-    }
-    validate_admission_matrix(&evidence, &behavior.decision, failures);
-    validate_admission_deltas(&evidence, failures);
-    verify_deferred_major_admission(root, mermaid_release, plugin, behavior, &evidence, failures)?;
-    verify_candidate_evidence(root, behavior, &evidence, failures)?;
-    Ok(())
-}
-
-fn verify_deferred_major_admission(
-    root: &Path,
-    mermaid_release: &PackageReference,
-    plugin: &PackageReference,
-    behavior: &BehaviorSource,
-    admission: &JsonValue,
-    failures: &mut Vec<String>,
-) -> Result<(), XtaskError> {
-    let excluded = admission.get("excludedLatestMajor");
-    let artifact_path = excluded
-        .and_then(|value| value.get("artifact"))
-        .and_then(JsonValue::as_str)
-        .unwrap_or_default();
-    let expected_sha256 = excluded
-        .and_then(|value| value.get("artifactSha256"))
-        .and_then(JsonValue::as_str)
-        .unwrap_or_default();
-    if !is_owned_relative_path(artifact_path) || !crate::util::is_canonical_sha256(expected_sha256)
-    {
-        failures.push(
-            "ZenUML latest stable major must name a digest-bound separate admission artifact"
-                .to_string(),
-        );
-        return Ok(());
-    }
-
-    let artifact_file = root.join(artifact_path);
-    let artifact_text =
-        fs::read_to_string(&artifact_file).map_err(|source| XtaskError::ReadFile {
-            path: artifact_file.display().to_string(),
-            source,
-        })?;
-    if crate::util::sha256_hex(artifact_text.as_bytes()) != expected_sha256 {
-        failures.push("ZenUML deferred-major admission artifact digest drift".to_string());
-    }
-    let artifact: JsonValue = serde_json::from_str(&artifact_text)?;
-    validate_deferred_major_admission(
-        mermaid_release,
-        plugin,
-        behavior,
-        admission,
-        &artifact,
-        failures,
-    );
-    Ok(())
-}
-
-fn validate_deferred_major_admission(
-    mermaid_release: &PackageReference,
-    plugin: &PackageReference,
-    behavior: &BehaviorSource,
-    admission: &JsonValue,
-    artifact: &JsonValue,
-    failures: &mut Vec<String>,
-) {
-    let excluded = admission.get("excludedLatestMajor");
-    let latest = &behavior.latest_stable;
-    if excluded
-        .and_then(|value| value.get("version"))
-        .and_then(JsonValue::as_str)
-        != Some(latest.version.as_str())
-        || excluded
-            .and_then(|value| value.get("commit"))
-            .and_then(JsonValue::as_str)
-            != Some(latest.source.commit.as_str())
-        || excluded
-            .and_then(|value| value.get("reason"))
-            .and_then(JsonValue::as_str)
-            .is_none_or(|value| value.trim().is_empty())
-        || excluded
-            .and_then(|value| value.get("nextAdmission"))
-            .and_then(JsonValue::as_str)
-            != Some("separate-major-zenuml-v4")
-    {
-        failures.push(
-            "ZenUML latest stable major is not bound to the separate admission decision"
-                .to_string(),
-        );
-    }
-
-    if artifact.get("schemaVersion").and_then(JsonValue::as_u64) != Some(1)
-        || artifact.get("artifactKind").and_then(JsonValue::as_str)
-            != Some("zenuml-core-major-admission")
-        || artifact.get("status").and_then(JsonValue::as_str) != Some("deferred")
-        || artifact.get("decision").and_then(JsonValue::as_str)
-            != Some("deferred-incompatible-major")
-        || artifact.get("generatedFrom").and_then(JsonValue::as_str) != Some(BUNDLE_RELATIVE_PATH)
-    {
-        failures.push(
-            "ZenUML deferred-major artifact has an invalid schema, status, or decision".to_string(),
-        );
-    }
-
-    let package = artifact.get("latestStable");
-    for (field, expected) in [
-        ("package", latest.package.as_str()),
-        ("version", latest.version.as_str()),
-        ("integrity", latest.integrity.as_str()),
-        ("tarballUrl", latest.tarball_url.as_str()),
-        ("attestationUrl", latest.attestation_url.as_str()),
-    ] {
-        if package
-            .and_then(|value| value.get(field))
-            .and_then(JsonValue::as_str)
-            != Some(expected)
-        {
-            failures.push(format!(
-                "ZenUML deferred-major artifact latestStable.{field} provenance drift"
-            ));
-        }
-    }
-    if package
-        .and_then(|value| value.get("publishGitHead"))
-        .and_then(JsonValue::as_str)
-        != latest.publish_git_head.as_deref()
-    {
-        failures.push(
-            "ZenUML deferred-major artifact latestStable.publishGitHead provenance drift"
-                .to_string(),
-        );
-    }
-    let source = package.and_then(|value| value.get("source"));
-    for (field, expected) in [
-        ("repository", latest.source.repository.as_str()),
-        ("reference", latest.source.reference.as_str()),
-        ("commit", latest.source.commit.as_str()),
-    ] {
-        if source
-            .and_then(|value| value.get(field))
-            .and_then(JsonValue::as_str)
-            != Some(expected)
-        {
-            failures.push(format!(
-                "ZenUML deferred-major artifact latestStable.source.{field} provenance drift"
-            ));
-        }
-    }
-    let checkout_matches = match latest.source.checkout_path.as_deref() {
-        Some(expected) => {
-            source
-                .and_then(|value| value.get("checkoutPath"))
-                .and_then(JsonValue::as_str)
-                == Some(expected)
-        }
-        None => source.and_then(|value| value.get("checkoutPath")) == Some(&JsonValue::Null),
-    };
-    let package_path_matches = match latest.source.package_path.as_deref() {
-        Some(expected) => {
-            source
-                .and_then(|value| value.get("packagePath"))
-                .and_then(JsonValue::as_str)
-                == Some(expected)
-        }
-        None => source.and_then(|value| value.get("packagePath")) == Some(&JsonValue::Null),
-    };
-    let surfaces = package
-        .and_then(|value| value.get("requiredSurfaces"))
-        .and_then(JsonValue::as_array)
-        .map(|values| {
-            values
-                .iter()
-                .filter_map(JsonValue::as_str)
-                .collect::<Vec<_>>()
-        });
-    let expected_surfaces = latest
-        .required_surfaces
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
-    if !checkout_matches
-        || !package_path_matches
-        || surfaces.as_deref() != Some(expected_surfaces.as_slice())
-    {
-        failures.push(
-            "ZenUML deferred-major artifact source materialization/surface contract drift"
-                .to_string(),
-        );
-    }
-
-    let selected = selected_behavior_source(behavior);
-    let host = artifact.get("hostGraph");
-    let expected_plugin = format!("{}@{}", plugin.package, plugin.version);
-    if host
-        .and_then(|value| value.get("mermaidRelease"))
-        .and_then(JsonValue::as_str)
-        != Some(mermaid_release.version.as_str())
-        || host
-            .and_then(|value| value.get("plugin"))
-            .and_then(JsonValue::as_str)
-            != Some(expected_plugin.as_str())
-        || host
-            .and_then(|value| value.get("pluginDeclaredRange"))
-            .and_then(JsonValue::as_str)
-            != Some(behavior.declared_range.as_str())
-        || host
-            .and_then(|value| value.get("mermaidWorkspaceRange"))
-            .and_then(JsonValue::as_str)
-            != Some(behavior.workspace_range.as_str())
-        || host
-            .and_then(|value| value.get("selectedVersion"))
-            .and_then(JsonValue::as_str)
-            != Some(behavior.selected_version.as_str())
-        || host
-            .and_then(|value| value.get("selectedCommit"))
-            .and_then(JsonValue::as_str)
-            != selected.map(|value| value.source.commit.as_str())
-        || host
-            .and_then(|value| value.get("latestStableSatisfiesPluginRange"))
-            .and_then(JsonValue::as_bool)
-            != Some(false)
-        || host
-            .and_then(|value| value.get("latestStableSatisfiesWorkspaceRange"))
-            .and_then(JsonValue::as_bool)
-            != Some(false)
-    {
-        failures.push(
-            "ZenUML deferred-major host graph does not derive from the selected reference graph"
-                .to_string(),
-        );
-    }
-
-    let selected_major = selected
-        .and_then(|value| parse_numeric_semver(&value.version))
-        .map(|version| version.0);
-    let latest_major = parse_numeric_semver(&latest.version).map(|version| version.0);
-    let plugin_range_major = caret_range_major(&behavior.declared_range);
-    let workspace_range_major = caret_range_major(&behavior.workspace_range);
-    if selected_major.is_none()
-        || latest_major.is_none()
-        || latest_major <= selected_major
-        || plugin_range_major != selected_major
-        || workspace_range_major != selected_major
-    {
-        failures.push(
-            "ZenUML deferred-major decision must be backed by an incompatible numeric major"
-                .to_string(),
-        );
-    }
-
-    let impact = artifact.get("selectionImpact");
-    for field in [
-        "selectedGraphChanged",
-        "parserPorted",
-        "semanticPorted",
-        "editorLspPorted",
-        "rendererPorted",
-        "playgroundRuntimeChanged",
-    ] {
-        if impact
-            .and_then(|value| value.get(field))
-            .and_then(JsonValue::as_bool)
-            != Some(false)
-        {
-            failures.push(format!(
-                "ZenUML deferred-major artifact must not claim completed {field} work"
-            ));
-        }
-    }
-    if impact
-        .and_then(|value| value.get("cargoFeatureDecision"))
-        .and_then(JsonValue::as_str)
-        != Some("not-evaluated-until-admission")
-        || artifact
-            .get("reason")
-            .and_then(JsonValue::as_str)
-            .is_none_or(|value| {
-                value.trim().is_empty()
-                    || !value.contains(&behavior.declared_range)
-                    || !value.contains(&behavior.workspace_range)
-                    || !value.contains(&latest.version)
-            })
-    {
-        failures.push(
-            "ZenUML deferred-major artifact must retain a no-feature/no-port rationale".to_string(),
-        );
-    }
-
-    validate_deferred_major_delta_inventory(artifact, failures);
-}
-
-fn caret_range_major(value: &str) -> Option<u64> {
-    parse_numeric_semver(value.strip_prefix('^')?).map(|version| version.0)
-}
-
-fn validate_deferred_major_delta_inventory(artifact: &JsonValue, failures: &mut Vec<String>) {
-    let expected_areas = BTreeSet::from([
-        "grammar-and-recovery",
-        "semantic-and-model",
-        "editor-and-lsp",
-        "render-and-geometry",
-        "browser-runtime-and-security",
-        "feature-and-release-surface",
-    ]);
-    let Some(deltas) = artifact
-        .get("behaviorDeltaInventory")
-        .and_then(JsonValue::as_array)
-    else {
-        failures.push("ZenUML deferred-major artifact has no behavior delta inventory".to_string());
-        return;
-    };
-    let mut actual_areas = BTreeSet::new();
-    for delta in deltas {
-        let area = delta
-            .get("area")
-            .and_then(JsonValue::as_str)
-            .unwrap_or_default();
-        if !actual_areas.insert(area) {
-            failures.push(format!(
-                "ZenUML deferred-major behavior delta area {area:?} is empty or duplicated"
-            ));
-        }
-        for field in ["source", "classification", "owner", "summary"] {
-            if delta
-                .get(field)
-                .and_then(JsonValue::as_str)
-                .is_none_or(|value| value.trim().is_empty())
-            {
-                failures.push(format!(
-                    "ZenUML deferred-major behavior delta {area:?} is missing {field}"
-                ));
-            }
-        }
-        if delta
-            .get("owner")
-            .and_then(JsonValue::as_str)
-            .is_none_or(|owner| !owner.starts_with("future-major-admission/"))
-        {
-            failures.push(format!(
-                "ZenUML deferred-major behavior delta {area:?} has no future admission owner"
-            ));
-        }
-        let required = delta.get("evidenceRequired").and_then(JsonValue::as_array);
-        let evidence = required
-            .into_iter()
-            .flatten()
-            .filter_map(JsonValue::as_str)
-            .collect::<Vec<_>>();
-        let unique = evidence.iter().copied().collect::<BTreeSet<_>>();
-        if evidence.len() < 2
-            || evidence.len() != unique.len()
-            || evidence.iter().any(|value| value.trim().is_empty())
-        {
-            failures.push(format!(
-                "ZenUML deferred-major behavior delta {area:?} has incomplete evidence requirements"
-            ));
-        }
-    }
-    if actual_areas != expected_areas {
-        failures.push(format!(
-            "ZenUML deferred-major behavior areas must be exactly {expected_areas:?}, found {actual_areas:?}"
-        ));
-    }
-}
-
-fn validate_admission_deltas(admission: &JsonValue, failures: &mut Vec<String>) {
-    let Some(deltas) = admission
-        .get("classifiedDeltas")
-        .and_then(JsonValue::as_array)
-        .filter(|deltas| !deltas.is_empty())
-    else {
-        failures.push("ZenUML candidate admission has no classified behavior deltas".to_string());
-        return;
-    };
-    let mut areas = BTreeSet::new();
-    for delta in deltas {
-        let Some(area) = delta.get("area").and_then(JsonValue::as_str) else {
-            failures.push("ZenUML admission delta is missing area".to_string());
-            continue;
-        };
-        if area.trim().is_empty() || !areas.insert(area) {
-            failures.push(format!(
-                "ZenUML admission delta area {area:?} is empty or duplicated"
-            ));
-        }
-        for field in ["source", "classification", "owner", "summary"] {
-            if delta
-                .get(field)
-                .and_then(JsonValue::as_str)
-                .is_none_or(|value| value.trim().is_empty())
-            {
-                failures.push(format!("ZenUML admission delta {area} is missing {field}"));
-            }
-        }
-    }
-}
-
-fn validate_candidate_status(admission: &JsonValue, decision: &str, failures: &mut Vec<String>) {
-    let status = admission.get("candidateStatus").and_then(JsonValue::as_str);
-    let valid = match decision {
-        "candidate-selected" => status == Some("pass"),
-        "oracle-retained" => matches!(status, Some("pending" | "failed")),
-        _ => false,
-    };
-    if !valid {
-        failures.push(format!(
-            "ZenUML candidateStatus {status:?} is inconsistent with decision {decision}"
-        ));
-    }
-}
-
-fn validate_admission_matrix(admission: &JsonValue, decision: &str, failures: &mut Vec<String>) {
-    let required_gates = ZENUML_ADMISSION_GATES.into_iter().collect::<BTreeSet<_>>();
-    let mut observed_gates = BTreeSet::new();
-    let mut all_pass = true;
-    if let Some(matrix) = admission.get("matrix").and_then(JsonValue::as_array) {
-        for gate in matrix {
-            let Some(name) = gate.get("gate").and_then(JsonValue::as_str) else {
-                failures.push("ZenUML admission gate is missing its name".to_string());
-                continue;
-            };
-            if !observed_gates.insert(name) {
-                failures.push(format!("duplicate ZenUML admission gate {name}"));
-            }
-            let status = gate.get("status").and_then(JsonValue::as_str);
-            if !matches!(status, Some("pass" | "pending" | "failed")) {
-                failures.push(format!("ZenUML admission gate {name} has invalid status"));
-            }
-            all_pass &= status == Some("pass");
-            let gate_evidence = gate.get("evidence");
-            for field in ["kind", "reference", "summary"] {
-                if gate_evidence
-                    .and_then(|value| value.get(field))
-                    .and_then(JsonValue::as_str)
-                    .is_none_or(|value| value.trim().is_empty())
-                {
-                    failures.push(format!(
-                        "ZenUML admission gate {name} has incomplete evidence.{field}"
-                    ));
-                }
-            }
-        }
-    }
-    if observed_gates != required_gates {
-        failures.push(format!(
-            "ZenUML admission gates must be exactly {required_gates:?}, found {observed_gates:?}"
-        ));
-    }
-    match decision {
-        "candidate-selected" if !all_pass => failures.push(
-            "ZenUML candidate cannot be selected until every required gate passes".to_string(),
-        ),
-        "oracle-retained" if all_pass => failures.push(
-            "ZenUML oracle cannot remain selected after every candidate gate passes".to_string(),
-        ),
-        "candidate-selected" | "oracle-retained" => {}
-        decision => failures.push(format!("unsupported ZenUML admission decision {decision}")),
-    }
-}
-
-fn verify_candidate_evidence(
-    root: &Path,
-    behavior: &BehaviorSource,
-    admission: &JsonValue,
-    failures: &mut Vec<String>,
-) -> Result<(), XtaskError> {
-    let Some(relative) = admission
-        .get("executableEvidence")
-        .and_then(JsonValue::as_str)
-    else {
-        failures.push("ZenUML admission must name executableEvidence".to_string());
-        return Ok(());
-    };
-    let evidence = read_json(&root.join(relative))?;
-    let harness = evidence.get("harness").and_then(JsonValue::as_str);
-    if !harness.is_some_and(|path| root.join(path).is_file()) {
-        failures.push("ZenUML candidate evidence references a missing harness".to_string());
-    }
-    if evidence.get("schemaVersion").and_then(JsonValue::as_u64) != Some(6) {
-        failures.push("ZenUML candidate evidence schemaVersion must be 6".to_string());
-    }
-    if evidence
-        .get("command")
-        .and_then(JsonValue::as_str)
-        .is_none_or(|command| command.trim().is_empty())
-    {
-        failures.push("ZenUML candidate evidence has no executable command".to_string());
-    }
-    if evidence.get("onlineCommand").and_then(JsonValue::as_str)
-        != Some("npm run verify:zenuml-candidate:online")
-    {
-        failures.push(
-            "ZenUML candidate evidence must name its explicit online verification command"
-                .to_string(),
-        );
-    }
-    for (field, reference) in [
-        ("oracle", &behavior.oracle),
-        ("candidate", &behavior.candidate),
-    ] {
-        let package = evidence.get(field);
-        for (name, expected) in [
-            ("version", reference.version.as_str()),
-            ("commit", reference.source.commit.as_str()),
-            ("integrity", reference.integrity.as_str()),
-            ("tarballUrl", reference.tarball_url.as_str()),
-            ("attestationUrl", reference.attestation_url.as_str()),
-        ] {
-            if package
-                .and_then(|value| value.get(name))
-                .and_then(JsonValue::as_str)
-                != Some(expected)
-            {
-                failures.push(format!("ZenUML executable evidence {field}.{name} drift"));
-            }
-        }
-        verify_candidate_supply_chain_evidence(root, field, package, reference, failures)?;
-    }
-    let fixture_count = evidence
-        .pointer("/corpus/fixtureCount")
-        .and_then(JsonValue::as_u64);
-    let corpus_sources = evidence
-        .pointer("/corpus/sources")
-        .and_then(JsonValue::as_array);
-    if fixture_count != corpus_sources.and_then(|sources| u64::try_from(sources.len()).ok())
-        || corpus_sources.is_none_or(Vec::is_empty)
-    {
-        failures.push(
-            "ZenUML corpus fixtureCount must be derived from its actual source array".to_string(),
-        );
-    }
-    verify_admission_fixture_counts(admission, fixture_count, failures);
-    for pointer in [
-        "/corpus/parseAgreementCount",
-        "/semantic/agreementCount",
-        "/render/svgAgreementCount",
-    ] {
-        if evidence.pointer(pointer).and_then(JsonValue::as_u64) != fixture_count
-            || fixture_count == Some(0)
-        {
-            failures.push(format!(
-                "ZenUML executable evidence {pointer} must cover the complete non-empty corpus"
-            ));
-        }
-    }
-    for pointer in [
-        "/semantic/totals/participants",
-        "/semantic/totals/messages",
-        "/semantic/totals/fragments",
-        "/semantic/totals/groups",
-        "/semantic/totals/returns",
-        "/semantic/totals/creations",
-    ] {
-        if evidence
-            .pointer(pointer)
-            .and_then(JsonValue::as_u64)
-            .is_none_or(|count| count == 0)
-        {
-            failures.push(format!(
-                "ZenUML executable evidence must exercise {pointer}"
-            ));
-        }
-    }
-    verify_candidate_topology_and_deltas(&evidence, failures);
-    verify_candidate_strict_inline_artifact(&evidence, fixture_count, failures);
-    verify_candidate_browser_admission(root, admission, &evidence, failures)?;
-    for pointer in [
-        "/pluginContract/candidateSatisfiesDeclaredRange",
-        "/pluginContract/candidateSatisfiesWorkspaceRange",
-    ] {
-        if evidence.pointer(pointer).and_then(JsonValue::as_bool) != Some(true) {
-            failures.push(format!("ZenUML executable evidence failed {pointer}"));
-        }
-    }
-    verify_candidate_resource_evidence(&evidence, failures);
-    Ok(())
-}
-
-fn verify_admission_fixture_counts(
-    admission: &JsonValue,
-    fixture_count: Option<u64>,
-    failures: &mut Vec<String>,
-) {
-    let matrix = admission.get("matrix").and_then(JsonValue::as_array);
-    for gate_name in ["corpus", "semantic", "render"] {
-        let gate_count = matrix
-            .into_iter()
-            .flatten()
-            .find(|gate| gate.get("gate").and_then(JsonValue::as_str) == Some(gate_name))
-            .and_then(|gate| gate.pointer("/evidence/fixtureCount"))
-            .and_then(JsonValue::as_u64);
-        if fixture_count == Some(0) || gate_count != fixture_count {
-            failures.push(format!(
-                "ZenUML admission gate {gate_name} fixtureCount must match executable evidence"
-            ));
-        }
-    }
-}
-
-fn verify_candidate_supply_chain_evidence(
-    root: &Path,
-    field: &str,
-    package: Option<&JsonValue>,
-    reference: &PackageReference,
-    failures: &mut Vec<String>,
-) -> Result<(), XtaskError> {
-    let Some(supply) = package.and_then(|value| value.get("supplyChain")) else {
-        failures.push(format!(
-            "ZenUML executable evidence {field} has no supplyChain proof"
-        ));
-        return Ok(());
-    };
-    let Some(provenance) = reference.publish_provenance.as_ref() else {
-        failures.push(format!(
-            "ZenUML reference {field} has no publishProvenance descriptor"
-        ));
-        return Ok(());
-    };
-    let expected_integrity = reference.integrity.strip_prefix("sha512-");
-    let tarball_base64 = supply
-        .get("tarballSha512Base64")
-        .and_then(JsonValue::as_str);
-    let tarball_hex = supply.get("tarballSha512Hex").and_then(JsonValue::as_str);
-    let decoded_integrity = tarball_base64.and_then(|value| decode_bounded_base64(value, 64));
-    let derived_tarball_hex = decoded_integrity.as_deref().map(hex_lower);
-    if tarball_base64 != expected_integrity
-        || decoded_integrity
-            .as_deref()
-            .is_none_or(|bytes| bytes.len() != 64)
-        || tarball_hex != derived_tarball_hex.as_deref()
-        || supply
-            .get("tarballBytes")
-            .and_then(JsonValue::as_u64)
-            .is_none_or(|bytes| bytes == 0)
-    {
-        failures.push(format!(
-            "ZenUML executable evidence {field} has invalid independent tarball digest evidence"
-        ));
-    }
-    let artifact_path = supply
-        .pointer("/attestationArtifact/path")
-        .and_then(JsonValue::as_str);
-    let artifact_sha256 = supply
-        .pointer("/attestationArtifact/sha256")
-        .and_then(JsonValue::as_str);
-    if artifact_path != Some(provenance.attestation_artifact.path.as_str())
-        || artifact_sha256 != Some(provenance.attestation_artifact.sha256.as_str())
-    {
-        failures.push(format!(
-            "ZenUML executable evidence {field} does not bind its declared attestation artifact"
-        ));
-        return Ok(());
-    }
-    let artifact_file = root.join(&provenance.attestation_artifact.path);
-    let artifact_bytes = fs::read(&artifact_file).map_err(|source| XtaskError::ReadFile {
-        path: artifact_file.display().to_string(),
-        source,
-    })?;
-    if artifact_bytes.is_empty()
-        || u64::try_from(artifact_bytes.len()).unwrap_or(u64::MAX) > MAX_ATTESTATION_ARTIFACT_BYTES
-    {
-        failures.push(format!(
-            "ZenUML executable evidence {field} attestation artifact exceeds its byte budget"
-        ));
-        return Ok(());
-    }
-    let actual_artifact_sha256 = crate::util::sha256_hex(&artifact_bytes);
-    if actual_artifact_sha256 != provenance.attestation_artifact.sha256 {
-        failures.push(format!(
-            "ZenUML executable evidence {field} attestation artifact digest drift"
-        ));
-        return Ok(());
-    }
-    let raw_artifact: JsonValue = serde_json::from_slice(&artifact_bytes)?;
-    if canonical_pretty_json(&raw_artifact)?.as_bytes() != artifact_bytes.as_slice() {
-        failures.push(format!(
-            "ZenUML executable evidence {field} attestation artifact is not canonical JSON"
-        ));
-    }
-    let artifact: AttestationArtifact = serde_json::from_value(raw_artifact)?;
-    if artifact.schema_version != ATTESTATION_ARTIFACT_SCHEMA_VERSION
-        || artifact.package != reference.package
-        || artifact.version != reference.version
-        || artifact.attestations.len() != 2
-    {
-        failures.push(format!(
-            "ZenUML executable evidence {field} attestation artifact identity is invalid"
-        ));
-        return Ok(());
-    }
-
-    let Some(tarball_hex) = tarball_hex else {
-        return Ok(());
-    };
-    let mut derived_attestations = BTreeMap::new();
-    for attestation in artifact.attestations {
-        let Some(envelope_value) = attestation.bundle.get("dsseEnvelope") else {
-            failures.push(format!(
-                "ZenUML executable evidence {field} {} has no DSSE envelope",
-                attestation.predicate_type
-            ));
-            continue;
-        };
-        let envelope: DsseEnvelope = serde_json::from_value(envelope_value.clone())?;
-        if envelope.payload_type != "application/vnd.in-toto+json"
-            || envelope.signatures.is_empty()
-            || envelope.signatures.len() > 4
-            || envelope.signatures.iter().any(|signature| {
-                signature.keyid.len() > 1024
-                    || decode_bounded_base64(&signature.sig, 4096).is_none()
-            })
-        {
-            failures.push(format!(
-                "ZenUML executable evidence {field} {} has an invalid DSSE envelope",
-                attestation.predicate_type
-            ));
-            continue;
-        }
-        let Some(payload_bytes) =
-            decode_bounded_base64(&envelope.payload, MAX_ATTESTATION_PAYLOAD_BYTES)
-        else {
-            failures.push(format!(
-                "ZenUML executable evidence {field} {} has an invalid DSSE payload",
-                attestation.predicate_type
-            ));
-            continue;
-        };
-        let statement: JsonValue = serde_json::from_slice(&payload_bytes)?;
-        if statement.get("predicateType").and_then(JsonValue::as_str)
-            != Some(attestation.predicate_type.as_str())
-            || !statement_binds_subject(&statement, reference, tarball_hex)
-        {
-            failures.push(format!(
-                "ZenUML executable evidence {field} {} does not bind its predicate and npm subject",
-                attestation.predicate_type
-            ));
-            continue;
-        }
-        let derived = DerivedAttestation {
-            envelope_sha256: crate::util::sha256_hex(&canonical_json(envelope_value)?),
-            payload_sha256: crate::util::sha256_hex(&payload_bytes),
-            statement,
-        };
-        if derived_attestations
-            .insert(attestation.predicate_type, derived)
-            .is_some()
-        {
-            failures.push(format!(
-                "ZenUML executable evidence {field} has duplicate attestation predicates"
-            ));
-        }
-    }
-    let expected_predicates =
-        BTreeSet::from([PUBLISH_ATTESTATION_PREDICATE, SLSA_ATTESTATION_PREDICATE]);
-    let actual_artifact_predicates = derived_attestations
-        .keys()
-        .map(String::as_str)
-        .collect::<BTreeSet<_>>();
-    if actual_artifact_predicates != expected_predicates {
-        failures.push(format!(
-            "ZenUML executable evidence {field} attestation artifact has an invalid predicate set"
-        ));
-        return Ok(());
-    }
-
-    let publish = &derived_attestations[PUBLISH_ATTESTATION_PREDICATE];
-    let slsa = &derived_attestations[SLSA_ATTESTATION_PREDICATE];
-    for (name, derived) in [("publish", publish), ("slsa", slsa)] {
-        if supply
-            .pointer(&format!("/{name}/envelopeSha256"))
-            .and_then(JsonValue::as_str)
-            != Some(derived.envelope_sha256.as_str())
-            || supply
-                .pointer(&format!("/{name}/payloadSha256"))
-                .and_then(JsonValue::as_str)
-                != Some(derived.payload_sha256.as_str())
-        {
-            failures.push(format!(
-                "ZenUML executable evidence {field} {name} digest is not derived from its attestation artifact"
-            ));
-        }
-    }
-    let expected_subject = format!(
-        "pkg:npm/%40{}@{}",
-        reference.package.trim_start_matches('@'),
-        reference.version
-    );
-    if supply.pointer("/subject/name").and_then(JsonValue::as_str)
-        != Some(expected_subject.as_str())
-        || supply
-            .pointer("/subject/digest/sha512")
-            .and_then(JsonValue::as_str)
-            != Some(tarball_hex)
-    {
-        failures.push(format!(
-            "ZenUML executable evidence {field} does not bind its npm subject to the tarball"
-        ));
-    }
-    let recorded_predicate_values = supply
-        .pointer("/npmAudit/predicateTypes")
-        .and_then(JsonValue::as_array);
-    let actual_predicates = recorded_predicate_values
-        .into_iter()
-        .flatten()
-        .filter_map(JsonValue::as_str)
-        .collect::<BTreeSet<_>>();
-    let npm_version = supply
-        .pointer("/npmAudit/cliVersion")
-        .and_then(JsonValue::as_str)
-        .and_then(parse_numeric_semver);
-    if supply
-        .pointer("/npmAudit/verified")
-        .and_then(JsonValue::as_bool)
-        != Some(true)
-        || supply
-            .pointer("/npmAudit/registry")
-            .and_then(JsonValue::as_str)
-            != Some(OFFICIAL_NPM_REGISTRY_PREFIX)
-        || actual_predicates != expected_predicates
-        || recorded_predicate_values.map(Vec::len) != Some(2)
-        || npm_version.is_none_or(|version| version < (11, 17, 0))
-    {
-        failures.push(format!(
-            "ZenUML executable evidence {field} does not record the required online npm verification"
-        ));
-    }
-    let expected_san = expected_workflow_san(&provenance.workflow);
-    let parsed_workflow = slsa
-        .statement
-        .pointer("/predicate/buildDefinition/externalParameters/workflow")
-        .cloned()
-        .map(serde_json::from_value::<PublishWorkflow>)
-        .transpose()?;
-    let resolved_commit = slsa
-        .statement
-        .pointer("/predicate/buildDefinition/resolvedDependencies")
-        .and_then(JsonValue::as_array)
-        .is_some_and(|dependencies| {
-            dependencies.iter().any(|dependency| {
-                dependency
-                    .pointer("/digest/gitCommit")
-                    .and_then(JsonValue::as_str)
-                    == Some(reference.source.commit.as_str())
-            })
-        });
-    if supply
-        .pointer("/publish/registry")
-        .and_then(JsonValue::as_str)
-        != Some("https://registry.npmjs.org")
-        || supply
-            .pointer("/publish/predicateType")
-            .and_then(JsonValue::as_str)
-            != Some(PUBLISH_ATTESTATION_PREDICATE)
-        || publish
-            .statement
-            .pointer("/predicate/name")
-            .and_then(JsonValue::as_str)
-            != Some(reference.package.as_str())
-        || publish
-            .statement
-            .pointer("/predicate/version")
-            .and_then(JsonValue::as_str)
-            != Some(reference.version.as_str())
-        || publish
-            .statement
-            .pointer("/predicate/registry")
-            .and_then(JsonValue::as_str)
-            != Some("https://registry.npmjs.org")
-        || supply
-            .pointer("/slsa/resolvedGitCommit")
-            .and_then(JsonValue::as_str)
-            != Some(reference.source.commit.as_str())
-        || supply
-            .pointer("/slsa/predicateType")
-            .and_then(JsonValue::as_str)
-            != Some(SLSA_ATTESTATION_PREDICATE)
-        || !resolved_commit
-        || parsed_workflow.as_ref() != Some(&provenance.workflow)
-        || supply
-            .pointer("/slsa/workflow/repository")
-            .and_then(JsonValue::as_str)
-            != Some(provenance.workflow.repository.as_str())
-        || supply
-            .pointer("/slsa/workflow/path")
-            .and_then(JsonValue::as_str)
-            != Some(provenance.workflow.path.as_str())
-        || supply
-            .pointer("/slsa/workflow/ref")
-            .and_then(JsonValue::as_str)
-            != Some(provenance.workflow.r#ref.as_str())
-        || supply
-            .pointer("/slsa/certificateSubjectAltName")
-            .and_then(JsonValue::as_str)
-            != Some(expected_san.as_str())
-        || supply
-            .pointer("/slsa/certificateIssuer")
-            .and_then(JsonValue::as_str)
-            .is_none_or(|issuer| !issuer.contains("sigstore"))
-        || supply
-            .pointer("/slsa/certificateFingerprint256")
-            .and_then(JsonValue::as_str)
-            .is_none_or(|fingerprint| !is_sha256_fingerprint(fingerprint))
-    {
-        failures.push(format!(
-            "ZenUML executable evidence {field} has incomplete SLSA workflow binding"
-        ));
-    }
-    Ok(())
-}
-
-fn parse_numeric_semver(value: &str) -> Option<(u64, u64, u64)> {
-    let mut components = value.split('.');
-    let version = (
-        components.next()?.parse().ok()?,
-        components.next()?.parse().ok()?,
-        components.next()?.parse().ok()?,
-    );
-    components.next().is_none().then_some(version)
-}
-
-#[derive(Debug)]
-struct DerivedAttestation {
-    envelope_sha256: String,
-    payload_sha256: String,
-    statement: JsonValue,
-}
-
-fn statement_binds_subject(
-    statement: &JsonValue,
-    reference: &PackageReference,
-    tarball_sha512_hex: &str,
-) -> bool {
-    let expected_name = format!(
-        "pkg:npm/%40{}@{}",
-        reference.package.trim_start_matches('@'),
-        reference.version
-    );
-    let Some(subjects) = statement.get("subject").and_then(JsonValue::as_array) else {
-        return false;
-    };
-    subjects.len() == 1
-        && subjects[0].get("name").and_then(JsonValue::as_str) == Some(expected_name.as_str())
-        && subjects[0]
-            .pointer("/digest/sha512")
-            .and_then(JsonValue::as_str)
-            == Some(tarball_sha512_hex)
-}
-
-fn decode_bounded_base64(value: &str, max_decoded_bytes: usize) -> Option<Vec<u8>> {
-    if value.is_empty() || value.len() > max_decoded_bytes.saturating_mul(2) {
-        return None;
-    }
-    let decoded = base64::engine::general_purpose::STANDARD
-        .decode(value.as_bytes())
-        .ok()?;
-    (!decoded.is_empty()
-        && decoded.len() <= max_decoded_bytes
-        && base64::engine::general_purpose::STANDARD.encode(&decoded) == value)
-        .then_some(decoded)
-}
-
-fn hex_lower(bytes: &[u8]) -> String {
-    let mut output = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        write!(output, "{byte:02x}").expect("writing to a String cannot fail");
-    }
-    output
-}
-
-fn expected_workflow_san(workflow: &PublishWorkflow) -> String {
-    format!(
-        "URI:{}/{}@{}",
-        workflow.repository, workflow.path, workflow.r#ref
-    )
-}
-
-fn is_sha256_fingerprint(value: &str) -> bool {
-    let segments = value.split(':').collect::<Vec<_>>();
-    segments.len() == 32
-        && segments.iter().all(|segment| {
-            segment.len() == 2
-                && segment
-                    .bytes()
-                    .all(|byte| byte.is_ascii_digit() || (b'A'..=b'F').contains(&byte))
-        })
-}
-
-fn canonical_json(value: &JsonValue) -> Result<Vec<u8>, XtaskError> {
-    let mut canonical = value.clone();
-    canonical.sort_all_objects();
-    serde_json::to_vec(&canonical).map_err(XtaskError::from)
-}
-
-fn canonical_pretty_json(value: &JsonValue) -> Result<String, XtaskError> {
-    let mut canonical = value.clone();
-    canonical.sort_all_objects();
-    let mut output = serde_json::to_string_pretty(&canonical)?;
-    output.push('\n');
-    Ok(output)
-}
-
-fn verify_candidate_topology_and_deltas(evidence: &JsonValue, failures: &mut Vec<String>) {
-    let required_topology = BTreeSet::from([
-        "emojiMessages",
-        "numberUnitConditionFragments",
-        "parallelFragments",
-        "participantGroups",
-        "tryCatchFinallyFragments",
-    ]);
-    let Some(topology) = evidence
-        .pointer("/semantic/requiredTopology")
-        .and_then(JsonValue::as_object)
-    else {
-        failures.push("ZenUML candidate evidence has no required topology inventory".to_string());
-        return;
-    };
-    if topology.keys().map(String::as_str).collect::<BTreeSet<_>>() != required_topology
-        || topology
-            .values()
-            .any(|value| value.as_u64().is_none_or(|count| count == 0))
-    {
-        failures.push(
-            "ZenUML candidate evidence required topology must be exact and non-empty".to_string(),
-        );
-    }
-
-    let Some(classified) = evidence
-        .pointer("/semantic/classifiedBehavior")
-        .and_then(JsonValue::as_array)
-    else {
-        failures.push("ZenUML candidate evidence has no classified behavior probes".to_string());
-        return;
-    };
-    let mut ids = BTreeSet::new();
-    if classified.len() < 8 {
-        failures.push(
-            "ZenUML candidate evidence must retain the complete named behavior matrix".to_string(),
-        );
-    }
-    for behavior in classified {
-        let id = behavior.get("id").and_then(JsonValue::as_str);
-        if id.is_none_or(|id| id.is_empty() || !ids.insert(id))
-            || behavior
-                .get("classification")
-                .and_then(JsonValue::as_str)
-                .is_none_or(str::is_empty)
-            || behavior
-                .pointer("/sourceAttribution/paths")
-                .and_then(JsonValue::as_array)
-                .is_none_or(Vec::is_empty)
-            || behavior
-                .pointer("/sourceAttribution/rules")
-                .and_then(JsonValue::as_array)
-                .is_none_or(Vec::is_empty)
-        {
-            failures
-                .push("ZenUML classified behavior has incomplete source attribution".to_string());
-        }
-        let assertions = behavior.get("assertions").and_then(JsonValue::as_array);
-        if assertions.is_none_or(Vec::is_empty) {
-            failures.push("ZenUML classified behavior has no named assertions".to_string());
-            continue;
-        }
-        for assertion in assertions.into_iter().flatten() {
-            if assertion.get("actual") != assertion.get("expected")
-                || assertion
-                    .get("engine")
-                    .and_then(JsonValue::as_str)
-                    .is_none_or(|engine| !matches!(engine, "oracle" | "candidate"))
-                || assertion
-                    .get("fact")
-                    .and_then(JsonValue::as_str)
-                    .is_none_or(str::is_empty)
-            {
-                failures
-                    .push("ZenUML classified behavior assertion failed or is invalid".to_string());
-            }
-        }
-    }
-}
-
-fn verify_candidate_strict_inline_artifact(
-    evidence: &JsonValue,
-    fixture_count: Option<u64>,
-    failures: &mut Vec<String>,
-) {
-    let strict = evidence.get("strictInlineSvg");
-    let fixtures = strict
-        .and_then(|value| value.get("fixtures"))
-        .and_then(JsonValue::as_array);
-    let corpus_sources = evidence
-        .pointer("/corpus/sources")
-        .and_then(JsonValue::as_array);
-    let Some((fixtures, corpus_sources)) = fixtures.zip(corpus_sources) else {
-        failures.push("ZenUML strict-inline artifact evidence has no fixture array".to_string());
-        return;
-    };
-    let fixture_len = u64::try_from(fixtures.len()).ok();
-    let strict_names = fixtures
-        .iter()
-        .filter_map(|fixture| fixture.get("name").and_then(JsonValue::as_str))
-        .collect::<Vec<_>>();
-    let corpus_names = corpus_sources
-        .iter()
-        .filter_map(|source| source.get("name").and_then(JsonValue::as_str))
-        .collect::<Vec<_>>();
-    let passed_count = fixtures
-        .iter()
-        .filter(|fixture| fixture.get("passed").and_then(JsonValue::as_bool) == Some(true))
-        .count();
-    let svg_bytes = fixtures
-        .iter()
-        .filter_map(|fixture| fixture.get("svgBytes").and_then(JsonValue::as_u64))
-        .collect::<Vec<_>>();
-    let total_svg_bytes = svg_bytes
-        .iter()
-        .map(|bytes| u128::from(*bytes))
-        .sum::<u128>();
-    let recorded_total = strict
-        .and_then(|value| value.get("totalSvgBytes"))
-        .and_then(JsonValue::as_u64)
-        .map(u128::from);
-    let recorded_max = strict
-        .and_then(|value| value.get("maxSvgBytes"))
-        .and_then(JsonValue::as_u64);
-    if fixture_count != fixture_len
-        || strict
-            .and_then(|value| value.get("fixtureCount"))
-            .and_then(JsonValue::as_u64)
-            != fixture_len
-        || strict
-            .and_then(|value| value.get("passedCount"))
-            .and_then(JsonValue::as_u64)
-            != u64::try_from(passed_count).ok()
-        || passed_count != fixtures.len()
-        || strict_names.len() != fixtures.len()
-        || strict_names != corpus_names
-        || svg_bytes.len() != fixtures.len()
-        || svg_bytes.contains(&0)
-        || recorded_total != Some(total_svg_bytes)
-        || recorded_max != svg_bytes.iter().copied().max()
-        || fixtures.iter().any(|fixture| {
-            fixture
-                .get("foreignObjectFree")
-                .and_then(JsonValue::as_bool)
-                != Some(true)
-        })
-        || fixtures.iter().any(|fixture| {
-            fixture
-                .get("svgSha256")
-                .and_then(JsonValue::as_str)
-                .is_none_or(|digest| !crate::util::is_canonical_sha256(digest))
-        })
-    {
-        failures.push(
-            "ZenUML strict-inline artifact facts and counts must derive from the complete fixture array"
-                .to_string(),
-        );
-    }
-}
-
-fn verify_candidate_browser_admission(
-    root: &Path,
-    admission: &JsonValue,
-    candidate: &JsonValue,
-    failures: &mut Vec<String>,
-) -> Result<(), XtaskError> {
-    let fields = [
-        ("execution-isolation", "executionIsolation"),
-        ("security", "security"),
-    ];
-    let artifact_path = candidate
-        .pointer("/executionIsolation/artifact")
-        .and_then(JsonValue::as_str)
-        .unwrap_or_default();
-    let contract_path = candidate
-        .pointer("/executionIsolation/probeContract")
-        .and_then(JsonValue::as_str)
-        .unwrap_or_default();
-    let artifact_sha256 = candidate
-        .pointer("/executionIsolation/artifactSha256")
-        .and_then(JsonValue::as_str)
-        .unwrap_or_default();
-    if !is_owned_relative_path(artifact_path)
-        || !is_owned_relative_path(contract_path)
-        || !crate::util::is_canonical_sha256(artifact_sha256)
-        || fields.iter().any(|(_, field)| {
-            candidate
-                .pointer(&format!("/{field}/artifact"))
-                .and_then(JsonValue::as_str)
-                != Some(artifact_path)
-                || candidate
-                    .pointer(&format!("/{field}/probeContract"))
-                    .and_then(JsonValue::as_str)
-                    != Some(contract_path)
-                || candidate
-                    .pointer(&format!("/{field}/artifactSha256"))
-                    .and_then(JsonValue::as_str)
-                    != Some(artifact_sha256)
-        })
-    {
-        failures.push(
-            "ZenUML browser admission summaries must share one owned artifact and probe contract"
-                .to_string(),
-        );
-        return Ok(());
-    }
-
-    let artifact_file = root.join(artifact_path);
-    let artifact_text =
-        fs::read_to_string(&artifact_file).map_err(|source| XtaskError::ReadFile {
-            path: artifact_file.display().to_string(),
-            source,
-        })?;
-    let artifact: JsonValue = serde_json::from_str(&artifact_text)?;
-    if crate::util::sha256_hex(artifact_text.as_bytes()) != artifact_sha256
-        || artifact.get("schemaVersion").and_then(JsonValue::as_u64) != Some(2)
-        || artifact.get("generatedBy").and_then(JsonValue::as_str)
-            != Some("playground/scripts/zenuml-browser-admission.mjs")
-        || artifact.get("command").and_then(JsonValue::as_str)
-            != Some("npm run test:zenuml-browser-admission")
-    {
-        failures.push(
-            "ZenUML browser admission artifact is non-canonical, stale, or has an invalid contract"
-                .to_string(),
-        );
-    }
-
-    let contract_file = root.join(contract_path);
-    let contract_text =
-        fs::read_to_string(&contract_file).map_err(|source| XtaskError::ReadFile {
-            path: contract_file.display().to_string(),
-            source,
-        })?;
-    let contract: JsonValue = serde_json::from_str(&contract_text)?;
-    let contract_sha256 = crate::util::sha256_hex(contract_text.as_bytes());
-    if contract.get("schemaVersion").and_then(JsonValue::as_u64) != Some(1)
-        || artifact
-            .pointer("/probeContract/path")
-            .and_then(JsonValue::as_str)
-            != Some(contract_path)
-        || artifact
-            .pointer("/probeContract/sha256")
-            .and_then(JsonValue::as_str)
-            != Some(contract_sha256.as_str())
-    {
-        failures.push(
-            "ZenUML browser admission probe contract is non-canonical, stale, or unbound"
-                .to_string(),
-        );
-    }
-
-    let projects = contract.get("projects").and_then(JsonValue::as_array);
-    if projects.is_none_or(Vec::is_empty) || artifact.get("projects") != contract.get("projects") {
-        failures.push(
-            "ZenUML browser admission projects must derive from the non-empty probe contract"
-                .to_string(),
-        );
-    }
-    for (gate, field) in fields {
-        let required = contract
-            .pointer(&format!("/categories/{gate}"))
-            .and_then(JsonValue::as_array);
-        let observed = artifact.get(field);
-        verify_browser_admission_category(gate, projects, required, observed, failures);
-        verify_browser_admission_summary(admission, candidate, gate, field, observed, failures);
-    }
-    Ok(())
-}
-
-fn verify_browser_admission_category(
-    gate: &str,
-    projects: Option<&Vec<JsonValue>>,
-    required: Option<&Vec<JsonValue>>,
-    observed: Option<&JsonValue>,
-    failures: &mut Vec<String>,
-) {
-    let project_count = projects.and_then(|values| u64::try_from(values.len()).ok());
-    let probe_count = required.and_then(|values| u64::try_from(values.len()).ok());
-    let observations = observed
-        .and_then(|value| value.get("probes"))
-        .and_then(JsonValue::as_array);
-    let expected_observation_count = project_count.zip(probe_count).map(|(a, b)| a * b);
-    let mut actual_observation_count = 0u64;
-    let valid_probes = required
-        .zip(observations)
-        .is_some_and(|(required, observations)| {
-            required.len() == observations.len()
-                && required
-                    .iter()
-                    .zip(observations)
-                    .all(|(required, observed)| {
-                        if observed.get("id") != required.get("id")
-                            || observed.get("description") != required.get("description")
-                        {
-                            return false;
-                        }
-                        let probe_observations =
-                            observed.get("observations").and_then(JsonValue::as_array);
-                        actual_observation_count += probe_observations
-                            .and_then(|values| u64::try_from(values.len()).ok())
-                            .unwrap_or_default();
-                        probe_observations.zip(projects).is_some_and(
-                            |(probe_observations, projects)| {
-                                probe_observations.len() == projects.len()
-                                    && probe_observations.iter().zip(projects).all(
-                                        |(observation, project)| {
-                                            observation.get("project") == Some(project)
-                                                && observation
-                                                    .get("passed")
-                                                    .and_then(JsonValue::as_bool)
-                                                    == Some(true)
-                                                && observation.get("observed")
-                                                    == observation.get("expected")
-                                                && observation
-                                                    .get("testTitle")
-                                                    .and_then(JsonValue::as_str)
-                                                    .is_some_and(|title| {
-                                                        !title.trim().is_empty()
-                                                            && title.trim() == title
-                                                    })
-                                        },
-                                    )
-                            },
-                        )
-                    })
-        });
-    if project_count.is_none_or(|count| count == 0)
-        || probe_count.is_none_or(|count| count == 0)
-        || !valid_probes
-        || Some(actual_observation_count) != expected_observation_count
-        || observed
-            .and_then(|value| value.get("projectCount"))
-            .and_then(JsonValue::as_u64)
-            != project_count
-        || observed
-            .and_then(|value| value.get("probeCount"))
-            .and_then(JsonValue::as_u64)
-            != probe_count
-        || observed
-            .and_then(|value| value.get("observationCount"))
-            .and_then(JsonValue::as_u64)
-            != expected_observation_count
-        || observed
-            .and_then(|value| value.get("passedObservationCount"))
-            .and_then(JsonValue::as_u64)
-            != expected_observation_count
-    {
-        failures.push(format!(
-            "ZenUML {gate} evidence must contain every passing probe observation for every project"
-        ));
-    }
-}
-
-fn verify_browser_admission_summary(
-    admission: &JsonValue,
-    candidate: &JsonValue,
-    gate: &str,
-    field: &str,
-    artifact_category: Option<&JsonValue>,
-    failures: &mut Vec<String>,
-) {
-    let summary = candidate.get(field);
-    let matrix_evidence = admission
-        .get("matrix")
-        .and_then(JsonValue::as_array)
-        .and_then(|matrix| {
-            matrix
-                .iter()
-                .find(|entry| entry.get("gate").and_then(JsonValue::as_str) == Some(gate))
-        })
-        .and_then(|entry| entry.get("evidence"));
-    let expected_reference = format!("tools/upstreams/ZENUML_CORE_CANDIDATE_EVIDENCE.json#{field}");
-    let count_fields = [
-        "projectCount",
-        "probeCount",
-        "observationCount",
-        "passedObservationCount",
-    ];
-    if summary.is_none()
-        || matrix_evidence
-            .and_then(|value| value.get("kind"))
-            .and_then(JsonValue::as_str)
-            != Some("artifact")
-        || matrix_evidence
-            .and_then(|value| value.get("reference"))
-            .and_then(JsonValue::as_str)
-            != Some(expected_reference.as_str())
-        || count_fields.iter().any(|field| {
-            summary.and_then(|value| value.get(field))
-                != artifact_category.and_then(|value| value.get(field))
-                || matrix_evidence.and_then(|value| value.get(field))
-                    != summary.and_then(|value| value.get(field))
-        })
-    {
-        failures.push(format!(
-            "ZenUML {gate} admission summary is not derived from executable browser evidence"
-        ));
-    }
-}
-
-fn verify_candidate_resource_evidence(evidence: &JsonValue, failures: &mut Vec<String>) {
-    let oracle_bytes = evidence
-        .pointer("/oracle/runtimeEntryBytes")
-        .and_then(JsonValue::as_u64);
-    let candidate_bytes = evidence
-        .pointer("/candidate/runtimeEntryBytes")
-        .and_then(JsonValue::as_u64);
-    let recorded_delta = evidence
-        .pointer("/resource/runtimeEntryDeltaBytes")
-        .and_then(JsonValue::as_i64);
-    let recorded_basis_points = evidence
-        .pointer("/resource/runtimeEntryDeltaBasisPoints")
-        .and_then(JsonValue::as_i64);
-    let scope = evidence
-        .pointer("/resource/measurementScope")
-        .and_then(JsonValue::as_str);
-
-    let Some((oracle_bytes, candidate_bytes)) = oracle_bytes.zip(candidate_bytes) else {
-        failures.push("ZenUML resource evidence must record both runtime entry sizes".to_string());
-        return;
-    };
-    if oracle_bytes == 0 || candidate_bytes == 0 || scope != Some("runtime-entry") {
-        failures.push(
-            "ZenUML resource evidence must identify a non-empty runtime-entry measurement"
-                .to_string(),
-        );
-        return;
-    }
-    let expected_delta = i128::from(candidate_bytes) - i128::from(oracle_bytes);
-    let expected_basis_points =
-        (expected_delta * 10_000 + i128::from(oracle_bytes) / 2) / i128::from(oracle_bytes);
-    if recorded_delta.map(i128::from) != Some(expected_delta)
-        || recorded_basis_points.map(i128::from) != Some(expected_basis_points)
-    {
-        failures.push(
-            "ZenUML resource evidence must reproducibly derive its absolute and relative deltas"
-                .to_string(),
-        );
-    }
 }
 
 fn verify_installed_content(
@@ -3095,6 +1527,569 @@ fn verify_installed_package_content(
     Ok(verified)
 }
 
+fn canonical_json(value: &JsonValue) -> Result<Vec<u8>, XtaskError> {
+    let mut canonical = value.clone();
+    canonical.sort_all_objects();
+    serde_json::to_vec(&canonical).map_err(XtaskError::from)
+}
+
+fn package_selection_identity(value: &JsonValue) -> Result<JsonValue, XtaskError> {
+    let field = |name: &str| {
+        value.get(name).cloned().ok_or_else(|| {
+            XtaskError::MermaidReference(format!("selected package identity is missing {name}"))
+        })
+    };
+    let source = value
+        .get("source")
+        .and_then(JsonValue::as_object)
+        .ok_or_else(|| {
+            XtaskError::MermaidReference("selected package identity is missing source".to_string())
+        })?;
+    Ok(serde_json::json!({
+        "role": field("role")?,
+        "package": field("package")?,
+        "version": field("version")?,
+        "declaredRange": value.get("declaredRange").cloned().unwrap_or(JsonValue::Null),
+        "integrity": field("integrity")?,
+        "tarballUrl": field("tarballUrl")?,
+        "source": {
+            "repository": source.get("repository").cloned().unwrap_or(JsonValue::Null),
+            "reference": source.get("reference").cloned().unwrap_or(JsonValue::Null),
+            "commit": source.get("commit").cloned().unwrap_or(JsonValue::Null),
+            "packagePath": source.get("packagePath").cloned().unwrap_or(JsonValue::Null),
+        },
+        "requiredSurfaces": field("requiredSurfaces")?,
+        "runtimeRegistration": value
+            .get("runtimeRegistration")
+            .cloned()
+            .unwrap_or(JsonValue::Null),
+    }))
+}
+
+fn selection_identity_from_bundle_value(bundle: &JsonValue) -> Result<JsonValue, XtaskError> {
+    let package = |pointer: &str| {
+        let value = bundle.pointer(pointer).ok_or_else(|| {
+            XtaskError::MermaidReference(format!(
+                "reference bundle is missing selected package at {pointer}"
+            ))
+        })?;
+        package_selection_identity(value)
+    };
+    let diagrams = bundle
+        .get("externalDiagrams")
+        .and_then(JsonValue::as_array)
+        .ok_or_else(|| {
+            XtaskError::MermaidReference("reference bundle is missing externalDiagrams".to_string())
+        })?;
+    let mut selected_diagrams = Vec::new();
+    for diagram in diagrams {
+        let id = diagram.get("id").cloned().ok_or_else(|| {
+            XtaskError::MermaidReference("external diagram is missing id".to_string())
+        })?;
+        let plugin = diagram.get("plugin").ok_or_else(|| {
+            XtaskError::MermaidReference("external diagram is missing plugin".to_string())
+        })?;
+        let behavior = if let Some(behavior) = diagram.get("behavior") {
+            behavior
+        } else {
+            let legacy = diagram.get("behaviorSource").ok_or_else(|| {
+                XtaskError::MermaidReference(
+                    "external diagram is missing selected behavior".to_string(),
+                )
+            })?;
+            let selected_version = legacy
+                .get("selectedVersion")
+                .and_then(JsonValue::as_str)
+                .ok_or_else(|| {
+                    XtaskError::MermaidReference(
+                        "legacy behavior source is missing selectedVersion".to_string(),
+                    )
+                })?;
+            ["oracle", "candidate", "selected"]
+                .into_iter()
+                .filter_map(|field| legacy.get(field))
+                .find(|reference| {
+                    reference.get("version").and_then(JsonValue::as_str) == Some(selected_version)
+                })
+                .ok_or_else(|| {
+                    XtaskError::MermaidReference(
+                        "legacy selectedVersion does not identify a package".to_string(),
+                    )
+                })?
+        };
+        selected_diagrams.push(serde_json::json!({
+            "id": id,
+            "plugin": package_selection_identity(plugin)?,
+            "behavior": package_selection_identity(behavior)?,
+        }));
+    }
+    selected_diagrams.sort_by(|left, right| {
+        left.get("id")
+            .and_then(JsonValue::as_str)
+            .cmp(&right.get("id").and_then(JsonValue::as_str))
+    });
+    let layouts = bundle
+        .get("externalLayouts")
+        .and_then(JsonValue::as_array)
+        .ok_or_else(|| {
+            XtaskError::MermaidReference("reference bundle is missing externalLayouts".to_string())
+        })?;
+    let mut selected_layouts = layouts
+        .iter()
+        .map(package_selection_identity)
+        .collect::<Result<Vec<_>, _>>()?;
+    selected_layouts.sort_by(|left, right| {
+        left.get("package")
+            .and_then(JsonValue::as_str)
+            .cmp(&right.get("package").and_then(JsonValue::as_str))
+    });
+    Ok(serde_json::json!({
+        "release": package("/release")?,
+        "parser": package("/parser")?,
+        "sanitizer": package("/sanitizer")?,
+        "externalDiagrams": selected_diagrams,
+        "externalLayouts": selected_layouts,
+        "referenceCli": package("/referenceCli/package")?,
+    }))
+}
+
+fn selection_identity(bundle: &MermaidReferenceBundle) -> Result<JsonValue, XtaskError> {
+    selection_identity_from_bundle_value(&serde_json::to_value(bundle)?)
+}
+
+fn selection_identity_digest(identity: &JsonValue) -> Result<String, XtaskError> {
+    Ok(crate::util::sha256_hex(&canonical_json(identity)?))
+}
+
+fn diff_selection_values(
+    previous: &JsonValue,
+    current: &JsonValue,
+    path: &str,
+    changes: &mut Vec<SelectionChange>,
+) {
+    match (previous, current) {
+        (JsonValue::Object(previous), JsonValue::Object(current)) => {
+            let keys = previous
+                .keys()
+                .chain(current.keys())
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>();
+            for key in keys {
+                let next = if path.is_empty() {
+                    key.to_string()
+                } else {
+                    format!("{path}.{key}")
+                };
+                diff_selection_values(
+                    previous.get(key).unwrap_or(&JsonValue::Null),
+                    current.get(key).unwrap_or(&JsonValue::Null),
+                    &next,
+                    changes,
+                );
+            }
+        }
+        (JsonValue::Array(previous), JsonValue::Array(current))
+            if previous.len() == current.len() =>
+        {
+            for (index, (previous, current)) in previous.iter().zip(current).enumerate() {
+                diff_selection_values(previous, current, &format!("{path}[{index}]"), changes);
+            }
+        }
+        _ if previous != current => changes.push(SelectionChange {
+            path: path.to_string(),
+            previous: previous.clone(),
+            current: current.clone(),
+        }),
+        _ => {}
+    }
+}
+
+fn selection_changes(previous: &JsonValue, current: &JsonValue) -> Vec<SelectionChange> {
+    let mut changes = Vec::new();
+    diff_selection_values(previous, current, "", &mut changes);
+    changes
+}
+
+type SelectionPackageIdentity = (String, String, String);
+
+fn collect_selection_packages(
+    value: &JsonValue,
+    path: &str,
+    packages: &mut BTreeMap<String, (JsonValue, SelectionPackageIdentity)>,
+) {
+    match value {
+        JsonValue::Object(object) => {
+            let identity = object
+                .get("package")
+                .and_then(JsonValue::as_str)
+                .zip(object.get("version").and_then(JsonValue::as_str))
+                .zip(object.get("integrity").and_then(JsonValue::as_str))
+                .map(|((package, version), integrity)| {
+                    (
+                        package.to_string(),
+                        version.to_string(),
+                        integrity.to_string(),
+                    )
+                });
+            if let Some(identity) = identity {
+                packages.insert(path.to_string(), (value.clone(), identity));
+                return;
+            }
+            for (key, child) in object {
+                let next = if path.is_empty() {
+                    key.to_string()
+                } else {
+                    format!("{path}.{key}")
+                };
+                collect_selection_packages(child, &next, packages);
+            }
+        }
+        JsonValue::Array(values) => {
+            for (index, child) in values.iter().enumerate() {
+                collect_selection_packages(child, &format!("{path}[{index}]"), packages);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn changed_current_selection_packages(
+    previous: &JsonValue,
+    current: &JsonValue,
+) -> BTreeSet<SelectionPackageIdentity> {
+    let mut previous_packages = BTreeMap::new();
+    let mut current_packages = BTreeMap::new();
+    collect_selection_packages(previous, "", &mut previous_packages);
+    collect_selection_packages(current, "", &mut current_packages);
+    current_packages
+        .into_iter()
+        .filter_map(|(path, (value, identity))| {
+            (previous_packages.get(&path).map(|(value, _)| value) != Some(&value))
+                .then_some(identity)
+        })
+        .collect()
+}
+
+fn validate_selection_snapshot(
+    name: &str,
+    snapshot: &SelectionSnapshot,
+    failures: &mut Vec<String>,
+) -> Result<(), XtaskError> {
+    let digest = selection_identity_digest(&snapshot.identity)?;
+    if snapshot.identity_digest != digest {
+        failures.push(format!(
+            "selection receipt {name}.identityDigest does not match its identity"
+        ));
+    }
+    Ok(())
+}
+
+fn verify_selection_receipt(
+    root: &Path,
+    bundle: &MermaidReferenceBundle,
+) -> Result<VerifiedSelectionReceipt, XtaskError> {
+    let receipt_path = root.join(&bundle.selection_decision.path);
+    let bytes = fs::read(&receipt_path).map_err(|source| XtaskError::ReadFile {
+        path: receipt_path.display().to_string(),
+        source,
+    })?;
+    let actual_sha256 = crate::util::sha256_hex(&bytes);
+    let mut failures = Vec::new();
+    if actual_sha256 != bundle.selection_decision.sha256 {
+        failures.push(format!(
+            "selection receipt digest drift: expected {}, found {actual_sha256}",
+            bundle.selection_decision.sha256
+        ));
+    }
+    let receipt: SelectionDecisionReceipt = serde_json::from_slice(&bytes)?;
+    if receipt.schema_version != EXPECTED_SELECTION_DECISION_SCHEMA_VERSION
+        || receipt.receipt_kind != "mermaid-selection-decision"
+        || receipt.decision != "selected"
+    {
+        failures.push("selection receipt has an invalid schema, kind, or decision".to_string());
+    }
+    validate_selection_snapshot("previous", &receipt.previous, &mut failures)?;
+    validate_selection_snapshot("current", &receipt.current, &mut failures)?;
+    let current_identity = selection_identity(bundle)?;
+    let current_digest = selection_identity_digest(&current_identity)?;
+    if receipt.current.identity != current_identity
+        || receipt.current.identity_digest != current_digest
+    {
+        failures.push(
+            "selection receipt current identity does not bind the selected reference graph"
+                .to_string(),
+        );
+    }
+    let expected_changes = selection_changes(&receipt.previous.identity, &receipt.current.identity);
+    if receipt.changes != expected_changes || receipt.changes.is_empty() {
+        failures.push(
+            "selection receipt changes must be the exact non-empty previous/current identity diff"
+                .to_string(),
+        );
+    }
+    if let Some(bootstrap) = &receipt.bootstrap {
+        let valid_git_object = bootstrap
+            .source_evidence_git_object
+            .split_once(':')
+            .is_some_and(|(commit, path)| commit.len() == 40 && is_owned_relative_path(path));
+        if bootstrap.reason.trim().is_empty()
+            || !valid_git_object
+            || !crate::util::is_canonical_sha256(&bootstrap.source_evidence_sha256)
+            || bootstrap
+                .source_evidence_sha256
+                .bytes()
+                .all(|byte| byte == b'0')
+        {
+            failures.push("selection receipt bootstrap evidence is incomplete".to_string());
+        }
+        if receipt.verification.raw_output.sha256 != bootstrap.source_evidence_sha256 {
+            failures.push(
+                "bootstrap receipt raw output digest must bind its historical aggregate evidence"
+                    .to_string(),
+            );
+        }
+    }
+    if receipt.verification.tool.name != "npm"
+        || receipt.verification.tool.version.trim().is_empty()
+        || receipt.verification.tool.command != OFFICIAL_NPM_SIGNATURE_COMMAND
+    {
+        failures.push(
+            "selection receipt must name the exact official npm signature command and version"
+                .to_string(),
+        );
+    }
+    let expected_output_kind = if receipt.bootstrap.is_some() {
+        "historical-admission-aggregate"
+    } else {
+        "official-tool-output"
+    };
+    if receipt.verification.behavior_result != "pass"
+        || receipt.verification.raw_output.kind != expected_output_kind
+        || receipt
+            .verification
+            .raw_output
+            .official_tool_stdout_archived
+            != receipt.bootstrap.is_none()
+        || !crate::util::is_canonical_sha256(&receipt.verification.raw_output.sha256)
+        || receipt
+            .verification
+            .raw_output
+            .sha256
+            .bytes()
+            .all(|byte| byte == b'0')
+        || receipt.verification.packages.is_empty()
+    {
+        failures.push(
+            "selection receipt must bind passing behavior and the declared admission output"
+                .to_string(),
+        );
+    }
+    let selected_packages = package_references(bundle)
+        .into_iter()
+        .map(|reference| {
+            (
+                reference.package.as_str(),
+                reference.version.as_str(),
+                reference.integrity.as_str(),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    let mut verified_package_names = BTreeSet::new();
+    let mut verified_package_identities = BTreeSet::new();
+    for package in &receipt.verification.packages {
+        if !selected_packages.contains(&(
+            package.package.as_str(),
+            package.version.as_str(),
+            package.integrity.as_str(),
+        )) || !verified_package_names.insert(package.package.as_str())
+        {
+            failures.push(format!(
+                "selection receipt verification package {}@{} does not match the selected graph",
+                package.package, package.version
+            ));
+        }
+        verified_package_identities.insert((
+            package.package.clone(),
+            package.version.clone(),
+            package.integrity.clone(),
+        ));
+    }
+    for (package, version, _) in
+        changed_current_selection_packages(&receipt.previous.identity, &receipt.current.identity)
+            .difference(&verified_package_identities)
+    {
+        failures.push(format!(
+            "selection receipt does not bind official verification for changed package {package}@{version}"
+        ));
+    }
+    if failures.is_empty() {
+        Ok(VerifiedSelectionReceipt {
+            receipt,
+            reference: bundle.selection_decision.clone(),
+            current_identity,
+        })
+    } else {
+        Err(XtaskError::MermaidReference(failures.join("\n")))
+    }
+}
+
+fn receipt_reference_from_bundle_value(bundle: &JsonValue) -> Option<SelectionDecisionReference> {
+    serde_json::from_value(bundle.get("selectionDecision")?.clone()).ok()
+}
+
+fn validate_selection_transition(
+    base_identity: &JsonValue,
+    base_reference: Option<&SelectionDecisionReference>,
+    verified: &VerifiedSelectionReceipt,
+) -> Result<(), XtaskError> {
+    let base_digest = selection_identity_digest(base_identity)?;
+    let current_digest = selection_identity_digest(&verified.current_identity)?;
+    let mut failures = Vec::new();
+    if base_digest == current_digest {
+        if let Some(base_reference) = base_reference {
+            if base_reference != &verified.reference {
+                failures.push(
+                    "selected identity is unchanged, so the selection receipt must not be replaced"
+                        .to_string(),
+                );
+            }
+        } else if verified.receipt.bootstrap.is_none() {
+            failures.push(
+                "selected identity is unchanged and the base has no receipt; only an explicit bootstrap receipt is allowed"
+                    .to_string(),
+            );
+        }
+    } else {
+        if verified.receipt.bootstrap.is_some() {
+            failures.push(
+                "bootstrap receipts cannot authorize a selected identity change from the trusted base"
+                    .to_string(),
+            );
+        }
+        if verified.receipt.previous.identity != *base_identity
+            || verified.receipt.previous.identity_digest != base_digest
+            || verified.receipt.current.identity_digest != current_digest
+            || verified.receipt.changes
+                != selection_changes(base_identity, &verified.current_identity)
+        {
+            failures.push(
+                "selection receipt previous/current identities and changes do not match the trusted base transition"
+                    .to_string(),
+            );
+        }
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(XtaskError::MermaidReference(failures.join("\n")))
+    }
+}
+
+fn verify_bootstrap_evidence_from_git(
+    root: &Path,
+    base_commit: &str,
+    bootstrap: &BootstrapDecision,
+) -> Result<(), XtaskError> {
+    let (evidence_commit, _) = bootstrap
+        .source_evidence_git_object
+        .split_once(':')
+        .ok_or_else(|| {
+            XtaskError::MermaidReference(
+                "bootstrap receipt has an invalid historical evidence object".to_string(),
+            )
+        })?;
+    let ancestry = Command::new("git")
+        .args(["merge-base", "--is-ancestor", evidence_commit, base_commit])
+        .current_dir(root)
+        .output()
+        .map_err(|source| XtaskError::ReadFile {
+            path: format!("{evidence_commit}..{base_commit}"),
+            source,
+        })?;
+    if !ancestry.status.success() {
+        if ancestry.status.code() == Some(1) {
+            return Err(XtaskError::MermaidReference(format!(
+                "bootstrap evidence commit {evidence_commit} is not an ancestor of trusted base {base_commit}"
+            )));
+        }
+        return Err(XtaskError::MermaidReference(format!(
+            "cannot verify bootstrap evidence ancestry for trusted base {base_commit}: {}",
+            String::from_utf8_lossy(&ancestry.stderr).trim()
+        )));
+    }
+    let evidence_output = Command::new("git")
+        .args(["show", &bootstrap.source_evidence_git_object])
+        .current_dir(root)
+        .output()
+        .map_err(|source| XtaskError::ReadFile {
+            path: bootstrap.source_evidence_git_object.clone(),
+            source,
+        })?;
+    if !evidence_output.status.success() {
+        return Err(XtaskError::MermaidReference(format!(
+            "cannot read bootstrap evidence {}: {}",
+            bootstrap.source_evidence_git_object,
+            String::from_utf8_lossy(&evidence_output.stderr).trim()
+        )));
+    }
+    let evidence_sha256 = crate::util::sha256_hex(&evidence_output.stdout);
+    if evidence_sha256 != bootstrap.source_evidence_sha256 {
+        return Err(XtaskError::MermaidReference(format!(
+            "bootstrap evidence digest drift: expected {}, found {evidence_sha256}",
+            bootstrap.source_evidence_sha256
+        )));
+    }
+    Ok(())
+}
+
+fn verify_selection_transition_from_git(
+    root: &Path,
+    base: &str,
+    verified: &VerifiedSelectionReceipt,
+) -> Result<(), XtaskError> {
+    let commit_expression = format!("{base}^{{commit}}");
+    let commit_output = Command::new("git")
+        .args(["rev-parse", "--verify", &commit_expression])
+        .current_dir(root)
+        .output()
+        .map_err(|source| XtaskError::ReadFile {
+            path: commit_expression.clone(),
+            source,
+        })?;
+    if !commit_output.status.success() {
+        return Err(XtaskError::MermaidReference(format!(
+            "cannot resolve trusted base {base}: {}",
+            String::from_utf8_lossy(&commit_output.stderr).trim()
+        )));
+    }
+    let base_commit = String::from_utf8_lossy(&commit_output.stdout)
+        .trim()
+        .to_string();
+    let object = format!("{base}:{BUNDLE_RELATIVE_PATH}");
+    let output = Command::new("git")
+        .args(["show", &object])
+        .current_dir(root)
+        .output()
+        .map_err(|source| XtaskError::ReadFile {
+            path: object.clone(),
+            source,
+        })?;
+    if !output.status.success() {
+        return Err(XtaskError::MermaidReference(format!(
+            "cannot read trusted base bundle {object}: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )));
+    }
+    let base_bundle: JsonValue = serde_json::from_slice(&output.stdout)?;
+    let base_identity = selection_identity_from_bundle_value(&base_bundle)?;
+    let base_reference = receipt_reference_from_bundle_value(&base_bundle);
+    validate_selection_transition(&base_identity, base_reference.as_ref(), verified)?;
+    if let Some(bootstrap) = &verified.receipt.bootstrap {
+        verify_bootstrap_evidence_from_git(root, &base_commit, bootstrap)?;
+    }
+    Ok(())
+}
+
 fn verify_repository_state(
     root: &Path,
     bundle: &MermaidReferenceBundle,
@@ -3109,24 +2104,13 @@ fn verify_repository_state(
         .iter()
         .find(|diagram| diagram.id == "zenuml")
         .ok_or_else(|| XtaskError::MermaidReference("missing ZenUML reference".to_string()))?;
-    let selected = selected_behavior_source(&zenuml.behavior_source)
-        .ok_or_else(|| XtaskError::MermaidReference("invalid ZenUML selection".to_string()))?;
-    verify_admission(
-        root,
-        &bundle.release,
-        &zenuml.plugin,
-        &zenuml.behavior_source,
-        &mut failures,
-    )?;
-
-    for expectation in workspace_graph_expectations(bundle, zenuml, selected) {
+    for expectation in workspace_graph_expectations(bundle, zenuml) {
         verify_workspace_graph(root, &expectation, bundle, materialized, &mut failures)?;
     }
     if materialized {
         let mermaid_runtime_verified = verify_installed_content(root, bundle, &mut failures)?;
         verify_builtin_registry_inventory(root, bundle, mermaid_runtime_verified, &mut failures);
     }
-
     for (relative, expected) in expected_projections(bundle)? {
         let path = root.join(relative);
         let actual = fs::read_to_string(&path).map_err(|source| XtaskError::ReadFile {
@@ -3155,6 +2139,7 @@ pub(crate) fn gen_mermaid_reference(args: Vec<String>) -> Result<(), XtaskError>
     let path = crate::cmd::workspace_root().join(BUNDLE_RELATIVE_PATH);
     let bundle = load_bundle(&path)?;
     validate_bundle(&bundle)?;
+    verify_selection_receipt(&crate::cmd::workspace_root(), &bundle)?;
     for (relative, contents) in expected_projections(&bundle)? {
         write_projection(&crate::cmd::workspace_root().join(relative), &contents)?;
     }
@@ -3164,39 +2149,229 @@ pub(crate) fn gen_mermaid_reference(args: Vec<String>) -> Result<(), XtaskError>
     Ok(())
 }
 
+#[derive(Debug, Default)]
+struct VerifyOptions {
+    materialized: bool,
+    base: Option<String>,
+}
+
+fn parse_verify_options(args: Vec<String>) -> Result<VerifyOptions, XtaskError> {
+    let mut options = VerifyOptions::default();
+    let mut arguments = args.into_iter();
+    while let Some(argument) = arguments.next() {
+        match argument.as_str() {
+            "--materialized" if !options.materialized => options.materialized = true,
+            "--base" if options.base.is_none() => {
+                let base = arguments.next().ok_or(XtaskError::Usage)?;
+                if base.trim().is_empty() || base.starts_with('-') {
+                    return Err(XtaskError::Usage);
+                }
+                options.base = Some(base);
+            }
+            _ => return Err(XtaskError::Usage),
+        }
+    }
+    Ok(options)
+}
+
 pub(crate) fn verify_mermaid_reference(args: Vec<String>) -> Result<(), XtaskError> {
-    let materialized = match args.as_slice() {
-        [] => false,
-        [argument] if argument == "--materialized" => true,
-        _ => return Err(XtaskError::Usage),
-    };
-    let path = crate::cmd::workspace_root().join(BUNDLE_RELATIVE_PATH);
+    let options = parse_verify_options(args)?;
+    let root = crate::cmd::workspace_root();
+    let path = root.join(BUNDLE_RELATIVE_PATH);
     let bundle = load_bundle(&path)?;
     validate_bundle(&bundle)?;
-    verify_repository_state(&crate::cmd::workspace_root(), &bundle, materialized)
+    let verified_receipt = verify_selection_receipt(&root, &bundle)?;
+    if let Some(base) = options.base {
+        verify_selection_transition_from_git(&root, &base, &verified_receipt)?;
+    }
+    verify_repository_state(&root, &bundle, options.materialized)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn admission_with_statuses(statuses: &[(&str, &str)]) -> JsonValue {
-        serde_json::json!({
-            "matrix": statuses
+    fn run_git(root: &Path, args: &[&str]) -> String {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(root)
+            .output()
+            .expect("run git fixture command");
+        assert!(
+            output.status.success(),
+            "git {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    }
+
+    fn bootstrap_git_fixture() -> (tempfile::TempDir, BootstrapDecision, String, String) {
+        let temporary = tempfile::tempdir().expect("temporary Git repository");
+        run_git(temporary.path(), &["init", "--quiet"]);
+        run_git(
+            temporary.path(),
+            &["config", "user.email", "merman-tests@example.invalid"],
+        );
+        run_git(temporary.path(), &["config", "user.name", "Merman Tests"]);
+        let evidence = b"historical admission aggregate\n";
+        fs::write(temporary.path().join("evidence.txt"), evidence).expect("write evidence fixture");
+        run_git(temporary.path(), &["add", "evidence.txt"]);
+        run_git(temporary.path(), &["commit", "--quiet", "-m", "evidence"]);
+        let evidence_commit = run_git(temporary.path(), &["rev-parse", "HEAD"]);
+        run_git(
+            temporary.path(),
+            &["commit", "--quiet", "--allow-empty", "-m", "trusted base"],
+        );
+        let descendant = run_git(temporary.path(), &["rev-parse", "HEAD"]);
+        let tree = run_git(temporary.path(), &["rev-parse", "HEAD^{tree}"]);
+        let unrelated = run_git(
+            temporary.path(),
+            &["commit-tree", &tree, "-m", "unrelated base"],
+        );
+        let bootstrap = BootstrapDecision {
+            reason: "test bootstrap".to_string(),
+            source_evidence_git_object: format!("{evidence_commit}:evidence.txt"),
+            source_evidence_sha256: crate::util::sha256_hex(evidence),
+        };
+        (temporary, bootstrap, descendant, unrelated)
+    }
+
+    #[test]
+    fn committed_bundle_contains_only_the_selected_behavior_package() {
+        let root = crate::cmd::workspace_root();
+        let bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
+        validate_bundle(&bundle).expect("validate selected bundle");
+        let packages = package_references(&bundle)
+            .into_iter()
+            .map(|reference| (reference.package.as_str(), reference.version.as_str()))
+            .collect::<BTreeSet<_>>();
+        assert!(packages.contains(&("@zenuml/core", "3.50.1")));
+        assert!(!packages.contains(&("@zenuml/core", "3.47.8")));
+    }
+
+    #[test]
+    fn committed_receipt_binds_the_selected_identity() {
+        let root = crate::cmd::workspace_root();
+        let bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
+        verify_selection_receipt(&root, &bundle).expect("verify committed receipt");
+    }
+
+    #[test]
+    fn standing_verification_does_not_require_candidate_artifacts() {
+        let root = crate::cmd::workspace_root();
+        for relative in [
+            "tools/upstreams/ZENUML_CORE_ADMISSION.json",
+            "tools/upstreams/ZENUML_CORE_CANDIDATE_EVIDENCE.json",
+            "tools/upstreams/ZENUML_CORE_V4_DEFERRED_ADMISSION.json",
+            "tools/upstreams/ZENUML_BROWSER_SECURITY_EVIDENCE.json",
+        ] {
+            assert!(
+                !root.join(relative).exists(),
+                "{relative} must stay non-standing"
+            );
+        }
+        let bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
+        validate_bundle(&bundle).expect("validate selected bundle");
+        verify_selection_receipt(&root, &bundle).expect("verify selected receipt");
+        verify_repository_state(&root, &bundle, false)
+            .expect("verify standing selected graph without candidate artifacts");
+    }
+
+    #[test]
+    fn selected_identity_drift_invalidates_the_receipt() {
+        let root = crate::cmd::workspace_root();
+        let mut bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
+        bundle.release.version = "11.16.2".to_string();
+        let error = verify_selection_receipt(&root, &bundle)
+            .expect_err("selected identity drift must invalidate the receipt");
+        assert!(error.to_string().contains("current identity"));
+    }
+
+    #[test]
+    fn missing_selection_receipt_fails_closed() {
+        let root = crate::cmd::workspace_root();
+        let bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
+        let temporary = tempfile::tempdir().expect("temporary receipt root");
+        let error = verify_selection_receipt(temporary.path(), &bundle)
+            .expect_err("missing receipt must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("MERMAID_SELECTION_DECISION.json")
+        );
+    }
+
+    #[test]
+    fn tampered_selection_receipt_fails_closed() {
+        let root = crate::cmd::workspace_root();
+        let bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
+        let temporary = tempfile::tempdir().expect("temporary receipt root");
+        let target = temporary.path().join(SELECTION_DECISION_RELATIVE_PATH);
+        fs::create_dir_all(target.parent().expect("receipt parent"))
+            .expect("create receipt parent");
+        let mut receipt =
+            fs::read(root.join(SELECTION_DECISION_RELATIVE_PATH)).expect("read committed receipt");
+        receipt.push(b'\n');
+        fs::write(target, receipt).expect("write tampered receipt");
+        let error = verify_selection_receipt(temporary.path(), &bundle)
+            .expect_err("tampered receipt must fail");
+        assert!(error.to_string().contains("receipt digest drift"));
+    }
+
+    #[test]
+    fn selection_diff_is_exact_and_sorted() {
+        let previous = serde_json::json!({"package": {"version": "1.0.0", "integrity": "a"}});
+        let current = serde_json::json!({"package": {"version": "1.1.0", "integrity": "b"}});
+        let changes = selection_changes(&previous, &current);
+        assert_eq!(
+            changes
                 .iter()
-                .map(|(gate, status)| {
-                    serde_json::json!({
-                        "gate": gate,
-                        "status": status,
-                        "evidence": {
-                            "kind": "test",
-                            "reference": "test://admission",
-                            "summary": "Focused admission-matrix evidence."
-                        }
-                    })
-                })
-                .collect::<Vec<_>>()
-        })
+                .map(|change| change.path.as_str())
+                .collect::<Vec<_>>(),
+            ["package.integrity", "package.version"]
+        );
+    }
+
+    #[test]
+    fn transition_rejects_a_base_mismatch() {
+        let root = crate::cmd::workspace_root();
+        let bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
+        let verified = verify_selection_receipt(&root, &bundle).expect("verify receipt");
+        let wrong_base = serde_json::json!({"unrelated": true});
+        let error = validate_selection_transition(&wrong_base, None, &verified)
+            .expect_err("wrong base must fail");
+        assert!(error.to_string().contains("trusted base"));
+    }
+
+    #[test]
+    fn bootstrap_evidence_accepts_an_ancestor_of_the_trusted_base() {
+        let (temporary, bootstrap, descendant, _) = bootstrap_git_fixture();
+        verify_bootstrap_evidence_from_git(temporary.path(), &descendant, &bootstrap)
+            .expect("ancestor evidence must authorize the bootstrap base");
+    }
+
+    #[test]
+    fn bootstrap_evidence_rejects_an_unrelated_trusted_base() {
+        let (temporary, bootstrap, _, unrelated) = bootstrap_git_fixture();
+        let error = verify_bootstrap_evidence_from_git(temporary.path(), &unrelated, &bootstrap)
+            .expect_err("unrelated base must fail bootstrap ancestry");
+        assert!(error.to_string().contains("is not an ancestor"));
+    }
+
+    #[test]
+    fn unchanged_selection_rejects_receipt_replacement_after_bootstrap() {
+        let root = crate::cmd::workspace_root();
+        let bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
+        let verified = verify_selection_receipt(&root, &bundle).expect("verify receipt");
+        let replaced = SelectionDecisionReference {
+            path: verified.reference.path.clone(),
+            sha256: "a".repeat(64),
+        };
+        let error =
+            validate_selection_transition(&verified.current_identity, Some(&replaced), &verified)
+                .expect_err("unchanged selection must retain its receipt");
+        assert!(error.to_string().contains("must not be replaced"));
     }
 
     #[test]
@@ -3207,24 +2382,19 @@ mod tests {
         fs::create_dir_all(&flowchart).expect("create flowchart provenance directory");
         fs::write(flowchart.join("_baseline-manifest.json"), "{}\n")
             .expect("write flowchart manifest");
-
         let error = upstream_provenance_manifests_for(temporary.path(), &["flowchart", "state"])
             .expect_err("the absent state manifest must fail closed");
-
         assert!(error.to_string().contains("state"));
-        assert!(error.to_string().contains("missing"));
     }
 
     #[test]
     fn provenance_refresh_delegates_to_a_complete_svg_regeneration() {
         let mut observed = None;
-
         regenerate_upstream_provenance_with(|args| {
             observed = Some(args);
             Ok(())
         })
         .expect("delegate provenance refresh");
-
         assert_eq!(
             observed,
             Some(vec!["--diagram".to_string(), "all".to_string()])
@@ -3232,24 +2402,7 @@ mod tests {
     }
 
     #[test]
-    fn bundle_requires_installed_content_hashes_for_dynamic_runtime_companions() {
-        let root = crate::cmd::workspace_root();
-        let mut bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
-        let zenuml = bundle
-            .external_diagrams
-            .iter_mut()
-            .find(|diagram| diagram.id == "zenuml")
-            .expect("ZenUML reference");
-        zenuml.plugin.installed_content_sha256 = None;
-
-        let error = validate_bundle(&bundle).expect_err("missing companion digest must fail");
-
-        assert!(error.to_string().contains("@mermaid-js/mermaid-zenuml"));
-        assert!(error.to_string().contains("installedContentSha256"));
-    }
-
-    #[test]
-    fn materialized_runtime_graph_covers_every_imported_companion() {
+    fn materialized_runtime_graph_covers_every_selected_companion() {
         let root = crate::cmd::workspace_root();
         let bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
         let packages = materialized_runtime_references(&bundle)
@@ -3257,7 +2410,6 @@ mod tests {
             .into_iter()
             .map(|reference| reference.package.as_str())
             .collect::<BTreeSet<_>>();
-
         assert_eq!(
             packages,
             BTreeSet::from([
@@ -3284,7 +2436,6 @@ mod tests {
         let expected = crate::cmd::upstream_svg_package_tree_sha256(temporary.path())
             .expect("hash companion package");
         let mut failures = Vec::new();
-
         assert!(
             verify_installed_package_content(
                 temporary.path(),
@@ -3295,8 +2446,6 @@ mod tests {
             )
             .expect("verify matching companion content")
         );
-        assert!(failures.is_empty());
-
         fs::write(
             temporary.path().join("index.js"),
             "export const value = 2;\n",
@@ -3312,186 +2461,7 @@ mod tests {
             )
             .expect("verify changed companion content")
         );
-
-        assert_eq!(failures.len(), 1);
-        assert!(failures[0].contains("@mermaid-js/layout-test@1.0.0"));
         assert!(failures[0].contains("content drift"));
-    }
-
-    fn retained_oracle_statuses() -> Vec<(&'static str, &'static str)> {
-        ZENUML_ADMISSION_GATES
-            .into_iter()
-            .map(|gate| {
-                if gate == "execution-isolation" {
-                    (gate, "pending")
-                } else {
-                    (gate, "pass")
-                }
-            })
-            .collect()
-    }
-
-    #[test]
-    fn committed_bundle_has_a_valid_behavior_selection() {
-        let path = crate::cmd::workspace_root().join(BUNDLE_RELATIVE_PATH);
-        let bundle = load_bundle(&path).expect("load committed Mermaid reference bundle");
-        validate_bundle(&bundle).expect("validate committed Mermaid reference bundle");
-    }
-
-    #[test]
-    fn shared_sanitizer_is_bound_to_every_workspace_graph() {
-        let root = crate::cmd::workspace_root();
-        let bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
-        validate_bundle(&bundle).expect("validate bundle");
-
-        assert_eq!(bundle.sanitizer.package, "dompurify");
-        assert_eq!(bundle.sanitizer.role, "sanitizer");
-        assert!(
-            package_references(&bundle)
-                .iter()
-                .any(|reference| reference.id == bundle.sanitizer.id)
-        );
-
-        let zenuml = bundle
-            .external_diagrams
-            .iter()
-            .find(|diagram| diagram.id == "zenuml")
-            .expect("ZenUML diagram reference");
-        let selected = selected_behavior_source(&zenuml.behavior_source)
-            .expect("selected ZenUML behavior reference");
-
-        for expectation in workspace_graph_expectations(&bundle, zenuml, selected) {
-            assert!(
-                expectation
-                    .required_overrides
-                    .iter()
-                    .any(|package| package.id == bundle.sanitizer.id)
-            );
-            assert!(
-                expectation
-                    .expected_packages
-                    .iter()
-                    .any(|package| package.id == bundle.sanitizer.id)
-            );
-
-            let mut failures = Vec::new();
-            verify_workspace_graph(&root, &expectation, &bundle, false, &mut failures)
-                .expect("read workspace graph");
-            assert!(
-                failures.is_empty(),
-                "{} workspace graph drifted: {failures:?}",
-                expectation.workspace
-            );
-        }
-    }
-
-    #[test]
-    fn shared_sanitizer_workspace_contract_rejects_override_or_lock_drift() {
-        let root = crate::cmd::workspace_root();
-        let bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
-        let temporary = tempfile::tempdir().expect("temporary workspace root");
-        let workspace = "sanitizer-contract";
-        let workspace_root = temporary.path().join(workspace);
-        fs::create_dir_all(&workspace_root).expect("create temporary workspace");
-        fs::write(
-            workspace_root.join(".npmrc"),
-            "ignore-scripts=true\nregistry=https://registry.npmjs.org/\n",
-        )
-        .expect("write npm configuration");
-        fs::write(
-            workspace_root.join("package.json"),
-            serde_json::to_string_pretty(&serde_json::json!({
-                "overrides": { "dompurify": bundle.sanitizer.version.as_str() }
-            }))
-            .expect("serialize package manifest"),
-        )
-        .expect("write package manifest");
-
-        let expectation = WorkspaceGraphExpectation {
-            workspace,
-            direct_dependencies: Vec::new(),
-            expected_packages: vec![&bundle.sanitizer],
-            required_overrides: vec![&bundle.sanitizer],
-        };
-        fs::write(
-            workspace_root.join("package-lock.json"),
-            serde_json::to_string_pretty(&serde_json::json!({
-                "packages": {
-                    "": {},
-                    "node_modules/dompurify": {
-                        "version": "3.4.11",
-                        "integrity": bundle.sanitizer.integrity.as_str(),
-                        "resolved": bundle.sanitizer.tarball_url.as_str()
-                    }
-                }
-            }))
-            .expect("serialize package lock"),
-        )
-        .expect("write package lock");
-
-        let mut failures = Vec::new();
-        verify_workspace_graph(
-            temporary.path(),
-            &expectation,
-            &bundle,
-            false,
-            &mut failures,
-        )
-        .expect("read temporary workspace graph");
-        assert!(failures.iter().any(|failure| {
-            failure.contains("must resolve dompurify@") && failure.contains("recorded integrity")
-        }));
-
-        fs::write(
-            workspace_root.join("package-lock.json"),
-            serde_json::to_string_pretty(&serde_json::json!({
-                "packages": {
-                    "": {},
-                    "node_modules/dompurify": {
-                        "version": bundle.sanitizer.version.as_str(),
-                        "integrity": bundle.sanitizer.integrity.as_str(),
-                        "resolved": bundle.sanitizer.tarball_url.as_str()
-                    }
-                }
-            }))
-            .expect("serialize corrected package lock"),
-        )
-        .expect("write corrected package lock");
-        fs::write(
-            workspace_root.join("package.json"),
-            serde_json::to_string_pretty(&serde_json::json!({
-                "overrides": { "dompurify": "3.4.11" }
-            }))
-            .expect("serialize stale package manifest"),
-        )
-        .expect("write stale package manifest");
-
-        failures.clear();
-        verify_workspace_graph(
-            temporary.path(),
-            &expectation,
-            &bundle,
-            false,
-            &mut failures,
-        )
-        .expect("read temporary workspace graph");
-        assert!(failures.iter().any(|failure| {
-            failure.contains("must override dompurify to") && failure.contains("3.4.11")
-        }));
-    }
-
-    #[test]
-    fn committed_projections_are_exact_generator_outputs() {
-        let root = crate::cmd::workspace_root();
-        let bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
-
-        for (relative, expected) in expected_projections(&bundle).expect("render projections") {
-            let actual = fs::read_to_string(root.join(relative)).expect("read projection");
-            assert_eq!(
-                actual, expected,
-                "regenerate with `cargo run -p xtask -- gen-mermaid-reference`"
-            );
-        }
     }
 
     #[test]
@@ -3511,37 +2481,11 @@ const registerDefaultLayoutLoaders = () => {
       : []),
   ]);
 };
-
 registerDefaultLayoutLoaders();
 "#;
-
         assert_eq!(
             extract_builtin_layout_ids(source).expect("extract default layouts"),
             ["dagre", "cose-bilkent"]
-        );
-    }
-
-    #[test]
-    fn builtin_registry_inventory_validation_rejects_duplicate_or_missing_ids() {
-        let root = crate::cmd::workspace_root();
-        let mut bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
-        bundle
-            .builtin_registry
-            .diagrams
-            .ids
-            .push("error".to_string());
-        bundle.builtin_registry.layouts.ids.clear();
-
-        let error = validate_bundle(&bundle).expect_err("invalid registry inventory must fail");
-        assert!(
-            error
-                .to_string()
-                .contains("built-in diagram registry inventory contains a duplicate")
-        );
-        assert!(
-            error
-                .to_string()
-                .contains("built-in layout registry inventory has an invalid source or is empty")
         );
     }
 
@@ -3555,7 +2499,6 @@ registerDefaultLayoutLoaders();
                 "node_modules/@zenuml/core-extra": { "version": "3.50.1" }
             }
         });
-
         let paths = package_lock_entries(&lock, "@zenuml/core")
             .into_iter()
             .map(|(path, _)| path)
@@ -3566,403 +2509,6 @@ registerDefaultLayoutLoaders();
                 "node_modules/@zenuml/core",
                 "node_modules/plugin/node_modules/@zenuml/core"
             ]
-        );
-    }
-
-    #[test]
-    fn package_lock_registry_policy_rejects_mirrors_but_allows_non_registry_sources() {
-        let lock = serde_json::json!({
-            "packages": {
-                "node_modules/official": {
-                    "resolved": "https://registry.npmjs.org/official/-/official-1.0.0.tgz"
-                },
-                "node_modules/mirror": {
-                    "resolved": "https://registry.npmmirror.com/mirror/-/mirror-1.0.0.tgz"
-                },
-                "node_modules/direct-tarball": {
-                    "resolved": "https://example.com/direct-tarball-1.0.0.tgz"
-                },
-                "node_modules/source": {
-                    "resolved": "git+https://github.com/example/source.git"
-                }
-            }
-        });
-        let mut failures = Vec::new();
-
-        verify_lock_registry_sources(&lock, "test-workspace", &mut failures);
-
-        assert_eq!(failures.len(), 2);
-        assert!(failures[0].contains("registry.npmmirror.com"));
-        assert!(failures[1].contains("example.com"));
-    }
-
-    #[test]
-    fn resource_evidence_validates_derivation_without_an_arbitrary_threshold() {
-        let evidence = serde_json::json!({
-            "oracle": { "runtimeEntryBytes": 100 },
-            "candidate": { "runtimeEntryBytes": 1000 },
-            "resource": {
-                "measurementScope": "runtime-entry",
-                "runtimeEntryDeltaBytes": 900,
-                "runtimeEntryDeltaBasisPoints": 90000
-            }
-        });
-        let mut failures = Vec::new();
-
-        verify_candidate_resource_evidence(&evidence, &mut failures);
-
-        assert!(failures.is_empty(), "{failures:?}");
-    }
-
-    #[test]
-    fn resource_evidence_rejects_a_non_reproducible_delta() {
-        let evidence = serde_json::json!({
-            "oracle": { "runtimeEntryBytes": 1000 },
-            "candidate": { "runtimeEntryBytes": 1010 },
-            "resource": {
-                "measurementScope": "runtime-entry",
-                "runtimeEntryDeltaBytes": 9,
-                "runtimeEntryDeltaBasisPoints": 100
-            }
-        });
-        let mut failures = Vec::new();
-
-        verify_candidate_resource_evidence(&evidence, &mut failures);
-
-        assert!(
-            failures
-                .iter()
-                .any(|failure| failure.contains("reproducibly derive"))
-        );
-    }
-
-    #[test]
-    fn candidate_selection_requires_matching_admission_decision() {
-        let root = crate::cmd::workspace_root();
-        let mut bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
-        let zenuml = bundle
-            .external_diagrams
-            .iter_mut()
-            .find(|diagram| diagram.id == "zenuml")
-            .expect("ZenUML reference");
-        zenuml.behavior_source.decision = "oracle-retained".to_string();
-
-        let error = validate_bundle(&bundle).expect_err("inconsistent decision must fail");
-        assert!(error.to_string().contains("incomplete decision evidence"));
-    }
-
-    #[test]
-    fn candidate_selection_fails_closed_on_a_pending_gate() {
-        let admission = admission_with_statuses(&retained_oracle_statuses());
-        let mut failures = Vec::new();
-
-        validate_admission_matrix(&admission, "candidate-selected", &mut failures);
-
-        assert!(failures.iter().any(|failure| {
-            failure.contains("cannot be selected until every required gate passes")
-        }));
-    }
-
-    #[test]
-    fn candidate_status_must_match_the_selection_decision() {
-        let admission = serde_json::json!({ "candidateStatus": "pending" });
-        let mut failures = Vec::new();
-
-        validate_candidate_status(&admission, "candidate-selected", &mut failures);
-
-        assert_eq!(
-            failures,
-            [
-                "ZenUML candidateStatus Some(\"pending\") is inconsistent with decision candidate-selected"
-            ]
-        );
-    }
-
-    #[test]
-    fn admission_deltas_require_unique_complete_ownership() {
-        let admission = serde_json::json!({
-            "classifiedDeltas": [
-                {
-                    "area": "tooling",
-                    "source": "package.json",
-                    "classification": "residual",
-                    "owner": "upstream",
-                    "summary": "An owned residual."
-                },
-                {
-                    "area": "tooling",
-                    "source": "",
-                    "classification": "residual",
-                    "owner": "upstream",
-                    "summary": "A duplicate residual."
-                }
-            ]
-        });
-        let mut failures = Vec::new();
-
-        validate_admission_deltas(&admission, &mut failures);
-
-        assert!(
-            failures
-                .iter()
-                .any(|failure| failure.contains("duplicated"))
-        );
-        assert!(
-            failures
-                .iter()
-                .any(|failure| failure.contains("missing source"))
-        );
-    }
-
-    #[test]
-    fn admission_rejects_a_missing_required_gate() {
-        let statuses = retained_oracle_statuses()
-            .into_iter()
-            .filter(|(gate, _)| *gate != "strict-inline-artifact")
-            .collect::<Vec<_>>();
-        let admission = admission_with_statuses(&statuses);
-        let mut failures = Vec::new();
-
-        validate_admission_matrix(&admission, "oracle-retained", &mut failures);
-
-        assert!(
-            failures
-                .iter()
-                .any(|failure| failure.contains("admission gates must be exactly"))
-        );
-    }
-
-    #[test]
-    fn admission_rejects_a_missing_security_gate() {
-        let statuses = retained_oracle_statuses()
-            .into_iter()
-            .filter(|(gate, _)| *gate != "security")
-            .collect::<Vec<_>>();
-        let admission = admission_with_statuses(&statuses);
-        let mut failures = Vec::new();
-
-        validate_admission_matrix(&admission, "oracle-retained", &mut failures);
-
-        assert!(
-            failures
-                .iter()
-                .any(|failure| failure.contains("admission gates must be exactly"))
-        );
-    }
-
-    #[test]
-    fn browser_admission_rejects_failed_or_missing_probe_observations() {
-        let projects = serde_json::json!(["chromium-desktop", "webkit-smoke"]);
-        let required = serde_json::json!([
-            {
-                "id": "opaque-origin",
-                "description": "The realm has an opaque origin."
-            }
-        ]);
-        let failed = serde_json::json!({
-            "projectCount": 2,
-            "probeCount": 1,
-            "observationCount": 2,
-            "passedObservationCount": 2,
-            "probes": [
-                {
-                    "id": "opaque-origin",
-                    "description": "The realm has an opaque origin.",
-                    "observations": [
-                        {
-                            "project": "chromium-desktop",
-                            "testTitle": "opaque realm",
-                            "expected": true,
-                            "observed": false,
-                            "passed": false
-                        },
-                        {
-                            "project": "webkit-smoke",
-                            "testTitle": "opaque realm",
-                            "expected": true,
-                            "observed": true,
-                            "passed": true
-                        }
-                    ]
-                }
-            ]
-        });
-        let missing = serde_json::json!({
-            "projectCount": 2,
-            "probeCount": 1,
-            "observationCount": 2,
-            "passedObservationCount": 2,
-            "probes": [
-                {
-                    "id": "opaque-origin",
-                    "description": "The realm has an opaque origin.",
-                    "observations": [
-                        {
-                            "project": "chromium-desktop",
-                            "testTitle": "opaque realm",
-                            "expected": true,
-                            "observed": true,
-                            "passed": true
-                        }
-                    ]
-                }
-            ]
-        });
-
-        for observed in [&failed, &missing] {
-            let mut failures = Vec::new();
-            verify_browser_admission_category(
-                "security",
-                projects.as_array(),
-                required.as_array(),
-                Some(observed),
-                &mut failures,
-            );
-            assert!(failures.iter().any(|failure| {
-                failure.contains("every passing probe observation for every project")
-            }));
-        }
-    }
-
-    #[test]
-    fn deferred_major_semantics_reject_provenance_range_status_and_inventory_drift() {
-        let root = crate::cmd::workspace_root();
-        let bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
-        let zenuml = bundle
-            .external_diagrams
-            .iter()
-            .find(|diagram| diagram.id == "zenuml")
-            .expect("ZenUML reference");
-        let admission = read_json(&root.join(&zenuml.behavior_source.admission_evidence))
-            .expect("load admission");
-        let artifact_path = admission
-            .pointer("/excludedLatestMajor/artifact")
-            .and_then(JsonValue::as_str)
-            .expect("deferred artifact path");
-        let artifact = read_json(&root.join(artifact_path)).expect("load deferred artifact");
-        let cases = [
-            (
-                "/latestStable/source/commit",
-                serde_json::json!("0000000000000000000000000000000000000000"),
-                "source.commit provenance drift",
-            ),
-            (
-                "/hostGraph/pluginDeclaredRange",
-                serde_json::json!("^4.0.0"),
-                "host graph does not derive",
-            ),
-            (
-                "/status",
-                serde_json::json!("admitted"),
-                "invalid schema, status, or decision",
-            ),
-            (
-                "/behaviorDeltaInventory",
-                serde_json::json!([]),
-                "behavior areas must be exactly",
-            ),
-        ];
-
-        for (pointer, replacement, expected_failure) in cases {
-            let mut mutated = artifact.clone();
-            *mutated.pointer_mut(pointer).expect("fixture pointer") = replacement;
-            let mut failures = Vec::new();
-            validate_deferred_major_admission(
-                &bundle.release,
-                &zenuml.plugin,
-                &zenuml.behavior_source,
-                &admission,
-                &mutated,
-                &mut failures,
-            );
-            assert!(
-                failures
-                    .iter()
-                    .any(|failure| failure.contains(expected_failure)),
-                "{pointer} produced {failures:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn deferred_major_artifact_fails_closed_when_missing_or_mutated() {
-        let repository_root = crate::cmd::workspace_root();
-        let bundle = load_bundle(&repository_root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
-        let zenuml = bundle
-            .external_diagrams
-            .iter()
-            .find(|diagram| diagram.id == "zenuml")
-            .expect("ZenUML reference");
-        let admission =
-            read_json(&repository_root.join(&zenuml.behavior_source.admission_evidence))
-                .expect("load admission");
-        let temporary = tempfile::tempdir().expect("temporary root");
-        let mut missing_admission = admission.clone();
-        *missing_admission
-            .pointer_mut("/excludedLatestMajor/artifact")
-            .expect("artifact pointer") = serde_json::json!("missing.json");
-
-        let error = verify_deferred_major_admission(
-            temporary.path(),
-            &bundle.release,
-            &zenuml.plugin,
-            &zenuml.behavior_source,
-            &missing_admission,
-            &mut Vec::new(),
-        )
-        .expect_err("missing deferred artifact must fail");
-        assert!(error.to_string().contains("missing.json"));
-
-        let artifact_path = admission
-            .pointer("/excludedLatestMajor/artifact")
-            .and_then(JsonValue::as_str)
-            .expect("artifact path");
-        let destination = temporary.path().join(artifact_path);
-        fs::create_dir_all(destination.parent().expect("artifact parent"))
-            .expect("create artifact parent");
-        let mut artifact =
-            read_json(&repository_root.join(artifact_path)).expect("load deferred artifact");
-        *artifact.pointer_mut("/status").expect("status pointer") = serde_json::json!("admitted");
-        fs::write(
-            &destination,
-            serde_json::to_vec_pretty(&artifact).expect("serialize artifact"),
-        )
-        .expect("write mutated artifact");
-        let mut failures = Vec::new();
-        verify_deferred_major_admission(
-            temporary.path(),
-            &bundle.release,
-            &zenuml.plugin,
-            &zenuml.behavior_source,
-            &admission,
-            &mut failures,
-        )
-        .expect("mutated JSON remains readable");
-        assert!(
-            failures
-                .iter()
-                .any(|failure| failure.contains("artifact digest drift"))
-        );
-        assert!(
-            failures
-                .iter()
-                .any(|failure| failure.contains("invalid schema, status, or decision"))
-        );
-    }
-
-    #[test]
-    fn admission_rejects_a_duplicate_gate() {
-        let mut statuses = retained_oracle_statuses();
-        statuses.push(("corpus", "pass"));
-        let admission = admission_with_statuses(&statuses);
-        let mut failures = Vec::new();
-
-        validate_admission_matrix(&admission, "oracle-retained", &mut failures);
-
-        assert!(
-            failures
-                .iter()
-                .any(|failure| failure == "duplicate ZenUML admission gate corpus")
         );
     }
 }

@@ -37,10 +37,13 @@ for owner-specific prerelease or recovery flows; their workflows resolve it to a
 before building. Flutter is the exception: pub.dev automated publishing
 only accepts GitHub Actions runs triggered by a pushed git tag, so `release-flutter.yml` publishes
 from the `v*` tag push and uses manual runs for validation only. The crates.io workflow is
-idempotent for already-published crate versions, so a rerun can continue after a partial publish
-caused by registry propagation delays. For unpublished crates, it performs
-`cargo publish --dry-run --locked` immediately before the real publish, after upstream workspace
-dependencies in the same release have become visible in crates.io.
+idempotent only when deterministic local re-packaging produces the checksum already recorded by
+the registry. Before each topological batch it packages every member from the unchanged source,
+writes a source/tool/artifact receipt, and preflights existing registry checksums. Every missing
+member in the batch must pass its locked publish dry-run before the first member is published; each
+then receives one publish attempt. The workflow does not enter the next
+batch until every checksum in the current batch matches; delayed visibility or a lost response
+produces a durable pending-recovery receipt instead of a blind retry.
 
 ## Required Credentials
 
@@ -57,11 +60,24 @@ dependencies in the same release have become visible in crates.io.
 Publish jobs use GitHub Environments (`crates.io`, `pypi`, `pub.dev`, `npm`, and `github-release`).
 Configure required reviewers on those environments if publication should require explicit approval.
 
-If a crates.io run stops after publishing only part of a release, keep the failed tag immutable and
-publish the corrected dependency graph under a new version. Use `release-yank-crates.yml` only for
-the exact workspace-coupled crate names that became visible from the failed tag. The workflow
-validates the tag, package set, and package versions before it receives the dedicated yank token;
-do not broaden the normal publish token merely to support incident rollback.
+If a crates.io run stops after publishing only part of a release, keep the tag immutable and retain
+the uploaded `crates-io-receipts-*` artifact. Rerun the workflow only from the same tag or reviewed
+full commit. A GitHub rerun downloads the prior attempt's receipts; a new manual recovery must pass
+the prior workflow id as `recovery_run_id`. The publisher recreates every `.crate` and requires the
+prior prepared/result receipts to match the source, tree, toolchain, graph, manifests, and artifacts
+before it observes or mutates the registry. Matching versions are skipped, missing versions continue
+in topological order, and a different registry checksum stops before further publication. A mismatch
+requires an explicit maintainer decision; the normal publisher never yanks.
+
+For a new-run crates.io recovery, use the immutable tag and the run id that uploaded the prior
+receipts:
+
+```bash
+gh workflow run release-crates.yml \
+  -f release_tag="$RELEASE_TAG" \
+  -f source_ref="refs/tags/$RELEASE_TAG" \
+  -f recovery_run_id="<prior-run-id>"
+```
 
 Android Maven Central publishing is credential-blocked. Android now declares Maven publication
 metadata, but Central Portal credentials, signing secrets, and a dedicated publish job still need to
@@ -132,12 +148,20 @@ a repository-maintained status cache.
 `Cargo.toml` `[workspace.package].version` is the sole authority for a workspace release. While no
 next version is selected, keep the root changelog at `[Unreleased]` and leave the workspace version
 unchanged. After the maintainer selects a version, prepare the projection in an exclusive Git
-worktree, then verify every checked-in path without supplying a second version value:
+linked worktree. The `set` command rejects the primary checkout, tracked or untracked dirt, and an
+npm executable that does not match the `packageManager` pin in `playground/package.json`. Cargo and
+npm owners prepare manifests and locks in a disposable detached worktree; the coordinator validates
+the complete projected tree and source preimage, checks one binary patch, then applies that patch
+once to the caller worktree. Verify every checked-in path without supplying a second version value:
 
 ```bash
 python3 scripts/release-version.py set --version <version>
 python3 scripts/release-version.py
 ```
+
+Preparation or pre-apply validation failures leave the caller worktree unchanged. Inspect the
+reported owner failure, keep the release worktree clean, and rerun the same command; do not copy
+partial files out of the disposable worktree or hand-edit generated locks.
 
 The gate discovers workspace members and validates their inherited package versions, internal workspace dependency requirements, `Cargo.lock`, Web package and lock metadata, the Playground's local Web lock, the fuzz-workspace lock, Python's PEP 440 projection, Android and Flutter manifests, CocoaPods metadata, and iOS framework bundle versions.
 
@@ -163,7 +187,7 @@ A focused audit command is:
 ```bash
 rg -n --glob '**/README.md' --glob '**/CHANGELOG.md' \
   '0\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+|\[[^]]+\] - Unreleased|published registry packages can still|candidate from Git|[Aa]fter .*is published|[Ww]hen .*is published|git\s*=\s*"https://github\.com/Latias94/merman' \
-  README.md CHANGELOG.md crates docs platforms packages tools
+  README.md CHANGELOG.md crates distribution docs platforms tools
 ```
 
 Classify each match rather than applying a repository-wide mechanical rewrite. Package-local READMEs included in crates, cargo-dist archives, npm tarballs, wheels, Flutter packages, Apple/Android bundles, Typst packages, or VSIX files are part of the release experience even though they are not version authorities.
@@ -321,7 +345,7 @@ cargo run -p xtask -- wasm-size-matrix --surface web \
   --budget-file docs/release/WASM_SIZE_BUDGETS.json
 cargo run -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
 cargo run --locked -p xtask -- verify-typst-profile-constants
-cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm
+python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm
 cargo run --locked -p xtask -- build-typst-package --profile publish
 cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build
 ```
@@ -393,11 +417,16 @@ Do not rely on a manual `release-flutter.yml` run for pub.dev publication. A man
 injects native artifacts, analyzes, formats, and performs `dart pub publish --dry-run`, but the real
 `dart pub publish --force` step only runs from the pushed `v*` tag.
 
+The Flutter build job emits a package archive receipt binding the release commit, tree, version, and
+archive digest. The pub.dev job runs the trusted verifier from the workflow revision, enforces
+bounded regular-file-only extraction into a new directory, and configures Dart OIDC only after that
+verification succeeds. Do not replace this boundary with a direct `tar -x` step.
+
 For a workflow-only recovery after a release tag already exists, Python, Android, and Apple may use
 the updated workflow definition from `main`, but they still check out and verify the immutable
-release-tag commit and tree. For workflows that continue to expose `source_ref`, use
-`source_ref=main` only when source code and manifest versions are unchanged and the new commits only
-fix CI or release workflow behavior.
+release-tag commit and tree. Credentialed publication workflows that expose `source_ref` require
+the matching immutable tag/ref or a reviewed 40-character commit; a mutable `main` ref is valid only
+for an explicitly non-publishing build or validation run.
 
 ## Follow-On Registry Work
 

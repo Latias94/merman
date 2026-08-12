@@ -1,17 +1,16 @@
 # State Debug SVG
 
-This is a developer tool to visually inspect the **Stage A headless layout** output for
-`stateDiagram` (Mermaid `stateDiagram-v2` renderer path).
+Use the standing SVG generation and comparison commands to inspect `stateDiagram` output. These
+commands exercise the same render path as the parity checks rather than a family-specific debug
+renderer.
 
-It is **not** intended to be pixel-perfect Mermaid SVG output.
+## Usage
 
-## Usage (PowerShell)
+Generate one or more local SVGs:
 
-Render an SVG from a Mermaid input on stdin:
+`cargo run -p xtask -- gen-debug-svgs --diagram state --filter <fixture_stem>`
 
-`Get-Content fixtures\\state\\basic.mmd | cargo run -p merman-render --example state_debug_svg > out.svg`
-
-Then open `out.svg` in a browser or an SVG viewer.
+Outputs are written under `target/debug-svgs/state/` by default.
 
 ## Parity-root viewport debugging
 
@@ -21,15 +20,10 @@ viewport delta (`style="max-width: ...px"` and/or `viewBox="..."`), which depend
 - the layout extents (including labels and clusters), and
 - the `svg.getBBox()`-like bounds approximation used to derive the final viewport.
 
-To get a focused report for a single fixture (including nested `<g class="root" transform="translate(...)">`
-scopes), use:
+Generate the focused parity report with:
 
-- `cargo run -p xtask -- analyze-state-fixture --fixture <fixture_stem>`
+- `cargo run -p xtask -- compare-state-svgs --filter <fixture_stem> --check-dom --dom-mode parity-root`
 
-Optional flags:
+Then inspect the contributors to either SVG's emitted bounds with:
 
-- `--root <clusterId>`: pick which nested root scope to analyze (defaults to the first nested scope when present)
-- `--out <path>`: write the markdown report to a custom location
-
-The command writes the upstream and local SVGs next to the report (under a `svgs/` directory) so you
-can open them side-by-side.
+- `cargo run -p xtask -- debug-svg-bbox --svg <path-to-svg>`

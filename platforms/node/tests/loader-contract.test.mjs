@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { loadNativeTransport } from "../src/candidates/native.mjs";
-import { loadNodeWasmTransport } from "../src/candidates/wasm.mjs";
+import {
+  loadNodeWasmTransport,
+  nodeWasmModuleSpecifier,
+} from "../src/candidates/wasm.mjs";
 import {
   assertRuntimePackageVersion,
   loadNativeBinding,
@@ -50,6 +53,40 @@ const muslReport = {
   header: {},
   sharedObjects: ["/lib/ld-musl-x86_64.so.1"],
 };
+
+test("Node WASM module specifiers classify paths before generic URL schemes", () => {
+  assert.equal(
+    nodeWasmModuleSpecifier(String.raw`F:\repo\binding.js`),
+    "file:///F:/repo/binding.js",
+  );
+  assert.equal(
+    nodeWasmModuleSpecifier("C:/repo/binding.js"),
+    "file:///C:/repo/binding.js",
+  );
+  assert.equal(
+    nodeWasmModuleSpecifier(String.raw`C:\repo\diagram #1?.js`),
+    "file:///C:/repo/diagram%20%231%3F.js",
+  );
+  assert.equal(
+    nodeWasmModuleSpecifier("file:///opt/merman/binding.js"),
+    "file:///opt/merman/binding.js",
+  );
+  assert.equal(
+    nodeWasmModuleSpecifier("https://example.invalid/binding.js"),
+    "https://example.invalid/binding.js",
+  );
+
+  const relative = nodeWasmModuleSpecifier("fixtures/binding.js", { cwd: nodeRoot });
+  assert.equal(
+    path.relative(nodeRoot, fileURLToPath(relative)).split(path.sep).join("/"),
+    "fixtures/binding.js",
+  );
+  const posixPath = "/opt/merman/binding.js";
+  assert.equal(
+    nodeWasmModuleSpecifier(posixPath),
+    pathToFileURL(path.resolve(posixPath)).href,
+  );
+});
 
 test("target resolution distinguishes OS, CPU, and Linux libc", () => {
   assert.equal(

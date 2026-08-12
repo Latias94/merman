@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -11,6 +10,10 @@ import {
   verifyPackedFileOwnership,
 } from "../scripts/package-contract.mjs";
 import { assembleNativePackages } from "../scripts/assemble-packages.mjs";
+import {
+  assertSuccessfulNpmSpawn,
+  spawnNpmSync,
+} from "../../../scripts/npm-command.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -243,10 +246,10 @@ test("native package assembly requires canonical candidate and target provenance
 });
 
 function npmPackDryRun(packageRoot) {
-  const result = spawnSync("npm", ["pack", "--json", "--dry-run"], {
+  const result = spawnNpmSync(["pack", "--json", "--dry-run"], {
     cwd: packageRoot,
     encoding: "utf8",
   });
-  assert.equal(result.status, 0, result.stderr);
+  assertSuccessfulNpmSpawn(result, "npm pack for assembled native package test");
   return JSON.parse(result.stdout)[0];
 }

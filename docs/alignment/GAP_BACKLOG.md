@@ -8,10 +8,10 @@ eliminate them without regressing the global parity gates.
 Scope:
 
 - Primary contract: SVG DOM parity in `parity` mode (DOM structure/semantics; geometry numbers normalized).
-- Secondary contract: SVG root viewport parity in `parity-root` mode (root `max-width`/`viewBox`
-  lattice, `--dom-decimals 3`). Browser-only residuals are retained in the hash-bound
-  `fixtures/_verification/root-parity-residuals.json` catalog; they cannot make unrelated
-  descendant mismatches pass.
+- Secondary contract: SVG root viewport correctness in `parity-root` mode. The gate checks
+  descendant parity, finite positive geometry, root sizing strategy, non-numeric style, and the
+  `max-width`/`viewBox` relationship. Browser-owned exact bbox values are diagnostic artifacts,
+  not acceptance rows.
 - Secondary contracts:
   - strict SVG XML parity where feasible (`dom-mode strict`)
   - deterministic, reproducible upstream baselines
@@ -27,7 +27,7 @@ The release-strength root gate is:
 - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 
 All 35 primary families participate in the root evidence contract. Family-specific browser or
-RoughJS residuals remain visible through the catalog and the family owner documents; they are not
+RoughJS movement remains visible through browser diagnostics and family owner documents; it is not
 silently skipped by a global family allowlist.
 
 ## Automated audits
@@ -88,7 +88,7 @@ Legend:
    - Target: preserve computed family or emitted-content bounds and source-backed root algorithms;
      reject any reintroduction of fixture-id keys.
    - Current status: complete in the family-owned architecture migration; browser-only drift is
-     represented only by narrow verification residual policy.
+     reported by the browser oracle instead of being admitted through fixture-specific numerics.
    - Risk: M (viewport is a global gate and sensitive to tiny drift).
 
 ### P1: Coverage confidence (expand and stabilize)

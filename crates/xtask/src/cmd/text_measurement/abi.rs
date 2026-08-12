@@ -7,7 +7,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const DESCRIPTOR_PATH: &str = "abi/text-measurement-v1.json";
+const DESCRIPTOR_PATH: &str = "contracts/abi/text-measurement-v1.json";
 const TEXT_MEASUREMENT_PROTOCOL_ID: &str = "merman-text-measurement";
 const TEXT_MEASUREMENT_PROTOCOL_SCHEMA_VERSION: u32 = 1;
 const TEXT_MEASUREMENT_PROTOCOL_VERSION: u32 = 1;

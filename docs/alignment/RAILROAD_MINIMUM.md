@@ -68,12 +68,12 @@ match in every case. The signed width differences range from `-0.016px` to `+0.0
 Chromium text-bbox lattice used by upstream `measureText()`; the deterministic vendored profile is
 within three `1/64px` steps.
 
-The strict global `parity-root` sweep accepts only the exact family, fixture, descendant profile,
-artifact hashes, and root attributes recorded by `RootParityResidualPolicy`. A changed value, a new
-fixture, or any descendant DOM difference remains a failure. See
-`docs/alignment/ROOT_PARITY_RESIDUAL_CATALOG.md` for the current counts and source audit. Do not
-close this browser-bounded residual with character-count width floors, fixture-specific viewport
-pins, or other viewport magic; revisit it only with a general browser measurement model.
+The global `parity-root` sweep rejects descendant DOM changes, malformed or non-positive roots,
+root sizing-strategy changes, and broken `max-width`/`viewBox` relationships. Exact roots remain
+blocking for the hash-bound deterministic canaries; Chromium text-bbox movement is reported by the
+browser oracle. Do not close this browser-bounded difference with character-count width floors,
+fixture-specific viewport pins, or other viewport magic; revisit it only with a general browser
+measurement model.
 
 ## Known Gaps
 

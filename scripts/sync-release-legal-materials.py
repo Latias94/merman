@@ -20,7 +20,7 @@ PROJECT_LICENSE_TARGETS = (
     "platforms/flutter/LICENSE",
     "platforms/android/LICENSE",
     "platforms/apple/LICENSE",
-    "packages/typst/merman/LICENSE",
+    "distribution/typst/merman/LICENSE",
     "tools/vscode-extension/LICENSE",
     "playground/public/LICENSE",
 )
@@ -30,7 +30,7 @@ RELEASE_BUNDLE_ROOTS = (
     "platforms/flutter",
     "platforms/android",
     "platforms/apple",
-    "packages/typst/merman",
+    "distribution/typst/merman",
     "tools/vscode-extension",
     "playground/public",
 )
@@ -151,7 +151,7 @@ def expected_projections(root: Path) -> dict[Path, bytes]:
             destination / CANONICAL_LICENSE_DIRECTORY,
             expected,
         )
-        if bundle_root == "packages/typst/merman":
+        if bundle_root == "distribution/typst/merman":
             expected.pop(
                 destination / CANONICAL_LICENSE_DIRECTORY / RUST_DEPENDENCY_REPORT,
                 None,

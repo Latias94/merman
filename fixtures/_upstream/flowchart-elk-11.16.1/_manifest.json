@@ -1,0 +1,907 @@
+{
+  "schema_version": 1,
+  "mermaid_version": "11.16.1",
+  "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
+  "collection": {
+    "scope_id": "flowchart-elk",
+    "description": "Mermaid 11.16 Flowchart ELK Cypress coverage",
+    "expected_active_calls": 64,
+    "expected_skipped_registrations": 1,
+    "reviewed_skipped_registrations": [
+      {
+        "registration": "Flowchart ELK > Markdown strings flowchart-elk (#4220) > html labels > Wrapping long text with a new line",
+        "reason": "The pinned upstream Cypress suite explicitly registers this case with it.skip."
+      }
+    ],
+    "reviewed_removals": [],
+    "source": {
+      "package": "mermaid",
+      "version": "11.16.1",
+      "tag": "mermaid@11.16.1",
+      "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
+      "test_config": {
+        "path": "cypress.config.ts",
+        "sha256": "e9c858df13519e05977f8fc3538945775f9b3f32d26bcf980f7b4714b153f75d",
+        "spec_pattern": "cypress/integration/**/*.{js,ts}"
+      },
+      "render_helper": {
+        "path": "cypress/helpers/util.ts",
+        "sha256": "8c55dc9d6cbf691111357349f2f3426016ba4489f5bc96aa4a083ec2f088b857"
+      },
+      "specs": [
+        {
+          "path": "cypress/integration/rendering/flowchart/flowchart-elk.spec.js",
+          "sha256": "b551feebea639d97b370ab1445c5fdc110931cae77d7cccfc910b4e20fab6725"
+        }
+      ],
+      "supplemental_fixtures": [
+        {
+          "path": "fixtures/flowchart/upstream_html_demos_ashish2_example_009.mmd",
+          "sha256": "ec6463ac2779035133eb958308076ab3cfe61676b0f3f36ea6be230b0946665d"
+        },
+        {
+          "path": "fixtures/flowchart/upstream_html_demos_flow_elk_example_001.mmd",
+          "sha256": "b1f12563a8724a460aae429a599faa1e7e2ac0d087a7fedcc6366754ad280f14"
+        },
+        {
+          "path": "fixtures/flowchart/upstream_html_demos_flowchart_elk_flowchart_elk_001.mmd",
+          "sha256": "0d08b535ee543cce5c8b3acdc3f12c433633ccfcd3116c9d742f444a20cc3dbb"
+        },
+        {
+          "path": "fixtures/flowchart/upstream_html_demos_knsv2_example_011.mmd",
+          "sha256": "79e3ef509a407fcb0fbfc1f9013dd108f62913a2e09003a87618fc920cc8e081"
+        }
+      ]
+    },
+    "collector": {
+      "files": [
+        {
+          "path": "tools/upstreams/cypress-collector/collect.mjs",
+          "sha256": "82199c256575a3a492c62b7a0044083fcae165ade64caf44e2b9145ed53f1ce2"
+        },
+        {
+          "path": "tools/upstreams/cypress-collector/scopes.json",
+          "sha256": "bc4ced2fe11aaae9255b969528b5e5f0fcd1a961fe6378fe2356701c0b29501b"
+        },
+        {
+          "path": "tools/upstreams/cypress-collector/worker.mjs",
+          "sha256": "b3781ab2d189c694c74ccd0d82b58823d255574616aa863afd6acd807daf1114"
+        }
+      ],
+      "scope_catalog_sha256": "bc4ced2fe11aaae9255b969528b5e5f0fcd1a961fe6378fe2356701c0b29501b",
+      "node_version": "22.14.0",
+      "pnpm_version": "10.30.3",
+      "esbuild_version": "0.25.12",
+      "upstream_lock": {
+        "path": "pnpm-lock.yaml",
+        "sha256": "aa225acd823f03a66cae365abbf2efeb32288349a5b17ff71049f73ce52baea7"
+      }
+    },
+    "registrations": [
+      {
+        "source_spec": "cypress/integration/rendering/flowchart/flowchart-elk.spec.js",
+        "ordinal": 45,
+        "id": "Flowchart ELK > Markdown strings flowchart-elk (#4220) > html labels > Wrapping long text with a new line",
+        "title": "Wrapping long text with a new line",
+        "skipped": true
+      }
+    ],
+    "runtime_effects": [
+      {
+        "source_spec": "cypress/integration/rendering/flowchart/flowchart-elk.spec.js",
+        "registration": "Flowchart ELK > 7-elk: should render a flowchart when useMaxWidth is true (default)",
+        "operation": "cy.get.should",
+        "selector": "svg",
+        "argument_kinds": [
+          "function"
+        ]
+      },
+      {
+        "source_spec": "cypress/integration/rendering/flowchart/flowchart-elk.spec.js",
+        "registration": "Flowchart ELK > 8-elk: should render a flowchart when useMaxWidth is false",
+        "operation": "cy.get.should",
+        "selector": "svg",
+        "argument_kinds": [
+          "function"
+        ]
+      },
+      {
+        "source_spec": "cypress/integration/rendering/flowchart/flowchart-elk.spec.js",
+        "registration": "Flowchart ELK > elk: should include classes on the edges",
+        "operation": "cy.get.should",
+        "selector": "svg",
+        "argument_kinds": [
+          "function"
+        ]
+      },
+      {
+        "source_spec": "cypress/integration/rendering/flowchart/flowchart-elk.spec.js",
+        "registration": "Title and arrow styling #4813 > should render a flowchart with title",
+        "operation": "cy.get.should",
+        "selector": "svg",
+        "argument_kinds": [
+          "function"
+        ]
+      },
+      {
+        "source_spec": "cypress/integration/rendering/flowchart/flowchart-elk.spec.js",
+        "registration": "Title and arrow styling #4813 > Render with stylized arrows",
+        "operation": "cy.get.should",
+        "selector": "svg",
+        "argument_kinds": [
+          "function"
+        ]
+      }
+    ]
+  },
+  "entries": [
+    {
+      "source_ordinal": 1,
+      "registration": "Flowchart ELK > 1-elk: should render a simple flowchart",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "1-elk: should render a simple flowchart",
+      "stem": "upstream_cypress_flowchart_elk_spec_1_elk_should_render_a_simple_flowchart_1a0a40238469c3c6",
+      "mmd_sha256": "1a0a40238469c3c6439b5f3cea50ec88431f65f7a8547067d7814a8dcf276002",
+      "layout_body_sha256": "101bb32ef4029c58b4476bd38a78f7d6f706876d07744c0e4c445353c9824cba",
+      "raw_sha256": "c001fd9891cf07f602538d80a6a2aa09ec19ecc74b785827ea9829f4958efca6"
+    },
+    {
+      "source_ordinal": 2,
+      "registration": "Flowchart ELK > 1-elk: should render a simple flowchart",
+      "helper_ordinal": 2,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "1-elk: should render a simple flowchart",
+      "stem": "upstream_cypress_flowchart_elk_spec_1_elk_should_render_a_simple_flowchart_304e92df4d65704c",
+      "mmd_sha256": "304e92df4d65704ca9bb3638fa6a1f10ba0cefffb742072c890b4f12c4893e16",
+      "layout_body_sha256": "101bb32ef4029c58b4476bd38a78f7d6f706876d07744c0e4c445353c9824cba",
+      "raw_sha256": "44bafa34783dd003171f35bf29b145e7b5b3f033605730cc9e3234029f10873e"
+    },
+    {
+      "source_ordinal": 3,
+      "registration": "Flowchart ELK > 2-elk: should render a simple flowchart with diagramPadding set to 0",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "2-elk: should render a simple flowchart with diagramPadding set to 0",
+      "stem": "upstream_cypress_flowchart_elk_spec_2_elk_should_render_a_simple_flowchart_with_diagrampadding_set_t_d56b4ae43375cf73",
+      "mmd_sha256": "d56b4ae43375cf73e57c8c15f36e7ea3cc7fd418f1fcbeb76312367efaf01551",
+      "layout_body_sha256": "c29f6f35dd05f34e952f7f1af400a4f8492e7db92df045d8921e4cebe5ea6dfd",
+      "raw_sha256": "94a28977bf3f143279a80f719b856f3b6c14e8bacc2006aa343718edb1c492e6"
+    },
+    {
+      "source_ordinal": 4,
+      "registration": "Flowchart ELK > 3-elk: a link with correct arrowhead to a subgraph",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "3-elk: a link with correct arrowhead to a subgraph",
+      "stem": "upstream_cypress_flowchart_elk_spec_3_elk_a_link_with_correct_arrowhead_to_a_subgraph_fc63e64e3272d655",
+      "mmd_sha256": "fc63e64e3272d655d077c04f324b8525554c57ee23b55f9efa82888871de1659",
+      "layout_body_sha256": "f0d1837fcbfdda252d7692ee0b9371a6b828587b4b905b3bf26aac5ff6568ab4",
+      "raw_sha256": "17504e422023116b99670add710df2b4e5c97af5231ac847f684698b587eef49"
+    },
+    {
+      "source_ordinal": 5,
+      "registration": "Flowchart ELK > 4-elk: Length of edges",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "4-elk: Length of edges",
+      "stem": "upstream_cypress_flowchart_elk_spec_4_elk_length_of_edges_1e64ce5f23f383b0",
+      "mmd_sha256": "1e64ce5f23f383b0bd9f7f4b327a36f458efe4713e4d07e3d37317a33ea69d31",
+      "layout_body_sha256": "45541090412bc24cf26fc25e98e1a18738b2dfe7b8117cd4f7bc9ccde9bd36a4",
+      "raw_sha256": "d728f29390e82a4eca65eb097e7796922f969e22e9dff1b4cc86aa0c3557d07e"
+    },
+    {
+      "source_ordinal": 6,
+      "registration": "Flowchart ELK > 5-elk: should render escaped without html labels",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "5-elk: should render escaped without html labels",
+      "stem": "upstream_cypress_flowchart_elk_spec_5_elk_should_render_escaped_without_html_labels_6fc4191d27b454ab",
+      "mmd_sha256": "6fc4191d27b454ab309e0a8b1dc67e2221d2e5a340742dfe9b04850901c1cdb6",
+      "layout_body_sha256": "fa59ba933531588f664924ebffe9178504d0bfa3d02567f1f664fe83144f06ec",
+      "raw_sha256": "8a27978c2b6f3a7c224ce48e936d698dea61641cd569e035d21674b01441e3e8"
+    },
+    {
+      "source_ordinal": 7,
+      "registration": "Flowchart ELK > 6-elk: should render non-escaped with html labels",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "6-elk: should render non-escaped with html labels",
+      "stem": "upstream_cypress_flowchart_elk_spec_6_elk_should_render_non_escaped_with_html_labels_17e6b912208c11aa",
+      "mmd_sha256": "17e6b912208c11aa0e7514d0683379692539fc965530a7249aa48646219fadee",
+      "layout_body_sha256": "d5f2ffb1c46d60cf4a26449ee9051b500738288dd126b1c721d7e66dacd911b8",
+      "raw_sha256": "732d387d92ec11f5693d3991c117962ca09d6ca14112dea0d91138c7113e3f7e"
+    },
+    {
+      "source_ordinal": 8,
+      "registration": "Flowchart ELK > 7-elk: should render a flowchart when useMaxWidth is true (default)",
+      "helper_ordinal": 1,
+      "call": "renderGraph",
+      "validation": "absent",
+      "test_name": "7-elk: should render a flowchart when useMaxWidth is true (default)",
+      "stem": "upstream_cypress_flowchart_elk_spec_7_elk_should_render_a_flowchart_when_usemaxwidth_is_true_default_2634a7089ba92252",
+      "mmd_sha256": "2634a7089ba92252f30fee5a42827984590dbbafac86fc2ad7066293ec83bcf2",
+      "layout_body_sha256": "0df1906c3677acf9cee48568190634413882dc950bde7ef0e42e01092a67a439",
+      "raw_sha256": "54cbd8e7861df91afddcd5dfcf235afc6a32a472dd275b756b31101ac0fcc2a6"
+    },
+    {
+      "source_ordinal": 9,
+      "registration": "Flowchart ELK > 8-elk: should render a flowchart when useMaxWidth is false",
+      "helper_ordinal": 1,
+      "call": "renderGraph",
+      "validation": "absent",
+      "test_name": "8-elk: should render a flowchart when useMaxWidth is false",
+      "stem": "upstream_cypress_flowchart_elk_spec_8_elk_should_render_a_flowchart_when_usemaxwidth_is_false_1de395fc935aeaca",
+      "mmd_sha256": "1de395fc935aeacaa359625000ba6dd4cd357503697ecc62007f64320dd38974",
+      "layout_body_sha256": "78321f93e9f38d43150027cb911d79a9a930cc397e5696869044412972779080",
+      "raw_sha256": "3371828ae78b8107988d569ae7aa56f6759cfa54422fb4b6762629712805b98b"
+    },
+    {
+      "source_ordinal": 10,
+      "registration": "Flowchart ELK > V2 elk - 16: Render Stadium shape",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "V2 elk - 16: Render Stadium shape",
+      "stem": "upstream_cypress_flowchart_elk_spec_v2_elk_16_render_stadium_shape_0a44232e263838b0",
+      "mmd_sha256": "0a44232e263838b09719ff882690e85cac995527617e72362f51840f29064da0",
+      "layout_body_sha256": "9f8e0657e86d6a957e849e3b8cb303541f3a9685d80dc86b1dfa0c91d505ce42",
+      "raw_sha256": "81e8cd2287bf31c392ab6699a5a7218b74313dd8f5027879e793d455e6312a32"
+    },
+    {
+      "source_ordinal": 11,
+      "registration": "Flowchart ELK > 50-elk: handle nested subgraphs in reverse order",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "50-elk: handle nested subgraphs in reverse order",
+      "stem": "upstream_cypress_flowchart_elk_spec_50_elk_handle_nested_subgraphs_in_reverse_order_d42b5baa9550135b",
+      "mmd_sha256": "d42b5baa9550135b1b62468a435575592c2b301be340b47330520c0539c5f3fe",
+      "layout_body_sha256": "b58074420897a582dd4cbafef6d884ad2ae99d48599f5da7eff6e32f5b398d0e",
+      "raw_sha256": "a85fe797e95b8f496efdef2d75ef46bc7626571d559a4e476aca5510ff92946d"
+    },
+    {
+      "source_ordinal": 12,
+      "registration": "Flowchart ELK > 51-elk: handle nested subgraphs in reverse order",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "51-elk: handle nested subgraphs in reverse order",
+      "stem": "upstream_cypress_flowchart_elk_spec_51_elk_handle_nested_subgraphs_in_reverse_order_d42b5baa9550135b",
+      "mmd_sha256": "d42b5baa9550135b1b62468a435575592c2b301be340b47330520c0539c5f3fe",
+      "layout_body_sha256": "b58074420897a582dd4cbafef6d884ad2ae99d48599f5da7eff6e32f5b398d0e",
+      "raw_sha256": "216bbb3b44714ce8a69330a34daa4b73d33924ff0f0c77337fe259647c209eaf"
+    },
+    {
+      "source_ordinal": 13,
+      "registration": "Flowchart ELK > 52-elk: handle nested subgraphs in several levels",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "52-elk: handle nested subgraphs in several levels",
+      "stem": "upstream_cypress_flowchart_elk_spec_52_elk_handle_nested_subgraphs_in_several_levels_eb74a75c2ef12be9",
+      "mmd_sha256": "eb74a75c2ef12be993e8629bbe208442a812b9414f3ab796c859b4b2e87b175e",
+      "layout_body_sha256": "1131d681988d0fab52475001769ce16e6b99d8e29ef5775b69b64d9dd0cc56ad",
+      "raw_sha256": "769eb0bdb31de060477c8cbde6170b69609e3d3ae02a4ed3e25dbecaa5fee005"
+    },
+    {
+      "source_ordinal": 14,
+      "registration": "Flowchart ELK > 53-elk: handle nested subgraphs with edges in and out",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "53-elk: handle nested subgraphs with edges in and out",
+      "stem": "upstream_cypress_flowchart_elk_spec_53_elk_handle_nested_subgraphs_with_edges_in_and_out_70bd03f66f03a8b7",
+      "mmd_sha256": "70bd03f66f03a8b79deffa1f7c4c4c4fd58469ea9a2473c1fa6ef09616e9f1a6",
+      "layout_body_sha256": "051ba416562427bfd568ce63575e821dad9358d121f4881744ade971e51dba9a",
+      "raw_sha256": "31cd549fcf312bffec940897af8450f8231c4b062801e6e4c516781ce1b5eddb"
+    },
+    {
+      "source_ordinal": 15,
+      "registration": "Flowchart ELK > 54-elk: handle nested subgraphs with outgoing links",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "54-elk: handle nested subgraphs with outgoing links",
+      "stem": "upstream_cypress_flowchart_elk_spec_54_elk_handle_nested_subgraphs_with_outgoing_links_7fe41c3c74642ca1",
+      "mmd_sha256": "7fe41c3c74642ca1492dfb1d1428988a51d45de157d77b3ca731890e9548ac1e",
+      "layout_body_sha256": "225e7bbb34d5ddfe210224a5568768ec2dc457fef559fc2ed4aeabb7f640dbcb",
+      "raw_sha256": "01476af217ab7222be0e5c8a1dbd90eaa4578bd02e467d21695178b7114471e7"
+    },
+    {
+      "source_ordinal": 16,
+      "registration": "Flowchart ELK > 55-elk: handle nested subgraphs with outgoing links 2",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "55-elk: handle nested subgraphs with outgoing links 2",
+      "stem": "upstream_cypress_flowchart_elk_spec_55_elk_handle_nested_subgraphs_with_outgoing_links_2_7032c9bf352313be",
+      "mmd_sha256": "7032c9bf352313be348fbddcde20fdd06fde92f0325bdf52f675b221d885024b",
+      "layout_body_sha256": "c3d2e90b8968d8a031a17926de700b4862c6627bfcbec45068a1ba95b05751e4",
+      "raw_sha256": "11f182bee3fe4dc8c8f0753a0bb596a1e9a3b9696e9b5b3a68558ad5a6b3cb5c"
+    },
+    {
+      "source_ordinal": 17,
+      "registration": "Flowchart ELK > 56-elk: handle nested subgraphs with outgoing links 3",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "56-elk: handle nested subgraphs with outgoing links 3",
+      "stem": "upstream_cypress_flowchart_elk_spec_56_elk_handle_nested_subgraphs_with_outgoing_links_3_7bfb0bfb32dcea41",
+      "mmd_sha256": "7bfb0bfb32dcea41f46c3fe0b08bc2f55e51c82b1d2d257b90ce541d9eabe181",
+      "layout_body_sha256": "bf08448245c1b884960172898d8f9b17d2f38809e297133c8f831dfd27a3f052",
+      "raw_sha256": "7dc6e23eba3aa821da6ee30fb6ea6f135cd76e9ee73392f9b96a365d3bd5da2e"
+    },
+    {
+      "source_ordinal": 18,
+      "registration": "Flowchart ELK > 57-elk: handle nested subgraphs with outgoing links 4",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "57-elk: handle nested subgraphs with outgoing links 4",
+      "stem": "upstream_cypress_flowchart_elk_spec_57_elk_handle_nested_subgraphs_with_outgoing_links_4_7b2b38d7f0679214",
+      "mmd_sha256": "7b2b38d7f067921490cf2ee18af16c7ef54641574cc78762e177b291033dee5f",
+      "layout_body_sha256": "c90ad7712ea37b3eab7184db800cb4920f16741bb18bc8242b2ea214c0eeeb80",
+      "raw_sha256": "57af03b376ed876bad700ccadf53491747c5c2bdd05e2319152af2f237240ca2"
+    },
+    {
+      "source_ordinal": 19,
+      "registration": "Flowchart ELK > 57-elk: handle nested subgraphs with outgoing links 2",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "57-elk: handle nested subgraphs with outgoing links 2",
+      "stem": "upstream_cypress_flowchart_elk_spec_57_elk_handle_nested_subgraphs_with_outgoing_links_2_f8f43130c313fc77",
+      "mmd_sha256": "f8f43130c313fc77965f713b73d3e85ec73f2a143d727cf3fae83a64a7055107",
+      "layout_body_sha256": "162a33dff6919947f85e032e1edadcdfefe948bfaac740502e5b25132ac9ffba",
+      "raw_sha256": "681e051703cfe980e2a942a56a6564f3ef11d168b978648676ceac3046754c7a"
+    },
+    {
+      "source_ordinal": 20,
+      "registration": "Flowchart ELK > 57.x: handle nested subgraphs with outgoing links 5",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "57.x: handle nested subgraphs with outgoing links 5",
+      "stem": "upstream_cypress_flowchart_elk_spec_57_x_handle_nested_subgraphs_with_outgoing_links_5_a383b3b498a9c5d0",
+      "mmd_sha256": "a383b3b498a9c5d01dfaac4525bdfa91e85f298e71a6e8ba72ff90e4cb632431",
+      "layout_body_sha256": "95bb8b5dba51f6e1a211f61b220ab6969fecbdea55024838f8abdcfc70aee3b4",
+      "raw_sha256": "97a9f594078e81fcbf84389b96e23285d06ed206f93a75b405ee96240e64bd13"
+    },
+    {
+      "source_ordinal": 21,
+      "registration": "Flowchart ELK > 58-elk: handle styling with style expressions",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "58-elk: handle styling with style expressions",
+      "stem": "upstream_cypress_flowchart_elk_spec_58_elk_handle_styling_with_style_expressions_0ac585c74450a354",
+      "mmd_sha256": "0ac585c74450a354478f8dae404d20f7bb9cbb3a3ca14019ca22b1f8c44274bd",
+      "layout_body_sha256": "5d0020ee9fc4f6520381cf4df278507f5bc6bd5c3434773a55e21ece5ae9e5d5",
+      "raw_sha256": "069f81f371234addf1f7d74c6c6139a30079ed3c1b2629c5b75cbb7c52fbda4c"
+    },
+    {
+      "source_ordinal": 22,
+      "registration": "Flowchart ELK > 59-elk: handle styling of subgraphs and links",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "59-elk: handle styling of subgraphs and links",
+      "stem": "upstream_cypress_flowchart_elk_spec_59_elk_handle_styling_of_subgraphs_and_links_9ce3251049f7b4df",
+      "mmd_sha256": "9ce3251049f7b4df4c00fa854c7538f3c443f2dc394a6aa422c045f2794f6932",
+      "layout_body_sha256": "5c775bb0de85adacbbaf546dd63da52cc97d174d260696e753fae13cec5bfba7",
+      "raw_sha256": "6502a52b0d9ebac16bd777a31378d6b62a612d76eb9df849696ddb0adb59bf5f"
+    },
+    {
+      "source_ordinal": 23,
+      "registration": "Flowchart ELK > 60-elk: handle styling for all node shapes - v2",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "60-elk: handle styling for all node shapes - v2",
+      "stem": "upstream_cypress_flowchart_elk_spec_60_elk_handle_styling_for_all_node_shapes_v2_49915a32c497af09",
+      "mmd_sha256": "49915a32c497af0944de327d9bdec8dbebdffcccdaaf92002c61a649bab3a722",
+      "layout_body_sha256": "e5cd83728cb24838420b6a230383bed1351d5404551100509f36679d9e5ed622",
+      "raw_sha256": "aa06a7ff792105a2e1c6c0501afbc57b5358e81ae012698abd88ba84ab09f8c3"
+    },
+    {
+      "source_ordinal": 24,
+      "registration": "Flowchart ELK > 61-elk: fontawesome icons in edge labels",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "61-elk: fontawesome icons in edge labels",
+      "stem": "upstream_cypress_flowchart_elk_spec_61_elk_fontawesome_icons_in_edge_labels_91617de697e3552e",
+      "mmd_sha256": "91617de697e3552ed26f278b14d94e66652b7b4a2922460f8bf7488b2369e2be",
+      "layout_body_sha256": "b02cc362d67b824c9d8bd4d977d564ed1cba8e6b590c4417ac79ba029be08d2f",
+      "raw_sha256": "44185238aed0d484b782cbde449f822554ec011d5bb312dc08a770e5deff9ed7"
+    },
+    {
+      "source_ordinal": 25,
+      "registration": "Flowchart ELK > 62-elk: should render styled subgraphs",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "62-elk: should render styled subgraphs",
+      "stem": "upstream_cypress_flowchart_elk_spec_62_elk_should_render_styled_subgraphs_cb09009868aa94c5",
+      "mmd_sha256": "cb09009868aa94c52467d271d008fbbcdebb8798a7ee06dbb6d35d90df2395b0",
+      "layout_body_sha256": "65b677835e78b6c2ebef8c2c3e286d1c425668d9da14e01bb57ff4efed6f92f3",
+      "raw_sha256": "9bd351310c193d01a66681f26b0eb8ccc7ceef2bb822488a7ad58f7a934ab557"
+    },
+    {
+      "source_ordinal": 26,
+      "registration": "Flowchart ELK > 63-elk: title on subgraphs should be themeable",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "63-elk: title on subgraphs should be themeable",
+      "stem": "upstream_cypress_flowchart_elk_spec_63_elk_title_on_subgraphs_should_be_themeable_c0ab59ab4588bb7f",
+      "mmd_sha256": "c0ab59ab4588bb7f89669d6db6dd601af91bd81ebfe5f59967dbcf16dc489eb2",
+      "layout_body_sha256": "800e8d8796f9976c75fd94fbe5d196f15d54448e0e7b346d7e1ecfe10b31f6ff",
+      "raw_sha256": "e61de87200f1ce0302a30bb61e9beb738ffcf536008d0e82d22b5b30d6695f19"
+    },
+    {
+      "source_ordinal": 27,
+      "registration": "Flowchart ELK > 65-elk: text-color from classes",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "65-elk: text-color from classes",
+      "stem": "upstream_cypress_flowchart_elk_spec_65_elk_text_color_from_classes_f056fa4b08f124b3",
+      "mmd_sha256": "f056fa4b08f124b3f662063d00c11a7aeaa11604904124d0dd42b4bc7f4e607c",
+      "layout_body_sha256": "8401cba0b4bc210582875782009243ebbd5650808c134509e609a707db9ee8dc",
+      "raw_sha256": "d554bec5cb25f5314884d93c8edc71be03fd7152c180075ac7100c09410bc78d"
+    },
+    {
+      "source_ordinal": 28,
+      "registration": "Flowchart ELK > 66-elk: More nested subgraph cases (TB)",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "66-elk: More nested subgraph cases (TB)",
+      "stem": "upstream_cypress_flowchart_elk_spec_66_elk_more_nested_subgraph_cases_tb_80919c606728b01e",
+      "mmd_sha256": "80919c606728b01e91934e8beb06ddaa50537752744333f7fb336730d279aa66",
+      "layout_body_sha256": "dd0852595ff38df8e0dc091a49939bfa2c87d0b208a9826789af30be05e9e1ff",
+      "raw_sha256": "6e054ea06af7c2b521d7dc861c12842d0b3a42a4cd0a4fe5b3297e3f91f07192"
+    },
+    {
+      "source_ordinal": 29,
+      "registration": "Flowchart ELK > 67-elk: More nested subgraph cases (RL)",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "67-elk: More nested subgraph cases (RL)",
+      "stem": "upstream_cypress_flowchart_elk_spec_67_elk_more_nested_subgraph_cases_rl_a76f22521fa12128",
+      "mmd_sha256": "a76f22521fa12128909404e87f9482f5faca9784206abb2ab627458ec2552786",
+      "layout_body_sha256": "72caa0f38e51dc253fe4aa0b3a941a7d4c961da80b404c30e59716881b0fbd87",
+      "raw_sha256": "a6126fd1721dfc94945730514c21a6bf50acb23c4fa388b6efd66a7e5729e6a9"
+    },
+    {
+      "source_ordinal": 30,
+      "registration": "Flowchart ELK > 68-elk: More nested subgraph cases (BT)",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "68-elk: More nested subgraph cases (BT)",
+      "stem": "upstream_cypress_flowchart_elk_spec_68_elk_more_nested_subgraph_cases_bt_a3e26814cc60563b",
+      "mmd_sha256": "a3e26814cc60563b1370d032a4aff5b4c2a9635ddbf4012e1cb933d7a8b385e1",
+      "layout_body_sha256": "5a218bb7823a43c1dee0aab7b285ee3274a397e6ddd4cebbad941f0fa8fe124b",
+      "raw_sha256": "453ee2df038e5d48f80981ac9adb84575eee5acf132ff0b21c2b5d3c20a5c972"
+    },
+    {
+      "source_ordinal": 31,
+      "registration": "Flowchart ELK > 69-elk: More nested subgraph cases (LR)",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "69-elk: More nested subgraph cases (LR)",
+      "stem": "upstream_cypress_flowchart_elk_spec_69_elk_more_nested_subgraph_cases_lr_9414df63f83d832e",
+      "mmd_sha256": "9414df63f83d832ea11618dd4061c5e2e5a8973592c83958b51849408db31edd",
+      "layout_body_sha256": "c46c0aae1a2b91f006bd8b99a3467d394225be226106dcf1e4956a29b5952d4b",
+      "raw_sha256": "c409b18d4816a5a1c020f9f363c7487249386607329b683b1f077db108d396e5"
+    },
+    {
+      "source_ordinal": 32,
+      "registration": "Flowchart ELK > 70-elk: Handle nested subgraph cases (TB) link out and link between subgraphs",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "70-elk: Handle nested subgraph cases (TB) link out and link between subgraphs",
+      "stem": "upstream_cypress_flowchart_elk_spec_70_elk_handle_nested_subgraph_cases_tb_link_out_and_link_between_d3d48e068531d6d3",
+      "mmd_sha256": "d3d48e068531d6d3ed19b571ad12b6e51ea7c70c2878ff7893aeb6e0df8920f8",
+      "layout_body_sha256": "61a600c1c127277e7406d502a7a013b45a04e81fc90491aa9e762412521d4d7b",
+      "raw_sha256": "5f1a4967be760d426a1ebe76d15c239f3b44db050654b8be476a6c6d552b5a98"
+    },
+    {
+      "source_ordinal": 33,
+      "registration": "Flowchart ELK > 71-elk: Handle nested subgraph cases (RL) link out and link between subgraphs",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "71-elk: Handle nested subgraph cases (RL) link out and link between subgraphs",
+      "stem": "upstream_cypress_flowchart_elk_spec_71_elk_handle_nested_subgraph_cases_rl_link_out_and_link_between_a4ddecfe6c698003",
+      "mmd_sha256": "a4ddecfe6c6980031cfa84f56f3c5a2b786f81e61d272dd5e97dc5c18ed3d329",
+      "layout_body_sha256": "b2e2dd27f77e1f393492d8a355f47bbe6552b847e91391bb741a7f3f6f1e7a68",
+      "raw_sha256": "097a575bf372aaa65cf0e4519be02c65218137eba8817eaf0ccbae18ba78534f"
+    },
+    {
+      "source_ordinal": 34,
+      "registration": "Flowchart ELK > 72-elk: Handle nested subgraph cases (BT) link out and link between subgraphs",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "72-elk: Handle nested subgraph cases (BT) link out and link between subgraphs",
+      "stem": "upstream_cypress_flowchart_elk_spec_72_elk_handle_nested_subgraph_cases_bt_link_out_and_link_between_265351ccbd8ca3c3",
+      "mmd_sha256": "265351ccbd8ca3c3450a02bece4b58b787998eccb8d347e27e60a3fd577480aa",
+      "layout_body_sha256": "548947c05535a00298a93ec2594678409a43503af29f835333ff8e15def42b74",
+      "raw_sha256": "7f66990cbff17ab36207b6007e8a27b22a17074405f9b08caf69b9ee5879094f"
+    },
+    {
+      "source_ordinal": 35,
+      "registration": "Flowchart ELK > 74-elk: Handle nested subgraph cases (RL) link out and link between subgraphs",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "74-elk: Handle nested subgraph cases (RL) link out and link between subgraphs",
+      "stem": "upstream_cypress_flowchart_elk_spec_74_elk_handle_nested_subgraph_cases_rl_link_out_and_link_between_a4ddecfe6c698003",
+      "mmd_sha256": "a4ddecfe6c6980031cfa84f56f3c5a2b786f81e61d272dd5e97dc5c18ed3d329",
+      "layout_body_sha256": "b2e2dd27f77e1f393492d8a355f47bbe6552b847e91391bb741a7f3f6f1e7a68",
+      "raw_sha256": "b4596f2522f08b2ea42debffc71d87029d1086f2f21d02b0e9579fe1963a96fb"
+    },
+    {
+      "source_ordinal": 36,
+      "registration": "Flowchart ELK > 74-elk: Handle labels for multiple edges from and to the same couple of nodes",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "74-elk: Handle labels for multiple edges from and to the same couple of nodes",
+      "stem": "upstream_cypress_flowchart_elk_spec_74_elk_handle_labels_for_multiple_edges_from_and_to_the_same_cou_8da96c2c056de4a5",
+      "mmd_sha256": "8da96c2c056de4a58071de7a632ad4967386a8aa1a55ec2f9f57cd0f45a2776b",
+      "layout_body_sha256": "71bad1304905c484d4c1050016b8ea1d8272ce7a9539f6a7e4a9b91e7fb35827",
+      "raw_sha256": "5c45c8b1f92258ce4c66e302029d074e2758d0c00772cf3c475615476c1975bc"
+    },
+    {
+      "source_ordinal": 37,
+      "registration": "Flowchart ELK > 76-elk: handle unicode encoded character with HTML labels true",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "76-elk: handle unicode encoded character with HTML labels true",
+      "stem": "upstream_cypress_flowchart_elk_spec_76_elk_handle_unicode_encoded_character_with_html_labels_true_aac43a822c590d99",
+      "mmd_sha256": "aac43a822c590d99b72a8ffd58715780229fb62a7a15228f50736363f63d6186",
+      "layout_body_sha256": "a0591cf632b41c05a577bed20dfc8d3754f325627d32bb4ad4e664e2e34cacec",
+      "raw_sha256": "a6cbd97b3afc1ad4fc676c72a6de417b23c2b07fb162b1fd00ffde7efdcf40e1"
+    },
+    {
+      "source_ordinal": 38,
+      "registration": "Flowchart ELK > 2050-elk: handling of different rendering direction in subgraphs",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "2050-elk: handling of different rendering direction in subgraphs",
+      "stem": "upstream_cypress_flowchart_elk_spec_2050_elk_handling_of_different_rendering_direction_in_subgraphs_14fc7739e59e948e",
+      "mmd_sha256": "14fc7739e59e948e70b570aa82b475a4bda1eac343dcfbf2a72e543117a5cc62",
+      "layout_body_sha256": "e4f5f6f17e9badef998e735b7112e22297c824878abb1765fa37ffe925f5df44",
+      "raw_sha256": "76a3c7fb16628d2408285194584c0f0ae2feafe2a1740bb1186c1d8e6c719d9b"
+    },
+    {
+      "source_ordinal": 39,
+      "registration": "Flowchart ELK > 2388-elk: handling default in the node name",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "2388-elk: handling default in the node name",
+      "stem": "upstream_cypress_flowchart_elk_spec_2388_elk_handling_default_in_the_node_name_d1b46afcd2b59279",
+      "mmd_sha256": "d1b46afcd2b59279db547e8fa771305949d1b1b95d3d63c02c03ee1cf7e46a5b",
+      "layout_body_sha256": "2da9b915d36f3e95e5df9325149b22a642599baa0db86db6c005b90618126192",
+      "raw_sha256": "73661fc28dcce19a9a16f33dd6a412384b8f9edc376df1b05f6339b4e34dd184"
+    },
+    {
+      "source_ordinal": 40,
+      "registration": "Flowchart ELK > 2824-elk: Clipping of edges",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "2824-elk: Clipping of edges",
+      "stem": "upstream_cypress_flowchart_elk_spec_2824_elk_clipping_of_edges_f6bbdffdf5d7ed03",
+      "mmd_sha256": "f6bbdffdf5d7ed0326a3878fc2dffa82d33e2e1f8f98c125fb4953009975b256",
+      "layout_body_sha256": "d8dfd7f9f0ddcbd11ef263ddd4a22142895d08b2089477aada0f5a1a00957278",
+      "raw_sha256": "ddddb468f86100d0de14217b4da6413811edbfb8b719b3182ce2b412388e323d"
+    },
+    {
+      "source_ordinal": 41,
+      "registration": "Flowchart ELK > 1433-elk: should render a titled flowchart with titleTopMargin set to 0",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "1433-elk: should render a titled flowchart with titleTopMargin set to 0",
+      "stem": "upstream_cypress_flowchart_elk_spec_1433_elk_should_render_a_titled_flowchart_with_titletopmargin_se_b5713a6663aa2734",
+      "mmd_sha256": "b5713a6663aa2734ae6fce2ab930fa8988654797fdb8f0aed53afc48e502e487",
+      "layout_body_sha256": "c352404451fd75776a4352b88ad780eefa6909442fb6a101ef37064ecec3d594",
+      "raw_sha256": "14085ff038f43e223bae3e786ba36a8633dc2091f4c33a14b058a57ddb0455d7"
+    },
+    {
+      "source_ordinal": 42,
+      "registration": "Flowchart ELK > elk: should include classes on the edges",
+      "helper_ordinal": 1,
+      "call": "renderGraph",
+      "validation": "absent",
+      "test_name": "elk: should include classes on the edges",
+      "stem": "upstream_cypress_flowchart_elk_spec_elk_should_include_classes_on_the_edges_3600ceb98983eaf8",
+      "mmd_sha256": "3600ceb98983eaf859e59b38b4e4eac58d88390f414e2591339294536c4e360d",
+      "layout_body_sha256": "8c18ee2355dbe678a6f594faa1a9ba5c3d7b3ef95b3d6716682a0fe155ddb138",
+      "raw_sha256": "ebb34148d50f6c85fb2ee4a681d4defbd7bc70a76ceecc8b8cc201a6d0a5299a"
+    },
+    {
+      "source_ordinal": 43,
+      "registration": "Flowchart ELK > Markdown strings flowchart-elk (#4220) > html labels > With styling and classes",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "With styling and classes",
+      "stem": "upstream_cypress_flowchart_elk_spec_with_styling_and_classes_90762722d8ce842c",
+      "mmd_sha256": "90762722d8ce842c01fbf23bdc2ccf3a00cdb09013bd6b4b388449c7035ed7ab",
+      "layout_body_sha256": "d90bef05fbe2820377511a998de295827cf5945f13e2226ab8988812ba141830",
+      "raw_sha256": "c05838c4b95725d44e396160721d9de410d1d4798fd01be2ad972090db948077"
+    },
+    {
+      "source_ordinal": 44,
+      "registration": "Flowchart ELK > Markdown strings flowchart-elk (#4220) > html labels > With formatting in a node",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "With formatting in a node",
+      "stem": "upstream_cypress_flowchart_elk_spec_with_formatting_in_a_node_5e8075ab9c2ba82f",
+      "mmd_sha256": "5e8075ab9c2ba82f8075642f0e80bc2a80f82fb8f7865afa92a6f4aa2565d67e",
+      "layout_body_sha256": "11582c9ad6b1052912cdc7428145615d0d057d956cf376875e11b9239a281632",
+      "raw_sha256": "6ad2915bd26716746d92edf8b690b65fdd2ee5cad11784232f7f4fa58dd4fa18"
+    },
+    {
+      "source_ordinal": 45,
+      "registration": "Flowchart ELK > Markdown strings flowchart-elk (#4220) > html labels > New line in node and formatted edge label",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "New line in node and formatted edge label",
+      "stem": "upstream_cypress_flowchart_elk_spec_new_line_in_node_and_formatted_edge_label_27c04b5dcb7c78a1",
+      "mmd_sha256": "27c04b5dcb7c78a1d5bbb9fae81f93ea6cfe39aa8f78153d8344142c6db8cf87",
+      "layout_body_sha256": "b50aa8e5b0c3f1f0ca92c6154daafa35ae9cdef89aeb65c3471cd37e08f32628",
+      "raw_sha256": "87aa2b394ad24541b63ab8a9f8561c0f770c30b9443cb7e0842b386ac0090da3"
+    },
+    {
+      "source_ordinal": 46,
+      "registration": "Flowchart ELK > Markdown strings flowchart-elk (#4220) > html labels > Sub graphs and markdown strings",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "Sub graphs and markdown strings",
+      "stem": "upstream_cypress_flowchart_elk_spec_sub_graphs_and_markdown_strings_6166a93cb3227a32",
+      "mmd_sha256": "6166a93cb3227a32f26da3303135ca2493ca9c55a9e51fed63d87e84fb41edd3",
+      "layout_body_sha256": "c9ec501d6855e9019bc9d4cb0ccfc50b960f3acd6bee98c841fdff18bfa65657",
+      "raw_sha256": "f0ec3f88c7dd0a46b08a3c82804415ce80170fe01ea15ceadd30e3e44281e97d"
+    },
+    {
+      "source_ordinal": 47,
+      "registration": "Flowchart ELK > Markdown strings flowchart-elk (#4220) > svg text labels > With styling and classes",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "With styling and classes",
+      "stem": "upstream_cypress_flowchart_elk_spec_with_styling_and_classes_aa4a644e341f0d9a",
+      "mmd_sha256": "aa4a644e341f0d9ae9b437061082a703add6460751061f3b47d883df051bde28",
+      "layout_body_sha256": "1426fc9f1efb830b1863e40acee6bbf4bdced7c7d40fcce4159a5de0931378ae",
+      "raw_sha256": "67849f4575fac02d8eb307e5be2755779becf12fdb0c65a52e1633c91a1e692f"
+    },
+    {
+      "source_ordinal": 48,
+      "registration": "Flowchart ELK > Markdown strings flowchart-elk (#4220) > svg text labels > With formatting in a node",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "With formatting in a node",
+      "stem": "upstream_cypress_flowchart_elk_spec_with_formatting_in_a_node_1966f944fb72d63b",
+      "mmd_sha256": "1966f944fb72d63b5fa43c7b925851a21a755e7ce066fe96c6829bff7299b981",
+      "layout_body_sha256": "e8c78318a061fc1d3ef0adb70090ad6245b47d8d9682c4fc5c38a4a6b1590041",
+      "raw_sha256": "83ad038be8973cb45827a5fb2b8c05793542b3bea1c6de53960057473ea31b0f"
+    },
+    {
+      "source_ordinal": 49,
+      "registration": "Flowchart ELK > Markdown strings flowchart-elk (#4220) > svg text labels > New line in node and formatted edge label",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "New line in node and formatted edge label",
+      "stem": "upstream_cypress_flowchart_elk_spec_new_line_in_node_and_formatted_edge_label_3457250cf781f419",
+      "mmd_sha256": "3457250cf781f4191b435dd7d188d3dccca58c506036c695fe6b3c94ccfb8c52",
+      "layout_body_sha256": "4fbfa55d1860f95131401d51154b20d64870ab3090022b93f96b89739edd9f6d",
+      "raw_sha256": "076b7ac2c1149ba0bd64b012a0b0a4eb55eb054a2e0016c5cf190b9553ea582b"
+    },
+    {
+      "source_ordinal": 50,
+      "registration": "Flowchart ELK > Markdown strings flowchart-elk (#4220) > svg text labels > Wrapping long text with a new line",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "Wrapping long text with a new line",
+      "stem": "upstream_cypress_flowchart_elk_spec_wrapping_long_text_with_a_new_line_0e5b88a8c6e96211",
+      "mmd_sha256": "0e5b88a8c6e962113e356008222f9ffa16dde67285bc2e60f17ab6bc1287f3c1",
+      "layout_body_sha256": "434f996bcc40a417637427d2187d9fadc0aee3c0c2b9fd65872f5a5375f543d8",
+      "raw_sha256": "bf2037c97e6740ce0991485558a02ce4d80e7811b25d7f25476d4b21575e758e"
+    },
+    {
+      "source_ordinal": 51,
+      "registration": "Flowchart ELK > Markdown strings flowchart-elk (#4220) > svg text labels > Sub graphs and markdown strings",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "Sub graphs and markdown strings",
+      "stem": "upstream_cypress_flowchart_elk_spec_sub_graphs_and_markdown_strings_e5ab7be28e9a20c4",
+      "mmd_sha256": "e5ab7be28e9a20c4b444b4fe030868916ef76b5e4743165c22709250fb13863a",
+      "layout_body_sha256": "b532a1c6f5e90dd356e60139c30c04b3fb062cdfbc300242935ea54030e09093",
+      "raw_sha256": "7b438a2386c054d291d7b73331611bb7a201c00bbe7bf9b25c577226cbf23ecf"
+    },
+    {
+      "source_ordinal": 52,
+      "registration": "Flowchart ELK > Markdown strings flowchart-elk (#4220) > svg text labels > Sub graphs",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "Sub graphs",
+      "stem": "upstream_cypress_flowchart_elk_spec_sub_graphs_9df9fad15f6ee461",
+      "mmd_sha256": "9df9fad15f6ee4619529c5a97cbc5ed47ae828c4d0134d6c3160c619b62f03d6",
+      "layout_body_sha256": "05fb9d8c612a642e17034c6a5be521074051fb4f238d159801659ea33caae923",
+      "raw_sha256": "4561d3bc58ea60a8a750052fe43f1848ab36a7958f958ee8ac66416da042841c"
+    },
+    {
+      "source_ordinal": 53,
+      "registration": "Flowchart ELK > Markdown strings flowchart-elk (#4220) > svg text labels > 6080: should handle diamond shape intersections",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "6080: should handle diamond shape intersections",
+      "stem": "upstream_cypress_flowchart_elk_spec_6080_should_handle_diamond_shape_intersections_361fa882d6efdb0c",
+      "mmd_sha256": "361fa882d6efdb0cc994590bb8082693948d3b6671e7a01f11fa3eec1215ce1a",
+      "layout_body_sha256": "19352f552cce9de94d709e5261728138b327ff0a7eb35686bae617511e632608",
+      "raw_sha256": "570cdb08739dc2420a63d2c0a3256ea031d6039f853d893a17e68d32ea8cfdc3"
+    },
+    {
+      "source_ordinal": 54,
+      "registration": "Flowchart ELK > Markdown strings flowchart-elk (#4220) > svg text labels > 6088-1: should handle diamond shape intersections",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "6088-1: should handle diamond shape intersections",
+      "stem": "upstream_cypress_flowchart_elk_spec_6088_1_should_handle_diamond_shape_intersections_b44b5f25e28f5054",
+      "mmd_sha256": "b44b5f25e28f50548bb73e7b45e25cb774734a96242c123b1997f09f00936171",
+      "layout_body_sha256": "8e2687f3ed1f255fbbe0956731b6175241b2462e9e37b9a860092c3471602551",
+      "raw_sha256": "a2b3f7ae93ae0c9674407d33ddf9de00d124ec65fd60099853c904753bead2bf"
+    },
+    {
+      "source_ordinal": 55,
+      "registration": "Flowchart ELK > Markdown strings flowchart-elk (#4220) > svg text labels > 6088-2: should handle diamond shape intersections",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "6088-2: should handle diamond shape intersections",
+      "stem": "upstream_cypress_flowchart_elk_spec_6088_2_should_handle_diamond_shape_intersections_d0a75f7469719db1",
+      "mmd_sha256": "d0a75f7469719db1238da790336b4ae996da37994a9ccfa2ee3fcac1d39a5a01",
+      "layout_body_sha256": "7f50cd6e6afbe28194db50b572835d2f19112b50adc9065130b1e899a0a2d48d",
+      "raw_sha256": "0fc8b9704e2b8991171477358dbc591d229a855f726e705b69dc2b59d4744c73"
+    },
+    {
+      "source_ordinal": 56,
+      "registration": "Flowchart ELK > Markdown strings flowchart-elk (#4220) > svg text labels > 6088-3: should handle diamond shape intersections",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "6088-3: should handle diamond shape intersections",
+      "stem": "upstream_cypress_flowchart_elk_spec_6088_3_should_handle_diamond_shape_intersections_f341368341fd73a8",
+      "mmd_sha256": "f341368341fd73a86ed8a684f923e93fa725425e09ba8e507736bb713b27ba14",
+      "layout_body_sha256": "b5350e57cf4535e62d5ec5103a0ed1d7cf5d881ca800813fa08ce19c3c91aa9f",
+      "raw_sha256": "8eb9870015a1b5dbe817c36d0e411e6e66013a1e8f454873c49cf3f5256f605d"
+    },
+    {
+      "source_ordinal": 57,
+      "registration": "Flowchart ELK > Markdown strings flowchart-elk (#4220) > svg text labels > 6088-4: should handle diamond shape intersections",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "6088-4: should handle diamond shape intersections",
+      "stem": "upstream_cypress_flowchart_elk_spec_6088_4_should_handle_diamond_shape_intersections_361fa882d6efdb0c",
+      "mmd_sha256": "361fa882d6efdb0cc994590bb8082693948d3b6671e7a01f11fa3eec1215ce1a",
+      "layout_body_sha256": "19352f552cce9de94d709e5261728138b327ff0a7eb35686bae617511e632608",
+      "raw_sha256": "6d49aeb00d025aab8eb45845d97f4488eedee08987eea783c775101b5f6e166d"
+    },
+    {
+      "source_ordinal": 58,
+      "registration": "Flowchart ELK > Markdown strings flowchart-elk (#4220) > svg text labels > 6088-5: should handle diamond shape intersections",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "6088-5: should handle diamond shape intersections",
+      "stem": "upstream_cypress_flowchart_elk_spec_6088_5_should_handle_diamond_shape_intersections_b9b5401589516da8",
+      "mmd_sha256": "b9b5401589516da8dd275be1f7c053bdc8ba617a24eb2861e17bd962a222383a",
+      "layout_body_sha256": "13cfa304dcb89756aac5eca20d45e3204c52979ab8147eeffbfe6fd127fd4c2d",
+      "raw_sha256": "9e27dcb6ee011ef9e531c87eed672bd27b901e448a7125069b75d971fd16ee7c"
+    },
+    {
+      "source_ordinal": 59,
+      "registration": "Flowchart ELK > Markdown strings flowchart-elk (#4220) > svg text labels > 6088-6: should handle diamond shape intersections",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "6088-6: should handle diamond shape intersections",
+      "stem": "upstream_cypress_flowchart_elk_spec_6088_6_should_handle_diamond_shape_intersections_fb4d80e34f6b3380",
+      "mmd_sha256": "fb4d80e34f6b3380a2ecb2488e7c5ff2247be287476e17c027f34cea54b6b86a",
+      "layout_body_sha256": "620e9d711676779dcd7dab88946d6e695f7fe3e9190f4d8815114af7291098ae",
+      "raw_sha256": "38dadcd1303fadcbcc16355e6129111f1f14392859c33194e35f7a4126f4168d"
+    },
+    {
+      "source_ordinal": 60,
+      "registration": "Flowchart ELK > 6647-elk: should keep node order when using elk layout unless it would add crossings",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "6647-elk: should keep node order when using elk layout unless it would add crossings",
+      "stem": "upstream_cypress_flowchart_elk_spec_6647_elk_should_keep_node_order_when_using_elk_layout_unless_it_cffd0f83f08682e4",
+      "mmd_sha256": "cffd0f83f08682e4ad461f1ba3d68f0bd0c8f0c89331b60c37f9008a6dec411f",
+      "layout_body_sha256": "3f4f5f67d8141e741dc34a1340f4db4e8a61b2e40a620a55e6e03f360b40c46b",
+      "raw_sha256": "c8a5740cb0181558cb7b7fc7048893945ffd73a2822e7aa67db98f4e605b5925"
+    },
+    {
+      "source_ordinal": 61,
+      "registration": "Title and arrow styling #4813 > should render a flowchart with title",
+      "helper_ordinal": 1,
+      "call": "renderGraph",
+      "validation": "absent",
+      "test_name": "should render a flowchart with title",
+      "stem": "upstream_cypress_flowchart_elk_spec_should_render_a_flowchart_with_title_d0e564872148eecd",
+      "mmd_sha256": "d0e564872148eecda3dd39b16f41db8c39c5576df7602a08ec98a16fdfa4b338",
+      "layout_body_sha256": "ad41f37804373e5ea4266367c757f4d6aacd17dc824f6c3ae0b77445d0b61c13",
+      "raw_sha256": "8990990fe03d762b49c857a7e98afbac0abd6f21caa9cf6e8a969e2b96b69b12"
+    },
+    {
+      "source_ordinal": 62,
+      "registration": "Title and arrow styling #4813 > Render with stylized arrows",
+      "helper_ordinal": 1,
+      "call": "renderGraph",
+      "validation": "absent",
+      "test_name": "Render with stylized arrows",
+      "stem": "upstream_cypress_flowchart_elk_spec_render_with_stylized_arrows_9c742c32a6d47df3",
+      "mmd_sha256": "9c742c32a6d47df37819a5787080c04f4729eeafa07ac8339aef51f351a4d47a",
+      "layout_body_sha256": "2fc1ae4ffac6be10a28b265816e1f84e8111ffda771c30f73c6cf994650518f1",
+      "raw_sha256": "3c4cc0577da81efc7e538fd24af705846b729d94056a6d1b457b2af529ddf1ff"
+    },
+    {
+      "source_ordinal": 63,
+      "registration": "Title and arrow styling #4813 > 7213: should render ELK edges with right angles not curves",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "7213: should render ELK edges with right angles not curves",
+      "stem": "upstream_cypress_flowchart_elk_spec_7213_should_render_elk_edges_with_right_angles_not_curves_fb1a333f103e31ef",
+      "mmd_sha256": "fb1a333f103e31ef61c34ac0210509efa626293b8469423c9b44867502c22656",
+      "layout_body_sha256": "3eb3b12c3df461edf077e1e06bf15e0c6ec7094e5943fe833c79896b07d95b83",
+      "raw_sha256": "ed5f666492d000413053fe3480679c91ecceeaf3d5fb2ded5b893365454e8ad6"
+    },
+    {
+      "source_ordinal": 64,
+      "registration": "Title and arrow styling #4813 > elk: should merge edges within subgraphs when elk.mergeEdges is true (#7659)",
+      "helper_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "validation": "absent",
+      "test_name": "elk: should merge edges within subgraphs when elk.mergeEdges is true (#7659)",
+      "stem": "upstream_cypress_flowchart_elk_spec_elk_should_merge_edges_within_subgraphs_when_elk_mergeedges_is_t_c0ec057e2cb0992b",
+      "mmd_sha256": "c0ec057e2cb0992bc92ddabdcd9f9c56686b5c9ea1d394d589dd00b07713d269",
+      "layout_body_sha256": "e3379e2b4c59b991086c441ecf7d8d7bd82022463abb23b2923804c9cd2d967b",
+      "raw_sha256": "c40303bde0534df527b38eaeaebef5f94134e2ba52982bda07dcc5cc3aa91b2f"
+    }
+  ]
+}
