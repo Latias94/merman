@@ -1,6 +1,5 @@
-use merman::svg::{
-    HeadlessRenderer, HostTheme, HostThemePreset, Presentation, PresentationProfile, SvgPipeline,
-};
+use merman::svg::{HostTheme, HostThemePreset, Presentation, PresentationProfile, SvgPipeline};
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
 const SOURCE: &str = r#"flowchart LR
     Source[Mermaid source] --> Profile[Merman Modern]
@@ -12,15 +11,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let presentation = Presentation::new()
         .with_profile(PresentationProfile::MermanModern)
         .with_theme(HostTheme::from_preset(HostThemePreset::OneDark));
-    let renderer = HeadlessRenderer::new()
-        .with_presentation(presentation)
-        .with_svg_pipeline(SvgPipeline::resvg_safe())
-        .with_vendored_text_measurer()
-        .with_diagram_id("presentation-profile-example");
-    let Some(svg) = renderer.render_svg_sync(SOURCE)? else {
+    let resolved = presentation.resolve();
+    let renderer = Renderer::new().with_engine(resolved.materialize_engine(merman::Engine::new()));
+    let request = SvgRequest {
+        pipeline: Some(SvgPipeline::resvg_safe()),
+        presentation: resolved.render_policy(),
+        options: merman::svg::SvgRenderOptions {
+            diagram_id: Some("presentation-profile-example".to_string()),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let output = renderer.render(RenderRequest::svg(SOURCE, OperationControl::new(), request))?;
+    let RenderOutput::Svg(Some(svg)) = output else {
         return Err("no Mermaid diagram detected".into());
     };
 
-    print!("{svg}");
+    print!("{}", svg.svg());
     Ok(())
 }
