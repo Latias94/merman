@@ -12,6 +12,7 @@ use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason};
 struct SequenceThemeEvidenceState {
     actor_count: usize,
     actor_fill_emitted: bool,
+    actor_fill_unhandled: bool,
     actor_fill_overridden: bool,
 }
 
@@ -34,6 +35,7 @@ impl SequenceThemeEvidenceRecorder {
         &self,
         actor_count: usize,
         actor_fill_emitted: bool,
+        actor_fill_unhandled: bool,
         actor_fill_overridden: bool,
     ) {
         let mut state = self
@@ -42,6 +44,7 @@ impl SequenceThemeEvidenceRecorder {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         state.actor_count = state.actor_count.max(actor_count);
         state.actor_fill_emitted |= actor_count != 0 && actor_fill_emitted;
+        state.actor_fill_unhandled |= actor_count != 0 && actor_fill_unhandled;
         state.actor_fill_overridden |= actor_count != 0 && actor_fill_overridden;
     }
 
@@ -57,6 +60,20 @@ impl SequenceThemeEvidenceRecorder {
 
         let default_actor_style = theme.style(ThemeTarget::Actor, ThemeVariant::Default, None);
         let mut rules = BTreeMap::<usize, SequenceRuleObservation>::new();
+
+        // Seed every Actor rule before checking winners. This keeps superseded rules, unmatched
+        // ordinal selectors, and empty actor models in the evidence ledger so the final pass can
+        // classify them as explicitly not applicable instead of leaving required keys unaccounted.
+        for route in theme.family_mechanism_routes().iter().copied() {
+            if let FamilyThemeMechanism::RuleFacet {
+                rule_index,
+                target: ThemeTarget::Actor,
+                ..
+            } = route.mechanism()
+            {
+                rules.entry(rule_index).or_default();
+            }
+        }
 
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
@@ -110,6 +127,12 @@ impl SequenceThemeEvidenceRecorder {
                                 )
                             ) =>
                         {
+                            if state.actor_fill_unhandled {
+                                observation
+                                    .residual
+                                    .get_or_insert(FamilyThemeResidualReason::UnsupportedPaint);
+                                continue;
+                            }
                             if !state.actor_fill_emitted {
                                 continue;
                             }
@@ -265,5 +288,45 @@ fn unsupported_reason_for_facet(facet: FamilyThemeRuleFacet) -> FamilyThemeResid
         | FamilyThemeRuleFacet::StrokeOpacity
         | FamilyThemeRuleFacet::Radius
         | FamilyThemeRuleFacet::Padding => FamilyThemeResidualReason::UnsupportedGeometry,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagram_theme::{
+        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
+        ThemeStylePatch,
+    };
+    use crate::render_family::RenderFamilyKind;
+
+    #[test]
+    fn actor_rule_is_not_applicable_when_terminal_model_has_no_actors() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Actor,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+                        )
+                        .for_family(RenderFamilyKind::Sequence),
+                    ),
+                ),
+            )
+            .expect("compile Sequence actor theme");
+        let resolved = theme.resolve(RenderFamilyKind::Sequence);
+        let evidence = SequenceThemeEvidenceRecorder::default().finish(Some(&resolved));
+
+        assert_eq!(
+            evidence.not_applicable_mechanisms(),
+            [crate::diagram_theme::FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Actor,
+            }]
+        );
+        assert!(evidence.applied().is_empty());
+        assert!(evidence.residuals().is_empty());
     }
 }

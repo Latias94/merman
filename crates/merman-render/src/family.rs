@@ -7903,6 +7903,210 @@ style Empty font-weight:banana
     }
 
     #[test]
+    fn sequence_actor_fill_with_custom_class_does_not_claim_typed_consumption() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Actor,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+                        )
+                        .for_family(RenderFamilyKind::Sequence),
+                    ),
+                ),
+            )
+            .expect("compile Sequence actor theme");
+        let source = r#"sequenceDiagram
+participant Alice
+participant Bob
+properties Alice: {"class":"custom"}
+Alice->>Bob: Hello
+"#;
+        let parse = || {
+            theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("Sequence source should produce a render model")
+        };
+        let rendered = prepare(
+            parse(),
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&theme)
+                .expect("begin best-effort Sequence session"),
+        )
+        .expect("prepare Sequence actor theme")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("best-effort Sequence output should remain renderable");
+
+        assert!(
+            rendered.svg().contains("fill:#ef4444"),
+            "{}",
+            rendered.svg()
+        );
+        assert!(
+            rendered.svg().contains("fill=\"#EDF2AE\""),
+            "custom actor fill must remain source-owned: {}",
+            rendered.svg()
+        );
+        assert_eq!(
+            rendered.style_report().theme_residuals(),
+            &[FamilyThemeResidual {
+                key: FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Actor,
+                },
+                reason: FamilyThemeResidualReason::UnsupportedPaint,
+            }]
+        );
+        assert!(
+            rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .is_empty()
+        );
+
+        let strict = crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict Sequence session");
+        let artifact = prepare(parse(), &LayoutOptions::default(), strict)
+            .expect("strict verification must wait for terminal SVG evidence");
+        let error =
+            match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
+                Ok(_) => panic!("custom actor class must not be signed as typed portable fill"),
+                Err(error) => error,
+            };
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((RenderFamilyKind::Sequence, 1))
+        );
+    }
+
+    #[test]
+    fn sequence_actor_fill_tracks_actor_man_css_and_inline_precedence() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Actor,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+                        )
+                        .for_family(RenderFamilyKind::Sequence),
+                    ),
+                ),
+            )
+            .expect("compile Sequence actor theme");
+
+        for (actor_type, should_be_portable) in [
+            ("actor", true),
+            ("boundary", true),
+            ("entity", true),
+            ("collections", true),
+            ("queue", true),
+            ("database", true),
+            ("control", true),
+        ] {
+            let source = format!(
+                "sequenceDiagram\nparticipant Alice@{{\"type\":\"{actor_type}\"}}\nparticipant Bob\nAlice->>Bob: Hello\n"
+            );
+            let parsed = theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .expect("Sequence source should produce a render model");
+            let strict = crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict Sequence session");
+            let artifact = prepare(parsed, &LayoutOptions::default(), strict)
+                .expect("strict verification must wait for terminal SVG evidence");
+            let result =
+                artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
+
+            if should_be_portable {
+                let rendered = result.expect("actor-man CSS-covered fill should be portable");
+                assert!(rendered.svg().contains("fill:#ef4444"));
+                assert_eq!(
+                    rendered.style_report().theme_applied_mechanisms(),
+                    &[FamilyThemeMechanismKey::Rule {
+                        index: 0,
+                        target: ThemeTarget::Actor,
+                    }]
+                );
+                assert!(rendered.style_report().theme_residuals().is_empty());
+            } else {
+                let error = match result {
+                    Ok(_) => panic!("inline control actor fill must not be signed as typed"),
+                    Err(error) => error,
+                };
+                assert_eq!(
+                    error.unverified_family_theme(),
+                    Some((RenderFamilyKind::Sequence, 1))
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn sequence_actor_fill_accounts_for_rules_without_matching_actors() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Actor,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+                        )
+                        .with_ordinal(OrdinalSelector::exact(3).unwrap())
+                        .for_family(RenderFamilyKind::Sequence),
+                    ),
+                ),
+            )
+            .expect("compile unmatched ordinal Sequence actor theme");
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("Sequence source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict Sequence session"),
+        )
+        .expect("prepare unmatched ordinal Sequence actor rule")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("unmatched ordinal Sequence actor rule should be not applicable");
+
+        assert_eq!(
+            rendered.style_report().theme_not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Actor,
+            }]
+        );
+        assert!(rendered.style_report().theme_residuals().is_empty());
+        assert!(
+            rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .is_empty()
+        );
+    }
+
+    #[test]
     fn sequence_actor_fill_winner_accounts_for_superseded_and_unsupported_facets() {
         let mut winning_style =
             ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2563eb").unwrap());

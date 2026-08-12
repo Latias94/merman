@@ -1,6 +1,7 @@
 use super::super::*;
 use super::actor_man::{render_sequence_actor_man_bottoms, render_sequence_actor_man_tops};
 use super::actor_popup::render_sequence_actor_popup_menus;
+use super::actor_shapes::{ActorFillCoverage, actor_fill_coverage};
 use super::actors::{
     SequenceActorRenderContext, render_sequence_bottom_actors,
     render_sequence_top_actors_and_lifelines,
@@ -139,9 +140,24 @@ fn render_sequence_diagram_svg_inner(
             typed_actor_fill.as_deref(),
         )
     );
+    let mut actor_fill_emitted = false;
+    let mut actor_fill_unhandled = false;
+    for actor_id in &model.actor_order {
+        let Some(actor) = model.actors.get(actor_id) else {
+            continue;
+        };
+        let coverage = actor_fill_coverage(actor);
+        match coverage {
+            ActorFillCoverage::TypedCss => actor_fill_emitted = true,
+            ActorFillCoverage::Unhandled => actor_fill_unhandled = true,
+        }
+    }
+    actor_fill_emitted &= typed_actor_fill.is_some();
+    actor_fill_unhandled &= typed_actor_fill.is_some();
     prepared.theme_evidence().record_actor_emission(
         model.actor_order.len(),
-        typed_actor_fill.is_some(),
+        actor_fill_emitted,
+        actor_fill_unhandled,
         actor_fill_overridden,
     );
 

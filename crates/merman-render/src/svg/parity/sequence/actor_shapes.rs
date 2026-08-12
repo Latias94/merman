@@ -38,6 +38,33 @@ pub(super) fn is_actor_man_variant(actor_type: &str) -> bool {
     matches!(actor_type, "actor" | "boundary" | "control" | "entity")
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ActorFillCoverage {
+    TypedCss,
+    Unhandled,
+}
+
+/// Classifies which actor shapes are actually covered by the `.actor` CSS consumer.
+///
+/// The static Actor theme route may only claim evidence for shapes that receive the generated
+/// CSS. Actor-man glyphs, including control's inline-styled wrapper, have child `circle`/`line`
+/// nodes targeted directly by the generated selectors; a participant custom class owns its
+/// rectangle fill, so that path remains conservative until its precedence is observed explicitly.
+pub(super) fn actor_fill_coverage(actor: &SequenceActor) -> ActorFillCoverage {
+    match actor.actor_type.as_str() {
+        // Actor-man glyphs use the `.actor-man` wrapper, and sequence.css applies the typed fill
+        // directly to their circles/lines. Control's inline wrapper fill is inherited only;
+        // these child selectors still consume the typed value.
+        "actor" | "boundary" | "control" => ActorFillCoverage::TypedCss,
+        "entity" | "collections" | "queue" | "database" => ActorFillCoverage::TypedCss,
+        // A participant with a custom class deliberately omits `.actor`; its source-owned fill
+        // must not be counted as typed theme consumption. Treat it as uncovered so a strict
+        // portable request cannot claim the typed route for a mixed or custom-only diagram.
+        _ if actor_custom_class(actor).is_some() => ActorFillCoverage::Unhandled,
+        _ => ActorFillCoverage::TypedCss,
+    }
+}
+
 pub(super) fn write_actor_man_lifeline(
     out: &mut String,
     idx: usize,
