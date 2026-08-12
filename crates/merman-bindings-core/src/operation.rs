@@ -1143,6 +1143,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"",
+                operation_control: None,
             })
             .unwrap();
         let metadata: serde_json::Value = serde_json::from_slice(result.metadata_json()).unwrap();
@@ -1159,6 +1160,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: br#"{"runtime_policy":"native"}"#,
+                operation_control: None,
             })
             .unwrap_err();
 
@@ -1177,6 +1179,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: br#"{"analysis":{"resources":{"limits":{"max_source_bytes":2048}}}}"#,
+                operation_control: None,
             })
             .unwrap();
         assert!(!result.data.is_empty());
@@ -1194,6 +1197,7 @@ mod tests {
                     source: b"flowchart TD\nA --> B",
                     uri: None,
                     options_json,
+                    operation_control: None,
                 })
                 .unwrap()
         };
@@ -1309,6 +1313,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"{",
+                operation_control: None,
             })
             .expect_err("operation resolution runs before request option parsing");
 
@@ -1327,6 +1332,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"{",
+                operation_control: None,
             })
             .expect_err("missing URI is rejected before malformed options");
         assert_eq!(missing.status(), BindingStatus::InvalidArgument);
@@ -1338,6 +1344,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: Some(b"file:///diagram.mmd"),
                 options_json: b"{",
+                operation_control: None,
             })
             .expect_err("unexpected URI is rejected before malformed options");
         assert_eq!(unexpected.status(), BindingStatus::InvalidArgument);
@@ -1386,6 +1393,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: Some(&invalid_uri),
                 options_json: b"{",
+                operation_control: None,
             })
             .expect_err("options are parsed before URI bytes are decoded");
         assert_eq!(options_error.status(), BindingStatus::OptionsJsonError);
@@ -1396,6 +1404,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: Some(&invalid_uri),
                 options_json: b"",
+                operation_control: None,
             })
             .expect_err("valid options allow execution to reach URI decoding");
         assert_eq!(uri_error.status(), BindingStatus::Utf8Error);
@@ -1412,6 +1421,7 @@ mod tests {
                 source: &invalid_source,
                 uri: None,
                 options_json: br#"{"svg":{"pipeline":"invalid-pipeline"}}"#,
+                operation_control: None,
             })
             .expect_err("artifact-wide request validation checks the render domain first");
 
@@ -1437,6 +1447,7 @@ mod tests {
                     "lint": { "profile": "invalid-profile" },
                     "svg": { "pipeline": "invalid-pipeline" }
                 }"#,
+                operation_control: None,
             })
             .expect_err("artifact-wide request validation checks analysis before rendering");
 
@@ -1460,6 +1471,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"{",
+                operation_control: None,
             })
             .expect_err("request options are validated before operation execution");
         assert_eq!(options_error.status(), BindingStatus::OptionsJsonError);
@@ -1470,6 +1482,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"",
+                operation_control: None,
             })
             .expect_err("valid options reach the missing capability check");
         assert_eq!(
@@ -1499,6 +1512,7 @@ mod tests {
                         .requires_uri()
                         .then_some(b"file:///diagram.mmd".as_slice()),
                     options_json,
+                    operation_control: None,
                 };
                 let one_shot = execute_once(request).unwrap_or_else(|error| {
                     panic!(
@@ -1556,6 +1570,7 @@ mod tests {
             source: b"flowchart TD\nA --> B",
             uri: None,
             options_json: br#"{"resources":{"limits":{"max_svg_bytes":1024}}}"#,
+            operation_control: None,
         })
         .unwrap_err();
 
@@ -1582,6 +1597,7 @@ mod tests {
                     source: b"flowchart TD\nA --> B",
                     uri: None,
                     options_json,
+                    operation_control: None,
                 })
                 .unwrap_err();
             assert_eq!(error.status(), BindingStatus::OptionsJsonError);
@@ -1599,8 +1615,9 @@ mod tests {
             source: b"flowchart TD\nA --> B",
             uri: None,
             options_json: br#"{"resources":{"limits":{"max_source_bytes":4}}}"#,
+            operation_control: None,
         };
-        let error = engine.execute(request).unwrap_err();
+        let error = engine.execute(request.clone()).unwrap_err();
         assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
 
         let baseline = engine
@@ -1625,6 +1642,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: br#"{"resources":{"limits":{"max_ascii_grid_cells":2}}}"#,
+                operation_control: None,
             })
             .unwrap_err();
 
@@ -1639,6 +1657,7 @@ mod tests {
             source: b"flowchart TD\nA --> B",
             uri: None,
             options_json: br#"{"resources":{"profile":"trusted-native"}}"#,
+            operation_control: None,
         })
         .unwrap();
 
@@ -1658,6 +1677,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: br#"{"resources":{"limits":{"max_svg_bytes":524288}}}"#,
+                operation_control: None,
             })
             .unwrap_err();
 
@@ -1678,6 +1698,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"",
+                operation_control: None,
             })
             .expect("unrelated constructor options do not affect semantic operations");
 
@@ -1686,6 +1707,7 @@ mod tests {
             source: b"flowchart TD\nA --> B",
             uri: None,
             options_json: br#"{"raster":{"scale":2}}"#,
+            operation_control: None,
         })
         .unwrap_err();
         assert_eq!(error.status(), BindingStatus::OptionsJsonError);
@@ -1735,6 +1757,7 @@ mod tests {
                     source: b"flowchart TD\nA --> B",
                     uri: None,
                     options_json: b"",
+                    operation_control: None,
                 })
                 .unwrap();
             let metadata: serde_json::Value =
@@ -1754,6 +1777,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"",
+                operation_control: None,
             })
             .unwrap();
 
@@ -1777,6 +1801,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"",
+                operation_control: None,
             })
             .unwrap();
 
@@ -1805,6 +1830,7 @@ mod tests {
                     source: b"flowchart TD\nA --> B",
                     uri: None,
                     options_json,
+                    operation_control: None,
                 })
                 .unwrap()
                 .data
@@ -1837,6 +1863,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: br#"{"svg":{"diagram_id":"request override"}}"#,
+                operation_control: None,
             })
             .unwrap();
         let request_svg = String::from_utf8(request_result.data).unwrap();
@@ -1849,6 +1876,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"",
+                operation_control: None,
             })
             .unwrap();
         let baseline_svg = String::from_utf8(baseline_result.data).unwrap();
@@ -1864,6 +1892,7 @@ mod tests {
             source: b"---\nconfig:\n  layout: elk\n---\nflowchart TD\n  A --> B\n",
             uri: None,
             options_json: b"",
+            operation_control: None,
         });
 
         if cfg!(feature = "layout-elk") {
@@ -1887,6 +1916,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"",
+                operation_control: None,
             })
             .unwrap();
 
@@ -1930,6 +1960,7 @@ mod tests {
                 "raster": {"scale": 20},
                 "resources": {"limits": {"max_raster_pixels": 4096}}
             }"#,
+            operation_control: None,
         })
         .unwrap();
 
@@ -1961,6 +1992,7 @@ mod tests {
                     "raster": {"scale": 20},
                     "resources": {"limits": {"max_raster_pixels": 4096}}
                 }"#,
+                operation_control: None,
             })
             .unwrap();
         let limited_metadata: serde_json::Value =
@@ -1982,6 +2014,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"",
+                operation_control: None,
             })
             .unwrap();
         let baseline_metadata: serde_json::Value =
@@ -1998,6 +2031,7 @@ mod tests {
             source: b"flowchart TD\nA --> B",
             uri: None,
             options_json: br#"{"version":2,"pdf":{"filterScale":0.1}}"#,
+            operation_control: None,
         })
         .unwrap();
 
@@ -2024,6 +2058,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: b"",
+                operation_control: None,
             })
             .expect_err("PNG is not compiled");
 
