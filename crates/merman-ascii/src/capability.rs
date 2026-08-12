@@ -368,6 +368,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         limits: &[
             "does not draw a full Git lane graph",
             "terminal output normalizes implementation flags into semantic labels",
+            "unknown direct-model commit types are rejected",
         ],
         evidence: &[
             AsciiCapabilityEvidence {
@@ -1034,6 +1035,15 @@ mod tests {
             find("mindmap")
                 .supported_semantics
                 .contains(&"ASCII and Unicode tree connectors")
+        );
+    }
+
+    #[test]
+    fn gitgraph_capability_discloses_direct_model_commit_type_validation() {
+        assert!(
+            find("gitgraph")
+                .limits
+                .contains(&"unknown direct-model commit types are rejected")
         );
     }
 

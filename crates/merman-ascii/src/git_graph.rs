@@ -1,5 +1,7 @@
 use crate::Result;
+use crate::error::AsciiError;
 use crate::options::AsciiRenderOptions;
+use crate::resource::ResourceContext;
 use crate::safe_text::{
     BudgetedTextDocument, BudgetedTextLine, push_line_field, push_line_list,
     push_optional_document_field,
@@ -10,7 +12,19 @@ pub fn render_git_graph_diagram(
     model: &GitGraphRenderModel,
     options: &AsciiRenderOptions,
 ) -> Result<String> {
-    let mut document = BudgetedTextDocument::new(options);
+    let resources = ResourceContext::new(options.resources);
+    resources.charge_layout_work(model.commits.len())?;
+    if model
+        .commits
+        .iter()
+        .any(|commit| commit_kind(commit.commit_type).is_none())
+    {
+        return Err(AsciiError::UnsupportedFeature {
+            diagram_type: "gitGraph",
+            feature: "unknown commit types",
+        });
+    }
+    let mut document = BudgetedTextDocument::from_resources(resources, options);
 
     document.push_line_with(|line| {
         push_line_field(line, "gitGraph ", "direction", &model.direction)?;
@@ -105,6 +119,71 @@ mod tests {
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_core::diagrams::git_graph::GitGraphBranchRenderModel;
     use merman_core::resources::ResourceProfile;
+
+    fn commit(commit_type: i64) -> GitGraphCommitRenderModel {
+        GitGraphCommitRenderModel {
+            id: "c0".to_string(),
+            message: String::new(),
+            seq: 0,
+            commit_type,
+            tags: Vec::new(),
+            parents: Vec::new(),
+            branch: "main".to_string(),
+            custom_type: None,
+            custom_id: None,
+        }
+    }
+
+    fn model_with_commits(commits: Vec<GitGraphCommitRenderModel>) -> GitGraphRenderModel {
+        GitGraphRenderModel {
+            diagram_type: "gitGraph".to_string(),
+            commits,
+            branches: Vec::new(),
+            current_branch: "main".to_string(),
+            direction: "TB".to_string(),
+            title: None,
+            acc_title: None,
+            acc_descr: None,
+            warning_facts: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn commit_type_admission_charges_the_complete_validation_scan() {
+        let model = model_with_commits(vec![commit(0), commit(98)]);
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let exact = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 2)
+            .expect("exact validation-work limit should be valid");
+
+        assert_eq!(
+            render_git_graph_diagram(
+                &model,
+                &AsciiRenderOptions::ascii().with_resource_policy(exact),
+            )
+            .expect_err("exact validation work should reach the unknown-type boundary"),
+            AsciiError::UnsupportedFeature {
+                diagram_type: "gitGraph",
+                feature: "unknown commit types",
+            }
+        );
+
+        let below = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+            .expect("N-1 validation-work limit should be valid");
+        let error = render_git_graph_diagram(
+            &model,
+            &AsciiRenderOptions::ascii().with_resource_policy(below),
+        )
+        .expect_err("N-1 validation work should reject before scanning commit types");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual == 2
+                    && details.max == 1
+        ));
+    }
 
     #[test]
     fn document_limit_rejects_branches_before_join_or_full_branch_scan() {
