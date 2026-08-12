@@ -2372,6 +2372,7 @@ mod tests {
     fn engine_exposes_transport_owned_versions() {
         let engine = engine();
 
+        assert_eq!(UNIFFI_BINDING_API_VERSION, 4);
         assert_eq!(engine.binding_api_version(), UNIFFI_BINDING_API_VERSION);
         assert_eq!(engine.package_version(), env!("CARGO_PKG_VERSION"));
     }
@@ -3635,6 +3636,33 @@ A@{ icon: "test:rocket", label: "A" }"#
         assert_eq!(
             resource.expect("resource details").cause,
             "arithmetic_overflow"
+        );
+    }
+
+    #[test]
+    fn uniffi_error_preserves_structured_cancellation_details() {
+        let error =
+            MermanError::from_binding(BindingError::cancelled(merman::OperationCancelled {
+                phase: merman::OperationPhase::Layout,
+                reason: merman::CancelReason::DeadlineExceeded,
+            }));
+        let MermanError::Binding {
+            code,
+            code_name,
+            resource,
+            cancellation,
+            ..
+        } = error;
+
+        assert_eq!(code, BindingStatus::Cancelled.code());
+        assert_eq!(code_name, BindingStatus::Cancelled.code_name());
+        assert_eq!(resource, None);
+        assert_eq!(
+            cancellation,
+            Some(MermanCancelledDetails {
+                reason: "deadline_exceeded".to_string(),
+                phase: "layout".to_string(),
+            })
         );
     }
 
