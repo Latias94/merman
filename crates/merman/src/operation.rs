@@ -31,7 +31,7 @@ impl Operation {
             .map_err(RenderError::Cancelled)?;
         resources
             .check_source_bytes(source)
-            .map_err(RenderError::InputResourceLimitExceeded)?;
+            .map_err(crate::render::ResourceLimitExceeded::from_input)?;
         let context = engine
             .begin_operation()
             .map_err(RenderError::RuntimePolicy)?;
@@ -71,7 +71,7 @@ impl Operation {
         };
         self.resources
             .check_parsed_render(&parsed)
-            .map_err(RenderError::InputResourceLimitExceeded)?;
+            .map_err(crate::render::ResourceLimitExceeded::from_input)?;
         self.control
             .checkpoint_at(OperationPhase::Semantic)
             .map_err(RenderError::Cancelled)?;
@@ -106,5 +106,9 @@ impl SemanticArtifact {
     /// Returns the typed Mermaid diagram id selected during preprocessing.
     pub fn diagram_type(&self) -> &str {
         &self.metadata().diagram_type
+    }
+
+    pub(crate) fn into_parts(self) -> (ParsedDiagramRender, Operation) {
+        (self.parsed, self.operation)
     }
 }
