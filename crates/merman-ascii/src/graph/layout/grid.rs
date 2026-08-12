@@ -94,8 +94,18 @@ pub(super) fn plan_node_labels(
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
 ) -> Result<Vec<GraphNodeLabelPlan>> {
-    let mut plans = Vec::new();
-    try_reserve_vec(&mut plans, graph.nodes.len())?;
+    plan_node_labels_impl(graph, width_profile, resources, || {})
+}
+
+fn plan_node_labels_impl(
+    graph: &AsciiGraph,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+    before_plan_reserve: impl FnOnce(),
+) -> Result<Vec<GraphNodeLabelPlan>> {
+    // 先在不持有外层容器的情况下测量整批标签，让聚合 document/output 准入先于 O(N) 计划
+    // Vec 扩容。第二遍使用 scratch 账本重建确定性 plan，但其工作量已预先记入共享账本。
+    let base_work = resources.layout_work_used();
     let mut document_cells = 0usize;
     let mut materialized_bytes = 0usize;
     for node in &graph.nodes {
@@ -112,10 +122,33 @@ pub(super) fn plan_node_labels(
         materialized_bytes = materialized_bytes
             .checked_add(plan.materialized_bytes())
             .ok_or_else(|| resources.overflow(AsciiResourceLimitId::MaxOutputBytes))?;
-        plans.push(plan);
     }
+    let planning_work = resources
+        .layout_work_used()
+        .checked_sub(base_work)
+        .ok_or_else(|| resources.work_overflow())?;
     resources.check(AsciiResourceLimitId::MaxDocumentCells, document_cells)?;
     resources.check(AsciiResourceLimitId::MaxOutputBytes, materialized_bytes)?;
+    // The second pass is deterministic and allocation-free, but its work still belongs to the
+    // render-wide ledger. Charge that replay before reserving the owned plan vector.
+    resources.charge_layout_work(planning_work)?;
+
+    before_plan_reserve();
+    let mut plans = Vec::new();
+    try_reserve_vec(&mut plans, graph.nodes.len())?;
+    let replay_resources = ResourceContext::new(resources.policy());
+    for node in &graph.nodes {
+        plans.push(GraphNodeLabelPlan::try_for_node(
+            node,
+            graph.node_label_wrap_width(),
+            graph.diagram_type(),
+            width_profile,
+            &replay_resources,
+        )?);
+    }
+    if replay_resources.layout_work_used() != planning_work {
+        return Err(invalid_node_label_plans(graph.diagram_type()));
+    }
     Ok(plans)
 }
 
@@ -1705,6 +1738,89 @@ mod tests {
                 resources,
             ),
             GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn node_label_batch_admits_aggregate_limits_before_reserving_plan_storage() {
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        graph.add_node("alpha", "Alpha");
+        graph.add_node("bravo", "Bravo");
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+
+        let measured_resources = ResourceContext::new(unbounded);
+        let reserve_started = std::cell::Cell::new(false);
+        let plans = plan_node_labels_impl(
+            &graph,
+            TerminalWidthProfile::Unicode,
+            &measured_resources,
+            || reserve_started.set(true),
+        )
+        .expect("unbounded node-label planning should succeed");
+        assert!(reserve_started.get());
+        assert_eq!(plans.len(), 2);
+        let exact_work = measured_resources.layout_work_used();
+        let exact_document_cells = 10;
+        let exact_output_bytes = 10;
+        assert_eq!(exact_work, 60);
+        assert_eq!(
+            plans
+                .iter()
+                .map(GraphNodeLabelPlan::document_cells)
+                .sum::<usize>(),
+            exact_document_cells
+        );
+        assert_eq!(
+            plans
+                .iter()
+                .map(GraphNodeLabelPlan::materialized_bytes)
+                .sum::<usize>(),
+            exact_output_bytes
+        );
+
+        let exact_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
+            .expect("exact node-label work limit should be valid")
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_document_cells)
+            .expect("exact node-label document limit should be valid")
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, exact_output_bytes)
+            .expect("exact node-label output limit should be valid");
+        let exact_resources = ResourceContext::new(exact_policy);
+        let exact_reserve_started = std::cell::Cell::new(false);
+        plan_node_labels_impl(
+            &graph,
+            TerminalWidthProfile::Unicode,
+            &exact_resources,
+            || exact_reserve_started.set(true),
+        )
+        .expect("exact node-label limits should permit planning");
+        assert!(exact_reserve_started.get());
+        assert_eq!(exact_resources.layout_work_used(), exact_work);
+
+        for (limit, actual) in [
+            (AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work),
+            (AsciiResourceLimitId::MaxDocumentCells, exact_document_cells),
+            (AsciiResourceLimitId::MaxOutputBytes, exact_output_bytes),
+        ] {
+            let below_policy = exact_policy
+                .with_limit(limit, actual - 1)
+                .expect("max-minus-one node-label limit should be valid");
+            let below_resources = ResourceContext::new(below_policy);
+            let below_reserve_started = std::cell::Cell::new(false);
+            let error = plan_node_labels_impl(
+                &graph,
+                TerminalWidthProfile::Unicode,
+                &below_resources,
+                || below_reserve_started.set(true),
+            )
+            .expect_err("max-minus-one node-label limit should reject before allocation");
+            let AsciiError::ResourceLimitExceeded(details) = error else {
+                panic!("expected a node-label resource error, got {error:?}");
+            };
+            assert_eq!(details.limit, limit);
+            assert_eq!(details.actual, actual);
+            assert_eq!(details.max, actual - 1);
+            assert!(!below_reserve_started.get());
         }
     }
 
