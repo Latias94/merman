@@ -194,8 +194,6 @@ export interface RuntimeResourceProfile {
 export interface SvgOptions {
   diagram_id?: string;
   pipeline?: "parity" | "readable" | "resvg-safe";
-  scoped_css?: string;
-  css_override_policy?: "preserve" | "strip-existing-important";
   root_background_color?: string;
   drop_native_duplicate_fallbacks?: boolean;
   viewbox_padding?: number;
@@ -408,7 +406,11 @@ export interface ThemeFontAsset {
   data_base64: string;
 }
 
-export type MermaidSiteConfig = Record<string, unknown>;
+export interface MermaidSiteConfig {
+  [key: string]: unknown;
+  themeCSS?: never;
+  secure?: never;
+}
 
 export interface AnalysisBindingOptions {
   fixed_today?: string;

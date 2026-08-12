@@ -213,6 +213,8 @@ const requiredTypePropertyTypes = [
 ];
 const requiredTypePropertyAnnotations = [
   ["MermaidThemeCompatibility", "theme", "ThemeName"],
+  ["MermaidSiteConfig", "themeCSS", "never"],
+  ["MermaidSiteConfig", "secure", "never"],
 ];
 
 let failed = false;
@@ -359,6 +361,18 @@ failed ||= reportPolicyFailure(
       .exportedTypePropertyNames(publicEntry, "SvgBindingOptions")
       .has("theme"),
 );
+{
+  const svgOptions = contract.exportedTypePropertyNames(publicEntry, "SvgOptions");
+  failed ||= reportPolicyFailure(
+    "check-contracts: general Web bindings must not expose host-owned CSS controls",
+    [
+      "scoped_css",
+      "scopedCss",
+      "css_override_policy",
+      "cssOverridePolicy",
+    ].some((property) => svgOptions.has(property)),
+  );
+}
 failed ||= reportPolicyFailure(
   "check-contracts: legacy single-document workspace symbol names must be removed",
   publicValueExports.has("editorWorkspaceSymbols") ||

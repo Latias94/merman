@@ -312,9 +312,54 @@ B -->|No| D[Debug]";
         )
         .unwrap_err();
 
-        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
         assert!(error.message().contains("site_config.themeCSS"));
         assert!(error.message().contains("typed `theme` schema"));
+    }
+
+    #[test]
+    fn one_shot_binding_rejects_site_config_secure_override() {
+        let error = render_svg(
+            br##"%%{init: {"themeCSS": ".node rect { fill: red; }"}}%%
+flowchart TD
+A[Plain source]"##,
+            br#"{"site_config":{"secure":[]}}"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(error.message().contains("site_config.secure"), "{error:?}");
+        assert!(error.message().contains("trusted Rust or native CLI host"));
+    }
+
+    #[test]
+    fn reusable_binding_constructor_rejects_site_config_secure_override() {
+        let error = match crate::BindingEngine::new(br#"{"site_config":{"secure":[]}}"#) {
+            Ok(_) => panic!("general bindings must not let callers replace secure keys"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(error.message().contains("site_config.secure"), "{error:?}");
+        assert!(error.message().contains("trusted Rust or native CLI host"));
+    }
+
+    #[test]
+    fn reusable_request_overlay_rejects_site_config_secure_override() {
+        let engine = crate::BindingEngine::new(b"").unwrap();
+        let error = engine
+            .execute(
+                crate::BindingOperationRequest::new(
+                    "svg",
+                    b"---\nconfig:\n  themeCSS: '.node rect { fill: red; }'\n---\nflowchart TD\nA",
+                )
+                .with_options_json(br#"{"site_config":{"secure":[]}}"#),
+            )
+            .unwrap_err();
+
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(error.message().contains("site_config.secure"), "{error:?}");
+        assert!(error.message().contains("trusted Rust or native CLI host"));
     }
 
     #[test]
@@ -361,8 +406,7 @@ B -->|No| D[Debug]";
                 "diagram_id": "bindings typed theme",
                 "pipeline": "resvg-safe",
                 "root_background_color": "#0f172a",
-                "drop_native_duplicate_fallbacks": true,
-                "css_override_policy": "strip-existing-important"
+                "drop_native_duplicate_fallbacks": true
             }
         }"##;
         let svg =
@@ -378,7 +422,6 @@ B -->|No| D[Debug]";
             "{svg}"
         );
         assert!(!svg.contains("<foreignObject"), "{svg}");
-        assert!(!svg.contains("!important"), "{svg}");
     }
 
     #[test]
@@ -514,28 +557,19 @@ B -->|No| D[Debug]";
     }
 
     #[test]
-    fn svg_css_override_policy_is_owned_only_by_svg_options() {
-        let options = parse_options(
-            br##"{
-                "svg": {
-                    "pipeline": "resvg-safe",
-                    "css_override_policy": "preserve"
-                }
-            }"##,
+    fn one_shot_binding_rejects_css_override_policy() {
+        let error = render_svg(
+            b"flowchart TD\nA[Plain source]",
+            br#"{"svg":{"css_override_policy":"preserve"}}"#,
         )
-        .unwrap();
-        let pipeline = request::pipeline_for_options(&options).unwrap();
-        let out = pipeline
-            .process_to_string(
-                r#"<svg id="host"><style>.node{fill:red !important;}</style></svg>"#,
-                &render_session(),
-            )
-            .unwrap();
+        .unwrap_err();
 
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
         assert!(
-            out.contains("!important"),
-            "svg.css_override_policy=preserve should retain existing important declarations: {out}"
+            error.message().contains("svg.css_override_policy"),
+            "{error:?}"
         );
+        assert!(error.message().contains("trusted Rust or native CLI host"));
     }
 
     #[test]
@@ -566,70 +600,62 @@ B -->|No| D[Debug]";
     }
 
     #[test]
-    fn svg_options_can_inject_host_scoped_css() {
-        let options = br##"{
-            "svg": {
-                "diagram_id": "bindings host css",
-                "scoped_css": ".node rect { fill: #abcdef; }"
-            }
-        }"##;
-        let svg = String::from_utf8(render_svg(b"flowchart TD\nA[Plain source]", options).unwrap())
-            .unwrap();
+    fn one_shot_binding_rejects_snake_case_scoped_css() {
+        let error = render_svg(
+            b"flowchart TD\nA[Plain source]",
+            br##"{
+                "svg": {
+                    "diagram_id": "bindings host css",
+                    "scoped_css": ".node rect { fill: #abcdef; }"
+                }
+            }"##,
+        )
+        .unwrap_err();
 
-        assert!(svg.contains(r#"data-merman-postprocess="scoped-css""#));
-        assert!(
-            svg.contains("#bindings-host-css .node rect { fill: #abcdef; }"),
-            "{svg}"
-        );
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(error.message().contains("svg.scoped_css"), "{error:?}");
+        assert!(error.message().contains("trusted Rust or native CLI host"));
     }
 
     #[test]
-    fn svg_options_scoped_css_can_strip_existing_important() {
-        let options = parse_options(
+    fn reusable_binding_constructor_rejects_camel_case_scoped_css() {
+        let error = match crate::BindingEngine::new(
             br##"{
                 "svg": {
                     "pipeline": "parity",
-                    "scoped_css": ".node { fill: #00ff00; }",
-                    "css_override_policy": "strip-existing-important"
+                    "scopedCss": ".node { fill: #00ff00; }"
                 }
             }"##,
-        )
-        .unwrap();
-        let pipeline = request::pipeline_for_options(&options).unwrap();
-        let out = pipeline
-            .process_to_string(
-                r#"<svg id="host"><style>.node{fill:red !important;}</style><g/></svg>"#,
-                &render_session(),
-            )
-            .unwrap();
+        ) {
+            Ok(_) => panic!("general bindings must reject raw scoped CSS at construction"),
+            Err(error) => error,
+        };
 
-        assert!(!out.contains("!important"), "{out}");
-        assert!(out.contains("#host .node { fill: #00ff00; }"));
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(error.message().contains("svg.scopedCss"), "{error:?}");
+        assert!(error.message().contains("trusted Rust or native CLI host"));
     }
 
     #[test]
-    fn resvg_safe_scoped_css_is_sanitized_after_injection() {
-        let options = parse_options(
-            br##"{
-                "svg": {
-                    "pipeline": "resvg-safe",
-                    "scoped_css": "@keyframes dash { to { stroke-dashoffset: 10; } } .edge { animation: dash 1s; transform: rotate(45deg); }"
-                }
-            }"##,
-        )
-        .unwrap();
-        let pipeline = request::pipeline_for_options(&options).unwrap();
-        let out = pipeline
-            .process_to_string(
-                r#"<svg id="host"><path class="edge"/></svg>"#,
-                &render_session(),
+    fn reusable_request_overlay_cannot_inject_scoped_css() {
+        let engine = crate::BindingEngine::new(b"").unwrap();
+        let error = engine
+            .execute(
+                crate::BindingOperationRequest::new("svg", b"flowchart TD\nA[Plain source]")
+                    .with_options_json(
+                        br##"{
+                            "svg": {
+                                "pipeline": "resvg-safe",
+                                "scoped_css": "@keyframes dash { to { stroke-dashoffset: 10; } }"
+                            }
+                        }"##,
+                    ),
             )
-            .unwrap();
+            .unwrap_err();
 
-        assert!(!out.contains("@keyframes"), "{out}");
-        assert!(!out.contains("animation"), "{out}");
-        assert!(!out.contains("45deg"), "{out}");
-        assert!(out.contains("#host .edge"));
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(error.message().contains("svg.scoped_css"), "{error:?}");
+        assert!(error.message().contains("trusted Rust or native CLI host"));
     }
 
     #[test]
@@ -669,15 +695,21 @@ B -->|No| D[Debug]";
     }
 
     #[test]
-    fn invalid_css_override_policy_returns_invalid_argument() {
-        let err = render_svg(
-            b"flowchart TD\nA[Hello]",
-            br#"{ "svg": { "css_override_policy": "remove-everything" } }"#,
-        )
-        .unwrap_err();
+    fn reusable_request_overlay_rejects_camel_case_css_override_policy() {
+        let engine = crate::BindingEngine::new(b"").unwrap();
+        let error = engine
+            .execute(
+                crate::BindingOperationRequest::new("svg", b"flowchart TD\nA[Hello]")
+                    .with_options_json(br#"{"svg":{"cssOverridePolicy":"preserve"}}"#),
+            )
+            .unwrap_err();
 
-        assert_eq!(err.status(), BindingStatus::InvalidArgument);
-        assert!(err.message().contains("svg.css_override_policy"));
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(
+            error.message().contains("svg.cssOverridePolicy"),
+            "{error:?}"
+        );
+        assert!(error.message().contains("trusted Rust or native CLI host"));
     }
 
     #[test]
@@ -1042,10 +1074,6 @@ Missing ref: id2,after missing,1d
                 "resources.profile",
             ),
             (r#"{ "svg": { "pipeline": "resvg_safe" } }"#, "svg.pipeline"),
-            (
-                r#"{ "svg": { "css_override_policy": "strip_existing_important" } }"#,
-                "svg.css_override_policy",
-            ),
             (
                 r#"{ "theme": { "preset": "editor_light" } }"#,
                 "theme.preset",

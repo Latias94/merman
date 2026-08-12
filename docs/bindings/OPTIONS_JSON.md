@@ -37,8 +37,7 @@ than translated implicitly.
     "themeVariables": {
       "mainBkg": "#111827",
       "nodeTextColor": "#f8fafc"
-    },
-    "themeCSS": ".node rect { stroke-width: 2px; }"
+    }
   },
   "parse": {
     "suppress_errors": false
@@ -113,8 +112,6 @@ than translated implicitly.
   "svg": {
     "diagram_id": "my-diagram",
     "pipeline": "parity",
-    "scoped_css": ".node rect { stroke-width: 2px; }",
-    "css_override_policy": "preserve",
     "root_background_color": "#0f172a",
     "drop_native_duplicate_fallbacks": false
   },
@@ -249,9 +246,8 @@ currently `-1439` through `1439`. Invalid values return `MERMAN_INVALID_ARGUMENT
 
 ## Site Config
 
-`site_config` accepts the same Mermaid configuration object that Rust users pass through
-`HeadlessRenderer::with_site_config(...)`. It is intended for host-level Mermaid defaults such as
-theme selection, `themeVariables`, and Mermaid `themeCSS`:
+`site_config` accepts bounded Mermaid configuration values for host-level behavior defaults such as
+theme selection and `themeVariables`:
 
 ```json
 {
@@ -261,15 +257,18 @@ theme selection, `themeVariables`, and Mermaid `themeCSS`:
       "mainBkg": "#111827",
       "nodeTextColor": "#f8fafc",
       "nodeBorder": "#38bdf8"
-    },
-    "themeCSS": ".node rect { filter: drop-shadow(1px 1px 1px #000); }"
+    }
   }
 }
 ```
 
-`site_config` must be a JSON object. Non-object values return `MERMAN_INVALID_ARGUMENT`. This option
-does not apply host palette replacement or product-specific CSS postprocessing; use explicit host
-postprocessing for editor-specific colors.
+`site_config` must be a JSON object. Non-object values return `MERMAN_INVALID_ARGUMENT`.
+`site_config.themeCSS` and `site_config.secure` are rejected by general bindings. Raw CSS and the
+set of protected Mermaid configuration keys are host trust decisions, so callers cannot replace
+them through one-shot options, reusable constructors, or request overlays. Trusted native hosts
+must use the Rust rendering API or native CLI host configuration. Binding consumers should use the
+typed `theme` schema for diagram styling and `svg.root_background_color` for the narrow root-canvas
+override.
 
 ## Diagram Theme
 
@@ -347,7 +346,8 @@ Theme selection is not part of the generic request deep merge. For a reusable en
 `preset` or `spec` replaces it as one complete value. Requests cannot raise the constructor's
 theme admission or resource policies.
 
-Raw Mermaid overrides belong at top-level `site_config`; output choices belong under `svg`.
+Bounded Mermaid behavior overrides belong at top-level `site_config`; output choices belong under
+`svg`. Raw CSS is not part of either general-binding surface.
 `presentation` and `host_theme` are removed groups and return migration-oriented errors. Use
 top-level `theme`, `site_config`, explicit layout configuration, and `svg` as independent owners.
 
@@ -627,8 +627,6 @@ does not depend on them.
 | `svg.diagram_id` | string | renderer default | Overrides the root SVG diagram id. |
 | `svg.viewbox_padding` / `svg.viewBoxPadding` | non-negative finite number | `8` | Extra CSS-pixel padding around the computed SVG viewBox. |
 | `svg.pipeline` | string | `parity` | `parity`, `readable`, or `resvg-safe`. |
-| `svg.scoped_css` | string | none | Host-owned CSS injected after Mermaid CSS and scoped to the root SVG id. |
-| `svg.css_override_policy` | string | `preserve` | `preserve` or `strip-existing-important`. Controls whether existing Mermaid `!important` flags are stripped before host CSS is applied. |
 | `svg.root_background_color` | string | none | Host-owned root `<svg>` inline `background-color` replacement. |
 | `svg.drop_native_duplicate_fallbacks` | boolean | `false` | Adds generic duplicate fallback cleanup after readable or `resvg-safe` fallback generation. `resvg-safe` already removes generated fallback groups for native SVG `<switch>` text fallbacks, and this option covers additional native/fallback duplicate surfaces. |
 
@@ -645,11 +643,10 @@ Mermaid-compatible SVG and can include `<foreignObject>` HTML labels. Hosts that
 bytes into strict SVG renderers, rasterizers, or PDF converters should request `resvg-safe`
 explicitly instead of treating the default SVG as export-safe input.
 
-`svg.scoped_css` is for host-owned styling, not Mermaid parity CSS. Selectors are scoped to the
-root SVG id and injected after Mermaid's styles so host rules have normal cascade priority. When
-`svg.pipeline` is `resvg-safe`, merman sanitizes the injected CSS after insertion to preserve the
-raster-safe contract as far as the built-in sanitizer can. Hosts still own CSS trust, palette
-semantics, and renderer-specific compatibility.
+General bindings reject `svg.scoped_css`, `svg.scopedCss`, `svg.css_override_policy`, and
+`svg.cssOverridePolicy`. CSS acceptance and changes to existing cascade priority are host trust
+decisions and therefore remain limited to trusted Rust and native CLI integrations. This rejection
+applies to one-shot options, reusable-engine constructors, and request-local overlays.
 
 `svg.root_background_color` is narrower than host CSS. It rewrites the root `<svg>` inline
 `background-color` value, or adds one when missing. This is useful for editor previews that need the
@@ -712,19 +709,6 @@ Readable SVG with generic duplicate native/fallback labels removed:
   "svg": {
     "pipeline": "readable",
     "drop_native_duplicate_fallbacks": true
-  }
-}
-```
-
-Resvg-safe SVG with host-scoped CSS:
-
-```json
-{
-  "svg": {
-    "pipeline": "resvg-safe",
-    "diagram_id": "host-preview",
-    "scoped_css": ".node rect { fill: #111827; } .merman-foreignobject-fallback-text { fill: #f8fafc; }",
-    "css_override_policy": "strip-existing-important"
   }
 }
 ```

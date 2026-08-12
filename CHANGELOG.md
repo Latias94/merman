@@ -11,7 +11,8 @@ The next workspace release remains in development. This section records only com
 ### Breaking changes
 
 - Default Android, Apple, Python, and Flutter native artifacts now bundle SVG, Cytoscape and ELK layouts, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native clock/time-zone/random adapters. Generated wrapper methods remain stable and report typed missing-capability or unsupported-operation errors; consumers that need an omitted operation must build a current-contract custom native library.
-- Replaced the prerelease `HostThemeProfile`, `Presentation`, presentation-profile, and `merman-modern` compatibility surfaces with one compiled `DiagramTheme` model. Rust callers select it through `HeadlessRenderer::with_theme(...)`; bindings use the closed `theme` preset-or-spec group, raw Mermaid overrides remain top-level `site_config`, and output policy remains under `svg`. Use `theme-catalog` metadata for artifact-aware preset and capability discovery.
+- Replaced the prerelease `HostThemeProfile`, `Presentation`, presentation-profile, and `merman-modern` compatibility surfaces with one compiled `DiagramTheme` model. Rust callers select it through `HeadlessRenderer::with_theme(...)`; bindings use the closed `theme` preset-or-spec group, bounded Mermaid behavior overrides remain top-level `site_config`, and output policy remains under `svg`. Use `theme-catalog` metadata for artifact-aware preset and capability discovery.
+- Removed host-owned CSS and security controls from general binding and Web options. `site_config.themeCSS`, `site_config.secure`, `svg.scoped_css`, `svg.scopedCss`, `svg.css_override_policy`, and `svg.cssOverridePolicy` are rejected across one-shot calls, reusable constructors, and request overlays; trusted Rust and native CLI hosts retain the explicit scoped-CSS and override-policy capabilities.
 
 ### Added
 

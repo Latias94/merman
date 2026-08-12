@@ -12,7 +12,7 @@ Merman keeps independent concerns in separate owners:
 | Owner | Public input | Use it for |
 | --- | --- | --- |
 | Compiled diagram theme | `DiagramThemeSpec` -> `DiagramThemeCompiler` -> `DiagramTheme`; `HeadlessRenderer::with_theme(...)` | Typed semantic styles, typography, canvas, effects, font assets, and the explicit Mermaid compatibility lane |
-| Mermaid configuration | `HeadlessRenderer::with_site_config(...)` / top-level `site_config` | Official Mermaid `theme`, `themeVariables`, `themeCSS`, `look`, layout, and family configuration |
+| Mermaid configuration | `HeadlessRenderer::with_site_config(...)` / bounded binding `site_config` | Official Mermaid `theme`, `themeVariables`, `look`, layout, and family configuration; raw `themeCSS` is limited to trusted Rust/native CLI hosts |
 | Layout and runtime | `HeadlessRenderer::with_layout_options(...)`, `RenderEnvironment`, and explicit layout configuration | Container dimensions, text measurement, math, resource policy, and renderer selection |
 | SVG output | `HeadlessRenderer::with_svg_pipeline(...)` / `svg` | Parity, readable, or `resvg-safe` post-processing and output policy |
 
@@ -97,7 +97,7 @@ value:
 | Semantic palette, typography, geometry, and ordinal series | `DiagramThemeSpec` / `ThemeTokens` | Experimental typed support |
 | Layered canvas and bounded effects | `DiagramThemeSpec` | Experimental typed model; target evidence is still required |
 | Exact Mermaid variables and per-family settings | `MermaidConfig` / `site_config` or `DiagramThemeSpec::mermaid` | Supported compatibility lanes, with Mermaid precedence |
-| Selector-heavy `themeCSS` | `site_config.themeCSS` | Compatibility lane; not typed portability evidence |
+| Selector-heavy `themeCSS` | Trusted Rust/native CLI `site_config.themeCSS` | Host capability lane; rejected by general bindings and not typed portability evidence |
 | Solid exported background and SVG cleanup | `SvgOutputPolicy` / `SvgPipeline` | Explicit output policy |
 | External fonts and exact glyph metrics | `ThemeAssets`/`FontCatalogSpec` plus a matching text-measurement policy | Resource- and target-dependent |
 | Product annotations, editor overlays, and controls | Host application | Outside the diagram-theme contract |
@@ -193,7 +193,8 @@ Configuration precedence is structural and independent of builder call order:
 
 1. The base `Engine` configuration.
 2. The compiled theme's explicit Mermaid compatibility values.
-3. Explicit renderer or binding `site_config`.
+3. Explicit renderer or bounded binding `site_config`; general bindings cannot supply `themeCSS`
+   or replace `secure`.
 4. Diagram frontmatter and directives, subject to hardened secure keys.
 5. Typed semantic rules, typography, canvas, effects, and resources are resolved by the family,
    document, and output stages that consume them; their evidence is reported separately from the

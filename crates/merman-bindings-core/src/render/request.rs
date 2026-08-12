@@ -240,23 +240,6 @@ impl RenderOperationConfig {
                     }
                 };
             }
-            if let Some(raw_policy) = svg.css_override_policy.as_deref() {
-                output.css_override_policy = match normalize_option(raw_policy).as_str() {
-                    "preserve" => merman::svg::CssOverridePolicy::Preserve,
-                    "strip-existing-important" => {
-                        merman::svg::CssOverridePolicy::StripExistingImportant
-                    }
-                    other => {
-                        return Err(BindingError::new(
-                            BindingStatus::InvalidArgument,
-                            format!("unsupported svg.css_override_policy: {other}"),
-                        ));
-                    }
-                };
-            }
-            if let Some(scoped_css) = svg.scoped_css.as_deref() {
-                output.scoped_css = Some(scoped_css.to_string());
-            }
             if let Some(root_background_color) = svg.root_background_color.as_deref() {
                 output.root_background_color = Some(css_declaration_value(
                     root_background_color,

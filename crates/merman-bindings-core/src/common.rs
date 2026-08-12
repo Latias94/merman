@@ -689,8 +689,6 @@ pub(crate) struct SvgOptionsJson {
     #[serde(default, alias = "viewBoxPadding")]
     pub(crate) viewbox_padding: Option<f64>,
     pub(crate) pipeline: Option<String>,
-    pub(crate) scoped_css: Option<String>,
-    pub(crate) css_override_policy: Option<String>,
     pub(crate) root_background_color: Option<String>,
     pub(crate) drop_native_duplicate_fallbacks: Option<bool>,
 }
@@ -953,6 +951,7 @@ fn parse_options_value_for_contract(
     crate::theme::validate_theme_wire(value.get("theme"))?;
     #[cfg(feature = "svg")]
     reject_removed_layout_fields(value)?;
+    reject_untrusted_binding_css_options(value)?;
     #[cfg(feature = "ascii")]
     reject_removed_ascii_resource_field(value)?;
     reject_removed_nested_analysis_parse_option(value)?;
@@ -999,6 +998,55 @@ fn reject_removed_presentation(value: &Value) -> Result<(), BindingError> {
             "options group `presentation` was removed; use top-level `theme`, `site_config`, layout configuration, and `svg` as independent owners",
         ));
     }
+    Ok(())
+}
+
+fn reject_untrusted_binding_css_options(value: &Value) -> Result<(), BindingError> {
+    if let Some(site_config) = binding_analysis_options_root_value(value)?
+        .as_object()
+        .and_then(|options| options.get("site_config"))
+        .and_then(Value::as_object)
+    {
+        if site_config.contains_key("themeCSS") {
+            return Err(BindingError::new(
+                BindingStatus::OptionsJsonError,
+                "site_config.themeCSS is not accepted by general bindings; use the typed `theme` schema instead, or let a trusted Rust or native CLI host own raw CSS explicitly",
+            ));
+        }
+        if site_config.contains_key("secure") {
+            return Err(BindingError::new(
+                BindingStatus::OptionsJsonError,
+                "site_config.secure is not accepted by general bindings because callers cannot replace the host security boundary; configure it only through a trusted Rust or native CLI host",
+            ));
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    let Some(svg) = value
+        .as_object()
+        .and_then(|options| options.get("svg"))
+        .and_then(Value::as_object)
+    else {
+        return Ok(());
+    };
+
+    #[cfg(feature = "svg")]
+    for field in [
+        "scoped_css",
+        "scopedCss",
+        "css_override_policy",
+        "cssOverridePolicy",
+    ] {
+        if svg.contains_key(field) {
+            return Err(BindingError::new(
+                BindingStatus::OptionsJsonError,
+                format!(
+                    "svg.{field} is not accepted by general bindings; host-owned CSS controls are restricted to a trusted Rust or native CLI host, so use the typed `theme` schema or `svg.root_background_color` instead"
+                ),
+            ));
+        }
+    }
+
     Ok(())
 }
 
@@ -1639,15 +1687,6 @@ pub(crate) fn binding_site_config(
         return Err(BindingError::new(
             BindingStatus::InvalidArgument,
             "site_config must be a JSON object",
-        ));
-    }
-    if site_config
-        .as_object()
-        .is_some_and(|config| config.contains_key("themeCSS"))
-    {
-        return Err(BindingError::new(
-            BindingStatus::InvalidArgument,
-            "site_config.themeCSS is not accepted by general bindings; use the typed `theme` schema instead",
         ));
     }
     Ok(Some(merman::MermaidConfig::from_value(site_config.clone())))
@@ -3734,6 +3773,26 @@ mod tests {
                 err.message()
                     .contains("analysis option `parse` was removed"),
                 "unexpected error: {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_binding_artifact_rejects_site_config_trust_controls() {
+        for input in [
+            r#"{"site_config":{"themeCSS":".node {}"}}"#,
+            r#"{"site_config":{"secure":[]}}"#,
+            r#"{"analysis":{"site_config":{"themeCSS":".node {}"}}}"#,
+            r#"{"analysis":{"site_config":{"secure":[]}}}"#,
+            r#"{"merman":{"site_config":{"themeCSS":".node {}"}}}"#,
+            r#"{"merman":{"site_config":{"secure":[]}}}"#,
+        ] {
+            let error = parse_options(input.as_bytes()).unwrap_err();
+            assert_eq!(error.status(), BindingStatus::OptionsJsonError, "{input}");
+            assert!(
+                error.message().contains("site_config.themeCSS")
+                    || error.message().contains("site_config.secure"),
+                "{input}: {error:?}"
             );
         }
     }
