@@ -703,25 +703,29 @@ fn theme_catalog_for(artifact_contract: &ValidatedArtifactContract) -> BindingTh
             presets,
             known_capability_ids: sorted_theme_ids(
                 merman::svg::ThemeCapability::ALL
-                    .into_iter()
+                    .iter()
+                    .copied()
                     .map(merman::svg::ThemeCapability::id)
                     .collect(),
             ),
             known_text_capability_ids: sorted_theme_ids(
                 merman::svg::TextLayoutCapability::ALL
-                    .into_iter()
+                    .iter()
+                    .copied()
                     .map(merman::svg::TextLayoutCapability::id)
                     .collect(),
             ),
             known_font_container_ids: sorted_theme_ids(
                 merman::svg::FontContainer::ALL
-                    .into_iter()
+                    .iter()
+                    .copied()
                     .map(merman::svg::FontContainer::id)
                     .collect(),
             ),
             known_font_source_ids: sorted_theme_ids(
                 merman::svg::FontSource::ALL
-                    .into_iter()
+                    .iter()
+                    .copied()
                     .map(merman::svg::FontSource::id)
                     .collect(),
             ),
@@ -734,7 +738,8 @@ fn theme_catalog_for(artifact_contract: &ValidatedArtifactContract) -> BindingTh
             ),
             known_variant_ids: sorted_theme_ids(
                 merman::svg::ThemeVariant::ALL
-                    .into_iter()
+                    .iter()
+                    .copied()
                     .map(merman::svg::ThemeVariant::id)
                     .collect(),
             ),

@@ -1539,14 +1539,16 @@ fn parse_effect_input(value: &str) -> Result<EffectInput, BindingError> {
 
 fn parse_theme_capability(value: &str) -> Result<ThemeCapability, BindingError> {
     ThemeCapability::ALL
-        .into_iter()
+        .iter()
+        .copied()
         .find(|capability| capability.id() == value)
         .ok_or_else(|| unsupported("theme.spec.requirements.capabilities", value))
 }
 
 fn parse_text_layout_capability(value: &str) -> Result<TextLayoutCapability, BindingError> {
     TextLayoutCapability::ALL
-        .into_iter()
+        .iter()
+        .copied()
         .find(|capability| capability.id() == value)
         .ok_or_else(|| unsupported("theme.spec.requirements.text_capabilities", value))
 }

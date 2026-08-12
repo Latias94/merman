@@ -30,7 +30,7 @@ fn theme_catalog_contains_only_visual_presets() {
 
 #[test]
 fn built_in_presets_compile_without_selecting_layout_or_look() {
-    for preset in ThemePreset::ALL {
+    for preset in ThemePreset::ALL.iter().copied() {
         DiagramThemeCompiler::new()
             .compile_preset(preset)
             .expect("built-in theme preset should compile");

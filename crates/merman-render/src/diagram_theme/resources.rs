@@ -93,7 +93,7 @@ pub enum ThemeResourceLimitId {
 }
 
 impl ThemeResourceLimitId {
-    pub const ALL: [Self; THEME_RESOURCE_LIMIT_COUNT] = [
+    pub const ALL: &'static [Self] = &[
         Self::MaxThemeEncodedBytes,
         Self::MaxThemeBase64Bytes,
         Self::MaxFontAssetCompressedBytes,
@@ -768,7 +768,8 @@ impl ThemeResourcePolicy {
 
     pub fn explicit_overrides(&self) -> impl Iterator<Item = (ThemeResourceLimitId, usize)> + '_ {
         ThemeResourceLimitId::ALL
-            .into_iter()
+            .iter()
+            .copied()
             .filter_map(|id| self.explicit_override(id).map(|value| (id, value)))
     }
 
@@ -859,7 +860,7 @@ impl ThemeResourcePolicy {
         &self,
         restriction: &Self,
     ) -> Result<Self, ThemeResourcePolicyRestrictionError> {
-        for id in ThemeResourceLimitId::ALL {
+        for id in ThemeResourceLimitId::ALL.iter().copied() {
             let ceiling = self.value(id);
             let requested = restriction.value(id);
             if loosens_ceiling(ceiling, requested) {

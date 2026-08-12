@@ -34,7 +34,7 @@ pub enum FontContainer {
 }
 
 impl FontContainer {
-    pub const ALL: [Self; 4] = [
+    pub const ALL: &'static [Self] = &[
         Self::TrueType,
         Self::OpenType,
         Self::Collection,
@@ -60,7 +60,7 @@ pub enum FontStyle {
 }
 
 impl FontStyle {
-    pub const ALL: [Self; 3] = [Self::Normal, Self::Italic, Self::Oblique];
+    pub const ALL: &'static [Self] = &[Self::Normal, Self::Italic, Self::Oblique];
 
     pub const fn id(self) -> &'static str {
         match self {
@@ -105,7 +105,7 @@ pub enum GenericFontFamily {
 }
 
 impl GenericFontFamily {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: &'static [Self] = &[
         Self::Serif,
         Self::SansSerif,
         Self::Monospace,
@@ -127,7 +127,8 @@ impl GenericFontFamily {
 
     pub(crate) fn from_css_keyword(value: &str) -> Option<Self> {
         Self::ALL
-            .into_iter()
+            .iter()
+            .copied()
             .find(|family| family.id().eq_ignore_ascii_case(value))
     }
 }

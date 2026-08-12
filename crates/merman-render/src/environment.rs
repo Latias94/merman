@@ -2129,7 +2129,8 @@ impl RenderSession {
         let usage = self.trusted_theme_lane_usage.load(Ordering::Relaxed);
         TrustedThemeLanes::from_allowed(
             TrustedThemeLane::ALL
-                .into_iter()
+                .iter()
+                .copied()
                 .filter(|lane| usage & lane.usage_mask() != 0),
         )
     }

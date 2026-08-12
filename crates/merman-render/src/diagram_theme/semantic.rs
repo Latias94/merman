@@ -248,7 +248,7 @@ pub enum ThemeVariant {
 }
 
 impl ThemeVariant {
-    pub const ALL: [Self; 14] = [
+    pub const ALL: &'static [Self] = &[
         Self::Default,
         Self::Primary,
         Self::Secondary,

@@ -35,7 +35,7 @@ pub enum ThemeCapability {
 }
 
 impl ThemeCapability {
-    pub const ALL: [Self; 26] = [
+    pub const ALL: &'static [Self] = &[
         Self::SemanticTokens,
         Self::Typography,
         Self::SemanticRules,
@@ -117,7 +117,7 @@ pub enum TextLayoutCapability {
 }
 
 impl TextLayoutCapability {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: &'static [Self] = &[
         Self::CatalogBinding,
         Self::UnicodeClusterFallback,
         Self::OpenTypeShaping,
@@ -175,7 +175,7 @@ pub enum FontSource {
 }
 
 impl FontSource {
-    pub const ALL: [Self; 2] = [Self::Embedded, Self::System];
+    pub const ALL: &'static [Self] = &[Self::Embedded, Self::System];
 
     pub const fn id(self) -> &'static str {
         match self {
@@ -286,7 +286,7 @@ pub enum HostMeasurementFallback {
 }
 
 impl HostMeasurementFallback {
-    pub const ALL: [Self; 3] = [
+    pub const ALL: &'static [Self] = &[
         Self::AcceptHostDependent,
         Self::NativeCatalog,
         Self::VendoredDefault,
@@ -397,7 +397,7 @@ pub enum TrustedThemeLane {
 }
 
 impl TrustedThemeLane {
-    pub const ALL: [Self; 3] = [
+    pub const ALL: &'static [Self] = &[
         Self::RawThemeCss,
         Self::ArbitrarySvg,
         Self::SvgPostprocessor,
@@ -439,7 +439,7 @@ impl TrustedThemeLanes {
 
     pub fn all() -> Self {
         Self {
-            allowed: TrustedThemeLane::ALL.into_iter().collect(),
+            allowed: TrustedThemeLane::ALL.iter().copied().collect(),
         }
     }
 
@@ -541,8 +541,8 @@ pub struct ThemeAdmissionPolicy {
 impl ThemeAdmissionPolicy {
     pub fn permissive() -> Self {
         Self {
-            allowed_capabilities: ThemeCapability::ALL.into_iter().collect(),
-            allowed_text_capabilities: TextLayoutCapability::ALL.into_iter().collect(),
+            allowed_capabilities: ThemeCapability::ALL.iter().copied().collect(),
+            allowed_text_capabilities: TextLayoutCapability::ALL.iter().copied().collect(),
             trusted_lanes: TrustedThemeLanes::none(),
         }
     }
@@ -1068,7 +1068,7 @@ mod tests {
 
     #[test]
     fn every_theme_capability_is_admitted_only_by_set_intersection() {
-        for capability in ThemeCapability::ALL {
+        for capability in ThemeCapability::ALL.iter().copied() {
             let requirements =
                 ThemeRequirements::default().with_required_capabilities([capability]);
             let denied = ThemeAdmissionPolicy::permissive().with_allowed_capabilities([]);
@@ -1085,7 +1085,7 @@ mod tests {
 
     #[test]
     fn every_text_capability_is_admitted_only_by_set_intersection() {
-        for capability in TextLayoutCapability::ALL {
+        for capability in TextLayoutCapability::ALL.iter().copied() {
             let requirements =
                 ThemeRequirements::default().with_required_text_capabilities([capability]);
             let denied = ThemeAdmissionPolicy::permissive().with_allowed_text_capabilities([]);
@@ -1105,13 +1105,15 @@ mod tests {
         for host_mask in 0_u8..8 {
             for restriction_mask in 0_u8..8 {
                 let host_values = TrustedThemeLane::ALL
-                    .into_iter()
+                    .iter()
+                    .copied()
                     .enumerate()
                     .filter(|(index, _)| host_mask & (1 << index) != 0)
                     .map(|(_, value)| value)
                     .collect::<Vec<_>>();
                 let restriction_values = TrustedThemeLane::ALL
-                    .into_iter()
+                    .iter()
+                    .copied()
                     .enumerate()
                     .filter(|(index, _)| restriction_mask & (1 << index) != 0)
                     .map(|(_, value)| value)

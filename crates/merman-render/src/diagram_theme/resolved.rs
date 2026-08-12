@@ -1059,7 +1059,7 @@ mod tests {
             .unwrap();
         let resolved = theme.resolve(RenderFamilyKind::Flowchart);
 
-        for variant in ThemeVariant::ALL {
+        for variant in ThemeVariant::ALL.iter().copied() {
             for ordinal in [None, Some(0), Some(1), Some(2), Some(3)] {
                 assert_eq!(
                     resolved.style(ThemeTarget::Node, variant, ordinal),

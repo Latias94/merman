@@ -14,7 +14,9 @@ pub enum ThemePreset {
 }
 
 impl ThemePreset {
-    pub const ALL: [Self; 7] = [
+    /// Stable catalog view; keep the collection behind a slice so adding a preset does not
+    /// change a public array length/type.
+    pub const ALL: &'static [Self] = &[
         Self::EditorLight,
         Self::EditorDark,
         Self::OneDark,
@@ -45,7 +47,8 @@ impl ThemePreset {
 
     pub fn from_id(id: &str) -> Result<Self, ThemePresetParseError> {
         Self::ALL
-            .into_iter()
+            .iter()
+            .copied()
             .find(|preset| preset.id() == id)
             .ok_or_else(|| ThemePresetParseError { id: id.to_string() })
     }
@@ -409,7 +412,7 @@ mod tests {
 
     #[test]
     fn built_in_presets_keep_mermaid_compatibility_without_layout_or_look() {
-        for preset in ThemePreset::ALL {
+        for preset in ThemePreset::ALL.iter().copied() {
             let (theme, _) = compiled(preset);
             let config = theme.spec().mermaid().to_mermaid_config();
 
