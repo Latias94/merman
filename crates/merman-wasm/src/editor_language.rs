@@ -946,6 +946,25 @@ fn normalized_editor_max_source_bytes(
             )
         })?;
 
+    let profile_id = resources
+        .get("profile")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(ceiling.profile_id);
+    let profile_max_source_bytes = crate::wasm_runtime_catalog()
+        .resources
+        .profiles
+        .iter()
+        .find(|profile| profile.id == profile_id)
+        .and_then(|profile| profile.limits.get("max_source_bytes"))
+        .copied()
+        .flatten()
+        .ok_or_else(|| {
+            BindingError::new(
+                BindingStatus::InternalError,
+                format!("WASM runtime catalog profile `{profile_id}` must define max_source_bytes"),
+            )
+        })?;
+
     match resources
         .get("limits")
         .and_then(serde_json::Value::as_object)
@@ -960,7 +979,7 @@ fn normalized_editor_max_source_bytes(
                     "normalized max_source_bytes must fit usize",
                 )
             }),
-        None => Ok(ceiling.max_source_bytes),
+        None => Ok(profile_max_source_bytes.min(ceiling.max_source_bytes)),
     }
 }
 
