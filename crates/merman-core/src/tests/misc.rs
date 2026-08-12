@@ -1156,6 +1156,61 @@ fn parse_lenient_failures_use_error_diagram_across_engine_entrypoints() {
 }
 
 #[test]
+fn controlled_render_model_parse_returns_structured_cancellation_before_work() {
+    let operation = OperationControl::new();
+    operation.cancel();
+
+    let error = Engine::new()
+        .parse_diagram_for_render_model_controlled_sync(
+            "flowchart TD\nA-->B\n",
+            ParseOptions::strict(),
+            &operation,
+        )
+        .expect_err("cancelled operation must stop before parsing");
+
+    assert_eq!(error.phase, OperationPhase::Admission);
+    assert_eq!(error.reason, CancelReason::Requested);
+}
+
+#[test]
+fn controlled_render_model_parse_stops_inside_family_parser() {
+    let mut source = String::from("flowchart TD\n");
+    for index in 0..4_096 {
+        source.push_str(&format!("n{index}-->n{}\n", index + 1));
+    }
+    let operation = OperationControl::new();
+    operation.cancel_after_checkpoints(128);
+
+    let error = Engine::new()
+        .parse_diagram_for_render_model_controlled_sync(&source, ParseOptions::strict(), &operation)
+        .expect_err("scheduled cancellation must stop family parsing");
+
+    assert_eq!(error.reason, CancelReason::Requested);
+    assert!(matches!(
+        error.phase,
+        OperationPhase::Parse | OperationPhase::Semantic
+    ));
+}
+
+#[test]
+fn controlled_known_type_render_model_parse_skips_detection_but_observes_control() {
+    let operation = OperationControl::new();
+    operation.cancel();
+
+    let error = Engine::new()
+        .parse_diagram_for_render_model_with_type_controlled_sync(
+            "flowchart-v2",
+            "flowchart TD\nA-->B\n",
+            ParseOptions::strict(),
+            &operation,
+        )
+        .expect_err("known-type operation must still observe cancellation");
+
+    assert_eq!(error.reason, CancelReason::Requested);
+    assert_eq!(error.phase, OperationPhase::Admission);
+}
+
+#[test]
 fn explicit_error_diagram_uses_the_typed_builtin_render_model() {
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync("error", ParseOptions::strict())
@@ -1592,9 +1647,14 @@ fn panicking_custom_parser(
     panic!("custom parser fixture panic")
 }
 
-fn custom_overlay_render_parser(code: &str, meta: &ParseMetadata) -> Result<CustomJsonRenderModel> {
+fn custom_overlay_render_parser(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &ParseControl,
+) -> ParseControlResult<Result<CustomJsonRenderModel>> {
+    control.checkpoint()?;
     let edge_start = code.find("A-->B").unwrap();
-    Ok(CustomJsonRenderModel::new(
+    Ok(Ok(CustomJsonRenderModel::new(
         "custom-flowchart-model",
         json!({
             "owner": "custom-render",
@@ -1609,7 +1669,7 @@ fn custom_overlay_render_parser(code: &str, meta: &ParseMetadata) -> Result<Cust
                 },
             }],
         }),
-    ))
+    )))
 }
 
 fn expected_custom_title_after_sanitization() -> &'static str {

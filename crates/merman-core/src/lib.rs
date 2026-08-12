@@ -60,8 +60,8 @@ pub use family::{
     diagram_type_metadata_id, diagram_type_render_model_kind,
 };
 pub use operation::{
-    CancelReason, OperationCancelled, OperationControl, OperationLedger, OperationLedgerError,
-    OperationPhase, OperationResourceLimitExceeded,
+    CancelReason, OperationCancelled, OperationControl, OperationControlResult, OperationLedger,
+    OperationLedgerError, OperationPhase, OperationResourceLimitExceeded,
 };
 pub use parse_control::{ParseCancelled, ParseControl, ParseControlResult};
 pub use preprocess::{
@@ -491,6 +491,39 @@ impl Engine {
         parse_pipeline::ParsePipeline::detect(self, text, options).parse_render_model()
     }
 
+    /// Controlled variant of [`Self::parse_diagram_for_render_model_sync`].
+    ///
+    /// The caller owns the cloneable operation control and may cancel it from another thread or
+    /// task. Cancellation is returned through the outer result and is never folded into a parse
+    /// error or a partial render model.
+    pub fn parse_diagram_for_render_model_controlled_sync(
+        &self,
+        text: &str,
+        options: ParseOptions,
+        operation: &OperationControl,
+    ) -> OperationControlResult<Result<Option<ParsedDiagramRender>>> {
+        parse_pipeline::ParsePipeline::detect(self, text, options)
+            .parse_render_model_controlled(operation)
+    }
+
+    /// Parses a typed render model inside a caller-owned runtime context and operation.
+    ///
+    /// Higher-level render facades use this composition seam to keep runtime values and
+    /// cancellation state identical across parsing and target-specific layout/output stages.
+    /// Unlike [`Self::parse_diagram_for_render_model_controlled_sync`], this method does not
+    /// begin a replacement runtime operation.
+    #[doc(hidden)]
+    pub fn parse_diagram_for_render_model_controlled_in_context_sync(
+        &self,
+        text: &str,
+        options: ParseOptions,
+        operation: &OperationControl,
+        operation_context: &runtime::OperationContext,
+    ) -> OperationControlResult<Result<Option<ParsedDiagramRender>>> {
+        parse_pipeline::ParsePipeline::detect(self, text, options)
+            .parse_render_model_controlled_in_context(operation, operation_context)
+    }
+
     /// Async facade for [`Engine::parse_diagram_for_render_model_sync`].
     ///
     /// The work is CPU-bound and executes synchronously.
@@ -516,6 +549,32 @@ impl Engine {
     ) -> Result<Option<ParsedDiagramRender>> {
         parse_pipeline::ParsePipeline::known_type(self, diagram_type, text, options)
             .parse_render_model()
+    }
+
+    /// Controlled known-type variant of [`Self::parse_diagram_for_render_model_with_type_sync`].
+    pub fn parse_diagram_for_render_model_with_type_controlled_sync(
+        &self,
+        diagram_type: &str,
+        text: &str,
+        options: ParseOptions,
+        operation: &OperationControl,
+    ) -> OperationControlResult<Result<Option<ParsedDiagramRender>>> {
+        parse_pipeline::ParsePipeline::known_type(self, diagram_type, text, options)
+            .parse_render_model_controlled(operation)
+    }
+
+    /// Known-type composition seam for a caller-owned runtime context and operation.
+    #[doc(hidden)]
+    pub fn parse_diagram_for_render_model_with_type_controlled_in_context_sync(
+        &self,
+        diagram_type: &str,
+        text: &str,
+        options: ParseOptions,
+        operation: &OperationControl,
+        operation_context: &runtime::OperationContext,
+    ) -> OperationControlResult<Result<Option<ParsedDiagramRender>>> {
+        parse_pipeline::ParsePipeline::known_type(self, diagram_type, text, options)
+            .parse_render_model_controlled_in_context(operation, operation_context)
     }
 
     /// Async facade for [`Engine::parse_diagram_for_render_model_with_type_sync`].

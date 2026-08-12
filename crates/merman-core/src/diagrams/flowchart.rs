@@ -211,11 +211,24 @@ pub(crate) fn parse_flowchart_model_for_render(
     parse_flowchart_semantic_source(code, meta)?.into_render_model(meta)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_flowchart_model_with_render_context(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<(FlowchartModel, FlowchartRenderLabelSources)> {
     parse_flowchart_semantic_source(code, meta)?.into_render_model_parts(meta)
+}
+
+pub(crate) fn parse_flowchart_model_with_render_context_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &ParseControl,
+) -> ParseControlResult<Result<(FlowchartModel, FlowchartRenderLabelSources)>> {
+    let source = parse_flowchart_semantic_source_controlled(code, meta, control)?;
+    match source {
+        Ok(source) => source.into_render_model_parts_controlled(meta, control),
+        Err(error) => Ok(Err(error)),
+    }
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -265,6 +278,27 @@ fn parse_flowchart_semantic_source(
     let control = ParseControl::new();
     parse_flowchart_semantic_source_from_ast_controlled(ast, acc_title, acc_descr, meta, &control)
         .expect("a private parse control cannot be cancelled")
+}
+
+fn parse_flowchart_semantic_source_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &ParseControl,
+) -> ParseControlResult<Result<FlowchartSemanticSource>> {
+    control.checkpoint()?;
+    let FlowchartAccessibilityScan {
+        parser_input: code,
+        title: acc_title,
+        description: acc_descr,
+        ..
+    } = scan_flowchart_accessibility_controlled(code, control)?;
+    control.checkpoint()?;
+    let ast = match parse_flowchart_ast(&code, meta) {
+        Ok(ast) => ast,
+        Err(error) => return Ok(Err(error)),
+    };
+    control.checkpoint()?;
+    parse_flowchart_semantic_source_from_ast_controlled(ast, acc_title, acc_descr, meta, control)
 }
 
 fn parse_flowchart_semantic_source_from_ast_controlled(

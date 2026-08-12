@@ -137,6 +137,13 @@
 
 pub use merman_core::*;
 
+#[path = "operation.rs"]
+mod operation_runner;
+pub mod render;
+pub use render::{
+    RenderError, RenderOutput, RenderRequest, RenderTarget, Renderer, SemanticArtifact,
+};
+
 /// Error from the one-shot [`render_svg`] facade.
 ///
 /// [`NoDiagram`](Self::NoDiagram) distinguishes ordinary prose or an empty

@@ -8,6 +8,7 @@ use crate::{
     ParseMetadata, ParseOptions, Result, SourceSpan, common_db, diagram, diagrams::error_diagram,
     family, runtime, sanitize, theme,
 };
+use crate::{OperationControl, OperationControlResult, OperationPhase};
 use diagram::{
     CustomJsonRenderModel, DiagramParseOutcome, DiagramParseSnapshot, DiagramWarningFact,
     ParsedDiagram, ParsedDiagramRender, ParsedEditorFacts, RegistryOwner, RenderSemanticModel,
@@ -408,6 +409,92 @@ impl<'a> ParsePipeline<'a> {
         )
     }
 
+    /// Parses a typed render model while observing one caller-owned operation control.
+    ///
+    /// The existing render parser implementations remain family-owned. This seam checks the
+    /// shared control before and after each parser-owned stage, then returns cancellation through
+    /// the outer operation result instead of converting it into a Mermaid parse error.
+    pub(crate) fn parse_render_model_controlled(
+        &self,
+        operation: &OperationControl,
+    ) -> OperationControlResult<Result<Option<ParsedDiagramRender>>> {
+        let operation_context = match self.engine.begin_operation() {
+            Ok(context) => context,
+            Err(error) => return Ok(Err(error.into())),
+        };
+        self.parse_render_model_controlled_in_context(operation, &operation_context)
+    }
+
+    /// Parses a render model inside a caller-owned runtime context and operation.
+    ///
+    /// This is the composition seam for higher-level render facades. It deliberately does not
+    /// begin another runtime operation, so deterministic time, randomness, and timezone values
+    /// remain shared across parsing and every downstream target adapter.
+    pub(crate) fn parse_render_model_controlled_in_context(
+        &self,
+        operation: &OperationControl,
+        operation_context: &runtime::OperationContext,
+    ) -> OperationControlResult<Result<Option<ParsedDiagramRender>>> {
+        operation.checkpoint_at(OperationPhase::Admission)?;
+        let control = ParseControl::from_operation_control(operation.clone());
+        control.checkpoint_operation(OperationPhase::Parse)?;
+        runtime::with_operation_context(operation_context, || {
+            operation.checkpoint_at(OperationPhase::Parse)?;
+            let directive_recovery = if self.options.suppress_errors {
+                DirectiveRecoveryMode::RecoverLine
+            } else {
+                DirectiveRecoveryMode::Strict
+            };
+            let preprocessed = control.map_cancellation(
+                self.preprocess_for_with_directive_recovery_controlled(
+                    PreprocessPath::Render,
+                    directive_recovery,
+                    &control,
+                ),
+                OperationPhase::Parse,
+            )?;
+            let Some((code, meta)) = (match preprocessed {
+                Ok(preprocessed) => preprocessed,
+                Err(error) => return Ok(Err(error)),
+            }) else {
+                return Ok(Ok(None));
+            };
+            operation.checkpoint_at(OperationPhase::Semantic)?;
+            let source_map = EditorParseSourceMap::new(&code);
+            let parsed = control.map_cancellation(
+                self.parse_render_semantic_model_controlled(
+                    source_map.parser_input(),
+                    &meta,
+                    &control,
+                ),
+                OperationPhase::Semantic,
+            )?;
+            let mut output = match parsed {
+                Ok(output) => output,
+                Err(error) => {
+                    if !self.options.suppress_errors {
+                        return Ok(Err(source_map.remap_parse_error(error)));
+                    }
+                    return Ok(Ok(Some(error_diagram::suppressed_error_render_diagram(
+                        &meta,
+                    ))));
+                }
+            };
+            operation.checkpoint_at(OperationPhase::Semantic)?;
+            output
+                .model_mut()
+                .sanitize_common_db_fields(&meta.effective_config);
+            operation.checkpoint_at(OperationPhase::Semantic)?;
+            output.model_mut().remap_warning_fact_spans(|fact| {
+                Self::remap_warning_fact_spans(fact, &source_map);
+            });
+            operation.checkpoint_at(OperationPhase::Semantic)?;
+            Ok(Ok(Some(ParsedDiagramRender::from_parse_output(
+                meta, output,
+            ))))
+        })
+    }
+
     fn finish_editor_semantic_facts(
         &self,
         mut facts: EditorSemanticFacts,
@@ -571,6 +658,18 @@ impl<'a> ParsePipeline<'a> {
         code: &str,
         meta: &ParseMetadata,
     ) -> Result<RenderSemanticParseOutput> {
+        let control = ParseControl::new();
+        self.parse_render_semantic_model_controlled(code, meta, &control)
+            .map_err(Error::from)?
+    }
+
+    fn parse_render_semantic_model_controlled(
+        &self,
+        code: &str,
+        meta: &ParseMetadata,
+        control: &ParseControl,
+    ) -> ParseControlResult<Result<RenderSemanticParseOutput>> {
+        control.checkpoint()?;
         let semantic = self.engine.diagram_registry.resolve(&meta.diagram_type);
         let render = self
             .engine
@@ -578,44 +677,45 @@ impl<'a> ParsePipeline<'a> {
             .resolve(&meta.diagram_type);
 
         if let Some(ResolvedRenderParser::Custom(parser)) = render {
-            return parser(code, meta)
+            return Ok(parser(code, meta, control)?
                 .map(RenderSemanticModel::CustomJson)
-                .map(RenderSemanticParseOutput::new);
+                .map(RenderSemanticParseOutput::new));
         }
 
         if let Some(ResolvedSemanticParser::Custom(_)) = semantic {
-            return diagram::parse_or_unsupported(
+            return Ok(diagram::parse_or_unsupported_controlled(
                 &self.engine.diagram_registry,
                 &meta.diagram_type,
                 code,
                 meta,
-            )
+                control,
+            )?
             .map(|value| {
                 RenderSemanticModel::CustomJson(CustomJsonRenderModel::from_semantic_registry(
                     meta.diagram_type.clone(),
                     value,
                 ))
             })
-            .map(RenderSemanticParseOutput::new);
+            .map(RenderSemanticParseOutput::new));
         }
 
         if let Some(ResolvedRenderParser::BuiltIn(parser)) = render {
-            return parser(code, meta);
+            return parser(code, meta, control);
         }
 
         if let Some(ResolvedSemanticParser::BuiltIn(_)) = semantic {
-            return Err(Error::diagram_parse_fallback(
+            return Ok(Err(Error::diagram_parse_fallback(
                 meta.diagram_type.clone(),
                 format!(
                     "built-in diagram type `{}` is missing a typed render parser; the custom JSON boundary is reserved for custom registry adapters",
                     meta.diagram_type
                 ),
-            ));
+            )));
         }
 
-        Err(Error::UnsupportedDiagram {
+        Ok(Err(Error::UnsupportedDiagram {
             diagram_type: meta.diagram_type.clone(),
-        })
+        }))
     }
 
     fn preprocess_for(

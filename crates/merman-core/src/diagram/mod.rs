@@ -69,14 +69,21 @@ pub(crate) type BuiltInDiagramSemanticParser =
 
 /// Parser used by the built-in typed render-model path for one Mermaid diagram family.
 pub(crate) type BuiltInRenderSemanticParser =
-    fn(code: &str, meta: &ParseMetadata) -> Result<RenderSemanticParseOutput>;
+    fn(
+        code: &str,
+        meta: &ParseMetadata,
+        control: &ParseControl,
+    ) -> ParseControlResult<Result<RenderSemanticParseOutput>>;
 
 /// Parser used by a custom render-model registry overlay.
 ///
 /// Custom adapters intentionally return only a named JSON model. Built-in typed variants are
 /// reserved for the pinned family catalog and cannot be manufactured through this interface.
-pub type CustomJsonRenderParser =
-    fn(code: &str, meta: &ParseMetadata) -> Result<CustomJsonRenderModel>;
+pub type CustomJsonRenderParser = fn(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &ParseControl,
+) -> ParseControlResult<Result<CustomJsonRenderModel>>;
 
 /// Ownership of a parser resolved from a built-in registry plus its custom overlay.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -947,6 +954,28 @@ pub(crate) fn parse_or_unsupported(
     }
 }
 
+/// Parses with a registry entry while preserving the caller-owned parse control.
+pub(crate) fn parse_or_unsupported_controlled(
+    registry: &DiagramRegistry,
+    diagram_type: &str,
+    code: &str,
+    meta: &ParseMetadata,
+    control: &ParseControl,
+) -> ParseControlResult<Result<Value>> {
+    control.checkpoint()?;
+    let Some(parser) = registry.resolve(diagram_type) else {
+        return Ok(Err(Error::UnsupportedDiagram {
+            diagram_type: diagram_type.to_string(),
+        }));
+    };
+    let result = match parser {
+        ResolvedSemanticParser::BuiltIn(parser) => parser(code, meta),
+        ResolvedSemanticParser::Custom(parser) => parser(code, meta, control)?,
+    };
+    control.checkpoint()?;
+    Ok(result)
+}
+
 #[cfg(test)]
 mod registry_clone_tests {
     use super::*;
@@ -961,11 +990,16 @@ mod registry_clone_tests {
         Ok(Ok(Value::Null))
     }
 
-    fn custom_render_parser(_code: &str, _meta: &ParseMetadata) -> Result<CustomJsonRenderModel> {
-        Ok(CustomJsonRenderModel::new(
+    fn custom_render_parser(
+        _code: &str,
+        _meta: &ParseMetadata,
+        control: &ParseControl,
+    ) -> ParseControlResult<Result<CustomJsonRenderModel>> {
+        control.checkpoint()?;
+        Ok(Ok(CustomJsonRenderModel::new(
             "copy-on-write-render-test",
             Value::Null,
-        ))
+        )))
     }
 
     fn cancelling_semantic_parser(

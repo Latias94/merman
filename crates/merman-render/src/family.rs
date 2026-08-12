@@ -1596,11 +1596,13 @@ mod tests {
     fn custom_render_parser(
         _code: &str,
         _meta: &ParseMetadata,
-    ) -> merman_core::Result<CustomJsonRenderModel> {
-        Ok(CustomJsonRenderModel::new(
+        control: &merman_core::ParseControl,
+    ) -> merman_core::ParseControlResult<merman_core::Result<CustomJsonRenderModel>> {
+        control.checkpoint()?;
+        Ok(Ok(CustomJsonRenderModel::new(
             "custom-flowchart",
             json!({ "owner": "render" }),
-        ))
+        )))
     }
 
     fn session() -> RenderSession {

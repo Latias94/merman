@@ -488,10 +488,17 @@ pub(crate) fn apply_diagram_type_config_effects(
 
 macro_rules! render_parser {
     ($fn_name:ident, $parser:path, $variant:path) => {
-        fn $fn_name(code: &str, meta: &ParseMetadata) -> Result<RenderSemanticParseOutput> {
-            $parser(code, meta)
+        fn $fn_name(
+            code: &str,
+            meta: &ParseMetadata,
+            control: &ParseControl,
+        ) -> ParseControlResult<Result<RenderSemanticParseOutput>> {
+            control.checkpoint()?;
+            let result = $parser(code, meta)
                 .map($variant)
-                .map(RenderSemanticParseOutput::new)
+                .map(RenderSemanticParseOutput::new);
+            control.checkpoint()?;
+            Ok(result)
         }
     };
 }
@@ -521,10 +528,16 @@ render_parser!(
     crate::diagrams::sequence::parse_sequence_model_for_render,
     RenderSemanticModel::Sequence
 );
-fn render_flowchart(code: &str, meta: &ParseMetadata) -> Result<RenderSemanticParseOutput> {
-    let (model, label_sources) =
-        crate::diagrams::flowchart::parse_flowchart_model_with_render_context(code, meta)?;
-    Ok(RenderSemanticParseOutput::flowchart(model, label_sources))
+fn render_flowchart(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &ParseControl,
+) -> ParseControlResult<Result<RenderSemanticParseOutput>> {
+    let result = crate::diagrams::flowchart::parse_flowchart_model_with_render_context_controlled(
+        code, meta, control,
+    )?;
+    Ok(result
+        .map(|(model, label_sources)| RenderSemanticParseOutput::flowchart(model, label_sources)))
 }
 render_parser!(
     render_class,

@@ -14,7 +14,7 @@ impl ParseControl {
     /// Creates an active parse control.
     pub fn new() -> Self {
         Self {
-            operation: OperationControl::new(),
+            operation: OperationControl::default(),
         }
     }
 
@@ -23,6 +23,11 @@ impl ParseControl {
         Self {
             operation: self.operation.child(),
         }
+    }
+
+    /// Wraps an existing operation control without creating a second cancellation state.
+    pub(crate) fn from_operation_control(operation: OperationControl) -> Self {
+        Self { operation }
     }
 
     /// Requests cancellation for this control and all of its clones.
@@ -40,6 +45,29 @@ impl ParseControl {
         self.operation
             .checkpoint_at(OperationPhase::Parse)
             .map_err(|_| ParseCancelled)
+    }
+
+    /// Checks the shared operation state while retaining its structured cancellation reason.
+    pub(crate) fn checkpoint_operation(
+        &self,
+        phase: OperationPhase,
+    ) -> crate::operation::OperationControlResult<()> {
+        self.operation.checkpoint_at(phase)
+    }
+
+    /// Projects the legacy parser cancellation channel into the owning operation result.
+    pub(crate) fn map_cancellation<T>(
+        &self,
+        result: ParseControlResult<T>,
+        phase: OperationPhase,
+    ) -> crate::operation::OperationControlResult<T> {
+        result.map_err(|_| match self.operation.checkpoint_at(phase) {
+            Err(cancelled) => cancelled,
+            Ok(()) => crate::operation::OperationCancelled {
+                phase,
+                reason: crate::operation::CancelReason::Requested,
+            },
+        })
     }
 
     /// Returns the shared target-neutral operation control for adapter integration.

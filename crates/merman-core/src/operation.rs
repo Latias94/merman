@@ -81,6 +81,9 @@ pub struct OperationCancelled {
     pub reason: CancelReason,
 }
 
+/// Result channel for a controlled operation stage.
+pub type OperationControlResult<T> = std::result::Result<T, OperationCancelled>;
+
 type Clock = Arc<dyn Fn() -> Instant + Send + Sync + 'static>;
 
 struct OperationState {
