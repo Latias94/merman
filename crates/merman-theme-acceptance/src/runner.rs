@@ -1,4 +1,3 @@
-use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
@@ -13,430 +12,16 @@ use merman::svg::{
 };
 use merman::{Engine, MermaidConfig};
 use merman_theme_fixtures::{
-    C6AcceptanceCatalog, C6ArtifactAssertion, C6CellKey, C6EnforcedCell, C6ExpectedFontSource,
-    C6ProofFamily, C6ProofTheme, C6RequiredAdmission, ExpectedOutputTarget, ReferenceCanvasLayer,
+    C6AcceptanceCatalog, C6ArtifactAssertion, C6EnforcedCell, C6ExpectedFontSource, C6ProofFamily,
+    C6ProofTheme, C6RequiredAdmission, ExpectedOutputTarget, ReferenceCanvasLayer,
     ReferenceDiagramFamily, ReferenceFontBinding, ReferenceSemanticRule, ReferenceSemanticTarget,
     ReferenceThemeInput, ReferenceThemeMechanism, ThemeFixtureCatalog,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum C6ObservedMechanismDisposition {
-    Applied,
-    NotApplicable,
-    Rejected,
-    Residual,
-}
-
-/// Target-local proof sealed by a real artifact checker.
-///
-/// This type deliberately carries no caller-supplied success flag. A target adapter can only
-/// create it after its parser/geometry checker has accepted the final artifact bytes.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) struct C6TargetProof {
-    artifact_assertion: C6ArtifactAssertion,
-    artifact_digest: [u8; 32],
-    mechanism_digest: [u8; 32],
-    mechanism_dispositions: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
-}
-
-impl C6TargetProof {
-    pub(super) fn verified(
-        artifact_assertion: C6ArtifactAssertion,
-        artifact_bytes: &[u8],
-        mechanism_dispositions: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
-    ) -> Self {
-        let mechanism_digest = mechanism_digest(&mechanism_dispositions);
-        Self {
-            artifact_assertion,
-            artifact_digest: sha256(artifact_bytes),
-            mechanism_digest,
-            mechanism_dispositions,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct C6ObservedCell {
-    key: C6CellKey,
-    source_fixture_id: String,
-    source_sha256: String,
-    theme_input_sha256: String,
-    recipe_fingerprint: [u8; 32],
-    document_digest: [u8; 32],
-    resource_fingerprint: [u8; 32],
-    target: RenderTargetKind,
-    admission_digest: [u8; 32],
-    artifact_digest: [u8; 32],
-    mechanism_digest: [u8; 32],
-    proof_stages: [C6ProofStage; 5],
-    mechanism_dispositions: BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
-    residual_ids: BTreeSet<String>,
-    font_source: C6ExpectedFontSource,
-    admission: C6RequiredAdmission,
-    artifact_assertion: C6ArtifactAssertion,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum C6ProofStage {
-    SourceValidated,
-    ThemeCompiled,
-    DocumentSealed,
-    TargetAdmitted,
-    ArtifactVerified,
-}
-
-const C6_COMPLETE_PROOF_STAGES: [C6ProofStage; 5] = [
-    C6ProofStage::SourceValidated,
-    C6ProofStage::ThemeCompiled,
-    C6ProofStage::DocumentSealed,
-    C6ProofStage::TargetAdmitted,
-    C6ProofStage::ArtifactVerified,
-];
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct C6ObservedReport {
-    cells: BTreeMap<C6CellKey, C6ObservedCell>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct C6ExecutionReport {
-    verified_cell_count: usize,
-    enforced_cell_count: usize,
-    execution_digest: [u8; 32],
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
-pub enum C6RuntimeError {
-    #[error("the enforced C6 tranche is empty")]
-    EmptyTranche,
-    #[error("no target adapter exists for enforced C6 cell {key:?}")]
-    UnsupportedEnforcedCell { key: C6CellKey },
-    #[error("the current C6 vertical slice requires one shared source fixture")]
-    MultipleSourceFixtures,
-    #[error("the enforced C6 tranche does not contain the required PNG target")]
-    MissingPngTarget,
-}
-
-impl C6ExecutionReport {
-    pub const fn verified_cell_count(&self) -> usize {
-        self.verified_cell_count
-    }
-
-    pub const fn enforced_cell_count(&self) -> usize {
-        self.enforced_cell_count
-    }
-
-    pub const fn execution_digest(&self) -> &[u8; 32] {
-        &self.execution_digest
-    }
-}
-
-fn sha256(bytes: impl AsRef<[u8]>) -> [u8; 32] {
-    Sha256::digest(bytes.as_ref()).into()
-}
-
-fn hex_digest(bytes: &[u8; 32]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
-fn admission_digest(admission: &merman::svg::TargetAdmissionReport) -> [u8; 32] {
-    let status = match admission.status() {
-        TargetAdmissionStatus::Portable => "portable",
-        TargetAdmissionStatus::HostDependent => "host-dependent",
-        TargetAdmissionStatus::Rejected => "rejected",
-        status => panic!("C6 has no stable admission id for {status:?}"),
-    };
-    let mut value = format!("{}|{status}", admission.target().id());
-    for reason in admission.reasons() {
-        value.push('|');
-        value.push_str(reason.id());
-    }
-    sha256(value)
-}
-
-fn mechanism_digest(
-    mechanisms: &BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
-) -> [u8; 32] {
-    let mut value = String::new();
-    for (mechanism, disposition) in mechanisms {
-        value.push_str(reference_mechanism_id(*mechanism));
-        value.push('=');
-        value.push_str(match disposition {
-            C6ObservedMechanismDisposition::Applied => "applied",
-            C6ObservedMechanismDisposition::NotApplicable => "not-applicable",
-            C6ObservedMechanismDisposition::Rejected => "rejected",
-            C6ObservedMechanismDisposition::Residual => "residual",
-        });
-        value.push('|');
-    }
-    sha256(value)
-}
-
-fn reference_mechanism_id(mechanism: ReferenceThemeMechanism) -> &'static str {
-    match mechanism {
-        ReferenceThemeMechanism::BackdropFilter => "backdrop-filter",
-        ReferenceThemeMechanism::CanvasBlend => "canvas-blend",
-        ReferenceThemeMechanism::CanvasGradient => "canvas-gradient",
-        ReferenceThemeMechanism::CanvasLayering => "canvas-layering",
-        ReferenceThemeMechanism::CanvasPattern => "canvas-pattern",
-        ReferenceThemeMechanism::CanvasSolid => "canvas-solid",
-        ReferenceThemeMechanism::CssFilter => "css-filter",
-        ReferenceThemeMechanism::CssLetterSpacing => "css-letter-spacing",
-        ReferenceThemeMechanism::CssTextTransform => "css-text-transform",
-        ReferenceThemeMechanism::DashArray => "dash-array",
-        ReferenceThemeMechanism::ExternalSvgFilterReference => "external-svg-filter-reference",
-        ReferenceThemeMechanism::FontStack => "font-stack",
-        ReferenceThemeMechanism::HasSelector => "has-selector",
-        ReferenceThemeMechanism::NotSelector => "not-selector",
-        ReferenceThemeMechanism::NthChildSelector => "nth-child-selector",
-        ReferenceThemeMechanism::RoundedCorners => "rounded-corners",
-        ReferenceThemeMechanism::StrokeStyling => "stroke-styling",
-        ReferenceThemeMechanism::ThemeVariables => "theme-variables",
-    }
-}
-
-fn expected_observed_disposition(
-    expected: merman_theme_fixtures::C6ExpectedMechanismDisposition,
-) -> C6ObservedMechanismDisposition {
-    match expected {
-        merman_theme_fixtures::C6ExpectedMechanismDisposition::MustApply => {
-            C6ObservedMechanismDisposition::Applied
-        }
-        merman_theme_fixtures::C6ExpectedMechanismDisposition::MustRemainResidual => {
-            C6ObservedMechanismDisposition::Residual
-        }
-        merman_theme_fixtures::C6ExpectedMechanismDisposition::MustReject => {
-            C6ObservedMechanismDisposition::Rejected
-        }
-        merman_theme_fixtures::C6ExpectedMechanismDisposition::NotApplicable => {
-            C6ObservedMechanismDisposition::NotApplicable
-        }
-    }
-}
-
-fn expected_artifact_assertion(target: ExpectedOutputTarget) -> C6ArtifactAssertion {
-    match target {
-        ExpectedOutputTarget::BrowserSvg => C6ArtifactAssertion::BrowserSvgDom,
-        ExpectedOutputTarget::StandaloneSvg => C6ArtifactAssertion::StandaloneSvgDocument,
-        ExpectedOutputTarget::Png => C6ArtifactAssertion::PngImage,
-        ExpectedOutputTarget::Jpeg => C6ArtifactAssertion::JpegImage,
-        ExpectedOutputTarget::Pdf => C6ArtifactAssertion::PdfDocument,
-    }
-}
-
-fn render_target_for_artifact(assertion: C6ArtifactAssertion) -> RenderTargetKind {
-    match assertion {
-        C6ArtifactAssertion::BrowserSvgDom | C6ArtifactAssertion::StandaloneSvgDocument => {
-            RenderTargetKind::Svg
-        }
-        C6ArtifactAssertion::PngImage => RenderTargetKind::Png,
-        C6ArtifactAssertion::JpegImage => RenderTargetKind::Jpeg,
-        C6ArtifactAssertion::PdfDocument => RenderTargetKind::Pdf,
-    }
-}
-
-fn observe_cell_from_reports(
-    enforced: &C6EnforcedCell,
-    catalog: &ThemeFixtureCatalog,
-    recipe_fingerprint: Option<merman::svg::ThemeRecipeFingerprint>,
-    sealed_svg: &str,
-    document: &merman::svg::DocumentRenderReport,
-    admission: &merman::svg::TargetAdmissionReport,
-    proof: C6TargetProof,
-) -> C6ObservedCell {
-    let fixture = catalog
-        .fixture(enforced.source_fixture_id())
-        .expect("the acceptance catalog validated the enforced fixture");
-    assert_eq!(
-        proof.artifact_assertion,
-        expected_artifact_assertion(enforced.key().target())
-    );
-    assert_eq!(
-        proof.artifact_assertion,
-        expected_artifact_assertion(match admission.target() {
-            RenderTargetKind::Svg => ExpectedOutputTarget::StandaloneSvg,
-            RenderTargetKind::Png => ExpectedOutputTarget::Png,
-            RenderTargetKind::Jpeg => ExpectedOutputTarget::Jpeg,
-            RenderTargetKind::Pdf => ExpectedOutputTarget::Pdf,
-            target => panic!("C6 has no artifact assertion for render target {target:?}"),
-        })
-    );
-    assert!(
-        document.residuals().is_empty(),
-        "an enforced portable C6 artifact cannot carry document residuals"
-    );
-
-    let source_digest = sha256(
-        catalog
-            .source_text(fixture.id())
-            .expect("read hash-validated source")
-            .as_bytes(),
-    );
-    assert_eq!(hex_digest(&source_digest), fixture.source_sha256());
-    let theme_input_sha256 = fixture
-        .theme_input_sha256()
-        .expect("enforced typed fixture must declare a theme input hash")
-        .to_owned();
-
-    let font_source = match document.prepared_text_used_font_sources() {
-        [FontSource::Embedded] => C6ExpectedFontSource::Embedded,
-        [FontSource::System] => C6ExpectedFontSource::System,
-        [] => C6ExpectedFontSource::None,
-        sources => panic!("C6 observed an ambiguous prepared font source set: {sources:?}"),
-    };
-    let observed_admission = match admission.status() {
-        TargetAdmissionStatus::Portable => C6RequiredAdmission::Portable,
-        TargetAdmissionStatus::HostDependent => C6RequiredAdmission::HostDependent,
-        TargetAdmissionStatus::Rejected => C6RequiredAdmission::Rejected,
-        status => panic!("C6 has no observation mapping for target admission {status:?}"),
-    };
-    if observed_admission == C6RequiredAdmission::Portable {
-        assert!(admission.reasons().is_empty());
-    }
-
-    assert_ne!(proof.artifact_digest, [0; 32]);
-    assert_ne!(proof.mechanism_digest, [0; 32]);
-    C6ObservedCell {
-        key: enforced.key(),
-        source_fixture_id: fixture.id().to_owned(),
-        source_sha256: fixture.source_sha256().to_owned(),
-        theme_input_sha256,
-        recipe_fingerprint: *recipe_fingerprint
-            .expect("a C6 artifact must retain the renderer-owned recipe identity")
-            .as_bytes(),
-        document_digest: sha256(sealed_svg),
-        resource_fingerprint: *document.resource_fingerprint().as_bytes(),
-        target: admission.target(),
-        admission_digest: admission_digest(admission),
-        artifact_digest: proof.artifact_digest,
-        mechanism_digest: proof.mechanism_digest,
-        proof_stages: C6_COMPLETE_PROOF_STAGES,
-        mechanism_dispositions: proof.mechanism_dispositions,
-        residual_ids: BTreeSet::new(),
-        font_source,
-        admission: observed_admission,
-        artifact_assertion: proof.artifact_assertion,
-    }
-}
-
-impl C6ObservedReport {
-    fn from_enforced_cells(
-        tranche: &merman_theme_fixtures::C6EnforcedTranche,
-        cells: impl IntoIterator<Item = C6ObservedCell>,
-    ) -> Self {
-        let mut indexed = BTreeMap::new();
-        for cell in cells {
-            assert!(
-                indexed.insert(cell.key, cell).is_none(),
-                "duplicate C6 cell"
-            );
-        }
-        let expected = tranche
-            .cells()
-            .map(C6EnforcedCell::key)
-            .collect::<BTreeSet<_>>();
-        let actual = indexed.keys().copied().collect::<BTreeSet<_>>();
-        assert_eq!(
-            actual, expected,
-            "runtime observations must cover the enforced tranche"
-        );
-        Self { cells: indexed }
-    }
-
-    fn evaluate(
-        &self,
-        acceptance: &C6AcceptanceCatalog,
-        theme_catalog: &ThemeFixtureCatalog,
-        theme: &DiagramTheme,
-        document: &RenderedDocument,
-        sealed_svg: &str,
-    ) -> C6ExecutionReport {
-        assert!(!self.cells.is_empty(), "an empty C6 tranche cannot pass");
-        let expected_recipe = *theme.recipe_fingerprint().as_bytes();
-        let expected_document = sha256(sealed_svg);
-        let expected_resource = *document.resource_fingerprint().as_bytes();
-        for enforced in acceptance.enforced_tranche().cells() {
-            let observed = self
-                .cells
-                .get(&enforced.key())
-                .expect("enforced observation");
-            let expectation = acceptance
-                .specification()
-                .cell(enforced.key())
-                .expect("enforced expectation")
-                .expectation();
-            let fixture = theme_catalog
-                .fixture(enforced.source_fixture_id())
-                .expect("enforced fixture identity");
-            assert_eq!(observed.source_fixture_id, enforced.source_fixture_id());
-            assert_eq!(observed.source_sha256, fixture.source_sha256());
-            assert_eq!(
-                observed.theme_input_sha256,
-                fixture
-                    .theme_input_sha256()
-                    .expect("enforced typed fixture input identity")
-            );
-            assert_eq!(observed.recipe_fingerprint, expected_recipe);
-            assert_eq!(observed.document_digest, expected_document);
-            assert_eq!(observed.resource_fingerprint, expected_resource);
-            assert_eq!(
-                observed.target,
-                render_target_for_artifact(observed.artifact_assertion)
-            );
-            assert_eq!(
-                observed.mechanism_dispositions.len(),
-                expectation.mechanism_requirements().len()
-            );
-            for (mechanism, disposition) in expectation.mechanism_requirements() {
-                assert_eq!(
-                    observed.mechanism_dispositions.get(mechanism),
-                    Some(&expected_observed_disposition(*disposition))
-                );
-            }
-            assert_eq!(observed.residual_ids, *expectation.expected_residual_ids());
-            assert_eq!(observed.font_source, expectation.required_font_source());
-            assert_eq!(observed.admission, expectation.required_admission());
-            assert_eq!(
-                observed.artifact_assertion,
-                expectation.required_artifact_assertion()
-            );
-            assert_ne!(observed.artifact_digest, [0; 32]);
-            assert_ne!(observed.admission_digest, [0; 32]);
-            assert_ne!(observed.mechanism_digest, [0; 32]);
-            assert_eq!(observed.proof_stages, C6_COMPLETE_PROOF_STAGES);
-        }
-        let mut digest_input = b"merman.c6-execution-report.v1".to_vec();
-        for cell in self.cells.values() {
-            append_len_prefixed(
-                &mut digest_input,
-                cell.key.theme().reference_name().as_bytes(),
-            );
-            append_len_prefixed(&mut digest_input, cell.source_fixture_id.as_bytes());
-            digest_input.extend_from_slice(cell.source_sha256.as_bytes());
-            digest_input.extend_from_slice(cell.theme_input_sha256.as_bytes());
-            digest_input.extend_from_slice(&cell.recipe_fingerprint);
-            digest_input.extend_from_slice(&cell.document_digest);
-            digest_input.extend_from_slice(&cell.resource_fingerprint);
-            append_len_prefixed(&mut digest_input, cell.target.id().as_bytes());
-            digest_input.extend_from_slice(&cell.admission_digest);
-            digest_input.extend_from_slice(&cell.artifact_digest);
-            digest_input.extend_from_slice(&cell.mechanism_digest);
-            for stage in cell.proof_stages {
-                digest_input.push(stage as u8);
-            }
-        }
-        C6ExecutionReport {
-            verified_cell_count: self.cells.len(),
-            enforced_cell_count: acceptance.enforced_tranche().cells().len(),
-            execution_digest: sha256(digest_input),
-        }
-    }
-}
-
-fn append_len_prefixed(output: &mut Vec<u8>, bytes: &[u8]) {
-    output.extend_from_slice(&(bytes.len() as u64).to_be_bytes());
-    output.extend_from_slice(bytes);
-}
+use crate::observation::{
+    C6ExecutionReport, C6ObservedCell, C6ObservedMechanismDisposition, C6ObservedReport,
+    C6RuntimeError, C6TargetProof, observe_cell_from_reports,
+};
 
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[path = "support/c6_raster_proof.rs"]
@@ -462,10 +47,8 @@ fn themes_root() -> PathBuf {
 }
 
 pub fn run_enforced_c6_runtime() -> Result<C6ExecutionReport, C6RuntimeError> {
-    let theme_catalog =
-        ThemeFixtureCatalog::load(themes_root()).expect("load the source-backed theme corpus");
-    let acceptance = C6AcceptanceCatalog::load(&theme_catalog)
-        .expect("load the committed C6 acceptance contract");
+    let theme_catalog = ThemeFixtureCatalog::load(themes_root())?;
+    let acceptance = C6AcceptanceCatalog::load(&theme_catalog)?;
     let enforced_cells = acceptance.enforced_tranche().cells().collect::<Vec<_>>();
     if enforced_cells.is_empty() {
         return Err(C6RuntimeError::EmptyTranche);
@@ -551,7 +134,7 @@ pub fn run_enforced_c6_runtime() -> Result<C6ExecutionReport, C6RuntimeError> {
         admitted.as_str(),
         &theme,
         &document,
-    );
+    )?;
     let enforced_count = enforced_cells.len();
     let mut observed = Vec::with_capacity(enforced_count);
     for cell in enforced_cells {
@@ -562,7 +145,7 @@ pub fn run_enforced_c6_runtime() -> Result<C6ExecutionReport, C6RuntimeError> {
                 input,
                 &document,
                 &mechanisms,
-            ),
+            )?,
             ExpectedOutputTarget::Png => png.clone(),
             ExpectedOutputTarget::Jpeg => observe_brutalist_state_jpeg(
                 cell,
@@ -572,7 +155,7 @@ pub fn run_enforced_c6_runtime() -> Result<C6ExecutionReport, C6RuntimeError> {
                 &theme,
                 &document,
                 &png_proof,
-            ),
+            )?,
             ExpectedOutputTarget::Pdf => observe_brutalist_state_pdf(
                 cell,
                 &theme_catalog,
@@ -580,21 +163,21 @@ pub fn run_enforced_c6_runtime() -> Result<C6ExecutionReport, C6RuntimeError> {
                 admitted.as_str(),
                 &theme,
                 &document,
-            ),
+            )?,
             ExpectedOutputTarget::BrowserSvg => {
-                panic!("Browser SVG requires a dedicated DOM adapter")
+                return Err(C6RuntimeError::UnsupportedEnforcedCell { key: cell.key() });
             }
         };
         observed.push(observation);
     }
-    let report = C6ObservedReport::from_enforced_cells(acceptance.enforced_tranche(), observed);
+    let report = C6ObservedReport::from_enforced_cells(acceptance.enforced_tranche(), observed)?;
     let evaluation = report.evaluate(
         &acceptance,
         &theme_catalog,
         &theme,
         &document,
         admitted.as_str(),
-    );
+    )?;
 
     assert_eq!(evaluation.verified_cell_count(), enforced_count);
     assert_eq!(evaluation.enforced_cell_count(), enforced_count);
@@ -677,7 +260,7 @@ fn observe_brutalist_state_standalone(
     input: &ReferenceThemeInput,
     document: &RenderedDocument,
     mechanisms: &BTreeMap<ReferenceThemeMechanism, C6ObservedMechanismDisposition>,
-) -> C6ObservedCell {
+) -> Result<C6ObservedCell, C6RuntimeError> {
     let admitted = document
         .clone()
         .admit_svg()
@@ -708,7 +291,7 @@ fn observe_brutalist_state_png(
     sealed_svg: &str,
     theme: &DiagramTheme,
     document: &RenderedDocument,
-) -> (C6ObservedCell, PngArtifactProof) {
+) -> Result<(C6ObservedCell, PngArtifactProof), C6RuntimeError> {
     let resource_fingerprint = document.resource_fingerprint();
     let prepared = document
         .clone()
@@ -741,7 +324,7 @@ fn observe_brutalist_state_png(
         resource_fingerprint,
         theme.recipe_fingerprint(),
     );
-    (
+    Ok((
         observe_cell_from_reports(
             enforced,
             theme_catalog,
@@ -750,9 +333,9 @@ fn observe_brutalist_state_png(
             report.document_report(),
             report.target_admission(),
             target_proof,
-        ),
+        )?,
         proof,
-    )
+    ))
 }
 
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -764,7 +347,7 @@ fn observe_brutalist_state_jpeg(
     theme: &DiagramTheme,
     document: &RenderedDocument,
     png_proof: &PngArtifactProof,
-) -> C6ObservedCell {
+) -> Result<C6ObservedCell, C6RuntimeError> {
     let resource_fingerprint = document.resource_fingerprint();
     let prepared = document
         .clone()
@@ -815,7 +398,7 @@ fn observe_brutalist_state_pdf(
     sealed_svg: &str,
     theme: &DiagramTheme,
     document: &RenderedDocument,
-) -> C6ObservedCell {
+) -> Result<C6ObservedCell, C6RuntimeError> {
     let resource_fingerprint = document.resource_fingerprint();
     let prepared = document
         .clone()
