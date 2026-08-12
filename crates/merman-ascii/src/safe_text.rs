@@ -517,6 +517,30 @@ mod tests {
     }
 
     #[test]
+    fn quoted_framing_checks_raw_grapheme_before_scalar_escape() {
+        let grapheme = "\"\u{301}";
+        assert_eq!(grapheme.graphemes(true).count(), 1);
+
+        let exact = options_with_limit(AsciiResourceLimitId::MaxGraphemeBytes, grapheme.len());
+        let mut document = BudgetedTextDocument::new(&exact);
+        document
+            .push_line_with(|line| line.push_quoted_text(grapheme))
+            .expect("quoted grapheme should fit its exact raw-byte budget");
+
+        let below = options_with_limit(AsciiResourceLimitId::MaxGraphemeBytes, grapheme.len() - 1);
+        let mut document = BudgetedTextDocument::new(&below);
+        let error = document
+            .push_line_with(|line| line.push_quoted_text(grapheme))
+            .expect_err("quoting must not split an oversized source grapheme");
+        assert_limit_error(
+            error,
+            AsciiResourceLimitId::MaxGraphemeBytes,
+            grapheme.len(),
+            grapheme.len() - 1,
+        );
+    }
+
+    #[test]
     fn oversized_structural_prefix_does_not_force_vertical_label_text() {
         let options = AsciiRenderOptions::ascii();
         let mut document = BudgetedTextDocument::new(&options);

@@ -13,6 +13,8 @@ pub(crate) fn visit_quoted_terminal_text(
     visit("\"")?;
     for grapheme in value.graphemes(true) {
         resources.charge_layout_work(1)?;
+        // Check the source grapheme before quoting can split it into fragments and bypass the byte limit.
+        resources.check_grapheme_bytes(grapheme.len())?;
         if !grapheme
             .chars()
             .any(|ch| ch == '\\' || ch == '"' || (ch != ' ' && ch.is_whitespace()))
