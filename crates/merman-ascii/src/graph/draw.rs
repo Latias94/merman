@@ -33,14 +33,14 @@ pub(crate) fn render_graph_with_resources(
     let charset = GraphCharset::for_options(options);
     let graph_layout = layout_graph_with_resources(graph, options, resources)?;
     graph_canvas_extent(&graph_layout.nodes, &graph_layout.groups, 0, 0, resources)?;
-    let route_scene = routing::prepare_route_scene_with_resources(
+    let route_scene_plan = routing::prepare_route_scene_with_resources(
         graph,
         &graph_layout,
         &graph.edges,
         &charset,
         resources,
     )?;
-    let (edge_width, edge_height) = route_scene.canvas_extent();
+    let (edge_width, edge_height) = route_scene_plan.canvas_extent();
     let extent = graph_canvas_extent(
         &graph_layout.nodes,
         &graph_layout.groups,
@@ -54,6 +54,7 @@ pub(crate) fn render_graph_with_resources(
     if !output_transform.is_identity() {
         resources.charge_layout_work(extent.cells())?;
     }
+    let route_scene = route_scene_plan.materialize(resources)?;
 
     let mut canvas =
         RawCanvas::try_with_resources(width, height, options.terminal_width_profile, resources)?;

@@ -3,7 +3,7 @@ use super::*;
 use crate::color::AsciiColorRole;
 use crate::graph::layout::layout_graph;
 use crate::graph::model::{GraphDirection, GraphEdgeAttrs, GraphEdgeStyle};
-use crate::graph::routing::label::{RoutedLabelPlacement, RoutedLabelText};
+use crate::graph::routing::label::{RoutedLabelCatalog, RoutedLabelPlacement, RoutedLabelText};
 use crate::graph::routing::plan::{MarkerAnchor, MarkerAnchors, PlannedCellId};
 use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
 use crate::{AsciiRenderOptions, TerminalWidthProfile};
@@ -59,6 +59,9 @@ fn edge_style_is_applied_to_route_plan_cells_and_labels() {
         routes: vec![PreparedRoute::for_test(plan, 0)],
         extent: (5, 1),
         planned_cell_count: 3,
+        labels: RoutedLabelCatalog::for_test(vec![Some(
+            RoutedLabelText::new("label").expect("single-line label should exist"),
+        )]),
     };
     scene
         .draw_labels(&mut canvas, RouteLabelTransform::Identity)
@@ -69,8 +72,9 @@ fn edge_style_is_applied_to_route_plan_cells_and_labels() {
 
 #[test]
 fn route_label_transform_mirrors_horizontal_label_placement() {
+    let text = RoutedLabelText::new("north<br>south").expect("label should exist");
     let label = EdgeLabel {
-        text: RoutedLabelText::new("north<br>south").expect("label should exist"),
+        text: &text,
         placement: RoutedLabelPlacement::new(2, 4, 5),
         color: CanvasColor::Role(AsciiColorRole::EdgeLabel),
     };
@@ -83,8 +87,9 @@ fn route_label_transform_mirrors_horizontal_label_placement() {
 
 #[test]
 fn route_label_transform_preserves_vertical_mirrored_multiline_label_order() {
+    let text = RoutedLabelText::new("north<br>south").expect("label should exist");
     let label = EdgeLabel {
-        text: RoutedLabelText::new("north<br>south").expect("label should exist"),
+        text: &text,
         placement: RoutedLabelPlacement::new(2, 4, 5),
         color: CanvasColor::Role(AsciiColorRole::EdgeLabel),
     };

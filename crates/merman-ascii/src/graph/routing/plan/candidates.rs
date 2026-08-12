@@ -12,6 +12,7 @@ use super::select::{
     EdgeRoutePlan, EdgeRouteRequest, UnsupportedEdgeRoute, plan_edge_route_with_topology,
 };
 use crate::error::{AsciiError, Result};
+use crate::graph::routing::label::RoutedLabelDescriptor;
 use crate::graph::routing::path::Port;
 use crate::graph::topology::{GraphEndpointIndex, GraphGroupTopology};
 use crate::resource::AsciiResourceLimitPhase;
@@ -27,9 +28,10 @@ pub(in crate::graph::routing) enum EdgeRouteCandidates {
 pub(in crate::graph::routing) fn plan_edge_route_candidates_with_topology(
     request: EdgeRouteRequest<'_>,
     topology: Option<&GraphGroupTopology<'_>>,
+    label: Option<RoutedLabelDescriptor>,
     resources: &mut ResourceContext,
 ) -> Result<EdgeRouteCandidates> {
-    let primary = match plan_edge_route_with_topology(request, topology, resources)? {
+    let primary = match plan_edge_route_with_topology(request, topology, label, resources)? {
         EdgeRoutePlan::Routed(plan) => plan,
         EdgeRoutePlan::Unsupported(route) => return Ok(EdgeRouteCandidates::Unsupported(route)),
     };
@@ -49,6 +51,7 @@ pub(in crate::graph::routing) fn plan_edge_route_candidates_with_topology(
                 request.from,
                 request.edge,
                 lane_index,
+                label,
                 request.charset,
                 resources,
             )? {
@@ -63,6 +66,7 @@ pub(in crate::graph::routing) fn plan_edge_route_candidates_with_topology(
             request.from,
             request.to,
             request.edge,
+            label,
             request.charset,
             resources,
         )?
@@ -78,6 +82,7 @@ pub(in crate::graph::routing) fn plan_edge_route_candidates_with_topology(
                 request.to,
                 request.edge,
                 lane_index,
+                label,
                 request.charset,
                 resources,
             )?
@@ -89,6 +94,7 @@ pub(in crate::graph::routing) fn plan_edge_route_candidates_with_topology(
             request.to,
             request.edge,
             lane_index,
+            label,
             request.charset,
             resources,
         )? {
@@ -105,6 +111,7 @@ pub(in crate::graph::routing) fn plan_edge_route_candidates_with_topology(
                 request.from,
                 request.to,
                 request.edge,
+                label,
                 request.charset,
                 GridRouteOptions::with_fixed_ports(start, end),
                 resources,

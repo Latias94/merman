@@ -4,7 +4,7 @@ use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeMarker
 use super::super::super::shape::GraphNodeShapeSemantics;
 use super::super::cell::edge_line_char;
 use super::super::label::{
-    RoutedLabelText, routed_label_right_of_vertical_route_placement_for_text,
+    RoutedLabelDescriptor, routed_label_right_of_vertical_route_placement_for_descriptor,
 };
 use super::super::path::StepDirection;
 use super::{
@@ -22,8 +22,12 @@ pub(super) fn plan_top_down_direct_route(
     charset: &GraphCharset,
 ) -> Option<RoutePlan> {
     let mut resources = super::unbounded_route_resources();
+    let label = edge
+        .label
+        .as_deref()
+        .and_then(|raw| RoutedLabelDescriptor::for_test(0, raw, charset.width_profile));
     super::materialize_test_markers(
-        plan_top_down_direct_route_with_resources(from, to, edge, charset, &mut resources),
+        plan_top_down_direct_route_with_resources(from, to, edge, label, charset, &mut resources),
         edge,
         charset,
     )
@@ -33,6 +37,7 @@ pub(super) fn plan_top_down_direct_route_with_resources(
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
+    label: Option<RoutedLabelDescriptor>,
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
@@ -57,10 +62,9 @@ pub(super) fn plan_top_down_direct_route_with_resources(
         cells.try_push_anchor(resources, || route_cell(x, end, line), StepDirection::Down)?;
 
     let labels = planned_label(
-        edge.label.as_deref(),
+        label,
         CanvasCoord { x, y: start },
         CanvasCoord { x, y: end },
-        charset,
     )
     .into_iter()
     .collect();
@@ -80,8 +84,12 @@ pub(super) fn plan_top_down_bent_route(
     charset: &GraphCharset,
 ) -> Option<RoutePlan> {
     let mut resources = super::unbounded_route_resources();
+    let label = edge
+        .label
+        .as_deref()
+        .and_then(|raw| RoutedLabelDescriptor::for_test(0, raw, charset.width_profile));
     super::materialize_test_markers(
-        plan_top_down_bent_route_with_resources(from, to, edge, charset, &mut resources),
+        plan_top_down_bent_route_with_resources(from, to, edge, label, charset, &mut resources),
         edge,
         charset,
     )
@@ -91,22 +99,24 @@ pub(super) fn plan_top_down_bent_route_with_resources(
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
+    label: Option<RoutedLabelDescriptor>,
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
     if GraphNodeShapeSemantics::new(from.shape).uses_drop_then_turn_bent_route()
         || GraphNodeShapeSemantics::new(to.shape).uses_drop_then_turn_bent_route()
     {
-        return plan_top_down_drop_then_turn_route(from, to, edge, charset, resources);
+        return plan_top_down_drop_then_turn_route(from, to, edge, label, charset, resources);
     }
 
-    plan_top_down_side_bend_route(from, to, edge, charset, resources)
+    plan_top_down_side_bend_route(from, to, edge, label, charset, resources)
 }
 
 fn plan_top_down_side_bend_route(
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
+    label: Option<RoutedLabelDescriptor>,
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
@@ -170,7 +180,7 @@ fn plan_top_down_side_bend_route(
     )?;
 
     let labels = planned_label(
-        edge.label.as_deref(),
+        label,
         CanvasCoord {
             x: label_start_x,
             y: turn_y,
@@ -179,7 +189,6 @@ fn plan_top_down_side_bend_route(
             x: label_end_x,
             y: turn_y,
         },
-        charset,
     )
     .into_iter()
     .collect();
@@ -195,6 +204,7 @@ fn plan_top_down_drop_then_turn_route(
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
+    label: Option<RoutedLabelDescriptor>,
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
@@ -243,7 +253,7 @@ fn plan_top_down_drop_then_turn_route(
     )?;
 
     let labels = planned_label(
-        edge.label.as_deref(),
+        label,
         CanvasCoord {
             x: source_x.min(target_x),
             y: end_y,
@@ -252,7 +262,6 @@ fn plan_top_down_drop_then_turn_route(
             x: source_x.max(target_x),
             y: end_y,
         },
-        charset,
     )
     .into_iter()
     .collect();
@@ -272,8 +281,19 @@ pub(super) fn plan_top_down_side_entry_route(
     charset: &GraphCharset,
 ) -> Option<RoutePlan> {
     let mut resources = super::unbounded_route_resources();
+    let label = edge
+        .label
+        .as_deref()
+        .and_then(|raw| RoutedLabelDescriptor::for_test(0, raw, charset.width_profile));
     super::materialize_test_markers(
-        plan_top_down_side_entry_route_with_resources(from, to, edge, charset, &mut resources),
+        plan_top_down_side_entry_route_with_resources(
+            from,
+            to,
+            edge,
+            label,
+            charset,
+            &mut resources,
+        ),
         edge,
         charset,
     )
@@ -283,6 +303,7 @@ pub(super) fn plan_top_down_side_entry_route_with_resources(
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
+    label: Option<RoutedLabelDescriptor>,
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
@@ -328,10 +349,9 @@ pub(super) fn plan_top_down_side_entry_route_with_resources(
         };
 
         let labels = planned_label(
-            edge.label.as_deref(),
+            label,
             CanvasCoord { x: start, y },
             CanvasCoord { x: end, y },
-            charset,
         )
         .into_iter()
         .collect();
@@ -378,10 +398,9 @@ pub(super) fn plan_top_down_side_entry_route_with_resources(
     }
 
     let labels = planned_label(
-        edge.label.as_deref(),
+        label,
         CanvasCoord { x: start, y },
         CanvasCoord { x: end, y },
-        charset,
     )
     .into_iter()
     .collect();
@@ -401,8 +420,12 @@ pub(super) fn plan_top_down_back_route(
     charset: &GraphCharset,
 ) -> Option<RoutePlan> {
     let mut resources = super::unbounded_route_resources();
+    let label = edge
+        .label
+        .as_deref()
+        .and_then(|raw| RoutedLabelDescriptor::for_test(0, raw, charset.width_profile));
     super::materialize_test_markers(
-        plan_top_down_back_route_with_resources(from, to, edge, charset, &mut resources),
+        plan_top_down_back_route_with_resources(from, to, edge, label, charset, &mut resources),
         edge,
         charset,
     )
@@ -412,6 +435,7 @@ pub(super) fn plan_top_down_back_route_with_resources(
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
+    label: Option<RoutedLabelDescriptor>,
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
@@ -453,16 +477,15 @@ pub(super) fn plan_top_down_back_route_with_resources(
     for x in (to.right() + 2)..lane_x {
         cells.try_push(resources, || route_cell(x, target_y, horizontal))?;
     }
-    let labels: Vec<_> =
-        planned_top_down_back_label(edge.label.as_deref(), lane_x, target_y, source_y, charset)
-            .into_iter()
-            .collect();
+    let labels: Vec<_> = planned_top_down_back_label(label, lane_x, target_y, source_y)
+        .into_iter()
+        .collect();
 
     let min_width = labels.iter().fold(lane_x + 3, |width, label| {
         width.max(
             label
                 .placement
-                .canvas_extent_for_lines(label.text.line_count())
+                .canvas_extent_for_lines(label.line_count())
                 .0
                 + 1,
         )
@@ -482,14 +505,13 @@ pub(super) fn top_down_back_edge_lane_x(from: &NodeLayout, to: &NodeLayout) -> u
 }
 
 fn planned_top_down_back_label(
-    label: Option<&str>,
+    descriptor: Option<RoutedLabelDescriptor>,
     lane_x: usize,
     target_y: usize,
     source_y: usize,
-    charset: &GraphCharset,
 ) -> Option<PlannedRouteLabel> {
-    let text = RoutedLabelText::new_with_profile(label?, charset.width_profile)?;
-    let placement = routed_label_right_of_vertical_route_placement_for_text(
+    let descriptor = descriptor?;
+    let placement = routed_label_right_of_vertical_route_placement_for_descriptor(
         CanvasCoord {
             x: lane_x,
             y: target_y,
@@ -498,8 +520,8 @@ fn planned_top_down_back_label(
             x: lane_x,
             y: source_y,
         },
-        &text,
+        descriptor,
     )?;
 
-    Some(PlannedRouteLabel::new(text, placement))
+    Some(PlannedRouteLabel::new(descriptor, placement))
 }

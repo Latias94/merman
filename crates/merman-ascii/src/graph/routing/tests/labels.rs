@@ -36,7 +36,7 @@ fn route_scene_relocates_labels_that_cover_endpoint_markers() {
         label.placement.x(),
         label.placement.y(),
         label.placement.width(),
-        label.text.line_count(),
+        label.line_count(),
         &resources,
     )
     .unwrap();
@@ -81,7 +81,7 @@ fn route_label_relocates_instead_of_covering_an_unrelated_route() {
         label.placement.x(),
         label.placement.y(),
         label.placement.width(),
-        label.text.line_count(),
+        label.line_count(),
         &resources,
     )
     .unwrap();
@@ -156,7 +156,7 @@ fn route_scene_relocates_labels_away_from_nodes_groups_and_other_labels() {
         label.placement.x(),
         label.placement.y(),
         label.placement.width(),
-        label.text.line_count(),
+        label.line_count(),
         &resources,
     )
     .unwrap();
@@ -176,7 +176,7 @@ fn route_scene_relocates_labels_away_from_nodes_groups_and_other_labels() {
         label.placement.x(),
         label.placement.y(),
         label.placement.width(),
-        label.text.line_count(),
+        label.line_count(),
         &resources,
     )
     .unwrap();
@@ -204,7 +204,7 @@ fn route_scene_relocates_labels_away_from_nodes_groups_and_other_labels() {
                 label.placement.x(),
                 label.placement.y(),
                 label.placement.width(),
-                label.text.line_count(),
+                label.line_count(),
                 &resources,
             )
             .unwrap()

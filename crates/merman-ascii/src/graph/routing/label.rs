@@ -1,15 +1,46 @@
 use super::super::layout::CanvasCoord;
+use super::super::model::{AsciiGraphEdge, GraphEdgeStroke};
 use crate::canvas::{Canvas, CanvasColor};
-use crate::error::Result;
+use crate::error::{AsciiError, Result};
 use crate::options::TerminalWidthProfile;
-use crate::safe_text::SafeLine;
-use crate::text::{display_width_with_profile, normalize_optional_text, split_label_lines};
+use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
+use crate::safe_text::{
+    LabelBreakPolicy, NormalizedLabelPlan, SafeLine, try_plan_normalized_label_lines_with_policy,
+};
+use crate::text::display_width_with_profile;
+#[cfg(test)]
+use crate::text::{normalize_optional_text, split_label_lines};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct EdgeLabel {
-    pub(super) text: RoutedLabelText,
+pub(crate) struct EdgeLabel<'a> {
+    pub(super) text: &'a RoutedLabelText,
     pub(super) placement: RoutedLabelPlacement,
     pub(super) color: CanvasColor,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::graph) struct RoutedLabelDescriptor {
+    catalog_index: usize,
+    width: usize,
+    line_count: usize,
+}
+
+#[derive(Debug)]
+pub(in crate::graph) struct RoutedLabelCatalogPlan<'a> {
+    labels: Vec<Option<RoutedLabelPlan<'a>>>,
+}
+
+#[derive(Debug)]
+pub(in crate::graph) struct RoutedLabelCatalog {
+    labels: Vec<Option<RoutedLabelText>>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct RoutedLabelPlan<'a> {
+    raw: &'a str,
+    normalized: NormalizedLabelPlan,
+    descriptor: RoutedLabelDescriptor,
+    width_profile: TerminalWidthProfile,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,12 +88,211 @@ impl RoutedLabelPlacement {
     }
 }
 
+impl RoutedLabelDescriptor {
+    pub(in crate::graph) const fn width(self) -> usize {
+        self.width
+    }
+
+    pub(in crate::graph) const fn line_count(self) -> usize {
+        self.line_count
+    }
+
+    const fn catalog_index(self) -> usize {
+        self.catalog_index
+    }
+
+    #[cfg(test)]
+    pub(in crate::graph) fn for_test(
+        catalog_index: usize,
+        raw: &str,
+        width_profile: TerminalWidthProfile,
+    ) -> Option<Self> {
+        let text = RoutedLabelText::new_with_profile(raw, width_profile)?;
+        Some(Self {
+            catalog_index,
+            width: text.width(),
+            line_count: text.line_count(),
+        })
+    }
+}
+
+impl From<RoutedLabelText> for RoutedLabelDescriptor {
+    fn from(text: RoutedLabelText) -> Self {
+        Self {
+            catalog_index: 0,
+            width: text.width,
+            line_count: text.lines.len(),
+        }
+    }
+}
+
+impl<'a> RoutedLabelCatalogPlan<'a> {
+    pub(in crate::graph) fn try_new(
+        edges: &'a [AsciiGraphEdge],
+        canonical_source_indices: &[usize],
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        resources.charge_layout_work(canonical_source_indices.len())?;
+        let mut labels = Vec::new();
+        labels
+            .try_reserve_exact(canonical_source_indices.len())
+            .map_err(|_| label_allocation_failed())?;
+        for (catalog_index, source_index) in canonical_source_indices.iter().copied().enumerate() {
+            let edge = edges.get(source_index).ok_or_else(label_catalog_mismatch)?;
+            let plan = if edge.stroke == GraphEdgeStroke::Invisible {
+                None
+            } else {
+                edge.label
+                    .as_deref()
+                    .map(|raw| {
+                        RoutedLabelPlan::try_new(catalog_index, raw, width_profile, resources)
+                    })
+                    .transpose()?
+                    .flatten()
+            };
+            labels.push(plan);
+        }
+        Ok(Self { labels })
+    }
+
+    pub(in crate::graph) fn descriptor(
+        &self,
+        catalog_index: usize,
+    ) -> Option<RoutedLabelDescriptor> {
+        self.labels
+            .get(catalog_index)
+            .and_then(Option::as_ref)
+            .map(|plan| plan.descriptor)
+    }
+
+    pub(in crate::graph) fn materialize(
+        self,
+        resources: &ResourceContext,
+    ) -> Result<RoutedLabelCatalog> {
+        self.materialize_with_callback(resources, || {})
+    }
+
+    #[cfg(test)]
+    fn materialize_with_probe(
+        self,
+        resources: &ResourceContext,
+        materialized: &std::cell::Cell<bool>,
+    ) -> Result<RoutedLabelCatalog> {
+        self.materialize_with_callback(resources, || materialized.set(true))
+    }
+
+    fn materialize_with_callback(
+        self,
+        resources: &ResourceContext,
+        before_materialize: impl FnOnce(),
+    ) -> Result<RoutedLabelCatalog> {
+        let mut work_units = self.labels.len();
+        let mut document_cells = 0usize;
+        let mut materialized_bytes = 0usize;
+        for plan in self.labels.iter().flatten() {
+            work_units = resources
+                .checked_work_add(work_units, plan.normalized.materialization_work_units())?;
+            document_cells = resources
+                .checked_work_add(document_cells, plan.normalized.metrics().document_cells)?;
+            materialized_bytes = resources.checked_work_add(
+                materialized_bytes,
+                plan.normalized.metrics().materialized_bytes,
+            )?;
+        }
+        resources.charge_layout_work(work_units)?;
+        resources.charge_document_cells(document_cells)?;
+        resources.check(AsciiResourceLimitId::MaxOutputBytes, materialized_bytes)?;
+        before_materialize();
+        self.materialize_after_admission()
+    }
+
+    fn materialize_after_admission(self) -> Result<RoutedLabelCatalog> {
+        let mut labels = Vec::new();
+        labels
+            .try_reserve_exact(self.labels.len())
+            .map_err(|_| label_allocation_failed())?;
+        for plan in self.labels {
+            labels.push(plan.map(RoutedLabelPlan::materialize).transpose()?);
+        }
+        Ok(RoutedLabelCatalog { labels })
+    }
+}
+
+impl RoutedLabelCatalog {
+    pub(in crate::graph) fn get(
+        &self,
+        descriptor: RoutedLabelDescriptor,
+    ) -> Result<&RoutedLabelText> {
+        self.labels
+            .get(descriptor.catalog_index())
+            .and_then(Option::as_ref)
+            .ok_or_else(label_catalog_mismatch)
+    }
+
+    #[cfg(test)]
+    pub(in crate::graph) fn for_test(texts: Vec<Option<RoutedLabelText>>) -> Self {
+        Self { labels: texts }
+    }
+}
+
+impl<'a> RoutedLabelPlan<'a> {
+    fn try_new(
+        catalog_index: usize,
+        raw: &'a str,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> Result<Option<Self>> {
+        let Some(normalized) = try_plan_normalized_label_lines_with_policy(
+            raw,
+            width_profile,
+            true,
+            None,
+            LabelBreakPolicy::MermaidLabelBreaks,
+            resources,
+        )?
+        else {
+            return Ok(None);
+        };
+        let metrics = normalized.metrics();
+        if metrics.max_width == 0 {
+            return Ok(None);
+        }
+        Ok(Some(Self {
+            raw,
+            normalized,
+            descriptor: RoutedLabelDescriptor {
+                catalog_index,
+                width: metrics.max_width,
+                line_count: metrics.line_count,
+            },
+            width_profile,
+        }))
+    }
+
+    fn materialize(self) -> Result<RoutedLabelText> {
+        let (lines, width) = self
+            .normalized
+            .materialize_after_admission(self.raw)?
+            .into_parts();
+        if width != self.descriptor.width || lines.len() != self.descriptor.line_count {
+            return Err(label_catalog_mismatch());
+        }
+        Ok(RoutedLabelText {
+            lines,
+            width,
+            width_profile: self.width_profile,
+        })
+    }
+}
+
 impl RoutedLabelText {
     #[cfg(test)]
     pub(super) fn new(raw: &str) -> Option<Self> {
         Self::new_with_profile(raw, TerminalWidthProfile::Unicode)
     }
 
+    #[cfg(test)]
     pub(super) fn new_with_profile(raw: &str, width_profile: TerminalWidthProfile) -> Option<Self> {
         let normalized = normalize_optional_text(Some(raw))?;
         let lines = split_label_lines(&normalized);
@@ -99,7 +329,7 @@ impl RoutedLabelText {
     }
 }
 
-pub(crate) fn draw_routed_label(canvas: &mut Canvas, label: &EdgeLabel) -> Result<()> {
+pub(crate) fn draw_routed_label(canvas: &mut Canvas, label: &EdgeLabel<'_>) -> Result<()> {
     for (line_index, line) in label.text.lines().iter().enumerate() {
         let line_width = label.text.line_width(line);
         let x = label
@@ -118,6 +348,17 @@ pub(crate) fn draw_routed_label(canvas: &mut Canvas, label: &EdgeLabel) -> Resul
     Ok(())
 }
 
+fn label_allocation_failed() -> AsciiError {
+    AsciiError::allocation_failed(AsciiResourceLimitPhase::LayoutWork.as_str())
+}
+
+fn label_catalog_mismatch() -> AsciiError {
+    AsciiError::UnsupportedFeature {
+        diagram_type: "graph",
+        feature: "route label catalog mismatch",
+    }
+}
+
 #[cfg(test)]
 pub(super) fn routed_label_placement(
     start: CanvasCoord,
@@ -128,20 +369,37 @@ pub(super) fn routed_label_placement(
     routed_label_placement_for_text(start, end, &text)
 }
 
+#[cfg(test)]
 pub(super) fn routed_label_placement_for_text(
     start: CanvasCoord,
     end: CanvasCoord,
     text: &RoutedLabelText,
 ) -> Option<RoutedLabelPlacement> {
+    routed_label_placement_for_descriptor(
+        start,
+        end,
+        RoutedLabelDescriptor {
+            catalog_index: 0,
+            width: text.width(),
+            line_count: text.line_count(),
+        },
+    )
+}
+
+pub(super) fn routed_label_placement_for_descriptor(
+    start: CanvasCoord,
+    end: CanvasCoord,
+    descriptor: RoutedLabelDescriptor,
+) -> Option<RoutedLabelPlacement> {
     if start.y == end.y {
-        let x = horizontal_label_x(start, end, text.width());
-        let y = label_block_y(start.y, text.line_count());
-        return Some(RoutedLabelPlacement::new(x, y, text.width()));
+        let x = horizontal_label_x(start, end, descriptor.width());
+        let y = label_block_y(start.y, descriptor.line_count());
+        return Some(RoutedLabelPlacement::new(x, y, descriptor.width()));
     }
 
-    let x = start.x.saturating_sub(text.width() / 2);
-    let y = label_block_y(vertical_label_y(start, end), text.line_count());
-    Some(RoutedLabelPlacement::new(x, y, text.width()))
+    let x = start.x.saturating_sub(descriptor.width() / 2);
+    let y = label_block_y(vertical_label_y(start, end), descriptor.line_count());
+    Some(RoutedLabelPlacement::new(x, y, descriptor.width()))
 }
 
 #[cfg(test)]
@@ -154,10 +412,27 @@ pub(super) fn routed_label_right_of_vertical_route_placement(
     routed_label_right_of_vertical_route_placement_for_text(start, end, &text)
 }
 
+#[cfg(test)]
 pub(super) fn routed_label_right_of_vertical_route_placement_for_text(
     start: CanvasCoord,
     end: CanvasCoord,
     text: &RoutedLabelText,
+) -> Option<RoutedLabelPlacement> {
+    routed_label_right_of_vertical_route_placement_for_descriptor(
+        start,
+        end,
+        RoutedLabelDescriptor {
+            catalog_index: 0,
+            width: text.width(),
+            line_count: text.line_count(),
+        },
+    )
+}
+
+pub(super) fn routed_label_right_of_vertical_route_placement_for_descriptor(
+    start: CanvasCoord,
+    end: CanvasCoord,
+    descriptor: RoutedLabelDescriptor,
 ) -> Option<RoutedLabelPlacement> {
     if start.x != end.x {
         return None;
@@ -165,8 +440,8 @@ pub(super) fn routed_label_right_of_vertical_route_placement_for_text(
 
     Some(RoutedLabelPlacement::new(
         start.x + 1,
-        label_block_y(vertical_label_y(start, end), text.line_count()),
-        text.width(),
+        label_block_y(vertical_label_y(start, end), descriptor.line_count()),
+        descriptor.width(),
     ))
 }
 
@@ -216,8 +491,27 @@ fn write_label_overlay(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graph::model::{GraphEdgeMarker, GraphEdgeStroke, GraphEdgeStyle};
     use crate::options::TerminalWidthProfile;
+    use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy, ResourceContext};
     use crate::terminal::TerminalCellText;
+    use merman_core::resources::ResourceProfile;
+    use std::cell::Cell;
+
+    fn edge(label: &str, from: &str, to: &str) -> AsciiGraphEdge {
+        AsciiGraphEdge {
+            id: None,
+            is_user_defined_id: false,
+            from: from.to_string(),
+            to: to.to_string(),
+            label: Some(label.to_string()),
+            stroke: GraphEdgeStroke::Normal,
+            start_marker: GraphEdgeMarker::Open,
+            end_marker: GraphEdgeMarker::Point,
+            length: 1,
+            style: GraphEdgeStyle::default(),
+        }
+    }
 
     #[test]
     fn routed_label_placement_centers_horizontal_route_labels() {
@@ -291,7 +585,7 @@ mod tests {
             &mut canvas,
             &EdgeLabel {
                 placement: RoutedLabelPlacement::new(0, 0, text.width()),
-                text,
+                text: &text,
                 color: CanvasColor::Role(crate::color::AsciiColorRole::EdgeLabel),
             },
         )
@@ -320,5 +614,98 @@ mod tests {
 
         assert_eq!(unicode.width(), 3);
         assert_eq!(cjk.width(), 4);
+    }
+
+    #[test]
+    fn routed_label_catalog_admits_exact_materialization_and_rejects_max_minus_one() {
+        let edges = vec![
+            edge("north<br>south", "a", "b"),
+            edge("Cafe\u{301} \u{1f469}\u{200d}\u{1f4bb}", "b", "c"),
+        ];
+        let indices = [0, 1];
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let measured_resources = ResourceContext::new(unbounded);
+        let measured_plan = RoutedLabelCatalogPlan::try_new(
+            &edges,
+            &indices,
+            TerminalWidthProfile::Unicode,
+            &measured_resources,
+        )
+        .expect("catalog planning should succeed");
+        let measured_probe = Cell::new(false);
+        measured_plan
+            .materialize_with_probe(&measured_resources, &measured_probe)
+            .expect("unbounded catalog materialization should succeed");
+        assert!(measured_probe.get());
+        let exact_work = measured_resources.layout_work_used();
+        let exact_document_cells = measured_resources.document_cells_used();
+        assert!(exact_work > 1);
+        assert!(exact_document_cells > 1);
+
+        let exact_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
+            .expect("exact work limit should be valid")
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_document_cells)
+            .expect("exact document limit should be valid");
+        let exact_resources = ResourceContext::new(exact_policy);
+        let exact_plan = RoutedLabelCatalogPlan::try_new(
+            &edges,
+            &indices,
+            TerminalWidthProfile::Unicode,
+            &exact_resources,
+        )
+        .expect("exact catalog planning should succeed");
+        let exact_probe = Cell::new(false);
+        exact_plan
+            .materialize_with_probe(&exact_resources, &exact_probe)
+            .expect("exact catalog materialization should succeed");
+        assert!(exact_probe.get());
+
+        let below_work_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
+            .expect("max-minus-one work limit should be valid");
+        let below_work_resources = ResourceContext::new(below_work_policy);
+        let below_work_plan = RoutedLabelCatalogPlan::try_new(
+            &edges,
+            &indices,
+            TerminalWidthProfile::Unicode,
+            &below_work_resources,
+        )
+        .expect("planning should fit before the final work debit");
+        let below_work_probe = Cell::new(false);
+        let error = below_work_plan
+            .materialize_with_probe(&below_work_resources, &below_work_probe)
+            .expect_err("max-minus-one work limit should reject before materialization");
+        assert!(!below_work_probe.get());
+        assert!(matches!(
+            error,
+            crate::AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+        ));
+
+        let below_document_policy = unbounded
+            .with_limit(
+                AsciiResourceLimitId::MaxDocumentCells,
+                exact_document_cells - 1,
+            )
+            .expect("max-minus-one document limit should be valid");
+        let below_document_resources = ResourceContext::new(below_document_policy);
+        let below_document_plan = RoutedLabelCatalogPlan::try_new(
+            &edges,
+            &indices,
+            TerminalWidthProfile::Unicode,
+            &below_document_resources,
+        )
+        .expect("document planning should be non-materializing");
+        let below_document_probe = Cell::new(false);
+        let error = below_document_plan
+            .materialize_with_probe(&below_document_resources, &below_document_probe)
+            .expect_err("max-minus-one document limit should reject before materialization");
+        assert!(!below_document_probe.get());
+        assert!(matches!(
+            error,
+            crate::AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxDocumentCells
+        ));
     }
 }

@@ -25,7 +25,7 @@ pub(in crate::graph::routing) fn allocate_route_label_placements(
         for label_index in 0..label_len {
             let (original, line_count, unresolved_anchor) = {
                 let label = &route.plan.labels[label_index];
-                (label.placement, label.text.line_count(), label.anchor)
+                (label.placement, label.line_count(), label.anchor)
             };
             let original_rect = OccupiedRect::try_new(
                 original.x(),

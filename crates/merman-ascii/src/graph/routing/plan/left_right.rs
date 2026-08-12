@@ -8,7 +8,15 @@ use super::{
     MarkerAnchors, PlannedRouteCells, RoutePlan, edge_line_cell, planned_label, route_cell,
 };
 use crate::error::Result;
+use crate::graph::routing::label::RoutedLabelDescriptor;
 use crate::resource::ResourceContext;
+
+#[cfg(test)]
+fn test_label(edge: &AsciiGraphEdge, charset: &GraphCharset) -> Option<RoutedLabelDescriptor> {
+    edge.label
+        .as_deref()
+        .and_then(|raw| RoutedLabelDescriptor::for_test(0, raw, charset.width_profile))
+}
 
 #[cfg(test)]
 pub(super) fn plan_left_right_down_route(
@@ -19,7 +27,14 @@ pub(super) fn plan_left_right_down_route(
 ) -> Option<RoutePlan> {
     let mut resources = super::unbounded_route_resources();
     super::materialize_test_markers(
-        plan_left_right_down_route_with_resources(from, to, edge, charset, &mut resources),
+        plan_left_right_down_route_with_resources(
+            from,
+            to,
+            edge,
+            test_label(edge, charset),
+            charset,
+            &mut resources,
+        ),
         edge,
         charset,
     )
@@ -29,6 +44,7 @@ pub(super) fn plan_left_right_down_route_with_resources(
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
+    _label: Option<RoutedLabelDescriptor>,
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
@@ -76,6 +92,7 @@ pub(super) fn plan_left_right_down_then_right_route(
             from,
             to,
             edge,
+            test_label(edge, charset),
             charset,
             &mut resources,
         ),
@@ -84,12 +101,16 @@ pub(super) fn plan_left_right_down_then_right_route(
     )
 }
 
+// Keep the route geometry, label descriptor, charset, and resource ledger explicit at this
+// internal planning seam; bundling them would obscure which inputs affect candidate geometry.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn plan_left_right_down_then_right_route_with_resources(
     layouts: &[NodeLayout],
     edges: &[AsciiGraphEdge],
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
+    _label: Option<RoutedLabelDescriptor>,
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
@@ -164,6 +185,7 @@ pub(super) fn plan_left_right_right_then_up_route(
             from,
             to,
             edge,
+            test_label(edge, charset),
             charset,
             &mut resources,
         ),
@@ -172,12 +194,16 @@ pub(super) fn plan_left_right_right_then_up_route(
     )
 }
 
+// Keep the route geometry, label descriptor, charset, and resource ledger explicit at this
+// internal planning seam; bundling them would obscure which inputs affect candidate geometry.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn plan_left_right_right_then_up_route_with_resources(
     layouts: &[NodeLayout],
     edges: &[AsciiGraphEdge],
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
+    _label: Option<RoutedLabelDescriptor>,
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
@@ -251,6 +277,7 @@ pub(super) fn plan_left_right_reverse_over_self_loop_route(
             from,
             to,
             edge,
+            test_label(edge, charset),
             charset,
             &mut resources,
         ),
@@ -264,6 +291,7 @@ pub(super) fn plan_left_right_reverse_over_self_loop_route_with_resources(
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
+    label: Option<RoutedLabelDescriptor>,
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
@@ -293,7 +321,7 @@ pub(super) fn plan_left_right_reverse_over_self_loop_route_with_resources(
         cells.try_push(resources, || route_cell(x, y, horizontal))?;
     }
     let labels = planned_label(
-        edge.label.as_deref(),
+        label,
         CanvasCoord {
             x: to.right() + 1,
             y,
@@ -302,7 +330,6 @@ pub(super) fn plan_left_right_reverse_over_self_loop_route_with_resources(
             x: from.x.saturating_sub(1),
             y,
         },
-        charset,
     )
     .into_iter()
     .collect();
@@ -332,6 +359,7 @@ pub(super) fn plan_left_right_self_loop_route(
             from,
             edge,
             0,
+            test_label(edge, charset),
             charset,
             &mut resources,
         ),
@@ -340,12 +368,16 @@ pub(super) fn plan_left_right_self_loop_route(
     )
 }
 
+// Keep the route geometry, label descriptor, charset, and resource ledger explicit at this
+// internal planning seam; bundling them would obscure which inputs affect candidate geometry.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn plan_left_right_self_loop_route_with_resources(
     layouts: &[NodeLayout],
     edges: &[AsciiGraphEdge],
     from: &NodeLayout,
     edge: &AsciiGraphEdge,
     parallel_index: usize,
+    label: Option<RoutedLabelDescriptor>,
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
@@ -427,7 +459,7 @@ pub(super) fn plan_left_right_self_loop_route_with_resources(
         return Ok(None);
     };
     let labels = planned_label(
-        edge.label.as_deref(),
+        label,
         CanvasCoord {
             x: marker_x,
             y: bottom_y,
@@ -436,7 +468,6 @@ pub(super) fn plan_left_right_self_loop_route_with_resources(
             x: loop_x,
             y: bottom_y,
         },
-        charset,
     )
     .into_iter()
     .collect();

@@ -26,7 +26,7 @@ mod tests;
 
 pub(super) use cell::RouteCells;
 use cell::{set_edge_cell_with_paint, set_route_cell_with_paint};
-use label::{EdgeLabel, draw_routed_label};
+use label::{EdgeLabel, RoutedLabelCatalog, RoutedLabelCatalogPlan, draw_routed_label};
 #[cfg(test)]
 use occupancy::{MarkerCandidateDisposition, OccupiedRect, ProtectedKind};
 use occupancy::{
@@ -59,10 +59,24 @@ impl<'a> RouteDrawing<'a> {
     }
 }
 
-pub(super) struct RouteScene {
+pub(super) struct RouteScenePlan<'a> {
     routes: Vec<PreparedRoute>,
     extent: (usize, usize),
     planned_cell_count: usize,
+    labels: RoutedLabelCatalogPlan<'a>,
+}
+
+pub(super) struct RouteScene {
+    routes: Vec<PreparedRoute>,
+    #[cfg(test)]
+    extent: (usize, usize),
+    planned_cell_count: usize,
+    labels: RoutedLabelCatalog,
+}
+
+struct CanonicalEdges {
+    values: Vec<AsciiGraphEdge>,
+    source_indices: Vec<usize>,
 }
 
 struct PreparedRoute {
@@ -125,7 +139,24 @@ impl PreparedRoute {
     }
 }
 
+impl RouteScenePlan<'_> {
+    pub(super) fn canvas_extent(&self) -> (usize, usize) {
+        self.extent
+    }
+
+    pub(super) fn materialize(self, resources: &ResourceContext) -> Result<RouteScene> {
+        Ok(RouteScene {
+            routes: self.routes,
+            #[cfg(test)]
+            extent: self.extent,
+            planned_cell_count: self.planned_cell_count,
+            labels: self.labels.materialize(resources)?,
+        })
+    }
+}
+
 impl RouteScene {
+    #[cfg(test)]
     pub(super) fn canvas_extent(&self) -> (usize, usize) {
         self.extent
     }
@@ -151,8 +182,9 @@ impl RouteScene {
     ) -> Result<()> {
         for route in &self.routes {
             for label in &route.plan.labels {
+                let text = self.labels.get(label.descriptor)?;
                 let label = transform.apply(EdgeLabel {
-                    text: label.text.clone(),
+                    text,
                     placement: label.placement,
                     color: label.paint.color,
                 });
@@ -171,7 +203,7 @@ pub(super) enum RouteLabelTransform {
 }
 
 impl RouteLabelTransform {
-    fn apply(self, label: EdgeLabel) -> EdgeLabel {
+    fn apply<'a>(self, label: EdgeLabel<'a>) -> EdgeLabel<'a> {
         match self {
             Self::Identity => label,
             Self::HorizontalMirror { width } => EdgeLabel {
@@ -198,19 +230,26 @@ impl RouteLabelTransform {
     }
 }
 
-pub(super) fn prepare_route_scene_with_resources(
+pub(super) fn prepare_route_scene_with_resources<'a>(
     graph: &AsciiGraph,
     graph_layout: &GraphLayout,
-    edges: &[AsciiGraphEdge],
+    edges: &'a [AsciiGraphEdge],
     charset: &GraphCharset,
     resources: &mut ResourceContext,
-) -> Result<RouteScene> {
+) -> Result<RouteScenePlan<'a>> {
     let topology = if graph.groups.is_empty() {
         None
     } else {
         Some(GraphGroupTopology::try_new(graph, resources)?)
     };
     let canonical_edges = canonicalize_edges(edges, resources)?;
+    let label_plans = RoutedLabelCatalogPlan::try_new(
+        edges,
+        &canonical_edges.source_indices,
+        charset.width_profile,
+        resources,
+    )?;
+    let canonical_edges = canonical_edges.values;
     let mut routes = Vec::new();
     routes
         .try_reserve(canonical_edges.len())
@@ -258,6 +297,7 @@ pub(super) fn prepare_route_scene_with_resources(
                 charset,
             },
             topology.as_ref(),
+            label_plans.descriptor(edge_index),
             resources,
         )? {
             EdgeRouteCandidates::Routed(candidates) => candidates,
@@ -335,10 +375,11 @@ pub(super) fn prepare_route_scene_with_resources(
         height = height.max(plan_height);
     }
 
-    Ok(RouteScene {
+    Ok(RouteScenePlan {
         routes,
         extent: (width, height),
         planned_cell_count,
+        labels: label_plans,
     })
 }
 
@@ -383,7 +424,7 @@ fn route_boundary_group_indices(
 fn canonicalize_edges(
     edges: &[AsciiGraphEdge],
     resources: &mut ResourceContext,
-) -> Result<Vec<AsciiGraphEdge>> {
+) -> Result<CanonicalEdges> {
     let mut order = Vec::new();
     order
         .try_reserve(edges.len())
@@ -407,7 +448,10 @@ fn canonicalize_edges(
         resources.charge_layout_work(1)?;
         canonical_edges.push(edges[*index].clone());
     }
-    Ok(canonical_edges)
+    Ok(CanonicalEdges {
+        values: canonical_edges,
+        source_indices: order,
+    })
 }
 
 fn layout_allocation_failed() -> AsciiError {
@@ -478,7 +522,8 @@ pub(super) fn prepare_route_scene(
     let mut resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
         merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
     ));
-    prepare_route_scene_with_resources(graph, graph_layout, edges, charset, &mut resources)
+    prepare_route_scene_with_resources(graph, graph_layout, edges, charset, &mut resources)?
+        .materialize(&resources)
 }
 
 fn endpoint_layout(

@@ -755,6 +755,7 @@ pub(crate) fn normalize_optional_text(text: Option<&str>) -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_owned())
 }
 
+#[cfg(test)]
 pub(crate) fn split_label_lines(raw: &str) -> Vec<String> {
     let normalized = normalize_label_breaks(raw);
     SafeText::new(&normalized)
@@ -786,6 +787,7 @@ pub(crate) fn wrap_label_lines_with_profile(
     lines
 }
 
+#[cfg(test)]
 fn normalize_label_breaks(raw: &str) -> String {
     let mut normalized = String::with_capacity(raw.len());
     let mut index = 0;

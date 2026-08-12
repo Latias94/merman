@@ -203,6 +203,10 @@ impl NormalizedLabelPlan {
         self.output_metrics
     }
 
+    pub(crate) const fn materialization_work_units(self) -> usize {
+        self.replay_work_units
+    }
+
     pub(crate) fn check_materialization_limits(self, resources: &ResourceContext) -> Result<()> {
         resources.check(
             AsciiResourceLimitId::MaxOutputBytes,
@@ -244,6 +248,10 @@ impl NormalizedLabelPlan {
         resources: &ResourceContext,
     ) -> Result<NormalizedLabelLines> {
         self.materialize_with(raw, resources, || {})
+    }
+
+    pub(crate) fn materialize_after_admission(self, raw: &str) -> Result<NormalizedLabelLines> {
+        self.materialize_impl(raw, || {})
     }
 
     fn materialize_with(

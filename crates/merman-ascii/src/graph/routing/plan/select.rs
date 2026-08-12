@@ -31,6 +31,7 @@ use super::top_down::{
     plan_top_down_direct_route_with_resources, plan_top_down_side_entry_route_with_resources,
 };
 use crate::error::Result;
+use crate::graph::routing::label::RoutedLabelDescriptor;
 use crate::graph::topology::GraphEndpointIndex;
 use crate::resource::ResourceContext;
 
@@ -101,7 +102,12 @@ pub(in crate::graph::routing) fn plan_edge_route(request: EdgeRouteRequest<'_>) 
     let mut resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
         merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
     ));
-    let planned = plan_edge_route_with_resources(request, &mut resources)
+    let label = request
+        .edge
+        .label
+        .as_deref()
+        .and_then(|raw| RoutedLabelDescriptor::for_test(0, raw, request.charset.width_profile));
+    let planned = plan_edge_route_with_resources(request, label, &mut resources)
         .expect("test route planning work must remain representable");
     match planned {
         EdgeRoutePlan::Routed(plan) => EdgeRoutePlan::Routed(
@@ -120,6 +126,7 @@ pub(in crate::graph::routing) fn plan_edge_route(request: EdgeRouteRequest<'_>) 
 #[cfg(test)]
 pub(in crate::graph::routing) fn plan_edge_route_with_resources(
     request: EdgeRouteRequest<'_>,
+    label: Option<RoutedLabelDescriptor>,
     resources: &mut ResourceContext,
 ) -> Result<EdgeRoutePlan> {
     let topology = if request.graph.groups.is_empty() {
@@ -127,12 +134,13 @@ pub(in crate::graph::routing) fn plan_edge_route_with_resources(
     } else {
         Some(GraphGroupTopology::try_new(request.graph, resources)?)
     };
-    plan_edge_route_with_topology(request, topology.as_ref(), resources)
+    plan_edge_route_with_topology(request, topology.as_ref(), label, resources)
 }
 
 pub(in crate::graph::routing) fn plan_edge_route_with_topology(
     request: EdgeRouteRequest<'_>,
     topology: Option<&GraphGroupTopology<'_>>,
+    label: Option<RoutedLabelDescriptor>,
     resources: &mut ResourceContext,
 ) -> Result<EdgeRoutePlan> {
     let boundary =
@@ -152,6 +160,7 @@ pub(in crate::graph::routing) fn plan_edge_route_with_topology(
                 request.to,
                 request.edge,
                 parallel_edge_index(request.edges, request.edge_index),
+                label,
                 request.charset,
                 resources,
             )?
@@ -159,13 +168,13 @@ pub(in crate::graph::routing) fn plan_edge_route_with_topology(
             return Ok(EdgeRoutePlan::Routed(plan));
         }
     }
-    if let Some(plan) = plan_boundary_route(boundary, request, resources)? {
+    if let Some(plan) = plan_boundary_route(boundary, request, label, resources)? {
         return Ok(EdgeRoutePlan::Routed(plan));
     }
 
     let plan = match boundary.direction().canonical() {
-        GraphDirection::LeftRight => plan_left_right_route(request, resources)?,
-        GraphDirection::TopDown => plan_top_down_route(request, resources)?,
+        GraphDirection::LeftRight => plan_left_right_route(request, label, resources)?,
+        GraphDirection::TopDown => plan_top_down_route(request, label, resources)?,
         GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
     };
     let plan = plan.map(|plan| match boundary {
@@ -185,6 +194,7 @@ pub(in crate::graph::routing) fn plan_edge_route_with_topology(
 
 fn plan_left_right_route(
     request: EdgeRouteRequest<'_>,
+    label: Option<RoutedLabelDescriptor>,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
     let graph_layout = request.graph_layout;
@@ -201,6 +211,7 @@ fn plan_left_right_route(
             from,
             edge,
             parallel_index,
+            label,
             charset,
             resources,
         );
@@ -213,6 +224,7 @@ fn plan_left_right_route(
                 to,
                 edge,
                 parallel_index - 1,
+                label,
                 charset,
                 resources,
             );
@@ -222,6 +234,7 @@ fn plan_left_right_route(
             to,
             edge,
             parallel_index - 1,
+            label,
             charset,
             resources,
         );
@@ -234,6 +247,7 @@ fn plan_left_right_route(
                 from,
                 to,
                 edge,
+                label,
                 charset,
                 resources,
             );
@@ -243,6 +257,7 @@ fn plan_left_right_route(
             to,
             edge,
             parallel_index,
+            label,
             charset,
             resources,
         );
@@ -255,6 +270,7 @@ fn plan_left_right_route(
             from,
             to,
             edge,
+            label,
             charset,
             resources,
         )?
@@ -267,6 +283,7 @@ fn plan_left_right_route(
         from,
         to,
         edge,
+        label,
         charset,
         resources,
     )? {
@@ -280,13 +297,16 @@ fn plan_left_right_route(
             from,
             to,
             edge,
+            label,
             charset,
             resources,
         );
     }
 
     if from.center_y() < to.center_y() && to.x == from.x {
-        return plan_left_right_down_route_with_resources(from, to, edge, charset, resources);
+        return plan_left_right_down_route_with_resources(
+            from, to, edge, label, charset, resources,
+        );
     }
 
     if from.center_y() > to.center_y() && to.x > from.x {
@@ -296,6 +316,7 @@ fn plan_left_right_route(
             from,
             to,
             edge,
+            label,
             charset,
             resources,
         );
@@ -306,6 +327,7 @@ fn plan_left_right_route(
 
 fn plan_top_down_route(
     request: EdgeRouteRequest<'_>,
+    label: Option<RoutedLabelDescriptor>,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
     let from = request.from;
@@ -321,6 +343,7 @@ fn plan_top_down_route(
             from,
             edge,
             parallel_index,
+            label,
             charset,
             resources,
         );
@@ -333,6 +356,7 @@ fn plan_top_down_route(
                 to,
                 edge,
                 parallel_index - 1,
+                label,
                 charset,
                 resources,
             );
@@ -342,13 +366,14 @@ fn plan_top_down_route(
             to,
             edge,
             parallel_index - 1,
+            label,
             charset,
             resources,
         );
     }
 
     if from.center_y() > to.center_y() {
-        return plan_top_down_back_route_with_resources(from, to, edge, charset, resources);
+        return plan_top_down_back_route_with_resources(from, to, edge, label, charset, resources);
     }
 
     if from.center_y() == to.center_y() {
@@ -357,6 +382,7 @@ fn plan_top_down_route(
             from,
             to,
             edge,
+            label,
             charset,
             resources,
         )? {
@@ -366,7 +392,9 @@ fn plan_top_down_route(
         // Same-rank edges use their natural horizontal ports when the span is clear. If another
         // node blocks that span, reuse the shared bottom lane instead of reporting the edge as
         // unroutable.
-        return plan_same_rank_bottom_lane_route_with_resources(from, to, edge, charset, resources);
+        return plan_same_rank_bottom_lane_route_with_resources(
+            from, to, edge, label, charset, resources,
+        );
     }
 
     if top_down_skips_occupied_rank(&request.graph_layout.nodes, from, to, resources)? {
@@ -375,6 +403,7 @@ fn plan_top_down_route(
             from,
             to,
             edge,
+            label,
             charset,
             GridRouteOptions::with_fixed_ports(Port::Right, Port::Right),
             resources,
@@ -396,15 +425,16 @@ fn plan_top_down_route(
                 from,
                 to,
                 edge,
+                label,
                 charset,
                 GridRouteOptions::with_fixed_ports(start_port, end_port),
                 resources,
             );
         }
-        return plan_top_down_bent_route_with_resources(from, to, edge, charset, resources);
+        return plan_top_down_bent_route_with_resources(from, to, edge, label, charset, resources);
     }
 
-    plan_top_down_direct_route_with_resources(from, to, edge, charset, resources)
+    plan_top_down_direct_route_with_resources(from, to, edge, label, charset, resources)
 }
 
 fn top_down_skips_occupied_rank(
@@ -468,6 +498,7 @@ fn target_has_direct_top_entry(request: EdgeRouteRequest<'_>) -> bool {
 fn plan_boundary_route(
     boundary: EdgeBoundaryContext<'_>,
     request: EdgeRouteRequest<'_>,
+    label: Option<RoutedLabelDescriptor>,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
     match boundary {
@@ -480,6 +511,7 @@ fn plan_boundary_route(
             request.from,
             request.to,
             request.edge,
+            label,
             request.charset,
             GridRouteOptions::with_fixed_ports(Port::Right, Port::Left)
                 .with_segment(PlannedRouteSegment::Boundary)
@@ -495,6 +527,7 @@ fn plan_boundary_route(
             request.from,
             request.to,
             request.edge,
+            label,
             request.charset,
             GridRouteOptions::with_fixed_ports(Port::Right, Port::Right)
                 .with_segment(PlannedRouteSegment::Boundary)
@@ -509,6 +542,7 @@ fn plan_boundary_route(
             request.from,
             request.to,
             request.edge,
+            label,
             request.charset,
             resources,
         ),

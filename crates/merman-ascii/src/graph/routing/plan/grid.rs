@@ -3,8 +3,8 @@ use super::super::super::layout::{CanvasCoord, GraphLayout, GridCoord, NodeLayou
 use super::super::super::model::{AsciiGraphEdge, GraphDirection};
 use super::super::cell::edge_line_char;
 use super::super::label::{
-    RoutedLabelPlacement, RoutedLabelText, routed_label_placement_for_text,
-    routed_label_right_of_vertical_route_placement_for_text,
+    RoutedLabelDescriptor, RoutedLabelPlacement, routed_label_placement_for_descriptor,
+    routed_label_right_of_vertical_route_placement_for_descriptor,
 };
 use super::super::path::{
     GridPathPortPolicy, Port, PortPair, StepDirection, route_grid_path_with_resources,
@@ -91,12 +91,17 @@ pub(super) fn plan_left_right_grid_path_route(
     let mut resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
         merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
     ));
+    let label = edge
+        .label
+        .as_deref()
+        .and_then(|raw| RoutedLabelDescriptor::for_test(0, raw, charset.width_profile));
     super::materialize_test_markers(
         plan_left_right_grid_path_route_with_resources(
             graph_layout,
             from,
             to,
             edge,
+            label,
             charset,
             &mut resources,
         ),
@@ -110,6 +115,7 @@ pub(super) fn plan_left_right_grid_path_route_with_resources(
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
+    label: Option<RoutedLabelDescriptor>,
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
@@ -118,6 +124,7 @@ pub(super) fn plan_left_right_grid_path_route_with_resources(
         from,
         to,
         edge,
+        label,
         charset,
         GridRouteOptions::direct(),
         resources,
@@ -136,12 +143,17 @@ pub(super) fn plan_left_right_grid_path_route_with_options(
     let mut resources = ResourceContext::new(crate::resource::AsciiResourcePolicy::for_profile(
         merman_core::resources::ResourceProfile::UnboundedForTrustedInput,
     ));
+    let label = edge
+        .label
+        .as_deref()
+        .and_then(|raw| RoutedLabelDescriptor::for_test(0, raw, charset.width_profile));
     super::materialize_test_markers(
         plan_left_right_grid_path_route_with_options_and_resources(
             graph_layout,
             from,
             to,
             edge,
+            label,
             charset,
             options,
             &mut resources,
@@ -151,11 +163,15 @@ pub(super) fn plan_left_right_grid_path_route_with_options(
     )
 }
 
+// Keep the route geometry, label descriptor, charset, and resource ledger explicit at this
+// internal planning seam; bundling them would obscure which inputs affect candidate geometry.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn plan_left_right_grid_path_route_with_options_and_resources(
     graph_layout: &GraphLayout,
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
+    label: Option<RoutedLabelDescriptor>,
     charset: &GraphCharset,
     options: GridRouteOptions,
     resources: &mut ResourceContext,
@@ -200,15 +216,9 @@ pub(super) fn plan_left_right_grid_path_route_with_options_and_resources(
         segment,
         resources,
     )?;
-    let labels = planned_grid_label(
-        edge.label.as_deref(),
-        &lines_drawn,
-        &line_directions,
-        options.label_mode,
-        charset,
-    )
-    .into_iter()
-    .collect();
+    let labels = planned_grid_label(label, &lines_drawn, &line_directions, options.label_mode)
+        .into_iter()
+        .collect();
 
     let start_anchor = MarkerAnchor::new(start_cell, opposite_direction(line_directions[0]));
     let end_anchor = MarkerAnchor::new(
@@ -234,18 +244,17 @@ fn opposite_direction(direction: StepDirection) -> StepDirection {
 }
 
 fn planned_grid_label(
-    label: Option<&str>,
+    descriptor: Option<RoutedLabelDescriptor>,
     lines: &[Vec<CanvasCoord>],
     directions: &[StepDirection],
     mode: GridRouteLabelMode,
-    charset: &GraphCharset,
 ) -> Option<PlannedRouteLabel> {
-    let text = RoutedLabelText::new_with_profile(label?, charset.width_profile)?;
+    let descriptor = descriptor?;
     let (line, direction) = grid_label_line(lines, directions, mode)?;
     let first = line.first().copied()?;
     let last = line.last().copied()?;
-    let placement = grid_label_placement(&text, first, last, mode, direction)?;
-    Some(PlannedRouteLabel::new(text, placement))
+    let placement = grid_label_placement(descriptor, first, last, mode, direction)?;
+    Some(PlannedRouteLabel::new(descriptor, placement))
 }
 
 fn grid_label_line<'a>(
@@ -276,7 +285,7 @@ fn last_vertical_grid_label_line<'a>(
 }
 
 fn grid_label_placement(
-    label: &RoutedLabelText,
+    descriptor: RoutedLabelDescriptor,
     first: CanvasCoord,
     last: CanvasCoord,
     mode: GridRouteLabelMode,
@@ -284,12 +293,14 @@ fn grid_label_placement(
 ) -> Option<RoutedLabelPlacement> {
     match mode {
         GridRouteLabelMode::InlineLongestSegment => {
-            routed_label_placement_for_text(first, last, label)
+            routed_label_placement_for_descriptor(first, last, descriptor)
         }
         GridRouteLabelMode::FirstVerticalTransitLane
         | GridRouteLabelMode::LastVerticalTransitLane => match direction {
             StepDirection::Up | StepDirection::Down => {
-                routed_label_right_of_vertical_route_placement_for_text(first, last, label)
+                routed_label_right_of_vertical_route_placement_for_descriptor(
+                    first, last, descriptor,
+                )
             }
             StepDirection::Left | StepDirection::Right => None,
         },

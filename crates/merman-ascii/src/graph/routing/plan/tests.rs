@@ -278,6 +278,7 @@ fn parallel_self_loop_lane_index_reports_checked_grid_overflow() {
         &from,
         &edge,
         usize::MAX,
+        None,
         &charset,
         &mut resources,
     )
@@ -1090,12 +1091,7 @@ fn left_right_grid_path_route_plans_bent_path_cells_and_corner() {
             .iter()
             .any(|cell| cell.kind == PlannedRouteCellKind::EdgeArrow)
     );
-    assert_eq!(
-        plan.labels
-            .first()
-            .and_then(|label| label.text.lines().first().map(String::as_str)),
-        Some("down")
-    );
+    assert_eq!(plan.labels.first().map(PlannedRouteLabel::width), Some(4));
 }
 
 #[test]

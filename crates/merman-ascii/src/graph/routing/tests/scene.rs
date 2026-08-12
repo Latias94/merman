@@ -107,8 +107,15 @@ fn canonical_edge_order_ignores_generated_ids_and_is_permutation_stable() {
     let canonical_forward = canonicalize_edges(&forward, &mut forward_resources).unwrap();
     let canonical_reversed = canonicalize_edges(&reversed, &mut reversed_resources).unwrap();
 
-    assert_eq!(canonical_forward.len(), canonical_reversed.len());
-    for (left, right) in canonical_forward.iter().zip(&canonical_reversed) {
+    assert_eq!(
+        canonical_forward.values.len(),
+        canonical_reversed.values.len()
+    );
+    for (left, right) in canonical_forward
+        .values
+        .iter()
+        .zip(canonical_reversed.values.iter())
+    {
         assert_eq!(compare_edges(left, right), Ordering::Equal);
     }
 }

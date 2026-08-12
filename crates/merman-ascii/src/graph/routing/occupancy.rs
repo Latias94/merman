@@ -498,13 +498,13 @@ impl<'layout> SceneOccupancy<'layout> {
                 label.placement.x(),
                 label.placement.y(),
                 label.placement.width(),
-                label.text.line_count(),
+                label.line_count(),
                 resources,
             )?;
             let anchor = resolve_label_anchor(plan, label.anchor, original, resources)?;
             let candidates = route_label_candidates(
                 label.placement,
-                label.text.line_count(),
+                label.line_count(),
                 anchor,
                 route_bounds,
                 resources,
@@ -515,7 +515,7 @@ impl<'layout> SceneOccupancy<'layout> {
                     candidate.x(),
                     candidate.y(),
                     candidate.width(),
-                    label.text.line_count(),
+                    label.line_count(),
                     resources,
                 )?;
                 if self.plan_label_candidate_is_clear(plan, anchor, footprint, resources)? {

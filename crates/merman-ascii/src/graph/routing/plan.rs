@@ -1,7 +1,9 @@
 use super::super::charset::GraphCharset;
 use super::super::layout::CanvasCoord;
 use super::super::model::{GraphEdgeMarker, GraphEdgeStyle};
-use super::label::{RoutedLabelPlacement, RoutedLabelText, routed_label_placement_for_text};
+use super::label::{
+    RoutedLabelDescriptor, RoutedLabelPlacement, routed_label_placement_for_descriptor,
+};
 use super::path::StepDirection;
 use crate::canvas::CanvasColor;
 use crate::color::{AsciiColorRole, AsciiRgb};
@@ -544,7 +546,7 @@ impl RoutePlan {
             let label_width =
                 resources.checked_grid_add(label.placement.x(), label.placement.width())?;
             let label_height =
-                resources.checked_grid_add(label.placement.y(), label.text.line_count().max(1))?;
+                resources.checked_grid_add(label.placement.y(), label.line_count().max(1))?;
             width = width.max(label_width);
             height = height.max(label_height);
         }
@@ -750,16 +752,20 @@ pub(super) enum PlannedRouteCellKind {
 
 #[derive(Debug, Clone)]
 pub(super) struct PlannedRouteLabel {
-    pub(super) text: RoutedLabelText,
+    pub(super) descriptor: RoutedLabelDescriptor,
     pub(super) placement: RoutedLabelPlacement,
     pub(super) paint: PlannedRoutePaint,
     pub(super) anchor: LabelAnchor,
 }
 
 impl PlannedRouteLabel {
-    pub(super) fn new(text: RoutedLabelText, placement: RoutedLabelPlacement) -> Self {
+    pub(super) fn new(
+        descriptor: impl Into<RoutedLabelDescriptor>,
+        placement: RoutedLabelPlacement,
+    ) -> Self {
+        let descriptor = descriptor.into();
         Self {
-            text,
+            descriptor,
             placement,
             paint: PlannedRoutePaint::role(AsciiColorRole::EdgeLabel),
             anchor: LabelAnchor::PlacementHint(CanvasCoord {
@@ -770,7 +776,7 @@ impl PlannedRouteLabel {
     }
 
     fn with_host_segment(
-        text: RoutedLabelText,
+        descriptor: RoutedLabelDescriptor,
         placement: RoutedLabelPlacement,
         start: CanvasCoord,
         end: CanvasCoord,
@@ -781,14 +787,24 @@ impl PlannedRouteLabel {
                 end,
                 route_segment: None,
             },
-            ..Self::new(text, placement)
+            ..Self::new(descriptor, placement)
         }
+    }
+
+    pub(super) const fn width(&self) -> usize {
+        self.descriptor.width()
+    }
+
+    pub(super) const fn line_count(&self) -> usize {
+        self.descriptor.line_count()
     }
 }
 
 impl PartialEq for PlannedRouteLabel {
     fn eq(&self, other: &Self) -> bool {
-        self.text == other.text && self.placement == other.placement && self.paint == other.paint
+        self.descriptor == other.descriptor
+            && self.placement == other.placement
+            && self.paint == other.paint
     }
 }
 
@@ -874,15 +890,14 @@ fn edge_line_cell_in_segment(
 }
 
 fn planned_label(
-    label: Option<&str>,
+    descriptor: Option<RoutedLabelDescriptor>,
     start: CanvasCoord,
     end: CanvasCoord,
-    charset: &GraphCharset,
 ) -> Option<PlannedRouteLabel> {
-    let text = RoutedLabelText::new_with_profile(label?, charset.width_profile)?;
-    let placement = routed_label_placement_for_text(start, end, &text)?;
+    let descriptor = descriptor?;
+    let placement = routed_label_placement_for_descriptor(start, end, descriptor)?;
     Some(PlannedRouteLabel::with_host_segment(
-        text, placement, start, end,
+        descriptor, placement, start, end,
     ))
 }
 

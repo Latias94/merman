@@ -7,12 +7,14 @@ use super::{
     route_cell_in_segment, route_turn_char,
 };
 use crate::error::Result;
+use crate::graph::routing::label::RoutedLabelDescriptor;
 use crate::resource::ResourceContext;
 
 pub(super) fn plan_axis_aligned_compound_endpoint_route_with_resources(
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
+    label: Option<RoutedLabelDescriptor>,
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
@@ -29,6 +31,7 @@ pub(super) fn plan_axis_aligned_compound_endpoint_route_with_resources(
                 port,
                 StepDirection::Down,
                 edge,
+                label,
                 charset,
                 resources,
             );
@@ -40,6 +43,7 @@ pub(super) fn plan_axis_aligned_compound_endpoint_route_with_resources(
                 port,
                 StepDirection::Up,
                 edge,
+                label,
                 charset,
                 resources,
             );
@@ -61,6 +65,7 @@ pub(super) fn plan_axis_aligned_compound_endpoint_route_with_resources(
                 end,
                 StepDirection::Down,
                 edge,
+                label,
                 charset,
                 resources,
             );
@@ -82,6 +87,7 @@ pub(super) fn plan_axis_aligned_compound_endpoint_route_with_resources(
                 end,
                 StepDirection::Up,
                 edge,
+                label,
                 charset,
                 resources,
             );
@@ -96,6 +102,7 @@ pub(super) fn plan_axis_aligned_compound_endpoint_route_with_resources(
                 port,
                 StepDirection::Right,
                 edge,
+                label,
                 charset,
                 resources,
             );
@@ -107,6 +114,7 @@ pub(super) fn plan_axis_aligned_compound_endpoint_route_with_resources(
                 port,
                 StepDirection::Left,
                 edge,
+                label,
                 charset,
                 resources,
             );
@@ -128,6 +136,7 @@ pub(super) fn plan_axis_aligned_compound_endpoint_route_with_resources(
                 end,
                 StepDirection::Right,
                 edge,
+                label,
                 charset,
                 resources,
             );
@@ -149,6 +158,7 @@ pub(super) fn plan_axis_aligned_compound_endpoint_route_with_resources(
                 end,
                 StepDirection::Left,
                 edge,
+                label,
                 charset,
                 resources,
             );
@@ -197,6 +207,7 @@ fn plan_axis_aligned_route(
     end: CanvasCoord,
     direction: StepDirection,
     edge: &AsciiGraphEdge,
+    label: Option<RoutedLabelDescriptor>,
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
@@ -259,9 +270,7 @@ fn plan_axis_aligned_route(
             }
         }
     }
-    let labels = planned_label(edge.label.as_deref(), start, end, charset)
-        .into_iter()
-        .collect();
+    let labels = planned_label(label, start, end).into_iter().collect();
     Ok(Some(RoutePlan::new(
         cells.into_vec(),
         labels,
@@ -283,6 +292,7 @@ pub(super) fn plan_compound_endpoint_route_with_resources(
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
     parallel_index: usize,
+    label: Option<RoutedLabelDescriptor>,
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
@@ -291,9 +301,9 @@ pub(super) fn plan_compound_endpoint_route_with_resources(
     }
 
     if from.center_y() == to.center_y() {
-        plan_bottom_lane(from, to, edge, parallel_index, charset, resources)
+        plan_bottom_lane(from, to, edge, parallel_index, label, charset, resources)
     } else {
-        plan_right_lane(from, to, edge, parallel_index, charset, resources)
+        plan_right_lane(from, to, edge, parallel_index, label, charset, resources)
     }
 }
 
@@ -302,6 +312,7 @@ fn plan_right_lane(
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
     parallel_index: usize,
+    label: Option<RoutedLabelDescriptor>,
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
@@ -371,7 +382,7 @@ fn plan_right_lane(
         StepDirection::Left,
     )?;
     let labels = planned_label(
-        edge.label.as_deref(),
+        label,
         CanvasCoord {
             x: lane_x,
             y: source_y,
@@ -380,7 +391,6 @@ fn plan_right_lane(
             x: lane_x,
             y: target_y,
         },
-        charset,
     )
     .into_iter()
     .collect();
@@ -397,6 +407,7 @@ fn plan_bottom_lane(
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
     parallel_index: usize,
+    label: Option<RoutedLabelDescriptor>,
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
@@ -464,7 +475,7 @@ fn plan_bottom_lane(
         StepDirection::Up,
     )?;
     let labels = planned_label(
-        edge.label.as_deref(),
+        label,
         CanvasCoord {
             x: source_x,
             y: lane_y,
@@ -473,7 +484,6 @@ fn plan_bottom_lane(
             x: target_x,
             y: lane_y,
         },
-        charset,
     )
     .into_iter()
     .collect();

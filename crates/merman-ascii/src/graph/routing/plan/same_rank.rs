@@ -2,6 +2,7 @@ use super::super::super::charset::GraphCharset;
 use super::super::super::layout::{CanvasCoord, NodeLayout};
 use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeMarker};
 use super::super::cell::edge_line_char;
+use super::super::label::RoutedLabelDescriptor;
 use super::super::path::StepDirection;
 use super::{
     MarkerAnchors, PlannedRouteCells, PlannedRouteLabel, RoutePlan, edge_line_cell, planned_label,
@@ -19,12 +20,17 @@ pub(super) fn plan_same_rank_direct_route(
     charset: &GraphCharset,
 ) -> Option<RoutePlan> {
     let mut resources = super::unbounded_route_resources();
+    let label = edge
+        .label
+        .as_deref()
+        .and_then(|raw| RoutedLabelDescriptor::for_test(0, raw, charset.width_profile));
     super::materialize_test_markers(
         plan_same_rank_direct_route_with_resources(
             layouts,
             from,
             to,
             edge,
+            label,
             charset,
             &mut resources,
         ),
@@ -38,6 +44,7 @@ pub(super) fn plan_same_rank_direct_route_with_resources(
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
+    label: Option<RoutedLabelDescriptor>,
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
@@ -86,7 +93,7 @@ pub(super) fn plan_same_rank_direct_route_with_resources(
         };
         let anchors = MarkerAnchors::new(start_anchor, end_anchor);
 
-        let Some(labels) = planned_direct_labels(edge, start, end, y, points_right, charset) else {
+        let Some(labels) = planned_direct_labels(edge, label, start, end, y, points_right) else {
             return Ok(None);
         };
         Ok(Some(RoutePlan::new(cells.into_vec(), labels, anchors)))
@@ -120,7 +127,7 @@ pub(super) fn plan_same_rank_direct_route_with_resources(
             }
         }
         let anchors = MarkerAnchors::new(start_anchor, end_anchor);
-        let Some(labels) = planned_direct_labels(edge, start, end, y, points_right, charset) else {
+        let Some(labels) = planned_direct_labels(edge, label, start, end, y, points_right) else {
             return Ok(None);
         };
         Ok(Some(RoutePlan::new(cells.into_vec(), labels, anchors)))
@@ -135,8 +142,19 @@ pub(super) fn plan_same_rank_bottom_lane_route(
     charset: &GraphCharset,
 ) -> Option<RoutePlan> {
     let mut resources = super::unbounded_route_resources();
+    let label = edge
+        .label
+        .as_deref()
+        .and_then(|raw| RoutedLabelDescriptor::for_test(0, raw, charset.width_profile));
     super::materialize_test_markers(
-        plan_same_rank_bottom_lane_route_with_resources(from, to, edge, charset, &mut resources),
+        plan_same_rank_bottom_lane_route_with_resources(
+            from,
+            to,
+            edge,
+            label,
+            charset,
+            &mut resources,
+        ),
         edge,
         charset,
     )
@@ -146,10 +164,13 @@ pub(super) fn plan_same_rank_bottom_lane_route_with_resources(
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
+    label: Option<RoutedLabelDescriptor>,
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
-    plan_same_rank_bottom_lane_route_with_index_and_resources(from, to, edge, 0, charset, resources)
+    plan_same_rank_bottom_lane_route_with_index_and_resources(
+        from, to, edge, 0, label, charset, resources,
+    )
 }
 
 pub(super) fn plan_same_rank_bottom_lane_route_with_index_and_resources(
@@ -157,6 +178,7 @@ pub(super) fn plan_same_rank_bottom_lane_route_with_index_and_resources(
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
     lane_index: usize,
+    label: Option<RoutedLabelDescriptor>,
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
@@ -209,7 +231,7 @@ pub(super) fn plan_same_rank_bottom_lane_route_with_index_and_resources(
         StepDirection::Up,
     )?;
     let labels = planned_label(
-        edge.label.as_deref(),
+        label,
         CanvasCoord {
             x: min_x,
             y: bottom_y,
@@ -218,7 +240,6 @@ pub(super) fn plan_same_rank_bottom_lane_route_with_index_and_resources(
             x: max_x,
             y: bottom_y,
         },
-        charset,
     )
     .into_iter()
     .collect();
@@ -252,17 +273,16 @@ fn direct_route_is_clear(
 
 fn planned_direct_labels(
     edge: &AsciiGraphEdge,
+    descriptor: Option<RoutedLabelDescriptor>,
     start: usize,
     end: usize,
     y: usize,
     points_right: bool,
-    charset: &GraphCharset,
 ) -> Option<Vec<PlannedRouteLabel>> {
     let Some(mut label) = planned_label(
-        edge.label.as_deref(),
+        descriptor,
         CanvasCoord { x: start, y },
         CanvasCoord { x: end, y },
-        charset,
     ) else {
         return Some(Vec::new());
     };
@@ -282,7 +302,7 @@ fn planned_direct_labels(
     };
     let available_start = start + usize::from(left_marker != GraphEdgeMarker::Open);
     let available_end = end.checked_sub(usize::from(right_marker != GraphEdgeMarker::Open))?;
-    let label_width = label.text.width();
+    let label_width = label.width();
     let available_width = available_end.checked_sub(available_start)? + 1;
     if label_width > available_width {
         return None;
