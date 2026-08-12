@@ -10,12 +10,11 @@ use crate::math::MathRenderer;
 use crate::model::{LayoutEdge, LayoutLabel, LayoutPoint};
 use crate::text::{TextMeasurer, TextStyle, split_html_br_lines};
 use merman_core::MermaidConfig;
-use merman_core::diagrams::sequence::SequenceMessage;
+use merman_core::diagrams::sequence::{
+    SequenceCentralDecoration, SequenceMessage, SequenceMessageDirection, SequenceMessageMarker,
+    SequenceSignalSemantics,
+};
 
-const LINETYPE_BIDIRECTIONAL_SOLID: i32 = 33;
-const LINETYPE_BIDIRECTIONAL_DOTTED: i32 = 34;
-const LINETYPE_CENTRAL_CONNECTION_REVERSE: i32 = 60;
-const LINETYPE_CENTRAL_CONNECTION_DUAL: i32 = 61;
 const CENTRAL_CONNECTION_BASE_OFFSET: f64 = 4.0;
 const CENTRAL_CONNECTION_BIDIRECTIONAL_OFFSET: f64 = 6.0;
 
@@ -44,8 +43,8 @@ pub(super) struct SequenceMessageHorizontalContext<'a> {
 
 #[derive(Debug, Clone, Copy)]
 struct MessageHorizontalRequest {
-    message_type: i32,
-    central_connection: i32,
+    semantics: SequenceSignalSemantics,
+    central_decoration: SequenceCentralDecoration,
     activate: bool,
     is_neo: bool,
     is_self: bool,
@@ -62,6 +61,8 @@ pub(super) fn sequence_message_horizontal_model(
     msg: &SequenceMessage,
     ctx: SequenceMessageHorizontalContext<'_>,
 ) -> Option<SequenceMessageHorizontalModel> {
+    let semantics = msg.signal_semantics()?;
+    let central_decoration = msg.central_decoration().unwrap_or_default();
     let (from, to) = (msg.from.as_deref()?, msg.to.as_deref()?);
     let (from_index, to_index) = (
         ctx.actor_index.get(from).copied()?,
@@ -83,29 +84,27 @@ pub(super) fn sequence_message_horizontal_model(
             .max(0.0)
     };
 
-    message_horizontal_model_from_request(MessageHorizontalRequest {
-        message_type: msg.message_type,
-        central_connection: msg.central_connection,
-        activate: msg.activate,
-        is_neo: ctx.is_neo,
-        is_self: from == to,
-        from_bounds,
-        to_bounds,
-        activation_width: ctx.activation_state.width(),
-        text_width,
-        wrap: msg.wrap,
-        default_width: ctx.default_width,
-        wrap_padding: ctx.wrap_padding,
-    })
+    Some(message_horizontal_model_from_request(
+        MessageHorizontalRequest {
+            semantics,
+            central_decoration,
+            activate: msg.activate,
+            is_neo: ctx.is_neo,
+            is_self: from == to,
+            from_bounds,
+            to_bounds,
+            activation_width: ctx.activation_state.width(),
+            text_width,
+            wrap: msg.wrap,
+            default_width: ctx.default_width,
+            wrap_padding: ctx.wrap_padding,
+        },
+    ))
 }
 
 fn message_horizontal_model_from_request(
     req: MessageHorizontalRequest,
-) -> Option<SequenceMessageHorizontalModel> {
-    if !is_rendered_message_type(req.message_type) {
-        return None;
-    }
-
+) -> SequenceMessageHorizontalModel {
     let (from_left, from_right) = req.from_bounds;
     let (to_left, to_right) = req.to_bounds;
     let is_arrow_to_right = from_left <= to_left;
@@ -118,17 +117,16 @@ fn message_horizontal_model_from_request(
 
     if req.is_neo {
         const NEO_MARKER_OFFSET: f64 = 3.0;
-        if req.message_type != 5 {
+        if req.semantics.target_marker != SequenceMessageMarker::None
+            || req.semantics.direction == SequenceMessageDirection::Reverse
+        {
             stop_x += if is_arrow_to_right {
                 -NEO_MARKER_OFFSET
             } else {
                 NEO_MARKER_OFFSET
             };
         }
-        if matches!(
-            req.message_type,
-            LINETYPE_BIDIRECTIONAL_SOLID | LINETYPE_BIDIRECTIONAL_DOTTED
-        ) {
+        if req.semantics.direction == SequenceMessageDirection::Bidirectional {
             start_x += if is_arrow_to_right {
                 NEO_MARKER_OFFSET
             } else {
@@ -137,9 +135,9 @@ fn message_horizontal_model_from_request(
         }
     }
 
-    start_x += central_connection_offset_values(
-        req.central_connection,
-        req.message_type,
+    start_x += central_decoration_start_offset(
+        req.central_decoration,
+        req.semantics.direction,
         is_arrow_to_right,
     );
     let is_arrow_to_activation = (to_left - to_right).abs() > 2.0;
@@ -151,10 +149,10 @@ fn message_horizontal_model_from_request(
         if req.activate && !is_arrow_to_activation {
             stop_x += adjust_value(req.activation_width / 2.0 - 1.0);
         }
-        if shortens_message_end(req.message_type) {
+        if marker_shortens_endpoint(req.semantics.target_marker) {
             stop_x += adjust_value(3.0);
         }
-        if shortens_message_start(req.message_type) {
+        if marker_shortens_endpoint(req.semantics.source_marker) {
             start_x -= adjust_value(3.0);
         }
     }
@@ -169,32 +167,25 @@ fn message_horizontal_model_from_request(
         .max(bounded_width + 2.0 * req.wrap_padding)
         .max(req.default_width);
 
-    Some(SequenceMessageHorizontalModel {
+    SequenceMessageHorizontalModel {
         start_x,
         stop_x,
         width,
         bounded_width,
         from_bound: from_left.min(from_right).min(to_left).min(to_right),
         to_bound: from_left.max(from_right).max(to_left).max(to_right),
-    })
+    }
 }
 
-fn is_rendered_message_type(message_type: i32) -> bool {
+fn marker_shortens_endpoint(marker: SequenceMessageMarker) -> bool {
     matches!(
-        message_type,
-        0 | 1 | 3 | 4 | 5 | 6 | 24 | 25 | 33 | 34 | 41..=48 | 51..=58
+        marker,
+        SequenceMessageMarker::Filled
+            | SequenceMessageMarker::Cross
+            | SequenceMessageMarker::Point
+            | SequenceMessageMarker::FilledHalfTop
+            | SequenceMessageMarker::FilledHalfBottom
     )
-}
-
-fn shortens_message_end(message_type: i32) -> bool {
-    !matches!(
-        message_type,
-        5 | 6 | 43 | 44 | 45 | 46 | 47 | 48 | 53 | 54 | 55 | 56 | 57 | 58
-    )
-}
-
-fn shortens_message_start(message_type: i32) -> bool {
-    matches!(message_type, 33 | 34 | 45 | 46 | 55 | 56)
 }
 
 pub(super) struct SequenceMessageLayoutContext<'a> {
@@ -382,34 +373,30 @@ pub(super) fn layout_sequence_message(
     })
 }
 
-fn central_connection_offset_values(
-    central_connection: i32,
-    message_type: i32,
+fn central_decoration_start_offset(
+    central_decoration: SequenceCentralDecoration,
+    direction: SequenceMessageDirection,
     is_arrow_to_right: bool,
 ) -> f64 {
-    let mut offset = 0.0;
-    if matches!(
-        central_connection,
-        LINETYPE_CENTRAL_CONNECTION_REVERSE | LINETYPE_CENTRAL_CONNECTION_DUAL
-    ) {
-        offset += CENTRAL_CONNECTION_BASE_OFFSET;
+    let has_source_decoration = matches!(
+        central_decoration,
+        SequenceCentralDecoration::Source | SequenceCentralDecoration::Both
+    );
+    if !has_source_decoration {
+        return 0.0;
     }
 
-    if matches!(
-        central_connection,
-        LINETYPE_CENTRAL_CONNECTION_REVERSE | LINETYPE_CENTRAL_CONNECTION_DUAL
-    ) && matches!(
-        message_type,
-        LINETYPE_BIDIRECTIONAL_SOLID | LINETYPE_BIDIRECTIONAL_DOTTED
-    ) {
-        offset += if is_arrow_to_right {
+    let bidirectional_offset = if direction == SequenceMessageDirection::Bidirectional {
+        if is_arrow_to_right {
             0.0
         } else {
             -CENTRAL_CONNECTION_BIDIRECTIONAL_OFFSET
-        };
-    }
+        }
+    } else {
+        0.0
+    };
 
-    offset
+    CENTRAL_CONNECTION_BASE_OFFSET + bidirectional_offset
 }
 
 struct EndpointAdjustmentRequest<'a, 'b> {
@@ -643,11 +630,15 @@ mod tests {
         MessageHorizontalRequest, SequenceMessageVerticalRequest,
         message_horizontal_model_from_request, message_vertical_geometry_from_measurement,
     };
+    use merman_core::diagrams::sequence::{
+        SequenceCentralDecoration, SequenceMessageDirection, SequenceMessageMarker,
+        SequenceMessageStroke, SequenceSignalSemantics,
+    };
 
-    fn horizontal_request(message_type: i32) -> MessageHorizontalRequest {
+    fn horizontal_request(semantics: SequenceSignalSemantics) -> MessageHorizontalRequest {
         MessageHorizontalRequest {
-            message_type,
-            central_connection: 0,
+            semantics,
+            central_decoration: SequenceCentralDecoration::None,
             activate: false,
             is_neo: false,
             is_self: false,
@@ -661,75 +652,131 @@ mod tests {
         }
     }
 
-    #[test]
-    fn horizontal_model_preserves_open_and_stick_endpoints() {
-        let open = message_horizontal_model_from_request(horizontal_request(5)).unwrap();
-        let stick = message_horizontal_model_from_request(horizontal_request(43)).unwrap();
-        let solid = message_horizontal_model_from_request(horizontal_request(0)).unwrap();
-        let mut neo_open_request = horizontal_request(5);
-        neo_open_request.is_neo = true;
-        let neo_open = message_horizontal_model_from_request(neo_open_request).unwrap();
-        let mut neo_dotted_open_request = horizontal_request(6);
-        neo_dotted_open_request.is_neo = true;
-        let neo_dotted_open =
-            message_horizontal_model_from_request(neo_dotted_open_request).unwrap();
+    fn forward(target_marker: SequenceMessageMarker) -> SequenceSignalSemantics {
+        SequenceSignalSemantics {
+            stroke: SequenceMessageStroke::Solid,
+            source_marker: SequenceMessageMarker::None,
+            target_marker,
+            direction: SequenceMessageDirection::Forward,
+        }
+    }
 
-        assert_eq!((open.start_x, open.stop_x), (101.0, 199.0));
-        assert_eq!((stick.start_x, stick.stop_x), (101.0, 199.0));
-        assert_eq!((solid.start_x, solid.stop_x), (101.0, 196.0));
-        assert_eq!((neo_open.start_x, neo_open.stop_x), (101.0, 199.0));
+    fn reverse(source_marker: SequenceMessageMarker) -> SequenceSignalSemantics {
+        SequenceSignalSemantics {
+            stroke: SequenceMessageStroke::Solid,
+            source_marker,
+            target_marker: SequenceMessageMarker::None,
+            direction: SequenceMessageDirection::Reverse,
+        }
+    }
+
+    fn bidirectional() -> SequenceSignalSemantics {
+        SequenceSignalSemantics {
+            stroke: SequenceMessageStroke::Solid,
+            source_marker: SequenceMessageMarker::Filled,
+            target_marker: SequenceMessageMarker::Filled,
+            direction: SequenceMessageDirection::Bidirectional,
+        }
+    }
+
+    #[test]
+    fn horizontal_model_preserves_headless_and_open_half_endpoints() {
+        let headless = forward(SequenceMessageMarker::None);
+        let headless_model = message_horizontal_model_from_request(horizontal_request(headless));
+        let open_half = message_horizontal_model_from_request(horizontal_request(forward(
+            SequenceMessageMarker::OpenHalfTop,
+        )));
+        let solid = message_horizontal_model_from_request(horizontal_request(forward(
+            SequenceMessageMarker::Filled,
+        )));
+        let mut neo_headless_request = horizontal_request(headless);
+        neo_headless_request.is_neo = true;
+        let neo_headless = message_horizontal_model_from_request(neo_headless_request);
+        let mut neo_open_half_request =
+            horizontal_request(forward(SequenceMessageMarker::OpenHalfTop));
+        neo_open_half_request.is_neo = true;
+        let neo_open_half = message_horizontal_model_from_request(neo_open_half_request);
+        let mut dotted_headless = headless;
+        dotted_headless.stroke = SequenceMessageStroke::Dotted;
+        let mut neo_dotted_headless_request = horizontal_request(dotted_headless);
+        neo_dotted_headless_request.is_neo = true;
+        let neo_dotted_headless =
+            message_horizontal_model_from_request(neo_dotted_headless_request);
+
         assert_eq!(
-            (neo_dotted_open.start_x, neo_dotted_open.stop_x),
+            (headless_model.start_x, headless_model.stop_x),
+            (101.0, 199.0)
+        );
+        assert_eq!((open_half.start_x, open_half.stop_x), (101.0, 199.0));
+        assert_eq!((solid.start_x, solid.stop_x), (101.0, 196.0));
+        assert_eq!((neo_headless.start_x, neo_headless.stop_x), (101.0, 199.0));
+        assert_eq!(
+            (neo_open_half.start_x, neo_open_half.stop_x),
             (101.0, 196.0)
+        );
+        assert_eq!(
+            (neo_dotted_headless.start_x, neo_dotted_headless.stop_x),
+            (101.0, 199.0)
         );
     }
 
     #[test]
     fn horizontal_model_applies_reverse_bidirectional_central_and_neo_rules() {
-        let reverse = message_horizontal_model_from_request(horizontal_request(45)).unwrap();
-        let bidirectional = message_horizontal_model_from_request(horizontal_request(33)).unwrap();
+        let reverse_model = message_horizontal_model_from_request(horizontal_request(reverse(
+            SequenceMessageMarker::FilledHalfTop,
+        )));
+        let bidirectional_model =
+            message_horizontal_model_from_request(horizontal_request(bidirectional()));
 
-        let mut central_request = horizontal_request(33);
-        central_request.central_connection = 61;
-        let central = message_horizontal_model_from_request(central_request).unwrap();
+        let mut central_request = horizontal_request(bidirectional());
+        central_request.central_decoration = SequenceCentralDecoration::Both;
+        let central = message_horizontal_model_from_request(central_request);
 
-        let mut neo_request = horizontal_request(33);
+        let mut neo_request = horizontal_request(bidirectional());
         neo_request.is_neo = true;
-        let neo = message_horizontal_model_from_request(neo_request).unwrap();
+        let neo = message_horizontal_model_from_request(neo_request);
+        let mut neo_reverse_request =
+            horizontal_request(reverse(SequenceMessageMarker::FilledHalfTop));
+        neo_reverse_request.is_neo = true;
+        let neo_reverse = message_horizontal_model_from_request(neo_reverse_request);
 
-        assert_eq!((reverse.start_x, reverse.stop_x), (104.0, 199.0));
         assert_eq!(
-            (bidirectional.start_x, bidirectional.stop_x),
+            (reverse_model.start_x, reverse_model.stop_x),
+            (104.0, 199.0)
+        );
+        assert_eq!(
+            (bidirectional_model.start_x, bidirectional_model.stop_x),
             (104.0, 196.0)
         );
         assert_eq!((central.start_x, central.stop_x), (108.0, 196.0));
         assert_eq!((neo.start_x, neo.stop_x), (107.0, 193.0));
+        assert_eq!((neo_reverse.start_x, neo_reverse.stop_x), (104.0, 196.0));
     }
 
     #[test]
     fn horizontal_model_applies_leftward_central_bidirectional_offset() {
-        let mut request = horizontal_request(33);
+        let mut request = horizontal_request(bidirectional());
         request.from_bounds = (199.0, 201.0);
         request.to_bounds = (99.0, 101.0);
-        request.central_connection = 61;
+        request.central_decoration = SequenceCentralDecoration::Both;
 
-        let model = message_horizontal_model_from_request(request).unwrap();
+        let model = message_horizontal_model_from_request(request);
 
         assert_eq!((model.start_x, model.stop_x), (194.0, 104.0));
     }
 
     #[test]
     fn horizontal_model_targets_first_and_existing_activations() {
-        let mut first_activation_request = horizontal_request(5);
+        let mut first_activation_request = horizontal_request(forward(SequenceMessageMarker::None));
         first_activation_request.activate = true;
-        let first_activation =
-            message_horizontal_model_from_request(first_activation_request).unwrap();
+        let first_activation = message_horizontal_model_from_request(first_activation_request);
 
-        let mut existing_activation_request = horizontal_request(5);
+        let mut existing_activation_request =
+            horizontal_request(forward(SequenceMessageMarker::None));
         existing_activation_request.activate = true;
         existing_activation_request.to_bounds = (195.0, 205.0);
         let existing_activation =
-            message_horizontal_model_from_request(existing_activation_request).unwrap();
+            message_horizontal_model_from_request(existing_activation_request);
 
         assert_eq!(first_activation.stop_x, 195.0);
         assert_eq!(existing_activation.stop_x, 195.0);

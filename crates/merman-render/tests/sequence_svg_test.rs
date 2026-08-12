@@ -1868,6 +1868,38 @@ A->>B: Filled"#,
 }
 
 #[test]
+fn sequence_neo_headless_strokes_share_typed_endpoint_geometry() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "look": "neo"
+    })));
+    let svg = render_sequence_svg_from_text_with_engine(
+        engine,
+        r#"sequenceDiagram
+participant A
+participant B
+A->B: Headless solid
+A-->B: Headless dotted"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+    let endpoints = |id: &str| {
+        let message = document
+            .descendants()
+            .find(|node| node.is_element() && node.attribute("data-id") == Some(id))
+            .unwrap_or_else(|| panic!("missing Sequence message {id}: {svg}"));
+        let coordinate = |name: &str| {
+            message
+                .attribute(name)
+                .unwrap_or_else(|| panic!("missing {name} for Sequence message {id}: {svg}"))
+                .parse::<f64>()
+                .unwrap_or_else(|_| panic!("invalid {name} for Sequence message {id}: {svg}"))
+        };
+        (coordinate("x1"), coordinate("x2"))
+    };
+
+    assert_eq!(endpoints("i0"), endpoints("i1"));
+}
+
+#[test]
 fn sequence_svg_honors_mermaid_11_15_theme_css_options() {
     let svg = render_sequence_svg_from_text_with_engine(
         legacy_init_theme_compat_engine(),
