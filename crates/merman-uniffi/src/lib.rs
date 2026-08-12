@@ -8,6 +8,7 @@
 //! This crate exposes an idiomatic generated-binding surface over `merman-bindings-core`. It does
 //! not replace the canonical C ABI in `merman-ffi`.
 
+use merman::{OperationControl, OperationPhase};
 use merman_bindings_core::BindingEngineServices;
 use merman_bindings_core::{
     BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError, BindingEngineAdmissionMode,
@@ -20,13 +21,14 @@ use merman_bindings_core::{
 };
 use serde_json::Value;
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 
 /// Version of the direct UniFFI binding API.
 ///
 /// This version belongs to the generated UniFFI surface only. It is intentionally independent
 /// from both the C ABI and the text-measurement protocol, whose versions are owned by their
 /// respective descriptors.
-pub const UNIFFI_BINDING_API_VERSION: u32 = 3;
+pub const UNIFFI_BINDING_API_VERSION: u32 = 4;
 
 static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
@@ -65,6 +67,13 @@ pub struct MermanResourceErrorDetails {
     pub profile: String,
 }
 
+/// Structured cancellation details preserved across the generated binding boundary.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct MermanCancelledDetails {
+    pub reason: String,
+    pub phase: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct MermanIconRegistryErrorDetails {
     pub kind_id: String,
@@ -82,6 +91,7 @@ pub enum MermanError {
         capability_id: Option<String>,
         resource: Option<MermanResourceErrorDetails>,
         icon_registry: Option<MermanIconRegistryErrorDetails>,
+        cancellation: Option<MermanCancelledDetails>,
         message: String,
     },
 }
@@ -107,6 +117,12 @@ impl MermanError {
                     pack_index: details.pack_index,
                     registration_name: details.registration_name.clone(),
                 });
+        let cancellation = error
+            .cancellation_details()
+            .map(|details| MermanCancelledDetails {
+                reason: details.reason.to_string(),
+                phase: details.phase.to_string(),
+            });
         Self::Binding {
             code: status.code(),
             code_name: status.code_name().to_string(),
@@ -114,6 +130,7 @@ impl MermanError {
             capability_id: error.capability_id().map(str::to_string),
             resource,
             icon_registry,
+            cancellation,
             message: error.message().to_string(),
         }
     }
@@ -127,6 +144,7 @@ impl MermanError {
             capability_id: None,
             resource: None,
             icon_registry: None,
+            cancellation: None,
             message: message.into(),
         }
     }
@@ -174,6 +192,46 @@ pub struct MermanIconRegistry {
     registry: BindingIconRegistry,
 }
 
+/// Cloneable operation-scoped cancellation and relative-deadline control.
+///
+/// Passing the same object to a request and retaining another foreign-language reference shares
+/// one atomic control state. Cancellation is cooperative: opaque host callbacks are observed only
+/// when they return to a renderer checkpoint.
+#[derive(Debug, uniffi::Object)]
+pub struct MermanOperationControl {
+    control: OperationControl,
+}
+
+#[uniffi::export]
+impl MermanOperationControl {
+    /// Creates a control with an optional relative timeout in milliseconds.
+    #[uniffi::constructor]
+    pub fn new(timeout_ms: Option<u64>) -> Arc<Self> {
+        let control = OperationControl::new();
+        if let Some(timeout_ms) = timeout_ms {
+            control.set_deadline(Duration::from_millis(timeout_ms));
+        }
+        Arc::new(Self { control })
+    }
+
+    /// Requests cooperative cancellation. This method is safe to call from another thread while
+    /// a request is executing.
+    pub fn cancel(&self) {
+        self.control.cancel();
+    }
+
+    /// Reports whether cancellation was requested on this shared control.
+    pub fn is_cancelled(&self) -> bool {
+        self.control.is_cancelled()
+    }
+}
+
+impl MermanOperationControl {
+    fn clone_control(&self) -> OperationControl {
+        self.control.clone()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct MermanValidationResult {
     pub valid: bool,
@@ -186,13 +244,15 @@ pub struct MermanValidationResult {
 ///
 /// `operation_id` is validated by the canonical binding-operation catalog. `uri` is required only by
 /// document operations. `options_json` configures a one-shot engine or overrides a reusable
-/// engine's baseline for this operation.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+/// engine's baseline for this operation. `control` optionally supplies a shared cancellation and
+/// deadline context; execution clones it before entering the synchronous binding path.
+#[derive(Debug, Clone, uniffi::Record)]
 pub struct MermanOperationRequest {
     pub operation_id: String,
     pub source: String,
     pub uri: Option<String>,
     pub options_json: Option<String>,
+    pub control: Option<Arc<MermanOperationControl>>,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -1242,6 +1302,7 @@ fn operation_request(
         source,
         uri: None,
         options_json,
+        control: None,
     }
 }
 
@@ -1271,12 +1332,20 @@ fn binding_operation_request<'a>(
     request: &'a MermanOperationRequest,
     options_json: &'a [u8],
 ) -> merman_bindings_core::BindingOperationRequest<'a> {
-    merman_bindings_core::BindingOperationRequest::new(
+    let binding_request = merman_bindings_core::BindingOperationRequest::new(
         &request.operation_id,
         request.source.as_bytes(),
     )
     .with_optional_uri(request.uri.as_deref().map(str::as_bytes))
-    .with_options_json(options_json)
+    .with_options_json(options_json);
+    match request
+        .control
+        .as_ref()
+        .map(|control| control.clone_control())
+    {
+        Some(control) => binding_request.with_control(control),
+        None => binding_request,
+    }
 }
 
 fn operation_result(
@@ -1439,13 +1508,33 @@ mod tests {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     #[cfg(feature = "svg")]
     use std::sync::{Barrier, Condvar, Mutex as StdMutex, Weak, mpsc};
-    #[cfg(feature = "svg")]
     use std::thread;
-    #[cfg(feature = "svg")]
     use std::time::Duration;
 
     fn engine() -> Arc<Merman> {
         Merman::new()
+    }
+
+    #[test]
+    fn operation_control_can_be_cancelled_from_another_thread() {
+        let control = MermanOperationControl::new(None);
+        let worker_control = Arc::clone(&control);
+        let worker = thread::spawn(move || worker_control.cancel());
+        worker.join().expect("control cancellation worker");
+
+        assert!(control.is_cancelled());
+    }
+
+    #[test]
+    fn operation_control_timeout_is_relative_and_structured() {
+        let control = MermanOperationControl::new(Some(0));
+        let cancelled = control
+            .clone_control()
+            .checkpoint_at(OperationPhase::Admission)
+            .expect_err("zero timeout must cancel at the first checkpoint");
+
+        assert_eq!(cancelled.reason, merman::CancelReason::DeadlineExceeded);
+        assert_eq!(cancelled.phase, OperationPhase::Admission);
     }
 
     fn reusable_engine(options_json: Option<String>) -> Arc<MermanEngine> {
@@ -2006,6 +2095,7 @@ mod tests {
                 source: "flowchart TD\nA[Hello] --> B[World]".to_string(),
                 uri: None,
                 options_json: Some(r#"{"runtime_policy":"deterministic"}"#.to_string()),
+                control: None,
             })
             .unwrap();
 
@@ -2063,6 +2153,7 @@ mod tests {
                 source: "flowchart TD\nA[Hello] --> B[World]".to_string(),
                 uri: None,
                 options_json: None,
+                control: None,
             })
             .unwrap();
 
@@ -2155,6 +2246,7 @@ mod tests {
             source: "flowchart TD\nA --> B".to_string(),
             uri: None,
             options_json: Some(r#"{"runtime_policy":"native"}"#.to_string()),
+            control: None,
         };
         let artifact_contract = native_artifact_contract();
         assert_eq!(
@@ -2202,6 +2294,7 @@ mod tests {
                 source: "flowchart TD\nA --> B".to_string(),
                 uri: None,
                 options_json: None,
+                control: None,
             })
             .expect_err("unknown operation must fail before dispatch");
 
@@ -2530,6 +2623,7 @@ mod tests {
                 source,
                 uri: None,
                 options_json: None,
+                control: None,
             })
             .unwrap();
         let generic: Value = serde_json::from_slice(&generic.data).unwrap();
@@ -2954,6 +3048,7 @@ mod tests {
                 source: "flowchart TD\nA --> B".to_string(),
                 uri: None,
                 options_json: Some(r#"{"runtime_policy":"deterministic"}"#.to_string()),
+                control: None,
             })
             .unwrap_err();
         let MermanError::Binding {
