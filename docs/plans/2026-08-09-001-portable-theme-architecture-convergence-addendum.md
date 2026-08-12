@@ -18,7 +18,7 @@ execution: code
 | Objective | Pause horizontal API and family expansion, then make theme identity, host policy ownership, capability evidence, prepared text, family evaluation, and target admission form one explicit and monotonic chain. |
 | Product contract | The August 6 R/A/F/AE identifiers remain the traceability source. This addendum is authoritative for the current-release scope, ownership, evidence gates, and public-surface timing; any conflicting current-release statement in the August 6 plan is superseded by the matrix below. Long-term capabilities remain future requirements until their named gate is closed. |
 | Authority | Mermaid `11.16.1@7ecca0cd` remains the semantic baseline. The compiled theme recipe describes visual intent; the render environment owns runtime ceilings; family and document evaluators prove what was actually applied. |
-| Execution | Continue in `.worktrees/presentation-theme-model` on `refactor/presentation-theme-model`. Reopen C3 until every host profile constrains theme compilation before hostile bytes are decoded. Reopen the C4a terminal proof while preserving the completed native shaping, projection, wrapping, and bounded-work core: single-face native output may regain `Portable` only after final emitted text identity and ordered ranges are bound to the retained ledger; multi-face portability remains a C6b gate. Then finish C5/C6 across Flowchart, State, and Sequence. The native theme contract may freeze after C6a and real pre-freeze family consumers; stable cross-target preset claims wait for C6b. |
+| Execution | Continue in `.worktrees/presentation-theme-model` on `refactor/presentation-theme-model`. Keep C3 cross-host verification explicit now that host ceilings are applied before theme decoding. The C4a native terminal binding is landed for the current single-face path: exact tokenized artifacts are sealed with ordered ledger identity and terminal text/face checks; multi-face portability remains a C6b gate. Then finish C5/C6 across Flowchart, State, and Sequence. The native theme contract may freeze after C6a and real pre-freeze family consumers; stable cross-target preset claims wait for C6b. |
 | Stop conditions | Do not expose a positive portability or capability conclusion from an unevaluated state, accept host-produced geometry without request/session evidence, or let theme/config inputs widen renderer-owned policy. |
 
 ## Why The Order Changes
@@ -29,10 +29,11 @@ proof chain underneath it. Six conditions now require an architecture convergenc
 - compile-time `required` capabilities are currently published as renderer `admitted` capabilities;
 - an unadapted family with no collected residuals is currently reported as verified;
 - a selected compiled theme can replace rather than restrict renderer-owned font policy;
-- constrained Binding, CLI, and Typst requests still compile theme bytes, fonts, and effects with
-  the default interactive compiler ceiling;
-- native export currently reduces the retained prepared-text ledger to line count plus an unordered
-  face/source set, so same-font text replacement or reordering can evade terminal verification;
+- the resource-policy repair now applies host/request ceilings before theme bytes, fonts, and effects
+  are decoded; cross-host verification remains a named gate;
+- native export now seals the exact tokenized artifact with request, projection, line, run, and
+  face/source identity, while the exporter verifies final emitted line text and face/source facts;
+  exact terminal source/visible range proof for multi-face output remains a C6b gate;
 - the initial prepared-text backend contract could not produce a result externally, while internal
   results were not bound to a request digest, source ranges, run evidence, or runtime fallback. The
   current WIP has a provisional raw DTO and basic admission seam; this addendum retains it without
@@ -242,12 +243,12 @@ without penalizing the unchanged default path.
   `Portable` merely by echoing self-declared identity, capability, face, or source fields. The
   current release defines no external trust authority or `Portable` promotion; any such contract
   belongs to C7c.
-- C4a's terminal exporter proof is not closed. The retained ledger already owns the request digest,
-  projection spans, emitted line ranges, and ordered run evidence, but the exporter currently checks
-  only label token, line count, and an unordered face/source set. Until the final emitted line-text
-  digest and ordered source/visible runs are verified, even single-face native output remains
-  `HostDependent` or rejected. Multi-face fallback additionally requires exact terminal per-run
-  cluster/source byte ranges and remains a C6b gate.
+- C4a's current native terminal binding seals the exact tokenized artifact with request, projection,
+  line, run, and face/source identity; the exporter independently verifies the artifact, final
+  emitted line text, and observed face/source facts. The ordered source/visible range identity is
+  renderer-sealed rather than reconstructed from glyph callbacks. External results remain
+  `HostDependent`, and exact terminal per-run range proof for multi-face fallback remains a C6b
+  gate.
 - A prepared result carries source-to-visible cluster ranges so transforms, entities, bidi runs,
   and fallback runs do not depend on matching transformed strings back to original words.
 - Shape each source run once for initial advances. Wrapping uses retained cluster advances or prefix
@@ -335,9 +336,9 @@ The freeze is stage-specific rather than one condition that expires too early:
 | C1 | Complete for the internal recipe domain | Recipe, font catalog, and SVG resource identities are separate and canonically encoded. Hidden legacy recipe state has been removed; public evaluator exposure remains a C7 decision. |
 | C2 | In progress | Root/family reports, trusted-lane residuals, sealed document reports, consuming SVG admission, and target-specific prepared PNG/JPEG/PDF exports exist. State cascade evidence now attributes only final property winners. The terminal SVG consumer proves solid root base/layers (including explicit transparent base, opacity, placement, and blend declarations); native PNG/JPEG/PDF admission uses an explicit root-capability whitelist rather than assuming exporter support. Gradients, patterns, bleed/viewport expansion, effects, and complete emission-owned family evidence remain residual. Any untrusted postprocessor or raw theme CSS invalidates positive root evidence before document/target admission. |
 | C3 | Implementation landed; verification retained | Binding, CLI, and Typst now derive host resource ceilings before theme decoding/compilation, and request themes can only restrict them. Keep the gate open until the named cross-host verification commands are signed off. |
-| C4a | Native core complete; terminal `Portable` proof reopened | Native rustybuzz shaping, cluster fallback, projection, bounded wrapping, consumed-label sidecars, and sealed label tokens are retained. PNG/JPEG/PDF currently reduce the ledger to line count plus an unordered face/source set, so same-font text drift can evade verification. Single-face `Portable` resumes only after final emitted line text, request identity, and ordered source/visible run evidence are bound; multi-face proof remains in C6b. |
+| C4a | Native core and single-face terminal binding landed; broader gate remains open | Native rustybuzz shaping, cluster fallback, projection, bounded wrapping, consumed-label sidecars, and sealed label tokens are retained. The exact tokenized artifact is bound to request/projection/line/run identity, while PNG/JPEG/PDF exporters verify final emitted line text and face/source observations. External results remain `HostDependent`; exact multi-face source/visible range proof remains in C6b. |
 | C4b | Conditional follow-up; assurance excluded | Session-private fallback candidates and basic response admission may remain, but no current product consumer requires the unfinished generation, budget, or circuit-breaker framework. Keep stable injection disabled. Implement those controls only before enabling a concrete crate-private external consumer. External output remains `HostDependent`; any later assurance or promotion requires C7c. |
-| C5 | In progress; stages 1-2 converged, stage 3 partial | Explicit Mermaid compatibility now comes only from `spec.mermaid()`. The transitional bridge is family-local, runs after detection, preserves explicit site/source/detector ownership, and records compatibility residuals that strict portability rejects. `FamilyThemeProgram` owns the recipe, premerges static rules, retains source-order winners, meters only ordinal candidates, and now carries a private facet-level `TypedAdapter` / `LegacyCompatibility` / `Unsupported` route matrix. The bridge can read only route-approved legacy winners and never turns the matrix into positive evidence. State consumes the metered program directly; `{Flowchart, Swimlane}` and Sequence still use the bridge and remain the next cutovers. Final surviving compatibility provenance and parse/session theme binding remain convergence gates. |
+| C5 | In progress; stages 1-2 converged, stage 3 partial | Explicit Mermaid compatibility now comes only from `spec.mermaid()`. The transitional bridge is family-local, runs after detection, preserves explicit site/source/detector ownership, and records compatibility residuals that strict portability rejects. `FamilyThemeProgram` owns the recipe, premerges static rules, retains source-order winners, meters only ordinal candidates, and now carries a private facet-level `TypedAdapter` / `LegacyCompatibility` / `Unsupported` route matrix. The bridge can read only route-approved legacy winners and never turns the matrix into positive evidence. State consumes the metered program directly; Flowchart and Swimlane already consume a narrow typed Node/NodeLabel tranche while retaining bridge routes for uncovered mechanisms; Sequence remains on the bridge and is the next primary cutover. Final surviving compatibility provenance and parse/session theme binding remain convergence gates. |
 | C6a | Partial infrastructure; native eligibility gate not closed | The acceptance specification and four-cell State tranche now run through a private runner-owned receipt harness with explicit target adapters and feature gating. No exact 18-cell eligibility receipt exists: Flowchart/State/Sequence by Standalone SVG/PNG, source-style/spacing, repeating-gradient/effect shapes, design-system, cold-start, and real pre-freeze family consumers remain open. |
 | C6b | Not started as a release gate | Browser SVG, JPEG/PDF completion, multi-face export, and the full 45-cell target-owned evidence matrix remain open. |
 | C7a | Not eligible; intentionally blocked | Do not declare the alpha contract candidate before C1-C3, C4a, C5, and C6a close plus the pre-freeze family consumers. Do not freeze the contract until C7a-rollout verification passes. Stable cross-target preset claims wait for C6b. |
