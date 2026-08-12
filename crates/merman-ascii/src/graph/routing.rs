@@ -25,7 +25,7 @@ mod plan;
 mod tests;
 
 pub(super) use cell::RouteCells;
-use cell::{set_edge_cell_with_paint, set_route_cell_with_paint};
+use cell::{RouteCellPaint, set_edge_cell_with_paint, set_route_cell_with_paint};
 use label::{EdgeLabel, RoutedLabelCatalog, RoutedLabelCatalogPlan, draw_routed_label};
 #[cfg(test)]
 use occupancy::{MarkerCandidateDisposition, OccupiedRect, ProtectedKind};
@@ -342,6 +342,7 @@ pub(super) fn prepare_route_scene_with_resources<'a>(
                 feature: "routes crossing reserved graph geometry",
             });
         };
+        let plan = plan.try_with_stroke(edge.stroke, charset, graph.diagram_type())?;
         let start = plan.terminal_candidate(MarkerEndpoint::Start, graph.diagram_type())?;
         let end = plan.terminal_candidate(MarkerEndpoint::End, graph.diagram_type())?;
         let prepared = PreparedRoute { plan, owner };
@@ -589,7 +590,13 @@ fn paint_route_plan_body(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) -> Re
                 cell.coord.x,
                 cell.coord.y,
                 cell.ch,
-                cell.paint.color,
+                RouteCellPaint {
+                    stroke: cell.stroke,
+                    directions: cell.directions,
+                    unicode: cell.unicode,
+                    diagram_type: plan.diagram_type,
+                    color: cell.paint.color,
+                },
             )?,
             PlannedRouteCellKind::EdgeArrow => {}
         }

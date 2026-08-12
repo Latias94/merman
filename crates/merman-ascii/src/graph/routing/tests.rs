@@ -331,6 +331,9 @@ fn planned_cell(x: usize, y: usize, ch: char, kind: PlannedRouteCellKind) -> Pla
         ch,
         kind,
         segment: PlannedRouteSegment::Direct,
+        stroke: GraphEdgeStroke::Normal,
+        directions: 0,
+        unicode: false,
         paint: PlannedRoutePaint::role(match kind {
             PlannedRouteCellKind::EdgeArrow => AsciiColorRole::EdgeArrow,
             PlannedRouteCellKind::EdgeLine | PlannedRouteCellKind::RouteCell => {

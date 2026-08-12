@@ -1,6 +1,6 @@
 use super::super::charset::GraphCharset;
 use super::super::layout::CanvasCoord;
-use super::super::model::{GraphEdgeMarker, GraphEdgeStyle};
+use super::super::model::{GraphEdgeMarker, GraphEdgeStroke, GraphEdgeStyle};
 use super::label::{
     RoutedLabelDescriptor, RoutedLabelPlacement, routed_label_placement_for_descriptor,
 };
@@ -33,6 +33,7 @@ pub(super) struct RoutePlan {
     pub(super) cells: Vec<PlannedRouteCell>,
     pub(super) labels: Vec<PlannedRouteLabel>,
     pub(super) style: GraphEdgeStyle,
+    pub(super) diagram_type: &'static str,
     anchors: MarkerAnchors,
     start_marker: GraphEdgeMarker,
     end_marker: GraphEdgeMarker,
@@ -149,6 +150,7 @@ impl RoutePlan {
             cells,
             labels,
             style: GraphEdgeStyle::default(),
+            diagram_type: "flowchart",
             anchors,
             start_marker: GraphEdgeMarker::Open,
             end_marker: GraphEdgeMarker::Open,
@@ -175,6 +177,27 @@ impl RoutePlan {
             label.paint = label.paint.with_color(style.label);
         }
         self
+    }
+
+    pub(super) fn try_with_stroke(
+        mut self,
+        stroke: GraphEdgeStroke,
+        charset: &GraphCharset,
+        diagram_type: &'static str,
+    ) -> Result<Self> {
+        for cell in &mut self.cells {
+            if cell.kind == PlannedRouteCellKind::RouteCell {
+                let directions = super::cell::route_char_directions(cell.ch);
+                if directions != 0 {
+                    cell.directions = directions;
+                    cell.ch = super::cell::stroke_route_char(stroke, directions, charset.unicode);
+                }
+                cell.stroke = stroke;
+                cell.unicode = charset.unicode;
+            }
+        }
+        self.diagram_type = diagram_type;
+        Ok(self)
     }
 
     pub(super) fn with_segment(mut self, segment: PlannedRouteSegment) -> Self {
@@ -503,6 +526,7 @@ impl RoutePlan {
             cells,
             labels,
             style: GraphEdgeStyle::default(),
+            diagram_type: "flowchart",
             anchors,
             start_marker: GraphEdgeMarker::Open,
             end_marker: GraphEdgeMarker::Open,
@@ -679,6 +703,9 @@ pub(super) struct PlannedRouteCell {
     pub(super) ch: char,
     pub(super) kind: PlannedRouteCellKind,
     pub(super) segment: PlannedRouteSegment,
+    pub(super) stroke: GraphEdgeStroke,
+    pub(super) directions: u8,
+    pub(super) unicode: bool,
     pub(super) paint: PlannedRoutePaint,
 }
 
@@ -866,6 +893,9 @@ fn route_cell_in_segment(
         ch,
         kind: PlannedRouteCellKind::RouteCell,
         segment,
+        stroke: GraphEdgeStroke::Normal,
+        directions: 0,
+        unicode: false,
         paint: PlannedRoutePaint::role(AsciiColorRole::EdgeLine),
     }
 }
@@ -885,6 +915,9 @@ fn edge_line_cell_in_segment(
         ch,
         kind: PlannedRouteCellKind::EdgeLine,
         segment,
+        stroke: GraphEdgeStroke::Normal,
+        directions: 0,
+        unicode: false,
         paint: PlannedRoutePaint::role(AsciiColorRole::EdgeLine),
     }
 }

@@ -9,7 +9,6 @@ use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
 use crate::options::AsciiRenderOptions;
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
-use std::collections::HashSet;
 
 type Canvas<'surface> = dyn GraphSurface + 'surface;
 
@@ -58,7 +57,7 @@ pub(crate) fn render_graph_with_resources(
 
     let mut canvas =
         RawCanvas::try_with_resources(width, height, options.terminal_width_profile, resources)?;
-    let mut route_cells = HashSet::new();
+    let mut route_cells = routing::RouteCells::new();
     route_cells
         .try_reserve(route_scene.planned_cell_count())
         .map_err(|_| AsciiError::AllocationFailed {
