@@ -3,18 +3,18 @@ name: Release Flutter (pub.dev)
 on:
   push:
     tags:
-      - 'v*'
+      - "flutter-v*"
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag/version to publish, for example v0.8.0-alpha.5"
+        description: "Flutter release tag, for example flutter-v0.8.0-alpha.5"
         required: true
         type: string
-      publish_to_pub:
-        description: "Publish to pub.dev after dry-run passes"
+      source_ref:
+        description: "Source commit, branch, or matching Flutter release tag to validate"
         required: true
-        default: true
-        type: boolean
+        default: "main"
+        type: string
 
 permissions:
   contents: read
@@ -36,13 +36,14 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
+          DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
           GIT_REF: ${{ github.ref }}
           GIT_REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
 
           semver_re='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.(0|[1-9][0-9]*))?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
-          tag_re="^v${semver_re#^}"
+          tag_re="^flutter-v${semver_re#^}"
           fail() {
             echo "::error::$1" >&2
             exit 1
@@ -50,17 +51,18 @@ jobs:
 
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             RELEASE_TAG="$DISPATCH_RELEASE_TAG"
+            SOURCE_REF="$DISPATCH_SOURCE_REF"
           else
             RELEASE_TAG="$GIT_REF_NAME"
+            SOURCE_REF="refs/tags/$RELEASE_TAG"
           fi
 
-          [[ "$RELEASE_TAG" =~ $tag_re ]] || fail "release_tag must match vX.Y.Z or vX.Y.Z-alpha.N/beta.N/rc.N."
+          [[ "$RELEASE_TAG" =~ $tag_re ]] || fail "release_tag must match flutter-vX.Y.Z or flutter-vX.Y.Z-alpha.N/beta.N/rc.N."
           if [[ "$EVENT_NAME" != "workflow_dispatch" ]]; then
             [[ "$GIT_REF" == "refs/tags/$RELEASE_TAG" ]] || fail "tag push ref must match release_tag."
           fi
-          SOURCE_REF="refs/tags/$RELEASE_TAG"
 
-          VERSION="${RELEASE_TAG#v}"
+          VERSION="${RELEASE_TAG#flutter-v}"
           [[ "$VERSION" =~ $semver_re ]] || fail "release_tag contains an unsupported SemVer version."
 
           {
@@ -80,15 +82,18 @@ jobs:
         id: source
         shell: bash
         env:
+          EVENT_NAME: ${{ github.event_name }}
           RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
         run: |
           set -euo pipefail
           source_sha="$(git rev-parse "HEAD^{commit}")"
           source_tree="$(git rev-parse "HEAD^{tree}")"
-          tag_sha="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
-          tag_tree="$(git rev-parse "refs/tags/${RELEASE_TAG}^{tree}")"
-          test "$source_sha" = "$tag_sha"
-          test "$source_tree" = "$tag_tree"
+          if [[ "$EVENT_NAME" != "workflow_dispatch" ]]; then
+            tag_sha="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
+            tag_tree="$(git rev-parse "refs/tags/${RELEASE_TAG}^{tree}")"
+            test "$source_sha" = "$tag_sha"
+            test "$source_tree" = "$tag_tree"
+          fi
           {
             printf 'source_sha=%s\n' "$source_sha"
             printf 'source_tree=%s\n' "$source_tree"
@@ -127,7 +132,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
         with:
-          targets: aarch64-linux-android,x86_64-linux-android,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin,x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,x86_64-pc-windows-gnu
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin,x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,x86_64-pc-windows-gnu
 
       - name: Install desktop cross tools
         run: |
@@ -149,39 +154,29 @@ jobs:
           echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
 
       - name: Build Android native libraries
-        run: python3 platforms/android/build-android.py --artifact-profile flutter-android-native --targets aarch64-linux-android x86_64-linux-android
+        run: python3 platforms/android/build-android.py --artifact-profile flutter-android-native --targets aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 
-      - name: Verify Android libraries in Flutter package
-        run: |
-          test -f platforms/flutter/android/src/main/jniLibs/arm64-v8a/libmerman_ffi.so
-          test -f platforms/flutter/android/src/main/jniLibs/x86_64/libmerman_ffi.so
-
-      - name: Build and inject iOS XCFramework
-        env:
-          MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
-        run: |
-          bash platforms/flutter/build-ios.sh
-          test -d platforms/flutter/ios/MermanFFI.xcframework
-
-      - name: Build desktop native libraries
-        env:
-          MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
-        run: bash platforms/flutter/build-desktop.sh --all
+      - name: Build Apple and desktop native libraries
+        run: python3 platforms/flutter/build-native.py all-desktop
 
       - name: Verify Flutter native artifacts
         run: |
-          test -d platforms/flutter/macos/MermanFFI.xcframework
-          test -f platforms/flutter/windows/merman_ffi.dll
-          test -f platforms/flutter/linux/lib/x86_64/libmerman_ffi.so
-          test -f platforms/flutter/linux/lib/aarch64/libmerman_ffi.so
-
-      - name: Setup Dart with pub.dev OIDC credentials
-        uses: dart-lang/setup-dart@v1.8.0
+          test -f platforms/flutter/native/android/armeabi-v7a/libmerman_ffi.so
+          test -f platforms/flutter/native/android/arm64-v8a/libmerman_ffi.so
+          test -f platforms/flutter/native/android/x86_64/libmerman_ffi.so
+          test -f platforms/flutter/native/ios/arm64/libmerman_ffi.dylib
+          test -f platforms/flutter/native/ios/arm64-simulator/libmerman_ffi.dylib
+          test -f platforms/flutter/native/ios/x86_64-simulator/libmerman_ffi.dylib
+          test -f platforms/flutter/native/macos/arm64/libmerman_ffi.dylib
+          test -f platforms/flutter/native/macos/x86_64/libmerman_ffi.dylib
+          test -f platforms/flutter/native/linux/aarch64/libmerman_ffi.so
+          test -f platforms/flutter/native/linux/x86_64/libmerman_ffi.so
+          test -f platforms/flutter/native/windows/x86_64/merman_ffi.dll
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2.23.0
         with:
-          flutter-version: "3.38.3"
+          flutter-version: "3.44.9"
           channel: stable
           cache: true
 
@@ -193,11 +188,11 @@ jobs:
           git ls-files --error-unmatch -- lib/src/generated/native_abi.dart
           git diff --exit-code -- lib/src/generated/native_abi.dart
           flutter analyze
-          dart format --set-exit-if-changed lib example tool
+          dart format --set-exit-if-changed \
+            lib/merman.dart lib/src/merman_ffi.dart lib/src/operation_metadata.dart \
+            example tool hook
           dart run tool/abi3_contract_test.dart
-          MACOS_LIBRARY="$(find macos/MermanFFI.xcframework -type f -name 'libmerman_ffi.dylib' -print -quit)"
-          test -n "$MACOS_LIBRARY"
-          dart run example/smoke.dart "$MACOS_LIBRARY"
+          dart run example/main.dart
           python3 ../../scripts/verify_flutter_pub_package.py \
             --package-root . \
             --max-compressed-mb 99
@@ -331,11 +326,11 @@ jobs:
     needs:
       - validate-inputs
       - build
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_to_pub }}
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
       - name: Explain manual pub.dev publish skip
         run: |
-          echo "::warning::pub.dev automated publishing only accepts GitHub Actions runs triggered by a pushed git tag. This manual run completed validation but did not publish."
+          echo "::warning::pub.dev automated publishing only accepts GitHub Actions runs triggered by a pushed Flutter release tag. This manual run completed validation but did not publish."

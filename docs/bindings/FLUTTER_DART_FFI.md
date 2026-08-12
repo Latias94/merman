@@ -2,7 +2,7 @@
 
 Status: experimental, publishable Flutter package.
 
-`platforms/flutter` provides the `merman` Dart/Flutter package directly over the canonical Merman native ABI 3. It is a Dart facade, not a second operation protocol: the package discovers one size-tagged C function table, validates the runtime catalog, and routes every output through the same generic operation path.
+`platforms/flutter` provides the `merman` Dart/Flutter package directly over the canonical Merman native ABI 3. It follows Dart's `package_ffi` structure and uses Native Assets for platform bundling. It is a Dart facade, not a second operation protocol: the package discovers one size-tagged C function table, validates the runtime catalog, and routes every output through the same generic operation path.
 
 The generated [`merman.h`](../../crates/merman-ffi/include/merman.h) header is the authoritative native wire definition. ABI 2 and pre-freeze ABI 3 layouts are removed. The Dart transport does not pass through JNI or UniFFI, including on Android; those transports have separate owners and lifecycles.
 
@@ -57,7 +57,7 @@ Native failures use `MermanException` and machine-readable `MermanErrorKind`. Un
 
 ## ABI Discovery
 
-`ffigen` generates `lib/src/generated/native_abi.dart` from `merman.h` and `merman_text_measurement_abi.h`. The generated binding performs exactly one dynamic lookup: `merman_get_native_api`. It never reconstructs per-operation symbol names.
+`ffigen` generates `lib/src/generated/native_abi.dart` from `merman.h` and `merman_text_measurement_abi.h`. The generated `@Native` declaration resolves exactly one entry point through the Native Assets ID: `merman_get_native_api`. It never reconstructs per-operation symbol names.
 
 Discovery sends:
 
@@ -208,13 +208,15 @@ See [host text measurement](HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi) for cach
 
 | Platform | Native artifact |
 | --- | --- |
-| Android | `libmerman_ffi.so` for `arm64-v8a` and `x86_64` |
-| iOS | Dynamic `MermanFFI.xcframework` |
-| macOS | One dynamic `MermanFFI.xcframework` for CocoaPods and SwiftPM |
-| Linux | Target-specific `libmerman_ffi.so` |
+| Android | `libmerman_ffi.so` for `armeabi-v7a`, `arm64-v8a`, and `x86_64` |
+| iOS | arm64 device plus arm64/x86_64 simulator dylibs |
+| macOS | arm64 and x86_64 dylibs |
+| Linux | arm64 and x86_64 `libmerman_ffi.so` |
 | Windows | `merman_ffi.dll` |
 
 Flutter uses owner-specific C ABI recipes. Android selects `flutter-android-native`; iOS and desktop select their corresponding target-set recipes. These recipes package `merman-ffi` directly with the size-oriented `native-distribution` Cargo profile and the shared default native feature set. The Kotlin AAR's JNI transport remains structurally isolated in `merman-android-jni`, and Python's UniFFI transport is not part of the Dart call path.
+
+`hook/build.dart` maps the requested OS, architecture, and iOS SDK to one file under `native/`, then emits a bundled dynamic `CodeAsset` with the same asset ID used by the generated `@Native` declaration. Flutter performs final copying, multi-architecture Apple framework assembly, install-name rewriting, and signing. The package therefore owns no Flutter plugin registrars, CocoaPods podspecs, Swift packages, Gradle plugin modules, or CMake plugin wrappers. Android applications must target API 24 or newer; the hook rejects a lower target before bundling.
 
 ```sh
 cargo build -p merman-ffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
@@ -226,32 +228,35 @@ loaded runtime catalog reports those adapters by their concrete `system-clock`, 
 and `system-random` IDs only when present; Flutter hosts should not treat the Cargo aggregate as a
 runtime capability ID.
 
-Android slices are assembled by `platforms/android/build-android.py --artifact-profile flutter-android-native`; iOS and desktop helpers are `platforms/flutter/build-ios.sh` and `platforms/flutter/build-desktop.sh`. Flutter Web is not supported because this package uses `dart:ffi`; use `@mermanjs/web` in browsers.
+Android slices are assembled by `platforms/android/build-android.py --artifact-profile flutter-android-native`; `platforms/flutter/build-native.py` builds Apple and desktop slices. Flutter Web is not supported because this package uses `dart:ffi`; use `@mermanjs/web` in browsers.
 
 ## Local Verification
 
 ```sh
-cargo build -p merman-ffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
+python3 platforms/flutter/build-native.py host
 cd platforms/flutter
 flutter pub get
 dart run ffigen --config ffigen.yaml
-dart format --set-exit-if-changed lib example tool
+dart format --set-exit-if-changed \
+  lib/merman.dart lib/src/merman_ffi.dart lib/src/operation_metadata.dart \
+  example tool hook
 flutter analyze
 dart run tool/abi3_contract_test.dart
-dart run example/smoke.dart ../../target/native-distribution/libmerman_ffi.dylib
+dart run example/main.dart
+dart run example/smoke.dart
 ```
 
-Use `.so` on Linux and `.dll` on Windows. The local contract test validates the current complete ABI
+The local contract test validates the current complete ABI
 3 table boundary, runtime-catalog and typed metadata relations, package-version projection,
 BUSY/REENTRANT decoding, and malformed native error payloads. The real-library smoke intentionally
 exercises service-backed SVG, ASCII, and analysis, verifies typed absence for the three binary
 exporters, then closes the engine. Owner-local Rust and Dart contract tests carry the exhaustive
 operation and lifecycle cases.
 
-The repository-wide gate checks generated declaration freshness and the desktop smoke. Android
-packaging has its own direct entry point:
+The repository-wide gate checks generated declaration freshness and the current host Native Assets smoke. Complete release packaging has two direct entry points:
 
 ```sh
 python3 scripts/verify-platform-bindings.py
-python3 platforms/flutter/tool/android-smoke.py --targets aarch64-linux-android
+python3 platforms/android/build-android.py --artifact-profile flutter-android-native
+python3 platforms/flutter/build-native.py all-desktop
 ```

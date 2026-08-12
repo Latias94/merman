@@ -15,10 +15,6 @@ except ModuleNotFoundError:
 PYTHON_MANIFEST = Path("platforms/python/merman/pyproject.toml")
 ANDROID_MANIFEST = Path("platforms/android/build.gradle.kts")
 FLUTTER_MANIFEST = Path("platforms/flutter/pubspec.yaml")
-FLUTTER_ANDROID_MANIFEST = Path("platforms/flutter/android/build.gradle")
-FLUTTER_IOS_PODSPEC = Path("platforms/flutter/ios/merman.podspec")
-FLUTTER_MACOS_PODSPEC = Path("platforms/flutter/macos/merman.podspec")
-FLUTTER_IOS_BUILD = Path("platforms/flutter/build-ios.sh")
 FLUTTER_PACKAGE_VERSION = Path(
     "platforms/flutter/lib/src/generated/package_version.dart"
 )
@@ -57,7 +53,7 @@ def prepare_android_version(root: Path, release: ReleaseVersion) -> None:
 
 
 def prepare_flutter_version(root: Path, release: ReleaseVersion) -> None:
-    """Update the Flutter owner's Dart, Gradle, CocoaPods, and plist surfaces."""
+    """Update the Flutter package and bundled native contract version."""
 
     assignments = (
         (FLUTTER_MANIFEST, r"^(version:\s*)[^\s#]+(\s*)$", "Flutter version"),
@@ -65,21 +61,6 @@ def prepare_flutter_version(root: Path, release: ReleaseVersion) -> None:
             FLUTTER_PACKAGE_VERSION,
             r"^(const String mermanPackageVersion = ')[^']+(';\s*)$",
             "Flutter bundled native package version",
-        ),
-        (
-            FLUTTER_ANDROID_MANIFEST,
-            r"^(version\s*=\s*')[^']+('\s*)$",
-            "Flutter Android version",
-        ),
-        (
-            FLUTTER_IOS_PODSPEC,
-            r"^(\s*s\.version\s*=\s*')[^']+('\s*)$",
-            "Flutter iOS Podspec version",
-        ),
-        (
-            FLUTTER_MACOS_PODSPEC,
-            r"^(\s*s\.version\s*=\s*')[^']+('\s*)$",
-            "Flutter macOS Podspec version",
         ),
     )
     for path, pattern, label in assignments:
@@ -90,18 +71,6 @@ def prepare_flutter_version(root: Path, release: ReleaseVersion) -> None:
                 _read(root, path), pattern, release.canonical, path, label
             ),
         )
-
-    build_text = _read(root, FLUTTER_IOS_BUILD)
-    for plist_key in ("CFBundleShortVersionString", "CFBundleVersion"):
-        build_text = _replace_assignment(
-            build_text,
-            rf"(<key>{plist_key}</key>\s*<string>)[^<]+(</string>)",
-            release.base,
-            FLUTTER_IOS_BUILD,
-            plist_key,
-            flags=0,
-        )
-    _write_if_changed(root, FLUTTER_IOS_BUILD, build_text)
 
 
 def _read(root: Path, path: Path) -> str:

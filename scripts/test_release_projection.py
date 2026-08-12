@@ -194,10 +194,6 @@ class ReleaseProjectionTests(unittest.TestCase):
         )
         self.assertIn("Python package", labels)
         self.assertIn("Flutter bundled native package version", labels)
-        self.assertIn("Flutter Android package", labels)
-        self.assertIn("Flutter iOS Podspec", labels)
-        self.assertIn("Flutter macOS Podspec", labels)
-        self.assertIn("Flutter iOS framework bundle version", labels)
 
     def test_cli_without_arguments_runs_the_authority_verifier(self) -> None:
         authority = release_projection.verify_repository(self.ROOT).authority.canonical
@@ -459,50 +455,6 @@ class ReleaseProjectionTests(unittest.TestCase):
                     "const String mermanPackageVersion = '9.9.9';",
                 ),
             ),
-            (
-                release_projection.FLUTTER_ANDROID_MANIFEST,
-                lambda text: replace_once(
-                    text,
-                    f"version = '{canonical}'",
-                    "version = '9.9.9'",
-                ),
-            ),
-            *[
-                (
-                    podspec,
-                    lambda text, expected=canonical: replace_once(
-                        text,
-                        f"s.version          = '{expected}'",
-                        "s.version          = '9.9.9'",
-                    ),
-                )
-                for podspec in (
-                    release_projection.FLUTTER_IOS_PODSPEC,
-                    release_projection.FLUTTER_MACOS_PODSPEC,
-                )
-            ],
-            (
-                release_projection.FLUTTER_IOS_BUILD,
-                lambda text: replace_once(
-                    text,
-                    (
-                        "<key>CFBundleShortVersionString</key>\n"
-                        f"  <string>{version.base}</string>"
-                    ),
-                    (
-                        "<key>CFBundleShortVersionString</key>\n"
-                        "  <string>9.9.9</string>"
-                    ),
-                ),
-            ),
-            (
-                release_projection.FLUTTER_IOS_BUILD,
-                lambda text: replace_once(
-                    text,
-                    f"<key>CFBundleVersion</key>\n  <string>{version.base}</string>",
-                    "<key>CFBundleVersion</key>\n  <string>9.9.9</string>",
-                ),
-            ),
         ]
 
         for path, mutate in mutations:
@@ -680,19 +632,6 @@ class ReleaseVersionOwnerTests(unittest.TestCase):
         release_version_owners.FLUTTER_PACKAGE_VERSION: (
             "const String mermanPackageVersion = '0.8.0-alpha.5';\n"
         ),
-        release_version_owners.FLUTTER_ANDROID_MANIFEST: (
-            "version = '0.8.0-alpha.5'\n"
-        ),
-        release_version_owners.FLUTTER_IOS_PODSPEC: (
-            "s.version = '0.8.0-alpha.5'\n"
-        ),
-        release_version_owners.FLUTTER_MACOS_PODSPEC: (
-            "s.version = '0.8.0-alpha.5'\n"
-        ),
-        release_version_owners.FLUTTER_IOS_BUILD: (
-            "<key>CFBundleShortVersionString</key>\n<string>0.8.0</string>\n"
-            "<key>CFBundleVersion</key>\n<string>0.8.0</string>\n"
-        ),
     }
 
     def write_fixtures(self, root: Path, fixtures: dict[Path, str]) -> None:
@@ -716,10 +655,6 @@ class ReleaseVersionOwnerTests(unittest.TestCase):
                 (release_version_owners.ANDROID_MANIFEST, 'version = "0.9.0-beta.2"', "keep-android", 1),
                 (release_version_owners.FLUTTER_MANIFEST, "version: 0.9.0-beta.2", "keep-flutter", 1),
                 (release_version_owners.FLUTTER_PACKAGE_VERSION, "'0.9.0-beta.2'", None, 1),
-                (release_version_owners.FLUTTER_ANDROID_MANIFEST, "'0.9.0-beta.2'", None, 1),
-                (release_version_owners.FLUTTER_IOS_PODSPEC, "'0.9.0-beta.2'", None, 1),
-                (release_version_owners.FLUTTER_MACOS_PODSPEC, "'0.9.0-beta.2'", None, 1),
-                (release_version_owners.FLUTTER_IOS_BUILD, "<string>0.9.0</string>", None, 2),
             )
             for path, version_text, retained_text, count in checks:
                 text = (root / path).read_text(encoding="utf-8")

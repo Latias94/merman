@@ -91,10 +91,8 @@ final class MermanPdfFilterImagesOutputPlan extends MermanOutputPlan {
 /// [rawJson] preserves the complete plan object instead of discarding fields
 /// or rejecting an additive plan kind.
 final class MermanUnknownOutputPlan extends MermanOutputPlan {
-  const MermanUnknownOutputPlan({
-    required this.kind,
-    required this.rawJson,
-  }) : super._();
+  const MermanUnknownOutputPlan({required this.kind, required this.rawJson})
+    : super._();
 
   @override
   final String kind;
