@@ -420,11 +420,17 @@ fn node_overlaps_any_other(
     placements: &[GridCoord],
     resources: &ResourceContext,
 ) -> Result<bool> {
+    // Charge the target-bound calculation and each actual comparison before doing the geometry
+    // work. This keeps the O(N) scan visible to the render-wide layout-work budget and makes a
+    // rejected comparison side-effect free for callers that may mutate placements afterwards.
+    resources.charge_layout_work(1)?;
     let bounds = node_bounds(placements[index], resources)?;
     for (other_index, other_coord) in placements.iter().enumerate() {
-        if index != other_index
-            && raw_bounds_intersects(bounds, node_bounds(*other_coord, resources)?)
-        {
+        if index == other_index {
+            continue;
+        }
+        resources.charge_layout_work(1)?;
+        if raw_bounds_intersects(bounds, node_bounds(*other_coord, resources)?) {
             return Ok(true);
         }
     }
@@ -539,5 +545,49 @@ mod tests {
             panic!("expected a grid resource error, got {error:?}");
         };
         assert_eq!(details.limit, AsciiResourceLimitId::MaxGridCells);
+    }
+
+    #[test]
+    fn node_overlap_scan_accepts_exact_work_and_rejects_max_minus_one() {
+        let placements = [
+            GridCoord { x: 0, y: 0 },
+            GridCoord { x: 10, y: 0 },
+            GridCoord { x: 20, y: 0 },
+        ];
+        let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+
+        let measured_resources = ResourceContext::new(unbounded);
+        assert!(
+            !node_overlaps_any_other(0, &placements, &measured_resources)
+                .expect("unbounded overlap scan should succeed")
+        );
+        let exact_work = measured_resources.layout_work_used();
+        assert_eq!(
+            exact_work, 3,
+            "target plus two comparisons should be charged"
+        );
+
+        let exact_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
+            .expect("exact overlap-scan budget should be valid");
+        let exact_resources = ResourceContext::new(exact_policy);
+        assert!(
+            !node_overlaps_any_other(0, &placements, &exact_resources)
+                .expect("exact overlap-scan budget should pass")
+        );
+        assert_eq!(exact_resources.layout_work_used(), exact_work);
+
+        let below_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
+            .expect("max-minus-one overlap-scan budget should be valid");
+        let below_resources = ResourceContext::new(below_policy);
+        let error = node_overlaps_any_other(0, &placements, &below_resources)
+            .expect_err("max-minus-one overlap-scan budget should reject");
+        let crate::AsciiError::ResourceLimitExceeded(details) = error else {
+            panic!("expected a layout-work resource error, got {error:?}");
+        };
+        assert_eq!(details.limit, AsciiResourceLimitId::MaxLayoutWorkUnits);
+        assert_eq!(details.actual, exact_work);
+        assert_eq!(details.max, exact_work - 1);
     }
 }
