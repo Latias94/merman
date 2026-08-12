@@ -17,6 +17,7 @@ use crate::resource::AsciiResourceLimitId;
 use crate::resource::{AsciiResourceLimitPhase, LogicalExtent, ResourceContext};
 use crate::safe_text::charge_text_layout;
 use crate::text::display_width_with_profile;
+use merman_core::common::parse_generic_types;
 use merman_core::entities::decode_html_entities_to_unicode;
 use merman_core::models::class_diagram::{
     ClassDiagram, ClassInterface, ClassMember, ClassNode, ClassNote, ClassRelation,
@@ -764,21 +765,29 @@ fn member_text(member: &ClassMember) -> String {
 
     let mut text = String::new();
     text.push_str(&member.visibility);
-    text.push_str(&member.id);
+    push_canonical_generic_types(&mut text, &member.id);
     if member.member_type == "method"
         || !member.parameters.is_empty()
         || !member.return_type.is_empty()
     {
         text.push('(');
-        text.push_str(member.parameters.trim());
+        push_canonical_generic_types(&mut text, member.parameters.trim());
         text.push(')');
         if !member.return_type.is_empty() {
             text.push_str(" : ");
-            text.push_str(member.return_type.trim());
+            push_canonical_generic_types(&mut text, member.return_type.trim());
         }
     }
     text.push_str(&member.classifier);
     text
+}
+
+fn push_canonical_generic_types(output: &mut String, value: &str) {
+    if value.contains('~') {
+        output.push_str(&parse_generic_types(value));
+    } else {
+        output.push_str(value);
+    }
 }
 
 fn relation_layout<'a>(

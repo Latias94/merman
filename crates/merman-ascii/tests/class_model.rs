@@ -420,7 +420,7 @@ fn class_render_model_reconstructs_members_when_display_text_is_empty() {
         .first_mut()
         .expect("Service should have an attribute");
     member.visibility = "+".to_string();
-    member.id = "value".to_string();
+    member.id = "items List~T~".to_string();
     member.classifier = "$".to_string();
     member.display_text.clear();
     let method = class
@@ -428,17 +428,20 @@ fn class_render_model_reconstructs_members_when_display_text_is_empty() {
         .first_mut()
         .expect("Service should have a method");
     method.visibility = "#".to_string();
-    method.id = "compute".to_string();
-    method.parameters = "input".to_string();
-    method.return_type = "Result".to_string();
+    method.id = "compute~T~".to_string();
+    method.parameters = "  items: List~List~T~~  ".to_string();
+    method.return_type = "  Result~List~T~~  ".to_string();
     method.classifier = "*".to_string();
     method.display_text.clear();
 
     let rendered = merman_ascii::render_class(&model, &AsciiRenderOptions::ascii())
         .expect("typed member fields should reconstruct a terminal display");
 
-    assert!(rendered.contains("+value$"), "{rendered}");
-    assert!(rendered.contains("#compute(input) : Result*"), "{rendered}");
+    assert!(rendered.contains("+items List<T>$"), "{rendered}");
+    assert!(
+        rendered.contains("#compute<T>(items: List<List<T>>) : Result<List<T>>*"),
+        "{rendered}"
+    );
 }
 
 #[test]
