@@ -1,9 +1,19 @@
 use super::super::*;
 
+#[cfg(test)]
 pub(super) fn sequence_css(
     diagram_id: &str,
     font_size_px: f64,
     effective_config: &serde_json::Value,
+) -> String {
+    sequence_css_with_actor_fill(diagram_id, font_size_px, effective_config, None)
+}
+
+pub(super) fn sequence_css_with_actor_fill(
+    diagram_id: &str,
+    font_size_px: f64,
+    effective_config: &serde_json::Value,
+    typed_actor_fill: Option<&str>,
 ) -> String {
     // Mirrors Mermaid 11.15 `diagrams/sequence/styles.js` + shared base stylesheet ordering.
     // Keep `:root` last (matches upstream fixtures).
@@ -57,7 +67,7 @@ pub(super) fn sequence_css(
 
     // Sequence styles.
     let actor_border = theme.actor_border.as_str();
-    let actor_fill = theme.actor_fill.as_str();
+    let actor_fill = typed_actor_fill.unwrap_or(theme.actor_fill.as_str());
     let stroke_width = theme.stroke_width.as_str();
     let drop_shadow = theme.drop_shadow.as_str();
     let note_border = theme.note_border.as_str();

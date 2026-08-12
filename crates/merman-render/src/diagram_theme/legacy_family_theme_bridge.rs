@@ -1545,11 +1545,11 @@ mod tests {
             Some("#ef4444")
         );
         assert_eq!(fallback_contribution_count(&flowchart), 0);
-        assert_eq!(
+        assert_ne!(
             sequence.effective_config.get_str("themeVariables.actorBkg"),
             Some("#22c55e")
         );
-        assert_eq!(fallback_contribution_count(&sequence), 1);
+        assert_eq!(fallback_contribution_count(&sequence), 0);
     }
 
     #[test]

@@ -12,7 +12,7 @@ use super::root::write_sequence_svg_root_open;
 use super::settings::SequenceRenderSettings;
 use rustc_hash::FxHashMap;
 
-use super::css::sequence_css;
+use super::css::sequence_css_with_actor_fill;
 use super::model::*;
 
 const PINNED_MERMAID_SEQUENCE_BASE_DEFS: &str = include_str!("sequence_base_defs_11_16_0.svgfrag");
@@ -77,6 +77,11 @@ fn render_sequence_diagram_svg_inner(
         crate::sequence::sequence_render_title(model.title.as_deref(), diagram_title);
 
     let settings = SequenceRenderSettings::from_effective_config(effective_config);
+    let actor_fill_overridden = merman_core::__private::config_path_overrides_typed_default(
+        sanitize_config,
+        "themeVariables.actorBkg",
+    );
+    let typed_actor_fill = sequence_typed_actor_fill(options, sanitize_config)?;
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let mut out = String::new();
@@ -127,7 +132,17 @@ fn render_sequence_diagram_svg_inner(
     let _ = write!(
         &mut out,
         r#"<style>{}</style><g/>"#,
-        sequence_css(diagram_id, settings.actor_label_font_size, effective_config)
+        sequence_css_with_actor_fill(
+            diagram_id,
+            settings.actor_label_font_size,
+            effective_config,
+            typed_actor_fill.as_deref(),
+        )
+    );
+    prepared.theme_evidence().record_actor_emission(
+        model.actor_order.len(),
+        typed_actor_fill.is_some(),
+        actor_fill_overridden,
     );
 
     // Mermaid's sequence output includes a shared set of <defs> for icons/markers.
@@ -218,4 +233,55 @@ fn render_sequence_diagram_svg_inner(
 
     out.push_str("</svg>\n");
     root_metrics.document.complete(out)
+}
+
+fn sequence_typed_actor_fill(
+    options: &SvgExecution<'_>,
+    sanitize_config: &merman_core::MermaidConfig,
+) -> Result<Option<String>> {
+    use crate::diagram_theme::{
+        CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind,
+        FamilyThemeRuleFacet, ThemeTarget, ThemeVariant,
+    };
+
+    if merman_core::__private::config_path_overrides_typed_default(
+        sanitize_config,
+        "themeVariables.actorBkg",
+    ) {
+        return Ok(None);
+    }
+
+    let Some(theme) = options.resolved_theme() else {
+        return Ok(None);
+    };
+    let has_typed_actor_fill = theme.family_mechanism_routes().iter().any(|route| {
+        route.disposition() == FamilyThemeDisposition::TypedAdapter
+            && matches!(
+                route.mechanism(),
+                FamilyThemeMechanism::RuleFacet {
+                    target: ThemeTarget::Actor,
+                    facet: FamilyThemeRuleFacet::Fill(
+                        FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+                    ),
+                    ..
+                }
+            )
+    });
+    if !has_typed_actor_fill {
+        return Ok(None);
+    }
+
+    let style = theme.style_with_work_meter(
+        ThemeTarget::Actor,
+        ThemeVariant::Default,
+        None,
+        options.work_meter(),
+    )?;
+    Ok(style.fill().and_then(|paint| match paint {
+        CanvasPaint::Transparent => Some("transparent".to_string()),
+        CanvasPaint::Solid(color) => Some(color.as_css()),
+        CanvasPaint::LinearGradient(_)
+        | CanvasPaint::RadialGradient(_)
+        | CanvasPaint::Pattern(_) => None,
+    }))
 }

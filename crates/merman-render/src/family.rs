@@ -961,6 +961,16 @@ impl ResolvedFamilyStylePlan {
         };
     }
 
+    fn merge_sequence_evidence(&mut self, evidence: FamilyThemeEvidence) {
+        debug_assert_eq!(self.family_kind, RenderFamilyKind::Sequence);
+        self.theme_evidence = evidence;
+        self.payload = if FamilyThemeEvidence::not_applicable(self.resolved_theme.as_deref()) {
+            FamilyStylePayload::NotApplicable
+        } else {
+            FamilyStylePayload::Evaluated
+        };
+    }
+
     fn reconcile_state_effect_evidence(
         &mut self,
         emitted: Option<crate::__private::NativeSvgFilterReceipt>,
@@ -1024,7 +1034,7 @@ impl ResolvedFamilyStylePlan {
         }
         let waits_for_svg_evidence = matches!(
             self.family_kind,
-            RenderFamilyKind::Flowchart | RenderFamilyKind::Swimlane
+            RenderFamilyKind::Flowchart | RenderFamilyKind::Swimlane | RenderFamilyKind::Sequence
         ) && self
             .resolved_theme
             .as_deref()
@@ -1192,6 +1202,10 @@ impl FamilyRenderContext {
     ) {
         self.style_plan
             .merge_flowchart_evidence(evidence, source_style_residuals);
+    }
+
+    fn merge_sequence_evidence(&mut self, evidence: FamilyThemeEvidence) {
+        self.style_plan.merge_sequence_evidence(evidence);
     }
 
     fn ensure_portable(&self) -> Result<()> {
@@ -1570,6 +1584,16 @@ impl BuiltinFamilyArtifact {
         match self {
             Self::Flowchart(artifact) => Some(artifact.theme_evidence().finish(theme)),
             Self::Swimlane(artifact) => Some(artifact.theme_evidence().finish(theme)),
+            _ => None,
+        }
+    }
+
+    fn sequence_theme_evidence(
+        &self,
+        theme: Option<&ResolvedDiagramTheme>,
+    ) -> Option<FamilyThemeEvidence> {
+        match self {
+            Self::Sequence(pair) => Some(pair.layout().theme_evidence().finish(theme)),
             _ => None,
         }
     }
@@ -2125,6 +2149,9 @@ impl FamilyRenderArtifact {
         let flowchart_theme_evidence = self
             .family
             .flowchart_theme_evidence(self.context.resolved_theme());
+        let sequence_theme_evidence = self
+            .family
+            .sequence_theme_evidence(self.context.resolved_theme());
         let state_filter_receipt = match &self.family {
             BuiltinFamilyArtifact::State(artifact) => Some(artifact.effect_evidence().finish()),
             _ => None,
@@ -2138,6 +2165,9 @@ impl FamilyRenderArtifact {
         } = self;
         if let Some((evidence, source_style_residuals)) = flowchart_theme_evidence {
             context.merge_flowchart_evidence(evidence, source_style_residuals);
+        }
+        if let Some(evidence) = sequence_theme_evidence {
+            context.merge_sequence_evidence(evidence);
         }
         context.observe_output_visibility(debug);
         if let Some(emitted) = state_filter_receipt {
@@ -7651,6 +7681,294 @@ style Empty font-weight:banana
                 residual_count: 1..,
             }
         ));
+    }
+
+    #[test]
+    fn require_portable_accepts_sequence_actor_fill_after_svg_emission() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Actor,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+                        )
+                        .for_family(RenderFamilyKind::Sequence),
+                    ),
+                ),
+            )
+            .expect("compile Sequence actor theme");
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("Sequence source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict portable Sequence session"),
+        )
+        .expect("Sequence actor theme should prepare")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("Sequence actor fill should be proven by the SVG writer");
+
+        assert!(
+            rendered.svg().contains("fill:#ef4444"),
+            "Sequence SVG should contain the typed actor fill"
+        );
+        assert_eq!(
+            rendered.style_report().verification(),
+            FamilyStyleVerification::Verified
+        );
+        assert_eq!(
+            rendered.style_report().theme_applied_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Actor,
+            }]
+        );
+        assert!(rendered.style_report().theme_residuals().is_empty());
+    }
+
+    #[test]
+    fn sequence_explicit_actor_fill_owns_precedence_over_typed_actor_fill() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Actor,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+                        )
+                        .for_family(RenderFamilyKind::Sequence),
+                    ),
+                ),
+            )
+            .expect("compile Sequence actor theme");
+        let engine = theme.install_parse_compatibility(Engine::new().with_site_config(
+            MermaidConfig::from_value(json!({
+                "themeVariables": {"actorBkg": "#22c55e"}
+            })),
+        ));
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(
+                "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("Sequence source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin strict portable Sequence session"),
+        )
+        .expect("explicit Mermaid actor fill should remain evaluable")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("explicit Mermaid actor fill should satisfy strict portability");
+
+        assert!(rendered.svg().contains("#22c55e"), "{}", rendered.svg());
+        assert!(!rendered.svg().contains("#ef4444"), "{}", rendered.svg());
+        assert!(
+            rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .is_empty()
+        );
+        assert_eq!(
+            rendered.style_report().theme_not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Actor,
+            }]
+        );
+        assert!(rendered.style_report().theme_residuals().is_empty());
+    }
+
+    #[test]
+    fn sequence_unsupported_actor_gradient_fails_closed_after_svg_emission() {
+        let gradient = LinearGradient::new(
+            90.0,
+            [
+                GradientStop::new(0.0, ThemeColorValue::parse("#000000").unwrap()).unwrap(),
+                GradientStop::new(1.0, ThemeColorValue::parse("#ffffff").unwrap()).unwrap(),
+            ],
+        )
+        .unwrap();
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Actor,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::LinearGradient(gradient)),
+                        )
+                        .for_family(RenderFamilyKind::Sequence),
+                    ),
+                ),
+            )
+            .expect("compile unsupported Sequence actor gradient");
+        let parse = || {
+            theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(
+                    "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .expect("Sequence source should produce a render model")
+        };
+        let rendered = prepare(
+            parse(),
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&theme)
+                .expect("begin best-effort Sequence session"),
+        )
+        .expect("best-effort preparation should retain unsupported evidence")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("best-effort Sequence output should remain renderable");
+        assert_eq!(
+            rendered.style_report().theme_residuals(),
+            &[FamilyThemeResidual {
+                key: FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Actor,
+                },
+                reason: FamilyThemeResidualReason::UnsupportedPaint,
+            }]
+        );
+
+        let strict = crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict Sequence session");
+        let artifact = prepare(parse(), &LayoutOptions::default(), strict)
+            .expect("strict verification waits for terminal SVG evidence");
+        let error =
+            match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()) {
+                Ok(_) => panic!("unsupported Sequence actor gradient must fail closed"),
+                Err(error) => error,
+            };
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((RenderFamilyKind::Sequence, 1))
+        );
+
+        let configured_parse = || {
+            theme
+                .install_parse_compatibility(Engine::new().with_site_config(
+                    MermaidConfig::from_value(json!({
+                        "themeVariables": {"actorBkg": "#22c55e"}
+                    })),
+                ))
+                .parse_diagram_for_render_model_sync(
+                    "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .expect("configured Sequence source should produce a render model")
+        };
+        let configured = prepare(
+            configured_parse(),
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("begin configured strict Sequence session"),
+        )
+        .expect("explicit actor fill should suppress the unsupported theme gradient")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("explicit actor fill should satisfy strict portability");
+        assert!(configured.svg().contains("#22c55e"), "{}", configured.svg());
+        assert!(configured.style_report().theme_residuals().is_empty());
+        assert_eq!(
+            configured.style_report().theme_not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Actor,
+            }]
+        );
+    }
+
+    #[test]
+    fn sequence_actor_fill_winner_accounts_for_superseded_and_unsupported_facets() {
+        let mut winning_style =
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2563eb").unwrap());
+        winning_style.geometry.radius = Specified::Value(6.0);
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::Actor,
+                                ThemeStylePatch::default()
+                                    .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+                            )
+                            .for_family(RenderFamilyKind::Sequence),
+                        )
+                        .with_rule(
+                            ThemeRule::new(ThemeTarget::Actor, winning_style)
+                                .for_family(RenderFamilyKind::Sequence),
+                        ),
+                ),
+            )
+            .expect("compile competing Sequence actor rules");
+        let parsed = theme
+            .install_parse_compatibility(Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("Sequence source should produce a render model");
+        let rendered = prepare(
+            parsed,
+            &LayoutOptions::default(),
+            crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&theme)
+                .expect("begin best-effort Sequence session"),
+        )
+        .expect("prepare competing Sequence actor rules")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render competing Sequence actor rules");
+
+        assert!(rendered.svg().contains("fill:#2563eb"));
+        assert!(
+            rendered
+                .style_report()
+                .theme_applied_mechanisms()
+                .is_empty()
+        );
+        assert_eq!(
+            rendered.style_report().theme_not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Actor,
+            }]
+        );
+        assert_eq!(
+            rendered.style_report().theme_residuals(),
+            &[FamilyThemeResidual {
+                key: FamilyThemeMechanismKey::Rule {
+                    index: 1,
+                    target: ThemeTarget::Actor,
+                },
+                reason: FamilyThemeResidualReason::UnsupportedGeometry,
+            }]
+        );
     }
 
     #[test]

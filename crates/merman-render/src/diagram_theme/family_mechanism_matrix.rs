@@ -496,6 +496,23 @@ fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
+    if family == RenderFamilyKind::Sequence
+        && target == ThemeTarget::Actor
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
     if matches!(
         family,
         RenderFamilyKind::Flowchart | RenderFamilyKind::Swimlane
@@ -1053,6 +1070,44 @@ mod tests {
 
         assert_eq!(routes.len(), 1);
         assert_eq!(routes[0].disposition(), FamilyThemeDisposition::Unsupported);
+    }
+
+    #[test]
+    fn sequence_actor_direct_route_only_accepts_static_scalar_paints() {
+        let gradient = super::super::canvas::LinearGradient::new(
+            90.0,
+            [
+                super::super::canvas::GradientStop::new(
+                    0.0,
+                    ThemeColorValue::parse("#000000").expect("valid color"),
+                )
+                .expect("valid stop"),
+                super::super::canvas::GradientStop::new(
+                    1.0,
+                    ThemeColorValue::parse("#ffffff").expect("valid color"),
+                )
+                .expect("valid stop"),
+            ],
+        )
+        .expect("valid gradient");
+        let solid = ThemeRule::new(
+            ThemeTarget::Actor,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#abcdef").expect("valid solid")),
+        );
+        let gradient_rule = ThemeRule::new(
+            ThemeTarget::Actor,
+            ThemeStylePatch::default().with_fill(CanvasPaint::LinearGradient(gradient)),
+        );
+
+        assert_eq!(
+            compile_rule_routes(RenderFamilyKind::Sequence, 0, &solid)[0].disposition(),
+            FamilyThemeDisposition::TypedAdapter
+        );
+        assert_eq!(
+            compile_rule_routes(RenderFamilyKind::Sequence, 0, &gradient_rule)[0].disposition(),
+            FamilyThemeDisposition::Unsupported
+        );
     }
 
     #[test]

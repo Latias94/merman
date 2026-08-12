@@ -53,7 +53,8 @@ pub use effects::{
     DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FilterRegion,
 };
 pub(crate) use family_mechanism_matrix::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeRoute, FamilyThemeRuleFacet,
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRoute,
+    FamilyThemeRuleFacet, FamilyThemeSelectorShape,
 };
 pub(crate) use mechanisms::{collect_effect_graph_capabilities, paint_capability};
 pub use presets::{

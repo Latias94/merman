@@ -26,6 +26,7 @@ mod notes;
 mod orchestration;
 mod rect;
 mod root_bounds;
+mod theme_evidence;
 
 pub(crate) use activation::{sequence_activation_stack_bounds, sequence_activation_start_x};
 pub(crate) use constants::{
@@ -45,6 +46,7 @@ use message_metrics::SequenceMessageMetricSidecar;
 use orchestration::{SequenceLayoutGraph, SequenceLayoutGraphContext, build_sequence_layout_graph};
 use rect::sequence_rect_stack_x_bounds;
 use root_bounds::{SequenceRootBoundsContext, sequence_root_bounds};
+pub(crate) use theme_evidence::SequenceThemeEvidenceRecorder;
 
 /// Private Sequence render artifact that keeps operation-owned measurements attached to layout.
 ///
@@ -54,11 +56,16 @@ use root_bounds::{SequenceRootBoundsContext, sequence_root_bounds};
 pub(crate) struct SequencePreparedArtifact {
     layout: SequenceDiagramLayout,
     message_metrics: SequenceMessageMetricSidecar,
+    theme_evidence: SequenceThemeEvidenceRecorder,
 }
 
 impl SequencePreparedArtifact {
     pub(crate) fn layout(&self) -> &SequenceDiagramLayout {
         &self.layout
+    }
+
+    pub(crate) const fn theme_evidence(&self) -> &SequenceThemeEvidenceRecorder {
+        &self.theme_evidence
     }
 }
 
@@ -328,6 +335,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
             block_layouts_by_id,
         },
         message_metrics,
+        theme_evidence: SequenceThemeEvidenceRecorder::default(),
     })
 }
 
