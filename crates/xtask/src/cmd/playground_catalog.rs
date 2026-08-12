@@ -454,9 +454,7 @@ fn validate_manifest(
                     diagram_id: Some(diagram_id),
                     ..Default::default()
                 },
-                debug: merman::svg::SvgDebugOptions::default(),
-                pipeline: None,
-                presentation: merman::svg::PresentationRenderPolicy::default(),
+                ..Default::default()
             };
             let output = renderer
                 .render(merman::RenderRequest::svg(

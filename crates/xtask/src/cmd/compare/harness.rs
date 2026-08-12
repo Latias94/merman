@@ -484,9 +484,7 @@ pub(crate) fn svg_request(
             diagram_id,
             ..Default::default()
         },
-        debug: merman::svg::SvgDebugOptions::default(),
-        pipeline: None,
-        presentation: merman::svg::PresentationRenderPolicy::default(),
+        ..Default::default()
     }
 }
 
