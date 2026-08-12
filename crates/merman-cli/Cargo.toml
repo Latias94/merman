@@ -145,6 +145,7 @@ rustix = { workspace = true, optional = true }
 [dev-dependencies]
 assert_cmd = "2.2.2"
 clap_mangen.workspace = true
+merman-ascii-test-contracts = { path = "../merman-ascii-test-contracts" }
 png.workspace = true
 roxmltree.workspace = true
 tempfile = "3.27.0"

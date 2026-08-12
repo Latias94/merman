@@ -344,6 +344,7 @@ fn binding_diagnostic_details(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_ascii_test_contracts::ascii_resource_boundaries;
 
     fn render_ascii_with_limit(
         limit_id: &str,
@@ -354,49 +355,16 @@ mod tests {
         render_ascii(source.as_bytes(), options.as_bytes())
     }
 
-    fn assert_binding_ascii_exact_boundary(limit_id: &str, phase: &str, source: &str) {
-        let mut lower = 0u64;
-        let mut candidate = 1u64;
-        let upper = loop {
-            match render_ascii_with_limit(limit_id, candidate, source) {
-                Ok(output) => {
-                    assert!(!output.is_empty(), "{limit_id} produced no output");
-                    break candidate;
-                }
-                Err(error) => {
-                    assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
-                    let details = error
-                        .resource_details()
-                        .expect("ASCII resource errors expose structured details");
-                    assert_eq!(details.limit_id, limit_id);
-                    assert_eq!(details.phase, phase);
-                    assert_eq!(details.max, candidate);
-                    lower = candidate;
-                    candidate = details.actual.max(candidate.saturating_mul(2));
-                }
-            }
-        };
-
-        let mut upper = upper;
-        while upper - lower > 1 {
-            let candidate = lower + (upper - lower) / 2;
-            match render_ascii_with_limit(limit_id, candidate, source) {
-                Ok(_) => upper = candidate,
-                Err(error) => {
-                    let details = error
-                        .resource_details()
-                        .expect("ASCII resource errors expose structured details");
-                    assert_eq!(details.limit_id, limit_id);
-                    assert_eq!(details.phase, phase);
-                    assert_eq!(details.max, candidate);
-                    lower = candidate;
-                }
-            }
-        }
-
-        render_ascii_with_limit(limit_id, upper, source)
+    fn assert_binding_ascii_exact_boundary(
+        limit_id: &str,
+        phase: &str,
+        expected: u64,
+        source: &str,
+    ) {
+        let output = render_ascii_with_limit(limit_id, expected, source)
             .unwrap_or_else(|error| panic!("exact {limit_id} boundary failed: {error:?}"));
-        let error = render_ascii_with_limit(limit_id, upper - 1, source)
+        assert!(!output.is_empty(), "{limit_id} produced no output");
+        let error = render_ascii_with_limit(limit_id, expected - 1, source)
             .expect_err("one-below binding ASCII boundary must fail");
         assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
         let details = error
@@ -404,8 +372,8 @@ mod tests {
             .expect("ASCII resource errors expose structured details");
         assert_eq!(details.limit_id, limit_id);
         assert_eq!(details.phase, phase);
-        assert_eq!(details.actual, upper);
-        assert_eq!(details.max, upper - 1);
+        assert_eq!(details.actual, expected);
+        assert_eq!(details.max, expected - 1);
         assert_eq!(details.profile, "interactive");
     }
 
@@ -815,41 +783,13 @@ mod tests {
 
     #[test]
     fn every_ascii_resource_limit_round_trips_exact_public_boundaries() {
-        let cases = [
-            (
-                "max_ascii_grid_cells",
-                "ascii_layout",
-                "flowchart TD\nA[Hello] --> B[World]",
-            ),
-            (
-                "max_ascii_layout_work_units",
-                "ascii_layout_work",
-                "flowchart TD\nA[Hello] --> B[World]",
-            ),
-            (
-                "max_ascii_document_cells",
-                "ascii_document",
-                "gitGraph\n  commit id: \"A\"",
-            ),
-            (
-                "max_ascii_output_bytes",
-                "ascii_output",
-                "flowchart TD\nA[Hello] --> B[World]",
-            ),
-            (
-                "max_ascii_grapheme_bytes",
-                "ascii_grapheme",
-                "flowchart TD\nA[👨‍👩‍👧‍👦]",
-            ),
-            (
-                "max_ascii_nesting_depth",
-                "ascii_nesting",
-                "mindmap\n  Root\n    Child",
-            ),
-        ];
-
-        for (limit_id, phase, source) in cases {
-            assert_binding_ascii_exact_boundary(limit_id, phase, source);
+        for case in ascii_resource_boundaries() {
+            assert_binding_ascii_exact_boundary(
+                &case.id,
+                &case.phase,
+                case.expected.binding_interactive,
+                &case.source,
+            );
         }
     }
 

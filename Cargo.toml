@@ -7,6 +7,7 @@ members = [
     "crates/merman-fixture-render-context",
     "crates/merman-core",
     "crates/merman-ascii",
+    "crates/merman-ascii-test-contracts",
     "crates/merman-bindings-core",
     "crates/merman-android-jni",
     "crates/merman-cli",

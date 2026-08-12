@@ -567,6 +567,8 @@ fn wasm_white_space(max_width: Option<f64>, wrap_mode: WrapMode) -> &'static str
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "ascii")]
+    use merman_ascii_test_contracts::ascii_resource_boundaries;
     #[cfg(any(feature = "analysis", feature = "ascii"))]
     use serde_json::Value;
 
@@ -611,50 +613,19 @@ mod tests {
     }
 
     #[cfg(feature = "ascii")]
-    fn assert_wasm_ascii_exact_boundary(limit_id: &str, phase: &str, source: &str) {
-        let mut lower = 0;
-        let mut candidate = 1;
-        let mut attempts = 0;
-        let mut upper = loop {
-            attempts += 1;
-            assert!(attempts <= 64, "failed to converge {limit_id} boundary");
-            let options = wasm_ascii_options(limit_id, candidate);
-            match execute_wasm_operation("ascii", source.as_bytes(), options.as_bytes(), None) {
-                Ok(_) => break candidate,
-                Err(error) => {
-                    let actual =
-                        assert_wasm_ascii_resource_error(error, limit_id, phase, candidate);
-                    lower = candidate;
-                    candidate = actual.max(candidate.saturating_mul(2));
-                }
-            }
-        };
-        while upper - lower > 1 {
-            let candidate = lower + (upper - lower) / 2;
-            let options = wasm_ascii_options(limit_id, candidate);
-            match execute_wasm_operation("ascii", source.as_bytes(), options.as_bytes(), None) {
-                Ok(_) => upper = candidate,
-                Err(error) => {
-                    assert_wasm_ascii_resource_error(error, limit_id, phase, candidate);
-                    lower = candidate;
-                }
-            }
-        }
-        let exact = upper;
-        assert!(exact > 1, "fixture must exercise {limit_id}");
-
-        let exact_options = wasm_ascii_options(limit_id, exact);
+    fn assert_wasm_ascii_exact_boundary(limit_id: &str, phase: &str, expected: u64, source: &str) {
+        let exact_options = wasm_ascii_options(limit_id, expected);
         let output =
             execute_wasm_operation("ascii", source.as_bytes(), exact_options.as_bytes(), None)
                 .unwrap_or_else(|error| panic!("exact {limit_id} boundary failed: {error:?}"));
         assert!(!output.is_empty());
 
-        let below_options = wasm_ascii_options(limit_id, exact - 1);
+        let below_options = wasm_ascii_options(limit_id, expected - 1);
         let error =
             execute_wasm_operation("ascii", source.as_bytes(), below_options.as_bytes(), None)
                 .expect_err("one-below WASM ASCII boundary must fail");
-        let actual = assert_wasm_ascii_resource_error(error, limit_id, phase, exact - 1);
-        assert_eq!(actual, exact);
+        let actual = assert_wasm_ascii_resource_error(error, limit_id, phase, expected - 1);
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -1309,41 +1280,13 @@ mod tests {
     #[cfg(feature = "ascii")]
     #[test]
     fn wasm_ascii_operations_preserve_typed_exact_resource_boundaries() {
-        let cases = [
-            (
-                "max_ascii_grid_cells",
-                "ascii_layout",
-                "flowchart TD\nA[Hello] --> B[World]",
-            ),
-            (
-                "max_ascii_layout_work_units",
-                "ascii_layout_work",
-                "flowchart TD\nA[Hello] --> B[World]",
-            ),
-            (
-                "max_ascii_document_cells",
-                "ascii_document",
-                "gitGraph\n  commit id: \"A\"",
-            ),
-            (
-                "max_ascii_output_bytes",
-                "ascii_output",
-                "flowchart TD\nA[Hello] --> B[World]",
-            ),
-            (
-                "max_ascii_grapheme_bytes",
-                "ascii_grapheme",
-                "flowchart TD\nA[👨‍👩‍👧‍👦]",
-            ),
-            (
-                "max_ascii_nesting_depth",
-                "ascii_nesting",
-                "mindmap\n  Root\n    Child",
-            ),
-        ];
-
-        for (limit_id, phase, source) in cases {
-            assert_wasm_ascii_exact_boundary(limit_id, phase, source);
+        for case in ascii_resource_boundaries() {
+            assert_wasm_ascii_exact_boundary(
+                &case.id,
+                &case.phase,
+                case.expected.wasm_interactive,
+                &case.source,
+            );
         }
     }
 }

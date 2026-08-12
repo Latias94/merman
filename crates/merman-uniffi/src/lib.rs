@@ -1467,6 +1467,8 @@ uniffi::setup_scaffolding!();
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "ascii")]
+    use merman_ascii_test_contracts::ascii_resource_boundaries;
     #[cfg(feature = "analysis")]
     use merman_bindings_core::ANALYSIS_FACTS_PAYLOAD_VERSION;
     use serde_json::Value;
@@ -1554,50 +1556,22 @@ mod tests {
         id: MermanResourceOverrideId,
         limit_id: &str,
         phase: &str,
+        expected: u64,
         source: &str,
     ) {
         let engine = engine();
-        let mut lower = 0;
-        let mut candidate = 1;
-        let mut attempts = 0;
-        let mut upper = loop {
-            attempts += 1;
-            assert!(attempts <= 64, "failed to converge {limit_id} boundary");
-            let options = uniffi_ascii_options(id, candidate);
-            match engine.render_ascii(source.to_string(), Some(options)) {
-                Ok(_) => break candidate,
-                Err(error) => {
-                    let details = assert_ascii_resource_error(error, limit_id, phase, candidate);
-                    lower = candidate;
-                    candidate = details.actual.max(candidate.saturating_mul(2));
-                }
-            }
-        };
-        while upper - lower > 1 {
-            let candidate = lower + (upper - lower) / 2;
-            let options = uniffi_ascii_options(id, candidate);
-            match engine.render_ascii(source.to_string(), Some(options)) {
-                Ok(_) => upper = candidate,
-                Err(error) => {
-                    assert_ascii_resource_error(error, limit_id, phase, candidate);
-                    lower = candidate;
-                }
-            }
-        }
-        let exact = upper;
-        assert!(exact > 1, "fixture must exercise {limit_id}");
-
-        engine
-            .render_ascii(source.to_string(), Some(uniffi_ascii_options(id, exact)))
+        let output = engine
+            .render_ascii(source.to_string(), Some(uniffi_ascii_options(id, expected)))
             .unwrap_or_else(|error| panic!("exact {limit_id} boundary failed: {error:?}"));
+        assert!(!output.is_empty(), "{limit_id} produced no output");
         let error = engine
             .render_ascii(
                 source.to_string(),
-                Some(uniffi_ascii_options(id, exact - 1)),
+                Some(uniffi_ascii_options(id, expected - 1)),
             )
             .expect_err("one-below UniFFI ASCII boundary must fail");
-        let details = assert_ascii_resource_error(error, limit_id, phase, exact - 1);
-        assert_eq!(details.actual, exact);
+        let details = assert_ascii_resource_error(error, limit_id, phase, expected - 1);
+        assert_eq!(details.actual, expected);
     }
 
     #[cfg(feature = "svg")]
@@ -2607,47 +2581,23 @@ mod tests {
     #[cfg(feature = "ascii")]
     #[test]
     fn uniffi_ascii_operations_preserve_typed_exact_resource_boundaries() {
-        let cases = [
-            (
-                MermanResourceOverrideId::MaxAsciiGridCells,
-                "max_ascii_grid_cells",
-                "ascii_layout",
-                "flowchart TD\nA[Hello] --> B[World]",
-            ),
-            (
-                MermanResourceOverrideId::MaxAsciiLayoutWorkUnits,
-                "max_ascii_layout_work_units",
-                "ascii_layout_work",
-                "flowchart TD\nA[Hello] --> B[World]",
-            ),
-            (
-                MermanResourceOverrideId::MaxAsciiDocumentCells,
-                "max_ascii_document_cells",
-                "ascii_document",
-                "gitGraph\n  commit id: \"A\"",
-            ),
-            (
-                MermanResourceOverrideId::MaxAsciiOutputBytes,
-                "max_ascii_output_bytes",
-                "ascii_output",
-                "flowchart TD\nA[Hello] --> B[World]",
-            ),
-            (
-                MermanResourceOverrideId::MaxAsciiGraphemeBytes,
-                "max_ascii_grapheme_bytes",
-                "ascii_grapheme",
-                "flowchart TD\nA[👨‍👩‍👧‍👦]",
-            ),
-            (
-                MermanResourceOverrideId::MaxAsciiNestingDepth,
-                "max_ascii_nesting_depth",
-                "ascii_nesting",
-                "mindmap\n  Root\n    Child",
-            ),
-        ];
-
-        for (id, limit_id, phase, source) in cases {
-            assert_uniffi_ascii_exact_boundary(id, limit_id, phase, source);
+        for case in ascii_resource_boundaries() {
+            let id = match case.id.as_str() {
+                "max_ascii_grid_cells" => MermanResourceOverrideId::MaxAsciiGridCells,
+                "max_ascii_layout_work_units" => MermanResourceOverrideId::MaxAsciiLayoutWorkUnits,
+                "max_ascii_document_cells" => MermanResourceOverrideId::MaxAsciiDocumentCells,
+                "max_ascii_output_bytes" => MermanResourceOverrideId::MaxAsciiOutputBytes,
+                "max_ascii_grapheme_bytes" => MermanResourceOverrideId::MaxAsciiGraphemeBytes,
+                "max_ascii_nesting_depth" => MermanResourceOverrideId::MaxAsciiNestingDepth,
+                other => panic!("unknown ASCII resource boundary {other}"),
+            };
+            assert_uniffi_ascii_exact_boundary(
+                id,
+                &case.id,
+                &case.phase,
+                case.expected.uniffi_interactive,
+                &case.source,
+            );
         }
     }
 

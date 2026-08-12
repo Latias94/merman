@@ -489,6 +489,7 @@ impl HeadlessAsciiRenderer {
 #[cfg(test)]
 mod headless_ascii_renderer_tests {
     use super::*;
+    use merman_ascii_test_contracts::ascii_resource_boundaries;
     use serde_json::Value;
 
     fn render_with_ascii_limit(
@@ -511,52 +512,24 @@ mod headless_ascii_renderer_tests {
         }
     }
 
-    fn assert_headless_ascii_exact_boundary(limit: AsciiResourceLimitId, source: &str) {
-        let mut lower = 0usize;
-        let mut candidate = 1usize;
-        let upper = loop {
-            match render_with_ascii_limit(limit, candidate, source) {
-                Ok(Some(output)) => {
-                    assert!(!output.is_empty(), "{} produced no output", limit.as_str());
-                    break candidate;
-                }
-                Ok(None) => panic!("{} fixture was not detected", limit.as_str()),
-                Err(error) => {
-                    let details = ascii_limit_details(error);
-                    assert_eq!(details.limit, limit);
-                    assert_eq!(details.max, candidate);
-                    lower = candidate;
-                    candidate = details.actual.max(candidate.saturating_mul(2));
-                }
-            }
-        };
-
-        let mut upper = upper;
-        while upper - lower > 1 {
-            let candidate = lower + (upper - lower) / 2;
-            match render_with_ascii_limit(limit, candidate, source) {
-                Ok(Some(_)) => upper = candidate,
-                Ok(None) => panic!("{} fixture was not detected", limit.as_str()),
-                Err(error) => {
-                    let details = ascii_limit_details(error);
-                    assert_eq!(details.limit, limit);
-                    assert_eq!(details.max, candidate);
-                    lower = candidate;
-                }
-            }
-        }
-
-        render_with_ascii_limit(limit, upper, source)
+    fn assert_headless_ascii_exact_boundary(
+        limit: AsciiResourceLimitId,
+        expected: u64,
+        source: &str,
+    ) {
+        let exact = usize::try_from(expected).expect("test boundary must fit usize");
+        let output = render_with_ascii_limit(limit, exact, source)
             .unwrap_or_else(|error| panic!("exact {} boundary failed: {error:?}", limit.as_str()))
             .expect("fixture should render at the exact boundary");
+        assert!(!output.is_empty(), "{} produced no output", limit.as_str());
         let details = ascii_limit_details(
-            render_with_ascii_limit(limit, upper - 1, source)
+            render_with_ascii_limit(limit, exact - 1, source)
                 .expect_err("one-below headless ASCII boundary must fail"),
         );
         assert_eq!(details.limit, limit);
         assert_eq!(details.phase(), limit.descriptor().phase);
-        assert_eq!(details.actual, upper);
-        assert_eq!(details.max, upper - 1);
+        assert_eq!(details.actual, exact);
+        assert_eq!(details.max, exact - 1);
         assert_eq!(details.profile.id(), "interactive");
     }
 
@@ -571,35 +544,17 @@ mod headless_ascii_renderer_tests {
 
     #[test]
     fn headless_ascii_renderer_proves_every_ascii_limit_at_exact_boundary() {
-        let cases = [
-            (
-                AsciiResourceLimitId::MaxGridCells,
-                "flowchart TD\nA[Hello] --> B[World]",
-            ),
-            (
-                AsciiResourceLimitId::MaxLayoutWorkUnits,
-                "flowchart TD\nA[Hello] --> B[World]",
-            ),
-            (
-                AsciiResourceLimitId::MaxDocumentCells,
-                "gitGraph\n  commit id: \"A\"",
-            ),
-            (
-                AsciiResourceLimitId::MaxOutputBytes,
-                "flowchart TD\nA[Hello] --> B[World]",
-            ),
-            (
-                AsciiResourceLimitId::MaxGraphemeBytes,
-                "flowchart TD\nA[👨‍👩‍👧‍👦]",
-            ),
-            (
-                AsciiResourceLimitId::MaxNestingDepth,
-                "mindmap\n  Root\n    Child",
-            ),
-        ];
-
-        for (limit, source) in cases {
-            assert_headless_ascii_exact_boundary(limit, source);
+        for case in ascii_resource_boundaries() {
+            let limit = match case.id.as_str() {
+                "max_ascii_grid_cells" => AsciiResourceLimitId::MaxGridCells,
+                "max_ascii_layout_work_units" => AsciiResourceLimitId::MaxLayoutWorkUnits,
+                "max_ascii_document_cells" => AsciiResourceLimitId::MaxDocumentCells,
+                "max_ascii_output_bytes" => AsciiResourceLimitId::MaxOutputBytes,
+                "max_ascii_grapheme_bytes" => AsciiResourceLimitId::MaxGraphemeBytes,
+                "max_ascii_nesting_depth" => AsciiResourceLimitId::MaxNestingDepth,
+                other => panic!("unknown ASCII resource boundary {other}"),
+            };
+            assert_headless_ascii_exact_boundary(limit, case.expected.headless_ascii, &case.source);
         }
     }
 

@@ -2229,6 +2229,7 @@ dependencies = [
  "criterion",
  "merman-analysis",
  "merman-ascii",
+ "merman-ascii-test-contracts",
  "merman-core",
  "merman-editor-core",
  "merman-export",
@@ -2276,12 +2277,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "merman-ascii-test-contracts"
+version = "0.8.0-alpha.6"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "merman-bindings-core"
 version = "0.8.0-alpha.6"
 dependencies = [
  "criterion",
  "merman",
  "merman-analysis",
+ "merman-ascii-test-contracts",
  "roxmltree 0.21.1",
  "serde",
  "serde_json",
@@ -2301,6 +2311,7 @@ dependencies = [
  "libc",
  "merman",
  "merman-analysis",
+ "merman-ascii-test-contracts",
  "png",
  "rayon",
  "reqwest",
@@ -2496,6 +2507,7 @@ dependencies = [
 name = "merman-uniffi"
 version = "0.8.0-alpha.6"
 dependencies = [
+ "merman-ascii-test-contracts",
  "merman-bindings-core",
  "serde_json",
  "tempfile",
@@ -2510,6 +2522,7 @@ dependencies = [
  "console_error_panic_hook",
  "js-sys",
  "merman-analysis",
+ "merman-ascii-test-contracts",
  "merman-bindings-core",
  "merman-editor-core",
  "serde",

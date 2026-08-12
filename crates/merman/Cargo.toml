@@ -78,6 +78,7 @@ thiserror = { workspace = true, optional = true }
 [dev-dependencies]
 base64.workspace = true
 criterion = "0.8.2"
+merman-ascii-test-contracts = { path = "../merman-ascii-test-contracts" }
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
 png.workspace = true
 roxmltree.workspace = true
