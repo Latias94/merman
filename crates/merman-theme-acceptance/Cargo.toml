@@ -27,6 +27,7 @@ roxmltree.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 svgtypes.workspace = true
+thiserror.workspace = true
 
 [[test]]
 name = "c6_runtime"

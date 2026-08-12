@@ -11,4 +11,4 @@
 mod runner;
 
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
-pub use runner::{C6ExecutionReport, run_enforced_c6_runtime};
+pub use runner::{C6ExecutionReport, C6RuntimeError, run_enforced_c6_runtime};

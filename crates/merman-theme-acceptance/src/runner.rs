@@ -105,6 +105,18 @@ pub struct C6ExecutionReport {
     execution_digest: [u8; 32],
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum C6RuntimeError {
+    #[error("the enforced C6 tranche is empty")]
+    EmptyTranche,
+    #[error("no target adapter exists for enforced C6 cell {key:?}")]
+    UnsupportedEnforcedCell { key: C6CellKey },
+    #[error("the current C6 vertical slice requires one shared source fixture")]
+    MultipleSourceFixtures,
+    #[error("the enforced C6 tranche does not contain the required PNG target")]
+    MissingPngTarget,
+}
+
 impl C6ExecutionReport {
     pub const fn verified_cell_count(&self) -> usize {
         self.verified_cell_count
@@ -449,48 +461,40 @@ fn themes_root() -> PathBuf {
         .join("themes")
 }
 
-pub fn run_enforced_c6_runtime() -> C6ExecutionReport {
+pub fn run_enforced_c6_runtime() -> Result<C6ExecutionReport, C6RuntimeError> {
     let theme_catalog =
         ThemeFixtureCatalog::load(themes_root()).expect("load the source-backed theme corpus");
     let acceptance = C6AcceptanceCatalog::load(&theme_catalog)
         .expect("load the committed C6 acceptance contract");
     let enforced_cells = acceptance.enforced_tranche().cells().collect::<Vec<_>>();
+    if enforced_cells.is_empty() {
+        return Err(C6RuntimeError::EmptyTranche);
+    }
     for cell in &enforced_cells {
-        assert_eq!(
-            cell.key().theme(),
-            C6ProofTheme::Brutalist,
-            "unsupported enforced C6 theme {:?}",
-            cell.key()
-        );
-        assert_eq!(
-            cell.key().family(),
-            C6ProofFamily::State,
-            "unsupported enforced C6 family {:?}",
-            cell.key()
-        );
-        assert!(
-            matches!(
+        if cell.key().theme() != C6ProofTheme::Brutalist
+            || cell.key().family() != C6ProofFamily::State
+            || !matches!(
                 cell.key().target(),
                 ExpectedOutputTarget::StandaloneSvg
                     | ExpectedOutputTarget::Png
                     | ExpectedOutputTarget::Jpeg
                     | ExpectedOutputTarget::Pdf
-            ),
-            "unsupported enforced C6 target {:?}",
-            cell.key()
-        );
+            )
+        {
+            return Err(C6RuntimeError::UnsupportedEnforcedCell { key: cell.key() });
+        }
     }
 
     let fixture_id = enforced_cells
         .first()
         .expect("the enforced C6 tranche must not be empty")
         .source_fixture_id();
-    assert!(
-        enforced_cells
-            .iter()
-            .all(|cell| cell.source_fixture_id() == fixture_id),
-        "the current C6 vertical slice requires one shared source fixture"
-    );
+    if !enforced_cells
+        .iter()
+        .all(|cell| cell.source_fixture_id() == fixture_id)
+    {
+        return Err(C6RuntimeError::MultipleSourceFixtures);
+    }
     let fixture = theme_catalog
         .fixture(fixture_id)
         .expect("the enforced C6 fixture must exist");
@@ -539,7 +543,7 @@ pub fn run_enforced_c6_runtime() -> C6ExecutionReport {
     let png_cell = enforced_cells
         .iter()
         .find(|cell| cell.key().target() == ExpectedOutputTarget::Png)
-        .expect("the enforced tranche must include a PNG target");
+        .ok_or(C6RuntimeError::MissingPngTarget)?;
     let (png, png_proof) = observe_brutalist_state_png(
         png_cell,
         &theme_catalog,
@@ -594,7 +598,7 @@ pub fn run_enforced_c6_runtime() -> C6ExecutionReport {
 
     assert_eq!(evaluation.verified_cell_count(), enforced_count);
     assert_eq!(evaluation.enforced_cell_count(), enforced_count);
-    evaluation
+    Ok(evaluation)
 }
 
 #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
