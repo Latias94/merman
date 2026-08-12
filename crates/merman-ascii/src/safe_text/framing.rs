@@ -10,39 +10,61 @@ pub(crate) fn visit_quoted_terminal_text(
     resources: &ResourceContext,
     mut visit: impl FnMut(&str) -> Result<()>,
 ) -> Result<()> {
-    visit("\"")?;
+    visit_quoted_terminal_text_with(value, |event| match event {
+        QuotedTerminalTextEvent::SourceGrapheme(grapheme) => {
+            resources.charge_layout_work(1)?;
+            resources.check_grapheme_bytes(grapheme.len())
+        }
+        QuotedTerminalTextEvent::OutputFragment(fragment) => visit(fragment),
+    })
+}
+
+pub(super) enum QuotedTerminalTextEvent<'a> {
+    SourceGrapheme(&'a str),
+    OutputFragment(&'a str),
+}
+
+pub(super) fn visit_quoted_terminal_text_with(
+    value: &str,
+    mut visit: impl for<'a> FnMut(QuotedTerminalTextEvent<'a>) -> Result<()>,
+) -> Result<()> {
+    visit(QuotedTerminalTextEvent::OutputFragment("\""))?;
     for grapheme in value.graphemes(true) {
-        resources.charge_layout_work(1)?;
         // Check the source grapheme before quoting can split it into fragments and bypass the byte limit.
-        resources.check_grapheme_bytes(grapheme.len())?;
+        visit(QuotedTerminalTextEvent::SourceGrapheme(grapheme))?;
         if !grapheme
             .chars()
             .any(|ch| ch == '\\' || ch == '"' || (ch != ' ' && ch.is_whitespace()))
         {
-            visit(grapheme)?;
+            visit(QuotedTerminalTextEvent::OutputFragment(grapheme))?;
             continue;
         }
 
         for ch in grapheme.chars() {
             match ch {
-                '\\' => visit("\\\\")?,
-                '"' => visit("\\\"")?,
-                ' ' => visit(" ")?,
-                '\t' => visit("\\t")?,
-                '\n' => visit("\\n")?,
-                '\r' => visit("\\r")?,
+                '\\' => visit(QuotedTerminalTextEvent::OutputFragment("\\\\"))?,
+                '"' => visit(QuotedTerminalTextEvent::OutputFragment("\\\""))?,
+                ' ' => visit(QuotedTerminalTextEvent::OutputFragment(" "))?,
+                '\t' => visit(QuotedTerminalTextEvent::OutputFragment("\\t"))?,
+                '\n' => visit(QuotedTerminalTextEvent::OutputFragment("\\n"))?,
+                '\r' => visit(QuotedTerminalTextEvent::OutputFragment("\\r"))?,
                 ch if ch.is_whitespace() => {
                     let mut buffer = [0u8; 10];
-                    visit(visible_escape(ch, &mut buffer))?;
+                    visit(QuotedTerminalTextEvent::OutputFragment(visible_escape(
+                        ch,
+                        &mut buffer,
+                    )))?;
                 }
                 ch => {
                     let mut buffer = [0u8; 4];
-                    visit(ch.encode_utf8(&mut buffer))?;
+                    visit(QuotedTerminalTextEvent::OutputFragment(
+                        ch.encode_utf8(&mut buffer),
+                    ))?;
                 }
             }
         }
     }
-    visit("\"")
+    visit(QuotedTerminalTextEvent::OutputFragment("\""))
 }
 
 /// Writes one length-framed authored field to a non-wrapping StructuredText row.
@@ -76,7 +98,7 @@ pub(crate) fn push_line_list<'a>(
 
 /// Writes one length-framed authored field to a wrapping StructuredText row.
 pub(crate) fn push_wrapped_field(
-    line: &mut BudgetedWrappedText<'_, '_>,
+    line: &mut BudgetedWrappedText<'_>,
     separator: &str,
     key: &str,
     value: &str,
@@ -87,7 +109,7 @@ pub(crate) fn push_wrapped_field(
 
 /// Writes one length-framed authored list to a wrapping StructuredText row.
 pub(crate) fn push_wrapped_list<'a>(
-    line: &mut BudgetedWrappedText<'_, '_>,
+    line: &mut BudgetedWrappedText<'_>,
     separator: &str,
     key: &str,
     values: impl IntoIterator<Item = &'a str>,

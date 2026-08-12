@@ -5,12 +5,12 @@ mod label;
 mod layout;
 mod normalization;
 mod width;
+mod wrapped;
 
 #[cfg(test)]
 use document::encode_text_lines;
 pub(crate) use document::{
-    BudgetedTextDocument, BudgetedTextLine, BudgetedWrappedText, charge_text_layout,
-    visit_safe_line_graphemes,
+    BudgetedTextDocument, BudgetedTextLine, charge_text_layout, visit_safe_line_graphemes,
 };
 pub(crate) use encode::push_html_escaped_text;
 pub(crate) use framing::{
@@ -34,6 +34,7 @@ pub use normalization::{normalize_terminal_diagnostic, normalize_terminal_text};
 pub(crate) use width::{
     SafeLine, SafeText, terminal_char_display_width, terminal_line_display_width,
 };
+pub(crate) use wrapped::BudgetedWrappedText;
 
 #[cfg(test)]
 use crate::color::AsciiColorMode;
@@ -345,14 +346,26 @@ mod tests {
         assert_eq!(prefix_retained.get(), 0);
         assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 2, 1);
 
+        let exact_word_options = options_with_limit(AsciiResourceLimitId::MaxOutputBytes, 5);
+        let mut document = BudgetedTextDocument::new(&exact_word_options);
+        document
+            .push_wrapped_prefixed_line_with("- ", "  ", 80, |line| line.push_str("abc"))
+            .expect("the exact prefix and body output bytes should fit");
+        assert_eq!(
+            document
+                .finish(&exact_word_options)
+                .expect("exact output should encode"),
+            "- abc"
+        );
+
         let word_options = options_with_limit(AsciiResourceLimitId::MaxOutputBytes, 4);
         let word_retained = std::rc::Rc::new(Cell::new(0));
         let mut document = BudgetedTextDocument::new(&word_options);
         document.set_retain_probe(std::rc::Rc::clone(&word_retained));
         let error = document
             .push_wrapped_prefixed_line_with("- ", "  ", 80, |line| line.push_str("abc"))
-            .expect_err("N-1 word bytes must reject before retaining the final grapheme");
-        assert_eq!(word_retained.get(), 2);
+            .expect_err("N-1 word bytes must reject before retaining the wrapped body");
+        assert_eq!(word_retained.get(), 0);
         assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 5, 4);
 
         let space_options = options_with_limit(AsciiResourceLimitId::MaxOutputBytes, 2);
@@ -362,8 +375,21 @@ mod tests {
         let error = document
             .push_wrapped_prefixed_line_with("", "", 80, |line| line.push_str("a b"))
             .expect_err("N-1 synthesized space must reject before entering the row");
-        assert_eq!(space_retained.get(), 2);
+        assert_eq!(space_retained.get(), 0);
         assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 3, 2);
+
+        let exact_continuation_options =
+            options_with_limit(AsciiResourceLimitId::MaxOutputBytes, 5);
+        let mut document = BudgetedTextDocument::new(&exact_continuation_options);
+        document
+            .push_wrapped_prefixed_line_with("", ">>", 1, |line| line.push_str("ab"))
+            .expect("the exact continuation prefix output bytes should fit");
+        assert_eq!(
+            document
+                .finish(&exact_continuation_options)
+                .expect("exact continuation output should encode"),
+            "a\n>>b"
+        );
 
         let continuation_options = options_with_limit(AsciiResourceLimitId::MaxOutputBytes, 4);
         let continuation_retained = std::rc::Rc::new(Cell::new(0));
@@ -372,10 +398,318 @@ mod tests {
         let error = document
             .push_wrapped_prefixed_line_with("", ">>", 1, |line| line.push_str("ab"))
             .expect_err("N-1 continuation prefix must reject before prefix insertion");
-        // The next word is retained in the bounded word buffer before wrapping decides that it
-        // needs a continuation row. The continuation prefix itself must not be inserted.
-        assert_eq!(continuation_retained.get(), 2);
+        assert_eq!(continuation_retained.get(), 0);
         assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 5, 4);
+    }
+
+    #[test]
+    fn wrapped_prefix_budgets_are_admitted_before_body_retention() {
+        let first_prefix_options = options_with_limit(AsciiResourceLimitId::MaxDocumentCells, 1);
+        let first_prefix_retained = std::rc::Rc::new(Cell::new(0));
+        let first_prefix_producer_visited = Cell::new(false);
+        let mut document = BudgetedTextDocument::new(&first_prefix_options);
+        document.set_retain_probe(std::rc::Rc::clone(&first_prefix_retained));
+        let error = document
+            .push_wrapped_prefixed_line_with("- ", "  ", 80, |line| {
+                first_prefix_producer_visited.set(true);
+                line.push_str("a")
+            })
+            .expect_err("an oversized first prefix must reject before starting the producer");
+        assert!(!first_prefix_producer_visited.get());
+        assert_eq!(first_prefix_retained.get(), 0);
+        assert_limit_error(error, AsciiResourceLimitId::MaxDocumentCells, 2, 1);
+
+        let continuation_options = options_with_limit(AsciiResourceLimitId::MaxDocumentCells, 3);
+        let continuation_retained = std::rc::Rc::new(Cell::new(0));
+        let mut document = BudgetedTextDocument::new(&continuation_options);
+        document.set_retain_probe(std::rc::Rc::clone(&continuation_retained));
+        let error = document
+            .push_wrapped_prefixed_line_with("", ">>", 1, |line| line.push_str("ab"))
+            .expect_err("a continuation prefix must reject before retaining its first body cell");
+        assert_eq!(continuation_retained.get(), 0);
+        assert_limit_error(error, AsciiResourceLimitId::MaxDocumentCells, 4, 3);
+
+        let grapheme = "\"\u{301}";
+        assert_eq!(grapheme.graphemes(true).count(), 1);
+        let exact_grapheme_options =
+            options_with_limit(AsciiResourceLimitId::MaxGraphemeBytes, grapheme.len());
+        let mut document = BudgetedTextDocument::new(&exact_grapheme_options);
+        document
+            .push_wrapped_prefixed_line_with(grapheme, "", 80, |line| line.push_str("a"))
+            .expect("the exact first-prefix grapheme budget should fit");
+        assert_eq!(
+            document
+                .finish(&exact_grapheme_options)
+                .expect("exact first prefix should encode"),
+            format!("{grapheme}a")
+        );
+
+        let grapheme_options =
+            options_with_limit(AsciiResourceLimitId::MaxGraphemeBytes, grapheme.len() - 1);
+        let grapheme_retained = std::rc::Rc::new(Cell::new(0));
+        let grapheme_producer_visited = Cell::new(false);
+        let mut document = BudgetedTextDocument::new(&grapheme_options);
+        document.set_retain_probe(std::rc::Rc::clone(&grapheme_retained));
+        let error = document
+            .push_wrapped_prefixed_line_with(grapheme, "", 80, |line| {
+                grapheme_producer_visited.set(true);
+                line.push_str("a")
+            })
+            .expect_err("an oversized prefix grapheme must reject before starting the producer");
+        assert!(!grapheme_producer_visited.get());
+        assert_eq!(grapheme_retained.get(), 0);
+        assert_limit_error(
+            error,
+            AsciiResourceLimitId::MaxGraphemeBytes,
+            grapheme.len(),
+            grapheme.len() - 1,
+        );
+
+        let continuation = "x\u{301}";
+        assert_eq!(continuation.graphemes(true).count(), 1);
+        let exact_continuation_options =
+            options_with_limit(AsciiResourceLimitId::MaxGraphemeBytes, continuation.len());
+        let mut document = BudgetedTextDocument::new(&exact_continuation_options);
+        document
+            .push_wrapped_prefixed_line_with("", continuation, 1, |line| line.push_str("ab"))
+            .expect("the exact continuation-prefix grapheme budget should fit");
+        assert_eq!(
+            document
+                .finish(&exact_continuation_options)
+                .expect("exact continuation prefix should encode"),
+            format!("a\n{continuation}b")
+        );
+
+        let continuation_options = options_with_limit(
+            AsciiResourceLimitId::MaxGraphemeBytes,
+            continuation.len() - 1,
+        );
+        let continuation_retained = std::rc::Rc::new(Cell::new(0));
+        let mut document = BudgetedTextDocument::new(&continuation_options);
+        document.set_retain_probe(std::rc::Rc::clone(&continuation_retained));
+        let error = document
+            .push_wrapped_prefixed_line_with("", continuation, 1, |line| line.push_str("ab"))
+            .expect_err("an oversized used continuation grapheme must reject in planning");
+        assert_eq!(continuation_retained.get(), 0);
+        assert_limit_error(
+            error,
+            AsciiResourceLimitId::MaxGraphemeBytes,
+            continuation.len(),
+            continuation.len() - 1,
+        );
+    }
+
+    #[test]
+    fn unused_continuation_prefix_does_not_enter_content_budgets() {
+        let oversized = "x\u{301}";
+        assert_eq!(oversized.graphemes(true).count(), 1);
+        let options = AsciiRenderOptions::ascii().with_resource_policy(
+            AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+                .with_limit(AsciiResourceLimitId::MaxGraphemeBytes, 1)
+                .expect("positive grapheme limit")
+                .with_limit(AsciiResourceLimitId::MaxDocumentCells, 1)
+                .expect("positive document limit")
+                .with_limit(AsciiResourceLimitId::MaxOutputBytes, 1)
+                .expect("positive output limit"),
+        );
+        let mut document = BudgetedTextDocument::new(&options);
+        document
+            .push_wrapped_prefixed_line_with("", oversized, 80, |line| line.push_str("a"))
+            .expect("an unused continuation prefix must not consume content limits");
+        assert_eq!(
+            document.finish(&options).expect("document should encode"),
+            "a"
+        );
+    }
+
+    #[test]
+    fn wrapped_planning_failure_leaves_shared_ledgers_unchanged() {
+        let options = options_with_limit(AsciiResourceLimitId::MaxDocumentCells, 1);
+        let mut document = BudgetedTextDocument::new(&options);
+        document.push_line("x").expect("prior row should fit");
+        let work_before = document.resources_mut().layout_work_used();
+        let cells_before = document.resources_mut().document_cells_used();
+
+        document
+            .push_wrapped_prefixed_line_with("", "", 80, |line| line.push_str("y"))
+            .expect_err("the second cell must be rejected during planning");
+
+        assert_eq!(document.resources_mut().layout_work_used(), work_before);
+        assert_eq!(document.resources_mut().document_cells_used(), cells_before);
+        assert_eq!(
+            document.finish(&options).expect("prior row should remain"),
+            "x"
+        );
+    }
+
+    #[test]
+    fn wrapped_success_replays_the_producer_after_admission() {
+        let options = AsciiRenderOptions::ascii()
+            .with_resource_profile(ResourceProfile::UnboundedForTrustedInput);
+        let visits = Cell::new(0usize);
+        let mut document = BudgetedTextDocument::new(&options);
+        document
+            .push_wrapped_prefixed_line_with("- ", "  ", 80, |line| {
+                visits.set(visits.get() + 1);
+                line.push_str("body")
+            })
+            .expect("an admitted producer should replay deterministically");
+        assert_eq!(visits.get(), 2);
+        assert_eq!(
+            document.finish(&options).expect("document should encode"),
+            "- body"
+        );
+    }
+
+    #[test]
+    fn wrapped_replay_mismatch_discards_local_rows_and_shared_charges() {
+        let options = AsciiRenderOptions::ascii()
+            .with_resource_profile(ResourceProfile::UnboundedForTrustedInput);
+        let visits = Cell::new(0usize);
+        let mut document = BudgetedTextDocument::new(&options);
+        document
+            .push_line("prior")
+            .expect("prior row should render");
+        let work_before = document.resources_mut().layout_work_used();
+        let cells_before = document.resources_mut().document_cells_used();
+
+        let error = document
+            .push_wrapped_prefixed_line_with("", "", 80, |line| {
+                let visit = visits.get();
+                visits.set(visit + 1);
+                if visit == 0 {
+                    line.push_str("planned")
+                } else {
+                    line.push_str("changed")
+                }
+            })
+            .expect_err("same-sized but different replay text must be rejected");
+
+        assert_eq!(visits.get(), 2);
+        assert!(matches!(
+            error,
+            AsciiError::UnsupportedFeature {
+                diagram_type: "structured_text",
+                feature: "wrapped text replay",
+            }
+        ));
+        assert_eq!(document.resources_mut().layout_work_used(), work_before);
+        assert_eq!(document.resources_mut().document_cells_used(), cells_before);
+        assert_eq!(
+            document.finish(&options).expect("prior row should remain"),
+            "prior"
+        );
+    }
+
+    #[test]
+    fn wrapped_replay_error_discards_local_rows_and_shared_charges() {
+        let options = AsciiRenderOptions::ascii()
+            .with_resource_profile(ResourceProfile::UnboundedForTrustedInput);
+        let visits = Cell::new(0usize);
+        let mut document = BudgetedTextDocument::new(&options);
+        document
+            .push_line("prior")
+            .expect("prior row should render");
+        let work_before = document.resources_mut().layout_work_used();
+        let cells_before = document.resources_mut().document_cells_used();
+        let replay_error = AsciiError::UnsupportedFeature {
+            diagram_type: "test",
+            feature: "wrapped replay failure",
+        };
+
+        let error = document
+            .push_wrapped_prefixed_line_with("", "", 80, |line| {
+                let visit = visits.get();
+                visits.set(visit + 1);
+                line.push_str("body")?;
+                if visit == 1 {
+                    return Err(replay_error.clone());
+                }
+                Ok(())
+            })
+            .expect_err("a second-pass producer error must abort the transaction");
+
+        assert_eq!(visits.get(), 2);
+        assert_eq!(error, replay_error);
+        assert_eq!(document.resources_mut().layout_work_used(), work_before);
+        assert_eq!(document.resources_mut().document_cells_used(), cells_before);
+        assert_eq!(
+            document.finish(&options).expect("prior row should remain"),
+            "prior"
+        );
+    }
+
+    #[test]
+    fn wrapped_layout_work_is_admitted_at_exact_and_limit_minus_one() {
+        let unbounded = AsciiRenderOptions::ascii()
+            .with_resource_profile(ResourceProfile::UnboundedForTrustedInput);
+        let mut document = BudgetedTextDocument::new(&unbounded);
+        document
+            .push_wrapped_prefixed_line_with("", "", 80, |line| line.push_str("a"))
+            .expect("the work probe should render");
+        let total_work = document.resources_mut().layout_work_used();
+
+        let exact = options_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, total_work);
+        let mut document = BudgetedTextDocument::new(&exact);
+        document
+            .push_wrapped_prefixed_line_with("", "", 80, |line| line.push_str("a"))
+            .expect("the exact planning and replay work should fit");
+        assert_eq!(document.resources_mut().layout_work_used(), total_work);
+
+        let below = options_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, total_work - 1);
+        let retained = std::rc::Rc::new(Cell::new(0));
+        let mut document = BudgetedTextDocument::new(&below);
+        document.set_retain_probe(std::rc::Rc::clone(&retained));
+        let error = document
+            .push_wrapped_prefixed_line_with("", "", 80, |line| line.push_str("a"))
+            .expect_err("one unit below the complete two-pass work must reject during planning");
+
+        assert_eq!(retained.get(), 0);
+        assert_eq!(document.resources_mut().layout_work_used(), 0);
+        assert_eq!(document.resources_mut().document_cells_used(), 0);
+        assert_limit_error(
+            error,
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            total_work,
+            total_work - 1,
+        );
+    }
+
+    #[test]
+    fn wrapped_prefix_width_scan_checks_layout_work_incrementally() {
+        let options = options_with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 2);
+        let producer_visited = Cell::new(false);
+        let mut document = BudgetedTextDocument::new(&options);
+
+        let error = document
+            .push_wrapped_prefixed_line_with("abc", "", 80, |line| {
+                producer_visited.set(true);
+                line.push_str("body")
+            })
+            .expect_err("the third prefix grapheme must exceed the scan budget immediately");
+
+        assert!(!producer_visited.get());
+        assert_eq!(document.resources_mut().layout_work_used(), 0);
+        assert_eq!(document.resources_mut().document_cells_used(), 0);
+        assert_limit_error(error, AsciiResourceLimitId::MaxLayoutWorkUnits, 3, 2);
+    }
+
+    #[test]
+    fn wrapped_empty_and_explicit_line_breaks_preserve_existing_rows() {
+        let options = AsciiRenderOptions::ascii()
+            .with_resource_profile(ResourceProfile::UnboundedForTrustedInput);
+        let mut document = BudgetedTextDocument::new(&options);
+        document
+            .push_wrapped_prefixed_line_with("empty: ", "       ", 80, |_line| Ok(()))
+            .expect("an empty producer should emit its first prefix");
+        document
+            .push_wrapped_prefixed_line_with("- ", "  ", 80, |line| line.push_str("a\nb"))
+            .expect("an explicit line break should select the continuation prefix");
+
+        assert_eq!(
+            document.finish(&options).expect("document should encode"),
+            "empty: \n- a\n  b"
+        );
     }
 
     #[test]
@@ -397,7 +731,7 @@ mod tests {
         let error = document
             .push_wrapped_prefixed_line_with("", "", 80, |line| line.push_quoted_text("\""))
             .expect_err("N-1 wrapped closing quote must reject before normalization");
-        assert_eq!(wrapped_retained.get(), 2);
+        assert_eq!(wrapped_retained.get(), 0);
         assert_limit_error(error, AsciiResourceLimitId::MaxOutputBytes, 4, 3);
     }
 

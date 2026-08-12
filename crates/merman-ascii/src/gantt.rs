@@ -315,7 +315,7 @@ fn push_task(
 }
 
 fn push_start_constraint(
-    line: &mut crate::safe_text::BudgetedWrappedText<'_, '_>,
+    line: &mut crate::safe_text::BudgetedWrappedText<'_>,
     task: &GanttRenderTask,
 ) -> Result<()> {
     match &task.start_constraint {
@@ -335,7 +335,7 @@ fn push_start_constraint(
 }
 
 fn push_end_constraint(
-    line: &mut crate::safe_text::BudgetedWrappedText<'_, '_>,
+    line: &mut crate::safe_text::BudgetedWrappedText<'_>,
     task: &GanttRenderTask,
 ) -> Result<()> {
     match &task.end_constraint {
@@ -351,7 +351,7 @@ fn push_end_constraint(
 }
 
 fn push_constraint_value(
-    line: &mut crate::safe_text::BudgetedWrappedText<'_, '_>,
+    line: &mut crate::safe_text::BudgetedWrappedText<'_>,
     key: &str,
     value: &str,
 ) -> Result<()> {
@@ -359,7 +359,7 @@ fn push_constraint_value(
 }
 
 fn push_dependency_constraint(
-    line: &mut crate::safe_text::BudgetedWrappedText<'_, '_>,
+    line: &mut crate::safe_text::BudgetedWrappedText<'_>,
     key: &str,
     dependency_ids: &[String],
 ) -> Result<()> {

@@ -383,7 +383,6 @@ impl ResourceContext {
         self.policy.overflow(id)
     }
 
-    #[cfg(test)]
     pub(crate) fn layout_work_used(&self) -> usize {
         self.layout_work_used.get()
     }
@@ -436,6 +435,49 @@ impl ResourceContext {
             delta,
         )?;
         self.document_cells_used.set(actual);
+        Ok(())
+    }
+
+    /// Checks one compound work/document admission without mutating either shared ledger.
+    pub(crate) fn check_usage(
+        &self,
+        layout_work_delta: usize,
+        document_cells_delta: usize,
+    ) -> Result<()> {
+        self.checked_total(
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            self.layout_work_used.get(),
+            layout_work_delta,
+        )?;
+        self.checked_total(
+            AsciiResourceLimitId::MaxDocumentCells,
+            self.document_cells_used.get(),
+            document_cells_delta,
+        )?;
+        Ok(())
+    }
+
+    /// Commits one compound work/document admission after both totals have been checked.
+    ///
+    /// Keeping the writes together prevents a document failure from leaving work debited, or a
+    /// work failure from leaving document cells debited, when a caller materializes from a plan.
+    pub(crate) fn charge_usage(
+        &self,
+        layout_work_delta: usize,
+        document_cells_delta: usize,
+    ) -> Result<()> {
+        let layout_work_used = self.checked_total(
+            AsciiResourceLimitId::MaxLayoutWorkUnits,
+            self.layout_work_used.get(),
+            layout_work_delta,
+        )?;
+        let document_cells_used = self.checked_total(
+            AsciiResourceLimitId::MaxDocumentCells,
+            self.document_cells_used.get(),
+            document_cells_delta,
+        )?;
+        self.layout_work_used.set(layout_work_used);
+        self.document_cells_used.set(document_cells_used);
         Ok(())
     }
 

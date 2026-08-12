@@ -248,7 +248,7 @@ fn build_children_map<'a>(
 }
 
 fn push_node_text(
-    line: &mut crate::safe_text::BudgetedWrappedText<'_, '_>,
+    line: &mut crate::safe_text::BudgetedWrappedText<'_>,
     node: &MindmapDiagramRenderNode,
     is_cycle: bool,
 ) -> Result<()> {
@@ -466,7 +466,7 @@ fn push_wrapped_label(
     document: &mut BudgetedTextDocument,
     prefix: &str,
     options: &AsciiRenderOptions,
-    render: impl FnOnce(&mut crate::safe_text::BudgetedWrappedText<'_, '_>) -> Result<()>,
+    render: impl Fn(&mut crate::safe_text::BudgetedWrappedText<'_>) -> Result<()>,
 ) -> Result<()> {
     let continuation_width = display_width_with_profile(prefix, options.terminal_width_profile);
     let continuation_prefix =

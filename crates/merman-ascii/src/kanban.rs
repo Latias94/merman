@@ -124,7 +124,7 @@ pub fn render_kanban_diagram(
 }
 
 fn push_node_text(
-    line: &mut crate::safe_text::BudgetedWrappedText<'_, '_>,
+    line: &mut crate::safe_text::BudgetedWrappedText<'_>,
     node: &KanbanRenderNode,
     disclosed_parent: Option<&str>,
 ) -> Result<()> {

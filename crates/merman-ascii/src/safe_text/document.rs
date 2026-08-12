@@ -3,14 +3,14 @@ use super::normalization::{
     NormalizedSegment, NormalizedSegmentKind, try_append_normalized_segment, visible_escape,
     visible_escape_len, visit_normalized_segments,
 };
-use super::width::{MeasuredGrapheme, grapheme_display_width, measured_graphemes};
+use super::width::grapheme_display_width;
+use super::wrapped::{BudgetedWrappedText, WrappedPassConfig, measure_wrapped_prefix_widths};
 use crate::Result;
 use crate::color::AsciiColorMode;
 use crate::error::AsciiError;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use std::fmt;
-use unicode_segmentation::UnicodeSegmentation;
 
 /// Normalizes and encodes a family-owned line document.
 ///
@@ -47,24 +47,6 @@ pub(crate) struct BudgetedTextDocument {
 pub(crate) struct BudgetedTextLine<'document> {
     document: &'document mut BudgetedTextDocument,
     current: String,
-}
-
-/// Streams and wraps structured text while retaining at most one word and one output row.
-///
-/// Content cells are charged before entering either bounded buffer. Prefixes and synthesized spaces
-/// are likewise charged before they are inserted into the retained row.
-pub(crate) struct BudgetedWrappedText<'document, 'prefix> {
-    document: &'document mut BudgetedTextDocument,
-    first_prefix: &'prefix str,
-    continuation_prefix: &'prefix str,
-    available: usize,
-    word: String,
-    word_width: usize,
-    long_word: bool,
-    current: String,
-    current_width: usize,
-    emitted: bool,
-    row_prefix_admitted: bool,
 }
 
 #[cfg(test)]
@@ -165,33 +147,85 @@ impl BudgetedTextDocument {
         first_prefix: &str,
         continuation_prefix: &str,
         max_width: usize,
-        render: impl FnOnce(&mut BudgetedWrappedText<'_, '_>) -> Result<()>,
+        render: impl Fn(&mut BudgetedWrappedText<'_>) -> Result<()>,
     ) -> Result<()> {
-        let prefix_width = self
-            .checked_display_width(first_prefix)?
-            .max(self.checked_display_width(continuation_prefix)?);
+        // The producer is replayed after admission. Production callers must therefore remain
+        // deterministic and avoid externally visible side effects.
+        let (prefix_width, prefix_width_work) = measure_wrapped_prefix_widths(
+            first_prefix,
+            continuation_prefix,
+            self.width_profile,
+            self.resources.policy(),
+            self.resources.layout_work_used(),
+        )?;
         let available = if prefix_width < max_width {
             max_width - prefix_width
         } else {
             max_width.max(1)
         };
-        self.resources.charge_layout_work(1)?;
-        self.admit_output_line_prefix(first_prefix)?;
-        let mut writer = BudgetedWrappedText {
-            document: self,
+        let first_separator = usize::from(!self.lines.is_empty());
+        let base_layout_work = self.resources.layout_work_used();
+        let base_document_cells = self.resources.document_cells_used();
+        let base_output_bytes = self.encoded_bytes_used;
+        let pass_config = WrappedPassConfig {
+            policy: self.resources.policy(),
+            width_profile: self.width_profile,
+            color_mode: self.color_mode,
             first_prefix,
             continuation_prefix,
             available,
-            word: String::new(),
-            word_width: 0,
-            long_word: false,
-            current: String::new(),
-            current_width: 0,
-            emitted: false,
-            row_prefix_admitted: true,
+            base_layout_work,
+            fixed_layout_work: prefix_width_work,
+            base_document_cells,
+            base_output_bytes,
+            #[cfg(test)]
+            retain_probe: self.retain_probe.clone(),
         };
-        render(&mut writer)?;
-        writer.finish()
+
+        let mut planner = BudgetedWrappedText::measure(pass_config.clone());
+        planner.charge_layout_work(1)?;
+        planner.admit_first_prefix(first_separator)?;
+        render(&mut planner)?;
+        let plan = planner.finish()?.metrics;
+        let total_layout_work = prefix_width_work
+            .checked_add(plan.layout_work.checked_mul(2).ok_or_else(|| {
+                self.resources
+                    .policy()
+                    .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
+            })?)
+            .ok_or_else(|| {
+                self.resources
+                    .policy()
+                    .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
+            })?;
+
+        self.resources
+            .check_usage(total_layout_work, plan.document_cells)?;
+        let total_output_bytes = base_output_bytes
+            .checked_add(plan.output_bytes)
+            .ok_or_else(|| {
+                self.resources
+                    .policy()
+                    .overflow(AsciiResourceLimitId::MaxOutputBytes)
+            })?;
+        self.resources
+            .check(AsciiResourceLimitId::MaxOutputBytes, total_output_bytes)?;
+
+        let mut materializer = BudgetedWrappedText::materialize(pass_config, plan.rows)?;
+        materializer.charge_layout_work(1)?;
+        materializer.admit_first_prefix(first_separator)?;
+        render(&mut materializer)?;
+        let materialized = materializer.finish()?;
+        materialized.verify_metrics(plan)?;
+
+        self.lines
+            .try_reserve(materialized.rows.len())
+            .map_err(|_| document_allocation_error())?;
+        self.resources
+            .charge_usage(total_layout_work, plan.document_cells)?;
+        self.encoded_bytes_used = total_output_bytes;
+        self.lines.extend(materialized.rows);
+        Ok(())
     }
 
     pub(crate) fn finish(self, options: &AsciiRenderOptions) -> Result<String> {
@@ -230,18 +264,6 @@ impl BudgetedTextDocument {
     pub(crate) fn preflight_text_work(&mut self, value: &str) -> Result<()> {
         self.resources.charge_layout_work(1)?;
         visit_normalized_segments(value, |segment| self.budget_layout_segment(segment))
-    }
-
-    fn checked_display_width(&self, value: &str) -> Result<usize> {
-        let mut width = 0usize;
-        for grapheme in measured_graphemes(value, self.width_profile) {
-            width = width.checked_add(grapheme.width()).ok_or_else(|| {
-                self.resources
-                    .policy()
-                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
-            })?;
-        }
-        Ok(width)
     }
 
     fn budget_layout_segment(&mut self, segment: NormalizedSegment<'_>) -> Result<()> {
@@ -330,34 +352,6 @@ impl BudgetedTextDocument {
         Ok(())
     }
 
-    fn push_prebudgeted_normalized_fragments(&mut self, fragments: &[&str]) -> Result<()> {
-        self.resources.charge_layout_work(1)?;
-        let mut bytes = 0usize;
-        for fragment in fragments {
-            bytes = bytes
-                .checked_add(fragment.len())
-                .ok_or_else(document_allocation_error)?;
-            for grapheme in fragment.graphemes(true) {
-                self.resources.check_grapheme_bytes(grapheme.len())?;
-                self.resources
-                    .charge_document_cells(grapheme_display_width(grapheme, self.width_profile))?;
-            }
-        }
-
-        self.lines
-            .try_reserve(1)
-            .map_err(|_| document_allocation_error())?;
-        let mut line = String::new();
-        line.try_reserve_exact(bytes)
-            .map_err(|_| document_allocation_error())?;
-        self.note_retain_materialization();
-        for fragment in fragments {
-            line.push_str(fragment);
-        }
-        self.lines.push(line);
-        Ok(())
-    }
-
     fn admit_output_line_prefix(&mut self, prefix: &str) -> Result<()> {
         let separator = usize::from(!self.lines.is_empty());
         let prefix_bytes =
@@ -367,12 +361,6 @@ impl BudgetedTextDocument {
                 .policy()
                 .overflow(AsciiResourceLimitId::MaxOutputBytes)
         })?;
-        self.admit_output_bytes(additional)
-    }
-
-    fn admit_output_text(&mut self, value: &str) -> Result<()> {
-        let additional =
-            super::encode::encoded_text_len(value, self.color_mode, self.resources.policy())?;
         self.admit_output_bytes(additional)
     }
 
@@ -489,376 +477,6 @@ impl BudgetedTextLine<'_> {
     }
 }
 
-impl BudgetedWrappedText<'_, '_> {
-    pub(crate) fn push_str(&mut self, value: &str) -> Result<()> {
-        visit_normalized_segments(value, |segment| {
-            self.document.budget_layout_segment(segment)?;
-            match segment.kind {
-                NormalizedSegmentKind::LineBreak => self.finish_paragraph(),
-                NormalizedSegmentKind::Grapheme(grapheme) => self.push_normalized_text(grapheme),
-                NormalizedSegmentKind::VisibleEscape(ch) => {
-                    let mut buffer = [0u8; 10];
-                    let escape = visible_escape(ch, &mut buffer);
-                    self.document
-                        .resources
-                        .charge_document_cells(escape.len())?;
-                    self.push_atomic_word_fragment_with_width(escape, escape.len())
-                }
-            }
-        })
-    }
-
-    pub(crate) fn write_fmt(&mut self, arguments: fmt::Arguments<'_>) -> Result<()> {
-        try_write_fmt(arguments, |value| self.push_str(value))
-    }
-
-    pub(crate) fn push_quoted_text(&mut self, value: &str) -> Result<()> {
-        let resources = self.document.resources.clone();
-        super::framing::visit_quoted_terminal_text(value, &resources, |fragment| {
-            self.push_exact_normalized_text(fragment)
-        })
-    }
-
-    fn push_exact_normalized_text(&mut self, value: &str) -> Result<()> {
-        let mut width = 0usize;
-        let mut bytes = 0usize;
-        visit_normalized_segments(value, |segment| {
-            self.document.budget_layout_segment(segment)?;
-            let mut buffer = [0u8; 10];
-            let text = match segment.kind {
-                NormalizedSegmentKind::LineBreak => "\\n",
-                _ => segment.text(&mut buffer),
-            };
-            bytes = bytes.checked_add(text.len()).ok_or_else(|| {
-                self.document
-                    .resources
-                    .policy()
-                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
-            })?;
-            let segment_width = match segment.kind {
-                NormalizedSegmentKind::LineBreak => 2,
-                _ => segment.display_width(self.document.width_profile),
-            };
-            width = width.checked_add(segment_width).ok_or_else(|| {
-                self.document
-                    .resources
-                    .policy()
-                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
-            })?;
-            Ok::<(), AsciiError>(())
-        })?;
-
-        let total_cells = self
-            .document
-            .resources
-            .document_cells_used()
-            .checked_add(width)
-            .ok_or_else(|| {
-                self.document
-                    .resources
-                    .policy()
-                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
-            })?;
-        self.document
-            .resources
-            .check(AsciiResourceLimitId::MaxDocumentCells, total_cells)?;
-
-        self.prepare_atomic_word_fragment(width)?;
-        self.admit_row_before_new_content()?;
-
-        let mut encoded_bytes = 0usize;
-        visit_normalized_segments(value, |segment| {
-            let mut buffer = [0u8; 10];
-            let text = match segment.kind {
-                NormalizedSegmentKind::LineBreak => "\\n",
-                _ => segment.text(&mut buffer),
-            };
-            encoded_bytes = encoded_bytes
-                .checked_add(super::encode::encoded_text_len(
-                    text,
-                    self.document.color_mode,
-                    self.document.resources.policy(),
-                )?)
-                .ok_or_else(|| {
-                    self.document
-                        .resources
-                        .policy()
-                        .overflow(AsciiResourceLimitId::MaxOutputBytes)
-                })?;
-            Ok::<(), AsciiError>(())
-        })?;
-        self.document.admit_output_bytes(encoded_bytes)?;
-        self.document.note_retain_materialization();
-
-        let mut normalized = String::new();
-        normalized
-            .try_reserve(bytes)
-            .map_err(|_| document_allocation_error())?;
-        visit_normalized_segments(value, |segment| {
-            let mut buffer = [0u8; 10];
-            let text = match segment.kind {
-                NormalizedSegmentKind::LineBreak => "\\n",
-                _ => segment.text(&mut buffer),
-            };
-            normalized.push_str(text);
-            Ok::<(), AsciiError>(())
-        })?;
-
-        self.document.resources.charge_document_cells(width)?;
-        self.push_prepared_atomic_word_fragment_with_width(&normalized, width)
-    }
-
-    fn push_normalized_text(&mut self, value: &str) -> Result<()> {
-        let mut word_start = 0usize;
-        for (index, ch) in value.char_indices() {
-            if !ch.is_whitespace() {
-                continue;
-            }
-            self.push_word_fragment(&value[word_start..index])?;
-            self.finish_word()?;
-            word_start = index + ch.len_utf8();
-        }
-        self.push_word_fragment(&value[word_start..])
-    }
-
-    fn push_word_fragment(&mut self, value: &str) -> Result<()> {
-        for grapheme in measured_graphemes(value, self.document.width_profile) {
-            self.push_word_grapheme(grapheme)?;
-        }
-        Ok(())
-    }
-
-    fn push_atomic_word_fragment_with_width(&mut self, value: &str, width: usize) -> Result<()> {
-        self.prepare_atomic_word_fragment(width)?;
-        self.admit_row_before_new_content()?;
-        self.document.admit_output_text(value)?;
-        self.document.note_retain_materialization();
-        self.push_prepared_atomic_word_fragment_with_width(value, width)
-    }
-
-    fn prepare_atomic_word_fragment(&mut self, width: usize) -> Result<()> {
-        let prospective = self.word_width.checked_add(width).ok_or_else(|| {
-            self.document
-                .resources
-                .policy()
-                .overflow(AsciiResourceLimitId::MaxDocumentCells)
-        })?;
-        if prospective > self.available && !self.word.is_empty() {
-            if !self.long_word {
-                if !self.current.is_empty() {
-                    self.emit_current()?;
-                }
-                self.long_word = true;
-            }
-            self.emit_word_chunk()?;
-        }
-
-        if self.word.is_empty() && width > self.available {
-            if !self.current.is_empty() {
-                self.emit_current()?;
-            }
-            self.long_word = true;
-        }
-        Ok(())
-    }
-
-    fn push_prepared_atomic_word_fragment_with_width(
-        &mut self,
-        value: &str,
-        width: usize,
-    ) -> Result<()> {
-        try_push_document_str(&mut self.word, value)?;
-        self.word_width = self.word_width.checked_add(width).ok_or_else(|| {
-            self.document
-                .resources
-                .policy()
-                .overflow(AsciiResourceLimitId::MaxDocumentCells)
-        })?;
-        if self.long_word && self.word_width >= self.available {
-            self.emit_word_chunk()?;
-        }
-        Ok(())
-    }
-
-    fn push_word_grapheme(&mut self, grapheme: MeasuredGrapheme<'_>) -> Result<()> {
-        self.document
-            .resources
-            .charge_document_cells(grapheme.width())?;
-        let prospective = self
-            .word_width
-            .checked_add(grapheme.width())
-            .ok_or_else(|| {
-                self.document
-                    .resources
-                    .policy()
-                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
-            })?;
-
-        if prospective > self.available && !self.word.is_empty() {
-            if !self.long_word {
-                if !self.current.is_empty() {
-                    self.emit_current()?;
-                }
-                self.long_word = true;
-            }
-            self.emit_word_chunk()?;
-        }
-
-        self.admit_row_before_new_content()?;
-        self.document.admit_output_text(grapheme.text())?;
-        self.document.note_retain_materialization();
-        try_push_document_str(&mut self.word, grapheme.text())?;
-        self.word_width = self
-            .word_width
-            .checked_add(grapheme.width())
-            .ok_or_else(|| {
-                self.document
-                    .resources
-                    .policy()
-                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
-            })?;
-        if self.long_word && self.word_width >= self.available {
-            self.emit_word_chunk()?;
-        }
-        Ok(())
-    }
-
-    fn finish_word(&mut self) -> Result<()> {
-        if self.word.is_empty() {
-            self.long_word = false;
-            return Ok(());
-        }
-        if self.long_word {
-            self.emit_word_chunk()?;
-            self.long_word = false;
-            return Ok(());
-        }
-
-        let separator = usize::from(!self.current.is_empty());
-        let prospective = self
-            .current_width
-            .checked_add(separator)
-            .and_then(|width| width.checked_add(self.word_width))
-            .ok_or_else(|| {
-                self.document
-                    .resources
-                    .policy()
-                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
-            })?;
-        if prospective > self.available && !self.current.is_empty() {
-            self.emit_current()?;
-        }
-        if !self.current.is_empty() {
-            self.document.resources.charge_document_cells(1)?;
-            self.document.admit_output_text(" ")?;
-            self.document.note_retain_materialization();
-            try_push_document_str(&mut self.current, " ")?;
-            self.current_width = self.current_width.checked_add(1).ok_or_else(|| {
-                self.document
-                    .resources
-                    .policy()
-                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
-            })?;
-        }
-
-        let word = std::mem::take(&mut self.word);
-        try_push_document_str(&mut self.current, &word)?;
-        self.current_width = self
-            .current_width
-            .checked_add(self.word_width)
-            .ok_or_else(|| {
-                self.document
-                    .resources
-                    .policy()
-                    .overflow(AsciiResourceLimitId::MaxDocumentCells)
-            })?;
-        self.word_width = 0;
-        Ok(())
-    }
-
-    fn emit_word_chunk(&mut self) -> Result<()> {
-        if self.word.is_empty() {
-            return Ok(());
-        }
-        let content = std::mem::take(&mut self.word);
-        self.word_width = 0;
-        self.emit_row(content)
-    }
-
-    fn emit_current(&mut self) -> Result<()> {
-        if self.current.is_empty() {
-            return Ok(());
-        }
-        let content = std::mem::take(&mut self.current);
-        self.current_width = 0;
-        self.emit_row(content)
-    }
-
-    fn emit_row(&mut self, mut content: String) -> Result<()> {
-        let prefix = if self.emitted {
-            self.continuation_prefix
-        } else {
-            self.first_prefix
-        };
-        self.document.resources.charge_layout_work(1)?;
-        for grapheme in prefix.graphemes(true) {
-            self.document
-                .resources
-                .check_grapheme_bytes(grapheme.len())?;
-            self.document
-                .resources
-                .charge_document_cells(grapheme_display_width(
-                    grapheme,
-                    self.document.width_profile,
-                ))?;
-        }
-        if !self.row_prefix_admitted {
-            self.document.admit_output_line_prefix(prefix)?;
-            self.row_prefix_admitted = true;
-        }
-        self.document
-            .lines
-            .try_reserve(1)
-            .map_err(|_| document_allocation_error())?;
-        content
-            .try_reserve(prefix.len())
-            .map_err(|_| document_allocation_error())?;
-        self.document.note_retain_materialization();
-        content.insert_str(0, prefix);
-        self.document.lines.push(content);
-        self.emitted = true;
-        self.row_prefix_admitted = false;
-        Ok(())
-    }
-
-    fn admit_row_before_new_content(&mut self) -> Result<()> {
-        if self.emitted
-            && !self.row_prefix_admitted
-            && self.word.is_empty()
-            && self.current.is_empty()
-        {
-            self.document
-                .admit_output_line_prefix(self.continuation_prefix)?;
-            self.row_prefix_admitted = true;
-        }
-        Ok(())
-    }
-
-    fn finish_paragraph(&mut self) -> Result<()> {
-        self.finish_word()?;
-        self.emit_current()
-    }
-
-    fn finish(mut self) -> Result<()> {
-        self.finish_paragraph()?;
-        if !self.emitted {
-            self.document
-                .push_prebudgeted_normalized_fragments(&[self.first_prefix])?;
-        }
-        Ok(())
-    }
-}
-
 /// Charges the normalized authored-text scan without materializing its expansion.
 pub(crate) fn charge_text_layout(resources: &mut ResourceContext, value: &str) -> Result<()> {
     resources.charge_layout_work(1)?;
@@ -940,15 +558,7 @@ fn visit_visible_escape_graphemes(
     Ok(())
 }
 
-fn try_push_document_str(output: &mut String, value: &str) -> Result<()> {
-    output
-        .try_reserve(value.len())
-        .map_err(|_| document_allocation_error())?;
-    output.push_str(value);
-    Ok(())
-}
-
-fn try_write_fmt(
+pub(super) fn try_write_fmt(
     arguments: fmt::Arguments<'_>,
     mut push_str: impl FnMut(&str) -> Result<()>,
 ) -> Result<()> {
@@ -985,7 +595,7 @@ fn try_write_fmt(
     Ok(())
 }
 
-fn document_allocation_error() -> AsciiError {
+pub(super) fn document_allocation_error() -> AsciiError {
     AsciiError::AllocationFailed {
         phase: AsciiResourceLimitPhase::Document.as_str(),
     }
