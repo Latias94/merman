@@ -4,7 +4,8 @@ use crate::XtaskError;
 use crate::cmd::compare::{
     CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunFailure,
     CompareRunOptions, CompareRunResult, DiagramVerificationFact, ObservedRenderOperations,
-    run_svg_compare, write_compare_result_section, write_verification_policy_metadata,
+    render_semantic_svg, run_svg_compare, svg_request, write_compare_result_section,
+    write_verification_policy_metadata,
 };
 use regex::Regex;
 use std::fmt::Write as _;
@@ -96,11 +97,9 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
     let environment = merman::svg::RenderEnvironment::deterministic();
     let observed_operations = ObservedRenderOperations::from_environment(&environment)
         .map_err(CompareRunFailure::without_evidence)?;
-    let renderer = merman::svg::HeadlessRenderer::new()
+    let renderer = merman::Renderer::new()
         .with_engine(engine)
-        .with_parse_options(fact.parse_policy.options())
-        .with_layout_options(layout_opts)
-        .with_environment(environment);
+        .with_parse_options(fact.parse_policy.options());
     let re_marker_id = Regex::new(r#"<marker[^>]*\bid="([^"]+)""#).unwrap();
     let re_marker_ref = Regex::new(r#"marker-(?:start|end)="url\(#([^)]+)\)""#).unwrap();
     let mut state = ErCompareState {
@@ -170,46 +169,39 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
                 }
             }
 
-            let semantic = match renderer.prepare_semantic_sync(input.text) {
-                Ok(Some(v)) => v,
-                Ok(None) => {
-                    return Err(format!(
-                        "no diagram detected in {}",
-                        input.fixture_path.display()
-                    ));
-                }
-                Err(err) => {
-                    return Err(format!(
-                        "parse failed for {}: {err}",
-                        input.fixture_path.display()
-                    ));
-                }
-            };
+            let semantic =
+                match renderer.prepare_semantic(input.text, merman::OperationControl::new()) {
+                    Ok(Some(v)) => v,
+                    Ok(None) => {
+                        return Err(format!(
+                            "no diagram detected in {}",
+                            input.fixture_path.display()
+                        ));
+                    }
+                    Err(err) => {
+                        return Err(format!(
+                            "parse failed for {}: {err}",
+                            input.fixture_path.display()
+                        ));
+                    }
+                };
 
-            let prepared = match semantic.continue_layout() {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!(
-                        "layout failed for {}: {err}",
-                        input.fixture_path.display()
-                    ));
-                }
-            };
-
-            if prepared.family_kind() != merman::svg::RenderFamilyKind::Er {
+            if semantic.semantic_kind() != "er" {
                 return Err(format!(
                     "unexpected render family for {}: {}",
                     input.fixture_path.display(),
-                    prepared.family_kind()
+                    semantic.semantic_kind()
                 ));
             }
 
-            let svg_opts = merman_render::svg::SvgRenderOptions {
-                diagram_id: Some(input.stem.to_string()),
-                ..Default::default()
-            };
-
-            let rendered = match prepared.render_svg_report(&svg_opts) {
+            let rendered = match render_semantic_svg(
+                semantic,
+                svg_request(
+                    environment.clone(),
+                    layout_opts.clone(),
+                    Some(input.stem.to_string()),
+                ),
+            ) {
                 Ok(v) => v,
                 Err(err) => {
                     return Err(format!(
@@ -220,8 +212,8 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
             };
             let render_evidence = state
                 .observed_operations
-                .observe(input.stem, rendered.report())?;
-            let local_svg = rendered.into_svg();
+                .observe(input.stem, rendered.evidence())?;
+            let local_svg = rendered.svg().to_owned();
 
             let upstream_sig = sig_for_svg(input.upstream_svg, &re_marker_id, &re_marker_ref);
             let local_sig = sig_for_svg(&local_svg, &re_marker_id, &re_marker_ref);

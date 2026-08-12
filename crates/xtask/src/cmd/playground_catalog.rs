@@ -1,5 +1,4 @@
 use crate::XtaskError;
-use merman::svg::HeadlessRenderer;
 use merman_core::baseline::PINNED_MERMAID_BASELINE_TAG;
 use merman_core::{Engine, ParseOptions};
 use serde::{Deserialize, Serialize};
@@ -347,7 +346,9 @@ fn validate_manifest(
                 source,
             })?;
     let engine = Engine::new();
-    let renderer = HeadlessRenderer::new().with_strict_parsing();
+    let renderer = merman::Renderer::new()
+        .with_engine(engine.clone())
+        .with_parse_options(ParseOptions::strict());
     let mut examples = Vec::with_capacity(manifest.examples.len());
 
     for entry in manifest.examples {
@@ -446,25 +447,38 @@ fn validate_manifest(
 
         if render_smoke {
             let diagram_id = format!("playground-example-{}", entry.id);
-            let svg = renderer
-                .clone()
-                .with_diagram_id(&diagram_id)
-                .render_svg_sync(&source)
+            let svg_request = merman::SvgRequest {
+                environment: merman::svg::RenderEnvironment::deterministic(),
+                layout: merman::svg::LayoutOptions::headless_svg_defaults(),
+                options: merman::svg::SvgRenderOptions {
+                    diagram_id: Some(diagram_id),
+                    ..Default::default()
+                },
+                debug: merman::svg::SvgDebugOptions::default(),
+                pipeline: None,
+                presentation: merman::svg::PresentationRenderPolicy::default(),
+            };
+            let output = renderer
+                .render(merman::RenderRequest::svg(
+                    &source,
+                    merman::OperationControl::new(),
+                    svg_request,
+                ))
                 .map_err(|error| {
                     catalog_error(format!(
                         "example `{}` fixture `{}` failed the Merman render smoke: {error}",
                         entry.id,
                         fixture_path.display()
                     ))
-                })?
-                .ok_or_else(|| {
-                    catalog_error(format!(
-                        "example `{}` fixture `{}` produced no SVG during the Merman render smoke",
-                        entry.id,
-                        fixture_path.display()
-                    ))
                 })?;
-            if !svg.contains("<svg") {
+            let merman::RenderOutput::Svg(Some(svg)) = output else {
+                return Err(catalog_error(format!(
+                    "example `{}` fixture `{}` produced no SVG during the Merman render smoke",
+                    entry.id,
+                    fixture_path.display()
+                )));
+            };
+            if !svg.svg().contains("<svg") {
                 return Err(catalog_error(format!(
                     "example `{}` fixture `{}` produced an invalid SVG smoke artifact",
                     entry.id,

@@ -4,8 +4,8 @@ use crate::XtaskError;
 use crate::cmd::compare::{
     CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunFailure,
     CompareRunOptions, CompareRunResult, DiagramVerificationFact, ObservedRenderOperations,
-    run_svg_compare, sanitize_svg_id, write_compare_result_section, write_notes_section,
-    write_verification_policy_metadata,
+    render_semantic_layout, render_source_svg, run_svg_compare, sanitize_svg_id, svg_request,
+    write_compare_result_section, write_notes_section, write_verification_policy_metadata,
 };
 use std::fmt::Write as _;
 
@@ -87,11 +87,9 @@ pub(super) fn compare_gantt_request(
         merman::svg::RenderEnvironment::deterministic().with_runtime_policy(runtime_policy.clone());
     let mut observed_operations = ObservedRenderOperations::from_environment(&environment)
         .map_err(CompareRunFailure::without_evidence)?;
-    let probe_renderer = merman::svg::HeadlessRenderer::new()
+    let probe_renderer = merman::Renderer::new()
         .with_engine(engine.clone())
-        .with_parse_options(fact.parse_policy.options())
-        .with_layout_options(layout_opts.clone())
-        .with_environment(environment);
+        .with_parse_options(fact.parse_policy.options());
     run_svg_compare(
         CompareHarnessOptions::new(CompareRunOptions {
             diagram: fact.diagram,
@@ -122,10 +120,14 @@ pub(super) fn compare_gantt_request(
         },
         |state, input| {
             let fixture_renderer = match input.site_config.clone() {
-                Some(site_config) => probe_renderer.clone().with_site_config(site_config),
+                Some(site_config) => probe_renderer
+                    .clone()
+                    .with_engine(engine.clone().with_site_config(site_config)),
                 None => probe_renderer.clone(),
             };
-            let semantic = match fixture_renderer.prepare_semantic_sync(input.text) {
+            let semantic = match fixture_renderer
+                .prepare_semantic(input.text, merman::OperationControl::new())
+            {
                 Ok(Some(v)) => v,
                 Ok(None) => {
                     return Err(format!(
@@ -141,7 +143,18 @@ pub(super) fn compare_gantt_request(
                 }
             };
 
-            let prepared = match semantic.continue_layout() {
+            if semantic.semantic_kind() != "gantt" {
+                return Err(format!(
+                    "unexpected render family for {}: {}",
+                    input.fixture_path.display(),
+                    semantic.semantic_kind()
+                ));
+            }
+
+            let layout = match render_semantic_layout(
+                semantic,
+                svg_request(environment.clone(), layout_opts.clone(), None),
+            ) {
                 Ok(v) => v,
                 Err(err) => {
                     return Err(format!(
@@ -151,53 +164,35 @@ pub(super) fn compare_gantt_request(
                 }
             };
 
-            if prepared.family_kind() != merman::svg::RenderFamilyKind::Gantt {
-                return Err(format!(
-                    "unexpected render family for {}: {}",
-                    input.fixture_path.display(),
-                    prepared.family_kind()
-                ));
-            }
-            let prepared = if let Some(runtime_policy) = gantt_calibrated_runtime_policy(
-                &prepared,
+            let calibrated_runtime_policy = gantt_calibrated_runtime_policy(
+                &layout,
                 input.upstream_svg,
                 baseline_local_offset_minutes,
             )
-            .map_err(|err| format!("invalid calibrated Gantt baseline time: {err}"))?
-            {
-                let renderer = fixture_renderer.clone().with_runtime_policy(runtime_policy);
-                let semantic = renderer
-                    .prepare_semantic_sync(input.text)
-                    .map_err(|err| {
-                        format!(
-                            "calibrated parse failed for {}: {err}",
-                            input.fixture_path.display()
-                        )
-                    })?
-                    .ok_or_else(|| {
-                        format!(
-                            "calibrated parse detected no diagram in {}",
-                            input.fixture_path.display()
-                        )
-                    })?;
-                semantic.continue_layout().map_err(|err| {
-                    format!(
-                        "calibrated layout failed for {}: {err}",
-                        input.fixture_path.display()
+            .map_err(|err| format!("invalid calibrated Gantt baseline time: {err}"))?;
+            let (render_renderer, render_environment) =
+                if let Some(runtime_policy) = calibrated_runtime_policy {
+                    (
+                        fixture_renderer
+                            .clone()
+                            .with_runtime_policy(runtime_policy.clone()),
+                        environment.clone().with_runtime_policy(runtime_policy),
                     )
-                })?
-            } else {
-                prepared
-            };
-            let svg_options = merman::svg::SvgRenderOptions {
-                diagram_id: Some(sanitize_svg_id(input.stem)),
-                ..Default::default()
-            };
-            let rendered = prepared.render_svg_report(&svg_options).map_err(|err| {
-                format!("render failed for {}: {err}", input.fixture_path.display())
-            })?;
-            let render_evidence = state.observe(input.stem, rendered.report())?;
-            let local_svg = rendered.into_svg();
+                } else {
+                    (fixture_renderer, environment.clone())
+                };
+            let rendered = render_source_svg(
+                &render_renderer,
+                input.text,
+                svg_request(
+                    render_environment,
+                    layout_opts.clone(),
+                    Some(sanitize_svg_id(input.stem)),
+                ),
+            )
+            .map_err(|err| format!("render failed for {}: {err}", input.fixture_path.display()))?;
+            let render_evidence = state.observe(input.stem, rendered.evidence())?;
+            let local_svg = rendered.svg().to_owned();
 
             Ok(CompareFixtureResult::Rendered {
                 render_evidence,
@@ -245,12 +240,12 @@ fn gantt_baseline_runtime_policy(
 }
 
 pub(crate) fn gantt_calibrated_runtime_policy(
-    prepared: &merman::svg::PreparedRender,
+    layout: &merman::SvgLayoutOutput,
     upstream_svg: &str,
     baseline_local_offset_minutes: i32,
 ) -> Result<Option<merman::runtime::RuntimePolicy>, merman::runtime::RuntimePolicyError> {
     let now_ms = gantt_upstream_today_x(upstream_svg).and_then(|today_x| {
-        prepared
+        layout
             .gantt_time_axis_diagnostics()
             .and_then(|diagnostics| diagnostics.unix_millis_at_rendered_x(today_x))
     });

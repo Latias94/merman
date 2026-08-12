@@ -9,10 +9,11 @@ use crate::cmd::compare::{
     RootDelta, RootDeltaReportLimit, RootEvidencePolicy, begin_required_math_evidence,
     browser_measured_math_root_note, collect_label_metric_deltas,
     comparison_mode_for_browser_measured_math, finish_required_math_evidence,
-    parse_label_delta_report_limit, parse_root_delta_report_limit, prepared_semantic_requires_math,
-    record_fixture_root_evidence, run_svg_compare, sanitize_svg_id,
-    svg_compare_engine_with_site_config, write_compare_result_section, write_label_deltas_report,
-    write_notes_section, write_root_deltas_report, write_verification_policy_metadata,
+    parse_label_delta_report_limit, parse_root_delta_report_limit, record_fixture_root_evidence,
+    render_semantic_svg, render_source_svg, run_svg_compare, sanitize_svg_id, source_requires_math,
+    svg_compare_engine_with_site_config, svg_request, write_compare_result_section,
+    write_label_deltas_report, write_notes_section, write_root_deltas_report,
+    write_verification_policy_metadata,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Write as _;
@@ -336,26 +337,25 @@ fn run_flowchart_compare_with_math_renderer(
                 Some(site_config) => engine.clone().with_site_config(site_config),
                 None => engine.clone(),
             };
-            let renderer = merman::svg::HeadlessRenderer::new()
+            let renderer = merman::Renderer::new()
                 .with_engine(fixture_engine)
-                .with_parse_options(fact.parse_policy.options())
-                .with_layout_options(layout_opts.clone())
-                .with_environment(environment.clone());
-            let semantic = match renderer.prepare_semantic_sync(input.text) {
-                Ok(Some(v)) => v,
-                Ok(None) => {
-                    return Err(format!(
-                        "no diagram detected in {}",
-                        input.fixture_path.display()
-                    ));
-                }
-                Err(err) => {
-                    return Err(format!(
-                        "parse failed for {}: {err}",
-                        input.fixture_path.display()
-                    ));
-                }
-            };
+                .with_parse_options(fact.parse_policy.options());
+            let semantic =
+                match renderer.prepare_semantic(input.text, merman::OperationControl::new()) {
+                    Ok(Some(v)) => v,
+                    Ok(None) => {
+                        return Err(format!(
+                            "no diagram detected in {}",
+                            input.fixture_path.display()
+                        ));
+                    }
+                    Err(err) => {
+                        return Err(format!(
+                            "parse failed for {}: {err}",
+                            input.fixture_path.display()
+                        ));
+                    }
+                };
             let flowchart_layout_elk = semantic.metadata().effective_config.get_str("layout")
                 == Some("elk")
                 || semantic
@@ -372,37 +372,30 @@ fn run_flowchart_compare_with_math_renderer(
                     reason: reason.to_string(),
                 });
             }
-            let requires_math = prepared_semantic_requires_math(input.fixture_path, &semantic)?;
+            let requires_math = source_requires_math(
+                input.fixture_path,
+                &renderer,
+                input.text,
+                svg_request(environment.clone(), layout_opts.clone(), None),
+            )?;
             let required_math_evidence_before = requires_math
                 .then(|| {
                     begin_required_math_evidence(input.stem, observed_math_renderer.as_deref())
                 })
                 .transpose()?;
 
-            let prepared = match semantic.continue_layout() {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!(
-                        "layout failed for {}: {err}",
-                        input.fixture_path.display()
-                    ));
-                }
-            };
-
-            if prepared.family_kind() != merman::svg::RenderFamilyKind::Flowchart {
+            if semantic.semantic_kind() != "flowchart" {
                 return Err(format!(
                     "unexpected render family for {}: {}",
                     input.fixture_path.display(),
-                    prepared.family_kind()
+                    semantic.semantic_kind()
                 ));
             }
 
-            let svg_opts = merman_render::svg::SvgRenderOptions {
-                diagram_id: Some(diagram_id),
-                ..Default::default()
-            };
-
-            let rendered = match prepared.render_svg_report(&svg_opts) {
+            let rendered = match render_semantic_svg(
+                semantic,
+                svg_request(environment.clone(), layout_opts.clone(), Some(diagram_id)),
+            ) {
                 Ok(v) => v,
                 Err(err) => {
                     return Err(format!(
@@ -413,8 +406,8 @@ fn run_flowchart_compare_with_math_renderer(
             };
             let render_evidence = state
                 .observed_operations
-                .observe(input.stem, rendered.report())?;
-            let local_svg = rendered.into_svg();
+                .observe(input.stem, rendered.evidence())?;
+            let local_svg = rendered.svg().to_owned();
             let mut notes = Vec::new();
             let browser_measured_math = if let Some(before) = required_math_evidence_before {
                 let observed = observed_math_renderer
@@ -1093,8 +1086,8 @@ fn normalize_flowchart_elk_directive(body: &str) -> String {
 mod tests {
     use super::{
         FlowchartCompareRequest, FlowchartUpstreamTrust, canonical_flowchart_elk_layout_body_key,
-        classify_flowchart_upstream_dir, compare_flowchart_args,
-        run_flowchart_compare_with_math_renderer, write_flowchart_upstream_metadata,
+        classify_flowchart_upstream_dir, compare_flowchart_args, render_source_svg,
+        run_flowchart_compare_with_math_renderer, svg_request, write_flowchart_upstream_metadata,
     };
     use crate::cmd::compare::{
         CompareRequest, DEFAULT_LABEL_DELTA_REPORT_LIMIT, DiagramVerificationFact,
@@ -1155,21 +1148,24 @@ mod tests {
     }
 
     fn render_plain_flowchart(fact: DiagramVerificationFact, stem: &str, source: &str) -> String {
-        merman::svg::HeadlessRenderer::new()
+        let renderer = merman::Renderer::new()
             .with_engine(super::svg_compare_engine_with_site_config(
                 serde_json::json!({ "handDrawnSeed": 1 }),
             ))
-            .with_parse_options(fact.parse_policy.options())
-            .with_layout_options(merman_render::LayoutOptions::default())
-            .with_environment(
+            .with_parse_options(fact.parse_policy.options());
+        render_source_svg(
+            &renderer,
+            source,
+            svg_request(
                 merman::svg::RenderEnvironment::deterministic()
                     .with_text_measurement_policy(merman::svg::TextMeasurementPolicy::parity()),
-            )
-            .with_diagram_id(stem)
-            .render_svg_report_sync(source)
-            .expect("plain Flowchart render should succeed")
-            .expect("plain Flowchart should be detected")
-            .into_svg()
+                merman_render::LayoutOptions::default(),
+                Some(stem.to_string()),
+            ),
+        )
+        .expect("plain Flowchart render should succeed")
+        .svg()
+        .to_owned()
     }
 
     fn flowchart_compare_request(root: &Path) -> FlowchartCompareRequest {

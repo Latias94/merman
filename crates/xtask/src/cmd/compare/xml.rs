@@ -8,6 +8,8 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Write as _;
 use std::path::{Component, Path, PathBuf};
 
+use super::{render_semantic_layout, render_semantic_svg, render_source_svg, svg_request};
+
 const XML_OUTPUT_LOCK_FILE: &str = ".compare-svg-xml.lock";
 
 struct XmlOutputLock {
@@ -514,14 +516,16 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             {
                 environment = environment.with_math_renderer(renderer);
             }
-            let renderer = merman::svg::HeadlessRenderer::new()
-                .with_engine(engine.clone())
+            let renderer = merman::Renderer::new()
+                .with_engine(
+                    engine
+                        .clone()
+                        .with_runtime_policy(environment.runtime_policy().clone()),
+                )
                 .with_parse_options(merman::ParseOptions {
                     suppress_errors: true,
-                })
-                .with_layout_options(layout_opts.clone())
-                .with_environment(environment);
-            let semantic = match renderer.prepare_semantic_sync(&text) {
+                });
+            let semantic = match renderer.prepare_semantic(&text, merman::OperationControl::new()) {
                 Ok(Some(v)) => v,
                 Ok(None) => {
                     missing.push(format!("{diagram}/{stem}: no diagram detected"));
@@ -550,18 +554,25 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             }
 
-            let prepared = match semantic.continue_layout() {
-                Ok(v) => v,
-                Err(err) => {
-                    missing.push(format!("{diagram}/{stem}: layout failed: {err}"));
-                    continue;
-                }
+            let diagram_id = if diagram == "flowchart" {
+                flowchart_fixture_diagram_id(stem, &upstream_svg)
+            } else {
+                sanitize_svg_id(stem)
             };
-
-            let prepared = if diagram == "gantt" {
+            let rendered = if diagram == "gantt" {
+                let layout = match render_semantic_layout(
+                    semantic,
+                    svg_request(environment.clone(), layout_opts.clone(), None),
+                ) {
+                    Ok(layout) => layout,
+                    Err(err) => {
+                        missing.push(format!("{diagram}/{stem}: layout failed: {err}"));
+                        continue;
+                    }
+                };
                 let baseline_local_offset_minutes = super::gantt_baseline_local_offset_minutes();
                 let calibrated = super::gantt_calibrated_runtime_policy(
-                    &prepared,
+                    &layout,
                     &upstream_svg,
                     baseline_local_offset_minutes,
                 )
@@ -570,64 +581,40 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                         "invalid calibrated Gantt baseline time for {stem}: {err}"
                     ))
                 })?;
-                if let Some(runtime_policy) = calibrated {
-                    let environment = merman::svg::RenderEnvironment::deterministic()
-                        .with_runtime_policy(runtime_policy)
-                        .with_text_measurement_policy(text_measurement_policy.clone());
-                    let renderer = merman::svg::HeadlessRenderer::new()
-                        .with_engine(engine.clone())
-                        .with_parse_options(merman::ParseOptions {
-                            suppress_errors: true,
-                        })
-                        .with_layout_options(layout_opts.clone())
-                        .with_environment(environment);
-                    let semantic = match renderer.prepare_semantic_sync(&text) {
-                        Ok(Some(value)) => value,
-                        Ok(None) => {
-                            missing.push(format!(
-                                "{diagram}/{stem}: calibrated parse detected no diagram"
-                            ));
-                            continue;
-                        }
-                        Err(err) => {
-                            missing
-                                .push(format!("{diagram}/{stem}: calibrated parse failed: {err}"));
-                            continue;
-                        }
-                    };
-                    match semantic.continue_layout() {
-                        Ok(value) => value,
-                        Err(err) => {
-                            missing
-                                .push(format!("{diagram}/{stem}: calibrated layout failed: {err}"));
-                            continue;
-                        }
-                    }
+                let (render_renderer, render_environment) = if let Some(runtime_policy) = calibrated
+                {
+                    (
+                        renderer.clone().with_runtime_policy(runtime_policy.clone()),
+                        environment.clone().with_runtime_policy(runtime_policy),
+                    )
                 } else {
-                    prepared
+                    (renderer.clone(), environment.clone())
+                };
+                match render_source_svg(
+                    &render_renderer,
+                    &text,
+                    svg_request(render_environment, layout_opts.clone(), Some(diagram_id)),
+                ) {
+                    Ok(rendered) => rendered,
+                    Err(err) => {
+                        missing.push(format!("{diagram}/{stem}: render failed: {err}"));
+                        continue;
+                    }
                 }
             } else {
-                prepared
-            };
-
-            let diagram_id = if diagram == "flowchart" {
-                flowchart_fixture_diagram_id(stem, &upstream_svg)
-            } else {
-                sanitize_svg_id(stem)
-            };
-            let svg_opts = merman_render::svg::SvgRenderOptions {
-                diagram_id: Some(diagram_id),
-                ..Default::default()
-            };
-            let rendered = match prepared.render_svg_report(&svg_opts) {
-                Ok(rendered) => rendered,
-                Err(err) => {
-                    missing.push(format!("{diagram}/{stem}: render failed: {err}"));
-                    continue;
+                match render_semantic_svg(
+                    semantic,
+                    svg_request(environment.clone(), layout_opts.clone(), Some(diagram_id)),
+                ) {
+                    Ok(rendered) => rendered,
+                    Err(err) => {
+                        missing.push(format!("{diagram}/{stem}: render failed: {err}"));
+                        continue;
+                    }
                 }
             };
             observed_operations
-                .observe(&format!("{diagram}/{stem}"), rendered.report())
+                .observe(&format!("{diagram}/{stem}"), rendered.evidence())
                 .map_err(XtaskError::SvgCompareFailed)?;
             let local_svg = rendered.svg();
 
@@ -809,7 +796,7 @@ mod tests {
             &observed,
         );
         assert!(pinned.contains("- Render operation: `not-observed`"));
-        assert!(!pinned.contains("headless-operation-typed"));
+        assert!(!pinned.contains("- Render operation: `renderer` (observed)"));
         assert!(pinned.contains("- Mode: `parity`"));
         assert!(pinned.contains("`pinned canonical (selected fixtures validated)`"));
 
@@ -1136,7 +1123,7 @@ mod tests {
         let report =
             std::fs::read_to_string(out_root.join("xml_report.md")).expect("canonical XML report");
         assert!(
-            report.contains("- Render operation: `headless-operation-typed` (observed)"),
+            report.contains("- Render operation: `renderer` (observed)"),
             "report must expose the canonical typed operation: {report}"
         );
         assert!(

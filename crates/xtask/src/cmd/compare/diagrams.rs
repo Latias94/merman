@@ -735,7 +735,7 @@ mod tests {
             );
             assert_eq!(
                 fact.render_path(),
-                merman::svg::RenderExecutionPath::HeadlessOperationTyped,
+                merman::OperationExecutionPath::Renderer,
                 "{} must verify the canonical typed operation",
                 fact.diagram
             );
