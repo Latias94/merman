@@ -9,9 +9,15 @@ product_contract_source: ce-plan-bootstrap
 execution: code
 origin: docs/plans/2026-08-02-001-refactor-presentation-theme-architecture-plan.md
 supersedes: docs/plans/2026-08-02-001-refactor-presentation-theme-architecture-plan.md
+superseded_by: docs/plans/2026-08-09-001-portable-theme-architecture-convergence-addendum.md
 ---
 
 # Portable Diagram Theme Architecture - Plan
+
+> **Current execution authority:** This document is the long-term product-contract and traceability
+> source. Do not execute it by itself. For the current release, use
+> `docs/plans/2026-08-09-001-portable-theme-architecture-convergence-addendum.md`; its supersession
+> table, staged gates, and implementation units are authoritative wherever the two documents differ.
 
 ## Goal Capsule
 
