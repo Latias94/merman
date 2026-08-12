@@ -69,5 +69,4 @@ export 'src/merman_ffi.dart'
         MermanUnknownOperationException,
         MermanUnsupportedOperationException,
         MermanValidationResult,
-        openMermanLibrary,
         openMermanLibraryFromPath;

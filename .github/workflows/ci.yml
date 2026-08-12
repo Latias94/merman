@@ -766,10 +766,10 @@ jobs:
             scripts/build-python-uniffi-wheel.py \
             scripts/python_wheel_licenses.py \
             platforms/android/build-android.py \
-            platforms/flutter/tool/android-smoke.py
+            platforms/flutter/build-native.py
 
       - name: Check shell scripts
-        run: bash -n scripts/build-apple-xcframework.sh platforms/ios/build-ios.sh platforms/flutter/build-ios.sh platforms/flutter/build-desktop.sh
+        run: bash -n scripts/build-apple-xcframework.sh platforms/ios/build-ios.sh
 
   platform-bindings:
     name: platform-bindings
@@ -786,25 +786,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Read Android toolchain versions
-        id: android-toolchain
-        run: echo "ndk=$(python3 platforms/android/build-android.py --print-version ndk)" >> "$GITHUB_OUTPUT"
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
         with:
+          components: llvm-tools-preview
           targets: aarch64-linux-android
-
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.85.11
-        with:
-          tool: nextest
-
-      - name: Setup JDK
-        uses: actions/setup-java@v5.7.0
-        with:
-          distribution: temurin
-          java-version: "17"
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2.9.2
@@ -814,30 +800,12 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2.23.0
         with:
-          flutter-version: "3.38.3"
+          flutter-version: "3.44.9"
           channel: stable
           cache: true
 
-      - name: Precache Flutter Android artifacts
-        run: flutter precache --android
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v4.0.1
-
-      - name: Install Android NDK
-        shell: bash
-        env:
-          ANDROID_NDK_VERSION: ${{ steps.android-toolchain.outputs.ndk }}
-        run: |
-          set -euo pipefail
-          sdkmanager --install "ndk;${ANDROID_NDK_VERSION}"
-          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
-
       - name: Verify platform bindings
         run: python3 scripts/verify-platform-bindings.py
-
-      - name: Verify Flutter Android packaging
-        run: python3 platforms/flutter/tool/android-smoke.py --targets aarch64-linux-android
 
   android-instrumentation:
     name: android-instrumentation
