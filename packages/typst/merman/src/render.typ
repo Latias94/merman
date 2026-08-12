@@ -1,7 +1,7 @@
 #import "context.typ": typst-layout
 #import "errors.typ": validate-error-mode
 #import "image.typ": result-image, svg-bytes-or-panic
-#import "options.typ": config-with-context-width, context-host-theme, options-bytes, render-config
+#import "options.typ": config-with-context-width, context-text-style, options-bytes, render-config
 #import "plugin.typ": merman-plugin
 #import "source.typ": source-text-value
 #import "units.typ": context-width-css-px
@@ -82,8 +82,8 @@
   error-mode: "panic",
   ..args,
 ) = context {
-  let inferred-host-theme = context-host-theme(text.font, text.size)
-  let base-config = render-config(context-host-theme: inferred-host-theme, ..args)
+  let inferred-text-style = context-text-style(text.font, text.size)
+  let base-config = render-config(context-text-style: inferred-text-style, ..args)
   if base-config.direct_layout != none or base-config.direct_container_width != none or base-config.direct_options != none or base-config.profile_options != none or base-config.profile_layout_container_width != none {
     let result = render-svg-result-with-config(source, base-config)
     result-image(result, width, height, fit, alt, scale, error-mode)

@@ -4,21 +4,8 @@
 #set text(fill: rgb("#e5e7eb"))
 
 #let slide-profile = mermaid-profile(
-  presentation-profile: "merman-modern",
+  theme-preset: "ayu-dark",
   background: "#111827",
-  host-theme: (
-    appearance: "dark",
-    roles: (
-      canvas: "#111827",
-      surface: "#1f2937",
-      text: "#e5e7eb",
-      border: "#475569",
-      line: "#93c5fd",
-      "actor-background": "#1f2937",
-      "actor-border": "#60a5fa",
-      "actor-text": "#e5e7eb",
-    ),
-  ),
 )
 
 #show raw.where(lang: "mermaid"): show-mermaid-blocks(
@@ -43,6 +30,6 @@ sequenceDiagram
   participant Typst
   participant merman
   Speaker->>Typst: Write a Mermaid fence
-  Typst->>merman: Render with the dark host theme
-  merman-->>Typst: Return presentation-aware SVG
+  Typst->>merman: Render with a compiled dark theme
+  merman-->>Typst: Return themed SVG
 ```

@@ -1,4 +1,4 @@
-#import "units.typ": canonical-css-px-string, css-px-number-string, css-px-string
+#import "units.typ": canonical-css-px-string, css-px-number-string, typst-length-to-css-px
 
 #let dictionary-or-none(value, name) = {
   if value == none {
@@ -45,6 +45,28 @@
   }
 }
 
+#let validated-profile(profile) = {
+  let profile = dictionary-or-none(profile, "merman profile")
+  if profile == none {
+    none
+  } else {
+    for key in ("presentation-profile", "presentation_profile") {
+      if key in profile {
+        panic("merman profile field `" + key + "` was removed; use `theme-preset` or `diagram-theme`")
+      }
+    }
+    for key in ("host-theme", "host_theme") {
+      if key in profile {
+        panic("merman profile field `" + key + "` was removed; use `diagram-theme` or `typography`")
+      }
+    }
+    if "theme" in profile {
+      panic("merman profile field `theme` was renamed to `theme-variables`")
+    }
+    profile
+  }
+}
+
 #let font-descriptor-name(font) = {
   if type(font) == str {
     font
@@ -58,13 +80,13 @@
   }
 }
 
-#let font-family-value(font) = {
+#let font-stack-value(font) = {
   if font == none {
     none
   } else if type(font) == array {
-    font.map(font-descriptor-name).join(", ")
+    font.map(font-descriptor-name)
   } else {
-    font-descriptor-name(font)
+    (font-descriptor-name(font),)
   }
 }
 
@@ -72,31 +94,31 @@
   if size == none {
     none
   } else if type(size) == str {
-    canonical-css-px-string(size, name: "merman typography size")
+    let canonical = canonical-css-px-string(size, name: "merman typography size")
+    float(canonical.slice(0, -2))
   } else if type(size) == length {
-    css-px-string(size, name: "merman typography size")
+    typst-length-to-css-px(size, name: "merman typography size")
   } else if type(size) == int or type(size) == float {
     css-px-number-string(size, name: "merman typography size")
+    size
   } else {
     panic("merman typography size must be a CSS px string, absolute Typst length, or pixel number")
   }
 }
 
-#let host-theme-from-font(font-family, font-size) = {
-  let family = font-family-value(font-family)
+#let text-style-from-font(font-family, font-size) = {
+  let stack = font-stack-value(font-family)
   let size = font-size-value(font-size)
-  if family == none and size == none {
+  if stack == none and size == none {
     none
   } else {
-    (
-      font_family: family,
-      font_size: size,
-    )
+    let out = if stack == none { (:) } else { (font_stack: stack) }
+    if size == none { out } else { (: ..out, font_size_px: size) }
   }
 }
 
-#let context-host-theme(font-family, font-size) = {
-  host-theme-from-font(font-family, font-size)
+#let context-text-style(font-family, font-size) = {
+  text-style-from-font(font-family, font-size)
 }
 
 #let field3(dict, a, b, c) = {
@@ -113,7 +135,7 @@
   }
 }
 
-#let typography-host-theme(typography) = {
+#let typography-text-style(typography) = {
   let typography = dictionary-or-none(typography, "merman typography")
   if typography == none {
     none
@@ -131,108 +153,81 @@
         panic("unsupported merman typography key: " + key)
       }
     }
-    host-theme-from-font(
+    text-style-from-font(
       field3(typography, "font", "font-family", "font_family"),
       field3(typography, "size", "font-size", "font_size"),
     )
   }
 }
 
-#let merged-host-theme(
-  context-host-theme,
-  profile-typography,
-  profile-host-theme,
-  typography,
-  host-theme,
-) = {
-  let out = context-host-theme
-  let out = merge-dict(out, typography-host-theme(profile-typography), "merman host-theme")
-  let out = merge-dict(out, profile-host-theme, "merman host-theme")
-  let out = merge-dict(out, typography-host-theme(typography), "merman host-theme")
-  merge-dict(out, host-theme, "merman host-theme")
+#let merged-typography-style(context-text-style, profile-typography, typography) = {
+  let out = context-text-style
+  let out = merge-dict(out, typography-text-style(profile-typography), "merman typography")
+  merge-dict(out, typography-text-style(typography), "merman typography")
 }
 
-#let build-presentation-theme(theme) = {
-  let theme = dictionary-or-none(theme, "merman host-theme")
-  if theme == none {
-    none
+#let theme-input(diagram-theme, theme-preset, name) = {
+  if diagram-theme != none and theme-preset != none {
+    panic(name + " must not contain both `diagram-theme` and `theme-preset`")
+  } else if diagram-theme != none {
+    (kind: "spec", value: dictionary-or-none(diagram-theme, name + " diagram-theme"))
+  } else if theme-preset != none {
+    if type(theme-preset) != str or theme-preset.trim() == "" {
+      panic(name + " theme-preset must be a non-empty string")
+    }
+    (kind: "preset", value: theme-preset)
   } else {
-    let allowed = (
-      "preset",
-      "appearance",
-      "font-family",
-      "font_family",
-      "font-size",
-      "font_size",
-      "roles",
-      "series-palette",
-      "series_palette",
-    )
-    for key in theme.keys() {
-      if not allowed.contains(key) {
-        panic("unsupported merman host-theme key: " + key)
-      }
-    }
-
-    let font-family = if "font-family" in theme {
-      theme.at("font-family")
-    } else if "font_family" in theme {
-      theme.at("font_family")
-    } else {
-      none
-    }
-    let font-size = if "font-size" in theme {
-      theme.at("font-size")
-    } else if "font_size" in theme {
-      theme.at("font_size")
-    } else {
-      none
-    }
-    let series-palette = if "series-palette" in theme {
-      theme.at("series-palette")
-    } else if "series_palette" in theme {
-      theme.at("series_palette")
-    } else {
-      none
-    }
-
-    let out = (:)
-    let out = if "preset" in theme and theme.at("preset") != none {
-      (: ..out, preset: theme.at("preset"))
-    } else {
-      out
-    }
-    let out = if "appearance" in theme and theme.at("appearance") != none {
-      (: ..out, appearance: theme.at("appearance"))
-    } else {
-      out
-    }
-    let out = if font-family != none { (: ..out, font_family: font-family) } else { out }
-    let out = if font-size != none { (: ..out, font_size: font-size) } else { out }
-    let out = if "roles" in theme and theme.at("roles") != none {
-      (: ..out, roles: theme.at("roles"))
-    } else {
-      out
-    }
-    let out = if series-palette != none {
-      (: ..out, series_palette: series-palette)
-    } else {
-      out
-    }
-    if out.len() == 0 { none } else { out }
+    none
   }
 }
 
-#let build-presentation-options(profile, theme) = {
-  let theme = build-presentation-theme(theme)
-  let out = if profile == none { (:) } else { (profile: profile) }
-  let out = if theme == none { out } else { (: ..out, theme: theme) }
-  if out.len() == 0 { none } else { out }
+#let theme-spec-with-typography(spec, text-style) = {
+  let spec = dictionary-or-none(spec, "merman diagram-theme")
+  if text-style == none {
+    spec
+  } else {
+    let typography = if "typography" in spec {
+      let value = dictionary-or-none(spec.at("typography"), "merman diagram-theme typography")
+      if value == none { (:) } else { value }
+    } else {
+      (:)
+    }
+    let default = if "default" in typography {
+      let value = dictionary-or-none(
+        typography.at("default"),
+        "merman diagram-theme default typography",
+      )
+      if value == none { (:) } else { value }
+    } else {
+      (:)
+    }
+    let default = (: ..default, ..text-style)
+    (: ..spec, typography: (: ..typography, default: default))
+  }
 }
 
-#let apply-theme-site-config(site-config, theme, theme-name, base-theme) = {
+#let build-theme-selection(input, text-style) = {
+  if input == none {
+    if text-style == none {
+      none
+    } else {
+      (spec: (typography: (default: text-style)))
+    }
+  } else if input.kind == "preset" {
+    if text-style != none {
+      panic(
+        "merman typography cannot be combined with `theme-preset`; use `diagram-theme` with an explicit typography spec",
+      )
+    }
+    (preset: input.value)
+  } else {
+    (spec: theme-spec-with-typography(input.value, text-style))
+  }
+}
+
+#let apply-mermaid-theme-site-config(site-config, theme-variables, theme-name, base-theme) = {
   let theme-name = choose-value(base-theme, theme-name)
-  if theme == none and theme-name == none {
+  if theme-variables == none and theme-name == none {
     dictionary-or-none(site-config, "merman site-config")
   } else {
     let out = if site-config == none {
@@ -245,8 +240,8 @@
     } else {
       out
     }
-    if theme != none {
-      (: ..out, themeVariables: theme)
+    if theme-variables != none {
+      (: ..out, themeVariables: theme-variables)
     } else {
       out
     }
@@ -314,10 +309,10 @@
 #let mermaid-profile(
   options: none,
   site-config: none,
-  presentation-profile: none,
-  host-theme: none,
   typography: none,
-  theme: none,
+  diagram-theme: none,
+  theme-preset: none,
+  theme-variables: none,
   theme-name: none,
   base-theme: none,
   pipeline: none,
@@ -340,10 +335,10 @@
   (
     options: options,
     site-config: site-config,
-    presentation-profile: presentation-profile,
-    host-theme: host-theme,
     typography: typography,
-    theme: theme,
+    diagram-theme: diagram-theme,
+    theme-preset: theme-preset,
+    theme-variables: theme-variables,
     theme-name: theme-name,
     base-theme: base-theme,
     pipeline: pipeline,
@@ -369,11 +364,11 @@
   options: none,
   profile: none,
   typography: none,
-  context-host-theme: none,
+  context-text-style: none,
   site-config: none,
-  presentation-profile: none,
-  host-theme: none,
-  theme: none,
+  diagram-theme: none,
+  theme-preset: none,
+  theme-variables: none,
   theme-name: none,
   base-theme: none,
   pipeline: none,
@@ -392,20 +387,30 @@
   fixed-today: none,
   fixed-local-offset-minutes: none,
 ) = {
+  let profile = validated-profile(profile)
   let profile-options = profile-field(profile, "options")
   let profile-site-config = profile-field(profile, "site-config", alt: "site_config")
-  let profile-presentation-profile = profile-field(profile, "presentation-profile")
-  let profile-host-theme = profile-field(profile, "host-theme")
   let profile-typography = profile-field(profile, "typography")
+  let profile-theme-input = theme-input(
+    profile-field(profile, "diagram-theme", alt: "diagram_theme"),
+    profile-field(profile, "theme-preset", alt: "theme_preset"),
+    "merman profile",
+  )
+  let direct-theme-input = theme-input(diagram-theme, theme-preset, "merman options")
+  let selected-theme-input = if direct-theme-input != none {
+    direct-theme-input
+  } else {
+    profile-theme-input
+  }
   let profile-layout = profile-field(profile, "layout")
   let profile-layout-container-width = layout-container-width(profile-layout)
   let profile-environment = profile-field(profile, "environment")
   let profile-text-measurement = profile-field(profile, "text-measurement")
   let profile-math-renderer = profile-field(profile, "math-renderer")
 
-  let profile-site-config = apply-theme-site-config(
+  let profile-site-config = apply-mermaid-theme-site-config(
     profile-site-config,
-    profile-field(profile, "theme"),
+    profile-field(profile, "theme-variables", alt: "theme_variables"),
     profile-field(profile, "theme-name", alt: "theme_name"),
     profile-field(profile, "base-theme", alt: "base_theme"),
   )
@@ -414,7 +419,12 @@
   } else {
     dictionary-or-none(site-config, "merman site-config")
   }
-  let site-config = apply-theme-site-config(site-config, theme, theme-name, base-theme)
+  let site-config = apply-mermaid-theme-site-config(
+    site-config,
+    theme-variables,
+    theme-name,
+    base-theme,
+  )
   let pipeline = choose-value(profile-field(profile, "pipeline"), pipeline, default: "resvg-safe")
   let id = choose-value(profile-field(profile, "id"), id)
   let diagram-id = choose-value(profile-field(profile, "diagram-id", alt: "diagram_id"), diagram-id)
@@ -445,16 +455,12 @@
     profile-field(profile, "fixed-local-offset-minutes", alt: "fixed_local_offset_minutes"),
     fixed-local-offset-minutes,
   )
-  let presentation-profile = choose-value(profile-presentation-profile, presentation-profile)
-
-  let host-theme = merged-host-theme(
-    context-host-theme,
+  let text-style = merged-typography-style(
+    context-text-style,
     profile-typography,
-    profile-host-theme,
     typography,
-    host-theme,
   )
-  let presentation = build-presentation-options(presentation-profile, host-theme)
+  let diagram-theme-selection = build-theme-selection(selected-theme-input, text-style)
 
   let binding-options = if options != none {
     options
@@ -491,10 +497,10 @@
         drop_native_duplicate_fallbacks: drop-native-duplicate-fallbacks,
       ),
     )
-    if presentation == none {
+    if diagram-theme-selection == none {
       binding-options
     } else {
-      (: ..binding-options, presentation: presentation)
+      (: ..binding-options, theme: diagram-theme-selection)
     }
   }
 

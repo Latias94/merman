@@ -9,7 +9,7 @@
     font: ("Source Sans 3", "Arial", "sans-serif"),
     size: "16px",
   ),
-  theme: (
+  theme-variables: (
     primaryColor: "#f8fafc",
     primaryTextColor: "#111827",
     primaryBorderColor: "#2563eb",

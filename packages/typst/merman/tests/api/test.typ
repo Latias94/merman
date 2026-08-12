@@ -57,11 +57,10 @@
   profile: svg-profile,
   id: "api-direct",
   typography: (font: "API Direct Sans", size: "19px"),
-  host-theme: (font_family: "API Host Sans", font_size: "20px"),
 )
 #assert(direct-svg.contains("api-direct"), message: "direct id should override profile id")
-#assert(direct-svg.contains("API Host Sans"), message: "host-theme should override typography")
-#assert(not direct-svg.contains("API Direct Sans"), message: "typography should not override host-theme")
+#assert(direct-svg.contains("API Direct Sans"), message: "direct typography should override profile typography")
+#assert(not direct-svg.contains("API Profile Sans"), message: "profile typography should not override direct typography")
 
 #let options-svg = mermaid-svg(
   source,
@@ -69,8 +68,12 @@
   id: "api-direct",
   options: (
     version: 2,
-    presentation: (
-      theme: (font_family: "API Options Sans", font_size: "17px"),
+    theme: (
+      spec: (
+        typography: (
+          default: (font_stack: ("API Options Sans",), font_size_px: 17),
+        ),
+      ),
     ),
     svg: (diagram_id: "api-options", pipeline: "readable"),
   ),

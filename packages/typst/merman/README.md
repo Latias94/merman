@@ -27,7 +27,7 @@ flowchart TD
 | `0.2.0` | `0.8.0-alpha.4` | `2` | Uses the structured Typst result envelope and descriptor-owned capability catalog. |
 | `0.1.0` | `0.8.0-alpha.1` | `1` | Initial published Typst wrapper. |
 
-The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows shared binding options schema `2`, including `presentation` for first-party profiles and host themes, `layout` for geometry, and `environment` for text measurement and math rendering. This options schema is independent from Typst plugin ABI 2 and native ABI 3.
+The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows shared binding options schema `2`, including top-level `theme` for compiled diagram themes, `site_config` for Mermaid configuration, `layout` for geometry, and `environment` for text measurement and math rendering. This options schema is independent from Typst plugin ABI 2 and native ABI 3.
 
 ## Examples
 
@@ -38,10 +38,10 @@ The Typst package version tracks the `@preview/merman` wrapper API. The merman s
 - [raw-block.typ](https://github.com/Latias94/merman/blob/main/packages/typst/merman/examples/raw-block.typ): document-wide Mermaid fences with `show-mermaid-blocks`.
 - [options.typ](https://github.com/Latias94/merman/blob/main/packages/typst/merman/examples/options.typ): themes, stable IDs, `mermaid-result`, SVG export, and placeholder errors.
 - [print.typ](https://github.com/Latias94/merman/blob/main/packages/typst/merman/examples/print.typ): print-friendly white-background output.
-- [presentation.typ](https://github.com/Latias94/merman/blob/main/packages/typst/merman/examples/presentation.typ): dark slide-sized output.
+- [presentation.typ](https://github.com/Latias94/merman/blob/main/packages/typst/merman/examples/presentation.typ): dark slide-sized output using a compiled theme preset.
 - [svg-export.typ](https://github.com/Latias94/merman/blob/main/packages/typst/merman/examples/svg-export.typ): raw SVG and structured render payloads.
 
-Package fixtures are grouped by behavior family under [tests](https://github.com/Latias94/merman/tree/main/packages/typst/merman/tests): API, render environments, context, errors, figures, raw blocks, README examples, historical issues, and visual smoke coverage. These links point to the source repository because examples and tests are not included in the published Typst package.
+Package fixtures are grouped by behavior family under [tests](https://github.com/Latias94/merman/tree/main/packages/typst/merman/tests): API, option normalization, render environments, context, errors, figures, raw blocks, README examples, historical issues, and visual smoke coverage. These links point to the source repository because examples and tests are not included in the published Typst package.
 
 ## Document Fonts
 
@@ -70,7 +70,7 @@ You can also pass typography intent explicitly:
 )
 ```
 
-The typography size accepts CSS `px` strings, absolute Typst lengths, or numeric CSS pixels. Typst lengths are converted through the SVG 96-DPI coordinate system (`72pt == 96px`) so layout measurement and CSS presentation use the same pixel value. Typst font descriptors are projected to their ordered family names; descriptor `covers` constraints have no CSS or vendored-measurer equivalent and are therefore not preserved.
+The typography size accepts CSS `px` strings, absolute Typst lengths, or numeric CSS pixels. Typst lengths are converted through the SVG 96-DPI coordinate system (`72pt == 96px`) so layout measurement and SVG output use the same numeric `font_size_px`. Typst font descriptors are projected to their ordered family names in `theme.spec.typography.default.font_stack`; descriptor `covers` constraints have no vendored-measurer equivalent and are therefore not preserved.
 
 This changes the SVG style intent sent to the headless renderer. It does not mean the Typst plugin measured the exact Typst font file. Current measurement modes are the built-in `vendored` and `deterministic` measurers; browser-style host callbacks and Typst font-asset measurement are not automatic.
 
@@ -108,17 +108,17 @@ Use `mermaid-profile(...)` for reusable diagram settings:
 
 Profiles work with `mermaid(...)`, `mermaid-figure(...)`, `mermaid-svg(...)`, `mermaid-result(...)`, `analyze-mermaid(...)`, and raw-block show rules. The optional `figure` section is consumed only by `mermaid-figure(...)`; it does not change raw SVG rendering or non-figure image calls.
 
-For normal documents, start with `width`, `theme-name`, `theme`, `background`, `typography`, `document-context`, and reusable `profile` values. Lower-level renderer fields remain available when you need parity debugging or deterministic fixture control, but they are not the main authoring path.
+For normal documents, start with `width`, `theme-name`, `theme-variables`, `theme-preset` or `diagram-theme`, `background`, `typography`, `document-context`, and reusable `profile` values. Lower-level renderer fields remain available when you need parity debugging or deterministic fixture control, but they are not the main authoring path.
 
 Raw `options` always wins. Without it, precedence is field-specific and deterministic:
 
-- site config: profile full object, profile theme shorthands, direct full object, direct theme shorthands;
+- site config: profile full object, profile `theme-name`/`theme-variables`, direct full object, direct `theme-name`/`theme-variables`;
 - environment: profile full object, profile measurement/math shorthands, direct full object, direct measurement/math shorthands;
-- host theme: document context, profile typography, profile host theme, direct typography, direct host theme;
+- compiled diagram theme: direct `diagram-theme`/`theme-preset` replaces the profile selection; document context, profile typography, and direct typography merge into `theme.spec.typography.default` in that order;
 - layout: profile layout followed by container shorthands, unless a direct full `layout` object is present, in which case that object replaces the layout shorthands;
 - scalar fields: direct value, profile value, package or renderer default.
 
-Theme shorthands replace the `theme` or `themeVariables` field at their layer; they do not deep-merge individual theme-variable keys.
+`theme-name` and `theme-variables` replace the Mermaid `theme` or `themeVariables` field at their layer; they do not deep-merge individual theme-variable keys. `theme-preset` selects one complete compiled preset, so it cannot be combined with `typography` or `document-context`; use `diagram-theme` when typography must be composed into an explicit spec.
 
 ## Raw Blocks
 
@@ -183,6 +183,29 @@ The current development package also moves measurement and math selection to the
 
 The removed layout fields are rejected; they are not translated through a compatibility path.
 
+The prerelease presentation aggregate was also removed rather than aliased:
+
+```typst
+// Old and rejected:
+#mermaid(source, presentation-profile: "merman-modern")
+#mermaid(source, host-theme: (appearance: "dark"))
+
+// Select a compiled diagram theme:
+#mermaid(source, theme-preset: "ayu-dark")
+
+// Or provide one complete DiagramThemeSpec body:
+#mermaid(
+  source,
+  diagram-theme: (
+    typography: (
+      default: (font_stack: ("Inter", "Arial"), font_size_px: 16),
+    ),
+  ),
+)
+```
+
+The old Typst `theme` shorthand for Mermaid variables is now named `theme-variables`. `theme-name` still selects Mermaid's own theme through `site_config.theme`; neither field selects a compiled Merman diagram theme.
+
 ## API
 
 ### `mermaid(source, ..)`
@@ -195,12 +218,13 @@ Common parameters:
 - `scale`: wraps the rendered image with Typst `scale`; accepts ratios such as `120%` or numbers such as `1.2`.
 - `document-context`: `false` by default. Set to `true` to inherit Typst text font, text size, and finite available width for image rendering. An auto-width page reports an infinite outer width, so Merman keeps its renderer default instead of serializing infinity.
 - `profile`: reusable options produced by `mermaid-profile(...)`.
-- `typography`: high-level font and size intent, merged into the Typst host theme and projected to `presentation.theme`.
-- `presentation-profile`: first-party Merman presentation profile ID, such as `"merman-modern"`. This is independent from Mermaid themes and SVG output policy.
+- `typography`: high-level font and size intent projected to `theme.spec.typography.default`.
+- `theme-preset`: compiled Merman diagram-theme preset, such as `"editor-dark"` or `"ayu-dark"`.
+- `diagram-theme`: one complete `DiagramThemeSpec` body, wrapped as top-level `theme.spec`.
 - `id`: stable SVG root id. `diagram-id` is kept as the lower-level binding name and takes precedence when both are provided.
 - `background`: SVG root background color, mapped to `svg.root_background_color`.
 - `theme-name`: Mermaid theme name, such as `"base"` or `"dark"`.
-- `theme`: Mermaid `themeVariables`.
+- `theme-variables`: Mermaid `themeVariables`.
 - `error-mode`: `"panic"` by default. Use `"placeholder"` or `"text"` to show diagram errors in the document instead of failing the Typst compile. These modes handle structured errors returned by `merman`; missing wasm files, Typst plugin loading failures, invalid `error-mode` values, and SVG image decoding failures still fail the Typst compile.
 
 This entry point is explicit-only unless `document-context: true` is set.
@@ -209,7 +233,6 @@ Advanced renderer parameters:
 
 - `pipeline`: `"resvg-safe"` by default for embedded Typst images. Use `"parity"` when you need Mermaid-like SVG DOM output, or `"readable"` for inline SVG inspection.
 - `site-config`: full Mermaid site config object.
-- `host-theme`: Typst document or host theme values projected to `presentation.theme`. Use stable semantic role IDs such as `"actor-background"`; this is independent from `theme-name`/`theme`, which configure Mermaid itself.
 - `layout`: full binding layout object for container geometry. This overrides the container shorthands.
 - `container-width`, `container-height`: shorthands for `layout.container_width` and `layout.container_height`.
 - `environment`: full binding render-environment object. Use `text_measurement` and `math_renderer` fields when composing options directly.
@@ -220,7 +243,7 @@ Advanced renderer parameters:
 
 ### `mermaid-profile(..)`
 
-Returns a reusable Typst settings dictionary. `profile` refers to this wrapper-level bundle, while `presentation-profile` selects a first-party Merman presentation profile. Profiles normalize into the same binding options used by direct parameters, so they do not create a second rendering path.
+Returns a reusable Typst settings dictionary. Profiles normalize into the same binding options used by direct parameters, so they do not create a second rendering path. The removed `presentation-profile`, `host-theme`, and `merman-modern` inputs are not compatibility aliases.
 
 ### `mermaid-figure(source, ..)`
 
@@ -234,7 +257,7 @@ Figure layout parameters are forwarded to Typst's native `figure`: `placement`, 
 
 Returns the rendered SVG as a string instead of embedding it as an image.
 
-This value-returning API does not enter Typst `context`; pass `typography`, `host-theme`, `layout`, or `container-width` explicitly when exporting SVG text.
+This value-returning API does not enter Typst `context`; pass `typography`, `theme-preset`/`diagram-theme`, `layout`, or `container-width` explicitly when exporting SVG text.
 
 ### `mermaid-result(source, ..)`
 
