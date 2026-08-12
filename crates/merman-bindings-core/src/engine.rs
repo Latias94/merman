@@ -563,10 +563,6 @@ impl BindingEngine {
         self.execute_data(crate::BindingOperationRequest::new("semantic-json", source))
     }
 
-    pub(crate) fn parse_json_data(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
-        self.semantic.parse_json(source)
-    }
-
     pub(crate) fn parse_json_data_controlled(
         &self,
         source: &[u8],
@@ -916,10 +912,6 @@ struct SemanticOperationEngine {
 }
 
 impl SemanticOperationEngine {
-    fn parse_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
-        self.parse_json_controlled(source, &OperationControl::default())
-    }
-
     fn parse_json_controlled(
         &self,
         source: &[u8],

@@ -291,7 +291,6 @@ fn classify_render_error(
                 merman::render::ResourceLimitCause::ArithmeticOverflow => {
                     BindingResourceLimitCause::ArithmeticOverflow
                 }
-                _ => BindingResourceLimitCause::Unknown,
             },
             err.phase,
             err.id,
