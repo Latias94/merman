@@ -10,6 +10,7 @@ use crate::text::{
 use crate::{RenderCapability, RenderCapabilityPolicy};
 use merman_core::runtime::{OperationContext, OperationTiming, RuntimePolicy, RuntimePolicyError};
 use merman_core::time::LocalTimeZoneProvenance;
+use merman_core::{OperationControl, OperationPhase};
 use std::fmt;
 use std::num::NonZeroU64;
 use std::sync::Arc;
@@ -1587,8 +1588,33 @@ impl RenderEnvironment {
 
     /// Captures time, timezone rules, random seed, and provenance exactly once.
     pub fn begin_session(&self) -> Result<RenderSession, RuntimePolicyError> {
+        self.begin_session_with_control(OperationControl::new())
+    }
+
+    /// Captures one render session using caller-owned cancellation/deadline state.
+    ///
+    /// The control is cloned into the operation work meter so layout adapters, SVG emission, and
+    /// postprocessing observe the same operation scope. This method does not create another
+    /// control or expose a second cancellation state.
+    pub fn begin_session_with_control(
+        &self,
+        control: OperationControl,
+    ) -> Result<RenderSession, RuntimePolicyError> {
         let operation_context = self.runtime_policy.begin_operation()?;
-        Ok(RenderSession {
+        Ok(self.begin_session_in_context(operation_context, control))
+    }
+
+    /// Begins one render session from caller-captured operation state.
+    ///
+    /// This entry point deliberately does not call [`RuntimePolicy::begin_operation`]. Facades
+    /// that already own the source-to-output operation use it to keep parsing and rendering on
+    /// the same runtime context and cancellation/deadline control.
+    pub fn begin_session_in_context(
+        &self,
+        operation_context: OperationContext,
+        control: OperationControl,
+    ) -> RenderSession {
+        RenderSession {
             text_measurement: self.text_measurement.clone(),
             measurement_recorder: Box::default(),
             capability_policy: self.capability_policy,
@@ -1596,8 +1622,11 @@ impl RenderEnvironment {
             icon_registry: self.icon_registry.clone(),
             operation_context,
             resource_policy: self.resource_policy,
-            work_meter: Arc::new(OperationWorkMeter::new(self.resource_policy)),
-        })
+            work_meter: Arc::new(OperationWorkMeter::new_with_control(
+                self.resource_policy,
+                control,
+            )),
+        }
     }
 }
 
@@ -1679,6 +1708,11 @@ impl RenderSession {
 
     pub(crate) fn work_meter(&self) -> &Arc<OperationWorkMeter> {
         &self.work_meter
+    }
+
+    /// Checks the operation-owned control at an SVG/render phase boundary.
+    pub(crate) fn checkpoint(&self, phase: OperationPhase) -> crate::Result<()> {
+        self.work_meter().checkpoint(phase).map_err(Into::into)
     }
 
     pub fn math_renderer(&self) -> Option<&(dyn MathRenderer + Send + Sync)> {
@@ -1852,6 +1886,30 @@ mod tests {
             report.local_time_zone(),
             captured.local_time_zone().provenance()
         );
+    }
+
+    #[test]
+    fn caller_captured_context_and_control_define_one_render_session() {
+        let operation_context = RuntimePolicy::deterministic()
+            .with_fixed_unix_millis(1_704_067_200_123)
+            .with_fixed_seed(91)
+            .begin_operation()
+            .expect("caller operation context");
+        let control = OperationControl::new();
+        let session = RenderEnvironment::deterministic()
+            .begin_session_in_context(operation_context.clone(), control.clone());
+
+        assert_eq!(session.operation_context(), &operation_context);
+
+        control.cancel();
+        let error = session
+            .checkpoint(OperationPhase::Layout)
+            .expect_err("shared control should cancel the render session");
+        let crate::Error::Cancelled(cancelled) = error else {
+            panic!("expected structured cancellation");
+        };
+        assert_eq!(cancelled.phase, OperationPhase::Layout);
+        assert_eq!(cancelled.reason, merman_core::CancelReason::Requested);
     }
 
     #[test]

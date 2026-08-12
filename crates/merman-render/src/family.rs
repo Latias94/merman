@@ -10,6 +10,7 @@ use crate::svg::{
 };
 use crate::wardley::WardleyDiagramLayout;
 use crate::{Error, LayoutExecution, LayoutOptions, RenderCapability, Result};
+use merman_core::OperationPhase;
 use merman_core::diagrams;
 use merman_core::models::class_diagram::ClassDiagram;
 use merman_core::{BuiltinRenderSemantic, ParseMetadata, ParsedDiagramRender, RenderSemanticModel};
@@ -688,6 +689,7 @@ impl RenderedFamilySvg {
 
     /// Applies an output pipeline while retaining the renderer-owned family capability.
     pub fn apply_pipeline(mut self, pipeline: &SvgPipeline) -> Result<Self> {
+        self.session.checkpoint(OperationPhase::Postprocess)?;
         let output_metadata = self.output_metadata();
         self.svg = pipeline.process_owned_to_string_with_metadata(
             self.svg,
@@ -697,11 +699,13 @@ impl RenderedFamilySvg {
         self.session
             .resource_policy()
             .check_svg_bytes(&self.svg, ResourceLimitPhase::SvgPostprocess)?;
+        self.session.checkpoint(OperationPhase::Postprocess)?;
         Ok(self)
     }
 
     /// Finalizes the typed family output for resvg/raster consumption.
     pub fn finalize_resvg(self, pipeline: &SvgPipeline) -> Result<RenderedResvgCompatibleSvg> {
+        self.session.checkpoint(OperationPhase::Export)?;
         let output_metadata = self.output_metadata();
         let svg = pipeline.process_owned_resvg_compatible_with_metadata(
             self.svg,
@@ -711,6 +715,7 @@ impl RenderedFamilySvg {
         self.session
             .resource_policy()
             .check_svg_bytes(svg.as_str(), ResourceLimitPhase::SvgPostprocess)?;
+        self.session.checkpoint(OperationPhase::Export)?;
         Ok(RenderedResvgCompatibleSvg {
             svg,
             family_kind: self.family_kind,
@@ -829,10 +834,12 @@ impl FamilyRenderArtifact {
         options: &SvgRenderOptions,
         debug: &SvgDebugOptions,
     ) -> Result<RenderedFamilySvg> {
+        self.session.checkpoint(OperationPhase::Emit)?;
         let svg = render_family_artifact_svg(&self, options, debug)?;
         self.session
             .resource_policy()
             .check_svg_bytes(&svg, ResourceLimitPhase::SvgOutput)?;
+        self.session.checkpoint(OperationPhase::Emit)?;
         let family_kind = self.family.kind();
         let Self {
             metadata,
@@ -1169,19 +1176,24 @@ fn prepare_with_render_policy_impl(
     render_policy: PresentationRenderPolicy,
     flowchart_svg_label_preparation: FlowchartSvgLabelPreparation,
 ) -> Result<FamilyRenderArtifact> {
+    session.checkpoint(OperationPhase::Layout)?;
     plan_render_with_policy(&parsed, &session, render_policy)?.ensure_available()?;
     // The heterogeneous router has one generic layout call per family. Keep its debug-build
     // caller slots out of the Class Dagre call chain, whose own phase frames are already deep.
     if matches!(parsed.model(), RenderSemanticModel::Class(_)) {
-        return prepare_class_render(parsed, options, session);
+        let artifact = prepare_class_render(parsed, options, session)?;
+        artifact.session.checkpoint(OperationPhase::Layout)?;
+        return Ok(artifact);
     }
-    prepare_non_class_render(
+    let artifact = prepare_non_class_render(
         parsed,
         options,
         session,
         render_policy,
         flowchart_svg_label_preparation,
-    )
+    )?;
+    artifact.session.checkpoint(OperationPhase::Layout)?;
+    Ok(artifact)
 }
 
 #[inline(never)]

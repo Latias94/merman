@@ -18,6 +18,7 @@ pub use preset::SvgPipelinePreset;
 use crate::environment::RenderSession;
 use crate::resources::ResourceLimitPhase;
 use crate::{Error, Result};
+use merman_core::OperationPhase;
 use std::borrow::Cow;
 use std::fmt;
 use std::sync::Arc;
@@ -230,12 +231,14 @@ impl SvgPipeline {
         metadata: &SvgPostprocessMetadata,
         session: &RenderSession,
     ) -> Result<(Cow<'a, str>, Option<SvgReferencePlan>)> {
+        session.checkpoint(OperationPhase::Postprocess)?;
         let mut current = svg;
         session
             .resource_policy()
             .check_svg_bytes(current.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
 
         for (index, postprocessor) in self.postprocessors.iter().enumerate() {
+            session.checkpoint(OperationPhase::Postprocess)?;
             let ctx = SvgPostprocessContext::new(
                 self.preset,
                 index,
@@ -246,34 +249,40 @@ impl SvgPipeline {
             current = postprocessor
                 .process(current, &ctx)
                 .map_err(|err| Error::svg_postprocess(postprocessor.name(), err.to_string()))?;
+            session.checkpoint(OperationPhase::Postprocess)?;
             session
                 .resource_policy()
                 .check_svg_bytes(current.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
         }
 
+        session.checkpoint(OperationPhase::Postprocess)?;
         let finalized = preset::apply_preset_cow(
             self.preset,
             current,
             metadata,
             session,
             self.drop_native_duplicate_fallbacks,
-        );
+        )?;
         let finalized = crate::xml::strip_forbidden_xml_1_0_chars_cow(finalized);
+        session.checkpoint(OperationPhase::Postprocess)?;
         session
             .resource_policy()
             .check_svg_bytes(finalized.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
         let reference_plan = if self.preset == SvgPipelinePreset::ResvgSafe {
+            session.checkpoint(OperationPhase::Postprocess)?;
             Some(final_validation::validate_resvg_compatible_svg(
                 finalized.as_ref(),
                 session.resource_policy(),
             )?)
         } else {
+            session.checkpoint(OperationPhase::Postprocess)?;
             final_validation::validate_well_formed_svg(
                 finalized.as_ref(),
                 session.resource_policy(),
             )?;
             None
         };
+        session.checkpoint(OperationPhase::Postprocess)?;
         Ok((finalized, reference_plan))
     }
 
@@ -366,6 +375,7 @@ pub fn finalize_resvg_svg(svg: &str, session: &RenderSession) -> Result<ResvgCom
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_core::{CancelReason, OperationControl, OperationPhase};
 
     fn render_session() -> RenderSession {
         crate::environment::RenderEnvironment::deterministic()
@@ -612,6 +622,42 @@ mod tests {
                 ctx.svg_id().unwrap_or("none")
             )))
         }
+    }
+
+    struct CancelOperationPass(OperationControl);
+
+    impl SvgPostprocessor for CancelOperationPass {
+        fn name(&self) -> &'static str {
+            "cancel-operation"
+        }
+
+        fn process<'a>(
+            &self,
+            svg: Cow<'a, str>,
+            _ctx: &SvgPostprocessContext<'_>,
+        ) -> Result<Cow<'a, str>> {
+            self.0.cancel();
+            Ok(svg)
+        }
+    }
+
+    #[test]
+    fn pipeline_checks_control_after_an_opaque_postprocessor() {
+        let control = OperationControl::new();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_control(control.clone())
+            .unwrap();
+
+        let error = SvgPipeline::parity()
+            .with_postprocessor(CancelOperationPass(control))
+            .process_to_string("<svg/>", &session)
+            .unwrap_err();
+
+        let Error::Cancelled(error) = error else {
+            panic!("expected structured cancellation");
+        };
+        assert_eq!(error.phase, OperationPhase::Postprocess);
+        assert_eq!(error.reason, CancelReason::Requested);
     }
 
     #[test]
