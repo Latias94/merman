@@ -45,7 +45,15 @@ pub fn render_mindmap_diagram(
     model: &MindmapDiagramRenderModel,
     options: &AsciiRenderOptions,
 ) -> Result<String> {
-    let mut document = BudgetedTextDocument::new(options);
+    render_mindmap_with_resources(model, options, ResourceContext::new(options.resources))
+}
+
+fn render_mindmap_with_resources(
+    model: &MindmapDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    resources: ResourceContext,
+) -> Result<String> {
+    let mut document = BudgetedTextDocument::from_resources(resources, options);
     let chars = MindmapChars::from_options(options);
     let nodes_by_id = index_nodes(&model.nodes, document.resources_mut())?;
     let children_by_id = build_children_map(&model.edges, &nodes_by_id, document.resources_mut())?;
@@ -58,6 +66,18 @@ pub fn render_mindmap_diagram(
         document.resources_mut(),
     )?;
 
+    // Reuse traversal storage across roots. Each traversal removes its own entries on the
+    // matching exit frames, so retaining the capacity avoids charging and allocating O(N) for
+    // every disconnected component.
+    let mut visiting = HashSet::new();
+    document
+        .resources_mut()
+        .charge_layout_work(nodes_by_id.len())?;
+    visiting
+        .try_reserve(nodes_by_id.len())
+        .map_err(|_| layout_allocation_error())?;
+    let mut stack = Vec::new();
+
     for (index, root_id) in roots.iter().enumerate() {
         if index > 0 {
             document.push_line("")?;
@@ -66,14 +86,8 @@ pub fn render_mindmap_diagram(
             continue;
         };
 
-        let mut visiting = HashSet::new();
-        document
-            .resources_mut()
-            .charge_layout_work(nodes_by_id.len())?;
-        visiting
-            .try_reserve(nodes_by_id.len())
-            .map_err(|_| layout_allocation_error())?;
-        let mut stack = Vec::new();
+        debug_assert!(visiting.is_empty());
+        debug_assert!(stack.is_empty());
         push_enter_frame(
             &mut stack,
             MindmapEnterFrame {
@@ -238,7 +252,6 @@ fn build_children_map<'a>(
             });
         }
         let siblings = children.entry(edge.start.as_str()).or_default();
-        resources.charge_layout_work(siblings.len())?;
         siblings
             .try_reserve(1)
             .map_err(|_| layout_allocation_error())?;
@@ -566,6 +579,62 @@ mod tests {
         AsciiRenderOptions::ascii().with_resource_policy(resources)
     }
 
+    fn isolated_nodes(count: usize) -> MindmapDiagramRenderModel {
+        MindmapDiagramRenderModel {
+            nodes: (0..count)
+                .map(|index| {
+                    let id = format!("n{index:03}");
+                    node(&id, "Node", 0)
+                })
+                .collect(),
+            edges: Vec::new(),
+        }
+    }
+
+    fn star(children: usize) -> MindmapDiagramRenderModel {
+        let mut nodes = vec![node("n000", "Node", 0)];
+        let mut edges = Vec::with_capacity(children);
+        for index in 1..=children {
+            let child_id = format!("n{index:03}");
+            nodes.push(node(&child_id, "Node", 1));
+            edges.push(edge(&format!("edge-{index}"), "n000", &child_id));
+        }
+        MindmapDiagramRenderModel { nodes, edges }
+    }
+
+    fn chain_with_width(edge_count: usize) -> MindmapDiagramRenderModel {
+        let mut nodes = Vec::with_capacity(edge_count + 1);
+        let mut edges = Vec::with_capacity(edge_count);
+        for index in 0..=edge_count {
+            let id = format!("n{index:03}");
+            nodes.push(node(&id, "Node", index as i64));
+            if index > 0 {
+                let parent = format!("n{index_minus_one:03}", index_minus_one = index - 1);
+                edges.push(edge(&format!("edge-{index}"), &parent, &id));
+            }
+        }
+        MindmapDiagramRenderModel { nodes, edges }
+    }
+
+    fn children_map_work(model: &MindmapDiagramRenderModel) -> usize {
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let mut resources = ResourceContext::new(policy);
+        let nodes_by_id =
+            index_nodes(&model.nodes, &mut resources).expect("node indexing should pass");
+        build_children_map(&model.edges, &nodes_by_id, &mut resources)
+            .expect("child indexing should pass");
+        resources.layout_work_used()
+    }
+
+    fn measured_work(model: &MindmapDiagramRenderModel) -> usize {
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let options = AsciiRenderOptions::ascii().with_resource_policy(policy);
+        let resources = ResourceContext::new(policy);
+        render_mindmap_with_resources(model, &options, resources.clone())
+            .expect("unbounded mindmap render should succeed");
+        resources.layout_work_used()
+    }
+
     #[test]
     fn mindmap_accepts_exact_nesting_limit() {
         let rendered = render_mindmap_diagram(
@@ -592,5 +661,29 @@ mod tests {
                     && details.actual == DEEP_NESTING
                     && details.max == DEEP_NESTING - 1
         ));
+    }
+
+    #[test]
+    fn disconnected_mindmap_roots_do_not_repeat_full_node_scan_work() {
+        let work_2 = measured_work(&isolated_nodes(2));
+        let work_3 = measured_work(&isolated_nodes(3));
+        let work_4 = measured_work(&isolated_nodes(4));
+
+        assert_eq!(
+            work_4 - work_3,
+            work_3 - work_2,
+            "disconnected-root work should have a constant per-root increment"
+        );
+    }
+
+    #[test]
+    fn mindmap_children_map_work_is_independent_of_parent_fanout() {
+        let star_work = children_map_work(&star(8));
+        let chain_work = children_map_work(&chain_with_width(8));
+
+        assert_eq!(
+            star_work, chain_work,
+            "child-map work should depend on edge count and text, not sibling fanout"
+        );
     }
 }
