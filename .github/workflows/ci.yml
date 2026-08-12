@@ -474,6 +474,12 @@ jobs:
           cargo test -p merman-render --doc
           cargo test -p merman --doc --no-default-features --features layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing
 
+      - name: Test enforced C6 runtime tranche
+        if: matrix.parity
+        run: |
+          cargo nextest run --locked -p merman --no-default-features \
+            --features png,jpeg,pdf --test c6_runtime_acceptance --cargo-quiet
+
       - name: Test exact Rustdoc artifact recipe
         if: matrix.parity
         run: |

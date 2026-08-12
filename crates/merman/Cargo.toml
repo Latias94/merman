@@ -117,6 +117,10 @@ required-features = [
 name = "mermaid_11_16_corpus"
 required-features = ["layout-elk"]
 
+[[test]]
+name = "c6_runtime_acceptance"
+required-features = ["png", "jpeg", "pdf"]
+
 [[bench]]
 name = "pipeline"
 harness = false
