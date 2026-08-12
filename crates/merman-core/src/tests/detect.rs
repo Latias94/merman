@@ -64,6 +64,12 @@ fn canonical_catalog_detects_flowchart_elk_and_sets_layout() {
     let res = block_on(engine.parse_metadata("flowchart-elk TD\nA-->B")).unwrap();
     assert_eq!(res.diagram_type, "flowchart-elk");
     assert_eq!(res.effective_config.get_str("layout"), Some("elk"));
+    assert!(res.effective_config.explicit_config_owns_path("layout"));
+
+    let known = engine
+        .parse_metadata_with_type_sync("flowchart-elk", "flowchart-elk TD\nA-->B")
+        .expect("parse known Flowchart ELK type");
+    assert!(known.effective_config.explicit_config_owns_path("layout"));
 }
 
 fn flowchart_overlay(path: &str, value: Value) -> PostDetectionConfigOverlay {
@@ -322,6 +328,131 @@ fn theme_binding() -> ThemeParseBinding {
 }
 
 #[test]
+fn effective_config_tracks_only_high_priority_explicit_owners() {
+    let metadata = Engine::new()
+        .with_theme_compatibility(theme_binding_for(MermaidConfig::from_value(json!({
+            "themeVariables": {"useGradient": true}
+        }))))
+        .with_site_config(MermaidConfig::from_value(json!({
+            "flowchart": {"nodeSpacing": 50}
+        })))
+        .with_post_detection_config_overlay(flowchart_overlay("flowchart.diagramPadding", json!(8)))
+        .with_fallback_post_detection_config_overlay(flowchart_overlay(
+            "themeVariables.lineColor",
+            json!("#123456"),
+        ))
+        .parse_metadata_sync(
+            "%%{init: {\"flowchart\": {\"rankSpacing\": 50}}}%%\nflowchart-elk TD\nA-->B",
+        )
+        .expect("parse layered explicit ownership config");
+
+    let owns = |path| metadata.effective_config.explicit_config_owns_path(path);
+
+    for path in [
+        "flowchart.nodeSpacing",
+        "flowchart.rankSpacing",
+        "flowchart.diagramPadding",
+        "layout",
+        "flowchart",
+        "flowchart.nodeSpacing.unmaterializedDescendant",
+    ] {
+        assert!(owns(path), "expected explicit ownership for {path}");
+    }
+    for path in [
+        "themeVariables.useGradient",
+        "themeVariables.lineColor",
+        "themeVariables.mainBkg",
+        "themeVariables",
+        "sequence",
+    ] {
+        assert!(!owns(path), "unexpected explicit ownership for {path}");
+    }
+}
+
+#[test]
+fn theme_variable_derived_ownership_reaches_base_main_background_from_explicit_inputs() {
+    let site = Engine::new()
+        .with_site_config(MermaidConfig::from_value(json!({
+            "theme": "base",
+            "themeVariables": { "primaryColor": "#fff4dd" }
+        })))
+        .parse_metadata_sync("flowchart TD\nA-->B")
+        .expect("parse site-owned base primary color");
+    assert!(crate::__private::config_path_overrides_typed_default(
+        &site.effective_config,
+        "themeVariables.mainBkg"
+    ));
+
+    let source = Engine::new()
+        .with_site_config(MermaidConfig::from_value(json!({
+            "theme": "base",
+            "secure": []
+        })))
+        .parse_metadata_sync(
+            "%%{init: {\"themeVariables\": {\"primaryColor\": \"#fff4dd\"}}}%%\nflowchart TD\nA-->B",
+        )
+        .expect("parse source-owned base primary color");
+    assert!(
+        source
+            .effective_config
+            .explicit_config_owns_path("themeVariables.primaryColor")
+    );
+    assert!(crate::__private::config_path_overrides_typed_default(
+        &source.effective_config,
+        "themeVariables.mainBkg"
+    ));
+
+    let compatibility = Engine::new()
+        .with_theme_compatibility(theme_binding_for(MermaidConfig::from_value(json!({
+            "theme": "base",
+            "themeVariables": { "primaryColor": "#fff4dd" }
+        }))))
+        .parse_metadata_sync("flowchart TD\nA-->B")
+        .expect("parse compatibility-owned base primary color");
+    assert!(crate::__private::config_path_overrides_typed_default(
+        &compatibility.effective_config,
+        "themeVariables.mainBkg"
+    ));
+    assert_eq!(compatibility.mermaid_compatibility_residual_count(), 2);
+    assert!(!crate::__private::config_path_overrides_typed_default(
+        &compatibility.effective_config,
+        "themeVariables.radius"
+    ));
+}
+
+#[test]
+fn theme_variable_derived_ownership_ignores_fallback_primary_color() {
+    let parsed = Engine::new()
+        .with_site_config(MermaidConfig::from_value(json!({ "theme": "base" })))
+        .with_fallback_post_detection_config_overlay(flowchart_overlay(
+            "themeVariables.primaryColor",
+            json!("#fff4dd"),
+        ))
+        .parse_metadata_sync("flowchart TD\nA-->B")
+        .expect("parse fallback base primary color");
+
+    assert!(!crate::__private::config_path_overrides_typed_default(
+        &parsed.effective_config,
+        "themeVariables.mainBkg"
+    ));
+}
+
+#[test]
+fn empty_explicit_site_secure_policy_owns_the_replacement_path() {
+    let metadata = Engine::new()
+        .with_exact_site_config(Some(MermaidConfig::from_value(json!({"secure": []}))))
+        .parse_metadata_sync("flowchart TD\nA-->B")
+        .expect("parse with an explicit empty secure policy");
+
+    assert_eq!(metadata.effective_config.as_value()["secure"], json!([]));
+    assert!(
+        metadata
+            .effective_config
+            .explicit_config_owns_path("secure")
+    );
+}
+
+#[test]
 fn theme_compatibility_freezes_binding_and_conceptual_field_count() {
     let parsed = Engine::new()
         .with_theme_compatibility(theme_binding())
@@ -331,6 +462,14 @@ fn theme_compatibility_freezes_binding_and_conceptual_field_count() {
     let binding = theme_binding();
     assert_eq!(parsed.theme_parse_binding(), Some(&binding));
     assert_eq!(parsed.mermaid_compatibility_residual_count(), 3);
+    assert!(crate::__private::config_path_overrides_typed_default(
+        &parsed.effective_config,
+        "themeVariables.useGradient"
+    ));
+    assert!(crate::__private::config_path_overrides_typed_default(
+        &parsed.effective_config,
+        "darkMode"
+    ));
 }
 
 #[test]
@@ -399,6 +538,10 @@ fn later_site_and_source_assignments_shadow_theme_ownership_even_when_values_mat
         .parse_metadata_sync("flowchart TD\nA-->B")
         .expect("parse same-value site override");
     assert_eq!(site.mermaid_compatibility_residual_count(), 2);
+    assert!(
+        site.effective_config
+            .explicit_config_owns_path("themeVariables.useGradient")
+    );
 
     let source = Engine::new()
         .with_theme_compatibility(theme_binding())
@@ -408,6 +551,11 @@ fn later_site_and_source_assignments_shadow_theme_ownership_even_when_values_mat
         )
         .expect("parse same-value source override");
     assert_eq!(source.mermaid_compatibility_residual_count(), 2);
+    assert!(
+        source
+            .effective_config
+            .explicit_config_owns_path("themeVariables.useGradient")
+    );
 }
 
 #[test]

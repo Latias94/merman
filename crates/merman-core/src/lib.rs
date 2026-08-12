@@ -291,6 +291,16 @@ pub mod __private {
                 .count(),
         }
     }
+
+    /// Reports whether surviving Mermaid input outranks a typed theme default at this path.
+    pub fn config_path_overrides_typed_default(config: &MermaidConfig, dotted_path: &str) -> bool {
+        config.config_path_overrides_typed_default(dotted_path)
+    }
+
+    /// Reports whether site or source configuration explicitly owns this path.
+    pub fn explicit_config_owns_path(config: &MermaidConfig, dotted_path: &str) -> bool {
+        config.explicit_config_owns_path(dotted_path)
+    }
 }
 
 /// Maximum nested diagram/include depth accepted by recursive parsers.
@@ -336,19 +346,21 @@ fn merge_site_config_override(target: &mut MermaidConfig, mut site_config: Merma
         .get("secure")
         .filter(|value| value.is_array())
         .map(config::clone_value_nonrecursive);
-    target.deep_merge(site_config.as_value());
+    target.deep_merge_explicit(site_config.as_value());
 
     // Merman adds host-level hardening beyond Mermaid's upstream defaults. An explicit site
     // policy is host authority, so it replaces that added list after the source-compatible array
     // merge instead of making the hardening impossible to opt out of.
     if let Some(secure) = explicit_secure_policy {
-        target.set_value("secure", secure);
+        target.set_value_explicit("secure", secure);
     }
 }
 
 fn merge_theme_compatibility_config(target: &mut MermaidConfig, mut theme_config: MermaidConfig) {
     config::mirror_legacy_font_family_into_theme_variables(&mut theme_config);
+    let before = target.clone();
     target.deep_merge(theme_config.as_value());
+    theme_config.retain_theme_compatibility_paths_applied_after(target, &before);
     target.adopt_tracking_theme_compatibility_from(&mut theme_config);
 }
 

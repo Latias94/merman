@@ -319,7 +319,12 @@ impl PostDetectionConfigOverlay {
                 {
                     continue;
                 }
-                effective_config.set_value(&assignment.path, assignment.value.as_ref().clone());
+                if lane == ConfigOverlayLane::Host {
+                    effective_config
+                        .set_value_explicit(&assignment.path, assignment.value.as_ref().clone());
+                } else {
+                    effective_config.set_value(&assignment.path, assignment.value.as_ref().clone());
+                }
                 application.claim_path(Arc::clone(&assignment.path));
                 applied_assignments.push(AppliedOverlayAssignment {
                     path: Arc::clone(&assignment.path),

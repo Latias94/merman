@@ -1377,6 +1377,7 @@ pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) -> Result<(), Col
     let raw = theme_variables_map(config);
     program.validate_evaluated_inputs(&raw)?;
     let explicit = program.normalize_overrides(raw);
+    config.retain_normalized_theme_compatibility_variables(&explicit);
     config.set_value_preserving_theme_compatibility("themeVariables", Value::Object(explicit));
     program.execute(config)
 }
@@ -3074,7 +3075,11 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorErro
     ensure_gradient_theme_defaults(&mut tv);
 
     set_if_missing(&mut tv, "nodeBkg", Value::String(primary_color.clone()));
+    let derives_main_background_from_primary = value_is_missing(&tv, "mainBkg");
     set_if_missing(&mut tv, "mainBkg", Value::String(primary_color.clone()));
+    if derives_main_background_from_primary {
+        config.propagate_theme_variable_ownership("primaryColor", "mainBkg");
+    }
     set_if_missing(&mut tv, "nodeBorder", Value::String(primary_border_color));
     set_if_missing(&mut tv, "clusterBkg", Value::String(tertiary_color.clone()));
     set_if_missing(
@@ -3323,6 +3328,52 @@ mod tests {
 
             assert_eq!(actual, expected, "theme {theme}");
         }
+    }
+
+    #[test]
+    fn theme_variable_derived_ownership_follows_primary_color_to_main_background_dependencies() {
+        for (theme, derives_main_background) in [
+            (MermaidThemeId::Base, true),
+            (MermaidThemeId::Default, false),
+            (MermaidThemeId::Dark, false),
+            (MermaidThemeId::Forest, false),
+            (MermaidThemeId::Neutral, false),
+            (MermaidThemeId::Neo, false),
+            (MermaidThemeId::NeoDark, false),
+            (MermaidThemeId::Redux, false),
+            (MermaidThemeId::ReduxDark, false),
+            (MermaidThemeId::ReduxColor, false),
+            (MermaidThemeId::ReduxDarkColor, false),
+        ] {
+            let mut config = MermaidConfig::from_value(json!({ "theme": theme.as_str() }));
+            config.deep_merge_explicit(&json!({
+                "themeVariables": { "primaryColor": "#fff4dd" }
+            }));
+
+            apply_theme_defaults(&mut config).unwrap();
+
+            assert_eq!(
+                config.config_path_overrides_typed_default("themeVariables.mainBkg"),
+                derives_main_background,
+                "theme {theme}"
+            );
+            assert!(
+                !config.config_path_overrides_typed_default("themeVariables.radius"),
+                "theme {theme} must not generalize derived ownership to sibling variables"
+            );
+        }
+    }
+
+    #[test]
+    fn theme_variable_derived_ownership_requires_owned_primary_color() {
+        let mut config = MermaidConfig::from_value(json!({
+            "theme": "base",
+            "themeVariables": { "primaryColor": "#fff4dd" }
+        }));
+
+        apply_theme_defaults(&mut config).unwrap();
+
+        assert!(!config.config_path_overrides_typed_default("themeVariables.mainBkg"));
     }
 
     #[test]

@@ -46,6 +46,7 @@ pub struct MermaidConfig {
     value: Arc<Value>,
     overlay_provenance: ConfigOverlayProvenance,
     theme_compatibility: Option<ThemeCompatibilityState>,
+    explicit_config_paths: Arc<BTreeSet<Arc<str>>>,
     mutation_paths: Arc<BTreeMap<Arc<str>, u64>>,
     mutation_revision: u64,
 }
@@ -111,6 +112,7 @@ impl ThemeParseBinding {
             value: self.compatibility_config,
             overlay_provenance: ConfigOverlayProvenance::default(),
             theme_compatibility: Some(ThemeCompatibilityState::Tracking(Arc::new(ownership))),
+            explicit_config_paths: Arc::new(BTreeSet::new()),
             mutation_paths: Arc::new(BTreeMap::new()),
             mutation_revision: 0,
         }
@@ -257,6 +259,7 @@ enum ThemeCompatibilityState {
     Frozen {
         binding: ThemeParseBinding,
         surviving_field_count: usize,
+        surviving_paths: Arc<BTreeSet<Arc<str>>>,
     },
 }
 
@@ -274,7 +277,6 @@ struct ThemeCompatibilityFieldOwnership {
 #[derive(Debug, Clone)]
 struct ThemeCompatibilityPathOwnership {
     path: Arc<str>,
-    expected: Value,
     owned: bool,
 }
 
@@ -286,24 +288,16 @@ impl ThemeCompatibilityOwnership {
         };
 
         if root.contains_key("theme") {
-            fields.push(ThemeCompatibilityFieldOwnership::new([(
-                "theme",
-                root.get("theme").expect("theme key checked above").clone(),
-            )]));
+            fields.push(ThemeCompatibilityFieldOwnership::new(["theme"]));
         }
 
         let variables = root.get("themeVariables").and_then(Value::as_object);
         if root.contains_key("darkMode")
             || variables.is_some_and(|variables| variables.contains_key("darkMode"))
         {
-            let expected = root
-                .get("darkMode")
-                .or_else(|| variables.and_then(|variables| variables.get("darkMode")))
-                .expect("darkMode key checked above")
-                .clone();
             fields.push(ThemeCompatibilityFieldOwnership::new([
-                ("darkMode", expected.clone()),
-                ("themeVariables.darkMode", expected),
+                "darkMode",
+                "themeVariables.darkMode",
             ]));
         }
 
@@ -313,13 +307,7 @@ impl ThemeCompatibilityOwnership {
                     .keys()
                     .filter(|key| key.as_str() != "darkMode")
                     .map(|key| {
-                        ThemeCompatibilityFieldOwnership::new([(
-                            format!("themeVariables.{key}"),
-                            variables
-                                .get(key)
-                                .expect("variable key came from themeVariables")
-                                .clone(),
-                        )])
+                        ThemeCompatibilityFieldOwnership::new([format!("themeVariables.{key}")])
                     }),
             );
         }
@@ -337,31 +325,34 @@ impl ThemeCompatibilityOwnership {
         }
     }
 
-    fn surviving_field_count(&self, final_config: &Value) -> usize {
+    fn surviving_field_count(&self) -> usize {
         self.fields
             .iter()
-            .filter(|field| {
-                field.paths.iter().any(|path| {
-                    path.owned
-                        && value_at_dotted_path(final_config, &path.path) == Some(&path.expected)
-                })
-            })
+            .filter(|field| field.paths.iter().any(|path| path.owned))
             .count()
+    }
+
+    fn surviving_paths(&self) -> BTreeSet<Arc<str>> {
+        self.fields
+            .iter()
+            .flat_map(|field| field.paths.iter())
+            .filter(|path| path.owned)
+            .map(|path| Arc::clone(&path.path))
+            .collect()
     }
 }
 
 impl ThemeCompatibilityFieldOwnership {
     fn new<I, P>(paths: I) -> Self
     where
-        I: IntoIterator<Item = (P, Value)>,
+        I: IntoIterator<Item = P>,
         P: Into<Arc<str>>,
     {
         Self {
             paths: paths
                 .into_iter()
-                .map(|(path, expected)| ThemeCompatibilityPathOwnership {
+                .map(|path| ThemeCompatibilityPathOwnership {
                     path: path.into(),
-                    expected,
                     owned: true,
                 })
                 .collect(),
@@ -400,6 +391,7 @@ impl MermaidConfig {
             value: Arc::new(value),
             overlay_provenance: ConfigOverlayProvenance::default(),
             theme_compatibility: None,
+            explicit_config_paths: Arc::new(BTreeSet::new()),
             mutation_paths: Arc::new(BTreeMap::new()),
             mutation_revision: 0,
         }
@@ -480,6 +472,44 @@ impl MermaidConfig {
         self.theme_compatibility = Some(state);
     }
 
+    pub(crate) fn retain_theme_compatibility_paths_applied_after(
+        &mut self,
+        target: &Self,
+        before: &Self,
+    ) {
+        let Some(ThemeCompatibilityState::Tracking(ownership)) = self.theme_compatibility.as_mut()
+        else {
+            return;
+        };
+        for field in &mut Arc::make_mut(ownership).fields {
+            for path in &mut field.paths {
+                if path.owned && !target.path_was_mutated_after(before, &path.path) {
+                    path.owned = false;
+                }
+            }
+        }
+    }
+
+    pub(crate) fn retain_normalized_theme_compatibility_variables(
+        &mut self,
+        normalized: &Map<String, Value>,
+    ) {
+        let Some(ThemeCompatibilityState::Tracking(ownership)) = self.theme_compatibility.as_mut()
+        else {
+            return;
+        };
+        for field in &mut Arc::make_mut(ownership).fields {
+            for path in &mut field.paths {
+                let Some(key) = path.path.strip_prefix("themeVariables.") else {
+                    continue;
+                };
+                if path.owned && !normalized.contains_key(key) {
+                    path.owned = false;
+                }
+            }
+        }
+    }
+
     pub(crate) fn freeze_theme_compatibility(&mut self) {
         let Some(ThemeCompatibilityState::Tracking(ownership)) = self.theme_compatibility.take()
         else {
@@ -487,7 +517,8 @@ impl MermaidConfig {
         };
         self.theme_compatibility = Some(ThemeCompatibilityState::Frozen {
             binding: ownership.binding.clone(),
-            surviving_field_count: ownership.surviving_field_count(self.as_value()),
+            surviving_field_count: ownership.surviving_field_count(),
+            surviving_paths: Arc::new(ownership.surviving_paths()),
         });
     }
 
@@ -499,6 +530,83 @@ impl MermaidConfig {
                 .is_none_or(|before_revision| revision > before_revision)
                 && dotted_paths_overlap(candidate.as_ref(), dotted_path)
         })
+    }
+
+    pub(crate) fn explicit_config_owns_path(&self, dotted_path: &str) -> bool {
+        self.explicit_config_paths
+            .iter()
+            .any(|candidate| dotted_paths_overlap(candidate, dotted_path))
+    }
+
+    pub(crate) fn config_path_overrides_typed_default(&self, dotted_path: &str) -> bool {
+        self.explicit_config_owns_path(dotted_path)
+            || matches!(
+                self.theme_compatibility.as_ref(),
+                Some(ThemeCompatibilityState::Frozen { surviving_paths, .. })
+                    if surviving_paths
+                        .iter()
+                        .any(|candidate| dotted_paths_overlap(candidate, dotted_path))
+            )
+    }
+
+    pub(crate) fn propagate_theme_variable_ownership(&mut self, source: &str, target: &str) {
+        let source_path = format!("themeVariables.{source}");
+        let target_path: Arc<str> = Arc::from(format!("themeVariables.{target}"));
+
+        // Derived ownership follows exact calculation inputs. A parent `themeVariables` owner
+        // must not implicitly claim every variable produced by a theme program.
+        if self.explicit_config_paths.contains(source_path.as_str()) {
+            Arc::make_mut(&mut self.explicit_config_paths).insert(Arc::clone(&target_path));
+        }
+
+        match self.theme_compatibility.as_mut() {
+            Some(ThemeCompatibilityState::Tracking(ownership)) => {
+                for field in &mut Arc::make_mut(ownership).fields {
+                    let owns_source = field
+                        .paths
+                        .iter()
+                        .any(|path| path.owned && path.path.as_ref() == source_path.as_str());
+                    if owns_source
+                        && !field
+                            .paths
+                            .iter()
+                            .any(|path| path.path.as_ref() == target_path.as_ref())
+                    {
+                        field.paths.push(ThemeCompatibilityPathOwnership {
+                            path: Arc::clone(&target_path),
+                            owned: true,
+                        });
+                    }
+                }
+            }
+            Some(ThemeCompatibilityState::Frozen {
+                surviving_paths, ..
+            }) => {
+                if surviving_paths.contains(source_path.as_str()) {
+                    Arc::make_mut(surviving_paths).insert(target_path);
+                }
+            }
+            None => {}
+        }
+    }
+
+    pub(crate) fn mark_mutations_after_as_explicit(&mut self, before: &Self) {
+        let paths = self
+            .mutation_paths
+            .iter()
+            .filter(|(candidate, revision)| {
+                before
+                    .mutation_paths
+                    .get(*candidate)
+                    .is_none_or(|before_revision| *revision > before_revision)
+            })
+            .map(|(path, _)| Arc::clone(path))
+            .collect::<Vec<_>>();
+        Arc::make_mut(&mut self.explicit_config_paths).extend(paths);
+    }
+
+    fn mark_explicit_config_path(&mut self, dotted_path: &str) {
+        Arc::make_mut(&mut self.explicit_config_paths).insert(Arc::from(dotted_path));
     }
 
     pub fn as_value_mut(&mut self) -> &mut Value {
@@ -527,6 +635,11 @@ impl MermaidConfig {
         self.shadow_theme_compatibility_path(dotted_path);
         self.record_mutation(dotted_path);
         self.set_value_without_theme_compatibility_shadow(dotted_path, value);
+    }
+
+    pub(crate) fn set_value_explicit(&mut self, dotted_path: &str, value: Value) {
+        self.set_value(dotted_path, value);
+        self.mark_explicit_config_path(dotted_path);
     }
 
     pub(crate) fn set_value_preserving_theme_compatibility(
@@ -571,6 +684,14 @@ impl MermaidConfig {
     }
 
     pub fn deep_merge(&mut self, other: &Value) {
+        self.deep_merge_with_explicit_ownership(other, false);
+    }
+
+    pub(crate) fn deep_merge_explicit(&mut self, other: &Value) {
+        self.deep_merge_with_explicit_ownership(other, true);
+    }
+
+    fn deep_merge_with_explicit_ownership(&mut self, other: &Value, explicit: bool) {
         // Preserve Mermaid's existing empty-object no-op. In particular, an empty patch must not
         // coerce a null root into an empty object or claim ownership of the whole configuration.
         if matches!(other, Value::Object(map) if map.is_empty()) {
@@ -583,6 +704,9 @@ impl MermaidConfig {
         for path in mutation_paths {
             self.shadow_theme_compatibility_path(&path);
             self.record_mutation(&path);
+            if explicit {
+                self.mark_explicit_config_path(&path);
+            }
         }
     }
 
@@ -628,14 +752,6 @@ fn dotted_paths_overlap(left: &str, right: &str) -> bool {
         || right
             .strip_prefix(left)
             .is_some_and(|suffix| suffix.starts_with('.'))
-}
-
-fn value_at_dotted_path<'a>(value: &'a Value, dotted_path: &str) -> Option<&'a Value> {
-    let mut current = value;
-    for segment in dotted_path.split('.') {
-        current = current.as_object()?.get(segment)?;
-    }
-    Some(current)
 }
 
 impl Drop for MermaidConfig {
@@ -1108,6 +1224,31 @@ mod tests {
             "themeVariables.darkMode",
             "themeVariables.useGradient"
         ));
+    }
+
+    #[test]
+    fn explicit_ownership_uses_effective_assign_with_depth_paths() {
+        let mut config = MermaidConfig::from_value(json!({
+            "flowchart": {
+                "nodeSpacing": 50
+            },
+            "retainedScalar": "site"
+        }));
+
+        config.deep_merge_explicit(&json!({
+            "flowchart": {
+                "nodeSpacing": 50
+            },
+            "retainedScalar": {
+                "child": true
+            }
+        }));
+
+        assert!(config.explicit_config_owns_path("flowchart.nodeSpacing"));
+        assert!(config.explicit_config_owns_path("flowchart"));
+        assert!(config.explicit_config_owns_path("flowchart.nodeSpacing.unmaterializedDescendant"));
+        assert!(!config.explicit_config_owns_path("flowchart.rankSpacing"));
+        assert!(!config.explicit_config_owns_path("retainedScalar.child"));
     }
 
     #[test]

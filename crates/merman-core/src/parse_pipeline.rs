@@ -731,6 +731,7 @@ impl<'a> ParsePipeline<'a> {
             &pre.config,
             &mut effective_config,
         );
+        effective_config.mark_mutations_after_as_explicit(&config_before_detection);
         let overlay_application = self.apply_post_detection_config_overlay(
             &diagram_type,
             &effective_source_config,
@@ -801,6 +802,7 @@ impl<'a> ParsePipeline<'a> {
         let cached_effective_config = (!has_config_overrides).then(|| effective_config.clone());
         let config_before_detection = effective_config.clone();
         family::apply_diagram_type_config_effects(diagram_type, &pre.config, &mut effective_config);
+        effective_config.mark_mutations_after_as_explicit(&config_before_detection);
         let overlay_application = self.apply_post_detection_config_overlay(
             diagram_type,
             &effective_source_config,
@@ -925,7 +927,7 @@ impl<'a> ParsePipeline<'a> {
 
         let mut effective_config = self.engine.site_config.clone();
         let effective_overrides = effective_config.secure_filtered_overrides(overrides);
-        effective_config.deep_merge(effective_overrides.as_value());
+        effective_config.deep_merge_explicit(effective_overrides.as_value());
         (effective_config, effective_overrides)
     }
 
