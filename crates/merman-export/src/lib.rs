@@ -1374,6 +1374,28 @@ pub fn svg_to_png_controlled(
     prepare_raster_controlled(svg, options, control)?.encode_png()
 }
 
+/// Encodes a sealed SVG as PNG and returns the allocation plan used for the output pixmap.
+#[cfg(feature = "png")]
+pub fn svg_to_png_with_plan_controlled(
+    svg: &ResvgCompatibleSvg,
+    options: &RasterOptions,
+    control: OperationControl,
+) -> Result<(Vec<u8>, RasterPlan)> {
+    let prepared = prepare_raster_controlled(svg, options, control)?;
+    let plan = prepared.plan();
+    let bytes = prepared.encode_png()?;
+    Ok((bytes, plan))
+}
+
+/// Encodes a sealed SVG as PNG and returns its allocation plan using a fresh control.
+#[cfg(feature = "png")]
+pub fn svg_to_png_with_plan(
+    svg: &ResvgCompatibleSvg,
+    options: &RasterOptions,
+) -> Result<(Vec<u8>, RasterPlan)> {
+    svg_to_png_with_plan_controlled(svg, options, OperationControl::new())
+}
+
 #[cfg(feature = "jpeg")]
 pub fn svg_to_jpeg(svg: &ResvgCompatibleSvg, options: &RasterOptions) -> Result<Vec<u8>> {
     svg_to_jpeg_controlled(svg, options, OperationControl::new())
@@ -1387,6 +1409,28 @@ pub fn svg_to_jpeg_controlled(
     control: OperationControl,
 ) -> Result<Vec<u8>> {
     prepare_raster_controlled(svg, options, control)?.encode_jpeg()
+}
+
+/// Encodes a sealed SVG as JPEG and returns the allocation plan used for the output pixmap.
+#[cfg(feature = "jpeg")]
+pub fn svg_to_jpeg_with_plan_controlled(
+    svg: &ResvgCompatibleSvg,
+    options: &RasterOptions,
+    control: OperationControl,
+) -> Result<(Vec<u8>, RasterPlan)> {
+    let prepared = prepare_raster_controlled(svg, options, control)?;
+    let plan = prepared.plan();
+    let bytes = prepared.encode_jpeg()?;
+    Ok((bytes, plan))
+}
+
+/// Encodes a sealed SVG as JPEG and returns its allocation plan using a fresh control.
+#[cfg(feature = "jpeg")]
+pub fn svg_to_jpeg_with_plan(
+    svg: &ResvgCompatibleSvg,
+    options: &RasterOptions,
+) -> Result<(Vec<u8>, RasterPlan)> {
+    svg_to_jpeg_with_plan_controlled(svg, options, OperationControl::new())
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -1422,6 +1466,28 @@ pub fn svg_to_pdf_controlled(
     control: OperationControl,
 ) -> Result<Vec<u8>> {
     prepare_pdf_controlled(svg, options, control)?.encode()
+}
+
+/// Encodes a sealed SVG as PDF and returns the filter-image plan used by the encoder.
+#[cfg(feature = "pdf")]
+pub fn svg_to_pdf_with_plan_controlled(
+    svg: &ResvgCompatibleSvg,
+    options: &PdfOptions,
+    control: OperationControl,
+) -> Result<(Vec<u8>, PdfFilterImagePlan)> {
+    let prepared = prepare_pdf_controlled(svg, options, control)?;
+    let plan = prepared.filter_plan();
+    let bytes = prepared.encode()?;
+    Ok((bytes, plan))
+}
+
+/// Encodes a sealed SVG as PDF and returns its filter-image plan using a fresh control.
+#[cfg(feature = "pdf")]
+pub fn svg_to_pdf_with_plan(
+    svg: &ResvgCompatibleSvg,
+    options: &PdfOptions,
+) -> Result<(Vec<u8>, PdfFilterImagePlan)> {
+    svg_to_pdf_with_plan_controlled(svg, options, OperationControl::new())
 }
 
 #[cfg(feature = "pdf")]

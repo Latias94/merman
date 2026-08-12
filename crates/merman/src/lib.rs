@@ -143,6 +143,18 @@ pub mod render;
 pub use render::{
     RenderError, RenderOutput, RenderRequest, RenderTarget, Renderer, SemanticArtifact,
 };
+#[cfg(feature = "svg")]
+pub use render::SvgRequest;
+#[cfg(any(feature = "png", feature = "jpeg"))]
+pub use render::RasterOutput;
+#[cfg(feature = "ascii")]
+pub use render::AsciiRequest;
+#[cfg(feature = "png")]
+pub use render::PngRequest;
+#[cfg(feature = "jpeg")]
+pub use render::JpegRequest;
+#[cfg(feature = "pdf")]
+pub use render::{PdfOutput, PdfRequest};
 
 /// Error from the one-shot [`render_svg`] facade.
 ///

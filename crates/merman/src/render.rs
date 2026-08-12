@@ -182,6 +182,10 @@ pub enum RenderTarget {
     Semantic,
     #[cfg(feature = "svg")]
     Svg(SvgRequest),
+    #[cfg(feature = "svg")]
+    LayoutJson(SvgRequest),
+    #[cfg(feature = "svg")]
+    SvgPlan(SvgRequest),
     #[cfg(feature = "ascii")]
     Ascii(AsciiRequest),
     #[cfg(feature = "png")]
@@ -255,6 +259,20 @@ pub struct PdfRequest {
     pub options: merman_export::PdfOptions,
 }
 
+#[cfg(any(feature = "png", feature = "jpeg"))]
+#[derive(Debug, Clone)]
+pub struct RasterOutput {
+    pub bytes: Vec<u8>,
+    pub plan: merman_export::RasterPlan,
+}
+
+#[cfg(feature = "pdf")]
+#[derive(Debug, Clone)]
+pub struct PdfOutput {
+    pub bytes: Vec<u8>,
+    pub plan: merman_export::PdfFilterImagePlan,
+}
+
 /// One source-to-target request. The control is cloneable so a host can retain a handle and cancel
 /// the synchronous worker from another task or thread.
 #[derive(Debug, Clone)]
@@ -282,6 +300,28 @@ impl<'a> RenderRequest<'a> {
         Self {
             source,
             target: RenderTarget::Svg(request),
+            control,
+            parse_options: ParseOptions::default(),
+            resources: InputResourcePolicy::default(),
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    pub fn layout_json(source: &'a str, control: OperationControl, request: SvgRequest) -> Self {
+        Self {
+            source,
+            target: RenderTarget::LayoutJson(request),
+            control,
+            parse_options: ParseOptions::default(),
+            resources: InputResourcePolicy::default(),
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    pub fn svg_plan(source: &'a str, control: OperationControl, request: SvgRequest) -> Self {
+        Self {
+            source,
+            target: RenderTarget::SvgPlan(request),
             control,
             parse_options: ParseOptions::default(),
             resources: InputResourcePolicy::default(),
@@ -349,14 +389,18 @@ pub enum RenderOutput {
     Semantic(Option<SemanticArtifact>),
     #[cfg(feature = "svg")]
     Svg(Option<String>),
+    #[cfg(feature = "svg")]
+    LayoutJson(Option<serde_json::Value>),
+    #[cfg(feature = "svg")]
+    SvgPlan(Option<merman_render::family::RenderCapabilityPlan>),
     #[cfg(feature = "ascii")]
     Ascii(Option<String>),
     #[cfg(feature = "png")]
-    Png(Option<Vec<u8>>),
+    Png(Option<RasterOutput>),
     #[cfg(feature = "jpeg")]
-    Jpeg(Option<Vec<u8>>),
+    Jpeg(Option<RasterOutput>),
     #[cfg(feature = "pdf")]
-    Pdf(Option<Vec<u8>>),
+    Pdf(Option<PdfOutput>),
 }
 
 /// Long-lived renderer defaults and host-independent engine configuration.
@@ -451,12 +495,29 @@ impl Renderer {
 }
 
 impl SemanticArtifact {
+    /// Returns Mermaid's compatibility semantic JSON projection without exposing family internals.
+    #[cfg(feature = "svg")]
+    pub fn compatibility_json(&self) -> Result<serde_json::Value, RenderError> {
+        self.parsed
+            .model()
+            .compatibility_json(self.parsed.metadata())
+            .map_err(RenderError::Parse)
+    }
+
     /// Consumes this operation-owned semantic artifact into one typed output target.
     pub fn render(self, target: RenderTarget) -> Result<RenderOutput, RenderError> {
         match target {
             RenderTarget::Semantic => Ok(RenderOutput::Semantic(Some(self))),
             #[cfg(feature = "svg")]
             RenderTarget::Svg(request) => render_svg_target(self, request).map(RenderOutput::Svg),
+            #[cfg(feature = "svg")]
+            RenderTarget::LayoutJson(request) => {
+                render_layout_json_target(self, request).map(RenderOutput::LayoutJson)
+            }
+            #[cfg(feature = "svg")]
+            RenderTarget::SvgPlan(request) => {
+                render_svg_plan_target(self, request).map(RenderOutput::SvgPlan)
+            }
             #[cfg(feature = "ascii")]
             RenderTarget::Ascii(request) => {
                 render_ascii_target(self, request).map(RenderOutput::Ascii)
@@ -479,6 +540,10 @@ impl RenderOutput {
             RenderTarget::Semantic => Self::Semantic(None),
             #[cfg(feature = "svg")]
             RenderTarget::Svg(_) => Self::Svg(None),
+            #[cfg(feature = "svg")]
+            RenderTarget::LayoutJson(_) => Self::LayoutJson(None),
+            #[cfg(feature = "svg")]
+            RenderTarget::SvgPlan(_) => Self::SvgPlan(None),
             #[cfg(feature = "ascii")]
             RenderTarget::Ascii(_) => Self::Ascii(None),
             #[cfg(feature = "png")]
@@ -516,6 +581,39 @@ fn render_svg_target(
     };
     let (svg, _, _, _) = rendered.into_parts();
     Ok(Some(svg))
+}
+
+#[cfg(feature = "svg")]
+fn render_layout_json_target(
+    semantic: SemanticArtifact,
+    request: SvgRequest,
+) -> Result<Option<serde_json::Value>, RenderError> {
+    let (parsed, operation) = semantic.into_parts();
+    let session = request
+        .environment
+        .begin_session_in_context(operation.context, operation.control);
+    let artifact = merman_render::family::prepare_with_render_policy(
+        parsed,
+        &request.layout,
+        session,
+        request.presentation,
+    )
+    .map_err(map_svg_error)?;
+    artifact.layout_json().map(Some).map_err(map_svg_error)
+}
+
+#[cfg(feature = "svg")]
+fn render_svg_plan_target(
+    semantic: SemanticArtifact,
+    request: SvgRequest,
+) -> Result<Option<merman_render::family::RenderCapabilityPlan>, RenderError> {
+    let (parsed, operation) = semantic.into_parts();
+    let session = request
+        .environment
+        .begin_session_in_context(operation.context, operation.control);
+    merman_render::family::plan_render_with_policy(&parsed, &session, request.presentation)
+        .map(Some)
+        .map_err(map_svg_error)
 }
 
 #[cfg(feature = "svg")]
@@ -569,12 +667,12 @@ fn render_ascii_target(
 fn render_png_target(
     semantic: SemanticArtifact,
     request: PngRequest,
-) -> Result<Option<Vec<u8>>, RenderError> {
+) -> Result<Option<RasterOutput>, RenderError> {
     let Some((svg, operation)) = prepare_resvg_target(semantic, &request.svg)? else {
         unreachable!("semantic artifact always produces a sealed SVG or an error")
     };
-    merman_export::svg_to_png_controlled(&svg, &request.options, operation.control)
-        .map(Some)
+    merman_export::svg_to_png_with_plan_controlled(&svg, &request.options, operation.control)
+        .map(|(bytes, plan)| Some(RasterOutput { bytes, plan }))
         .map_err(map_export_error)
 }
 
@@ -582,12 +680,12 @@ fn render_png_target(
 fn render_jpeg_target(
     semantic: SemanticArtifact,
     request: JpegRequest,
-) -> Result<Option<Vec<u8>>, RenderError> {
+) -> Result<Option<RasterOutput>, RenderError> {
     let Some((svg, operation)) = prepare_resvg_target(semantic, &request.svg)? else {
         unreachable!("semantic artifact always produces a sealed SVG or an error")
     };
-    merman_export::svg_to_jpeg_controlled(&svg, &request.options, operation.control)
-        .map(Some)
+    merman_export::svg_to_jpeg_with_plan_controlled(&svg, &request.options, operation.control)
+        .map(|(bytes, plan)| Some(RasterOutput { bytes, plan }))
         .map_err(map_export_error)
 }
 
@@ -595,11 +693,11 @@ fn render_jpeg_target(
 fn render_pdf_target(
     semantic: SemanticArtifact,
     request: PdfRequest,
-) -> Result<Option<Vec<u8>>, RenderError> {
+) -> Result<Option<PdfOutput>, RenderError> {
     let Some((svg, operation)) = prepare_resvg_target(semantic, &request.svg)? else {
         unreachable!("semantic artifact always produces a sealed SVG or an error")
     };
-    merman_export::svg_to_pdf_controlled(&svg, &request.options, operation.control)
-        .map(Some)
+    merman_export::svg_to_pdf_with_plan_controlled(&svg, &request.options, operation.control)
+        .map(|(bytes, plan)| Some(PdfOutput { bytes, plan }))
         .map_err(map_export_error)
 }

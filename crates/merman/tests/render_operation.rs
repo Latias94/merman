@@ -63,3 +63,77 @@ fn prepare_semantic_delegates_to_the_same_runner() {
         "info"
     );
 }
+
+#[cfg(feature = "svg")]
+#[test]
+fn typed_svg_targets_share_the_prepared_operation() {
+    let renderer = Renderer::new();
+    let source = "flowchart TD\nA[Start] --> B[Done]";
+
+    let layout = renderer
+        .render(RenderRequest::layout_json(
+            source,
+            OperationControl::new(),
+            merman::SvgRequest::default(),
+        ))
+        .expect("layout target should succeed");
+    let RenderOutput::LayoutJson(Some(layout)) = layout else {
+        panic!("expected typed layout JSON");
+    };
+    assert!(layout.get("layout").is_some());
+
+    let plan = renderer
+        .render(RenderRequest::svg_plan(
+            source,
+            OperationControl::new(),
+            merman::SvgRequest::default(),
+        ))
+        .expect("SVG plan target should succeed");
+    let RenderOutput::SvgPlan(Some(plan)) = plan else {
+        panic!("expected typed SVG capability plan");
+    };
+    assert!(plan.is_ready());
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn semantic_artifact_exposes_compatibility_json_without_family_types() {
+    let artifact = Renderer::new()
+        .prepare_semantic("flowchart TD\nA --> B", OperationControl::new())
+        .expect("parse should succeed")
+        .expect("diagram should be detected");
+    let json = artifact
+        .compatibility_json()
+        .expect("compatibility JSON should be projected");
+    assert_eq!(json["type"], "flowchart-v2");
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn svg_request_cancellation_is_not_reported_as_a_resource_limit() {
+    let control = OperationControl::new();
+    control.cancel();
+    let error = Renderer::new()
+        .render(RenderRequest::svg(
+            "flowchart TD\nA --> B",
+            control,
+            merman::SvgRequest::default(),
+        ))
+        .expect_err("cancelled SVG request must stop");
+    assert!(matches!(error, RenderError::Cancelled(_)));
+}
+
+#[cfg(feature = "ascii")]
+#[test]
+fn ascii_request_uses_target_local_grid_policy_and_common_cancellation() {
+    let control = OperationControl::new();
+    control.cancel();
+    let error = Renderer::new()
+        .render(RenderRequest::ascii(
+            "flowchart TD\nA --> B",
+            control,
+            merman::AsciiRequest::default(),
+        ))
+        .expect_err("cancelled ASCII request must stop");
+    assert!(matches!(error, RenderError::Cancelled(_)));
+}
