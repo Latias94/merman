@@ -659,62 +659,99 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_projection_rejects_n_minus_one_before_production_materialization() {
+    fn flowchart_projection_admits_exact_and_rejects_n_minus_one_before_edge_label_allocation() {
         const PRIOR_WORK: usize = 11;
+        const PRIOR_DOCUMENT_CELLS: usize = 2;
+        const EXPECTED_LAYOUT_WORK: usize = 208;
+        const EXPECTED_DOCUMENT_CELLS: usize = 9;
+        const EXPECTED_OUTPUT_BYTES: usize = 8;
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
-        let options = AsciiRenderOptions::default().with_resource_policy(unbounded);
         let mut edge = flow_edge("A", "B");
         edge.label = Some("  边\u{7}  ".to_string());
         let mut model = model_with_edge(edge);
         model.nodes[0].label = Some("节点".to_string());
         model.nodes[1].label = Some("🧭".to_string());
 
-        let mut measuring_resources = ResourceContext::new(unbounded);
-        measuring_resources
-            .charge_layout_work(PRIOR_WORK)
-            .expect("prior layout work should fit the measuring policy");
-        from_flowchart_model_impl(&model, &options, &mut measuring_resources, || {})
-            .expect("unbounded policy should render the projection fixture");
-        let exact_work = measuring_resources.layout_work_used();
+        let exact_limits = [
+            (
+                AsciiResourceLimitId::MaxLayoutWorkUnits,
+                EXPECTED_LAYOUT_WORK,
+                "layout work",
+            ),
+            (
+                AsciiResourceLimitId::MaxDocumentCells,
+                EXPECTED_DOCUMENT_CELLS,
+                "document cells",
+            ),
+            (
+                AsciiResourceLimitId::MaxOutputBytes,
+                EXPECTED_OUTPUT_BYTES,
+                "output bytes",
+            ),
+        ];
+        for &(limit, exact, description) in &exact_limits {
+            let exact_policy = unbounded
+                .with_limit(limit, exact)
+                .expect("exact projection limit should be valid");
+            let exact_options = AsciiRenderOptions::default().with_resource_policy(exact_policy);
+            let mut exact_resources = ResourceContext::new(exact_policy);
+            exact_resources
+                .charge_layout_work(PRIOR_WORK)
+                .expect("prior layout work should fit the exact policy");
+            exact_resources
+                .charge_document_cells(PRIOR_DOCUMENT_CELLS)
+                .expect("prior document cells should fit the exact policy");
+            let exact_materialized = Cell::new(false);
+            from_flowchart_model_impl(&model, &exact_options, &mut exact_resources, || {
+                exact_materialized.set(true)
+            })
+            .unwrap_or_else(|error| panic!("exact {description} limit should admit: {error:?}"));
+            assert!(
+                exact_materialized.get(),
+                "exact {description} limit should reach allocation"
+            );
+            assert_eq!(exact_resources.layout_work_used(), EXPECTED_LAYOUT_WORK);
+            assert_eq!(
+                exact_resources.document_cells_used(),
+                EXPECTED_DOCUMENT_CELLS
+            );
+        }
 
-        let exact_policy = unbounded
-            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work)
-            .expect("measured projection work limit should be valid");
-        let exact_options = AsciiRenderOptions::default().with_resource_policy(exact_policy);
-        let mut exact_resources = ResourceContext::new(exact_policy);
-        exact_resources
-            .charge_layout_work(PRIOR_WORK)
-            .expect("prior layout work should fit the exact policy");
-        let exact_materialized = Cell::new(false);
-        from_flowchart_model_impl(&model, &exact_options, &mut exact_resources, || {
-            exact_materialized.set(true)
-        })
-        .expect("exact production work should permit projection materialization");
-        assert!(exact_materialized.get());
-        assert_eq!(exact_resources.layout_work_used(), exact_work);
+        for &(limit, exact, description) in &exact_limits {
+            let below_policy = unbounded
+                .with_limit(limit, exact - 1)
+                .expect("max-minus-one projection limit should be valid");
+            let below_options = AsciiRenderOptions::default().with_resource_policy(below_policy);
+            let mut below_resources = ResourceContext::new(below_policy);
+            below_resources
+                .charge_layout_work(PRIOR_WORK)
+                .expect("prior layout work should fit below the combined boundary");
+            below_resources
+                .charge_document_cells(PRIOR_DOCUMENT_CELLS)
+                .expect("prior document cells should fit below the combined boundary");
+            let below_materialized = Cell::new(false);
+            let error = match from_flowchart_model_impl(
+                &model,
+                &below_options,
+                &mut below_resources,
+                || below_materialized.set(true),
+            ) {
+                Ok(_) => panic!("max-minus-one {description} limit unexpectedly admitted"),
+                Err(error) => error,
+            };
 
-        let below_policy = unbounded
-            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
-            .expect("max-minus-one projection work limit should be valid");
-        let below_options = AsciiRenderOptions::default().with_resource_policy(below_policy);
-        let mut below_resources = ResourceContext::new(below_policy);
-        below_resources
-            .charge_layout_work(PRIOR_WORK)
-            .expect("prior layout work should fit below the combined boundary");
-        let below_materialized = Cell::new(false);
-        let error = from_flowchart_model_impl(&model, &below_options, &mut below_resources, || {
-            below_materialized.set(true)
-        })
-        .expect_err("max-minus-one work should fail before production materialization");
-
-        assert!(!below_materialized.get());
-        assert!(matches!(
-            error,
-            AsciiError::ResourceLimitExceeded(details)
-                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
-                    && details.actual == exact_work
-                    && details.max == exact_work - 1
-        ));
+            assert!(
+                !below_materialized.get(),
+                "{description} rejection must precede allocation"
+            );
+            assert!(matches!(
+                error,
+                AsciiError::ResourceLimitExceeded(details)
+                    if details.limit == limit
+                        && details.max == exact - 1
+                        && details.actual == exact
+            ));
+        }
     }
 
     #[test]
