@@ -691,7 +691,7 @@ public protocol MermanProtocol: AnyObject, Sendable {
     func svgPlanJson(source: String, optionsJson: String?) throws  -> String
 
     /**
-     * Returns the typed theme catalog projected to this native artifact.
+     * Returns the versioned theme catalog JSON projected to this native artifact.
      */
     func themeCatalogJson() throws  -> String
 
@@ -1041,7 +1041,7 @@ open func svgPlanJson(source: String, optionsJson: String?)throws  -> String  {
 }
 
     /**
-     * Returns the typed theme catalog projected to this native artifact.
+     * Returns the versioned theme catalog JSON projected to this native artifact.
      */
 open func themeCatalogJson()throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
@@ -2933,6 +2933,7 @@ public func FfiConverterTypeMermanRasterOutputPlan_lower(_ value: MermanRasterOu
 
 
 public struct MermanResourceErrorDetails: Equatable, Hashable {
+    public var cause: String
     public var limitId: String
     public var phase: String
     public var actual: UInt64
@@ -2941,7 +2942,8 @@ public struct MermanResourceErrorDetails: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(limitId: String, phase: String, actual: UInt64, max: UInt64, profile: String) {
+    public init(cause: String, limitId: String, phase: String, actual: UInt64, max: UInt64, profile: String) {
+        self.cause = cause
         self.limitId = limitId
         self.phase = phase
         self.actual = actual
@@ -2965,6 +2967,7 @@ public struct FfiConverterTypeMermanResourceErrorDetails: FfiConverterRustBuffer
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MermanResourceErrorDetails {
         return
             try MermanResourceErrorDetails(
+                cause: FfiConverterString.read(from: &buf),
                 limitId: FfiConverterString.read(from: &buf),
                 phase: FfiConverterString.read(from: &buf),
                 actual: FfiConverterUInt64.read(from: &buf),
@@ -2974,6 +2977,7 @@ public struct FfiConverterTypeMermanResourceErrorDetails: FfiConverterRustBuffer
     }
 
     public static func write(_ value: MermanResourceErrorDetails, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.cause, into: &buf)
         FfiConverterString.write(value.limitId, into: &buf)
         FfiConverterString.write(value.phase, into: &buf)
         FfiConverterUInt64.write(value.actual, into: &buf)
@@ -3476,6 +3480,7 @@ public enum MermanResourceOverrideId: Equatable, Hashable {
     case maxModelTextBytes
     case maxModelNestingDepth
     case maxLayoutWorkUnits
+    case maxPreparedTextRetainedBytes
     case maxSvgBytes
     case maxSvgElements
     case maxDocumentDiagrams
@@ -3519,29 +3524,31 @@ public struct FfiConverterTypeMermanResourceOverrideId: FfiConverterRustBuffer {
 
         case 5: return .maxLayoutWorkUnits
 
-        case 6: return .maxSvgBytes
+        case 6: return .maxPreparedTextRetainedBytes
 
-        case 7: return .maxSvgElements
+        case 7: return .maxSvgBytes
 
-        case 8: return .maxDocumentDiagrams
+        case 8: return .maxSvgElements
 
-        case 9: return .maxAsciiGridCells
+        case 9: return .maxDocumentDiagrams
 
-        case 10: return .maxRasterWidth
+        case 10: return .maxAsciiGridCells
 
-        case 11: return .maxRasterHeight
+        case 11: return .maxRasterWidth
 
-        case 12: return .maxRasterPixels
+        case 12: return .maxRasterHeight
 
-        case 13: return .maxEmbeddedImageBytes
+        case 13: return .maxRasterPixels
 
-        case 14: return .maxTotalEmbeddedImageBytes
+        case 14: return .maxEmbeddedImageBytes
 
-        case 15: return .maxEmbeddedImagePixels
+        case 15: return .maxTotalEmbeddedImageBytes
 
-        case 16: return .maxTotalEmbeddedImagePixels
+        case 16: return .maxEmbeddedImagePixels
 
-        case 17: return .maxPdfFilterImagePixels
+        case 17: return .maxTotalEmbeddedImagePixels
+
+        case 18: return .maxPdfFilterImagePixels
 
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -3571,52 +3578,56 @@ public struct FfiConverterTypeMermanResourceOverrideId: FfiConverterRustBuffer {
             writeInt(&buf, Int32(5))
 
 
-        case .maxSvgBytes:
+        case .maxPreparedTextRetainedBytes:
             writeInt(&buf, Int32(6))
 
 
-        case .maxSvgElements:
+        case .maxSvgBytes:
             writeInt(&buf, Int32(7))
 
 
-        case .maxDocumentDiagrams:
+        case .maxSvgElements:
             writeInt(&buf, Int32(8))
 
 
-        case .maxAsciiGridCells:
+        case .maxDocumentDiagrams:
             writeInt(&buf, Int32(9))
 
 
-        case .maxRasterWidth:
+        case .maxAsciiGridCells:
             writeInt(&buf, Int32(10))
 
 
-        case .maxRasterHeight:
+        case .maxRasterWidth:
             writeInt(&buf, Int32(11))
 
 
-        case .maxRasterPixels:
+        case .maxRasterHeight:
             writeInt(&buf, Int32(12))
 
 
-        case .maxEmbeddedImageBytes:
+        case .maxRasterPixels:
             writeInt(&buf, Int32(13))
 
 
-        case .maxTotalEmbeddedImageBytes:
+        case .maxEmbeddedImageBytes:
             writeInt(&buf, Int32(14))
 
 
-        case .maxEmbeddedImagePixels:
+        case .maxTotalEmbeddedImageBytes:
             writeInt(&buf, Int32(15))
 
 
-        case .maxTotalEmbeddedImagePixels:
+        case .maxEmbeddedImagePixels:
             writeInt(&buf, Int32(16))
 
 
-        case .maxPdfFilterImagePixels:
+        case .maxTotalEmbeddedImagePixels:
             writeInt(&buf, Int32(17))
+
+
+        case .maxPdfFilterImagePixels:
+            writeInt(&buf, Int32(18))
 
         }
     }
@@ -4812,7 +4823,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_merman_svg_plan_json() != 24509) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_merman_uniffi_checksum_method_merman_theme_catalog_json() != 65164) {
+    if (uniffi_merman_uniffi_checksum_method_merman_theme_catalog_json() != 8081) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_merman_validate() != 18871) {

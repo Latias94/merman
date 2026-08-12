@@ -134,9 +134,9 @@ member is invalid.
 Use `theme.spec` for a complete typed recipe. The supported top-level sections are `mermaid`,
 `typography`, `styles`, `canvas`, `effects`, `requirements`, and `assets`. Binding JSON rejects
 unknown fields and unsupported enum values. `theme.spec.mermaid` accepts only the bounded Mermaid
-compatibility values (`default`, `forest`, `dark`, `neutral`, or `base`) plus scalar string,
-number, and boolean variables; renderer selection, `look`, layout, raw CSS, and output policy stay
-outside this section.
+compatibility values (`default`, `forest`, `dark`, `neutral`, `base`, `neo`, `neo-dark`, `redux`,
+`redux-dark`, `redux-color`, or `redux-dark-color`) plus scalar string, number, and boolean
+variables; renderer selection, `look`, layout, raw CSS, and output policy stay outside this section.
 
 ```json
 {

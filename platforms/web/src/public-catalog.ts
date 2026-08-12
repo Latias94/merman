@@ -110,6 +110,7 @@ export type BindingErrorKind =
 export type BindingResourceCount = number | string;
 
 export interface BindingResourceErrorDetails {
+  cause: string;
   limit_id: string;
   phase: string;
   actual: BindingResourceCount;
@@ -303,6 +304,7 @@ export function isBindingErrorPayload(error: unknown): error is BindingErrorPayl
     payload.details === undefined ||
     (!!resource &&
       typeof resource === "object" &&
+      typeof (resource as Record<string, unknown>).cause === "string" &&
       typeof (resource as Record<string, unknown>).limit_id === "string" &&
       typeof (resource as Record<string, unknown>).phase === "string" &&
       isBindingResourceCount((resource as Record<string, unknown>).actual) &&

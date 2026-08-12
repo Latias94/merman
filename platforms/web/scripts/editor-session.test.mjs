@@ -1178,6 +1178,25 @@ test("resource options preserve wrapper placement and stricter caller limits", (
   );
 });
 
+test("resource options preserve a caller profile stricter than the transport ceiling", () => {
+  const ceiling = { profile: "interactive" };
+
+  assert.deepEqual(
+    webApi.withResourceOptions(
+      { resources: { profile: "constrained" } },
+      ceiling,
+    ),
+    { resources: { profile: "constrained" } },
+  );
+  assert.deepEqual(
+    webApi.withResourceOptions(
+      { analysis: { resources: { profile: "constrained" } } },
+      ceiling,
+    ),
+    { analysis: { resources: { profile: "constrained" } } },
+  );
+});
+
 test("resource options retain ceiling overrides while tightening another limit", () => {
   const resources = {
     profile: "constrained",

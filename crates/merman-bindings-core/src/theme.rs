@@ -33,7 +33,20 @@ struct BindingThemeInputProbe<'a> {
 }
 
 /// Checks the exact encoded theme slice before Serde allocates the typed theme graph.
+#[cfg(test)]
 pub(crate) fn validate_theme_input_json(options_json: &[u8]) -> Result<(), BindingError> {
+    let compiler =
+        DiagramThemeCompiler::new().with_resource_policy(ThemeResourcePolicy::for_profile(
+            merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
+        ));
+    validate_theme_input_json_with(&compiler, options_json)
+}
+
+/// Checks the exact encoded theme slice against a caller-owned host ceiling.
+pub(crate) fn validate_theme_input_json_with(
+    compiler: &DiagramThemeCompiler,
+    options_json: &[u8],
+) -> Result<(), BindingError> {
     if options_json.is_empty() {
         return Ok(());
     }
@@ -47,14 +60,18 @@ pub(crate) fn validate_theme_input_json(options_json: &[u8]) -> Result<(), Bindi
     let Some(theme) = probe.theme else {
         return Ok(());
     };
-    DiagramThemeCompiler::new()
+    compiler
         .check_encoded_input_bytes(theme.get().len())
         .map_err(theme_resource_error)
 }
 
 /// Compiles one exact `{"preset": ...}` or `{"spec": ...}` selection with default host policy.
 pub fn compile_theme_selection_json(bytes: &[u8]) -> Result<DiagramTheme, BindingError> {
-    compile_theme_selection_json_with(&DiagramThemeCompiler::new(), bytes)
+    let compiler =
+        DiagramThemeCompiler::new().with_resource_policy(ThemeResourcePolicy::for_profile(
+            merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
+        ));
+    compile_theme_selection_json_with(&compiler, bytes)
 }
 
 /// Compiles one exact theme selection with a caller-owned compiler policy.
@@ -1589,12 +1606,16 @@ fn theme_compile_error(error: merman::svg::ThemeCompileError) -> BindingError {
 fn theme_resource_error(error: merman::svg::ThemeResourceLimitExceeded) -> BindingError {
     let actual = u64::try_from(error.actual).unwrap_or(u64::MAX);
     let max = u64::try_from(error.max).unwrap_or(u64::MAX);
+    let profile = error
+        .profile
+        .map(merman::resources::ResourceProfile::id)
+        .unwrap_or("custom-theme-policy");
     BindingError::resource_limit(
         error.phase.as_str(),
         error.limit,
         actual,
         max,
-        "binding-theme",
+        profile,
         error.to_string(),
     )
 }
@@ -1863,7 +1884,7 @@ mod tests {
         assert_eq!(details.phase, "theme_input");
         assert_eq!(details.max, u64::try_from(max).unwrap());
         assert!(details.actual > details.max);
-        assert_eq!(details.profile, "binding-theme");
+        assert_eq!(details.profile, "interactive");
     }
 
     #[test]

@@ -211,6 +211,9 @@ const requiredTypePropertyTypes = [
   ["AnalysisResult", "version", "1"],
   ["AnalysisFactsResult", "version", "1"],
 ];
+const requiredTypePropertyAnnotations = [
+  ["MermaidThemeCompatibility", "theme", "ThemeName"],
+];
 
 let failed = false;
 failed ||= reportMissing(
@@ -402,6 +405,18 @@ for (const [interfaceName, propertyName, expectedType] of requiredTypePropertyTy
   );
   failed ||= reportPolicyFailure(
     `check-contracts: ${interfaceName}.${propertyName} must use type ${expectedType}`,
+    actualType !== expectedType,
+  );
+}
+
+for (const [interfaceName, propertyName, expectedType] of requiredTypePropertyAnnotations) {
+  const actualType = contract.exportedTypePropertyAnnotationText(
+    publicEntry,
+    interfaceName,
+    propertyName,
+  );
+  failed ||= reportPolicyFailure(
+    `check-contracts: ${interfaceName}.${propertyName} must reference ${expectedType}`,
     actualType !== expectedType,
   );
 }

@@ -79,6 +79,7 @@ than translated implicitly.
       "max_model_text_bytes": 2097152,
       "max_model_nesting_depth": 256,
       "max_layout_work_units": 800000,
+      "max_prepared_text_retained_bytes": 25165824,
       "max_svg_elements": 250000,
       "max_svg_bytes": 25165824,
       "max_document_diagrams": 256,
@@ -287,7 +288,7 @@ profile.
 
 | Field | Purpose |
 | --- | --- |
-| `mermaid` | Bounded Mermaid compatibility: `theme` (`default`, `forest`, `dark`, `neutral`, or `base`), `dark_mode`, and scalar `variables`. |
+| `mermaid` | Bounded Mermaid compatibility: `theme` (`default`, `forest`, `dark`, `neutral`, `base`, `neo`, `neo-dark`, `redux`, `redux-dark`, `redux-color`, or `redux-dark-color`), `dark_mode`, and scalar `variables`. |
 | `typography` | Default and family-specific text styles. |
 | `styles` | Tagged semantic rules and ordinal palettes. `null` inside a style patch explicitly clears that property. |
 | `canvas` | Base paint, bounded layers, and bleed. |
@@ -469,6 +470,7 @@ per-request tightening use the same contract as semantic and SVG limits.
 | `resources.limits.max_model_text_bytes` | positive integer | profile value | Aggregate UTF-8 text retained by the typed semantic model. |
 | `resources.limits.max_model_nesting_depth` | positive integer | profile value | Maximum semantic nesting depth before layout. |
 | `resources.limits.max_layout_work_units` | positive integer | profile value | Deterministic family-accounted derived geometry and layout candidate work. |
+| `resources.limits.max_prepared_text_retained_bytes` | positive integer | profile value | Maximum operation-local bytes retained by prepared-text artifacts. |
 | `resources.limits.max_svg_bytes` | positive integer | profile value | SVG bytes checked after emission and after postprocessing. |
 | `resources.limits.max_svg_elements` | positive integer | profile value | SVG element cardinality checked before recursive postprocessing. |
 | `resources.limits.max_ascii_grid_cells` | positive integer | profile value | Terminal grid cells allocated by graph-like ASCII layout. |
@@ -481,7 +483,7 @@ per-request tightening use the same contract as semantic and SVG limits.
 | `resources.limits.max_total_embedded_image_pixels` | positive integer | profile value | Maximum aggregate intrinsic pixels across embedded raster images. |
 | `resources.limits.max_pdf_filter_image_pixels` | positive integer | profile value | Maximum retained pixel area for PDF filter-image rasterization after deterministic downsampling. |
 
-The seven render/model limits are intentionally family-neutral. Each family performs source-backed,
+The eight render/model limits are intentionally family-neutral. Each family performs source-backed,
 deterministic accounting for its own nodes, relationships, nesting, synthesized geometry, and
 candidate scans, then charges those values to the shared model and layout budgets. Hosts therefore
 choose a workload profile instead of maintaining diagram-specific threshold tables.

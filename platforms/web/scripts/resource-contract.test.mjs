@@ -34,6 +34,34 @@ test("interactive resource tightening accepts the generated Rust layout-work cei
   );
 });
 
+test("resource tightening preserves an explicitly stricter profile", async () => {
+  const contract = await loadGeneratedContract();
+
+  assert.deepEqual(
+    contract.tightenResourceOptions(
+      { profile: "interactive" },
+      { profile: "constrained" },
+    ),
+    { profile: "constrained" },
+  );
+});
+
+test("resource tightening rejects a looser profile hidden by generic overrides", async () => {
+  const contract = await loadGeneratedContract();
+  const smallestGenericLimits = Object.fromEntries(
+    contract.RESOURCE_OVERRIDE_IDS.map((id) => [id, 1]),
+  );
+
+  assert.throws(
+    () =>
+      contract.tightenResourceOptions(
+        { profile: "constrained" },
+        { profile: "interactive", limits: smallestGenericLimits },
+      ),
+    /ceiling profile: requested interactive, ceiling constrained/,
+  );
+});
+
 async function loadGeneratedContract() {
   const source = readFileSync(generatedSource, "utf8");
   const javascript = ts.transpileModule(source, {

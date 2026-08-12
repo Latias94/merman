@@ -1,8 +1,14 @@
 use serde::Deserialize;
 use serde::Serialize;
 use serde::Serializer;
+#[cfg(feature = "svg")]
+use serde::de::{IgnoredAny, MapAccess, Visitor};
+#[cfg(feature = "svg")]
+use serde_json::value::RawValue;
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
+#[cfg(feature = "svg")]
+use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -584,6 +590,8 @@ pub(crate) struct ResourceOptionsJson {
 pub(crate) struct BaseBindingOptions {
     normalized_wire: Arc<Value>,
     resource_ceiling: ResourceOptionsJson,
+    #[cfg(feature = "svg")]
+    theme_resource_ceiling: merman::svg::ThemeResourcePolicy,
 }
 
 #[cfg(feature = "svg")]
@@ -602,6 +610,8 @@ pub(crate) enum BindingRequestOverlay {
         requested_resources: Option<ResourceOptionsJson>,
         #[cfg(feature = "svg")]
         theme: BindingThemeOverlay,
+        #[cfg(feature = "svg")]
+        theme_resources: merman::svg::ThemeResourcePolicy,
     },
 }
 
@@ -895,9 +905,16 @@ fn parse_base_options_for_contract(
     bytes: &[u8],
     artifact_contract: &ValidatedArtifactContract,
 ) -> Result<(BindingOptions, BaseBindingOptions), BindingError> {
+    #[cfg(feature = "svg")]
+    let wire = options_json_value_with_theme_ceiling(bytes, None)?;
+    #[cfg(not(feature = "svg"))]
     let wire = options_json_value(bytes)?;
     let typed = parse_options_value_for_contract(&wire, artifact_contract)?;
     let resource_ceiling = typed.analysis.resources.clone().unwrap_or_default();
+    #[cfg(feature = "svg")]
+    let theme_resource_ceiling = merman::svg::ThemeResourcePolicy::for_profile(
+        binding_resource_profile(typed.analysis.resources.as_ref())?,
+    );
     let normalized_wire = normalize_analysis_wrapper(wire);
     #[cfg(feature = "svg")]
     let normalized_wire = {
@@ -913,6 +930,8 @@ fn parse_base_options_for_contract(
         BaseBindingOptions {
             normalized_wire: Arc::new(normalized_wire),
             resource_ceiling,
+            #[cfg(feature = "svg")]
+            theme_resource_ceiling,
         },
     ))
 }
@@ -1071,10 +1090,16 @@ pub(crate) fn parse_request_overlay(
     request_options_json: &[u8],
     resource_scope: BindingResourceScope,
 ) -> Result<BindingRequestOverlay, BindingError> {
+    #[cfg(feature = "svg")]
+    let theme_resource_ceiling = merman::svg::ThemeResourcePolicy::for_profile(
+        merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
+    );
     parse_request_overlay_for_contract(
         request_options_json,
         resource_scope,
         &DEFAULT_ARTIFACT_SNAPSHOT,
+        #[cfg(feature = "svg")]
+        &theme_resource_ceiling,
     )
 }
 
@@ -1082,15 +1107,27 @@ pub(crate) fn parse_request_overlay_for_artifact(
     request_options_json: &[u8],
     resource_scope: BindingResourceScope,
     artifact_contract: &ValidatedArtifactContract,
+    #[cfg(feature = "svg")] theme_resource_ceiling: &merman::svg::ThemeResourcePolicy,
 ) -> Result<BindingRequestOverlay, BindingError> {
-    parse_request_overlay_for_contract(request_options_json, resource_scope, artifact_contract)
+    parse_request_overlay_for_contract(
+        request_options_json,
+        resource_scope,
+        artifact_contract,
+        #[cfg(feature = "svg")]
+        theme_resource_ceiling,
+    )
 }
 
 fn parse_request_overlay_for_contract(
     request_options_json: &[u8],
     resource_scope: BindingResourceScope,
     artifact_contract: &ValidatedArtifactContract,
+    #[cfg(feature = "svg")] theme_resource_ceiling: &merman::svg::ThemeResourcePolicy,
 ) -> Result<BindingRequestOverlay, BindingError> {
+    #[cfg(feature = "svg")]
+    let request_value =
+        options_json_value_with_theme_ceiling(request_options_json, Some(theme_resource_ceiling))?;
+    #[cfg(not(feature = "svg"))]
     let request_value = options_json_value(request_options_json)?;
     if is_unchanged_request(&request_value) {
         return Ok(BindingRequestOverlay::Unchanged);
@@ -1118,11 +1155,16 @@ fn parse_request_overlay_for_contract(
         });
     let mut normalized_wire = normalize_analysis_wrapper(request_value);
     let requested_resources = take_request_resource_options(&mut normalized_wire, resource_scope)?;
+    #[cfg(feature = "svg")]
+    let theme_resources =
+        restrict_theme_resource_policy(theme_resource_ceiling, requested_resources.as_ref())?;
     Ok(BindingRequestOverlay::Override {
         normalized_wire,
         requested_resources,
         #[cfg(feature = "svg")]
         theme,
+        #[cfg(feature = "svg")]
+        theme_resources,
     })
 }
 
@@ -1134,9 +1176,25 @@ impl BindingRequestOverlay {
             Self::Override { theme, .. } => *theme,
         }
     }
+
+    pub(crate) fn theme_resource_policy(&self) -> &merman::svg::ThemeResourcePolicy {
+        match self {
+            Self::Unchanged => {
+                unreachable!("unchanged request overlays borrow the base theme policy")
+            }
+            Self::Override {
+                theme_resources, ..
+            } => theme_resources,
+        }
+    }
 }
 
 impl BaseBindingOptions {
+    #[cfg(feature = "svg")]
+    pub(crate) fn theme_resource_policy(&self) -> &merman::svg::ThemeResourcePolicy {
+        &self.theme_resource_ceiling
+    }
+
     pub(crate) fn validate_unchanged_request(
         &self,
         artifact_contract: &ValidatedArtifactContract,
@@ -1154,6 +1212,8 @@ impl BaseBindingOptions {
             requested_resources,
             #[cfg(feature = "svg")]
                 theme: _,
+            #[cfg(feature = "svg")]
+                theme_resources: _,
         } = overlay
         else {
             unreachable!("unchanged request overlays borrow the base engine");
@@ -1985,8 +2045,8 @@ pub fn resource_options_json(
 ///
 /// The caller options may use direct analysis fields or exactly one `analysis`/`merman` wrapper.
 /// A caller-selected profile is accepted only when its effective limits are no looser than the
-/// transport ceiling. The returned JSON always names the ceiling profile and materializes any
-/// stricter effective limits as explicit overrides.
+/// transport ceiling. The returned JSON preserves an explicitly selected stricter profile so all
+/// downstream policy families, including theme compilation, observe the same restriction.
 pub fn apply_resource_ceiling_json(
     options_json: &[u8],
     ceiling_profile_id: &str,
@@ -2002,6 +2062,13 @@ pub fn apply_resource_ceiling_json(
                 "generated resource ceiling omitted resources",
             )
         })?;
+    #[cfg(feature = "svg")]
+    let ceiling_theme_resources =
+        merman::svg::ThemeResourcePolicy::for_profile(binding_resource_profile(Some(&ceiling))?);
+    #[cfg(feature = "svg")]
+    let mut value =
+        options_json_value_with_theme_ceiling(options_json, Some(&ceiling_theme_resources))?;
+    #[cfg(not(feature = "svg"))]
     let mut value = options_json_value(options_json)?;
     let root = value.as_object_mut().ok_or_else(|| {
         BindingError::new(
@@ -2070,6 +2137,17 @@ pub fn apply_resource_ceiling_json(
 }
 
 fn options_json_value(options_json: &[u8]) -> Result<Value, BindingError> {
+    #[cfg(feature = "svg")]
+    {
+        return options_json_value_with_theme_ceiling(options_json, None);
+    }
+
+    #[cfg(not(feature = "svg"))]
+    options_json_value_unchecked(options_json)
+}
+
+#[cfg(not(feature = "svg"))]
+fn options_json_value_unchecked(options_json: &[u8]) -> Result<Value, BindingError> {
     if options_json.is_empty() {
         return Ok(Value::Object(Map::new()));
     }
@@ -2079,8 +2157,6 @@ fn options_json_value(options_json: &[u8]) -> Result<Value, BindingError> {
             format!("invalid options_json UTF-8: {error}"),
         )
     })?;
-    #[cfg(feature = "svg")]
-    crate::theme::validate_theme_input_json(options_json)?;
     serde_json::from_str(text).map_err(|error| {
         BindingError::new(
             BindingStatus::OptionsJsonError,
@@ -2089,10 +2165,400 @@ fn options_json_value(options_json: &[u8]) -> Result<Value, BindingError> {
     })
 }
 
+#[cfg(feature = "svg")]
+fn options_json_value_with_theme_ceiling(
+    options_json: &[u8],
+    host_ceiling: Option<&merman::svg::ThemeResourcePolicy>,
+) -> Result<Value, BindingError> {
+    if options_json.is_empty() {
+        return Ok(Value::Object(Map::new()));
+    }
+
+    let text = std::str::from_utf8(options_json).map_err(|error| {
+        BindingError::new(
+            BindingStatus::Utf8Error,
+            format!("invalid options_json UTF-8: {error}"),
+        )
+    })?;
+    let hints = theme_resource_profile_hints(text);
+    let policy = theme_resource_preflight_policy(&hints, host_ceiling);
+    let compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(policy.clone());
+    crate::theme::validate_theme_input_json_with(&compiler, options_json)?;
+    let value = serde_json::from_str(text).map_err(|error| {
+        BindingError::new(
+            BindingStatus::OptionsJsonError,
+            format!("invalid options_json: {error}"),
+        )
+    })?;
+    Ok(value)
+}
+
+#[cfg(feature = "svg")]
+#[derive(Default)]
+struct ThemeResourceProfileHints {
+    locations: usize,
+    profiles: Vec<merman::resources::ResourceProfile>,
+    canonical_shape: bool,
+}
+
+#[cfg(feature = "svg")]
+#[derive(Clone, Copy)]
+enum ThemeProfileProbeField {
+    Resources,
+    Analysis,
+    Merman,
+    Profile,
+    Limits,
+    AnalysisOption,
+    Other,
+}
+
+#[cfg(feature = "svg")]
+impl<'de> Deserialize<'de> for ThemeProfileProbeField {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct FieldVisitor;
+
+        impl Visitor<'_> for FieldVisitor {
+            type Value = ThemeProfileProbeField;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("an options JSON field")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(match value {
+                    "resources" => ThemeProfileProbeField::Resources,
+                    "analysis" => ThemeProfileProbeField::Analysis,
+                    "merman" => ThemeProfileProbeField::Merman,
+                    "profile" => ThemeProfileProbeField::Profile,
+                    "limits" => ThemeProfileProbeField::Limits,
+                    "fixed_today" | "fixed_local_offset_minutes" | "site_config" | "lint" => {
+                        ThemeProfileProbeField::AnalysisOption
+                    }
+                    _ => ThemeProfileProbeField::Other,
+                })
+            }
+        }
+
+        deserializer.deserialize_identifier(FieldVisitor)
+    }
+}
+
+#[cfg(feature = "svg")]
+fn theme_resource_profile_hints(options_json: &str) -> ThemeResourceProfileHints {
+    let mut deserializer = serde_json::Deserializer::from_str(options_json);
+    serde::Deserializer::deserialize_any(&mut deserializer, RootThemeProfileProbeVisitor)
+        .unwrap_or_default()
+}
+
+#[cfg(feature = "svg")]
+struct RootThemeProfileProbeVisitor;
+
+#[cfg(feature = "svg")]
+impl<'de> Visitor<'de> for RootThemeProfileProbeVisitor {
+    type Value = ThemeResourceProfileHints;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("an options JSON object")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        let mut hints = ThemeResourceProfileHints {
+            canonical_shape: true,
+            ..ThemeResourceProfileHints::default()
+        };
+        let mut direct_analysis = false;
+        let mut wrapper_count = 0_usize;
+        while let Some(field) = map.next_key::<ThemeProfileProbeField>()? {
+            match field {
+                ThemeProfileProbeField::Resources => {
+                    direct_analysis = true;
+                    let raw = map.next_value::<&RawValue>()?;
+                    merge_resource_profile_scan(&mut hints, scan_resource_profile(raw));
+                }
+                ThemeProfileProbeField::Analysis | ThemeProfileProbeField::Merman => {
+                    wrapper_count += 1;
+                    let raw = map.next_value::<&RawValue>()?;
+                    let wrapper = scan_wrapped_resource_profiles(raw);
+                    hints.canonical_shape &= wrapper.canonical_shape;
+                    hints.locations += wrapper.locations;
+                    hints.profiles.extend(wrapper.profiles);
+                }
+                ThemeProfileProbeField::AnalysisOption => {
+                    direct_analysis = true;
+                    map.next_value::<IgnoredAny>()?;
+                }
+                _ => {
+                    map.next_value::<IgnoredAny>()?;
+                }
+            }
+        }
+        hints.canonical_shape &= wrapper_count <= 1 && !(wrapper_count > 0 && direct_analysis);
+        Ok(hints)
+    }
+}
+
+#[cfg(feature = "svg")]
+struct WrappedThemeProfileProbeVisitor;
+
+#[cfg(feature = "svg")]
+impl<'de> Visitor<'de> for WrappedThemeProfileProbeVisitor {
+    type Value = ThemeResourceProfileHints;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("an analysis options wrapper")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        let mut hints = ThemeResourceProfileHints {
+            canonical_shape: true,
+            ..ThemeResourceProfileHints::default()
+        };
+        while let Some(field) = map.next_key::<ThemeProfileProbeField>()? {
+            match field {
+                ThemeProfileProbeField::Resources => {
+                    let raw = map.next_value::<&RawValue>()?;
+                    merge_resource_profile_scan(&mut hints, scan_resource_profile(raw));
+                }
+                ThemeProfileProbeField::AnalysisOption => {
+                    map.next_value::<IgnoredAny>()?;
+                }
+                _ => {
+                    hints.canonical_shape = false;
+                    map.next_value::<IgnoredAny>()?;
+                }
+            }
+        }
+        hints.canonical_shape &= hints.locations <= 1;
+        Ok(hints)
+    }
+}
+
+#[cfg(feature = "svg")]
+struct ResourceThemeProfileProbeVisitor;
+
+#[cfg(feature = "svg")]
+struct ResourceProfileIdVisitor;
+
+#[cfg(feature = "svg")]
+impl Visitor<'_> for ResourceProfileIdVisitor {
+    type Value = Option<merman::resources::ResourceProfile>;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a resource profile ID")
+    }
+
+    fn visit_borrowed_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(merman::resources::ResourceProfile::from_id(value))
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(merman::resources::ResourceProfile::from_id(value))
+    }
+}
+
+#[cfg(feature = "svg")]
+fn scan_known_resource_profile(
+    raw: &RawValue,
+) -> Result<Option<merman::resources::ResourceProfile>, ()> {
+    let encoded = raw.get().trim();
+    if encoded == "null" {
+        return Ok(None);
+    }
+    if !encoded.starts_with('"') {
+        return Err(());
+    }
+
+    // A matching ASCII ID cannot exceed six JSON bytes per decoded byte (`\uXXXX`). Keep the
+    // escaped-string allocation bounded before asking Serde to decode it.
+    let max_encoded_len = merman::resources::ResourceProfile::ALL
+        .iter()
+        .map(|profile| profile.id().len().saturating_mul(6).saturating_add(2))
+        .max()
+        .unwrap_or(2);
+    if encoded.len() > max_encoded_len {
+        return Ok(None);
+    }
+
+    let mut deserializer = serde_json::Deserializer::from_str(encoded);
+    serde::Deserializer::deserialize_str(&mut deserializer, ResourceProfileIdVisitor)
+        .map_err(|_| ())
+}
+
+#[cfg(feature = "svg")]
+impl<'de> Visitor<'de> for ResourceThemeProfileProbeVisitor {
+    type Value = ThemeResourceProfileHints;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a resources object or null")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        let mut hints = ThemeResourceProfileHints {
+            locations: 1,
+            canonical_shape: true,
+            ..ThemeResourceProfileHints::default()
+        };
+        let mut profile_count = 0_usize;
+        while let Some(field) = map.next_key::<ThemeProfileProbeField>()? {
+            match field {
+                ThemeProfileProbeField::Profile => {
+                    profile_count += 1;
+                    let raw = map.next_value::<&RawValue>()?;
+                    match scan_known_resource_profile(raw) {
+                        Ok(Some(profile)) => hints.profiles.push(profile),
+                        Ok(None) => {}
+                        Err(()) => hints.canonical_shape = false,
+                    }
+                }
+                ThemeProfileProbeField::Limits => {
+                    let raw = map.next_value::<&RawValue>()?;
+                    hints.canonical_shape &= raw.get().starts_with('{');
+                }
+                _ => {
+                    hints.canonical_shape = false;
+                    map.next_value::<IgnoredAny>()?;
+                }
+            }
+        }
+        hints.canonical_shape &= profile_count <= 1;
+        Ok(hints)
+    }
+
+    fn visit_unit<E>(self) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(ThemeResourceProfileHints {
+            locations: 1,
+            canonical_shape: true,
+            ..ThemeResourceProfileHints::default()
+        })
+    }
+}
+
+#[cfg(feature = "svg")]
+fn scan_wrapped_resource_profiles(raw: &RawValue) -> ThemeResourceProfileHints {
+    let mut deserializer = serde_json::Deserializer::from_str(raw.get());
+    serde::Deserializer::deserialize_any(&mut deserializer, WrappedThemeProfileProbeVisitor)
+        .unwrap_or(ThemeResourceProfileHints {
+            canonical_shape: false,
+            ..ThemeResourceProfileHints::default()
+        })
+}
+
+#[cfg(feature = "svg")]
+fn scan_resource_profile(raw: &RawValue) -> ThemeResourceProfileHints {
+    let mut deserializer = serde_json::Deserializer::from_str(raw.get());
+    serde::Deserializer::deserialize_any(&mut deserializer, ResourceThemeProfileProbeVisitor)
+        .unwrap_or(ThemeResourceProfileHints {
+            locations: 1,
+            canonical_shape: false,
+            ..ThemeResourceProfileHints::default()
+        })
+}
+
+#[cfg(feature = "svg")]
+fn merge_resource_profile_scan(
+    hints: &mut ThemeResourceProfileHints,
+    resource: ThemeResourceProfileHints,
+) {
+    hints.canonical_shape &= resource.canonical_shape;
+    hints.locations += resource.locations;
+    hints.profiles.extend(resource.profiles);
+}
+
+#[cfg(feature = "svg")]
+fn theme_resource_preflight_policy(
+    hints: &ThemeResourceProfileHints,
+    host_ceiling: Option<&merman::svg::ThemeResourcePolicy>,
+) -> merman::svg::ThemeResourcePolicy {
+    if host_ceiling.is_none()
+        && hints.canonical_shape
+        && hints.locations == 1
+        && hints.profiles.len() == 1
+    {
+        return merman::svg::ThemeResourcePolicy::for_profile(hints.profiles[0]);
+    }
+
+    let mut policy = host_ceiling.cloned().unwrap_or_else(|| {
+        merman::svg::ThemeResourcePolicy::for_profile(
+            merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
+        )
+    });
+    for profile in &hints.profiles {
+        policy = policy.meet(&merman::svg::ThemeResourcePolicy::for_profile(*profile));
+    }
+    policy
+}
+
+#[cfg(feature = "svg")]
+fn restrict_theme_resource_policy(
+    host: &merman::svg::ThemeResourcePolicy,
+    requested: Option<&ResourceOptionsJson>,
+) -> Result<merman::svg::ThemeResourcePolicy, BindingError> {
+    let Some(profile) = requested.and_then(|resources| resources.profile.as_deref()) else {
+        return Ok(host.clone());
+    };
+    let profile = merman::resources::ResourceProfile::from_id(profile).ok_or_else(|| {
+        BindingError::new(
+            BindingStatus::InvalidArgument,
+            format!("unsupported resources.profile: {profile}"),
+        )
+    })?;
+    host.restrict_with(&merman::svg::ThemeResourcePolicy::for_profile(profile))
+        .map_err(theme_resource_ceiling_error)
+}
+
+#[cfg(feature = "svg")]
+fn theme_resource_ceiling_error(
+    error: merman::svg::ThemeResourcePolicyRestrictionError,
+) -> BindingError {
+    BindingError::new(
+        BindingStatus::OptionsJsonError,
+        format!(
+            "resources would loosen the transport ceiling for theme limit `{}`: requested {:?}, ceiling {:?}",
+            error.id.as_str(),
+            error.requested,
+            error.ceiling,
+        ),
+    )
+}
+
 fn tighten_resource_options(
     ceiling: &ResourceOptionsJson,
     requested: &ResourceOptionsJson,
 ) -> Result<ResourceOptionsJson, BindingError> {
+    let ceiling_profile = binding_resource_profile_id(ceiling)?;
+    let requested_profile = binding_resource_profile_id(requested)?;
+    if requested.profile.is_some() && !requested_profile.is_no_looser_than(ceiling_profile) {
+        return Err(resource_profile_ceiling_error(
+            requested_profile,
+            ceiling_profile,
+        ));
+    }
+
     let mut candidate = if requested.profile.is_none() {
         ceiling.clone()
     } else {
@@ -2105,21 +2571,14 @@ fn tighten_resource_options(
 
     let ceiling_values = effective_resource_limits(ceiling)?;
     let candidate_values = effective_resource_limits(&candidate)?;
-    let mut tightened = ceiling.clone();
     for (id, ceiling_value) in ceiling_values {
         let candidate_value = candidate_values
             .get(id)
             .copied()
             .expect("resource policy projections use the same stable IDs");
         match (ceiling_value, candidate_value) {
-            (Some(maximum), Some(requested)) if requested <= maximum => {
-                if requested < maximum {
-                    tightened.limits.insert(id.to_string(), requested);
-                }
-            }
-            (None, Some(requested)) => {
-                tightened.limits.insert(id.to_string(), requested);
-            }
+            (Some(maximum), Some(requested)) if requested <= maximum => {}
+            (None, Some(_)) => {}
             (None, None) => {}
             (Some(maximum), Some(requested)) => {
                 return Err(resource_ceiling_error(id, requested.to_string(), maximum));
@@ -2129,7 +2588,39 @@ fn tighten_resource_options(
             }
         }
     }
-    Ok(tightened)
+    Ok(candidate)
+}
+
+fn binding_resource_profile_id(
+    resources: &ResourceOptionsJson,
+) -> Result<merman::resources::ResourceProfile, BindingError> {
+    resources
+        .profile
+        .as_deref()
+        .map(|id| {
+            merman::resources::ResourceProfile::from_id(id).ok_or_else(|| {
+                BindingError::new(
+                    BindingStatus::InvalidArgument,
+                    format!("unsupported resources.profile: {id}"),
+                )
+            })
+        })
+        .transpose()
+        .map(|profile| {
+            profile.unwrap_or(merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE)
+        })
+}
+
+fn resource_profile_ceiling_error(
+    requested: merman::resources::ResourceProfile,
+    ceiling: merman::resources::ResourceProfile,
+) -> BindingError {
+    BindingError::new(
+        BindingStatus::OptionsJsonError,
+        format!(
+            "resources would loosen the transport ceiling profile: requested {requested}, ceiling {ceiling}"
+        ),
+    )
 }
 
 fn resource_ceiling_error(id: &str, requested: String, maximum: usize) -> BindingError {
@@ -2144,19 +2635,7 @@ fn resource_ceiling_error(id: &str, requested: String, maximum: usize) -> Bindin
 fn effective_resource_limits(
     resources: &ResourceOptionsJson,
 ) -> Result<BTreeMap<&'static str, Option<usize>>, BindingError> {
-    let profile = resources
-        .profile
-        .as_deref()
-        .map(|id| {
-            merman::resources::ResourceProfile::from_id(id).ok_or_else(|| {
-                BindingError::new(
-                    BindingStatus::InvalidArgument,
-                    format!("unsupported resources.profile: {id}"),
-                )
-            })
-        })
-        .transpose()?
-        .unwrap_or(merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE);
+    let profile = binding_resource_profile_id(resources)?;
     validate_compiled_resource_options(Some(resources))?;
 
     let mut values = binding_resource_contract()
@@ -2999,6 +3478,136 @@ mod tests {
             assert_eq!(resources["limits"]["max_document_diagrams"], 64);
             assert!(value.get("resources").is_some() == wrapper.is_none());
             parse_options(&constrained).unwrap();
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn resource_ceiling_preserves_a_stricter_profile_for_theme_compilation() {
+        let constrained = apply_resource_ceiling_json(
+            br#"{"resources":{"profile":"constrained"}}"#,
+            "interactive",
+            &[],
+        )
+        .unwrap();
+        let value: Value = serde_json::from_slice(&constrained).unwrap();
+
+        assert_eq!(value["resources"]["profile"], "constrained");
+    }
+
+    #[test]
+    fn resource_ceiling_rejects_a_looser_profile_hidden_by_generic_overrides() {
+        let constrained = ResourceOptionsJson {
+            profile: Some("constrained".to_string()),
+            limits: BTreeMap::new(),
+        };
+        let requested = ResourceOptionsJson {
+            profile: Some("interactive".to_string()),
+            limits: effective_resource_limits(&constrained)
+                .unwrap()
+                .into_iter()
+                .filter_map(|(id, value)| value.map(|value| (id.to_string(), value)))
+                .collect(),
+        };
+
+        let error = tighten_resource_options(&constrained, &requested).unwrap_err();
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(error.message().contains("requested interactive"));
+        assert!(error.message().contains("ceiling constrained"));
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn constrained_theme_limit_runs_before_typed_theme_allocation() {
+        let max = merman::svg::ThemeResourcePolicy::constrained()
+            .value(merman::svg::ThemeResourceLimitId::MaxThemeEncodedBytes)
+            .expect("constrained encoded-theme ceiling");
+        let padding = " ".repeat(max);
+        for profile in [r#""constrained""#, r#""constr\u0061ined""#] {
+            let options = format!(
+                r#"{{"resources":{{"profile":{profile}}},"theme":{{{padding}"preset":"editor-light"}}}}"#
+            );
+
+            let error = parse_options(options.as_bytes()).unwrap_err();
+            assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+            let details = error.resource_details().expect("theme limit details");
+            assert_eq!(details.limit_id, "max_theme_encoded_bytes");
+            assert_eq!(details.max, u64::try_from(max).unwrap());
+            assert_eq!(details.profile, "constrained");
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn mixed_resource_profiles_use_the_strictest_raw_theme_preflight() {
+        let max = merman::svg::ThemeResourcePolicy::constrained()
+            .value(merman::svg::ThemeResourceLimitId::MaxThemeEncodedBytes)
+            .expect("constrained encoded-theme ceiling");
+        let padding = " ".repeat(max);
+        let oversized = format!(
+            r#"{{
+                "resources": {{ "profile": "constrained" }},
+                "analysis": {{ "resources": {{ "profile": "interactive" }} }},
+                "theme": {{{padding}"preset":"editor-light"}}
+            }}"#
+        );
+
+        let error = parse_options(oversized.as_bytes()).unwrap_err();
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        let details = error.resource_details().expect("theme limit details");
+        assert_eq!(details.limit_id, "max_theme_encoded_bytes");
+        assert_eq!(details.max, u64::try_from(max).unwrap());
+        assert_eq!(details.profile, "constrained");
+
+        let malformed_but_small = br#"{
+            "resources": { "profile": "constrained" },
+            "analysis": { "resources": { "profile": "interactive" } },
+            "theme": { "preset": "editor-light" }
+        }"#;
+        let error = parse_options(malformed_but_small).unwrap_err();
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(
+            error
+                .message()
+                .contains("must not mix top-level analysis options"),
+            "unexpected error: {error:?}"
+        );
+
+        let duplicate_profile = format!(
+            r#"{{
+                "resources": {{
+                    "profile": "constrained",
+                    "profile": "interactive"
+                }},
+                "theme": {{{padding}"preset":"editor-light"}}
+            }}"#
+        );
+        let error = parse_options(duplicate_profile.as_bytes()).unwrap_err();
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        assert_eq!(
+            error
+                .resource_details()
+                .expect("duplicate-profile limit details")
+                .max,
+            u64::try_from(max).unwrap()
+        );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn theme_profile_probe_preserves_canonical_structure_errors() {
+        for input in [
+            br#"{"analysis":[],"theme":{"preset":"editor-light"}}"#.as_slice(),
+            br#"{"merman":null,"theme":{"preset":"editor-light"}}"#.as_slice(),
+            br#"{"resources":[],"theme":{"preset":"editor-light"}}"#.as_slice(),
+            br#"{"resources":{"profile":[]},"theme":{"preset":"editor-light"}}"#.as_slice(),
+        ] {
+            let value: Value = serde_json::from_slice(input).expect("syntactically valid JSON");
+            let canonical = parse_options_value(&value).unwrap_err();
+            let observed = parse_options(input).unwrap_err();
+
+            assert_eq!(observed.status(), canonical.status(), "input={input:?}");
+            assert_eq!(observed.message(), canonical.message(), "input={input:?}");
         }
     }
 

@@ -12,6 +12,7 @@ Corresponds to the next merman workspace release, which remains in development.
 ### Changed
 
 - Flutter native builds now consume the shared size-oriented default native artifact recipe, package the macOS library only through its XCFramework, and enforce the pub.dev compressed-upload budget during release preflight.
+- Generated resource options now include `maxPreparedTextRetainedBytes`, whose defaults are 24 MiB for `interactive`, 12 MiB for `constrained`, 128 MiB for `trusted-native`, and unlimited for trusted unbounded input.
 
 ## 0.8.0-alpha.5 - 2026-08-09
 

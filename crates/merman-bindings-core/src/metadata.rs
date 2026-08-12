@@ -632,7 +632,11 @@ fn theme_catalog_for(artifact_contract: &ValidatedArtifactContract) -> BindingTh
 
     #[cfg(feature = "svg")]
     {
-        let compiler = merman::svg::DiagramThemeCompiler::new();
+        let compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(
+            merman::svg::ThemeResourcePolicy::for_profile(
+                merman::resources::GENERAL_BINDING_DEFAULT_RESOURCE_PROFILE,
+            ),
+        );
         let presets = merman::svg::theme_preset_descriptors()
             .iter()
             .map(|descriptor| {

@@ -518,6 +518,8 @@ fn theme_file_obeys_the_compiler_encoded_input_budget() {
     let output = run_with_stdin_in_dir(
         &[
             "render",
+            "--resource-profile",
+            "interactive",
             "--theme-file",
             "oversized-theme.json",
             "--format",
@@ -534,6 +536,36 @@ fn theme_file_obeys_the_compiler_encoded_input_budget() {
     assert!(
         stderr.contains("max_theme_encoded_bytes"),
         "theme-file limits should use the compiler-owned resource ID:\n{stderr}"
+    );
+}
+
+#[test]
+fn unbounded_theme_file_retains_the_compiler_hard_cap() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    fs::write(
+        tmp.path().join("theme.json"),
+        br#"{"preset":"editor-dark"}"#,
+    )
+    .expect("write theme selection");
+    let output = run_with_stdin_in_dir(
+        &[
+            "render",
+            "--resource-profile",
+            "unbounded-for-trusted-input",
+            "--theme-file",
+            "theme.json",
+            "--format",
+            "svg",
+            "-",
+        ],
+        "flowchart LR\nA-->B\n",
+        Some(tmp.path()),
+    );
+
+    assert!(
+        output.status.success(),
+        "unbounded theme files must retain the compiler hard cap without panicking: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
 }
 

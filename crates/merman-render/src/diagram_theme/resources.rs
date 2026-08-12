@@ -1,3 +1,5 @@
+use merman_core::resources::ResourceProfile;
+
 const KIB: usize = 1024;
 const MIB: usize = 1024 * KIB;
 
@@ -689,11 +691,13 @@ pub struct ThemeResourceLimitExceeded {
     pub limit: &'static str,
     pub actual: usize,
     pub max: usize,
+    pub profile: Option<ResourceProfile>,
     pub explicit_overrides: Vec<ThemeResourceLimitOverride>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ThemeResourcePolicy {
+    profile: Option<ResourceProfile>,
     base_values: [Option<usize>; THEME_RESOURCE_LIMIT_COUNT],
     effective_values: [Option<usize>; THEME_RESOURCE_LIMIT_COUNT],
     explicit_overrides: [Option<usize>; THEME_RESOURCE_LIMIT_COUNT],
@@ -706,28 +710,48 @@ impl Default for ThemeResourcePolicy {
 }
 
 impl ThemeResourcePolicy {
+    pub const fn for_profile(profile: ResourceProfile) -> Self {
+        match profile {
+            ResourceProfile::Interactive => Self::from_values(profile, INTERACTIVE_VALUES),
+            ResourceProfile::Constrained => Self::from_values(profile, CONSTRAINED_VALUES),
+            ResourceProfile::TrustedNative => Self::from_values(profile, TRUSTED_NATIVE_VALUES),
+            ResourceProfile::UnboundedForTrustedInput => {
+                Self::from_values(profile, UNBOUNDED_VALUES)
+            }
+        }
+    }
+
     pub const fn interactive() -> Self {
-        Self::from_values(INTERACTIVE_VALUES)
+        Self::for_profile(ResourceProfile::Interactive)
     }
 
     pub const fn constrained() -> Self {
-        Self::from_values(CONSTRAINED_VALUES)
+        Self::for_profile(ResourceProfile::Constrained)
     }
 
     pub const fn trusted_native() -> Self {
-        Self::from_values(TRUSTED_NATIVE_VALUES)
+        Self::for_profile(ResourceProfile::TrustedNative)
     }
 
     pub const fn unbounded_for_trusted_input() -> Self {
-        Self::from_values(UNBOUNDED_VALUES)
+        Self::for_profile(ResourceProfile::UnboundedForTrustedInput)
     }
 
-    const fn from_values(values: [Option<usize>; THEME_RESOURCE_LIMIT_COUNT]) -> Self {
+    const fn from_values(
+        profile: ResourceProfile,
+        values: [Option<usize>; THEME_RESOURCE_LIMIT_COUNT],
+    ) -> Self {
         Self {
+            profile: Some(profile),
             base_values: values,
             effective_values: values,
             explicit_overrides: [None; THEME_RESOURCE_LIMIT_COUNT],
         }
+    }
+
+    /// Returns the selected standard profile when the policy still has unambiguous provenance.
+    pub const fn profile(&self) -> Option<ResourceProfile> {
+        self.profile
     }
 
     pub const fn value(&self, id: ThemeResourceLimitId) -> Option<usize> {
@@ -799,17 +823,35 @@ impl ThemeResourcePolicy {
     }
 
     /// Returns the pointwise minimum while preserving this host policy's base values.
+    ///
+    /// Profile provenance follows the strictly tighter operand. Crossing custom restrictions do
+    /// not pretend to be one of the standard profiles.
     pub fn meet(&self, restriction: &Self) -> Self {
         let mut effective_values = [None; THEME_RESOURCE_LIMIT_COUNT];
+        let mut restriction_tightens = false;
+        let mut host_tightens = false;
         let mut index = 0;
         while index < THEME_RESOURCE_LIMIT_COUNT {
+            restriction_tightens |= loosens_ceiling(
+                restriction.effective_values[index],
+                self.effective_values[index],
+            );
+            host_tightens |= loosens_ceiling(
+                self.effective_values[index],
+                restriction.effective_values[index],
+            );
             effective_values[index] = minimum_ceiling(
                 self.effective_values[index],
                 restriction.effective_values[index],
             );
             index += 1;
         }
-        self.with_effective_values(effective_values)
+        let profile = match (restriction_tightens, host_tightens) {
+            (true, false) => restriction.profile,
+            (false, true) | (false, false) => self.profile,
+            (true, true) => None,
+        };
+        self.with_effective_values(profile, effective_values)
     }
 
     /// Applies a request policy only when every requested ceiling is at least as strict.
@@ -833,6 +875,7 @@ impl ThemeResourcePolicy {
 
     fn with_effective_values(
         &self,
+        profile: Option<ResourceProfile>,
         effective_values: [Option<usize>; THEME_RESOURCE_LIMIT_COUNT],
     ) -> Self {
         let mut explicit_overrides = [None; THEME_RESOURCE_LIMIT_COUNT];
@@ -844,6 +887,7 @@ impl ThemeResourcePolicy {
             index += 1;
         }
         Self {
+            profile,
             base_values: self.base_values,
             effective_values,
             explicit_overrides,
@@ -867,6 +911,7 @@ impl ThemeResourcePolicy {
             limit: descriptor.stable_id,
             actual,
             max,
+            profile: self.profile,
             explicit_overrides: self
                 .explicit_overrides()
                 .map(|(id, value)| ThemeResourceLimitOverride { id, value })
@@ -1162,6 +1207,9 @@ mod tests {
             ThemeResourcePolicy::trusted_native(),
             ThemeResourcePolicy::unbounded_for_trusted_input(),
         ];
+        for (profile, policy) in ResourceProfile::ALL.into_iter().zip(profiles.iter()) {
+            assert_eq!(ThemeResourcePolicy::for_profile(profile), *policy);
+        }
         let expected = [
             (
                 ThemeResourceLimitId::MaxThemeEncodedBytes,
@@ -1313,6 +1361,7 @@ mod tests {
         let restricted = host
             .restrict_with(&ThemeResourcePolicy::constrained())
             .unwrap();
+        assert_eq!(restricted.profile(), Some(ResourceProfile::Constrained));
         for descriptor in THEME_RESOURCE_LIMIT_DESCRIPTORS {
             assert_eq!(
                 restricted.value(descriptor.id),
@@ -1322,6 +1371,18 @@ mod tests {
                 )
             );
         }
+    }
+
+    #[test]
+    fn crossing_custom_restrictions_do_not_claim_a_standard_profile() {
+        let first = ThemeResourcePolicy::interactive()
+            .with_limit(ThemeResourceLimitId::MaxEffectGraphs, 1)
+            .unwrap();
+        let second = ThemeResourcePolicy::interactive()
+            .with_limit(ThemeResourceLimitId::MaxEffectBindings, 1)
+            .unwrap();
+
+        assert_eq!(first.meet(&second).profile(), None);
     }
 
     #[test]

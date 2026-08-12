@@ -9,6 +9,7 @@ import type {
   LintRuleCategory,
   LintRuleSeverity,
   RuntimeCapabilities,
+  ThemeName,
 } from "./public-catalog.js";
 import type {
   HostTextDirection,
@@ -216,7 +217,7 @@ export interface DiagramThemeSpec {
 }
 
 export interface MermaidThemeCompatibility {
-  theme?: "default" | "forest" | "dark" | "neutral" | "base";
+  theme?: ThemeName;
   dark_mode?: boolean;
   variables?: Record<string, string | number | boolean>;
 }

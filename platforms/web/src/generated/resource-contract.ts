@@ -11,6 +11,12 @@ export const RESOURCE_PROFILES = Object.freeze([
 ] as const);
 export type ResourceProfile = (typeof RESOURCE_PROFILES)[number];
 const RESOURCE_PROFILE_ID_SET: ReadonlySet<string> = new Set(RESOURCE_PROFILES);
+const RESOURCE_PROFILE_RESTRICTIONS: Readonly<Record<ResourceProfile, ReadonlySet<ResourceProfile>>> = Object.freeze({
+  "interactive": new Set<ResourceProfile>(["interactive","constrained",]),
+  "constrained": new Set<ResourceProfile>(["constrained",]),
+  "trusted-native": new Set<ResourceProfile>(["interactive","constrained","trusted-native",]),
+  "unbounded-for-trusted-input": new Set<ResourceProfile>(["interactive","constrained","trusted-native","unbounded-for-trusted-input",]),
+});
 
 export const RESOURCE_LIMIT_IDS = Object.freeze([
   "max_source_bytes",
@@ -190,6 +196,14 @@ export function tightenResourceOptions(
   }
 
   assertResourceOptions(requested, "requested resources");
+  if (
+    requested.profile !== undefined
+    && !RESOURCE_PROFILE_RESTRICTIONS[ceilingProfile].has(requested.profile)
+  ) {
+    throw new RangeError(
+      `resources would loosen the transport ceiling profile: requested ${requested.profile}, ceiling ${ceilingProfile}`,
+    );
+  }
   const candidate = requested.profile === undefined
     ? resourceOptions(ceilingProfile, {
         ...normalizedCeiling.limits,
@@ -198,7 +212,6 @@ export function tightenResourceOptions(
     : resourceOptions(requested.profile, requested.limits);
   const ceilingValues = effectiveResourceLimits(normalizedCeiling);
   const requestedValues = effectiveResourceLimits(candidate);
-  const tightened: ResourceLimitOverrides = { ...normalizedCeiling.limits };
   for (const id of RESOURCE_LIMIT_IDS) {
     const maximum = ceilingValues[id];
     const value = requestedValues[id];
@@ -207,17 +220,10 @@ export function tightenResourceOptions(
         `resources would loosen the transport ceiling for ${id}: requested ${value ?? "unbounded"}, maximum ${maximum}`,
       );
     }
-    if (
-      value !== null &&
-      (maximum === null || value < maximum) &&
-      RESOURCE_OVERRIDE_ID_SET.has(id)
-    ) {
-      tightened[id as ResourceOverrideId] = value;
-    }
   }
-  return Object.keys(tightened).length === 0
-    ? { profile: ceilingProfile }
-    : { profile: ceilingProfile, limits: tightened };
+  // Preserve an explicitly stricter profile so downstream resource owners
+  // observe the caller's actual ceiling instead of the host label.
+  return candidate;
 }
 
 function effectiveResourceLimits(options: ResourceOptions): ResourceLimitValues {

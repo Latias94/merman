@@ -20,10 +20,13 @@ The next workspace release remains in development. This section records only com
 ### Changed
 
 - Native release recipes now follow each wrapper's callable interface instead of shipping one universal complete binary. This substantially reduces distributed dependency closures, removes a duplicate macOS library from the Flutter archive, and adds an explicit compressed-package budget before pub.dev publication.
+- Prepared text now has an operation-local retained-memory ceiling exposed as `max_prepared_text_retained_bytes`: 24 MiB for `interactive`, 12 MiB for `constrained`, 128 MiB for `trusted-native`, and unlimited for trusted unbounded input. Resource builders can configure the limit through the generated override ID, while reusable requests remain bounded by their constructor ceiling.
 - Web and Node npm publishing now preflight existing registry integrity and tags, publish missing exact versions directly under the requested final tag, and place the default Web package or Node loader last; retries skip members that already match the verified manifest.
 
 ### Fixed
 
+- Resource ceilings now govern compiled themes before JSON, fonts, or effects are materialized across reusable bindings, the CLI, and Typst. Request profiles can tighten but cannot disguise a looser profile with generic overrides; resource errors report the effective standard profile, and Web resource composition preserves the same rule.
+- Restored generated SDK contract alignment for the prepared-text retained-memory limit, structured resource-error causes, and all 11 Mermaid compatibility theme IDs.
 - Playground Mermaid.js comparison realms now preserve SVG label colors without letting page CSS override Mermaid output, and ZenUML's injected `MS Sans Serif` font remains isolated to the affected comparison instead of changing other examples.
 
 ## [0.8.0-alpha.5] - 2026-08-09

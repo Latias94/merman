@@ -54,6 +54,20 @@ impl ResourceProfile {
             .find(|descriptor| descriptor.id == id)
             .map(|descriptor| descriptor.profile)
     }
+
+    /// Returns whether this profile is no looser than a host-owned ceiling.
+    ///
+    /// Numeric overrides cover only the resource IDs exposed by a concrete artifact. This
+    /// relation also protects resource owners that are not part of that generic vocabulary, such
+    /// as theme compilation.
+    pub const fn is_no_looser_than(self, ceiling: Self) -> bool {
+        match ceiling {
+            Self::Constrained => matches!(self, Self::Constrained),
+            Self::Interactive => matches!(self, Self::Constrained | Self::Interactive),
+            Self::TrustedNative => !matches!(self, Self::UnboundedForTrustedInput),
+            Self::UnboundedForTrustedInput => true,
+        }
+    }
 }
 
 impl std::fmt::Display for ResourceProfile {
@@ -2028,6 +2042,26 @@ fn json_item_count(value: &serde_json::Value) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resource_profile_restriction_order_covers_every_profile_pair() {
+        let expected = [
+            [true, true, false, false],
+            [false, true, false, false],
+            [true, true, true, false],
+            [true, true, true, true],
+        ];
+
+        for (ceiling_index, ceiling) in ResourceProfile::ALL.into_iter().enumerate() {
+            for (requested_index, requested) in ResourceProfile::ALL.into_iter().enumerate() {
+                assert_eq!(
+                    requested.is_no_looser_than(ceiling),
+                    expected[ceiling_index][requested_index],
+                    "requested {requested} under {ceiling}",
+                );
+            }
+        }
+    }
 
     #[test]
     fn profile_values_are_single_source_for_input_limits() {

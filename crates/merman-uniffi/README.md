@@ -22,17 +22,13 @@ Use this crate directly when maintaining one of those projections or building a 
 cargo build -p merman-uniffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime'
 ```
 
-For the repository's Python package generator:
+For the repository's Python package generator and checked-in support-file freshness gate:
 
 ```sh
-cargo build -p merman-uniffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime'
-export MERMAN_UNIFFI_LIBRARY=target/release/libmerman_uniffi.dylib
-cargo run -p merman-uniffi --no-default-features --features binding-generation --example generate_python_package -- \
-  --cdylib "$MERMAN_UNIFFI_LIBRARY" \
-  --package-dir platforms/python/merman
+python3 scripts/build-python-uniffi-wheel.py --run-smoke
 ```
 
-The library filename is `libmerman_uniffi.dylib` on macOS, `libmerman_uniffi.so` on Linux, and `merman_uniffi.dll` on Windows. The repository's wheel builder selects the descriptor-owned target and path automatically.
+The wheel builder selects the descriptor-owned target, feature closure, metadata library, and native library path automatically. Run the `generate_python_package` example directly only when both `--metadata-library` and `--cdylib` come from that same artifact profile.
 
 For the Apple SwiftPM projection, build a static library for the intended Apple target and generate the checked-in source/header/module map from that exact artifact:
 

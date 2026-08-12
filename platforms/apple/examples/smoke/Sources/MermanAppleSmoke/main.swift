@@ -19,6 +19,20 @@ struct MermanAppleSmoke {
         )
         let source = "flowchart TD\nA@{ icon: \"smoke:rocket\", label: \"Hello\" } --> B[World]"
         let basicSource = "flowchart TD\nA[Hello] --> B[World]"
+        let resourceOptions = try resourceOptionsJson(
+            profile: .interactive,
+            overrides: [
+                MermanResourceLimitOverride(
+                    id: .maxPreparedTextRetainedBytes,
+                    value: 1_048_576
+                ),
+                MermanResourceLimitOverride(id: .maxSvgBytes, value: 2_097_152),
+            ]
+        )
+        guard resourceOptions.contains(#""max_prepared_text_retained_bytes":1048576"#),
+              resourceOptions.contains(#""max_svg_bytes":2097152"#) else {
+            throw SmokeError.failed("generated resource override IDs drifted from Options JSON")
+        }
         let svg = try engine.renderSvg(source: source, optionsJson: nil)
         guard svg.contains("<svg"), svg.contains("Hello"),
               svg.contains("apple-registry"), measurer.callCount > 0 else {

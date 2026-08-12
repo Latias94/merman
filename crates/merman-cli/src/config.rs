@@ -19,7 +19,8 @@ use crate::invocation::{ResolvedParseOptions, ResolvedRuntimeOptions};
 #[cfg(feature = "svg")]
 use merman::svg::{
     __private::trusted_rust_cli_environment, DiagramThemeCompiler, HeadlessRenderer, IconRegistry,
-    LayoutOptions, MathRenderer, SvgRenderOptions, TextMeasurementPolicy, ThemePreset,
+    LayoutOptions, MAX_THEME_ENCODED_BYTES_HARD_CAP, MathRenderer, SvgRenderOptions,
+    TextMeasurementPolicy, ThemePreset, ThemeResourcePolicy,
 };
 #[cfg(feature = "svg")]
 use merman_bindings_core::compile_theme_selection_json_with;
@@ -314,7 +315,8 @@ fn renderer_from_config(
             render.container_height.unwrap_or(600.0),
         ))
         .with_svg_options(svg);
-    let compiler = DiagramThemeCompiler::new();
+    let compiler = DiagramThemeCompiler::new()
+        .with_resource_policy(ThemeResourcePolicy::for_profile(resources.profile()));
     let selected_theme =
         match (render.theme_preset, render.theme_file) {
             (Some(_), Some(_)) => {
@@ -329,7 +331,7 @@ fn renderer_from_config(
                 let max_bytes = compiler
                     .resource_policy()
                     .value(merman::svg::ThemeResourceLimitId::MaxThemeEncodedBytes)
-                    .expect("interactive theme input limit");
+                    .unwrap_or(MAX_THEME_ENCODED_BYTES_HARD_CAP);
                 let bytes = read_named_bytes_file(
                     path,
                     "theme selection file",

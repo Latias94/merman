@@ -14,6 +14,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 ### Changed
 
 - Kept Apple static-library slices on the `native-sdk` profile after a same-source link comparison showed the size-oriented dynamic-library profile produced a larger final Swift executable.
+- Generated resource overrides now include `maxPreparedTextRetainedBytes`, whose defaults are 24 MiB for `interactive`, 12 MiB for `constrained`, 128 MiB for `trusted-native`, and unlimited for trusted unbounded input.
 
 ## [0.8.0-alpha.5] - 2026-08-09
 
