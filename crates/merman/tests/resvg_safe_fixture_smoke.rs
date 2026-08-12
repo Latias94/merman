@@ -1,7 +1,10 @@
 #![cfg(feature = "svg")]
 
-use merman::MermaidConfig;
-use merman::svg::{HeadlessRenderer, ResvgCompatibleSvg};
+use merman::svg::{SvgPipeline, SvgRenderOptions, TextMeasurementPolicy};
+use merman::{
+    MermaidConfig, OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer,
+    SvgRequest,
+};
 use merman_fixture_render_context::RenderContextCatalog;
 use std::collections::BTreeSet;
 #[cfg(feature = "png")]
@@ -201,6 +204,80 @@ fn audit_name_filter() -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+#[derive(Debug, Clone)]
+struct TypedSvgRenderer {
+    renderer: Renderer,
+    request: SvgRequest,
+    parse_options: ParseOptions,
+}
+
+impl TypedSvgRenderer {
+    fn new() -> Self {
+        Self {
+            renderer: Renderer::new(),
+            request: SvgRequest::default(),
+            parse_options: ParseOptions::default(),
+        }
+    }
+
+    fn with_strict_parsing(mut self) -> Self {
+        self.parse_options = ParseOptions::strict();
+        self
+    }
+
+    fn with_lenient_parsing(mut self) -> Self {
+        self.parse_options = ParseOptions::lenient();
+        self
+    }
+
+    fn with_site_config(mut self, site_config: MermaidConfig) -> Self {
+        let engine = self.renderer.engine().clone().with_site_config(site_config);
+        self.renderer = self.renderer.with_engine(engine);
+        self
+    }
+
+    fn with_vendored_text_measurer(mut self) -> Self {
+        self.request.environment = self
+            .request
+            .environment
+            .with_text_measurement_policy(TextMeasurementPolicy::parity());
+        self
+    }
+
+    fn with_diagram_id(mut self, name: &str) -> Self {
+        self.request.options = SvgRenderOptions {
+            diagram_id: Some(name.to_string()),
+            ..self.request.options
+        };
+        self
+    }
+
+    fn render_svg(&self, source: &str) -> Result<Option<String>, merman::RenderError> {
+        self.render_with_request(source, self.request.clone())
+    }
+
+    fn render_resvg_safe(&self, source: &str) -> Result<Option<String>, merman::RenderError> {
+        let mut request = self.request.clone();
+        request.pipeline = Some(SvgPipeline::resvg_safe());
+        self.render_with_request(source, request)
+    }
+
+    fn render_with_request(
+        &self,
+        source: &str,
+        request: SvgRequest,
+    ) -> Result<Option<String>, merman::RenderError> {
+        let output = self.renderer.render(
+            RenderRequest::svg(source, OperationControl::new(), request)
+                .with_parse_options(self.parse_options),
+        )?;
+        let RenderOutput::Svg(svg) = output else {
+            unreachable!("SVG request must return SVG output")
+        };
+        Ok(svg.map(|svg| svg.into_parts().0))
+    }
+}
+
 #[cfg(feature = "layout-cytoscape")]
 fn is_representative_fixture_name(name: &str) -> bool {
     name.starts_with("stress_")
@@ -249,22 +326,23 @@ fn render_resvg_safe_with_options(
     lenient: bool,
     site_config: Option<merman::MermaidConfig>,
 ) -> String {
-    let mut renderer = if lenient {
-        HeadlessRenderer::new().with_lenient_parsing()
+    let renderer = if lenient {
+        TypedSvgRenderer::new().with_lenient_parsing()
     } else {
-        HeadlessRenderer::new().with_strict_parsing()
+        TypedSvgRenderer::new().with_strict_parsing()
     };
 
-    if let Some(site_config) = site_config {
-        renderer = renderer.with_site_config(site_config);
-    }
+    let renderer = if let Some(site_config) = site_config {
+        renderer.with_site_config(site_config)
+    } else {
+        renderer
+    };
 
     renderer
         .with_vendored_text_measurer()
         .with_diagram_id(name)
-        .render_resvg_compatible_svg_sync(source)
-        .unwrap_or_else(|err| panic!("{name}: headless resvg-safe render failed: {err}"))
-        .map(ResvgCompatibleSvg::into_string)
+        .render_resvg_safe(source)
+        .unwrap_or_else(|err| panic!("{name}: typed resvg-safe render failed: {err}"))
         .unwrap_or_else(|| panic!("{name}: no diagram detected"))
 }
 
@@ -724,12 +802,12 @@ fn default_svg_and_resvg_safe_svg_keep_separate_contracts() {
   B -->|Yes| C[Ship it]
   B -->|No| D[Debug]
 "#;
-    let renderer = HeadlessRenderer::new()
+    let renderer = TypedSvgRenderer::new()
         .with_vendored_text_measurer()
         .with_diagram_id("export-contract");
 
     let parity_svg = renderer
-        .render_svg_sync(source)
+        .render_svg(source)
         .expect("parity render should succeed")
         .expect("diagram should be detected");
     assert!(
@@ -744,9 +822,8 @@ fn default_svg_and_resvg_safe_svg_keep_separate_contracts() {
     }
 
     let export_svg = renderer
-        .render_resvg_compatible_svg_sync(source)
+        .render_resvg_safe(source)
         .expect("resvg-safe render should succeed")
-        .map(ResvgCompatibleSvg::into_string)
         .expect("diagram should be detected");
     assert_resvg_safe_output("export-contract", source, &export_svg);
     assert!(
@@ -769,12 +846,12 @@ fn quadrant_raw_and_resvg_safe_outputs_keep_distinct_color_contracts() {
   y-axis Low Engagement --> High Engagement
   Campaign A: [0.3, 0.6]
 "#;
-    let renderer = HeadlessRenderer::new()
+    let renderer = TypedSvgRenderer::new()
         .with_vendored_text_measurer()
         .with_diagram_id("quadrant-artifact-lanes");
 
     let raw_svg = renderer
-        .render_svg_sync(source)
+        .render_svg(source)
         .expect("raw/source render should succeed")
         .expect("quadrant should be detected");
     assert!(
@@ -783,9 +860,8 @@ fn quadrant_raw_and_resvg_safe_outputs_keep_distinct_color_contracts() {
     );
 
     let resvg_safe_svg = renderer
-        .render_resvg_compatible_svg_sync(source)
+        .render_resvg_safe(source)
         .expect("resvg-safe render should succeed")
-        .map(ResvgCompatibleSvg::into_string)
         .expect("quadrant should be detected");
     assert_resvg_safe_output("quadrant-artifact-lanes", source, &resvg_safe_svg);
 
@@ -843,7 +919,7 @@ fn font_only_public_themes_keep_upstream_palette_in_resvg_safe_output() {
 }
 
 #[test]
-fn host_reported_diagrams_render_headless_resvg_safe() {
+fn host_reported_diagrams_render_typed_resvg_safe() {
     let cases: &[(&str, &str, &[&str], &[&str])] = &[
         (
             "host-kanban-attrs",
@@ -916,7 +992,7 @@ fn host_reported_diagrams_render_headless_resvg_safe() {
 
 #[test]
 #[cfg(feature = "layout-cytoscape")]
-fn representative_fixtures_render_headless_resvg_safe() {
+fn representative_fixtures_render_typed_resvg_safe() {
     let fixtures = fixture_sample_paths();
     assert!(
         fixtures.len() >= SUPPORTED_FIXTURE_DIRS.len(),
@@ -941,7 +1017,7 @@ fn representative_fixtures_render_headless_resvg_safe() {
 }
 
 #[test]
-fn boundary_fixtures_render_headless_resvg_safe() {
+fn boundary_fixtures_render_typed_resvg_safe() {
     let fixtures = boundary_fixture_paths();
     assert!(
         fixtures.len() >= 30,
@@ -980,7 +1056,7 @@ fn boundary_fixtures_render_headless_resvg_safe() {
 
 #[test]
 #[ignore = "manual HPD-080 audit over all supported fixtures; default smoke stays representative"]
-fn all_supported_fixtures_render_headless_resvg_safe_audit() {
+fn all_supported_fixtures_render_typed_resvg_safe_audit() {
     let fixtures = all_supported_fixture_paths();
     let filtered_audit =
         audit_family_filter().is_some() || audit_name_filter().as_deref().is_some();

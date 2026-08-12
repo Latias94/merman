@@ -1,22 +1,172 @@
 #![cfg(feature = "svg")]
 
-use merman::MermaidConfig;
-use merman::svg::{HeadlessRenderer, RenderEnvironment, RenderResourcePolicy};
+use merman::svg::{RenderEnvironment, RenderResourcePolicy, SvgPipeline};
+use merman::{
+    MermaidConfig, OperationControl, ParseOptions, RenderError, RenderOutput, RenderRequest,
+    Renderer, SvgRequest,
+};
 #[cfg(feature = "png")]
 use std::io::Cursor;
 
-fn render_svg(renderer: &HeadlessRenderer, name: &str, source: &str) -> String {
+#[derive(Debug, Clone)]
+struct TypedSvgRenderer {
+    renderer: Renderer,
+    request: SvgRequest,
+    parse_options: ParseOptions,
+    input_resources: merman::resources::InputResourcePolicy,
+}
+
+impl TypedSvgRenderer {
+    fn new() -> Self {
+        Self {
+            renderer: Renderer::new(),
+            request: SvgRequest::default(),
+            parse_options: ParseOptions::default(),
+            input_resources: merman::resources::InputResourcePolicy::default(),
+        }
+    }
+
+    fn with_site_config(mut self, site_config: MermaidConfig) -> Self {
+        let engine = self.renderer.engine().clone().with_site_config(site_config);
+        self.renderer = self.renderer.with_engine(engine);
+        self
+    }
+
+    fn with_environment(mut self, environment: RenderEnvironment) -> Self {
+        self.request.environment = environment;
+        self
+    }
+
+    fn with_svg_options(mut self, options: merman::svg::SvgRenderOptions) -> Self {
+        self.request.options = options;
+        self
+    }
+
+    fn with_diagram_id(mut self, diagram_id: &str) -> Self {
+        self.request.options.diagram_id = Some(diagram_id.to_string());
+        self
+    }
+
+    fn with_resource_policy(mut self, policy: RenderResourcePolicy) -> Self {
+        self.input_resources = *policy.input_policy();
+        self.request.environment = self.request.environment.with_resource_policy(policy);
+        self
+    }
+
+    fn render_svg_result(&self, source: &str) -> Result<Option<String>, RenderError> {
+        self.render_svg_with_request(source, self.request.clone())
+    }
+
+    fn render_svg_with_pipeline_result(
+        &self,
+        source: &str,
+        pipeline: SvgPipeline,
+    ) -> Result<Option<String>, RenderError> {
+        let mut request = self.request.clone();
+        request.pipeline = Some(pipeline);
+        self.render_svg_with_request(source, request)
+    }
+
+    fn render_resvg_safe_result(&self, source: &str) -> Result<Option<String>, RenderError> {
+        self.render_svg_with_pipeline_result(source, SvgPipeline::resvg_safe())
+    }
+
+    fn render_svg_with_request(
+        &self,
+        source: &str,
+        request: SvgRequest,
+    ) -> Result<Option<String>, RenderError> {
+        let output = self.renderer.render(
+            RenderRequest::svg(source, OperationControl::new(), request)
+                .with_parse_options(self.parse_options)
+                .with_resource_policy(self.input_resources),
+        )?;
+        let RenderOutput::Svg(svg) = output else {
+            unreachable!("SVG request must return SVG output")
+        };
+        Ok(svg.map(|svg| svg.into_parts().0))
+    }
+
+    #[cfg(feature = "png")]
+    fn render_png_result(
+        &self,
+        source: &str,
+        options: &merman::svg::export::RasterOptions,
+    ) -> Result<Option<Vec<u8>>, RenderError> {
+        let output = self.renderer.render(
+            RenderRequest::png(
+                source,
+                OperationControl::new(),
+                merman::PngRequest {
+                    svg: self.request.clone(),
+                    options: options.clone(),
+                },
+            )
+            .with_parse_options(self.parse_options)
+            .with_resource_policy(self.input_resources),
+        )?;
+        let RenderOutput::Png(output) = output else {
+            unreachable!("PNG request must return PNG output")
+        };
+        Ok(output.map(|output| output.bytes))
+    }
+
+    #[cfg(feature = "jpeg")]
+    fn render_jpeg_result(
+        &self,
+        source: &str,
+        options: &merman::svg::export::RasterOptions,
+    ) -> Result<Option<Vec<u8>>, RenderError> {
+        let output = self.renderer.render(
+            RenderRequest::jpeg(
+                source,
+                OperationControl::new(),
+                merman::JpegRequest {
+                    svg: self.request.clone(),
+                    options: options.clone(),
+                },
+            )
+            .with_parse_options(self.parse_options)
+            .with_resource_policy(self.input_resources),
+        )?;
+        let RenderOutput::Jpeg(output) = output else {
+            unreachable!("JPEG request must return JPEG output")
+        };
+        Ok(output.map(|output| output.bytes))
+    }
+
+    #[cfg(feature = "pdf")]
+    fn render_pdf_result(&self, source: &str) -> Result<Option<Vec<u8>>, RenderError> {
+        let output = self.renderer.render(
+            RenderRequest::pdf(
+                source,
+                OperationControl::new(),
+                merman::PdfRequest {
+                    svg: self.request.clone(),
+                    options: merman::svg::export::PdfOptions::default(),
+                },
+            )
+            .with_parse_options(self.parse_options)
+            .with_resource_policy(self.input_resources),
+        )?;
+        let RenderOutput::Pdf(output) = output else {
+            unreachable!("PDF request must return PDF output")
+        };
+        Ok(output.map(|output| output.bytes))
+    }
+}
+
+fn render_svg(renderer: &TypedSvgRenderer, name: &str, source: &str) -> String {
     renderer
-        .render_svg_sync(source)
+        .render_svg_result(source)
         .unwrap_or_else(|err| panic!("{name}: render failed: {err}"))
         .unwrap_or_else(|| panic!("{name}: no diagram detected"))
 }
 
-fn render_resvg_safe(renderer: &HeadlessRenderer, name: &str, source: &str) -> String {
+fn render_resvg_safe(renderer: &TypedSvgRenderer, name: &str, source: &str) -> String {
     renderer
-        .render_resvg_compatible_svg_sync(source)
+        .render_resvg_safe_result(source)
         .unwrap_or_else(|err| panic!("{name}: render failed: {err}"))
-        .map(merman::svg::ResvgCompatibleSvg::into_string)
         .unwrap_or_else(|| panic!("{name}: no diagram detected"))
 }
 
@@ -37,7 +187,7 @@ fn diagram_level_css_config_cannot_reach_effective_svg() {
 flowchart TD
     A[Start] --> B[Done]
 "##;
-    let renderer = HeadlessRenderer::new().with_diagram_id("security-config");
+    let renderer = TypedSvgRenderer::new().with_diagram_id("security-config");
 
     let svg = render_svg(&renderer, "security-config", source);
 
@@ -53,7 +203,7 @@ fn strict_click_javascript_url_does_not_emit_renderable_href() {
     A[Click me]
     click A "javascript:alert(1)" "bad" _blank
 "#;
-    let renderer = HeadlessRenderer::new().with_diagram_id("security-url");
+    let renderer = TypedSvgRenderer::new().with_diagram_id("security-url");
 
     let svg = render_svg(&renderer, "security-url", source);
 
@@ -73,7 +223,7 @@ kanban
   Todo
     id4[Create parsing tests]@{ ticket: MC-2038 }
 "#;
-    let renderer = HeadlessRenderer::new().with_diagram_id("security-kanban-link");
+    let renderer = TypedSvgRenderer::new().with_diagram_id("security-kanban-link");
 
     let parity = render_svg(&renderer, "security-kanban-link", source);
     let resvg_safe = render_resvg_safe(&renderer, "security-kanban-link-resvg", source);
@@ -90,7 +240,7 @@ kanban
 
 #[test]
 fn kanban_strict_security_removes_an_unsafe_ticket_href_but_keeps_the_anchor() {
-    let renderer = HeadlessRenderer::new()
+    let renderer = TypedSvgRenderer::new()
         .with_site_config(MermaidConfig::from_value(serde_json::json!({
             "securityLevel": "strict",
             "kanban": {
@@ -113,7 +263,7 @@ fn kanban_strict_security_removes_an_unsafe_ticket_href_but_keeps_the_anchor() {
 
 #[test]
 fn kanban_loose_parity_and_resvg_safe_keep_separate_security_contracts() {
-    let renderer = HeadlessRenderer::new()
+    let renderer = TypedSvgRenderer::new()
         .with_site_config(MermaidConfig::from_value(serde_json::json!({
             "securityLevel": "loose",
             "kanban": {
@@ -140,7 +290,7 @@ fn resvg_safe_pipeline_removes_loose_html_label_foreign_object() {
     let source = r#"flowchart TD
     A["<b onclick='alert(1)'>Hello</b><br/><img src=x onerror='alert(1)'>"] --> B[Done]
 "#;
-    let renderer = HeadlessRenderer::new()
+    let renderer = TypedSvgRenderer::new()
         .with_site_config(MermaidConfig::from_value(serde_json::json!({
             "securityLevel": "loose",
             "flowchart": {
@@ -163,7 +313,7 @@ fn resvg_safe_pipeline_removes_loose_html_label_foreign_object() {
 #[test]
 fn resvg_safe_pipeline_strips_trusted_theme_css_raster_hazards() {
     let source = "flowchart TD\n    A[Start] --> B[Done]";
-    let renderer = HeadlessRenderer::new()
+    let renderer = TypedSvgRenderer::new()
         .with_site_config(MermaidConfig::from_value(serde_json::json!({
             "themeCSS": ".node rect { animation: pulse 1s infinite; } @keyframes pulse { to { opacity: 0.5; } } :root { --bad: 1; }"
         })))
@@ -185,7 +335,7 @@ title System Context\n\
 Person(customer, \"Customer\", \"A\u{1f}customer\")\n\
 System(system, \"System\", \"Does work\")\n\
 Rel(customer, system, \"Uses\")\n";
-    let renderer = HeadlessRenderer::new().with_diagram_id("security-xml-controls");
+    let renderer = TypedSvgRenderer::new().with_diagram_id("security-xml-controls");
 
     let svg = render_resvg_safe(&renderer, "security-xml-controls", source);
 
@@ -198,7 +348,7 @@ Rel(customer, system, \"Uses\")\n";
 #[cfg(feature = "layout-cytoscape")]
 fn mindmap_render_drops_xml_forbidden_control_chars_before_serialization() {
     let source = "mindmap\n  root((Root))\n    Parse\n    \u{1c}Layout\n";
-    let renderer = HeadlessRenderer::new().with_diagram_id("security-mindmap-xml-controls");
+    let renderer = TypedSvgRenderer::new().with_diagram_id("security-mindmap-xml-controls");
 
     let parity_svg = render_svg(&renderer, "security-mindmap-xml-controls", source);
     assert_xml_parseable("security-mindmap-xml-controls", &parity_svg);
@@ -211,7 +361,7 @@ fn mindmap_render_drops_xml_forbidden_control_chars_before_serialization() {
 
 #[test]
 fn raw_svg_options_cannot_bypass_diagram_id_normalization() {
-    let renderer = HeadlessRenderer::new().with_svg_options(merman::svg::SvgRenderOptions {
+    let renderer = TypedSvgRenderer::new().with_svg_options(merman::svg::SvgRenderOptions {
         diagram_id: Some("x]]>y".to_string()),
         ..Default::default()
     });
@@ -219,7 +369,7 @@ fn raw_svg_options_cannot_bypass_diagram_id_normalization() {
     let outputs = [
         render_svg(&renderer, "diagram-id-parity", "info"),
         renderer
-            .render_svg_readable_sync("info")
+            .render_svg_with_pipeline_result("info", SvgPipeline::readable())
             .expect("readable render")
             .expect("detected info diagram"),
         render_resvg_safe(&renderer, "diagram-id-resvg-safe", "info"),
@@ -279,7 +429,7 @@ fn resvg_safe_flowchart_images_cannot_delegate_file_or_network_io_to_the_host() 
     Remote@{ img: "https://example.com/merman-remote.png", label: "Remote", h: 60 }
     Local --> Relative --> Remote
 "#;
-    let renderer = HeadlessRenderer::new().with_diagram_id("security-image-resources");
+    let renderer = TypedSvgRenderer::new().with_diagram_id("security-image-resources");
 
     let parity = render_svg(&renderer, "security-image-resources-parity", source);
     assert!(parity.contains("/tmp/merman-secret.png"), "{parity}");
@@ -301,14 +451,14 @@ fn resvg_safe_flowchart_images_cannot_delegate_file_or_network_io_to_the_host() 
 
 #[test]
 fn render_resource_limit_rejects_oversized_source() {
-    let renderer = HeadlessRenderer::new().with_resource_policy(
+    let renderer = TypedSvgRenderer::new().with_resource_policy(
         RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(merman::svg::ResourceLimitId::MaxSourceBytes, 8)
             .unwrap(),
     );
 
     let err = renderer
-        .render_svg_sync("flowchart TD\nA --> B")
+        .render_svg_result("flowchart TD\nA --> B")
         .unwrap_err();
 
     assert!(err.to_string().contains("max_source_bytes"), "{err}");
@@ -316,14 +466,14 @@ fn render_resource_limit_rejects_oversized_source() {
 
 #[test]
 fn render_resource_limit_rejects_oversized_flowchart_model() {
-    let renderer = HeadlessRenderer::new().with_resource_policy(
+    let renderer = TypedSvgRenderer::new().with_resource_policy(
         RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(merman::svg::ResourceLimitId::MaxModelItems, 1)
             .unwrap(),
     );
 
     let err = renderer
-        .render_svg_sync("flowchart TD\nA-->B\nB-->C")
+        .render_svg_result("flowchart TD\nA-->B\nB-->C")
         .unwrap_err();
 
     assert!(err.to_string().contains("max_model_items"), "{err}");
@@ -341,7 +491,7 @@ fn resvg_safe_pipeline_strips_active_content_from_trusted_custom_icons() {
     }"##;
     let registry = merman::svg::IconRegistry::from_packs([merman::svg::IconPack::new(pack)])
         .expect("valid Iconify pack");
-    let renderer = HeadlessRenderer::new()
+    let renderer = TypedSvgRenderer::new()
         .with_environment(RenderEnvironment::deterministic().with_icon_registry(registry))
         .with_svg_options(merman::svg::SvgRenderOptions {
             diagram_id: Some("security-icon".to_string()),
@@ -392,7 +542,7 @@ fn repeated_maximum_icon_uses_one_svg_budget_across_svg_and_export_paths() {
                 .with_limit(merman::svg::ResourceLimitId::MaxSvgBytes, budget)
                 .expect("positive SVG budget");
         }
-        HeadlessRenderer::new()
+        TypedSvgRenderer::new()
             .with_environment(
                 RenderEnvironment::deterministic().with_icon_registry(registry.clone()),
             )
@@ -401,21 +551,21 @@ fn repeated_maximum_icon_uses_one_svg_budget_across_svg_and_export_paths() {
     };
 
     let baseline = renderer(None)
-        .render_svg_sync(source)
+        .render_svg_result(source)
         .expect("unbounded parity render")
         .expect("flowchart detected");
     let mut low = 1usize;
     let mut high = baseline.len();
     assert!(
         renderer(Some(high))
-            .render_resvg_compatible_svg_sync(source)
+            .render_resvg_safe_result(source)
             .is_ok(),
         "the serialized baseline length must be a passing upper bound"
     );
     while low < high {
         let middle = low + (high - low) / 2;
         if renderer(Some(middle))
-            .render_resvg_compatible_svg_sync(source)
+            .render_resvg_safe_result(source)
             .is_ok()
         {
             high = middle;
@@ -428,27 +578,27 @@ fn repeated_maximum_icon_uses_one_svg_budget_across_svg_and_export_paths() {
 
     let exact = renderer(Some(exact_budget));
     exact
-        .render_resvg_compatible_svg_sync(source)
+        .render_resvg_safe_result(source)
         .expect("exact SVG budget")
         .expect("flowchart detected");
     let raster_options = merman::svg::export::RasterOptions::default();
     assert!(
         exact
-            .render_png_sync(source, &raster_options)
+            .render_png_result(source, &raster_options)
             .expect("PNG exact SVG budget")
             .expect("flowchart detected")
             .starts_with(b"\x89PNG\r\n\x1a\n")
     );
     assert!(
         exact
-            .render_jpeg_sync(source, &raster_options)
+            .render_jpeg_result(source, &raster_options)
             .expect("JPEG exact SVG budget")
             .expect("flowchart detected")
             .starts_with(b"\xff\xd8\xff")
     );
     assert!(
         exact
-            .render_pdf_sync(source)
+            .render_pdf_result(source)
             .expect("PDF exact SVG budget")
             .expect("flowchart detected")
             .starts_with(b"%PDF-")
@@ -456,7 +606,7 @@ fn repeated_maximum_icon_uses_one_svg_budget_across_svg_and_export_paths() {
 
     let one_less = renderer(Some(exact_budget - 1));
     let svg_error = one_less
-        .render_resvg_compatible_svg_sync(source)
+        .render_resvg_safe_result(source)
         .expect_err("SVG budget plus one must fail");
     assert!(
         svg_error.to_string().contains("max_svg_bytes"),
@@ -464,13 +614,13 @@ fn repeated_maximum_icon_uses_one_svg_budget_across_svg_and_export_paths() {
     );
     for error in [
         one_less
-            .render_png_sync(source, &raster_options)
+            .render_png_result(source, &raster_options)
             .expect_err("PNG must share the SVG budget"),
         one_less
-            .render_jpeg_sync(source, &raster_options)
+            .render_jpeg_result(source, &raster_options)
             .expect_err("JPEG must share the SVG budget"),
         one_less
-            .render_pdf_sync(source)
+            .render_pdf_result(source)
             .expect_err("PDF must share the SVG budget"),
     ] {
         assert!(error.to_string().contains("max_svg_bytes"), "{error}");
