@@ -186,7 +186,10 @@ impl RoutePlan {
         diagram_type: &'static str,
     ) -> Result<Self> {
         for cell in &mut self.cells {
-            if cell.kind == PlannedRouteCellKind::RouteCell {
+            if matches!(
+                cell.kind,
+                PlannedRouteCellKind::EdgeLine | PlannedRouteCellKind::RouteCell
+            ) {
                 let directions = super::cell::route_char_directions(cell.ch);
                 if directions != 0 {
                     cell.directions = directions;

@@ -977,6 +977,37 @@ fn same_rank_direct_route_plans_unicode_right_connector() {
 }
 
 #[test]
+fn stroke_projection_preserves_edge_line_connector_style() {
+    let ascii_options = AsciiRenderOptions::ascii();
+    let ascii_charset = GraphCharset::for_options(&ascii_options);
+    let ascii_plan = RoutePlan::new_without_markers_for_test(
+        vec![cell(0, 0, '-', PlannedRouteCellKind::EdgeLine)],
+        Vec::new(),
+    )
+    .try_with_stroke(GraphEdgeStroke::Dotted, &ascii_charset, "flowchart")
+    .expect("ASCII edge-line stroke should be representable");
+    let ascii_cell = &ascii_plan.cells[0];
+    assert_eq!(ascii_cell.ch, '.');
+    assert_eq!(ascii_cell.stroke, GraphEdgeStroke::Dotted);
+    assert!(!ascii_cell.unicode);
+    assert_ne!(ascii_cell.directions, 0);
+
+    let unicode_options = AsciiRenderOptions::unicode();
+    let unicode_charset = GraphCharset::for_options(&unicode_options);
+    let unicode_plan = RoutePlan::new_without_markers_for_test(
+        vec![cell(0, 0, '├', PlannedRouteCellKind::EdgeLine)],
+        Vec::new(),
+    )
+    .try_with_stroke(GraphEdgeStroke::Thick, &unicode_charset, "flowchart")
+    .expect("Unicode edge-line stroke should be representable");
+    let unicode_cell = &unicode_plan.cells[0];
+    assert_eq!(unicode_cell.ch, '┣');
+    assert_eq!(unicode_cell.stroke, GraphEdgeStroke::Thick);
+    assert!(unicode_cell.unicode);
+    assert_ne!(unicode_cell.directions, 0);
+}
+
+#[test]
 fn same_rank_direct_route_plans_unicode_left_connector_arrow_and_label() {
     let from = node("a", 10, 0, 5, 3);
     let to = node("b", 0, 0, 5, 3);
